@@ -7,7 +7,7 @@
 //     <classname>com.acme.codegen.JsonSchemaGenerator</classname>
 //     <args><outputDir>${project.basedir}/src/main/resources/schemas</outputDir></args>
 //   </generator>
-// `mvn metaobjects:verify` re-runs it into a temp dir and fails on drift; nothing to register.
+// `mvn metaobjects:verify` re-runs it in memory and fails on drift; nothing to register.
 //
 // Emits <Name>.schema.json (JSON Schema 2020-12) per concrete object.
 package com.acme.codegen;

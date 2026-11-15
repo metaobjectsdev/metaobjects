@@ -526,10 +526,10 @@ public static class CodegenCli
 
     private static readonly string[] GenValueFlags =
         ["--out", "--namespace", "--generators", "--template-root", "--template-spec", "--column-naming", "--baseline"];
-    private static readonly string[] GenBoolFlags = ["--emit-abstract-shapes", "--strict"];
+    private static readonly string[] GenBoolFlags = ["--emit-abstract-shapes", "--strict", "--force"];
     private static readonly string[] VerifyValueFlags =
         ["--out", "--namespace", "--generators", "--template-root", "--column-naming"];
-    private static readonly string[] VerifyBoolFlags = ["--codegen", "--lax"];
+    private static readonly string[] VerifyBoolFlags = ["--codegen", "--lax", "--full"];
 
     /// <summary>The flags both commands share, parsed once.</summary>
     private sealed class OwnedArgs
@@ -537,7 +537,7 @@ public static class CodegenCli
         public string? MetadataDir, OutDir, TemplateRoot, TemplateSpecPath, ColumnNamingRaw, GeneratorsCsv;
         public string? Namespace;
         public string Baseline = "default";
-        public bool EmitAbstractShapes, Codegen, Lax, Strict;
+        public bool EmitAbstractShapes, Codegen, Lax, Strict, Force, Full;
         /// <summary>1.0 docs flags given (<see cref="LegacyDocsFlags"/>), in order.</summary>
         public List<string> LegacyDocs = [];
         /// <summary>The usage error the arguments earn, or <c>null</c>.</summary>
@@ -587,6 +587,8 @@ public static class CodegenCli
                     else if (flag == "--codegen") a.Codegen = true;
                     else if (flag == "--lax") a.Lax = true;
                     else if (flag == "--strict") a.Strict = true;
+                    else if (flag == "--force") a.Force = true; // ADR-0062: render even when nothing changed
+                    else if (flag == "--full") a.Full = true;   // ADR-0062: verify renders even when it could answer from the key
                 }
                 else
                 {
@@ -644,7 +646,26 @@ public static class CodegenCli
     private const string GenCommandName = "dotnet meta gen";
     private const string VerifyCommandName = "dotnet meta verify --codegen";
 
+    /// <summary>ADR-0062: the stored key is forgotten by any run that gets as far as the project's
+    /// metadata and does not skip or store a new key, so a failed run never leaves one that
+    /// vouches for the output.</summary>
+    private sealed class KeyGate { public string? ProjectRoot; public bool Keep; }
+
     private static int RunGenArgs(string[] rest, IReadOnlyList<IGenerator> declared)
+    {
+        var gate = new KeyGate();
+        try { return RunGenCore(rest, declared, gate); }
+        finally { if (gate.ProjectRoot is { } root && !gate.Keep) GenFingerprint.Delete(root); }
+    }
+
+    /// <summary>The generator-identity options of a run: the output-changing flags, as resolved.</summary>
+    private static GenFingerprint.Options KeyOptions(OwnedArgs a, string outDir, string? ns) => new()
+    {
+        OutDir = outDir, Namespace = ns, Generators = a.GeneratorsCsv, TemplateRoot = a.TemplateRoot,
+        TemplateSpec = a.TemplateSpecPath, EmitAbstractShapes = a.EmitAbstractShapes, Strict = a.Strict, Baseline = a.Baseline,
+    };
+
+    private static int RunGenCore(string[] rest, IReadOnlyList<IGenerator> declared, KeyGate gate)
     {
         var a = OwnedArgs.Parse(rest, GenCommandName, GenValueFlags, GenBoolFlags);
         if (a.Refusal is not null)
@@ -698,6 +719,7 @@ public static class CodegenCli
         if (ResolveOrReport(a.MetadataDir) is not { } meta) return 2;
 
         var projectRoot = a.MetadataDir is not null ? ProjectRootFor(a.MetadataDir) : Directory.GetCurrentDirectory();
+        gate.ProjectRoot = projectRoot;
         if (LegacyTemplateSpecFound(declared, a.TemplateSpecPath, projectRoot) is { } legacySpec)
         {
             Console.Error.WriteLine(LegacyTemplateSpec(GenCommandName, legacySpec));
@@ -757,6 +779,20 @@ public static class CodegenCli
             foreach (var w in ValidationPasses.ValidateExtenderSubtypeScope(genLoad.Root))
                 Console.Error.WriteLine($"  warning: {w}");
         }
+        // ADR-0062: the key is the LOADED model plus what generates, both read before anything renders.
+        // A match, with every file the manifest records still on disk, skips the render and writes nothing.
+        var cwd = Directory.GetCurrentDirectory();
+        var modelHash = ModelHash.Of(genLoad.Root).Model;
+        var identity = GenFingerprint.Key(GenFingerprint.IdentityEntries(
+            projectRoot, cwd, KeyOptions(a, a.OutDir, a.Namespace ?? meta.Namespace), suite.SelectMany(g => g.ExtraInputs)));
+        if (!a.Force && suite.All(g => g.Cacheable) && GenFingerprint.CanSkipGen(projectRoot, modelHash, identity))
+        {
+            gate.Keep = true;
+            Console.WriteLine($"{GenCommandName}: nothing changed since the last run; skipped (use --force to regenerate)");
+            return 0;
+        }
+        GenFingerprint.Delete(projectRoot);
+
         var outcome = RunGen(genLoad, a.OutDir, a.Namespace ?? meta.Namespace, a.EmitAbstractShapes, suite, projectRoot, a.Baseline,
             includeNames: declared.Any(g => g.Name == "names"),
             // Only a run of the whole declared list can tell a stale file from one the
@@ -777,6 +813,11 @@ public static class CodegenCli
         // A refusal is a FAILED gate, matching TypeScript's `meta gen` (exit 1): an adopter
         // wiring gen into CI as a drift gate must not be green while codegen refused to write.
         var refusedCount = outcome.Result!.Files.Count(f => f.Status == "refused");
+        if (refusedCount == 0 && outcome.Result!.Complete && suite.All(g => g.Cacheable))
+        {
+            GenFingerprint.Write(projectRoot, modelHash, identity, outcome.Result!.OutsidePaths);
+            gate.Keep = true;
+        }
         if (refusedCount > 0)
         {
             Console.Error.WriteLine(
@@ -968,6 +1009,18 @@ public static class CodegenCli
             Dialect = MetaObjects.Config.NeutralConfig.Read(projectRoot, validateNaming: false)?.MigrateDialect,
         SkipRedundantChecks = MetaObjects.Config.NeutralConfig.Read(projectRoot, validateNaming: false)?.MigrateSkipRedundantChecks ?? false,
         };
+        // ADR-0062: locally, an unchanged key and output that still hashes to what gen recorded answer
+        // "no drift" without rendering. CI and --full always render.
+        if (suite.All(g => g.Cacheable) && GenFingerprint.MayAnswerNoDrift(
+                projectRoot, ModelHash.Of(load.Root).Model,
+                GenFingerprint.Key(GenFingerprint.IdentityEntries(
+                    projectRoot, Directory.GetCurrentDirectory(), KeyOptions(a, a.OutDir, a.Namespace ?? meta.Namespace),
+                    suite.SelectMany(g => g.ExtraInputs))),
+                a.Full))
+        {
+            Console.WriteLine($"{VerifyCommandName}: OK (nothing changed since the last gen; --full renders and compares)");
+            return 0;
+        }
         var result = CodegenDrift.Compute(config, load.Root, suite, narrowed: a.Selection is { Count: > 0 });
         if (result.Error is not null)
         {

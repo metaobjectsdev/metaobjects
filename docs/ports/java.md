@@ -270,7 +270,7 @@ allowlist under `target/generated-sources/java`, which Maven compiles with your 
 mvn metaobjects:verify       # fails with the stale files named when the model moved and nobody regenerated
 ```
 
-It regenerates into a temporary directory and compares: change `src/main/metaobjects/` without
+It regenerates in memory and compares: change `src/main/metaobjects/` without
 regenerating and the build exits 1 with `generated code is stale` and a `[content-differs]` line
 per file; `mvn metaobjects:generate` (or `mvn compile`) and it is green again. The same goal also
 runs the requirement gate. Add it to your CI after `mvn compile`.

@@ -183,7 +183,7 @@ in `.metaobjects/config.json`, below).
 # Run the list: EF Core entities + AppDbContext + CRUD minimal-API routes
 dotnet meta gen ./metaobjects --out ./Generated
 
-# The drift gate: regenerate into a temp tree and fail (exit 1, naming the files) if the
+# The drift gate: regenerate in memory and fail (exit 1, naming the files) if the
 # committed ./Generated differs. Run it in CI.
 dotnet meta verify ./metaobjects --codegen --out ./Generated
 ```

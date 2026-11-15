@@ -124,6 +124,7 @@ Generates TS code (Drizzle schema, Zod validators, query helpers, TanStack Query
 Flags:
 - `--dry-run` — preview only: renders and reports what would be written, touching nothing on disk (no output files, no `.gen-state/` snapshot)
 - `--no-antipatterns` — suppress the advisory anti-pattern pass (see below)
+- `--force` — render and write everything even when nothing changed since the last run; without it a run that matches the stored key renders nothing ([docs/features/cli.md](../../../../docs/features/cli.md#gen-skips-a-run-when-nothing-changed--and---force-runs-it-anyway-adr-0062))
 
 Positional args filter entities by name. All other knobs (`outDir`, `targets`, `dialect`, `dbImport`, `extStyle`, `apiPrefix`, generator list) live in `metaobjects.config.ts`.
 

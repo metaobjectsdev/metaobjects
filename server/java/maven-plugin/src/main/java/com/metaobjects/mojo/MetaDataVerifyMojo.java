@@ -3,6 +3,7 @@ package com.metaobjects.mojo;
 import com.metaobjects.config.WireFormat;
 import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorBase;
+import com.metaobjects.generator.util.GeneratedFileWriter;
 import com.metaobjects.generator.util.HashManifest;
 import com.metaobjects.generator.util.OrphanSweep;
 import com.metaobjects.generator.verify.TemplateVerify;
@@ -43,8 +44,9 @@ import java.util.TreeSet;
  * The {@code meta:verify} goal — a generator-neutral codegen-drift check, the Java/Kotlin
  * port's parallel to {@code meta:gen}.
  *
- * <p>It regenerates every declared generator into a throwaway temp directory (by overriding
- * each generator's {@code outputDir} arg) and then compares the freshly generated tree
+ * <p>It regenerates every declared generator with its output captured in memory (each generator's
+ * {@code outputDir} arg is pointed at a virtual directory, so no file is written) and then
+ * compares the freshly generated tree
  * against the committed output under the configured (real) {@code outputDir}. Any drift —
  * a file whose content differs, a committed file that the generator no longer produces, or
  * a newly produced file that is not committed — fails the build with a
@@ -163,6 +165,25 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
 
     public void setRequireImplementers(boolean requireImplementers) { this.requireImplementers = requireImplementers; }
     public boolean isRequireImplementers() { return requireImplementers; }
+
+    /**
+     * Force a full render and byte comparison even when the fingerprint says nothing changed
+     * (ADR-0062). {@code -Dmetaobjects.verify.full=true}.
+     */
+    @Parameter(property = "metaobjects.verify.full", defaultValue = "false")
+    private boolean full = false;
+
+    public void setFull(boolean full) { this.full = full; }
+
+    /** The last in-memory render, by normalized absolute path; {@code null} before one runs. */
+    private Map<Path, byte[]> rendered;
+
+    /** Whether the fingerprint may answer at all: never in CI, never with {@code full}. */
+    private boolean mayAnswerFromFingerprint() {
+        if (full) return false;
+        String ci = getEnv("CI");
+        return ci == null || ci.isEmpty() || "0".equals(ci) || "false".equalsIgnoreCase(ci);
+    }
 
     /** The process environment, overridable so a test can set a variable. */
     String getEnv(String name) { return System.getenv(name); }
@@ -380,6 +401,15 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
         runFieldLintAdvisory(loader);
         int requirementErrors = runRequirementGate(loader);
 
+        // ADR-0062 §4: locally, the stored fingerprint and the manifest may answer "no drift"
+        // without rendering. CI always renders; `full` forces a render.
+        if (mayAnswerFromFingerprint() && fingerprintAnswersNoDrift(loader)) {
+            getLog().info(PREFIX + "codegen: no drift (no input changed since the last generate and "
+                    + "no generated file was edited). Pass -Dmetaobjects.verify.full=true to render and compare.");
+            failOnRequirementErrors(requirementErrors);
+            return;
+        }
+
         // Per-generator: resolve its committed (real) outputDir from the merged args, then
         // stage an arg-override so the regenerate writes to a temp dir instead. Keep the
         // real<->temp mapping for the post-run comparison.
@@ -394,10 +424,20 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
         // to gen when two generators emit the same path: last-writer-wins in both.
         Path tempRoot;
         try {
-            tempRoot = Files.createTempDirectory("metaobjects-verify");
+            // The render is captured in memory (GeneratedFileWriter.beginCaptureRun): no generated
+            // file is written. This root only names the virtual output directories; a generator
+            // that creates its output directory up front leaves an empty one here, so it goes under
+            // DEV_SCRATCH when that is set, and the finally below always deletes it.
+            String scratch = getEnv("DEV_SCRATCH");
+            if (scratch != null && !scratch.isEmpty() && Files.isDirectory(Path.of(scratch))) {
+                tempRoot = Files.createTempDirectory(Path.of(scratch), "metaobjects-verify");
+            } else {
+                tempRoot = Files.createTempDirectory("metaobjects-verify");
+            }
         } catch (IOException e) {
             throw new MojoExecutionException("Could not create temp dir for verify", e);
         }
+        try {   // outer: the render directory is deleted whatever happens below
 
         Map<GeneratorParam, Map<String, String>> overrides = new HashMap<>();
         List<GenTarget> targets = new ArrayList<>();
@@ -460,9 +500,12 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
         // Build + run generators with the temp-dir overrides applied.
         List<Generator> generatorImpls = buildGenerators(projectClassLoader, overrides);
         try {
-            for (Generator gen : generatorImpls) {
-                getLog().info("MetaData Verify Mojo > Regenerating (temp): " + gen.getClass().getName());
-                gen.execute(loader);
+            try (GeneratedFileWriter.Run capture = GeneratedFileWriter.beginCaptureRun()) {
+                for (Generator gen : generatorImpls) {
+                    getLog().info("MetaData Verify Mojo > Regenerating (in memory): " + gen.getClass().getName());
+                    gen.execute(loader);
+                }
+                rendered = new HashMap<>(capture.captured());
             }
 
             // Compare each output directory's temp tree against its committed tree.
@@ -515,6 +558,9 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
             deleteRecursively(tempRoot);
         }
         failOnRequirementErrors(requirementErrors);
+        } finally {
+            deleteRecursively(tempRoot);
+        }
     }
 
     /**
@@ -536,9 +582,9 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
                 for (WireFormat.NullMembers n : List.of(WireFormat.NullMembers.NATIVE, WireFormat.NullMembers.OMIT)) {
                     if (d == used.decimals() && n == usedNulls) continue;
                     loader.getRoot().setWireFormat(new WireFormat(d, n));
-                    for (GenTarget t : targets) deleteRecursively(t.tempDir);
-                    try {
+                    try (GeneratedFileWriter.Run capture = GeneratedFileWriter.beginCaptureRun()) {
                         for (Generator gen : buildGenerators(projectClassLoader, overrides)) gen.execute(loader);
+                        rendered = new HashMap<>(capture.captured());
                     } catch (RuntimeException e) {
                         getLog().debug("MetaData Verify Mojo > wire probe failed: " + e);
                         return null;
@@ -652,7 +698,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
      */
     List<String> compareTrees(GenTarget t, Map<String, String> hashes, Path projectRoot,
                                List<String> editedOrphans) throws MojoExecutionException {
-        Set<String> generated = relativeFiles(t.tempDir);
+        Set<String> generated = renderedFiles(t);
         Set<String> committed = relativeFiles(t.realDir);
 
         // Union of relative paths, sorted for stable, deterministic reporting.
@@ -703,12 +749,38 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
                 }
             } else {
                 // Present in both — compare bytes.
-                if (!contentEquals(t.tempDir.resolve(rel), committedFile)) {
+                if (!renderedEquals(t, rel, committedFile)) {
                     drift.add("[content-differs] " + committedFile);
                 }
             }
         }
         return drift;
+    }
+
+    /**
+     * What the generators rendered into {@code t}'s virtual output directory, relative to it.
+     * The render is held in memory ({@link #rendered}); with none captured (a test driving
+     * {@link #compareTrees} over a real directory), the directory on disk is walked instead.
+     */
+    private Set<String> renderedFiles(GenTarget t) throws MojoExecutionException {
+        if (rendered == null) return relativeFiles(t.tempDir);
+        Path root = t.tempDir.toAbsolutePath().normalize();
+        Set<String> out = new LinkedHashSet<>();
+        for (Path p : rendered.keySet()) {
+            if (p.startsWith(root)) out.add(root.relativize(p).toString());
+        }
+        return out;
+    }
+
+    /** Whether the rendered bytes for {@code rel} equal {@code committedFile}'s, compared in memory. */
+    private boolean renderedEquals(GenTarget t, String rel, Path committedFile) throws MojoExecutionException {
+        if (rendered == null) return contentEquals(t.tempDir.resolve(rel), committedFile);
+        byte[] fresh = rendered.get(t.tempDir.resolve(rel).toAbsolutePath().normalize());
+        try {
+            return fresh != null && Arrays.equals(fresh, Files.readAllBytes(committedFile));
+        } catch (IOException e) {
+            throw new MojoExecutionException("Could not read [" + committedFile + "]", e);
+        }
     }
 
     /** All regular files under {@code root}, as paths relative to {@code root}; empty if absent. */

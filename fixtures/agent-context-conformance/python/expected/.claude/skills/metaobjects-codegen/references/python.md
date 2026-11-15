@@ -61,7 +61,7 @@ the config's `templates` is refused.
 ```bash
 metaobjects gen                               # runs every target's generators into its outDir
 metaobjects gen --generators entity           # narrow to declared entries (never adds one)
-metaobjects verify --codegen                  # regenerate the same list into a temp dir + diff
+metaobjects verify --codegen                  # regenerate the same list in memory + diff
 ```
 
 With no `metaobjects.config.yaml`, `gen` and `verify --codegen` exit 2 and write nothing.

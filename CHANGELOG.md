@@ -10,11 +10,12 @@ here.**
 
 ## [Unreleased]
 
-## [1.2.3] — 2026-11-14
+## [1.2.4] — 2026-11-15
 
-_In preparation; cut as release candidates `1.2.3-rc.N` (npm and NuGet `1.2.3-rc.N`, Maven Central
-`8.2.3-rc.N`). It carries everything on the release line since 1.2.0 that 1.2.2 did not ship; 1.2.2's
-own changes are in its section below._
+_In preparation; cut as release candidates `1.2.4-rc.N` (npm and NuGet `1.2.4-rc.N`, Maven Central
+`8.2.4-rc.N`). It carries everything on the release line since 1.2.0 that 1.2.2 and 1.2.3 did not ship;
+their own changes are in their sections below. Earlier candidates of this work were cut as `1.2.3-rc.N`
+before 1.2.3 shipped without it._
 
 **`metamodelVersion` moves to `1.3`.** This release adds vocabulary (`field.duration`,
 `@constraintName`, `@dbCheck`, `@stringValueMap`, the rc.21 view vocabulary (`origin.function`, `@union`,
@@ -684,7 +685,7 @@ vocabulary; upgrade every port together.
   update (PATCH and PUT) and M:N response. **This leak exists in the released 1.2.x** with no
   property-naming resolver at all; a resolver rename beyond case (`pinHash` spelled `Secret`) leaked
   the same way under any policy. Only single-word credentials, or a host with the default
-  camelCase policy and no rename, were safe. 1.2.3 fixes it: the omit list and the PATCH and PUT
+  camelCase policy and no rename, were safe. 1.2.4 fixes it: the omit list and the PATCH and PUT
   key lookup read the key from the serializer's own contract (`JsonSerializerOptions.GetTypeInfo`),
   so a naming policy, a rename or an attribute cannot escape them. Stripping **fails closed**: when
   the contract cannot be read (a custom converter for the row type, a custom type-info resolver or a
@@ -695,11 +696,11 @@ vocabulary; upgrade every port together.
   ignoring case, `_` and `-` is also removed. A host that sets a custom `TypeInfoResolver` or a
   source-generated `JsonSerializerContext` must give the entity properties their reflection member
   (the default reflection resolver does), or the app will not start. The write side of the released
-  1.2.0 and 1.2.2 was not exploitable: a PATCH or PUT body key that missed the deny list also missed
+  1.2.0, 1.2.2 and 1.2.3 was not exploitable: a PATCH or PUT body key that missed the deny list also missed
   the property and was dropped. **In 1.2.3-rc.1** (the first release with `GenConfig.PropertyNaming`),
   a rename beyond case let `PATCH {"secret":"x"}` or `PUT` write a credential or a `@formExclude`
   field, because the deny arm matched the field name only and the generic lookup found the renamed
-  property case-insensitively; 1.2.3 closes that too. Regenerate every project whose host sets a
+  property case-insensitively; 1.2.4 closes that too. Regenerate every project whose host sets a
   snake or kebab policy or `GenConfig.PropertyNaming`; a project on the default policy with no
   rename is unaffected. **Known limit, not fixed here:** a credential (`view.password`) declared on a
   value-object member is not listed, checked or stripped. Only an entity's top-level fields are
@@ -1264,6 +1265,56 @@ vocabulary; upgrade every port together.
   It now generates `tags: list[str] = []`, from the same four spellings TypeScript accepts, or
   from a native YAML list such as `default: [a, b]`. A default Python cannot spell as a list is
   left to the database.
+
+## [1.2.3] — 2026-11-15
+
+_npm `1.2.3` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+
+_Also PyPI `1.2.3`, NuGet `1.2.3` and Maven Central `8.2.3`: every port changed. PyPI skips
+`1.2.2`. No vocabulary or `metamodelVersion` change._
+
+### Changed
+
+- **`gen` skips rendering when nothing it is built from changed, in every port (ADR-0062).**
+  The skip key is computed after the metadata loads and before anything renders. Its model half
+  hashes each loaded root-level node in its canonical effective form (`extends` and overlays
+  applied), rolled up per package and for the model, so reformatting or splitting a metadata file
+  changes nothing while an edit to an inherited parent changes every child. Its generator half
+  hashes the built engine code, the codegen config and every owned generator, the template
+  roots, declared extra inputs, the project config and the output-changing flags. `gen` skips
+  when the key matches the last successful run and every generated file still has the bytes
+  that run left; a skipped run renders and writes nothing. The key is stored, uncommitted, in
+  `.metaobjects/.gen-state/.fingerprint-<port>.json`. `--force` (`meta gen`, `metaobjects gen`,
+  `dotnet meta gen`; `-Dmetaobjects.force=true` on Maven) renders everything, and a generator
+  that cannot declare what it reads opts out with `cache: false` (or its port's equivalent).
+- **`verify --codegen` may answer locally without rendering, and never writes a temp tree.** In
+  CI (`CI` set) it always renders and compares everything. Locally it answers "no drift" when the
+  key matches and every generated file still hashes to its record; `--full`
+  (`-Dmetaobjects.verify.full=true` on Maven) renders. When it renders, every port compares the
+  rendered bytes with disk in memory.
+- **The hash manifest is written once per run, and only when an entry changed** (TypeScript,
+  Python and C#, matching Java and Kotlin). A file whose fresh bytes equal what is on disk is never
+  rewritten in any port, so its timestamp stays. Python `gen` no longer reports unchanged files
+  as written.
+- **TypeScript runs `git merge-file` only for a file edited by hand since it was generated**, and
+  deletes the merge's temporary files in every case, under `$DEV_SCRATCH` when set. An untouched
+  file is overwritten directly.
+
+### Upgrading
+
+- **Add `**/.metaobjects/.gen-state/*` and `!**/.metaobjects/.gen-state/.hashes.json` to your
+  `.gitignore`.** Otherwise the new `.fingerprint-<port>.json` file shows as untracked (in each
+  Maven module, for Java and Kotlin). The exception matters: the fingerprint files stay
+  uncommitted, but `.hashes.json` stays committed, so do not ignore the whole `.metaobjects/`
+  directory.
+- **Generated TypeScript docs change if you are coming from 1.2.0.** Since 1.2.2 an update schema
+  leaves out every primary-key field, so the documented `<Entity>UpdateSchema` type, the update
+  function's patch type and the PATCH/PUT body no longer list the key (the `id` row is gone).
+  Regenerate the docs and commit them, or `meta verify --codegen` reports drift.
+- **Committed generated code changes too, not only the docs.** Because primary-key fields leave
+  the update schemas, and because of 1.2.2's create-route fixes in Java, Kotlin and C#, regenerate
+  and commit your generated code when you upgrade from 1.2.0 or 1.2.1. Otherwise the drift gate
+  fails against the new generators.
 
 ## [1.2.2] — 2026-11-13
 

@@ -226,7 +226,7 @@ describe("shared-model — published by an owned copy, verified by a consumer", 
 
   // `meta verify --codegen` could not run this generator at all, packaged or owned: it
   // regenerated without the project's source files ("no source files to load") and read
-  // the version default from the temp tree it writes into. Both are what `meta gen` gives
+  // the version default from the temp tree it then wrote into. Both are what `meta gen` gives
   // the generator, so the gate now gives them too.
   test("the codegen drift gate runs the packaged generator as `meta gen` does: the project's files and its package.json version", async () => {
     const { root, publisher } = setupProjects();
@@ -265,12 +265,16 @@ describe("shared-model — published by an owned copy, verified by a consumer", 
       const source = readFileSync(copy, "utf8");
       const lookup = "const version = opts.version ?? nearestPackageVersion(ctx.inputRoot ?? ctx.projectRoot ?? process.cwd());";
       expect(source).toContain(lookup);
+      // A file the copy reads that the gen skip key does not cover is declared as an input
+      // (ADR-0062), so editing it makes `gen` and a local `verify --codegen` render again.
       writeFileSync(
         copy,
-        source.replace(
-          lookup,
-          'const version = opts.version ?? readFileSync(join(ctx.inputRoot ?? ctx.projectRoot ?? process.cwd(), "VERSION"), "utf-8").trim();',
-        ),
+        source
+          .replace(
+            lookup,
+            'const version = opts.version ?? readFileSync(join(ctx.inputRoot ?? ctx.projectRoot ?? process.cwd(), "VERSION"), "utf-8").trim();',
+          )
+          .replace('name: "shared-model",', 'name: "shared-model",\n    inputs: ["VERSION"],'),
       );
 
       expect(await meta(publisher, "gen")).toMatchObject({ exit: 0 });
@@ -279,7 +283,7 @@ describe("shared-model — published by an owned copy, verified by a consumer", 
       // The artifact is the pinned one still: the version is the manifest's, not the document's.
       expect(owned.artifact.equals(PINNED_ARTIFACT)).toBe(true);
 
-      // The drift gate regenerates in a temp tree, and `ctx.inputRoot` is still the PROJECT,
+      // The drift gate regenerates in memory, and `ctx.inputRoot` is still the PROJECT,
       // so the copy's own `VERSION` lookup resolves there too: clean now, and convicted when
       // the file moves on.
       expect(await meta(publisher, "verify", "--codegen")).toMatchObject({ exit: 0 });

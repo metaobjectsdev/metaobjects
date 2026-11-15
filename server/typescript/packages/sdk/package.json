@@ -1,6 +1,6 @@
 {
   "name": "@metaobjectsdev/sdk",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "Workspace helpers and agent-context assembly for MetaObjects projects.",
   "type": "module",
   "main": "./dist/index.js",
@@ -10,6 +10,11 @@
       "bun": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./collection": {
+      "bun": "./src/collection.ts",
+      "types": "./dist/collection.d.ts",
+      "default": "./dist/collection.js"
     },
     "./agent-context": {
       "bun": "./src/agent-context/index.ts",

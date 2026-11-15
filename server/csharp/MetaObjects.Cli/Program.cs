@@ -31,7 +31,7 @@ if (args.Length == 0 || helpRequested)
         "                                                     codegen/Program.cs and codegen/Codegen.csproj;\n" +
         "                                                     --with-docs lists the api-docs generator in it\n" +
         "    gen [<metadataDir>] --out <dir> [--namespace <ns>] [--emit-abstract-shapes]\n" +
-        "        [--generators <a,b,c>] [--template-root <dir>] [--strict]\n" +
+        "        [--generators <a,b,c>] [--template-root <dir>] [--strict] [--force]\n" +
         "                                                     run the generator list in codegen/Generators.cs;\n" +
         "                                                     --generators narrows it to the entries named;\n" +
         "                                                     --strict rejects an unknown @attr before writing\n" +
@@ -384,7 +384,7 @@ static int RunVerify(string[] rest)
     string? generatorsCsv = null;
     string? templateRoot = null;
     string? columnNamingRaw = null;
-    bool templates = false, codegen = false, db = false, lax = false, noFieldLint = false, requireImplementers = false;
+    bool templates = false, codegen = false, db = false, lax = false, noFieldLint = false, requireImplementers = false, full = false;
 
     for (int i = 0; i < rest.Length; i++)
     {
@@ -406,6 +406,8 @@ static int RunVerify(string[] rest)
         else if (a == "--prompts" && i + 1 < rest.Length) templatesRoot = rest[++i];
         else if (a == "--codegen") codegen = true;
         else if (a == "--db") db = true;
+        // ADR-0062: render and compare even when a local run could answer from the stored key.
+        else if (a == "--full") full = true;
         // --lax (#96 / ADR-0023): restore the legacy open-attr load. verify is
         // strict-by-default — an undeclared/typo'd own @attr is ERR_UNKNOWN_ATTR.
         else if (a == "--lax") lax = true;
@@ -517,6 +519,7 @@ static int RunVerify(string[] rest)
             if (generatorsCsv is not null) codegenArgs.AddRange(["--generators", generatorsCsv]);
             if (templateRoot is not null) codegenArgs.AddRange(["--template-root", templateRoot]);
             if (lax) codegenArgs.Add("--lax");
+            if (full) codegenArgs.Add("--full");
             codegenHandedOff = CodegenHandoff.TryRun(projectRoot, codegenArgs.ToArray(), out codegenHandoffExit);
             ownedRunnerRan = codegenHandedOff;
         }
@@ -657,25 +660,28 @@ partial class Program
 {
     static readonly string[] GenValueFlags =
         ["--out", "--namespace", "--generators", "--template-root", "--template-spec", "--column-naming", "--baseline"];
-    static readonly string[] GenBoolFlags = ["--list", "--emit-abstract-shapes", "--strict"];
+    static readonly string[] GenBoolFlags = ["--list", "--emit-abstract-shapes", "--strict", "--force"];
     static readonly string[] VerifyValueFlags =
         ["--prompts", "--out", "--namespace", "--generators", "--template-root", "--column-naming"];
-    static readonly string[] VerifyBoolFlags = ["--templates", "--codegen", "--db", "--lax", "--no-field-lint", "--require-implementers"];
+    static readonly string[] VerifyBoolFlags = ["--templates", "--codegen", "--db", "--lax", "--no-field-lint", "--require-implementers", "--full"];
 
     /// <summary>Each command's usage, printed by <c>dotnet meta &lt;command&gt; --help</c>.</summary>
     static readonly Dictionary<string, string> CommandUsage = new()
     {
-        ["gen"] = "usage: dotnet meta gen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>] [--emit-abstract-shapes] [--baseline default|adopt] [--strict]\n" +
+        ["gen"] = "usage: dotnet meta gen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>] [--emit-abstract-shapes] [--baseline default|adopt] [--strict] [--force]\n" +
                   "       dotnet meta gen --list\n" +
                   "  runs the generator list in codegen/Generators.cs (`dotnet meta init` writes it);\n" +
                   "  --generators narrows that list to the entries named, and never adds one.\n" +
+                  "  --force: render even when the model and the generators are unchanged since the last run\n" +
+                  "  (ADR-0062: otherwise an unchanged run renders and writes nothing and says so);\n" +
                   "  --strict: an unknown @attr is an error (exit 1, nothing written), as in verify (ADR-0023);\n" +
                   "  without it gen warns and generates. Owned copies identical to the shipped generators\n" +
                   "  get one advisory line naming `dotnet meta eject --undo`.\n" +
                   "  column/table naming: \"naming\" in .metaobjects/config.json (ADR-0058), not a flag here",
         ["init"] = "usage: dotnet meta init [--root <dir>] [--with-docs]\n" +
                   "  --with-docs lists the api-docs generator in codegen/Generators.cs (written to docs/csharp)",
-        ["verify"] = "usage: dotnet meta verify <metadataDir> [--templates [--prompts <dir>]] [--codegen --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>]] [--db] [--lax] [--no-field-lint] [--require-implementers]",
+        ["verify"] = "usage: dotnet meta verify <metadataDir> [--templates [--prompts <dir>]] [--codegen --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>]] [--db] [--lax] [--no-field-lint] [--require-implementers] [--full]\n" +
+                    "  --full: render and compare even when a local run could answer from the stored key (CI always renders)",
         ["fmt"] = "usage: dotnet meta fmt [<metadataDir>] [--check]",
         ["eject"] = "usage: dotnet meta eject <name>... [--force] [--root <dir>]\n" +
                     "       dotnet meta eject --undo [<name>...] [--force] [--root <dir>]\n" +

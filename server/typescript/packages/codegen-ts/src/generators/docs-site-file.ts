@@ -51,6 +51,10 @@ export const docsSiteFile = function docsSiteFile(opts?: DocsSiteFileOpts): Gene
   return {
     name: "docs-site",
     target: opts?.target ?? DOCS_TARGET_NAME,
+    readsMetadataSources: true,
+    // ADR-0062: the prompts directory is read beside the model. `templates/` and the owned
+    // copy under `codegen/` are fingerprinted for every run already.
+    ...(opts?.prompts !== undefined ? { inputs: [opts.prompts] } : {}),
     async generate(ctx) {
       const project = ctx.inputRoot ?? ctx.projectRoot ?? process.cwd();
       if (ctx.sourceRoots === undefined || ctx.sourceRoots.length === 0) {
