@@ -38,7 +38,7 @@ directory structure beyond the target's `outDir`.
 ```bash
 metaobjects gen                       # run every target's generators (metaobjects.config.yaml)
 metaobjects gen --generators entity   # narrow to declared entries
-metaobjects verify --codegen    # regenerate to temp, diff vs each committed outDir (bare default)
+metaobjects verify --codegen    # regenerate in memory, diff vs each committed outDir (bare default)
 metaobjects verify --templates  # {{field}} refs vs payload VO
 ```
 

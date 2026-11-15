@@ -27,6 +27,33 @@ here.**
   the new `fixtures/writer-conformance/` corpus. No shipped generator uses the writer yet, so
   generated output does not change in this release.
 
+### Changed
+
+- **`gen` skips rendering when nothing it is built from changed, in every port (ADR-0062).**
+  The skip key is computed after the metadata loads and before anything renders. Its model half
+  hashes each loaded root-level node in its canonical effective form (`extends` and overlays
+  applied), rolled up per package and for the model, so reformatting or splitting a metadata file
+  changes nothing while an edit to an inherited parent changes every child. Its generator half
+  hashes the built engine code, the codegen config and every owned generator, the template
+  roots, declared extra inputs, the project config and the output-changing flags. `gen` skips
+  when the key matches the last successful run and every generated file still has the bytes
+  that run left; a skipped run renders and writes nothing. The key is stored, uncommitted, in
+  `.metaobjects/.gen-state/.fingerprint-<port>.json`. `--force` (`meta gen`, `metaobjects gen`,
+  `dotnet meta gen`; `-Dmetaobjects.force=true` on Maven) renders everything, and a generator
+  that cannot declare what it reads opts out with `cache: false` (or its port's equivalent).
+- **`verify --codegen` may answer locally without rendering, and never writes a temp tree.** In
+  CI (`CI` set) it always renders and compares everything. Locally it answers "no drift" when the
+  key matches and every generated file still hashes to its record; `--full`
+  (`-Dmetaobjects.verify.full=true` on Maven) renders. When it renders, every port compares the
+  rendered bytes with disk in memory.
+- **The hash manifest is written once per run, and only when an entry changed** (TypeScript,
+  Python and C#, matching Java and Kotlin). A file whose fresh bytes equal what is on disk is never
+  rewritten in any port, so its timestamp stays. Python `gen` no longer reports unchanged files
+  as written.
+- **TypeScript runs `git merge-file` only for a file edited by hand since it was generated**, and
+  deletes the merge's temporary files in every case, under `$DEV_SCRATCH` when set. An untouched
+  file is overwritten directly.
+
 ## [1.2.2] — 2026-11-13
 
 _npm `1.2.2` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._

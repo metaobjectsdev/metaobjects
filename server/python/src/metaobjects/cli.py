@@ -58,7 +58,6 @@ import json
 import os
 import re
 import sys
-import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
@@ -91,6 +90,7 @@ from metaobjects.requirement_check import (
 )
 from metaobjects.codegen.config import DEFAULT_API_PREFIX, GenConfig
 from metaobjects.codegen.overwrite_policy import (
+    HashManifest,
     has_hash_manifest,
     is_pristine_generated,
     read_generated_hash,
@@ -102,7 +102,8 @@ from metaobjects.codegen.project_config import (
     TargetConfig,
     load_project_config,
 )
-from metaobjects.codegen.generator import Generator
+from metaobjects.codegen.generator import Generator, generator_cacheable, generator_extra_inputs
+from metaobjects.codegen import model_key, skip
 from metaobjects.codegen.generators.entity_model import entity_model
 from metaobjects.codegen.generators.extractor_generator import extractor_generator
 from metaobjects.codegen.generators.filter_allowlist_generator import (
@@ -902,7 +903,9 @@ def _run_suite(
     api_prefix: str = DEFAULT_API_PREFIX,
     overwrite_hand_edits: frozenset[str] = frozenset(),
     overwrite_paths_out: set[str] | None = None,
-) -> list[str]:
+    manifest: HashManifest | None = None,
+    sink: dict[str, str] | None = None,
+) -> list[tuple[str, str]]:
     """Run a generator suite against an ALREADY-LOADED ``root`` into ``out_dir``.
 
     ``overwrite_hand_edits`` names the generators (by ``.name``) declared
@@ -913,7 +916,8 @@ def _run_suite(
     Split out from :func:`_generate` so a single gen invocation can load the
     metadata once and run multiple passes against it (the default Python suite +
     the ``--template-spec`` pass). See :func:`_generate` for the parameter
-    semantics. Returns the written paths.
+    semantics. Returns ``(path, status)`` for every emitted file that was not refused
+    (status ``unchanged`` marks a file left alone because its bytes already matched).
 
     ``select`` (FR-023 §11.1 item 2) — normally a resolved `Collection`'s
     `in_scope`: the output filter that excludes an imported dependency's
@@ -953,6 +957,8 @@ def _run_suite(
         # verify path (those pass gen_state_dir=None and record nothing at all).
         baseline=baseline,
         overwrite_hand_edits=overwrite_hand_edits,
+        manifest=manifest,
+        sink=sink,
     )
     # No default suite — see NO_GENERATORS_SELECTED. A caller that names none gets a
     # usage error and an empty out dir, never a shape this CLI picked.
@@ -972,7 +978,7 @@ def _run_suite(
     # and only the ones that own an exit code care about the refusals.
     if refused_out is not None:
         refused_out.extend(path for path, status in result.files if status == "refused")
-    return [path for path, status in result.files if status != "refused"]
+    return [(path, status) for path, status in result.files if status != "refused"]
 
 
 def gen_state_dir_for(metadata_dir: str) -> str:
@@ -1496,6 +1502,9 @@ def _run_gen_targets(
     selection: list[str] | None = None,
     targeted_out: set[str] | None = None,
     overwrite_paths_out: set[str] | None = None,
+    emitted_out: set[str] | None = None,
+    skip_info: skip.SkipRunInfo | None = None,
+    sink: dict[str, str] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Run each target's declared generators into its ``outDir``. Returns (all_written, errors).
 
@@ -1523,6 +1532,11 @@ def _run_gen_targets(
 
     ``targeted_out`` collects the ``outDir`` of every target with a declared entry left to
     run after ``selection``: decided from the config, whatever the entries then emit.
+
+    The returned list holds only the files this run WROTE; ``emitted_out`` collects every
+    path the run emitted, unchanged ones included (what the orphan sweep and the duplicate
+    guard need). ``skip_info`` (ADR-0062) learns whether every generator is cacheable and
+    the extra inputs they declared, hashed before the first write.
 
     A generator entry written as ``{name: ..., handEdits: overwrite}`` replaces its
     hand-edited files instead of refusing them; ``overwrite_paths_out`` collects the paths
@@ -1604,6 +1618,49 @@ def _run_gen_targets(
     if errors:
         return [], errors
 
+    if skip_info is not None:
+        every = [g for _t, gens, spec_gens, _o in plan for g in (*gens, *spec_gens)]
+        skip_info.cacheable = all(generator_cacheable(g) for g in every)
+        skip_info.extras = {p for g in every for p in generator_extra_inputs(g)}
+        skip_info.extra_entries = skip.extras_entries(
+            Path(project_root or "."), skip_info.extras)
+
+    from metaobjects.render.renderer import RenderError
+
+    # ONE manifest session for the whole run (ADR-0062 decision 1), saved once at the end
+    # and only when an entry changed.
+    session = HashManifest(gen_state_dir) if gen_state_dir is not None else None
+    try:
+        return _run_plan(
+            config, plan, root, seen, all_written, errors, session, template_root,
+            gen_state_dir, project_root, baseline, refused_out, select, column_naming,
+            targeted_out, overwrite_paths_out, emitted_out, sink,
+        )
+    finally:
+        if session is not None:
+            session.save()
+
+
+def _run_plan(
+    config: ProjectConfig,
+    plan: list[tuple[TargetConfig, list[Generator], list[Generator], frozenset[str]]],
+    root: MetaData,
+    seen: dict[str, str],
+    all_written: list[str],
+    errors: list[str],
+    session: HashManifest | None,
+    template_root: str,
+    gen_state_dir: str | None,
+    project_root: str | None,
+    baseline: str,
+    refused_out: list[str] | None,
+    select: Callable[[str], bool] | None,
+    column_naming: str,
+    targeted_out: set[str] | None,
+    overwrite_paths_out: set[str] | None,
+    emitted_out: set[str] | None,
+    sink: dict[str, str] | None = None,
+) -> tuple[list[str], list[str]]:
     from metaobjects.render.renderer import RenderError
 
     for t, gens, spec_gens, overwrite in plan:
@@ -1613,21 +1670,23 @@ def _run_gen_targets(
         out_dir = config.out_dir_for(t)
         if targeted_out is not None:
             targeted_out.add(out_dir)
-        written: list[str] = []
+        results: list[tuple[str, str]] = []
         try:
             if gens:
-                written = _run_suite(
+                results = _run_suite(
                     root, out_dir, gens, t.entities, gen_state_dir=gen_state_dir,
                     column_naming=column_naming, project_root=project_root, baseline=baseline,
                     refused_out=refused_out, select=select, api_prefix=config.api_prefix,
                     overwrite_hand_edits=overwrite, overwrite_paths_out=overwrite_paths_out,
+                    manifest=session, sink=sink,
                 )
             if spec_gens:
-                written = written + _run_suite(
+                results = results + _run_suite(
                     root, out_dir, spec_gens, t.entities, emit_package_init=False,
                     gen_state_dir=gen_state_dir, column_naming=column_naming,
                     project_root=project_root, baseline=baseline, refused_out=refused_out,
-                    select=select, api_prefix=config.api_prefix,
+                    select=select, api_prefix=config.api_prefix, manifest=session,
+                    sink=sink,
                 )
         except ValueError as exc:  # intra-target run_gen collision → clean error
             errors.append(f"target '{t.name}': {exc}")
@@ -1638,7 +1697,11 @@ def _run_gen_targets(
                 f"template refs and the --templates dir {template_root!r}): {exc}"
             )
             continue
-        for full in written:
+        emitted = [path for path, _status in results]
+        written = [path for path, status in results if status not in _NOT_WRITTEN]
+        if emitted_out is not None:
+            emitted_out.update(emitted)
+        for full in emitted:
             if Path(full).name == "__init__.py":
                 continue  # auto-emitted package marker — byte-identical across targets sharing an outDir; not a real collision
             prior = seen.get(full)
@@ -1653,7 +1716,166 @@ def _run_gen_targets(
     return all_written, errors
 
 
+#: Statuses of an emitted file that was NOT written: the bytes already matched, it was
+#: left alone as an existing file, or its on-disk text was only recorded as the baseline.
+_NOT_WRITTEN = frozenset({"unchanged", "skipped", "adopted"})
+
+
+def _skip_identity(
+    args: argparse.Namespace,
+    config: ProjectConfig,
+    config_path: Path | None,
+    *,
+    strict: bool,
+    baseline: str,
+) -> list[skip.InputEntry] | None:
+    """The generator-side entries of the skip key (ADR-0062 section 3), as named entries.
+
+    Every input that can change what ``gen`` writes OTHER than the model: the engine's built
+    code, the generator config, owned generators, templates, the project config and the flags
+    that change output. No metadata source file is read: the model is keyed from the loaded
+    root (:func:`_model_entries`). ``None`` means an input could not be proven (an owned module
+    that cannot be found, a refused template root): the run then goes ahead in full.
+    """
+    project = project_root_for(config.metadata_dir())
+    entries: list[skip.InputEntry] = list(skip.engine_entries())
+
+    def rel(path: Path) -> str:
+        try:
+            return path.resolve().relative_to(project).as_posix()
+        except ValueError:
+            return str(path)
+
+    if config_path is not None:
+        entries.append(skip.InputEntry(skip.KIND_CONFIG, rel(config_path), skip.hash_file(config_path)))
+    meta_dir = project / ".metaobjects"
+    for name in ("config.json", "deps.lock.json"):
+        entries.append(skip.InputEntry(skip.KIND_CONFIG, f".metaobjects/{name}",
+                                       skip.hash_file(meta_dir / name)))
+    entries.append(skip.InputEntry(skip.KIND_CONFIG, ".metaobjects/deps",
+                                   skip.hash_tree(meta_dir / "deps")))
+
+    flags = {
+        "generators": ",".join(_selection_from_args(args) or [])
+        if getattr(args, "generators", None) is not None else "<all>",
+        "entities": getattr(args, "entities", None) or "<all>",
+        "target": getattr(args, "target", None) or "<all>",
+        "strict": str(bool(strict)),
+        "baseline": baseline,
+    }
+    for name, value in flags.items():
+        entries.append(skip.InputEntry(skip.KIND_FLAG, name, str(value)))
+
+    template_root, refusal = _template_root_for_config(args, config)
+    if refusal is not None:
+        return None
+    entries.append(skip.InputEntry(skip.KIND_TEMPLATES, "root", skip.hash_tree(Path(template_root))))
+    for t in config.targets:
+        spec = config.template_spec_for(t)
+        if spec is not None:
+            entries.append(skip.InputEntry(skip.KIND_TEMPLATES, f"spec:{t.name}", skip.hash_file(Path(spec))))
+
+    for t in config.targets:
+        for token in t.generators or []:
+            if get_generator(token) is not None:
+                entries.append(skip.InputEntry(skip.KIND_GENERATOR, token, "stock"))
+                continue
+            found = skip.module_source_entries(token, config.config_dir)
+            if found is None:
+                return None
+            entries.append(skip.InputEntry(skip.KIND_GENERATOR, token, "owned"))
+            entries.extend(found)
+
+    specs = [*config.providers, *(getattr(args, "provider", None) or [])]
+    rt = config.requirement_tests
+    if rt is not None:
+        specs.extend(x for x in (rt.renderer, rt.filter) if x)
+    for spec in specs:
+        found = skip.module_source_entries(spec, config.config_dir)
+        if found is None:
+            return None
+        entries.extend(found)
+    return entries
+
+
+def _model_entries(root: MetaData) -> list[skip.InputEntry]:
+    """The model half of the key: the loaded root's hash tree plus the settings carried on it
+    that reach generated output. Built from the loaded root, never from source files."""
+    tree = model_key.build_model_tree(root)
+    return [
+        skip.InputEntry(skip.KIND_MODEL, "model", tree.model),
+        skip.InputEntry(skip.KIND_MODEL, "naming", f"{root.naming.columns}/{root.naming.tables}"),
+        skip.InputEntry(skip.KIND_MODEL, "wire", wire_block(root.wire)),
+    ]
+
+
+class _SkipState:
+    """What one ``gen`` run knows about its stored key, so a failed run can never leave one."""
+
+    def __init__(self) -> None:
+        self.skipped = False
+        self.stored = False
+
+
+def _skip_matches(
+    config: ProjectConfig,
+    identity: list[skip.InputEntry] | None,
+    root: MetaData,
+) -> bool:
+    """True when the key computed from ``identity`` and the loaded ``root`` equals the stored
+    one and every file the manifest records exists."""
+    if identity is None:
+        return False
+    gen_state_dir = gen_state_dir_for(config.metadata_dir())
+    stored = skip.read_stored(gen_state_dir)
+    if stored is None:
+        return False
+    project = project_root_for(config.metadata_dir())
+    try:
+        key = skip.current_key([*identity, *_model_entries(root)], project, stored)
+    except Exception:  # noqa: BLE001 - a model that cannot be keyed is not proven unchanged
+        return False
+    return key == stored.key and skip.outputs_unchanged(
+        stored, gen_state_dir, project, [config.out_dir_for(t) for t in config.targets])
+
+
+def _verify_may_answer(
+    args: argparse.Namespace,
+    config: ProjectConfig,
+    identity: list[skip.InputEntry] | None,
+    root: MetaData,
+) -> bool:
+    """A LOCAL ``verify --codegen`` may answer "no drift" without rendering (ADR-0062 section
+    4): not in CI, not ``--full``, the stored key matches and every file the manifest records
+    still hashes to its recorded entry."""
+    if getattr(args, "full", False) or skip.ci_environment():
+        return False
+    if not _skip_matches(config, identity, root):
+        return False
+    return skip.manifest_files_match(
+        gen_state_dir_for(config.metadata_dir()), project_root_for(config.metadata_dir()),
+        [config.out_dir_for(t) for t in config.targets])
+
+
 def _cmd_gen_config(args: argparse.Namespace) -> int:
+    """``gen`` with the ADR-0062 stored-key guard: unless the run skipped or stored a fresh
+    key, whatever key a previous run left is deleted, so a failed or half-written run is never
+    mistaken for a current one."""
+    state = _SkipState()
+    try:
+        return _cmd_gen_config_run(args, state)
+    finally:
+        if not state.skipped and not state.stored:
+            config_path = _find_config(args)
+            try:
+                cfg = load_project_config(config_path) if config_path is not None else None
+            except ConfigError:
+                cfg = None
+            if cfg is not None:
+                skip.delete_stored(gen_state_dir_for(cfg.metadata_dir()))
+
+
+def _cmd_gen_config_run(args: argparse.Namespace, state: _SkipState) -> int:
     """``gen`` — run the generator list in ``metaobjects.config.yaml`` (ADR-0034 Amendment 9).
 
     Load the config, load metadata ONCE, and run every target (or ``--target``) into its own
@@ -1676,6 +1898,10 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
         return 1
     targets = _narrow_entities(targets, args)
 
+    strict = bool(getattr(args, "strict", False))
+    baseline = getattr(args, "baseline", None) or "default"
+    gen_state_dir = gen_state_dir_for(config.metadata_dir())
+
     providers, providers_ok = _config_providers(config)
     if not providers_ok:
         return 1
@@ -1695,7 +1921,6 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
 
     # `--strict` is the load `verify` uses (ADR-0023): an unknown attribute is an error and
     # nothing is written. Without it `gen` loads leniently and only warns.
-    strict = bool(getattr(args, "strict", False))
     unknown_attrs: list[str] = []
     root, load_errors = _load_root_from_collection(
         collection, strict=strict, providers=providers, libraries=config.libraries,
@@ -1730,9 +1955,24 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
 
     refused: list[str] = []
     targeted: set[str] = set()
-    baseline = getattr(args, "baseline", None) or "default"
-    gen_state_dir = gen_state_dir_for(config.metadata_dir())
     project_root = str(project_root_for(config.metadata_dir()))
+    emitted: set[str] = set()
+
+    # ADR-0062: the decision comes AFTER the load (the key is made of the loaded model) and
+    # BEFORE anything renders. A skip renders and writes nothing, the stored key included.
+    identity = _skip_identity(args, config, _find_config(args), strict=strict, baseline=baseline)
+    if (
+        _skip_matches(config, identity, root)
+        and not getattr(args, "force", False)
+        and baseline != "adopt"
+    ):
+        state.skipped = True
+        print("metaobjects gen: nothing changed since the last run, so nothing was generated "
+              "(pass --force to regenerate).")
+        return 0
+    skip.delete_stored(gen_state_dir)
+    model_entries = _model_entries(root) if identity is not None else None
+    skip_info = skip.SkipRunInfo()
     written, errors = _run_gen_targets(
         config, targets, root,
         gen_state_dir=gen_state_dir,
@@ -1744,6 +1984,8 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
         column_naming=column_naming,
         selection=selection,
         targeted_out=targeted,
+        emitted_out=emitted,
+        skip_info=skip_info,
     )
     if errors:
         for msg in errors:
@@ -1751,14 +1993,17 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
         return 1
     for path in written:
         print(path)
+    sweep_refused: list[str] = []
     removed = _sweep_orphans_after_gen(
         args, config, targets, targeted, selection, baseline, gen_state_dir, project_root,
-        emitted={*written, *refused},
+        emitted={*emitted, *refused}, refused_out=sweep_refused,
     )
     for path in removed:
         print(f"removed {path}")
+    unchanged = len(emitted) - len(written)
     print(
-        f"metaobjects gen: wrote {len(written)} file(s) across {len(targets)} target(s)."
+        f"metaobjects gen: wrote {len(written)} file(s) across {len(targets)} target(s)"
+        + (f", {unchanged} unchanged." if unchanged > 0 else ".")
         + (f" Removed {len(removed)} file(s) no generator emits any more." if removed else "")
     )
     if refused:
@@ -1772,6 +2017,23 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 1
+    if (
+        identity is not None and model_entries is not None and skip_info.cacheable
+        and baseline != "adopt" and emitted and not sweep_refused  # a refusal is a failure (ADR-0062)
+    ):
+        outputs = skip.output_hashes(
+            gen_state_dir, Path(project_root), [config.out_dir_for(t) for t in config.targets])
+        if outputs is not None:  # a recorded file missing after the run: store no key
+            skip.write_stored(
+                gen_state_dir,
+                skip.fold([*identity, *model_entries, *(skip_info.extra_entries or [])]),
+                skip_info.extras or [],
+                outputs,
+                skip.untracked_outputs(
+                    gen_state_dir, Path(project_root),
+                    [config.out_dir_for(t) for t in config.targets], emitted),
+            )
+            state.stored = True
     return 0
 
 
@@ -1786,6 +2048,7 @@ def _sweep_orphans_after_gen(
     project_root: str,
     *,
     emitted: set[str],
+    refused_out: list[str] | None = None,
 ) -> list[str]:
     """Delete what this run no longer generates (``codegen/orphan_sweep.py``) and return
     the paths removed. Only a run of the WHOLE declared output into a directory sweeps it.
@@ -1827,6 +2090,8 @@ def _sweep_orphans_after_gen(
         )
     if result.refused:
         print(f"warning: {refused_orphan_message(result.refused)}")
+        if refused_out is not None:
+            refused_out.extend(result.refused)
     return result.removed
 
 
@@ -1850,6 +2115,28 @@ def _overwrites_hand_edits(config: ProjectConfig, out_dir: str) -> bool:
 #: ``__pycache__`` would otherwise read as drift on every run.
 _UNCOMPARED_DIRS = {"__pycache__", ".gen-state", ".metaobjects"}
 _UNCOMPARED_SUFFIXES = {".pyc", ".pyo"}
+
+
+#: The virtual root ``verify --codegen`` keys its in-memory render under. Never created.
+_VIRTUAL_RENDER_ROOT = os.path.join(os.sep, "__metaobjects_verify_render__")
+
+
+def _memory_set(
+    rendered: dict[str, str], root: Path, nested: list[Path] | None = None
+) -> dict[str, str]:
+    """:func:`_relative_set`'s counterpart for a render held in memory: the rendered files
+    under the virtual ``root``, keyed by path relative to it, skipping what
+    :func:`_relative_set` skips."""
+    files: dict[str, str] = {}
+    for full, text in sorted(rendered.items()):
+        p = Path(full)
+        if not p.is_relative_to(root) or any(p.is_relative_to(n) for n in nested or []):
+            continue
+        rel = p.relative_to(root)
+        if any(part in _UNCOMPARED_DIRS for part in rel.parts) or p.suffix in _UNCOMPARED_SUFFIXES:
+            continue
+        files[str(rel)] = text
+    return files
 
 
 def _relative_set(root: Path, nested: list[Path] | None = None) -> dict[str, str]:
@@ -2065,6 +2352,16 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
     if templates_refusal is not None:
         print(templates_refusal, file=sys.stderr)
         return 2
+
+    # ADR-0062 section 4: locally, after the load, answer from the stored key and the
+    # manifest when both prove nothing changed. CI and `--full` always render, and that full
+    # render is the guard that catches anything the key missed. Neither `strict` nor the load
+    # choice changes what is written, so the key is computed as `gen`'s default run.
+    identity = _skip_identity(args, config, _find_config(args), strict=False, baseline="default")
+    if _verify_may_answer(args, config, identity, root):
+        print("metaobjects verify: in sync (the model and every recorded file are unchanged "
+              "since the last gen; pass --full to render and compare).")
+        return 0
     # ADR-0058 Decision 3 — the loaded root's `naming` is THE strategy.
     column_naming = root.naming.columns
 
@@ -2084,108 +2381,114 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
         (``overwrite_dir``), when ``gen`` deletes the edited one too. ``replaced`` is the
         subset of ``changed`` that was edited by hand and that ``gen`` replaces anyway,
         because its generator is declared ``handEdits: overwrite``."""
-        with tempfile.TemporaryDirectory() as temp_root, tempfile.TemporaryDirectory() as declared_root:
-            temp_for = {
-                real: _temp_slot_for(Path(temp_root), real, config.config_dir) for real in real_outdirs
-            }
-            remapped = [
-                dataclasses.replace(t, out_dir=temp_for[config.out_dir_for(t)]) for t in closure
+        # Rendered IN MEMORY (``sink``): nothing is written for the comparison, so a verify
+        # run creates no temp tree and no scratch gen-state. The slots are virtual paths that
+        # only key the rendered files; they are never created on disk.
+        temp_root = _VIRTUAL_RENDER_ROOT
+        declared_root = _VIRTUAL_RENDER_ROOT + "-declared"
+        sink: dict[str, str] = {}
+        declared_sink: dict[str, str] = {}
+        temp_for = {
+            real: _temp_slot_for(Path(temp_root), real, config.config_dir) for real in real_outdirs
+        }
+        remapped = [
+            dataclasses.replace(t, out_dir=temp_for[config.out_dir_for(t)]) for t in closure
+        ]
+
+        # The exact gen pipeline, rendered into the in-memory sink — verify rejects exactly
+        # what gen rejects (incl. the cross-target duplicate-output-path guard).
+        # gen_state_dir stays None: this render exists purely to diff, so recording a
+        # manifest would mutate the user's project from a read-only drift check.
+        # build_ctx from the SAME resolver `gen` uses — a verify that resolved the
+        # template root differently would regenerate render-helper against another
+        # directory and convict the committed output of being stale.
+        targeted: set[str] = set()
+        overwrite_paths: set[str] = set()
+        regen = dict(
+            select=collection.in_scope,
+            build_ctx=GeneratorBuildContext(template_root),
+            # R31: the `names` generator's constants are strategy-dependent, so the regen
+            # must use the strategy `gen` wrote with, or every constant reads as drift.
+            column_naming=naming,
+        )
+        _written, errors = _run_gen_targets(
+            config, remapped, root, selection=selection, targeted_out=targeted,
+            overwrite_paths_out=overwrite_paths, sink=sink, **regen)
+        # A narrowed run's paths get the content the whole declared list writes, which is
+        # what `gen` committed: a second regen of the un-narrowed closure supplies it.
+        declared_for: dict[str, str] = {}
+        if narrowed and not errors:
+            unnarrowed = [t for t in config.targets if config.out_dir_for(t) in temp_for]
+            for real in temp_for:
+                declared_for[real] = _temp_slot_for(Path(declared_root), real, config.config_dir)
+            _written, errors = _run_gen_targets(
+                config,
+                [dataclasses.replace(t, out_dir=declared_for[config.out_dir_for(t)])
+                 for t in unnarrowed],
+                root, sink=declared_sink, **regen)
+        if errors:
+            return errors, []
+
+        reports: list[_DirReport] = []
+        for real_outdir in real_outdirs:
+            tmp_slot = temp_for[real_outdir]
+            if narrowed and tmp_slot not in targeted:
+                continue
+            nested = [
+                o for o in configured_outdirs if o != real_outdir and Path(o).is_relative_to(real_outdir)
+            ]
+            inside = [o for o in nested if o in temp_for]
+            expected = _memory_set(sink, Path(tmp_slot), [Path(temp_for[o]) for o in inside])
+            committed = _relative_set(Path(real_outdir), [Path(o) for o in nested])
+            if narrowed:
+                declared = _memory_set(
+                    declared_sink, Path(declared_for[real_outdir]),
+                    [Path(declared_for[o]) for o in inside])
+                expected = {k: declared[k] for k in expected if k in declared}
+
+            changed = sorted(
+                k for k in expected if k in committed and expected[k] != committed[k]
+            )
+            missing = sorted(k for k in expected if k not in committed)
+            project_gen_state = gen_state_dir_for(config.metadata_dir())
+            prefix = _out_prefix(real_outdir, project_root_for(config.metadata_dir()))
+            if narrowed:
+                extra: list[str] = []
+            else:
+                # Same jurisdiction rule as _diff_report — this rung inlines its diff to
+                # report per-target, so the guard has to be inlined with it. Without it,
+                # broadening the comparison past *.py convicts every stranger's file.
+                #
+                # PER-TARGET prefix, because that is the whole point on this rung: two
+                # targets with different outDirs share one manifest, and the key that tells
+                # their identically-named files apart is the one anchored on the project.
+                is_ours = _is_ours_for(project_gen_state, prefix)
+                extra = sorted(k for k in committed if k not in expected and is_ours(k))
+            # The sweep's own test, on the same evidence: with no manifest nothing is
+            # proven untouched, and every extra file reads as edited.
+            edited_extra = [
+                k for k in extra
+                if not is_pristine_generated(
+                    project_gen_state, os.path.join(prefix, k), committed[k], legacy_rel_path=k
+                )
             ]
 
-            # The exact gen pipeline into the temp tree — verify now rejects exactly
-            # what gen rejects (incl. the cross-target duplicate-output-path guard).
-            # gen_state_dir stays None: this regenerates into a temp tree purely to
-            # diff, so recording a manifest would mutate the user's project from a
-            # read-only drift check, keyed to a directory deleted seconds later.
-            # build_ctx from the SAME resolver `gen` uses — a verify that resolved the
-            # template root differently would regenerate render-helper against another
-            # directory and convict the committed output of being stale.
-            targeted: set[str] = set()
-            overwrite_paths: set[str] = set()
-            regen = dict(
-                select=collection.in_scope,
-                build_ctx=GeneratorBuildContext(template_root),
-                # R31: the `names` generator's constants are strategy-dependent, so the regen
-                # must use the strategy `gen` wrote with, or every constant reads as drift.
-                column_naming=naming,
+            replaced = [
+                k for k in changed
+                if os.path.join(tmp_slot, k) in overwrite_paths
+                and not is_pristine_generated(
+                    project_gen_state, os.path.join(prefix, k), committed[k], legacy_rel_path=k
+                )
+            ]
+
+            names = "+".join(
+                t.name for t in closure if config.out_dir_for(t) == real_outdir
             )
-            _written, errors = _run_gen_targets(
-                config, remapped, root, selection=selection, targeted_out=targeted,
-                overwrite_paths_out=overwrite_paths, **regen)
-            # A narrowed run's paths get the content the whole declared list writes, which is
-            # what `gen` committed: a second regen of the un-narrowed closure supplies it.
-            declared_for: dict[str, str] = {}
-            if narrowed and not errors:
-                unnarrowed = [t for t in config.targets if config.out_dir_for(t) in temp_for]
-                for real in temp_for:
-                    declared_for[real] = _temp_slot_for(Path(declared_root), real, config.config_dir)
-                _written, errors = _run_gen_targets(
-                    config,
-                    [dataclasses.replace(t, out_dir=declared_for[config.out_dir_for(t)])
-                     for t in unnarrowed],
-                    root, **regen)
-            if errors:
-                return errors, []
-
-            reports: list[_DirReport] = []
-            for real_outdir in real_outdirs:
-                tmp_slot = temp_for[real_outdir]
-                if narrowed and tmp_slot not in targeted:
-                    continue
-                nested = [
-                    o for o in configured_outdirs if o != real_outdir and Path(o).is_relative_to(real_outdir)
-                ]
-                inside = [o for o in nested if o in temp_for]
-                expected = _relative_set(Path(tmp_slot), [Path(temp_for[o]) for o in inside])
-                committed = _relative_set(Path(real_outdir), [Path(o) for o in nested])
-                if narrowed:
-                    declared = _relative_set(
-                        Path(declared_for[real_outdir]), [Path(declared_for[o]) for o in inside])
-                    expected = {k: declared[k] for k in expected if k in declared}
-
-                changed = sorted(
-                    k for k in expected if k in committed and expected[k] != committed[k]
-                )
-                missing = sorted(k for k in expected if k not in committed)
-                project_gen_state = gen_state_dir_for(config.metadata_dir())
-                prefix = _out_prefix(real_outdir, project_root_for(config.metadata_dir()))
-                if narrowed:
-                    extra: list[str] = []
-                else:
-                    # Same jurisdiction rule as _diff_report — this rung inlines its diff to
-                    # report per-target, so the guard has to be inlined with it. Without it,
-                    # broadening the comparison past *.py convicts every stranger's file.
-                    #
-                    # PER-TARGET prefix, because that is the whole point on this rung: two
-                    # targets with different outDirs share one manifest, and the key that tells
-                    # their identically-named files apart is the one anchored on the project.
-                    is_ours = _is_ours_for(project_gen_state, prefix)
-                    extra = sorted(k for k in committed if k not in expected and is_ours(k))
-                # The sweep's own test, on the same evidence: with no manifest nothing is
-                # proven untouched, and every extra file reads as edited.
-                edited_extra = [
-                    k for k in extra
-                    if not is_pristine_generated(
-                        project_gen_state, os.path.join(prefix, k), committed[k], legacy_rel_path=k
-                    )
-                ]
-
-                replaced = [
-                    k for k in changed
-                    if os.path.join(tmp_slot, k) in overwrite_paths
-                    and not is_pristine_generated(
-                        project_gen_state, os.path.join(prefix, k), committed[k], legacy_rel_path=k
-                    )
-                ]
-
-                names = "+".join(
-                    t.name for t in closure if config.out_dir_for(t) == real_outdir
-                )
-                reports.append(_DirReport(
-                    names, len(expected), changed, missing, extra, edited_extra, replaced,
-                    _overwrites_hand_edits(config, real_outdir),
-                ))
-            return [], reports
+            reports.append(_DirReport(
+                names, len(expected), changed, missing, extra, edited_extra, replaced,
+                _overwrites_hand_edits(config, real_outdir),
+            ))
+        return [], reports
 
     errors, reports = compare(column_naming)
     if errors:
@@ -2886,6 +3189,14 @@ def _build_parser() -> argparse.ArgumentParser:
         help="list registered generators (stable name + description) and exit",
     )
     gen.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "regenerate even when the model and every generator identity match the last "
+            "successful run (without it, an unchanged project skips rendering; ADR-0062)."
+        ),
+    )
+    gen.add_argument(
         "--baseline",
         choices=("default", "adopt"),
         default="default",
@@ -3053,6 +3364,14 @@ def _build_parser() -> argparse.ArgumentParser:
             "raise WARN_REQUIREMENT_NOTHING_IMPLEMENTS (a live functional requirement whose "
             "subtree names no implementing node) from a warning to an error. "
             "META_REQUIRE_IMPLEMENTERS=1 does the same."
+        ),
+    )
+    verify.add_argument(
+        "--full",
+        action="store_true",
+        help=(
+            "with --codegen: always render and compare, never answer from the stored key "
+            "(a local run may skip the render when nothing changed; CI never does)."
         ),
     )
     verify.add_argument(

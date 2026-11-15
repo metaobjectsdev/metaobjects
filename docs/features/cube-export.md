@@ -576,8 +576,8 @@ there.
 
 ## Checking it
 
-**`meta verify --codegen`** regenerates the configured output into a temporary directory and
-compares it with the committed files. The Cube project is a target, so its files are checked
+**`meta verify --codegen`** regenerates the configured output in memory and compares it with the
+committed files. The Cube project is a target, so its files are checked
 like any other generated output: a changed model that was not regenerated, a missing cube file
 and a stale one are drift. A hand edit to a generated file is not drift, but the gate lists it, and
 `meta verify --codegen --forbid-hand-edits` makes it fail.

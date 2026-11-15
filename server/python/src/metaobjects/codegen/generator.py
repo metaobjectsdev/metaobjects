@@ -34,9 +34,31 @@ class GenContext:
 
 
 class Generator(Protocol):
+    """A generator has a ``name`` and a ``generate`` method.
+
+    It may also carry two optional attributes that ADR-0062's whole-run skip reads (both
+    default as below when absent, so no existing generator changes):
+
+    - ``cacheable: bool`` (default ``True``). ``False`` means the generator reads something
+      nobody can declare; a run that includes it never skips.
+    - ``declared_extra_inputs: tuple[str, ...]`` (default ``()``). Project-relative paths
+      the generator reads beyond the model, the config and the template roots; their
+      content is part of the run's key.
+    """
+
     name: str
 
     def generate(self, ctx: GenContext) -> list[EmittedFile]: ...
+
+
+def generator_cacheable(gen: object) -> bool:
+    """Whether a run that includes ``gen`` may be skipped when nothing changed."""
+    return bool(getattr(gen, "cacheable", True))
+
+
+def generator_extra_inputs(gen: object) -> tuple[str, ...]:
+    """The project-relative paths ``gen`` declared as extra inputs."""
+    return tuple(getattr(gen, "declared_extra_inputs", ()) or ())
 
 
 def per_entity(

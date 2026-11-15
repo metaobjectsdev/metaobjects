@@ -174,18 +174,86 @@ function entryHash(value: unknown): string | undefined {
   return undefined;
 }
 
-function loadHashes(genStateDir: string): HashesFile {
+function hashesOf(raw: Record<string, unknown>): HashesFile {
   const hashes: HashesFile = {};
-  for (const [key, value] of Object.entries(readRawManifest(genStateDir))) {
+  for (const [key, value] of Object.entries(raw)) {
     const hash = entryHash(value);
     if (hash !== undefined) hashes[key] = hash;
   }
   return hashes;
 }
 
-function saveHashes(genStateDir: string, hashes: HashesFile): void {
-  mkdirSync(genStateDir, { recursive: true });
+/**
+ * The manifest held in memory for one run (ADR-0062 §1). `.hashes.json` is read once when
+ * the run opens the batch and written once when it closes it, and only when an entry was
+ * added, changed or removed. Without it every recorded file re-read, re-sorted and rewrote
+ * the whole manifest: at 1,160 objects that was 136 s of a 165 s run, and a run that changed
+ * nothing still moved the file's timestamp.
+ */
+interface ManifestBatch {
+  genStateDir: string;
+  /** The manifest as read when the batch opened; its object entries' extra fields are kept. */
+  raw: Record<string, unknown>;
+  hashes: HashesFile;
+  dirty: boolean;
+}
+
+let activeBatch: ManifestBatch | undefined;
+
+function batchFor(genStateDir: string): ManifestBatch | undefined {
+  return activeBatch !== undefined && activeBatch.genStateDir === resolve(genStateDir) ? activeBatch : undefined;
+}
+
+/**
+ * Hold `genStateDir`'s manifest in memory until {@link endManifestBatch}. Every read and
+ * write of that manifest in between goes to the in-memory copy. The runner opens one batch
+ * per run; a direct `decideAndWrite` caller that opens none still gets a correct manifest,
+ * written per call and only when it changed.
+ */
+export function beginManifestBatch(genStateDir: string): void {
   const raw = readRawManifest(genStateDir);
+  activeBatch = { genStateDir: resolve(genStateDir), raw, hashes: hashesOf(raw), dirty: false };
+}
+
+/** Write the batched manifest once, if anything in it changed, and close the batch. */
+export function endManifestBatch(): void {
+  const batch = activeBatch;
+  activeBatch = undefined;
+  if (batch?.dirty === true) writeManifest(batch.genStateDir, batch.raw, batch.hashes);
+}
+
+function loadHashes(genStateDir: string): HashesFile {
+  // Inside a batch this is the live in-memory copy, not a clone: a clone per call would
+  // bring back the per-file cost the batch removes. Callers that change it call
+  // `saveHashes` with it, which is what marks the batch dirty.
+  const batch = batchFor(genStateDir);
+  if (batch !== undefined) return batch.hashes;
+  return hashesOf(readRawManifest(genStateDir));
+}
+
+function sameHashes(a: HashesFile, b: HashesFile): boolean {
+  const ak = Object.keys(a);
+  if (ak.length !== Object.keys(b).length) return false;
+  return ak.every((k) => b[k] === a[k]);
+}
+
+function saveHashes(genStateDir: string, hashes: HashesFile): void {
+  const batch = batchFor(genStateDir);
+  if (batch !== undefined) {
+    if (hashes === batch.hashes) batch.dirty = true;
+    else if (!sameHashes(batch.hashes, hashes)) {
+      batch.hashes = { ...hashes };
+      batch.dirty = true;
+    }
+    return;
+  }
+  const raw = readRawManifest(genStateDir);
+  if (existsSync(join(genStateDir, HASHES_FILE)) && sameHashes(hashesOf(raw), hashes)) return;
+  writeManifest(genStateDir, raw, hashes);
+}
+
+function writeManifest(genStateDir: string, raw: Record<string, unknown>, hashes: HashesFile): void {
+  mkdirSync(genStateDir, { recursive: true });
   // Keys SORTED, because this file is committed. Insertion order would make the
   // diff — and any merge conflict between two people who both regenerated —
   // depend on which entity happened to generate first, which is noise nobody can
@@ -338,6 +406,8 @@ export function loadEngineVersion(genStateDir: string): string | undefined {
 
 /** Record the codegen engine version alongside the gen-state hashes (#232). */
 export function saveEngineVersion(genStateDir: string, version: string): void {
+  // A run that changed nothing writes nothing (ADR-0062 §1), tool state included.
+  if (loadEngineVersion(genStateDir) === version) return;
   mkdirSync(genStateDir, { recursive: true });
   writeFileSync(
     join(genStateDir, ENGINE_FILE),
@@ -360,10 +430,16 @@ function advanceSnapshot(
   content: string,
 ): void {
   const dest = snapshotPath(genStateDir, relPath);
-  mkdirSync(dirname(dest), { recursive: true });
-  writeFileSync(dest, content);
+  // The body is a local cache; rewriting one that already holds these bytes only moves
+  // its timestamp.
+  if (!existsSync(dest) || readFileSync(dest, "utf-8") !== content) {
+    mkdirSync(dirname(dest), { recursive: true });
+    writeFileSync(dest, content);
+  }
   const hashes = loadHashes(genStateDir);
-  hashes[relPath] = sha256(content);
+  const hash = sha256(content);
+  if (hashes[relPath] === hash) return;
+  hashes[relPath] = hash;
   saveHashes(genStateDir, hashes);
 }
 
@@ -458,11 +534,17 @@ function runGitMergeFile(
   return { exitCode, stderr: res.stderr ?? "", mergedContent };
 }
 
-/** Write `content` to a freshly-named tmpfile under the OS tmpdir; return the
- *  path. Caller is responsible for cleanup (acceptable for codegen — tmpdir
- *  is process-scoped). */
+/** The directory merge temporaries go in: `$DEV_SCRATCH` when set, else the OS temp dir.
+ *  Exported for the test that a run leaves nothing behind there. */
+export function mergeTempDir(): string {
+  const scratch = process.env.DEV_SCRATCH;
+  return join(scratch !== undefined && scratch !== "" ? scratch : tmpdir(), "meta-gen-merge");
+}
+
+/** Write `content` to a freshly-named temp file in `mergeTempDir()`; return the path. The
+ *  caller deletes it in a `finally`. */
 function writeTmpfile(content: string): string {
-  const dir = join(tmpdir(), "meta-gen-merge");
+  const dir = mergeTempDir();
   mkdirSync(dir, { recursive: true });
   const path = join(dir, `${Date.now()}-${randomBytes(6).toString("hex")}.tmp`);
   writeFileSync(path, content);
@@ -528,6 +610,8 @@ type WriteCase =
   | { kind: "no-snapshot-refused"; hasRecord: boolean }
   | { kind: "no-snapshot-adopt"; currentText: string }
   | { kind: "snapshot-unchanged" }
+  | { kind: "fresh-equals-disk" }
+  | { kind: "snapshot-pristine-overwrite" }
   | { kind: "snapshot-merge-required"; snapshotText: string };
 
 function classifyWrite(
@@ -628,6 +712,13 @@ function classifyWrite(
   if (current === content && snapshot.text === content) {
     return { kind: "snapshot-unchanged" };
   }
+  // The file already holds exactly the fresh bytes, so a merge could only rewrite it with
+  // the same content and move its timestamp (ADR-0062 §2). Advance the base instead.
+  if (current === content) return { kind: "fresh-equals-disk" };
+  // The file is exactly the last generated text: nobody edited it, so there is nothing to
+  // merge. Write the fresh bytes directly; `git merge-file` (two temp files and a process)
+  // runs only for a real hand edit.
+  if (current === snapshot.text) return { kind: "snapshot-pristine-overwrite" };
   return { kind: "snapshot-merge-required", snapshotText: snapshot.text };
 }
 
@@ -660,9 +751,11 @@ export function previewWriteStatus(
     case "no-snapshot-fresh-unchanged":
     case "no-snapshot-unchanged":
     case "snapshot-unchanged":
+    case "fresh-equals-disk":
       return "unchanged";
     case "no-snapshot-fresh-overwrite":
     case "no-snapshot-pristine-overwrite":
+    case "snapshot-pristine-overwrite":
     case "hand-edit-overwrite":
       return "overwrite";
     case "no-snapshot-refused":
@@ -708,6 +801,7 @@ export function decideAndWrite(
 
     case "no-snapshot-fresh-overwrite":
     case "no-snapshot-pristine-overwrite":
+    case "snapshot-pristine-overwrite":
       writeFileSync(path, content);
       advanceSnapshot(genStateDir, relPath, content);
       return { path, status: "overwrite" };
@@ -756,11 +850,23 @@ export function decideAndWrite(
     case "snapshot-unchanged":
       return { path, status: "unchanged" };
 
-    case "snapshot-merge-required": {
-      const baseTmp = writeTmpfile(kase.snapshotText);
-      const freshTmp = writeTmpfile(content);
+    case "fresh-equals-disk":
+      advanceSnapshot(genStateDir, relPath, content);
+      return { path, status: "unchanged" };
 
-      const outcome = runGitMergeFile(path, baseTmp, freshTmp);
+    case "snapshot-merge-required": {
+      // The two merge inputs are temporaries, always removed, whatever the merge does.
+      const temps: string[] = [];
+      let outcome: MergeOutcome;
+      try {
+        const baseTmp = writeTmpfile(kase.snapshotText);
+        temps.push(baseTmp);
+        const freshTmp = writeTmpfile(content);
+        temps.push(freshTmp);
+        outcome = runGitMergeFile(path, baseTmp, freshTmp);
+      } finally {
+        for (const t of temps) rmSync(t, { force: true });
+      }
 
       if (outcome.exitCode === 0) {
         // Clean merge — advance the canonical snapshot to fresh.

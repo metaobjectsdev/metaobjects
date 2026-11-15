@@ -52,7 +52,7 @@ vocabulary everywhere, each port implementing the modes it supports.
 | Subverb | What it checks | Touches a DB? |
 |---|---|---|
 | `verify --db` | **Schema drift** — does the live database (or snapshot) match the metadata? (migrate engine, ADR-0015) | yes |
-| `verify --codegen` | **Codegen drift** — regenerate from metadata into a temp dir and fail if it differs from the committed generated output. Catches "metadata changed but `meta gen` wasn't re-run". A hand-edited generated file is NOT drift — `meta gen` three-way-merges hand edits by design, so the gate compares the *generated contribution* against the committed `.gen-state/.hashes.json` rather than the file byte-for-byte. It still LISTS every generated file carrying a hand edit (count + paths, and how to see the edit) as a notice that does not change the exit code; `--forbid-hand-edits` makes any hand edit fail the build, for teams that want generated code untouchable (Node `meta` only). | no |
+| `verify --codegen` | **Codegen drift** — regenerate from metadata in memory and fail if it differs from the committed generated output. Catches "metadata changed but `meta gen` wasn't re-run". A hand-edited generated file is NOT drift — `meta gen` three-way-merges hand edits by design, so the gate compares the *generated contribution* against the committed `.gen-state/.hashes.json` rather than the file byte-for-byte. It still LISTS every generated file carrying a hand edit (count + paths, and how to see the edit) as a notice that does not change the exit code; `--forbid-hand-edits` makes any hand edit fail the build, for teams that want generated code untouchable (Node `meta` only). | no |
 | `verify --templates` | **Template/prompt drift** — `Renderer.verify` checks each `template.*` node's `{{field}}` references against its payload VO (FR-004). A Jinja body (Python and TypeScript, ADR-0061) is checked the same way. | no |
 | `verify --docs` | **Removed in 1.1.0** (ADR-0034 Amendment 9). It prints where the check went and exits 2: documentation is written by entries in `generators`, so `verify --codegen` checks it with the rest of the declared output. | — |
 | `verify --deps` | **Dependency drift** (FR-023) — re-resolves each declared dependency (its `path`, or its installed `npm` / `python` package) and compares its installed artifact's hash against `.metaobjects/deps.lock.json`, same comparison as `meta deps check`. Needs the publisher reachable, so it is never part of the bare-`verify` default. A `drifted` or `unresolved` dependency fails with `ERR_DEPENDENCY_UPSTREAM_DRIFT`. **Node `meta` only.** See [`metadata-dependencies.md`](metadata-dependencies.md). | no |
@@ -211,7 +211,7 @@ ADR-0015"). Bare `verify` runs `--codegen` and `--templates` (the template gate 
 with a note when the run names no config and no `--prompts`). The **C# `dotnet
 meta`** port likewise ships the codegen-side subverbs: `verify --templates` (its
 historical template/prompt drift gate), `verify
---codegen` (regenerate the configured generators to a temp dir and diff against
+--codegen` (regenerate the configured generators in memory and diff against
 the committed `--out` tree, never touching it), and a **clean `--db` rejection
 (exit 2)** — bare `dotnet meta verify` runs `--templates` and, when an output
 directory and `codegen/Generators.cs` are present, `--codegen`. The output directory is
@@ -252,6 +252,30 @@ that differs refuses the whole call and removes nothing. It never edits your gen
 (`metaobjects.config.ts`, `codegen/Generators.cs`, `pom.xml`, `metaobjects.config.yaml`): it prints the
 edit that points each entry back at the shipped generator. `--strict` exits 1 and writes
 nothing. No port has a `doctor` command: `eject --list` (or the matching goal) is the report.
+
+## `gen` skips a run when nothing changed — and `--force` runs it anyway (ADR-0062)
+
+Every port's `gen` loads the metadata, then computes a key before it renders anything: the
+loaded model (each node in its canonical effective form, so reformatting or splitting a metadata
+file changes nothing) plus everything the generators are built from (the engine's built code,
+the codegen config and every owned generator, the template roots, declared extra inputs, the
+project config, the output-changing flags). When the key matches the last successful run and
+every generated file still holds the bytes that run left, `gen` says so and renders and writes
+nothing. The key lives in `.metaobjects/.gen-state/.fingerprint-<port>.json`, which is not
+committed.
+
+| flag | ports | what it does |
+|---|---|---|
+| `gen --force` | `meta`, `metaobjects`, `dotnet meta` | render everything, even when nothing changed |
+| `-Dmetaobjects.force=true` / `<force>true</force>` | Maven (Java, Kotlin) | the same |
+| `verify --codegen --full` | `meta`, `metaobjects`, `dotnet meta` | render and compare, even when a local run could answer from the key |
+| `-Dmetaobjects.verify.full=true` | Maven (Java, Kotlin) | the same |
+
+A generator that reads something the key does not cover declares it (`inputs: [...]` in
+TypeScript, its port's equivalent elsewhere); one that cannot say what it reads sets
+`cache: false`, and a run that includes it never skips. In CI (`CI` set) `verify --codegen`
+always renders and compares everything, so a key that missed an input is caught before it
+ships. When `verify` renders, it compares in memory: no temp tree is written.
 
 ## `gen` refuses rather than guesses — and `--baseline` is how you answer it
 
@@ -434,7 +458,7 @@ targets:
   the declared entries named (an owned entry matches its registry name too) and refuses a
   name no target declares. A target whose `generators` is empty writes nothing and says so.
 - **`metaobjects verify --codegen`** — also run by bare `verify`, which adds `--templates`
-  (see above) — regenerates the same list into a temp tree (the exact `gen`
+  (see above) — regenerates the same list in memory (the exact `gen`
   pipeline, including the cross-target duplicate-output-path guard) and diffs each **unique
   `outDir`** against the union of the co-resident targets' regen, aggregating the exit code
   (non-zero if *any* outDir has drifted). Targets sharing an `outDir` are verified together,

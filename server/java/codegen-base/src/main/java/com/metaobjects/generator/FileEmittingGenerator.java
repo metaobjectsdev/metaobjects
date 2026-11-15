@@ -63,8 +63,7 @@ public abstract class FileEmittingGenerator extends GeneratorBase {
                 if (GeneratedFileWriter.looksGenerated(f.content())) {
                     GeneratedFileWriter.write(target, f.content());
                 } else {
-                    if (target.getParent() != null) Files.createDirectories(target.getParent());
-                    Files.writeString(target, f.content(), StandardCharsets.UTF_8);
+                    GeneratedFileWriter.writeIfChanged(target, f.content());
                 }
             } catch (IOException e) {
                 throw new GeneratorException(getClass().getSimpleName() + ": could not write " + target + ": " + e, e);

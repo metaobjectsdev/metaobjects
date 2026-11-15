@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -157,8 +158,18 @@ public final class GeneratedFileWriter {
         private final List<String> adoptedPaths = new ArrayList<>();
         private final List<String> overwrittenHandEditedPaths = new ArrayList<>();
         private int untrackedCount = 0;
+        private int refusedCount = 0;
+        // Non-null for a capture run (verify, ADR-0062 §4): every write lands here, keyed by the
+        // normalized absolute path, and nothing is written to disk.
+        private Map<Path, byte[]> captured;
 
         private Run() {}
+
+        /** The bytes a capture run's generators emitted, by normalized absolute path; {@code null}
+         *  for an ordinary run. Read-only view. */
+        public Map<Path, byte[]> captured() {
+            return captured == null ? null : Collections.unmodifiableMap(captured);
+        }
 
         /** Name the generator whose writes follow, with {@code handEdits=keep}. Equivalent
          *  to {@code attributeTo(generatorName, "keep")}. */
@@ -239,6 +250,12 @@ public final class GeneratedFileWriter {
             return untrackedCount;
         }
 
+        /** How many writes this run refused (hand-written files left alone; a kept hand edit is tracked by the stored key and not counted).
+         *  A run that refused anything is not a clean run: ADR-0062 stores no key for it. */
+        public int refusedCount() {
+            return refusedCount;
+        }
+
         private void note(Path outFile, String content) {
             if (currentOwner == null) return;
             emissions.computeIfAbsent(outFile.toAbsolutePath().normalize(), k -> new LinkedHashMap<>())
@@ -286,6 +303,18 @@ public final class GeneratedFileWriter {
     public static Run beginRun() {
         Run run = new Run();
         ACTIVE_RUN.set(run);
+        return run;
+    }
+
+    /**
+     * Open a run that writes nothing to disk: every file a generator emits is held in memory
+     * ({@link Run#captured()}) instead. {@code verify --codegen} renders through one, so it
+     * compares the rendered bytes with the committed tree without writing a rendered tree
+     * (ADR-0062 §4). A capture run has no manifest, so every write takes the marker-only path.
+     */
+    public static Run beginCaptureRun() {
+        Run run = beginRun();
+        run.captured = new LinkedHashMap<>();
         return run;
     }
 
@@ -385,6 +414,7 @@ public final class GeneratedFileWriter {
                 return Outcome.WRITTEN;
             }
             LOG.warn(refusedMessage(outFile));
+            run.refusedCount++;
             return Outcome.REFUSED;
         }
 
@@ -413,6 +443,8 @@ public final class GeneratedFileWriter {
         }
         run.record(key, recorded);
         run.note(outFile, content);
+        // Kept, and recorded: the whole-run skip tracks the file's bytes (ADR-0062 Amendment A),
+        // so a kept hand edit is not an unclean run.
         LOG.warn(refusedHandEditedMessage(outFile));
         return Outcome.REFUSED;
     }
@@ -428,6 +460,7 @@ public final class GeneratedFileWriter {
         if (Files.exists(outFile)
             && !looksGenerated(Files.readString(outFile, StandardCharsets.UTF_8))) {
             LOG.warn(refusedMessage(outFile));
+            if (run != null) run.refusedCount++;
             return Outcome.REFUSED;
         }
         performWrite(outFile, content, run);
@@ -443,10 +476,44 @@ public final class GeneratedFileWriter {
         if (run != null) {
             run.claim(outFile, content);
         }
-        if (outFile.getParent() != null) {
-            Files.createDirectories(outFile.getParent());
+        writeIfChanged(outFile, content);
+    }
+
+    /**
+     * Write {@code content} (UTF-8) to {@code file}, creating parent directories, unless the file
+     * already holds exactly these bytes. A rewrite moves the file's timestamp and every build tool
+     * downstream then recompiles it (ADR-0062 §2), so identical bytes are never rewritten.
+     *
+     * @return {@code true} when the file was written, {@code false} when it was left alone
+     */
+    public static boolean writeIfChanged(Path file, String content) throws IOException {
+        return writeIfChanged(file, content.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** {@link #writeIfChanged(Path, String)} for a caller that encodes with another charset. */
+    public static boolean writeIfChanged(Path file, String content, java.nio.charset.Charset charset)
+            throws IOException {
+        return writeIfChanged(file, content.getBytes(charset));
+    }
+
+    /** {@link #writeIfChanged(Path, String)} for bytes already encoded. */
+    public static boolean writeIfChanged(Path file, byte[] bytes) throws IOException {
+        Run run = ACTIVE_RUN.get();
+        if (run != null) {
+            run.emittedPaths.add(file.toAbsolutePath().normalize());
         }
-        Files.writeString(outFile, content, StandardCharsets.UTF_8);
+        if (run != null && run.captured != null) {
+            run.captured.put(file.toAbsolutePath().normalize(), bytes.clone());
+            return true;
+        }
+        if (Files.isRegularFile(file) && java.util.Arrays.equals(Files.readAllBytes(file), bytes)) {
+            return false;
+        }
+        if (file.getParent() != null) {
+            Files.createDirectories(file.getParent());
+        }
+        Files.write(file, bytes);
+        return true;
     }
 
     /**

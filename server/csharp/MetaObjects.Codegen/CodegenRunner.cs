@@ -11,6 +11,7 @@
 // (it needs a full snapshot of prior content plus `git merge-file`). Here the outcome
 // for a diverged file is a refusal rather than a merge — see HashManifest.
 
+#nullable enable
 using MetaObjects.Meta;
 
 namespace MetaObjects.Codegen;
@@ -27,6 +28,14 @@ public static class CodegenRunner
         /// <summary>Absolute paths emitted by an entry declaring <see cref="HandEdits.Overwrite"/>:
         /// <c>verify --codegen</c> reads it to tell that gen replaces an edit to one of them.</summary>
         public IReadOnlySet<string> OverwritePaths { get; init; } = new HashSet<string>();
+
+        /// <summary>ADR-0062: false when a file was refused, adopted, or an edited orphan was kept.
+        /// Only a complete run may store a key.</summary>
+        public bool Complete { get; init; } = true;
+
+        /// <summary>ADR-0062: absolute paths written outside the project root. The manifest records no
+        /// file there, so the stored key lists them and a skip needs each to exist.</summary>
+        public IReadOnlyList<string> OutsidePaths { get; init; } = [];
     }
 
     public static RunResult Run(GenConfig config, MetaRoot root, IReadOnlyList<IGenerator> generators)
@@ -43,7 +52,8 @@ public static class CodegenRunner
     /// directory of each generator chosen by <paramref name="outRoot"/>: the drift gate points
     /// every entry at a temporary tree of its own.</summary>
     internal static RunResult Run(
-        GenConfig config, MetaRoot root, IReadOnlyList<IGenerator> generators, Func<IGenerator, string> outRoot)
+        GenConfig config, MetaRoot root, IReadOnlyList<IGenerator> generators, Func<IGenerator, string> outRoot,
+        IDictionary<string, string>? capture = null)
     {
         config = PackageBindingResolver.WithDerivedHome(config, root);
         var warnings = new List<string>();
@@ -76,7 +86,8 @@ public static class CodegenRunner
         CSharpNaming.AssertNoCollectionNameCollisions(
             [.. ctx.Entities, .. root.Objects().Where(o => ReportRows.IsViewBacked(o) && root.InScope(o))]);
 
-        Directory.CreateDirectory(config.OutDir);
+        // With a capture sink nothing touches the disk: the drift gate renders into memory and compares.
+        if (capture is null) Directory.CreateDirectory(config.OutDir);
         var results = new List<WriteResult>();
         // Two generators (or a name collision between an entity and a value-object
         // POCO) writing the same path would silently clobber each other; error
@@ -86,62 +97,78 @@ public static class CodegenRunner
         var adopted = new List<string>();
         var overwritePaths = new HashSet<string>(StringComparer.Ordinal);
         var untracked = 0;
+        var outsidePaths = new List<string>();
+        var sweepRefused = false;
         // Captured BEFORE any write, because the first write creates the manifest —
         // read it afterwards and every project looks migrated.
         var hadManifest = config.GenStateDir is null || HashManifest.Exists(config.GenStateDir);
+        // ADR-0062 — loaded once, saved once and only when it changed (see HashManifest.Session).
+        var manifest = config.GenStateDir is { } stateDir ? new HashManifest.Session(stateDir) : null;
 
-        foreach (var generator in generators)
+        // Saved even when a generator throws, so the manifest keeps matching the files already written.
+        try
         {
-            var genRoot = outRoot(generator);
-            // An entry with its own directory reports its files by that directory, so a reader
-            // can tell the api reference's README.md from one under --out.
-            var shown = generator.OutDir is { Length: > 0 } own ? own.TrimEnd('/', '\\') + "/" : "";
-            foreach (var file in generator.Generate(ctx))
+            foreach (var generator in generators)
             {
-                var full = Path.GetFullPath(Path.Combine(genRoot, file.Path));
-                if (!emitted.TryAdd(full, generator.Name))
-                    throw new InvalidOperationException(
-                        $"duplicate generated output path \"{file.Path}\" — emitted by both " +
-                        $"\"{emitted[full]}\" and \"{generator.Name}\".");
-                if (generator.HandEdits == HandEdits.Overwrite) overwritePaths.Add(full);
-                // The manifest key. Project-root-relative when the caller names a project,
-                // so two runs with different --out cannot collide on one entry inside the
-                // single manifest that is anchored on that project. `file.Path` rides
-                // along as the legacy spelling — it is what the manifest used to be keyed
-                // by, and it is still what a refusal is REPORTED as (the name the reader
-                // sees under --out).
-                //
-                // BOTH SIDES NORMALISED THE SAME WAY. `full` and ProjectRoot both come
-                // from Path.GetFullPath — normalised, NOT link-resolved — so the relative
-                // path between them is the path between the two directories. Resolving
-                // only one side would, under a directory symlink, walk every key out of
-                // the project; nothing would then match and a drift gate would report
-                // "in sync" over stale output.
-                var key = config.ProjectRoot is { } projectRoot
-                    ? Path.GetRelativePath(Path.GetFullPath(projectRoot), full)
-                    : file.Path;
-                // A file written OUTSIDE the project has no place in the project's
-                // manifest: its key would be `../`-relative and committed into
-                // .hashes.json. It gets the manifest-less rule a run with no project gets.
-                var outside = config.ProjectRoot is not null
-                    && (key.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(key));
-                if (outside) untracked++;
-                var status = WriteOne(
-                    outside ? config with { GenStateDir = null } : config,
-                    full, file.Path, key, file.Content, warnings,
-                    overwriteEdits: generator.HandEdits == HandEdits.Overwrite);
-                var reported = shown + file.Path;
-                if (status == OverwroteEdit)
+                var genRoot = outRoot(generator);
+                // An entry with its own directory reports its files by that directory, so a reader
+                // can tell the api reference's README.md from one under --out.
+                var shown = generator.OutDir is { Length: > 0 } own ? own.TrimEnd('/', '\\') + "/" : "";
+                foreach (var file in generator.Generate(ctx))
                 {
-                    warnings.Add(
-                        $"overwrote hand-edited {reported} with fresh output (handEdits: Overwrite on {generator.Name})");
-                    status = "written";
+                    var full = Path.GetFullPath(Path.Combine(genRoot, file.Path));
+                    if (!emitted.TryAdd(full, generator.Name))
+                        throw new InvalidOperationException(
+                            $"duplicate generated output path \"{file.Path}\" — emitted by both " +
+                            $"\"{emitted[full]}\" and \"{generator.Name}\".");
+                    if (generator.HandEdits == HandEdits.Overwrite) overwritePaths.Add(full);
+                    if (capture is not null)
+                    {
+                        capture[full] = file.Content;
+                        results.Add(new WriteResult(shown + file.Path, "written"));
+                        continue;
+                    }
+                    // The manifest key. Project-root-relative when the caller names a project,
+                    // so two runs with different --out cannot collide on one entry inside the
+                    // single manifest that is anchored on that project. `file.Path` rides
+                    // along as the legacy spelling — it is what the manifest used to be keyed
+                    // by, and it is still what a refusal is REPORTED as (the name the reader
+                    // sees under --out).
+                    //
+                    // BOTH SIDES NORMALISED THE SAME WAY. `full` and ProjectRoot both come
+                    // from Path.GetFullPath — normalised, NOT link-resolved — so the relative
+                    // path between them is the path between the two directories. Resolving
+                    // only one side would, under a directory symlink, walk every key out of
+                    // the project; nothing would then match and a drift gate would report
+                    // "in sync" over stale output.
+                    var key = config.ProjectRoot is { } projectRoot
+                        ? Path.GetRelativePath(Path.GetFullPath(projectRoot), full)
+                        : file.Path;
+                    // A file written OUTSIDE the project has no place in the project's
+                    // manifest: its key would be `../`-relative and committed into
+                    // .hashes.json. It gets the manifest-less rule a run with no project gets.
+                    var outside = config.ProjectRoot is not null
+                        && (key.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(key));
+                    if (outside) { untracked++; outsidePaths.Add(full); }
+                    var status = WriteOne(
+                        outside ? config with { GenStateDir = null } : config,
+                        outside ? null : manifest,
+                        full, file.Path, key, file.Content, warnings,
+                        overwriteEdits: generator.HandEdits == HandEdits.Overwrite);
+                    var reported = shown + file.Path;
+                    if (status == OverwroteEdit)
+                    {
+                        warnings.Add(
+                            $"overwrote hand-edited {reported} with fresh output (handEdits: Overwrite on {generator.Name})");
+                        status = "written";
+                    }
+                    results.Add(new WriteResult(reported, status));
+                    if (status == "refused") refused.Add(reported);
+                    else if (status == "adopted") adopted.Add(reported);
                 }
-                results.Add(new WriteResult(reported, status));
-                if (status == "refused") refused.Add(reported);
-                else if (status == "adopted") adopted.Add(reported);
             }
         }
+        finally { manifest?.Save(); }
 
         if (config.SweepOrphans && config.GenStateDir is { } genState && config.ProjectRoot is { } project
             && config.Baseline != "adopt")
@@ -156,7 +183,7 @@ public static class CodegenRunner
             foreach (var path in swept.Removed) results.Add(new WriteResult(path, "removed"));
             foreach (var path in swept.Discarded)
                 warnings.Add($"deleted hand-edited {path}, which no generator emits any more (handEdits: Overwrite)");
-            if (swept.Refused.Count > 0) warnings.Add(OrphanSweep.RefusedMessage(swept.Refused));
+            if (swept.Refused.Count > 0) { sweepRefused = true; warnings.Add(OrphanSweep.RefusedMessage(swept.Refused)); }
         }
 
         if (untracked > 0)
@@ -166,7 +193,12 @@ public static class CodegenRunner
                 "does not apply to them beyond the <auto-generated/> marker rule.");
         ReportRefusals(refused, hadManifest, warnings);
         ReportAdoptions(adopted, warnings);
-        return new RunResult(results, warnings) { OverwritePaths = overwritePaths };
+        return new RunResult(results, warnings)
+        {
+            OverwritePaths = overwritePaths,
+            Complete = refused.Count == 0 && adopted.Count == 0 && !sweepRefused,
+            OutsidePaths = outsidePaths,
+        };
     }
 
     /// <summary>
@@ -185,7 +217,7 @@ public static class CodegenRunner
     /// </para>
     /// </summary>
     private static string WriteOne(
-        GenConfig config, string full, string relPath, string key, string content,
+        GenConfig config, HashManifest.Session? manifest, string full, string relPath, string key, string content,
         List<string> warnings, bool overwriteEdits = false)
     {
         // The out-dir-relative spelling this file may already be recorded under, from
@@ -194,7 +226,7 @@ public static class CodegenRunner
         var legacyKey = string.Equals(key, relPath, StringComparison.Ordinal) ? null : relPath;
         var exists = File.Exists(full);
 
-        if (config.GenStateDir is null)
+        if (config.GenStateDir is null || manifest is null)
         {
             if (exists && !File.ReadAllText(full).Contains(GeneratedMarker, StringComparison.Ordinal))
             {
@@ -210,7 +242,7 @@ public static class CodegenRunner
         if (!exists)
         {
             WriteFile(full, content);
-            HashManifest.Record(config.GenStateDir, key, content, legacyKey);
+            manifest!.Record(key, content, legacyKey);
             // "written", not "new": this port's status vocabulary does not distinguish a
             // create from an overwrite, and callers key on it. The manifest ADDS
             // "unchanged" and "refused" without redefining what was already there —
@@ -223,23 +255,23 @@ public static class CodegenRunner
         {
             // Record it: a first run over already-correct output should leave the file
             // recognisable as ours next time.
-            HashManifest.Record(config.GenStateDir, key, content, legacyKey);
+            manifest!.Record(key, content, legacyKey);
             return "unchanged";
         }
 
-        if (HashManifest.IsPristine(config.GenStateDir, key, current, legacyKey))
+        if (manifest!.IsPristine(key, current, legacyKey))
         {
             WriteFile(full, content);
-            HashManifest.Record(config.GenStateDir, key, content, legacyKey);
+            manifest!.Record(key, content, legacyKey);
             return "written";
         }
 
         // Edited since we wrote it, and the entry says to discard hand edits. A file we have
         // no record of writing is never ours to replace, whatever the setting.
-        if (overwriteEdits && HashManifest.IsRecorded(config.GenStateDir, key, legacyKey))
+        if (overwriteEdits && manifest!.IsRecorded(key, legacyKey))
         {
             WriteFile(full, content);
-            HashManifest.Record(config.GenStateDir, key, content, legacyKey);
+            manifest!.Record(key, content, legacyKey);
             return OverwroteEdit;
         }
 
@@ -252,7 +284,7 @@ public static class CodegenRunner
             // `current`, never `content`: recording fresh output would claim we wrote a
             // file we did not, and the next run would read the adopter's file as edited
             // and refuse all over again — the loop this mode exists to end.
-            HashManifest.Record(config.GenStateDir, key, current, legacyKey);
+            manifest!.Record(key, current, legacyKey);
             return "adopted";
         }
 
