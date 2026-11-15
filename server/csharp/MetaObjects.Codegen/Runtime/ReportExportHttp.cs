@@ -80,7 +80,7 @@ public static class ReportExportHttp
         var node = System.Text.Json.JsonSerializer.SerializeToNode(body, body!.GetType(), options);
         // The keys the serializer itself writes for the credential properties, never guessed from names.
         var keys = SerializerKeys.KeysOf(body, envelope, options ?? System.Text.Json.JsonSerializerOptions.Default, omit);
-        SerializerKeys.Strip(envelope && node is System.Text.Json.Nodes.JsonObject env ? env["rows"] : node, keys);
+        SerializerKeys.Strip(envelope && node is System.Text.Json.Nodes.JsonObject env ? env["rows"] : node, keys, omit);
         return Results.Json(node, options, "application/json");
     }
 

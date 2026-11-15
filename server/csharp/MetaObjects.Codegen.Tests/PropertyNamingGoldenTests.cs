@@ -1,10 +1,12 @@
 // The default output (no property-naming resolver) of the generators the rc.22 property-naming fix
-// touched, compared byte for byte against files captured from the generators BEFORE the fix
-// (de59161f5): the routes, the callable, the extractor, the report export, the filter allowlist and
-// the DbContext (Postgres, so the @sequenceStart identity line is in it). The fix routes each
-// field's property name through the resolver; with none set the output must not move.
+// touched, compared byte for byte against files in Golden/pre-rc22-propname. They were captured from the
+// generators BEFORE the fix (de59161f5) and then re-captured ONLY where the credential-stripping security
+// fix legitimately changed the output: the four routes files (GizmoRoutes, VehicleRoutes, TagRoutes,
+// LineRoutes: the credential omit list, the strip helper call, the startup contract check and the PATCH key
+// lookup). Callable, Extractor, ReportExport, FilterAllowlist and DbContext are still byte-identical to
+// de59161f5. So with no resolver the output is unchanged except for that security change.
 //
-// Capture (only ever against a checkout that predates the fix): GOLDEN_WRITE=1 dotnet test
+// Capture (re-capture only for a deliberate, reviewed output change): GOLDEN_WRITE=1 dotnet test
 // --filter PropertyNamingGoldenTests. Compare mode is the default.
 
 using System.Runtime.CompilerServices;
