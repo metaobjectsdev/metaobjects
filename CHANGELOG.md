@@ -708,6 +708,19 @@ vocabulary; upgrade every port together.
 
 ### Fixed
 
+- **Fix, C#: a query can test an optional value-mapped enum against a list (rc.22).**
+  `DbContextGenerator` handed a scalar `@intValueMap` or `@stringValueMap` enum's two conversion
+  lambdas straight to `HasConversion(...)`, so EF typed the converter on the property: an optional
+  field got `ValueConverter<E?, int>` (or `<E?, string>`). EF Core 8 cannot build the JSON collection
+  reader for a parameterised collection over that converter, and a query such as
+  `db.Widgets.Where(w => active.Contains(w.Status))` failed at runtime on Npgsql
+  (`InvalidOperationException` or `MissingMethodException` on
+  `JsonNullableStructCollectionReaderWriter`, by patch version). The pair is now wrapped in
+  `new ValueConverter<E, int|string>(...)`, typed on the non-nullable enum for required and optional
+  fields alike, as an enum array's element converter already was. The stored values, the throw on an
+  unmapped value and `HasMaxLength` are unchanged. Regenerating changes every such line; an override
+  of `EnumConversionCall` that edits the returned text by pattern should be checked against it.
+
 - **Fix, C#: PATCH and PUT apply a multi-word field under a snake or kebab JSON naming policy
   (rc.22).** The merge matched a body key to a property by name, so `seat_count` never found
   `SeatCount` and the update returned 200 with the field silently unchanged. The key is now resolved

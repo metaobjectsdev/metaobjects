@@ -2102,8 +2102,8 @@ public class DbContextGenerator : IGenerator
     /// <summary>
     /// The complete <c>HasConversion</c> call for an enum property: the generic
     /// <c>HasConversion&lt;string&gt;()</c> for a string-backed enum, or
-    /// <c>HasConversion(model→provider, provider→model)</c> built from
-    /// <c>@intValueMap</c> for an int-backed one.
+    /// <c>HasConversion(new ValueConverter&lt;E, int|string&gt;(model→provider, provider→model))</c>
+    /// built from <c>@intValueMap</c> / <c>@stringValueMap</c> for a value-mapped one.
     /// </summary>
     /// <remarks>
     /// <para>The mapping is emitted as a TERNARY CHAIN rather than a <c>switch</c>
@@ -2165,7 +2165,7 @@ public class DbContextGenerator : IGenerator
             foreach (var m in members)
                 fromStored.Append($"v == \"{CSharpNaming.CSharpStringLiteral(EnumStorage.StoredValue(f, m))}\" ? {type}.{m} : ");
             fromStored.Append($"{UnmappedEnumStoredValueHelperName}<{type}>(v, \"{f.Name}\")");
-            return $"HasConversion({toStored}, {fromStored}){maxLength}";
+            return $"HasConversion({TypedEnumConverter(type, "string")}({toStored}, {fromStored})){maxLength}";
         }
 
         // Read the ints THROUGH the map, keyed by member, so @values stays the SSOT and a
@@ -2188,7 +2188,7 @@ public class DbContextGenerator : IGenerator
         // as the LAST member's int, silently.
         for (var i = 0; i < members.Count; i++)
             toProvider.Append($"v == {type}.{members[i]} ? {ints[i]} : ");
-        // Typed object: the lambda's parameter is the property's type, nullable or not.
+        // Typed object: the helper takes the enum boxed, so it serves any converter's model type.
         toProvider.Append($"{UnmappedEnumMemberHelperName}(v, \"{f.Name}\")");
         // Every member gets its own branch here (no last-member fallthrough) so the
         // final else can reject an int the model does not describe.
@@ -2201,11 +2201,27 @@ public class DbContextGenerator : IGenerator
         // lambdas against (CS1660), so the pair is wrapped in an explicit ValueConverter.
         // The element converter is the scalar pair unchanged, so each element is stored as
         // its declared int and an unmapped stored element throws exactly as a scalar does.
-        if (f.ResolvedIsArray())
-            return "HasConversion(new global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<"
-                + $"{type}, int>({toProvider}, {fromProvider}))";
-        return $"HasConversion({toProvider}, {fromProvider})";
+        // A scalar takes the same explicitly typed converter (see TypedEnumConverter).
+        return $"HasConversion({TypedEnumConverter(type, "int")}({toProvider}, {fromProvider}))";
     }
+
+    /// <summary>
+    /// <c>new ValueConverter&lt;E, provider&gt;</c> — a value-mapped enum's converter, typed on the
+    /// NON-nullable enum <paramref name="enumType"/> whatever the property's nullability.
+    /// </summary>
+    /// <remarks>
+    /// Handing the lambda pair straight to a scalar property's <c>HasConversion(...)</c> types it
+    /// on the property's CLR type, so an OPTIONAL field got a <c>ValueConverter&lt;E?, int&gt;</c>.
+    /// EF Core 8 cannot build the JSON collection reader/writer for a parameterised collection
+    /// over that converter, and a query such as <c>active.Contains(w.Status)</c> fails at runtime
+    /// (Npgsql: an InvalidOperationException or a MissingMethodException on
+    /// <c>JsonNullableStructCollectionReaderWriter</c>, by patch version). A converter on <c>E</c> is
+    /// what EF's own enum converters are and what an array's element converter already was; EF
+    /// passes null around it and never invokes the expressions on null, so the member chains
+    /// stay as they are.
+    /// </remarks>
+    private static string TypedEnumConverter(string enumType, string provider) =>
+        $"new global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<{enumType}, {provider}>";
 
     // #214 [0] — the per-field EF TYPE-converter emission, factored out so the SAME set of
     // converters configures BOTH the write entity (its derived-EXCLUDED field set) AND a
