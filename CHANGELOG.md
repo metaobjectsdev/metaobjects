@@ -675,18 +675,28 @@ vocabulary; upgrade every port together.
 
 ### Security
 
-- **Fix, C#: a credential or write-denied field renamed by the property-naming resolver can no longer
-  escape its protection (rc.22).** The routes keyed credential stripping (`view.password` fields are
-  omitted from every body), the PATCH write-deny of `@formExclude` and credential fields, and the
-  PATCH value-object and map arms on the metadata field name. An entity property serializes under
-  the host's naming policy applied to the resolved property name, so with a rename beyond case
-  (`pinHash` spelled `Secret`) the stripping missed the key and sent the credential in every read,
-  list, create and update response, and `PATCH {"secret": "x"}` wrote it. Stripping and the PATCH
-  arms now match the field name and the resolved name, so create and PATCH agree. A rename that is
-  only a different case was never affected. Regenerate any project that sets
-  `GenConfig.PropertyNaming`.
+- **Fix, C#: a credential could be returned in every response under a snake or kebab JSON naming
+  policy, and under a property-naming rename (rc.22).** The generated routes omitted a credential
+  (`view.password` field) from a body by comparing the serialized key to the field name, ignoring
+  case. An entity property's key is the host's naming policy applied to the property name, so under
+  `JsonNamingPolicy.SnakeCaseLower`, `SnakeCaseUpper`, `KebabCaseLower` or `KebabCaseUpper` a
+  multi-word credential (`pinHash` serialized as `pin_hash`) was sent in every read, list, create,
+  update (PATCH and PUT) and M:N response. **This leak exists in the released 1.2.x** with no
+  property-naming resolver at all; a resolver rename beyond case (`pinHash` spelled `Secret`) leaked
+  the same way under any policy. Only single-word credentials, or a host with the default
+  camelCase policy and no rename, were safe. 1.2.3 fixes it: the omit list and the PATCH and PUT
+  key lookup read the key from the serializer's own contract (`JsonSerializerOptions.GetTypeInfo`),
+  so a naming policy, a rename, an attribute or a type-info modifier cannot escape them. The write
+  side was never exploitable: a PATCH or PUT body key that missed the deny list also missed the
+  property and was dropped. Regenerate every project whose host sets a snake or kebab policy or
+  `GenConfig.PropertyNaming`; a project on the default policy with no rename is unaffected.
 
 ### Fixed
+
+- **Fix, C#: PATCH and PUT apply a multi-word field under a snake or kebab JSON naming policy
+  (rc.22).** The merge matched a body key to a property by name, so `seat_count` never found
+  `SeatCount` and the update returned 200 with the field silently unchanged. The key is now resolved
+  through the serializer's own key map.
 
 - **Fix, C#: the generators name a field's property through the one property-naming resolver
   (rc.22).** Since rc.20 `GenConfig.PropertyNaming` renamed a field's property in the entity, the
