@@ -370,8 +370,8 @@ a consumer is the one that checks them: the selection, the closure, the bytes, t
 the manifest. Change what they do and you have stopped agreeing with every consumer of the
 artifact. Read the project's
 own files through `ctx.inputRoot`, as the copy does for the version: under
-`meta verify --codegen` the run renders in memory and `ctx.projectRoot` is the real project root,
-tree. The docs generators read your template overrides and site theme through it too.
+`meta verify --codegen` the run renders in memory and `ctx.projectRoot` is the real project
+root. The docs generators read your template overrides and site theme through it too.
 
 ## What `meta eject` hands over, and what stays core (TypeScript)
 
