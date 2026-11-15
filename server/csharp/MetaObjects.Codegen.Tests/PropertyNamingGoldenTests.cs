@@ -1,0 +1,138 @@
+// The default output (no property-naming resolver) of the generators the rc.22 property-naming fix
+// touched, compared byte for byte against files captured from the generators BEFORE the fix
+// (de59161f5): the routes, the callable, the extractor, the report export, the filter allowlist and
+// the DbContext (Postgres, so the @sequenceStart identity line is in it). The fix routes each
+// field's property name through the resolver; with none set the output must not move.
+//
+// Capture (only ever against a checkout that predates the fix): GOLDEN_WRITE=1 dotnet test
+// --filter PropertyNamingGoldenTests. Compare mode is the default.
+
+using System.Runtime.CompilerServices;
+using MetaObjects.Codegen;
+using MetaObjects.Codegen.Generators;
+using MetaObjects.Loader;
+using MetaObjects.Meta;
+using Xunit;
+
+namespace MetaObjects.Codegen.Tests;
+
+public class PropertyNamingGoldenTests
+{
+    private const string Model = """
+    { "metadata.root": { "package": "acme::shop", "children": [
+      { "object.value": { "name": "Dims", "children": [
+        { "field.string": { "name": "unit", "@maxLength": 10 } },
+        { "field.int":    { "name": "size" } }
+      ]}},
+      { "object.entity": { "name": "Tag", "children": [
+        { "source.rdb": { "@table": "tags" } },
+        { "field.long": { "name": "id" } },
+        { "field.string": { "name": "name", "@maxLength": 40 } },
+        { "identity.primary": { "@fields": "id", "@generation": "increment", "@sequenceStart": 500 } }
+      ]}},
+      { "object.entity": { "name": "Gizmo", "children": [
+        { "source.rdb": { "@table": "gizmos" } },
+        { "field.long":      { "name": "id" } },
+        { "field.string":    { "name": "title", "@required": true, "@maxLength": 60, "@filterable": true, "@sortableDefaultOrder": "desc" } },
+        { "field.string":    { "name": "stamp", "@maxLength": 20, "@mutability": "readOnly" } },
+        { "field.string":    { "name": "serial", "@required": true, "@maxLength": 20, "@mutability": "readOnly" } },
+        { "field.string":    { "name": "pinHash", "@maxLength": 100, "children": [ { "view.password": {} } ] } },
+        { "field.string":    { "name": "tokenHash", "@maxLength": 100, "@formExclude": true } },
+        { "field.timestamp": { "name": "createdAt", "@required": true, "@autoSet": "onCreate" } },
+        { "field.timestamp": { "name": "updatedAt", "@required": true, "@autoSet": "onUpdate" } },
+        { "field.object":    { "name": "dims", "@objectRef": "Dims" } },
+        { "field.map":       { "name": "extras", "@objectRef": "Dims" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}},
+      { "object.entity": { "name": "Vehicle", "@discriminator": "kind", "children": [
+        { "source.rdb": { "@table": "vehicles" } },
+        { "field.long": { "name": "id" } },
+        { "field.enum": { "name": "kind", "@values": ["Car", "Van"] } },
+        { "field.string": { "name": "plate", "@maxLength": 20, "@filterable": true } },
+        { "field.string": { "name": "vinHash", "@maxLength": 100, "children": [ { "view.password": {} } ] } },
+        { "relationship.association": { "name": "tags", "@cardinality": "many", "@objectRef": "Tag", "@through": "VehicleTag" } },
+        { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+      ]}},
+      { "object.entity": { "name": "Car", "extends": "Vehicle", "@discriminatorValue": "Car", "children": [
+        { "field.int": { "name": "seatCount" } },
+        { "field.string": { "name": "regNo", "@maxLength": 20, "@mutability": "readOnly" } }
+      ]}},
+      { "object.entity": { "name": "Van", "extends": "Vehicle", "@discriminatorValue": "Van", "children": [
+        { "field.int": { "name": "payloadKg" } }
+      ]}},
+      { "object.entity": { "name": "VehicleTag", "children": [
+        { "source.rdb": { "@table": "vehicle_tags" } },
+        { "field.long": { "name": "vehicleId", "@required": true } },
+        { "field.long": { "name": "tagId", "@required": true } },
+        { "identity.primary": { "@fields": ["vehicleId", "tagId"] } },
+        { "identity.reference": { "name": "fkVehicle", "@fields": "vehicleId", "@references": "Vehicle" } },
+        { "identity.reference": { "name": "fkTag", "@fields": "tagId", "@references": "Tag" } }
+      ]}}
+      ,{ "object.value": { "name": "WidgetArgs", "children": [
+        { "field.long": { "name": "widgetId", "@required": true } },
+        { "field.int":  { "name": "maxRows" } }
+      ]}},
+      { "object.projection": { "name": "WidgetSummary", "children": [
+        { "source.rdb": { "@kind": "storedProc", "@proc": "fn_widget_summary", "@parameterRef": "WidgetArgs" } },
+        { "field.long": { "name": "widgetId" } }
+      ]}},
+      { "object.value": { "name": "Part", "children": [
+        { "field.string": { "name": "partName", "@required": true } }
+      ]}},
+      { "object.value": { "name": "Gadget", "children": [
+        { "field.string": { "name": "gadgetId", "@required": true } },
+        { "field.object": { "name": "part", "@objectRef": "Part" } }
+      ]}},
+      { "template.prompt": { "name": "GadgetOut", "@payloadRef": "Gadget", "@responseRef": "Gadget",
+          "@textRef": "ai/gadget", "@format": "text", "@responseFormat": "json", "@promptStyle": "guide" } },
+      { "object.entity": { "name": "Line", "children": [
+        { "source.rdb": { "@table": "lines" } },
+        { "field.long": { "name": "id", "@required": true } },
+        { "field.string": { "name": "label", "@maxLength": 40 } },
+        { "identity.primary": { "name": "id", "@fields": ["id"] } },
+        { "dimension.attribute": { "name": "label", "@of": "Line.label" } },
+        { "measure.aggregate": { "name": "lines", "@agg": "count", "@of": "Line.id" } }
+      ]}},
+      { "object.report": { "name": "LineTotals", "@from": "Line", "@dimensions": ["label"], "@measures": ["lines"],
+        "children": [ { "source.rdb": { "@kind": "view", "@view": "v_line_totals" } } ] } }
+    ]}}
+    """;
+
+    private static string GoldenDir([CallerFilePath] string here = "") =>
+        Path.Combine(Path.GetDirectoryName(here)!, "Golden", "pre-rc22-propname");
+
+    [Fact]
+    public void Default_output_matches_the_output_captured_before_the_property_naming_fix()
+    {
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(Model, id: "golden-rc22.json")]);
+        Assert.Empty(r.Errors);
+        GenContext Ctx(string? dialect = null) => new()
+        {
+            Entities = r.Root.Objects(), Root = r.Root,
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", ColumnNamingStrategy = ColumnNamingStrategy.Literal, Dialect = dialect },
+        };
+        var files = new RoutesGenerator().Generate(Ctx())
+            .Concat(new CallableGenerator().Generate(Ctx()))
+            .Concat(new ExtractorGenerator().Generate(Ctx()))
+            .Concat(new ReportExportGenerator().Generate(Ctx()))
+            .Concat(new FilterAllowlistGenerator().Generate(Ctx()))
+            .Concat(new DbContextGenerator().Generate(Ctx("postgres")))
+            .ToList();
+        var names = files.Select(f => System.IO.Path.GetFileName(f.Path)).ToList();
+        foreach (var name in new[] { "VehicleRoutes.g.cs", "GizmoRoutes.g.cs", "WidgetSummary.callable.g.cs", "LineTotalsExport.g.cs", "AppDbContext.g.cs", "GizmoFilterAllowlist.g.cs" })
+            Assert.Contains(name, names);
+        Assert.True(names.Any(n => n.Contains("Extractor")), string.Join(",", names));
+
+        var dir = GoldenDir();
+        if (Environment.GetEnvironmentVariable("GOLDEN_WRITE") == "1")
+        {
+            Directory.CreateDirectory(dir);
+            foreach (var f in files) File.WriteAllText(Path.Combine(dir, System.IO.Path.GetFileName(f.Path)), f.Content);
+            return;
+        }
+        var expected = Directory.GetFiles(dir).Select(p => Path.GetFileName(p)).Order().ToList();
+        Assert.Equal(expected, files.Select(f => System.IO.Path.GetFileName(f.Path)).Order().ToList());
+        foreach (var f in files)
+            Assert.Equal(File.ReadAllText(Path.Combine(dir, System.IO.Path.GetFileName(f.Path))), f.Content);
+    }
+}
