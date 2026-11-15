@@ -29,6 +29,7 @@ check "ts java python csharp" "scripts/ci-local.sh"
 check "ts java python csharp" ".github/workflows/local-ci.yml"
 check "ts java python csharp" "agent-context/skills/x.md"
 check "ts java python csharp" "weird-new-toplevel/file.txt"     # unmapped -> fail open
+check "ts java python csharp" "docs/recipes/generators/python/json_schema.py"  # executed by port tests -> not docs
 check ""                      "docs/features/cli.md"             # docs-only -> gates only
 check ""                      "README.md" "CHANGELOG.md"         # md-only -> gates only
 check "ts python"             "server/typescript/a.ts" "server/python/b.py"

@@ -6,8 +6,8 @@
 # (empty output = docs-only push: run only the cheap shared gates).
 #
 # Fail-open policy: an unknown base (force-push zeros), an unresolvable
-# range, or ANY path not matched by a rule selects ALL ports — this script
-# may only ever shrink coverage when it is certain.
+# range, or ANY path not matched by a rule in scripts/ci-lane-map.txt selects ALL
+# ports — this script may only ever shrink coverage when it is certain.
 #
 # NOT the whole selection. local-ci calls `ci-ports-to-run.sh`, which unions this
 # answer with the ports that are not known-green on main. "What changed" alone
@@ -17,25 +17,20 @@ set -uo pipefail
 
 ALL="ts java python csharp"
 
+# The path -> lane rules are scripts/ci-lane-map.txt, read through ci-select-lanes.sh, so
+# the no-mistakes gate (`ci-local.sh --affected`) and the hosted workflows share ONE table.
+# This script keeps its job of answering in PORTS, the unit the workflows' `detect` jobs
+# pass on, by mapping each selected lane to its port.
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MO_SELECT_LIB=1 source "$HERE/ci-select-lanes.sh"
+
 map_paths_to_ports() { # args: changed paths; echoes the port set
-  local p sel_ts=0 sel_java=0 sel_python=0 sel_csharp=0
-  for p in "$@"; do
-    case "$p" in
-      server/typescript/*|client/web/*)   sel_ts=1 ;;
-      server/java/*)                      sel_java=1 ;;
-      server/python/*)                    sel_python=1 ;;
-      server/csharp/*)                    sel_csharp=1 ;;
-      fixtures/*|spec/*|scripts/*|.github/*|agent-context/*)
-                                          echo "$ALL"; return 0 ;;
-      docs/*|*.md)                        : ;;   # gates only
-      *)                                  echo "$ALL"; return 0 ;;  # fail open
-    esac
+  select_lanes "$@"
+  local lane port out=""
+  for lane in $SELECTED_LANES; do
+    port="$(lane_to_port "$lane")"
+    case " $out " in *" $port "*) ;; *) out="$out $port" ;; esac
   done
-  local out=""
-  [ "$sel_ts" -eq 1 ]     && out="$out ts"
-  [ "$sel_java" -eq 1 ]   && out="$out java"
-  [ "$sel_python" -eq 1 ] && out="$out python"
-  [ "$sel_csharp" -eq 1 ] && out="$out csharp"
   echo "${out# }"
 }
 

@@ -73,6 +73,27 @@
 #                                    #            parallel lane; --quick and
 #                                    #            --no-integration drop it; no other
 #                                    #            section includes it
+#   scripts/ci-local.sh --affected   # AFFECTED-LANE tier: run only the lanes this change needs.
+#                                    #   Lists the changed paths since the merge base with the
+#                                    #   base branch (plus uncommitted and untracked files),
+#                                    #   maps them to lanes with scripts/ci-lane-map.txt, prints
+#                                    #   which lanes were selected, which were skipped and the
+#                                    #   rule each path matched, then runs the selected ones as
+#                                    #   `--only <lane> ... --no-integration` would. The
+#                                    #   selectable lanes are ts-fast, ts-unit, java-slow,
+#                                    #   python and csharp; a change confined to one port
+#                                    #   selects that port, anything shared, any path the map
+#                                    #   does not claim, or no resolvable base selects all of
+#                                    #   them, and a docs-only change selects none. It never
+#                                    #   runs `gates`: that lane has its own command
+#                                    #   (`--only gates`), which the no-mistakes gate runs as
+#                                    #   its Lint step, after this one's build.
+#                                    #   Mutually exclusive with --quick, --only and
+#                                    #   --integration-only. MO_CI_AFFECTED_BASE sets the base
+#                                    #   ref (default: the mutation gate's, see
+#                                    #   MO_CI_MUTATION_BASE). MO_CI_FULL=1 forces every
+#                                    #   selectable lane. The flagless run is unchanged and is
+#                                    #   what releases use.
 #   scripts/ci-local.sh --no-integration
 #                                    # Drop the docker/Postgres half of the selected
 #                                    #   sections: the integration suites, the
@@ -142,10 +163,11 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-QUICK=0; STRICT=0; ONLY=""; NO_INTEG=0; INTEG_ONLY=0
+QUICK=0; STRICT=0; ONLY=""; NO_INTEG=0; INTEG_ONLY=0; AFFECTED=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --quick) QUICK=1 ;;
+    --affected) AFFECTED=1 ;;
     --strict-toolchains) STRICT=1 ;;
     --no-integration) NO_INTEG=1 ;;
     --integration-only) INTEG_ONLY=1 ;;
@@ -159,6 +181,7 @@ while [ $# -gt 0 ]; do
   shift
 done
 [ -n "$ONLY" ] && [ "$QUICK" -eq 1 ] && { echo "--only and --quick are mutually exclusive" >&2; exit 2; }
+[ "$AFFECTED" -eq 1 ] && { [ -n "$ONLY" ] || [ "$QUICK" -eq 1 ] || [ "$INTEG_ONLY" -eq 1 ]; } && { echo "--affected selects the lanes itself; it cannot be combined with --only, --quick or --integration-only" >&2; exit 2; }
 [ "$INTEG_ONLY" -eq 1 ] && [ "$QUICK" -eq 1 ] && { echo "--integration-only and --quick are mutually exclusive" >&2; exit 2; }
 [ "$INTEG_ONLY" -eq 1 ] && [ "$NO_INTEG" -eq 1 ] && { echo "--integration-only and --no-integration are mutually exclusive" >&2; exit 2; }
 MO_CI_JOBS="${MO_CI_JOBS:-8}"
@@ -305,12 +328,15 @@ gate_extract_field_kinds() { node scripts/check-extract-field-kinds.mjs; }
 gate_uv_lock_version() { scripts/check-uv-lock-version.sh; }
 
 # ── the lane selector decides what CI runs, so nothing may run it untested ────
+# That now covers three things: the port mapping the hosted workflows use, the lane
+# history that widens it, and scripts/ci-lane-map.txt as `--affected` reads it (what the
+# no-mistakes gate's Test step runs).
 # Both selector tests existed-but-unwired at some point: test-ci-affected-ports.sh was
 # referenced by no lane at all, so the mapping that decides which ports get tested was
 # itself the one thing nothing tested. That is the worst place in the tree for an unrun
 # test — a wrong answer here does not fail, it silently stops testing a port.
 gate_ci_port_selection() {
-  scripts/test-ci-affected-ports.sh && scripts/test-ci-ports-to-run.sh
+  scripts/test-ci-affected-ports.sh && scripts/test-ci-ports-to-run.sh && scripts/test-ci-lane-selection.sh
 }
 
 # ── the no-magic-physical-names gate is wired in all five ports ───────────────
@@ -1349,6 +1375,94 @@ lane_kotlin_integ() { lane_jvm_integ kotlin; }
 # finished csharp lane uses. Every other output goes to a pristine temp copy (--check).
 lane_showcase() { want gates && run_showcase; return 0; }
 
+# ── --affected: choose the lanes from what changed ────────────────────────────
+# The rules are scripts/ci-lane-map.txt, evaluated by scripts/ci-select-lanes.sh (also what
+# the hosted workflows' port detection uses). This only decides ONLY; the lanes then run
+# exactly as `--only <lane> ... --no-integration` runs them. Every uncertainty widens: no
+# resolvable base, a failed git call, an unmapped path all select every selectable lane.
+# MO_CI_FULL=1 selects them all on purpose, for a caller that cannot drop the flag.
+resolve_affected_lanes() {
+  MO_SELECT_LIB=1 source "$ROOT/scripts/ci-select-lanes.sh"
+  local base mb paths why="" lane
+  if [ "${MO_CI_FULL:-0}" = "1" ]; then
+    SELECTED_LANES="$CI_SELECTABLE_LANES"; why="MO_CI_FULL=1: the full run was asked for"
+  else
+    base="${MO_CI_AFFECTED_BASE:-$(mutation_base)}"
+    if [ -z "$base" ] || ! mb="$(git merge-base HEAD "$base" 2>/dev/null)"; then
+      SELECTED_LANES="$CI_SELECTABLE_LANES"
+      why="no merge base with '${base:-origin/main or origin/release/*}' resolves here (shallow checkout or no remote refs), so what changed is unknown"
+    elif ! paths="$(changed_paths "$mb")"; then
+      SELECTED_LANES="$CI_SELECTABLE_LANES"; why="git could not list the change since $base"
+    else
+      local -a list=()
+      mapfile -t list < <(printf '%s\n' "$paths" | sed '/^$/d')
+      select_lanes "${list[@]}"
+      why="${#list[@]} changed path(s) since $base (merge base ${mb:0:12})"
+    fi
+  fi
+  echo ""
+  echo "── affected-lane selection: $why"
+  [ -n "${SELECTION_REPORT:-}" ] && echo "$SELECTION_REPORT"
+  local skipped=""
+  for lane in $CI_SELECTABLE_LANES; do
+    case " $SELECTED_LANES " in *" $lane "*) ;; *) skipped="$skipped $lane" ;; esac
+  done
+  echo "  selected: ${SELECTED_LANES:-(none)}"
+  if [ -n "$skipped" ]; then echo "  skipped:  ${skipped# } (not affected by this change)"; else echo "  skipped:  (none)"; fi
+  echo "  gates:    not part of this selection; run them with --only gates. Force every lane with MO_CI_FULL=1."
+  if [ -z "$SELECTED_LANES" ]; then
+    echo "  nothing to run: no selectable lane is affected."
+    exit 0
+  fi
+  for lane in $SELECTED_LANES; do ONLY="$ONLY $lane"; done
+  NO_INTEG=1
+}
+if [ "$AFFECTED" -eq 1 ]; then
+  # MO_CI_SELECTION_PRINT_ONLY=1 stops after the explanation, for the selection test and
+  # for a reviewer who wants to see what a change would run without running it.
+  resolve_affected_lanes
+  if [ "${MO_CI_SELECTION_PRINT_ONLY:-0}" = "1" ]; then exit 0; fi
+fi
+
+# The serial selections' TypeScript steps, in order. The `ts` lane of a parallel --affected
+# run calls this too, so the two cannot drift: a lane is these steps, not a copy of them.
+run_ts_serial_steps() {
+  if want_any ts ts-fast; then step_if bun "ts build + typecheck"         gate_ts_build_typecheck;     fi
+  if want_any ts ts-fast; then step_if bun "conformance: typescript"      gate_conf_ts;                fi
+  if want_any ts ts-unit; then step_if bun "ts unit suites"               gate_ts_unit;                fi
+  # The DIFF-scoped mutation step (see gate_completeness_diff); `--only mutation` asks for
+  # the full pass instead, and gets it in place of this step rather than as well.
+  if [ -n "$ONLY" ] && want mutation; then
+    step_if bun "completeness-gate (mutation, full)" gate_completeness
+  elif want_any ts ts-fast; then
+    step_if bun "completeness-gate (mutation, changed files)" gate_completeness_diff
+  fi
+}
+# One function per other port, shared by the serial heavy tier and the parallel --affected lanes.
+run_csharp_steps()  { if want csharp; then step_if dotnet "conformance: csharp" gate_conf_csharp; fi; }
+run_python_steps()  { if want python; then step_if uv "conformance: python" gate_conf_python; fi; }
+run_java_reactor_steps() { if want_any java java-slow; then step_if mvn "java-reactor (install)" gate_java_reactor; fi; }
+
+# ── --affected, several ports: run their lanes side by side ───────────────────
+# Run one after another, a change touching every port would take the SUM of the ports'
+# times, slower than the full run's parallel lanes, so more than one selected port group
+# runs as lanes exactly as the flagless run does (at most MO_CI_JOBS at once). The groups
+# share no files: the ts lane owns node_modules/ and dist/, and java, python and csharp
+# use no bun, which is also how pr-ci.yml runs them, as separate jobs. A single selected
+# group runs serially, unchanged. TypeScript's two lanes stay one group, in order, because
+# ts-unit builds into the dist/ that ts-fast's build writes.
+lane_aff_ts()     { run_ts_serial_steps; }
+lane_aff_java()   { run_java_reactor_steps; }
+lane_aff_python() { run_python_steps; }
+lane_aff_csharp() { run_csharp_steps; }
+AFFECTED_PARALLEL=0
+if [ "$AFFECTED" -eq 1 ]; then
+  _groups=0
+  in_lane_any ts-fast ts-unit && _groups=$((_groups + 1))
+  for _g in java-slow python csharp; do in_lane "$_g" && _groups=$((_groups + 1)); done
+  [ "$_groups" -gt 1 ] && AFFECTED_PARALLEL=1
+fi
+
 # ── Banner ────────────────────────────────────────────────────────────────────
 PARALLEL=0
 [ -z "$ONLY" ] && [ "$QUICK" -eq 0 ] && PARALLEL=1
@@ -1359,6 +1473,7 @@ elif [ "$QUICK" -eq 1 ]; then
 else
   _mode="full — all ports + reactor + docker, $MO_CI_JOBS lanes at once"
 fi
+[ "$AFFECTED" -eq 1 ] && _mode="affected lanes — $_mode"
 [ "$NO_INTEG" -eq 1 ] && _mode="$_mode, no integration"
 [ "$INTEG_ONLY" -eq 1 ] && _mode="$_mode, integration only"
 echo "metaobjects local CI  (mode: $_mode)"
@@ -1377,7 +1492,27 @@ if [ "${MO_CI_LIST_ONLY:-0}" = "1" ]; then
 fi
 
 # ── Step invocations ──────────────────────────────────────────────────────────
-if [ "$PARALLEL" -eq 0 ]; then
+run_or_list_lanes() {
+  if [ "${MO_CI_LIST_ONLY:-0}" = "1" ]; then
+    for ((_i = 0; _i < ${#LANE_NAMES[@]}; _i++)); do
+      echo "── lane ${LANE_NAMES[_i]}${LANE_AFTER[_i]:+ (after ${LANE_AFTER[_i]})}:"
+      ( "${LANE_FNS[_i]}" )
+    done
+  else
+    echo ""; echo "── lanes (up to $MO_CI_JOBS at once; each lane's log prints when it finishes) ──"
+    run_lanes
+  fi
+}
+
+if [ "$AFFECTED_PARALLEL" -eq 1 ]; then
+  echo ""; echo "── the selected ports run as parallel lanes ──"
+  # Longest first, so with fewer slots than lanes the long ones do not queue.
+  in_lane java-slow               && lane java   "" lane_aff_java
+  in_lane python                  && lane python "" lane_aff_python
+  in_lane csharp                  && lane csharp "" lane_aff_csharp
+  in_lane_any ts-fast ts-unit     && lane ts     "" lane_aff_ts
+  run_or_list_lanes
+elif [ "$PARALLEL" -eq 0 ]; then
   # Fast tier: shared gates and TS checks, in their original order.
   run_gates_offline
   if want gates; then step_if bun "dependencies installed"       bun_install;                 fi
@@ -1387,16 +1522,7 @@ if [ "$PARALLEL" -eq 0 ]; then
   # completeness on the changed files — the pure-code correctness signal, no docker) and a SLOW lane
   # (docker/sidecar integration). Isolating integration means a docker/sidecar
   # hiccup no longer fails the code signal, and vice versa. `--only ts` still runs both.
-  if want_any ts ts-fast; then step_if bun "ts build + typecheck"         gate_ts_build_typecheck;     fi
-  if want_any ts ts-fast; then step_if bun "conformance: typescript"      gate_conf_ts;                fi
-  if want_any ts ts-unit; then step_if bun "ts unit suites"               gate_ts_unit;                fi
-  # The DIFF-scoped mutation step (see gate_completeness_diff); `--only mutation` asks for
-  # the full pass instead, and gets it in place of this step rather than as well.
-  if [ -n "$ONLY" ] && want mutation; then
-    step_if bun "completeness-gate (mutation, full)" gate_completeness
-  elif want_any ts ts-fast; then
-    step_if bun "completeness-gate (mutation, changed files)" gate_completeness_diff
-  fi
+  run_ts_serial_steps
   run_drift_gates
 
   if [ "$QUICK" -eq 1 ]; then
@@ -1418,11 +1544,11 @@ if [ "$PARALLEL" -eq 0 ]; then
     # integration). Running them as parallel jobs surfaces the conformance verdict
     # quickly and means a cancel/OOM mid-integration no longer kills the fast
     # signal. `--only java` still runs BOTH lanes, in order.
-    if want csharp;               then step_if dotnet "conformance: csharp"        gate_conf_csharp;  fi
+    run_csharp_steps
     if want_any java java-fast;   then step_if mvn "conformance: java"             gate_conf_java;    fi
-    if want python;               then step_if uv "conformance: python"            gate_conf_python;  fi
+    run_python_steps
     if want_any java java-fast;   then step_if mvn "conformance: kotlin"           gate_conf_kotlin;  fi
-    if want_any java java-slow;   then step_if mvn "java-reactor (install)"        gate_java_reactor; fi
+    run_java_reactor_steps
     # --no-integration drops the docker half; --integration-only keeps ONLY it, which is
     # why it asks in_lane / in_lane_any (selection) where the checks above ask want.
     if [ "$NO_INTEG" -eq 1 ]; then
@@ -1520,15 +1646,7 @@ else
   lane cube         ""            lane_cube
   lane gates        ""            lane_gates
 
-  if [ "${MO_CI_LIST_ONLY:-0}" = "1" ]; then
-    for ((_i = 0; _i < ${#LANE_NAMES[@]}; _i++)); do
-      echo "── lane ${LANE_NAMES[_i]}${LANE_AFTER[_i]:+ (after ${LANE_AFTER[_i]})}:"
-      ( "${LANE_FNS[_i]}" )
-    done
-  else
-    echo ""; echo "── lanes (up to $MO_CI_JOBS at once; each lane's log prints when it finishes) ──"
-    run_lanes
-  fi
+  run_or_list_lanes
 fi
 
 # ── Dry-run listing exits before summary ──────────────────────────────────────

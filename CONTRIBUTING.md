@@ -110,8 +110,25 @@ scripts/ci-local.sh            # full parity: hygiene.yml's leak-scan, all-port
 scripts/ci-local.sh --quick    # hygiene.yml in full + the TypeScript half of
                                # conformance.yml; skips the C#/Java/Kotlin/Python
                                # ports, the java reactor and the docker suite
+scripts/ci-local.sh --affected # only the lanes this change needs (see below)
 MO_CI_LIST_ONLY=1 scripts/ci-local.sh --quick   # print the steps, run nothing
 ```
+
+**`--affected` runs only what a change can break.** It lists the paths you changed since the
+merge base with the base branch (committed, uncommitted and untracked), maps each to lanes
+with the table in [`scripts/ci-lane-map.txt`](scripts/ci-lane-map.txt), and prints the lanes it
+selected, the lanes it skipped and the rule each path matched, so a reviewer can see what was
+not run. A change confined to one port runs that port (`ts-fast` and `ts-unit` for TypeScript
+and the web client, `java-slow`, `python`, `csharp`); a change to `fixtures/`, `spec/`,
+`scripts/` (the map included), `.github/`, `agent-context/`, `docs/recipes/` or any path no
+rule claims runs every lane, because unknown means full; a docs-only change runs no lane. It
+never runs `gates` (`--only gates` does, on every change), never the docker half, and it runs
+the selected lanes one after another. Mutation testing is as before: diff-scoped inside
+`ts-fast`. `MO_CI_FULL=1 scripts/ci-local.sh --affected` forces every lane,
+`MO_CI_AFFECTED_BASE=<ref>` picks the base, and `scripts/ci-select-lanes.sh [<ref>]` explains
+a selection without running anything. The flagless run above is unchanged and is what
+[releases](docs/RELEASING.md) use. The same map drives `pr-ci.yml`'s port detection, and
+`scripts/test-ci-lane-selection.sh` (in the `gates` lane) pins what each kind of change selects.
 
 The full run does its tree-writing steps first (install, the drift gates, one workspace
 build), then runs the rest as parallel lanes: at most `MO_CI_JOBS` at once, default 8. Each
@@ -127,12 +144,13 @@ gate and a Java pom-version drift guard on every push (activate hooks once per
 clone: `git config core.hooksPath .githooks`).
 
 If you drive changes through the no-mistakes validation gate, `.no-mistakes.yaml` pins its
-`test` step to `scripts/ci-local.sh --only ts-fast --only ts-unit --strict-toolchains` and
-its `lint` step to `scripts/ci-local.sh --only gates --strict-toolchains` — together exactly
-`--quick`, split so neither step repeats the other's work. `--strict-toolchains` is part of
-both: it promotes a SKIP to a FAIL, so a gate host missing bun cannot report green. Those
-commands are read from the **default branch**, so editing them on a feature branch has no
-effect until it merges.
+`test` step to `scripts/ci-local.sh --affected --strict-toolchains` and its `lint` step to
+`scripts/ci-local.sh --only gates --strict-toolchains`: the lanes the change affects, then
+the gates every change runs, split so the gates run after the build `test` does.
+`--strict-toolchains` is part of both: it promotes a SKIP to a FAIL, so a gate host missing
+bun (or, for a change to a port, that port's toolchain) cannot report green. Those commands are
+read from the **default branch**, so editing them on a feature branch has no effect until it
+merges.
 
 ## Releasing
 
