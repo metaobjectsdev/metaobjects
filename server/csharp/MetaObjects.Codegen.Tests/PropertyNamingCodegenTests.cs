@@ -160,6 +160,23 @@ public class PropertyNamingCodegenTests
         Assert.Contains("set GenConfig.PropertyNaming", ex2.Message);
     }
 
+    // A context hook that differs from the resolver only on a value-object member, or only on a TPH
+    // subtype's own field, would reference a name the class does not declare: refused up front.
+    private sealed class DivergesOn(string field) : DbContextGenerator
+    {
+        protected override string PropertyName(MetaField f) => f.Name == field ? "Diverged" : base.PropertyName(f);
+    }
+
+    [Theory]
+    [InlineData("zipCode")]    // PostalAddress, a value object
+    [InlineData("seatCount")]  // Car, a TPH subtype
+    public void The_context_hook_guard_covers_value_object_members_and_subtype_fields(string field)
+    {
+        var ex = Assert.Throws<InvalidOperationException>(() => new DivergesOn(field).Generate(Ctx(Load())).ToList());
+        Assert.Contains($".{field}\"", ex.Message);
+        Assert.Contains("set GenConfig.PropertyNaming", ex.Message);
+    }
+
     [Fact]
     public void Without_a_resolver_the_output_is_the_pascal_default()
     {
