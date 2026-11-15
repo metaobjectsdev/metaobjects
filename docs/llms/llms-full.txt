@@ -65,7 +65,9 @@ Reference generators you own, ejectable in every port. They emit per-language co
 - C#: EF Core + ASP.NET (.NET 8). **Keep your EF model:** an object declared with no `source.rdb` generates a POCO with DataAnnotations and no EF mapping, a contract separate from your entities
 - Python: Pydantic + FastAPI (Python 3.11+). **Keep your ORM:** the `entity` generator writes Pydantic models with no ORM of any kind
 
-Hand-edit-preserving regeneration is **TypeScript-only**: `meta gen` three-way-merges your edits into regenerated output on the machine that generated the file. C#, Python, Java and Kotlin do not merge. Each decides from a committed hash manifest (`.metaobjects/.gen-state/.hashes.json`): a file that still matches what the generator wrote is overwritten, an edited one is refused by name (Java and Kotlin can be told to replace it with `handEdits=overwrite`), and `eject` hands you the generator to own instead. M:N relationship codegen (FR-018) ships in all five ports: entity navigation, idiomatic ORM wiring (Drizzle m2m / EF Core `UsingEntity` / Spring repo interface / Exposed / Pydantic), and REST traversal (`GET /<source-plural>/{id}/<relation>`).
+Hand-edit-preserving regeneration is **TypeScript-only**: `meta gen` three-way-merges your edits into regenerated output on the machine that generated the file. C#, Python, Java and Kotlin do not merge. Each decides from a committed hash manifest (`.metaobjects/.gen-state/.hashes.json`): a file that still matches what the generator wrote is overwritten, an edited one is refused by name (Java and Kotlin can be told to replace it with `handEdits=overwrite`), and `eject` hands you the generator to own instead.
+
+`gen` skips a run when nothing changed (ADR-0062). Before it renders anything, it computes a key from the loaded model and everything the generators are built from. When the key matches the last successful run and every generated file still holds the bytes that run left, `gen` says so and writes nothing. `gen --force` (Maven: `-Dmetaobjects.force=true`) renders everything anyway. In CI, `verify --codegen` always renders and compares everything, so a key that missed an input is caught before it ships. A generator that reads something the key does not cover declares it (`inputs` in TypeScript), or sets `cache: false` so a run that includes it never skips. The skip rules are gated by the `codegen-skip-conformance` corpus (`fixtures/codegen-skip-conformance/`) in every port. M:N relationship codegen (FR-018) ships in all five ports: entity navigation, idiomatic ORM wiring (Drizzle m2m / EF Core `UsingEntity` / Spring repo interface / Exposed / Pydantic), and REST traversal (`GET /<source-plural>/{id}/<relation>`).
 
 ### Runtime metadata
 
@@ -131,7 +133,7 @@ Today the TypeScript toolchain publishes and TypeScript and Python projects cons
 | C# | NuGet `1.2.2` (.NET tool) | Loader + canonical serializer + EF Core + ASP.NET codegen + render/verify. `dotnet meta` tool. |
 | Python | PyPI `1.2.1` | Loader + serializer + render + verify + codegen + `ObjectManager` runtime. Fully green across all corpora. |
 
-Conformance fixtures live at [`fixtures/`](https://github.com/metaobjectsdev/metaobjects/tree/main/fixtures). Every port runs the shared corpus byte-identically: metamodel (`conformance/`, 314 fixtures), render, persistence (Testcontainers Postgres, with an `op: roundtrip` gate so every `field.*` subtype write+read round-trips on every port), api-contract (core REST contract + filter operators, plus TPH / M:N / jsonb / write-through and the other sub-corpora — two lanes: a reference server AND each port's generated API booted over HTTP), registry (byte-matched metamodel-vocabulary manifest, live + green in all five ports), and yaml/verify.
+Conformance fixtures live at [`fixtures/`](https://github.com/metaobjectsdev/metaobjects/tree/main/fixtures). Every port runs the shared corpus byte-identically: metamodel (`conformance/`, 314 fixtures), render, persistence (Testcontainers Postgres, with an `op: roundtrip` gate so every `field.*` subtype write+read round-trips on every port), api-contract (core REST contract + filter operators, plus TPH / M:N / jsonb / write-through and the other sub-corpora — two lanes: a reference server AND each port's generated API booted over HTTP), registry (byte-matched metamodel-vocabulary manifest, live + green in all five ports), `codegen-skip-conformance/` (when `gen` may skip a run, ADR-0062), and yaml/verify.
 
 ---
 
@@ -305,6 +307,7 @@ $ meta eject routes
 
 # Generate code from exactly what you wired
 $ meta gen
+$ meta gen --force           # render everything, even when nothing changed
 
 # Optional positional filter
 $ meta gen Subscriber Order --dry-run
