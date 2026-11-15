@@ -686,10 +686,22 @@ vocabulary; upgrade every port together.
   the same way under any policy. Only single-word credentials, or a host with the default
   camelCase policy and no rename, were safe. 1.2.3 fixes it: the omit list and the PATCH and PUT
   key lookup read the key from the serializer's own contract (`JsonSerializerOptions.GetTypeInfo`),
-  so a naming policy, a rename, an attribute or a type-info modifier cannot escape them. The write
-  side was never exploitable: a PATCH or PUT body key that missed the deny list also missed the
-  property and was dropped. Regenerate every project whose host sets a snake or kebab policy or
-  `GenConfig.PropertyNaming`; a project on the default policy with no rename is unaffected.
+  so a naming policy, a rename or an attribute cannot escape them. Stripping **fails closed**: when
+  the contract cannot be read (a custom converter for the row type, a custom type-info resolver or a
+  modifier that leaves a property without its reflection member, a contract that lacks the
+  credential), the generated route mapping throws at startup, and a response that reaches
+  `CredentialOmittingResult` anyway is refused with an exception naming the type and the credential
+  property (never a value), instead of being sent unstripped. A key that spells the credential
+  ignoring case, `_` and `-` is also removed. A host that sets a custom `TypeInfoResolver` or a
+  source-generated `JsonSerializerContext` must give the entity properties their reflection member
+  (the default reflection resolver does), or the app will not start. The write side of the released
+  1.2.0 and 1.2.2 was not exploitable: a PATCH or PUT body key that missed the deny list also missed
+  the property and was dropped. **In 1.2.3-rc.1** (the first release with `GenConfig.PropertyNaming`),
+  a rename beyond case let `PATCH {"secret":"x"}` or `PUT` write a credential or a `@formExclude`
+  field, because the deny arm matched the field name only and the generic lookup found the renamed
+  property case-insensitively; 1.2.3 closes that too. Regenerate every project whose host sets a
+  snake or kebab policy or `GenConfig.PropertyNaming`; a project on the default policy with no
+  rename is unaffected.
 
 ### Fixed
 
@@ -709,7 +721,9 @@ vocabulary; upgrade every port together.
   dispatch looked a property up by the field name, so `?filter[<field>]` on a property renamed
   beyond case threw (500); the generated allowlist now carries a field-to-property map, emitted only
   when a rename goes beyond case, and `EfCoreFilterDispatch.ApplyFilter` and `Validate` take it as an
-  optional argument. With no resolver set the output is byte-identical (pinned by a golden test).
+  optional argument. With no resolver set the output is unchanged except for the security change
+  above: regenerating changes every routes file (the PATCH key lookup) and the credential-bearing
+  ones further; a golden test pins the rest byte for byte.
 
 - **Fix, TypeScript and C#: a passthrough may walk a reference backwards when at most one row
   references it (rc.21).** A reverse hop was always to-many, so a passthrough over it was refused
