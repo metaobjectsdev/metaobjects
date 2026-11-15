@@ -1351,7 +1351,7 @@ file changes. No vocabulary or `metamodelVersion` change._
     route subtype's own settable columns.
   - **C# (`MetaObjects.Codegen`).** The create route bound the EF Core entity from the body, so a
     client `id` on a generated key was inserted, a TPH create stored the body's discriminator (a
-    POST to the Bridge route could create a Copay row), and a TPH subtype's `readOnly` field and
+    POST to the Bridge route could create a Coupon row), and a TPH subtype's `readOnly` field and
     an M:N navigation graph were written. The route now resets the generated key and the
     discriminator to their defaults and empties the M:N navigations before `Add`, and a
     `readOnly` property of every shape, a TPH subtype's included, has a private setter, which
