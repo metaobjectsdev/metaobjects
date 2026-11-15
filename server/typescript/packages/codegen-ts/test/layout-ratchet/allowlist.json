@@ -77,6 +77,7 @@
     "codegen-ts/src/templates/zod-validators.ts": "Emits the Zod validators; ts-poet `code` templates with hand-typed indentation and newline joins. Converts with the entity tier B writer PR (Zod validators, field meta, UI descriptor)."
   },
   "exempt": {
+    "codegen-ts/src/model-hash.ts": "Builds the text the gen skip key hashes (ADR-0062): sorted `name hash` lines joined with a newline and fed to sha256. Nobody reads that text and it is never written to a file, so it is hash input, not generated code, and has no writer to move to.",
     "codegen-ts/src/overwrite-policy.ts": "Writes the codegen tool-state files (.metaobjects/.gen-state/.hashes.json and the engine stamp) as JSON.stringify output plus a final newline. That is a data file the runner owns, not generated code, so it has no writer to move to."
   }
 }
