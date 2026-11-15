@@ -444,7 +444,7 @@ function refuseImportedPositional(
   const allObjects = metadata.objects();
   for (const name of entityNames) {
     const matches = allObjects.filter((o) => o.name === name);
-    if (matches.length === 0) continue; // nothing loaded by this name — the runner's own warning covers it
+    if (matches.length === 0) continue; // nothing loaded by this name — refuseUnknownPositional has already refused it
     const allExcludedImports = matches.every((o) => {
       const fqn = o.resolutionKey();
       return collection.imported(fqn) && !collection.inScope(fqn);
