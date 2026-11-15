@@ -3,7 +3,7 @@
 #
 # Usage: scripts/ci-affected-ports.sh <base-sha> <head-sha>
 # Prints a space-separated subset of: ts java python csharp
-# (empty output = docs-only push: run only the cheap shared gates).
+# (empty output = a push touching only the root prose files: run just the cheap shared gates).
 #
 # Fail-open policy: an unknown base (force-push zeros), an unresolvable
 # range, or ANY path not matched by a rule in scripts/ci-lane-map.txt selects ALL

@@ -84,7 +84,8 @@
 #                                    #   python and csharp; a change confined to one port
 #                                    #   selects that port, anything shared, any path the map
 #                                    #   does not claim, or no resolvable base selects all of
-#                                    #   them, and a docs-only change selects none. It never
+#                                    #   them, and a change to only the root prose files
+#                                    #   selects none. It never
 #                                    #   runs `gates`: that lane has its own command
 #                                    #   (`--only gates`), which the no-mistakes gate runs as
 #                                    #   its Lint step, after this one's build.

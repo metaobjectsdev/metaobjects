@@ -129,7 +129,8 @@ adds the C#/Java/Kotlin/Python conformance lanes, the Java reactor and `integrat
 Testcontainers matrix. Run `--quick` before opening a PR and the full script before a tag;
 `MO_CI_LIST_ONLY=1 scripts/ci-local.sh [flags]` prints what a selection would run without
 running it. The no-mistakes validation gate runs the script for you — see `.no-mistakes.yaml`,
-whose `lint` and `test` commands partition `--quick` between the two steps. That file is read
+whose `test` command runs `--affected` (only the lanes the change touches, per
+`scripts/ci-lane-map.txt`) and whose `lint` command runs `--only gates`. That file is read
 from the **default branch**, so it does nothing until it is merged to `main`.
 
 **`leak-scan` is hosted again.** `main`'s protection requires that one status, and `hygiene.yml`
