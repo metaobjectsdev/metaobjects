@@ -92,7 +92,12 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
             getLog().info("MetaData Mojo > Generating only " + String.join(", ", selected)
                     + " (meta.entities); files built from the whole model still see every object.");
             for (Generator gen : generatorImpls) {
-                if (gen instanceof GeneratorBase) ((GeneratorBase) gen).setEntities(selected);
+                if (gen instanceof GeneratorBase) {
+                    ((GeneratorBase) gen).setEntities(selected);
+                } else {
+                    getLog().warn("MetaData Mojo > " + gen.getClass().getName()
+                            + " cannot narrow to meta.entities; it renders every object.");
+                }
             }
         }
 

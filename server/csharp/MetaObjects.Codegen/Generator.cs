@@ -8,7 +8,15 @@ using MetaObjects.Meta;
 namespace MetaObjects.Codegen;
 
 /// <summary>A file a generator produced. <paramref name="Path"/> is relative to the out dir.</summary>
-public sealed record EmittedFile(string Path, string Content);
+public sealed record EmittedFile(string Path, string Content)
+{
+    /// <summary>
+    /// <c>true</c> for a file built from the whole model (a shared enum, a wire helper, the report
+    /// export writer): an <c>--entities</c> selection never drops it, because no selected object owns
+    /// it. <c>false</c>, the default, is a per-object file the selection narrows.
+    /// </summary>
+    public bool WholeModel { get; init; }
+}
 
 /// <summary>Resolved generation config.</summary>
 public sealed record GenConfig

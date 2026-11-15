@@ -87,6 +87,35 @@ public sealed class GenEntitiesSelectionTests : IDisposable
     }
 
     [Fact]
+    public void Shared_files_inside_a_per_object_generator_still_render_whole_when_the_selection_does_not_touch_them()
+    {
+        // A shared enum and a decimal wire helper are consumed only by Gadget; selecting Product
+        // contributes nothing to either, yet each is built from the whole model.
+        File.WriteAllText(Path.Combine(MetaDir, "meta.gadget.json"),
+            "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
+            "{ \"field.enum\": { \"name\": \"GadgetState\", \"abstract\": true, \"@values\": [\"ON\", \"OFF\"] } }," +
+            "{ \"object.entity\": { \"name\": \"Gadget\", \"children\": [" +
+            "{ \"source.rdb\": { \"@table\": \"gadgets\" } }," +
+            "{ \"field.long\": { \"name\": \"id\" } }," +
+            "{ \"field.decimal\": { \"name\": \"price\" } }," +
+            "{ \"field.enum\": { \"name\": \"state\", \"extends\": \"GadgetState\" } }," +
+            "{ \"identity.primary\": { \"@fields\": \"id\" } }]}}]}}");
+        Assert.Equal(0, Gen().ExitCode);
+        var enums = Read("Enums.g.cs");
+        var wire = Read("DecimalWire.g.cs");
+        Assert.Contains("GadgetState", enums);
+        Directory.Delete(OutDir, recursive: true);
+
+        var (exit, stdout, stderr) = Gen("--entities", "Product");
+
+        Assert.True(exit == 0, $"exit={exit}\n{stdout}\n{stderr}");
+        Assert.Equal(enums, Read("Enums.g.cs"));
+        Assert.Equal(wire, Read("DecimalWire.g.cs"));
+        Assert.False(Has("Gadget.g.cs"));
+        Assert.True(Has("Product.g.cs"));
+    }
+
+    [Fact]
     public void A_narrowed_run_neither_deletes_nor_forgets_the_unselected_files()
     {
         Assert.Equal(0, Gen().ExitCode);

@@ -80,7 +80,7 @@ public class ReportExportGenerator : IGenerator
             .ToList();
         if (served.Count == 0) yield break;
 
-        yield return new EmittedFile("ReportExportWriter.g.cs", SharedWriter(ctx, HasDurationColumn(served)));
+        yield return new EmittedFile("ReportExportWriter.g.cs", SharedWriter(ctx, HasDurationColumn(served))) { WholeModel = true };
         foreach (var report in served)
             yield return new EmittedFile(OutputPaths.Of(report, ctx, CSharpNaming.Pascal(report.Name) + "Export.g.cs"), ReportModule(report, ctx));
     }

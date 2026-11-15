@@ -194,7 +194,8 @@ public static class CodegenRunner
     /// </para>
     /// <para>
     /// A generator answering <see cref="IGenerator.WholeModel"/> skips the probe: its single file would
-    /// otherwise vanish from the narrowed run whenever the selection contributes nothing to it.
+    /// otherwise vanish from the narrowed run whenever the selection contributes nothing to it. A shared
+    /// file inside a per-object generator (<see cref="EmittedFile.WholeModel"/>) is kept the same way.
     /// </para>
     /// </summary>
     private static IEnumerable<EmittedFile> Emit(IGenerator generator, GenContext ctx, HashSet<string> selection)
@@ -204,7 +205,7 @@ public static class CodegenRunner
         if (generator.WholeModel) return all;
         var kept = generator.Generate(ctx.NarrowForProbe(o => selection.Contains(o.Name)))
             .Select(f => f.Path).ToHashSet(StringComparer.Ordinal);
-        return all.Where(f => kept.Contains(f.Path)).ToList();
+        return all.Where(f => f.WholeModel || kept.Contains(f.Path)).ToList();
     }
 
     /// <summary>
