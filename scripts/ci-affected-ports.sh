@@ -44,7 +44,9 @@ if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
    || ! git rev-parse -q --verify "$BASE^{commit}" >/dev/null 2>&1; then
   echo "$ALL"; exit 0
 fi
-CHANGED="$(git diff --name-only "$BASE" "$HEAD")" || { echo "$ALL"; exit 0; }
+# --no-renames: a rename's old path must be listed too, so moving a file OUT of a
+# port selects that port exactly like moving one in (matches ci-select-lanes.sh).
+CHANGED="$(git diff --no-renames --name-only "$BASE" "$HEAD")" || { echo "$ALL"; exit 0; }
 [ -z "$CHANGED" ] && { echo ""; exit 0; }
 # shellcheck disable=SC2086
 mapfile -t paths <<<"$CHANGED"
