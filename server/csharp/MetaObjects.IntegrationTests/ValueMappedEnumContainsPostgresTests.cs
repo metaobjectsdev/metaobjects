@@ -62,6 +62,8 @@ public sealed class ValueMappedEnumContainsPostgresTests
 
     private static object Member(string enumType, string member) => Gen.Value.Enum("Widget+" + enumType, member);
 
+    private static Type EnumType(string enumType) => Gen.Value.Type("Widget+" + enumType);
+
     private static object Widget(string? status, string grade, string? phase, string stage) =>
         Gen.Value.New("Widget",
             ("Status", status is null ? null : Member("WidgetStatus", status)),
@@ -89,41 +91,58 @@ public sealed class ValueMappedEnumContainsPostgresTests
             db.SaveChanges();
         }
 
+        // An optional value-mapped column reads NULL back as null, int-stored and string-stored alike:
+        // EF never hands null to the typed converter, so it is neither refused nor read as a member.
+        using (var db = Gen.Value.NewContext(o => o.UseNpgsql(pg.ConnectionString)))
+        {
+            var rows = GeneratedEfModel.All(db, Gen.Value.Type("Widget"));
+            Assert.Equal(4, rows.Count);
+            var unset = Assert.Single(rows, r => GeneratedEfModel.Get(r, "Status") is null);
+            Assert.Null(GeneratedEfModel.Get(unset, "Phase"));
+            Assert.Equal(Member("WidgetGrade", "LOW"), GeneratedEfModel.Get(unset, "Grade"));
+            Assert.Equal(Member("WidgetStage", "NEW"), GeneratedEfModel.Get(unset, "Stage"));
+            Assert.Single(rows, r => GeneratedEfModel.Get(r, "Phase") is null);
+        }
+
         // Every shape is queried and every outcome reported together, so one failure does not hide
         // whether the others hold.
         var failures = new List<string>();
-        void Expect(int expected, string property, bool nullable, params object[] members)
+        void Expect(int expected, string property, string enumType, bool nullable, params object?[] members)
         {
             using var db = Gen.Value.NewContext(o => o.UseNpgsql(pg.ConnectionString));
+            var label = $"{property} in [{string.Join(", ", members.Select(m => m?.ToString() ?? "null"))}]";
             try
             {
-                var actual = CountIn(db, property, nullable, members);
-                if (actual != expected) failures.Add($"{property}: counted {actual}, expected {expected}");
+                var actual = CountIn(db, property, EnumType(enumType), nullable, members);
+                if (actual != expected) failures.Add($"{label}: counted {actual}, expected {expected}");
             }
             catch (Exception e)
             {
                 var inner = GeneratedEfModel.Chain(e).Last();
-                failures.Add($"{property}: {inner.GetType().Name}: {inner.Message}");
+                failures.Add($"{label}: {inner.GetType().Name}: {inner.Message}");
             }
         }
 
         // Optional int-stored: the repro. Two of the three non-null rows match.
-        Expect(2, "Status", nullable: true, Member("WidgetStatus", "LIVE"), Member("WidgetStatus", "GONE"));
+        Expect(2, "Status", "WidgetStatus", nullable: true, Member("WidgetStatus", "LIVE"), Member("WidgetStatus", "GONE"));
         // Optional string-stored.
-        Expect(1, "Phase", nullable: true, Member("WidgetPhase", "OPEN"));
+        Expect(1, "Phase", "WidgetPhase", nullable: true, Member("WidgetPhase", "OPEN"));
+        // A list holding null matches the row whose column is NULL, as well as the members listed.
+        Expect(2, "Status", "WidgetStatus", nullable: true, null, Member("WidgetStatus", "LIVE"));
+        Expect(2, "Phase", "WidgetPhase", nullable: true, null, Member("WidgetPhase", "OPEN"));
         // Required int-stored and string-stored.
-        Expect(2, "Grade", nullable: false, Member("WidgetGrade", "HIGH"));
-        Expect(2, "Stage", nullable: false, Member("WidgetStage", "NEW"));
+        Expect(2, "Grade", "WidgetGrade", nullable: false, Member("WidgetGrade", "HIGH"));
+        Expect(2, "Stage", "WidgetStage", nullable: false, Member("WidgetStage", "NEW"));
 
         Assert.True(failures.Count == 0, string.Join("\n", failures));
     }
 
     // `db.Set<Widget>().Where(w => active.Contains(w.<property>)).Count()`, with `active` a
     // CAPTURED array — a query parameter, not constants inlined into the SQL — typed as the
-    // property is: E?[] for an optional field, E[] for a required one.
-    private static int CountIn(DbContext db, string property, bool nullable, params object[] members)
+    // property is: E?[] for an optional field, E[] for a required one. A null member is a null
+    // element of the E?[] list.
+    private static int CountIn(DbContext db, string property, Type enumType, bool nullable, params object?[] members)
     {
-        var enumType = members[0].GetType();
         var elementType = nullable ? typeof(Nullable<>).MakeGenericType(enumType) : enumType;
         var active = Array.CreateInstance(elementType, members.Length);
         for (var i = 0; i < members.Length; i++) active.SetValue(members[i], i);

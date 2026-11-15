@@ -3,9 +3,11 @@
 //
 // The lambda pair used to be passed straight to HasConversion(...), so EF typed it on the
 // property's CLR type — ValueConverter<E?, int> for an optional field. Npgsql EF 8 cannot build
-// the JSON collection reader for a parameterised `Contains` over such a property
-// (MissingMethodException on JsonNullableStructCollectionReaderWriter`3[E?[], E?[], E]), so
-// `active.Contains(w.Status)` failed at runtime. A converter on `E` is what EF's own built-in
+// the JSON collection reader for a parameterised `Contains` over such a property, so
+// `active.Contains(w.Status)` failed at runtime: an InvalidOperationException ("When building an
+// array mapping over 'Nullable`1', the JsonValueReaderWriter for element mapping ... is incorrect")
+// on the EF 8.0.10 this repository pins, and a MissingMethodException on
+// JsonNullableStructCollectionReaderWriter`3[E?[], E?[], E] on 8.0.11 and later. A converter on `E` is what EF's own built-in
 // enum converters are, and what the array branch's element converter already was. The member
 // chains themselves are unchanged. The live query is
 // MetaObjects.IntegrationTests/ValueMappedEnumContainsPostgresTests.
