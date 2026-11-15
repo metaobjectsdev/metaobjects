@@ -261,8 +261,8 @@ public class PropertyNamingEmitSitesTests
 
         // The credential is named by its CLR property; the JSON key is the serializer's, read at run time
         // (SerializerKeys.KeysOf), never spelled here.
-        Assert.Contains("new string[] { \"XPinHash\", \"pinHash\" }", gizmo);
-        Assert.Contains("new string[] { \"XVinHash\", \"vinHash\" }", vehicle);
+        Assert.Contains("new string[] { \"XPinHash\" }", gizmo);
+        Assert.Contains("new string[] { \"XVinHash\" }", vehicle);
         Assert.Contains("SerializerKeys.KeysOf(_value, _envelope, opts, _names)", gizmo);
         Assert.DoesNotContain("OrdinalIgnoreCase))\n                o.Remove", gizmo);
 

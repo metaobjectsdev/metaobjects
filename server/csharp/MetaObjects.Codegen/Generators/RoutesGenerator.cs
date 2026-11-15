@@ -319,9 +319,6 @@ public class RoutesGenerator : PerEntityGenerator
         AppendUnauthenticatedRoutesDoc(sb, cls, isProjection);
         sb.AppendLine($"    public static IEndpointRouteBuilder Map{cls}Routes(this IEndpointRouteBuilder app, string prefix = \"/api\")");
         sb.AppendLine("    {");
-        // Refuse to start when the host's serializer contract cannot be read to strip a credential.
-        if (credentials.Count > 0)
-            sb.AppendLine($"        SerializerKeys.EnsureContract(app.ServiceProvider, new global::System.Type[] {{ typeof({readCls}) }}, {NamesLiteral(credentials)});");
         AppendDecimalRangeGroup(sb);
 
         // List — honours ?limit / ?offset / ?sort / ?withCount per api-contract.md.
@@ -658,11 +655,6 @@ public class RoutesGenerator : PerEntityGenerator
         AppendUnauthenticatedRoutesDoc(sb, baseCls, readOnly: false);
         sb.AppendLine($"    public static IEndpointRouteBuilder Map{baseCls}Routes(this IEndpointRouteBuilder app, string prefix = \"/api\")");
         sb.AppendLine("    {");
-        if (baseCredentials.Count > 0)
-        {
-            var credTypes = new[] { baseCls }.Concat(tph.Subtypes.Select(st => ValueObjectNames.TypeRef(st.Entity, ctx.Root, ctx.Config, ValueObjectNames.Namespace(baseEntity, ctx.Config))));
-            sb.AppendLine($"        SerializerKeys.EnsureContract(app.ServiceProvider, new global::System.Type[] {{ {string.Join(", ", credTypes.Select(t => $"typeof({t})"))} }}, {NamesLiteral(baseCredentials)});");
-        }
         AppendDecimalRangeGroup(sb);
 
         // --- Polymorphic list: GET /<base> (union of all subtypes; each row carries its discriminator) ---
@@ -856,13 +848,7 @@ public class RoutesGenerator : PerEntityGenerator
     // The CLR property names of an entity's credentials. The JSON key each is written under is not
     // derived here: the generated result asks the host's serializer (SerializerKeys.KeysOf).
     private static List<string> CredentialNames(MetaObject entity, GenConfig config) =>
-        entity.Fields().Where(IsCredentialField).SelectMany(f => CredentialSpellings(f, config)).ToList();
-
-    // The CLR property first (what the serializer's contract is matched on), then the field name: the
-    // normalized-spelling backstop in SerializerKeys.Strip also removes a key that spells it. Equal
-    // ignoring case when no resolver renames, so the list is then the one CLR name.
-    private static IEnumerable<string> CredentialSpellings(MetaField f, GenConfig config) =>
-        new[] { CSharpNaming.PropertyName(f, config), f.Name }.Distinct(StringComparer.OrdinalIgnoreCase);
+        entity.Fields().Where(IsCredentialField).Select(f => CSharpNaming.PropertyName(f, config)).ToList();
 
     // `string.Equals(prop.Name, "a", ...) || string.Equals(prop.Name, "b", ...)` over the keys.
     private static string KeyMatch(IEnumerable<string> keys) =>
@@ -917,7 +903,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("            var node = global::System.Text.Json.JsonSerializer.SerializeToNode(_value, _value.GetType(), opts);");
         sb.AppendLine("            // The keys are the serializer's own for these properties (naming policy, rename, attribute), never guessed from names.");
         sb.AppendLine($"            SerializerKeys.Strip(_envelope && node is global::System.Text.Json.Nodes.JsonObject env ? env[\"rows\"] : node,");
-        sb.AppendLine($"                SerializerKeys.KeysOf(_value, _envelope, opts, _names), _names);");
+        sb.AppendLine($"                SerializerKeys.KeysOf(_value, _envelope, opts, _names));");
         sb.AppendLine("            http.Response.StatusCode = _status;");
         sb.AppendLine("            if (_location is not null) http.Response.Headers.Location = _location;");
         sb.AppendLine("            await http.Response.WriteAsJsonAsync(node, opts);");
@@ -1548,7 +1534,7 @@ public class RoutesGenerator : PerEntityGenerator
         // #484 — as on a plain entity: write-denied keys ignored, credentials omitted. One shared
         // column may be declared by several subtypes, so a mark on any declaration counts.
         var deniedFields = HierarchyMarkedFields(st.Entity, hierarchy, IsApiWriteDenied);
-        var credentials = HierarchyMarkedFields(st.Entity, hierarchy, IsCredentialField).SelectMany(f => CredentialSpellings(f, config)).ToList();
+        var credentials = HierarchyMarkedFields(st.Entity, hierarchy, IsCredentialField).Select(f => CSharpNaming.PropertyName(f, config)).ToList();
 
         // Per-subtype list: GET /<base>/<seg>
         sb.AppendLine();
