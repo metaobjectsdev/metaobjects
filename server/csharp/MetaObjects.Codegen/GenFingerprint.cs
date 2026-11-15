@@ -18,6 +18,9 @@
 //                             lock and snapshots), `.gen-state` aside
 //               flag          the output-changing flags: --out, --namespace, --generators,
 //                             --template-root, --template-spec, --emit-abstract-shapes, --strict, baseline
+//               project       the one .csproj in --out or the nearest directory above it, which names
+//                             the assembly of the generated context's design-time services reference
+//                             when GenConfig.ContextAssemblyName is unset (or "missing" when there is none)
 //               template      every file under prompts/, templates/, --template-root, and the template spec
 //               extra         every path a generator declared in IGenerator.ExtraInputs
 //               format        this format's version
@@ -37,7 +40,7 @@ namespace MetaObjects.Codegen;
 public static class GenFingerprint
 {
     /// <summary>Bumped when an entry kind is added or its meaning changes, so an old file never matches.</summary>
-    public const int FormatVersion = 3;
+    public const int FormatVersion = 4;
 
     /// <summary>The stored key's file name inside <c>.metaobjects/.gen-state/</c>. One per port.</summary>
     public const string FileName = ".fingerprint-csharp.json";
@@ -166,6 +169,18 @@ public static class GenFingerprint
         Flag("emit-abstract-shapes", o.EmitAbstractShapes ? "true" : "false");
         Flag("strict", o.Strict ? "true" : "false");
         Flag("baseline", o.Baseline);
+
+        // The project the output is compiled into. With no GenConfig.ContextAssemblyName the DbContext
+        // generator reads its assembly name from this file (CSharpProjectAssembly), which may lie
+        // outside codegen/ and .metaobjects/: renaming the assembly must render again.
+        if (o.OutDir is not null)
+        {
+            var outFull = Path.GetFullPath(Path.Combine(cwd, o.OutDir));
+            if (CSharpProjectAssembly.FindProject(outFull) is { } csproj)
+                entries.AddRange(FileEntries("project", projectRoot, [csproj]));
+            else
+                entries.Add(new Entry("project", Rel(projectRoot, outFull), "missing"));
+        }
 
         // The project's own config: the nearest `.metaobjects/` at or above the project.
         for (var dir = new DirectoryInfo(Path.GetFullPath(projectRoot)); dir is not null; dir = dir.Parent)

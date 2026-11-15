@@ -601,7 +601,8 @@ vocabulary; upgrade every port together.
   cannot show the line is unnecessary (it looks for `<Context>ModelSnapshot.cs` in the context's
   project, or a migrations project that already carries the line). Without the line a changed
   start still scaffolds as RESTART, which is the accepted residual risk. An adopter's own differ
-  is kept: the services wrap it.
+  is kept: the services wrap it. The `.csproj` the name is read from is an input of `dotnet meta
+  gen`'s skip key (ADR-0062), so renaming the assembly renders again.
 - **C#, upgrade note: a self-hosted codegen runner sets `GenConfig.Dialect`.** `@sequenceStart` and
   the design-time services are emitted only when the dialect is `postgres`. `CodegenCli` reads it
   from `.metaobjects/config.json` `migrate.dialect`; a runner that builds its own `GenConfig` must
