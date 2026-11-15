@@ -125,7 +125,7 @@ public class ReportExportGenerator : IGenerator
         sb.AppendLine($"    public static {cell}[] Cells({cls} row) =>");
         sb.AppendLine("    [");
         foreach (var f in fields)
-            sb.AppendLine($"        {writer}.Cell(row.{CSharpNaming.Pascal(f.Name)}),");
+            sb.AppendLine($"        {writer}.Cell(row.{CSharpNaming.PropertyName(f, ctx.Config)}),");
         sb.AppendLine("    ];");
         sb.AppendLine();
         sb.AppendLine("    /// <summary>Writes the rows as RFC 4180 CSV.</summary>");
