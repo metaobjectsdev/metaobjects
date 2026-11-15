@@ -32,6 +32,14 @@ using MetaObjects.Loader;
 
 namespace MetaObjects.IntegrationTests.Api;
 
+/// <summary>A host variant for the TPH lane: property naming, the host JSON naming policy, a changed
+/// corpus model and the DDL it needs (see <see cref="SecretFieldsHost"/>).</summary>
+internal sealed record TphHost(
+    Func<MetaField, string>? PropertyNaming = null,
+    System.Text.Json.JsonNamingPolicy? JsonPolicy = null,
+    string? MetaJson = null,
+    string? ExtraDdl = null);
+
 internal sealed class TphGeneratedServerFactory : IAsyncDisposable
 {
     private const string GeneratedNamespace = "MetaObjects.ApiContract.TphGenerated";
@@ -48,11 +56,11 @@ internal sealed class TphGeneratedServerFactory : IAsyncDisposable
         BaseUrl = baseUrl;
     }
 
-    public static async Task<TphGeneratedServerFactory> StartAsync(PostgresContainer pg)
+    public static async Task<TphGeneratedServerFactory> StartAsync(PostgresContainer pg, TphHost? host = null)
     {
-        await TphFixture.ProvisionSchemaAsync(pg.ConnectionString);
+        await TphFixture.ProvisionSchemaAsync(pg.ConnectionString, host?.ExtraDdl);
 
-        var (assembly, baseRouteEntities) = CompileGeneratedServer();
+        var (assembly, baseRouteEntities) = CompileGeneratedServer(host);
         var dbContextType = MetaObjects.IntegrationTests.GeneratedTypes.Find(assembly, $"{GeneratedNamespace}.AppDbContext")
             ?? throw new InvalidOperationException("generated AppDbContext type not found");
 
@@ -62,6 +70,8 @@ internal sealed class TphGeneratedServerFactory : IAsyncDisposable
         // TPH host concern: serialize the discriminator enum as its string symbol.
         builder.Services.ConfigureHttpJsonOptions(o =>
             o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+        if (host?.JsonPolicy is { } policy)
+            builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.PropertyNamingPolicy = policy);
         RegisterGeneratedDbContext(builder.Services, dbContextType, pg.ConnectionString);
 
         var app = builder.Build();
@@ -90,9 +100,11 @@ internal sealed class TphGeneratedServerFactory : IAsyncDisposable
         try { await _app.DisposeAsync(); } catch { /* ignored */ }
     }
 
-    private static (Assembly Assembly, IReadOnlyList<string> RouteEntities) CompileGeneratedServer()
+    private static (Assembly Assembly, IReadOnlyList<string> RouteEntities) CompileGeneratedServer(TphHost? host)
     {
-        var loadResult = new MetaDataLoader().Load([new FileSource(ApiContractCorpusPaths.TphMetaJson)]);
+        var loadResult = new MetaDataLoader().Load([host?.MetaJson is { } json
+            ? new InMemoryStringSource(json, id: "tph-variant.json")
+            : new FileSource(ApiContractCorpusPaths.TphMetaJson)]);
         // ADR-0058 — the corpus's committed naming rule, not a hardcoded default.
         loadResult.Root.PhysicalNaming = ApiContractCorpusPaths.Naming;
         loadResult.Root.WireFormat = ApiContractCorpusPaths.Wire;
@@ -125,6 +137,7 @@ internal sealed class TphGeneratedServerFactory : IAsyncDisposable
                 // is the only lane that proves an <Entity>Names.NAME reference
                 // actually RESOLVES against a real EF Core compile.
                 IncludeNames = true,
+                PropertyNaming = host?.PropertyNaming,
             },
         };
 

@@ -48,12 +48,12 @@ internal static class TphFixture
         { "id", "type", "reference", "quantity", "couponAmount", "approver", "issuedCurrency", "autoCreatedAt", "autoUpdatedAt" };
 
     /// <summary>Create the single `auths` table on a fresh container.</summary>
-    public static async Task ProvisionSchemaAsync(string connString)
+    public static async Task ProvisionSchemaAsync(string connString, string? extraDdl = null)
     {
         await using var c = new NpgsqlConnection(connString);
         await c.OpenAsync();
         await using var cmd = c.CreateCommand();
-        cmd.CommandText = SchemaDdl;
+        cmd.CommandText = SchemaDdl + (extraDdl is null ? "" : "\n" + extraDdl);
         await cmd.ExecuteNonQueryAsync();
     }
 
