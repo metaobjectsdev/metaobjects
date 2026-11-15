@@ -907,11 +907,11 @@ public class DbContextGenerator : IGenerator
     /// out ids live rows hold, so the generated design-time services
     /// (<see cref="DesignTimeServicesFile"/>) scaffold it as SQL instead.
     /// </summary>
-    private static void EmitIdentityStartConfig(string owner, MetaObject entity, List<string> modelLines)
+    private void EmitIdentityStartConfig(string owner, MetaObject entity, List<string> modelLines)
     {
         if (IdentityStartOf(entity) is not { } start) return;
         // One entry, one statement: the guard and its body never split across a chunk boundary.
-        modelLines.Add($"        if (Database.ProviderName == \"{NpgsqlProviderName}\") modelBuilder.Entity<{owner}>().Property(x => x.{CSharpNaming.Pascal(start.Field.Name)}).HasAnnotation(" +
+        modelLines.Add($"        if (Database.ProviderName == \"{NpgsqlProviderName}\") modelBuilder.Entity<{owner}>().Property(x => x.{PropertyName(start.Field)}).HasAnnotation(" +
             $"\"{NpgsqlIdentityOptionsAnnotation}\", \"'{start.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}', '1', '', '', 'False', '1'\");");
     }
 
