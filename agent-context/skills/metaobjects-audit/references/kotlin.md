@@ -40,7 +40,7 @@ committed — confirm the plugin is wired and the goal bound to `generate-source
 ```bash
 mvn metaobjects:generate                              # codegen goal directly
 mvn compile                                           # also runs it (bound to generate-sources)
-mvn metaobjects:verify -Dmeta.verify.mode=codegen     # regen to temp, diff vs committed output
+mvn metaobjects:verify -Dmeta.verify.mode=codegen     # regen in memory, diff vs committed output
 mvn metaobjects:verify -Dmeta.verify.mode=templates   # {{field}} refs vs payload VO
 ```
 

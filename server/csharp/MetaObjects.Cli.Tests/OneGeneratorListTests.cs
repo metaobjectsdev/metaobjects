@@ -501,7 +501,7 @@ public sealed class OneGeneratorListTests : IDisposable
         Assert.Equal(["Subscriber.summary.txt"], FilesUnder(OutDir));
         Assert.Equal("name=Subscriber\n", File.ReadAllText(Path.Combine(OutDir, "Subscriber.summary.txt")));
 
-        var (verifyExit, verifyOut, verifyErr) = OwnedRunner.Run(_tmp, declared, "verify", "--codegen", MetaDir, "--out", OutDir, "--namespace", "Acme.Generated");
+        var (verifyExit, verifyOut, verifyErr) = OwnedRunner.Run(_tmp, declared, "verify", "--codegen", MetaDir, "--out", OutDir, "--namespace", "Acme.Generated", "--full");
         Assert.True(verifyExit == 0, $"exit={verifyExit}\nstdout={verifyOut}\nstderr={verifyErr}");
         Assert.Contains("OK (generated output is in sync)", verifyOut);
     }

@@ -630,6 +630,22 @@ public interface IGenerator
     /// owned copy of a whole-model generator keeps the override when it is copied.
     /// </summary>
     bool WholeModel => false;
+
+    /// <summary>
+    /// ADR-0064 — whether a run that includes this entry may be skipped when the model and everything
+    /// that generates are unchanged. <c>true</c>, the default, claims that the output depends only on
+    /// the model, the project's config, this entry's own source and the files named by
+    /// <see cref="ExtraInputs"/>. An entry that reads anything else (an environment variable, the
+    /// network, the clock) answers <c>false</c>: a run that includes it never skips, and never stores a key.
+    /// </summary>
+    bool Cacheable => true;
+
+    /// <summary>
+    /// ADR-0064 — paths (relative to the run's directory, or absolute) of files or directories this
+    /// entry reads besides the metadata and its own source. Their content joins the run's identity, so
+    /// editing one renders again. Empty by default.
+    /// </summary>
+    IReadOnlyList<string> ExtraInputs => [];
 }
 
 /// <summary>A generator entry's <c>handEdits</c> setting: what a run does with a hand-edited file.</summary>
@@ -665,6 +681,10 @@ internal sealed class HandEditsGenerator(IGenerator inner, HandEdits handEdits) 
     public int? ReportExportMaxRows => Inner.ReportExportMaxRows;
     /// <inheritdoc/>
     public bool WholeModel => Inner.WholeModel;
+    /// <inheritdoc/>
+    public bool Cacheable => Inner.Cacheable;
+    /// <inheritdoc/>
+    public IReadOnlyList<string> ExtraInputs => Inner.ExtraInputs;
     /// <inheritdoc/>
     public IEnumerable<EmittedFile> Generate(GenContext ctx) => Inner.Generate(ctx);
 }

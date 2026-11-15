@@ -76,6 +76,10 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
 
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
+    /** The template root is an input (ADR-0064): editing a template regenerates. */
+    override fun extraInputs(): List<String> =
+        if (hasArg(ARG_TEMPLATE_ROOT)) listOf(getArg(ARG_TEMPLATE_ROOT)) else emptyList()
+
     override fun execute(loader: MetaDataLoader) {
         parseArgs()
         val outRoot = Paths.get(outDir.absolutePath)

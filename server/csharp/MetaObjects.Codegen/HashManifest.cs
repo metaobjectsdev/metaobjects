@@ -264,4 +264,71 @@ public static class HashManifest
     /// <summary>Whether we recorded writing <paramref name="relPath"/> at all, whatever it holds now.</summary>
     public static bool IsRecorded(string genStateDir, string relPath, string? legacyRelPath = null) =>
         Recorded(genStateDir, relPath, legacyRelPath) is not null;
+
+    /// <summary>
+    /// ADR-0064 — one run's view of the manifest: loaded ONCE, updated in memory, saved ONCE and
+    /// only when an entry was added, changed or removed. A run that changes nothing leaves the
+    /// file (and its timestamp) alone, and a run over N files no longer rewrites it N times.
+    /// The bytes written are exactly <see cref="Save"/>'s.
+    /// </summary>
+    public sealed class Session
+    {
+        private readonly string _genStateDir;
+        private readonly Dictionary<string, string> _hashes;
+        private bool _dirty;
+
+        public Session(string genStateDir)
+        {
+            _genStateDir = genStateDir;
+            _hashes = Load(genStateDir);
+        }
+
+        /// <summary>The in-memory entries, for a reader that needs the whole set.</summary>
+        public IReadOnlyDictionary<string, string> Entries => _hashes;
+
+        /// <summary>Record that <paramref name="relPath"/> holds <paramref name="content"/>, dropping the legacy key.</summary>
+        public void Record(string relPath, string content, string? legacyRelPath = null)
+        {
+            var hash = ContentHash(content);
+            if (!_hashes.TryGetValue(relPath, out var prior) || prior != hash)
+            {
+                _hashes[relPath] = hash;
+                _dirty = true;
+            }
+            if (legacyRelPath is not null && !string.Equals(legacyRelPath, relPath, StringComparison.Ordinal)
+                && _hashes.Remove(legacyRelPath))
+                _dirty = true;
+        }
+
+        private string? Recorded(string relPath, string? legacyRelPath)
+        {
+            if (_hashes.TryGetValue(relPath, out var recorded)) return recorded;
+            if (legacyRelPath is not null && _hashes.TryGetValue(legacyRelPath, out var legacy)) return legacy;
+            return null;
+        }
+
+        /// <summary>See <see cref="HashManifest.IsPristine"/>.</summary>
+        public bool IsPristine(string relPath, string current, string? legacyRelPath = null) =>
+            Recorded(relPath, legacyRelPath) == ContentHash(current);
+
+        /// <summary>See <see cref="HashManifest.IsRecorded"/>.</summary>
+        public bool IsRecorded(string relPath, string? legacyRelPath = null) =>
+            Recorded(relPath, legacyRelPath) is not null;
+
+        /// <summary>Write the manifest when something changed since it was loaded or last saved.</summary>
+        public void Save()
+        {
+            if (!_dirty) return;
+            HashManifest.Save(_genStateDir, _hashes);
+            _dirty = false;
+        }
+
+        /// <summary>Re-read the manifest after something else (the orphan sweep) saved it.</summary>
+        public void Reload()
+        {
+            _hashes.Clear();
+            foreach (var (k, v) in Load(_genStateDir)) _hashes[k] = v;
+            _dirty = false;
+        }
+    }
 }

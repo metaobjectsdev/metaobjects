@@ -40,7 +40,7 @@ dotnet meta gen metaobjects --out Generated --namespace Acme.Generated
 dotnet meta gen --list                                     # list all registered generators
 dotnet meta gen metaobjects --out Generated --generators entity   # narrow to declared entries
 
-dotnet meta verify --codegen    # regenerate to temp, diff vs committed output
+dotnet meta verify --codegen    # regenerate in memory, diff vs committed output
 dotnet meta verify --templates  # check {{field}} refs vs payload VO (bare default)
 dotnet meta verify --deps       # shared-model dependencies vs deps.lock.json (opt-in)
 ```

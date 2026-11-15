@@ -54,10 +54,16 @@ describe("the hash manifest is written once per run", () => {
 
   test("a run that changes files rewrites the manifest once", async () => {
     await gen();
-    // Two files to write again: both are recorded, in one manifest write.
+    // Two files to write again whose records are gone: both are recorded, in one manifest
+    // write. (A file rewritten under an unchanged record changes no entry, so it writes none.)
+    const entries = JSON.parse(readFileSync(manifestPath(), "utf-8")) as Record<string, unknown>;
+    delete entries["src/generated/Post.ts"];
+    delete entries["src/generated/User.ts"];
+    writeFileSync(manifestPath(), JSON.stringify(entries));
     rmSync(join(project, "src/generated/Post.ts"));
     rmSync(join(project, "src/generated/User.ts"));
     expect(await gen()).toBe(1);
+    expect(Object.keys(JSON.parse(readFileSync(manifestPath(), "utf-8")))).toContain("src/generated/Post.ts");
   });
 
   test("a run that changes nothing leaves the manifest unwritten", async () => {

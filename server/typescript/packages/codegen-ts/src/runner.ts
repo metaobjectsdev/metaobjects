@@ -232,6 +232,15 @@ export interface RunGenResult {
   /** The jobs the orphan sweep ran (or, on a dry run, would run) with, so a caller can
    *  classify an orphan by `orphanVerdict` exactly as the sweep does. */
   orphanSweepJobs?: readonly OrphanJob[];
+  /** On a dry run only: every rendered file's absolute path and content, so a caller can
+   *  compare the output with disk in memory (`verify --codegen`, ADR-0064) with no temp tree. */
+  rendered?: ReadonlyMap<string, string>;
+  /** The absolute paths this run wrote outside the project root. The manifest records none of
+   *  them, so the stored skip key lists them and a later skip needs each to exist (ADR-0064). */
+  outsidePaths?: readonly string[];
+  /** True when the orphan sweep kept an edited orphan. Such a run is incomplete: it stores no
+   *  skip key, so the next run repeats the warning (ADR-0064). */
+  sweepRefused?: boolean;
 }
 
 /**
@@ -391,9 +400,11 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     return untrackedOutDirs.some((dir) => isNestedIn(fullPath, dir));
   };
   let untrackedCount = 0;
+  const outsidePaths: string[] = [];
   const policyFor = (fullPath: string, handEdits?: HandEdits): DecideAndWriteOpts => {
     if (outsideProject(fullPath)) {
       untrackedCount++;
+      outsidePaths.push(fullPath);
       // With no record to consult, the default baseline REFUSES any existing file that
       // differs from fresh output — so a second run over its own earlier output refused
       // every changed file, the opposite of the warning below. Such a file is overwritten
@@ -1213,6 +1224,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
         ]
       : orphanJobs;
 
+  let sweepRefused = false;
   const sweep = (dryRun: boolean): void => {
     if (projectRoot === undefined || sweepJobs.length === 0) return;
 
@@ -1266,6 +1278,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       writes.push({ path: join(projectRoot, relPath), status: "removed" });
     }
     if (result.refused.length > 0) {
+      sweepRefused = true;
       // Grouped by the generator that refused, so each message names a generator the
       // project actually registered. `orphanPolicy` is generic and apps are encouraged
       // to compose their own, so one blanket message naming `requirement-tests` would
@@ -1325,7 +1338,14 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     // A preview that hides a pending deletion is worse than no preview at all, so
     // the sweep still runs — in decide-and-report mode, touching nothing.
     sweep(true);
-    return { files: writes, warnings, conflicts, handEditsOverwrite: handEditsOverwrite(), orphanSweepJobs: sweepJobs };
+    return {
+      files: writes,
+      warnings,
+      conflicts,
+      handEditsOverwrite: handEditsOverwrite(),
+      orphanSweepJobs: sweepJobs,
+      rendered: new Map(emitted.map((f) => [f.fullPath, f.content])),
+    };
   }
 
   // The whole write phase shares one in-memory manifest, written once at its end — the
@@ -1386,7 +1406,10 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // Amendment 9), tool state included.
   if (installedEngine !== undefined && config.generators.length > 0) saveEngineVersion(genStateDir, installedEngine);
 
-  return { files: writes, warnings, conflicts, handEditsOverwrite: handEditsOverwrite(), orphanSweepJobs: sweepJobs };
+  return {
+    files: writes, warnings, conflicts, handEditsOverwrite: handEditsOverwrite(), orphanSweepJobs: sweepJobs,
+    outsidePaths, sweepRefused,
+  };
 }
 
 /**

@@ -21,6 +21,7 @@ from .name_claims import NameClaims, assert_importable_package_tree
 from .instance_artifacts import is_served_report
 from .overwrite_policy import (
     STATUS_OVERWROTE_EDIT,
+    HashManifest,
     decide_and_write,
     has_hash_manifest,
     manifest_batch,
@@ -41,6 +42,8 @@ class RunGenResult:
     #: Which generator emitted each path (``verify --codegen`` reads it to apply a
     #: generator's ``handEdits`` to the file).
     generated_by: dict[str, str] = field(default_factory=dict)
+    #: How many files were written outside the project root (never recorded).
+    untracked: int = 0
 
 
 def _objects(root: MetaData) -> list[MetaObject]:
@@ -234,58 +237,100 @@ def run_gen(
 
     refused: list[str] = []
     adopted: list[str] = []
-    untracked = 0
-    # One manifest write for the whole loop, not one per recorded file.
+    # ONE manifest session for the whole write loop (ADR-0064 decision 1): loaded here,
+    # saved once below, and only when an entry changed. A caller that runs several passes
+    # hands in its own session through ``config.manifest`` and saves it itself.
+    own_session = config.manifest is None and config.gen_state_dir is not None
+    session = config.manifest
+    if session is None and config.gen_state_dir is not None:
+        session = HashManifest(config.gen_state_dir)
+    # ``manifest_batch`` joins an outer batch (the CLI's), so the file is still written once
+    # per gen-state dir however many passes run.
     with manifest_batch(config.gen_state_dir):
-        for full, (content, by) in emitted.items():
-            result.generated_by[full] = by
-            # The out-dir-relative name: what the manifest used to be keyed by, and still
-            # what a refusal is REPORTED as (it is the name the reader sees in `--out`).
-            rel = os.path.relpath(full, config.out_dir)
-            # The manifest key. Project-root-relative when the caller knows the project, so
-            # two runs with different --out cannot collide on one key inside the single
-            # manifest that is anchored on that project. `rel` rides along as the legacy
-            # spelling so an existing manifest keeps working and converges on the new one.
-            # BOTH SIDES RESOLVED. `project_root` arrives resolved (project_root_for calls
-            # .resolve()) while `full` is built from the raw `out_dir`, and relpath between a
-            # resolved anchor and an unresolved path is not the path between the two
-            # directories — under a directory symlink it walks OUT of the project
-            # (`../link/gen/X.py`). Every key then points outside, `_is_ours_for` matches
-            # none of them, and `verify --codegen` prints `in sync (0 file(s))` over stale
-            # output. The pre-existing `relpath(full, out_dir)` was immune by accident: both
-            # sides came from the same unresolved string, so it was symmetric. Symmetry is
-            # the property, and resolving both is how it is kept deliberately.
-            key = (
-                os.path.relpath(os.path.realpath(full), config.project_root)
-                if config.project_root
-                else rel
+        try:
+            _write_all(
+                config, emitted, merge_strategy, session, result, refused, adopted
             )
-            # A file written OUTSIDE the project has no place in the project's manifest: its
-            # key would be `../`-relative and committed into `.hashes.json`. It gets the
-            # manifest-less rule a run with no project gets — written, never recorded.
-            outside = bool(config.project_root) and (key.startswith("..") or os.path.isabs(key))
-            if outside:
-                untracked += 1
-            status = decide_and_write(
-                full,
-                content,
-                merge_strategy,
-                gen_state_dir=None if outside else config.gen_state_dir,
-                rel_path=key,
-                legacy_rel_path=rel if key != rel else None,
-                baseline=config.baseline,
-                hand_edits="overwrite" if by in config.overwrite_hand_edits else "keep",
-            )
-            result.files.append((full, status))
-            if status == STATUS_OVERWROTE_EDIT:
-                result.warnings.append(
-                    f"overwrote hand-edited {rel} with fresh output (handEdits: overwrite on {by})"
-                )
-            if status == "refused":
-                refused.append(rel)
-            elif status == "adopted":
-                adopted.append(rel)
+        finally:
+            if own_session and session is not None:
+                session.save()
+    return _finish(result, config, emitted, refused, adopted, tracking_hashes, had_manifest)
 
+
+def _write_all(
+    config: GenConfig,
+    emitted: dict[str, tuple[str, str]],
+    merge_strategy: str,
+    session: HashManifest | None,
+    result: RunGenResult,
+    refused: list[str],
+    adopted: list[str],
+) -> None:
+    for full, (content, by) in emitted.items():
+        result.generated_by[full] = by
+        if config.sink is not None:
+            config.sink[full] = content
+            result.files.append((full, "new"))
+            continue
+        # The out-dir-relative name: what the manifest used to be keyed by, and still
+        # what a refusal is REPORTED as (it is the name the reader sees in `--out`).
+        rel = os.path.relpath(full, config.out_dir)
+        # The manifest key. Project-root-relative when the caller knows the project, so
+        # two runs with different --out cannot collide on one key inside the single
+        # manifest that is anchored on that project. `rel` rides along as the legacy
+        # spelling so an existing manifest keeps working and converges on the new one.
+        # BOTH SIDES RESOLVED. `project_root` arrives resolved (project_root_for calls
+        # .resolve()) while `full` is built from the raw `out_dir`, and relpath between a
+        # resolved anchor and an unresolved path is not the path between the two
+        # directories — under a directory symlink it walks OUT of the project
+        # (`../link/gen/X.py`). Every key then points outside, `_is_ours_for` matches
+        # none of them, and `verify --codegen` prints `in sync (0 file(s))` over stale
+        # output. The pre-existing `relpath(full, out_dir)` was immune by accident: both
+        # sides came from the same unresolved string, so it was symmetric. Symmetry is
+        # the property, and resolving both is how it is kept deliberately.
+        key = (
+            os.path.relpath(os.path.realpath(full), config.project_root)
+            if config.project_root
+            else rel
+        )
+        # A file written OUTSIDE the project has no place in the project's manifest: its
+        # key would be `../`-relative and committed into `.hashes.json`. It gets the
+        # manifest-less rule a run with no project gets — written, never recorded.
+        outside = bool(config.project_root) and (key.startswith("..") or os.path.isabs(key))
+        if outside:
+            result.untracked += 1
+        status = decide_and_write(
+            full,
+            content,
+            merge_strategy,
+            gen_state_dir=None if outside else config.gen_state_dir,
+            rel_path=key,
+            legacy_rel_path=rel if key != rel else None,
+            baseline=config.baseline,
+            hand_edits="overwrite" if by in config.overwrite_hand_edits else "keep",
+            manifest=None if outside else session,
+        )
+        result.files.append((full, status))
+        if status == STATUS_OVERWROTE_EDIT:
+            result.warnings.append(
+                f"overwrote hand-edited {rel} with fresh output (handEdits: overwrite on {by})"
+            )
+        if status == "refused":
+            refused.append(rel)
+        elif status == "adopted":
+            adopted.append(rel)
+
+
+def _finish(
+    result: RunGenResult,
+    config: GenConfig,
+    emitted: dict[str, tuple[str, str]],
+    refused: list[str],
+    adopted: list[str],
+    tracking_hashes: bool,
+    had_manifest: bool,
+) -> RunGenResult:
+    untracked = result.untracked
     if untracked:
         result.warnings.append(
             f"{untracked} generated file(s) were written outside the project root and are "
