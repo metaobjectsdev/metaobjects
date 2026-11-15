@@ -12,8 +12,9 @@
 # lanes with scripts/ci-lane-map.txt, prints which lanes it selected, skipped and why, and
 # runs only those (ts-fast + ts-unit for a TypeScript or web-client change; java-slow,
 # python or csharp for a change confined to that port; every selectable lane for a change
-# to fixtures, spec, scripts, workflows, agent-context or any path the map does not claim;
-# none for a docs-only change, which the gates lane covers). Selected lanes run exactly as
+# to fixtures, spec, scripts, workflows, agent-context, docs or any path the map does not
+# claim; none for a change to only the root README, CHANGELOG, CONTRIBUTING, AGENTS or CLAUDE
+# files, which the gates lane covers). Selected lanes run exactly as
 # `--only <lane> --no-integration` does, so a lane's contents are unchanged. Force every
 # lane with MO_CI_FULL=1. Before 2026-11-15 this step was always `--only ts-fast --only
 # ts-unit`, so a Java, Python or C# change was validated by the TypeScript tests and by
@@ -95,7 +96,7 @@ test:
   path_instructions:
     - path: "docs/**"
       instructions: |
-        Documentation only. There is nothing to start or drive. Return no-surface at once without running anything, the gates lane checks the documentation.
+        Documentation only. There is nothing to start or drive. Return no-surface at once without running anything: the test command already ran the lanes whose tests read these pages, and the gates lane checks the prose.
     - path: "server/typescript/**"
       instructions: |
         TypeScript port. Drive the meta CLI from the workspace on a fixture, or run bun test in only the package the change touches. Do not run the Java, Python or C# suites.

@@ -865,18 +865,9 @@ stryker_run() { # stryker_run [stryker args...] — in the metadata package, san
   return "$rc"
 }
 gate_completeness() { bun_install || return 1; stryker_run; }
-mutation_base() { # prints the base ref the diff scope compares against; empty when none resolves
-  local ref best="" best_n="" mb n
-  if [ -n "${MO_CI_MUTATION_BASE:-}" ]; then echo "$MO_CI_MUTATION_BASE"; return 0; fi
-  if [ -n "${GITHUB_BASE_REF:-}" ]; then echo "origin/$GITHUB_BASE_REF"; return 0; fi
-  for ref in origin/main $(git for-each-ref --format='%(refname:short)' 'refs/remotes/origin/release/*'); do
-    git rev-parse --verify -q "$ref^{commit}" >/dev/null 2>&1 || continue
-    mb="$(git merge-base HEAD "$ref" 2>/dev/null)" || continue
-    n="$(git rev-list --count "$mb..HEAD")"
-    if [ -z "$best_n" ] || [ "$n" -lt "$best_n" ]; then best="$ref"; best_n="$n"; fi
-  done
-  echo "$best"
-}
+# The base-ref rule is shared with --affected and lives in ci-select-lanes.sh (default_base).
+MO_SELECT_LIB=1 source "$ROOT/scripts/ci-select-lanes.sh"
+mutation_base() { default_base; }
 gate_completeness_diff() {
   if [ "${MO_CI_MUTATION_SCOPE:-diff}" = "full" ]; then
     echo "  mutation scope: FULL (MO_CI_MUTATION_SCOPE=full)"; gate_completeness; return
@@ -1382,12 +1373,11 @@ lane_showcase() { want gates && run_showcase; return 0; }
 # resolvable base, a failed git call, an unmapped path all select every selectable lane.
 # MO_CI_FULL=1 selects them all on purpose, for a caller that cannot drop the flag.
 resolve_affected_lanes() {
-  MO_SELECT_LIB=1 source "$ROOT/scripts/ci-select-lanes.sh"
   local base mb paths why="" lane
   if [ "${MO_CI_FULL:-0}" = "1" ]; then
     SELECTED_LANES="$CI_SELECTABLE_LANES"; why="MO_CI_FULL=1: the full run was asked for"
   else
-    base="${MO_CI_AFFECTED_BASE:-$(mutation_base)}"
+    base="${MO_CI_AFFECTED_BASE:-$(default_base)}"
     if [ -z "$base" ] || ! mb="$(git merge-base HEAD "$base" 2>/dev/null)"; then
       SELECTED_LANES="$CI_SELECTABLE_LANES"
       why="no merge base with '${base:-origin/main or origin/release/*}' resolves here (shallow checkout or no remote refs), so what changed is unknown"
@@ -1451,10 +1441,6 @@ run_java_reactor_steps() { if want_any java java-slow; then step_if mvn "java-re
 # use no bun, which is also how pr-ci.yml runs them, as separate jobs. A single selected
 # group runs serially, unchanged. TypeScript's two lanes stay one group, in order, because
 # ts-unit builds into the dist/ that ts-fast's build writes.
-lane_aff_ts()     { run_ts_serial_steps; }
-lane_aff_java()   { run_java_reactor_steps; }
-lane_aff_python() { run_python_steps; }
-lane_aff_csharp() { run_csharp_steps; }
 AFFECTED_PARALLEL=0
 if [ "$AFFECTED" -eq 1 ]; then
   _groups=0
@@ -1507,10 +1493,10 @@ run_or_list_lanes() {
 if [ "$AFFECTED_PARALLEL" -eq 1 ]; then
   echo ""; echo "── the selected ports run as parallel lanes ──"
   # Longest first, so with fewer slots than lanes the long ones do not queue.
-  in_lane java-slow               && lane java   "" lane_aff_java
-  in_lane python                  && lane python "" lane_aff_python
-  in_lane csharp                  && lane csharp "" lane_aff_csharp
-  in_lane_any ts-fast ts-unit     && lane ts     "" lane_aff_ts
+  in_lane java-slow               && lane java   "" run_java_reactor_steps
+  in_lane python                  && lane python "" run_python_steps
+  in_lane csharp                  && lane csharp "" run_csharp_steps
+  in_lane_any ts-fast ts-unit     && lane ts     "" run_ts_serial_steps
   run_or_list_lanes
 elif [ "$PARALLEL" -eq 0 ]; then
   # Fast tier: shared gates and TS checks, in their original order.

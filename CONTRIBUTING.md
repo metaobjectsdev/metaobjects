@@ -94,11 +94,10 @@ definition of the checks: each wrapper checks out, installs the toolchains its
 lane needs, and calls the script, so a local run is the same check a workflow
 run would be. A pull request runs the leak scan (`hygiene.yml`) and `pr-ci.yml`, which
 runs the unit tests and conformance corpora of only the ports the PR touches (a change
-under `fixtures/`, `spec/`, `scripts/`, `.github/` or `agent-context/`, or to any file
+under `fixtures/`, `spec/`, `scripts/`, `.github/`, `agent-context/` or `docs/`, or to any file
 outside a port's directory that the selector does not recognise, touches every port; a
-change only to `docs/` or to Markdown files outside those directories runs just the
-offline gates). Its `pr-ci` job is green only when every selected lane is, and a newer
-push cancels the superseded run. The docker integration suites run on release tags and on
+change only to the root prose files above runs just the offline gates). Its `pr-ci` job is
+green only when every selected lane is, and a newer push cancels the superseded run. The docker integration suites run on release tags and on
 manual dispatch. Run the script locally before opening or merging a PR, so nothing red
 reaches `main`:
 
@@ -120,10 +119,14 @@ with the table in [`scripts/ci-lane-map.txt`](scripts/ci-lane-map.txt), and prin
 selected, the lanes it skipped and the rule each path matched, so a reviewer can see what was
 not run. A change confined to one port runs that port (`ts-fast` and `ts-unit` for TypeScript
 and the web client, `java-slow`, `python`, `csharp`); a change to `fixtures/`, `spec/`,
-`scripts/` (the map included), `.github/`, `agent-context/`, `docs/recipes/` or any path no
-rule claims runs every lane, because unknown means full; a docs-only change runs no lane. It
-never runs `gates` (`--only gates` does, on every change), never the docker half, and it runs
-the selected lanes one after another. Mutation testing is as before: diff-scoped inside
+`scripts/` (the map included), `.github/`, `agent-context/`, anything under `docs/` (port
+tests read those pages) or any path no rule claims runs every lane, because unknown means
+full; a change to only the root `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `AGENTS.md`
+or `CLAUDE.md` runs no lane. It never runs `gates` (`--only gates` does, on every change) and
+never the docker half, so a change confined to the Java port skips the Java docker
+integration suites, which run on release tags and manual dispatch. When more than one port
+is selected their lanes run in parallel, as the full run's do, so a change is never slower
+than the full run; one port runs serially. Mutation testing is as before: diff-scoped inside
 `ts-fast`. `MO_CI_FULL=1 scripts/ci-local.sh --affected` forces every lane,
 `MO_CI_AFFECTED_BASE=<ref>` picks the base, and `scripts/ci-select-lanes.sh [<ref>]` explains
 a selection without running anything. The flagless run above is unchanged and is what

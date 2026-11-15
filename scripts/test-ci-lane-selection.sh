@@ -44,8 +44,10 @@ check "$ALL"             "$(lanes .no-mistakes.yaml)"                           
 check "$ALL"             "$(lanes server/python/a.py weird-new-toplevel/file.txt)"        "one unmapped path among mapped ones runs everything"
 check "$ALL"             "$(lanes docs/x.md fixtures/y.json)"                             "docs beside a shared fixture: the fixture wins"
 check "$ALL"             "$(lanes docs/recipes/generators/typescript/x.ts)"               "recipe generators are executed by port tests, so they are not docs"
-check ""                 "$(lanes docs/features/cli.md)"                                  "docs only: no test lane"
-check ""                 "$(lanes README.md CHANGELOG.md)"                                "markdown only: no test lane"
+check "$ALL"             "$(lanes docs/features/cli.md)"                                  "a docs page: port tests read docs/, so it runs everything"
+check "$ALL"             "$(lanes docs/ports/java.md)"                                    "the java port doc is read by a java test"
+check "$ALL"             "$(lanes examples/foo/README.md)"                                "markdown outside the named root files is unmapped"
+check ""                 "$(lanes README.md CHANGELOG.md CONTRIBUTING.md)"                "root prose only: no test lane, the gates lane checks it"
 check "python"           "$(lanes server/python/README.md)"                               "a port's own markdown still selects the port"
 check ""                 "$(lanes)"                                                       "empty diff: no test lane"
 
@@ -93,9 +95,9 @@ check "python" "$(run)" "git: a committed python change selects python"
 echo b >> "$tmp/repo/server/typescript/a.ts"
 check "ts-fast ts-unit python" "$(run)" "git: an uncommitted typescript change joins it"
 commit typescript
-echo b >> "$tmp/repo/docs/new.md"
-check "ts-fast ts-unit python" "$(run)" "git: an untracked docs file adds no lane"
-commit docs
+echo b >> "$tmp/repo/README.md"
+check "ts-fast ts-unit python" "$(run)" "git: an untracked root-prose file adds no lane"
+commit prose
 check "$ALL" "$(run MO_CI_FULL=1)" "MO_CI_FULL=1 selects every lane"
 check "$ALL" "$(run MO_CI_AFFECTED_BASE=no-such-ref)" "an unresolvable base selects every lane"
 # How the selection RUNS (MO_CI_LIST_ONLY prints the plan): several port groups are parallel

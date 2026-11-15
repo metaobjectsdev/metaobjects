@@ -9,8 +9,8 @@
 # Run directly it explains a selection, which is how a reviewer sees what a change skips:
 #   scripts/ci-select-lanes.sh [<base-ref>]   # the diff against the merge base with <base-ref>
 #   git diff --name-only main | scripts/ci-select-lanes.sh -   # paths on stdin
-# It prints the rule each path matched and a final `lanes:` line. With no base it uses
-# origin/main.
+# It prints the rule each path matched and a final `lanes:` line. With no base it uses the
+# one the gate uses: MO_CI_AFFECTED_BASE, else default_base (below), else origin/main.
 #
 # Fail-open policy, the one rule that matters: this may only shrink what runs when it is
 # certain. An unreadable map, an unknown lane name, an unresolvable base, a git failure and
@@ -33,7 +33,8 @@ lane_to_port() {
   esac
 }
 
-_trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; echo "${s%"${s##*[![:space:]]}"}"; }
+# _trim <var> <text>: sets <var> to <text> without surrounding whitespace (no subshell).
+_trim() { local s="$2"; s="${s#"${s%%[![:space:]]*}"}"; printf -v "$1" %s "${s%"${s##*[![:space:]]}"}"; }
 
 # Prints one `<glob>\t<lanes>\t<why>` line per rule, comments and blanks dropped.
 # Returns 1 when the map cannot be read.
@@ -42,16 +43,18 @@ lane_map_rules() {
   local line pat lanes why
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in ''|'#'*|[[:space:]]*'#'*) continue ;; esac
-    [ -n "$(_trim "$line")" ] || continue
+    _trim line "$line"; [ -n "$line" ] || continue
     IFS='|' read -r pat lanes why <<<"$line"
-    printf '%s\t%s\t%s\n' "$(_trim "$pat")" "$(_trim "$lanes")" "$(_trim "${why:-}")"
+    _trim pat "$pat"; _trim lanes "$lanes"; _trim why "${why:-}"
+    printf '%s\t%s\t%s\n' "$pat" "$lanes" "$why"
   done < "$CI_LANE_MAP"
 }
 
-# Prints a problem per line when the map is malformed. Empty output = valid.
+# lane_map_problems [<rules>]: prints a problem per line when the map is malformed; empty
+# output = valid. A caller that already read the rules passes them, so the map is read once.
 lane_map_problems() {
   local rules pat lanes why l last=""
-  rules="$(lane_map_rules)" || { echo "cannot read $CI_LANE_MAP"; return 0; }
+  if [ "$#" -gt 0 ]; then rules="$1"; else rules="$(lane_map_rules)" || { echo "cannot read $CI_LANE_MAP"; return 0; }; fi
   [ -n "$rules" ] || { echo "$CI_LANE_MAP has no rules"; return 0; }
   while IFS=$'\t' read -r pat lanes why; do
     [ -n "$pat" ]   || echo "a rule has an empty glob"
@@ -80,9 +83,15 @@ select_lanes() {
     return 0
   fi
 
-  if ! rules="$(lane_map_rules)" || [ -n "$(lane_map_problems)" ]; then
+  local problems
+  if ! rules="$(lane_map_rules)"; then
+    problems="cannot read $CI_LANE_MAP"
+  else
+    problems="$(lane_map_problems "$rules")"
+  fi
+  if [ -n "$problems" ]; then
     SELECTED_LANES="$CI_SELECTABLE_LANES"
-    SELECTION_REPORT="  the lane map is unreadable or invalid, so every lane runs: $(lane_map_problems | paste -sd';' -)"
+    SELECTION_REPORT="  the lane map is unreadable or invalid, so every lane runs: $(printf '%s\n' "$problems" | paste -sd';' -)"
     return 0
   fi
 
@@ -126,6 +135,24 @@ select_lanes() {
   done
 }
 
+# default_base — the base ref a change is measured against, empty when none resolves. The one
+# definition: the gate's mutation scope and --affected both call it, so they cannot disagree.
+# MO_CI_MUTATION_BASE and GITHUB_BASE_REF name it outright; otherwise it is whichever of
+# origin/main and origin/release/* is closest to HEAD (a release-branch change has main as a
+# distant ancestor).
+default_base() {
+  local ref best="" best_n="" mb n
+  if [ -n "${MO_CI_MUTATION_BASE:-}" ]; then echo "$MO_CI_MUTATION_BASE"; return 0; fi
+  if [ -n "${GITHUB_BASE_REF:-}" ]; then echo "origin/$GITHUB_BASE_REF"; return 0; fi
+  for ref in origin/main $(git for-each-ref --format='%(refname:short)' 'refs/remotes/origin/release/*'); do
+    git rev-parse --verify -q "$ref^{commit}" >/dev/null 2>&1 || continue
+    mb="$(git merge-base HEAD "$ref" 2>/dev/null)" || continue
+    n="$(git rev-list --count "$mb..HEAD")"
+    if [ -z "$best_n" ] || [ "$n" -lt "$best_n" ]; then best="$ref"; best_n="$n"; fi
+  done
+  echo "$best"
+}
+
 # changed_paths <merge-base>   — the paths this change touches, one per line.
 # Committed work since the merge base, plus uncommitted and untracked files, so a run in a
 # dirty tree selects for what it will actually test. --no-renames lists a rename's old path
@@ -141,7 +168,8 @@ changed_paths() {
 [ "${MO_SELECT_LIB:-0}" = "1" ] && return 0
 
 # ── CLI: explain a selection ─────────────────────────────────────────────────
-BASE_ARG="${1:-origin/main}"
+BASE_ARG="${1:-${MO_CI_AFFECTED_BASE:-$(default_base)}}"
+BASE_ARG="${BASE_ARG:-origin/main}"
 if [ "$BASE_ARG" = "-" ]; then
   _list="$(cat)"
 else

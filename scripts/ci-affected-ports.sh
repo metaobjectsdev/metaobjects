@@ -21,6 +21,8 @@ ALL="ts java python csharp"
 # the no-mistakes gate (`ci-local.sh --affected`) and the hosted workflows share ONE table.
 # This script keeps its job of answering in PORTS, the unit the workflows' `detect` jobs
 # pass on, by mapping each selected lane to its port.
+# Docs are NOT prose-only in that table (port tests read docs/), so a docs/ change selects
+# every port here too; only the named root prose files select none.
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MO_SELECT_LIB=1 source "$HERE/ci-select-lanes.sh"
 
