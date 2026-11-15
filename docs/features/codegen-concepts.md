@@ -227,6 +227,15 @@ custom iteration:
   is kept as a soft-deprecated alias — "run" is ambiguous under multi-target output;
   `perModel` names the data scope.)
 
+**`meta gen <Entity>` narrows what is written, never what a whole-model file sees.** `ctx.entities`
+is the whole model in scope (after the project's `scope`), even when the run names some entities.
+`ctx.selected` is the predicate for the named ones; it is absent when every object is selected.
+`perEntity` applies it. A file rendered from the whole model (a barrel, an index, a shared schema)
+reads `ctx.entities`, so it is the same on a narrowed run as on a full one. A generator that loops
+over `ctx.entities` itself must apply `ctx.selected` (TypeScript: `ctx.selected?.(o) ?? true`;
+Python: `ctx.is_selected(o)`), or set `sourceNode` on each per-object file, which lets the runner
+drop the files of objects the run did not name.
+
 A generator picks its scope by which helper it composes — the same way it picks
 object vs model today. Reference templates and the guidance call out the scope each
 starting point is for, so "I need a per-package service layer" maps to a clear

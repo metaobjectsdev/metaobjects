@@ -78,6 +78,14 @@ cd server/python     && pytest            # Python (in its .venv)
 Cross-language persistence / api-contract corpora (Docker + Testcontainers) run via
 `scripts/integration-test.sh`.
 
+Throwaway test databases stay off the drives. The Docker-backed launchers (Postgres, MySQL, the
+Cube stack and the `scripts/ci-local.sh` Postgres sidecar) keep each database's data directory on
+a size-capped tmpfs with Postgres durability off, and remove the container when the run ends.
+The Stryker mutation gate (`bun run conformance:mutation` in
+`server/typescript/packages/metadata`, via `scripts/run-stryker.sh`) builds its sandbox under
+`$DEV_SCRATCH` when that is set, else the system temp directory, and removes it on exit. Point
+`DEV_SCRATCH` at a RAM-backed directory to keep that scratch off disk.
+
 ### Local CI (the checks GitHub runs — run it before opening a PR)
 
 GitHub Actions is enabled on this repository. The check workflows in

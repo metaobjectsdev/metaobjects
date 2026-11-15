@@ -288,6 +288,16 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   `Cannot find module './dprint-node.linux-x64-gnu.node'` on every command that loads the
   codegen engine, `meta migrate` and `meta verify --db` included. Those schema commands, the
   binary's documented scope, now run; `meta gen` is still not supported inside the binary.
+- **Test databases stay off the drives.** Every Docker-backed database launcher in every port
+  (the TypeScript `integration-tests` Postgres, MySQL and Cube containers; the Python MySQL and
+  Postgres launchers; the C# MySQL and Postgres runners; the Java and Kotlin Testcontainers
+  classes; the services and sidecars in the integration-test and local-CI workflows and
+  `scripts/ci-local.sh`) mounts a 2 GiB tmpfs at the image's `VOLUME` path, and Postgres runs
+  with `fsync`, `synchronous_commit` and `full_page_writes` off. Each container is removed when
+  its run ends: by `--rm`, by Ryuk when a killed process never reaches its own cleanup, and by an
+  exit or SIGTERM handler that also removes anonymous volumes. The Stryker mutation gate for the
+  metadata package builds its sandbox under `$DEV_SCRATCH` (the system temp directory when unset)
+  and stops its test runners with it. Contributor steps are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Deprecated
 
@@ -296,6 +306,34 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   the TypeScript and Python shims. Use `ValueObjectNames.TypeName(obj, root)`.
 
 ### Fixed
+
+- **`gen <Entity>` no longer shrinks the files rendered from the whole model.** Narrowing a run
+  to some entities (`meta gen Post`, Python `metaobjects gen --entities Post`) handed every
+  generator only the named entities, so a whole-model file (the TypeScript barrel and Cube
+  model, Python's shared enums module, duration codec and report writers, and the object index
+  Python's entity and route generators resolve relations through) was rendered from just them. A narrowed run now writes only the named entities' own files,
+  and every whole-model file it writes is byte-identical to a full run's. A generator sees the
+  whole model in `ctx.entities` and the narrowing as `ctx.selected`; `perEntity` (`per_entity`)
+  applies it. A Python target's declared `entities` still bounds that target's model. C# and
+  Java take no entity filter and were not affected. Two consequences to expect: a narrowed run
+  checks the whole model as a full run does (a sourced object with no `dialect`, colliding
+  collection names), because the files it writes are rendered from it; and an owned generator
+  that writes one file per object by looping over `ctx.entities` itself, instead of through
+  `perEntity`, now sees every object, so it should set each file's `sourceNode` (the runner
+  then drops the unnamed objects' files) or apply `ctx.selected`.
+- **`gen` writes `.hashes.json` once per run, and not at all when nothing changed.** TypeScript,
+  Python and C# re-read and re-wrote the whole manifest after every generated file, so a run of
+  N files wrote it N times; they now hold it in memory for the run and write it once, as Java
+  already did. Python's `metaobjects gen` output changes, which matters to a script that parses it:
+  it now lists only the files it wrote, and its summary line counts the files it left as they
+  were (unchanged or skipped) separately instead of reporting them as written. A run that
+  fails still records the files it wrote before failing, and a failed manifest write then no
+  longer hides the error that stopped the run.
+- **`meta gen` loads the metadata once.** The unknown-attribute warning re-loaded the project
+  strictly on every run; it now reuses the generation load and parses strictly again only when
+  the lenient load reported an unknown bare key. `meta gen` also no longer imports a database
+  driver: the migration advice it prints reads `@metaobjectsdev/migrate-ts/offline`, a new
+  subpath with the schema builder and diff and none of the introspection or apply code.
 
 - **A projection view keeps the columns a reverse `@via` hop feeds.** An origin `@via` that walks
   an `identity.reference` backwards (`Project.timeEntries`, #560) loaded, but `meta migrate` left

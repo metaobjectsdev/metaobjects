@@ -90,7 +90,7 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
     generate: async (ctx) => {
       // One note per run naming every TPH subtype held back, so the gap is visible at
       // `meta gen` time rather than discovered as missing endpoints in production.
-      const skipped = ctx.entities.filter((e) => passesOtherGates(e) && isTphSubtype(e));
+      const skipped = ctx.entities.filter((e) => (ctx.selected?.(e) ?? true) && passesOtherGates(e) && isTphSubtype(e));
       if (skipped.length > 0) {
         ctx.warn(
           `no Hono routes emitted for the TPH subtype(s) ${skipped.map((e) => e.name).join(", ")} — ` +

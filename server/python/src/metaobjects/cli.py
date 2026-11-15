@@ -113,8 +113,11 @@ from metaobjects.requirement_check import (
 )
 from metaobjects.codegen.config import DEFAULT_API_PREFIX, GenConfig
 from metaobjects.codegen.overwrite_policy import (
+    STATUS_SKIPPED,
+    STATUS_UNCHANGED,
     has_hash_manifest,
     is_pristine_generated,
+    manifest_batch,
     read_generated_hash,
 )
 from metaobjects.codegen.project_config import (
@@ -929,6 +932,8 @@ def _run_suite(
     output_layout: str = "flat",
     overwrite_hand_edits: frozenset[str] = frozenset(),
     overwrite_paths_out: set[str] | None = None,
+    unchanged_out: set[str] | None = None,
+    entity_scope: list[str] | None = None,
 ) -> list[str]:
     """Run a generator suite against an ALREADY-LOADED ``root`` into ``out_dir``.
 
@@ -988,7 +993,8 @@ def _run_suite(
         raise NoGeneratorsSelectedError
     suite = generators
     result = run_gen(
-        config, root, generators=suite, entity_filter=entity_filter, select=select, in_ledger=in_ledger
+        config, root, generators=suite, entity_filter=entity_filter, select=select,
+        in_ledger=in_ledger, entity_scope=entity_scope,
     )
     if overwrite_paths_out is not None:
         overwrite_paths_out.update(
@@ -1002,6 +1008,13 @@ def _run_suite(
     # and only the ones that own an exit code care about the refusals.
     if refused_out is not None:
         refused_out.extend(path for path, status in result.files if status == "refused")
+    # Emitted but not written: the file already held this output, or skip-existing kept
+    # it. Still in the return value (the orphan sweep and the cross-target guard need every
+    # emitted path), but a caller reporting what it WROTE must leave these out.
+    if unchanged_out is not None:
+        unchanged_out.update(
+            path for path, status in result.files if status in (STATUS_UNCHANGED, STATUS_SKIPPED)
+        )
     return [path for path, status in result.files if status != "refused"]
 
 
@@ -1528,13 +1541,15 @@ def _narrow_entities(
     targets: list[TargetConfig], args: argparse.Namespace
 ) -> list[TargetConfig]:
     """Apply ``--entities`` to each target: only the named entities are emitted, and a
-    target that already lists ``entities`` keeps only the names in both."""
+    target that already lists ``entities`` keeps only the names in both. The target's
+    ``entities`` (its model) is left alone: the narrowing is a ``run_selection``."""
     names = _parse_entities(getattr(args, "entities", None))
     if names is None:
         return targets
     return [
         dataclasses.replace(
-            t, entities=names if t.entities is None else [n for n in t.entities if n in names]
+            t,
+            run_selection=names if t.entities is None else [n for n in t.entities if n in names],
         )
         for t in targets
     ]
@@ -1569,6 +1584,7 @@ def _run_gen_targets(
     selection: list[str] | None = None,
     targeted_out: set[str] | None = None,
     overwrite_paths_out: set[str] | None = None,
+    unchanged_out: set[str] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Run each target's declared generators into its ``outDir``. Returns (all_written, errors).
 
@@ -1690,19 +1706,21 @@ def _run_gen_targets(
         try:
             if gens:
                 written = _run_suite(
-                    root, out_dir, gens, t.entities, gen_state_dir=gen_state_dir,
+                    root, out_dir, gens, t.written_entities, gen_state_dir=gen_state_dir,
                     column_naming=column_naming, project_root=project_root, baseline=baseline,
                     refused_out=refused_out, select=select, in_ledger=in_ledger,
                     api_prefix=config.api_prefix, output_layout=config.output_layout,
                     overwrite_hand_edits=overwrite, overwrite_paths_out=overwrite_paths_out,
+                    unchanged_out=unchanged_out, entity_scope=t.entities,
                 )
             if spec_gens:
                 written = written + _run_suite(
-                    root, out_dir, spec_gens, t.entities, emit_package_init=False,
+                    root, out_dir, spec_gens, t.written_entities, emit_package_init=False,
                     gen_state_dir=gen_state_dir, column_naming=column_naming,
                     project_root=project_root, baseline=baseline, refused_out=refused_out,
                     select=select, in_ledger=in_ledger, api_prefix=config.api_prefix,
-                    output_layout=config.output_layout,
+                    output_layout=config.output_layout, unchanged_out=unchanged_out,
+                    entity_scope=t.entities,
                 )
         except ValueError as exc:  # intra-target run_gen collision → clean error
             errors.append(f"target '{t.name}': {exc}")
@@ -1798,43 +1816,49 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
     if _refuse_narrowing(args, selection, root, "metaobjects gen"):
         return 2
     for t in targets:
-        imported_refusal = _refuse_imported_entities(t.entities, root, collection)
+        imported_refusal = _refuse_imported_entities(t.written_entities, root, collection)
         if imported_refusal is not None:
             print(imported_refusal, file=sys.stderr)
             return 2
 
     refused: list[str] = []
     targeted: set[str] = set()
+    unchanged: set[str] = set()
     baseline = getattr(args, "baseline", None) or "default"
     gen_state_dir = gen_state_dir_for(config.metadata_dir())
     project_root = str(project_root_for(config.metadata_dir()))
-    written, errors = _run_gen_targets(
-        config, targets, root,
-        gen_state_dir=gen_state_dir,
-        project_root=project_root,
-        baseline=baseline,
-        refused_out=refused,
-        select=collection.in_scope,
-        in_ledger=collection.in_ledger,
-        build_ctx=GeneratorBuildContext(template_root),
-        column_naming=column_naming,
-        selection=selection,
-        targeted_out=targeted,
-    )
-    if errors:
-        for msg in errors:
-            print(f"error: {msg}", file=sys.stderr)
-        return 1
-    for path in written:
-        print(path)
-    removed = _sweep_orphans_after_gen(
-        args, config, targets, targeted, selection, baseline, gen_state_dir, project_root,
-        emitted={*written, *refused},
-    )
+    # Every target and the orphan sweep share one in-memory manifest: one write per run.
+    with manifest_batch(gen_state_dir):
+        written, errors = _run_gen_targets(
+            config, targets, root,
+            gen_state_dir=gen_state_dir,
+            project_root=project_root,
+            baseline=baseline,
+            refused_out=refused,
+            select=collection.in_scope,
+            in_ledger=collection.in_ledger,
+            build_ctx=GeneratorBuildContext(template_root),
+            column_naming=column_naming,
+            selection=selection,
+            targeted_out=targeted,
+            unchanged_out=unchanged,
+        )
+        if errors:
+            for msg in errors:
+                print(f"error: {msg}", file=sys.stderr)
+            return 1
+        changed = [path for path in written if path not in unchanged]
+        for path in changed:
+            print(path)
+        removed = _sweep_orphans_after_gen(
+            args, config, targets, targeted, selection, baseline, gen_state_dir, project_root,
+            emitted={*written, *refused},
+        )
     for path in removed:
         print(f"removed {path}")
     print(
-        f"metaobjects gen: wrote {len(written)} file(s) across {len(targets)} target(s)."
+        f"metaobjects gen: wrote {len(changed)} file(s) across {len(targets)} target(s)."
+        + (f" {len(unchanged)} file(s) left as they were." if unchanged else "")
         + (f" Removed {len(removed)} file(s) no generator emits any more." if removed else "")
     )
     if refused:
@@ -2131,7 +2155,7 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
     if _refuse_narrowing(args, selection, root, "metaobjects verify --codegen"):
         return 2
     for t in closure:
-        imported_refusal = _refuse_imported_entities(t.entities, root, collection)
+        imported_refusal = _refuse_imported_entities(t.written_entities, root, collection)
         if imported_refusal is not None:
             print(imported_refusal, file=sys.stderr)
             return 2

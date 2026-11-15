@@ -277,8 +277,9 @@ def test_narrowed_run_on_only_the_projection_still_materializes_the_shared_enum(
 ) -> None:
     """A run narrowed to ONLY ``TicketSummary`` (a projection, via
     ``entity_filter``) must still emit ``Priority`` — must-generate turns on
-    whether any SURVIVING consumer references the shared type, never on the
-    hosting object's subtype."""
+    whether any consumer references the shared type, never on the hosting
+    object's subtype. ``enums.py`` is a whole-model file: the narrowing decides
+    which per-entity files are written, not what it holds."""
     root = MetaDataLoader.from_directory(_FIXTURE_DIR).root
     out_dir = tmp_path / "generated_narrow"
     config = GenConfig(out_dir=str(out_dir), provided_enum_namespace="acme_ext.enums")
@@ -287,7 +288,8 @@ def test_narrowed_run_on_only_the_projection_still_materializes_the_shared_enum(
     assert (out_dir / "enums.py").exists(), "narrowing to TicketSummary must still emit enums.py"
     enums_src = (out_dir / "enums.py").read_text()
     assert enums_src.count("class Priority(str, Enum):") == 1
-    assert "class Money" not in enums_src, "Money has no consumer in the narrowed run"
+    assert "class Money(str, Enum):" in enums_src, "enums.py renders from the whole model"
+    assert not (out_dir / "Ticket.py").exists(), "only the named entity's own file is written"
 
     ticket_summary_src = (out_dir / "TicketSummary.py").read_text()
     assert "level: Priority" in ticket_summary_src

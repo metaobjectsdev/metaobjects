@@ -1047,10 +1047,14 @@ start_pg_sidecar() {
     fi
     # Clear a stopped leftover of an MO_PG_SIDECAR_NAME override, then start fresh.
     docker rm -f -v "$name" >/dev/null 2>&1 || true
+    # The data directory (the image's VOLUME) is a size-capped tmpfs and durability is off:
+    # a throwaway database never touches the drives, and leaves no anonymous volume behind.
     if ! docker run -d --name "$name" --label "$MO_CI_SESSION_LABEL" \
+        --tmpfs /var/lib/postgresql/data:rw,size=2g \
         -e POSTGRES_USER=metaobjects -e POSTGRES_PASSWORD=metaobjects \
         -e POSTGRES_DB=metaobjects_test \
-        -p 127.0.0.1::5432 postgres:16 >/dev/null 2>&1; then
+        -p 127.0.0.1::5432 postgres:16 \
+        -c fsync=off -c synchronous_commit=off -c full_page_writes=off >/dev/null 2>&1; then
       echo "  ⚠ could not start the Postgres sidecar — falling back to per-scenario" >&2
       echo "    containers (slow). Integration results are unaffected." >&2
       return 0

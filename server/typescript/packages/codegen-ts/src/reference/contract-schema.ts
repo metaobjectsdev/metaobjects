@@ -96,7 +96,7 @@ function strictFiles(objects: readonly MetaObject[], root: MetaRoot): EmittedFil
 
 function generateSchemaFiles(ctx: GenContext, options: JsonSchemaFileOptions): EmittedFile[] {
   const root = ctx.loadedRoot;
-  const objects = contractObjects(ctx.entities.filter(ctx.matches), root);
+  const objects = contractObjects(ctx.entities.filter((o) => ctx.matches(o) && (ctx.selected?.(o) ?? true)), root);
   return options.profile === "strict" ? strictFiles(objects, root) : canonicalFiles(objects, root);
 }
 

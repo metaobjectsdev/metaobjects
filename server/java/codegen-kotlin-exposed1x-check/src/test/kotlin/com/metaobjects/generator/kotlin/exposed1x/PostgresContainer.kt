@@ -50,12 +50,15 @@ class PostgresContainer : AutoCloseable {
             // Docker assigns the host port at bind time (`-p 127.0.0.1::5432`, read back with
             // `docker port`): a port picked, released and handed to docker races parallel lanes.
             jdbcUrl = try {
+                ReaperLabels.removeAtExit(name)
                 runDocker(
                     *ReaperLabels.dockerRun(
                         "--name", name,
+                        *ReaperLabels.ramVolume(DATA_DIR),
                         "-e", "POSTGRES_PASSWORD=$PG_PASSWORD",
                         "-p", "127.0.0.1::5432",
                         IMAGE,
+                        *ReaperLabels.POSTGRES_DURABILITY_OFF,
                     ),
                 )
                 val url = "jdbc:postgresql://127.0.0.1:${publishedPort(name, 5432)}/postgres"
@@ -82,6 +85,7 @@ class PostgresContainer : AutoCloseable {
         } catch (_: RuntimeException) {
             // Container may already be gone; ignore.
         }
+        ReaperLabels.forget(name!!)
     }
 
     private fun execAdmin(sql: String) {
@@ -129,6 +133,7 @@ class PostgresContainer : AutoCloseable {
 
     private fun forceRemove() {
         try { runDocker("rm", "-f", "-v", name!!) } catch (_: RuntimeException) { /* already gone */ }
+        ReaperLabels.forget(name!!)
     }
 
     private fun inspectState(): String = try {
@@ -146,6 +151,8 @@ class PostgresContainer : AutoCloseable {
     companion object {
         private const val SHARED_PG_URL_ENV = "METAOBJECTS_TEST_PG_URL"
         private const val IMAGE = "postgres:16-alpine"
+        /** The image's VOLUME (`docker image inspect`); a tmpfs there keeps the data in RAM. */
+        private const val DATA_DIR = "/var/lib/postgresql/data"
         private const val PG_USER = "postgres"
         private const val PG_PASSWORD = "test"
         private val READY_TIMEOUT_S: Int =

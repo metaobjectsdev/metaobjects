@@ -468,7 +468,8 @@ targets:
 - **`--config <path>`** picks the config file explicitly on either command; without it both
   look for `./metaobjects.config.yaml` in the current directory. **No config is an error**:
   `gen` and `verify --codegen` print `no metaobjects.config.yaml`, exit 2 and write nothing.
-- **Run options still apply to the list:** `--entities` (narrows each target's entities),
+- **Run options still apply to the list:** `--entities` (narrows the entities each target writes; a
+  target's own `entities` still bounds its model),
   `--provider` (added to `providers`), `--templates` (`--prompts` on `verify`), `--baseline`.
   Column naming is not a run option: it is `naming` in `.metaobjects/config.json`, which every
   port reads, and `--column-naming` is refused
