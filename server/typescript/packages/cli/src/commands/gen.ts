@@ -229,11 +229,16 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   // successful run and every file it recorded exists. Nothing renders and nothing is written,
   // the manifest and the stored key included. `--force` (and every mode that does not write)
   // never skips.
+  //
+  // rc.21 part B (I2): an extender whose view now returns every row of a TPH base. Said before
+  // the skip, so a skipped run still says it (as `dotnet meta gen` does): the finding is about the
+  // model, and a warning that stops appearing once nothing changes is one the user never fixes.
+  warnings.push(...warnWidenedExtenders(metadata, (line) => log.warn(line)));
   const skipInputs = skipBase !== undefined ? withModel(skipBase, modelHashTree(metadata)) : undefined;
   if (skipInputs !== undefined && genMaySkip(flags)) {
     const verdict = decideGenSkip(skipInputs);
     if (verdict.skip) {
-      await reportGenSkip(fmt, verdict.recorded.length);
+      await reportGenSkip(fmt, verdict.recorded.length, warnings);
       return 0;
     }
   }
@@ -247,8 +252,6 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     ? [...unknownAttrFindings, UNKNOWN_ATTR_GEN_ADVICE]
     : [];
   for (const w of unknownAttrs) { log.warn(`warning: ${w}`); warnings.push(w); }
-  // rc.21 part B (I2): an extender whose view now returns every row of a TPH base.
-  warnings.push(...warnWidenedExtenders(metadata, (line) => log.warn(line)));
 
   // The schema settings `meta migrate` builds with, for the Prisma schema, the schema page and
   // the migrate advice. A conventions preset that does not resolve is a config error here as in

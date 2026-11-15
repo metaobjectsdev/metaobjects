@@ -30,7 +30,7 @@ function model(scoped: boolean, abstract = false): string {
   });
 }
 
-function setupRepo(scoped: boolean, abstract = false): string {
+function setupRepo(scoped: boolean, abstract = false, generators = "[]"): string {
   mkdirSync(WORKSPACE_TMP, { recursive: true });
   const root = mkdtempSync(join(WORKSPACE_TMP, "gen-extender-scope-"));
   mkdirSync(join(root, "metaobjects"), { recursive: true });
@@ -44,7 +44,7 @@ export default defineConfig({
   dialect: "postgres",
   dbImport: "~/db",
   extStyle: "none",
-  generators: [],
+  generators: ${generators},
 });
 `);
   return root;
@@ -68,6 +68,21 @@ afterEach(() => {
 });
 
 describe("meta gen — the widened-extender warning is printed", () => {
+  test("a skipped run still prints it, as dotnet meta gen does", async () => {
+    // A wired generator, so the first run stores the key the second one skips on.
+    const root = setupRepo(false, false, `["entity"]`);
+    try {
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      err.length = 0;
+      out.length = 0;
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      expect([...out, ...err].join("\n")).toContain("nothing changed since the last meta gen");
+      expect(err.join("\n")).toContain("object.projection TruckRow");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("names the projection, the field and the remedy; exit code unchanged", async () => {
     const root = setupRepo(false);
     try {
