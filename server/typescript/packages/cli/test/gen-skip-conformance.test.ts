@@ -329,7 +329,8 @@ describe("an orphan the sweep refuses to delete (ADR-0062)", () => {
     const p = makeProject();
     expect(await gen(p)).toBe(0);
     expect(existsSync(stateFile(p))).toBe(true);
-    const orphan = join(p.root, "generated", "Customer.ts");
+    // The default outputLayout is "package": the crm package's module lives under its directory.
+    const orphan = join(p.root, "generated", "crm", "Customer.ts");
     expect(existsSync(orphan)).toBe(true);
     append(orphan, "// mine\n");
     unlinkSync(join(p.root, "metaobjects", "meta.crm.json"));
