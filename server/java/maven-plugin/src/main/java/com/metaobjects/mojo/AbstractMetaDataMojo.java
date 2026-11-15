@@ -574,7 +574,8 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
     }
 
     /**
-     * Decide, before anything loads, whether this run can be skipped. Returns {@code true} to
+     * Decide whether this run can be skipped: the metadata is loaded (the model key is made
+     * of it, via {@link ModelKey#of}) and nothing has rendered yet. Returns {@code true} to
      * skip. Otherwise it deletes the stored fingerprint, so a run that fails halfway can never
      * leave one claiming its half-written output is current.
      */
