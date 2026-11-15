@@ -26,7 +26,7 @@ export const key = (name: string): string => (IDENTIFIER.test(name) ? name : str
 
 /** An object literal under construction; members print in the order they are set. */
 export class Props extends Group {
-  private readonly entries: Piece[];
+  protected readonly entries: Piece[];
   constructor() {
     const entries: Piece[] = [];
     super("{", entries, "}", true);
@@ -47,13 +47,15 @@ export class Props extends Group {
 /** A new, empty object literal. */
 export const props = (): Props => new Props();
 
-interface Named {
+/** One named import, keyed by its local name. */
+export interface NamedImport {
   readonly exported: string;
   typeOnly: boolean;
 }
 
-interface ModuleImports {
-  readonly named: Map<string, Named>;
+/** Everything imported from one module. */
+export interface ModuleImports {
+  readonly named: Map<string, NamedImport>;
   defaultName?: string;
   readonly namespaces: Set<string>;
   sideEffect: boolean;
@@ -61,11 +63,16 @@ interface ModuleImports {
 
 export interface TsWriterOptions extends CodeWriterOptions {}
 
+/**
+ * The TypeScript writer. Like `CodeWriter` it is built to be extended: each section of the
+ * file (`writeHeader`, `writeImports`, `writeImport`, `orderModules`) is its own overridable
+ * method, and none of them is a stability contract.
+ */
 export class TsWriter extends CodeWriter {
-  private readonly modules = new Map<string, ModuleImports>();
+  protected readonly modules = new Map<string, ModuleImports>();
   /** Local name -> the module it was imported from, so one name cannot come from two. */
-  private readonly locals = new Map<string, string>();
-  private readonly headLines: string[] = [];
+  protected readonly locals = new Map<string, string>();
+  protected readonly headLines: string[] = [];
 
   constructor(options: TsWriterOptions = {}) {
     super({ indent: "  ", width: 120, trailingComma: true, ...options });
@@ -127,15 +134,36 @@ export class TsWriter extends CodeWriter {
   }
 
   override toString(): string {
-    const head = new CodeWriter({ indent: this.indent, width: this.width, trailingComma: this.trailingComma });
-    for (const l of this.headLines) head.line(l);
+    const head = this.sectionWriter();
+    this.writeHeader(head);
     head.blank();
-    for (const from of sortModules([...this.modules.keys()])) this.writeImport(head, from, this.modules.get(from)!);
+    this.writeImports(head);
     const top = head.toString();
     const body = super.toString();
     if (top === "") return body;
     if (body === "") return top;
     return `${top}\n${body}`;
+  }
+
+  /** The writer the header and import sections are laid out with: same options, no dialect. */
+  protected sectionWriter(): CodeWriter {
+    return new CodeWriter({ indent: this.indent, width: this.width, trailingComma: this.trailingComma });
+  }
+
+  /** The `header(...)` lines, as given. */
+  protected writeHeader(w: CodeWriter): void {
+    for (const l of this.headLines) w.line(l);
+  }
+
+  /** Every collected import, one module at a time in `orderModules` order. */
+  protected writeImports(w: CodeWriter): void {
+    for (const from of this.orderModules([...this.modules.keys()])) this.writeImport(w, from, this.modules.get(from)!);
+  }
+
+  /** Package imports first, then relative ones; each group in code-unit order. */
+  protected orderModules(modules: readonly string[]): string[] {
+    const relative = (m: string) => m.startsWith(".");
+    return [...modules.filter((m) => !relative(m)).sort(byCodeUnit), ...modules.filter(relative).sort(byCodeUnit)];
   }
 
   protected override piece(p: unknown): Piece {
@@ -155,7 +183,7 @@ export class TsWriter extends CodeWriter {
     return super.piece(p);
   }
 
-  private harvest(fragment: Code): string {
+  protected harvest(fragment: Code): string {
     const todo: unknown[] = [fragment];
     for (let i = 0; i < todo.length; i++) {
       const n = todo[i];
@@ -166,7 +194,7 @@ export class TsWriter extends CodeWriter {
     return fragment.toCodeString([]);
   }
 
-  private record(i: Import): void {
+  protected record(i: Import): void {
     if (i instanceof ImportsName) this.addNamed(i.sourceSymbol ?? i.symbol, i.symbol, i.source, i.typeImport === true);
     else if (i instanceof ImportsDefault) this.useDefault(i.symbol, i.source);
     else if (i instanceof ImportsAll) this.useNamespace(i.symbol, i.source);
@@ -174,7 +202,7 @@ export class TsWriter extends CodeWriter {
     // An implicit import (`imp("Foo")` with no module) names a global and imports nothing.
   }
 
-  private addNamed(exported: string, local: string, from: string, typeOnly: boolean): string {
+  protected addNamed(exported: string, local: string, from: string, typeOnly: boolean): string {
     this.claim(local, from);
     const named = this.module(from).named;
     const seen = named.get(local);
@@ -185,7 +213,7 @@ export class TsWriter extends CodeWriter {
     return local;
   }
 
-  private claim(local: string, from: string): void {
+  protected claim(local: string, from: string): void {
     const owner = this.locals.get(local);
     if (owner !== undefined && owner !== from) {
       throw new WriterError(WRITER_ERRORS.importConflict, `${local} is imported from both ${str(owner)} and ${str(from)}`);
@@ -193,7 +221,7 @@ export class TsWriter extends CodeWriter {
     this.locals.set(local, from);
   }
 
-  private module(from: string): ModuleImports {
+  protected module(from: string): ModuleImports {
     let m = this.modules.get(from);
     if (m === undefined) {
       m = { named: new Map(), namespaces: new Set(), sideEffect: false };
@@ -202,7 +230,7 @@ export class TsWriter extends CodeWriter {
     return m;
   }
 
-  private writeImport(w: CodeWriter, from: string, m: ModuleImports): void {
+  protected writeImport(w: CodeWriter, from: string, m: ModuleImports): void {
     const tail = ` from ${str(from)};`;
     for (const ns of [...m.namespaces].sort(byCodeUnit)) w.line(`import * as ${ns}${tail}`);
     const names = [...m.named].sort(([a], [b]) => byCodeUnit(a, b));
@@ -229,9 +257,3 @@ function looksLikeForeignPoet(p: unknown): boolean {
 }
 
 const byCodeUnit = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
-
-/** Package imports first, then relative ones; each group in code-unit order. */
-function sortModules(modules: string[]): string[] {
-  const relative = (m: string) => m.startsWith(".");
-  return [...modules.filter((m) => !relative(m)).sort(byCodeUnit), ...modules.filter(relative).sort(byCodeUnit)];
-}

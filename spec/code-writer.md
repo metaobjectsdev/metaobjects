@@ -121,6 +121,22 @@ units. The comparison includes the indent, and a line exactly `width` long fits.
   with `.set(name, value)` and `.add(member)`) and `key` (an object key, quoted only when it is
   not an identifier).
 
+## Extension by subclassing
+
+A writer and the generators built on it are meant to be extended in place
+([ADR-0063](decisions/ADR-0063-generators-own-layout.md), item 7):
+
+- A writer class is not final. Every method is public or protected, never private, so a
+  subclass can override one step and keep the rest. In TypeScript the core's steps include
+  `piece` (what a part becomes), `breakAt` (where a line that does not fit breaks) and `fits`.
+  `TsWriter` adds `writeHeader`, `writeImports`, `writeImport` and `orderModules`.
+- A reference generator is a class whose output comes from one overridable method per
+  meaningful piece: the file header, the imports, and each section or member. An adopter
+  overrides the method for the piece it wants changed, and passes its subclass where the
+  reference generator was configured.
+- Overridable methods are not a stability contract. They may change between minor versions.
+  The conformance cases pin the output of the methods as shipped, not their names.
+
 ## Fixture format
 
 Each case in `fixtures/writer-conformance/cases/` is one JSON file:

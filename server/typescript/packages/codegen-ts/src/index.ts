@@ -218,7 +218,18 @@ export {
   type Piece,
   type WriterErrorCode,
 } from "./writer/code-writer.js";
-export { arr, call, key, Props, props, str, TsWriter, type TsWriterOptions } from "./writer/ts-writer.js";
+export {
+  arr,
+  call,
+  key,
+  type ModuleImports,
+  type NamedImport,
+  Props,
+  props,
+  str,
+  TsWriter,
+  type TsWriterOptions,
+} from "./writer/ts-writer.js";
 
 export {
   renderFindByIdFn,

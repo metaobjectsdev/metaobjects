@@ -136,3 +136,20 @@ describe("TsWriter expression helpers", () => {
     expect(errorCode(() => w.useDefault("R", "react"))).toBe(WRITER_ERRORS.importConflict);
   });
 });
+
+describe("the writer is extended by subclassing (ADR-0063)", () => {
+  test("a subclass overrides one method and keeps everything else", () => {
+    // An adopter who wants relative imports first changes only the ordering step.
+    class RelativeFirst extends TsWriter {
+      protected override orderModules(modules: readonly string[]): string[] {
+        const base = super.orderModules(modules);
+        return [...base.filter((m) => m.startsWith(".")), ...base.filter((m) => !m.startsWith("."))];
+      }
+    }
+    const w = new RelativeFirst();
+    w.line("const x = ", w.use("x", "zod"), "(", w.use("y", "./local"), ");");
+    expect(w.toString()).toBe(
+      ['import { y } from "./local";', 'import { x } from "zod";', "", "const x = x(y);", ""].join("\n"),
+    );
+  });
+});

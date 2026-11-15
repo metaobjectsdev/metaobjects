@@ -19,7 +19,11 @@ here.**
   120 columns, otherwise one item per line. `TsWriter` accepts ts-poet `Code` fragments and
   collects their `imp()` imports, so a generator can move to it one function at a time. The
   writer is exported from the package root and from `@metaobjectsdev/codegen-ts/engine`, so an
-  owned (ejected) generator can use it too. The contract is `spec/code-writer.md`, pinned by
+  owned (ejected) generator can use it too. Both classes are built to be extended: every
+  method is public or protected, so a subclass can override one step, such as import order,
+  and keep the rest. ADR-0063 also rules that reference generators will be extended the same
+  way, one overridable method per piece of output, without promising those methods are stable
+  between minor versions. The contract is `spec/code-writer.md`, pinned by
   the new `fixtures/writer-conformance/` corpus. No shipped generator uses the writer yet, so
   generated output does not change in this release.
 
