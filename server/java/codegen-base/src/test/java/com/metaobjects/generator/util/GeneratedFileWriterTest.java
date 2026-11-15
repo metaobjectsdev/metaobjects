@@ -471,4 +471,92 @@ public class GeneratedFileWriterTest {
         }
         assertEquals(GENERATED_BODY, Files.readString(outside));
     }
+
+    // ---- ADR-0064: identical bytes are never rewritten, and the manifest is written once ----
+
+    private static final java.nio.file.attribute.FileTime LONG_AGO =
+        java.nio.file.attribute.FileTime.fromMillis(1_000_000_000_000L);
+
+    @Test
+    public void identicalBytes_markerOnlyRule_keepTheTimestamp() throws Exception {
+        Path out = tmp.getRoot().toPath().resolve("X.java");
+        Files.writeString(out, GENERATED_BODY);
+        Files.setLastModifiedTime(out, LONG_AGO);
+
+        GeneratedFileWriter.write(out, GENERATED_BODY);
+
+        assertEquals(LONG_AGO, Files.getLastModifiedTime(out));
+    }
+
+    @Test
+    public void identicalBytes_withManifest_keepTheTimestampWhetherRecordedOrNot() throws Exception {
+        Path project = tmp.newFolder().toPath();
+        Path genState = project.resolve(".metaobjects/.gen-state");
+        Path out = project.resolve("gen/X.java");
+        Files.createDirectories(out.getParent());
+        Files.writeString(out, GENERATED_BODY);          // on disk, never recorded: the adopt path
+        Files.setLastModifiedTime(out, LONG_AGO);
+
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.configureManifest(genState, project);
+            GeneratedFileWriter.write(out, GENERATED_BODY);
+        }
+        assertEquals("adopted, not rewritten", LONG_AGO, Files.getLastModifiedTime(out));
+
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.configureManifest(genState, project);
+            assertEquals(GeneratedFileWriter.Outcome.UNCHANGED, GeneratedFileWriter.write(out, GENERATED_BODY));
+        }
+        assertEquals("recorded and identical", LONG_AGO, Files.getLastModifiedTime(out));
+    }
+
+    @Test
+    public void aRunThatChangesNothingLeavesTheManifestAlone() throws Exception {
+        Path project = tmp.newFolder().toPath();
+        Path genState = project.resolve(".metaobjects/.gen-state");
+        Path out = project.resolve("gen/X.java");
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.configureManifest(genState, project);
+            GeneratedFileWriter.write(out, GENERATED_BODY);
+        }
+        Path manifest = genState.resolve(".hashes.json");
+        String before = Files.readString(manifest);
+        Files.setLastModifiedTime(manifest, LONG_AGO);
+
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.configureManifest(genState, project);
+            GeneratedFileWriter.write(out, GENERATED_BODY);
+            run.flush();
+        }
+        assertEquals(before, Files.readString(manifest));
+        assertEquals("not saved when nothing changed", LONG_AGO, Files.getLastModifiedTime(manifest));
+    }
+
+    @Test
+    public void writeIfChanged_writesOnlyWhenTheBytesDiffer() throws Exception {
+        Path out = tmp.getRoot().toPath().resolve("deep/dir/f.txt");
+        assertTrue(GeneratedFileWriter.writeIfChanged(out, "one"));
+        Files.setLastModifiedTime(out, LONG_AGO);
+        assertFalse(GeneratedFileWriter.writeIfChanged(out, "one"));
+        assertEquals(LONG_AGO, Files.getLastModifiedTime(out));
+        assertTrue(GeneratedFileWriter.writeIfChanged(out, "two"));
+        assertEquals("two", Files.readString(out));
+    }
+
+    @Test
+    public void captureRun_holdsEveryWriteInMemoryAndWritesNothing() throws Exception {
+        Path a = tmp.getRoot().toPath().resolve("virtual/out/A.java");
+        Path b = tmp.getRoot().toPath().resolve("virtual/out/sub/b.txt");
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginCaptureRun()) {
+            assertEquals(GeneratedFileWriter.Outcome.WRITTEN, GeneratedFileWriter.write(a, GENERATED_BODY));
+            assertTrue(GeneratedFileWriter.writeIfChanged(b, "bytes"));
+            assertEquals(2, run.captured().size());
+            assertEquals(GENERATED_BODY, new String(run.captured().get(a.toAbsolutePath().normalize()),
+                java.nio.charset.StandardCharsets.UTF_8));
+            assertEquals("bytes", new String(run.captured().get(b.toAbsolutePath().normalize()),
+                java.nio.charset.StandardCharsets.UTF_8));
+        }
+        assertFalse("a capture run writes no file", Files.exists(tmp.getRoot().toPath().resolve("virtual")));
+        assertNull(GeneratedFileWriter.currentRun());
+    }
 }

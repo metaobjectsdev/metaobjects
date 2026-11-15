@@ -18,6 +18,9 @@ from typing import Any
 
 import pytest
 
+import contextlib
+import io
+
 from metaobjects import cli
 from metaobjects.cli import main
 from tests.codegen.gen_suite import GEN_SUITE
@@ -57,7 +60,9 @@ def _meta_dir(tmp_path: Path, requirements: list[dict[str, Any]]) -> str:
 
 def _verify(tmp_path: Path, meta_dir: str, *extra: str) -> int:
     out = tmp_path / "out"
-    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0
+    # gen's own report is not what this compares: a repeat run reports files as unchanged.
+    with contextlib.redirect_stdout(io.StringIO()):
+        assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0
     return main(as_config(["verify", "--codegen", "--generators", GEN_SUITE, meta_dir, "--out", str(out), *extra]))
 
 

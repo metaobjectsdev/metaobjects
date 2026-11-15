@@ -114,6 +114,8 @@ export function parseAgentDocsArgs(argv: string[]): AgentDocsFlags {
 
 export interface GenFlags {
   dryRun: boolean;
+  /** ADR-0064 — run in full even when nothing changed since the last run. */
+  force: boolean;
   entities: string[];
   /** First-time-on-existing-file behavior. Default: refuse a file that cannot be
    *  proved to be ours. "adopt" → record the file as the merge base and write
@@ -160,6 +162,7 @@ export const GEN_OPTIONS = {
   "limit": { type: "string" },
   "generators": { type: "string" },
   "strict": { type: "boolean", default: false },
+  "force": { type: "boolean", default: false },
 } as const;
 
 export function parseGenArgs(argv: string[]): GenFlags {
@@ -188,6 +191,7 @@ export function parseGenArgs(argv: string[]): GenFlags {
     probe: !!values.probe,
     noAntipatterns: !!values["no-antipatterns"],
     strict: !!values.strict,
+    force: !!values.force,
     // Throws on a bad value; the command layer reports it and exits 2, exactly as
     // it does for --baseline above.
     limit: parseAdvisoryLimit(values.limit as string | undefined),
@@ -410,6 +414,11 @@ export interface VerifyFlags {
    */
   allowHandEdits: boolean;
   /**
+   * ADR-0064 — `--codegen` renders and compares everything, even where a local run could
+   * answer from the stored `meta gen` fingerprint. CI always does; this is for a local run.
+   */
+  full: boolean;
+  /**
    * `--docs`, removed in 1.1.0 (ADR-0034 Amendment 9): `--codegen` checks documentation with
    * everything else the generator list declares. Still parsed, so the command can say where
    * it went (exit 2) rather than "unknown flag".
@@ -533,6 +542,7 @@ export const VERIFY_OPTIONS = {
   codegen: { type: "boolean", default: false },
   "forbid-hand-edits": { type: "boolean", default: false },
   "allow-hand-edits": { type: "boolean", default: false },
+  full: { type: "boolean", default: false },
   // Removed in 1.1.0 (ADR-0034 Amendment 9). Still parsed, so `meta verify --docs` prints
   // where the check went instead of an unknown-flag error.
   docs: { type: "boolean", default: false },
@@ -634,6 +644,7 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
     codegen,
     forbidHandEdits,
     allowHandEdits,
+    full: !!values.full,
     docs,
     deps,
     replay,

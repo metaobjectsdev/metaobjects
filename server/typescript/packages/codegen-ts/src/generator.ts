@@ -222,6 +222,27 @@ export interface Generator {
    * The same setting, by the same name, exists in every port.
    */
   handEdits?: HandEdits;
+  /**
+   * ADR-0064 — `false` when this generator reads something `meta gen` cannot fingerprint
+   * (the network, an environment variable, a file it cannot name in advance). A run that
+   * includes it never skips. Default `true`: what a generator reads from the model, its
+   * options, the config and the project's `templates/` and `codegen/` directories is
+   * already in the fingerprint.
+   */
+  cache?: boolean;
+  /**
+   * ADR-0064 — further files or directories this generator reads, relative to the project
+   * root (a directory counts every file under it). Their contents join the fingerprint, so
+   * editing one makes the next `meta gen` regenerate instead of skipping.
+   */
+  inputs?: readonly string[];
+  /**
+   * ADR-0064 — `true` when this generator reads the raw metadata source files beside the
+   * loaded model (their comments, say), which the model hash does not carry. The files under
+   * the run's metadata source roots join the fingerprint, so a comment-only edit makes the
+   * next `meta gen` regenerate instead of skipping.
+   */
+  readsMetadataSources?: boolean;
   /** Marks the OPT-IN Hono routes generator (routesFileHono). The runner
    *  aggregates this across the active suite into `ctx.config.includeHonoRoutes`,
    *  so a generator that documents the API surface (api-docs) can AUTO-DETECT

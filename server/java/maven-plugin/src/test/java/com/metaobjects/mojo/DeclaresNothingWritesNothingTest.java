@@ -62,6 +62,8 @@ public class DeclaresNothingWritesNothingTest {
     private List<String> written() throws Exception {
         try (Stream<Path> s = Files.walk(module)) {
             return s.filter(Files::isRegularFile)
+                    // the whole-run skip key is uncommitted tool state, not generated output
+                    .filter(p -> !p.getFileName().toString().startsWith(".fingerprint-"))
                     .map(p -> module.relativize(p).toString().replace(File.separatorChar, '/'))
                     .sorted().collect(Collectors.toList());
         }

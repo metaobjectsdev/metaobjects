@@ -19,6 +19,7 @@ public abstract class SingleHtmlDirectGeneratorBase extends DirectGeneratorBase 
 
         File outf = null;
         OutputStream fos = null;
+        java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
         HtmlDirectWriter writer = null;
 
         parseArgs();
@@ -29,7 +30,7 @@ public abstract class SingleHtmlDirectGeneratorBase extends DirectGeneratorBase 
             outf.createNewFile();
 
             // Create the HTML Writer
-            fos = new FileOutputStream(outf);
+            fos = buffer;   // written below, and only when the bytes differ from what is on disk
             writer = getWriter(loader, fos);
             writer.withFilename(outf.toString())
                     .withFilters(MetaDataFilters.create(getFilters()));
@@ -45,6 +46,7 @@ public abstract class SingleHtmlDirectGeneratorBase extends DirectGeneratorBase 
                 // NOTE: This is critical as the close flushes the HTML to the outputstream
                 if (writer != null) writer.close();
                 else if (fos != null) fos.close();
+                if (outf != null && fos != null) com.metaobjects.generator.util.GeneratedFileWriter.writeIfChanged(outf.toPath(), buffer.toByteArray());
             } catch (IOException e) {
                 log.error("Error closing HTML file [" + outf + "]: " + e, e);
             }

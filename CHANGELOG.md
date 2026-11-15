@@ -195,6 +195,23 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
 
 ### Changed
 
+- **Generation now skips when nothing changed, in every port (ADR-0064).** `meta gen`,
+  `metaobjects gen`, `dotnet meta gen` and `mvn metaobjects:generate` build a key from the loaded
+  model (each root node in canonical effective form), the generators' identity (built engine code,
+  config, owned generators, templates, declared extra inputs, project config) and the output-changing
+  flags, before anything renders. When it matches the last successful run and
+  every generated file still holds the bytes that run left, nothing renders and nothing is
+  written. The key is kept, uncommitted, in `.metaobjects/.gen-state/.fingerprint-<port>.json`. A
+  run that names entities forces exactly those: it never skips, and it neither writes nor
+  satisfies the full-run key. `--force`
+  (`-Dmetaobjects.force=true` on Maven) renders everything, and a generator that cannot declare
+  what it reads opts out with `cache: false` or its port's equivalent. Locally, `verify --codegen`
+  may answer "no drift" from the same key (`--full` renders; CI always renders), and compares in
+  memory, with no temp tree, whenever it renders. The hash manifest is written once per run in every
+  port, only when an entry changed; a file whose fresh bytes equal what is on disk is never
+  rewritten; TypeScript runs `git merge-file` only for a file edited by hand. A forward-port of
+  the 1.2.x change, with the skip ADR numbered ADR-0064 on this line.
+
 - **A write with a key the entity does not declare is refused by default: `api.unknownFields`.
   Existing projects get `reject` when they regenerate.** Until now every port dropped an
   undeclared body key silently, so a client that misspelled a field (`emial`) got a 200 and lost

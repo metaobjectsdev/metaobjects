@@ -11,6 +11,11 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./collection": {
+      "bun": "./src/collection.ts",
+      "types": "./dist/collection.d.ts",
+      "default": "./dist/collection.js"
+    },
     "./agent-context": {
       "bun": "./src/agent-context/index.ts",
       "types": "./dist/agent-context/index.d.ts",

@@ -14,7 +14,7 @@
 //      the reference implementation, docs, and agent-context all cite.
 //
 // Runs against the REAL example directory in place (read-only from this
-// gate's perspective — `verify` only writes to a throwaway temp tree), the
+// gate's perspective — `verify` renders in memory and writes nothing), the
 // same directory a contributor edits and `cd`s into to run `meta gen`/`meta
 // verify` by hand. No fixture copy: the whole point is proving the COMMITTED
 // tree, not a copy of it.

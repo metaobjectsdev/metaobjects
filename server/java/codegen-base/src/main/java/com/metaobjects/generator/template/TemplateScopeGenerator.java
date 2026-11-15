@@ -47,6 +47,11 @@ public class TemplateScopeGenerator extends GeneratorBase {
     public static final String ARG_FORMAT = "format";
     public static final String ARG_TEMPLATES_DIR = "templatesDir";
 
+    /** The template root is an input (ADR-0064): editing a template regenerates. */
+    @Override
+    public java.util.List<String> extraInputs() {
+        return hasArg(ARG_TEMPLATES_DIR) ? java.util.List.of(getArg(ARG_TEMPLATES_DIR)) : java.util.List.of();
+    }
     @Override
     public void execute(MetaDataLoader loader) {
         String template = getArg(ARG_TEMPLATE, true);
@@ -84,7 +89,7 @@ public class TemplateScopeGenerator extends GeneratorBase {
                 //
                 // The marker floor protects output whose header WE control. User template
                 // output is not that.
-                Files.writeString(target, f.content());
+                com.metaobjects.generator.util.GeneratedFileWriter.writeIfChanged(target, f.content());
             } catch (IOException e) {
                 throw new GeneratorException(
                     "Failed to write template-codegen output [" + target + "]: " + e.getMessage(), e);

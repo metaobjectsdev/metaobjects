@@ -1,0 +1,156 @@
+{
+  "$comment": "ADR-0064. Every port runs every case against its own project shape: run gen once (it must write and store a key), apply the change, then ask the port's skip decision. 'gen' is what the next gen must do ('skip' = render nothing and write nothing); 'verify' is what a LOCAL verify --codegen (CI unset, no --full) may do. A port that meets an id it does not know fails, so a new case reaches every port.",
+  "version": 1,
+  "cases": [
+    {
+      "id": "no-change",
+      "change": "Nothing changes between the two runs.",
+      "gen": "skip",
+      "verify": "may-answer-no-drift"
+    },
+    {
+      "id": "metadata-touched",
+      "change": "A metadata file is rewritten with identical content (its timestamp moves, its bytes do not).",
+      "gen": "skip",
+      "verify": "may-answer-no-drift"
+    },
+    {
+      "id": "unrelated-file-edited",
+      "change": "A file that is no input (a README beside the project) is edited.",
+      "gen": "skip",
+      "verify": "may-answer-no-drift"
+    },
+    {
+      "id": "metadata-reformatted",
+      "change": "A metadata file is rewritten with different whitespace and key order but the same content, so the loaded model is identical.",
+      "gen": "skip",
+      "verify": "may-answer-no-drift"
+    },
+    {
+      "id": "metadata-moved",
+      "change": "An object moves from one metadata file to a new file in the same package; the loaded model is identical.",
+      "gen": "skip",
+      "verify": "may-answer-no-drift"
+    },
+    {
+      "id": "metadata-edited",
+      "change": "One metadata file's content changes (an attribute added to one object).",
+      "gen": "regenerate",
+      "verify": "must-render"
+    },
+    {
+      "id": "metadata-added",
+      "change": "A new metadata file is added where the loader reads.",
+      "gen": "regenerate",
+      "verify": "must-render"
+    },
+    {
+      "id": "metadata-removed",
+      "change": "A metadata file the loader read is deleted.",
+      "gen": "regenerate",
+      "verify": "must-render"
+    },
+    {
+      "id": "parent-edited",
+      "change": "An abstract object that another object extends gains a field; only the parent's file changes, the child's effective form changes with it.",
+      "gen": "regenerate",
+      "verify": "must-render"
+    },
+    {
+      "id": "config-edited",
+      "change": "The port's codegen config changes (a generator added or removed, or one generator's options changed).",
+      "gen": "regenerate",
+      "verify": "must-render"
+    },
+    {
+      "id": "project-config-edited",
+      "change": ".metaobjects/config.json changes.",
+      "gen": "regenerate",
+      "verify": "must-render"
+    },
+    {
+      "id": "template-edited",
+      "change": "A file under a declared template root changes.",
+      "gen": "regenerate",
+      "verify": "must-render"
+    },
+    {
+      "id": "template-added",
+      "change": "A file is added under a declared template root.",
+      "gen": "regenerate",
+      "verify": "must-render"
+    },
+    {
+      "id": "owned-generator-edited",
+      "change": "A source file of an owned (ejected) generator changes.",
+      "gen": "regenerate",
+      "verify": "must-render"
+    },
+    {
+      "id": "engine-changed",
+      "change": "The engine identity changes (a new version, or different content in a linked checkout).",
+      "gen": "regenerate",
+      "verify": "must-render"
+    },
+    {
+      "id": "selection-changed",
+      "change": "An output-changing flag differs from the stored run: entity or generator selection, strict, or the baseline mode.",
+      "gen": "regenerate",
+      "verify": "must-render"
+    },
+    {
+      "id": "declared-extra-edited",
+      "change": "A file a generator declared as an extra input changes.",
+      "gen": "regenerate",
+      "verify": "must-render"
+    },
+    {
+      "id": "uncacheable-generator",
+      "change": "The run includes a generator marked not cacheable; nothing else changes.",
+      "gen": "regenerate",
+      "verify": "must-render"
+    },
+    {
+      "id": "generated-file-deleted",
+      "change": "A file the manifest records is deleted.",
+      "gen": "regenerate",
+      "verify": "must-render"
+    },
+    {
+      "id": "generated-file-edited",
+      "change": "A file the manifest records is edited by hand after the last run (its bytes differ from what that run left). gen renders, so it puts the file back or merges the edit, as verify tells the user it will.",
+      "gen": "regenerate",
+      "verify": "must-render"
+    },
+    {
+      "id": "hand-edit-kept",
+      "change": "A hand edit is made, and a gen run keeps it (merges it); nothing changes after that run. The file still differs from its manifest record, but not from what the last run left.",
+      "gen": "skip",
+      "verify": "must-render"
+    },
+    {
+      "id": "fingerprint-missing",
+      "change": "The stored fingerprint file is deleted (a fresh clone).",
+      "gen": "regenerate",
+      "verify": "must-render"
+    },
+    {
+      "id": "force",
+      "change": "The next run passes --force (or the port's equivalent).",
+      "gen": "regenerate",
+      "verify": "must-render"
+    },
+    {
+      "id": "ci",
+      "change": "Nothing changes, but verify runs with CI=true.",
+      "gen": "skip",
+      "verify": "must-render"
+    },
+    {
+      "id": "failed-run",
+      "change": "A run that started after an input change failed; the input is then restored to what the last successful run saw.",
+      "gen": "regenerate",
+      "verify": "must-render"
+    }
+  ]
+}
