@@ -1,0 +1,34 @@
+{
+  "description": "One column over the width breaks the list.",
+  "dialect": "core",
+  "options": {
+    "indent": "  ",
+    "width": 35,
+    "trailingComma": true
+  },
+  "ops": [
+    [
+      "line",
+      "x = ",
+      {
+        "list": {
+          "open": "[",
+          "items": [
+            "aaaaaaaaaa",
+            "bbbbbbbbbb",
+            "ccccc"
+          ],
+          "close": "]"
+        }
+      },
+      ";"
+    ]
+  ],
+  "expected": [
+    "x = [",
+    "  aaaaaaaaaa,",
+    "  bbbbbbbbbb,",
+    "  ccccc,",
+    "];"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "description": "A line with no list is written as given even when it exceeds the width.",
+  "dialect": "core",
+  "options": {
+    "indent": "  ",
+    "width": 20,
+    "trailingComma": true
+  },
+  "ops": [
+    [
+      "line",
+      "const message = \"this line is longer than the width\";"
+    ]
+  ],
+  "expected": [
+    "const message = \"this line is longer than the width\";"
+  ]
+}

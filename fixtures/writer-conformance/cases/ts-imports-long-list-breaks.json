@@ -1,0 +1,46 @@
+{
+  "description": "An import whose name list does not fit the width breaks one name per line.",
+  "dialect": "typescript",
+  "ops": [
+    [
+      "line",
+      "x;"
+    ],
+    [
+      "use",
+      "parseFilterParams",
+      "@metaobjectsdev/runtime-ts/drizzle-fastify"
+    ],
+    [
+      "use",
+      "parseSortParams",
+      "@metaobjectsdev/runtime-ts/drizzle-fastify"
+    ],
+    [
+      "use",
+      "buildListResponse",
+      "@metaobjectsdev/runtime-ts/drizzle-fastify"
+    ],
+    [
+      "use",
+      "notFound",
+      "@metaobjectsdev/runtime-ts/drizzle-fastify"
+    ],
+    [
+      "use",
+      "methodNotAllowed",
+      "@metaobjectsdev/runtime-ts/drizzle-fastify"
+    ]
+  ],
+  "expected": [
+    "import {",
+    "  buildListResponse,",
+    "  methodNotAllowed,",
+    "  notFound,",
+    "  parseFilterParams,",
+    "  parseSortParams,",
+    "} from \"@metaobjectsdev/runtime-ts/drizzle-fastify\";",
+    "",
+    "x;"
+  ]
+}

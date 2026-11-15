@@ -1,0 +1,37 @@
+{
+  "description": "A request between two blocks gives one blank line between them.",
+  "dialect": "core",
+  "options": {
+    "indent": "  ",
+    "width": 40,
+    "trailingComma": true
+  },
+  "ops": [
+    [
+      "open",
+      "a() {"
+    ],
+    [
+      "close",
+      "}"
+    ],
+    [
+      "blank"
+    ],
+    [
+      "open",
+      "b() {"
+    ],
+    [
+      "close",
+      "}"
+    ]
+  ],
+  "expected": [
+    "a() {",
+    "}",
+    "",
+    "b() {",
+    "}"
+  ]
+}
