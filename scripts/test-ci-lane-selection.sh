@@ -77,7 +77,7 @@ tmp="$(mktemp -d "${DEV_SCRATCH:-${TMPDIR:-/tmp}}/ci-lane-selection.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 git init -q -b main "$tmp/repo" || { echo "FAIL: cannot create a throwaway repository" >&2; exit 1; }
 mkdir -p "$tmp/repo/scripts" "$tmp/repo/server/python" "$tmp/repo/server/typescript" "$tmp/repo/docs"
-cp scripts/ci-local.sh scripts/ci-select-lanes.sh scripts/ci-lane-map.txt "$tmp/repo/scripts/"
+cp scripts/ci-local.sh scripts/ci-select-lanes.sh scripts/ci-lane-map.txt scripts/ci-affected-ports.sh "$tmp/repo/scripts/"
 echo a > "$tmp/repo/server/python/a.py"; echo a > "$tmp/repo/server/typescript/a.ts"; echo a > "$tmp/repo/docs/a.md"
 git -C "$tmp/repo" add -A
 git -C "$tmp/repo" -c user.name=t -c user.email=t@example.invalid commit -q -m base
@@ -109,6 +109,19 @@ check "python ts"             "$(plan | lane_blocks)"             "python and ty
 check "yes" "$(plan | grep 'run as parallel lanes' >/dev/null && echo yes || echo no)" "several groups are announced as parallel"
 check ""    "$(plan MO_CI_AFFECTED_BASE=HEAD~2 | lane_blocks)"    "one group (typescript, the docs adds none) stays serial"
 check "yes" "$(plan MO_CI_AFFECTED_BASE=HEAD~2 | grep 'ts build + typecheck' >/dev/null && echo yes || echo no)" "the serial plan still lists typescript's steps"
+# A rename's OLD path counts too (ci-affected-ports.sh diffs with --no-renames, like
+# changed_paths does): moving a file OUT of a path that maps broader than its destination
+# must select what the old path affects, not only the new one. Before --no-renames this
+# printed 'java', silently dropping the ts/python/csharp lanes agent-context selects.
+# (Before the `map` corruption below, which widens every later selection to ALL on purpose.)
+mkdir -p "$tmp/repo/agent-context/skills" "$tmp/repo/server/java"
+echo s > "$tmp/repo/agent-context/skills/x.md"; commit shared
+git -C "$tmp/repo" mv agent-context/skills/x.md server/java/x.md; commit rename-into-java
+ports() { ( cd "$tmp/repo" && scripts/ci-affected-ports.sh "$(git rev-parse HEAD~1)" HEAD ); }
+check "ts java python csharp" "$(ports)" "git: a rename out of agent-context still selects every port"
+git -C "$tmp/repo" mv server/java/x.md server/python/x.py; commit rename-java-to-python
+check "java python" "$(ports)" "git: a rename between ports selects both"
+
 echo b >> "$tmp/repo/scripts/ci-lane-map.txt"; commit map
 check "$ALL" "$(run)" "git: editing the map selects every lane"
 # --affected is a selector; combining it with the other selectors is refused, not guessed at.
