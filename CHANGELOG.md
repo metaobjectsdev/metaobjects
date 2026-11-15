@@ -660,6 +660,16 @@ vocabulary; upgrade every port together.
 
 ### Fixed
 
+- **Fix, C#: every generator names a field's property through the one property-naming resolver
+  (rc.22).** Since rc.20 `GenConfig.PropertyNaming` (and the `PropertyName` hook) renamed a field's
+  property in the entity, the context's model lines, the reverse finders and the composite key, but
+  these emit sites still spelled `Pascal(field.Name)`: the `@sequenceStart` identity annotation in
+  `DbContextGenerator` (a key renamed `WidgetID` got `.Property(x => x.WidgetId)`, CS1061), the
+  argument properties in `CallableGenerator`, the mapper targets in `ExtractorGenerator`, the row
+  cells in `ReportExportGenerator`, and the `RoutesGenerator` key, sort-allowlist, `EF.Property`,
+  frozen, auto-set, value-object, create-reset, TPH discriminator and M:N junction names. With no
+  resolver set the output is unchanged.
+
 - **Fix, TypeScript and C#: a passthrough may walk a reference backwards when at most one row
   references it (rc.21).** A reverse hop was always to-many, so a passthrough over it was refused
   (`ERR_ORIGIN_CARDINALITY`). When the holder declares an `identity.primary` or
