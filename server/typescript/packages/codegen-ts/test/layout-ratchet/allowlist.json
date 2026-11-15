@@ -44,6 +44,7 @@
     "codegen-ts/src/templates/date-time-regex.ts": "Emits the Zod date and time patterns as fixed text with hand-typed indentation. Converts with the entity tier B writer PR (Zod validators, field meta, UI descriptor).",
     "codegen-ts/src/templates/decimal-wire-helper.ts": "Emits the decimal wire helper function as fixed text, each line typed with its indentation. Converts with the entity tier B writer PR (Zod validators, field meta, UI descriptor). Its fixed text becomes one TsWriter.text() snippet.",
     "codegen-ts/src/templates/drizzle-schema.ts": "Emits the Drizzle table and column definitions; ts-poet `code` templates with hand-typed indentation and newline joins. Converts with the entity tier A writer PR (schema, relations, constants, enums, value objects, filters, inferred types).",
+    "codegen-ts/src/templates/duration-wire-helper.ts": "Emits the field.duration wire helper that a generated model module carries as local code; lines joined with newlines and hand-typed indentation. Converts with the entity tier A writer PR (schema, relations, constants, enums, value objects, filters, inferred types).",
     "codegen-ts/src/templates/entity-constants.ts": "Emits the entity constants block; ts-poet `code` templates with hand-typed indentation and newline joins. Converts with the entity tier A writer PR (schema, relations, constants, enums, value objects, filters, inferred types).",
     "codegen-ts/src/templates/entity-file.ts": "Composes the entity module from its sections with newline joins; ts-poet `code` templates with hand-typed indentation and newline joins. Converts with the entity tier A writer PR (schema, relations, constants, enums, value objects, filters, inferred types).",
     "codegen-ts/src/templates/entity-meta-file.ts": "Emits the entity field-meta module; ts-poet `code` templates with hand-typed indentation and newline joins. Converts with the entity tier B writer PR (Zod validators, field meta, UI descriptor).",
@@ -77,6 +78,11 @@
     "codegen-ts/src/templates/zod-validators.ts": "Emits the Zod validators; ts-poet `code` templates with hand-typed indentation and newline joins. Converts with the entity tier B writer PR (Zod validators, field meta, UI descriptor)."
   },
   "exempt": {
-    "codegen-ts/src/overwrite-policy.ts": "Writes the codegen tool-state files (.metaobjects/.gen-state/.hashes.json and the engine stamp) as JSON.stringify output plus a final newline. That is a data file the runner owns, not generated code, so it has no writer to move to."
+    "codegen-ts/src/generators/contract-schema-file.ts": "Writes the contract-schema generator's JSON Schema documents as JSON.stringify(value, null, 2) plus a final newline. The layout is the JSON serializer's, so there is no code to lay out and no writer to move to.",
+    "codegen-ts/src/generators/openapi-file.ts": "Writes the openapi generator's OpenAPI document as JSON.stringify(value, null, 2) plus a final newline. The layout is the JSON serializer's, so there is no code to lay out and no writer to move to.",
+    "codegen-ts/src/overwrite-policy.ts": "Writes the codegen tool-state files (.metaobjects/.gen-state/.hashes.json and the engine stamp) as JSON.stringify output plus a final newline. That is a data file the runner owns, not generated code, so it has no writer to move to.",
+    "codegen-ts/src/poet.ts": "The vendored ts-poet printer, the engine the writer replaces: its import emitter prints the import lines of a Code file. It is retired when the last generator moves to the writer, not converted to it.",
+    "codegen-ts/src/reference/contract-schema.ts": "The reference (ejectable) copy of the contract-schema generator; writes JSON Schema documents as JSON.stringify(value, null, 2) plus a final newline. The layout is the JSON serializer's, so there is no code to lay out and no writer to move to.",
+    "codegen-ts/src/reference/openapi.ts": "The reference (ejectable) copy of the openapi generator; writes the OpenAPI document as JSON.stringify(value, null, 2) plus a final newline. The layout is the JSON serializer's, so there is no code to lay out and no writer to move to."
   }
 }

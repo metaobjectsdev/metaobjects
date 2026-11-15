@@ -113,10 +113,11 @@ units. The comparison includes the indent, and a line exactly `width` long fits.
 - **`doc(lines...)`** writes `/** text */` when there is one entry and it fits. Otherwise it
   writes a block of ` * ` lines, with a bare ` *` line for an empty entry. A `*/` inside the
   text is written as `*\/`.
-- **ts-poet interop.** Any part may be a ts-poet `Code` or `Import`. Its text is written, and
-  its imports are collected. `code(fragment)` writes a multi-line fragment as a snippet. A
-  fragment from a different physical ts-poet copy is refused with **`ERR_WRITER_UNKNOWN_PIECE`**,
-  because its imports cannot be read.
+- **`Code` interop.** Any part may be a `Code` or `Import` from the package's code primitives
+  (`src/poet.ts`, the vendored ts-poet printer). Its text is written, and its imports are
+  collected. `code(fragment)` writes a multi-line fragment as a snippet. A fragment from a
+  different physical copy of those primitives (or from the ts-poet package itself) is refused
+  with **`ERR_WRITER_UNKNOWN_PIECE`**, because its imports cannot be read.
 - Helpers: `str` (a quoted string literal), `arr`, `call`, `props()` (an object literal built
   with `.set(name, value)` and `.add(member)`) and `key` (an object key, quoted only when it is
   not an identifier).

@@ -105,11 +105,12 @@ from the package root and from `@metaobjectsdev/codegen-ts/engine`, and both are
 `eject.engineSurface`, so an owned generator imports them from the package. TypeScript lays out
 at **120 columns** with a two-space indent and a trailing comma in broken lists.
 
-`TsWriter` accepts ts-poet `Code` fragments. A fragment is written as its text, its `imp()`
+`TsWriter` accepts `Code` fragments from the package's code primitives (`src/poet.ts`, the
+vendored ts-poet printer). A fragment is written as its text, its `imp()`
 symbols join the file's import block, and a multi-line fragment is re-indented by
 `w.code(fragment)`. A generator can therefore move to the writer one function at a time while the
-sections it has not converted still return `Code`. A `Code` built by a different physical ts-poet
-copy cannot be read, so it is refused rather than written without its imports.
+sections it has not converted still return `Code`. A `Code` built by a different physical copy of
+those primitives cannot be read, so it is refused rather than written without its imports.
 
 ## Consequences
 

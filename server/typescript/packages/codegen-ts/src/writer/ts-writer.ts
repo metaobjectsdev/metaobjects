@@ -1,13 +1,11 @@
 // The TypeScript dialect of the code writer (ADR-0063; contract: spec/code-writer.md).
 //
 // Adds what is TypeScript's own: imports collected while the body is written and printed
-// first, string quoting, object literals and doc comments. It also accepts ts-poet `Code`
-// fragments, harvesting their `imp()` imports, so a generator can move to the writer one
-// function at a time while the rest of it still returns `Code`.
+// first, string quoting, object literals and doc comments. It also accepts `Code` fragments
+// (src/poet.ts, the vendored ts-poet printer), harvesting their `imp()` imports, so a generator
+// can move to the writer one function at a time while the rest of it still returns `Code`.
 
-import { Code, Import } from "ts-poet";
-import { ImportsAll, ImportsDefault, ImportsName, SideEffect } from "ts-poet/build/Import.js";
-import { Node } from "ts-poet/build/Node.js";
+import { Code, Import, ImportsAll, ImportsDefault, ImportsName, Node, SideEffect } from "../poet.js";
 import { CodeWriter, type CodeWriterOptions, flat, Group, type Piece, WRITER_ERRORS, WriterError } from "./code-writer.js";
 
 /** A correctly quoted TypeScript string literal. */
@@ -173,11 +171,12 @@ export class TsWriter extends CodeWriter {
       return p.toCodeString();
     }
     if (looksLikeForeignPoet(p)) {
-      // Two physical ts-poet copies in one process (a linked or global CLI next to a project
-      // dependency): the fragment's imports cannot be read, so refuse rather than drop them.
+      // Two physical copies of the code primitives in one process (a linked or global CLI next
+      // to a project dependency, or the old ts-poet package): the fragment's imports cannot be
+      // read, so refuse rather than drop them.
       throw new WriterError(
         WRITER_ERRORS.unknownPiece,
-        "a ts-poet Code or Import built by a different ts-poet copy; import code and imp from @metaobjectsdev/codegen-ts",
+        "a Code or Import built by a different copy of the code primitives; import code and imp from @metaobjectsdev/codegen-ts",
       );
     }
     return super.piece(p);
@@ -191,7 +190,7 @@ export class TsWriter extends CodeWriter {
       else if (n instanceof Node) todo.push(...n.childNodes);
       else if (Array.isArray(n)) todo.push(...n);
     }
-    return fragment.toCodeString([]);
+    return fragment.toCodeString();
   }
 
   protected record(i: Import): void {

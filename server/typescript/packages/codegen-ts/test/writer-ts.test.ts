@@ -3,7 +3,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { OBJECT_SUBTYPE_ENTITY } from "@metaobjectsdev/metadata";
-import { code, Import, imp, joinCode } from "ts-poet";
+import { code, Import, imp, joinCode } from "../src/poet.js";
 import { renderInferredTypes } from "../src/templates/inferred-types.js";
 import { WRITER_ERRORS, WriterError } from "../src/writer/code-writer.js";
 import { arr, call, key, props, str, TsWriter } from "../src/writer/ts-writer.js";
