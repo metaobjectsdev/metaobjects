@@ -78,10 +78,10 @@ public class ReportCredentialCodegenTests
     {
         var ctx = Ctx(Load());
         var routes = Routes(ctx, report);
-        Assert.Contains($"new string[] {{ \"{column}\" }}", routes);
+        Assert.Contains($"new string[] {{ \"{char.ToUpperInvariant(column[0])}{column[1..]}\" }}", routes);
         Assert.DoesNotContain("Results.Ok(rows)", routes);
         // The JSON export strips it too; the CSV / XML column list names no credential.
-        Assert.Contains($"rows, new string[] {{ \"{column}\" }}", routes);
+        Assert.Contains($"rows, new string[] {{ \"{char.ToUpperInvariant(column[0])}{column[1..]}\" }}", routes);
         var export = Export(ctx, report);
         Assert.DoesNotContain($"\"{column}\"", export);
         Assert.DoesNotContain($"row.{char.ToUpperInvariant(column[0])}{column[1..]}", export);
@@ -113,7 +113,9 @@ public class ReportCredentialCodegenTests
 
         var routes = Routes(ctx, report);
         var pascal = char.ToUpperInvariant(column[0]) + column[1..];
-        Assert.DoesNotContain($"\"{pascal}\"", routes);
+        // The credential's CLR name appears once, in the omit list; never as a sort-allowlist entry or sort arm.
+        Assert.DoesNotContain($"        \"{pascal}\",", routes);
+        Assert.DoesNotContain($"\"{pascal}\" =>", routes);
         Assert.Contains($"\"{char.ToUpperInvariant(kept[0])}{kept[1..]}\"", routes);
     }
 

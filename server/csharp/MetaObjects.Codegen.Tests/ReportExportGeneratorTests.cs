@@ -317,7 +317,7 @@ public class ReportExportGeneratorTests
             RequestServices = Microsoft.Extensions.DependencyInjection.ServiceCollectionContainerBuilderExtensions.BuildServiceProvider(services),
         };
         http.Response.Body = new MemoryStream();
-        await ReportExportHttp.Json(http, "accounts-by-pin", body, ["pinHash"], envelope).ExecuteAsync(http);
+        await ReportExportHttp.Json(http, "accounts-by-pin", body, ["PinHash"], envelope).ExecuteAsync(http);
         Assert.Equal("attachment; filename=\"accounts-by-pin.json\"", http.Response.Headers.ContentDisposition.ToString());
         http.Response.Body.Position = 0;
         return System.Text.Json.Nodes.JsonNode.Parse(http.Response.Body)!;

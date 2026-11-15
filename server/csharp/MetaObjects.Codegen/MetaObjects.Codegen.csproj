@@ -91,5 +91,6 @@
     <EmbeddedResource Include="Runtime/DurationWire.cs" />
     <EmbeddedResource Include="Runtime/DecimalRangeEndpointFilter.cs" />
     <EmbeddedResource Include="Runtime/ReportExportHttp.cs" />
+    <EmbeddedResource Include="Runtime/SerializerKeys.cs" />
   </ItemGroup>
 </Project>

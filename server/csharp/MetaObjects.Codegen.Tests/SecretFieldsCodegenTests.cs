@@ -96,7 +96,7 @@ public class SecretFieldsCodegenTests
         Assert.True(start >= 0 && end > start, src);
         var aRoutes = src[start..end];
 
-        Assert.Contains("new string[] { \"token\" }", aRoutes);
+        Assert.Contains("new string[] { \"Token\" }", aRoutes);
         Assert.Contains("input.Token = default!;", aRoutes);
         Assert.Contains("input.Memo = default!;", aRoutes);
         Assert.Contains("string.Equals(prop.Name, \"token\", global::System.StringComparison.OrdinalIgnoreCase)) continue;", aRoutes);
@@ -118,7 +118,7 @@ public class SecretFieldsCodegenTests
         Assert.Contains("string.Equals(prop.Name, \"pinHash\", global::System.StringComparison.OrdinalIgnoreCase)) continue;", src);
 
         // Only the credential is omitted on read (list, get, create echo, update echo).
-        Assert.Contains("new string[] { \"pinHash\" }", src);
+        Assert.Contains("new string[] { \"PinHash\" }", src);
         Assert.DoesNotContain("\"tokenHash\" }", src);
         Assert.DoesNotContain("new string[] { \"tokenHash\"", src);
         Assert.DoesNotContain("Results.Ok(rows)", src);

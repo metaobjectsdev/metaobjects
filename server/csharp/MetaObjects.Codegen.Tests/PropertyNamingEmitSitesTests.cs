@@ -259,9 +259,12 @@ public class PropertyNamingEmitSitesTests
         var gizmo = One(files, "GizmoRoutes.g.cs");
         var vehicle = One(files, "VehicleRoutes.g.cs");
 
-        // Strip keys: the field name and the resolved name (the body key is the host's naming policy over it).
-        Assert.Contains("new string[] { \"pinHash\", \"XPinHash\" }", gizmo);
-        Assert.Contains("new string[] { \"vinHash\", \"XVinHash\" }", vehicle);
+        // The credential is named by its CLR property; the JSON key is the serializer's, read at run time
+        // (SerializerKeys.KeysOf), never spelled here.
+        Assert.Contains("new string[] { \"XPinHash\" }", gizmo);
+        Assert.Contains("new string[] { \"XVinHash\" }", vehicle);
+        Assert.Contains("SerializerKeys.KeysOf(_value, _envelope, opts, _names)", gizmo);
+        Assert.DoesNotContain("OrdinalIgnoreCase))\n                o.Remove", gizmo);
 
         // No response shape bypasses the stripping result: read, list, list-with-count, create, PATCH.
         Assert.DoesNotContain("Results.Ok(rows", gizmo);
@@ -275,7 +278,9 @@ public class PropertyNamingEmitSitesTests
         Assert.DoesNotContain("Results.Ok(existing", vehicle);
         Assert.Contains("new CredentialOmittingResult(", vehicle);
 
-        // PATCH refuses to write it: the deny arm matches both spellings (and the form-excluded field's).
+        // PATCH refuses to write it: the deny arm matches the serializer-resolved property, and both spellings.
+        Assert.Contains("if (__clr is \"XPinHash\" or \"XTokenHash\") continue;", gizmo);
+        Assert.Contains("SerializerKeys.PropertyByKey(existing.GetType(), jsonOpts)", gizmo);
         foreach (var k in new[] { "pinHash", "XPinHash", "tokenHash", "XTokenHash" })
             Assert.Contains($"string.Equals(prop.Name, \"{k}\", global::System.StringComparison.OrdinalIgnoreCase)) continue; // @formExclude / credential", gizmo);
         // Create resets the resolved property, so the two writes agree.

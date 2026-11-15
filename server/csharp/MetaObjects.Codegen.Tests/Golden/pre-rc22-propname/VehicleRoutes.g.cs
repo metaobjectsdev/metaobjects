@@ -79,14 +79,14 @@ public static class VehicleRoutes
             if (qs.TryGetValue("limit", out var limRaw) && int.TryParse(limRaw, global::System.Globalization.NumberStyles.Integer, global::System.Globalization.CultureInfo.InvariantCulture, out var lim) && lim > 0) q = q.Take(lim);
             var rows = await q.ToListAsync();
             var withCount = qs.TryGetValue("withCount", out var wc) && (wc == "1" || string.Equals(wc, "true", global::System.StringComparison.OrdinalIgnoreCase));
-            if (!withCount) return (IResult)new CredentialOmittingResult(rows, new string[] { "vinHash" });
+            if (!withCount) return (IResult)new CredentialOmittingResult(rows, new string[] { "VinHash" });
             var total = await EfCoreFilterDispatch.ApplyFilter(db.Vehicles.AsNoTracking(), filter.Predicates).CountAsync();
-            return (IResult)new CredentialOmittingResult(new { rows, total }, new string[] { "vinHash" }, envelope: true);
+            return (IResult)new CredentialOmittingResult(new { rows, total }, new string[] { "VinHash" }, envelope: true);
         });
 
         app.MapGet(prefix + "/vehicles/{id}", async (long id, global::Acme.Generated.AppDbContext db) =>
             await db.Vehicles.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id) is { } found
-                ? (IResult)new CredentialOmittingResult(found, new string[] { "vinHash" })
+                ? (IResult)new CredentialOmittingResult(found, new string[] { "VinHash" })
                 : Results.NotFound(new { error = "not_found" }));
 
         app.MapGet(prefix + "/vehicles/{id}/tags", async (long id, global::Acme.Generated.AppDbContext db) =>
@@ -122,14 +122,14 @@ public static class VehicleRoutes
             if (qs.TryGetValue("limit", out var limRaw) && int.TryParse(limRaw, global::System.Globalization.NumberStyles.Integer, global::System.Globalization.CultureInfo.InvariantCulture, out var lim) && lim > 0) q = q.Take(lim);
             var rows = await q.ToListAsync();
             var withCount = qs.TryGetValue("withCount", out var wc) && (wc == "1" || string.Equals(wc, "true", global::System.StringComparison.OrdinalIgnoreCase));
-            if (!withCount) return (IResult)new CredentialOmittingResult(rows, new string[] { "vinHash" });
+            if (!withCount) return (IResult)new CredentialOmittingResult(rows, new string[] { "VinHash" });
             var total = await EfCoreFilterDispatch.ApplyFilter(db.Vehicles.OfType<Car>().AsNoTracking(), filter.Predicates).CountAsync();
-            return (IResult)new CredentialOmittingResult(new { rows, total }, new string[] { "vinHash" }, envelope: true);
+            return (IResult)new CredentialOmittingResult(new { rows, total }, new string[] { "VinHash" }, envelope: true);
         });
 
         app.MapGet(prefix + "/vehicles/car/{id}", async (long id, global::Acme.Generated.AppDbContext db) =>
             await db.Vehicles.OfType<Car>().AsNoTracking().FirstOrDefaultAsync(x => x.Id == id) is { } found
-                ? (IResult)new CredentialOmittingResult(found, new string[] { "vinHash" })
+                ? (IResult)new CredentialOmittingResult(found, new string[] { "VinHash" })
                 : Results.NotFound(new { error = "not_found" }));
 
         app.MapPost(prefix + "/vehicles/car", async (Car input, global::Acme.Generated.AppDbContext db) =>
@@ -154,7 +154,7 @@ public static class VehicleRoutes
                         statusCode: __constraint.Status);
                 throw;
             }
-            return (IResult)new CredentialOmittingResult(input, new string[] { "vinHash" }, status: 201, location: prefix + "/vehicles/car/" + input.Id);
+            return (IResult)new CredentialOmittingResult(input, new string[] { "VinHash" }, status: 201, location: prefix + "/vehicles/car/" + input.Id);
         });
 
         async global::System.Threading.Tasks.Task<IResult> UpdateCar(long id, HttpContext http, global::Acme.Generated.AppDbContext db)
@@ -170,10 +170,14 @@ public static class VehicleRoutes
                 http.RequestServices.GetService(typeof(global::Microsoft.Extensions.Options.IOptions<global::Microsoft.AspNetCore.Http.Json.JsonOptions>))!)
                 .Value.SerializerOptions;
             var entry = db.Entry(existing);
+            var __keys = SerializerKeys.PropertyByKey(existing.GetType(), jsonOpts);
             foreach (var prop in body.RootElement.EnumerateObject())
             {
+                var __clr = __keys.TryGetValue(prop.Name, out var __mapped) ? __mapped : null;
+                if (__clr is "VinHash") continue; // @formExclude / credential: not writable
                 if (string.Equals(prop.Name, "vinHash", global::System.StringComparison.OrdinalIgnoreCase)) continue; // @formExclude / credential: not writable
-                var target = entry.Metadata.FindProperty(prop.Name)
+                var target = (__clr is null ? null : entry.Metadata.FindProperty(__clr))
+                    ?? entry.Metadata.FindProperty(prop.Name)
                     ?? entry.Metadata.GetProperties().FirstOrDefault(p => string.Equals(p.Name, prop.Name, global::System.StringComparison.OrdinalIgnoreCase));
                 if (target is null) continue;
                 if (target.IsPrimaryKey()) continue;                        // PK is route-authoritative
@@ -207,7 +211,7 @@ public static class VehicleRoutes
                         statusCode: __constraint.Status);
                 throw;
             }
-            return (IResult)new CredentialOmittingResult(existing, new string[] { "vinHash" });
+            return (IResult)new CredentialOmittingResult(existing, new string[] { "VinHash" });
         }
         app.MapPatch(prefix + "/vehicles/car/{id}", UpdateCar);
         app.MapPut(prefix + "/vehicles/car/{id}", UpdateCar);
@@ -264,14 +268,14 @@ public static class VehicleRoutes
             if (qs.TryGetValue("limit", out var limRaw) && int.TryParse(limRaw, global::System.Globalization.NumberStyles.Integer, global::System.Globalization.CultureInfo.InvariantCulture, out var lim) && lim > 0) q = q.Take(lim);
             var rows = await q.ToListAsync();
             var withCount = qs.TryGetValue("withCount", out var wc) && (wc == "1" || string.Equals(wc, "true", global::System.StringComparison.OrdinalIgnoreCase));
-            if (!withCount) return (IResult)new CredentialOmittingResult(rows, new string[] { "vinHash" });
+            if (!withCount) return (IResult)new CredentialOmittingResult(rows, new string[] { "VinHash" });
             var total = await EfCoreFilterDispatch.ApplyFilter(db.Vehicles.OfType<Van>().AsNoTracking(), filter.Predicates).CountAsync();
-            return (IResult)new CredentialOmittingResult(new { rows, total }, new string[] { "vinHash" }, envelope: true);
+            return (IResult)new CredentialOmittingResult(new { rows, total }, new string[] { "VinHash" }, envelope: true);
         });
 
         app.MapGet(prefix + "/vehicles/van/{id}", async (long id, global::Acme.Generated.AppDbContext db) =>
             await db.Vehicles.OfType<Van>().AsNoTracking().FirstOrDefaultAsync(x => x.Id == id) is { } found
-                ? (IResult)new CredentialOmittingResult(found, new string[] { "vinHash" })
+                ? (IResult)new CredentialOmittingResult(found, new string[] { "VinHash" })
                 : Results.NotFound(new { error = "not_found" }));
 
         app.MapPost(prefix + "/vehicles/van", async (Van input, global::Acme.Generated.AppDbContext db) =>
@@ -296,7 +300,7 @@ public static class VehicleRoutes
                         statusCode: __constraint.Status);
                 throw;
             }
-            return (IResult)new CredentialOmittingResult(input, new string[] { "vinHash" }, status: 201, location: prefix + "/vehicles/van/" + input.Id);
+            return (IResult)new CredentialOmittingResult(input, new string[] { "VinHash" }, status: 201, location: prefix + "/vehicles/van/" + input.Id);
         });
 
         async global::System.Threading.Tasks.Task<IResult> UpdateVan(long id, HttpContext http, global::Acme.Generated.AppDbContext db)
@@ -312,10 +316,14 @@ public static class VehicleRoutes
                 http.RequestServices.GetService(typeof(global::Microsoft.Extensions.Options.IOptions<global::Microsoft.AspNetCore.Http.Json.JsonOptions>))!)
                 .Value.SerializerOptions;
             var entry = db.Entry(existing);
+            var __keys = SerializerKeys.PropertyByKey(existing.GetType(), jsonOpts);
             foreach (var prop in body.RootElement.EnumerateObject())
             {
+                var __clr = __keys.TryGetValue(prop.Name, out var __mapped) ? __mapped : null;
+                if (__clr is "VinHash") continue; // @formExclude / credential: not writable
                 if (string.Equals(prop.Name, "vinHash", global::System.StringComparison.OrdinalIgnoreCase)) continue; // @formExclude / credential: not writable
-                var target = entry.Metadata.FindProperty(prop.Name)
+                var target = (__clr is null ? null : entry.Metadata.FindProperty(__clr))
+                    ?? entry.Metadata.FindProperty(prop.Name)
                     ?? entry.Metadata.GetProperties().FirstOrDefault(p => string.Equals(p.Name, prop.Name, global::System.StringComparison.OrdinalIgnoreCase));
                 if (target is null) continue;
                 if (target.IsPrimaryKey()) continue;                        // PK is route-authoritative
@@ -348,7 +356,7 @@ public static class VehicleRoutes
                         statusCode: __constraint.Status);
                 throw;
             }
-            return (IResult)new CredentialOmittingResult(existing, new string[] { "vinHash" });
+            return (IResult)new CredentialOmittingResult(existing, new string[] { "VinHash" });
         }
         app.MapPatch(prefix + "/vehicles/van/{id}", UpdateVan);
         app.MapPut(prefix + "/vehicles/van/{id}", UpdateVan);
@@ -416,17 +424,12 @@ public static class VehicleRoutes
                 http.RequestServices.GetService(typeof(global::Microsoft.Extensions.Options.IOptions<global::Microsoft.AspNetCore.Http.Json.JsonOptions>))!)
                 .Value.SerializerOptions;
             var node = global::System.Text.Json.JsonSerializer.SerializeToNode(_value, _value.GetType(), opts);
-            Strip(_envelope && node is global::System.Text.Json.Nodes.JsonObject env ? env["rows"] : node);
+            // The keys are the serializer's own for these properties (naming policy, rename, attribute), never guessed from names.
+            SerializerKeys.Strip(_envelope && node is global::System.Text.Json.Nodes.JsonObject env ? env["rows"] : node,
+                SerializerKeys.KeysOf(_value, _envelope, opts, _names));
             http.Response.StatusCode = _status;
             if (_location is not null) http.Response.Headers.Location = _location;
             await http.Response.WriteAsJsonAsync(node, opts);
-        }
-        private void Strip(global::System.Text.Json.Nodes.JsonNode? n)
-        {
-            if (n is global::System.Text.Json.Nodes.JsonArray a) { foreach (var e in a) Strip(e); return; }
-            if (n is not global::System.Text.Json.Nodes.JsonObject o) return;
-            foreach (var key in o.Select(p => p.Key).Where(k => _names.Any(x => string.Equals(x, k, global::System.StringComparison.OrdinalIgnoreCase))).ToList())
-                o.Remove(key);
         }
     }
 }

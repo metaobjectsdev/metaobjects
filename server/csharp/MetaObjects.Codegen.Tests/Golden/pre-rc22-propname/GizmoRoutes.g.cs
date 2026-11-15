@@ -74,15 +74,15 @@ public static class GizmoRoutes
 
             // withCount=1 → { rows, total } envelope; otherwise bare row array.
             var withCount = qs.TryGetValue("withCount", out var wc) && (wc == "1" || string.Equals(wc, "true", global::System.StringComparison.OrdinalIgnoreCase));
-            if (!withCount) return (IResult)new CredentialOmittingResult(rows, new string[] { "pinHash" });
+            if (!withCount) return (IResult)new CredentialOmittingResult(rows, new string[] { "PinHash" });
             var totalQ = EfCoreFilterDispatch.ApplyFilter(db.Gizmos.AsNoTracking(), filter.Predicates);
             var total = await totalQ.CountAsync();
-            return (IResult)new CredentialOmittingResult(new { rows, total }, new string[] { "pinHash" }, envelope: true);
+            return (IResult)new CredentialOmittingResult(new { rows, total }, new string[] { "PinHash" }, envelope: true);
         });
 
         app.MapGet(prefix + "/gizmos/{id}", async (long id, global::Acme.Generated.AppDbContext db) =>
             await db.Gizmos.FindAsync(id) is { } found
-                ? (IResult)new CredentialOmittingResult(found, new string[] { "pinHash" })
+                ? (IResult)new CredentialOmittingResult(found, new string[] { "PinHash" })
                 : Results.NotFound(new { error = "not_found" }));
 
         app.MapPost(prefix + "/gizmos", async (HttpContext http, global::Acme.Generated.AppDbContext db) =>
@@ -128,7 +128,7 @@ public static class GizmoRoutes
                         statusCode: __constraint.Status);
                 throw;
             }
-            return (IResult)new CredentialOmittingResult(input, new string[] { "pinHash" }, status: 201, location: prefix + "/gizmos");
+            return (IResult)new CredentialOmittingResult(input, new string[] { "PinHash" }, status: 201, location: prefix + "/gizmos");
         });
 
         async global::System.Threading.Tasks.Task<IResult> UpdateGizmo(long id, HttpContext http, global::Acme.Generated.AppDbContext db)
@@ -147,11 +147,14 @@ public static class GizmoRoutes
                 .Value.SerializerOptions;
             var entry = db.Entry(existing);
             existing.UpdatedAt = global::System.DateTimeOffset.UtcNow;
+            var __keys = SerializerKeys.PropertyByKey(existing.GetType(), jsonOpts);
             foreach (var prop in body.RootElement.EnumerateObject())
             {
+                var __clr = __keys.TryGetValue(prop.Name, out var __mapped) ? __mapped : null;
+                if (__clr is "PinHash" or "TokenHash") continue; // @formExclude / credential: not writable
                 if (string.Equals(prop.Name, "pinHash", global::System.StringComparison.OrdinalIgnoreCase)) continue; // @formExclude / credential: not writable
                 if (string.Equals(prop.Name, "tokenHash", global::System.StringComparison.OrdinalIgnoreCase)) continue; // @formExclude / credential: not writable
-                if (string.Equals(prop.Name, "dims", global::System.StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(prop.Name, "dims", global::System.StringComparison.OrdinalIgnoreCase) || __clr == "Dims")
                 {
                     if (prop.Value.ValueKind == global::System.Text.Json.JsonValueKind.Null)
                     {
@@ -165,7 +168,7 @@ public static class GizmoRoutes
                     existing.Dims = __vo0;
                     continue;
                 }
-                if (string.Equals(prop.Name, "extras", global::System.StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(prop.Name, "extras", global::System.StringComparison.OrdinalIgnoreCase) || __clr == "Extras")
                 {
                     if (prop.Value.ValueKind == global::System.Text.Json.JsonValueKind.Null)
                     { existing.Extras = null; continue; }
@@ -176,7 +179,8 @@ public static class GizmoRoutes
                     existing.Extras = __map0;
                     continue;
                 }
-                var target = entry.Metadata.FindProperty(prop.Name)
+                var target = (__clr is null ? null : entry.Metadata.FindProperty(__clr))
+                    ?? entry.Metadata.FindProperty(prop.Name)
                     ?? entry.Metadata.GetProperties().FirstOrDefault(p => string.Equals(p.Name, prop.Name, global::System.StringComparison.OrdinalIgnoreCase));
                 if (target is null) continue;
                 if (target.IsPrimaryKey()) continue;                        // PK is route-authoritative
@@ -212,7 +216,7 @@ public static class GizmoRoutes
                         statusCode: __constraint.Status);
                 throw;
             }
-            return (IResult)new CredentialOmittingResult(existing, new string[] { "pinHash" });
+            return (IResult)new CredentialOmittingResult(existing, new string[] { "PinHash" });
         }
         app.MapPatch(prefix + "/gizmos/{id}", UpdateGizmo);
         app.MapPut(prefix + "/gizmos/{id}", UpdateGizmo);
@@ -279,17 +283,12 @@ public static class GizmoRoutes
                 http.RequestServices.GetService(typeof(global::Microsoft.Extensions.Options.IOptions<global::Microsoft.AspNetCore.Http.Json.JsonOptions>))!)
                 .Value.SerializerOptions;
             var node = global::System.Text.Json.JsonSerializer.SerializeToNode(_value, _value.GetType(), opts);
-            Strip(_envelope && node is global::System.Text.Json.Nodes.JsonObject env ? env["rows"] : node);
+            // The keys are the serializer's own for these properties (naming policy, rename, attribute), never guessed from names.
+            SerializerKeys.Strip(_envelope && node is global::System.Text.Json.Nodes.JsonObject env ? env["rows"] : node,
+                SerializerKeys.KeysOf(_value, _envelope, opts, _names));
             http.Response.StatusCode = _status;
             if (_location is not null) http.Response.Headers.Location = _location;
             await http.Response.WriteAsJsonAsync(node, opts);
-        }
-        private void Strip(global::System.Text.Json.Nodes.JsonNode? n)
-        {
-            if (n is global::System.Text.Json.Nodes.JsonArray a) { foreach (var e in a) Strip(e); return; }
-            if (n is not global::System.Text.Json.Nodes.JsonObject o) return;
-            foreach (var key in o.Select(p => p.Key).Where(k => _names.Any(x => string.Equals(x, k, global::System.StringComparison.OrdinalIgnoreCase))).ToList())
-                o.Remove(key);
         }
     }
 }

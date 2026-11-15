@@ -102,7 +102,9 @@ public class DbContextGenerator : IGenerator
             .OrderBy(o => o.Name, StringComparer.Ordinal)
             .ToList();
         if (objects.Count == 0) return [];
-        CSharpNaming.RefuseDivergingPropertyHook(Name, objects, ctx.Config, PropertyName);
+        // Every object the context names a property of: the DbSet entities and views, but also the value-object
+        // members its owned and flattened configuration reaches and a TPH subtype's own fields.
+        CSharpNaming.RefuseDivergingPropertyHook(Name, ReportRows.WithReportRows(ctx), ctx.Config, PropertyName);
         // One context, one property per name (CS0102 otherwise), claimed as emitted: an object
         // that gets no DbSet here never takes part. Two objects on one table are EF's to refuse
         // (it does, at model build), not this generator's.

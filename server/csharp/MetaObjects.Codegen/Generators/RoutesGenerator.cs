@@ -452,7 +452,7 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine("            var entry = db.Entry(existing);");
             AppendUpdateAutoSet(sb, autoSetFields);
             AppendPartialMergeLoop(sb, null, voFields, mapVoFields, autoSetNavs, frozenNavs, HasDecimalField(entity),
-                deniedFields.SelectMany(f => WireKeys(f, ctx.Config)).ToList(), HasDurationField(entity));
+                deniedFields.SelectMany(f => WireKeys(f, ctx.Config)).ToList(), deniedFields.Select(f => CSharpNaming.PropertyName(f, ctx.Config)).ToList(), HasDurationField(entity));
             AppendSaveChanges(sb);
             AppendArrayNullClears(sb, voFields, tableRef, pkColumnRef);
             // #214 — writes target the table; for a write-through entity re-read the row
@@ -845,8 +845,10 @@ public class RoutesGenerator : PerEntityGenerator
         new[] { f.Name, CSharpNaming.PropertyName(f, config) }
             .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
+    // The CLR property names of an entity's credentials. The JSON key each is written under is not
+    // derived here: the generated result asks the host's serializer (SerializerKeys.KeysOf).
     private static List<string> CredentialNames(MetaObject entity, GenConfig config) =>
-        entity.Fields().Where(IsCredentialField).SelectMany(f => WireKeys(f, config)).ToList();
+        entity.Fields().Where(IsCredentialField).Select(f => CSharpNaming.PropertyName(f, config)).ToList();
 
     // `string.Equals(prop.Name, "a", ...) || string.Equals(prop.Name, "b", ...)` over the keys.
     private static string KeyMatch(IEnumerable<string> keys) =>
@@ -899,17 +901,12 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("                http.RequestServices.GetService(typeof(global::Microsoft.Extensions.Options.IOptions<global::Microsoft.AspNetCore.Http.Json.JsonOptions>))!)");
         sb.AppendLine("                .Value.SerializerOptions;");
         sb.AppendLine("            var node = global::System.Text.Json.JsonSerializer.SerializeToNode(_value, _value.GetType(), opts);");
-        sb.AppendLine("            Strip(_envelope && node is global::System.Text.Json.Nodes.JsonObject env ? env[\"rows\"] : node);");
+        sb.AppendLine("            // The keys are the serializer's own for these properties (naming policy, rename, attribute), never guessed from names.");
+        sb.AppendLine($"            SerializerKeys.Strip(_envelope && node is global::System.Text.Json.Nodes.JsonObject env ? env[\"rows\"] : node,");
+        sb.AppendLine($"                SerializerKeys.KeysOf(_value, _envelope, opts, _names));");
         sb.AppendLine("            http.Response.StatusCode = _status;");
         sb.AppendLine("            if (_location is not null) http.Response.Headers.Location = _location;");
         sb.AppendLine("            await http.Response.WriteAsJsonAsync(node, opts);");
-        sb.AppendLine("        }");
-        sb.AppendLine("        private void Strip(global::System.Text.Json.Nodes.JsonNode? n)");
-        sb.AppendLine("        {");
-        sb.AppendLine("            if (n is global::System.Text.Json.Nodes.JsonArray a) { foreach (var e in a) Strip(e); return; }");
-        sb.AppendLine("            if (n is not global::System.Text.Json.Nodes.JsonObject o) return;");
-        sb.AppendLine("            foreach (var key in o.Select(p => p.Key).Where(k => _names.Any(x => string.Equals(x, k, global::System.StringComparison.OrdinalIgnoreCase))).ToList())");
-        sb.AppendLine("                o.Remove(key);");
         sb.AppendLine("        }");
         sb.AppendLine("    }");
     }
@@ -1335,7 +1332,7 @@ public class RoutesGenerator : PerEntityGenerator
         StringBuilder sb, string? discProp, IReadOnlyList<VoField> voFields,
         IReadOnlyList<MapVoField> mapVoFields,
         IReadOnlyList<string> autoSetNavs, IReadOnlyList<string> frozenNavs, bool hasDecimal,
-        IReadOnlyList<string> deniedKeys, bool hasDuration = false)
+        IReadOnlyList<string> deniedKeys, IReadOnlyList<string> deniedClr, bool hasDuration = false)
     {
         // A nullable array-of-VO column that a request clears to null (present-null) can NOT be
         // NULLed by an owned-nav assignment — EF OwnsMany(...).ToJson writes `[]` for a null
@@ -1345,10 +1342,17 @@ public class RoutesGenerator : PerEntityGenerator
             if (voFields[i].IsArray && !voFields[i].Required)
                 sb.AppendLine($"            var __clearVo{i} = false;");
 
+        // The body key -> CLR property map comes from the host serializer's own contract (a naming policy
+        // such as SnakeCaseLower, a rename, an attribute), never from a guess at the name: the keys a
+        // client echoes from a response are the keys this resolves.
+        sb.AppendLine($"            var __keys = SerializerKeys.PropertyByKey(existing.GetType(), jsonOpts);");
         sb.AppendLine("            foreach (var prop in body.RootElement.EnumerateObject())");
         sb.AppendLine("            {");
+        sb.AppendLine("                var __clr = __keys.TryGetValue(prop.Name, out var __mapped) ? __mapped : null;");
         // #484 — @formExclude / credential keys are IGNORED (never a 400), ahead of every arm below
-        // (a present null is a write too).
+        // (a present null is a write too). Denied by the serializer-resolved property AND by the field-name spellings.
+        if (deniedClr.Count > 0)
+            sb.AppendLine($"                if (__clr is {string.Join(" or ", deniedClr.Select(n => "\"" + n + "\""))}) continue; // @formExclude / credential: not writable");
         foreach (var key in deniedKeys)
             sb.AppendLine($"                if (string.Equals(prop.Name, \"{key}\", global::System.StringComparison.OrdinalIgnoreCase)) continue; // @formExclude / credential: not writable");
         // Program D — typed value-object arms FIRST (owned-nav columns are invisible to
@@ -1361,7 +1365,7 @@ public class RoutesGenerator : PerEntityGenerator
         {
             var vf = voFields[i];
             var v = "__vo" + i;
-            sb.AppendLine($"                if ({KeyMatch(vf.WireKeys)})");
+            sb.AppendLine($"                if ({KeyMatch(vf.WireKeys)} || __clr == \"{vf.Nav}\")");
             sb.AppendLine("                {");
             sb.AppendLine("                    if (prop.Value.ValueKind == global::System.Text.Json.JsonValueKind.Null)");
             sb.AppendLine("                    {");
@@ -1395,7 +1399,7 @@ public class RoutesGenerator : PerEntityGenerator
         {
             var mf = mapVoFields[i];
             var mv = "__map" + i;
-            sb.AppendLine($"                if ({KeyMatch(mf.WireKeys)})");
+            sb.AppendLine($"                if ({KeyMatch(mf.WireKeys)} || __clr == \"{mf.Nav}\")");
             sb.AppendLine("                {");
             sb.AppendLine("                    if (prop.Value.ValueKind == global::System.Text.Json.JsonValueKind.Null)");
             sb.AppendLine($"                    {{ existing.{mf.Nav} = null; continue; }}");
@@ -1407,7 +1411,8 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine("                    continue;");
             sb.AppendLine("                }");
         }
-        sb.AppendLine("                var target = entry.Metadata.FindProperty(prop.Name)");
+        sb.AppendLine("                var target = (__clr is null ? null : entry.Metadata.FindProperty(__clr))");
+        sb.AppendLine("                    ?? entry.Metadata.FindProperty(prop.Name)");
         sb.AppendLine("                    ?? entry.Metadata.GetProperties().FirstOrDefault(p => string.Equals(p.Name, prop.Name, global::System.StringComparison.OrdinalIgnoreCase));");
         sb.AppendLine("                if (target is null) continue;");
         sb.AppendLine("                if (target.IsPrimaryKey()) continue;                        // PK is route-authoritative");
@@ -1529,7 +1534,7 @@ public class RoutesGenerator : PerEntityGenerator
         // #484 — as on a plain entity: write-denied keys ignored, credentials omitted. One shared
         // column may be declared by several subtypes, so a mark on any declaration counts.
         var deniedFields = HierarchyMarkedFields(st.Entity, hierarchy, IsApiWriteDenied);
-        var credentials = HierarchyMarkedFields(st.Entity, hierarchy, IsCredentialField).SelectMany(f => WireKeys(f, config)).ToList();
+        var credentials = HierarchyMarkedFields(st.Entity, hierarchy, IsCredentialField).Select(f => CSharpNaming.PropertyName(f, config)).ToList();
 
         // Per-subtype list: GET /<base>/<seg>
         sb.AppendLine();
@@ -1605,7 +1610,7 @@ public class RoutesGenerator : PerEntityGenerator
         // ADR-0045 + the 0.19.4 lesson: TPH is a SEPARATE code path per port, so the
         // per-subtype merge states the same exclusion rather than inheriting it.
         AppendPartialMergeLoop(sb, discProp, [], mapVoFields, autoSetNavs, frozenNavs, HasDecimalField(st.Entity),
-            deniedFields.SelectMany(f => WireKeys(f, config)).ToList(), HasDurationField(st.Entity));
+            deniedFields.SelectMany(f => WireKeys(f, config)).ToList(), deniedFields.Select(f => CSharpNaming.PropertyName(f, config)).ToList(), HasDurationField(st.Entity));
         AppendSaveChanges(sb);
         sb.AppendLine($"            return {OkResult("existing", credentials)};");
         sb.AppendLine("        }");

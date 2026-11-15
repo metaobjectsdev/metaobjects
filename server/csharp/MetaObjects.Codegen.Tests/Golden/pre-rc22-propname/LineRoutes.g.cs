@@ -112,9 +112,12 @@ public static class LineRoutes
                 http.RequestServices.GetService(typeof(global::Microsoft.Extensions.Options.IOptions<global::Microsoft.AspNetCore.Http.Json.JsonOptions>))!)
                 .Value.SerializerOptions;
             var entry = db.Entry(existing);
+            var __keys = SerializerKeys.PropertyByKey(existing.GetType(), jsonOpts);
             foreach (var prop in body.RootElement.EnumerateObject())
             {
-                var target = entry.Metadata.FindProperty(prop.Name)
+                var __clr = __keys.TryGetValue(prop.Name, out var __mapped) ? __mapped : null;
+                var target = (__clr is null ? null : entry.Metadata.FindProperty(__clr))
+                    ?? entry.Metadata.FindProperty(prop.Name)
                     ?? entry.Metadata.GetProperties().FirstOrDefault(p => string.Equals(p.Name, prop.Name, global::System.StringComparison.OrdinalIgnoreCase));
                 if (target is null) continue;
                 if (target.IsPrimaryKey()) continue;                        // PK is route-authoritative
