@@ -58,6 +58,9 @@ await writeMigration(sql, { dir: ".metaobjects/migrations", slug: "add-customer-
 - Rename detection via heuristic (Levenshtein on column names, column-set overlap on tables)
   + `onAmbiguous` callback — library doesn't prompt; CLI in SP5 wires the prompt.
 - Per-change-kind allow flags for destructive opt-in.
+- `@metaobjectsdev/migrate-ts/offline` is the part that never opens a database: the expected
+  schema, the diff, the snapshot store and the advice helpers. Import from it where a driver must
+  not load (`meta gen` does). The package root re-exports it beside the parts that connect.
 
 ## Dialects
 
