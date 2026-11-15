@@ -16,15 +16,16 @@
 # success — which RE-RUNS the stale lane instead of merely reporting it stale.
 # That needs `actions: read` below to see its own history.
 #
-# The ts and java ports are each split into parallel jobs — a FAST lane (the
-# quick pure-code correctness signal: ts-fast = build+typecheck/conformance/
-# completeness, java-fast = java+kotlin conformance), a UNIT lane for ts (ts-unit =
-# the full per-package suites — metadata/render/runtime-ts + client/web — that
-# ts-fast's named-file conformance gate leaves ungated), and a SLOW lane (docker
-# integration + heavy build: ts-slow, java-slow = reactor + integration). The
-# split surfaces the verdict fast and means a cancel/OOM/flake mid-integration no
-# longer kills the fast signal. `detect` emits the umbrella token (`ts` / `java`);
-# all of that port's jobs gate on it.
+# The ts port is split into parallel jobs — a FAST lane (the quick pure-code
+# correctness signal: ts-fast = build+typecheck/conformance/completeness), a UNIT
+# lane (ts-unit = the full per-package suites — metadata/render/runtime-ts +
+# client/web — that ts-fast's named-file conformance gate leaves ungated), and a
+# SLOW lane (docker integration: ts-slow). The split surfaces the verdict fast and
+# means a cancel/OOM/flake mid-integration no longer kills the fast signal. The java
+# port is ONE job, java-slow = the full reactor with tests on (which already runs
+# every java and kotlin conformance class) + docker integration: a separate
+# conformance-only job would run those same classes a second time. `detect` emits
+# the umbrella token (`ts` / `java`); all of that port's jobs gate on it.
 #
 # Integration-running jobs (ts-slow, python, csharp, java-slow) share a Postgres
 # SIDECAR instead of each test booting its own Testcontainers Postgres per
@@ -190,21 +191,9 @@ jobs:
           RUNTIME_TS_PG_EXPECT: '1'
         run: scripts/ci-local.sh --only ts-slow --strict-toolchains
 
-  # Java FAST lane — java + kotlin conformance only (the quick correctness signal).
-  # No docker/integration, so no sidecar.
-  java-fast:
-    needs: detect
-    if: contains(needs.detect.outputs.ports, 'java')
-    runs-on: [self-hosted, linux]
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - run: scripts/ci-local.sh --only java-fast --strict-toolchains
-
-  # Java SLOW lane — full reactor + docker integration (java + kotlin). Uses the
-  # shared Postgres sidecar so integration stops booting per-scenario containers.
+  # Java lane — full reactor with tests on (every java and kotlin conformance class
+  # lives in a reactor module, so it runs here) + docker integration (java + kotlin).
+  # Uses the shared Postgres sidecar so integration stops booting per-scenario containers.
   java-slow:
     needs: detect
     if: contains(needs.detect.outputs.ports, 'java')
@@ -326,7 +315,7 @@ jobs:
         run: scripts/ci-local.sh --only csharp --strict-toolchains
 
   notify:
-    needs: [detect, gates, ts-fast, ts-unit, ts-slow, java-fast, java-slow, python, csharp]
+    needs: [detect, gates, ts-fast, ts-unit, ts-slow, java-slow, python, csharp]
     if: always() && contains(needs.*.result, 'failure')
     runs-on: [self-hosted, linux]
     steps:
