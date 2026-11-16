@@ -11,8 +11,8 @@
 #              ALL   every lane below
 #              NONE  no test lane (the `gates` lane still runs; see below)
 #   Lanes: ts-fast ts-unit java-slow python csharp. These are the ci-local sections a
-#   change can select. ts-slow, java-fast, cube and mutation are not selectable here:
-#   the first three need docker or duplicate a lane below, and mutation is diff-scoped
+#   change can select. ts-slow, cube and mutation are not selectable here:
+#   the first two need docker, and mutation is diff-scoped
 #   inside ts-fast already (gate_completeness_diff in ci-local.sh), which this map neither
 #   widens nor narrows.
 #

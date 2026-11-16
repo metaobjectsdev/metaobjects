@@ -25,36 +25,36 @@ check "ts"                    "$(union_ports ts bogus)"               "union dro
 
 # ── not_green_ports: newest verdict per lane wins ─────────────────────────────
 all_green() {
-  printf '%s\tsuccess\n' ts-fast ts-unit ts-slow java-fast java-slow python csharp
+  printf '%s\tsuccess\n' ts-fast ts-unit ts-slow java-slow python csharp
 }
 
 check "" "$(all_green | not_green_ports)" "every lane green -> nothing to re-run"
 
 # The defect this file exists for: a docs-only run SKIPS the code lanes, so the
 # newest run says nothing about them and the verdict must come from the run before.
-check "java" "$( { printf '%s\tskipped\n' ts-fast ts-unit ts-slow java-fast java-slow python csharp
+check "java" "$( { printf '%s\tskipped\n' ts-fast ts-unit ts-slow java-slow python csharp
                    printf '%s\tsuccess\n' ts-fast ts-unit ts-slow python csharp
-                   printf '%s\tfailure\n' java-fast java-slow; } | not_green_ports )" \
+                   printf '%s\tfailure\n' java-slow; } | not_green_ports )" \
       "docs-only run skips a red java -> java still not green"
 
-check "ts" "$( { printf '%s\tsuccess\n' ts-fast ts-unit java-fast java-slow python csharp
+check "ts" "$( { printf '%s\tsuccess\n' ts-fast ts-unit java-slow python csharp
                  printf 'ts-slow\tfailure\n'; } | not_green_ports )" \
       "one red ts lane selects the whole ts port"
 
 # `skipped` is walked past, never counted as a verdict — it describes the
 # selection, not the code.
 check "" "$( { printf 'ts-fast\tskipped\n'
-               printf '%s\tsuccess\n' ts-fast ts-unit ts-slow java-fast java-slow python csharp; } | not_green_ports )" \
+               printf '%s\tsuccess\n' ts-fast ts-unit ts-slow java-slow python csharp; } | not_green_ports )" \
       "skipped is walked past to the real verdict"
 
 # A lane that was cancelled was never verified. cancel-in-progress makes this
 # common, so counting it as green would reopen the hole from the other side.
-check "csharp" "$( { printf '%s\tsuccess\n' ts-fast ts-unit ts-slow java-fast java-slow python
+check "csharp" "$( { printf '%s\tsuccess\n' ts-fast ts-unit ts-slow java-slow python
                      printf 'csharp\tcancelled\n'; } | not_green_ports )" \
       "cancelled is not green"
 
 # No verdict at all in the window is UNKNOWN, and unknown must widen.
-check "python" "$(printf '%s\tsuccess\n' ts-fast ts-unit ts-slow java-fast java-slow csharp | not_green_ports)" \
+check "python" "$(printf '%s\tsuccess\n' ts-fast ts-unit ts-slow java-slow csharp | not_green_ports)" \
       "a lane with no verdict in the window is not green"
 
 check "ts java python csharp" "$(printf '' | not_green_ports)" "no history at all -> everything"

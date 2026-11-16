@@ -59,10 +59,13 @@
 #                                    #   java   → java+kotlin conformance, reactor,
 #                                    #            integration-tests java+kotlin
 #                                    #   java-fast → java+kotlin conformance only
-#                                    #            (the quick correctness signal)
-#                                    #   java-slow → reactor + integration-tests
-#                                    #            (java+kotlin); CI runs the two
-#                                    #            lanes as separate parallel jobs
+#                                    #            (the quick correctness signal; a local
+#                                    #            selector and conformance.yml's lane, no
+#                                    #            local-ci job: java-slow's reactor already
+#                                    #            runs these classes)
+#                                    #   java-slow → reactor (which runs every java and
+#                                    #            kotlin conformance class) + integration-
+#                                    #            tests (java+kotlin); local-ci's one java job
 #                                    #   python → full python test suite + integration-tests
 #                                    #   csharp → full csharp codegen suite + conformance
 #                                    #            + integration-tests
@@ -1325,8 +1328,8 @@ lane_python() {
 }
 # NOT run here: `conformance: java` and `conformance: kotlin`. Every test class those two
 # name lives in a reactor module, and java-reactor runs every test in every reactor module,
-# so in the full run they ran each of those tests a second time. They stay the java-fast
-# lane's quick signal, where the reactor is a separate job.
+# so in the full run they ran each of those tests a second time. `--only java-fast` keeps
+# them as a quick local signal and as conformance.yml's lane; local-ci has no java-fast job.
 lane_java() {
   if want java; then
     echo "  (conformance: java / kotlin run inside java-reactor — every class they name is in a reactor module)"
@@ -1525,12 +1528,11 @@ elif [ "$PARALLEL" -eq 0 ]; then
   else
     # Heavy tier for --only — other-language ports + full reactor + docker integration.
     #
-    # The Java port is split into two lanes so CI can run them as separate jobs
-    # (see .github/workflows/local-ci.yml): a FAST lane (java+kotlin conformance,
-    # ~2-3m — the correctness signal) and a SLOW lane (full reactor + docker
-    # integration). Running them as parallel jobs surfaces the conformance verdict
-    # quickly and means a cancel/OOM mid-integration no longer kills the fast
-    # signal. `--only java` still runs BOTH lanes, in order.
+    # The Java port has two selectors: java-fast (java+kotlin conformance, ~2-3m, a quick
+    # local signal and conformance.yml's lane) and java-slow (full reactor + docker
+    # integration). The reactor runs every java-fast class, so local-ci runs java-slow
+    # alone (.github/workflows/local-ci.yml). `--only java` runs the conformance steps
+    # and the reactor, in order.
     run_csharp_steps
     if want_any java java-fast;   then step_if mvn "conformance: java"             gate_conf_java;    fi
     run_python_steps

@@ -97,6 +97,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          fetch-depth: 0          # the mutation gate needs a merge base with origin/$GITHUB_BASE_REF to diff-scope
           persist-credentials: false
       - uses: oven-sh/setup-bun@v2
         with:
