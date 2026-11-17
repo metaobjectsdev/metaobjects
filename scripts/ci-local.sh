@@ -125,7 +125,8 @@
 # slowest steps and each lane's wall time. Every step still runs and still fails the
 # run; only the order changes. --quick and --only run serially as before.
 # Worker counts inside the runners: MO_CI_PY_WORKERS (pytest-xdist, default 8),
-# MO_CI_TS_WORKERS (bun test --parallel for the integration suite, default 6) and
+# MO_CI_TS_WORKERS (bun test --parallel for the integration suite and the codegen-ts suite
+# in conformance: typescript, default 6) and
 # MO_CI_JVM_FORKS (surefire forkCount for the JVM integration modules, default 3).
 #
 # POSTGRES SIDECAR (see ensure_pg_sidecar below). Any lane that runs integration
@@ -666,7 +667,12 @@ gate_conf_ts() {
   ( cd server/typescript/packages/render && bun test test/render-conformance.test.ts test/verify-conformance.test.ts test/extract/extract-conformance.test.ts test/output-prompt-conformance.test.ts ) || return 1
   ( cd server/typescript/packages/integration-tests && bun test test/validation-conformance.test.ts test/validation-conformance-runtime.test.ts ) || return 1
   ( cd server/typescript/packages/migrate-ts && bun test ) || return 1
-  ( cd server/typescript/packages/codegen-ts && bun test --timeout 30000 ) || return 1
+  # --parallel: the suite is many independent files (each builds its own model and writes
+  # into its own mkdtemp directory), so serially they spent minutes waiting on each other.
+  # Same worker count as the integration suite (scripts/integration-test.sh); MO_CI_TS_WORKERS
+  # overrides it. The cli suite below stays serial on purpose: under --parallel its tests
+  # that spawn prisma starved and timed out on the small hosted runner (pr-ci ts-fast).
+  ( cd server/typescript/packages/codegen-ts && bun test --timeout 30000 --parallel="${MO_CI_TS_WORKERS:-6}" ) || return 1
   # --timeout 30000: the cli suite invokes full `meta`/run() dispatch, which lazily
   # imports each command's (sometimes heavy: codegen, migrate-ts) module on first
   # use. On a cold/contended self-hosted runner that first cold-start import can

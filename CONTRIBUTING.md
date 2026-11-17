@@ -139,7 +139,8 @@ lane's output prints as one block when the lane finishes, so lanes never interle
 summary gives every step's time, the slowest steps and each lane's wall time. `--quick` and
 `--only` run serially. `MO_CI_PY_WORKERS` (default 8), `MO_CI_TS_WORKERS` (default 6) and
 `MO_CI_JVM_FORKS` (default 3) set the worker counts for pytest-xdist, the TypeScript
-integration suite and the JVM integration modules' surefire forks.
+integration suite and the TypeScript `codegen-ts` conformance suite, and the JVM
+integration modules' surefire forks.
 
 It SKIPS (loudly, not silently) any port whose toolchain (bun/dotnet/uv/mvn) isn't
 installed. The `.githooks/pre-push` hook additionally runs the TS build+typecheck
