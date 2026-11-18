@@ -26,6 +26,7 @@
 //! already borrow the node's own storage, so there is nothing to save.
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use indexmap::IndexMap;
@@ -238,21 +239,35 @@ impl Tree {
         };
         visited.push(sup);
         let mut result = self.effective_children(sup, visited);
-        let mut claimed = vec![false; result.len()];
+        // Each own child replaces the FIRST not-yet-claimed inherited child of its type
+        // and name; index the inherited ones by that key so the match is not quadratic.
+        let mut slots: HashMap<(&str, &str), (Vec<usize>, usize)> = HashMap::new();
+        for (i, &c) in result.iter().enumerate() {
+            let c = self.node(c);
+            slots
+                .entry((c.type_name.as_str(), c.name.as_str()))
+                .or_default()
+                .0
+                .push(i);
+        }
+        let mut replaced: Vec<(usize, NodeId)> = Vec::new();
         let mut append = Vec::new();
         for &own in &node.children {
             let o = self.node(own);
-            let hit = result.iter().enumerate().position(|(i, &c)| {
-                let c = self.node(c);
-                !claimed[i] && c.type_name == o.type_name && c.name == o.name
-            });
+            let hit = slots
+                .get_mut(&(o.type_name.as_str(), o.name.as_str()))
+                .and_then(|(idx, next)| {
+                    let i = idx.get(*next).copied();
+                    *next += 1;
+                    i
+                });
             match hit {
-                Some(i) => {
-                    result[i] = own;
-                    claimed[i] = true;
-                }
+                Some(i) => replaced.push((i, own)),
                 None => append.push(own),
             }
+        }
+        for (i, own) in replaced {
+            result[i] = own;
         }
         result.extend(append);
         result

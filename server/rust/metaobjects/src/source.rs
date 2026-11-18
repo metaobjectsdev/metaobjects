@@ -18,6 +18,11 @@ pub enum ErrorSource {
         json_path: String,
         position: Option<YamlPosition>,
     },
+    /// A node several files contributed to: every contributing file, sorted.
+    Merged {
+        files: Vec<String>,
+        json_path: String,
+    },
     /// A reference that did not resolve: the referring node and the reference.
     Resolved {
         files: Vec<String>,
@@ -57,6 +62,7 @@ impl ErrorSource {
             ErrorSource::Json { .. } => "json",
             ErrorSource::Yaml { .. } => "yaml",
             ErrorSource::Resolved { .. } => "resolved",
+            ErrorSource::Merged { .. } => "merged",
         }
     }
 
@@ -65,6 +71,7 @@ impl ErrorSource {
             ErrorSource::Code => &[],
             ErrorSource::Json { files, .. }
             | ErrorSource::Yaml { files, .. }
+            | ErrorSource::Merged { files, .. }
             | ErrorSource::Resolved { files, .. } => files,
         }
     }
@@ -74,6 +81,7 @@ impl ErrorSource {
             ErrorSource::Code => None,
             ErrorSource::Json { json_path, .. }
             | ErrorSource::Yaml { json_path, .. }
+            | ErrorSource::Merged { json_path, .. }
             | ErrorSource::Resolved { json_path, .. } => Some(json_path),
         }
     }
@@ -90,6 +98,7 @@ impl ErrorSource {
     pub fn map_files(&mut self, f: impl Fn(&str) -> String) {
         if let ErrorSource::Json { files, .. }
         | ErrorSource::Yaml { files, .. }
+        | ErrorSource::Merged { files, .. }
         | ErrorSource::Resolved { files, .. } = self
         {
             for file in files.iter_mut() {

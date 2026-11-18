@@ -83,6 +83,19 @@ fn load(sources: &[(String, String)]) -> (Tree, NodeId) {
     (r.tree, r.root)
 }
 
+/// Load a model the validator is expected to refuse, keeping the tree so a resolver can be
+/// exercised on it directly (the resolver's own conflict check is defence in depth).
+fn load_refused(sources: &[(String, String)], code: &str) -> (Tree, NodeId) {
+    let registry = default_registry().expect("the built-in providers compose");
+    let r = Loader::new(&registry).load_sources(sources);
+    assert!(
+        r.errors.iter().all(|e| e.code == code) && !r.errors.is_empty(),
+        "{:?}",
+        r.errors
+    );
+    (r.tree, r.root)
+}
+
 fn s(v: &Value) -> &str {
     v.as_str().expect("string")
 }
@@ -430,14 +443,17 @@ fn physical_names() {
 
 #[test]
 fn a_conflicting_primary_source_pair_is_refused() {
-    let (tree, root) = load(&[(
-        "meta.a.json".to_string(),
-        r#"{"metadata.root": {"package": "acme", "children": [
+    let (tree, root) = load_refused(
+        &[(
+            "meta.a.json".to_string(),
+            r#"{"metadata.root": {"package": "acme", "children": [
           {"object.entity": {"name": "A", "children": [
             {"source.rdb": {"@table": "a_one", "@schema": "s1"}},
             {"source.rdb": {"name": "second", "@table": "a_two"}}]}}]}}"#
-            .to_string(),
-    )]);
+                .to_string(),
+        )],
+        "ERR_SOURCE_MULTIPLE_PRIMARY",
+    );
     let registry = NamingRegistry::builtin();
     let naming = PhysicalNaming::default();
     let ctx = NamingCtx::new(&registry, &naming);

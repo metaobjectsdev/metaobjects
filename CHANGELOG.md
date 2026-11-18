@@ -18,16 +18,15 @@ here.**
   that reads packages, children, subtypes, attributes, `extends` and references, with the
   canonical serializer. The loader freezes the tree when it finishes, and a frozen tree memoizes
   its resolved reads (effective children, attrs and array-ness) for many concurrent readers, as
-  the other ports do. It passes `registry-conformance` byte for byte and 261 of the 526
-  metamodel fixtures; 254 of the rest are on a ledger that may only shrink (the validation passes,
-  merge warnings, the reporting short-name rule and `script.json` fixtures it does not run yet),
-  and 11 newer fixtures fail unlisted until those passes land.
+  the other ports do. It passes `registry-conformance` byte for byte and all 526 of the
+  metamodel fixtures, and runs every validation pass the TypeScript loader runs, in the same order
+  (the conformance ledger is empty and may only shrink).
   While the port is in preview, a new fixture that fails in Rust and is not on the ledger prints a
   warning and does not fail the lane; a fixture that passed and regresses still fails it, because
   the ledger records how many fixtures must pass. Nothing is published and there is no codegen
   or `cargo meta` command yet. Every load records how long each phase and each validation pass
-  took (`LoadResult::timings`; the `validate` module's ordered pass list is empty on purpose
-  until those passes land), and `load_bench` prints the per-phase and per-pass medians, with
+  took (`LoadResult::timings`; the `validate` module's ordered pass list holds the ported passes in
+  reference order), and `load_bench` prints the per-phase and per-pass medians, with
   `--write-baseline` / `--baseline` to record and compare a run — a baseline is a record to
   read, never a threshold, and the committed 20x baseline is a machine-local reference. A
   `rust` lane runs `cargo fmt --check`, clippy, the tests and the `load_bench` table (record

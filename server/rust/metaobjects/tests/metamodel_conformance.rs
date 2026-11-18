@@ -17,9 +17,10 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
-use metaobjects::errors::MetaError;
+use metaobjects::errors::{MetaError, WARN_LEGACY};
 use metaobjects::json::{safe_whole_i64, to_js_pretty};
 use metaobjects::loader::Loader;
+use metaobjects::node::{NodeId, Tree};
 use metaobjects::providers::{Provider, builtin_provider, compose_registry};
 use metaobjects::registry::{AttrSchema, ChildRule, TypeDefinition, TypeRegistry};
 use metaobjects::serializer::{canonical_serialize_effective, to_canonical_value};
@@ -103,8 +104,11 @@ fn provider(id: &str) -> Provider {
 
 struct Outcome {
     errors: Vec<MetaError>,
+    warnings: Vec<MetaError>,
     canonical: Option<Value>,
     effective: Option<String>,
+    /// The loaded model, for `script.json` operations.
+    model: Option<(Tree, NodeId)>,
 }
 
 fn run_load(fixture: &Path) -> Outcome {
@@ -118,30 +122,34 @@ fn run_load(fixture: &Path) -> Outcome {
         Err(e) => {
             return Outcome {
                 errors: vec![e],
+                warnings: Vec::new(),
                 canonical: None,
                 effective: None,
+                model: None,
             };
         }
     };
     registry.seal();
     let input = fixture.join("input");
+    // The corpus loads strict, as every port's adapter does (ADR-0023).
     let result = Loader::new(&registry)
+        .strict(true)
         .load_dir(&input)
         .expect("fixture input is readable");
     let prefix = format!("{}/", input.to_string_lossy());
-    let errors = result
-        .errors
-        .into_iter()
-        .map(|mut e| {
-            e.source
-                .map_files(|f| f.strip_prefix(&prefix).unwrap_or(f).replace('\\', "/"));
-            e
-        })
-        .collect();
+    let relative = |mut e: MetaError| {
+        e.source
+            .map_files(|f| f.strip_prefix(&prefix).unwrap_or(f).replace('\\', "/"));
+        e
+    };
+    let errors = result.errors.into_iter().map(relative).collect();
+    let warnings = result.warnings.into_iter().map(relative).collect();
     Outcome {
         errors,
+        warnings,
         canonical: Some(to_canonical_value(&result.tree, result.root, false)),
         effective: Some(canonical_serialize_effective(&result.tree, result.root)),
+        model: Some((result.tree, result.root)),
     }
 }
 
@@ -235,14 +243,111 @@ fn check_envelope(i: usize, want: &Value, got: &MetaError, failures: &mut Vec<St
     }
 }
 
+/// Walk a `navigate` path (`type:name` segments) from the root: the first top-level
+/// match, then the first effective child that matches.
+fn navigate(tree: &Tree, root: NodeId, path: &[&str]) -> Option<NodeId> {
+    let mut cur = root;
+    for seg in path {
+        let (ty, name) = seg.split_once(':')?;
+        cur = tree.children(cur).iter().copied().find(|&c| {
+            let n = tree.node(c);
+            n.type_name == ty && n.name == name
+        })?;
+    }
+    Some(cur)
+}
+
+/// Run the `script.json` operations this port implements. `field.filter-ops` needs
+/// the per-subtype filter-operator table, which the Rust registry does not carry
+/// yet; an operation it does not know fails the fixture rather than passing silently.
+fn run_script(script: &Value, tree: &Tree, root: NodeId) -> Vec<String> {
+    let mut failures = Vec::new();
+    let ops = script["operations"].as_array().cloned().unwrap_or_default();
+    for (i, op) in ops.iter().enumerate() {
+        let path: Vec<&str> = op["navigate"]
+            .as_array()
+            .map(|a| a.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default();
+        let invoke = op["invoke"].as_str().unwrap_or_default();
+        let Some(node) = navigate(tree, root, &path) else {
+            failures.push(format!("script[{i}]: cannot navigate {path:?}"));
+            continue;
+        };
+        let names = |ids: &[NodeId]| -> Value {
+            Value::from(
+                ids.iter()
+                    .map(|&c| tree.node(c).name.clone())
+                    .collect::<Vec<_>>(),
+            )
+        };
+        let fields = |ids: &[NodeId]| -> Vec<NodeId> {
+            ids.iter()
+                .copied()
+                .filter(|&c| tree.node(c).type_name == "field")
+                .collect()
+        };
+        let got = match invoke {
+            "object.effective-fields" => {
+                serde_json::json!({ "names": names(&fields(&tree.children(node))) })
+            }
+            // ADR-0039: own — the operation under test is the own-only member set.
+            "object.own-fields" => {
+                serde_json::json!({ "names": names(&fields(tree.own_children(node))) })
+            }
+            "object.find-field" => {
+                let want = op["args"]["name"].as_str().unwrap_or_default();
+                match fields(&tree.children(node))
+                    .into_iter()
+                    .find(|&c| tree.node(c).name == want)
+                {
+                    Some(c) => serde_json::json!({ "name": tree.node(c).name }),
+                    None => serde_json::json!({ "absent": true }),
+                }
+            }
+            "object.primary-identity" => {
+                match tree.children(node).iter().copied().find(|&c| {
+                    let n = tree.node(c);
+                    n.type_name == "identity" && n.sub_type == "primary"
+                }) {
+                    Some(c) => serde_json::json!({ "subtype": tree.node(c).sub_type }),
+                    None => serde_json::json!({ "absent": true }),
+                }
+            }
+            // The canonical per-field filter-operator band, in canonical operator order.
+            "field.filter-ops" => serde_json::json!({
+                "names": metaobjects::validate::util::ops_for_field(tree, node)
+            }),
+            other => {
+                failures.push(format!(
+                    "script[{i}]: operation {other:?} is not implemented in the Rust port yet"
+                ));
+                continue;
+            }
+        };
+        if got != op["expect"] {
+            failures.push(format!(
+                "script[{i}] {invoke}: expected {}, got {got}",
+                op["expect"]
+            ));
+        }
+    }
+    failures
+}
+
 /// Run every check `fixture` declares. An empty list is a pass.
 fn check(fixture: &Path) -> Vec<String> {
     let has = |f: &str| fixture.join(f).is_file();
     let mut failures = Vec::new();
-    if has("script.json") {
-        failures.push("script.json operations are not implemented in the Rust port yet".into());
-    }
     let out = run_load(fixture);
+    if has("script.json")
+        && let Some((tree, root)) = &out.model
+    {
+        failures.extend(run_script(
+            &read_json(&fixture.join("script.json")),
+            tree,
+            *root,
+        ));
+    }
     let mut codes: Vec<&str> = out.errors.iter().map(|e| e.code).collect();
     codes.sort_unstable();
 
@@ -300,12 +405,36 @@ fn check(fixture: &Path) -> Vec<String> {
                     check_envelope(i, w, g, &mut failures);
                 }
             }
-            let want_warnings = raw
+            let want_warnings: Vec<Value> = raw
                 .get("warnings")
                 .and_then(Value::as_array)
-                .map_or(0, Vec::len);
-            if want_warnings != 0 {
-                failures.push(format!("warnings count: expected {want_warnings}, got 0"));
+                .cloned()
+                .unwrap_or_default();
+            // Envelope warnings, as the errors: code first, then the source fields in
+            // declaration order. WARN_LEGACY entries are the string-list channel below.
+            let got: Vec<&MetaError> = out
+                .warnings
+                .iter()
+                .filter(|w| w.code != WARN_LEGACY)
+                .collect();
+            if want_warnings.len() != got.len() {
+                failures.push(format!(
+                    "warnings count: expected {}, got {}: {:?}",
+                    want_warnings.len(),
+                    got.len(),
+                    got.iter().map(|w| w.code).collect::<Vec<_>>()
+                ));
+            } else {
+                for (i, (w, g)) in want_warnings.iter().zip(&got).enumerate() {
+                    if w["code"].as_str() != Some(g.code) {
+                        failures.push(format!(
+                            "warning[{i}].code: expected {}, got {}",
+                            w["code"], g.code
+                        ));
+                        continue;
+                    }
+                    check_envelope(i, w, g, &mut failures);
+                }
             }
         }
     }
@@ -330,11 +459,44 @@ fn check(fixture: &Path) -> Vec<String> {
         }
     }
 
-    if has("expected-warnings.json") {
-        let want = read_json(&fixture.join("expected-warnings.json"));
-        if want.as_array().is_some_and(|a| !a.is_empty()) {
-            failures.push(format!("warnings: want {want} got []"));
-        }
+    // The legacy string-list channel: the loader's WARN_LEGACY messages, compared as a set.
+    let mut legacy: Vec<&str> = out
+        .warnings
+        .iter()
+        .filter(|w| w.code == WARN_LEGACY)
+        .map(|w| w.message.as_str())
+        .collect();
+    legacy.sort_unstable();
+    let mut want_legacy: Vec<String> = if has("expected-warnings.json") {
+        read_json(&fixture.join("expected-warnings.json"))
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    want_legacy.sort_unstable();
+    // A script fixture pins behavior queried from the model, not the loader's advisory
+    // warnings: without an expected-warnings.json it does not compare them (as the reference runner).
+    let compare_legacy = has("expected-warnings.json") || !has("script.json");
+    if compare_legacy && want_legacy.iter().map(String::as_str).collect::<Vec<_>>() != legacy {
+        failures.push(format!("warnings: want {want_legacy:?} got {legacy:?}"));
+    }
+    // A fixture that declares no warning at all loads without one (a script fixture
+    // pins model queries instead, so its typed warnings are not compared either).
+    if !has("expected-warnings.json")
+        && !has("script.json")
+        && !has("expected-errors.json")
+        && out.warnings.iter().any(|w| w.code != WARN_LEGACY)
+    {
+        failures.push(format!(
+            "unexpected warning(s): {:?}",
+            out.warnings.iter().map(|w| w.code).collect::<Vec<_>>()
+        ));
     }
     failures
 }
@@ -372,12 +534,20 @@ fn metamodel_corpus() {
     );
 
     let only = std::env::var("MO_FIXTURE").ok();
+    // MO_FILTER=<substring> runs the fixtures whose name contains it and prints why each
+    // failing one fails; MO_REPORT=1 runs everything and lists, instead of asserting,
+    // the ledgered fixtures that now pass and every unlisted failure (a regression).
+    let filter = std::env::var("MO_FILTER").ok();
+    let report = std::env::var("MO_REPORT").is_ok();
+    let narrowed = only.is_some() || filter.is_some();
     let mut passed = 0;
     let mut unexpected = Vec::new();
     let mut fixed = Vec::new();
     for dir in &dirs {
         let name = dir.file_name().unwrap().to_string_lossy().into_owned();
-        if only.as_deref().is_some_and(|o| o != name) {
+        if only.as_deref().is_some_and(|o| o != name)
+            || filter.as_deref().is_some_and(|f| !name.contains(f))
+        {
             continue;
         }
         let failures = check(dir);
@@ -386,7 +556,7 @@ fn metamodel_corpus() {
             (true, false) => passed += 1,
             (true, true) => fixed.push(name),
             (false, true) => {
-                if only.is_some() {
+                if narrowed {
                     eprintln!("{name} [known gap]: {}", failures.join("; "));
                 }
             }
@@ -404,11 +574,16 @@ fn metamodel_corpus() {
             "warning: fixture fails in Rust and is not on the ledger (preview port, not a gate failure): {failure}"
         );
     }
+    if report {
+        eprintln!("NOW PASSING (remove from the ledger): {fixed:?}");
+        eprintln!("UNLISTED FAILURES: {}", unexpected.len());
+        return;
+    }
     assert!(
         fixed.is_empty(),
         "these ledgered fixtures now pass; remove them from the ledger (it may only shrink): {fixed:?}"
     );
-    if only.is_none() {
+    if !narrowed {
         assert!(
             passed as u64 >= min_passing,
             "{passed} fixtures pass but the ledger's minPassing is {min_passing}: a fixture that passed has regressed (see the warnings above)"
