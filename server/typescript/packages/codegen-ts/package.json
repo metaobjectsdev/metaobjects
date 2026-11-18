@@ -117,7 +117,7 @@
     "gen:contract-conformance": "bun scripts/gen-contract-conformance.ts"
   },
   "license": "Apache-2.0",
-  "author": "Doug Mealing <doug@dougmealing.com>",
+  "author": "MetaObjects contributors",
   "homepage": "https://metaobjects.dev",
   "bugs": {
     "url": "https://github.com/metaobjectsdev/metaobjects/issues"
