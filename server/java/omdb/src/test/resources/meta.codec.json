@@ -104,6 +104,14 @@
               }
             },
             {
+              "field.enum": {
+                "name": "stage",
+                "@column": "stage",
+                "@values": ["Queued", "Done", "Failed"],
+                "@stringValueMap": {"Queued": "q_queued", "Done": "q_done", "Failed": "q_failed"}
+              }
+            },
+            {
               "identity.primary": {
                 "name": "primary",
                 "@fields": ["id"],

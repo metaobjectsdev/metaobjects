@@ -474,8 +474,18 @@ public object KotlinGenUtil {
         return out
     }
 
-    private fun fieldMap(fields: Collection<MetaField<*>>, strategy: String): Map<String, KotlinFieldNames> =
-        fields.associate { f -> f.name to fieldNamesOf(f, strategy) }
+    private fun fieldMap(
+        fields: Collection<MetaField<*>>,
+        strategy: String,
+        skipDerived: Boolean,
+    ): Map<String, KotlinFieldNames> {
+        val out = LinkedHashMap<String, KotlinFieldNames>()
+        for (f in fields) {
+            if (skipDerived && f.isDerived) continue
+            out[f.name] = fieldNamesOf(f, strategy)
+        }
+        return out
+    }
 
     /**
      * The flattened test is migrate's own: a `field.object` whose RESOLVED `@storage` is
@@ -514,12 +524,13 @@ public object KotlinGenUtil {
     ): KotlinObjectNames? {
         if (!declaresNamesContent(obj)) return null
         val own = obj.getMetaFields(false)
+        val columnless = obj.subType == MetaObject.SUBTYPE_ENTITY
         return KotlinObjectNames(
             type = obj.type,
             subType = obj.subType,
             name = obj.shortName,
-            fields = fieldMap(obj.metaFields, strategy),
-            ownFields = fieldMap(own, strategy),
+            fields = fieldMap(obj.metaFields, strategy, columnless),
+            ownFields = fieldMap(own, strategy, columnless),
             identities = keysOf(obj.getIdentities(true)),
             ownIdentities = keysOf(obj.getIdentities(false)),
             indexes = keysOf(obj.getChildren(LookupIndex::class.java, true)),
@@ -544,7 +555,11 @@ public object KotlinGenUtil {
         // firstRdbSource nor writableRdbSource/readOnlyRdbSource is the right selector.
         // It also carries the divergence refusal that used to live in THIS function; see
         // below.
-        primaryRdbSource(obj) ?: return null
+        val source = primaryRdbSource(obj) ?: return null
+        // rc.21 (U7): a derived field of an object read from its table is no column of that
+        // table, so it has no names entry. A projection's or write-through entity's derived
+        // field is a column of its view and keeps its entry.
+        val columnless = source.isWritable() && !obj.isWriteThrough
 
         // D4 -- every consumer downstream is meant to reference this name
         // UNCONDITIONALLY, no per-site equality guard, so an object whose @role: primary
@@ -567,6 +582,22 @@ public object KotlinGenUtil {
         // entities each declaring their own table reach direction 2. Both are pinned by
         // KotlinNamesDivergentSourceTest, which asserts zero load errors first.
 
+        val superObj = namesArtifactSuperOf(obj)
+        val ownFields = fieldMap(obj.getMetaFields(false), strategy, columnless).toMutableMap()
+        // rc.21 fix round (M8): an abstract-entity fragment leaves its derived fields out (they are
+        // no column of the tables extending it), so an object whose derived fields ARE columns (a
+        // write-through entity's read view) declares the ones it inherits itself, or COLUMNS_BY_FIELD
+        // would reference a constant no emitted object declares.
+        if (!columnless && superObj != null
+            && superObj.subType == MetaObject.SUBTYPE_ENTITY
+            && isAbstractEntity(superObj)) {
+            for (field in obj.metaFields) {
+                if (field.isDerived && !ownFields.containsKey(field.name)) {
+                    ownFields[field.name] = fieldNamesOf(field, strategy)
+                }
+            }
+        }
+
         return KotlinObjectNames(
             type = obj.type,
             subType = obj.subType,
@@ -580,14 +611,14 @@ public object KotlinGenUtil {
             // ADR-0039: metaFields is the RESOLVING accessor (getMetaFields() defaults to
             // includeParentData=true) -- an inherited @column must resolve here, or the
             // constant disagrees with the column the Exposed binding actually names.
-            fields = fieldMap(obj.metaFields, strategy),
+            fields = fieldMap(obj.metaFields, strategy, columnless),
             // ADR-0039's sanctioned own-accessor use: what this object DECLARES.
-            ownFields = fieldMap(obj.getMetaFields(false), strategy),
+            ownFields = ownFields,
             identities = keysOf(obj.getIdentities(true)),
             ownIdentities = keysOf(obj.getIdentities(false)),
             indexes = keysOf(obj.getChildren(LookupIndex::class.java, true)),
             ownIndexes = keysOf(obj.getChildren(LookupIndex::class.java, false)),
-            superObject = namesArtifactSuperOf(obj),
+            superObject = superObj,
         )
     }
 
