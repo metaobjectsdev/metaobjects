@@ -47,7 +47,9 @@ five".
    While the port is in preview, a fixture that is not on the ledger and fails in Rust prints a
    warning naming the fixture and the reason, and does not fail the run or the `rust` lane, so a
    new conformance fixture in a 1.3.0 PR never turns the lane red for a port that has not built
-   that behavior yet. When the preview label comes off, an unlisted failure fails the lane.
+   that behavior yet. A regression is still a failure: the ledger records `minPassing`, the number
+   of fixtures known to pass, which may only rise, and the run fails when fewer pass. When the
+   preview label comes off, an unlisted failure fails the lane.
 
 6. **Deliberate differences from the other five.**
    - **No `migrate`.** Schema migrations are TypeScript-owned (ADR-0015), as in Java, C# and

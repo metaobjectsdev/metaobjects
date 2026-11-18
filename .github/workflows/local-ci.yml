@@ -315,9 +315,9 @@ jobs:
         run: scripts/ci-local.sh --only csharp --strict-toolchains
 
   # The Rust port (preview, ADR-0065): fmt, clippy and the crate's tests, which run the
-  # registry and metamodel corpora. No database, so no sidecar. rustup lives in the
-  # maintainer's ~/.cargo/bin, which the runner service's PATH does not necessarily
-  # carry; rust-toolchain.toml pins the compiler, and rustup installs it on first use.
+  # registry and metamodel corpora. No database, so no sidecar. The runner service's PATH
+  # may not include Cargo's default bin directory, so the step adds it; rust-toolchain.toml
+  # pins the compiler, and rustup installs it on first use.
   rust:
     needs: detect
     if: contains(needs.detect.outputs.ports, 'rust')

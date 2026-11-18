@@ -21,7 +21,7 @@
 //!
 //! The memoized set is the one the other ports memoize on their base node:
 //! [`Tree::children`], [`Tree::attrs`] (and [`Tree::attr`], which reads through it once
-//! frozen) and [`Tree::resolved_is_array`]. TypeScript and C# also cache snapshots of a
+//! frozen, on a node that extends something) and [`Tree::resolved_is_array`]. TypeScript and C# also cache snapshots of a
 //! node's own attrs and own children because they copy them; here those accessors
 //! already borrow the node's own storage, so there is nothing to save.
 
@@ -297,6 +297,10 @@ impl Tree {
     /// The effective value of attribute `name`: own, else inherited through `extends`.
     /// Once frozen it is a lookup in the memoized [`Tree::attrs`] map.
     pub fn attr(&self, id: NodeId, name: &str) -> Option<&Value> {
+        // A node that extends nothing answers from its own map, a borrow, with no cache.
+        if self.node(id).super_node.is_none() {
+            return self.compute_attr(id, name);
+        }
         match self.cache(id) {
             Some(c) => c.attrs.get_or_init(|| self.compute_attrs(id)).get(name),
             None => self.compute_attr(id, name),

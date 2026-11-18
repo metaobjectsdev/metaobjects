@@ -5,6 +5,7 @@
 //! reference), so re-loading the output rebuilds the same tree. **Effective**
 //! inlines what each node inherits through `extends`.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 
 use serde_json::{Map, Value};
@@ -141,7 +142,10 @@ fn body(tree: &Tree, id: NodeId, effective: bool, pkg_slot: Option<String>) -> M
 
     // ADR-0039: own mode writes the declared layer, effective mode resolves.
     let mut attrs: BTreeMap<String, Value> = if effective {
-        tree.attrs(id).into_owned().into_iter().collect()
+        tree.attrs(id)
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
     } else {
         // ADR-0039: own — own-mode serialization writes the declared layer.
         tree.own_attrs(id)
@@ -156,15 +160,16 @@ fn body(tree: &Tree, id: NodeId, effective: bool, pkg_slot: Option<String>) -> M
     }
 
     let children = if effective {
-        tree.children(id).into_owned()
+        tree.children(id)
     } else {
         // ADR-0039: own — own-mode serialization writes the declared layer.
-        tree.own_children(id).to_vec()
+        Cow::Borrowed(tree.own_children(id))
     };
     if !children.is_empty() {
         let per_node = doc.as_ref().is_some_and(|(_, per)| *per);
         let items = children
-            .into_iter()
+            .iter()
+            .copied()
             .map(|c| {
                 let slot = per_node.then(|| {
                     if tree.node(c).name.is_empty() {

@@ -72,10 +72,12 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 **Rust (preview, ADR-0065) is not a column yet.** The sixth port runs two corpora
 today: `registry-conformance` (byte-identical manifest) and the metamodel corpus, 256
 of 510 green with the rest on `server/rust/metaobjects/tests/conformance-expected-failures.json`
-(validation passes, merge warnings and the `script.json` fixtures, none of them built
-yet). That ledger may only shrink. While the port is in preview, a new fixture that fails
-in Rust and is not on the ledger prints a warning and does not fail the lane; it becomes a
-hard failure when the port leaves preview. The column joins this table when the port leaves
+(validation passes, merge warnings, the reporting short-name rule and the `script.json`
+fixtures, none of them built yet). That ledger may only shrink. While the port is in
+preview, a new fixture that fails in Rust and is not on the ledger prints a warning and does
+not fail the lane; it becomes a hard failure when the port leaves preview. A regression still
+fails: the ledger's `minPassing` (256) is the number of fixtures known to pass, and the run
+fails when fewer do. The column joins this table when the port leaves
 preview.
 
 A ✓ means the port runs the corpus green; an explicit `n / m` is used where a port

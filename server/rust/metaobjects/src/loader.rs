@@ -64,15 +64,25 @@ pub struct Loader<'r> {
 /// port's directory source does. `exclude_pending` skips `_pending/` at any depth;
 /// it is off at the loader level, as in the other ports, where only the CLI-facing
 /// source resolution turns it on.
+/// A symlinked directory is followed once: a link back to a directory already
+/// walked (a cycle, or a second route to the same files) is skipped.
 pub fn metadata_files(dir: &Path, exclude_pending: bool) -> std::io::Result<Vec<PathBuf>> {
-    fn walk(dir: &Path, exclude_pending: bool, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
+    fn walk(
+        dir: &Path,
+        exclude_pending: bool,
+        seen: &mut std::collections::HashSet<PathBuf>,
+        out: &mut Vec<PathBuf>,
+    ) -> std::io::Result<()> {
+        if !seen.insert(std::fs::canonicalize(dir)?) {
+            return Ok(());
+        }
         for entry in std::fs::read_dir(dir)? {
             let path = entry?.path();
             if path.is_dir() {
                 if exclude_pending && path.file_name().is_some_and(|n| n == PENDING_DIR) {
                     continue;
                 }
-                walk(&path, exclude_pending, out)?;
+                walk(&path, exclude_pending, seen, out)?;
             } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                 let ext = ext.to_ascii_lowercase();
                 if ext == JSON_SUFFIX || YAML_SUFFIXES.contains(&ext.as_str()) {
@@ -83,7 +93,12 @@ pub fn metadata_files(dir: &Path, exclude_pending: bool) -> std::io::Result<Vec<
         Ok(())
     }
     let mut out = Vec::new();
-    walk(dir, exclude_pending, &mut out)?;
+    walk(
+        dir,
+        exclude_pending,
+        &mut std::collections::HashSet::new(),
+        &mut out,
+    )?;
     out.sort_by(|a, b| a.file_name().cmp(&b.file_name()).then_with(|| a.cmp(b)));
     Ok(out)
 }
@@ -148,6 +163,9 @@ impl<'r> Loader<'r> {
                 }
             };
             let parsed = parse_document(&doc, self.registry, &mut tree, id);
+            // An unknown type or subtype drops only that node, so the rest of the
+            // document is kept; any other parse error drops the document, as the
+            // TypeScript and Python loaders do.
             let keep = parsed
                 .errors
                 .iter()

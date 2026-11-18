@@ -5,7 +5,13 @@
 //! Fixtures this port does not pass yet are listed in
 //! `conformance-expected-failures.json` beside this file. The ledger may only
 //! shrink: a listed fixture that now passes fails the run until it is removed, and
-//! an unlisted fixture that fails fails the run.
+//! a listed name with no fixture directory fails the run.
+//!
+//! While the port is in preview (ADR-0065 decision 5), an unlisted fixture that
+//! fails prints a warning instead of failing the run, so a new fixture added for
+//! another port never turns this lane red. A regression is still caught: the ledger
+//! records `minPassing`, the number of fixtures known to pass, and the run fails
+//! when fewer pass. Raise it when fixtures leave the ledger; it may only rise.
 
 use std::path::{Path, PathBuf};
 
@@ -339,9 +345,12 @@ fn check(fixture: &Path) -> Vec<String> {
 
 #[test]
 fn metamodel_corpus() {
+    let doc = read_json(&ledger_path());
+    assert_eq!(doc["language"], "rust", "the ledger names its port");
+    let min_passing = doc["minPassing"]
+        .as_u64()
+        .expect("the ledger records minPassing");
     let ledger: Vec<String> = {
-        let doc = read_json(&ledger_path());
-        assert_eq!(doc["language"], "rust", "the ledger names its port");
         doc["fixtures"]
             .as_array()
             .expect("ledger has a fixtures list")
@@ -355,6 +364,16 @@ fn metamodel_corpus() {
         .filter(|p| p.join("input").is_dir())
         .collect();
     dirs.sort();
+
+    let names: Vec<String> = dirs
+        .iter()
+        .map(|d| d.file_name().unwrap().to_string_lossy().into_owned())
+        .collect();
+    let stale: Vec<&String> = ledger.iter().filter(|l| !names.contains(l)).collect();
+    assert!(
+        stale.is_empty(),
+        "these ledger entries name no fixture directory; remove them: {stale:?}"
+    );
 
     let only = std::env::var("MO_FIXTURE").ok();
     let mut passed = 0;
@@ -393,4 +412,10 @@ fn metamodel_corpus() {
         fixed.is_empty(),
         "these ledgered fixtures now pass; remove them from the ledger (it may only shrink): {fixed:?}"
     );
+    if only.is_none() {
+        assert!(
+            passed as u64 >= min_passing,
+            "{passed} fixtures pass but the ledger's minPassing is {min_passing}: a fixture that passed has regressed (see the warnings above)"
+        );
+    }
 }

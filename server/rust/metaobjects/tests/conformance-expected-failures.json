@@ -1,6 +1,7 @@
 {
   "language": "rust",
-  "notes": "The Rust port is in preview. This step (the loader core) parses, merges, resolves extends and serializes; it does not yet run the validation passes, emit merge warnings or run script.json operations. Every fixture listed here fails for one of those reasons and leaves the ledger when the step that covers it lands. The ledger may only shrink.",
+  "notes": "The Rust port is in preview. This step (the loader core) parses, merges, resolves extends and serializes; it does not yet run the validation passes (the unknown-attr provenance check, ERR_UNKNOWN_ATTR, among them), emit merge warnings, resolve the reporting rule that binds a bare entity name in the package its path already fixes, or run script.json operations. Every fixture listed here fails for one of those reasons and leaves the ledger when the step that covers it lands. The ledger may only shrink. minPassing is the number of fixtures known to pass; the run fails when fewer do, and it may only rise.",
+  "minPassing": 256,
   "fixtures": [
     "error-agg-all-non-boolean",
     "error-agg-any-missing-filter",

@@ -133,3 +133,17 @@ fn the_loader_reads_pending_directories() {
     std::fs::remove_dir_all(&dir).expect("clean up");
     assert_eq!((all.len(), skipped.len()), (1, 0));
 }
+
+#[cfg(unix)]
+#[test]
+fn a_symlink_cycle_is_walked_once() {
+    let dir = std::env::temp_dir().join(format!("mo-rust-symlink-{}", std::process::id()));
+    let sub = dir.join("sub");
+    std::fs::create_dir_all(&sub).expect("temp dir");
+    std::fs::write(sub.join("meta.a.json"), "{}").expect("write");
+    // sub/loop -> .. : a cycle back to the walk's own root.
+    std::os::unix::fs::symlink("..", sub.join("loop")).expect("symlink");
+    let found = metadata_files(&dir, false);
+    std::fs::remove_dir_all(&dir).expect("clean up");
+    assert_eq!(found.expect("walk").len(), 1);
+}
