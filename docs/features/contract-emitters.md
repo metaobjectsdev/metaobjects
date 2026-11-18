@@ -4,8 +4,9 @@ _`jsonSchemaFile()` and `openApiFile()`: write the model's wire contract as plai
 and OpenAPI 3.1, so a consumer in any language can work from a standard document instead of a fourth
 hand-kept source of truth._
 
-**Status:** TypeScript reference helpers, unreleased, targeting 1.2.1 (FR-022;
-[ADR-0034](../../spec/decisions/ADR-0034-codegen-scaffold-and-own.md) Amendment 10). They are listed
+**Status:** TypeScript reference helpers, unreleased (FR-022;
+[ADR-0034](../../spec/decisions/ADR-0034-codegen-scaffold-and-own.md) Amendment 10; the changelog's
+unpublished `[1.3.0]` / `[1.2.4]` sections carry them). They are listed
 by `meta gen --list`, imported from `@metaobjectsdev/codegen-ts/generators` to run as shipped, copied
 with `meta eject contract-schema openapi` to change them, and checked by `meta verify --codegen`. They
 are not core: what MetaObjects guarantees is the model, and a generator that writes files into your
