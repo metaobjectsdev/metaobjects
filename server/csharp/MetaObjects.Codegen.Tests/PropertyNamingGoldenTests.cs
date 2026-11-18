@@ -9,7 +9,6 @@
 // Capture (re-capture only for a deliberate, reviewed output change): GOLDEN_WRITE=1 dotnet test
 // --filter PropertyNamingGoldenTests. Compare mode is the default.
 
-using System.Runtime.CompilerServices;
 using MetaObjects.Codegen;
 using MetaObjects.Codegen.Generators;
 using MetaObjects.Loader;
@@ -100,8 +99,10 @@ public class PropertyNamingGoldenTests
     ]}}
     """;
 
-    private static string GoldenDir([CallerFilePath] string here = "") =>
-        Path.Combine(Path.GetDirectoryName(here)!, "Golden", "pre-rc22-propname");
+    // Found from the repo root, not [CallerFilePath]: a CI build (CI=true turns on
+    // ContinuousIntegrationBuild) maps source paths to /_/, where no golden file exists.
+    private static string GoldenDir() =>
+        Path.Combine(CorpusPaths.RepoRoot(), "server", "csharp", "MetaObjects.Codegen.Tests", "Golden", "pre-rc22-propname");
 
     [Fact]
     public void Default_output_matches_the_output_captured_before_the_property_naming_fix()
