@@ -74,6 +74,7 @@ import {
   knownFieldsLine,
   servesReadApi,
   formatTs,
+  DEFAULT_OUTPUT_LAYOUT,
   entityOutputPath,
   effectivePackage,
   crossEntitySpecifier,
@@ -666,7 +667,7 @@ function renderTphRoutes(
     //
     // The base mounts its own set separately, at its own path. The overlap is deliberate
     // and not redundant: `/auths/1/tags` accepts any row of the table, while
-    // `/auths/bridge/1/tags` answers [] for a Copay id — the segment is a type
+    // `/auths/bridge/1/tags` answers [] for a Coupon id — the segment is a type
     // assertion, which is exactly what sourceDiscriminator enforces below.
     const subM2m = renderM2mMounts(m2mEntriesOf(ctx, sub.name), base, ctx, fastifyRef, {
       pathSuffix: `/${segment}`,
@@ -768,7 +769,7 @@ export const routesFile = function routesFile(opts?: RoutesFileOpts): Generator 
         ?? ownedRuntimeImport(ctx.projectRoot ?? ".", ctx.renderContext.selfTarget.outDir),
     };
     return {
-      path: entityOutputPath(ctx.config.outputLayout ?? "flat", effectivePackage(entity), `${entity.name}.routes.ts`),
+      path: entityOutputPath(ctx.config.outputLayout ?? DEFAULT_OUTPUT_LAYOUT, effectivePackage(entity), `${entity.name}.routes.ts`),
       content: await formatTs(renderRoutes(entity, renderContext, resolveExpose(entity, opts?.expose), opts?.reportMaxRows)),
     };
   });

@@ -1,6 +1,6 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import type { Generator, GenContext, EmittedFile } from "../generator.js";
-import { entityOutputPath } from "../import-path.js";
+import { DEFAULT_OUTPUT_LAYOUT, entityOutputPath } from "../import-path.js";
 import { effectivePackage } from "../docs-paths.js";
 import { formatTs } from "../format.js";
 import { isReport } from "../source-detect.js";
@@ -51,7 +51,7 @@ export function reportExport(opts?: ReportExportOpts): Generator {
     name: "report-export",
     emitsReportExport: true,
     generate: async (ctx: GenContext): Promise<EmittedFile[]> => {
-      const layout = ctx.config.outputLayout ?? "flat";
+      const layout = ctx.config.outputLayout ?? DEFAULT_OUTPUT_LAYOUT;
       const extStyle = ctx.config.extStyle ?? "js";
       const selfTarget = ctx.renderContext?.selfTarget;
       if (selfTarget === undefined) throw new Error("report-export: no render context (run it through runGen).");

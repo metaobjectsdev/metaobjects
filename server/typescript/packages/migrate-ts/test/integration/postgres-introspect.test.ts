@@ -333,8 +333,9 @@ describe("pgTypeToSqlType normalization", () => {
     expect(pgTypeToSqlType("varchar(120)")).toEqual({ kind: "text", maxLength: 120 });
   });
 
-  test("character varying (unbounded) → text", () => {
-    expect(pgTypeToSqlType("character varying")).toEqual({ kind: "text" });
+  // rc.21 part B (U2): unbounded varchar keeps its spelling, and compares equal to text.
+  test("character varying (unbounded) → text, spelled varchar", () => {
+    expect(pgTypeToSqlType("character varying")).toEqual({ kind: "text", variant: "varchar" });
   });
 
   test("text → text", () => {

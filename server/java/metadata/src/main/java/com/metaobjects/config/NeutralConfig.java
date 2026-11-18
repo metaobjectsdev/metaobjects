@@ -148,17 +148,17 @@ public final class NeutralConfig {
         return wireFormat;
     }
 
+    /** The project's enum storage defaults ({@code enums} in this file). Never {@code null}. */
+    public EnumDefaults getEnumDefaults() {
+        return enumDefaults;
+    }
+
     /**
      * The project's {@code api} block ({@code api.pagination}, {@code api.unknownFields}), absent
      * keys at their defaults (no page size, {@code reject}). Never {@code null}.
      */
     public ApiSettings getApiSettings() {
         return apiSettings;
-    }
-
-    /** The project's enum storage defaults ({@code enums} in this file). Never {@code null}. */
-    public EnumDefaults getEnumDefaults() {
-        return enumDefaults;
     }
 
     /** The schema settings a mapping generator agrees with ({@code migrate.foreignKeyIndexes} and friends). */

@@ -49,17 +49,17 @@ const META = JSON.stringify({
       {
         "object.value": {
           name: "PhaseArgs",
-          children: [{ "field.int": { name: "caseId", "@required": true } }],
+          children: [{ "field.int": { name: "consignmentId", "@required": true } }],
         },
       },
       {
         "object.projection": {
-          name: "PhaseSummary",
+          name: "StageSummary",
           children: [
             {
               "source.rdb": {
                 name: "src", "@kind": "storedProc",
-                "@proc": "fn_phase_summary", "@parameterRef": "PhaseArgs",
+                "@proc": "fn_stage_summary", "@parameterRef": "PhaseArgs",
               },
             },
             { "field.long": { name: "phaseId" } },
@@ -130,7 +130,7 @@ describe("meta migrate — proc/matview projection kinds (real sqlite)", () => {
       expect(byName.get("v_programs")).toBe("view");
       // …the matview is NOT silently created as a plain view, and the proc emits nothing.
       expect(byName.has("mv_program_stats")).toBe(false);
-      expect([...byName.keys()].some((n) => n.includes("fn_phase_summary"))).toBe(false);
+      expect([...byName.keys()].some((n) => n.includes("fn_stage_summary"))).toBe(false);
       // …and the STANDALONE read-model is left alone: hand-authored SQL, so migrate
       // neither creates nor drops it. The load-bearing assertion is `exit === 0` and
       // `programs` existing above — before the fix, this projection aborted the entire

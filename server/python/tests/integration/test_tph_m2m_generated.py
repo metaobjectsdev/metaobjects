@@ -43,7 +43,7 @@ from metaobjects.shared.base_types import TYPE_OBJECT
 
 # Auth (base, @discriminator "type") --tags--> Tag                [rule a]
 # BridgeAuth (subtype)               --linkedAuths--> BridgeAuth   [rule b/c, self-join]
-# CopayAuth  (subtype)                                             [no own M:N — inherits tags]
+# CouponAuth  (subtype)                                             [no own M:N — inherits tags]
 _META = {
     "metadata.root": {
         "package": "acme::auth",
@@ -63,7 +63,7 @@ _META = {
                 "children": [
                     {"source.rdb": {"@table": "auths"}},
                     {"field.long": {"name": "id"}},
-                    {"field.enum": {"name": "type", "@values": ["Bridge", "Copay"]}},
+                    {"field.enum": {"name": "type", "@values": ["Bridge", "Coupon"]}},
                     {"field.string": {"name": "reference", "@required": True, "@maxLength": 80}},
                     {"relationship.association": {
                         "name": "tags", "@cardinality": "many",
@@ -86,9 +86,9 @@ _META = {
                 ],
             }},
             {"object.entity": {
-                "name": "CopayAuth",
+                "name": "CouponAuth",
                 "extends": "Auth",
-                "@discriminatorValue": "Copay",
+                "@discriminatorValue": "Coupon",
                 "children": [
                     {"field.string": {"name": "payer", "@maxLength": 80}},
                 ],
@@ -306,11 +306,11 @@ def _build_app(repo_factory: type[_Repo] = _Repo) -> tuple[FastAPI, _Repo]:
 @pytest.fixture()
 def client_and_repo():
     app, repo = _build_app()
-    # id=1 Bridge, id=2 Copay; tag 10 shared, tag 11 Bridge-only; a Bridge->Bridge link.
+    # id=1 Bridge, id=2 Coupon; tag 10 shared, tag 11 Bridge-only; a Bridge->Bridge link.
     repo.seed(
         auths=[
             {"id": 1, "type": "Bridge", "reference": "b1", "quantity": 3},
-            {"id": 2, "type": "Copay", "reference": "c1", "payer": "acme"},
+            {"id": 2, "type": "Coupon", "reference": "c1", "payer": "acme"},
         ],
         tags=[{"id": 10, "name": "shared"}, {"id": 11, "name": "bridge-only"}],
         auth_tags=[(1, 10), (1, 11), (2, 10)],
@@ -322,7 +322,7 @@ def client_and_repo():
 
 def test_base_level_traversal_ignores_subtype(client_and_repo) -> None:
     # Rule (a): GET /auths/{id}/tags — every row of the shared table is a legitimate
-    # source, so both a Bridge id and a Copay id resolve their tags with no gate.
+    # source, so both a Bridge id and a Coupon id resolve their tags with no gate.
     client, _ = client_and_repo
     resp = client.get("/api/auths/1/tags")
     assert resp.status_code == 200
@@ -343,7 +343,7 @@ def test_subtype_level_traversal_returns_its_own_relations(client_and_repo) -> N
 
 
 def test_subtype_mismatch_returns_200_empty_list_not_404(client_and_repo) -> None:
-    # Rule (c): GET /auths/bridge/{a Copay id}/tags — the id names no Bridge row, so
+    # Rule (c): GET /auths/bridge/{a Coupon id}/tags — the id names no Bridge row, so
     # it has no relations. Must be 200 + [], never 404 and never the sibling's rows
     # (which the junction FK, addressing only the shared base table, would happily
     # return without this gate).
@@ -352,7 +352,7 @@ def test_subtype_mismatch_returns_200_empty_list_not_404(client_and_repo) -> Non
     assert resp.status_code == 200
     assert resp.json() == []
 
-    resp2 = client.get("/api/auths/copay/1/tags")
+    resp2 = client.get("/api/auths/coupon/1/tags")
     assert resp2.status_code == 200
     assert resp2.json() == []
 
@@ -367,7 +367,7 @@ def test_subtype_only_relation_traversal(client_and_repo) -> None:
     # ...and there is no such route at all on a sibling subtype or the base — the
     # router never mounted it there (proven at the codegen level too), so FastAPI
     # itself answers 404 (no matching route), not an application-level empty list.
-    assert client.get("/api/auths/copay/2/linkedAuths").status_code == 404
+    assert client.get("/api/auths/coupon/2/linkedAuths").status_code == 404
     assert client.get("/api/auths/1/linkedAuths").status_code == 404
 
 
@@ -379,7 +379,7 @@ def hostile_client_and_repo():
     repo.seed(
         auths=[
             {"id": 1, "type": "Bridge", "reference": "b1", "quantity": 3},
-            {"id": 2, "type": "Copay", "reference": "c1", "payer": "acme"},
+            {"id": 2, "type": "Coupon", "reference": "c1", "payer": "acme"},
         ],
         tags=[{"id": 10, "name": "shared"}, {"id": 11, "name": "bridge-only"}],
         auth_tags=[(1, 10), (1, 11), (2, 10)],
@@ -395,7 +395,7 @@ def test_generated_router_enforces_subtype_gate_even_when_repo_does_not(
     # THE assertion that distinguishes ENFORCEMENT (in generated code) from
     # DELEGATION (trusting the consumer): _HostileRepo.find_related_tags does NOT
     # filter by subtype at all — if the router only ever called it directly (the
-    # pre-follow-up shape), GET /auths/bridge/2/tags (id=2 is a COPAY row) would
+    # pre-follow-up shape), GET /auths/bridge/2/tags (id=2 is a COUPON row) would
     # execute the join over id=2's real auth_tags rows and return tag 10 with a
     # 200, exactly the silent leak the maintainer flagged. With the composed
     # find_by_id("Bridge", 2) gate in _emit_tph_m2m_route, the router itself

@@ -181,7 +181,40 @@ export const OBJECT_DEFINITION: ProviderDefinition = {
           "name": "filter",
           "min": 0,
           "max": 1,
-          "description": "Optional row-scope predicate (a portable attr.filter object: eq/ne/gt/gte/lt/lte/like/in/isNull with and/or, desugared to { field: { op: value } } at parse time) selecting which rows the view returns — lowered to an outer SQL WHERE. A key names one of the projection's own fields, else a field of its base entity the view need not output, else a PATH of to-one hops (identity.reference or @cardinality one relationship names) from the base then a field of the entity reached ('orderId.customerId.isActive'), joined but not output. A reached entity field may itself be derived (entity-derived: an origin.computed or origin.first declared on the entity, inlined where the filter reaches it). An aggregate-derived field is not addressable (fail-closed); a to-many hop is refused. A value may be a relative date ({ now: \"<ISO-8601 duration>\", startOf? }) on a date or timestamp field."
+          "description": "Optional row-scope predicate (a portable attr.filter object: eq/ne/gt/gte/lt/lte/like/in/isNull with and/or, desugared to { field: { op: value } } at parse time) selecting which rows the view returns — lowered to an outer SQL WHERE. A key names one of the projection's own fields, else a field of its base entity the view need not output, else a PATH of to-one hops (identity.reference or @cardinality one relationship names) from the base then a field of the entity reached ('orderId.customerId.hasActiveMembership'), joined but not output. A reached entity field may itself be derived (entity-derived: an origin.computed or origin.first declared on the entity, inlined where the filter reaches it). An aggregate-derived field is not addressable (fail-closed); a to-many hop is refused. A value may be a relative date ({ now: \"<ISO-8601 duration>\", startOf? }) on a date or timestamp field (rc.19)."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "union",
+          "isArray": true,
+          "min": 0,
+          "max": 1,
+          "description": "rc.21: the view is this projection's rows UNIONed with each named projection's rows. Each named projection has the same effective fields as this one, in order: names, subtypes, array-ness and physical column names (ERR_BAD_ATTR_VALUE otherwise); its own @filter, joins and base apply to its rows. Usually this projection extends one branch and names the others. A named projection may be abstract and sourceless."
+        },
+        {
+          "type": "attr",
+          "subType": "boolean",
+          "name": "unionAll",
+          "min": 0,
+          "max": 1,
+          "description": "rc.21: with @union, keep duplicate rows (UNION ALL). Absent or false: duplicates are removed (UNION), SQL's own default."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "grain",
+          "min": 0,
+          "max": 1,
+          "description": "rc.21: the view has one row per element of this base-entity field, a field.object array stored as jsonb; a base row with no element has no row. A field whose origin.passthrough @from names the field's @objectRef value object (Address.city) reads that member of the element; the base's own fields read the parent row as usual. An origin.aggregate is refused on such a projection."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "grainOrdinal",
+          "min": 0,
+          "max": 1,
+          "description": "rc.21: with @grain, the name of a field.int or field.long of this projection (with no origin) that holds the element's 1-based position in the array."
         },
         {
           "type": "attr",

@@ -324,6 +324,33 @@ public class ReportReadModelTest extends SharedRegistryTestBase {
     }
 
     @Test
+    public void anEnumDimensionCarriesItsStringValueMap() {
+        // rc.21 part B (N5): the row carries @stringValueMap from its type source, as C#, TS and
+        // Python do, so OMDB's codec decodes the stored string to the member.
+        MetaRoot root = loadJson("""
+            { "metadata.root": { "package": "acme", "children": [
+              { "object.entity": { "name": "Article", "children": [
+                { "source.rdb": { "@table": "articles" } },
+                { "field.long": { "name": "id" } },
+                { "field.enum": { "name": "status", "@values": ["Draft", "Published"],
+                                  "@stringValueMap": { "Draft": "draft", "Published": "published" } } },
+                { "field.enum": { "name": "kind", "@values": ["A", "B"] } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"] } },
+                { "dimension.attribute": { "name": "status", "@of": "Article.status" } },
+                { "dimension.attribute": { "name": "kind", "@of": "Article.kind" } },
+                { "measure.aggregate": { "name": "articles", "@agg": "count", "@of": "Article.id" } }
+              ] } },
+              { "object.report": { "name": "ByStatus", "@from": "Article", "@dimensions": ["status", "kind"], "@measures": ["articles"],
+                  "children": [ { "source.rdb": { "@kind": "view", "@view": "v_by_status" } } ] } }
+            ] } }
+            """);
+        ReportReadModel model = ReportReadModel.of(object(root, "ByStatus"), root);
+        Object map = model.getMetaField("status").getMetaAttr(EnumField.ATTR_STRING_VALUE_MAP).getValue();
+        assertEquals(java.util.Map.of("Draft", "draft", "Published", "published"), map);
+        assertFalse(model.getMetaField("kind").hasMetaAttr(EnumField.ATTR_STRING_VALUE_MAP));
+    }
+
+    @Test
     public void aSourcelessReportHasAShapeAndNoView() {
         MetaRoot root = loadJson(SALES_MODEL);
         ReportReadModel model = ReportReadModel.of(object(root, "InertSales"), root);

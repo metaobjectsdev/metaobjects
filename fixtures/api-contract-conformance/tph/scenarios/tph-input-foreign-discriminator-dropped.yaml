@@ -2,14 +2,14 @@ name: tph-input-foreign-discriminator-dropped
 description: >
   A per-subtype route takes the row's subtype from the URL, never from the body (the 1.2.x
   security fix). A `type` naming a different subtype, sent to the Bridge route, is DROPPED
-  SILENTLY on create and on update: the created row is a Bridge, no Copay row appears, and an
+  SILENTLY on create and on update: the created row is a Bridge, no Coupon row appears, and an
   updated Bridge stays a Bridge. Every port answers the same way.
 requests:
   - id: r1
     method: POST
     path: /api/auths/bridge
     body:
-      type: "Copay"
+      type: "Coupon"
       reference: "REF-DISC"
       quantity: 4
     expect:
@@ -19,7 +19,7 @@ requests:
         hasId: true
   - id: r2
     method: GET
-    path: /api/auths/copay?filter[reference][eq]=REF-DISC
+    path: /api/auths/coupon?filter[reference][eq]=REF-DISC
     expect:
       status: 200
       body:
@@ -28,7 +28,7 @@ requests:
     method: PATCH
     path: /api/auths/bridge/1
     body:
-      type: "Copay"
+      type: "Coupon"
       reference: "REF-1-DISC"
     expect:
       status: 200
@@ -36,7 +36,7 @@ requests:
         row: { id: 1, type: "Bridge", reference: "REF-1-DISC" }
   - id: r4
     method: GET
-    path: /api/auths/copay?filter[reference][eq]=REF-1-DISC
+    path: /api/auths/coupon?filter[reference][eq]=REF-1-DISC
     expect:
       status: 200
       body:

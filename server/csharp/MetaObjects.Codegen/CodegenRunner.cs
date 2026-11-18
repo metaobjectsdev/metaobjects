@@ -29,6 +29,10 @@ public static class CodegenRunner
         /// <c>verify --codegen</c> reads it to tell that gen replaces an edit to one of them.</summary>
         public IReadOnlySet<string> OverwritePaths { get; init; } = new HashSet<string>();
 
+        /// <summary>Absolute paths every generator of the run emitted (refused ones included): what a
+        /// self-hosted runner that makes several runs passes the union of to <see cref="OrphanSweep.Sweep"/> (G5, rc.20).</summary>
+        public IReadOnlySet<string> EmittedPaths { get; init; } = new HashSet<string>();
+
         /// <summary>ADR-0064: false when a file was refused, adopted, or an edited orphan was kept.
         /// Only a complete run may store a key.</summary>
         public bool Complete { get; init; } = true;
@@ -203,6 +207,7 @@ public static class CodegenRunner
         return new RunResult(results, warnings)
         {
             OverwritePaths = overwritePaths,
+            EmittedPaths = emitted.Keys.ToHashSet(StringComparer.Ordinal),
             Complete = refused.Count == 0 && adopted.Count == 0 && !sweepRefused,
             OutsidePaths = outsidePaths,
         };

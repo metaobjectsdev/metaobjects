@@ -25,11 +25,11 @@ import kotlin.test.assertTrue
  * [TphM2mFullSuiteCompilesTest], which covers the (unshadowed) base-declared + subtype-own case.
  *
  * Before this fix, [com.metaobjects.generator.kotlin.KotlinRelationsGenerator]'s TPH-wide M:N nav
- * union deduped by relation NAME alone (first-seen wins), so `CopayAuth`'s shadowing `tags ->
+ * union deduped by relation NAME alone (first-seen wins), so `CouponAuth`'s shadowing `tags ->
  * SpecialTag` nav was silently DROPPED and `AuthRelations.kt` emitted only ONE `tagsQuery` helper
  * — built from `Auth`'s own `tags -> Tag` shape. [com.metaobjects.generator.kotlin.KotlinSpringControllerGenerator],
  * however, independently RE-RESOLVES each subtype's own nav for its return type + row mapping, so
- * the generated `tagsCopay()` endpoint declared `ResponseEntity<List<SpecialTag>>` and mapped
+ * the generated `tagsCoupon()` endpoint declared `ResponseEntity<List<SpecialTag>>` and mapped
  * `row[SpecialTagTable.*]` — off rows the WRONG-target `AuthTable.tagsQuery(id)` helper produced
  * (a `Tag`/`AuthTag` join). This is the "compiles, wrong at runtime" shape: every reference here
  * is a statically valid `Column<T>`, so the pre-fix code compiles cleanly and only throws when the
@@ -45,7 +45,7 @@ class TphM2mShadowedFullSuiteCompilesTest {
         { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
             { "source.rdb":   { "@table": "auths" } },
             { "field.long":   { "name": "id" } },
-            { "field.enum":   { "name": "type", "@values": ["Bridge", "Copay"] } },
+            { "field.enum":   { "name": "type", "@values": ["Bridge", "Coupon"] } },
             { "field.string": { "name": "reference", "@required": true, "@maxLength": 80 } },
             { "relationship.association": { "name": "tags", "@cardinality": "many",
                 "@objectRef": "Tag", "@through": "AuthTag" } },
@@ -54,10 +54,10 @@ class TphM2mShadowedFullSuiteCompilesTest {
         { "object.entity": { "name": "BridgeAuth", "extends": "Auth", "@discriminatorValue": "Bridge", "children": [
             { "field.int": { "name": "quantity", "@required": true } }
         ] } },
-        { "object.entity": { "name": "CopayAuth", "extends": "Auth", "@discriminatorValue": "Copay", "children": [
-            { "field.decimal": { "name": "copayAmount", "@precision": 10, "@scale": 2 } },
+        { "object.entity": { "name": "CouponAuth", "extends": "Auth", "@discriminatorValue": "Coupon", "children": [
+            { "field.decimal": { "name": "couponAmount", "@precision": 10, "@scale": 2 } },
             { "relationship.association": { "name": "tags", "@cardinality": "many",
-                "@objectRef": "SpecialTag", "@through": "CopaySpecialTag" } }
+                "@objectRef": "SpecialTag", "@through": "CouponSpecialTag" } }
         ] } },
         { "object.entity": { "name": "Tag", "children": [
             { "source.rdb":   { "@table": "tags" } },
@@ -79,12 +79,12 @@ class TphM2mShadowedFullSuiteCompilesTest {
             { "identity.reference": { "name": "fkAuth", "@fields": "authId", "@references": "Auth" } },
             { "identity.reference": { "name": "fkTag",  "@fields": "tagId",  "@references": "Tag" } }
         ] } },
-        { "object.entity": { "name": "CopaySpecialTag", "children": [
-            { "source.rdb":         { "@table": "copay_special_tags" } },
-            { "field.long":         { "name": "copayAuthId",  "@required": true } },
+        { "object.entity": { "name": "CouponSpecialTag", "children": [
+            { "source.rdb":         { "@table": "coupon_special_tags" } },
+            { "field.long":         { "name": "couponAuthId",  "@required": true } },
             { "field.long":         { "name": "specialTagId", "@required": true } },
-            { "identity.primary":   { "@fields": ["copayAuthId", "specialTagId"] } },
-            { "identity.reference": { "name": "fkCopay",      "@fields": "copayAuthId",  "@references": "CopayAuth" } },
+            { "identity.primary":   { "@fields": ["couponAuthId", "specialTagId"] } },
+            { "identity.reference": { "name": "fkCoupon",      "@fields": "couponAuthId",  "@references": "CouponAuth" } },
             { "identity.reference": { "name": "fkSpecialTag", "@fields": "specialTagId", "@references": "SpecialTag" } }
         ] } }
       ] }
@@ -111,7 +111,7 @@ class TphM2mShadowedFullSuiteCompilesTest {
 
             val emitted = Files.walk(outDir).filter { it.isRegularFile() }.sorted().toList()
             val names = emitted.map { it.fileName.toString() }.toSet()
-            for (dead in listOf("BridgeAuthTable.kt", "CopayAuthTable.kt", "BridgeAuthRelations.kt", "CopayAuthRelations.kt")) {
+            for (dead in listOf("BridgeAuthTable.kt", "CouponAuthTable.kt", "BridgeAuthRelations.kt", "CouponAuthRelations.kt")) {
                 assertFalse(dead in names, "TPH subtype must not emit $dead; got $names")
             }
 
@@ -124,25 +124,25 @@ class TphM2mShadowedFullSuiteCompilesTest {
             assertTrue("TagTable" in tagsQueryBody, tagsQueryBody)
             assertFalse("SpecialTagTable" in tagsQueryBody, tagsQueryBody)
 
-            // The shadowing CopayAuth shape must have gotten its OWN, distinctly-named helper
-            // (not collapsed into tagsQuery), joining SpecialTag/CopaySpecialTag.
+            // The shadowing CouponAuth shape must have gotten its OWN, distinctly-named helper
+            // (not collapsed into tagsQuery), joining SpecialTag/CouponSpecialTag.
             val helperNames = Regex("""fun AuthTable\.(tags\w*)Query\(""").findAll(relations)
                 .map { it.groupValues[1] }.toSet()
             assertTrue(helperNames.size >= 2, "expected >=2 distinct tags*Query helpers; found $helperNames in:\n$relations")
             val shadowHelper = helperNames.first { it != "tags" }
             val shadowBody = relations.substringAfter("fun AuthTable.${shadowHelper}Query").substringBefore("\n\n")
             assertTrue("SpecialTagTable" in shadowBody, shadowBody)
-            assertTrue("CopaySpecialTagTable" in shadowBody, shadowBody)
+            assertTrue("CouponSpecialTagTable" in shadowBody, shadowBody)
             assertFalse("AuthTagTable" in shadowBody, shadowBody)
 
             val controller = emitted.first { it.fileName.toString() == "AuthController.kt" }.readText()
-            assertTrue("@GetMapping(\"/copay/{id}/tags\")" in controller, controller)
-            val tagsCopayBody = controller.substringAfter("fun tagsCopay(").substringBefore("\n    }\n")
-            assertFalse("AuthTable.tagsQuery(id)" in tagsCopayBody,
-                "tagsCopay() must not delegate to the base-shape helper (wrong target); saw:\n$tagsCopayBody")
-            assertTrue("AuthTable.${shadowHelper}Query(id)" in tagsCopayBody,
-                "expected tagsCopay() to call its own $shadowHelper Query helper; saw:\n$tagsCopayBody")
-            assertTrue("row[SpecialTagTable." in tagsCopayBody, tagsCopayBody)
+            assertTrue("@GetMapping(\"/coupon/{id}/tags\")" in controller, controller)
+            val tagsCouponBody = controller.substringAfter("fun tagsCoupon(").substringBefore("\n    }\n")
+            assertFalse("AuthTable.tagsQuery(id)" in tagsCouponBody,
+                "tagsCoupon() must not delegate to the base-shape helper (wrong target); saw:\n$tagsCouponBody")
+            assertTrue("AuthTable.${shadowHelper}Query(id)" in tagsCouponBody,
+                "expected tagsCoupon() to call its own $shadowHelper Query helper; saw:\n$tagsCouponBody")
+            assertTrue("row[SpecialTagTable." in tagsCouponBody, tagsCouponBody)
 
             // The unaffected mounts still delegate to the plain shared helper.
             val tagsBridgeBody = controller.substringAfter("fun tagsBridge(").substringBefore("\n    }\n")

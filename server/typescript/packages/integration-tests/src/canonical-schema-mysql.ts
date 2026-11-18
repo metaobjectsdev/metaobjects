@@ -81,7 +81,7 @@ const TABLES = [
   \`type\` VARCHAR(16),
   \`reference\` VARCHAR(80) NOT NULL,
   \`quantity\` INT,
-  \`copayAmount\` DECIMAL(10,2),
+  \`couponAmount\` DECIMAL(10,2),
   \`approver\` VARCHAR(80),
   \`urgency\` VARCHAR(16)
 )`,

@@ -127,6 +127,35 @@ you don't own (rather than extending it) must say `overlay: true`, so its remova
 upstream fails loudly instead of silently becoming a new, disconnected object — see
 [`abstracts-and-inheritance.md`](abstracts-and-inheritance.md#the-same-rule-across-a-repository-boundary).
 
+## Collection names (`@collectionName`)
+
+An object's **collection name** is what a port calls "the set of these": the C# `DbSet`
+property, the REST collection segment (snake_cased: `ConsignmentHistory` → `/consignment_history`), the
+TypeScript collection exports (`listConsignmentHistory`, `findConsignmentHistoryByConsignment`, the Drizzle
+collection variable `consignmentHistory`) and the reverse `@via` hop another object walks to reach its
+rows (`Consignment.consignmentHistory`). Declare it in the object's own casing; it need not be a grammatical
+plural:
+
+```yaml
+- object.entity:
+    name: ConsignmentHistory
+    "@collectionName": ConsignmentHistory
+```
+
+Absent, the project's **pluralizer** derives it from the object's name. One setting,
+`naming.collections` in `.metaobjects/config.json`, selects it by name, exactly as `naming.columns`
+selects a column rule. Built in: `standard` (the default — the rule every port shares: an
+already-plural name stays, else `-s`/`-es`/`-ies`) and `none` (the name as it is). An application
+registers its own (`namingStrategies.collections` in `metaobjects.config.ts`; `registerPluralizer`
+in TypeScript and Java, `NamingStrategies.RegisterPluralizer` in C#, `register_pluralizer` in
+Python), and a name nothing answers is refused when the config is read. An object's own
+`@collectionName` always wins.
+
+`@collectionName` and `naming.collections` are implemented in every port (ruling R40 kind 1):
+each port's route/controller path (and the C# `DbSet` name) reads the declared name or the
+configured pluralizer. In C#, a project that configures no pluralizer keeps its historical DbSet names (which
+add C#'s `-sis` → `-ses` rule).
+
 ## What each port generates
 
 ### TypeScript

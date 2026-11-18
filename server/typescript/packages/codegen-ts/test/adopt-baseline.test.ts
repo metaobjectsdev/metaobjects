@@ -41,7 +41,7 @@ async function gen(opts: { baseline?: BaselineMode; dryRun?: boolean } = {}) {
       outDir: outDir(),
       extStyle: "none",
       dbImport: "~/server/db",
-      dialect: "sqlite",
+      outputLayout: "flat" as const, dialect: "sqlite",
       generators: [entityFile(), queriesFile()],
     }),
     metadata: root,

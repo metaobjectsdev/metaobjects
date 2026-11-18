@@ -188,10 +188,10 @@ public class Fr016SourcePhysicalNameTest extends SharedRegistryTestBase {
     @Test
     public void step1KindMatchingProcForStoredProcKind() {
         MetaDataLoader l = loadThrough(
-            oneSourceEntity("PhaseSummary",
-                "{ \"@kind\": \"storedProc\", \"@proc\": \"fn_get_phase_summary\" }"),
+            oneSourceEntity("StageSummary",
+                "{ \"@kind\": \"storedProc\", \"@proc\": \"fn_get_stage_summary\" }"),
             "fr016-step1-proc.json");
-        assertEquals("fn_get_phase_summary", firstSource(l).getPhysicalName());
+        assertEquals("fn_get_stage_summary", firstSource(l).getPhysicalName());
     }
 
     @Test
@@ -216,10 +216,10 @@ public class Fr016SourcePhysicalNameTest extends SharedRegistryTestBase {
     public void step2LegacyTableForNonTableKind() {
         // Legacy: @table with non-table @kind still resolves (and emits a warning).
         MetaDataLoader l = loadThrough(
-            oneSourceEntity("PhaseSummary",
-                "{ \"@kind\": \"storedProc\", \"@table\": \"fn_legacy_phase_summary\" }"),
+            oneSourceEntity("StageSummary",
+                "{ \"@kind\": \"storedProc\", \"@table\": \"fn_legacy_stage_summary\" }"),
             "fr016-step2-legacy.json");
-        assertEquals("fn_legacy_phase_summary", firstSource(l).getPhysicalName());
+        assertEquals("fn_legacy_stage_summary", firstSource(l).getPhysicalName());
     }
 
     @Test

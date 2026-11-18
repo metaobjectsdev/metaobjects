@@ -1,5 +1,4 @@
-// An object's collection name: its own @collectionName, else the project's pluralizer
-// (naming.collections) over its name. Ported from
+// rc.19 (R57) — an object's collection name: its own @collectionName, else the project's pluralizer (naming.collections) over its name. Ported from
 // typescript/packages/metadata/src/naming.ts (collectionNameOf, declaredCollectionName).
 
 using static MetaObjects.Core.Object.ObjectConstants;
@@ -18,20 +17,11 @@ public static class CollectionNames
     public static string Of(MetaObject obj) =>
         Declared(obj) ?? NamingStrategies.Pluralizer(ConfiguredPluralizer(obj) ?? NamingStrategies.DefaultPluralizer)(obj.Name);
 
-    /// <summary>The pluralizer the project configures (<c>naming.collections</c>), or null when it names none.</summary>
-    public static string? ConfiguredPluralizer(MetaData node) => PhysicalNaming.Of(node).Collections;
-
-    /// <summary>The collection name <paramref name="obj"/> declares (<c>@collectionName</c>), or null.</summary>
-    public static string? Declared(MetaObject obj) =>
-        // ADR-0039: own — a collection name is the declaring object's alone (see Of).
-        obj.OwnAttr(OBJECT_ATTR_COLLECTION_NAME) is string { Length: > 0 } own ? own : null;
-
     /// <summary>
-    /// The REST collection segment <paramref name="obj"/> is served under
-    /// (<c>fixtures/naming-conformance/collection-segments.json</c>, shared with TypeScript): its
-    /// declared <c>@collectionName</c>, else the configured pluralizer's output over its name, each
-    /// snake_cased by <see cref="SnakeCollectionName"/>; with neither, <paramref name="unconfigured"/>
-    /// over the name, so an unconfigured project's segments never move.
+    /// rc.19 fix round (I3) — the REST collection segment, shared with TypeScript
+    /// (<c>fixtures/naming-conformance/collection-segments.json</c>): a declared name wins, else a
+    /// configured pluralizer's output over the name, each snake_cased by <see cref="SnakeCollectionName"/>;
+    /// with neither, <paramref name="unconfigured"/> (the historical rule, byte-identical) over the name.
     /// </summary>
     public static string Segment(MetaObject obj, Func<string, string> unconfigured)
     {
@@ -41,9 +31,9 @@ public static class CollectionNames
     }
 
     /// <summary>
-    /// snake_case a collection name with an acronym-aware split: a trailing plural <c>s</c> / <c>es</c>
-    /// after a capital is a suffix of the acronym, not a word of its own (<c>FAQs</c> → <c>faqs</c>,
-    /// <c>TaxIDs</c> → <c>tax_ids</c>, <c>PDFBoxes</c> → <c>pdf_boxes</c>).
+    /// snake_case a collection name with an acronym-aware split: a trailing plural <c>s</c> /
+    /// <c>es</c> after a capital is a suffix of the acronym, not a word of its own (<c>FAQs</c> →
+    /// <c>faqs</c>, <c>TaxIDs</c> → <c>tax_ids</c>). Mirrors TS <c>snakeCollectionName</c>.
     /// </summary>
     public static string SnakeCollectionName(string s)
     {
@@ -52,6 +42,14 @@ public static class CollectionNames
             ? Persistence.Source.SourceNaming.ToSnakeCase(m.Groups[1].Value) + m.Groups[2].Value
             : Persistence.Source.SourceNaming.ToSnakeCase(s);
     }
+
+    /// <summary>The pluralizer the project configures (<c>naming.collections</c>), or null when it names none.</summary>
+    public static string? ConfiguredPluralizer(MetaData node) => PhysicalNaming.Of(node).Collections;
+
+    /// <summary>The collection name <paramref name="obj"/> declares (<c>@collectionName</c>), or null.</summary>
+    public static string? Declared(MetaObject obj) =>
+        // ADR-0039: own — a collection name is the declaring object's alone (see Of).
+        obj.OwnAttr(OBJECT_ATTR_COLLECTION_NAME) is string { Length: > 0 } own ? own : null;
 
     /// <summary>
     /// The <c>standard</c> pluralizer, the rule every port shares (<c>fixtures/naming-conformance</c>):

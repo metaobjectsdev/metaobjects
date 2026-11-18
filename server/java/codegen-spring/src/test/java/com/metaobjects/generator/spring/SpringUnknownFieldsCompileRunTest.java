@@ -62,13 +62,13 @@ public class SpringUnknownFieldsCompileRunTest {
           ] } },
           { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
             { "source.rdb": { "@table": "auths" } },
-            { "field.enum": { "name": "type", "@values": ["Bridge", "Copay"] } },
+            { "field.enum": { "name": "type", "@values": ["Bridge", "Coupon"] } },
             { "field.long": { "name": "id" } },
             { "identity.primary": { "@fields": "id", "@generation": "increment" } }
           ] } },
           { "object.entity": { "name": "BridgeAuth", "extends": "acme::thing::Auth", "@discriminatorValue": "Bridge",
             "children": [ { "field.int": { "name": "quantity" } } ] } },
-          { "object.entity": { "name": "CopayAuth", "extends": "acme::thing::Auth", "@discriminatorValue": "Copay",
+          { "object.entity": { "name": "CouponAuth", "extends": "acme::thing::Auth", "@discriminatorValue": "Coupon",
             "children": [ { "field.string": { "name": "approver" } } ] } }
         ] } }
         """;
@@ -153,7 +153,7 @@ public class SpringUnknownFieldsCompileRunTest {
         assertEquals("201", same(b, "ThingController", b.thingRepo, "create",
             "{\"id\":9,\"title\":\"t\",\"role\":\"admin\",\"stamped\":null}"));
         assertEquals("404", same(b, "ThingController", b.thingRepo, "update", "{\"id\":9,\"title\":\"t\",\"role\":\"admin\"}"));
-        assertEquals("201", same(b, "AuthController", b.authRepo, "createBridge", "{\"type\":\"Copay\",\"quantity\":1,\"approver\":\"x\"}"));
+        assertEquals("201", same(b, "AuthController", b.authRepo, "createBridge", "{\"type\":\"Coupon\",\"quantity\":1,\"approver\":\"x\"}"));
         assertEquals("404", same(b, "AuthController", b.authRepo, "updateBridge", "{\"quantity\":1,\"approver\":\"x\"}"));
         assertTrue("accepted bodies reach the repository: " + b.writes, b.writes.size() >= 4);
     }

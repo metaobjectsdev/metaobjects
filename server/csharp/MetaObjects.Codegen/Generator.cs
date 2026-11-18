@@ -218,17 +218,18 @@ public sealed record GenConfig
     /// <summary>
     /// The project's SQL dialect (<c>.metaobjects/config.json</c> <c>migrate.dialect</c>:
     /// <c>postgres</c>, <c>sqlite</c>, <c>mysql</c>, <c>d1</c>), or <c>null</c> when it names none.
-    /// Read only where generated code is provider-specific: the <c>@sequenceStart</c> model
-    /// annotation and the context's design-time services are Npgsql's concern, so they are emitted
-    /// for <c>postgres</c> alone.
+    /// Read only where generated code must bind one provider at compile time: the
+    /// <c>@sequenceStart</c> migrations generator subclasses Npgsql's, so it is emitted for
+    /// <c>postgres</c> alone.
     /// </summary>
     public string? Dialect { get; init; }
 
     /// <summary>
-    /// Leave out a validator CHECK the column already guarantees (a length maximum a
-    /// <c>VARCHAR(n)</c> enforces, a length minimum of zero or less), as <c>meta migrate</c> does
-    /// under <c>migrate.checks.skipRedundant</c>. A declared <c>@constraintName</c> keeps its CHECK
-    /// regardless. Default false.
+    /// <c>.metaobjects/config.json</c> <c>migrate.checks.skipRedundant</c>: leave out a validator CHECK
+    /// the column already guarantees (a <c>validator.length</c> maximum its <c>VARCHAR(n)</c> enforces,
+    /// a length minimum of 0 or less), exactly as <c>meta migrate</c> does, so the generated model and
+    /// the migrated database declare the same CHECKs. A validator with <c>@constraintName</c> keeps its
+    /// CHECK regardless. Default false.
     /// </summary>
     public bool SkipRedundantChecks { get; init; }
 
@@ -243,7 +244,7 @@ public sealed record GenConfig
     /// warns, and EF finds the services only when the context's project is the startup project. EF
     /// reads the reference only from the startup and migrations assemblies, so a context in a third
     /// assembly needs the line in its migrations project; the run warns, with the line, whenever it
-    /// cannot show the line is unnecessary (<see cref="DesignTimeServicesReferences"/>).
+    /// cannot show the line is unnecessary (rc.19 I4, <see cref="DesignTimeServicesReferences"/>).
     /// </summary>
     public string? ContextAssemblyName
     {
@@ -271,11 +272,14 @@ public sealed record GenConfig
     /// <summary>
     /// The C# property name of a field, for every generator that names one: the entity and
     /// value-object classes, the composite <c>[PrimaryKey]</c>, the DbContext's model
-    /// configuration, the reverse finders and the routes. <c>null</c>, the default, is the
-    /// PascalCased field name (<see cref="CSharpNaming.Pascal"/>). Set it to rename a property
-    /// (an acronym, say) once, so the class that declares it and every line that references it
-    /// agree. <c>EntityGenerator.PropertyName</c> and <c>DbContextGenerator.PropertyName</c> read
-    /// it by default; a subclass that overrides one of those hooks must override both.
+    /// configuration, the reverse finders, the routes (members, sort and filter names, credential
+    /// and write-deny keys), the callable arguments, the extractor mapper, the report export and
+    /// the filter allowlist's property map. <c>null</c>, the default, is the PascalCased field name
+    /// (<see cref="CSharpNaming.Pascal"/>). Set it to rename a property (an acronym, say) once, so
+    /// the class that declares it and every line that references it agree. This is the only way
+    /// to rename consistently: <c>EntityGenerator.PropertyName</c> and
+    /// <c>DbContextGenerator.PropertyName</c> default to it, are obsolete, and a generator whose
+    /// override answers differently from this resolver for any field refuses to run.
     /// </summary>
     public Func<MetaField, string>? PropertyNaming { get; init; }
 

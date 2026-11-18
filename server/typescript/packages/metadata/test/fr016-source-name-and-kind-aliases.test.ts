@@ -188,12 +188,12 @@ describe("FR-016 MetaSource.physicalName — four-step resolution", () => {
 
   test("step 1: kind-matching @proc for storedProc kind", async () => {
     const s = await firstSource(
-      oneSourceEntity("PhaseSummary", {
+      oneSourceEntity("StageSummary", {
         "@kind": "storedProc",
-        "@proc": "fn_get_phase_summary",
+        "@proc": "fn_get_stage_summary",
       }),
     );
-    expect(s.physicalName).toBe("fn_get_phase_summary");
+    expect(s.physicalName).toBe("fn_get_stage_summary");
   });
 
   test("step 1: kind-matching @materializedView for materializedView kind", async () => {
@@ -218,12 +218,12 @@ describe("FR-016 MetaSource.physicalName — four-step resolution", () => {
 
   test("step 2: legacy @table for non-table kind still resolves", async () => {
     const s = await firstSource(
-      oneSourceEntity("PhaseSummary", {
+      oneSourceEntity("StageSummary", {
         "@kind": "storedProc",
-        "@table": "fn_legacy_phase_summary",
+        "@table": "fn_legacy_stage_summary",
       }),
     );
-    expect(s.physicalName).toBe("fn_legacy_phase_summary");
+    expect(s.physicalName).toBe("fn_legacy_stage_summary");
   });
 
   test("step 3: derives from source's structural name when no alias is set (table kind)", async () => {

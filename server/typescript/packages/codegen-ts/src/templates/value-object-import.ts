@@ -12,7 +12,7 @@
 import { posix } from "node:path";
 import type { MetaData } from "@metaobjectsdev/metadata";
 import { effectivePackage } from "../docs-paths.js";
-import { entityModuleSpecifier, entityOutputPath } from "../import-path.js";
+import { DEFAULT_OUTPUT_LAYOUT, entityModuleSpecifier, entityOutputPath } from "../import-path.js";
 import { localTypeName, withExt, type ExtStyle, type RenderContext } from "../render-context.js";
 
 /** A value object's type as a file imports it: `name`, the local binding the file uses;
@@ -59,7 +59,8 @@ export function valueObjectImport(
   if (ctx && ctx.selfTarget.name !== ctx.entityModuleTarget.name) {
     return { name, exported, specifier: entityModuleSpecifier(ctx.selfTarget, ctx.entityModuleTarget, pkg, exported, extStyle) };
   }
-  const layout = ctx ? ctx.entityModuleTarget.outputLayout : "flat";
+  // rc.19 fix round 2 (N2): a ctx-less call uses the default layout, as every other fallback does.
+  const layout = ctx ? ctx.entityModuleTarget.outputLayout : DEFAULT_OUTPUT_LAYOUT;
   const modulePath = entityOutputPath(layout, pkg, exported); // extension-less
   let rel = posix.relative(posix.dirname(fromPath), modulePath);
   if (!rel.startsWith(".")) rel = `./${rel}`;

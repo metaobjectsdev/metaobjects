@@ -1026,7 +1026,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             String typeName = SpringTypeMapper.enumTypeName(owner, ef);
             if (!seen.add(typeName)) continue; // dedup shared abstract-enum types
             List<String> values = SpringTypeMapper.effectiveEnumValues(ef);
-            decls.add(SpringTypeMapper.enumDeclaration(typeName, values, SpringTypeMapper.intValueMap(ef)));
+            decls.add(SpringTypeMapper.enumDeclaration(typeName, values, SpringTypeMapper.intValueMap(ef), SpringTypeMapper.stringValueMap(ef)));
         }
         return decls;
     }

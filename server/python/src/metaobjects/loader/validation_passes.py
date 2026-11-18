@@ -37,6 +37,7 @@ from ..meta.core.field.field_constants import (
     FIELD_ATTR_COERCE_DEFAULT,
     FIELD_ATTR_DEFAULT,
     FIELD_ATTR_INT_VALUE_MAP,
+    FIELD_ATTR_STRING_VALUE_MAP,
     FIELD_ATTR_MAX_LENGTH,
     FIELD_ATTR_OBJECT_REF,
     FIELD_ATTR_REQUIRED,
@@ -71,6 +72,8 @@ from ..meta.persistence.db.db_constants import (
     DB_COLUMN_TYPE_UUID,
     FIELD_ATTR_DB_COLUMN_TYPE,
     VALID_DB_COLUMN_TYPES,
+    DB_COLUMN_TYPE_SIZED_SPELLINGS,
+    parse_db_column_type,
 )
 from ..meta.core.object.collection_names import collection_name_of
 from ..meta.core.object.meta_object import MetaObject
@@ -278,8 +281,11 @@ def run_validations(
     _validate_enum_max_length(root, errors)
     # identity.primary @sequenceStart / @sequenceName need @generation "increment".
     _validate_identity_sequence(root, errors)
-    # cross-field validators — exactlyOne names two or more fields; @condition names entity fields.
+    # cross-field validators — exactlyOne names two or more fields;
+    # @condition names entity fields.
     _validate_cross_field_validators(root, errors, strict)
+    # @dbCheck: false with @constraintName names a CHECK that is never created.
+    _validate_db_check(root, errors)
     # field.map — exactly one of @valueType (scalar) or @objectRef (VO), and
     # @valueType (when set) must name a known scalar subtype.
     _validate_field_map(root, errors)
@@ -672,6 +678,7 @@ def _validate_enum_values(
         # continue` gate below so a concrete field.enum that inherits @values via
         # `extends` but declares its own @intValueMap is still validated.
         _validate_enum_int_value_map(node, errors)
+        _validate_enum_string_value_map(node, errors)
 
         # ADR-0039 sanctioned own: validates the AUTHORED @values membership on THIS
         # node (mirrors the TS attr-schema-validate `node.ownAttrs()`); an inherited
@@ -819,6 +826,56 @@ def _validate_enum_int_value_map(node: MetaData, errors: list[MetaError]) -> Non
             )
         else:
             seen_values[value] = member
+
+
+def _validate_enum_string_value_map(node: MetaData, errors: list[MetaError]) -> None:
+    """rc.21 — ``@stringValueMap`` content rules: the string twin of
+    :func:`_validate_enum_int_value_map`, with its policies (own-only; a shared enum's
+    backing owned by the shared declaration). Keys must exactly match the EFFECTIVE
+    ``@values``; values are unique non-empty strings. Refused beside ``@intValueMap`` and
+    on an array enum (ERR_BAD_ATTR_VALUE). Mirrors TS ``attr-schema-validate`` Check 5c.
+    """
+    # ADR-0039 sanctioned own: validates the map DECLARED on this node.
+    raw = node.attr(FIELD_ATTR_STRING_VALUE_MAP)
+    if raw is None:
+        return
+    label = _node_label(node)
+    prefix = f"{label} attribute '@{FIELD_ATTR_STRING_VALUE_MAP}'"
+
+    def bad(message: str, code: ErrorCode = ErrorCode.ERR_BAD_ATTR_VALUE) -> None:
+        errors.append(MetaError(f"{prefix} {message}", code, envelope=node.source))
+
+    if node.super_data is not None and is_shared_enum_declaration(node.super_data):
+        bad("is declared on a field extending a shared abstract enum — a shared enum's stored "
+            "strings are owned by the shared declaration; move it onto the shared declaration.",
+            ErrorCode.ERR_ENUM_EXTENDS_VALUES_CONFLICT)
+        return
+    if node.attrs().get(FIELD_ATTR_INT_VALUE_MAP) is not None:
+        bad(f"is refused beside '@{FIELD_ATTR_INT_VALUE_MAP}': an @intValueMap enum is stored as integers, not strings. Keep one.")
+        return
+    if node.resolved_is_array():
+        bad(f"is refused on an array enum: its column holds the members as text[] elements, which no port maps through @{FIELD_ATTR_STRING_VALUE_MAP}.")
+        return
+    if not isinstance(raw, dict):
+        bad("must be an object of { member: storedString }.")
+        return
+    effective_values = _effective_enum_values(node)
+    member_set = set(effective_values)
+    missing = [m for m in effective_values if m not in raw]
+    extra = [k for k in raw if k not in member_set]
+    if missing or extra:
+        parts = ([f"missing: {', '.join(missing)}"] if missing else []) + ([f"unknown: {', '.join(extra)}"] if extra else [])
+        bad(f"keys must exactly match '@{FIELD_ATTR_VALUES}' members ({'; '.join(parts)}).")
+    seen: dict[str, str] = {}
+    for member, value in raw.items():
+        if not isinstance(value, str) or value == "":
+            bad(f"member {member!r} must map to a non-empty string.")
+            continue
+        owner = seen.get(value)
+        if owner is not None:
+            bad(f"members {owner!r} and {member!r} share the stored string {value!r}; every member must have a unique one.")
+        else:
+            seen[value] = member
 
 
 def _effective_enum_values(node: MetaData) -> list[str]:
@@ -984,21 +1041,35 @@ def _validate_db_column_type(root: MetaData, errors: list[MetaError]) -> None:
         if not isinstance(value, str):
             continue
 
-        # Rule 1: recognized value.
-        if value not in VALID_DB_COLUMN_TYPES:
+        # Rule 1: recognized value (rc.21: the text spellings, sized ones included).
+        parsed = parse_db_column_type(value)
+        if parsed is None:
             errors.append(
                 MetaError(
                     f"field '{node.name}' attribute '@{FIELD_ATTR_DB_COLUMN_TYPE}' "
                     f"value {value!r} is not a valid value; allowed: "
-                    f"{', '.join(VALID_DB_COLUMN_TYPES)}",
+                    f"{', '.join((*VALID_DB_COLUMN_TYPES, *DB_COLUMN_TYPE_SIZED_SPELLINGS))}",
                     ErrorCode.ERR_BAD_ATTR_VALUE,
                     envelope=node.source,
                 )
             )
             continue
+        # Rule 3 (rc.21): a sized spelling holds n characters; a longer @maxLength (resolving)
+        # would let the app accept a value the column refuses.
+        max_length = node.get_meta_attr(FIELD_ATTR_MAX_LENGTH)
+        if parsed[1] is not None and isinstance(max_length, int) and max_length > parsed[1]:
+            errors.append(
+                MetaError(
+                    f"field.string '{node.name}' declares @{FIELD_ATTR_MAX_LENGTH}: {max_length} over "
+                    f"'@{FIELD_ATTR_DB_COLUMN_TYPE}: {value}', which holds {parsed[1]}; a value the field "
+                    f"accepts would not fit the column.",
+                    ErrorCode.ERR_BAD_ATTR_VALUE,
+                    envelope=node.source,
+                )
+            )
 
-        # Rule 2: legal (subtype × value) pairing.
-        required_subtype = _DB_COLUMN_TYPE_REQUIRED_SUBTYPE[value]
+        # Rule 2: legal (subtype × value) pairing — every value is field.string's.
+        required_subtype = FIELD_SUBTYPE_STRING
         if node.sub_type != required_subtype:
             # Derive the allowed-pairings list from the map so it stays the single
             # source of truth for pairing legality.
@@ -4259,6 +4330,62 @@ def _validate_identity_sequence(root: MetaData, errors: list[MetaError]) -> None
                 ),
                 envelope=ident.source,
             ))
+
+
+# @dbCheck: false (db provider) asks a CHECK-generating validator or a field.enum for no
+# database CHECK; @constraintName names that CHECK. Together there is nothing to name, so the
+# node is refused (ERR_CONSTRAINT_NAME_WITHOUT_CHECK). A cross-field validator is enforced only by
+# its CHECK, so @dbCheck: false on one is refused (ERR_CROSS_FIELD_WITHOUT_CHECK), the one error
+# such a node gets. Read RESOLVING (ADR-0039), reported on each node that declares either of the
+# two itself. Mirrors TS validateDbCheck.
+def _validate_db_check(root: MetaData, errors: list[MetaError]) -> None:
+    from ..meta.core.field import field_constants as fc
+    from ..meta.core.validator import validator_constants as vc
+
+    checked_validators = (
+        vc.VALIDATOR_SUBTYPE_NUMERIC,
+        vc.VALIDATOR_SUBTYPE_LENGTH,
+        vc.VALIDATOR_SUBTYPE_REGEX,
+        *vc.CROSS_FIELD_VALIDATOR_SUBTYPES,
+    )
+
+    def visit(node: MetaData, owner: str | None) -> None:
+        checked = (node.type == TYPE_VALIDATOR and node.sub_type in checked_validators) or (
+            node.type == TYPE_FIELD and node.sub_type == fc.FIELD_SUBTYPE_ENUM
+        )
+        # ADR-0039 sanctioned own: reported where the node declares either attr itself.
+        declares = node.attr(vc.VALIDATOR_ATTR_DB_CHECK) is not None or node.attr(vc.VALIDATOR_ATTR_CONSTRAINT_NAME) is not None
+        if checked and declares:
+            name = node.get_meta_attr(vc.VALIDATOR_ATTR_CONSTRAINT_NAME)
+            off = node.get_meta_attr(vc.VALIDATOR_ATTR_DB_CHECK) is False
+            prefix = f"{owner}." if owner is not None else ""
+            if off and node.type == TYPE_VALIDATOR and node.sub_type in vc.CROSS_FIELD_VALIDATOR_SUBTYPES:
+                # A cross-field validator has no app-level enforcement: its CHECK is the rule.
+                errors.append(MetaError(
+                    code=ErrorCode.ERR_CROSS_FIELD_WITHOUT_CHECK,
+                    message=(
+                        f'{node.type}.{node.sub_type} "{prefix}{node.name}" sets @dbCheck: false, but this validator '
+                        "is enforced only by its CHECK, so the rule would be enforced nowhere. Remove the validator, "
+                        "or remove @dbCheck: false."
+                    ),
+                    envelope=node.source,
+                ))
+            elif off and isinstance(name, str) and name:
+                errors.append(MetaError(
+                    code=ErrorCode.ERR_CONSTRAINT_NAME_WITHOUT_CHECK,
+                    message=(
+                        f'{node.type}.{node.sub_type} "{prefix}{node.name}" sets @dbCheck: false and '
+                        f'@constraintName "{name}"; with no CHECK there is nothing for the name to name. '
+                        "Remove @constraintName, or remove @dbCheck: false."
+                    ),
+                    envelope=node.source,
+                ))
+        nxt = node.name if node.type in (TYPE_OBJECT, TYPE_FIELD) else owner
+        for child in node.own_children():
+            visit(child, nxt)
+
+    for child in root.own_children():
+        visit(child, None)
 
 
 # Cross-field validators (comparison / requiredWhen / presentIff / atLeastOne / exactlyOne), which

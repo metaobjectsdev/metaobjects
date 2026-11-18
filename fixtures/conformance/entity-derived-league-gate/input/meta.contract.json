@@ -1,0 +1,298 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Player",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "players"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "hasActiveLeagueContract",
+                "children": [
+                  {
+                    "origin.first": {
+                      "@via": "acme::Player.contracts",
+                      "@of": "acme::Contract.contractIsOnFile",
+                      "@orderBy": [
+                        "id:desc"
+                      ],
+                      "@segment": "leagueDecisive"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Contract",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "contracts"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "playerId",
+                "@required": true
+              }
+            },
+            {
+              "field.int": {
+                "name": "contractTypeId"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "contractIsOnFile"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "playerContract"
+              }
+            },
+            {
+              "field.date": {
+                "name": "dateReceived"
+              }
+            },
+            {
+              "field.date": {
+                "name": "effectiveEndDate"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "playerId",
+                "@fields": "playerId",
+                "@references": "acme::Player"
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "leagueDecisive",
+                "@filter": {
+                  "contractTypeId": 1,
+                  "or": [
+                    {
+                      "contractIsOnFile": false
+                    },
+                    {
+                      "and": [
+                        {
+                          "contractIsOnFile": true
+                        },
+                        {
+                          "or": [
+                            {
+                              "playerContract": null
+                            },
+                            {
+                              "playerContract": true
+                            }
+                          ]
+                        },
+                        {
+                          "dateReceived": {
+                            "lte": {
+                              "now": "P0D"
+                            }
+                          }
+                        },
+                        {
+                          "or": [
+                            {
+                              "effectiveEndDate": null
+                            },
+                            {
+                              "effectiveEndDate": {
+                                "gte": {
+                                  "now": "P0D"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Camp",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "camps"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "playerId",
+                "@required": true
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "playerId",
+                "@fields": "playerId",
+                "@references": "acme::Player"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Authorization",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "authorizations"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "campId",
+                "@required": true
+              }
+            },
+            {
+              "field.string": {
+                "name": "code"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "campId",
+                "@fields": "campId",
+                "@references": "acme::Camp"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "AuthorizationExtract",
+          "@filter": {
+            "campId.playerId.hasActiveLeagueContract": true
+          },
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_authorization_extract"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "acme::Authorization.id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "code",
+                "extends": "acme::Authorization.code"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::Authorization.id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "PlayerExtract",
+          "@filter": {
+            "hasActiveLeagueContract": true
+          },
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_player_extract"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "acme::Player.id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::Player.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

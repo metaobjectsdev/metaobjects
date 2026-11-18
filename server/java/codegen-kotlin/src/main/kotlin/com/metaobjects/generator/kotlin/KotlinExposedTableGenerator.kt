@@ -2739,11 +2739,23 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             ?: error("enumTypeName returned null for EnumField '${field.name}' on ${entity.name}")
         val simple = enumCn.simpleName
         val intMap = readIntValueMap(field)
-            ?: return KotlinTypeMapper.enumVarcharLength(field)
-                ?.let { "enumerationByName($colExpr, $it, $simple::class)" }
-                // No length configured: `meta migrate` creates `text`, and `enumerationByName`
-                // needs a length, so store the member name over a TEXT column instead.
-                ?: "customEnumeration($colExpr, \"TEXT\", { v -> $simple.valueOf(v as String) }, { e -> e.name })"
+        if (intMap == null) {
+            // rc.21: a @stringValueMap enum holds each member's stored string — a VARCHAR
+            // customEnumeration with the member <-> stored-string mapping inlined, as below.
+            val length = KotlinTypeMapper.enumVarcharLength(field)
+            val stored = readStringValueMap(field)
+                ?: return length?.let { "enumerationByName($colExpr, $it, $simple::class)" }
+                    // No length configured: `meta migrate` creates `text`, and `enumerationByName`
+                    // needs a length, so store the member name over a TEXT column instead.
+                    ?: "customEnumeration($colExpr, \"TEXT\", { v -> $simple.valueOf(v as String) }, { e -> e.name })"
+            val fromDb = stored.entries.joinToString("; ") { (sym, s) -> "${kotlinString(s)} -> $simple.$sym" }
+            val toDb = stored.entries.joinToString("; ") { (sym, s) -> "$simple.$sym -> ${kotlinString(s)}" }
+            val sqlType = if (length == null) "TEXT" else "VARCHAR($length)"
+            return "customEnumeration($colExpr, \"$sqlType\", " +
+                "{ v -> when (v as String) { $fromDb; " +
+                "else -> error(\"unmapped stored value \$v for $simple\") } }, " +
+                "{ e -> when (e) { $toDb } })"
+        }
 
         // `; ` separates the branches: this is a one-line `when`, and space-separated
         // branches do not parse (`Foo.DRAFT 5 -> ...`).
@@ -2757,6 +2769,25 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             "{ v -> when ((v as Number).toInt()) { $fromDb; " +
             "else -> error(\"unmapped stored value \$v for $simple\") } }, " +
             "{ e -> when (e) { $toDb } })"
+    }
+
+    private fun kotlinString(text: String): String =
+        "\"" + KotlinGenUtil.kotlinStringLiteral(text) + "\""
+
+    /** rc.21 — the declared member→stored-string map (`@stringValueMap`, resolving), or null. */
+    private fun readStringValueMap(field: EnumField): Map<String, String>? {
+        if (!field.hasMetaAttr(EnumField.ATTR_STRING_VALUE_MAP)) return null
+        val raw = runCatching { field.getMetaAttr(EnumField.ATTR_STRING_VALUE_MAP).value }.getOrNull()
+        val m = (raw as? Map<*, *>) ?: return null
+        // In @values order, so the emitted `when` is deterministic (a Properties map is unordered).
+        val out = LinkedHashMap<String, String>()
+        val members = (runCatching { field.getMetaAttr(EnumField.ATTR_VALUES).value }.getOrNull() as? List<*>)
+            ?.map { it.toString() } ?: emptyList()
+        for (member in members) {
+            val s = m[member] as? String ?: continue
+            out[member] = s
+        }
+        return out.ifEmpty { null }
     }
 
     /** The declared symbol→int map (`@intValueMap`), or null when the enum is string-backed. */

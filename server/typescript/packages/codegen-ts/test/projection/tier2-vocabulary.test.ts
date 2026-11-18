@@ -80,12 +80,18 @@ describe("computed-over-joined — an expression reads other projection fields",
     expect(sql).toContain("NOT (s.name IS NOT NULL) AS unnamed");
   });
 
-  test("an aggregate is not readable from an expression", async () => {
-    const errors = await errorsOf(view("Agg", [
+  // rc.21 part B (U13, kept from the 1.2.x line): a scalar aggregate is readable (on the grouped row); a collect is not.
+  test("a scalar aggregate is readable from an expression; a collect is not", async () => {
+    const sql = await sqlOf(view("Agg", [
       { "field.long": { name: "entries", children: [{ "origin.aggregate": { "@agg": "count", "@of": "CaseHistory.id", "@via": "Case.caseHistory" } }] } },
       { "field.boolean": { name: "busy", children: [{ "origin.computed": { "@expr": { op: "gt", left: { field: "entries" }, right: { value: 3 } } } }] } },
     ]));
-    expect(errors.some((e) => e.includes("entries"))).toBe(true);
+    expect(sql).toContain("COUNT(DISTINCT c0.id) > 3 AS busy");
+    const errors = await errorsOf(view("Collect", [
+      { "field.long": { name: "ids", isArray: true, children: [{ "origin.aggregate": { "@agg": "collect", "@of": "CaseHistory.id", "@via": "Case.caseHistory" } }] } },
+      { "field.boolean": { name: "busy", children: [{ "origin.computed": { "@expr": { op: "isNull", arg: { field: "ids" } } } }] } },
+    ]));
+    expect(errors.some((e) => e.includes("ids"))).toBe(true);
   });
 });
 

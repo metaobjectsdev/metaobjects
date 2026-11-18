@@ -27,7 +27,7 @@ mapping).
     children:
       - source.rdb: { table: auths }
       - field.long: { name: id }
-      - field.enum: { name: type, values: ["Bridge", "Copay"] }
+      - field.enum: { name: type, values: ["Bridge", "Coupon"] }
       - identity.primary: { fields: id }
 
 - object.entity:

@@ -9,7 +9,7 @@
 //
 // Two cases on the abstract declaration:
 //   • non-@provided → metaobjects MATERIALIZES the type once (a shared file,
-//     Enums.g.cs, a namespace-level `public enum E { A, B }`), and consuming
+//     <package>/<E>.g.cs, a namespace-level `public enum E { A, B }`), and consuming
 //     fields reference it (same namespace ⇒ a bare `E`).
 //   • @provided: true → metaobjects emits NOTHING for the type; consuming fields
 //     reference an existing hand-written/third-party type, resolved via per-port

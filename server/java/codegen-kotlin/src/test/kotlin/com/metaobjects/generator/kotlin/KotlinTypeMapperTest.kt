@@ -336,6 +336,21 @@ class KotlinTypeMapperTest {
         assertEquals(STRING, KotlinTypeMapper.payloadTypeName(f))
     }
 
+    @Test fun `string field with a text dbColumnType spelling emits that column`() {
+        // rc.21 part B (fix round M6): character(n), varchar(n), and an unbounded varchar or text.
+        for ((spelling, expected) in listOf(
+            "character(3)" to "char(\"code\", 3)",
+            "varchar(20)" to "varchar(\"code\", 20)",
+            "character varying(20)" to "varchar(\"code\", 20)",
+            "varchar" to "text(\"code\")",
+            "text" to "text(\"code\")",
+        )) {
+            val f = StringField("code")
+            f.addMetaAttr(StringAttribute.create("dbColumnType", spelling))
+            assertEquals(expected, KotlinTypeMapper.exposedColumnSpec(f), spelling)
+        }
+    }
+
     @Test fun `string field with dbColumnType=jsonb is case-insensitive`() {
         // `@dbColumnType` lookup case-folds (see `KotlinTypeMapper.dbColumnType`); both
         // `"JSONB"` and `"jsonb"` route to the JSONB branch.

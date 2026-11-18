@@ -69,7 +69,9 @@ describe("emitViewDdl — postgres", () => {
       joinTables: { Week: "weeks", Workout: "workouts" },
     });
     expect(sql).toContain("CREATE VIEW v_program_summary AS");
+    // Ruling R54: Postgres qualifies every relation (`public` when no @schema is declared).
     expect(sql).toMatch(/FROM programs p\b/);
+    expect(sql).toMatch(/LEFT OUTER JOIN weeks w ON/);
   });
 });
 

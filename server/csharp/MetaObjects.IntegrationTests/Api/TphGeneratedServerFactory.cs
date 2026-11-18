@@ -1,7 +1,7 @@
 // TphGeneratedServerFactory — FR-017: the C# GENERATED-server lane for TPH.
 //
 // Runs the real MetaObjects.Codegen generators (Entity + DbContext + FilterAllowlist
-// + Routes) on the tph corpus model (Auth + Bridge/Copay/PriorAuth subtypes),
+// + Routes) on the tph corpus model (Auth + Bridge/Coupon/Permit subtypes),
 // Roslyn-compiles the emitted sources in-memory, and hosts them on a real ASP.NET
 // Core host (Kestrel) against Testcontainers Postgres. The EMITTED AuthRoutes
 // (polymorphic GET + per-subtype CRUD) is the artifact under test — a failing
@@ -32,6 +32,15 @@ using MetaObjects.Loader;
 
 namespace MetaObjects.IntegrationTests.Api;
 
+/// <summary>A host variant for the TPH lane: property naming, the host JSON naming policy, a changed
+/// corpus model and the DDL it needs (see <see cref="SecretFieldsHost"/>).</summary>
+internal sealed record TphHost(
+    Func<MetaField, string>? PropertyNaming = null,
+    System.Text.Json.JsonNamingPolicy? JsonPolicy = null,
+    string? MetaJson = null,
+    string? ExtraDdl = null,
+    Action<System.Text.Json.JsonSerializerOptions>? ConfigureJson = null);
+
 internal sealed class TphGeneratedServerFactory : IAsyncDisposable
 {
     private const string GeneratedNamespace = "MetaObjects.ApiContract.TphGenerated";
@@ -48,12 +57,12 @@ internal sealed class TphGeneratedServerFactory : IAsyncDisposable
         BaseUrl = baseUrl;
     }
 
-    public static async Task<TphGeneratedServerFactory> StartAsync(PostgresContainer pg)
+    public static async Task<TphGeneratedServerFactory> StartAsync(PostgresContainer pg, TphHost? host = null)
     {
-        await TphFixture.ProvisionSchemaAsync(pg.ConnectionString);
+        await TphFixture.ProvisionSchemaAsync(pg.ConnectionString, host?.ExtraDdl);
 
-        var (assembly, baseRouteEntities) = CompileGeneratedServer();
-        var dbContextType = assembly.GetType($"{GeneratedNamespace}.AppDbContext")
+        var (assembly, baseRouteEntities) = CompileGeneratedServer(host);
+        var dbContextType = MetaObjects.IntegrationTests.GeneratedTypes.Find(assembly, $"{GeneratedNamespace}.AppDbContext")
             ?? throw new InvalidOperationException("generated AppDbContext type not found");
 
         var builder = WebApplication.CreateBuilder();
@@ -62,6 +71,12 @@ internal sealed class TphGeneratedServerFactory : IAsyncDisposable
         // TPH host concern: serialize the discriminator enum as its string symbol.
         builder.Services.ConfigureHttpJsonOptions(o =>
             o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+        if (host is not null)
+            builder.Services.ConfigureHttpJsonOptions(o =>
+            {
+                if (host.JsonPolicy is { } policy) o.SerializerOptions.PropertyNamingPolicy = policy;
+                host.ConfigureJson?.Invoke(o.SerializerOptions);
+            });
         RegisterGeneratedDbContext(builder.Services, dbContextType, pg.ConnectionString);
 
         var app = builder.Build();
@@ -71,7 +86,7 @@ internal sealed class TphGeneratedServerFactory : IAsyncDisposable
         // <Sub>Routes type, so the lookup simply skips them.
         foreach (var entity in baseRouteEntities)
         {
-            var routesType = assembly.GetType($"{GeneratedNamespace}.{entity}Routes");
+            var routesType = MetaObjects.IntegrationTests.GeneratedTypes.Find(assembly, $"{GeneratedNamespace}.{entity}Routes");
             if (routesType is null) continue;
             var mapMethod = routesType.GetMethod($"Map{entity}Routes", BindingFlags.Public | BindingFlags.Static);
             mapMethod?.Invoke(null, new object[] { app, "/api" });
@@ -90,12 +105,19 @@ internal sealed class TphGeneratedServerFactory : IAsyncDisposable
         try { await _app.DisposeAsync(); } catch { /* ignored */ }
     }
 
-    private static (Assembly Assembly, IReadOnlyList<string> RouteEntities) CompileGeneratedServer()
+    private static (Assembly Assembly, IReadOnlyList<string> RouteEntities) CompileGeneratedServer(TphHost? host)
     {
-        var loadResult = new MetaDataLoader().Load([new FileSource(ApiContractCorpusPaths.TphMetaJson)]);
+        var loadResult = new MetaDataLoader().Load([host?.MetaJson is { } json
+            ? new InMemoryStringSource(json, id: "tph-variant.json")
+            : new FileSource(ApiContractCorpusPaths.TphMetaJson)]);
         // ADR-0058 — the corpus's committed naming rule, not a hardcoded default.
         loadResult.Root.PhysicalNaming = ApiContractCorpusPaths.Naming;
         loadResult.Root.WireFormat = ApiContractCorpusPaths.Wire;
+        // The host-variant credential tests post every spelling a client could forge for a denied field,
+        // most of which are no declared field at all. They pin credential stripping, not unknown-field
+        // handling (the default `api.unknownFields: reject` answers those with a 400, covered by the
+        // api-contract corpus), so those servers run under `drop`.
+        if (host is not null) loadResult.Root.Api = loadResult.Root.Api with { UnknownFields = UnknownFieldsMode.Drop };
         if (loadResult.Errors.Count != 0)
             throw new InvalidOperationException(
                 "tph corpus metadata failed to load: " +
@@ -125,6 +147,7 @@ internal sealed class TphGeneratedServerFactory : IAsyncDisposable
                 // is the only lane that proves an <Entity>Names.NAME reference
                 // actually RESOLVES against a real EF Core compile.
                 IncludeNames = true,
+                PropertyNaming = host?.PropertyNaming,
             },
         };
 

@@ -72,7 +72,7 @@ Because a `filter` only narrows, it cannot express an opt-*in*. Per-subtype grid
 TPH subtypes therefore moved to a generator **option**:
 
 ```ts
-const tphGrids = (e) => e.name === "Copay";
+const tphGrids = (e) => e.name === "Coupon";
 
 export default defineConfig({
   generators: [

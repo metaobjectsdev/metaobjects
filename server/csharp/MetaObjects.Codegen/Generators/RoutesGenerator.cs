@@ -103,7 +103,7 @@ public class RoutesGenerator : PerEntityGenerator
                 ctx.Config.PackageNamespacesFromMetadata
                     ? "map the packages to distinct namespaces (csharp.packageNamespaces, or GenConfig.PackageNamespaces), or rename one"
                     : "rename one");
-        return served.Select(e => FixupContext(GenerateOne(e, ctx), ctx));
+        return served.Select(e => GenerateOne(e, ctx));
     }
 
     protected override EmittedFile GenerateOne(MetaObject entity, GenContext ctx)
@@ -209,16 +209,6 @@ public class RoutesGenerator : PerEntityGenerator
     // Every type the route file names bare — the entity itself, its value objects (owned and map
     // values) and the targets and junctions of its M:N traversals — so a split-namespace model gets
     // a `using` for each package namespace the home-namespace file reaches into.
-    // With package namespaces on, the routes file names the context global::-qualified: the context
-    // lives in GenConfig.Namespace and the file in its entity's package namespace. The handler
-    // bodies spell the context type as `AppDbContext db`; this swaps that for the configured type.
-    private static EmittedFile FixupContext(EmittedFile file, GenContext ctx)
-    {
-        if (!ctx.Config.PackageNamespacesFromMetadata) return file;
-        var context = ValueObjectNames.Global(ctx.Config.Namespace, "AppDbContext");
-        return file with { Content = System.Text.RegularExpressions.Regex.Replace(file.Content, @"(?<![\w.])AppDbContext db\b", context + " db") };
-    }
-
     private static IEnumerable<MetaData> ReferencedTypes(IEnumerable<MetaObject> entities, MetaRoot root)
     {
         foreach (var entity in entities)
@@ -251,7 +241,7 @@ public class RoutesGenerator : PerEntityGenerator
             if (pkField is not null)
             {
                 pkType = CSharpNaming.ScalarFor(pkField.SubType);
-                pkProp = CSharpNaming.Pascal(pkField.Name);
+                pkProp = CSharpNaming.PropertyName(pkField, ctx.Config);
             }
         }
         bool isProjection = entity.IsReadOnlyProjection();
@@ -278,13 +268,13 @@ public class RoutesGenerator : PerEntityGenerator
         // Issue #203 — @autoSet timestamp columns the generated CRUD stamps with now()
         // (insert stamps all; update stamps onUpdate; the merge loop skips them; an
         // InsertPreserving escape hatch is emitted when any exist).
-        var autoSetFields = AutoSetFields(entity);
+        var autoSetFields = AutoSetFields(entity, ctx.Config);
         var autoSetNavs = autoSetFields.Select(a => a.Nav).ToList();
         // FR-037 R1 — readOnly / writeOnce are excluded from the PATCH merge.
-        var frozenNavs = FrozenNavs(entity);
+        var frozenNavs = FrozenNavs(entity, ctx.Config);
         // #484 — write-denied (@formExclude or credential) keys are ignored on every write; credentials never leave.
         var deniedFields = WriteDeniedFields(entity);
-        var credentials = CredentialNames(entity);
+        var credentials = CredentialNames(entity, ctx.Config);
         // Physical table + PK column for the post-save array-null clear (EF OwnsMany ToJson
         // writes [] for a null nav, so a nullable array column is NULLed via raw SQL). Both
         // are C# EXPRESSIONS — the <Entity>Names constant when the names artifact is in this
@@ -316,7 +306,7 @@ public class RoutesGenerator : PerEntityGenerator
                          || (isReport && f.SubType == FIELD_SUBTYPE_ENUM))
                         && !f.ResolvedIsArray()
                         && !(isReport && IsCredentialField(f)))   // a credential column would be a sort oracle
-            .Select(f => CSharpNaming.Pascal(f.Name))
+            .Select(f => CSharpNaming.PropertyName(f, ctx.Config))
             .ToList();
 
         // ADR-0019 Amendment 1 (W4): SQLite refuses `ORDER BY` over a decimal expression, and its
@@ -325,7 +315,7 @@ public class RoutesGenerator : PerEntityGenerator
         var decimalSortFields = entity.Fields()
             .Where(f => f.SubType == FIELD_SUBTYPE_DECIMAL && !f.ResolvedIsArray()
                         && CSharpNaming.DbColumnTypeClrOverride(f) is null)
-            .Select(f => CSharpNaming.Pascal(f.Name))
+            .Select(f => CSharpNaming.PropertyName(f, ctx.Config))
             .ToHashSet(StringComparer.Ordinal);
         bool sqliteSort = sortFields.Any(decimalSortFields.Contains);
 
@@ -354,15 +344,18 @@ public class RoutesGenerator : PerEntityGenerator
         foreach (var name in sortFields) sb.AppendLine($"        \"{name}\",");
         sb.AppendLine("    };");
         sb.AppendLine();
-        AppendSortDefaultOrder(sb, entity, "SortDefaultDesc");
+        AppendSortDefaultOrder(sb, entity, "SortDefaultDesc", ctx.Config);
         if (writable) AppendKnownFields(sb, [entity], ctx.Root);
         AppendUnauthenticatedRoutesDoc(sb, cls, isProjection);
         sb.AppendLine($"    public static IEndpointRouteBuilder Map{cls}Routes(this IEndpointRouteBuilder app, string prefix = \"/api\")");
         sb.AppendLine("    {");
+        // Refuse to start when the host's serializer contract cannot be read to strip a credential.
+        if (credentials.Count > 0)
+            sb.AppendLine($"        SerializerKeys.EnsureContract(app.ServiceProvider, new System.Type[] {{ typeof({readCls}) }}, {NamesLiteral(credentials)});");
         AppendDecimalRangeGroup(sb);
 
         // List — honours ?limit / ?offset / ?sort / ?withCount per api-contract.md.
-        sb.AppendLine("        app.MapGet(prefix + \"/" + route + "\", async (HttpContext http, AppDbContext db) =>");
+        sb.AppendLine("        app.MapGet(prefix + \"/" + route + "\", async (HttpContext http, " + ValueObjectNames.ContextTypeRef(ctx.Config) + " db) =>");
         sb.AppendLine("        {");
         sb.AppendLine("            var qs = http.Request.Query;");
         if (export is not null)
@@ -374,12 +367,13 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine($"            IQueryable<{readCls}> q = db." + readDbSet + ".AsNoTracking();");
         sb.AppendLine();
         sb.AppendLine("            // Filter: ?filter[<field>][<op>]=<value> against the per-entity allowlist.");
-        sb.AppendLine($"            var filter = EfCoreFilterDispatch.Validate<{readCls}>(FilterParser.Parse(qs, {cls}FilterAllowlist.Fields, {cls}FilterAllowlist.OpsByField));");
+        var fm = FilterMapArg($"{cls}FilterAllowlist", entity, ctx.Config);
+        sb.AppendLine($"            var filter = EfCoreFilterDispatch.Validate<{readCls}>(FilterParser.Parse(qs, {cls}FilterAllowlist.Fields, {cls}FilterAllowlist.OpsByField){fm});");
         sb.AppendLine("            if (filter.ErrorEnvelope is not null)");
         // `field` names the rejected filter field — required cross-port on every
         // filter envelope, so a caller with several filters knows which one failed.
         sb.AppendLine("                return Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field });");
-        sb.AppendLine($"            q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates);");
+        sb.AppendLine($"            q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates{fm});");
         sb.AppendLine();
         sb.AppendLine("            // Sort: ?sort=field:asc|desc against the static allowlist.");
         sb.AppendLine("            if (qs.TryGetValue(\"sort\", out var sortRaw) && !string.IsNullOrWhiteSpace(sortRaw))");
@@ -419,7 +413,7 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine($"            if (!withCount) return {OkResult("rows", credentials)};");
         else
             sb.AppendLine($"            if (!withCount) return format is null ? {OkResult("rows", credentials)} : ReportExportHttp.Json(http, \"{route}\", rows{ExportOmit(credentials, false)});");
-        sb.AppendLine($"            var totalQ = EfCoreFilterDispatch.ApplyFilter(db.{readDbSet}.AsNoTracking(), filter.Predicates);");
+        sb.AppendLine($"            var totalQ = EfCoreFilterDispatch.ApplyFilter(db.{readDbSet}.AsNoTracking(), filter.Predicates{fm});");
         sb.AppendLine("            var total = await totalQ.CountAsync();");
         if (export is null)
             sb.AppendLine($"            return {OkResult("new { rows, total }", credentials, envelope: true)};");
@@ -430,7 +424,7 @@ public class RoutesGenerator : PerEntityGenerator
         if (hasItem)
         {
             sb.AppendLine();
-            sb.AppendLine("        app.MapGet(prefix + \"/" + route + "/{id}\", async (" + pkType + " id, AppDbContext db) =>");
+            sb.AppendLine("        app.MapGet(prefix + \"/" + route + "/{id}\", async (" + pkType + " id, " + ValueObjectNames.ContextTypeRef(ctx.Config) + " db) =>");
             sb.AppendLine("            await db." + readDbSet + ".FindAsync(id) is { } found");
             sb.AppendLine("                ? " + OkResult("found", credentials));
             sb.AppendLine("                : Results.NotFound(new { error = \"not_found\" }));");
@@ -447,11 +441,11 @@ public class RoutesGenerator : PerEntityGenerator
             // #214 — a write-through create binds the derived-FREE WRITE entity, persists to
             // the table, then RE-READS the row through the replica view by PK so the returned
             // body carries the derived (view-computed) fields (read-your-writes).
-            AppendCreateHandler(sb, "/" + route, cls, dbSet, requiredKeys,
+            AppendCreateHandler(sb, "/" + route, cls, ValueObjectNames.ContextTypeRef(ctx.Config), dbSet, requiredKeys,
                 CreatedResult("prefix + \"/" + route + "\"", "input", credentials), voFields, mapVoFields, autoSetFields,
                 writeThrough ? (readDbSet, pkProp!, route) : null,
-                deniedFields.Select(f => CSharpNaming.Pascal(f.Name)).ToList(), credentials,
-                ServerOwnedCreateResets(entity, ctx.Root, _ => { }), ctx.Root, RequiredReadOnlyProps(entity));
+                deniedFields.Select(f => CSharpNaming.PropertyName(f, ctx.Config)).ToList(), credentials,
+                ServerOwnedCreateResets(entity, ctx.Root, ctx.Config), ctx.Root, RequiredReadOnlyProps(entity, ctx.Config));
 
             // PATCH + PUT share the same handler — TS reference exposes both verbs, and both
             // return the updated row (HTTP 200), matching the cross-port api-contract.
@@ -470,7 +464,7 @@ public class RoutesGenerator : PerEntityGenerator
             // is a 400. The per-key merge (shared with the TPH per-subtype handler) is
             // emitted by AppendPartialMergeLoop.
             sb.AppendLine();
-            sb.AppendLine("        async System.Threading.Tasks.Task<IResult> Update" + cls + "(" + pkType + " id, HttpContext http, AppDbContext db)");
+            sb.AppendLine("        async System.Threading.Tasks.Task<IResult> Update" + cls + "(" + pkType + " id, HttpContext http, " + ValueObjectNames.ContextTypeRef(ctx.Config) + " db)");
             sb.AppendLine("        {");
             sb.AppendLine("            var existing = await db." + dbSet + ".FindAsync(id);");
             sb.AppendLine("            if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
@@ -489,7 +483,7 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine("            var entry = db.Entry(existing);");
             AppendUpdateAutoSet(sb, autoSetFields);
             AppendPartialMergeLoop(sb, null, voFields, mapVoFields, autoSetNavs, frozenNavs, HasDecimalField(entity),
-                deniedFields.Select(f => f.Name).ToList(), HasIsoDurationField(entity, ctx.Root));
+                deniedFields.SelectMany(f => WireKeys(f, ctx.Config)).ToList(), deniedFields.Select(f => CSharpNaming.PropertyName(f, ctx.Config)).ToList(), HasIsoDurationField(entity, ctx.Root));
             AppendSaveChanges(sb);
             AppendArrayNullClears(sb, voFields, tableRef, pkColumnRef);
             // #214 — writes target the table; for a write-through entity re-read the row
@@ -510,7 +504,7 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine("        app.MapPatch(prefix + \"/" + route + "/{id}\", Update" + cls + ");");
             sb.AppendLine("        app.MapPut(prefix + \"/" + route + "/{id}\", Update" + cls + ");");
             sb.AppendLine();
-            sb.AppendLine("        app.MapDelete(prefix + \"/" + route + "/{id}\", async (" + pkType + " id, AppDbContext db) =>");
+            sb.AppendLine("        app.MapDelete(prefix + \"/" + route + "/{id}\", async (" + pkType + " id, " + ValueObjectNames.ContextTypeRef(ctx.Config) + " db) =>");
             sb.AppendLine("        {");
             sb.AppendLine("            var existing = await db." + dbSet + ".FindAsync(id);");
             sb.AppendLine("            if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
@@ -530,7 +524,7 @@ public class RoutesGenerator : PerEntityGenerator
         // segment = relationship name.
         if (hasItem)
             foreach (var nav in M2MNavigationBuilder.For(entity, ctx.Root, ctx.Warn))
-                AppendM2mRoute(sb, nav, route, pkType!, ctx.Root, config: ctx.Config);
+                AppendM2mRoute(sb, nav, route, pkType!, ctx.Root, ctx.Config);
 
         sb.AppendLine();
         sb.AppendLine("        return mount;");
@@ -556,7 +550,7 @@ public class RoutesGenerator : PerEntityGenerator
         // Issue #203 — the verbatim-insert escape hatch, only for an entity with @autoSet
         // fields (writable entities only; a read-only projection has no insert path).
         if (writable && autoSetFields.Count > 0)
-            AppendInsertPreserving(sb, cls, dbSet);
+            AppendInsertPreserving(sb, cls, dbSet, ValueObjectNames.ContextTypeRef(ctx.Config));
         AppendOmitResultClass(sb);
         sb.AppendLine("}");
 
@@ -626,21 +620,21 @@ public class RoutesGenerator : PerEntityGenerator
         }
         var pkField = pkFields.Count == 1 ? baseEntity.Fields().FirstOrDefault(f => f.Name == pkFields[0]) : null;
         var pkType = pkField is not null ? CSharpNaming.ScalarFor(pkField.SubType) : null;
-        var pkProp = pkField is not null ? CSharpNaming.Pascal(pkField.Name) : null;
+        var pkProp = pkField is not null ? CSharpNaming.PropertyName(pkField, ctx.Config) : null;
         bool hasItem = pkType is not null;
 
-        var discProp = CSharpNaming.Pascal(tph.DiscriminatorField);
+        var discProp = baseEntity.FindField(tph.DiscriminatorField) is { } dField ? CSharpNaming.PropertyName(dField, ctx.Config) : CSharpNaming.Pascal(tph.DiscriminatorField);
         var discField = baseEntity.FindField(tph.DiscriminatorField);
         // #484 — the polymorphic base rows carry every subtype's columns, so a credential declared
         // on the base OR on any subtype is omitted from them.
-        var baseCredentials = CredentialNames(baseEntity)
-            .Concat(tph.Subtypes.SelectMany(st => CredentialNames(st.Entity)))
+        var baseCredentials = CredentialNames(baseEntity, ctx.Config)
+            .Concat(tph.Subtypes.SelectMany(st => CredentialNames(st.Entity, ctx.Config)))
             .Distinct(StringComparer.Ordinal).ToList();
 
         // Sortable base scalar fields (the polymorphic list sorts on base columns).
         var sortFields = baseEntity.Fields()
             .Where(f => CSharpNaming.ScalarFor(f.SubType) is not null && !f.ResolvedIsArray())
-            .Select(f => CSharpNaming.Pascal(f.Name))
+            .Select(f => CSharpNaming.PropertyName(f, ctx.Config))
             .ToList();
 
         var sb = new StringBuilder();
@@ -668,7 +662,7 @@ public class RoutesGenerator : PerEntityGenerator
         foreach (var name in sortFields) sb.AppendLine($"        \"{name}\",");
         sb.AppendLine("    };");
         sb.AppendLine();
-        AppendSortDefaultOrder(sb, baseEntity, "SortDefaultDesc");
+        AppendSortDefaultOrder(sb, baseEntity, "SortDefaultDesc", ctx.Config);
         // One known set for the whole hierarchy: a sibling subtype's column is declared, so it is not unknown.
         AppendKnownFields(sb, tph.Subtypes.Select(st => st.Entity).Prepend(baseEntity), ctx.Root);
 
@@ -682,7 +676,7 @@ public class RoutesGenerator : PerEntityGenerator
             var subClsName = CSharpNaming.Pascal(st.Entity.Name);
             var subSortFields = st.Entity.Fields()
                 .Where(f => CSharpNaming.ScalarFor(f.SubType) is not null && !f.ResolvedIsArray())
-                .Select(f => CSharpNaming.Pascal(f.Name))
+                .Select(f => CSharpNaming.PropertyName(f, ctx.Config))
                 .ToList();
             sb.Append($"    private static readonly System.Collections.Generic.HashSet<string> {subClsName}SortAllowlist =");
             sb.AppendLine(" new(System.StringComparer.OrdinalIgnoreCase)");
@@ -690,22 +684,28 @@ public class RoutesGenerator : PerEntityGenerator
             foreach (var name in subSortFields) sb.AppendLine($"        \"{name}\",");
             sb.AppendLine("    };");
             sb.AppendLine();
-            AppendSortDefaultOrder(sb, st.Entity, $"{subClsName}SortDefaultDesc");
+            AppendSortDefaultOrder(sb, st.Entity, $"{subClsName}SortDefaultDesc", ctx.Config);
         }
 
         AppendUnauthenticatedRoutesDoc(sb, baseCls, readOnly: false);
         sb.AppendLine($"    public static IEndpointRouteBuilder Map{baseCls}Routes(this IEndpointRouteBuilder app, string prefix = \"/api\")");
         sb.AppendLine("    {");
+        if (baseCredentials.Count > 0)
+        {
+            var credTypes = new[] { baseCls }.Concat(tph.Subtypes.Select(st => ValueObjectNames.TypeRef(st.Entity, ctx.Root, ctx.Config, ValueObjectNames.Namespace(baseEntity, ctx.Config))));
+            sb.AppendLine($"        SerializerKeys.EnsureContract(app.ServiceProvider, new System.Type[] {{ {string.Join(", ", credTypes.Select(t => $"typeof({t})"))} }}, {NamesLiteral(baseCredentials)});");
+        }
         AppendDecimalRangeGroup(sb);
 
         // --- Polymorphic list: GET /<base> (union of all subtypes; each row carries its discriminator) ---
-        sb.AppendLine("        app.MapGet(prefix + \"/" + baseRoute + "\", async (HttpContext http, AppDbContext db) =>");
+        sb.AppendLine("        app.MapGet(prefix + \"/" + baseRoute + "\", async (HttpContext http, " + ValueObjectNames.ContextTypeRef(ctx.Config) + " db) =>");
         sb.AppendLine("        {");
         sb.AppendLine("            var qs = http.Request.Query;");
         sb.AppendLine($"            IQueryable<{baseCls}> q = db.{dbSet}.AsNoTracking();");
-        sb.AppendLine($"            var filter = EfCoreFilterDispatch.Validate<{baseCls}>(FilterParser.Parse(qs, {baseCls}FilterAllowlist.Fields, {baseCls}FilterAllowlist.OpsByField));");
+        var fmB = FilterMapArg($"{baseCls}FilterAllowlist", baseEntity, ctx.Config);
+        sb.AppendLine($"            var filter = EfCoreFilterDispatch.Validate<{baseCls}>(FilterParser.Parse(qs, {baseCls}FilterAllowlist.Fields, {baseCls}FilterAllowlist.OpsByField){fmB});");
         sb.AppendLine("            if (filter.ErrorEnvelope is not null) return Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field });");
-        sb.AppendLine("            q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates);");
+        sb.AppendLine($"            q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates{fmB});");
         sb.AppendLine("            if (qs.TryGetValue(\"sort\", out var sortRaw) && !string.IsNullOrWhiteSpace(sortRaw))");
         sb.AppendLine("            {");
         sb.AppendLine("                var parts = sortRaw.ToString().Split(':', 2);");
@@ -719,7 +719,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("            var rows = await q.ToListAsync();");
         sb.AppendLine("            var withCount = qs.TryGetValue(\"withCount\", out var wc) && (wc == \"1\" || string.Equals(wc, \"true\", System.StringComparison.OrdinalIgnoreCase));");
         sb.AppendLine($"            if (!withCount) return {OkResult("rows", baseCredentials)};");
-        sb.AppendLine($"            var total = await EfCoreFilterDispatch.ApplyFilter(db.{dbSet}.AsNoTracking(), filter.Predicates).CountAsync();");
+        sb.AppendLine($"            var total = await EfCoreFilterDispatch.ApplyFilter(db.{dbSet}.AsNoTracking(), filter.Predicates{fmB}).CountAsync();");
         sb.AppendLine($"            return {OkResult("new { rows, total }", baseCredentials, envelope: true)};");
         sb.AppendLine("        });");
 
@@ -727,7 +727,7 @@ public class RoutesGenerator : PerEntityGenerator
         {
             // --- Polymorphic get: GET /<base>/{id} (one row of whatever subtype) ---
             sb.AppendLine();
-            sb.AppendLine("        app.MapGet(prefix + \"/" + baseRoute + "/{id}\", async (" + pkType + " id, AppDbContext db) =>");
+            sb.AppendLine("        app.MapGet(prefix + \"/" + baseRoute + "/{id}\", async (" + pkType + " id, " + ValueObjectNames.ContextTypeRef(ctx.Config) + " db) =>");
             sb.AppendLine($"            await db.{dbSet}.AsNoTracking().FirstOrDefaultAsync(x => x.{pkProp} == id) is {{ }} found");
             sb.AppendLine("                ? " + OkResult("found", baseCredentials));
             sb.AppendLine("                : Results.NotFound(new { error = \"not_found\" }));");
@@ -739,12 +739,12 @@ public class RoutesGenerator : PerEntityGenerator
             // a vanilla entity's traversal at the base route. Mirrors TS
             // renderTphRoutesFile's baseM2mMounts.
             foreach (var nav in M2MNavigationBuilder.For(baseEntity, ctx.Root, ctx.Warn))
-                AppendM2mRoute(sb, nav, baseRoute, pkType!, ctx.Root, config: ctx.Config);
+                AppendM2mRoute(sb, nav, baseRoute, pkType!, ctx.Root, ctx.Config);
 
             // --- Per-subtype CRUD sets ---
             var hierarchy = tph.Subtypes.Select(s => s.Entity).Prepend(baseEntity).ToList();
             foreach (var st in tph.Subtypes)
-                AppendTphSubtypeRoutes(sb, st, hierarchy, ctx.Root, baseRoute, baseCls, dbSet, pkType!, pkProp!, discProp, discField, ctx.Warn, ctx.Config);
+                AppendTphSubtypeRoutes(sb, st, hierarchy, ctx.Root, ctx.Config, baseRoute, baseCls, dbSet, pkType!, pkProp!, discProp, discField, ctx.Warn);
         }
 
         sb.AppendLine();
@@ -767,8 +767,8 @@ public class RoutesGenerator : PerEntityGenerator
         // EF via the subtype CLR type on Add). Only when the subtype has @autoSet columns.
         if (hasItem)
             foreach (var st in tph.Subtypes)
-                if (AutoSetFields(st.Entity).Count > 0)
-                    AppendInsertPreserving(sb, CSharpNaming.Pascal(st.Entity.Name), dbSet);
+                if (AutoSetFields(st.Entity, ctx.Config).Count > 0)
+                    AppendInsertPreserving(sb, ValueObjectNames.TypeRef(st.Entity, ctx.Root, ctx.Config, ValueObjectNames.Namespace(baseEntity, ctx.Config)), dbSet, ValueObjectNames.ContextTypeRef(ctx.Config));
         AppendOmitResultClass(sb);
         sb.AppendLine("}");
 
@@ -805,10 +805,10 @@ public class RoutesGenerator : PerEntityGenerator
     // set them (private setter), so their [Required] describes the stored row, not the create
     // body: the create validation ignores a violation that names only these members, as Java's
     // SERVER_OWNED_ON_CREATE filter does. Empty for nearly every model → byte-identical output.
-    private static List<string> RequiredReadOnlyProps(MetaObject obj) =>
+    private static List<string> RequiredReadOnlyProps(MetaObject obj, GenConfig config) =>
         obj.Fields()
             .Where(f => f.IsRequired && f.IsReadOnlyMutability && !f.IsDerived())
-            .Select(f => CSharpNaming.Pascal(f.Name))
+            .Select(f => CSharpNaming.PropertyName(f, config))
             .ToList();
 
     // Issue #203 — one @autoSet timestamp column the generated CRUD stamps with now().
@@ -832,10 +832,10 @@ public class RoutesGenerator : PerEntityGenerator
     /// echoed in the RESPONSE even where EF omitted the column from the UPDATE. Skipping
     /// the key here is what makes the response and the row agree.</para>
     /// </summary>
-    private static List<string> FrozenNavs(MetaObject entity) =>
+    private static List<string> FrozenNavs(MetaObject entity, GenConfig config) =>
         entity.Fields()
             .Where(f => f.Mutability != MetaObjects.Core.Field.FieldConstants.MUTABILITY_READ_WRITE)
-            .Select(f => CSharpNaming.Pascal(f.Name))
+            .Select(f => CSharpNaming.PropertyName(f, config))
             .ToList();
 
     // #484 — a credential is a field that declares (or inherits, ADR-0039) a view.password child.
@@ -855,10 +855,10 @@ public class RoutesGenerator : PerEntityGenerator
     /// An entity's credential names plus, for a TPH base, those of every subtype: its rows are
     /// shared-table rows of every subtype (#484).
     /// </summary>
-    private static List<string> TphUnionCredentialNames(MetaObject entity, MetaRoot root) =>
-        CredentialNames(entity)
+    private static List<string> TphUnionCredentialNames(MetaObject entity, MetaRoot root, GenConfig config) =>
+        CredentialNames(entity, config)
             .Concat(TphPlanBuilder.For(entity, root) is { } tph
-                ? tph.Subtypes.SelectMany(st => CredentialNames(st.Entity))
+                ? tph.Subtypes.SelectMany(st => CredentialNames(st.Entity, config))
                 : Enumerable.Empty<string>())
             .Distinct(StringComparer.Ordinal).ToList();
 
@@ -875,8 +875,34 @@ public class RoutesGenerator : PerEntityGenerator
         return subtype.Fields().Where(f => marked.Contains(f.Name)).ToList();
     }
 
-    private static List<string> CredentialNames(MetaObject entity) =>
-        entity.Fields().Where(IsCredentialField).Select(f => f.Name).ToList();
+    // The keys a body can carry a field under: its metadata name and, when a resolver renames the
+    // property beyond case, the resolved property name (an entity property serializes under the
+    // host's naming policy applied to the resolved name). Credential stripping and the PATCH
+    // deny and value-object arms match on both, so a renamed property cannot escape them. Without
+    // a rename the two differ at most by case and the list is the field name alone.
+    private static List<string> WireKeys(MetaField f, GenConfig config) =>
+        new[] { f.Name, CSharpNaming.PropertyName(f, config) }
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+    // The CLR property names of an entity's credentials. The JSON key each is written under is not
+    // derived here: the generated result asks the host's serializer (SerializerKeys.KeysOf).
+    private static List<string> CredentialNames(MetaObject entity, GenConfig config) =>
+        entity.Fields().Where(IsCredentialField).SelectMany(f => CredentialSpellings(f, config)).ToList();
+
+    // The CLR property first (what the serializer's contract is matched on), then the field name: the
+    // normalized-spelling backstop in SerializerKeys.Strip also removes a key that spells it. Equal
+    // ignoring case when no resolver renames, so the list is then the one CLR name.
+    private static IEnumerable<string> CredentialSpellings(MetaField f, GenConfig config) =>
+        new[] { CSharpNaming.PropertyName(f, config), f.Name }.Distinct(StringComparer.OrdinalIgnoreCase);
+
+    // `string.Equals(prop.Name, "a", ...) || string.Equals(prop.Name, "b", ...)` over the keys.
+    private static string KeyMatch(IEnumerable<string> keys) =>
+        string.Join(" || ", keys.Select(k => $"string.Equals(prop.Name, \"{k}\", System.StringComparison.OrdinalIgnoreCase)"));
+
+    // The extra argument that hands the filter dispatch the allowlist's field-to-property map: only
+    // when a resolver renamed a property beyond case (the allowlist emits the map on the same test).
+    private static string FilterMapArg(string allowlistRef, MetaObject entity, GenConfig config) =>
+        CSharpNaming.RenamedProperties(entity, config).Count > 0 ? $", {allowlistRef}.PropertyByField" : "";
 
     // A C# string[] expression of the names, spliced into the credential-omitting result.
     private static string NamesLiteral(IEnumerable<string> names) =>
@@ -920,22 +946,17 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("                http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)");
         sb.AppendLine("                .Value.SerializerOptions;");
         sb.AppendLine("            var node = System.Text.Json.JsonSerializer.SerializeToNode(_value, _value.GetType(), opts);");
-        sb.AppendLine("            Strip(_envelope && node is System.Text.Json.Nodes.JsonObject env ? env[\"rows\"] : node);");
+        sb.AppendLine("            // The keys are the serializer's own for these properties (naming policy, rename, attribute), never guessed from names.");
+        sb.AppendLine($"            SerializerKeys.Strip(_envelope && node is System.Text.Json.Nodes.JsonObject env ? env[\"rows\"] : node,");
+        sb.AppendLine($"                SerializerKeys.KeysOf(_value, _envelope, opts, _names), _names);");
         sb.AppendLine("            http.Response.StatusCode = _status;");
         sb.AppendLine("            if (_location is not null) http.Response.Headers.Location = _location;");
         sb.AppendLine("            await http.Response.WriteAsJsonAsync(node, opts);");
         sb.AppendLine("        }");
-        sb.AppendLine("        private void Strip(System.Text.Json.Nodes.JsonNode? n)");
-        sb.AppendLine("        {");
-        sb.AppendLine("            if (n is System.Text.Json.Nodes.JsonArray a) { foreach (var e in a) Strip(e); return; }");
-        sb.AppendLine("            if (n is not System.Text.Json.Nodes.JsonObject o) return;");
-        sb.AppendLine("            foreach (var key in o.Select(p => p.Key).Where(k => _names.Any(x => string.Equals(x, k, System.StringComparison.OrdinalIgnoreCase))).ToList())");
-        sb.AppendLine("                o.Remove(key);");
-        sb.AppendLine("        }");
         sb.AppendLine("    }");
     }
 
-    private static List<AutoSetField> AutoSetFields(MetaObject entity)
+    private static List<AutoSetField> AutoSetFields(MetaObject entity, GenConfig config)
     {
         var list = new List<AutoSetField>();
         foreach (var f in entity.Fields())
@@ -943,7 +964,7 @@ public class RoutesGenerator : PerEntityGenerator
             if (f.AutoSet is not (AUTO_SET_ON_CREATE or AUTO_SET_ON_UPDATE)) continue;
             if (NowExprFor(f) is not { } now) continue;   // non-temporal @autoSet — skip
             list.Add(new AutoSetField(
-                Nav: CSharpNaming.Pascal(f.Name),
+                Nav: CSharpNaming.PropertyName(f, config),
                 NowExpr: now,
                 OnUpdate: f.AutoSet == AUTO_SET_ON_UPDATE));
         }
@@ -966,7 +987,7 @@ public class RoutesGenerator : PerEntityGenerator
 
     // Program D — a value-object column the entity carries: a field.object whose @objectRef
     // resolves to an object.value (single or @isArray). The generated create + PATCH handlers
-    // deserialize, validate, and assign these as CLR owned-nav properties. WireName is the
+    // deserialize, validate, and assign these as CLR owned-nav properties. WireKeys are the
     // metadata (camelCase) field name; Nav is the PascalCase property; DeserType is the VO
     // POCO type (or List<VO> for an array); JsonColumnRef is the physical jsonb column (the
     // .ToJson name) as a C# EXPRESSION — `<Entity>Names.<Field>Column` when the names artifact
@@ -974,7 +995,7 @@ public class RoutesGenerator : PerEntityGenerator
     // splicing into the post-save null-clear SQL; IsArray / Required drive the merge semantics
     // (present-null: a nullable single/array clears, a @required column 400s).
     private sealed record VoField(
-        string WireName, string Nav, string DeserType, string JsonColumnRef, bool IsArray, bool Required);
+        IReadOnlyList<string> WireKeys, string WireName, string Nav, string DeserType, string JsonColumnRef, bool IsArray, bool Required);
 
     // #362 — the `field.map @objectRef` columns, deliberately NOT folded into VoField.
     // A VoField drives the owned-nav machinery (EF OwnsMany/.ToJson, deserialization as an
@@ -982,10 +1003,10 @@ public class RoutesGenerator : PerEntityGenerator
     // with a jsonb converter and none of that applies. What it DOES share is the nested
     // value-object graph, which the create and PATCH paths must validate — before this the
     // map reached neither, so its values were written unchecked on every write path.
-    private sealed record MapVoField(string WireName, string Nav, string DeserType);
+    private sealed record MapVoField(IReadOnlyList<string> WireKeys, string WireName, string Nav, string DeserType);
 
-    // A value object named from the routes file: bare in the earlier layout (the file has a using for
-    // each namespace it reaches), global::-qualified when package namespaces are on.
+    // A value object named from the routes file: bare in the earlier layout, global::-qualified
+    // when package namespaces are on.
     private static string VoTypeRef(MetaData target, MetaRoot root, GenConfig config) =>
         config.PackageNamespacesFromMetadata ? ValueObjectNames.GlobalRef(target, config) : ValueObjectNames.TypeName(target, root);
 
@@ -999,8 +1020,8 @@ public class RoutesGenerator : PerEntityGenerator
             var target = ValueObjectNames.ResolveFieldRef(f, root);
             if (target is null || !target.IsValue()) continue;   // scalar-valued maps have no bean
             list.Add(new MapVoField(
-                WireName: f.Name,
-                Nav: CSharpNaming.Pascal(f.Name),
+                WireKeys: WireKeys(f, config), WireName: f.Name,
+                Nav: CSharpNaming.PropertyName(f, config),
                 DeserType: $"System.Collections.Generic.Dictionary<string, {VoTypeRef(target, root, config)}>"));
         }
         return list;
@@ -1018,8 +1039,8 @@ public class RoutesGenerator : PerEntityGenerator
             var voType = VoTypeRef(target, root, config);
             var isArray = f.ResolvedIsArray();                    // ADR-0039: resolving array-ness
             list.Add(new VoField(
-                WireName: f.Name,
-                Nav: CSharpNaming.Pascal(f.Name),
+                WireKeys: WireKeys(f, config), WireName: f.Name,
+                Nav: CSharpNaming.PropertyName(f, config),
                 DeserType: isArray ? $"System.Collections.Generic.List<{voType}>" : voType,
                 JsonColumnRef: CSharpNaming.ColumnRef(entity, f, strategy, includeNames, config),
                 IsArray: isArray,
@@ -1095,7 +1116,7 @@ public class RoutesGenerator : PerEntityGenerator
     }
 
     private static void AppendCreateHandler(
-        StringBuilder sb, string mapPath, string cls, string dbSet,
+        StringBuilder sb, string mapPath, string cls, string ctxType, string dbSet,
         IReadOnlyList<string> requiredKeys, string createdExpr, IReadOnlyList<VoField> voFields,
         IReadOnlyList<MapVoField> mapVoFields,
         IReadOnlyList<AutoSetField> autoSetFields,
@@ -1109,7 +1130,7 @@ public class RoutesGenerator : PerEntityGenerator
         // The body is always read here, not model-bound: the framework answers a body it cannot bind with a
         // bare 400 and no body, while every validation failure must list its issues (the cross-port
         // {error:"validation", issues:[...]} envelope), so the handler reads the body itself and collects them.
-        sb.AppendLine($"        app.MapPost(prefix + \"{mapPath}\", async (HttpContext http, AppDbContext db) =>");
+        sb.AppendLine($"        app.MapPost(prefix + \"{mapPath}\", async (HttpContext http, {ctxType} db) =>");
         sb.AppendLine("        {");
         AppendJsonOptsLocal(sb);
         sb.AppendLine("            System.Text.Json.JsonDocument __body;");
@@ -1175,15 +1196,15 @@ public class RoutesGenerator : PerEntityGenerator
         }
     }
 
-    // Input hardening — a generated create hands storage ONLY what the client may set. The body is
-    // bound straight onto the EF entity, so every member the server owns is reset to its CLR default
-    // before validation and `Add`, and the request answers as if the key were absent (never a 400):
+    // SECURITY (1.2.x) — a generated create hands storage ONLY what the client may set. The body is
+    // bound straight onto the EF entity, so every member the server owns is reset before validation
+    // and `Add`, and the request answers as if the key were absent (never a 400):
     //   - a server-generated primary key (@generation increment|uuid): default, so EF generates it;
-    //   - the TPH discriminator on a per-subtype route: default, so EF's discriminator generator
-    //     stamps the subtype's own @discriminatorValue (the route's subtype is its only source);
+    //   - the TPH discriminator on a per-subtype route: default, so EF's discriminator value
+    //     generator stamps the route subtype's own @discriminatorValue (the route is its only source);
     //   - M:N navigation collections: emptied, else `Add` would insert a client-sent related graph.
-    // @readOnly fields need no line here: the entity declares them with a private setter, which
-    // System.Text.Json never binds (see EntityGenerator.SetterFor). Each statement is a complete line.
+    // A readOnly field needs no line here: the entity declares it with a private setter, which
+    // System.Text.Json never binds (EntityGenerator.SetterFor).
     private static void AppendCreateServerOwned(StringBuilder sb, IReadOnlyList<string>? statements)
     {
         if (statements is null || statements.Count == 0) return;
@@ -1191,28 +1212,32 @@ public class RoutesGenerator : PerEntityGenerator
         foreach (var st in statements) sb.AppendLine("            " + st);
     }
 
-    // The reset statements AppendCreateServerOwned emits for one entity (empty when it has none, which
-    // keeps the output byte-identical for an entity without a generated key, navigation or discriminator).
-    // The key and discriminator resets are SKIPPED when that field is itself @mutability: readOnly: the
-    // entity declares it with a private setter (EntityGenerator.SetterFor), so the assignment would be
-    // CS0122, and it is redundant, because System.Text.Json never binds a private setter.
-    private static List<string> ServerOwnedCreateResets(MetaObject entity, MetaRoot root, Action<string> onWarn, MetaField? discField = null, MetaObject? navOwner = null)
+    // The reset statements AppendCreateServerOwned emits for one entity (empty when it has none, so an
+    // entity with an assigned key, no navigation and no discriminator keeps its output byte-identical).
+    // A TPH subtype class declares no M:N property of its own — the navigations it carries are its
+    // discriminator base class's — so a subtype route passes that base as navOwner. The key and
+    // discriminator resets are SKIPPED when that field is itself @mutability: readOnly: the entity
+    // declares it with a private setter (EntityGenerator.SetterFor), so the assignment would be
+    // CS0122 — and it is redundant, because System.Text.Json never binds a private setter.
+    // The M:N element type is spelled through ValueObjectNames.TypeRef from the routes file's own
+    // namespace (a generated type's namespace is its metadata package), and the List is
+    // global::-qualified, as every other emitted System reference here is.
+    private static List<string> ServerOwnedCreateResets(
+        MetaObject entity, MetaRoot root, GenConfig config, MetaField? discField = null, MetaObject? navOwner = null)
     {
         var list = new List<string>();
-        if (entity.PrimaryIdentity() is MetaPrimaryIdentity
-            {
-                Generation: MetaObjects.Core.Identity.IdentityConstants.GENERATION_INCREMENT
-                    or MetaObjects.Core.Identity.IdentityConstants.GENERATION_UUID,
-                Fields: [var keyName],
-            } && entity.Fields().FirstOrDefault(f => f.Name == keyName) is { IsReadOnlyMutability: false } keyField)
-            list.Add($"input.{CSharpNaming.Pascal(keyField.Name)} = default!;");
-        if (discField is { IsReadOnlyMutability: false })
-            list.Add($"input.{CSharpNaming.Pascal(discField.Name)} = default!;");
-        // A TPH subtype class declares no M:N property of its own: the navigations that exist are those of the
-        // discriminator base class (navOwner), so a subtype route resets exactly those.
-        foreach (var nav in M2MNavigationBuilder.For(navOwner ?? entity, root, onWarn))
+        if (entity.PrimaryIdentity() is MetaPrimaryIdentity pk
+            && pk.Generation is MetaObjects.Core.Identity.IdentityConstants.GENERATION_INCREMENT
+                or MetaObjects.Core.Identity.IdentityConstants.GENERATION_UUID
+            && pk.Fields is [var keyName]
+            && entity.Fields().FirstOrDefault(f => f.Name == keyName) is { } keyField
+            && !keyField.IsReadOnlyMutability)
+            list.Add($"input.{CSharpNaming.PropertyName(keyField, config)} = default!;");
+        if (discField is not null && !discField.IsReadOnlyMutability)
+            list.Add($"input.{CSharpNaming.PropertyName(discField, config)} = default!;");
+        foreach (var nav in M2MNavigationBuilder.For(navOwner ?? entity, root, _ => { }))
         {
-            var target = CSharpNaming.Pascal(nav.Target.Name);
+            var target = ValueObjectNames.Ref(nav.Target, config);
             list.Add($"input.{CSharpNaming.Pascal(nav.Name)} = new System.Collections.Generic.List<{target}>();");
         }
         return list;
@@ -1255,12 +1280,12 @@ public class RoutesGenerator : PerEntityGenerator
     // written verbatim), for import / restore / replication paths that must keep the
     // original timestamps. Emitted only for an entity that declares @autoSet fields (else
     // there is nothing to preserve — the normal POST already writes every column verbatim).
-    private static void AppendInsertPreserving(StringBuilder sb, string cls, string dbSet)
+    private static void AppendInsertPreserving(StringBuilder sb, string cls, string dbSet, string ctxType)
     {
         sb.AppendLine();
         sb.AppendLine("    /// <summary>Escape hatch: insert without @autoSet stamping (created-at/updated-at");
         sb.AppendLine("    /// written verbatim from <paramref name=\"input\"/>) for import / restore / replication.</summary>");
-        sb.AppendLine($"    public static async System.Threading.Tasks.Task<{cls}> InsertPreserving(AppDbContext db, {cls} input)");
+        sb.AppendLine($"    public static async System.Threading.Tasks.Task<{cls}> InsertPreserving({ctxType} db, {cls} input)");
         sb.AppendLine("    {");
         sb.AppendLine($"        db.{dbSet}.Add(input);");
         sb.AppendLine("        await db.SaveChangesAsync();");
@@ -1398,7 +1423,7 @@ public class RoutesGenerator : PerEntityGenerator
         StringBuilder sb, string? discProp, IReadOnlyList<VoField> voFields,
         IReadOnlyList<MapVoField> mapVoFields,
         IReadOnlyList<string> autoSetNavs, IReadOnlyList<string> frozenNavs, bool hasDecimal,
-        IReadOnlyList<string> deniedKeys, bool hasDuration = false)
+        IReadOnlyList<string> deniedKeys, IReadOnlyList<string> deniedClr, bool hasDuration = false)
     {
         // A nullable array-of-VO column that a request clears to null (present-null) can NOT be
         // NULLed by an owned-nav assignment — EF OwnsMany(...).ToJson writes `[]` for a null
@@ -1408,12 +1433,19 @@ public class RoutesGenerator : PerEntityGenerator
             if (voFields[i].IsArray && !voFields[i].Required)
                 sb.AppendLine($"            var __clearVo{i} = false;");
 
+        // The body key -> CLR property map comes from the host serializer's own contract (a naming policy
+        // such as SnakeCaseLower, a rename, an attribute), never from a guess at the name: the keys a
+        // client echoes from a response are the keys this resolves.
+        sb.AppendLine($"            var __keys = SerializerKeys.PropertyByKey(existing.GetType(), jsonOpts);");
         // Every violation is collected (never the first alone) and answered together after the loop.
         sb.AppendLine("            var __issues = new ValidationIssues();");
         sb.AppendLine("            foreach (var prop in body.RootElement.EnumerateObject())");
         sb.AppendLine("            {");
+        sb.AppendLine("                var __clr = __keys.TryGetValue(prop.Name, out var __mapped) ? __mapped : null;");
         // #484 — @formExclude / credential keys are IGNORED (never a 400), ahead of every arm below
-        // (a present null is a write too).
+        // (a present null is a write too). Denied by the serializer-resolved property AND by the field-name spellings.
+        if (deniedClr.Count > 0)
+            sb.AppendLine($"                if (__clr is {string.Join(" or ", deniedClr.Select(n => "\"" + n + "\""))}) continue; // @formExclude / credential: not writable");
         foreach (var key in deniedKeys)
             sb.AppendLine($"                if (string.Equals(prop.Name, \"{key}\", System.StringComparison.OrdinalIgnoreCase)) continue; // @formExclude / credential: not writable");
         // Program D — typed value-object arms FIRST (owned-nav columns are invisible to
@@ -1426,7 +1458,7 @@ public class RoutesGenerator : PerEntityGenerator
         {
             var vf = voFields[i];
             var v = "__vo" + i;
-            sb.AppendLine($"                if (string.Equals(prop.Name, \"{vf.WireName}\", System.StringComparison.OrdinalIgnoreCase))");
+            sb.AppendLine($"                if ({KeyMatch(vf.WireKeys)} || __clr == \"{vf.Nav}\")");
             sb.AppendLine("                {");
             sb.AppendLine("                    if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Null)");
             sb.AppendLine("                    {");
@@ -1463,7 +1495,7 @@ public class RoutesGenerator : PerEntityGenerator
         {
             var mf = mapVoFields[i];
             var mv = "__map" + i;
-            sb.AppendLine($"                if (string.Equals(prop.Name, \"{mf.WireName}\", System.StringComparison.OrdinalIgnoreCase))");
+            sb.AppendLine($"                if ({KeyMatch(mf.WireKeys)} || __clr == \"{mf.Nav}\")");
             sb.AppendLine("                {");
             sb.AppendLine("                    if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Null)");
             sb.AppendLine($"                    {{ existing.{mf.Nav} = null; continue; }}");
@@ -1475,7 +1507,8 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine("                    continue;");
             sb.AppendLine("                }");
         }
-        sb.AppendLine("                var target = entry.Metadata.FindProperty(prop.Name)");
+        sb.AppendLine("                var target = (__clr is null ? null : entry.Metadata.FindProperty(__clr))");
+        sb.AppendLine("                    ?? entry.Metadata.FindProperty(prop.Name)");
         sb.AppendLine("                    ?? entry.Metadata.GetProperties().FirstOrDefault(p => string.Equals(p.Name, prop.Name, System.StringComparison.OrdinalIgnoreCase));");
         sb.AppendLine("                if (target is null) continue;");
         sb.AppendLine("                var __wire = ValidationIssues.WireName(existing.GetType(), target.Name, jsonOpts);");
@@ -1588,8 +1621,8 @@ public class RoutesGenerator : PerEntityGenerator
     // subtype CLR type (discriminator injected by EF on Add); update is a partial merge
     // that never touches the PK or the discriminator.
     private static void AppendTphSubtypeRoutes(
-        StringBuilder sb, TphSubtypePlan st, IReadOnlyList<MetaObject> hierarchy, MetaRoot root, string baseRoute, string baseCls, string dbSet,
-        string pkType, string pkProp, string discProp, MetaField? discField, Action<string> onWarn, GenConfig config)
+        StringBuilder sb, TphSubtypePlan st, IReadOnlyList<MetaObject> hierarchy, MetaRoot root, GenConfig config, string baseRoute, string baseCls, string dbSet,
+        string pkType, string pkProp, string discProp, MetaField? discField, Action<string> onWarn)
     {
         // #362 — field.object columns on a TPH subtype stay out of scope (Program D §6), but a
         // field.map @objectRef is NOT: it reaches the settable set, so its value objects reach
@@ -1597,32 +1630,33 @@ public class RoutesGenerator : PerEntityGenerator
         var mapVoFields = MapValueObjectFields(st.Entity, root, config);
         var subCls = CSharpNaming.Pascal(st.Entity.Name);
         var subType = ValueObjectNames.Ref(st.Entity, config);
-        var subAllow = ValueObjectNames.CompanionRef(st.Entity, config, subCls + "FilterAllowlist");
+        var subAllowlist = ValueObjectNames.CompanionRef(st.Entity, config, subCls + "FilterAllowlist");
         var seg = st.RouteSegment;
         var subRoute = baseRoute + "/" + seg;
 
         // Issue #203 — @autoSet columns on the subtype's EFFECTIVE fields (a shared
         // BaseEntity.createdAt/updatedAt is inherited by every subtype). Stamped on
         // create/update and skipped in the merge, exactly like a vanilla entity.
-        var autoSetFields = AutoSetFields(st.Entity);
+        var autoSetFields = AutoSetFields(st.Entity, config);
         var autoSetNavs = autoSetFields.Select(a => a.Nav).ToList();
         // FR-037 R1 — readOnly / writeOnce on the SUBTYPE's effective fields (a shared
         // base's mode is inherited by every subtype), excluded from the PATCH merge.
-        var frozenNavs = FrozenNavs(st.Entity);
+        var frozenNavs = FrozenNavs(st.Entity, config);
         // #484 — as on a plain entity: write-denied keys ignored, credentials omitted. One shared
         // column may be declared by several subtypes, so a mark on any declaration counts.
         var deniedFields = HierarchyMarkedFields(st.Entity, hierarchy, IsApiWriteDenied);
-        var credentials = HierarchyMarkedFields(st.Entity, hierarchy, IsCredentialField).Select(f => f.Name).ToList();
+        var credentials = HierarchyMarkedFields(st.Entity, hierarchy, IsCredentialField).SelectMany(f => CredentialSpellings(f, config)).ToList();
 
         // Per-subtype list: GET /<base>/<seg>
         sb.AppendLine();
-        sb.AppendLine("        app.MapGet(prefix + \"/" + subRoute + "\", async (HttpContext http, AppDbContext db) =>");
+        sb.AppendLine("        app.MapGet(prefix + \"/" + subRoute + "\", async (HttpContext http, " + ValueObjectNames.ContextTypeRef(config) + " db) =>");
         sb.AppendLine("        {");
         sb.AppendLine("            var qs = http.Request.Query;");
         sb.AppendLine($"            IQueryable<{subType}> q = db.{dbSet}.OfType<{subType}>().AsNoTracking();");
-        sb.AppendLine($"            var filter = EfCoreFilterDispatch.Validate<{subType}>(FilterParser.Parse(qs, {subAllow}.Fields, {subAllow}.OpsByField));");
+        var fmS = FilterMapArg(subAllowlist, st.Entity, config);
+        sb.AppendLine($"            var filter = EfCoreFilterDispatch.Validate<{subType}>(FilterParser.Parse(qs, {subAllowlist}.Fields, {subAllowlist}.OpsByField){fmS});");
         sb.AppendLine("            if (filter.ErrorEnvelope is not null) return Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field });");
-        sb.AppendLine("            q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates);");
+        sb.AppendLine($"            q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates{fmS});");
         sb.AppendLine("            if (qs.TryGetValue(\"sort\", out var sortRaw) && !string.IsNullOrWhiteSpace(sortRaw))");
         sb.AppendLine("            {");
         sb.AppendLine("                var parts = sortRaw.ToString().Split(':', 2);");
@@ -1636,13 +1670,13 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("            var rows = await q.ToListAsync();");
         sb.AppendLine("            var withCount = qs.TryGetValue(\"withCount\", out var wc) && (wc == \"1\" || string.Equals(wc, \"true\", System.StringComparison.OrdinalIgnoreCase));");
         sb.AppendLine($"            if (!withCount) return {OkResult("rows", credentials)};");
-        sb.AppendLine($"            var total = await EfCoreFilterDispatch.ApplyFilter(db.{dbSet}.OfType<{subType}>().AsNoTracking(), filter.Predicates).CountAsync();");
+        sb.AppendLine($"            var total = await EfCoreFilterDispatch.ApplyFilter(db.{dbSet}.OfType<{subType}>().AsNoTracking(), filter.Predicates{fmS}).CountAsync();");
         sb.AppendLine($"            return {OkResult("new { rows, total }", credentials, envelope: true)};");
         sb.AppendLine("        });");
 
         // Per-subtype get: GET /<base>/<seg>/{id} — scoped (cross-subtype → 404).
         sb.AppendLine();
-        sb.AppendLine("        app.MapGet(prefix + \"/" + subRoute + "/{id}\", async (" + pkType + " id, AppDbContext db) =>");
+        sb.AppendLine("        app.MapGet(prefix + \"/" + subRoute + "/{id}\", async (" + pkType + " id, " + ValueObjectNames.ContextTypeRef(config) + " db) =>");
         sb.AppendLine($"            await db.{dbSet}.OfType<{subType}>().AsNoTracking().FirstOrDefaultAsync(x => x.{pkProp} == id) is {{ }} found");
         sb.AppendLine("                ? " + OkResult("found", credentials));
         sb.AppendLine("                : Results.NotFound(new { error = \"not_found\" }));");
@@ -1653,22 +1687,22 @@ public class RoutesGenerator : PerEntityGenerator
         // (EF-injected) discriminator, so an omitted @required value-type field → 400.
         var requiredKeys = RequiredCreateKeys(st.Entity, f =>
         {
-            var p = CSharpNaming.Pascal(f.Name);
+            var p = CSharpNaming.PropertyName(f, config);
             return string.Equals(p, pkProp, System.StringComparison.Ordinal)
                    || string.Equals(p, discProp, System.StringComparison.Ordinal);
         });
         sb.AppendLine();
         // VO columns on a TPH subtype are out of scope (Program D §6) — no typed arms.
-        AppendCreateHandler(sb, "/" + subRoute, subType, dbSet, requiredKeys,
+        AppendCreateHandler(sb, "/" + subRoute, subType, ValueObjectNames.ContextTypeRef(config), dbSet, requiredKeys,
             CreatedResult("prefix + \"/" + subRoute + "/\" + input." + pkProp, "input", credentials), [], mapVoFields, autoSetFields,
-            deniedNavs: deniedFields.Select(f => CSharpNaming.Pascal(f.Name)).ToList(), credentials: credentials,
-            serverOwned: ServerOwnedCreateResets(st.Entity, root, _ => { }, discField, hierarchy[0]), root: root,
-            readOnlyRequired: RequiredReadOnlyProps(st.Entity));
+            deniedNavs: deniedFields.Select(f => CSharpNaming.PropertyName(f, config)).ToList(), credentials: credentials,
+            serverOwned: ServerOwnedCreateResets(st.Entity, root, config, discField, hierarchy[0]), root: root,
+            readOnlyRequired: RequiredReadOnlyProps(st.Entity, config));
 
         // Per-subtype update (PATCH + PUT): partial merge of the JSON body onto the scoped
         // entity, NEVER touching the PK or the discriminator. Cross-subtype id → 404.
         sb.AppendLine();
-        sb.AppendLine("        async System.Threading.Tasks.Task<IResult> Update" + subCls + "(" + pkType + " id, HttpContext http, AppDbContext db)");
+        sb.AppendLine("        async System.Threading.Tasks.Task<IResult> Update" + subCls + "(" + pkType + " id, HttpContext http, " + ValueObjectNames.ContextTypeRef(config) + " db)");
         sb.AppendLine("        {");
         sb.AppendLine($"            var existing = await db.{dbSet}.OfType<{subType}>().FirstOrDefaultAsync(x => x.{pkProp} == id);");
         sb.AppendLine("            if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
@@ -1688,7 +1722,7 @@ public class RoutesGenerator : PerEntityGenerator
         // ADR-0045 + the 0.19.4 lesson: TPH is a SEPARATE code path per port, so the
         // per-subtype merge states the same exclusion rather than inheriting it.
         AppendPartialMergeLoop(sb, discProp, [], mapVoFields, autoSetNavs, frozenNavs, HasDecimalField(st.Entity),
-            deniedFields.Select(f => f.Name).ToList(), HasIsoDurationField(st.Entity, root));
+            deniedFields.SelectMany(f => WireKeys(f, config)).ToList(), deniedFields.Select(f => CSharpNaming.PropertyName(f, config)).ToList(), HasIsoDurationField(st.Entity, root));
         AppendSaveChanges(sb);
         sb.AppendLine($"            return {OkResult("existing", credentials)};");
         sb.AppendLine("        }");
@@ -1697,7 +1731,7 @@ public class RoutesGenerator : PerEntityGenerator
 
         // Per-subtype delete: DELETE /<base>/<seg>/{id} — scoped (cross-subtype → 404).
         sb.AppendLine();
-        sb.AppendLine("        app.MapDelete(prefix + \"/" + subRoute + "/{id}\", async (" + pkType + " id, AppDbContext db) =>");
+        sb.AppendLine("        app.MapDelete(prefix + \"/" + subRoute + "/{id}\", async (" + pkType + " id, " + ValueObjectNames.ContextTypeRef(config) + " db) =>");
         sb.AppendLine("        {");
         sb.AppendLine($"            var existing = await db.{dbSet}.OfType<{subType}>().FirstOrDefaultAsync(x => x.{pkProp} == id);");
         sb.AppendLine("            if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
@@ -1716,7 +1750,7 @@ public class RoutesGenerator : PerEntityGenerator
         // segment in the URL would be decorative (rule c).
         var sourceScope = new TphM2mSourceScope(dbSet, subType, pkProp);
         foreach (var nav in M2MNavigationBuilder.For(st.Entity, root, onWarn))
-            AppendM2mRoute(sb, nav, subRoute, pkType, root, sourceScope, config);
+            AppendM2mRoute(sb, nav, subRoute, pkType, root, config, sourceScope);
     }
 
     /// <summary>
@@ -1750,6 +1784,10 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine(indent + "}");
     }
 
+    // A junction/target column's CLR property, through the same resolver its entity class used.
+    private static string JunctionProperty(MetaObject owner, string fieldName, GenConfig config) =>
+        owner.FindField(fieldName) is { } f ? CSharpNaming.PropertyName(f, config) : CSharpNaming.Pascal(fieldName);
+
     // Emit the M:N traversal handler for one navigation. The junction + target are
     // mapped DbSets; the handler does the same two-stage join M2MResolver performs at
     // runtime, but over the generated DbSets via EF.Property (no metadata at runtime).
@@ -1772,29 +1810,29 @@ public class RoutesGenerator : PerEntityGenerator
     // cross-port contract; mirrors TS mount-m2m.ts's `sourceDiscriminator` Stage 0).
     private static void AppendM2mRoute(
         System.Text.StringBuilder sb, M2MNavigation nav, string sourceRoute, string pkType, MetaRoot root,
-        TphM2mSourceScope? sourceScope = null, GenConfig? config = null)
+        GenConfig config, TphM2mSourceScope? sourceScope = null)
     {
         var relSeg = nav.Name;                                    // relationship name segment
-        var targetCls = CSharpNaming.Pascal(nav.Target.Name);
-        var targetType = config is { PackageNamespacesFromMetadata: true } ? ValueObjectNames.GlobalRef(nav.Target, config) : targetCls;
+        var targetCls = ValueObjectNames.Ref(nav.Target, config);
         // Defect B — a TPH subtype target is folded into its discriminator base's single
         // table (no DbSet of its own). Bind to the BASE's DbSet and narrow with
         // OfType<Sub>() so the emitted db.<DbSet> always names a real property; every
         // other target keeps binding to its own pluralized DbSet, byte-identical to before.
         var targetFrom = TphPlanBuilder.IsTphSubtype(nav.Target, root)
-            ? $"db.{CSharpNaming.DbSetName(TphPlanBuilder.DiscriminatorRoot(nav.Target)!)}.OfType<{targetType}>()"
-            : $"db.{CSharpNaming.Pluralize(targetCls)}";
-        var junctionDbSet = CSharpNaming.Pluralize(CSharpNaming.Pascal(nav.Junction.Name));
-        var srcFkProp = CSharpNaming.Pascal(nav.SourceField);
-        var tgtFkProp = CSharpNaming.Pascal(nav.TargetField);
+            ? $"db.{CSharpNaming.DbSetName(TphPlanBuilder.DiscriminatorRoot(nav.Target)!)}.OfType<{targetCls}>()"
+            : $"db.{CSharpNaming.DbSetName(nav.Target)}";
+        // The DbSet the context declares for the junction, @collectionName included (item 17).
+        var junctionDbSet = CSharpNaming.DbSetName(nav.Junction);
+        var srcFkProp = JunctionProperty(nav.Junction, nav.SourceField, config);
+        var tgtFkProp = JunctionProperty(nav.Junction, nav.TargetField, config);
 
         // The junction FK CLR type (the related-id key type) + the target PK property.
         var fkType = JunctionFkType(nav);
         var targetPk = nav.Target.PrimaryIdentity()?.Fields is { Count: 1 } tf
-            ? CSharpNaming.Pascal(tf[0]) : "Id";
+            ? JunctionProperty(nav.Target, tf[0], config) : "Id";
 
         sb.AppendLine();
-        sb.AppendLine("        app.MapGet(prefix + \"/" + sourceRoute + "/{id}/" + relSeg + "\", async (" + pkType + " id, AppDbContext db) =>");
+        sb.AppendLine("        app.MapGet(prefix + \"/" + sourceRoute + "/{id}/" + relSeg + "\", async (" + pkType + " id, " + ValueObjectNames.ContextTypeRef(config) + " db) =>");
         sb.AppendLine("        {");
         if (sourceScope is not null)
         {
@@ -1803,7 +1841,7 @@ public class RoutesGenerator : PerEntityGenerator
             // (it just has no relations under this segment): 200 with an empty list,
             // never 404 and never the sibling's rows.
             sb.AppendLine($"            if (!await db.{sourceScope.DbSet}.OfType<{sourceScope.SubtypeClass}>().AnyAsync(x => x.{sourceScope.PkProp} == id))");
-            sb.AppendLine($"                return Results.Ok(new System.Collections.Generic.List<{targetType}>());");
+            sb.AppendLine($"                return Results.Ok(new System.Collections.Generic.List<{targetCls}>());");
         }
         if (nav.Symmetric)
         {
@@ -1823,11 +1861,11 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine($"                .Select(j => EF.Property<{fkType}>(j, \"{tgtFkProp}\"))");
             sb.AppendLine("                .ToListAsync()).ToHashSet();");
         }
-        sb.AppendLine($"            if (relatedIds.Count == 0) return Results.Ok(new System.Collections.Generic.List<{targetType}>());");
+        sb.AppendLine($"            if (relatedIds.Count == 0) return Results.Ok(new System.Collections.Generic.List<{targetCls}>());");
         sb.AppendLine($"            var rows = await {targetFrom}.AsNoTracking()");
         sb.AppendLine($"                .Where(t => relatedIds.Contains(EF.Property<{fkType}>(t, \"{targetPk}\")))");
         sb.AppendLine("                .ToListAsync();");
-        sb.AppendLine($"            return {OkResult("rows", TphUnionCredentialNames(nav.Target, root))};");
+        sb.AppendLine($"            return {OkResult("rows", TphUnionCredentialNames(nav.Target, root, config))};");
         sb.AppendLine("        });");
     }
 
@@ -1861,7 +1899,7 @@ public class RoutesGenerator : PerEntityGenerator
     /// default into its map. <c>Attr()</c> is the RESOLVING accessor (ADR-0039), so an
     /// order inherited via <c>extends</c> is honoured.
     /// </remarks>
-    private static void AppendSortDefaultOrder(StringBuilder sb, MetaObject owner, string constName)
+    private static void AppendSortDefaultOrder(StringBuilder sb, MetaObject owner, string constName, GenConfig config)
     {
         sb.Append($"    private static readonly System.Collections.Generic.Dictionary<string, bool> {constName} =");
         sb.AppendLine(" new(System.StringComparer.OrdinalIgnoreCase)");
@@ -1871,7 +1909,7 @@ public class RoutesGenerator : PerEntityGenerator
             if (CSharpNaming.ScalarFor(f.SubType) is null || f.ResolvedIsArray()) continue;
             if (f.Attr(FIELD_ATTR_SORTABLE_DEFAULT_ORDER) is not string v) continue;
             if (v != "asc" && v != "desc") continue;
-            sb.AppendLine($"        [\"{CSharpNaming.Pascal(f.Name)}\"] = {(v == "desc" ? "true" : "false")},");
+            sb.AppendLine($"        [\"{CSharpNaming.PropertyName(f, config)}\"] = {(v == "desc" ? "true" : "false")},");
         }
         sb.AppendLine("    };");
         sb.AppendLine();

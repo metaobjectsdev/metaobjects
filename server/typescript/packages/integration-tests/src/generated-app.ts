@@ -51,7 +51,7 @@ export async function generateApp(
   const dir = mkdtempSync(join(tmpRoot, `${label}-`));
 
   const result = await runGen({
-    config: defineConfig({
+    config: defineConfig({ outputLayout: "flat", 
       outDir: dir,
       extStyle: "none",
       outputLayout,

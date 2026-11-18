@@ -1154,7 +1154,7 @@ describe("parse oracle", () => {
   test("the canonical cubes parse to the model's values", async () => {
     const model = await canonicalModel();
     expect(model.cubes.map((c) => c.name)).toEqual([
-      "Program", "Week", "Node", "Session", "Measurement", "Asset", "Auth", "BridgeAuth", "CopayAuth", "PriorAuthAuth",
+      "Program", "Week", "Node", "Session", "Measurement", "Asset", "Auth", "BridgeAuth", "CouponAuth", "PermitAuth",
       "ReferralAuth", "AllTypes", "Gadget", "GadgetEvent", "Entry", "Node_fkParent", "ProgramRosterFacts", "ProgramLongWeeksFacts",
       "ProgramFlagRosterFacts", "ProgramSessionsFacts", "ProgramSessions_fkWeek",
     ]);

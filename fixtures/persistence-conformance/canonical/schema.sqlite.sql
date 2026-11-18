@@ -99,10 +99,10 @@ CREATE TABLE "auths" (
   "type" TEXT,
   "reference" VARCHAR(80) NOT NULL,
   "quantity" INTEGER,
-  "copayAmount" NUMERIC(10,2),
+  "couponAmount" NUMERIC(10,2),
   "approver" VARCHAR(80),
   "urgency" VARCHAR(16),
-  CONSTRAINT "auths_type_chk" CHECK ("type" IN ('Bridge', 'Copay', 'PriorAuth', 'Referral'))
+  CONSTRAINT "auths_type_chk" CHECK ("type" IN ('Bridge', 'Coupon', 'Permit', 'Referral'))
 );
 
 CREATE TABLE "post_referrals" (
@@ -426,7 +426,7 @@ CREATE VIEW "v_auths_by_kind" AS
     COUNT(a."id") AS "auths",
     COUNT(DISTINCT a."reference") AS "distinctRefs"
   FROM "auths" a
-  WHERE a."type" <> 'PriorAuth'
+  WHERE a."type" <> 'Permit'
   GROUP BY a."type";
 
 CREATE VIEW "v_gadget_events_by_label" AS

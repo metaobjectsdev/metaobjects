@@ -166,6 +166,20 @@ meets two same-named value objects binds them under local import aliases, and th
 mirrors and mappers, declarations of that one module, take the alias (`AcmeAlphaNoteExtracted`).
 No module declares a renamed type.
 
+## Amendment 2, release-line text (2026-11-09) — superseded by Amendment 2 above
+
+Rule 2's collision-aware name (the package-qualified `AcmeAlphaNote`) is removed in C# and
+TypeScript; see [ADR-0044's amendment](ADR-0044-payload-record-naming-cross-package-collision.md).
+The type is generated once, under its own name, in its own namespace or module, and every tier
+references that name. Two objects that would emit one type into one namespace are refused by the
+run's claim registry (`ERR_NAME_COLLISION`), with the remedy of mapping the packages apart. A
+private member of a generated class that is keyed by a value object (C#'s extract-tier mappers)
+may still carry the package to stay unique inside that class; that is a member name, never a type.
+Likewise a TypeScript file that meets two same-named value objects binds them under local import
+aliases (`import type { Note as AcmeAlphaNote }`), and the extract tier's mirrors and mappers —
+declarations of that one module — take the alias (`AcmeAlphaNoteExtracted`). No module declares
+a renamed type.
+
 ## Alternatives considered
 
 - **One copy per consuming package (the #387 proposal).** Rejected: it fixes the compile error by

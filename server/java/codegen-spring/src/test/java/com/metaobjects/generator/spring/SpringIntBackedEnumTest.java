@@ -72,4 +72,33 @@ public class SpringIntBackedEnumTest {
             }
         }
     }
+
+    // rc.21: a @stringValueMap enum carries its stored STRING both ways, and a shared declaration
+    // (Fr019SharedEnum) keeps it (fix round M4).
+    @Test
+    public void aStringValueMapEnumMapsBothWaysAndRefusesAnUnmappedValue() throws Exception {
+        Map<String, String> stored = new LinkedHashMap<>();
+        stored.put("DRAFT", "draft_v1");
+        stored.put("PUBLISHED", "published_v1");
+        String decl = SpringTypeMapper.enumDeclaration("Phase", List.of("DRAFT", "PUBLISHED"), null, stored);
+        Path src = tmp.newFolder("src2").toPath();
+        Path out = tmp.newFolder("out2").toPath();
+        Path file = src.resolve("Phase.java");
+        Files.writeString(file, decl + "\n");
+        assertEquals("generated enum must compile", 0,
+            ToolProvider.getSystemJavaCompiler().run(null, null, null, "-d", out.toString(), file.toString()));
+        try (URLClassLoader cl = new URLClassLoader(new URL[]{ out.toUri().toURL() }, null)) {
+            Class<?> phase = cl.loadClass("Phase");
+            assertEquals("PUBLISHED", ((Enum<?>) phase.getMethod("fromDbValue", String.class).invoke(null, "published_v1")).name());
+            assertEquals("draft_v1", phase.getMethod("dbValue").invoke(Enum.valueOf(phase.asSubclass(Enum.class), "DRAFT")));
+            try {
+                phase.getMethod("fromDbValue", String.class).invoke(null, "lost");
+                fail("an unmapped stored value must throw");
+            } catch (InvocationTargetException e) {
+                assertTrue(e.getCause() instanceof IllegalArgumentException);
+            }
+        }
+        Fr019SharedEnum.SharedEnum shared = new Fr019SharedEnum.SharedEnum("Phase", List.of("DRAFT", "PUBLISHED"), false, "acme", "acme", null, stored);
+        assertEquals(stored, shared.stringValueMap());
+    }
 }

@@ -140,8 +140,9 @@ export interface EntityUiDescriptor {
  * when you specifically want an object's own pluralized name, never to build an address.
  */
 export function resourcePath(entity: MetaData): string {
-  // One rule, every object kind: its declared @collectionName or the configured pluralizer's
-  // output, snake_cased; with neither, snake_case then pluralize, as every port serves it.
+  // One rule, every object kind and every port (collection-segments.json): a declared
+  // @collectionName, else a configured pluralizer, snake_cased; with neither, rc.18's
+  // snake_case-then-pluralize, byte-identical (rc.19 R57, fix round I3).
   return `/${collectionSegment(entity)}`;
 }
 

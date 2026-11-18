@@ -5,7 +5,7 @@ import { isTphSubtype } from "../tph.js";
 import { servesReadApi } from "../api-surface.js";
 import { renderRoutesIndex, routesIndexFileName } from "../templates/routes-index.js";
 import { formatTs } from "../format.js";
-import { entityOutputPath } from "../import-path.js";
+import { DEFAULT_OUTPUT_LAYOUT, entityOutputPath } from "../import-path.js";
 import { resolveExpose, type ExposeOption } from "../routes-expose.js";
 import { effectivePackage } from "../docs-paths.js";
 import { claimRouteSegment } from "../naming/name-claims.js";
@@ -62,7 +62,7 @@ export const routesFile = function routesFile(opts?: RoutesFileOpts): Generator 
     }
     claimRouteSegment(ctx, entity);
     return {
-      path: entityOutputPath(ctx.config.outputLayout ?? "flat", effectivePackage(entity), `${entity.name}.routes.ts`),
+      path: entityOutputPath(ctx.config.outputLayout ?? DEFAULT_OUTPUT_LAYOUT, effectivePackage(entity), `${entity.name}.routes.ts`),
       content: await formatTs(renderRoutesFile(entity, ctx.renderContext, resolveExpose(entity, opts?.expose), opts?.reportMaxRows)),
     };
   });

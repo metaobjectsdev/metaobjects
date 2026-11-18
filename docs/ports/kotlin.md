@@ -822,9 +822,9 @@ Kotlin has no static inheritance — an `object` cannot extend another — so an
 object extends another re-exports the inherited constants by REFERENCE:
 
 ```kotlin
-object CopayAuthNames {
-    const val NAME: String = "CopayAuth"               // its OWN name, always restated
-    const val COPAY_AMOUNT_COLUMN: String = "copay_cents"
+object CouponAuthNames {
+    const val NAME: String = "CouponAuth"               // its OWN name, always restated
+    const val COUPON_AMOUNT_COLUMN: String = "coupon_cents"
 
     // A TPH subtype declares no source of its own, so the SHARED table — and every
     // inherited column — is re-exported by reference and spelled once, on the base.

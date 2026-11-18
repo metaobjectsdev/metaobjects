@@ -5,7 +5,8 @@ import {
   IDENTITY_ATTR_FIELDS,
   OBJECT_SUBTYPE_REPORT,
   DEFAULT_COLUMN_NAMING_STRATEGY,
-  FIELD_SUBTYPE_DURATION,
+  FIELD_SUBTYPE_DURATION, FIELD_SUBTYPE_ENUM,
+  storedEnumValue, stringValueMapOf,
   resolveTableName, resolveTableSchema, resolveColumnName,
   durationToStoredMicros, formatPostgresInterval, parseDurationLiteral,
 } from "@metaobjectsdev/metadata";
@@ -191,6 +192,20 @@ function encodeFilterValue<T>(field: MetaData, value: T, dialect?: Dialect): T {
     // With no dialect there is no stored form to compare against: an ISO string would match
     // nothing on a microsecond column and fail on an interval one.
     throw new MetadataError(`filter on field.duration '${field.name}' needs the driver's dialect to encode ${JSON.stringify(value)}`);
+  }
+  // rc.21: a @stringValueMap enum is compared as the member's stored string. Unlike an
+  // @intValueMap symbol (which cannot equal an integer), an unmapped member passed through could
+  // equal ANOTHER member's stored string and match its rows, so it is refused, as a write is
+  // (rc.21 part B ruling N4, every port).
+  const storedMap = field.subType === FIELD_SUBTYPE_ENUM && typeof value === "string" ? stringValueMapOf(field) : undefined;
+  if (storedMap !== undefined) {
+    if (typeof storedMap[value as string] !== "string") {
+      throw new MetadataError(
+        `filter on field.enum '${field.name}': ${JSON.stringify(value)} has no stored string in @stringValueMap ` +
+          `(declared: ${JSON.stringify(storedMap)}) — the value is not one of the members the model declares.`,
+      );
+    }
+    return storedEnumValue(field, value as string) as T;
   }
   const intMap = intValueMapOf(field);
   if (intMap === undefined || typeof value !== "string") return value;

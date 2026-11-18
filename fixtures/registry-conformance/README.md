@@ -226,7 +226,7 @@ them as such with a declared reason.
 - Native type bindings (Node factory / `NodeConstructor` / Java `Class`, the Java
   `DataTypes` value-class, EF/CLR types, the coarse `DataType` classification) are not
   attrs and never reach the manifest. The `NATIVE_BINDING` attr category that used to
-  carve `@object` / `@objectAdapter` out is retired: both are in the
+  carve `@object` / `@objectAdapter` out is retired by ruling R40: both are in the
   contract now (see "Not carved out" below). Java's own registration and behaviour are
   unchanged.
 - **`STRUCTURAL_KEYWORD`** (`isArray`, `isAbstract`, `extends`, `implements`,
@@ -244,7 +244,7 @@ them as such with a declared reason.
   only the concrete tree root (`metadata.root`). It is the not-universally-tracked
   `inheritsFrom` anchor this manifest already defers, so the `(metadata, base)`
   row is carved out. See SP-G analysis C-5.
-### Not carved out: vocabulary only some ports act on
+### Not carved out: vocabulary only some ports act on (ruling R40)
 
 Vocabulary that only some ports act on is still cross-port vocabulary. It is IN the
 manifest, marked rather than removed, and every port registers it and loads it
@@ -257,8 +257,7 @@ still fails everywhere.
   generic `view.*` controls (`checkbox`, `date`, `dropdown`, `hidden`, `hotlink`, `image`,
   `month`, `number`, `password`, `radio`, `text`, `textarea`, `web`) and their attrs
   (`view.textarea @rows`, `view.image @accept/@aspectRatio/@maxBytes/@maxEdge/@store`) are
-  `["typescript"]`; `object.* @object` (ADR-0001) is `["java"]`; `object.* @collectionName` is
-  `["csharp"]`. They used to be carved out
+  `["typescript"]`; `object.* @object` (ADR-0001) is `["java"]`. They used to be carved out
   as `PRESENTATION_ONLY` / `NATIVE_BINDING`; both reasons are retired. The parity gaps are
   listed in `docs/CONFORMANCE.md`, "Split coverage".
 - **Kind 2 — language-specific by nature.** The attr carries `"ports": [...]`:

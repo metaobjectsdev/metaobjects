@@ -103,7 +103,7 @@ describe("knownFieldNames on a single-table hierarchy", () => {
     const bridge = res.root.objects().find((o) => o.name === "BridgeAuth") as MetaObject;
     expect(knownFieldNames(tphHierarchy(bridge, res.root))).toEqual([
       "id", "type", "reference", "issuedCurrency", "autoCreatedAt", "autoUpdatedAt",
-      "quantity", "copayAmount", "approver",
+      "quantity", "couponAmount", "approver",
     ]);
   });
 });

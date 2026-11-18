@@ -74,8 +74,8 @@ public class GeneratedTphM2mTraversalCompileRunTest {
                 { "relationship.association": { "name": "linkedAuths", "@cardinality": "many",
                     "@objectRef": "BridgeAuth", "@through": "AuthLink", "@sourceRefField": "fromAuthId" } }
             ] } },
-            { "object.entity": { "name": "CopayAuth", "extends": "Auth", "@discriminatorValue": "Copay", "children": [
-                { "field.decimal": { "name": "copayAmount", "@precision": 10, "@scale": 2 } }
+            { "object.entity": { "name": "CouponAuth", "extends": "Auth", "@discriminatorValue": "Coupon", "children": [
+                { "field.decimal": { "name": "couponAmount", "@precision": 10, "@scale": 2 } }
             ] } },
             { "object.entity": { "name": "Tag", "children": [
                 { "source.rdb":   { "@table": "tags" } },
@@ -121,9 +121,9 @@ public class GeneratedTphM2mTraversalCompileRunTest {
         Map<String, Object> seed = Map.of(
             "auths", List.of(
                 Map.of("id", 1, "type", "Bridge", "reference", "b1"),
-                Map.of("id", 2, "type", "Copay", "reference", "c1")),
+                Map.of("id", 2, "type", "Coupon", "reference", "c1")),
             "tags", List.of(Map.of("id", 10, "name", "red"), Map.of("id", 20, "name", "green")),
-            // auth 1 (Bridge) -> tag 10; auth 2 (Copay) -> tag 20.
+            // auth 1 (Bridge) -> tag 10; auth 2 (Coupon) -> tag 20.
             "auth_tags", List.of(Map.of("authId", 1, "tagId", 10), Map.of("authId", 2, "tagId", 20)),
             // auth 1 (Bridge) links to auth 2 — a hetero-looking row, but AuthLink only
             // ever references BridgeAuth ids on both sides by the fixture's own FK.
@@ -135,21 +135,21 @@ public class GeneratedTphM2mTraversalCompileRunTest {
                 rows(seed, "auths"), rows(seed, "tags"), rows(seed, "auth_tags"), rows(seed, "auth_links"));
 
             // Rule (a): a base-declared relationship's finder is UNSCOPED — every row,
-            // Bridge or Copay, is a legitimate source.
+            // Bridge or Coupon, is a legitimate source.
             assertNamesEqual(List.of("red"), invokeFinder(repo, "findTags", 1L));
             assertNamesEqual(List.of("green"), invokeFinder(repo, "findTags", 2L));
 
             // Rule (b)+(c): the Bridge-scoped finder answers for a REAL Bridge id...
             assertNamesEqual(List.of("red"), invokeFinder(repo, "findTagsForBridge", 1L));
             // ...and returns EMPTY — not the sibling's rows, not an exception — for a
-            // Copay id, because the junction FK cannot itself distinguish the subtypes.
+            // Coupon id, because the junction FK cannot itself distinguish the subtypes.
             assertNamesEqual(List.of(), invokeFinder(repo, "findTagsForBridge", 2L));
-            // Symmetric proof on the Copay-scoped finder.
-            assertNamesEqual(List.of("green"), invokeFinder(repo, "findTagsForCopay", 2L));
-            assertNamesEqual(List.of(), invokeFinder(repo, "findTagsForCopay", 1L));
+            // Symmetric proof on the Coupon-scoped finder.
+            assertNamesEqual(List.of("green"), invokeFinder(repo, "findTagsForCoupon", 2L));
+            assertNamesEqual(List.of(), invokeFinder(repo, "findTagsForCoupon", 1L));
 
             // Subtype-OWN relationship (linkedAuths, self-join on BridgeAuth): resolves for
-            // a real Bridge id, empty for the Copay id. The target — BridgeAuth itself — is
+            // a real Bridge id, empty for the Coupon id. The target — BridgeAuth itself — is
             // ALSO a concrete TPH subtype, so the finder now takes the build-time-resolved
             // "Bridge" literal as a second argument (FW-8 follow-up, target-side gate).
             assertReferencesEqual(List.of("b1"), invokeFinderWithSubtype(repo, "findLinkedAuthsForBridge", 1L, "Bridge"));
@@ -165,13 +165,13 @@ public class GeneratedTphM2mTraversalCompileRunTest {
      * implementation that actually USES it to filter the join returns only rows of that
      * subtype, never a same-table sibling's. {@code linkedAuths}' {@code @objectRef} names
      * {@code BridgeAuth} — a concrete TPH subtype of {@code Auth} — so its rows physically
-     * share the {@code auths} table with {@code CopayAuth} rows; nothing in the junction FK
+     * share the {@code auths} table with {@code CouponAuth} rows; nothing in the junction FK
      * itself (a plain {@code Long} id) can distinguish them. Unlike the SOURCE-side rule (c),
      * Java's generated controller CANNOT enforce this itself (the join is entirely
      * consumer-owned) — the seam can only be WIDENED so a conforming implementation has what
      * it needs, exactly the same limitation the Python port documents for its own
      * {@code target_subtype} parameter. This test's junction data is deliberately corrupted
-     * (a link row pointing at a same-table Copay row) to prove a conforming, FILTERING
+     * (a link row pointing at a same-table Coupon row) to prove a conforming, FILTERING
      * repository correctly excludes it once it is handed {@code "Bridge"}.
      */
     @Test
@@ -194,12 +194,12 @@ public class GeneratedTphM2mTraversalCompileRunTest {
         Map<String, Object> seed = Map.of(
             "auths", List.of(
                 Map.of("id", 1, "type", "Bridge", "reference", "b1"),
-                Map.of("id", 2, "type", "Copay", "reference", "c1")),
+                Map.of("id", 2, "type", "Coupon", "reference", "c1")),
             "tags", List.of(),
             "auth_tags", List.of(),
             // auth 1 (Bridge) links to itself (a GENUINE Bridge target) AND — a corrupted row
             // that should never exist under a correctly-enforced physical schema — to auth 2,
-            // whose type is Copay. Nothing in the junction FK's plain Long id distinguishes them.
+            // whose type is Coupon. Nothing in the junction FK's plain Long id distinguishes them.
             "auth_links", List.of(
                 Map.of("fromAuthId", 1, "toAuthId", 1),
                 Map.of("fromAuthId", 1, "toAuthId", 2)));
@@ -216,7 +216,7 @@ public class GeneratedTphM2mTraversalCompileRunTest {
             Object controller = ctor.newInstance(repo, new ObjectMapper(), validator);
 
             // Direct repository call: the FILTERING implementation excludes the corrupted
-            // Copay-typed target even though the junction row itself does not.
+            // Coupon-typed target even though the junction row itself does not.
             assertReferencesEqual(List.of("b1"),
                 invokeFinderWithSubtype(repo, "findLinkedAuthsForBridge", 1L, "Bridge"));
 
@@ -231,7 +231,7 @@ public class GeneratedTphM2mTraversalCompileRunTest {
 
     /**
      * The distinguishing test: enforcement, not delegation. {@link NaiveAuthRepository}'s
-     * {@code findTagsForBridge}/{@code findTagsForCopay} are a copy-paste of the UNSCOPED
+     * {@code findTagsForBridge}/{@code findTagsForCoupon} are a copy-paste of the UNSCOPED
      * {@code findTags} — no discriminator check at all — which javac, the repository
      * interface's type system, and a corpus scenario against a delegating port all wave
      * through. Only the GENERATED CONTROLLER's own composition of
@@ -264,7 +264,7 @@ public class GeneratedTphM2mTraversalCompileRunTest {
         Map<String, Object> seed = Map.of(
             "auths", List.of(
                 Map.of("id", 1, "type", "Bridge", "reference", "b1"),
-                Map.of("id", 2, "type", "Copay", "reference", "c1")),
+                Map.of("id", 2, "type", "Coupon", "reference", "c1")),
             "tags", List.of(Map.of("id", 10, "name", "red"), Map.of("id", 20, "name", "green")),
             "auth_tags", List.of(Map.of("authId", 1, "tagId", 10), Map.of("authId", 2, "tagId", 20)));
 
@@ -285,8 +285,8 @@ public class GeneratedTphM2mTraversalCompileRunTest {
             assertEquals(200, bridgeResp.getStatusCode().value());
             assertNamesEqual(List.of("red"), (List<Object>) bridgeResp.getBody());
 
-            // The Copay id: NaiveAuthRepository.findTagsForBridge would happily return the
-            // Copay's OWN tags (["green"]) if the controller ever called it — it has no
+            // The Coupon id: NaiveAuthRepository.findTagsForBridge would happily return the
+            // Coupon's OWN tags (["green"]) if the controller ever called it — it has no
             // discriminator check of its own. It must NOT be called: the controller's
             // findByIdAndType(2, "Bridge") composition returns empty first, short-circuiting
             // to [] before the naive finder runs.
@@ -294,8 +294,8 @@ public class GeneratedTphM2mTraversalCompileRunTest {
             assertEquals(200, mismatchResp.getStatusCode().value());
             assertNamesEqual(List.of(), (List<Object>) mismatchResp.getBody());
 
-            // Mirror on the Copay-scoped finder with the Bridge id.
-            ResponseEntity<?> mismatchResp2 = invokeControllerFinder(controller, "findTagsForCopay", 1L);
+            // Mirror on the Coupon-scoped finder with the Bridge id.
+            ResponseEntity<?> mismatchResp2 = invokeControllerFinder(controller, "findTagsForCoupon", 1L);
             assertEquals(200, mismatchResp2.getStatusCode().value());
             assertNamesEqual(List.of(), (List<Object>) mismatchResp2.getBody());
         }
@@ -441,8 +441,8 @@ public class GeneratedTphM2mTraversalCompileRunTest {
                 return isType(sourceId, "Bridge") ? tagsFor(sourceId) : List.of();
             }
 
-            @Override public List<TagDto> findTagsForCopay(Long sourceId) {
-                return isType(sourceId, "Copay") ? tagsFor(sourceId) : List.of();
+            @Override public List<TagDto> findTagsForCoupon(Long sourceId) {
+                return isType(sourceId, "Coupon") ? tagsFor(sourceId) : List.of();
             }
 
             // Subtype-OWN "linkedAuths" (directed self-join through AuthLink). The relationship's
@@ -550,7 +550,7 @@ public class GeneratedTphM2mTraversalCompileRunTest {
             // must not ship this, but nothing except the generated controller's own gate
             // stops it from doing so and still passing every OTHER test.
             @Override public List<TagDto> findTagsForBridge(Long sourceId) { return tagsFor(sourceId); }
-            @Override public List<TagDto> findTagsForCopay(Long sourceId) { return tagsFor(sourceId); }
+            @Override public List<TagDto> findTagsForCoupon(Long sourceId) { return tagsFor(sourceId); }
             @Override public List<BridgeAuthDto> findLinkedAuthsForBridge(Long sourceId, String targetSubtype) { return List.of(); }
 
             private List<TagDto> tagsFor(Long sourceId) {
@@ -631,7 +631,7 @@ public class GeneratedTphM2mTraversalCompileRunTest {
 
             @Override public List<TagDto> findTags(Long sourceId) { return List.of(); }
             @Override public List<TagDto> findTagsForBridge(Long sourceId) { return List.of(); }
-            @Override public List<TagDto> findTagsForCopay(Long sourceId) { return List.of(); }
+            @Override public List<TagDto> findTagsForCoupon(Long sourceId) { return List.of(); }
 
             // The load-bearing method: filters the joined targets down to rows whose OWN
             // discriminator matches the literal the generated controller now hands in —

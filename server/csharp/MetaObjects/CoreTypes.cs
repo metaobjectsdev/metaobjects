@@ -319,7 +319,7 @@ public static class CoreTypes
             // declare; its structural child graph also comes from the spec.
             List<AttrSchema> objectAttrs = subType switch
             {
-                OBJECT_SUBTYPE_PROJECTION => [.. ObjectSchema.ObjectAttrs, ObjectSchema.ProjectionFilterAttr, ObjectSchema.CollectionNameAttr],
+                OBJECT_SUBTYPE_PROJECTION => [.. ObjectSchema.ObjectAttrs, ObjectSchema.ProjectionFilterAttr, .. ObjectSchema.ProjectionShapeAttrs, ObjectSchema.CollectionNameAttr],
                 OBJECT_SUBTYPE_REPORT     => [.. ObjectSchema.ObjectAttrs, .. ReportingSchema.ReportAttrs, ObjectSchema.CollectionNameAttr],
                 OBJECT_SUBTYPE_ENTITY     => [.. ObjectSchema.ObjectAttrs, ObjectSchema.CollectionNameAttr],
                 _                         => ObjectSchema.ObjectAttrs.ToList(),
@@ -368,7 +368,7 @@ public static class CoreTypes
                 // tolerant-extract overlays (@enumAlias / @enumDoc / @coerceDefault /
                 // @normalize) are re-homed to the metaobjects-prompt concern provider
                 // (reads prompt.json's field.enum extends).
-                FIELD_SUBTYPE_ENUM     => [.. FieldSchema.CommonFieldAttrs, FieldSchema.EnumValuesAttr, FieldSchema.ProvidedAttr, FieldSchema.IntValueMapAttr],
+                FIELD_SUBTYPE_ENUM     => [.. FieldSchema.CommonFieldAttrs, FieldSchema.EnumValuesAttr, FieldSchema.ProvidedAttr, FieldSchema.IntValueMapAttr, FieldSchema.StringValueMapAttr],
                 _                      => FieldSchema.CommonFieldAttrs.ToList(),
             };
 

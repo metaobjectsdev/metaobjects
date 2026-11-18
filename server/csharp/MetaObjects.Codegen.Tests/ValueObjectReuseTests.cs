@@ -70,6 +70,28 @@ public sealed class ValueObjectReuseTests
         Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true },
     };
 
+    private static GenContext Split(MetaRoot root) => new()
+    {
+        Entities = root.Objects(), Root = root,
+        Config = new GenConfig
+        {
+            OutDir = "/tmp", Namespace = "Acme.Generated", OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true,
+            PackageNamespaces = new() { ["acme::alpha"] = "Acme.Alpha", ["acme::beta"] = "Acme.Beta" },
+        },
+    };
+
+    // rc.19 R65: each package has its own namespace by default, so "one namespace" is now an explicit
+    // mapping of both packages onto it.
+    private static GenContext OneNamespace(MetaRoot root) => new()
+    {
+        Entities = root.Objects(), Root = root,
+        Config = new GenConfig
+        {
+            OutDir = "/tmp", Namespace = "Acme.Generated", OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true,
+            PackageNamespaces = new() { ["acme::alpha"] = "Acme.Generated", ["acme::beta"] = "Acme.Generated" },
+        },
+    };
+
     [Fact]
     public void Two_value_objects_sharing_a_short_name_keep_it_in_their_own_package_namespaces()
     {
@@ -111,6 +133,77 @@ public sealed class ValueObjectReuseTests
         Assert.Contains("ERR_NAME_COLLISION", ex.Message);
         Assert.Contains("acme::alpha::Note", ex.Message);
         Assert.Contains("acme::beta::Note", ex.Message);
+    }
+
+    // Ruling R52 — a value object is never renamed. Two that share a short name in one namespace are
+    // a real collision, refused by the run's claim registry with the remedy; in two namespaces they
+    // are two types of the same name.
+
+    [Fact]
+    public void Two_value_objects_sharing_a_short_name_in_one_namespace_are_refused_naming_both()
+    {
+        var root = Load(Alpha, Beta);
+        var ex = Assert.ThrowsAny<InvalidOperationException>(() => new EntityGenerator().Generate(OneNamespace(root)).ToList());
+        Assert.Contains("ERR_NAME_COLLISION", ex.Message);
+        Assert.Contains("\"acme::alpha::Note\"", ex.Message);
+        Assert.Contains("\"acme::beta::Note\"", ex.Message);
+        Assert.Contains("the C# namespace Acme.Generated", ex.Message);
+        Assert.Contains("PackageNamespaces", ex.Message);
+    }
+
+    [Fact]
+    public void Two_value_objects_sharing_a_short_name_in_two_namespaces_keep_their_name()
+    {
+        var root = Load(Alpha, Beta);
+        var files = new EntityGenerator().Generate(Split(root)).ToList();
+        Assert.Equal(2, files.Count);
+        Assert.All(files, f => Assert.Contains("public class Note", f.Content));
+        Assert.Contains(files, f => f.Content.Contains("namespace Acme.Alpha"));
+        Assert.Contains(files, f => f.Content.Contains("namespace Acme.Beta"));
+        Assert.Equal("Note", ValueObjectNames.TypeName(root.Objects().First(o => o.ResolutionKey() == "acme::alpha::Note"), root));
+    }
+
+    [Fact]
+    public void An_entity_and_a_value_object_of_one_name_in_one_namespace_are_refused()
+    {
+        // CS0101 otherwise: the type-per-namespace check every C# generator shares.
+        var root = Load(Alpha, """
+        { "metadata.root": { "package": "acme::beta", "children": [
+          { "object.entity": { "name": "Note", "children": [
+            { "source.rdb": { "@table": "notes" } },
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "@fields": "id" } } ] } } ] } }
+        """);
+        var ex = Assert.ThrowsAny<InvalidOperationException>(() => new EntityGenerator().Generate(OneNamespace(root)).ToList());
+        Assert.Contains("ERR_NAME_COLLISION", ex.Message);
+        Assert.Contains("\"Note\"", ex.Message);
+    }
+
+    [Fact]
+    public void An_abstract_value_object_claims_no_name()
+    {
+        // It emits nothing, so a concrete object of its name elsewhere keeps the bare name.
+        var root = Load(Alpha, """
+        { "metadata.root": { "package": "acme::beta", "children": [
+          { "object.value": { "name": "Note", "abstract": true, "children": [ { "field.string": { "name": "x" } } ] } } ] } }
+        """);
+        var file = Assert.Single(new EntityGenerator().Generate(Ctx(root)));
+        Assert.Equal("Note.g.cs", System.IO.Path.GetFileName(file.Path));
+        Assert.Contains("public class Note", file.Content);
+    }
+
+    [Fact]
+    public void The_same_claimant_claiming_again_is_not_a_collision_and_a_second_is()
+    {
+        var root = Load(Alpha);
+        var ctx = Ctx(root);
+        ctx.Claim("scope", "Name", "a", "remedy");
+        ctx.Claim("scope", "Name", "a", "remedy");
+        ctx.Claim("another scope", "Name", "b", "remedy");
+        var ex = Assert.Throws<InvalidOperationException>(() => ctx.Claim("scope", "Name", "b", "rename one"));
+        Assert.Equal("ERR_NAME_COLLISION: \"a\" and \"b\" both generate \"Name\" in scope — rename one.", ex.Message);
+        // A narrowed context shares the run's registry.
+        Assert.Throws<InvalidOperationException>(() => ctx.Narrow(_ => true).Claim("scope", "Name", "c", "remedy"));
     }
 
     // ---- the template tier references it ----

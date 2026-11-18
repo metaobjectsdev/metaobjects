@@ -29,6 +29,7 @@ function genConfigBody(outDir: string): string {
 import { defineConfig } from "@metaobjectsdev/codegen-ts";
 export default defineConfig({
   outDir: ${JSON.stringify(outDir)},
+  outputLayout: "flat",
   dialect: "sqlite",
   dbImport: "~/db",
   extStyle: "none",

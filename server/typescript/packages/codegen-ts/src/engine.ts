@@ -58,6 +58,7 @@ export * from "./templates/entity-ui-descriptor.js";
 export * from "./templates/find-inbound.js";
 export * from "./templates/find-templates.js";
 export * from "./tph.js";
+export * from "./pg-identifier.js";
 export * from "./view-context.js";
 export * from "./writer/code-writer.js";
 export * from "./writer/ts-writer.js";

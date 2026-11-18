@@ -30,7 +30,7 @@ async function loadTph(): Promise<{ root: MetaRoot; base: MetaObject; bridge: Me
                 "@discriminator": "type",
                 children: [
                   { "source.rdb": { "@table": "auths" } },
-                  { "field.enum": { name: "type", "@values": ["Bridge", "Copay"] } },
+                  { "field.enum": { name: "type", "@values": ["Bridge", "Coupon"] } },
                   { "field.long": { name: "id" } },
                   { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
                 ],
@@ -46,11 +46,11 @@ async function loadTph(): Promise<{ root: MetaRoot; base: MetaObject; bridge: Me
             },
             {
               "object.entity": {
-                name: "CopayAuth",
+                name: "CouponAuth",
                 extends: "Auth",
-                "@discriminatorValue": "Copay",
+                "@discriminatorValue": "Coupon",
                 children: [
-                  { "field.decimal": { name: "copayAmount", "@precision": 10, "@scale": 2 } },
+                  { "field.decimal": { name: "couponAmount", "@precision": 10, "@scale": 2 } },
                 ],
               },
             },
@@ -107,11 +107,11 @@ describe("FR-017 Tier 3 — TPH TanStack hooks", () => {
     expect(out).toContain("export function useCreateBridgeAuth(");
     expect(out).toContain("export function useUpdateBridgeAuth(");
     expect(out).toContain("export function useDeleteBridgeAuth(");
-    // Per-subtype CopayAuth too.
-    expect(out).toContain("export function useCreateCopayAuth(");
+    // Per-subtype CouponAuth too.
+    expect(out).toContain("export function useCreateCouponAuth(");
     // Sub-path derived from the lowercased discriminator value.
     expect(out).toContain("/bridge");
-    expect(out).toContain("/copay");
+    expect(out).toContain("/coupon");
     // Create input omits the discriminator.
     expect(out).toContain('Omit<BridgeAuth, "type">');
   });

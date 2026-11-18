@@ -1,0 +1,11 @@
+{
+  "metadata.root": {
+    "package": "acme::lab",
+    "children": [
+      { "object.entity": { "name": "Analysis", "@objectAdapter": ["com.acme.lab.AnalysisAdapter"], "children": [
+        { "field.long": { "name": "id" } },
+        { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+      ] } }
+    ]
+  }
+}

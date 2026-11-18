@@ -101,11 +101,11 @@ CREATE TABLE "auths" (
   "type" TEXT,
   "reference" VARCHAR(80) NOT NULL,
   "quantity" INTEGER,
-  "copayAmount" NUMERIC(10,2),
+  "couponAmount" NUMERIC(10,2),
   "approver" VARCHAR(80),
   "urgency" VARCHAR(16),
   CONSTRAINT "auths_pkey" PRIMARY KEY ("id"),
-  CONSTRAINT "auths_type_chk" CHECK ("type" IN ('Bridge', 'Copay', 'PriorAuth', 'Referral'))
+  CONSTRAINT "auths_type_chk" CHECK ("type" IN ('Bridge', 'Coupon', 'Permit', 'Referral'))
 );
 
 CREATE TABLE "post_referrals" (
@@ -486,9 +486,9 @@ CREATE VIEW "v_auths_by_kind" AS
     COUNT(a."id") AS "auths",
     COUNT(DISTINCT a."reference") AS "distinctRefs"
   FROM "auths" a
-  WHERE a."type" <> 'PriorAuth'
+  WHERE a."type" <> 'Permit'
   GROUP BY a."type";
-COMMENT ON VIEW "v_auths_by_kind" IS 'metaobjects:v1:sha256:600fcf3a54c8a8f51b2771850689073c7715193fe2528cd7af77bc2e97d22168';
+COMMENT ON VIEW "v_auths_by_kind" IS 'metaobjects:v1:sha256:175edfe5c4031c982d88596cab7a7168c7ae55c037cd6aff22279a52cebb49a1';
 
 CREATE VIEW "v_gadget_events_by_label" AS
   SELECT

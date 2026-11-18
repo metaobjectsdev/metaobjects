@@ -1,0 +1,150 @@
+{
+  "metadata.root": {
+    "package": "acme::consignments",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Consignment",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "consignments"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "ConsignmentHistory",
+          "@collectionName": "ConsignmentHistory",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "consignment_history"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "consignmentId"
+              }
+            },
+            {
+              "field.string": {
+                "name": "status"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "createdDate"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "consignmentId",
+                "@fields": "consignmentId",
+                "@references": "acme::consignments::Consignment"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "status",
+                "@of": "acme::consignments::ConsignmentHistory.status"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "entries",
+                "@agg": "count",
+                "@of": "acme::consignments::ConsignmentHistory.id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "ConsignmentActivity",
+          "@collectionName": "ConsignmentActivity",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_consignment_activity"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "acme::consignments::Consignment.id"
+              }
+            },
+            {
+              "field.int": {
+                "name": "historyCount",
+                "children": [
+                  {
+                    "origin.aggregate": {
+                      "@agg": "count",
+                      "@of": "acme::consignments::ConsignmentHistory.id",
+                      "@via": "acme::consignments::Consignment.consignmentHistory"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::consignments::Consignment.id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "HistoryCounts",
+          "@collectionName": "HistoryCounts",
+          "@from": "acme::consignments::ConsignmentHistory",
+          "@dimensions": [
+            "status"
+          ],
+          "@measures": [
+            "entries"
+          ],
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_history_counts"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

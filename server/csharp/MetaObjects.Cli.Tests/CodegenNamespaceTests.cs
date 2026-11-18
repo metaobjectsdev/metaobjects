@@ -60,7 +60,7 @@ public sealed class CodegenNamespaceTests : IDisposable
         Assert.True(gen.Exit == 0, gen.Output);
         Assert.Contains("namespace Acme.Blog;", EntityFile());
 
-        var verify = Run("verify", "--codegen");
+        var verify = Run("verify", "--codegen", "--full");
         Assert.True(verify.Exit == 0, verify.Output);
     }
 
@@ -73,7 +73,7 @@ public sealed class CodegenNamespaceTests : IDisposable
         Assert.True(gen.Exit == 0, gen.Output);
         Assert.Contains("namespace Acme.Shop;", EntityFile());
 
-        var verify = Run("verify", "--codegen");
+        var verify = Run("verify", "--codegen", "--full");
         Assert.True(verify.Exit == 0, verify.Output);
     }
 
@@ -86,7 +86,7 @@ public sealed class CodegenNamespaceTests : IDisposable
 
         var gen = Run("gen");
         Assert.True(gen.Exit == 0, gen.Output);
-        var verify = Run("verify", "--codegen");
+        var verify = Run("verify", "--codegen", "--full");
         Assert.True(verify.Exit == 0, verify.Output);
     }
 
@@ -97,7 +97,7 @@ public sealed class CodegenNamespaceTests : IDisposable
 
         Assert.Equal(0, Run("gen", "--namespace", "Other.Ns").Exit);
         Assert.Contains("namespace Other.Ns;", EntityFile());
-        Assert.Equal(1, Run("verify", "--codegen").Exit);
+        Assert.Equal(1, Run("verify", "--codegen", "--full").Exit);
     }
 
     [Theory]

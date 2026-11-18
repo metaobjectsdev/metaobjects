@@ -38,6 +38,7 @@ import {
   FIELD_ATTR_DB_COLUMN_TYPE,
   DB_COLUMN_TYPE_UUID,
   DB_COLUMN_TYPE_JSONB,
+  parseDbColumnType,
   FIELD_ATTR_LOCAL_TIME,
   FIELD_ATTR_LENIENT,
   TYPE_ORIGIN,
@@ -47,6 +48,9 @@ import {
   AGG_ALL,
   AGG_COLLECT,
   resolveEnumMaxLength,
+  storedEnumValue,
+  stringValueMapOf,
+  VALIDATOR_ATTR_DB_CHECK,
 } from "@metaobjectsdev/metadata";
 import { columnNameFromField } from "./naming.js";
 import { enumValues, intValueMapOf, intValueForMember } from "./enum-meta.js";
@@ -244,6 +248,12 @@ export interface EnumIntCustomType {
   /** Member symbol -> stored integer. */
   intByMember: Record<string, number>;
   /**
+   * rc.21 — set for a STRING-stored enum with `@stringValueMap` (scalar only; the loader refuses
+   * it on an array): member symbol -> stored string. The codec then maps member <-> stored string
+   * over a text/varchar column, and `intByMember` is empty.
+   */
+  storedByMember?: Record<string, string>;
+  /**
    * Set only for an `isArray` field. `"native"`: the element codec under Drizzle's
    * Postgres `.array()` (PgArray maps each element through it), so the column is
    * `integer[]`. `"json"`: a whole-array codec for the dialects that keep an array
@@ -359,9 +369,13 @@ function pgColumnTypeOverride(
       return { fnName: "uuid" };
     case DB_COLUMN_TYPE_JSONB:
       return { fnName: "jsonb" };
-    default:
-      return undefined;
   }
+  // rc.21 part B (U2): the text spellings, as `meta migrate` creates them.
+  const parsed = parseDbColumnType(dbColumnType);
+  if (parsed?.kind === "text") return { fnName: "text" };
+  if (parsed?.kind === "varchar") return parsed.length !== undefined ? { fnName: "varchar", fnOptions: { length: parsed.length } } : { fnName: "varchar" };
+  if (parsed?.kind === "char") return { fnName: "char", fnOptions: { length: parsed.length } };
+  return undefined;
 }
 
 /** Resolve max length from validator.length child or @maxLength attr.
@@ -469,6 +483,28 @@ function buildEnumIntCustomType(
     dataType: "integer",
     // ADR-0039: resolving — array-ness may be inherited via extends.
     ...(field.resolvedIsArray() ? { array: "native" as const } : {}),
+  };
+}
+
+/** rc.21 — the codec descriptor of a `@stringValueMap` enum: member <-> stored string. */
+function buildEnumStoredCustomType(
+  field: MetaField,
+  storedByMember: Readonly<Record<string, string>>,
+  dataType: string,
+): EnumIntCustomType | undefined {
+  const members = enumValues(field);
+  if (members === undefined || members.length === 0) return undefined;
+  const base = field.name.replace(/[^A-Za-z0-9]/g, "");
+  const camel = base.charAt(0).toLowerCase() + base.slice(1);
+  const screaming = screamingSnake(base);
+  return {
+    fnConstName: `${camel}StoredEnum`,
+    toIntConstName: `${screaming}_TO_STORED`,
+    fromIntConstName: `${screaming}_FROM_STORED`,
+    members,
+    intByMember: {},
+    storedByMember: Object.fromEntries(members.map((m) => [m, storedByMember[m] ?? m])),
+    dataType,
   };
 }
 
@@ -702,7 +738,10 @@ export function mapColumnType(
               enumIntCustomType = buildEnumIntCustomType(field, im);
               fnName = enumIntCustomType?.fnConstName ?? "integer";
             } else {
-              fnName = "text";
+              const stored = isArray ? undefined : stringValueMapOf(field);
+              // rc.21: a @stringValueMap enum maps member <-> stored string at the column.
+              enumIntCustomType = stored === undefined ? undefined : buildEnumStoredCustomType(field, stored, "text");
+              fnName = enumIntCustomType?.fnConstName ?? "text";
             }
           }
           break;
@@ -861,7 +900,13 @@ export function mapColumnType(
               // creates; with none the column is unbounded text, as before. An array enum is
               // a text[] column, whose elements carry no length (migrate's arrayElementSqlType).
               const sized = isArray ? undefined : resolveEnumMaxLength(field);
-              if (sized !== undefined) {
+              const stored = isArray ? undefined : stringValueMapOf(field);
+              if (stored !== undefined) {
+                // rc.21: the column holds each member's @stringValueMap string, so a codec maps
+                // member <-> stored string at the column, as the int-backed codec does.
+                enumIntCustomType = buildEnumStoredCustomType(field, stored, sized === undefined ? "text" : `varchar(${sized})`);
+                fnName = enumIntCustomType?.fnConstName ?? "text";
+              } else if (sized !== undefined) {
                 fnName = "varchar";
                 fnOptions = { length: sized };
               } else {
@@ -1030,8 +1075,10 @@ export function mapColumnType(
   if (dollarTypeRef !== undefined) result.dollarTypeRef = dollarTypeRef;
   if (leadingComment !== undefined) result.leadingComment = leadingComment;
 
-  // Enum fields: emit a CHECK constraint listing the valid member values.
-  if (subType === FIELD_SUBTYPE_ENUM && !isArray) {
+  // Enum fields: emit a CHECK constraint listing the valid member values — unless the enum opts
+  // out (`@dbCheck: false`, ADR-0039 resolving), exactly as migrate-ts's buildChecks decides, or
+  // `drizzle-kit push` would re-add the CHECK `meta migrate` leaves out.
+  if (subType === FIELD_SUBTYPE_ENUM && !isArray && field.attr(VALIDATOR_ATTR_DB_CHECK) !== false) {
     const values = enumValues(field);
     if (values !== undefined && values.length > 0) {
       const intMap = intValueMapOf(field);
@@ -1045,10 +1092,9 @@ export function mapColumnType(
           .map((v) => String(intValueForMember(intMap, v, `CHECK for column '${dbName}'`)))
           .join(", ");
       } else {
-        // Single-quote escaping is belt-and-suspenders: the loader's
-        // ENUM_MEMBER_PATTERN already rejects quote-bearing members (members are
-        // validated to be identifier-safe), so this never fires in practice.
-        list = values.map((v) => `'${v.replace(/'/g, "''")}'`).join(", ");
+        // rc.21: a member is stored as its @stringValueMap string, else as itself — exactly
+        // migrate-ts's buildChecks. A stored string may carry a quote, so it is escaped.
+        list = values.map((v) => `'${storedEnumValue(field, v).replace(/'/g, "''")}'`).join(", ");
       }
       result.checkConstraint = `${dbName} IN (${list})`;
       result.checkConstraintValues = list;

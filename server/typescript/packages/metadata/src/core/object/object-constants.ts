@@ -42,7 +42,7 @@ export const OBJECT_ATTR_DISCRIMINATOR = "discriminator";
 /** FR-014: on a subtype of an entity with @discriminator: the value that
  *  identifies rows of this subtype in the shared discriminator field. */
 export const OBJECT_ATTR_DISCRIMINATOR_VALUE = "discriminatorValue";
-/** An object's collection name, in its own casing (the C# DbSet property). */
+/** rc.19 (R57) — an object's collection name (DbSet, REST segment, TS exports, reverse hop). */
 export const OBJECT_ATTR_COLLECTION_NAME = "collectionName";
 
 // ---------------------------------------------------------------------------
@@ -54,6 +54,11 @@ export const OBJECT_ATTR_COLLECTION_NAME = "collectionName";
  *  but resolves against the projection's OWN declared fields rather than one
  *  aggregated entity. An aggregate-derived field is not addressable (fail-closed). */
 export const OBJECT_PROJECTION_ATTR_FILTER = "filter";
+// rc.21 part B: a projection UNIONed with others (U15), and one with a row per array element (U14).
+export const OBJECT_PROJECTION_ATTR_UNION = "union";
+export const OBJECT_PROJECTION_ATTR_UNION_ALL = "unionAll";
+export const OBJECT_PROJECTION_ATTR_GRAIN = "grain";
+export const OBJECT_PROJECTION_ATTR_GRAIN_ORDINAL = "grainOrdinal";
 
 // ---------------------------------------------------------------------------
 // FR-044 — object.report attrs

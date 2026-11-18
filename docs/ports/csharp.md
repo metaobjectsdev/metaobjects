@@ -465,7 +465,7 @@ differently (an acronym, say), set one resolver on the config, `GenConfig.Proper
 `[PrimaryKey(nameof(...))]`, every `AppDbContext` model line and the reverse finders all read it,
 so the declaration and every reference agree. The hooks `EntityGenerator.PropertyName` and
 `DbContextGenerator.PropertyName` default to it; a subclass that overrides one must override the
-other the same way. The routes generator and the filter runtime still use the PascalCased name.
+other the same way. The routes generator, the filter map and the credential stripping read the same resolver, and a hook that disagrees with it is refused.
 
 **Class attributes.** `EntityGenerator.EmitClassAttributes(sb, entity, className, kind, ctx)` is
 called for every class it emits (mapped entity, TPH subtype, abstract shape, value object), after
@@ -540,6 +540,17 @@ The start in the model, and the services, are emitted only for a project whose
 package. `UseIdentityStartMigrations()`, the registration of an earlier runtime SQL rewrite, is
 kept as an `[Obsolete]` no-op so a call to it still compiles; remove the call.
 
+
+**CHECK constraints** are the ones `meta migrate` creates: each scalar `field.enum`
+and each validator that can carry one (`numeric`, `length`, `regex`, `comparison`,
+`requiredWhen`, `presentIff`, `atLeastOne`, `exactlyOne`, with `@condition`) is a
+`modelBuilder.Entity<T>().ToTable(t => t.HasCheckConstraint(name, sql))` line, with migrate's name
+(`<table>_<column>_numeric_chk`, … or the validator's `@constraintName`) and its expression text,
+so a table built by an EF migration and one built by `meta migrate` carry the same constraints.
+They are declared for `migrate.dialect` `postgres`, `sqlite` or `d1` only, because the text is
+dialect-specific (`~`, `IS DISTINCT FROM`, `num_nonnulls` on Postgres); `migrate.checks.skipRedundant`
+(`GenConfig.SkipRedundantChecks`) leaves out the ones the column already enforces, as migrate does.
+The shared corpus `fixtures/check-constraint-conformance/` pins the names and text in both ports.
 ### Decimals and null members on the wire
 
 What the generated API writes is the project setting `wire` in `.metaobjects/config.json`
@@ -683,15 +694,15 @@ can be inherited — and an object that extends another produces a class that ex
 other's:
 
 ```csharp
-public abstract class CopayAuthNames : AuthNames
+public abstract class CouponAuthNames : AuthNames
 {
-    public const string CopayAmountField = "copayAmount";
-    public const string CopayAmountColumn = "copay_cents";
+    public const string CouponAmountField = "couponAmount";
+    public const string CouponAmountColumn = "coupon_cents";
     public new const string Type = "object";
     public new const string SubType = "entity";
-    public new const string Name = "CopayAuth";
+    public new const string Name = "CouponAuth";
     // SourcePrimaryTable / IdColumn / … are the base's. A C# const is inherited, so
-    // CopayAuthNames.SourcePrimaryTable and CopayAuthNames.IdColumn both resolve.
+    // CouponAuthNames.SourcePrimaryTable and CouponAuthNames.IdColumn both resolve.
 }
 ```
 

@@ -470,7 +470,7 @@ describe("other spine shapes", () => {
       entity("Auth", [
         table("auths"),
         longId,
-        { "field.enum": { name: "type", "@values": ["Bridge", "Copay"] } },
+        { "field.enum": { name: "type", "@values": ["Bridge", "Coupon"] } },
         { "field.string": { name: "reference" } },
         pk,
       ], { "@discriminator": "type" }),
@@ -508,7 +508,7 @@ describe("other spine shapes", () => {
       entity("Auth", [
         table("auths"),
         longId,
-        { "field.enum": { name: "type", "@values": ["Bridge", "Copay"] } },
+        { "field.enum": { name: "type", "@values": ["Bridge", "Coupon"] } },
         { "field.long": { name: "programId" } },
         { "field.int": { name: "quantity" } },
         pk,

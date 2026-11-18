@@ -11,8 +11,8 @@
 //   PUT    /api/auths/<seg>/{id} alias of PATCH
 //   DELETE /api/auths/<seg>/{id} per-subtype delete (404 cross-subtype)
 //
-// The per-subtype segment is the discriminator value lowercased (bridge/copay/
-// priorauth). This is the contract the GENERATED lane (TphGeneratedServerFactory)
+// The per-subtype segment is the discriminator value lowercased (bridge/coupon/
+// permit). This is the contract the GENERATED lane (TphGeneratedServerFactory)
 // must also satisfy; the corpus + assertion vocabulary are shared.
 
 using System.Globalization;
@@ -33,14 +33,14 @@ internal sealed class TphReferenceServer : IAsyncDisposable
     // api.unknownFields: reject (the default, unchanged by this corpus): the union of the base's and every
     // subtype's declared fields, so a sibling subtype's column is known on another subtype's route.
     private static readonly HashSet<string> DeclaredKeys = new(StringComparer.Ordinal)
-        { "id", "type", "reference", "issuedCurrency", "autoCreatedAt", "autoUpdatedAt", "quantity", "copayAmount", "approver" };
+        { "id", "type", "reference", "issuedCurrency", "autoCreatedAt", "autoUpdatedAt", "quantity", "couponAmount", "approver" };
 
     // segment (lowercased @discriminatorValue) → discriminator value.
     private static readonly Dictionary<string, string> SegmentToValue = new(StringComparer.Ordinal)
     {
         ["bridge"]    = "Bridge",
-        ["copay"]     = "Copay",
-        ["priorauth"] = "PriorAuth",
+        ["coupon"]     = "Coupon",
+        ["permit"] = "Permit",
     };
 
     // Every column the `auths` table carries (base + every subtype-only column).
@@ -48,12 +48,12 @@ internal sealed class TphReferenceServer : IAsyncDisposable
     // from this caller-settable projection, so a presented value is STRIPPED on PATCH
     // rather than rejected (the same treatment autoCreatedAt/autoUpdatedAt get by being
     // absent here). It IS written on create, explicitly, below. Do NOT add it here.
-    private static readonly string[] AllCols = { "id", "type", "reference", "quantity", "copayAmount", "approver" };
+    private static readonly string[] AllCols = { "id", "type", "reference", "quantity", "couponAmount", "approver" };
     // The subtype-only columns, by discriminator value. A create stores only its own subtype's
     // (1.2.x input contract: a sibling subtype's column in the body is dropped, not stored).
     private static readonly Dictionary<string, string> SubtypeCol = new()
     {
-        ["Bridge"] = "quantity", ["Copay"] = "copayAmount", ["PriorAuth"] = "approver",
+        ["Bridge"] = "quantity", ["Coupon"] = "couponAmount", ["Permit"] = "approver",
     };
 
     private readonly PostgresContainer _pg;
@@ -131,7 +131,7 @@ internal sealed class TphReferenceServer : IAsyncDisposable
             return;
         }
 
-        // segs[2] is either a subtype segment (bridge/copay/priorauth) or an {id}.
+        // segs[2] is either a subtype segment (bridge/coupon/permit) or an {id}.
         if (segs.Length >= 3 && SegmentToValue.TryGetValue(segs[2], out var disc))
         {
             // Per-subtype routes.
@@ -158,13 +158,13 @@ internal sealed class TphReferenceServer : IAsyncDisposable
                     }
                     // FR-036 — the per-subtype CREATE validates every constraint, matching the generated
                     // controller's <Sub>Dto DataAnnotations: the @required keys (the base `reference`, the
-                    // BridgeAuth `quantity`), the @maxLength:80 columns and copayAmount's decimal(10,2).
+                    // BridgeAuth `quantity`), the @maxLength:80 columns and couponAmount's decimal(10,2).
                     // Every issue is listed, not just the first.
                     var createIssues = new List<Dictionary<string, object?>>();
                     if (!PresentNonNull(body, "reference")) createIssues.Add(ReferenceValidation.Required("reference"));
                     if (disc == "Bridge" && !PresentNonNull(body, "quantity")) createIssues.Add(ReferenceValidation.Required("quantity"));
                     AddMaxLengthIssues(body, createIssues);
-                    AddCopayIssues(body, createIssues);
+                    AddCouponIssues(body, createIssues);
                     if (createIssues.Count > 0)
                     {
                         await SendJsonAsync(ctx, 400, ReferenceValidation.Envelope(createIssues));
@@ -194,14 +194,14 @@ internal sealed class TphReferenceServer : IAsyncDisposable
                     // FR-036 Program B: a present null on the @required (NOT NULL) base
                     // `reference` column is a 400, matching the generated controller's
                     // not-null merge guard. In the single TPH table only base-required
-                    // columns are NOT NULL; subtype columns (quantity/copayAmount/approver)
+                    // columns are NOT NULL; subtype columns (quantity/couponAmount/approver)
                     // are nullable, so a present null there clears them (FR-035 tristate).
                     // A present value exceeding @maxLength:80 (reference/approver) is a 400 too.
                     var patchIssues = new List<Dictionary<string, object?>>();
                     if (body.ContainsKey("reference") && !PresentNonNull(body, "reference"))
                         patchIssues.Add(ReferenceValidation.Required("reference"));
                     AddMaxLengthIssues(body, patchIssues);
-                    AddCopayIssues(body, patchIssues);
+                    AddCouponIssues(body, patchIssues);
                     if (patchIssues.Count > 0)
                     {
                         await SendJsonAsync(ctx, 400, ReferenceValidation.Envelope(patchIssues));
@@ -243,13 +243,13 @@ internal sealed class TphReferenceServer : IAsyncDisposable
     };
 
     // A per-subtype collection filters by the base's columns plus that subtype's own. Only
-    // CopayAuth.copayAmount is filterable among the subtype columns the corpus exercises; a
+    // CouponAuth.couponAmount is filterable among the subtype columns the corpus exercises; a
     // decimal operand is compared exactly (ADR-0019 Amendment 1, W2).
     private static IReadOnlyDictionary<string, string[]> SubtypeFilterOps(string discriminator)
     {
         var ops = new Dictionary<string, string[]>(BaseFilterOps, StringComparer.Ordinal);
         ops.Remove("type");
-        if (discriminator == "Copay") ops["copayAmount"] = new[] { "eq", "ne", "gt", "gte", "lt", "lte", "in" };
+        if (discriminator == "Coupon") ops["couponAmount"] = new[] { "eq", "ne", "gt", "gte", "lt", "lte", "in" };
         return ops;
     }
 
@@ -271,7 +271,7 @@ internal sealed class TphReferenceServer : IAsyncDisposable
             string raw = query[key].ToString();
             string[] values = op == "in" ? raw.Split(',') : new[] { raw };
             if (field == "id" && values.Any(v => !long.TryParse(v, out _))) return (filters, "invalid_filter_value", field);
-            if (field == "copayAmount" && values.Any(v => !DecimalWire.TryParse(v, out _))) return (filters, "invalid_filter_value", field);
+            if (field == "couponAmount" && values.Any(v => !DecimalWire.TryParse(v, out _))) return (filters, "invalid_filter_value", field);
             filters.Add(new BaseFilter(field, op, values));
         }
         return (filters, null, null);
@@ -291,7 +291,7 @@ internal sealed class TphReferenceServer : IAsyncDisposable
             object Bind(string v) => f.Field switch
             {
                 "id" => long.Parse(v),
-                "copayAmount" => DecimalWire.TryParse(v, out var d) ? d : throw new FormatException(v),
+                "couponAmount" => DecimalWire.TryParse(v, out var d) ? d : throw new FormatException(v),
                 _ => v,
             };
             var names = new List<string>();
@@ -436,7 +436,7 @@ internal sealed class TphReferenceServer : IAsyncDisposable
     // -------- helpers --------
 
     // FR-036 — the TPH @maxLength:80 string columns: `reference` (base) and `approver`
-    // (PriorAuth subtype). A present value exceeding 80 chars is a 400 {error:"validation"}
+    // (Permit subtype). A present value exceeding 80 chars is a 400 {error:"validation"}
     // (mirrors the generated <Sub>Dto's [MaxLength(80)] + the vanilla ExceedsAuthorMaxLength
     // guard), rejected before the PG write (which would otherwise 500 with 22001) — on the
     // per-subtype create AND on a present PATCH value.
@@ -456,7 +456,7 @@ internal sealed class TphReferenceServer : IAsyncDisposable
     private static object CoerceColumn(string col, JsonNode v) => col switch
     {
         "quantity" => v.GetValue<long>(),
-        "copayAmount" => ReadDecimal(v) ?? throw new FormatException("copayAmount"),
+        "couponAmount" => ReadDecimal(v) ?? throw new FormatException("couponAmount"),
         _ => v.GetValue<string>(),
     };
 
@@ -468,18 +468,18 @@ internal sealed class TphReferenceServer : IAsyncDisposable
             ? d
             : null;
 
-    // W3: copayAmount is decimal(10,2); a value the column would round or overflow is refused
+    // W3: couponAmount is decimal(10,2); a value the column would round or overflow is refused
     // rather than stored rounded. Absent or null is the caller's business, not this check's.
-    // ADR-0019 Amendment 1 (W3): copayAmount is decimal(10,2); a value it would round or overflow is a
+    // ADR-0019 Amendment 1 (W3): couponAmount is decimal(10,2); a value it would round or overflow is a
     // 400 validation (too_big), never stored rounded; a value that is no decimal at all is invalid_type.
-    private static void AddCopayIssues(JsonObject body, List<Dictionary<string, object?>> issues)
+    private static void AddCouponIssues(JsonObject body, List<Dictionary<string, object?>> issues)
     {
-        if (!body.TryGetPropertyValue("copayAmount", out var node) || node is null
+        if (!body.TryGetPropertyValue("couponAmount", out var node) || node is null
             || node.GetValueKind() == JsonValueKind.Null) return;
         if (ReadDecimal(node) is not { } d)
-            issues.Add(ReferenceValidation.Issue("invalid_type", "copayAmount", "copayAmount is not a decimal"));
+            issues.Add(ReferenceValidation.Issue("invalid_type", "couponAmount", "couponAmount is not a decimal"));
         else if (!DecimalWire.Fits(d, 10, 2))
-            issues.Add(ReferenceValidation.Issue("too_big", "copayAmount", "copayAmount exceeds decimal(10,2)"));
+            issues.Add(ReferenceValidation.Issue("too_big", "couponAmount", "couponAmount exceeds decimal(10,2)"));
     }
 
     // Map a DB row into the wire dictionary. `type` is the discriminator value (text);

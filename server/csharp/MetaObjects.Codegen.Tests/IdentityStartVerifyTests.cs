@@ -58,4 +58,29 @@ public sealed class IdentityStartVerifyTests : IDisposable
             Directory.SetCurrentDirectory(cwd);
         }
     }
+
+    // The assembly name gen reads from the .csproj above --out is the one the drift render uses: a
+    // render under a temporary directory with no project would leave the reference line out and
+    // report the design-time services file as drift on every CI run.
+    [Fact]
+    public void Verify_renders_the_design_time_reference_gen_read_from_the_project()
+    {
+        File.WriteAllText(Path.Combine(_root, "Acme.App.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><AssemblyName>Acme.App</AssemblyName></PropertyGroup></Project>\n");
+        var cwd = Directory.GetCurrentDirectory();
+        Directory.SetCurrentDirectory(_root);
+        try
+        {
+            var (gen, genText) = Run("gen", Meta, "--out", Out, "--namespace", "Acme.Generated");
+            Assert.True(gen == 0, genText);
+            var services = File.ReadAllText(Path.Combine(Out, "AppDbContextDesignTimeServices.g.cs"));
+            Assert.Contains("DesignTimeServicesReference(\"Acme.Generated.AppDbContextDesignTimeServices, Acme.App\"", services);
+            var (verify, verifyText) = Run("verify", "--codegen", "--full", Meta, "--out", Out, "--namespace", "Acme.Generated");
+            Assert.True(verify == 0, verifyText);
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(cwd);
+        }
+    }
 }

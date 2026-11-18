@@ -48,7 +48,7 @@ public sealed class WrappedTemplateSpecTests : IDisposable
     public void A_wrapped_declared_spec_is_not_legacy_and_an_invalid_one_is_validated_by_verify()
     {
         File.WriteAllText(Spec, "{ not json");
-        var verify = Run("verify", "--codegen", Meta, "--out", Out);
+        var verify = Run("verify", "--codegen", "--full", Meta, "--out", Out);
         Assert.DoesNotContain("1.0 template-spec configuration", verify.Err);
         Assert.Contains("template spec", verify.Err);
     }

@@ -23,6 +23,7 @@ from metaobjects.meta.core.field.field_constants import (
     FIELD_ATTR_PRECISION,
     FIELD_ATTR_REQUIRED,
     FIELD_ATTR_SCALE,
+    FIELD_ATTR_STRING_VALUE_MAP,
     FIELD_ATTR_VALUES,
 )
 from metaobjects.meta.core.field.meta_field import MetaField
@@ -215,3 +216,20 @@ def test_a_measure_with_default_yields_a_detached_field_with_required_true() -> 
         ("revenueRaw", False),
     ]
     assert all(f.get_meta_attr(FIELD_ATTR_DEFAULT) is None for f in fields)
+
+
+def test_string_value_map_is_carried_from_the_type_source() -> None:
+    """rc.21 part B (N5): a report row over a ``@stringValueMap`` enum carries the map (read
+    RESOLVING), so the row decodes the stored string to the member, as C# and TypeScript do."""
+    model = json.loads(json.dumps(_MODEL))
+    sale = model["metadata.root"]["children"][1]["object.entity"]
+    for child in sale["children"]:
+        if "field.enum" in child:
+            child["field.enum"]["@stringValueMap"] = {"OPEN": "open", "PAID": "paid"}
+    result = MetaDataLoader().load([InMemoryStringSource(json.dumps(model), "meta.shop.json")])
+    assert result.errors == [], [e.message for e in result.errors]
+    report = next(c for c in result.root.children() if c.type == TYPE_OBJECT and c.name == "R")
+    status = {f.name: f for f in report_read_model(report, result.root).fields()}["status"]
+    assert status.get_meta_attr(FIELD_ATTR_STRING_VALUE_MAP) == {"OPEN": "open", "PAID": "paid"}
+    # Without the map on the source, the row carries none.
+    assert _fields()["status"].get_meta_attr(FIELD_ATTR_STRING_VALUE_MAP) is None

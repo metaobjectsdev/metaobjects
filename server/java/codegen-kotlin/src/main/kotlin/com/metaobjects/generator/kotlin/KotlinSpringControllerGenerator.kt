@@ -904,7 +904,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // object/map/jsonb-open-bag (an open bag is a create-only column, see KNOWN_GAPS). Delegated to
         // [KotlinTphPlan.subtypeSettableFields] — the SSOT the entity generator's <Sub>Validation shape
         // is built from, so the create/PATCH validated set never drifts from the annotated class. This
-        // is per-subtype so a PriorAuth patch never touches a Bridge-only column.
+        // is per-subtype so a Permit patch never touches a Bridge-only column.
         fun subtypePatchFields(st: KotlinTphPlan.Subtype) =
             KotlinTphPlan.subtypeSettableFields(st.entity)
 

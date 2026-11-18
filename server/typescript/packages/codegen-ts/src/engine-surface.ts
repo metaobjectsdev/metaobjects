@@ -50,6 +50,7 @@ export const ENGINE_MODULES: readonly string[] = [
   "codegen-ts/src/naming.ts",
   "codegen-ts/src/naming/name-claims.ts",
   "codegen-ts/src/owned-runtime.ts",
+  "codegen-ts/src/pg-identifier.ts",
   "codegen-ts/src/pk-resolver.ts",
   "codegen-ts/src/poet.ts",
   "codegen-ts/src/projection/build-projection-views.ts",

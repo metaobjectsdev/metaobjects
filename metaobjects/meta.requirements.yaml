@@ -1160,6 +1160,20 @@ metadata.root:
                           counterexample: >-
                             A latest value that is whichever row the database
                             happened to return.
+                      - requirement.functional:
+                          name: originFunction
+                          title: Owned database function
+                          level: 4
+                          status: live
+                          statement: >-
+                            A value computed by a database function the
+                            project owns is declared by the function's name,
+                            schema and argument fields, so every call is
+                            checked against the model, never written as SQL.
+                          counterexample: >-
+                            A view body that calls the function by hand and
+                            keeps working after the argument column is renamed
+                            only until the view is next recreated.
 
                 - requirement.functional:
                     name: reporting

@@ -41,7 +41,7 @@ class TphM2mFullSuiteCompilesTest {
         { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
             { "source.rdb":   { "@table": "auths" } },
             { "field.long":   { "name": "id" } },
-            { "field.enum":   { "name": "type", "@values": ["Bridge", "Copay"] } },
+            { "field.enum":   { "name": "type", "@values": ["Bridge", "Coupon"] } },
             { "field.string": { "name": "reference", "@required": true, "@maxLength": 80 } },
             { "relationship.association": { "name": "tags", "@cardinality": "many",
                 "@objectRef": "Tag", "@through": "AuthTag" } },
@@ -52,8 +52,8 @@ class TphM2mFullSuiteCompilesTest {
             { "relationship.association": { "name": "linkedAuths", "@cardinality": "many",
                 "@objectRef": "BridgeAuth", "@through": "AuthLink", "@sourceRefField": "fromAuthId" } }
         ] } },
-        { "object.entity": { "name": "CopayAuth", "extends": "Auth", "@discriminatorValue": "Copay", "children": [
-            { "field.decimal": { "name": "copayAmount", "@precision": 10, "@scale": 2 } }
+        { "object.entity": { "name": "CouponAuth", "extends": "Auth", "@discriminatorValue": "Coupon", "children": [
+            { "field.decimal": { "name": "couponAmount", "@precision": 10, "@scale": 2 } }
         ] } },
         { "object.entity": { "name": "Tag", "children": [
             { "source.rdb":   { "@table": "tags" } },
@@ -103,7 +103,7 @@ class TphM2mFullSuiteCompilesTest {
             val names = emitted.map { it.fileName.toString() }.toSet()
             // The subtypes fold into the base — no per-subtype persistence artifact of any kind,
             // M:N included (the whole point: linkedAuths must NOT try to reference BridgeAuthTable).
-            for (dead in listOf("BridgeAuthTable.kt", "CopayAuthTable.kt", "BridgeAuthRelations.kt", "CopayAuthRelations.kt")) {
+            for (dead in listOf("BridgeAuthTable.kt", "CouponAuthTable.kt", "BridgeAuthRelations.kt", "CouponAuthRelations.kt")) {
                 assertFalse(dead in names, "TPH subtype must not emit $dead; got $names")
             }
 
@@ -119,9 +119,9 @@ class TphM2mFullSuiteCompilesTest {
             val controller = emitted.first { it.fileName.toString() == "AuthController.kt" }.readText()
             assertTrue("@GetMapping(\"/{id}/tags\")" in controller, controller)
             assertTrue("@GetMapping(\"/bridge/{id}/tags\")" in controller, controller)
-            assertTrue("@GetMapping(\"/copay/{id}/tags\")" in controller, controller)
+            assertTrue("@GetMapping(\"/coupon/{id}/tags\")" in controller, controller)
             assertTrue("@GetMapping(\"/bridge/{id}/linkedAuths\")" in controller, controller)
-            assertFalse("/copay/{id}/linkedAuths" in controller, controller)
+            assertFalse("/coupon/{id}/linkedAuths" in controller, controller)
 
             val sources = emitted.map { path ->
                 SourceFile.kotlin(outDir.relativize(path).toString().replace('/', '_'), path.readText())

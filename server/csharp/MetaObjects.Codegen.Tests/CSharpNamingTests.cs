@@ -114,12 +114,13 @@ public class CSharpNamingTests
         Assert.Equal(expected, CSharpNaming.Pluralize(input));
     }
 
-    // A Greek "-sis" noun takes "-ses" (Diagnosis -> Diagnoses), not the sibilant "+es" that
-    // produced "Diagnosises" in every DbSet and finder name. The other common endings are pinned
+    // A Greek "-sis" noun takes "-ses" (Analysis -> Analyses), not the sibilant "+es" that
+    // produced "Analysises" in every DbSet and finder name. The other common endings are pinned
     // beside it so the new rule cannot widen past "-sis".
     [Theory]
-    [InlineData("Diagnosis", "Diagnoses")]
     [InlineData("Analysis", "Analyses")]
+    [InlineData("Thesis", "Theses")]
+    [InlineData("Diagnosis", "Diagnoses")]
     [InlineData("Basis", "Bases")]
     [InlineData("OrderAnalysis", "OrderAnalyses")]
     [InlineData("Notification", "Notifications")]
@@ -137,6 +138,8 @@ public class CSharpNamingTests
     [Fact]
     public void DbSetName_and_reverse_finder_name_use_the_sis_plural()
     {
+        Assert.Equal("Analyses", CSharpNaming.DbSetName(Entity("Analysis")));
+        Assert.Equal("FindAnalysesByPlayer", CSharpNaming.ReverseFinderName(Entity("Analysis"), "playerId"));
         Assert.Equal("Diagnoses", CSharpNaming.DbSetName(Entity("Diagnosis")));
         Assert.Equal("FindDiagnosesByPatient", CSharpNaming.ReverseFinderName(Entity("Diagnosis"), "patientId"));
     }
@@ -147,9 +150,9 @@ public class CSharpNamingTests
         // The REST collection segment is a wire contract every port spells the same way
         // (fixtures/naming-conformance); the "-sis" rule is a C# identifier fix only, so the
         // route does not move until every port moves with it.
+        Assert.Equal("analysises", CSharpNaming.RoutePath(Entity("Analysis")));
         Assert.Equal("diagnosises", CSharpNaming.RoutePath(Entity("Diagnosis")));
     }
-
     [Fact]
     public void Pluralize_documented_known_miss_Lens_reads_as_already_plural()
     {
@@ -413,7 +416,125 @@ public class CSharpNamingTests
         Assert.Contains("Payers { get; set; }", context);
     }
 
-    // A @collectionName that is no C# identifier, or names a DbContext member, would fail at compile
+    // ── rc.19 fix round (I3): fixtures/naming-conformance/collection-segments.json ──────────────
+    // The REST segment, shared with TypeScript: nothing configured is rc.18's rule byte for byte;
+    // a declared name or a configured pluralizer is snake_cased keeping an acronym's plural suffix.
+
+    public sealed record SegmentCase(string Name, string? CollectionName, string? Pluralizer, string Segment)
+    {
+        public override string ToString() => $"{Name} (declared {CollectionName ?? "-"}, pluralizer {Pluralizer ?? "-"}) -> {Segment}";
+    }
+
+    public static TheoryData<SegmentCase> SegmentCases()
+    {
+        var path = Path.Combine(CorpusPaths.RepoRoot(), "fixtures", "naming-conformance", "collection-segments.json");
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        var data = new TheoryData<SegmentCase>();
+        foreach (var c in doc.RootElement.GetProperty("cases").EnumerateArray())
+        {
+            data.Add(new SegmentCase(
+                c.GetProperty("name").GetString()!,
+                c.TryGetProperty("collectionName", out var d) ? d.GetString() : null,
+                c.TryGetProperty("pluralizer", out var p) ? p.GetString() : null,
+                c.GetProperty("segment").GetString()!));
+        }
+        return data;
+    }
+
+    [Theory]
+    [MemberData(nameof(SegmentCases))]
+    public void The_REST_segment_is_the_cross_port_one(SegmentCase c)
+    {
+        var declared = c.CollectionName is null ? "" : $@"""@collectionName"": ""{c.CollectionName}"", ";
+        var json = $@"{{ ""metadata.root"": {{ ""package"": ""test"", ""children"": [
+            {{ ""object.entity"": {{ ""name"": ""{c.Name}"", {declared}""children"": [
+                {{ ""source.rdb"": {{ ""@table"": ""t"" }} }},
+                {{ ""field.long"": {{ ""name"": ""id"" }} }},
+                {{ ""identity.primary"": {{ ""name"": ""pk"", ""@fields"": ""id"" }} }}
+            ] }} }} ] }} }}";
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(json, id: "seg.json")]);
+        Assert.Empty(r.Errors);
+        if (c.Pluralizer is not null) r.Root.PhysicalNaming = r.Root.PhysicalNaming with { Collections = c.Pluralizer };
+        Assert.Equal(c.Segment, CSharpNaming.RoutePath(r.Root.Objects().Single()));
+    }
+
+    // ── rc.19 (R57): @collectionName, its deprecated alias, and the pluggable pluralizer ─────────
+
+    private const string HistoryModel = """
+        { "metadata.root": { "package": "core", "children": [
+          { "object.entity": { "name": "Consignment", "children": [
+            { "source.rdb": { "@table": "consignments" } },
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "@fields": "id" } }
+          ] } },
+          { "object.entity": { "name": "ConsignmentHistory", ATTRS "children": [
+            { "source.rdb": { "@table": "consignment_history" } },
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "consignmentId" } },
+            { "identity.primary": { "@fields": "id" } },
+            { "identity.reference": { "name": "consignmentId", "@fields": "consignmentId", "@references": "Consignment" } }
+          ] } }
+        ] } }
+        """;
+
+    private static MetaRoot History(string attrs, string? pluralizer = null)
+    {
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(HistoryModel.Replace("ATTRS", attrs), id: "h.json")]);
+        Assert.Empty(r.Errors.Select(e => e.Code + ": " + e.Message));
+        if (pluralizer is not null) r.Root.PhysicalNaming = r.Root.PhysicalNaming with { Collections = pluralizer };
+        return r.Root;
+    }
+
+    private static GenContext CtxWarn(MetaRoot root, List<string> warnings) => new()
+    {
+        Entities = root.Objects(), Root = root, Warn = warnings.Add,
+        Config = new GenConfig { OutDir = "/unused", Namespace = "Acme.Generated" },
+    };
+
+    private static MetaObject HistoryOf(MetaRoot root) => root.Objects().Single(o => o.Name == "ConsignmentHistory");
+
+    [Fact]
+    public void CollectionName_names_the_DbSet_the_route_the_finder_and_the_reverse_hop()
+    {
+        var root = History("\"@collectionName\": \"ConsignmentHistory\",");
+        var history = HistoryOf(root);
+        Assert.Equal("ConsignmentHistory", CSharpNaming.DbSetName(history));
+        Assert.Equal("consignment_history", CSharpNaming.RoutePath(history));
+        Assert.Equal("FindConsignmentHistoryByConsignment", CSharpNaming.ReverseFinderName(history, "consignmentId"));
+        Assert.Equal("consignmentHistory", MetaObjects.Meta.ReverseReferenceHops.HopName(history));
+        var warnings = new List<string>();
+        var context = Assert.Single(new DbContextGenerator().Generate(CtxWarn(root, warnings))).Content;
+        Assert.Contains("DbSet<ConsignmentHistory> ConsignmentHistory { get; set; }", context);
+        Assert.DoesNotContain(warnings, w => w.Contains("deprecated"));
+    }
+
+    [Fact]
+    public void Absent_the_configured_pluralizer_names_the_collection_and_unconfigured_output_is_unchanged()
+    {
+        var unconfigured = HistoryOf(History(""));
+        Assert.Equal("ConsignmentHistories", CSharpNaming.DbSetName(unconfigured));
+        Assert.Equal("consignment_histories", CSharpNaming.RoutePath(unconfigured));
+
+        var none = HistoryOf(History("", pluralizer: "none"));
+        Assert.Equal("ConsignmentHistory", CSharpNaming.DbSetName(none));
+        Assert.Equal("consignment_history", CSharpNaming.RoutePath(none));
+        Assert.Equal("consignmentHistory", MetaObjects.Meta.ReverseReferenceHops.HopName(none));
+    }
+
+    [Fact]
+    public void An_application_registers_its_own_pluralizer_and_an_unknown_name_fails_loudly()
+    {
+        // The registry is process-wide and other test classes register strategies in it, so this
+        // one is left registered (registering a name again replaces it) rather than reset.
+        MetaObjects.Meta.NamingStrategies.RegisterPluralizer("cs-test-latin", n => n.EndsWith("History") ? n[..^1] + "ies" : n + "s");
+        Assert.Equal("ConsignmentHistories", CSharpNaming.DbSetName(HistoryOf(History("", pluralizer: "cs-test-latin"))));
+        Assert.Throws<ArgumentException>(() => MetaObjects.Meta.NamingStrategies.RegisterPluralizer("standard", n => n));
+        var ex = Assert.Throws<MetaModelException>(() => MetaObjects.Meta.NamingStrategies.Pluralizer("klingon"));
+        Assert.Contains("\"naming.collections\" names \"klingon\"", ex.Message);
+        Assert.Contains("built in: standard, none", ex.Message);
+    }
+
+    // A @dbSetName that is no C# identifier, or names a DbContext member, would fail at compile
     // time (or hide Database / Model); codegen refuses it by name.
     [Theory]
     [InlineData("Payer Rows")]
@@ -471,6 +592,7 @@ public class CSharpNamingTests
         Assert.Contains("acme::Beta", ex.Message);
         Assert.Contains("refresh_totals", ex.Message);
     }
+
 
     [Fact]
     public void One_table_name_in_two_schemas_in_one_context_passes_schema_qualified()

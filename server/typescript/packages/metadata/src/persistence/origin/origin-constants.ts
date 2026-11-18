@@ -27,6 +27,8 @@ export const ORIGIN_SUBTYPE_AGGREGATE   = "aggregate";
 // by @orderBy along @via, projecting @of (argmax-then-project).
 export const ORIGIN_SUBTYPE_COMPUTED    = "computed";
 export const ORIGIN_SUBTYPE_FIRST       = "first";
+// rc.21 part B (U10): a value computed by a database function the project owns.
+export const ORIGIN_SUBTYPE_FUNCTION    = "function";
 
 export const ORIGIN_SUBTYPES = [
   SUBTYPE_BASE,
@@ -34,6 +36,7 @@ export const ORIGIN_SUBTYPES = [
   ORIGIN_SUBTYPE_AGGREGATE,
   ORIGIN_SUBTYPE_COMPUTED,
   ORIGIN_SUBTYPE_FIRST,
+  ORIGIN_SUBTYPE_FUNCTION,
 ] as const;
 export type OriginSubType = (typeof ORIGIN_SUBTYPES)[number];
 
@@ -46,6 +49,7 @@ export const ASSEMBLY_ORIGIN_SUBTYPES = [
   ORIGIN_SUBTYPE_AGGREGATE,
   ORIGIN_SUBTYPE_COMPUTED,
   ORIGIN_SUBTYPE_FIRST,
+  ORIGIN_SUBTYPE_FUNCTION,
 ] as const;
 
 // passthrough attrs
@@ -81,6 +85,15 @@ export const ORIGIN_FIRST_ATTR_OF     = "of";
 export const ORIGIN_FIRST_ATTR_VIA    = "via";
 export const ORIGIN_FIRST_ATTR_FILTER = "filter";
 
+// rc.21 part B (U10) origin.function attrs: the function's name, its schema, and its arguments.
+export const ORIGIN_FUNCTION_ATTR_FUNCTION = "function";
+export const ORIGIN_FUNCTION_ATTR_SCHEMA   = "schema";
+export const ORIGIN_FUNCTION_ATTR_ARGS     = "args";
+export const ORIGIN_FUNCTION_ATTR_PARAMS   = "params";
+export const ORIGIN_FUNCTION_ATTR_RETURNS  = "returns";
+/** A plain SQL identifier: what @function and @schema may hold (never free SQL). */
+export const ORIGIN_FUNCTION_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
 // aggregate function vocabulary.
 //
 // AGGREGATE_FUNCTIONS is the NUMERIC/ORDINAL reduce set — each maps directly to a
@@ -108,11 +121,11 @@ export const ORIGIN_AGG_VALUES = [
 ] as const;
 export type OriginAggValue = (typeof ORIGIN_AGG_VALUES)[number];
 
-/** A segment.filter of the related entity scoping the related rows
+/** rc.19 origin-segment: a segment.filter of the related entity scoping the related rows
  *  (origin.first, origin.aggregate), ANDed with @filter — mirrors measure.aggregate @segment. */
 export const ORIGIN_ATTR_SEGMENT = "segment";
 
-/** The null-safe comparisons an origin @filter may make with a base-row
+/** rc.19 correlated-filter: the null-safe comparisons an origin @filter may make with a base-row
  *  field operand (`{ field: "<base field>" }`): IS DISTINCT FROM / IS NOT DISTINCT FROM. */
 export const FILTER_OP_IS_DISTINCT_FROM = "isDistinctFrom";
 export const FILTER_OP_IS_NOT_DISTINCT_FROM = "isNotDistinctFrom";

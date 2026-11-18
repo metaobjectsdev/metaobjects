@@ -167,14 +167,14 @@ public class SpringCreateDefaultsTest {
         { "metadata.root": { "package": "acme::auth", "children": [
           { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
             { "source.rdb": { "@table": "auths" } },
-            { "field.enum": { "name": "type", "@values": ["Bridge", "Copay"] } },
+            { "field.enum": { "name": "type", "@values": ["Bridge", "Coupon"] } },
             { "field.long": { "name": "id" } },
             { "field.enum": { "name": "status", "@values": ["OPEN", "SHUT"], "@default": "SHUT" } },
             { "identity.primary": { "@fields": "id", "@generation": "increment" } }
           ] } },
           { "object.entity": { "name": "BridgeAuth", "extends": "acme::auth::Auth", "@discriminatorValue": "Bridge",
             "children": [ { "field.int": { "name": "quantity", "@default": 3 } } ] } },
-          { "object.entity": { "name": "CopayAuth", "extends": "acme::auth::Auth", "@discriminatorValue": "Copay",
+          { "object.entity": { "name": "CouponAuth", "extends": "acme::auth::Auth", "@discriminatorValue": "Coupon",
             "children": [ { "field.int": { "name": "amount" } } ] } }
         ] } }
         """;

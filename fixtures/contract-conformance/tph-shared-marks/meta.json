@@ -8,7 +8,7 @@
         "children": [
           { "source.rdb":       { "@table": "auths" } },
           { "field.long":       { "name": "id" } },
-          { "field.enum":       { "name": "type", "@values": ["Bridge", "Copay"] } },
+          { "field.enum":       { "name": "type", "@values": ["Bridge", "Coupon"] } },
           { "field.string":     { "name": "reference", "@required": true, "@maxLength": 80 } },
           { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
         ]
@@ -23,9 +23,9 @@
         ]
       }},
       { "object.entity": {
-        "name": "CopayAuth",
+        "name": "CouponAuth",
         "extends": "Auth",
-        "@discriminatorValue": "Copay",
+        "@discriminatorValue": "Coupon",
         "children": [
           { "field.string": { "name": "token", "@maxLength": 100 } },
           { "field.string": { "name": "auditRef", "@maxLength": 100 } }

@@ -147,10 +147,13 @@ public static class SubscriberRoutes
                 http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)
                 .Value.SerializerOptions;
             var entry = db.Entry(existing);
+            var __keys = SerializerKeys.PropertyByKey(existing.GetType(), jsonOpts);
             var __issues = new ValidationIssues();
             foreach (var prop in body.RootElement.EnumerateObject())
             {
-                var target = entry.Metadata.FindProperty(prop.Name)
+                var __clr = __keys.TryGetValue(prop.Name, out var __mapped) ? __mapped : null;
+                var target = (__clr is null ? null : entry.Metadata.FindProperty(__clr))
+                    ?? entry.Metadata.FindProperty(prop.Name)
                     ?? entry.Metadata.GetProperties().FirstOrDefault(p => string.Equals(p.Name, prop.Name, System.StringComparison.OrdinalIgnoreCase));
                 if (target is null) continue;
                 var __wire = ValidationIssues.WireName(existing.GetType(), target.Name, jsonOpts);

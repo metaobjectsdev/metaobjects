@@ -35,10 +35,10 @@ const auths = pgTable(
   "auths",
   {
     id: bigserial("id", { mode: "number" }).primaryKey(),
-    type: text("type", { enum: ["Bridge", "Copay", "PriorAuth"] as const }),
+    type: text("type", { enum: ["Bridge", "Coupon", "Permit"] as const }),
     reference: varchar("reference", { length: 80 }).notNull(),
     quantity: integer("quantity"),
-    copayAmount: numeric("copay_amount", { precision: 10, scale: 2 }),
+    couponAmount: numeric("coupon_amount", { precision: 10, scale: 2 }),
     approver: varchar("approver", { length: 80 }),
     // FR-037 R1 — the @mutability "writeOnce" column (declared on the TPH base, so
     // every subtype has it).
@@ -49,12 +49,12 @@ const auths = pgTable(
     autoCreatedAt: timestamp("auto_created_at", { mode: "string" }),
     autoUpdatedAt: timestamp("auto_updated_at", { mode: "string" }),
   },
-  () => [check("chk_auths_type", sql`type IN ('Bridge', 'Copay', 'PriorAuth')`)],
+  () => [check("chk_auths_type", sql`type IN ('Bridge', 'Coupon', 'Permit')`)],
 );
 
 // Base entity: polymorphic read surface only (no polymorphic create).
 const AuthInsertSchema = z.object({
-  type: z.enum(["Bridge", "Copay", "PriorAuth"]).optional(),
+  type: z.enum(["Bridge", "Coupon", "Permit"]).optional(),
   reference: z.string().min(1).max(80),
 });
 const AuthUpdateSchema = AuthInsertSchema.partial();
@@ -92,10 +92,10 @@ const writeOnceInsertShape = {
   issuedCurrency: z.string().max(3).nullable().optional(),
 };
 
-// CopayAuth.copayAmount is decimal(10,2): a string or a JSON number in, its canonical string
+// CouponAuth.couponAmount is decimal(10,2): a string or a JSON number in, its canonical string
 // stored, and a value the column would round or overflow refused (ADR-0019 Amendment 1, W2/W3),
 // as the generated write schema does it.
-const copayAmount = z
+const couponAmount = z
   .union([z.string(), z.number()])
   .transform((v, ctx) => {
     const c = parseDecimalInput(v);
@@ -108,23 +108,23 @@ const copayAmount = z
   })
   .nullable()
   .optional();
-const DECIMAL_COLUMNS = ["copayAmount"] as const;
+const DECIMAL_COLUMNS = ["couponAmount"] as const;
 // The decimal output form is the corpus's own `wire` setting (ADR-0019 Amendment 2), read from
 // its .metaobjects/config.json like the generated lanes, never a literal here.
 const DECIMAL_WIRE = nearestWireFormat(API_CONTRACT_TPH_DIR).decimals;
 
 // Per-subtype insert schemas (discriminator pinned, omitted at the route boundary).
 const BridgeInsert = z.object({ reference: z.string().min(1).max(80), quantity: z.number().int(), ...writeOnceInsertShape, ...autoSetInsertShape });
-const CopayInsert = z.object({ reference: z.string().min(1).max(80), copayAmount, ...writeOnceInsertShape, ...autoSetInsertShape });
-const PriorAuthInsert = z.object({ reference: z.string().min(1).max(80), approver: z.string().max(80).nullable().optional(), ...writeOnceInsertShape, ...autoSetInsertShape });
+const CouponInsert = z.object({ reference: z.string().min(1).max(80), couponAmount, ...writeOnceInsertShape, ...autoSetInsertShape });
+const PermitInsert = z.object({ reference: z.string().min(1).max(80), approver: z.string().max(80).nullable().optional(), ...writeOnceInsertShape, ...autoSetInsertShape });
 
 // Per-subtype update schemas — NOT derived via `<Insert>.partial()` (that would
 // carry autoCreatedAt's stamping transform into every PATCH, re-writing the
 // creation timestamp on every update — the exact lost-update bug this gate
 // exists to catch). Declared explicitly instead, omitting autoCreatedAt.
 const BridgeUpdate = z.object({ reference: z.string().min(1).max(80).optional(), quantity: z.number().int().optional(), ...autoSetUpdateShape });
-const CopayUpdate = z.object({ reference: z.string().min(1).max(80).optional(), copayAmount, ...autoSetUpdateShape });
-const PriorAuthUpdate = z.object({ reference: z.string().min(1).max(80).optional(), approver: z.string().max(80).nullable().optional(), ...autoSetUpdateShape });
+const CouponUpdate = z.object({ reference: z.string().min(1).max(80).optional(), couponAmount, ...autoSetUpdateShape });
+const PermitUpdate = z.object({ reference: z.string().min(1).max(80).optional(), approver: z.string().max(80).nullable().optional(), ...autoSetUpdateShape });
 
 const numberOps = ["eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"] as const;
 const stringOps = ["eq", "ne", "in", "like", "isNull"] as const;
@@ -133,26 +133,26 @@ const BridgeFilterAllowlist = {
   reference: { ops: stringOps, subType: "string" as const, leadingWildcard: false },
   quantity: { ops: numberOps, subType: "number" as const, leadingWildcard: false },
 } as const satisfies FilterAllowlist;
-const CopayFilterAllowlist = {
+const CouponFilterAllowlist = {
   id: { ops: numberOps, subType: "number" as const, leadingWildcard: false },
   reference: { ops: stringOps, subType: "string" as const, leadingWildcard: false },
-  copayAmount: { ops: numberOps, subType: "number" as const, leadingWildcard: false, format: "decimal" as const },
+  couponAmount: { ops: numberOps, subType: "number" as const, leadingWildcard: false, format: "decimal" as const },
 } as const satisfies FilterAllowlist;
-const PriorAuthFilterAllowlist = {
+const PermitFilterAllowlist = {
   id: { ops: numberOps, subType: "number" as const, leadingWildcard: false },
   reference: { ops: stringOps, subType: "string" as const, leadingWildcard: false },
   approver: { ops: stringOps, subType: "string" as const, leadingWildcard: false },
 } as const satisfies FilterAllowlist;
 const BridgeSortAllowlist = { id: {}, reference: {}, quantity: {} } as const satisfies SortAllowlist;
-const PriorAuthSortAllowlist = { id: {}, reference: {}, approver: {} } as const satisfies SortAllowlist;
-const CopaySortAllowlist = { id: {}, reference: {} } as const satisfies SortAllowlist;
+const PermitSortAllowlist = { id: {}, reference: {}, approver: {} } as const satisfies SortAllowlist;
+const CouponSortAllowlist = { id: {}, reference: {} } as const satisfies SortAllowlist;
 
 // `api.unknownFields` at its default, `reject`, which this corpus does not change: every
 // field the hierarchy declares, so a sibling subtype's column is dropped on another subtype's
 // route rather than refused, as the generated per-subtype mounts have it.
 const KNOWN_FIELDS = [
   "id", "type", "reference", "issuedCurrency", "autoCreatedAt", "autoUpdatedAt",
-  "quantity", "copayAmount", "approver",
+  "quantity", "couponAmount", "approver",
 ] as const;
 
 export async function startTphServer(connectionUri: string): Promise<TphServerHandle> {
@@ -165,7 +165,7 @@ export async function startTphServer(connectionUri: string): Promise<TphServerHa
       "type"            text,
       "reference"       varchar(80) NOT NULL,
       "quantity"        integer,
-      "copay_amount"    numeric(10,2),
+      "coupon_amount"    numeric(10,2),
       "approver"        varchar(80),
       "issued_currency" varchar(3),
       "auto_created_at" timestamp,
@@ -188,16 +188,16 @@ export async function startTphServer(connectionUri: string): Promise<TphServerHa
         dialect: "postgres", discriminator: { column: "type", value: "Bridge" }, knownFields: KNOWN_FIELDS,
       });
       mountCrudRoutes({
-        fastify: instance, path: "/auths/copay", db, table: auths,
-        insertSchema: CopayInsert, updateSchema: CopayUpdate,
-        filterAllowlist: CopayFilterAllowlist, sortAllowlist: CopaySortAllowlist,
-        dialect: "postgres", discriminator: { column: "type", value: "Copay" }, knownFields: KNOWN_FIELDS, decimalColumns: DECIMAL_COLUMNS, decimalWire: DECIMAL_WIRE,
+        fastify: instance, path: "/auths/coupon", db, table: auths,
+        insertSchema: CouponInsert, updateSchema: CouponUpdate,
+        filterAllowlist: CouponFilterAllowlist, sortAllowlist: CouponSortAllowlist,
+        dialect: "postgres", discriminator: { column: "type", value: "Coupon" }, knownFields: KNOWN_FIELDS, decimalColumns: DECIMAL_COLUMNS, decimalWire: DECIMAL_WIRE,
       });
       mountCrudRoutes({
-        fastify: instance, path: "/auths/priorauth", db, table: auths,
-        insertSchema: PriorAuthInsert, updateSchema: PriorAuthUpdate,
-        filterAllowlist: PriorAuthFilterAllowlist, sortAllowlist: PriorAuthSortAllowlist,
-        dialect: "postgres", discriminator: { column: "type", value: "PriorAuth" }, knownFields: KNOWN_FIELDS,
+        fastify: instance, path: "/auths/permit", db, table: auths,
+        insertSchema: PermitInsert, updateSchema: PermitUpdate,
+        filterAllowlist: PermitFilterAllowlist, sortAllowlist: PermitSortAllowlist,
+        dialect: "postgres", discriminator: { column: "type", value: "Permit" }, knownFields: KNOWN_FIELDS,
       });
     },
     { prefix: "/api" },

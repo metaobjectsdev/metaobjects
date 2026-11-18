@@ -206,7 +206,25 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td></td>
 <td></td>
 <td>metaobjects-core-types</td>
-<td>Optional row-scope predicate (a portable attr.filter object: eq/ne/gt/gte/lt/lte/like/in/isNull with and/or, desugared to { field: { op: value } } at parse time) selecting which rows the view returns — lowered to an outer SQL WHERE. A key names one of the projection&#39;s own fields, else a field of its base entity the view need not output, else a PATH of to-one hops (identity.reference or @cardinality one relationship names) from the base then a field of the entity reached (&#39;orderId.customerId.isActive&#39;), joined but not output. A reached entity field may itself be derived (entity-derived: an origin.computed or origin.first declared on the entity, inlined where the filter reaches it). An aggregate-derived field is not addressable (fail-closed); a to-many hop is refused. A value may be a relative date ({ now: &quot;<ISO-8601 duration>&quot;, startOf? }) on a date or timestamp field.</td>
+<td>Optional row-scope predicate (a portable attr.filter object: eq/ne/gt/gte/lt/lte/like/in/isNull with and/or, desugared to { field: { op: value } } at parse time) selecting which rows the view returns — lowered to an outer SQL WHERE. A key names one of the projection&#39;s own fields, else a field of its base entity the view need not output, else a PATH of to-one hops (identity.reference or @cardinality one relationship names) from the base then a field of the entity reached (&#39;orderId.customerId.hasActiveMembership&#39;), joined but not output. A reached entity field may itself be derived (entity-derived: an origin.computed or origin.first declared on the entity, inlined where the filter reaches it). An aggregate-derived field is not addressable (fail-closed); a to-many hop is refused. A value may be a relative date ({ now: &quot;<ISO-8601 duration>&quot;, startOf? }) on a date or timestamp field (rc.19).</td>
+</tr>
+<tr>
+<td><code>@grain</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>rc.21: the view has one row per element of this base-entity field, a field.object array stored as jsonb; a base row with no element has no row. A field whose origin.passthrough @from names the field&#39;s @objectRef value object (Address.city) reads that member of the element; the base&#39;s own fields read the parent row as usual. An origin.aggregate is refused on such a projection.</td>
+</tr>
+<tr>
+<td><code>@grainOrdinal</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>rc.21: with @grain, the name of a field.int or field.long of this projection (with no origin) that holds the element&#39;s 1-based position in the array.</td>
 </tr>
 <tr>
 <td><code>@object</code></td>
@@ -225,6 +243,24 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td></td>
 <td>metaobjects-core-types</td>
 <td>JVM-only (ADR-0005): the fully-qualified name of an ObjectAdapter that takes over value access for this object&#39;s instances. Every port loads and type-checks it; only Java and Kotlin act on it.</td>
+</tr>
+<tr>
+<td><code>@union</code></td>
+<td>string[]</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>rc.21: the view is this projection&#39;s rows UNIONed with each named projection&#39;s rows. Each named projection has the same effective fields as this one, in order: names, subtypes, array-ness and physical column names (ERR_BAD_ATTR_VALUE otherwise); its own @filter, joins and base apply to its rows. Usually this projection extends one branch and names the others. A named projection may be abstract and sourceless.</td>
+</tr>
+<tr>
+<td><code>@unionAll</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>rc.21: with @union, keep duplicate rows (UNION ALL). Absent or false: duplicates are removed (UNION), SQL&#39;s own default.</td>
 </tr>
 </tbody></table>
 <p><strong>Allowed children</strong></p>

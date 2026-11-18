@@ -456,6 +456,20 @@ language-native console tool, or a build-plugin goal). A dry-run mode previews
 without writing; a watch mode re-runs on metadata changes where supported. Pass
 specific entity names to scope a run to those entities.
 
+**`gen` skips a run when nothing changed.** After loading, every port computes a key from the
+loaded model and everything the generators are built from; when it matches the last successful run
+and every generated file still holds the bytes that run left, `gen` says so and writes nothing
+(ADR-0064). Pass `--force` (Maven: `-Dmetaobjects.force=true`) to render anyway, and
+`verify --codegen --full` to render and compare in a local run. A generator that reads something
+the key does not cover declares it as an input or sets `cache: false`.
+
+**C#: one resolver names every property.** To spell a field's C# property differently (an
+acronym, say), set `GenConfig.PropertyNaming` (`Func<MetaField, string>`). The entity classes, the
+`AppDbContext`, the reverse finders, the routes, the filter map and the credential stripping all
+read it, so they agree. A subclass hook (`EntityGenerator.PropertyName`,
+`DbContextGenerator.PropertyName`) that disagrees with the resolver is refused rather than
+emitting two spellings.
+
 ---
 
 For this project's codegen specifics, read the `references/<language>.md` file for each server

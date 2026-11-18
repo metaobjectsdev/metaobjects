@@ -259,8 +259,11 @@ export function buildObjectPage(fqn: string, g: LinkGraph, cov: CoverageTracker)
     else if (v.subType === "presentIff") rule = `${esc(String(at("field") ?? ""))} present iff ${esc(String(at("when") ?? ""))} = ${esc(String(at("equals") ?? ""))}`;
     else if (v.subType === "atLeastOne" || v.subType === "exactlyOne") {
       const fs = at("fields");
+      const max = at("max");
       const list = esc(Array.isArray(fs) ? fs.map(String).join(", ") : String(fs ?? ""));
-      rule = `${v.subType === "exactlyOne" ? "exactly one" : "at least one"} of ${list}`;
+      rule = v.subType === "exactlyOne" || max === 1
+        ? `exactly one of ${list}`
+        : typeof max === "number" ? `between 1 and ${max} of ${list}` : `at least one of ${list}`;
     }
     else rule = esc(v.subType);
     const condition = at("condition");

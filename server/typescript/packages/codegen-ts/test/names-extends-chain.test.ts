@@ -58,17 +58,17 @@ const MODEL = {
           children: [
             { "source.rdb": { "@table": "zz_auths" } },
             { "field.long": { name: "id" } },
-            { "field.enum": { name: "kind", "@values": ["Copay"] } },
+            { "field.enum": { name: "kind", "@values": ["Coupon"] } },
             { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
           ],
         },
       },
       {
         "object.entity": {
-          name: "CopayAuth",
+          name: "CouponAuth",
           extends: "Auth",
-          "@discriminatorValue": "Copay",
-          children: [{ "field.long": { name: "copayAmount", "@column": "zz_copay_cents" } }],
+          "@discriminatorValue": "Coupon",
+          children: [{ "field.long": { name: "couponAmount", "@column": "zz_coupon_cents" } }],
         },
       },
     ],
@@ -87,7 +87,7 @@ async function generate(
   const dir = mkdtempSync(join(import.meta.dir, "tmp-names-extends-"));
   await runGen({
     config: defineConfig({
-      outDir: dir, extStyle: "none", dbImport: "~/server/db", dialect: "sqlite",
+      outDir: dir, extStyle: "none", dbImport: "~/server/db", outputLayout: "flat" as const, dialect: "sqlite",
       generators: [namesFile(namesOpts), entityFile()],
     }),
     metadata: root,
@@ -153,15 +153,15 @@ describe("names artifacts extend rather than restate", () => {
   test("a TPH subtype spreads the WHOLE base — the shared table is named once", async () => {
     const { tree, dir } = await generate();
     try {
-      const sub = tree["CopayAuth.names.ts"];
+      const sub = tree["CouponAuth.names.ts"];
       expect(sub).toContain('import { AuthNames } from "./Auth.names"');
       // A TPH subtype spreads the base's SOURCES — the shared table is named once, on the
       // base — rather than the whole artifact. Spreading the whole thing would carry the
       // base's `name`/`subType` onto the child, which are the child's own now.
       expect(sub).toContain("...AuthNames.sources,");
-      expect(sub).toContain('name: "CopayAuth"');
+      expect(sub).toContain('name: "CouponAuth"');
       expect(sub).toContain("...AuthNames.fields,");
-      expect(sub).toContain('copayAmount: { name: "copayAmount", column: "zz_copay_cents" }');
+      expect(sub).toContain('couponAmount: { name: "couponAmount", column: "zz_coupon_cents" }');
       // The whole point: the subtype used to restate the base's table name and every one
       // of its columns.
       expect(sub).not.toContain("zz_auths");
@@ -181,12 +181,12 @@ describe("names artifacts extend rather than restate", () => {
       const { writeFileSync } = await import("node:fs");
       writeFileSync(probe, [
         `import { AuthorNames } from "./Author.names";`,
-        `import { CopayAuthNames } from "./CopayAuth.names";`,
+        `import { CouponAuthNames } from "./CouponAuth.names";`,
         // An INHERITED column, reached through the spread.
         `const a: "zz_made_at" = AuthorNames.fields.createdAt.column;`,
         // An inherited TOP-LEVEL member, reached through the whole-base spread.
-        `const b: "zz_auths" = CopayAuthNames.sources.primary.table;`,
-        `const c: "zz_copay_cents" = CopayAuthNames.fields.copayAmount.column;`,
+        `const b: "zz_auths" = CouponAuthNames.sources.primary.table;`,
+        `const c: "zz_coupon_cents" = CouponAuthNames.fields.couponAmount.column;`,
         `export const probe = [a, b, c];`,
       ].join("\n"), "utf8");
 
@@ -309,12 +309,12 @@ describe("a key-only abstract is a link in the chain, not a node to walk past", 
 
 describe("a scoped run still names the shared table", () => {
   test("generating only the TPH subtype emits a base its sources actually reach", async () => {
-    // `meta gen --entities CopayAuth`. Pass 1 emits the subtype; pass 2 walks up to `Auth`
+    // `meta gen --entities CouponAuth`. Pass 1 emits the subtype; pass 2 walks up to `Auth`
     // and used to render it as a FRAGMENT unconditionally — and a fragment declares no
     // source, by design, because it has no physical name. But `Auth` DOES have one: it is
     // the TPH base, and the shared table is named on it. So the base came out with
     // `sources: {}` while the subtype emitted `...AuthNames.sources`, and the entity module
-    // referenced `CopayAuthNames.sources.primary.table` — a member that resolved to
+    // referenced `CouponAuthNames.sources.primary.table` — a member that resolved to
     // nothing. "Fragment" means "declares no source", so it is DERIVED from the source now
     // rather than asserted by the caller.
     const { root, errors } = await new MetaDataLoader().load([
@@ -326,11 +326,11 @@ describe("a scoped run still names the shared table", () => {
     try {
       await runGen({
         config: defineConfig({
-          outDir: dir, extStyle: "none", dbImport: "~/server/db", dialect: "sqlite",
+          outDir: dir, extStyle: "none", dbImport: "~/server/db", outputLayout: "flat" as const, dialect: "sqlite",
           generators: [namesFile(), entityFile()],
         }),
         metadata: root,
-        entityFilter: ["CopayAuth"],
+        entityFilter: ["CouponAuth"],
       });
       const tree: Record<string, string> = {};
       const walk = (d: string): void => {
@@ -351,8 +351,8 @@ describe("a scoped run still names the shared table", () => {
       const probe = join(dir, "zz-probe.ts");
       const { writeFileSync } = await import("node:fs");
       writeFileSync(probe, [
-        `import { CopayAuthNames } from "./CopayAuth.names";`,
-        `const t: "zz_auths" = CopayAuthNames.sources.primary.table;`,
+        `import { CouponAuthNames } from "./CouponAuth.names";`,
+        `const t: "zz_auths" = CouponAuthNames.sources.primary.table;`,
         `export const probe = [t];`,
       ].join("\n"), "utf8");
 
@@ -396,7 +396,7 @@ describe("namesFile({ filter }) narrows emission without breaking the extends ch
       expect(names).toEqual(["Author.names.ts", "BaseEntity.names.ts"]);
       // The TPH pair belongs to another tier here and must be gone.
       expect(tree["Auth.names.ts"]).toBeUndefined();
-      expect(tree["CopayAuth.names.ts"]).toBeUndefined();
+      expect(tree["CouponAuth.names.ts"]).toBeUndefined();
       // And the surviving artifact still really extends the base it kept.
       expect(tree["Author.names.ts"]).toContain("BaseEntityNames");
     } finally {
@@ -409,7 +409,7 @@ describe("namesFile({ filter }) narrows emission without breaking the extends ch
     try {
       const names = Object.keys(tree).filter((f) => f.endsWith(".names.ts")).sort();
       expect(names).toEqual([
-        "Auth.names.ts", "Author.names.ts", "BaseEntity.names.ts", "CopayAuth.names.ts",
+        "Auth.names.ts", "Author.names.ts", "BaseEntity.names.ts", "CouponAuth.names.ts",
       ]);
     } finally {
       rmSync(dir, { recursive: true, force: true });

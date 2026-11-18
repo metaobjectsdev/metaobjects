@@ -89,3 +89,20 @@ The cross-package case this ADR exists for still works, without a rename:
 
 `ERR_PAYLOAD_NAME_COLLISION` is no longer raised by any port. `ERR_NAME_COLLISION` is a
 codegen-time code, like it.
+
+## Amendment (2026-11-09) — release-line text of the same decision, superseded by Amendment 1 above
+
+The package-qualified derived name is **removed** in C# and TypeScript. A value object's type is
+its own name and is never rewritten. The rename had ADR-0044's admitted instability (adding an
+unrelated object renamed an existing type), and ADR-0056's model-wide widening made it worse: an
+**abstract** object that emits nothing could force a concrete value object elsewhere to be
+renamed. A real collision is refused instead, by the run's one claim registry: a generator claims
+each name when it emits it (`ctx.Claim(scope, name, claimant, remedy)` — a type per C# namespace or
+TypeScript module, a DbSet per context, a route segment per routes entry, a finder per class, an
+index per schema), and a second claimant of one name in one scope fails with
+`ERR_NAME_COLLISION`, naming both metadata nodes and the remedy. An object that emits nothing
+claims nothing. The cross-package case this ADR exists for works without a rename: in C# by
+mapping the packages to distinct namespaces (`GenConfig.PackageNamespaces`), in TypeScript by the
+package output layout. `ERR_PAYLOAD_NAME_COLLISION` is no longer raised by those two ports. Python
+still renames (its flat generated package); Java and Kotlin never did. Tracked with the other
+port gaps in `docs/CONFORMANCE.md`.

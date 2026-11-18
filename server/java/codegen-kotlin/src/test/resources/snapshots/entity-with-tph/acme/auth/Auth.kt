@@ -18,8 +18,8 @@ public data class Auth(
   public val reference: String? = null,
   public val quantity: Int? = null,
   @param:JsonDeserialize(using = MetaDecimalWire.Deserializer::class)
-  public val copayAmount: BigDecimal? = null,
-  public val priorAuthNumber: String? = null,
+  public val couponAmount: BigDecimal? = null,
+  public val permitNumber: String? = null,
 ) {
   /**
    * Fluent builder — lets a JAVA caller set a subset of properties.
@@ -33,9 +33,9 @@ public data class Auth(
 
     private var quantity: Int? = null
 
-    private var copayAmount: BigDecimal? = null
+    private var couponAmount: BigDecimal? = null
 
-    private var priorAuthNumber: String? = null
+    private var permitNumber: String? = null
 
     public fun id(v: Long?): Builder {
       this.id = v
@@ -57,13 +57,13 @@ public data class Auth(
       return this
     }
 
-    public fun copayAmount(v: BigDecimal?): Builder {
-      this.copayAmount = v
+    public fun couponAmount(v: BigDecimal?): Builder {
+      this.couponAmount = v
       return this
     }
 
-    public fun priorAuthNumber(v: String?): Builder {
-      this.priorAuthNumber = v
+    public fun permitNumber(v: String?): Builder {
+      this.permitNumber = v
       return this
     }
 
@@ -72,8 +72,8 @@ public data class Auth(
       type = type,
       reference = reference,
       quantity = quantity,
-      copayAmount = copayAmount,
-      priorAuthNumber = priorAuthNumber
+      couponAmount = couponAmount,
+      permitNumber = permitNumber
     )
   }
 

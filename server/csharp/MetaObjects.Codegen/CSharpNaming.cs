@@ -335,6 +335,50 @@ public static class CSharpNaming
     public static string PropertyName(MetaField field, GenConfig? config) =>
         config?.PropertyNaming?.Invoke(field) ?? Pascal(field.Name);
 
+    /// <summary>
+    /// The fields whose C# property (the run's <see cref="GenConfig.PropertyNaming"/> resolver)
+    /// is not the field name in another case: the only ones the runtime's case-insensitive
+    /// property lookup cannot find on its own. Shared with the routes generator, which
+    /// passes the emitted map to the filter dispatch exactly when this is non-empty.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> RenamedProperties(MetaObject entity, GenConfig config)
+    {
+        var map = new Dictionary<string, string>(System.StringComparer.Ordinal);
+        foreach (var f in entity.Fields())
+        {
+            var prop = CSharpNaming.PropertyName(f, config);
+            if (!string.Equals(prop, f.Name, StringComparison.OrdinalIgnoreCase)) map[f.Name] = prop;
+        }
+        return map;
+    }
+
+    /// <summary>
+    /// Refuse a generator whose <c>PropertyName</c> hook is overridden to answer differently from
+    /// <see cref="GenConfig.PropertyNaming"/> for any field. Only the resolver reaches every
+    /// generator (the entity, the context, the routes, the callable, the extractor, the report
+    /// export, the filter map), so a lone override would declare one name and reference another
+    /// in a different file: output that does not compile, or a sort that fails at run time.
+    /// </summary>
+    public static void RefuseDivergingPropertyHook(
+        string generatorName, IEnumerable<MetaObject> objects, GenConfig config, Func<MetaField, string> hook)
+    {
+        foreach (var obj in objects)
+        {
+            foreach (var f in obj.Fields())
+            {
+                var resolved = PropertyName(f, config);
+                var hooked = hook(f);
+                if (!string.Equals(hooked, resolved, StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException(
+                        $"{generatorName}: its PropertyName hook names field \"{obj.Name}.{f.Name}\" \"{hooked}\", but the run's " +
+                        $"property-naming resolver names it \"{resolved}\"; every other generator uses the resolver, so the " +
+                        "generated files would disagree: set GenConfig.PropertyNaming instead of overriding the hook.");
+                }
+            }
+        }
+    }
+
     // ----------------------------------------------------------------------------
     // Generated-SDK SYMBOL names — the single source of truth for the public C#
     // identifiers the generators emit. Each generator calls one of these instead of
@@ -367,20 +411,24 @@ public static class CSharpNaming
     /// </para>
     /// </summary>
     public static string RoutePath(MetaObject entity) =>
+        // rc.19 (R57, fix round I3): a declared @collectionName, or a configured pluralizer, names
+        // the segment (snake_cased, acronym-aware); otherwise the historical rule, byte-identical.
+        // One rule with TypeScript: fixtures/naming-conformance/collection-segments.json.
         CollectionNames.Segment(entity, name => PluralizeCrossPort(ToSnakeCase(name)));
 
     /// <summary>
-    /// The DbSet property name for an object: its <c>@collectionName</c> when it declares one, else
-    /// the configured pluralizer (<c>naming.collections</c>) over <c>Pascal(name)</c>, else
-    /// <c>Pluralize(Pascal(name))</c> (which keeps C#'s <c>-sis</c> rule, so an unconfigured project's
-    /// DbSets are unchanged). Every site that names the property (the context, the
-    /// routes, the reverse finders, the api reference) reads it here, so they always agree.
+    /// The DbSet property name for an object: its collection name (rc.19, R57) — its own
+    /// <c>@collectionName</c> (or the deprecated <c>@dbSetName</c> alias), else the configured
+    /// pluralizer (<c>naming.collections</c>) over <c>Pascal(name)</c>, else the historical
+    /// <c>Pluralize(Pascal(name))</c> (which keeps C#'s <c>-sis</c> rule, so an unconfigured
+    /// project's DbSets are unchanged). Every site that names the property (the context, the routes,
+    /// the reverse finders, the api reference) reads it here, so they always agree.
     /// </summary>
     public static string DbSetName(MetaObject entity)
     {
-        // ADR-0039: own — @collectionName names THIS object's property; an abstract base's value
-        // inherited by every subtype would hand them all one name.
-        if (entity.OwnAttr(OBJECT_ATTR_COLLECTION_NAME) is not string { Length: > 0 } declared)
+        // ADR-0039: own — the name is THIS object's; an abstract base's value inherited by every
+        // subtype would hand them all one name.
+        if (CollectionNames.Declared(entity) is not { } declared)
             return CollectionNames.ConfiguredPluralizer(entity) is { } configured
                 ? NamingStrategies.Pluralizer(configured)(Pascal(entity.Name))
                 : Pluralize(Pascal(entity.Name));
@@ -388,7 +436,7 @@ public static class CSharpNaming
         // error in the generated context (or a property that hides DbContext.Database).
         if (!System.Text.RegularExpressions.Regex.IsMatch(declared, "^[A-Za-z_][A-Za-z0-9_]*$") || ReservedDbSetNames.Contains(declared))
             throw new InvalidOperationException(
-                $"{entity.ResolutionKey()}: @collectionName \"{declared}\" cannot be the DbSet property name — it must be a C# identifier " +
+                $"{entity.ResolutionKey()}: the collection name \"{declared}\" (@collectionName, or its deprecated alias @dbSetName) cannot be the DbSet property name — it must be a C# identifier " +
                 "(letters, digits and underscores, not starting with a digit) and not a DbContext member (Database, Model, ChangeTracker, ContextId).");
         return declared;
     }
@@ -562,16 +610,25 @@ public static class CSharpNaming
         if (source is null) return null;
 
         var fields = new Dictionary<string, FieldNames>(StringComparer.Ordinal);
+        // rc.21 (U7): a derived field of an object read from its table has no column, so it has
+        // no names entry — no `…Column` constant naming a column that does not exist.
+        var noColumn = source.IsWritable() && !obj.IsWriteThrough();
         // ADR-0039: Fields() is the RESOLVING accessor — an inherited @column must
         // resolve here, or the constant disagrees with the column EF actually binds.
-        foreach (var f in obj.Fields())
+        foreach (var f in obj.Fields().Where(f => !(noColumn && f.IsDerived())))
             fields[f.Name] = FieldNamesOf(f, strategy);
         // ADR-0039's sanctioned own-accessor use: what this artifact DECLARES.
         var ownFields = new Dictionary<string, FieldNames>(StringComparer.Ordinal);
-        foreach (var f in obj.OwnFields())
+        foreach (var f in obj.OwnFields().Where(f => !(noColumn && f.IsDerived())))
             ownFields[f.Name] = FieldNamesOf(f, strategy);
 
         var superObj = NamesArtifactSuperOf(obj);
+        // rc.21 fix round (M8): an abstract-entity fragment leaves its derived fields out (they are
+        // no column of the tables extending it), so an object whose derived fields ARE columns (a
+        // write-through entity's read view) declares the ones it inherits itself, or it would lose them.
+        if (!noColumn && superObj is not null && superObj.IsEntity() && superObj.IsAbstract)
+            foreach (var f in obj.Fields().Where(f => f.IsDerived() && !ownFields.ContainsKey(f.Name)))
+                ownFields[f.Name] = FieldNamesOf(f, strategy);
         // Identity of the resolved source NODE, not equality of the resolved strings: a
         // divergence guard is exactly what this codebase forbids here, and the question
         // being asked is structural — did this object declare a source, or is it using its
@@ -768,10 +825,11 @@ public static class CSharpNaming
     {
         strategy ??= ColumnNamingStrategy.SnakeCase;
         if (!DeclaresNamesContent(obj)) return null;
-        var own = obj.OwnFields();
+        // rc.21 (U7): an abstract ENTITY's derived field is no column of the tables extending it.
+        var own = obj.OwnFields().Where(f => !(obj.IsEntity() && f.IsDerived())).ToList();
 
         var fields = new Dictionary<string, FieldNames>(StringComparer.Ordinal);
-        foreach (var f in obj.Fields())
+        foreach (var f in obj.Fields().Where(f => !(obj.IsEntity() && f.IsDerived())))
             fields[f.Name] = FieldNamesOf(f, strategy);
         var ownFields = new Dictionary<string, FieldNames>(StringComparer.Ordinal);
         foreach (var f in own)
@@ -1194,7 +1252,7 @@ public static class CSharpNaming
     /// <list type="bullet">
     ///   <item>When the field extends a SHARED declaration — a root-level abstract
     ///   <c>field.enum</c> (FR-019) — use the PascalCased super name, the one type
-    ///   materialized in <c>Enums.g.cs</c> (or provided externally) and shared by every
+    ///   materialized in its own <c>&lt;package&gt;/&lt;Enum&gt;.g.cs</c> (or provided externally) and shared by every
     ///   field that extends it.</item>
     ///   <item>Otherwise use <c>&lt;EntityPascal&gt;&lt;FieldPascal&gt;</c>.</item>
     /// </list>

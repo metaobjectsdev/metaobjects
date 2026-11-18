@@ -32,7 +32,7 @@ class KotlinTphM2mCodegenTest {
         { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
             { "source.rdb":   { "@table": "auths" } },
             { "field.long":   { "name": "id" } },
-            { "field.enum":   { "name": "type", "@values": ["Bridge", "Copay"] } },
+            { "field.enum":   { "name": "type", "@values": ["Bridge", "Coupon"] } },
             { "field.string": { "name": "reference", "@required": true, "@maxLength": 80 } },
             { "relationship.association": { "name": "tags", "@cardinality": "many",
                 "@objectRef": "Tag", "@through": "AuthTag" } },
@@ -43,8 +43,8 @@ class KotlinTphM2mCodegenTest {
             { "relationship.association": { "name": "linkedAuths", "@cardinality": "many",
                 "@objectRef": "BridgeAuth", "@through": "AuthLink", "@sourceRefField": "fromAuthId" } }
         ] } },
-        { "object.entity": { "name": "CopayAuth", "extends": "Auth", "@discriminatorValue": "Copay", "children": [
-            { "field.decimal": { "name": "copayAmount", "@precision": 10, "@scale": 2 } }
+        { "object.entity": { "name": "CouponAuth", "extends": "Auth", "@discriminatorValue": "Coupon", "children": [
+            { "field.decimal": { "name": "couponAmount", "@precision": 10, "@scale": 2 } }
         ] } },
         { "object.entity": { "name": "Tag", "children": [
             { "source.rdb":   { "@table": "tags" } },
@@ -112,9 +112,9 @@ class KotlinTphM2mCodegenTest {
         assertTrue("@GetMapping(\"/bridge/{id}/tags\")" in src, "expected /bridge/{id}/tags; saw:\n$src")
         assertTrue("fun tagsBridge(@PathVariable id: Long): ResponseEntity<List<Tag>>" in src,
             "expected tagsBridge() handler; saw:\n$src")
-        assertTrue("@GetMapping(\"/copay/{id}/tags\")" in src, "expected /copay/{id}/tags; saw:\n$src")
-        assertTrue("fun tagsCopay(@PathVariable id: Long): ResponseEntity<List<Tag>>" in src,
-            "expected tagsCopay() handler; saw:\n$src")
+        assertTrue("@GetMapping(\"/coupon/{id}/tags\")" in src, "expected /coupon/{id}/tags; saw:\n$src")
+        assertTrue("fun tagsCoupon(@PathVariable id: Long): ResponseEntity<List<Tag>>" in src,
+            "expected tagsCoupon() handler; saw:\n$src")
         // Rule (c): Stage 0 verifies the source id names a row of THIS subtype before the SAME
         // AuthTable.tagsQuery(id) helper the base mount uses — a sibling's id must return [].
         assertTrue(
@@ -138,9 +138,9 @@ class KotlinTphM2mCodegenTest {
         assertTrue("fun linkedAuthsBridge(@PathVariable id: Long): ResponseEntity<List<Auth>>" in src,
             "expected linkedAuthsBridge() returning List<Auth> (the storage/union type); saw:\n$src")
         assertFalse("List<BridgeAuth>" in src, "BridgeAuth has no data class to reference; saw:\n$src")
-        // linkedAuths is declared on BridgeAuth only — Copay never resolves it.
-        assertFalse("/copay/{id}/linkedAuths" in src, "Copay must not mount linkedAuths; saw:\n$src")
-        assertFalse("linkedAuthsCopay" in src, "Copay must not get a linkedAuths handler; saw:\n$src")
+        // linkedAuths is declared on BridgeAuth only — Coupon never resolves it.
+        assertFalse("/coupon/{id}/linkedAuths" in src, "Coupon must not mount linkedAuths; saw:\n$src")
+        assertFalse("linkedAuthsCoupon" in src, "Coupon must not get a linkedAuths handler; saw:\n$src")
     }
 
     @Test fun subtypeOwnRelationTargetingASubtypeBindsToTheStorageTableAndFiltersByDiscriminator() {
@@ -171,6 +171,6 @@ class KotlinTphM2mCodegenTest {
         val src = controller()
         assertTrue("@RequestMapping(\"/api/auths\")" in src)
         assertTrue("@GetMapping(\"/bridge\")" in src)
-        assertTrue("@GetMapping(\"/copay\")" in src)
+        assertTrue("@GetMapping(\"/coupon\")" in src)
     }
 }

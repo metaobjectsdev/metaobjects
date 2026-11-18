@@ -1,0 +1,8 @@
+{ "metadata.root": { "package": "acme::views", "children": [
+  { "object.entity": { "name": "Region", "children": [
+    { "source.rdb": { "@table": "regions" } },
+    { "field.long": { "name": "id" } },
+    { "field.string": { "name": "code", "@dbColumnType": "character(3)", "@maxLength": 10 } },
+    { "identity.primary": { "name": "id", "@fields": "id" } }
+  ] } }
+] } }

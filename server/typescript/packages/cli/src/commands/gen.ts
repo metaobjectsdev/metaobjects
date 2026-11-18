@@ -23,6 +23,7 @@ import {
 import type { Generator } from "@metaobjectsdev/codegen-ts";
 import type { WriteStatus } from "@metaobjectsdev/codegen-ts";
 import { packageOfResolutionKey } from "@metaobjectsdev/metadata";
+import { warnWidenedExtenders } from "../lib/widened-extenders.js";
 import type { MetaRoot } from "@metaobjectsdev/metadata";
 import type { Collection } from "@metaobjectsdev/sdk";
 import { describeLoadError, reportLoadError } from "../lib/load-error.js";
@@ -247,6 +248,11 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     : [];
   for (const w of unknownAttrs) { log.warn(`warning: ${w}`); warnings.push(w); }
 
+  // rc.21 part B (I2): an extender whose view now returns every row of a TPH base. Said before
+  // the skip, so a skipped run still says it (as `dotnet meta gen` does): the finding is about the
+  // model, and a warning that stops appearing once nothing changes is one the user never fixes.
+  warnings.push(...warnWidenedExtenders(metadata, (line) => log.warn(line)));
+
   // ADR-0064 — skip rendering when the loaded model and every generator input match the last
   // successful run and every file it recorded exists. Nothing renders and nothing is written,
   // the manifest and the stored key included. `--force` (and every mode that does not write)
@@ -338,7 +344,7 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
       // the model with a loader of its own (the docs site).
       sourceRoots: sourceRootsOf(genCollection),
       // The physical schema `agent/schema.md` describes, built only if `agentDocsFile()` asks.
-      agentSchema: () => buildAgentSchemaInput(
+      agentSchema: () => schemaOptions === undefined ? undefined : buildAgentSchemaInput(
         metadata,
         forgeConfig.dialect,
         (m) => { const w = `[agent-docs] ${m}`; log.warn(w); warnings.push(w); },

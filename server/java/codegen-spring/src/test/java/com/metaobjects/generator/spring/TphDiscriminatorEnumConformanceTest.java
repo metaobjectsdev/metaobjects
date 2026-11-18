@@ -27,7 +27,7 @@ import static org.junit.Assert.assertTrue;
  * assertion pins the static type so the discriminator can't silently regress to {@code String}.
  * Loads the SAME shared fixture the integration lane uses
  * ({@code fixtures/api-contract-conformance/tph/meta.json}: TPH base {@code Auth} with a
- * {@code field.enum type} discriminator over {@code Bridge|Copay|PriorAuth}).</p>
+ * {@code field.enum type} discriminator over {@code Bridge|Coupon|Permit}).</p>
  */
 public class TphDiscriminatorEnumConformanceTest extends SharedRegistryTestBase {
 
@@ -58,7 +58,7 @@ public class TphDiscriminatorEnumConformanceTest extends SharedRegistryTestBase 
         assertTrue("the @discriminator field.enum must be typed as the generated enum; saw:\n" + src,
             src.contains("AuthType type"));
         assertTrue("the discriminator enum must be materialized with its @values; saw:\n" + src,
-            src.contains("public enum AuthType { Bridge, Copay, PriorAuth }"));
+            src.contains("public enum AuthType { Bridge, Coupon, Permit }"));
         assertFalse("the @discriminator must NOT regress to a raw String component; saw:\n" + src,
             src.contains("String type"));
     }

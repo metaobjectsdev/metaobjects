@@ -89,9 +89,9 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>string</td>
 <td>no</td>
 <td></td>
-<td><code>uuid</code>, <code>jsonb</code></td>
+<td></td>
 <td>metaobjects-db</td>
-<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres&#39;s own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
 </tr>
 <tr>
 <td><code>@default</code></td>
@@ -239,9 +239,9 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>string</td>
 <td>no</td>
 <td></td>
-<td><code>uuid</code>, <code>jsonb</code></td>
+<td></td>
 <td>metaobjects-db</td>
-<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres&#39;s own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
 </tr>
 <tr>
 <td><code>@default</code></td>
@@ -399,9 +399,9 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>string</td>
 <td>no</td>
 <td></td>
-<td><code>uuid</code>, <code>jsonb</code></td>
+<td></td>
 <td>metaobjects-db</td>
-<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres&#39;s own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
 </tr>
 <tr>
 <td><code>@default</code></td>
@@ -558,9 +558,9 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>string</td>
 <td>no</td>
 <td></td>
-<td><code>uuid</code>, <code>jsonb</code></td>
+<td></td>
 <td>metaobjects-db</td>
-<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres&#39;s own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
 </tr>
 <tr>
 <td><code>@default</code></td>
@@ -709,9 +709,9 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>string</td>
 <td>no</td>
 <td></td>
-<td><code>uuid</code>, <code>jsonb</code></td>
+<td></td>
 <td>metaobjects-db</td>
-<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres&#39;s own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
 </tr>
 <tr>
 <td><code>@default</code></td>
@@ -877,9 +877,9 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>string</td>
 <td>no</td>
 <td></td>
-<td><code>uuid</code>, <code>jsonb</code></td>
+<td></td>
 <td>metaobjects-db</td>
-<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres&#39;s own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
 </tr>
 <tr>
 <td><code>@default</code></td>
@@ -1027,9 +1027,9 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>string</td>
 <td>no</td>
 <td></td>
-<td><code>uuid</code>, <code>jsonb</code></td>
+<td></td>
 <td>metaobjects-db</td>
-<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres&#39;s own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
 </tr>
 <tr>
 <td><code>@default</code></td>
@@ -1138,9 +1138,9 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <li><code>view.*</code> — 0..*</li>
 </ul>
 <h3>field.enum</h3>
-<p>String-backed enumeration constrained to a closed set of member symbols (@values). Each member is its own stored string with no name/value divergence.</p>
+<p>String-backed enumeration constrained to a closed set of member symbols (@values). Each member is its own stored string, unless @stringValueMap gives it another (or @intValueMap an integer).</p>
 <p><strong>Owning provider:</strong> metaobjects-core-types</p>
-<p><strong>Rules:</strong> Required @values is a non-empty, duplicate-free set; each member must match ^[A-Za-z_][A-Za-z0-9_]*$ so symbol == stored string in every target language. Optional FR-010/FR-011 overlays add tolerant-extract aliasing (@enumAlias), per-member docs (@enumDoc), an uncoercible-value fallback (@coerceDefault, must be one of @values), and ASCII normalization mode (@normalize).</p>
+<p><strong>Rules:</strong> Required @values is a non-empty, duplicate-free set; each member must match ^[A-Za-z_][A-Za-z0-9_]*$ so it is a legal identifier in every target language, and is its own stored string unless @stringValueMap (string) or @intValueMap (integer) maps it. Optional FR-010/FR-011 overlays add tolerant-extract aliasing (@enumAlias), per-member docs (@enumDoc), an uncoercible-value fallback (@coerceDefault, must be one of @values), and ASCII normalization mode (@normalize).</p>
 <p><strong>When to use:</strong> A field is a fixed, closed set of string values. Set @values so the union type, DB CHECK, and validation are generated — don&#39;t hand-roll constants + checks.</p>
 <p><strong>Attributes</strong></p>
 <table>
@@ -1192,13 +1192,22 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means).</td>
 </tr>
 <tr>
+<td><code>@dbCheck</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>false: this enum&#39;s member list generates no database CHECK (meta migrate and a generated EF model leave it out); the generated app-level validation still holds every write to the members. Absent: true. For a column whose legacy rows hold values outside the members, which a CHECK would refuse on their next UPDATE even NOT VALID. Refused with @constraintName (ERR_CONSTRAINT_NAME_WITHOUT_CHECK). RDB-physical — contributed by the db provider.</td>
+</tr>
+<tr>
 <td><code>@dbColumnType</code></td>
 <td>string</td>
 <td>no</td>
 <td></td>
-<td><code>uuid</code>, <code>jsonb</code></td>
+<td></td>
 <td>metaobjects-db</td>
-<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres&#39;s own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
 </tr>
 <tr>
 <td><code>@default</code></td>
@@ -1336,6 +1345,15 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>Direction a sort takes when it names this field but omits the order: a ?sort=<field> with no :order, and a layout.dataGrid whose @defaultSortField names it with no @defaultSortOrder. Defaults to &#39;asc&#39;.</td>
 </tr>
 <tr>
+<td><code>@stringValueMap</code></td>
+<td>properties</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Optional per-member stored strings ({member: string}) for a string-stored enum whose database spelling differs from its member symbols (a legacy column holding lowercase &#39;draft&#39;, or &#39;LEGACY_A&#39;). The column, its CHECK, its length, a @default and a @condition literal hold the stored strings; the generated native type and wire format keep the members. Keys must exactly match @values; values must be unique non-empty strings. The string twin of @intValueMap, refused with it and on an array enum (ERR_BAD_ATTR_VALUE).</td>
+</tr>
+<tr>
 <td><code>@unique</code></td>
 <td>boolean</td>
 <td>no</td>
@@ -1351,7 +1369,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td></td>
 <td></td>
 <td>metaobjects-core-types</td>
-<td>Member symbols of an enum-subtype field. Declaration order is significant; each is a legal identifier and its own stored string.</td>
+<td>Member symbols of an enum-subtype field. Declaration order is significant; each is a legal identifier and its own stored string unless @stringValueMap or @intValueMap maps it.</td>
 </tr>
 <tr>
 <td><code>@xmlText</code></td>
@@ -1408,9 +1426,9 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>string</td>
 <td>no</td>
 <td></td>
-<td><code>uuid</code>, <code>jsonb</code></td>
+<td></td>
 <td>metaobjects-db</td>
-<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres&#39;s own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
 </tr>
 <tr>
 <td><code>@default</code></td>
@@ -1558,9 +1576,9 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>string</td>
 <td>no</td>
 <td></td>
-<td><code>uuid</code>, <code>jsonb</code></td>
+<td></td>
 <td>metaobjects-db</td>
-<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres&#39;s own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
 </tr>
 <tr>
 <td><code>@default</code></td>
@@ -1717,9 +1735,9 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>string</td>
 <td>no</td>
 <td></td>
-<td><code>uuid</code>, <code>jsonb</code></td>
+<td></td>
 <td>metaobjects-db</td>
-<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres&#39;s own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
 </tr>
 <tr>
 <td><code>@default</code></td>
@@ -1867,9 +1885,9 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>string</td>
 <td>no</td>
 <td></td>
-<td><code>uuid</code>, <code>jsonb</code></td>
+<td></td>
 <td>metaobjects-db</td>
-<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres&#39;s own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
 </tr>
 <tr>
 <td><code>@default</code></td>
@@ -2018,9 +2036,9 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>string</td>
 <td>no</td>
 <td></td>
-<td><code>uuid</code>, <code>jsonb</code></td>
+<td></td>
 <td>metaobjects-db</td>
-<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres&#39;s own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
 </tr>
 <tr>
 <td><code>@default</code></td>
@@ -2187,9 +2205,9 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>string</td>
 <td>no</td>
 <td></td>
-<td><code>uuid</code>, <code>jsonb</code></td>
+<td></td>
 <td>metaobjects-db</td>
-<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres&#39;s own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
 </tr>
 <tr>
 <td><code>@default</code></td>
@@ -2364,9 +2382,9 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>string</td>
 <td>no</td>
 <td></td>
-<td><code>uuid</code>, <code>jsonb</code></td>
+<td></td>
 <td>metaobjects-db</td>
-<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres&#39;s own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
 </tr>
 <tr>
 <td><code>@default</code></td>
@@ -2540,9 +2558,9 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>string</td>
 <td>no</td>
 <td></td>
-<td><code>uuid</code>, <code>jsonb</code></td>
+<td></td>
 <td>metaobjects-db</td>
-<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres&#39;s own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
 </tr>
 <tr>
 <td><code>@default</code></td>
@@ -2699,9 +2717,9 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>string</td>
 <td>no</td>
 <td></td>
-<td><code>uuid</code>, <code>jsonb</code></td>
+<td></td>
 <td>metaobjects-db</td>
-<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres&#39;s own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
 </tr>
 <tr>
 <td><code>@default</code></td>
@@ -2858,9 +2876,9 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>string</td>
 <td>no</td>
 <td></td>
-<td><code>uuid</code>, <code>jsonb</code></td>
+<td></td>
 <td>metaobjects-db</td>
-<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres&#39;s own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
 </tr>
 <tr>
 <td><code>@default</code></td>
@@ -3017,9 +3035,9 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>string</td>
 <td>no</td>
 <td></td>
-<td><code>uuid</code>, <code>jsonb</code></td>
+<td></td>
 <td>metaobjects-db</td>
-<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres&#39;s own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
 </tr>
 <tr>
 <td><code>@default</code></td>

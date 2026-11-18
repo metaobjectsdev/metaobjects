@@ -14,17 +14,17 @@ queries:
     data: { reference: "B", quantity: 1 }
     expect: { id: "1", type: "Bridge", reference: "B", quantity: 1 }
 
-  - name: insert-copay
+  - name: insert-coupon
     op: create
-    entity: CopayAuth
-    data: { reference: "C", copayAmount: "9.99" }
-    expect: { id: "2", type: "Copay", reference: "C", copayAmount: "9.99" }
+    entity: CouponAuth
+    data: { reference: "C", couponAmount: "9.99" }
+    expect: { id: "2", type: "Coupon", reference: "C", couponAmount: "9.99" }
 
-  - name: insert-priorauth
+  - name: insert-permit
     op: create
-    entity: PriorAuthAuth
+    entity: PermitAuth
     data: { reference: "P", approver: "Dr. X" }
-    expect: { id: "3", type: "PriorAuth", reference: "P", approver: "Dr. X" }
+    expect: { id: "3", type: "Permit", reference: "P", approver: "Dr. X" }
 
   - name: list-all-auths-polymorphic
     op: list
@@ -32,5 +32,5 @@ queries:
     sort: [{ field: id, dir: asc }]
     expect:
       - { id: "1", type: "Bridge", reference: "B" }
-      - { id: "2", type: "Copay", reference: "C" }
-      - { id: "3", type: "PriorAuth", reference: "P" }
+      - { id: "2", type: "Coupon", reference: "C" }
+      - { id: "3", type: "Permit", reference: "P" }

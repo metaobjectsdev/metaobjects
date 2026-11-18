@@ -63,8 +63,12 @@ export function sqliteTypeToSqlType(declaredType: string): SqlType {
   // Affinity rules per sqlite.org/datatype3.html — adapted to canonical SqlType.
 
   // text affinity
-  const varcharMatch = /^(?:VARCHAR|CHAR|CHARACTER|TEXT)\((\d+)\)$/.exec(t);
+  // rc.21 part B (U2): CHARACTER(n) is what the emitter writes for a fixed-length @dbColumnType.
+  const charMatch = /^CHARACTER\((\d+)\)$/.exec(t);
+  if (charMatch) return { kind: "text", maxLength: parseInt(charMatch[1] ?? "1", 10), variant: "char" };
+  const varcharMatch = /^(?:VARCHAR|CHAR|TEXT)\((\d+)\)$/.exec(t);
   if (varcharMatch) return { kind: "text", maxLength: parseInt(varcharMatch[1] ?? "0", 10) };
+  if (t === "VARCHAR") return { kind: "text", variant: "varchar" };
   if (/TEXT|CLOB|VARCHAR|CHAR/.test(t)) return { kind: "text" };
 
   // numeric affinity

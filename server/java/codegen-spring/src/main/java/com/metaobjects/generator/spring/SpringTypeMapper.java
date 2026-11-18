@@ -428,6 +428,36 @@ public final class SpringTypeMapper {
      * other port agrees with.
      */
     public static String enumDeclaration(String typeName, List<String> values, java.util.Map<String, Integer> intValueMap) {
+        return enumDeclaration(typeName, values, intValueMap, null);
+    }
+
+    /**
+     * rc.21 — as {@link #enumDeclaration(String, List, java.util.Map)}, and with a
+     * {@code @stringValueMap} the enum carries each member's stored STRING ({@code dbValue()})
+     * and the reverse lookup ({@code fromDbValue(String)}), which throws on an unmapped one.
+     */
+    public static String enumDeclaration(String typeName, List<String> values, java.util.Map<String, Integer> intValueMap,
+                                         java.util.Map<String, String> stringValueMap) {
+        if (intValueMap == null && stringValueMap != null) {
+            StringBuilder sb = new StringBuilder("public enum ").append(typeName).append(" {\n");
+            List<String> members = new java.util.ArrayList<>();
+            for (String v : values) {
+                String stored = stringValueMap.getOrDefault(v, v).replace("\\", "\\\\").replace("\"", "\\\"");
+                members.add("    " + v + "(\"" + stored + "\")");
+            }
+            sb.append(String.join(",\n", members)).append(";\n\n");
+            sb.append("    private final String dbValue;\n\n");
+            sb.append("    ").append(typeName).append("(String dbValue) { this.dbValue = dbValue; }\n\n");
+            sb.append("    /** The stored string this member maps to, from the declared @stringValueMap. */\n");
+            sb.append("    public String dbValue() { return dbValue; }\n\n");
+            sb.append("    /** The member a stored string maps to; throws on a value the map does not declare. */\n");
+            sb.append("    public static ").append(typeName).append(" fromDbValue(String value) {\n");
+            sb.append("        for (").append(typeName).append(" e : values()) if (e.dbValue.equals(value)) return e;\n");
+            sb.append("        throw new IllegalArgumentException(\"unmapped stored value \" + value + \" for ")
+              .append(typeName).append("\");\n");
+            sb.append("    }\n}");
+            return sb.toString();
+        }
         if (intValueMap == null) {
             return "public enum " + typeName + " { " + String.join(", ", values) + " }";
         }
@@ -446,6 +476,17 @@ public final class SpringTypeMapper {
           .append(typeName).append("\");\n");
         sb.append("    }\n}");
         return sb.toString();
+    }
+
+    /** rc.21 — the declared member → stored string ({@code @stringValueMap}, resolving), or null. */
+    public static java.util.Map<String, String> stringValueMap(EnumField field) {
+        if (!field.hasMetaAttr(EnumField.ATTR_STRING_VALUE_MAP)) return null;
+        Object raw = field.getMetaAttr(EnumField.ATTR_STRING_VALUE_MAP).getValue();
+        if (!(raw instanceof java.util.Map<?, ?> m)) return null;
+        java.util.Map<String, String> out = new java.util.LinkedHashMap<>();
+        for (java.util.Map.Entry<?, ?> e : m.entrySet())
+            if (e.getKey() != null && e.getValue() instanceof String s) out.put(String.valueOf(e.getKey()), s);
+        return out.isEmpty() ? null : out;
     }
 
     public static List<String> effectiveEnumValues(EnumField field) {

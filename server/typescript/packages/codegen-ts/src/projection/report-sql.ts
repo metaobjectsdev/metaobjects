@@ -27,7 +27,7 @@ import {
   type MetaSegment,
   type RelativeStartOf,
 } from "@metaobjectsdev/metadata";
-import { intValueMapOf } from "../enum-meta.js";
+import { enumStorageMapOf } from "../enum-meta.js";
 import {
   desugarClause,
   encodeIntEnumFilterValue,
@@ -183,7 +183,7 @@ function lowerFilterValue(raw: unknown, op: string, field: MetaField, key: strin
   return encodeIntEnumFilterValue(
     raw,
     op,
-    field.subType === FIELD_SUBTYPE_ENUM ? intValueMapOf(field) : undefined,
+    field.subType === FIELD_SUBTYPE_ENUM ? enumStorageMapOf(field) : undefined,
     key,
     where,
   );

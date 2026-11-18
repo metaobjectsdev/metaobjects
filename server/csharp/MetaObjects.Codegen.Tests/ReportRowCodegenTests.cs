@@ -844,4 +844,22 @@ public class ReportRowCodegenTests
         Assert.Equal(ErrorCode.ERR_INVALID_REPORT, error.Code);
         Assert.Contains("a report cannot be abstract", error.Message);
     }
+
+    // rc.21 fix round (I3): a dimension over a @stringValueMap enum reads its stored strings — the
+    // row model carries the map from its type source, so the row gets the member <-> stored-string
+    // converter (which throws on an unknown stored value), not the name-based HasConversion<string>().
+    [Fact]
+    public void A_string_value_map_enum_dimension_reads_its_stored_strings()
+    {
+        var model = ModelTemplate.Replace(
+            "{ \"field.enum\": { \"name\": \"status\", \"@required\": true, \"@values\": [\"OPEN\", \"PAID\"] } }",
+            "{ \"field.enum\": { \"name\": \"status\", \"@required\": true, \"@values\": [\"OPEN\", \"PAID\"], \"@stringValueMap\": { \"OPEN\": \"open_v1\", \"PAID\": \"paid_v1\" } } }")
+            .Replace("<<REPORTS>>", Report("SalesCube", "\"@kind\": \"view\", \"@view\": \"v_sales_cube\"", AllDimensions, AllMeasures));
+        var load = new MetaDataLoader().Load([new InMemoryStringSource(model, id: "shop.json")]);
+        Assert.Empty(load.Errors);
+        var context = EmitAll(RunnerContext(load.Root))["AppDbContext.g.cs"];
+        var line = context.Split('\n').Single(l => l.Contains("Entity<SalesCube>().Property(x => x.Status)"));
+        Assert.Contains("? \"open_v1\" :", line);
+        Assert.Contains("UnmappedEnumStoredValue<", line);
+    }
 }

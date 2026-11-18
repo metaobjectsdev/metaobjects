@@ -70,9 +70,9 @@ def _load_entities(meta: dict) -> dict[str, MetaObject]:
 # every rule:
 #   Auth (base, @discriminator "type") --tags--> Tag                  [rule a]
 #   BridgeAuth (subtype)               --linkedAuths--> BridgeAuth    [rule b/c, self-join]
-#   CopayAuth  (subtype)                                              [no own M:N]
+#   CouponAuth  (subtype)                                              [no own M:N]
 #   ScopedAuth (ABSTRACT, extends Auth) --auditors--> Tag             [rule d]
-#   PriorAuthAuth (subtype, extends ScopedAuth)
+#   PermitAuth (subtype, extends ScopedAuth)
 #   Auth (base) --priorityTickets--> PriorityTicket  [target-discriminator; base-declared
 #     (Ticket is an UNRELATED TPH hierarchy — see below), so ungated, but target IS TPH]
 _TPH_M2M_META = {
@@ -94,7 +94,7 @@ _TPH_M2M_META = {
                 "children": [
                     {"source.rdb": {"@table": "auths"}},
                     {"field.long": {"name": "id"}},
-                    {"field.enum": {"name": "type", "@values": ["Bridge", "Copay", "PriorAuth"]}},
+                    {"field.enum": {"name": "type", "@values": ["Bridge", "Coupon", "Permit"]}},
                     {"field.string": {"name": "reference", "@required": True, "@maxLength": 80}},
                     # Declared on the BASE: legitimate for every row of the shared table.
                     {"relationship.association": {
@@ -133,9 +133,9 @@ _TPH_M2M_META = {
                 ],
             }},
             {"object.entity": {
-                "name": "CopayAuth",
+                "name": "CouponAuth",
                 "extends": "Auth",
-                "@discriminatorValue": "Copay",
+                "@discriminatorValue": "Coupon",
                 "children": [
                     {"field.string": {"name": "payer", "@maxLength": 80}},
                 ],
@@ -154,9 +154,9 @@ _TPH_M2M_META = {
                 ],
             }},
             {"object.entity": {
-                "name": "PriorAuthAuth",
+                "name": "PermitAuth",
                 "extends": "ScopedAuth",
-                "@discriminatorValue": "PriorAuth",
+                "@discriminatorValue": "Permit",
                 "children": [
                     {"field.string": {"name": "approver", "@maxLength": 80}},
                 ],
@@ -194,12 +194,12 @@ _TPH_M2M_META = {
                     {"field.long": {"name": "auditAuthId", "@required": True}},
                     {"field.long": {"name": "auditTagId", "@required": True}},
                     {"identity.primary": {"name": "pk", "@fields": ["auditAuthId", "auditTagId"]}},
-                    {"identity.reference": {"name": "fkAuditAuth", "@fields": "auditAuthId", "@references": "PriorAuthAuth"}},
+                    {"identity.reference": {"name": "fkAuditAuth", "@fields": "auditAuthId", "@references": "PermitAuth"}},
                     {"identity.reference": {"name": "fkAuditTag", "@fields": "auditTagId", "@references": "Tag"}},
                 ],
             }},
             # An UNRELATED TPH hierarchy — Auth.priorityTickets' target. Separate from
-            # Auth/BridgeAuth/CopayAuth/PriorAuthAuth entirely, so resolving the
+            # Auth/BridgeAuth/CouponAuth/PermitAuth entirely, so resolving the
             # relation via any Auth-hierarchy entity (base or subtype) never has
             # source is target (see the comment on priorityTickets above).
             {"object.entity": {
@@ -291,12 +291,12 @@ def _gated_body(
 
 def test_inherited_m2m_mounted_under_every_concrete_subtype_too() -> None:
     # `tags` is declared on Auth, so every subtype resolves it. The overlap with the
-    # base mount is deliberate: /auths/bridge/{a Copay id}/tags must answer [] where
+    # base mount is deliberate: /auths/bridge/{a Coupon id}/tags must answer [] where
     # /auths/{that id}/tags does not, and only the subtype-scoped call can express that
     # — proven by the discriminator value actually being threaded through the GATE,
     # not just the join call.
     out = _render()
-    for value in ("Bridge", "Copay", "PriorAuth"):
+    for value in ("Bridge", "Coupon", "Permit"):
         segment = value.lower()
         assert f'@router.get("/{segment}/{{auth_id}}/tags")' in out, out
         assert _gated_body(value, "tags") in out, out
@@ -309,14 +309,14 @@ def test_subtype_only_m2m_mounted_solely_under_its_own_subtype() -> None:
     # gate (this row must be a Bridge) AND the target-discriminator literal (the
     # related rows must be Bridge too) happen to carry the SAME value here — two
     # independent mechanisms, not one collapsed into the other (see
-    # test_priorauthlinks_target_discriminator_independent_of_source_gate below
+    # test_permitlinks_target_discriminator_independent_of_source_gate below
     # for a case where the two values DIFFER).
     assert _gated_body("Bridge", "linkedAuths", target_subtype="Bridge") in out
     # Not a base route (Auth does not declare/resolve linkedAuths)...
     assert '@router.get("/{auth_id}/linkedAuths")' not in out
     # ...and not on the sibling subtypes either (own-only on BridgeAuth, not inherited).
-    assert '@router.get("/copay/{auth_id}/linkedAuths")' not in out
-    assert '@router.get("/priorauth/{auth_id}/linkedAuths")' not in out
+    assert '@router.get("/coupon/{auth_id}/linkedAuths")' not in out
+    assert '@router.get("/permit/{auth_id}/linkedAuths")' not in out
 
 
 def test_priority_tickets_target_discriminator_independent_of_source_gate() -> None:
@@ -336,20 +336,20 @@ def test_priority_tickets_target_discriminator_independent_of_source_gate() -> N
     ) in out
     # Inherited by every subtype too (rule b) — each subtype's OWN gate applies,
     # while the target literal stays fixed at "Priority" regardless.
-    for value in ("Bridge", "Copay", "PriorAuth"):
+    for value in ("Bridge", "Coupon", "Permit"):
         assert _gated_body(value, "priorityTickets", target_subtype="Priority") in out, out
 
 
 def test_abstract_mid_level_m2m_mounts_under_its_concrete_descendant_only() -> None:
     # `auditors` lives on ScopedAuth (abstract) — no path, no rows of its own. It is
-    # not on Auth either, so PriorAuthAuth (the one concrete descendant) is the ONLY
+    # not on Auth either, so PermitAuth (the one concrete descendant) is the ONLY
     # place it can be served.
     out = _render()
-    assert '@router.get("/priorauth/{auth_id}/auditors")' in out
-    assert _gated_body("PriorAuth", "auditors") in out
+    assert '@router.get("/permit/{auth_id}/auditors")' in out
+    assert _gated_body("Permit", "auditors") in out
     assert '@router.get("/{auth_id}/auditors")' not in out
     assert '@router.get("/bridge/{auth_id}/auditors")' not in out
-    assert '@router.get("/copay/{auth_id}/auditors")' not in out
+    assert '@router.get("/coupon/{auth_id}/auditors")' not in out
 
 
 def test_subtype_gate_reuses_the_existing_find_by_id_seam_method() -> None:
@@ -383,6 +383,6 @@ def test_polymorphic_and_per_subtype_crud_mounts_still_present() -> None:
     out = _render()
     assert 'path="/api/auths"' in out or 'prefix="/api/auths"' in out
     assert '@router.get("/bridge/{auth_id}")' in out
-    assert '@router.get("/copay/{auth_id}")' in out
-    assert '@router.get("/priorauth/{auth_id}")' in out
+    assert '@router.get("/coupon/{auth_id}")' in out
+    assert '@router.get("/permit/{auth_id}")' in out
     assert '@router.get("/{auth_id}")' in out

@@ -44,7 +44,7 @@ describe("golden output — byte-identical port gate", () => {
             outDir: tmp,
             extStyle: "none",
             dbImport: "~/server/db",
-            dialect,
+            dialect, outputLayout: "flat",
             generators: [entityFile(), queriesFile(), routesFile(), formFile(), barrel()],
           }),
           metadata: metadataRoot,

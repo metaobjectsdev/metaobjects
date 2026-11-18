@@ -30,11 +30,11 @@ function model(clientIdField: Record<string, unknown>): string {
         },
         {
           "object.entity": {
-            "name": "Patient",
+            "name": "Player",
             "children": [
               { "field.uuid": { "name": "id" } },
               { "field.uuid": { "name": "clientId", "@column": "ClientId" } },
-              { "source.rdb": { "name": "src", "@table": "Patients" } },
+              { "source.rdb": { "name": "src", "@table": "Players" } },
               { "identity.primary": { "name": "pk", "@fields": ["id"] } },
               {
                 "identity.reference": {
@@ -51,9 +51,9 @@ function model(clientIdField: Record<string, unknown>): string {
   });
 }
 
-function patientFk(root: MetaData) {
+function playerFk(root: MetaData) {
   const snapshot = buildExpectedSchema(root, { dialect: "postgres" });
-  const table = snapshot.tables.find((t) => t.name === "Patients");
+  const table = snapshot.tables.find((t) => t.name === "Players");
   expect(table).toBeDefined();
   expect(table!.foreignKeys).toHaveLength(1);
   return table!.foreignKeys[0]!;
@@ -62,7 +62,7 @@ function patientFk(root: MetaData) {
 describe("buildExpectedSchema — FK refColumns resolve the target PK's @column override", () => {
   test("target PK field with @column override → refColumns uses the physical name", async () => {
     const root = await loadJson(model({ "name": "id", "@column": "Id" }));
-    const fk = patientFk(root);
+    const fk = playerFk(root);
     expect(fk.columns).toEqual(["ClientId"]);
     expect(fk.refTable).toBe("Clients");
     expect(fk.refColumns).toEqual(["Id"]);
@@ -70,7 +70,7 @@ describe("buildExpectedSchema — FK refColumns resolve the target PK's @column 
 
   test("target PK field without @column override → refColumns keeps the field name", async () => {
     const root = await loadJson(model({ "name": "id" }));
-    const fk = patientFk(root);
+    const fk = playerFk(root);
     expect(fk.refColumns).toEqual(["id"]);
   });
 });

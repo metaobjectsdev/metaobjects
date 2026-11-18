@@ -106,4 +106,9 @@ describe("resolveSchemaConventions", () => {
     expect(() => resolveSchemaConventions(partial))
       .toThrow(/schema conventions "acme" are missing foreignKeyName, foreignKeyIndexes, uniqueKeyKind/);
   });
+
+  test("a conventions object that still sets skipRedundantChecks is refused, pointing at migrate.checks", () => {
+    expect(() => resolveSchemaConventions({ ...efcoreConventions, id: "acme", skipRedundantChecks: true } as never))
+      .toThrow(/skipRedundantChecks, which is no longer a convention .*"skipRedundant": true/);
+  });
 });

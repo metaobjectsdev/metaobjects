@@ -809,6 +809,13 @@ public static class CodegenCli
             WarnUnknownAttrs(meta);
             genLoad = meta.Load();
         }
+        // rc.21 part B (I2): an extender whose view now returns every row of a TPH base. The
+        // loader records it on its warning channel, which gen does not print, so it is said here.
+        if (genLoad.Errors.Count == 0)
+        {
+            foreach (var w in ValidationPasses.ValidateExtenderSubtypeScope(genLoad.Root))
+                Console.Error.WriteLine($"  warning: {w}");
+        }
         if (RefuseEntities(a, genLoad.Root, GenCommandName) is { } unknownEntity)
         {
             Console.Error.WriteLine(unknownEntity);

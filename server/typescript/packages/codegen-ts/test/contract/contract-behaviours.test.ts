@@ -265,14 +265,14 @@ describe("the three shapes", () => {
     const c = corpusCase("tph-shared-marks");
     const tree = await contractTree(c);
     const keysOf = (path: string): string[] => Object.keys(jsonAt(tree, path)["properties"] as JsonDoc);
-    const copay = "schemas/acme/auth/CopayAuth";
+    const coupon = "schemas/acme/auth/CouponAuth";
     const bridge = "schemas/acme/auth/BridgeAuth";
-    const row = { id: 1, type: "Copay", reference: "R-1", auditRef: "A-1" };
-    expect(validatorOf(tree, `${copay}.schema.json`)(row)).toBe(true);
-    expect(keysOf(`${copay}.schema.json`)).not.toContain("token");
+    const row = { id: 1, type: "Coupon", reference: "R-1", auditRef: "A-1" };
+    expect(validatorOf(tree, `${coupon}.schema.json`)(row)).toBe(true);
+    expect(keysOf(`${coupon}.schema.json`)).not.toContain("token");
     expect(keysOf(`${bridge}.schema.json`)).not.toContain("token");
     for (const shape of ["create", "update"]) {
-      expect(keysOf(`${copay}.${shape}.schema.json`)).toEqual(["reference"]);
+      expect(keysOf(`${coupon}.${shape}.schema.json`)).toEqual(["reference"]);
       expect(keysOf(`${bridge}.${shape}.schema.json`)).toEqual(["reference"]);
     }
 

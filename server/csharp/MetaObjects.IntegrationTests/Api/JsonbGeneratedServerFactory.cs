@@ -52,7 +52,7 @@ internal sealed class JsonbGeneratedServerFactory : IAsyncDisposable
         await JsonbFixture.ProvisionSchemaAsync(pg.ConnectionString);
 
         var (assembly, routeEntities) = CompileGeneratedServer();
-        var dbContextType = assembly.GetType($"{GeneratedNamespace}.AppDbContext")
+        var dbContextType = MetaObjects.IntegrationTests.GeneratedTypes.Find(assembly, $"{GeneratedNamespace}.AppDbContext")
             ?? throw new InvalidOperationException("generated AppDbContext type not found");
 
         var builder = WebApplication.CreateBuilder();
@@ -69,7 +69,7 @@ internal sealed class JsonbGeneratedServerFactory : IAsyncDisposable
         // Invoke each generated Map<Entity>Routes(app, "/api").
         foreach (var entity in routeEntities)
         {
-            var routesType = assembly.GetType($"{GeneratedNamespace}.{entity}Routes");
+            var routesType = MetaObjects.IntegrationTests.GeneratedTypes.Find(assembly, $"{GeneratedNamespace}.{entity}Routes");
             if (routesType is null) continue;
             var mapMethod = routesType.GetMethod($"Map{entity}Routes", BindingFlags.Public | BindingFlags.Static);
             mapMethod?.Invoke(null, new object[] { app, "/api" });

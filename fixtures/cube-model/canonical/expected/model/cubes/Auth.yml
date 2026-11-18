@@ -19,7 +19,7 @@ cubes:
         type: count_distinct
     segments:
       - name: authsByKindScope
-        sql: '{CUBE}."type" <> ''PriorAuth'''
+        sql: '{CUBE}."type" <> ''Permit'''
     pre_aggregations:
       - name: AuthsByKind
         type: rollup

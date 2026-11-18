@@ -108,7 +108,7 @@ final class TphGeneratedApiContractConformanceTest {
     @Test
     @SuppressWarnings("unchecked")
     void tphListsSupportFr009Filters() throws Exception {
-        HARNESS.reset(); // seed: Bridge id1 (quantity 5), Copay id2, PriorAuth id3
+        HARNESS.reset(); // seed: Bridge id1 (quantity 5), Coupon id2, Permit id3
         // (a) polymorphic list filtered by a SUBTYPE column — only the Bridge row carries quantity.
         var r1 = HARNESS.exchange("GET", "/api/auths?filter[quantity][eq]=5&sort=id:asc", null);
         org.junit.jupiter.api.Assertions.assertEquals(200, r1.status());
@@ -130,7 +130,7 @@ final class TphGeneratedApiContractConformanceTest {
             ((Map<String, Object>) HARNESS.parseBody(r4.body())).get("error"));
         // (e) polymorphic list filtered by the DISCRIMINATOR (FR-017 "Filter allowlists": the base
         // allowlist includes it). Java excluded it until 1.0.5 and answered this with (d)'s 400.
-        var r5 = HARNESS.exchange("GET", "/api/auths?filter[type][in]=Bridge,Copay&sort=id:asc", null);
+        var r5 = HARNESS.exchange("GET", "/api/auths?filter[type][in]=Bridge,Coupon&sort=id:asc", null);
         org.junit.jupiter.api.Assertions.assertEquals(200, r5.status(), r5.body());
         var rows5 = (List<Map<String, Object>>) HARNESS.parseBody(r5.body());
         org.junit.jupiter.api.Assertions.assertEquals(List.of(1, 2),

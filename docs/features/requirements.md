@@ -186,8 +186,8 @@ inherited rather than re-invented per project:
 ```
 L1  Security                              (an ISO/IEC 25010 characteristic)
  └ L2  Confidentiality                    (its sub-characteristic — or a control
-    │                                      catalogue's own category, e.g. a HIPAA
-    │                                      safeguard class, when one applies)
+    │                                      catalogue's own category, e.g. a SOC 2
+    │                                      trust-services criterion, when one applies)
     └ L4  invoiceTotalsAreEncryptedAtRest (the claim, bound to the model)
 ```
 

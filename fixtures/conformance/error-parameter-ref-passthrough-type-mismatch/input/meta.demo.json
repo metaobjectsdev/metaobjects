@@ -4,11 +4,11 @@
     "children": [
       {
         "object.entity": {
-          "name": "Case",
+          "name": "Consignment",
           "children": [
             {
               "source.rdb": {
-                "@table": "cases"
+                "@table": "consignments"
               }
             },
             {
@@ -40,7 +40,7 @@
                 "children": [
                   {
                     "origin.passthrough": {
-                      "@from": "demo::Case.label"
+                      "@from": "demo::Consignment.label"
                     }
                   }
                 ]

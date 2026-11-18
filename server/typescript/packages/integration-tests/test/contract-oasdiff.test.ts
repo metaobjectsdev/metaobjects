@@ -74,7 +74,7 @@ async function emitDocument(meta: unknown, dir: string, name: string): Promise<v
   expect(result.errors).toEqual([]);
   const outDir = join(dir, `${name}-out`);
   await runGen({
-    config: defineConfig({ outDir, dialect: "postgres", apiPrefix: "/api", generators: [openApiFile({ title: "Customers", version: "1.0.0" })] }),
+    config: defineConfig({ outputLayout: "flat", outDir, dialect: "postgres", apiPrefix: "/api", generators: [openApiFile({ title: "Customers", version: "1.0.0" })] }),
     metadata: result.root,
     genStateDir: join(dir, `${name}-state`),
   });

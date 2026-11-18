@@ -24,7 +24,7 @@ Where ADR-0007 made a separate, weaker choice was inside the `rdb` paradigm: it 
 | TypeORM | `@Entity({ name })` | `@ViewEntity({ name })` | (raw SQL only) |
 | SQL standard | `CREATE TABLE` | `CREATE VIEW` | `CREATE PROCEDURE` / `CREATE FUNCTION` |
 
-Zero of them call a non-table relation "table." The single-attr choice in ADR-0007 was a deviation from universal practice, made for internal-design simplicity at the cost of reader ergonomics. Metadata files in adopter projects would read `@table: "fn_get_phase_summary_per_case"` with `@kind: "storedProc"` — internally consistent but immediately disorienting to anyone scanning the source.
+Zero of them call a non-table relation "table." The single-attr choice in ADR-0007 was a deviation from universal practice, made for internal-design simplicity at the cost of reader ergonomics. Metadata files in adopter projects would read `@table: "fn_get_stage_summary_per_consignment"` with `@kind: "storedProc"` — internally consistent but immediately disorienting to anyone scanning the source.
 
 The decision to revisit happens now because:
 1. **No external adopters depend on `@table`-for-everything yet.** The cost of revising is bounded; the cost of shipping the smell to 1.0 is permanent.

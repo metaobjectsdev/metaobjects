@@ -158,14 +158,14 @@ public class SpringFilterAllowlistGeneratorTest extends SharedRegistryTestBase {
             { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
                 { "source.rdb":   { "@table": "auths" } },
                 { "field.long":   { "name": "id" } },
-                { "field.enum":   { "name": "type", "@values": ["Bridge", "Copay"], "@filterable": true } },
+                { "field.enum":   { "name": "type", "@values": ["Bridge", "Coupon"], "@filterable": true } },
                 { "identity.primary": { "@fields": "id", "@generation": "increment" } }
             ] } },
             { "object.entity": { "name": "BridgeAuth", "extends": "Auth", "@discriminatorValue": "Bridge", "children": [
                 { "field.int": { "name": "quantity", "@filterable": true } }
             ] } },
-            { "object.entity": { "name": "CopayAuth", "extends": "Auth", "@discriminatorValue": "Copay", "children": [
-                { "field.decimal": { "name": "copayAmount", "@precision": 10, "@scale": 2, "@filterable": true } }
+            { "object.entity": { "name": "CouponAuth", "extends": "Auth", "@discriminatorValue": "Coupon", "children": [
+                { "field.decimal": { "name": "couponAmount", "@precision": 10, "@scale": 2, "@filterable": true } }
             ] } }
           ] }
         }
@@ -183,8 +183,8 @@ public class SpringFilterAllowlistGeneratorTest extends SharedRegistryTestBase {
         gen.execute(loader);
 
         String src = Files.readString(outDir.resolve("acme/auth/AuthFilterAllowlist.java"));
-        assertTrue(src, src.contains("\"copayAmount\""));
-        assertTrue(src, src.contains("DECIMAL_FIELDS = Set.of(\"copayAmount\")"));
+        assertTrue(src, src.contains("\"couponAmount\""));
+        assertTrue(src, src.contains("DECIMAL_FIELDS = Set.of(\"couponAmount\")"));
         assertTrue(src, src.contains("\"quantity\""));
     }
 }

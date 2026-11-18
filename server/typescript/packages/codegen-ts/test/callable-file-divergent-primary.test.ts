@@ -84,16 +84,16 @@ describe("renderCallableFile — divergent primary sources", () => {
     const root = await loadClean([
       {
         "object.projection": {
-          name: "PhaseSummary",
+          name: "StageSummary",
           children: [
-            { "source.rdb": { name: "procSrc", "@kind": "storedProc", "@proc": "phase_summary" } },
+            { "source.rdb": { name: "procSrc", "@kind": "storedProc", "@proc": "stage_summary" } },
             { "field.long": { name: "id" } },
           ],
         },
       },
     ]);
-    const proj = root.children().find((c) => c.name === "PhaseSummary")! as MetaObject;
+    const proj = root.children().find((c) => c.name === "StageSummary")! as MetaObject;
     expect(isCallableEntity(proj)).toBe(true);
-    expect(renderCallableFile(proj)).toContain("phase_summary");
+    expect(renderCallableFile(proj)).toContain("stage_summary");
   });
 });

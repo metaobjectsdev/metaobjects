@@ -173,12 +173,151 @@ reverse-engineered model can `@via` its reference directly:
 ```
 
 A reference hop is inherently **to-one** (a child names the parent it points at), so it
-is valid in a `passthrough` and rejected in an `aggregate`. An origin `@via` hop may
-also walk an `identity.reference` **backwards** (parent → many children), named by the
-holder's collection name in lowerCamel (`Patient.consents`). A reverse hop is to-many, so
-it is valid in an `aggregate` and rejected in a `passthrough` (`ERR_ORIGIN_CARDINALITY`);
-two candidate holders give `ERR_AMBIGUOUS_PATH`, and a declared relationship or reference
-of the same name wins. Single-hop-unique inference stays relationship-only.
+is valid in a `passthrough` and rejected in an `aggregate`.
+
+The same reference can be walked **backwards**, parent → many children, with no relationship
+declared for it: the hop is named by the referencing entity's collection name, lowerFirst
+(`contracts` for `Contract`; its `@collectionName`, else the project's pluralizer — see
+[entities](entities.md#collection-names-collectionname)), and it is to-many, so it is valid in an
+`aggregate` or `first` and rejected in a `passthrough`:
+
+```yaml
+# Contract has `identity.reference: { name: player, references: Player }`; Player declares nothing:
+- origin.aggregate: { agg: count, of: "Contract.id", via: "Player.contracts" }
+```
+
+A relationship or reference of that name on the parent wins. Two references from `Contract`
+to `Player` make `Player.contracts` ambiguous, and the loader refuses it naming both
+(`ERR_AMBIGUOUS_PATH`); declare a relationship for the hop instead. Explicit `@via` resolves
+every kind; single-hop-unique inference stays relationship-only.
+
+## Filtering and computing over joined rows (rc.19)
+
+A projection view can read more than the columns it outputs. Each form below lowers to SQL in
+the view `meta migrate` creates (every port's view is built by that one lowering; C# and the
+other ports validate the metadata the same way and map the view's columns).
+
+**A filter path** (G7). A projection `@filter` key may name a base-entity field the view does
+not output, or a *path* of to-one hops from the base — named as an `@via` names them — then a
+field of the entity reached. The view joins along the path (sharing any join an origin already
+walks) and filters on the column. A to-many hop would multiply the base rows and is refused
+(`ERR_BAD_ATTR_FILTER`).
+
+```yaml
+"@filter": { "orderId.status": open }        # JOIN orders o … WHERE o.status = 'open'
+```
+
+**A derived field declared once on an entity** (entity-derived). An entity may declare an
+`origin.first` or `origin.computed` field with no read source of its own, as long as some
+projection reaches it — through a filter key or path, a passthrough `@from`, or a field bound
+to it. It is no column of the table (no ORM property either); where a projection reaches it,
+its derivation is inlined: an `origin.computed` as its expression on the reached row, an
+`origin.first` as its correlated subquery keyed on the reached row. An `origin.aggregate` is
+not inlinable. Unreached, the entity still needs a read source (`ERR_DERIVED_FIELD_NO_READ_SOURCE`).
+
+**A segment on an origin** (origin-segment). `@segment` on `origin.first` or `origin.aggregate`
+names a `segment.filter` of the related entity; its predicate scopes the related rows, ANDed
+with `@filter`, exactly as `measure.aggregate @segment` does. An unknown name is
+`ERR_INVALID_ORIGIN`.
+
+**Relative dates** (now). `{ now: "<ISO-8601 duration>", startOf? }` is legal in a
+projection's `@filter` and an origin's `@filter` as well as on the reporting hosts, on a date
+or timestamp field, under `gt`/`gte`/`lt`/`lte`; and as an expression leaf, where it takes the
+kind of the field it is compared with. It is evaluated when the view is queried, on the UTC
+clock.
+
+**A base-row operand** (correlated-filter). In an origin's `@filter`, `{ field: "<base field>" }`
+is the base row's column: `{ statusId: { eq: { field: statusId } } }`. It takes
+`eq`/`ne`/`gt`/`gte`/`lt`/`lte` and the null-safe `isDistinctFrom` / `isNotDistinctFrom`
+(`IS [NOT] DISTINCT FROM` on Postgres, `IS [NOT]` on SQLite), which take only such an operand.
+
+**Expressions over joined fields and CASE** (computed-over-joined, case). In an
+`origin.computed` expression, `{ field: X }` names one of the projection's own fields first — a
+passthrough (joined or not), an `origin.first`, or another `origin.computed` — else a base
+field; never an aggregate, and a cycle is refused. A `case` node is searched
+(`{ case: [ { when: <predicate>, then: <expr> } ], else: <expr> }`) or, with `operand`, simple
+(each `when` a value compared with it); every result has one type.
+
+The league-gate shape uses all of them at once: a `segment.filter` on `Contract` with `now`, a
+boolean on `Player` declared as `origin.first { @via: Player.contracts, @segment: … }`, and
+`@filter: { "campId.playerId.hasActiveLeagueContract": true }` on every gated projection.
+`fixtures/conformance/entity-derived-league-gate` pins the metadata;
+`codegen-ts/test/projection/league-gate-entity-derived.test.ts` pins the view and runs it.
+
+### rc.21: the rest of what a view needs
+
+These constructs let a projection build the views that needed a hand-written `@sql` body. Every
+one is a closed, typed construct: nothing is free SQL. Only the TypeScript view emitter lowers
+them (C# validates them at load; Java and Python accept them under strict load).
+
+**A cast** (`{ cast: <expr>, as: <field subtype>, dbColumnType? }`). `as` is one of `string`,
+`int`, `long`, `double`, `float`, `decimal`, `boolean`, `date`, `timestamp`, `uuid`, and the
+column type is that subtype's. A string cast may name a text `@dbColumnType` spelling (`text`,
+`varchar`, `character varying`, `varchar(n)`, `character varying(n)`, `character(n)`): a typed
+NULL of an unbounded varchar is `{ cast: { value: null }, as: string, dbColumnType: varchar }`.
+An enum casts to an integer only when it is stored as one (`@intValueMap`), which is also how an
+int-stored enum and an int meet in one `case`: `then: { cast: { field: status }, as: int }`.
+
+**Functions** (`{ fn, args }`). Beside `coalesce`: `greatest` and `least` (ordered arguments of
+one type), `nullif` (two of one type), `lower`, `upper`, `btrim` (a string, optionally the
+characters), `splitPart` (string, delimiter, integer), `concat` (scalars; NULL reads as empty),
+`concatWs` (a separator, then scalars), `substring` (string, start, optional length), `replace`,
+`left` and `right` (string, integer), and `length` (string to int). Each argument is typed; a
+NULL literal fits any. On SQLite each is spelled with SQLite's own functions where the meaning
+is the same (`greatest` keeps Postgres's NULL-skipping), and refused where it is not:
+`splitPart` beyond the first part.
+
+**A path in an expression or an operand.** On a projection, `{ field: "customerId.regionId" }`
+in an `origin.computed` expression, or `{ field: "orderId.customerId" }` as a correlated operand in an
+origin's `@filter`, is a path of to-one hops from the base and a field of the entity reached:
+the view joins it without outputting it.
+
+**An expression over an aggregate.** `{ field }` may name a scalar `origin.aggregate` of the
+projection (`count`/`sum`/`avg`/`min`/`max`, `any`/`all`), read on the grouped row:
+`{ fn: greatest, args: [ { field: updatedAt }, { field: lastEvent } ] }`. Such a value is not
+filterable (it exists only after grouping). A grouped view also groups every joined column its
+expressions read.
+
+**A database function the project owns** (`origin.function`). `@function` and `@schema` name it
+(plain identifiers), `@args` the fields passed to it in order, `@params` their declared types and
+`@returns` the result's (field subtypes). Each argument must have its parameter's type — pass an
+`origin.computed` field that casts it (`{ cast: { field: x }, as: int }`) otherwise — and
+`@returns` must be the carrying field's subtype; the view casts the call to the field's full
+column type, the one its table column would have (length or `@dbColumnType` spelling, precision and
+scale, a local or zoned timestamp). The signature is a declaration that `meta verify --db` checks:
+it reads the function from `pg_proc` and fails on a missing function, or a parameter or return
+type that differs, so the cast never hides a wrong `@returns`. A declared arity between the
+function's required and full parameter counts matches (the rest take their defaults). The
+comparison is by plain type name: a json, array, enum or user-defined kind is not type-checked
+(only the arity is), and a domain is compared by its own name, so a domain-typed parameter or
+result is reported as a mismatch. Declared on an entity, it is
+entity-derived: a projection reaching the entity reads it like any derived field. MetaObjects
+never creates the function (it is owned SQL, created before the view). Postgres only.
+
+```yaml
+- field.int:
+    name: riskScore
+    children: [ { origin.function: { "@function": compute_risk_score, "@schema": app, "@args": [id], "@params": [long], "@returns": int } } ]
+```
+
+**One row per array element** (`@grain`, `@grainOrdinal`). A projection whose `@grain` names a
+base-entity `field.object` array stored as jsonb has one row per element (`jsonb_array_elements
+… WITH ORDINALITY` on Postgres, `json_each` on SQLite); a base row with no element has no row. A
+field whose `origin.passthrough @from` names the array's value object (`Contact.kind`) reads that
+member of the element, cast to the field's type; the base's own fields read the parent row.
+`@grainOrdinal` names a `field.int`/`field.long` of the projection that holds the 1-based
+position. No `origin.aggregate` on such a projection.
+
+**A union** (`@union`, `@unionAll`). A projection that extends one branch and names the others in
+`@union` is the UNION of their rows; each branch has its own base, joins and `@filter`, and every
+branch has the same fields in order (name, subtype, array-ness, `@column`), checked at load
+(`ERR_BAD_ATTR_VALUE`). Duplicates are removed (UNION, SQL's default) unless `@unionAll: true`.
+
+**Two related rules.** A reference walked backwards is to-one for a passthrough when its holder
+declares a unique identity (`identity.primary` or `identity.secondary`) over exactly its fields.
+And a projection that extends another and declares no identity of its own keeps the identity its
+super anchors with, so a TPH root's projection can add a subtype's column and still read the
+root's shared table.
 
 ## When one entity has two references to the same target
 
@@ -281,7 +420,7 @@ level between the base and a subtype. Both cases are treated the same way:
       - field.long: { name: id }
       - field.enum:
           name: type
-          "@values": ["Bridge", "Copay"]
+          "@values": ["Bridge", "Coupon"]
       - field.long: { name: approverId }  # FK to the approver
       - identity.reference:
           name: fkApprover

@@ -725,15 +725,15 @@ implicit `super()` has to reach it), and an object that extends another
 produces a class that extends the other's:
 
 ```java
-public abstract class CopayAuthNames extends AuthNames {
+public abstract class CouponAuthNames extends AuthNames {
     public static final String TYPE = "object";
     public static final String SUB_TYPE = "entity";
-    public static final String NAME = "CopayAuth";      // its OWN name, not the base's
+    public static final String NAME = "CouponAuth";      // its OWN name, not the base's
 
-    public static final String COPAY_AMOUNT_FIELD = "copayAmount";
-    public static final String COPAY_AMOUNT_COLUMN = "copay_cents";
+    public static final String COUPON_AMOUNT_FIELD = "couponAmount";
+    public static final String COUPON_AMOUNT_COLUMN = "coupon_cents";
     // SOURCE_PRIMARY_* / ID_COLUMN / … are the base's. Java inherits static members,
-    // so CopayAuthNames.SOURCE_PRIMARY_TABLE and CopayAuthNames.ID_COLUMN both resolve.
+    // so CouponAuthNames.SOURCE_PRIMARY_TABLE and CouponAuthNames.ID_COLUMN both resolve.
 }
 ```
 
@@ -741,8 +741,8 @@ Which members a class declares is structural, and follows one rule: it declares
 what the object DECLARES, and inherits the rest. A TPH subtype sharing its
 base's single table declares no source of its own, so its whole
 `SOURCE_PRIMARY_*` block comes from the base. Its `TYPE`/`SUB_TYPE`/`NAME` are
-always restated, because they differ — `CopayAuthNames.NAME` has to say
-`"CopayAuth"`. An abstract base a persisted entity extends gets a class of its
+always restated, because they differ — `CouponAuthNames.NAME` has to say
+`"CouponAuth"`. An abstract base a persisted entity extends gets a class of its
 own carrying the columns and keys it declares and **no `SOURCE_*` block at all**
 — it has no table, and must never acquire one. `COLUMNS_BY_FIELD` stays complete
 on every class, inherited entries included.

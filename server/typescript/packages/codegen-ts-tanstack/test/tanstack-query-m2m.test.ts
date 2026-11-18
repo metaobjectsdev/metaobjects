@@ -13,7 +13,7 @@ async function buildCtx(): Promise<GenContext> {
   const { root, errors } = await loader.load([new FileSource(FIXTURE)]);
   expect(errors).toEqual([]);
   const entities = root.objects();
-  const renderContext = makeRenderContext({
+  const renderContext = makeRenderContext({ outputLayout: "flat",
     dialect: "postgres",
     loadedRoot: root,
     outDir: "/tmp",
@@ -27,7 +27,7 @@ async function buildCtx(): Promise<GenContext> {
     entities,
     loadedRoot: root,
     matches: () => true,
-    config: { outDir: "/tmp", extStyle: "none", dbImport: "../db", dialect: "postgres" },
+    config: { outputLayout: "flat", outDir: "/tmp", extStyle: "none", dbImport: "../db", dialect: "postgres" },
     renderContext,
     warn: () => {},
   };

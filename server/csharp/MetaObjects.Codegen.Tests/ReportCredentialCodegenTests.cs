@@ -54,10 +54,10 @@ public class ReportCredentialCodegenTests
     };
 
     private static string Routes(GenContext ctx, string report) =>
-        new RoutesGenerator().Generate(ctx).Single(f => f.Path == report + "Routes.g.cs").Content;
+        new RoutesGenerator().Generate(ctx).Single(f => System.IO.Path.GetFileName(f.Path) == report + "Routes.g.cs").Content;
 
     private static string Export(GenContext ctx, string report) =>
-        new ReportExportGenerator { MaxRows = 60 }.Generate(ctx).Single(f => f.Path == report + "Export.g.cs").Content;
+        new ReportExportGenerator { MaxRows = 60 }.Generate(ctx).Single(f => System.IO.Path.GetFileName(f.Path) == report + "Export.g.cs").Content;
 
     [Fact]
     public void The_row_model_marks_a_derived_credential()
@@ -78,10 +78,10 @@ public class ReportCredentialCodegenTests
     {
         var ctx = Ctx(Load());
         var routes = Routes(ctx, report);
-        Assert.Contains($"new string[] {{ \"{column}\" }}", routes);
+        Assert.Contains($"new string[] {{ \"{char.ToUpperInvariant(column[0])}{column[1..]}\" }}", routes);
         Assert.DoesNotContain("Results.Ok(rows)", routes);
         // The JSON export strips it too; the CSV / XML column list names no credential.
-        Assert.Contains($"rows, new string[] {{ \"{column}\" }}", routes);
+        Assert.Contains($"rows, new string[] {{ \"{char.ToUpperInvariant(column[0])}{column[1..]}\" }}", routes);
         var export = Export(ctx, report);
         Assert.DoesNotContain($"\"{column}\"", export);
         Assert.DoesNotContain($"row.{char.ToUpperInvariant(column[0])}{column[1..]}", export);
@@ -107,13 +107,15 @@ public class ReportCredentialCodegenTests
     public void A_credential_column_is_neither_filterable_nor_sortable(string report, string column, string kept)
     {
         var ctx = Ctx(Load());
-        var allowlist = new FilterAllowlistGenerator().Generate(ctx).Single(f => f.Path == report + "FilterAllowlist.g.cs").Content;
+        var allowlist = new FilterAllowlistGenerator().Generate(ctx).Single(f => System.IO.Path.GetFileName(f.Path) == report + "FilterAllowlist.g.cs").Content;
         Assert.DoesNotContain($"\"{column}\"", allowlist);
         Assert.Contains($"\"{kept}\"", allowlist);
 
         var routes = Routes(ctx, report);
         var pascal = char.ToUpperInvariant(column[0]) + column[1..];
-        Assert.DoesNotContain($"\"{pascal}\"", routes);
+        // The credential's CLR name appears once, in the omit list; never as a sort-allowlist entry or sort arm.
+        Assert.DoesNotContain($"        \"{pascal}\",", routes);
+        Assert.DoesNotContain($"\"{pascal}\" =>", routes);
         Assert.Contains($"\"{char.ToUpperInvariant(kept[0])}{kept[1..]}\"", routes);
     }
 
@@ -121,7 +123,7 @@ public class ReportCredentialCodegenTests
     public void A_plain_reports_allowlists_keep_every_column()
     {
         var ctx = Ctx(Load());
-        var allowlist = new FilterAllowlistGenerator().Generate(ctx).Single(f => f.Path == "AccountsByNameFilterAllowlist.g.cs").Content;
+        var allowlist = new FilterAllowlistGenerator().Generate(ctx).Single(f => System.IO.Path.GetFileName(f.Path) == "AccountsByNameFilterAllowlist.g.cs").Content;
         Assert.Contains("\"name\"", allowlist);
         Assert.Contains("\"accounts\"", allowlist);
         var routes = Routes(ctx, "AccountsByName");

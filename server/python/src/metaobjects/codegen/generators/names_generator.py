@@ -276,8 +276,9 @@ def _flattened_member_consts(
     field: MetaData, members: list[tuple[str, str]]
 ) -> list[tuple[str, _Const]]:
     """A flattened value object's ``<FIELD>_<MEMBER>_COLUMN`` constants, one per member,
-    emitted beside the field's own ``_FIELD`` constant (a flattened field has no column
-    constant of its own)."""
+    emitted beside the field's own ``_FIELD``/``_COLUMN`` pair (kept as it always was, so
+    nothing that imports it changes; on a flattened field ``_COLUMN`` names no column of the
+    table)."""
     member = _member(field.name)
     return [
         (

@@ -1,0 +1,12 @@
+{ "metadata.root": { "package": "acme::views", "children": [
+  { "object.entity": { "name": "Customer", "children": [
+    { "source.rdb": { "@table": "customers" } },
+    { "field.long": { "name": "id" } },
+    { "field.string": { "name": "tags", "isArray": true } },
+    { "identity.primary": { "name": "id", "@fields": "id" } }
+  ] } },
+  { "object.projection": { "name": "G", "@grain": "tags", "children": [
+    { "source.rdb": { "@kind": "view", "@view": "g" } },
+    { "field.long": { "name": "customerId", "extends": "Customer.id" } }
+  ] } }
+] } }

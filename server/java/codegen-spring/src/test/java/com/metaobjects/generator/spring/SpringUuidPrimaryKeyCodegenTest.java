@@ -70,7 +70,7 @@ public class SpringUuidPrimaryKeyCodegenTest extends SharedRegistryTestBase {
             { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
                 { "source.rdb":   { "@table": "auths" } },
                 { "field.uuid":   { "name": "id" } },
-                { "field.enum":   { "name": "type", "@values": ["Bridge", "Copay"] } },
+                { "field.enum":   { "name": "type", "@values": ["Bridge", "Coupon"] } },
                 { "field.string": { "name": "reference", "@required": true, "@maxLength": 80 } },
                 { "identity.primary": { "@fields": "id", "@generation": "uuid" } }
             ] } },
@@ -78,9 +78,9 @@ public class SpringUuidPrimaryKeyCodegenTest extends SharedRegistryTestBase {
                 "@discriminatorValue": "Bridge", "children": [
                 { "field.int": { "name": "quantity" } }
             ] } },
-            { "object.entity": { "name": "CopayAuth", "extends": "Auth",
-                "@discriminatorValue": "Copay", "children": [
-                { "field.string": { "name": "copayCode", "@maxLength": 40 } }
+            { "object.entity": { "name": "CouponAuth", "extends": "Auth",
+                "@discriminatorValue": "Coupon", "children": [
+                { "field.string": { "name": "couponCode", "@maxLength": 40 } }
             ] } }
           ] }
         }
@@ -164,8 +164,8 @@ public class SpringUuidPrimaryKeyCodegenTest extends SharedRegistryTestBase {
             src.contains("getBridge(@PathVariable java.util.UUID id)"));
         assertTrue("expected per-subtype updateBridge(@PathVariable java.util.UUID id, ...); saw:\n" + src,
             src.contains("updateBridge(@PathVariable java.util.UUID id,"));
-        assertTrue("expected per-subtype deleteCopay(@PathVariable java.util.UUID id); saw:\n" + src,
-            src.contains("deleteCopay(@PathVariable java.util.UUID id)"));
+        assertTrue("expected per-subtype deleteCoupon(@PathVariable java.util.UUID id); saw:\n" + src,
+            src.contains("deleteCoupon(@PathVariable java.util.UUID id)"));
         assertFalse("uuid-PK TPH controller must not bind @PathVariable Long; saw:\n" + src,
             src.contains("@PathVariable Long id"));
     }

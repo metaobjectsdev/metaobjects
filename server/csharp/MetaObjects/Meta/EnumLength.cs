@@ -37,14 +37,15 @@ public static class EnumLength
         if (field.ResolvedIsArray()) return null;
         if (field.MaxLength is { } own) return own;
         if (EnumDefaults.Of(field).MaxLength is not { } fallback) return null;
-        var longest = (field.EffectiveEnumValues ?? [])
+        // rc.21: the column holds each member's STORED string (@stringValueMap), so that is what must fit.
+        var longest = EnumStorage.StoredValues(field)
             .OrderByDescending(v => v.Length).FirstOrDefault();
         if (longest is not null && longest.Length > fallback)
         {
             var owner = field.Parent;
             var label = owner is not null && owner.Type == TYPE_OBJECT ? $"{owner.Name}.{field.Name}" : field.Name;
             throw new MetaModelException(
-                $"field.enum \"{label}\" has the member \"{longest}\" ({longest.Length} characters), longer than " +
+                $"field.enum \"{label}\" has the {(EnumStorage.StringValueMapOf(field) is null ? "member" : "stored value")} \"{longest}\" ({longest.Length} characters), longer than " +
                 $"the project's enums.maxLength {fallback}. Give the field its own @maxLength of at least " +
                 $"{longest.Length}, raise enums.maxLength, or shorten the member.",
                 ErrorCode.ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH);

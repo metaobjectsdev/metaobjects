@@ -45,6 +45,7 @@ function setupRepo(): string {
 import { defineConfig } from "@metaobjectsdev/codegen-ts";
 export default defineConfig({
   outDir: ${JSON.stringify(join(root, OUT))},
+  outputLayout: "flat",
   dialect: "sqlite",
   dbImport: "~/db",
   extStyle: "none",
@@ -64,6 +65,7 @@ function setupRepoWithNames(): string {
 import { defineConfig } from "@metaobjectsdev/codegen-ts";
 export default defineConfig({
   outDir: ${JSON.stringify(join(root, OUT))},
+  outputLayout: "flat",
   dialect: "sqlite",
   dbImport: "~/db",
   extStyle: "none",

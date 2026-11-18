@@ -36,7 +36,7 @@ const PAYLOAD = {
 
 async function load(children: unknown[]): Promise<MetaRoot> {
   const r = await new MetaDataLoader().load([
-    new InMemoryStringSource(JSON.stringify({ "metadata.root": { package: "clinic", children } })),
+    new InMemoryStringSource(JSON.stringify({ "metadata.root": { package: "depot", children } })),
   ]);
   expect(r.errors).toEqual([]);
   return r.root;
@@ -157,7 +157,7 @@ describe("genMigrateAdvice", () => {
       const root = project();
       writeFileSync(
         join(root, "wrangler.toml"),
-        `name = "app"\n\n[[d1_databases]]\nbinding = "DB"\ndatabase_name = "clinic-db"\ndatabase_id = "x"\n`,
+        `name = "app"\n\n[[d1_databases]]\nbinding = "DB"\ndatabase_name = "depot-db"\ndatabase_id = "x"\n`,
       );
       return root;
     };
@@ -166,7 +166,7 @@ describe("genMigrateAdvice", () => {
       const metadata = await load([PET, PAYLOAD]);
       const advice = await genMigrateAdvice(input({ metadata, projectRoot: d1Project() }));
       expect(advice).toContain("meta migrate --dialect d1 --d1 DB --slug <name>");
-      expect(advice).toContain("wrangler d1 migrations apply clinic-db --local");
+      expect(advice).toContain("wrangler d1 migrations apply depot-db --local");
       expect(advice).not.toContain("--dialect sqlite");
     });
 

@@ -68,6 +68,7 @@ import {
 import type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
 import { buildKyselyFromUrl, inferDialect, type Dialect } from "../lib/kysely.js";
+import { warnWidenedExtenders } from "../lib/widened-extenders.js";
 import { tokensToAllowOptions, describeChange } from "../lib/allow.js";
 import {
   computeDrift,
@@ -84,6 +85,8 @@ import {
   type ReplayEngine,
   verifyReplay,
   introspect,
+  checkDeclaredFunctions,
+  DECLARED_FUNCTION_CHECK_LIMITS,
   diff,
   withoutViewRecreates,
   readSnapshot,
@@ -417,6 +420,8 @@ export async function verifyCommand(
     }, fmt);
     return 1;
   }
+  // rc.21 part B (I2): an extender whose view now returns every row of a TPH base.
+  warnWidenedExtenders(root, (line) => log.warn(line));
 
   // The project's schema settings, resolved once for every expected-schema build and drift
   // computation below. A `migrate.conventions` preset this version does not ship is a config
@@ -1498,7 +1503,20 @@ export async function verifyCommand(
         return 1;
       }
 
-      return reportSchemaDrift(driftResult, [...ledgerDrift, ...snapshotDrift], kysely.displayUrl);
+      // rc.21 part B (N2): a declared origin.function's signature is the database's, or a finding.
+      let functionDrift: string[] = [];
+      if (kysely.dialect === "postgres") {
+        try {
+          functionDrift = await checkDeclaredFunctions(kysely.db, root);
+          if (functionDrift.length > 0) log.warn(`verify: ${DECLARED_FUNCTION_CHECK_LIMITS}`);
+        } catch (err) {
+          schemaRunError = `failed to read the declared functions from ${kysely.displayUrl}: ${describeError(err)}`;
+          log.error(`verify: ${schemaRunError}`);
+          return 1;
+        }
+      }
+
+      return reportSchemaDrift(driftResult, [...ledgerDrift, ...snapshotDrift, ...functionDrift], kysely.displayUrl);
     } finally {
       await shadow?.close();
       try {
@@ -1818,7 +1836,7 @@ export async function verifyCommand(
     try {
       result = await computeCodegenDrift(config, codegenRoot, genConfigDir, genCollection.inScope, genCollection.ownFiles, {
         sourceRoots: sourceRootsOf(genCollection),
-        agentSchema: () => buildAgentSchemaInput(
+        agentSchema: () => codegenSchema === undefined ? undefined : buildAgentSchemaInput(
           codegenRoot,
           config.dialect,
           (m) => log.warn(`verify --codegen: [agent-docs] ${m}`),

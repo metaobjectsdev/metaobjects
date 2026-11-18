@@ -1,0 +1,45 @@
+{
+  "errors": [
+    {
+      "code": "ERR_CROSS_FIELD_WITHOUT_CHECK",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.checks.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[8]['validator.comparison']"
+      }
+    },
+    {
+      "code": "ERR_CROSS_FIELD_WITHOUT_CHECK",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.checks.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[9]['validator.requiredWhen']"
+      }
+    },
+    {
+      "code": "ERR_CROSS_FIELD_WITHOUT_CHECK",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.checks.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[10]['validator.presentIff']"
+      }
+    },
+    {
+      "code": "ERR_CROSS_FIELD_WITHOUT_CHECK",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.checks.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[11]['validator.atLeastOne']"
+      }
+    }
+  ],
+  "warnings": []
+}

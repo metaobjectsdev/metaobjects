@@ -103,7 +103,7 @@ beforeAll(async () => {
 
   // The Drizzle driver's schema is the generated `dialect: "mysql"` tables.
   await runGen({
-    config: defineConfig({ outDir: tmp, extStyle: "none", dialect: "mysql", generators: [entityFile({ allowlists: false })] }),
+    config: defineConfig({ outputLayout: "flat", outDir: tmp, extStyle: "none", dialect: "mysql", generators: [entityFile({ allowlists: false })] }),
     metadata,
   });
   schema = {

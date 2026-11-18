@@ -103,7 +103,7 @@ public class ConformanceTest {
 
     private static final Path CORPUS = CorpusRoot.locate();
     private static final Set<String> REGISTERED_CODES = FixtureLint.loadRegisteredCodes(CORPUS);
-    private static final ExpectedFailures.Ledger LEDGER = ExpectedFailures.load(locateLedger());
+    static final ExpectedFailures.Ledger LEDGER = ExpectedFailures.load(locateLedger());
 
     /**
      * Cross-language provider-id aliases: the corpus uses canonical provider

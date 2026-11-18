@@ -96,7 +96,7 @@ async function generate(dir: string): Promise<string[]> {
   expect(errors).toEqual([]);
   await runGen({
     config: defineConfig({
-      outDir: dir, extStyle: "none", dbImport: DB_IMPORT, dialect: "postgres",
+      outDir: dir, extStyle: "none", dbImport: DB_IMPORT, outputLayout: "flat" as const, dialect: "postgres",
       generators: [
         entityFile(), queriesFile(), routesFile(),
         tanstackQuery(), tanstackGrid(), tanstackGridHook(), barrel(),

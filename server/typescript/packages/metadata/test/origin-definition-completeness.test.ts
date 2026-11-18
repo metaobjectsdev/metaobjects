@@ -69,6 +69,14 @@ const EXPECTED: Record<string, Record<string, ExpectedAttr>> = {
     // Origin @segment.
     segment: { valueType: "string", required: false },
   },
+  // rc.21 part B (U10).
+  function: {
+    function: { valueType: "string", required: true },
+    schema: { valueType: "string", required: false },
+    args: { valueType: "string", required: false },
+    params: { valueType: "string", required: false },
+    returns: { valueType: "string", required: true },
+  },
 };
 
 describe("origin provider externalization — completeness", () => {

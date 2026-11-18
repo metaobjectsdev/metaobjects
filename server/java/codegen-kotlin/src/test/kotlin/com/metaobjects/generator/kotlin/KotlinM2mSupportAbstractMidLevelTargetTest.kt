@@ -18,7 +18,7 @@ import kotlin.test.assertNull
  */
 class KotlinM2mSupportAbstractMidLevelTargetTest {
 
-    /** `Party` (`@discriminator`) -> abstract `Auth` (mid-level, no @discriminatorValue) -> {BridgeAuth, CopayAuth}. */
+    /** `Party` (`@discriminator`) -> abstract `Auth` (mid-level, no @discriminatorValue) -> {BridgeAuth, CouponAuth}. */
     private val abstractMidLevelFixture = """{
       "metadata.root": { "package": "acme::auth", "children": [
         { "object.entity": { "name": "Party", "children": [
@@ -31,14 +31,14 @@ class KotlinM2mSupportAbstractMidLevelTargetTest {
         { "object.entity": { "name": "Auth", "abstract": true, "@discriminator": "type", "children": [
             { "source.rdb":   { "@table": "auths" } },
             { "field.long":   { "name": "id" } },
-            { "field.enum":   { "name": "type", "@values": ["Bridge", "Copay"] } },
+            { "field.enum":   { "name": "type", "@values": ["Bridge", "Coupon"] } },
             { "identity.primary": { "@fields": "id", "@generation": "increment" } }
         ] } },
         { "object.entity": { "name": "BridgeAuth", "extends": "Auth", "@discriminatorValue": "Bridge", "children": [
             { "field.int": { "name": "quantity", "@required": true } }
         ] } },
-        { "object.entity": { "name": "CopayAuth", "extends": "Auth", "@discriminatorValue": "Copay", "children": [
-            { "field.decimal": { "name": "copayAmount", "@precision": 10, "@scale": 2 } }
+        { "object.entity": { "name": "CouponAuth", "extends": "Auth", "@discriminatorValue": "Coupon", "children": [
+            { "field.decimal": { "name": "couponAmount", "@precision": 10, "@scale": 2 } }
         ] } },
         { "object.entity": { "name": "PartyAuth", "children": [
             { "source.rdb":         { "@table": "party_auths" } },

@@ -25,6 +25,7 @@ OBJECT_ATTR_DISCRIMINATOR_VALUE = "discriminatorValue"
 # ["csharp"]). Loaded and type-checked here on
 # object.entity / projection / report; no Python generator acts on it yet.
 OBJECT_ATTR_COLLECTION_NAME = "collectionName"
+# Deprecated alias of collectionName (ports ["csharp"]; rc.19): the EF Core DbSet property name.
 # On object.base, so every object subtype carries them. ``@object`` (ADR-0001) is
 # cross-port vocabulary only Java implements so far; ``@objectAdapter`` (ADR-0005) is
 # JVM-only (ports ["java", "kotlin"]). Python loads and type-checks both; it acts on neither.
@@ -36,6 +37,11 @@ OBJECT_ATTR_OBJECT_ADAPTER = "objectAdapter"
 # the SAME attr subtype as origin.aggregate's @filter) that lowers to an outer
 # SQL WHERE. Mirrors TS object-constants.ts OBJECT_PROJECTION_ATTR_FILTER.
 OBJECT_PROJECTION_ATTR_FILTER = "filter"
+# rc.21 part B: a projection UNIONed with others (U15), one with a row per array element (U14).
+OBJECT_PROJECTION_ATTR_UNION = "union"
+OBJECT_PROJECTION_ATTR_UNION_ALL = "unionAll"
+OBJECT_PROJECTION_ATTR_GRAIN = "grain"
+OBJECT_PROJECTION_ATTR_GRAIN_ORDINAL = "grainOrdinal"
 
 # ---------------------------------------------------------------------------
 # FR-044 — object.report attrs. Mirrors TS object-constants.ts.

@@ -47,9 +47,7 @@ public static class ObjectConstants
     /// </summary>
     public const string OBJECT_ATTR_DISCRIMINATOR_VALUE = "discriminatorValue";
 
-    /// <summary>The object's collection name (the EF Core DbSet property), in place of the plural
-    /// derived from its name. On
-    /// object.entity, object.projection and object.report.</summary>
+    /// <summary>The object's collection name (DbSet, REST segment, TS exports, reverse hop).</summary>
     public const string OBJECT_ATTR_COLLECTION_NAME = "collectionName";
 
     /// <summary>
@@ -76,6 +74,11 @@ public static class ObjectConstants
     /// max 1). Mirrors TS OBJECT_PROJECTION_ATTR_FILTER.
     /// </summary>
     public const string OBJECT_PROJECTION_ATTR_FILTER = "filter";
+    /// <summary>rc.21 part B: a projection UNIONed with others (U15), and one with a row per array element (U14).</summary>
+    public const string OBJECT_PROJECTION_ATTR_UNION = "union";
+    public const string OBJECT_PROJECTION_ATTR_UNION_ALL = "unionAll";
+    public const string OBJECT_PROJECTION_ATTR_GRAIN = "grain";
+    public const string OBJECT_PROJECTION_ATTR_GRAIN_ORDINAL = "grainOrdinal";
 
     // -----------------------------------------------------------------------
     // FR-044 — object.report attrs. Mirrors TS OBJECT_REPORT_ATTR_*.

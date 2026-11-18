@@ -26,7 +26,7 @@ import type { LoaderWarning } from "../source.js";
 import { codeSource, resolvedSource } from "../source.js";
 import { parseJson } from "../parser-json.js";
 import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateSortableHasSupportedSubtype, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateFieldMap,
-  validateEnumMaxLength, validateIdentitySequence, validateCrossFieldValidators, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateOneSideReferenceResolution, validateM2MJunctionPairing, validateIndexLookupFields, validateProjectionFilter, validateOriginSegmentsAndCorrelation, validateRetiredRequirementLinks, validateColumnNameCollisions } from "./validation-passes.js";
+  validateEnumMaxLength, validateIdentitySequence, validateCrossFieldValidators, validateDbCheck, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateOneSideReferenceResolution, validateM2MJunctionPairing, validateIndexLookupFields, validateProjectionFilter, validateOriginSegmentsAndCorrelation, validateProjectionUnionAndGrain, validateDerivedCycles, validateExtenderSubtypeScope, validateRetiredRequirementLinks, validateColumnNameCollisions } from "./validation-passes.js";
 import { validateReporting } from "./reporting-validation.js";
 import { runRegisteredValidation } from "./validation-registry.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
@@ -608,7 +608,7 @@ export class MetaDataLoader {
         }
         errors.push(
           new ParseError(
-            `the SuperClass '${failure.ref}' does not exist (referenced by ${failure.nodeFqn})${didYouMeanSuperHint(root, failure.ref)}`,
+            `the SuperClass '${failure.ref}' does not exist (referenced by ${failure.nodeFqn})${failure.memberHint ?? didYouMeanSuperHint(root, failure.ref)}`,
             {
               code: "ERR_UNRESOLVED_SUPER",
               source: resolvedSource(failure.source, failure.nodeFqn, failure.ref),
@@ -636,6 +636,8 @@ export class MetaDataLoader {
 
       // Fifth pass: @filterable without index drift warning.
       warnings.push(...validateFilterableHasIndex(root));
+      // rc.21 part B (I2): an extender whose view widened with the identity-anchor rule.
+      warnings.push(...validateExtenderSubtypeScope(root));
 
       // SP-H Unit9 — @filterable on a subtype with no operator band → error
       // (would silently generate a filter that rejects every request).
@@ -663,6 +665,10 @@ export class MetaDataLoader {
       // an aggregate-derived or dangling ref is fail-closed (ERR_BAD_ATTR_FILTER).
       errors.push(...validateProjectionFilter(root));
       errors.push(...validateOriginSegmentsAndCorrelation(root));
+      // rc.21 part B — @union shapes and @grain projections.
+      errors.push(...validateProjectionUnionAndGrain(root));
+      // rc.21 part B fix round 2 (N3): a derived field that depends on itself has no SQL.
+      errors.push(...validateDerivedCycles(root));
 
       // FR-044 — reporting vocabulary cross-node rules (dimensions, measures,
       // segments, reports, relative-date filter values).
@@ -732,8 +738,11 @@ export class MetaDataLoader {
       // identity.primary @sequenceStart / @sequenceName need @generation "increment".
       errors.push(...validateIdentitySequence(root));
 
-      // Cross-field validators: exactlyOne names two or more fields; @condition names real fields.
+      // Cross-field validators: atLeastOne @max in range, exactlyOne names two or more fields; @condition names real fields.
       errors.push(...validateCrossFieldValidators(root, this._strict));
+
+      // @dbCheck: false with @constraintName names a CHECK that is never created.
+      errors.push(...validateDbCheck(root));
 
       // Tenth pass: one-primary multi-source rule — if an object has ≥1 source,
       // exactly one must carry role "primary" (ERR_SOURCE_NO_PRIMARY /

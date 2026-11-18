@@ -1,0 +1,21 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Provider",
+          "children": [
+            { "source.rdb": { "@table": "providers" } },
+            { "field.long": { "name": "id" } },
+            { "field.enum": { "name": "state", "@values": ["OPEN", "SHUT"], "@dbCheck": false, "@constraintName": "providers_state_ok" } },
+            { "field.string": { "name": "npi", "children": [
+              { "validator.regex": { "name": "tenDigits", "@pattern": "^\\d{10}$", "@dbCheck": false, "@constraintName": "providers_npi_shape" } }
+            ] } },
+            { "identity.primary": { "name": "pk", "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

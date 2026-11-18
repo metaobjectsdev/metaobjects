@@ -439,30 +439,33 @@ export function pluralize(s: string): string {
 }
 
 /**
- * An object's collection name, in the object's own casing: its own `@collectionName`, else the
- * project's pluralizer (`naming.collections`, {@link physicalNamingOf}) over its name. Each
- * artifact that reads it applies its own casing. Own, not resolving: a name inherited from an abstract base would give every
- * subtype one collection.
+ * An object's collection name, in the object's own casing: its own
+ * `@collectionName`, else the project's pluralizer
+ * (`naming.collections`, {@link physicalNamingOf}) over its name. Each artifact then applies its
+ * own casing (REST: snake_case; a TS export: as is; a Drizzle variable: lowerFirst). Own, not
+ * resolving: a name inherited from an abstract base would give every subtype one collection.
  */
 export function collectionNameOf(obj: MetaData): string {
-  return declaredCollectionName(obj) ?? pluralizer(physicalNamingOf(obj).collections ?? DEFAULT_PLURALIZER)(obj.name);
+  const declared = declaredCollectionName(obj);
+  if (declared !== undefined) return declared.name;
+  return pluralizer(physicalNamingOf(obj).collections ?? DEFAULT_PLURALIZER)(obj.name);
 }
 
 /**
- * The REST collection segment an object is served under: {@link collectionSegmentOf} over its
- * name, its own `@collectionName` and the project's `naming.collections`. Every route, `$path`
- * and REST path in the documentation reads it.
+ * rc.19 fix round (I3) — the REST collection segment an object is served under: {@link
+ * collectionSegmentOf} over its name, its declared collection name and the project's
+ * `naming.collections`. Every port's routes, `$path`, OpenAPI and docs REST paths read it.
  */
 export function collectionSegment(obj: MetaData): string {
-  return collectionSegmentOf(obj.name, declaredCollectionName(obj), physicalNamingOf(obj).collections);
+  return collectionSegmentOf(obj.name, declaredCollectionName(obj)?.name, physicalNamingOf(obj).collections);
 }
 
 /**
- * The REST collection segment for an object named `name` (shared with C#:
- * `fixtures/naming-conformance/collection-segments.json`):
+ * The REST collection segment for an object named `name` (`fixtures/naming-conformance/
+ * collection-segments.json`, shared with C#):
  *   - a declared `@collectionName` wins, snake_cased ({@link snakeCollectionName});
  *   - else a configured pluralizer's output over the name, snake_cased the same way;
- *   - else the rule every port has always served: snake_case, then {@link pluralize}.
+ *   - else the historical rule, byte-identical to rc.18: snake_case, then {@link pluralize}.
  * A pluralizer is applied only when the project configures one, so an unconfigured project's
  * segments never move (`FAQ` stays `faqs`, never `fa_qs`).
  */
@@ -482,11 +485,13 @@ export function snakeCollectionName(s: string): string {
   return m !== null ? toSnakeCase(m[1]!) + m[2]! : toSnakeCase(s);
 }
 
-/** The collection name an object declares itself (`@collectionName`); undefined when it declares none. */
-export function declaredCollectionName(obj: MetaData): string | undefined {
-  // ADR-0039: own — a collection name is the declaring object's alone (see collectionNameOf).
+/**
+ * The collection name an object declares itself (`@collectionName`); undefined when it
+ * declares none.
+ */
+export function declaredCollectionName(obj: MetaData): { name: string } | undefined {
   const own = obj.ownAttr(OBJECT_ATTR_COLLECTION_NAME);
-  return typeof own === "string" && own !== "" ? own : undefined;
+  return typeof own === "string" && own !== "" ? { name: own } : undefined;
 }
 
 /**

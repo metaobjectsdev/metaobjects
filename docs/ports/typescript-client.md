@@ -596,7 +596,7 @@ are opt-**IN**. Opting in WIDENS, which a `filter` cannot express — it is a
 generator option instead, defaulting to `() => false`:
 
 ```ts
-const perSubtypeGrid = (e: MetaObject) => e.name === "CopayAuth";
+const perSubtypeGrid = (e: MetaObject) => e.name === "CouponAuth";
 
 tanstackGrid({ tphSubtypeGrids: perSubtypeGrid }),
 tanstackGridHook({ tphSubtypeGrids: perSubtypeGrid }),

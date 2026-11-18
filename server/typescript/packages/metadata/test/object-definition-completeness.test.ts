@@ -73,6 +73,11 @@ const NORMALIZE: Record<string, ExpectedAttr> = {
 // to a view-level WHERE); mirrors origin.aggregate's filter-attr placement.
 const PROJECTION_FILTER: Record<string, ExpectedAttr> = {
   filter: { valueType: "filter", required: false },
+  // rc.21 part B: @union / @unionAll (U15), @grain / @grainOrdinal (U14).
+  union: { valueType: "string", required: false },
+  unionAll: { valueType: "boolean", required: false },
+  grain: { valueType: "string", required: false },
+  grainOrdinal: { valueType: "string", required: false },
 };
 
 // FR-044 — object.report carries its six declaration attrs (five, plus the optional @spine). The array-valued ones
@@ -86,10 +91,10 @@ const REPORT_ATTRS: Record<string, ExpectedAttr> = {
   spine: { valueType: "string", required: false },
 };
 
-// Cross-port attrs some ports act on: @collectionName (implementedIn C# and TypeScript) on entity /
-// projection / report, and the JVM's @object / @objectAdapter on object.base, which every subtype
-// composes.
-const COLLECTION_NAME: Record<string, ExpectedAttr> = {
+// R40 kind 2 — language-specific attrs every port loads: the JVM's @object / @objectAdapter on object.base, which
+// every subtype composes.
+const DB_SET_NAME: Record<string, ExpectedAttr> = {
+  // rc.19 (R57): @collectionName (kind 1, C# + TypeScript).
   collectionName: { valueType: "string", required: false },
 };
 
@@ -99,10 +104,10 @@ const JVM_BINDING: Record<string, ExpectedAttr> = {
 };
 
 function expectedAttrsFor(subType: string): Record<string, ExpectedAttr> {
-  if (subType === OBJECT_SUBTYPE_ENTITY) return { ...DISCRIMINATOR, ...COLLECTION_NAME, ...JVM_BINDING };
+  if (subType === OBJECT_SUBTYPE_ENTITY) return { ...DISCRIMINATOR, ...DB_SET_NAME, ...JVM_BINDING };
   if (subType === OBJECT_SUBTYPE_VALUE) return { ...NORMALIZE, ...JVM_BINDING };
-  if (subType === OBJECT_SUBTYPE_PROJECTION) return { ...PROJECTION_FILTER, ...COLLECTION_NAME, ...JVM_BINDING };
-  if (subType === OBJECT_SUBTYPE_REPORT) return { ...REPORT_ATTRS, ...COLLECTION_NAME, ...JVM_BINDING };
+  if (subType === OBJECT_SUBTYPE_PROJECTION) return { ...PROJECTION_FILTER, ...DB_SET_NAME, ...JVM_BINDING };
+  if (subType === OBJECT_SUBTYPE_REPORT) return { ...REPORT_ATTRS, ...DB_SET_NAME, ...JVM_BINDING };
   // base carries only the JVM bindings (discriminator moved to entity only).
   return { ...JVM_BINDING };
 }

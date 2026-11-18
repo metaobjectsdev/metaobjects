@@ -473,7 +473,7 @@ public class MetaDataLoader
                     continue;
                 }
                 errors.Add(new MetaError(
-                    $"the SuperClass '{failure.Ref}' does not exist (referenced by {failure.NodeFqn}){NamingRefs.DidYouMeanSuperHint(root, failure.Ref)}",
+                    $"the SuperClass '{failure.Ref}' does not exist (referenced by {failure.NodeFqn}){failure.MemberHint ?? NamingRefs.DidYouMeanSuperHint(root, failure.Ref)}",
                     ErrorCode.ERR_UNRESOLVED_SUPER,
                     Envelope: envelope));
             }
@@ -492,6 +492,8 @@ public class MetaDataLoader
 
             // Pass 4: filterable-without-index drift warning
             warnings.AddRange(ValidationPasses.ValidateFilterableHasIndex(root));
+            // rc.21 part B (I2): an extender whose view widened with the identity-anchor rule.
+            warnings.AddRange(ValidationPasses.ValidateExtenderSubtypeScope(root));
 
             // Pass 4b: @filterable on a subtype with no operator band, or an array → error (SP-H Unit9 / #335)
             errors.AddRange(ValidationPasses.ValidateFilterableHasSupportedOps(root));
@@ -527,6 +529,10 @@ public class MetaDataLoader
             // aggregate-derived field-ref fails closed with ERR_BAD_ATTR_FILTER.
             errors.AddRange(ValidationPasses.ValidateProjectionFilter(root));
             errors.AddRange(ValidationPasses.ValidateOriginSegmentsAndCorrelation(root));
+            // rc.21 part B — @union shapes and @grain projections.
+            errors.AddRange(ValidationPasses.ValidateProjectionUnionAndGrain(root));
+            // rc.21 part B fix round 2 (N3): a derived field that depends on itself has no SQL.
+            errors.AddRange(ValidationPasses.ValidateDerivedCycles(root));
 
             // Pass 7c (FR-044): reporting vocabulary cross-node rules (dimensions, measures,
             // segments, reports, relative-date filter values).
@@ -541,6 +547,7 @@ public class MetaDataLoader
             errors.AddRange(ValidationPasses.ValidateEnumMaxLength(root));
             errors.AddRange(ValidationPasses.ValidateIdentitySequence(root));
             errors.AddRange(ValidationPasses.ValidateCrossFieldValidators(root, _strict));
+            errors.AddRange(ValidationPasses.ValidateDbCheck(root));
 
             // Pass 9: template @payloadRef / @requiredSlots resolution
             errors.AddRange(ValidationPasses.ValidateTemplatePayloadRefs(root));

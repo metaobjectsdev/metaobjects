@@ -31,6 +31,7 @@ public class OriginTypesMetaDataProvider implements MetaDataTypeProvider {
         AggregateOrigin.registerTypes(registry);
         ComputedOrigin.registerTypes(registry);
         FirstOrigin.registerTypes(registry);
+        FunctionOrigin.registerTypes(registry);
     }
 
     @Override

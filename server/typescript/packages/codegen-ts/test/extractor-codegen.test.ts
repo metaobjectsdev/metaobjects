@@ -12,8 +12,8 @@
 
 import { describe, test, expect, afterAll, setDefaultTimeout } from "bun:test";
 import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { dirname, join } from "node:path";
 import ts from "typescript";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { renderOutputParser } from "../src/templates/output-parser.js";
@@ -52,6 +52,7 @@ async function writeEntityModules(
     warn: () => {},
   };
   for (const f of await entityFile().generate(ctx)) {
+    mkdirSync(dirname(join(dir, f.path)), { recursive: true });
     writeFileSync(join(dir, f.path), f.content);
   }
 }

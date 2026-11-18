@@ -8,7 +8,7 @@
         "children": [
           { "source.rdb":       { "@table": "auths" } },
           { "field.long":       { "name": "id", "@filterable": true, "@sortable": true } },
-          { "field.enum":       { "name": "type", "@values": ["Bridge", "Copay", "PriorAuth"], "@filterable": true } },
+          { "field.enum":       { "name": "type", "@values": ["Bridge", "Coupon", "Permit"], "@filterable": true } },
           { "field.string":     { "name": "reference", "@required": true, "@maxLength": 80, "@filterable": true, "@sortable": true } },
           { "field.string":     { "name": "issuedCurrency", "@maxLength": 3, "@mutability": "writeOnce" } },
           { "field.timestamp":  { "name": "autoCreatedAt", "@autoSet": "onCreate" } },
@@ -25,17 +25,17 @@
         ]
       }},
       { "object.entity": {
-        "name": "CopayAuth",
+        "name": "CouponAuth",
         "extends": "Auth",
-        "@discriminatorValue": "Copay",
+        "@discriminatorValue": "Coupon",
         "children": [
-          { "field.decimal": { "name": "copayAmount", "@precision": 10, "@scale": 2, "@filterable": true } }
+          { "field.decimal": { "name": "couponAmount", "@precision": 10, "@scale": 2, "@filterable": true } }
         ]
       }},
       { "object.entity": {
-        "name": "PriorAuthAuth",
+        "name": "PermitAuth",
         "extends": "Auth",
-        "@discriminatorValue": "PriorAuth",
+        "@discriminatorValue": "Permit",
         "children": [
           { "field.string": { "name": "approver", "@maxLength": 80, "@filterable": true, "@sortable": true } }
         ]

@@ -9,13 +9,13 @@ const MODEL = { "metadata.root": { package: "acme", children: [
   { "object.entity": { name: "Authorization", "@discriminator": "type", children: [
     { "source.rdb": { "@table": "authorizations" } },
     { "field.long": { name: "id" } },
-    { "field.enum": { name: "type", "@required": true, "@values": ["Copay", "Prior", "Appeal"], "@intValueMap": { Copay: 1, Prior: 2, Appeal: 3 } } },
+    { "field.enum": { name: "type", "@required": true, "@values": ["Coupon", "Permit", "Appeal"], "@intValueMap": { Coupon: 1, Permit: 2, Appeal: 3 } } },
     { "field.string": { name: "code" } },
     { "identity.primary": { name: "id", "@fields": "id" } },
   ] } },
   { "object.entity": { name: "CardAuthorization", extends: "Authorization", abstract: true, children: [] } },
-  { "object.entity": { name: "CopayAuthorization", extends: "CardAuthorization", "@discriminatorValue": "Copay", children: [] } },
-  { "object.entity": { name: "PriorAuthorization", extends: "CardAuthorization", "@discriminatorValue": "Prior", children: [] } },
+  { "object.entity": { name: "CouponAuthorization", extends: "CardAuthorization", "@discriminatorValue": "Coupon", children: [] } },
+  { "object.entity": { name: "PermitAuthorization", extends: "CardAuthorization", "@discriminatorValue": "Permit", children: [] } },
   { "object.entity": { name: "AppealAuthorization", extends: "Authorization", "@discriminatorValue": "Appeal", children: [] } },
   { "object.projection": { name: "CardAuthView", children: [
     { "source.rdb": { "@kind": "view", "@table": "v_card_auth" } },

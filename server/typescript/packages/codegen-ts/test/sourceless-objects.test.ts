@@ -86,7 +86,7 @@ function genConfig(outDir: string) {
     outDir,
     extStyle: "none",
     dbImport: "~/server/db",
-    dialect: "postgres",
+    outputLayout: "flat" as const, dialect: "postgres",
     generators: [entityFile(), queriesFile(), routesFile(), routesFileHono()],
   });
 }
@@ -116,7 +116,7 @@ function refGenConfig(outDir: string) {
     outDir,
     extStyle: "none",
     dbImport: "~/server/db",
-    dialect: "postgres",
+    outputLayout: "flat" as const, dialect: "postgres",
     generators: [entityFile(), refQueriesFile(), refRoutesFile()],
   });
 }

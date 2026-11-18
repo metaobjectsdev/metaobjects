@@ -72,7 +72,13 @@ public final class Fr019SharedEnum {
      */
     public record SharedEnum(String name, List<String> values, boolean provided,
                              String metaPackage, String javaPackage,
-                             Map<String, Integer> intValueMap) { }
+                             Map<String, Integer> intValueMap, Map<String, String> stringValueMap) {
+        /** The record without a {@code @stringValueMap} (rc.21), for callers that predate it. */
+        public SharedEnum(String name, List<String> values, boolean provided, String metaPackage, String javaPackage,
+                          Map<String, Integer> intValueMap) {
+            this(name, values, provided, metaPackage, javaPackage, intValueMap, null);
+        }
+    }
 
     /** Per-port codegen config for resolving a {@code @provided} enum's Java namespace (ADR-0001).
      * Generator args, never metadata: a package&rarr;namespace map (keyed by metadata package in
@@ -128,7 +134,7 @@ public final class Fr019SharedEnum {
         String name = SpringNaming.capitalize(split[1]);
         String metaPackage = metaPackageOf(decl.getName());
         return new SharedEnum(name, values, isProvided((EnumField) decl), metaPackage, javaPackage,
-            SpringTypeMapper.intValueMap((EnumField) decl));
+            SpringTypeMapper.intValueMap((EnumField) decl), SpringTypeMapper.stringValueMap((EnumField) decl));
     }
 
     /** The declaration's metadata package in {@code ::} form, stripped of the trailing {@code ::Name}
@@ -213,7 +219,7 @@ public final class Fr019SharedEnum {
             }
             src.append("/** GENERATED — shared enum ").append(shared.name())
                .append(". Do not hand-edit; regenerated from metadata. */\n");
-            src.append(SpringTypeMapper.enumDeclaration(shared.name(), shared.values(), shared.intValueMap()))
+            src.append(SpringTypeMapper.enumDeclaration(shared.name(), shared.values(), shared.intValueMap(), shared.stringValueMap()))
                .append("\n");
             try {
                 Path outFile = outRoot.resolve(shared.javaPackage().replace('.', '/'))

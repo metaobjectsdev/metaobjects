@@ -73,7 +73,7 @@ async function loadRoot() {
 
 async function generate(dir: string): Promise<Map<string, string>> {
   const root = await loadRoot();
-  const renderContext = makeRenderContext({
+  const renderContext = makeRenderContext({ outputLayout: "flat",
     dialect: "postgres",
     loadedRoot: root,
     outDir: dir,
@@ -86,7 +86,7 @@ async function generate(dir: string): Promise<Map<string, string>> {
     loadedRoot: root,
     matches: () => true,
     projectRoot: dir,
-    config: { outDir: dir, extStyle: "none", dbImport: "~/db", dialect: "postgres" } as never,
+    config: { outputLayout: "flat", outDir: dir, extStyle: "none", dbImport: "~/db", dialect: "postgres" } as never,
     renderContext,
     warn: () => {},
   };

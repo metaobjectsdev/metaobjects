@@ -50,7 +50,7 @@ describe("ai LlmCall codegen — abstract base + concrete entity", () => {
         outDir: tmp,
         extStyle: "none",
         dbImport: "~/server/db",
-        dialect: "postgres",
+        outputLayout: "flat" as const, dialect: "postgres",
         generators: [entityFile(), queriesFile(), barrel()],
       }),
       metadata: loaded.root,

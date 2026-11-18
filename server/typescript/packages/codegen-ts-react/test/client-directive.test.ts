@@ -39,7 +39,7 @@ async function gen(form: FormFactory, clientDirective: boolean | undefined): Pro
   try {
     await runGen({
       config: defineConfig({
-        outDir: dir, extStyle: "none", dbImport: "../db", dialect: "sqlite",
+        outDir: dir, extStyle: "none", dbImport: "../db", outputLayout: "flat" as const, dialect: "sqlite",
         ...(clientDirective === undefined ? {} : { clientDirective }),
         generators: [entityFile(), form()],
       }),

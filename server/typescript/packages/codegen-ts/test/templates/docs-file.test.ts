@@ -341,6 +341,22 @@ describe("renderDocsFile — Identity section", () => {
     expect(out).toContain("**Secondary index:** `visitorId`");
     expect(out).toContain("**Reference:** `authorId` → [`Author`](./Author.md)");
   });
+
+  test("a reference whose target the tree does not hold stays plain text (rc.20 G4)", () => {
+    const root = metaRoot();
+    const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
+    attachRdbSource(post, "posts");
+    post.addChild(metaField(FIELD_SUBTYPE_LONG, "id"));
+    post.addChild(metaField(FIELD_SUBTYPE_LONG, "ghostId"));
+    const reference = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_REFERENCE), "ghost");
+    reference.setAttr("fields", ["ghostId"]);
+    reference.setAttr("references", "Ghost");
+    post.addChild(reference);
+    root.addChild(post);
+    const out = renderDocsFile(post, { dialect: "sqlite", loadedRoot: root });
+    const bullet = out.split("\n").find((l) => l.startsWith("- **Reference:**"));
+    expect(bullet).toBe("- **Reference:** `ghostId` → `Ghost`");
+  });
 });
 
 describe("renderDocsFile — Constraints", () => {

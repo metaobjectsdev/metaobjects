@@ -228,7 +228,7 @@ public sealed class VerifyRequirementsTests : IDisposable
         // requirement gate still runs, as it does on every verify, and prints its findings.
         var args = Project(Requirement("Recorded", "live", "Refund"));
         var model = args[1];
-        var codegenArgs = new[] { "verify", model, "--codegen", "--out", Path.Combine(_tmp, "out") };
+        var codegenArgs = new[] { "verify", model, "--codegen", "--full", "--out", Path.Combine(_tmp, "out") };
 
         var (exitCode, stdout, stderr) = CliProcess.Run(_tmp, codegenArgs);
 
@@ -354,7 +354,7 @@ public sealed class VerifyRequirementsTests : IDisposable
     {
         // In-process this time, through the built CLI: `--codegen` with no `--out` stops before it
         // loads anything, so here too the gate's load is the only one.
-        var (exitCode, stdout, stderr) = CliProcess.Run(_tmp, "verify", UnloadableModel(), "--codegen");
+        var (exitCode, stdout, stderr) = CliProcess.Run(_tmp, "verify", UnloadableModel(), "--codegen", "--full");
 
         Assert.True(exitCode != 0, $"exit={exitCode}\nstdout={stdout}\nstderr={stderr}");
         Assert.Contains("  load error: ERR_BAD_ATTR_VALUE: ", stderr);
@@ -376,7 +376,7 @@ public sealed class VerifyRequirementsTests : IDisposable
         // So did the codegen gate, in its own form: since ADR-0034 Amendment 9 it runs in the
         // project's codegen project (CodegenCli.Run, see OwnedRunner).
         var (codegenExit, _, codegenErr) = OwnedRunner.Run(
-            _tmp, Array.Empty<string>(), "verify", "--codegen", model, "--out", Path.Combine(_tmp, "out"));
+            _tmp, Array.Empty<string>(), "verify", "--codegen", "--full", model, "--out", Path.Combine(_tmp, "out"));
         Assert.NotEqual(0, codegenExit);
         Assert.Contains("verify --codegen: FAILED (metadata did not load cleanly)", codegenErr);
         Assert.Equal(1, CountOf(codegenErr, "ERR_BAD_ATTR_VALUE"));

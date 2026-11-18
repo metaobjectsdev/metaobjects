@@ -32,6 +32,7 @@
 // same functionality.
 import {
   crossEntitySpecifier,
+  DEFAULT_OUTPUT_LAYOUT,
   entityOutputPath,
   namesArtifactSuperOf,
   resolveObjectNames,
@@ -66,7 +67,7 @@ export function namesFile(opts?: NamesFileOpts): Generator {
     // routesFileHono already uses via emitsHonoRoutes/includeHonoRoutes.
     emitsNames: true,
     generate: (ctx: GenContext): EmittedFile[] => {
-      const layout = ctx.config.outputLayout ?? "flat";
+      const layout = ctx.config.outputLayout ?? DEFAULT_OUTPUT_LAYOUT;
       const extStyle = ctx.config.extStyle ?? "js";
       // The strategy lives on the RENDER CONTEXT, not on ResolvedGenConfig — `ctx.config`
       // carries outDir/extStyle/dbImport/dialect and nothing about naming.

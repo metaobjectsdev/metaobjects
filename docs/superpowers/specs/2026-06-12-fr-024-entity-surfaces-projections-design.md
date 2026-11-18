@@ -127,7 +127,7 @@ This mechanism is **universal**, not projection-specific:
   column: customer_id }`: shape (type/docs/validators) pulls through; the rename is the
   own-`@column`; presence in the projection = presence in the inclusive list.
 - **Value fields** — proc parameters and command inputs whose fields are entity ids:
-  `field.int: { name: caseId, extends: Case.id }` pulls shape through with **no**
+  `field.int: { name: consignmentId, extends: Consignment.id }` pulls shape through with **no**
   identity semantics, **no** population, **no** referential (FK) claim.
 - **Entity derived fields** — optional shape pull-through alongside the origin (§7).
 
@@ -136,8 +136,8 @@ What every use gets: **load-time drift protection**. Renaming or retyping
 input that references it — the contract breaks the build, not production. This is a
 *stronger* gate than verify-time origin resolution: it fires at load.
 
-What it also makes computable: "this parameter is a Case identifier" (the extends
-target IS `Case`'s identity field) — doc-gen, FR-022 emission, and future MCP tool
+What it also makes computable: "this parameter is a Consignment identifier" (the extends
+target IS `Consignment`'s identity field) — doc-gen, FR-022 emission, and future MCP tool
 schemas derive the semantic with zero new attrs.
 
 Inheritance semantics are the existing `extends` semantics: child attrs override

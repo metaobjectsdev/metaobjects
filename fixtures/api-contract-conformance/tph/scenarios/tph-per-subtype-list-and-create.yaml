@@ -5,7 +5,7 @@ description: >
   subtype; POST creates a row of that subtype — the discriminator is injected
   by the route handler from the URL, NEVER taken from the body (the body omits
   it). The created row joins the polymorphic collection. A subtype's decimal
-  (`CopayAuth.copayAmount`, decimal 10,2) is the canonical string on the wire, filters
+  (`CouponAuth.couponAmount`, decimal 10,2) is the canonical string on the wire, filters
   exactly on its own segment, and refuses more digits than its declared scale
   (ADR-0019 Amendment 1).
 requests:
@@ -49,34 +49,34 @@ requests:
         length: 4
   - id: r6
     method: POST
-    path: /api/auths/copay
+    path: /api/auths/coupon
     body:
-      reference: "REF-COPAY"
-      copayAmount: "8.10"
+      reference: "REF-COUPON"
+      couponAmount: "8.10"
     expect:
       status: 201
       body:
-        row: { type: "Copay", reference: "REF-COPAY", copayAmount: "8.1" }
+        row: { type: "Coupon", reference: "REF-COUPON", couponAmount: "8.1" }
   - id: r7
     method: GET
-    path: /api/auths/copay?filter[copayAmount][gt]=10&sort=id:asc
+    path: /api/auths/coupon?filter[couponAmount][gt]=10&sort=id:asc
     expect:
       status: 200
       body:
         ids: [2]
   - id: r8
     method: GET
-    path: /api/auths/copay?filter[copayAmount][eq]=8.1
+    path: /api/auths/coupon?filter[couponAmount][eq]=8.1
     expect:
       status: 200
       body:
         length: 1
   - id: r9
     method: POST
-    path: /api/auths/copay
+    path: /api/auths/coupon
     body:
-      reference: "REF-COPAY-2"
-      copayAmount: "1.234"
+      reference: "REF-COUPON-2"
+      couponAmount: "1.234"
     expect:
       status: 400
       body:

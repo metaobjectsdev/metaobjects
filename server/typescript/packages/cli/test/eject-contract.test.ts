@@ -370,7 +370,7 @@ async function emit(
   // A documentation generator writes to the `docs` target (ADR-0034 Amendment 9), declared
   // here at the same directory, so every generator's output is read from one place.
   const settings = {
-    outDir, extStyle: "none", dbImport: "../db", dialect: "postgres", targets: { docs: { outDir } },
+    outDir, outputLayout: "flat", extStyle: "none", dbImport: "../db", dialect: "postgres", targets: { docs: { outDir } },
   } as const;
   try {
     await runGen({

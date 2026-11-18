@@ -54,7 +54,7 @@ describe("FR-014 happy paths", () => {
                 {
                   "field.enum": {
                     name: "type",
-                    "@values": ["Bridge", "Copay"],
+                    "@values": ["Bridge", "Coupon"],
                   },
                 },
                 { "field.long": { name: "id" } },
@@ -72,10 +72,10 @@ describe("FR-014 happy paths", () => {
           },
           {
             "object.entity": {
-              name: "CopayAuth",
+              name: "CouponAuth",
               extends: "Auth",
-              "@discriminatorValue": "Copay",
-              children: [{ "field.decimal": { name: "copayAmount", "@precision": 10, "@scale": 2 } }],
+              "@discriminatorValue": "Coupon",
+              children: [{ "field.decimal": { name: "couponAmount", "@precision": 10, "@scale": 2 } }],
             },
           },
         ],
@@ -181,7 +181,7 @@ describe("FR-014 ERR_DISCRIMINATOR_VALUE_DUPLICATE", () => {
                 {
                   "field.enum": {
                     name: "type",
-                    "@values": ["Bridge", "Copay"],
+                    "@values": ["Bridge", "Coupon"],
                   },
                 },
                 { "field.long": { name: "id" } },
@@ -306,7 +306,7 @@ describe("FR-014 ERR_DISCRIMINATOR_VALUE_TYPE_MISMATCH", () => {
                 {
                   "field.enum": {
                     name: "type",
-                    "@values": ["Bridge", "Copay"],
+                    "@values": ["Bridge", "Coupon"],
                   },
                 },
                 { "field.long": { name: "id" } },

@@ -26,7 +26,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 
 | Corpus | Fixtures | TS | Java | Kotlin | C# | Python |
 |---|---|---|---|---|---|---|
-| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 510 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
+| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 526 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
 | [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 16 | 16 / 16 | 15 / 16 (1 ledgered: `yaml-quoted-leading-zero` — Java pipeline strips quotes off `"007"`) | inherits via Java | 15 / 16 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 16 / 16 |
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 45 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/verify-strict-conformance/`](../fixtures/verify-strict-conformance/) | 1 | ✓ | — | — | — | ✓ |
@@ -42,7 +42,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/validation-conformance/`](../fixtures/validation-conformance/) | 42 cases + 43 cross-field cases (`cross-field-cases.json`, generated record model only) | ✓ (generated Zod + run-time `runValidators`) | ✓ | ✓ | ✓ | ✓ (generated Pydantic + run-time `run_validators`) |
 | [`fixtures/registry-conformance/`](../fixtures/registry-conformance/) | 1 canonical manifest | ✓ (reference emitter) | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/object-model-conformance/`](../fixtures/object-model-conformance/) | 1 shared metadata fixture (per-port scenarios) | ✓ | ✓ | ✓ | ✓ | ✓ |
-| [`fixtures/codegen-conformance/`](../fixtures/codegen-conformance/) | 6 shared inputs; `shared-provided-enum` carries the enum-type decision table and `cross-package-binding` the reference-binding decision table (ADR-0059) every port answers | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [`fixtures/codegen-conformance/`](../fixtures/codegen-conformance/) | 7 shared inputs; `shared-provided-enum` carries the enum-type decision table and `cross-package-binding` the reference-binding decision table (ADR-0059) every port answers; `xpkg-value-object-refs` (ruling R52) is run by C# and TypeScript only so far — Java, Kotlin and Python in [#544](https://github.com/metaobjectsdev/metaobjects/issues/544)–#549 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/template-codegen-conformance/`](../fixtures/template-codegen-conformance/) | 3 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/template-output-render-conformance/`](../fixtures/template-output-render-conformance/) | 5 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/generator-registry-conformance/`](../fixtures/generator-registry-conformance/) | 1 canonical manifest | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -177,6 +177,27 @@ canonical (`fixtures/registry-conformance/expected-registry.json`).
   Kotlin; `test_registry_conformance.py` in Python).
 - *Port-scoped, for comparison* (`ports`, language-specific by nature, never "pending"):
   `@objectAdapter` (`["java", "kotlin"]`).
+
+**Generated paths keyed by package** (ruling R39). Every port's generated output is keyed by
+the metadata package, so two packages that each declare an object of the same name never
+collide on an output path. State per port:
+
+- *Done, C#:* every per-object generator writes through `OutputPaths.Of`
+  (`<package segments>/<file>`; root-level objects at the root). The path follows the metadata
+  package, not `PackageNamespaces`. Since rc.19 R65 the namespace follows the package too
+  (`acme::alpha` → `Acme.Alpha`) unless a binding maps it; every cross-namespace reference is
+  `global::`-qualified. Tests: `OutputPathsTests`, `PackageNamespaceTests`.
+- *Done, TypeScript:* `outputLayout` defaults to `"flat"`; `"package"` is opt-in (ruling
+  R63). Tests: `barrel-layout.test.ts` (the barrel exports the same
+  names in both layouts), `naming/name-claims.test.ts`.
+- *Done, Python:* `outputLayout` mirrors TypeScript — `"flat"` the default, `"package"` opt-in,
+  and `metaobjects init` writes `outputLayout: package` into a new project. Tests:
+  `tests/codegen/test_package_layout.py`.
+- *Done, Java and Kotlin:* every per-object file lands in the directory of its metadata package
+  (`a::b` → `a/b`), and a run where two metadata packages would land in one directory is
+  refused (`OutputPackageCollisions`), not silently overwritten. Tests: `PackageKeyedOutputTest`
+  (spring, kotlin).
+- Tracked in [#544](https://github.com/metaobjectsdev/metaobjects/issues/544)–#549.
 
 **Native index vocabulary and `@description` in the ORM models.** `meta migrate` creates
 every index (`identity.secondary`, `index.lookup`, a field's `@unique`, with `@where`, `@using`,
@@ -377,7 +398,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 
 ## Fixture-to-doc mapping
 
-### `fixtures/conformance/` — metamodel loader + canonical serializer (510)
+### `fixtures/conformance/` — metamodel loader + canonical serializer (526)
 
 | Fixture prefix | Feature doc |
 |---|---|
@@ -755,7 +776,7 @@ JSON and verify payload feeds it unchanged.
 
 ## Orphaned fixtures (tested but not yet documented)
 
-The fixtures in the nine corpora mapped above (metamodel 510 + yaml 16 + verify 45
+The fixtures in the nine corpora mapped above (metamodel 526 + yaml 16 + verify 45
 + render 18 + persistence 67 + api-contract 139 + source-resolution 25 + scope 10 +
 dependency 47) each map to a feature doc, and so do the two requirement corpora, `shared-model-conformance`, the
 `cube-model` corpus and `explorer-conformance`, whose case lists live in their own READMEs. None are orphaned today. The remaining

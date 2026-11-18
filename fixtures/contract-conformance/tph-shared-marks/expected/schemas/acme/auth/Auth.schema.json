@@ -7,7 +7,7 @@
       "$ref": "./BridgeAuth.schema.json"
     },
     {
-      "$ref": "./CopayAuth.schema.json"
+      "$ref": "./CouponAuth.schema.json"
     }
   ]
 }
