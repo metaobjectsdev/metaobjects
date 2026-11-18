@@ -195,6 +195,14 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
 
 ### Changed
 
+- **Release policy: vocabulary is versioned by feature, not by kind (ADR-0035 Amendment 5).** Adding
+  to or augmenting an existing feature (a type, subtype, attribute, enum value or view vocabulary,
+  additive and loading every existing document with the same meaning) is a PATCH; a whole new
+  feature is a MINOR; a break stays a MAJOR. `metamodelVersion` will gain a patch component moved by
+  the same decision (accepted, not yet implemented: it stays `<major>.<minor>` until every port
+  reads three components), and any move of it still publishes all four registries. Policy text only:
+  no version, vocabulary or `metamodelVersion` changes here. See `docs/RELEASING.md`, "The
+  vocabulary rule".
 - **Generation now skips when nothing changed, in every port (ADR-0064).** `meta gen`,
   `metaobjects gen`, `dotnet meta gen` and `mvn metaobjects:generate` build a key from the loaded
   model (each root node in canonical effective form), the generators' identity (built engine code,

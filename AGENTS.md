@@ -56,10 +56,11 @@ bar.
 
 **A lagging version number is INFORMATION, not drift.** Since `0.24.5` a registry publishes
 only when it has a changed product file, and when it does it adopts the shared `minor.patch`
-then current, skipping the numbers it sat out (ADR-0035 Amendment 1, operative table in
-`docs/RELEASING.md`). Two carve-outs: the 14 npm packages move atomically with each other, and
-a change to `expected-registry.json` / `metamodelVersion` still forces all four, because that
-is the contract every port byte-matches. So PyPI at `0.25.0` while npm is at `0.25.2` says
+then current, skipping the numbers it sat out (operative table in `docs/RELEASING.md`;
+the level vocabulary takes is ADR-0035 Amendment 5's feature test). Two carve-outs: the 14
+npm packages move atomically with each other, and a change to `expected-registry.json` /
+`metamodelVersion` still forces all four, at any release level, because that is the contract
+every port byte-matches. So PyPI at `0.25.0` while npm is at `0.25.2` says
 PyPI has had no product change since `0.25.0` — nothing is broken.
 
 **All five ports ship loader + canonical serializer + conformance + codegen + render + payload-VO + `verify`:**

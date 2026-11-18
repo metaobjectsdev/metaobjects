@@ -2,7 +2,8 @@
 
 ## Status
 
-**Accepted** (2026-06-29; all **[RATIFY]** items resolved 2026-07-02).
+**Accepted** (2026-06-29; all **[RATIFY]** items resolved 2026-07-02). Amended 1–5; the
+release-level rule in force is **Amendment 5** (2026-11-18), which supersedes Amendment 1.
 Companion checklist: [`docs/1.0-readiness.md`](../../docs/1.0-readiness.md).
 
 This ADR frames the decisions a 1.0 release commits to. All bracketed **[RATIFY]**
@@ -175,7 +176,7 @@ still want, then freeze. Before cutting 1.0:
   **package MINOR** adds surface a consumer can newly depend on (codegen output, a CLI
   flag, a newly-supported vocab member — **but see Amendment 1: "vocab member" is too
   coarse, and taking it literally re-created exactly the minor churn this bullet was
-  written to stop**); a **package PATCH** is a bugfix/refactor with
+  written to stop; Amendment 5 replaces both with a feature test**); a **package PATCH** is a bugfix/refactor with
   no new surface (e.g. the `0.15.2` output-prompt fix — one-port, no surface); the
   **Metamodel spec version** bumps only when the shared vocabulary/wire contract
   itself changes. A run of minors for non-additive changes is the "minor churn"
@@ -186,6 +187,9 @@ still want, then freeze. Before cutting 1.0:
   compatibility policy (this ADR's §1, consumer-facing).
 
 ## Amendment 1 (2026-08-17) — "a newly-supported vocab member" splits three ways
+
+> **Superseded by Amendment 5 (2026-11-18)** for choosing a release's level: the unit is now
+> the feature, not the kind of vocabulary. Kept as the record of the reasoning at the time.
 
 The cadence-discipline bullet above lists "a newly-supported vocab member" among the
 triggers for a package MINOR. Applied literally it became a rule that **any** registry
@@ -362,6 +366,126 @@ running.
 vocabulary, and `check-metamodel-version.mjs` still gates it. Convergent publishing is
 untouched: a port with no changed product file still sits the release out.
 
+## Amendment 5 (2026-11-18) — the unit of the version decision is the FEATURE, and `metamodelVersion` gains a patch
+
+**Status: Accepted.** **Supersedes Amendment 1's three-way split** (attribute ⇒ PATCH, top-level
+type ⇒ MINOR, subtype ⇒ either by the inert test) as the rule for choosing a release's level.
+Amendment 2's two contracts, Amendment 3's correction bar and Amendment 4's generator tier stand
+unchanged.
+
+**Why.** Amendment 1 sorted vocabulary by its KIND. In practice the kind did not track what an
+adopter experiences, and the rule pushed additions that belong to an existing feature into a
+MINOR or into a long-lived release line. The `1.2.x` line's `1.2.4` is the worked case: the
+view vocabulary added in its rc.21 candidate (`origin.function`, `@union` / `@unionAll`, `@grain` /
+`@grainOrdinal`, the `cast` node) extends projections and views that already had their page,
+their tooling and their adopters, yet a new subtype and a new expression node had to argue their
+way past the inert test. Owner ruling, 2026-11-18, in these words: *"Change the rules so we can
+add or augment metadata in a patch release for an existing feature. This should be normal. A
+whole new feature can be a minor increase."* And, on the metamodel number: *"Meta model version
+probably needs a patch now too, yes."*
+
+### The rule
+
+- **(a) Adding to or augmenting an EXISTING feature is a PATCH**, whatever the kind: a type, a
+  subtype, an attribute, an enum value, an expression node or other view vocabulary. It does not
+  have to be inert. It does have to be additive: nothing existing is removed, narrowed or
+  reinterpreted, and every document that loaded before still loads with the same meaning.
+  A change to what an existing valid document means or produces by default is not an addition
+  and is not covered here. It keeps the rules that already govern it (a MINOR or a documented
+  opt-in; a break is a metamodel MAJOR under Amendment 2), and generator output stays under
+  Amendment 4. A reserved-not-registered member promoted into a feature that already reserves it
+  (ADR-0007 Amendment 2 / ADR-0040) is an addition: no document that loaded before used it.
+- **(b) A whole NEW FEATURE is a MINOR.**
+- **(c) A breaking change stays a MAJOR**: a break in the metadata contract moves the
+  metamodel's major and ships in a package MINOR (Amendment 2, unchanged); a break in the software
+  surface is a package MAJOR.
+
+(a) and (b) set the **release's** level, which is the package number. `metamodelVersion` moves by
+the same decision (below). This narrows Amendment 4's last table row, which read "package number
+unaffected" for any vocabulary: that is true of an augmentation and of a correction, not of a
+whole new feature, which has always taken a package MINOR (the `0.22.0` and `1.1.0` cuts).
+
+**What a feature is.** A feature is a modeling concept an adopter opts into as a whole: it has
+its own page under `docs/features/`, its own vocabulary family, and tooling of its own that a
+project newly depends on (a `verify` pass, a generator family, a CLI command). The test is one
+question: **could this be documented as a new section of an existing feature's page, using the
+tooling that page already describes?** Yes ⇒ it augments that feature ⇒ PATCH. No, it needs a
+page and tooling of its own ⇒ a new feature ⇒ MINOR. Worked examples from this repository:
+
+| Change | Verdict | Why |
+|---|---|---|
+| `requirement.functional` / `requirement.architectural` (`0.22.0`) | **new feature ⇒ MINOR** | a new modeling concept with its own page (`docs/features/requirements.md`), its own `verify` pass and ledger output; nothing before it modeled requirements |
+| `object.report` with `dimension.*`, `measure.*`, `segment.*` (FR-044, `1.1.0`) | **new feature ⇒ MINOR** | its own page (`docs/features/reporting.md`), a SQL view lowered by `meta migrate`, served routes in every port and the `cube-model` generator |
+| the rc.21 view vocabulary: `origin.function`, `@union` / `@unionAll`, `@grain` / `@grainOrdinal`, `cast` (`1.2.4`) | **augments projections and views ⇒ PATCH** | documented as sections of the existing projection material in `docs/features/relationships.md`, served by the view lowering and routes that already existed |
+| `@dbCheck` on a validator or `field.enum` (`1.2.4`) | **augments validation and schema ⇒ PATCH** | a switch on the CHECK constraints `meta migrate` already wrote, documented in `docs/features/migrations-and-drift.md` |
+| `measure.derived` and its `@expr` (unreleased at this writing) | **augments reporting ⇒ PATCH** | a new measure kind beside `measure.aggregate` / `measure.ratio`, documented in `docs/features/reporting.md` |
+
+**The caret rule is still not to be inverted.** A maintainer may choose a MINOR on purpose for
+an augmentation that headlines a release; that is a choice, never a requirement. A minor spent
+by reflex is a gate you no longer have when something real needs it.
+
+### `metamodelVersion` gains a PATCH component
+
+`metamodelVersion` is today `<major>.<minor>` (`"1.3"`): Amendment 2 gave it no patch, on the
+reasoning that "a metamodel has no bug-fix axis". Under this amendment it carries the same
+three-level decision the package does, so it becomes **`<major>.<minor>.<patch>`**:
+
+| Move | When |
+|---|---|
+| **major** | a breaking metadata change (unchanged from Amendment 2; pre-1.0 it moved the minor) |
+| **minor** | a new feature's vocabulary, or a correction under the "What a metamodel MINOR may refuse" bar of `docs/compatibility-policy.md` |
+| **patch** | vocabulary that augments an existing feature |
+| none | no change to `expected-registry.json` beyond prose (prose still raises the gate's question) |
+
+- **The string is always three components** (`"1.3.0"`, never `"1.3"` once realized), so one
+  vocabulary set has exactly one spelling and the byte-match stays exact. A reader that meets a
+  two-component value written before the change (a published `metaobjects.pkg.json`, a lock entry)
+  reads `"1.3"` as `1.3.0`, forever.
+- **Compare as a tuple**: `(major, minor, patch)`, never component by component. Compatibility
+  stays major-scoped, as FR-023's dependency check is today: a different major is incompatible; a
+  dependency published against a newer `(minor, patch)` than the toolchain's is refused, because
+  it may use vocabulary the toolchain does not register.
+- **The gate cannot tell a feature from an augmentation**, so it does not try.
+  `check-metamodel-version.mjs` requires at least a **patch** move for an additive difference and
+  at least a major for a breaking one. Choosing minor instead of patch for a new feature is the
+  maintainer's call, made with `--set`, exactly as headlining a release is.
+- **One value names one vocabulary set.** Two release lines that ship the same
+  `metamodelVersion` must ship byte-identical `expected-registry.json`. A maintenance line that
+  adds vocabulary takes a value no other line has shipped.
+
+**The registries.** The carve-out "a change to `expected-registry.json` / `metamodelVersion`
+forces all four registries" stands, for every component: a release that moves the major, the
+minor **or the patch** publishes npm, PyPI, NuGet and Maven Central together, changed file or
+not. The manifest is the cross-port contract and every port byte-matches it; a model that uses
+the new vocabulary needs every port at that release. In practice no registry is exempt anyway:
+`--set` writes the version constant into every port, so each port has a changed product file.
+A vocabulary-adding release is therefore a coordinated cut at whatever package level the rule
+above gives it, PATCH included.
+
+### Realization status
+
+The rule in "The rule" is **in force now**. The three-component `metamodelVersion` is
+**Accepted, not yet implemented**: the value flows into published shared-model packages
+(`metaobjects.pkg.json`), lock entries and FR-023's dependency check in all five ports, and every
+reader validates it against `^\d+\.\d+$`. Changing it touches each port's manifest constant, its
+dependency reader and comparison, the shared-model writer, `check-metamodel-version.mjs` and its
+tests, `expected-registry.json`, and the `dependency-conformance` and `shared-model-conformance`
+corpora. That lands as its own change, all ports together, with readers accepting both forms in
+the same release that first writes three. **Until it lands**, the gate and the ports keep
+`<major>.<minor>`, and a vocabulary-adding PATCH moves the metamodel MINOR, as `1.1.4` did
+(`1.1` to `1.2`) and the `1.2.x` line's `1.2.4` does (to `1.3`).
+
+### Alternatives considered
+
+- **Keep the kind-based split (Amendment 1).** Rejected by the owner: the kind does not track
+  what an adopter sees, and it made augmentations of shipped features wait for a minor.
+- **Keep `metamodelVersion` at two components and move its minor for every addition.** It needs
+  no implementation and was the interim practice. Rejected because the package and metamodel
+  numbers would then disagree on the same decision (a PATCH release moving a metamodel MINOR), and
+  the metamodel number would no longer say whether a new feature arrived.
+- **A feature-level two-component `metamodelVersion` that ignores augmentations.** Rejected: a
+  model that uses an augmentation would need a newer port with no number saying so.
+
 ## Consequences
 
 - After 1.0, a breaking change to the CLI surface or the scaffold-and-own contract
@@ -370,6 +494,10 @@ untouched: a port with no changed product file still sits the release out.
   major instead (**Amendment 2**). The
   small stable surface (a consequence of scaffold-and-own) makes that a realistic
   commitment, not a straitjacket.
+- Vocabulary that augments an existing feature ships in a PATCH; a whole new feature is a
+  MINOR (**Amendment 5**). `metamodelVersion` carries the same three levels once Amendment 5's
+  `<major>.<minor>.<patch>` form is realized, and any move of it still publishes all four
+  registries.
 - The deprecation removal and the version-line re-baselining (npm/PyPI/NuGet `→1.0.0`,
   Java/Kotlin `→8.0.0`) are **one-time 1.0 moves** — do them at the boundary, not after.
 - A new durable artifact is introduced: the **`Metamodel N.M` spec version** and its
