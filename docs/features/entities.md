@@ -146,12 +146,14 @@ Absent, the project's **pluralizer** derives it from the object's name. One sett
 `naming.collections` in `.metaobjects/config.json`, selects it by name, exactly as `naming.columns`
 selects a column rule. Built in: `standard` (the default — the rule every port shares: an
 already-plural name stays, else `-s`/`-es`/`-ies`) and `none` (the name as it is). An application
-registers its own (`namingStrategies.collections` in `metaobjects.config.ts` or
-`registerPluralizer` in TypeScript; `NamingStrategies.RegisterPluralizer` in C#), and a name
-nothing answers is refused when the config is read. An object's own `@collectionName` always wins.
+registers its own (`namingStrategies.collections` in `metaobjects.config.ts`; `registerPluralizer`
+in TypeScript and Java, `NamingStrategies.RegisterPluralizer` in C#, `register_pluralizer` in
+Python), and a name nothing answers is refused when the config is read. An object's own
+`@collectionName` always wins.
 
-`@collectionName` is implemented in C# and TypeScript (ruling R40 kind 1); Java, Kotlin and
-Python load it and do nothing with it yet. In C#, a project that configures no pluralizer keeps its historical DbSet names (which
+`@collectionName` and `naming.collections` are implemented in every port (ruling R40 kind 1):
+each port's route/controller path (and the C# `DbSet` name) reads the declared name or the
+configured pluralizer. In C#, a project that configures no pluralizer keeps its historical DbSet names (which
 add C#'s `-sis` → `-ses` rule).
 
 ## What each port generates

@@ -179,9 +179,13 @@ collide on an output path. State per port:
 - *Done, TypeScript:* `outputLayout` defaults to `"flat"`; `"package"` is opt-in (ruling
   R63). Tests: `barrel-layout.test.ts` (the barrel exports the same
   names in both layouts), `naming/name-claims.test.ts`.
-- *TODO, Python:* only the flat layout exists. A package layout is new work.
-- *TODO, Java and Kotlin:* files land in the mapped Java package directories, so two metadata
-  packages mapped to one Java package would collide.
+- *Done, Python:* `outputLayout` mirrors TypeScript — `"flat"` the default, `"package"` opt-in,
+  and `metaobjects init` writes `outputLayout: package` into a new project. Tests:
+  `tests/codegen/test_package_layout.py`.
+- *Done, Java and Kotlin:* every per-object file lands in the directory of its metadata package
+  (`a::b` → `a/b`), and a run where two metadata packages would land in one directory is
+  refused (`OutputPackageCollisions`), not silently overwritten. Tests: `PackageKeyedOutputTest`
+  (spring, kotlin).
 - Tracked in [#544](https://github.com/metaobjectsdev/metaobjects/issues/544)–#549.
 
 **Native index vocabulary and `@description` in the ORM models.** `meta migrate` creates
