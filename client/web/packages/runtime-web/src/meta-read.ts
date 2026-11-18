@@ -44,8 +44,12 @@ export interface MetaRead {
    * deliberately — see `fixtures/conformance/xpkg-collision-*`) are NOT
    * disambiguated by `object()`. A caller that might see a cross-package
    * collision should walk `objects()` and filter on `package` itself.
+   *
+   * `| undefined` (not just `?`): `MetaData.package` is an accessor, so a real
+   * `MetaObject` carries the property as required-but-possibly-undefined, and
+   * `exactOptionalPropertyTypes` refuses to assign that to a plain optional.
    */
-  readonly package?: string;
+  readonly package?: string | undefined;
   readonly subType: string;
   attr: AttrReader;
   fields(): MetaFieldRead[];

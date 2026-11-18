@@ -74,6 +74,7 @@ here.**
   The load warned only for a TPH base read through a subtype column; it now warns whenever the
   base differs from the pre-rc.21 derivation, naming both entities and the
   `identity.primary { extends: ... }` that keeps the old one.
+- **Loading a large model no longer slows down quadratically (TypeScript, Python, C#).** Reference resolution looked each name up by scanning every top-level object, so load time grew with the square of the model; each root now keeps a name index, invalidated whenever its top-level nodes change, with the same first-match-wins result. A 20x-size model loads about 5x faster in TypeScript and 1.5x to 2x faster in Python and C#; loaded trees are byte-identical.
 
 ## [1.3.0] — 2026-11-17
 

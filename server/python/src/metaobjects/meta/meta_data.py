@@ -1,7 +1,7 @@
 """Abstract node base — Python port of the typed-tree MetaData (ADR-0002)."""
 from __future__ import annotations
 
-from typing import Callable, Optional, TypeVar, cast
+from typing import Any, Callable, Optional, TypeVar, cast
 
 from ..attr_class_map import attr_class_for
 from ..shared.base_types import SUBTYPE_BASE, TYPE_ATTR
@@ -12,20 +12,79 @@ from ..source import CodeSource, ErrorSource
 T = TypeVar("T")
 
 
+class _ChildList(list["MetaData"]):
+    """A node's child list. Every mutation other than an append tells the owner, so the
+    top-level index (``top_level_index.py``) knows its keys may be stale; an append is
+    detected by the length instead, which keeps an add-then-lookup loop linear."""
+
+    __slots__ = ("_owner",)
+
+    def __init__(self, owner: "MetaData") -> None:
+        super().__init__()
+        self._owner = owner
+
+    def _changed(self) -> None:
+        self._owner._structure_epoch += 1
+
+    def remove(self, value: "MetaData") -> None:
+        super().remove(value)
+        self._changed()
+
+    def pop(self, index: int = -1) -> "MetaData":
+        value = super().pop(index)
+        self._changed()
+        return value
+
+    def insert(self, index: int, value: "MetaData") -> None:
+        super().insert(index, value)
+        self._changed()
+
+    def clear(self) -> None:
+        super().clear()
+        self._changed()
+
+    def sort(self, *args: Any, **kwargs: Any) -> None:
+        super().sort(*args, **kwargs)
+        self._changed()
+
+    def reverse(self) -> None:
+        super().reverse()
+        self._changed()
+
+    def __setitem__(self, key: Any, value: Any) -> None:
+        super().__setitem__(key, value)
+        self._changed()
+
+    def __delitem__(self, key: Any) -> None:
+        super().__delitem__(key)
+        self._changed()
+
+    def __iadd__(self, other: Any) -> "_ChildList":
+        # An append: the length tells the index; no epoch bump needed.
+        return cast("_ChildList", super().__iadd__(other))
+
+    def __imul__(self, n: Any) -> "_ChildList":
+        result = cast("_ChildList", super().__imul__(n))
+        self._changed()
+        return result
+
+
 class MetaData:
     def __init__(self, type_: str, sub_type: str, name: str) -> None:
+        # Bumped by every change to this node's child list other than an append, and by any
+        # change to a package that feeds a child's resolution key. The top-level index
+        # (``top_level_index.py``) is valid only for the epoch it was built at; any NEW way to
+        # change the child list or a child's key MUST bump it.
+        self._structure_epoch = 0
+        self._parent: Optional[MetaData] = None
+        self._package: Optional[str] = None
+        self._file_default_package: Optional[str] = None
+        # The top-level indexes built over this node's children, by view id.
+        self._top_level_indexes: Optional[dict[str, Any]] = None
+        self._child_list: _ChildList = _ChildList(self)
         self.type = type_
         self.sub_type = sub_type
         self.name = name
-        self.package: Optional[str] = None
-        # The file-default package captured at PARSE time (the package declared
-        # on the owning file's root). Distinct from ``package`` (which an object
-        # node leaves unset — the parser does not fold the file-default package
-        # onto an object's own package). Used by super-resolution to match a
-        # cross-package fully-qualified ``extends`` over the MERGED tree, where
-        # per-file root packages are no longer reachable via the parent chain.
-        # Mirrors TS ``MetaData.fileDefaultPackage`` / ``resolutionKey()``.
-        self.file_default_package: Optional[str] = None
         # The package declared by this node or its nearest enclosing node in the SAME
         # document, captured at parse time (None for a node built in code). Unlike the
         # parse context, an ``overlay: true`` node's explicit package counts, so the
@@ -46,15 +105,72 @@ class MetaData:
         # comparison of the merged trees could make. Mirrors TS `MetaData.isMerge`.
         self.is_merge = False
         self.is_array = False
-        self.parent: Optional[MetaData] = None
         self._attr_nodes: dict[str, MetaData] = {}  # name -> MetaAttr instance
-        self._children: list[MetaData] = []
         self._cache: dict[str, object] = {}
         self._frozen = False
         # FR5a / ADR-0009 — provenance envelope. Always populated; defaults
         # to CodeSource for programmatic / test construction. Loader phases
         # (parser, merge) overwrite via set_source during the tree walk.
         self._source: ErrorSource = CodeSource.DEFAULT
+
+    # ``package``, ``file_default_package`` and ``parent`` feed a node's resolution key (and its
+    # parent's index of it), so a write to any of them bumps the structure epoch.
+
+    @property
+    def package(self) -> Optional[str]:
+        return self._package
+
+    @package.setter
+    def package(self, value: Optional[str]) -> None:
+        self._package = value
+        self._note_key_change()
+
+    @property
+    def file_default_package(self) -> Optional[str]:
+        """The file-default package captured at PARSE time (the package declared on the
+        owning file's root). Distinct from ``package`` (which an object node leaves unset
+        — the parser does not fold the file-default package onto an object's own
+        package). Used by super-resolution to match a cross-package fully-qualified
+        ``extends`` over the MERGED tree, where per-file root packages are no longer
+        reachable via the parent chain. Mirrors TS ``MetaData.fileDefaultPackage``."""
+        return self._file_default_package
+
+    @file_default_package.setter
+    def file_default_package(self, value: Optional[str]) -> None:
+        self._file_default_package = value
+        self._note_key_change()
+
+    @property
+    def parent(self) -> Optional["MetaData"]:
+        return self._parent
+
+    @parent.setter
+    def parent(self, value: Optional["MetaData"]) -> None:
+        # Leaving a node's child list is a non-append change there. Joining one is an append
+        # (``add_child``), which the index detects by length.
+        old = self._parent
+        self._parent = value
+        if old is not None and old is not value:
+            old._structure_epoch += 1
+
+    @property
+    def _children(self) -> list["MetaData"]:
+        return self._child_list
+
+    @_children.setter
+    def _children(self, value: list["MetaData"]) -> None:
+        # Replacing the list wholesale is a structure change; keep it tracked.
+        self._child_list = _ChildList(self)
+        self._child_list.extend(value)
+        self._structure_epoch += 1
+
+    def _note_key_change(self) -> None:
+        """A package that feeds a resolution key changed: this node's children (whose keys
+        may fall through to its package) and its parent's index of it are stale."""
+        self._structure_epoch += 1
+        parent = self._parent
+        if parent is not None:
+            parent._structure_epoch += 1
 
     @property
     def frozen(self) -> bool:

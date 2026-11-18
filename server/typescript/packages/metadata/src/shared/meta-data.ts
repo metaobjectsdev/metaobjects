@@ -23,7 +23,16 @@ export abstract class MetaData {
   readonly name: string;
 
   // Identity / packaging
-  package?: string;
+  // Accessor, not a bare field: a root child's `package` is part of its resolution key,
+  // so a write must tell the root its top-level index (top-level-index.ts) is stale.
+  get package(): string | undefined {
+    return this._package;
+  }
+  set package(pkg: string | undefined) {
+    this._package = pkg;
+    this._parent?._noteStructureChange();
+  }
+  private _package: string | undefined = undefined;
   // Resolution-only: the file-default package (the top-level `metadata.package`)
   // of the FILE in which this node was declared, captured at PARSE time. This is
   // NOT folded into fqn() (object fqn() stays BARE for the FR5d cross-port
@@ -33,7 +42,14 @@ export abstract class MetaData {
   // declaring file's package is known) makes resolution independent of load
   // order and post-merge tree shape. Mirrors Java's BaseMetaDataParser, which
   // folds getDefaultPackageName() into the registered name at parse time.
-  fileDefaultPackage?: string;
+  get fileDefaultPackage(): string | undefined {
+    return this._fileDefaultPackage;
+  }
+  set fileDefaultPackage(pkg: string | undefined) {
+    this._fileDefaultPackage = pkg;
+    this._parent?._noteStructureChange();
+  }
+  private _fileDefaultPackage: string | undefined = undefined;
   superRef?: string;         // super reference string; canonical after the loader's resolveReferences pass
   /** ADR-0059 R5 — the `extends` value exactly as authored, kept when the loader's
    *  `resolveReferences` pass rewrites `superRef` to its canonical spelling. */
@@ -64,6 +80,12 @@ export abstract class MetaData {
   private _ownValue?: AttrValue;
   private _ownValueSet = false;
   private _children: MetaData[] = [];
+  // Bumped by every change to this node's child list OTHER than an append: a removal,
+  // a reorder, or a child's resolution key changing (its package or file-default package).
+  // An append is detected by the child count instead, so interleaved add + lookup stays
+  // linear. The top-level index (top-level-index.ts) is valid only for the epoch it was
+  // built at; any new child-list mutation MUST call `_noteStructureChange()`.
+  private _structureEpoch = 0;
   private _parent?: MetaData;
   private _frozen: boolean = false;
 
@@ -419,6 +441,35 @@ export abstract class MetaData {
     this._assertNotFrozen();
     child._parent = this;
     this._children.push(child);
+  }
+
+  /** @internal Bump the structure epoch; see `_structureEpoch`. */
+  _noteStructureChange(): void {
+    this._structureEpoch++;
+  }
+
+  /** @internal The structure epoch of this node's child list; see `_structureEpoch`. */
+  get structureEpoch(): number {
+    return this._structureEpoch;
+  }
+
+  /**
+   * @internal True when `children()` and `ownChildren()` are the stock ones, so the physical
+   * child list IS what they return. A stub or subclass that overrides either (a test double
+   * substituting a child, say) must be scanned through them, never through the index.
+   */
+  get hasStockChildAccessors(): boolean {
+    return this.children === MetaData.prototype.children && this.ownChildren === MetaData.prototype.ownChildren;
+  }
+
+  /** @internal The number of own children, without copying the list. */
+  get ownChildCount(): number {
+    return this._children.length;
+  }
+
+  /** @internal The own child at `index` (insertion order), without copying the list. */
+  ownChildAt(index: number): MetaData | undefined {
+    return this._children[index];
   }
 
   /** The node this node was added to as a child, or undefined for the tree root. */

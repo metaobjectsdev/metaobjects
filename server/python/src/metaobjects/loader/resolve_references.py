@@ -27,6 +27,7 @@ from ..naming_refs import (
     REF_BEARING_ATTR_NAMES,
     RefOverDropError,
     effective_package_of,
+    find_named_top_level,
     owner_candidate_keys,
     resolve_object_ref,
     spell_ref,
@@ -114,11 +115,8 @@ def _resolve_extends(root: MetaData, node: MetaData) -> None:
     except RefOverDropError:
         return  # an over-drop never resolved, so super_data would be unset
     owner_node: Optional[MetaData] = None
-    # ADR-0039 sanctioned own: extends targets are top-level nodes; the root has no super.
     for key in keys:
-        owner_node = next(
-            (c for c in root.own_children() if c.name != "" and c.resolution_key() == key), None
-        )
+        owner_node = find_named_top_level(root, key)
         if owner_node is not None:
             break
     if owner_node is None:

@@ -1069,27 +1069,10 @@ public static class Parser
 
         // Look up an existing child with (type, name). Skip unnamed nodes —
         // they are always distinct (e.g. inline validators, anonymous attrs).
-        //
-        // ROOT-LEVEL lookups are PACKAGE-QUALIFIED: two files declaring the same
-        // (type, name) under different packages are DISTINCT root nodes, never a
-        // merge pair (mirrors the Java parser, which searches root children by
-        // "pkg::name"). Nested children stay bare-name matched — they are scoped
-        // by their parent, and packages don't disambiguate siblings inside a node.
-        MetaData? existing = name != ""
-            ? parent.OwnChildByTypeAndName(type, name)
-            : null;
-        if (existing is not null && parent is MetaRoot)
-        {
-            string candidateKey = RootChildResolutionKey(nodeData, inheritedContextPkg, name);
-            if (existing.ResolutionKey() != candidateKey)
-            {
-                // The first same-name hit is a different package — scan for an
-                // exact package-qualified match (several packages may declare
-                // this name).
-                existing = parent.OwnChildren().FirstOrDefault(
-                    c => c.Type == type && c.Name == name && c.ResolutionKey() == candidateKey);
-            }
-        }
+        // One lookup shared with overlay targeting, so "which node does this
+        // declaration merge into" cannot drift between the walk and the
+        // deferred overlay pass.
+        MetaData? existing = FindOverlayTarget(parent, type, name, nodeData, inheritedContextPkg);
 
         if (isOverlayNode)
         {
@@ -1177,18 +1160,27 @@ public static class Parser
     private static MetaData? FindOverlayTarget(
         MetaData parent, string type, string name, JsonElement nodeData, string inheritedContextPkg)
     {
-        MetaData? existing = name != "" ? parent.OwnChildByTypeAndName(type, name) : null;
-        if (existing is not null && parent is MetaRoot)
+        if (parent is MetaRoot)
         {
+            if (name == "") return null;
+            // The first root child of this (type, name) whose resolution key is the candidate's:
+            // the first same-name hit when its package matches, else the first exact
+            // package-qualified match (several packages may declare this name). Answered from the
+            // root's top-level index, which stays correct as this walk appends root children.
             string candidateKey = RootChildResolutionKey(nodeData, inheritedContextPkg, name);
-            if (existing.ResolutionKey() != candidateKey)
-            {
-                existing = parent.OwnChildren().FirstOrDefault(
-                    c => c.Type == type && c.Name == name && c.ResolutionKey() == candidateKey);
-            }
+            return TopLevelIndex.FindByKey(parent, OverlayTargetView, OverlayTargetKey(type, name, candidateKey),
+                () => parent.OwnChildren().FirstOrDefault(
+                    c => c.Type == type && c.Name == name && c.ResolutionKey() == candidateKey));
         }
-        return existing;
+        return name != "" ? parent.OwnChildByTypeAndName(type, name) : null;
     }
+
+    /// <summary>Root-level overlay targets are keyed by (type, name, resolution key).</summary>
+    private static string OverlayTargetKey(string type, string name, string resolutionKey) =>
+        $"{type}\0{name}\0{resolutionKey}";
+
+    private static readonly TopLevelView OverlayTargetView =
+        new("overlay-target", static c => c.Name != "", static c => OverlayTargetKey(c.Type, c.Name, c.ResolutionKey()));
 
     /// <summary>The declaration's own address, for the resolved envelope's referrer.</summary>
     private static string OverlayReferrer(PendingOverlay item) =>

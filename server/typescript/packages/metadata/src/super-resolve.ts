@@ -15,6 +15,7 @@
 import type { MetaData } from "./shared/meta-data.js";
 import { PACKAGE_SEPARATOR, CHILD_REF_SEPARATOR } from "./shared/structural.js";
 import { ownerCandidateKeys, RefOverDropError } from "./naming-refs.js";
+import { findTopLevelByKey, type TopLevelView } from "./top-level-index.js";
 import { TYPE_IDENTITY, TYPE_OBJECT } from "./shared/base-types.js";
 import { IDENTITY_SUBTYPE_PRIMARY, IDENTITY_UNIQUE_KEY_SUBTYPES } from "./core/identity/identity-constants.js";
 
@@ -32,8 +33,16 @@ import { IDENTITY_SUBTYPE_PRIMARY, IDENTITY_UNIQUE_KEY_SUBTYPES } from "./core/i
 function findTopLevel(root: MetaData, key: string): MetaData | undefined {
   // ADR-0039: own — super-resolution reads the PHYSICAL declaration layer; the root
   // has no super, so its own children are its children.
-  return root.ownChildren().find((c) => c.name !== "" && c.resolutionKey() === key);
+  return findTopLevelByKey(root, TOP_LEVEL_BY_KEY_VIEW, key, () =>
+    root.ownChildren().find((c) => c.name !== "" && c.resolutionKey() === key),
+  );
 }
+
+const TOP_LEVEL_BY_KEY_VIEW: TopLevelView = {
+  id: "super-top-level",
+  includes: (c) => c.name !== "",
+  keyOf: (c) => c.resolutionKey(),
+};
 
 // ---------------------------------------------------------------------------
 // Reference parsing & resolution

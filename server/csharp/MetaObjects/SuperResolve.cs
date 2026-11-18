@@ -37,10 +37,16 @@ internal static class SuperResolve
     {
         // ADR-0039: OwnChildren — super-resolution reads the PHYSICAL declaration layer; the
         // root has no super, so its own children are its children.
-        foreach (MetaData child in root.OwnChildren())
-            if (child.Name != "" && child.ResolutionKey() == key) return child;
-        return null;
+        return TopLevelIndex.FindByKey(root, TopLevelByKeyView, key, () =>
+        {
+            foreach (MetaData child in root.OwnChildren())
+                if (child.Name != "" && child.ResolutionKey() == key) return child;
+            return null;
+        });
     }
+
+    private static readonly TopLevelView TopLevelByKeyView =
+        new("super-top-level", static c => c.Name != "", static c => c.ResolutionKey());
 
     // -----------------------------------------------------------------------
     // Reference parsing & resolution
