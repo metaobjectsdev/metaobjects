@@ -56,7 +56,7 @@ const MANIFEST = "fixtures/registry-conformance/expected-registry.json";
 
 /**
  * Every site that declares the metamodel version. The manifest is the one the
- * conformance corpus byte-matches; the four port constants are what each port EMITS
+ * conformance corpus byte-matches; the five port constants are what each port EMITS
  * into its own manifest, so a partial edit is caught by `registry-conformance` — but
  * only in the lane for the port you forgot. `--set` writes all of them at once so that
  * failure mode does not need catching. (Kotlin has no constant of its own: it emits
@@ -80,12 +80,18 @@ const SITES = [
     path: "server/csharp/MetaObjects/RegistryManifest.cs",
     re: /(public const string MetamodelVersion = ")([^"]+)(")/,
   },
+  {
+    path: "server/rust/metaobjects/src/manifest.rs",
+    re: /(pub const METAMODEL_VERSION: &str = ")([^"]+)(")/,
+  },
 ];
 
 // ---------------------------------------------------------------------------
 // Version arithmetic. `metamodelVersion` is `major.minor` ("0.9", "1.0") — the
-// `Metamodel N.M` form ADR-0035 §2 names. No patch component: a metamodel has no
-// bug-fix axis, only "what is declarable" and "what it means".
+// `Metamodel N.M` form ADR-0035 §2 names. ADR-0035 Amendment 5 (accepted, not yet
+// implemented) adds a patch component for vocabulary that augments an existing feature;
+// that change moves every port's reader and this parser together. Until then an additive
+// difference requires the minor.
 // ---------------------------------------------------------------------------
 
 export function parseVersion(raw, where) {

@@ -2,7 +2,7 @@
 
 The MetaObjects standard ships with a conformance test suite that the language implementations run. There are now **seven corpora** spanning loader, YAML desugar, render, verify, codegen-walk, persistence, and API contract; this document specifies the **metamodel (loader) corpus** (`metaobjects/fixtures/conformance/`) — the **shared source of truth** for Loader behavior — and the canonical serializer contract. The other corpora are summarized under [Sibling corpora](#sibling-corpora-render-and-verify).
 
-The loader corpus is run by the four ports that have their own Loader (TS, Java, Python, C#). **Kotlin** is the fifth port; it consumes the Java metadata via the `metadata-ktx` facade rather than re-implementing a Loader, so it participates in the persistence and API-contract corpora but not the loader/YAML/render/verify corpora.
+The loader corpus is run by the four ports that have their own Loader (TS, Java, Python, C#). **Kotlin** is the fifth port; it consumes the Java metadata via the `metadata-ktx` facade rather than re-implementing a Loader, so it participates in the persistence and API-contract corpora but not the loader/YAML/render/verify corpora. **Rust** is the sixth port, in preview (ADR-0065): it runs this corpus against a shrink-only expected-failures ledger — see [`docs/CONFORMANCE.md`](../docs/CONFORMANCE.md) for its current coverage.
 
 > The full corpus × port run-matrix, known coverage gaps, and a remediation backlog live in [`docs/superpowers/specs/2026-05-29-conformance-hardening-review.md`](../docs/superpowers/specs/2026-05-29-conformance-hardening-review.md). Consult it before treating "all green" as full coverage.
 

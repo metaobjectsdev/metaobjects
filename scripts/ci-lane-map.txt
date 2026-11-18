@@ -10,7 +10,7 @@
 #   <lanes>  space-separated lane names, or one of two words:
 #              ALL   every lane below
 #              NONE  no test lane (the `gates` lane still runs; see below)
-#   Lanes: ts-fast ts-unit java-slow python csharp. These are the ci-local sections a
+#   Lanes: ts-fast ts-unit java-slow python csharp rust. These are the ci-local sections a
 #   change can select. ts-slow, cube and mutation are not selectable here:
 #   the first two need docker, and mutation is diff-scoped
 #   inside ts-fast already (gate_completeness_diff in ci-local.sh), which this map neither
@@ -40,6 +40,7 @@ client/web/*          | ts-fast ts-unit | the universal web client, built and te
 server/java/*         | java-slow       | the Java and Kotlin ports (the reactor holds both conformance suites)
 server/python/*       | python          | the Python port
 server/csharp/*       | csharp          | the C# port
+server/rust/*         | rust            | the Rust port (preview, ADR-0065)
 fixtures/*            | ALL             | shared corpora every port runs
 spec/*                | ALL             | the metamodel spec every port implements
 scripts/*             | ALL             | CI scripts and tooling, this map included

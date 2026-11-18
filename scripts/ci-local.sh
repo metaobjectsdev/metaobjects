@@ -69,6 +69,10 @@
 #                                    #   python → full python test suite + integration-tests
 #                                    #   csharp → full csharp codegen suite + conformance
 #                                    #            + integration-tests
+#                                    #   rust   → the Rust port (preview): cargo fmt
+#                                    #            --check, clippy -D warnings, and its
+#                                    #            tests, which run the registry and
+#                                    #            metamodel corpora. No docker half.
 #                                    #   cube   → the cube-model live check: a real Cube
 #                                    #            (cubejs/cube, pinned) over a private
 #                                    #            Postgres, both in docker (FR-044). Its
@@ -84,7 +88,7 @@
 #                                    #   rule each path matched, then runs the selected ones as
 #                                    #   `--only <lane> ... --no-integration` would. The
 #                                    #   selectable lanes are ts-fast, ts-unit, java-slow,
-#                                    #   python and csharp; a change confined to one port
+#                                    #   python, csharp and rust; a change confined to one port
 #                                    #   selects that port, anything shared, any path the map
 #                                    #   does not claim, or no resolvable base selects all of
 #                                    #   them, and a change to only the root prose files
@@ -118,14 +122,15 @@
 # write into the tree first, in order: install, the drift gates, one workspace build.
 # Then it runs the rest as independent LANES side by side, at most MO_CI_JOBS at once
 # (default 8): java (the reactor, which already holds every java/kotlin conformance
-# class), python, mutation, csharp, ts, ts-integ, java-integ and kotlin-integ (both
+# class), python, mutation, csharp, rust, ts, ts-integ, java-integ and kotlin-integ (both
 # after java, which installs the jars they read), showcase (after java and csharp), cube
 # and gates. Each lane writes to its own log; the log prints as one block when the lane
 # ends, so output never interleaves. The summary lists every step with its time, the
 # slowest steps and each lane's wall time. Every step still runs and still fails the
 # run; only the order changes. --quick and --only run serially as before.
 # Worker counts inside the runners: MO_CI_PY_WORKERS (pytest-xdist, default 8),
-# MO_CI_TS_WORKERS (bun test --parallel for the integration suite, default 6) and
+# MO_CI_TS_WORKERS (bun test --parallel for the integration suite and the codegen-ts suite
+# in conformance: typescript, default 6) and
 # MO_CI_JVM_FORKS (surefire forkCount for the JVM integration modules, default 3).
 #
 # POSTGRES SIDECAR (see ensure_pg_sidecar below). Any lane that runs integration
@@ -176,8 +181,8 @@ while [ $# -gt 0 ]; do
     --no-integration) NO_INTEG=1 ;;
     --integration-only) INTEG_ONLY=1 ;;
     --only) shift; case "${1:-}" in
-        gates|leak-scan|ts|ts-fast|ts-unit|ts-slow|mutation|java|java-fast|java-slow|python|csharp|cube) ONLY="$ONLY ${1}" ;;
-        *) echo "--only expects gates|leak-scan|ts|ts-fast|ts-unit|ts-slow|mutation|java|java-fast|java-slow|python|csharp|cube, got '${1:-}'" >&2; exit 2 ;;
+        gates|leak-scan|ts|ts-fast|ts-unit|ts-slow|mutation|java|java-fast|java-slow|python|csharp|rust|cube) ONLY="$ONLY ${1}" ;;
+        *) echo "--only expects gates|leak-scan|ts|ts-fast|ts-unit|ts-slow|mutation|java|java-fast|java-slow|python|csharp|rust|cube, got '${1:-}'" >&2; exit 2 ;;
       esac ;;
     -h|--help) awk 'NR==1{next} /^set -uo/{exit} {sub(/^# ?/,""); print}' "$0"; exit 0 ;;
     *) echo "unknown arg: $1 (see --help)" >&2; exit 2 ;;
@@ -666,7 +671,12 @@ gate_conf_ts() {
   ( cd server/typescript/packages/render && bun test test/render-conformance.test.ts test/verify-conformance.test.ts test/extract/extract-conformance.test.ts test/output-prompt-conformance.test.ts ) || return 1
   ( cd server/typescript/packages/integration-tests && bun test test/validation-conformance.test.ts test/validation-conformance-runtime.test.ts ) || return 1
   ( cd server/typescript/packages/migrate-ts && bun test ) || return 1
-  ( cd server/typescript/packages/codegen-ts && bun test --timeout 30000 ) || return 1
+  # --parallel: the suite is many independent files (each builds its own model and writes
+  # into its own mkdtemp directory), so serially they spent minutes waiting on each other.
+  # Same worker count as the integration suite (scripts/integration-test.sh); MO_CI_TS_WORKERS
+  # overrides it. The cli suite below stays serial on purpose: under --parallel its tests
+  # that spawn prisma starved and timed out on the small hosted runner (pr-ci ts-fast).
+  ( cd server/typescript/packages/codegen-ts && bun test --timeout 30000 --parallel="${MO_CI_TS_WORKERS:-6}" ) || return 1
   # --timeout 30000: the cli suite invokes full `meta`/run() dispatch, which lazily
   # imports each command's (sometimes heavy: codegen, migrate-ts) module on first
   # use. On a cold/contended self-hosted runner that first cold-start import can
@@ -807,6 +817,16 @@ gate_conf_python() {
   local skip_integ="--ignore=tests/integration"
   if [ "$NO_INTEG" -eq 1 ] || ! docker info >/dev/null 2>&1; then skip_integ=""; fi
   ( cd server/python && uv run --extra integration pytest tests/ $skip_integ -q -n "${MO_CI_PY_WORKERS:-8}" )
+}
+# The Rust port (preview, ADR-0065). The whole crate suite, not a cherry-pick: it is the
+# registry-conformance and metamodel corpora plus the unit tests, ~1s once built. --locked
+# so a stale Cargo.lock fails here instead of being rewritten. The build goes to the
+# workspace's own target/ (gitignored); never a CARGO_TARGET_DIR shared between checkouts.
+gate_conf_rust() {
+  ( cd server/rust \
+      && cargo fmt --all --check \
+      && cargo clippy --locked --all-targets -q -- -D warnings \
+      && cargo test --locked -q -- --nocapture )
 }
 gate_conf_kotlin() {
   ( cd server/java \
@@ -1436,13 +1456,14 @@ run_ts_serial_steps() {
 # One function per other port, shared by the serial heavy tier and the parallel --affected lanes.
 run_csharp_steps()  { if want csharp; then step_if dotnet "conformance: csharp" gate_conf_csharp; fi; }
 run_python_steps()  { if want python; then step_if uv "conformance: python" gate_conf_python; fi; }
+run_rust_steps()    { if want rust; then step_if cargo "conformance: rust" gate_conf_rust; fi; }
 run_java_reactor_steps() { if want_any java java-slow; then step_if mvn "java-reactor (install)" gate_java_reactor; fi; }
 
 # ── --affected, several ports: run their lanes side by side ───────────────────
 # Run one after another, a change touching every port would take the SUM of the ports'
 # times, slower than the full run's parallel lanes, so more than one selected port group
 # runs as lanes exactly as the flagless run does (at most MO_CI_JOBS at once). The groups
-# share no files: the ts lane owns node_modules/ and dist/, and java, python and csharp
+# share no files: the ts lane owns node_modules/ and dist/, and java, python, csharp and rust
 # use no bun, which is also how pr-ci.yml runs them, as separate jobs. A single selected
 # group runs serially, unchanged. TypeScript's two lanes stay one group, in order, because
 # ts-unit builds into the dist/ that ts-fast's build writes.
@@ -1450,7 +1471,7 @@ AFFECTED_PARALLEL=0
 if [ "$AFFECTED" -eq 1 ]; then
   _groups=0
   in_lane_any ts-fast ts-unit && _groups=$((_groups + 1))
-  for _g in java-slow python csharp; do in_lane "$_g" && _groups=$((_groups + 1)); done
+  for _g in java-slow python csharp rust; do in_lane "$_g" && _groups=$((_groups + 1)); done
   [ "$_groups" -gt 1 ] && AFFECTED_PARALLEL=1
 fi
 
@@ -1501,6 +1522,7 @@ if [ "$AFFECTED_PARALLEL" -eq 1 ]; then
   in_lane java-slow               && lane java   "" run_java_reactor_steps
   in_lane python                  && lane python "" run_python_steps
   in_lane csharp                  && lane csharp "" run_csharp_steps
+  in_lane rust                    && lane rust   "" run_rust_steps
   in_lane_any ts-fast ts-unit     && lane ts     "" run_ts_serial_steps
   run_or_list_lanes
 elif [ "$PARALLEL" -eq 0 ]; then
@@ -1518,11 +1540,11 @@ elif [ "$PARALLEL" -eq 0 ]; then
 
   if [ "$QUICK" -eq 1 ]; then
     echo ""
-    echo "── ⊘ --quick: SKIPPING the other-language ports (csharp/java/python/kotlin),"
+    echo "── ⊘ --quick: SKIPPING the other-language ports (csharp/java/python/kotlin/rust),"
     echo "        the full Java reactor, the docker integration suite and the cube live"
     echo "        check. Run the full \`scripts/ci-local.sh\` (no flag) before opening/merging"
     echo "        a PR or tagging."
-    record SKIP 0 "csharp/java/python/kotlin conformance (--quick)"
+    record SKIP 0 "csharp/java/python/kotlin/rust conformance (--quick)"
     record SKIP 0 "java-reactor (--quick)"
     record SKIP 0 "integration-tests (--quick)"
     record SKIP 0 "cube-model live check (--quick)"
@@ -1537,6 +1559,7 @@ elif [ "$PARALLEL" -eq 0 ]; then
     run_csharp_steps
     if want_any java java-fast;   then step_if mvn "conformance: java"             gate_conf_java;    fi
     run_python_steps
+    run_rust_steps
     if want_any java java-fast;   then step_if mvn "conformance: kotlin"           gate_conf_kotlin;  fi
     run_java_reactor_steps
     # --no-integration drops the docker half; --integration-only keeps ONLY it, which is
@@ -1633,6 +1656,7 @@ else
   lane kotlin-integ java          lane_kotlin_integ
   lane java-integ   java          lane_java_integ
   lane showcase     java,csharp   lane_showcase
+  lane rust         ""            run_rust_steps
   lane cube         ""            lane_cube
   lane gates        ""            lane_gates
 

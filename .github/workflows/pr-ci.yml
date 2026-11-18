@@ -23,6 +23,7 @@ name: pr-ci
 #   java    — java-slow: the full reactor build with tests on, which already holds the
 #             java and kotlin conformance classes
 #   python / csharp — the port's full test suite and conformance
+#   rust    — fmt, clippy and the crate's tests (registry + metamodel corpora); preview
 #
 # THE REQUIRED CHECK: the final job, `pr-ci`, is the name to put in branch protection
 # when a maintainer decides to (it is not required yet; `leak-scan` is). It always runs
@@ -176,10 +177,34 @@ jobs:
             ${{ runner.os }}-nuget-
       - run: scripts/ci-local.sh --only csharp --no-integration --strict-toolchains
 
+  rust:
+    needs: detect
+    if: contains(format(' {0} ', needs.detect.outputs.ports), ' rust ')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install the pinned toolchain
+        # The hosted image carries rustup; this reads server/rust/rust-toolchain.toml.
+        run: ( cd server/rust && rustup toolchain install && rustup show active-toolchain )
+      - name: Cache Cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            server/rust/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('server/rust/Cargo.lock', 'server/rust/rust-toolchain.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+      - run: scripts/ci-local.sh --only rust --no-integration --strict-toolchains
+
   # The stable required-check name. Runs even when lanes are skipped or failed.
   pr-ci:
     if: always()
-    needs: [detect, gates, ts, java, python, csharp]
+    needs: [detect, gates, ts, java, python, csharp, rust]
     runs-on: ubuntu-latest
     steps:
       - name: Every selected lane passed

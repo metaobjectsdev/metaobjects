@@ -23,7 +23,7 @@ check() { # check "<expected>" "<got>" "<what>"
 }
 lanes() { select_lanes "$@"; echo "$SELECTED_LANES"; }
 
-ALL="ts-fast ts-unit java-slow python csharp"
+ALL="ts-fast ts-unit java-slow python csharp rust"
 
 # ── 1. change sets ────────────────────────────────────────────────────────────
 check "ts-fast ts-unit"  "$(lanes server/typescript/packages/cli/src/x.ts)"                "one port: typescript"
@@ -31,6 +31,7 @@ check "ts-fast ts-unit"  "$(lanes client/web/packages/react/src/y.tsx)"         
 check "java-slow"        "$(lanes server/java/metadata/src/main/java/A.java server/java/codegen-kotlin/src/main/kotlin/B.kt)" "one port: java and kotlin"
 check "python"           "$(lanes server/python/src/metaobjects/loader.py)"               "one port: python"
 check "csharp"           "$(lanes server/csharp/MetaObjects/Loader.cs)"                   "one port: csharp"
+check "rust"             "$(lanes server/rust/metaobjects/src/loader.rs)"                 "one port: rust"
 check "ts-fast ts-unit python" "$(lanes server/python/b.py server/typescript/a.ts)"       "two ports, given out of order, run in lane order"
 check "ts-fast ts-unit java-slow python csharp" "$(lanes server/csharp/a.cs server/java/b.java server/python/c.py server/typescript/d.ts)" "all four ports touched"
 check "$ALL"             "$(lanes fixtures/conformance/foo/meta.json)"                    "shared fixtures run everything"
@@ -104,7 +105,7 @@ check "$ALL" "$(run MO_CI_AFFECTED_BASE=no-such-ref)" "an unresolvable base sele
 # lanes, so a change to every port is not slower than the full run; one group stays serial.
 plan() { ( cd "$tmp/repo" && env MO_CI_AFFECTED_BASE=main MO_CI_LIST_ONLY=1 "$@" scripts/ci-local.sh --affected 2>&1 ); }
 lane_blocks() { { grep -o '^── lane [a-z]*' || true; } | sed 's/^── lane //' | sort | paste -sd' ' -; }
-check "csharp java python ts" "$(plan MO_CI_FULL=1 | lane_blocks)" "every port selected: one parallel lane per port group"
+check "csharp java python rust ts" "$(plan MO_CI_FULL=1 | lane_blocks)" "every port selected: one parallel lane per port group"
 check "python ts"             "$(plan | lane_blocks)"             "python and typescript selected: two parallel lanes"
 check "yes" "$(plan | grep 'run as parallel lanes' >/dev/null && echo yes || echo no)" "several groups are announced as parallel"
 check ""    "$(plan MO_CI_AFFECTED_BASE=HEAD~2 | lane_blocks)"    "one group (typescript, the docs adds none) stays serial"
@@ -118,7 +119,7 @@ mkdir -p "$tmp/repo/agent-context/skills" "$tmp/repo/server/java"
 echo s > "$tmp/repo/agent-context/skills/x.md"; commit shared
 git -C "$tmp/repo" mv agent-context/skills/x.md server/java/x.md; commit rename-into-java
 ports() { ( cd "$tmp/repo" && scripts/ci-affected-ports.sh "$(git rev-parse HEAD~1)" HEAD ); }
-check "ts java python csharp" "$(ports)" "git: a rename out of agent-context still selects every port"
+check "ts java python csharp rust" "$(ports)" "git: a rename out of agent-context still selects every port"
 git -C "$tmp/repo" mv server/java/x.md server/python/x.py; commit rename-java-to-python
 check "java python" "$(ports)" "git: a rename between ports selects both"
 

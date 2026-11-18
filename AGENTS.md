@@ -58,10 +58,11 @@ bar.
 
 **A lagging version number is INFORMATION, not drift.** Since `0.24.5` a registry publishes
 only when it has a changed product file, and when it does it adopts the shared `minor.patch`
-then current, skipping the numbers it sat out (ADR-0035 Amendment 1, operative table in
-`docs/RELEASING.md`). Two carve-outs: the 14 npm packages move atomically with each other, and
-a change to `expected-registry.json` / `metamodelVersion` still forces all four, because that
-is the contract every port byte-matches. So PyPI at `0.25.0` while npm is at `0.25.2` says
+then current, skipping the numbers it sat out (operative table in `docs/RELEASING.md`;
+the level vocabulary takes is ADR-0035 Amendment 5's feature test). Two carve-outs: the 14
+npm packages move atomically with each other, and a change to `expected-registry.json` /
+`metamodelVersion` still forces all four, at any release level, because that is the contract
+every port byte-matches. So PyPI at `0.25.0` while npm is at `0.25.2` says
 PyPI has had no product change since `0.25.0` — nothing is broken.
 
 **All five ports ship loader + canonical serializer + conformance + codegen + render + payload-VO + `verify`:**
@@ -101,7 +102,7 @@ git config core.hooksPath .githooks
 git config hooks.denyListPath /path/to/your/private/denylist.txt
 ```
 
-It blocks commits whose added lines match (`git commit --no-verify` bypasses, discouraged); the npm author email is the one allowed exception. Guard a new private name by editing that private denylist (single source of truth) — never add real names to this public repo or the committed hook.
+It blocks commits whose added lines match (`git commit --no-verify` bypasses, discouraged); the maintainer's email is the one allowed exception (it was the npm author field — no manifest has carried it since 1.3.0, whose author is "MetaObjects contributors"). Guard a new private name by editing that private denylist (single source of truth) — never add real names to this public repo or the committed hook.
 
 **Pre-push typecheck gate** (`.githooks/pre-push`, same `core.hooksPath`): `bun test`
 transpiles per-file and does NOT typecheck, so type-broken code can ship green on the
@@ -168,7 +169,7 @@ metaobjects/
 ├── fixtures/conformance/          # cross-language test fixtures
 │
 ├── server/                        # runs on a server
-│   ├── typescript/   java/   python/   csharp/
+│   ├── typescript/   java/   python/   csharp/   rust/ (preview, ADR-0065)
 │
 └── client/                        # runs on an end-user device
     ├── web/                       # browser (TS-only — the browser is TS-native)
@@ -382,7 +383,7 @@ it is correct because the conformance corpus passes.
 
 🔗 Full vocabulary tables, the retired pre-v2 subtypes, and the per-contract traps:
 [.claude/rules/cross-language-porting.md](.claude/rules/cross-language-porting.md) (auto-loads on
-`server/{csharp,java,python,typescript}/**`, `client/web/**`, `spec/**`, `fixtures/**conformance**/**`,
+`server/{csharp,java,python,rust,typescript}/**`, `client/web/**`, `spec/**`, `fixtures/**conformance**/**`,
 `docs/ports/**`). Per-language notes live in [docs/ports/](docs/ports/).
 
 ## Design judgment (durable principles)

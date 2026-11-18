@@ -22,10 +22,10 @@
 # when the shrink is certain.
 #
 # Usage: scripts/ci-ports-to-run.sh <base-sha> <head-sha>
-# Prints a space-separated subset of: ts java python csharp
+# Prints a space-separated subset of: ts java python csharp rust
 set -uo pipefail
 
-ALL="ts java python csharp"
+ALL="ts java python csharp rust"
 
 # Resolve the sibling by the script's own location, never by the caller's cwd — the
 # workflow happens to run from the repo root, and a relative call would keep working
@@ -49,11 +49,12 @@ lane_port() {
     java-slow)               echo java ;;
     python)                  echo python ;;
     csharp)                  echo csharp ;;
+    rust)                    echo rust ;;
     *)                       echo "" ;;
   esac
 }
 
-all_lanes() { echo "ts-fast ts-unit ts-slow java-slow python csharp"; }
+all_lanes() { echo "ts-fast ts-unit ts-slow java-slow python csharp rust"; }
 
 # Canonical order, deduplicated, unknown tokens dropped. The order is FIXED rather than
 # sorted because the workflow tests the result with `contains(..., 'ts')` — a substring

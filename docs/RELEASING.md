@@ -26,7 +26,8 @@
 > Two carve-outs: the **14 npm packages still move atomically with each other** (they
 > cross-depend — that is intra-npm lockstep and it is unchanged), and a change to
 > `expected-registry.json` / `metamodelVersion` **forces all four**, because that is the
-> cross-port contract. The rest of this doc is the per-registry procedure.
+> cross-port contract — whatever the release's level, so a vocabulary-adding PATCH publishes
+> all four too (ADR-0035 Amendment 5). The rest of this doc is the per-registry procedure.
 
 ## Step 0 (all registries): scan for unmerged work before you cut
 
@@ -262,8 +263,9 @@ That — not semver §8 — is the contract you are versioning against pre-1.0.
 **Litmus test.** **Whose surface moved?** If the answer is "a generator, or what one
 emits", it is a **PATCH** and the test ends there. Otherwise: can a consumer on `^prev` run
 `npm update` and still compile against the codegen ENGINE, the runtime libraries and the CLI
-they call? **Yes → PATCH. No → MINOR.** (Vocabulary is a third axis entirely and moves
-`metamodelVersion`, not this number.)
+they call? **Yes → PATCH. No → MINOR.** (Vocabulary always moves `metamodelVersion`, and moves
+this number by the feature test in "The vocabulary rule" below: vocabulary that augments an
+existing feature is a PATCH, a whole new feature is a MINOR.)
 
 **Generated output is never the axis (ADR-0035 Amendment 4).** An adopter owns a COPY of
 each generator and gets our edit only by re-running `meta gen` and accepting the diff, so a
@@ -283,14 +285,13 @@ what they render is generator output and does not.)
 | Codegen **ENGINE** public surface **additive** (new `render*` primitive, new `GenContext` field, optional param) | new `render*` primitive | PATCH (MINOR if it headlines a feature release) | MINOR |
 | Codegen **ENGINE** public surface **breaking**, or changed **CLI semantics** | `relativeModuleSpecifier` +required param | **MINOR** | MAJOR |
 | A **runtime library**'s public surface (`runtime-ts`, `render`, OMDB, ObjectManager, web client) — additive / breaking | a new mount option / a removed export | PATCH / **MINOR** | MINOR / MAJOR |
-| New **attribute** on an existing type/subtype | `@intValueMap`, `@lenient`, `@maxTokens` | **PATCH** | **PATCH** |
-| New **subtype** of an existing type | `field.uri`, `index.lookup`, `attr.intMap` | **PATCH** when inert (see the vocabulary rule below); **MINOR** when it changes existing metadata's meaning/output, narrows something previously permitted, or headlines a feature | MINOR |
-| New top-level metadata **type** | `requirement.*`, `index.*`, `api.*` | **MINOR** | MINOR |
+| Vocabulary that **adds to or augments an EXISTING feature** — any kind: type, subtype, attribute, enum value, expression node, view vocabulary — with nothing existing removed, narrowed or reinterpreted | the rc.21 view vocabulary (`origin.function`, `@union`, `@grain`, `cast`), `@dbCheck`, `measure.derived`, `@intValueMap` | **PATCH** (MINOR only by choice, when it headlines a release) | **PATCH**, same choice (ADR-0035 **Amendment 5**) |
+| Vocabulary for a **whole NEW FEATURE** (see the vocabulary rule below for the test) | `requirement.*`, FR-044's `object.report` + `dimension.*` / `measure.*` / `segment.*` | **MINOR** | MINOR |
 | **Breaking** metamodel-vocabulary change (retire an attr/subtype/type; narrow what is permitted) | FR-037 `@readOnly`, FR-038 `@verifiedBy`, ADR-0052 `@promptStyle` re-homing | **MINOR** (pre-1.0 MINOR *is* the breaking slot) | **`metamodelVersion` MAJOR**, package MINOR (ADR-0035 Am. 2) |
 | Wire-contract / conformance behavior change of already-valid deployments | FR-036 enforcement | **MINOR**, loud notice (pre-1.0 MINOR *is* the breaking slot) | **`metamodelVersion` MAJOR** (Metamodel 2.0) + package MINOR — see the two-contracts rule below |
 | Wire behavior fixed to match the documented/conformance contract | 0.19.1 `@min` clamp | PATCH | PATCH |
 | No changed product file in a port | PyPI/NuGet/Maven at 0.24.4 while npm cuts 0.24.5 | **Do not publish that registry.** It sits the release out and keeps its current version. When it next has a changed file it adopts the shared `minor.patch` then current, skipping the numbers between (publish-what-changed policy, standing since 0.24.5) | same |
-| A change to `expected-registry.json` / `metamodelVersion` | any vocabulary move | **All four registries publish**, changed file or not — the metamodel is the cross-port contract and every port byte-matches the manifest | same |
+| A change to `expected-registry.json` / `metamodelVersion` | any vocabulary move, at any release level — a vocabulary-adding PATCH included | **All four registries publish**, changed file or not — the metamodel is the cross-port contract and every port byte-matches the manifest | same |
 
 ### The two-contracts rule (post-1.0; ADR-0035 Amendment 2)
 
@@ -328,6 +329,18 @@ requires. Same shape as `buf breaking --against '.git#tag=…'` / `oasdiff`.
 works that way while it is `0.x`: `0.y` makes no compatibility claim there is anything to
 break. At `1.0` the major becomes real.
 
+**`metamodelVersion` gains a patch component (ADR-0035 Amendment 5, accepted, not yet
+implemented).** It becomes `<major>.<minor>.<patch>`, always three components, moved by the same
+decision as the release: **patch** for vocabulary that augments an existing feature, **minor**
+for a whole new feature (or a correction under the compatibility policy's MINOR bar), **major**
+for a break. When it lands, the additive row above requires at least a **patch**, and choosing
+minor for a new feature is the maintainer's call made with `--set` — a manifest diff cannot tell
+a feature from an augmentation. Readers take a two-component value already written into a
+package or lock file as `<major>.<minor>.0`. One value names one vocabulary set: two release
+lines that ship the same `metamodelVersion` ship byte-identical `expected-registry.json`. **Until
+it lands, the gate is as the table says**: a vocabulary-adding PATCH moves the metamodel minor,
+as `1.1.4` did (`1.1` to `1.2`).
+
 **What the gate cannot see, and says so.** A rule can change with NO machine-readable
 footprint. #210 is the proof: retiring assembly origins from `object.value` was a
 breaking metamodel change whose only manifest edit was a `rules` PROSE string. So prose
@@ -358,40 +371,53 @@ Design + deferral triggers:
 change; batching a fortnight of work into one coordinated cut removes most of the number
 pressure without touching policy at all.
 
-### The vocabulary rule (corrected 2026-08-17)
+### The vocabulary rule (the feature test; ADR-0035 Amendment 5, 2026-11-18)
 
-**Adding registry vocabulary does NOT, by itself, force a MINOR.** The rule used to read
-"PATCH (MINOR if it adds registry vocabulary — cross-port conformance surface)", and that was
-wrong on its own terms: `expected-registry.json` is an **internal** gate. Every port
-byte-matching one manifest is how we stop the five ports drifting from each other — it says
-nothing about whether an *adopter's* project changes. Treating an internal gate's churn as an
-adopter-facing event is what burned the minors: `0.22.0` and `0.23.0` were both cut MINOR for
-changes that a project declaring no `requirement.*` nodes could not observe at all, which each
-changelog says out loud in its own opening paragraph. Sort vocabulary by what it can do to a
-consumer, which splits three ways:
+**The unit of the version decision is the FEATURE, not the kind of vocabulary.** Adding or
+augmenting metadata for a feature that already exists is a normal PATCH; a whole new feature is
+a MINOR; a break stays a MAJOR.
 
-- **A new ATTRIBUTE is a PATCH.** You get it only by authoring it. Every existing document
-  loads unchanged and emits byte-identical output, so there is nothing for a consumer to adopt
-  deliberately.
-- **A new TOP-LEVEL TYPE is a MINOR.** A type is a new modeling concept with its own children,
-  validation and (usually) tooling surface — `requirement.*` brought its own `verify` pass and
-  summary output. That is a thing a consumer newly depends on, and it deserves a deliberate
-  range bump.
-- **A new SUBTYPE goes either way, and the test is whether it is INERT.** PATCH when nothing
-  but authoring it can reach it: no existing valid document changes meaning or output, nothing
-  previously permitted is narrowed, nothing reserved is consumed. MINOR when any of those
-  fails — a subtype that closes a wildcard, promotes a reserved-not-registered member
-  (ADR-0007 Amendment 2 / ADR-0040), or shifts what the recommended shape for an existing
-  field *is* — or when you deliberately want it behind a range bump because it headlines a
-  release. Most subtypes carry a native type and behavior (that is ADR-0037's very test for
-  making something a subtype), so read them carefully; but "it appears in the registry
-  manifest" is not the deciding fact.
+- **Adds to or augments an EXISTING feature ⇒ PATCH**, whatever the kind: a type, a subtype, an
+  attribute, an enum value, an expression node, view vocabulary. It need not be inert. It must be
+  additive: nothing existing is removed, narrowed or reinterpreted, and every document that loaded
+  before still loads with the same meaning. A change to what an existing valid document means or
+  produces by default is not an addition and keeps its own rules (a MINOR or a documented opt-in;
+  a break is a metamodel MAJOR); generator output stays under Amendment 4.
+- **A whole NEW FEATURE ⇒ MINOR.**
+- **Breaking ⇒ MAJOR**: the metamodel's major for the metadata contract (shipped in a package
+  MINOR, Amendment 2), the package's for the software surface.
+
+**The feature test.** A feature is a modeling concept an adopter opts into as a whole, with its
+own page under `docs/features/`, its own vocabulary family and tooling of its own (a `verify`
+pass, a generator family, a CLI command). Ask: **could this be documented as a new section of an
+existing feature's page, using the tooling that page already describes?** Yes ⇒ augmentation ⇒
+PATCH. No ⇒ new feature ⇒ MINOR.
+
+| Change | Verdict |
+|---|---|
+| `requirement.*` (`0.22.0`): its own page, its own `verify` pass and ledger | new feature ⇒ **MINOR** |
+| FR-044 reporting (`1.1.0`): `object.report`, dimensions, measures, segments, a view lowering, served routes, the `cube-model` generator | new feature ⇒ **MINOR** |
+| the rc.21 view vocabulary (`origin.function`, `@union` / `@unionAll`, `@grain` / `@grainOrdinal`, `cast`) | augments projections and views ⇒ **PATCH** |
+| `@dbCheck` on a validator or `field.enum` | augments the CHECK constraints `meta migrate` already writes ⇒ **PATCH** |
+| `measure.derived` | augments reporting ⇒ **PATCH** |
+
+**Why the kind-based rule went.** Amendment 1 (2026-08-17) sorted vocabulary by kind: an
+attribute a PATCH, a top-level type a MINOR, a subtype either by whether it was INERT. That
+corrected an older and worse reading ("any registry addition ⇒ MINOR", which spent `0.22.0`'s
+and `0.23.0`'s minors on changes no adopter could observe; `expected-registry.json` is an
+internal gate, and its churn is evidence about the ports, not about an adopter). But the kind
+did not track what an adopter experiences either, and it pushed additions to shipped features
+into a minor or a long-lived release line.
+
+**`metamodelVersion` moves by the same decision**, and every move of it, at any release level,
+publishes all four registries. See "The two-contracts rule" above for its patch component and
+what the gate checks until that is implemented.
 
 **Do not invert the caret rule.** "Pre-1.0 `^0.22.x` resolves `<0.23.0`, so a consumer adopts
-a MINOR deliberately" is a reason to *choose* MINOR when you want that gate. It is not a
-reason additive vocabulary *must* be MINOR. The gate exists to be used on purpose, not by
-reflex — and a minor spent on a change nobody can observe is a gate you no longer have when
-something real needs it.
+a MINOR deliberately" is a reason to *choose* MINOR when you want that gate, for instance for an
+augmentation that headlines a release. It is not a reason additive vocabulary *must* be MINOR.
+The gate exists to be used on purpose, not by reflex — and a minor spent on a change nobody can
+observe is a gate you no longer have when something real needs it.
 
 **The `extStyle` 0.20.0 case, for calibration:** it was correctly MINOR — but for the
 *API break* (`relativeModuleSpecifier` gained a required param — a public export) **and**
