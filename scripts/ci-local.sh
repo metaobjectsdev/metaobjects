@@ -756,11 +756,12 @@ gate_ts_unit() {
   done
 }
 gate_conf_csharp() {
+  # The minimal console logger prints a failing test's message; plain `--verbosity quiet` names the test and nothing else.
   ( cd server/csharp \
-      && dotnet test MetaObjects.Conformance.Tests/MetaObjects.Conformance.Tests.csproj --nologo --verbosity quiet \
-      && dotnet test MetaObjects.Render.Tests/MetaObjects.Render.Tests.csproj --nologo --verbosity quiet \
-      && dotnet test MetaObjects.Codegen.Tests/MetaObjects.Codegen.Tests.csproj --nologo --verbosity quiet \
-      && dotnet test MetaObjects.Cli.Tests/MetaObjects.Cli.Tests.csproj --nologo --verbosity quiet )
+      && dotnet test MetaObjects.Conformance.Tests/MetaObjects.Conformance.Tests.csproj --nologo --verbosity quiet --logger "console;verbosity=minimal" \
+      && dotnet test MetaObjects.Render.Tests/MetaObjects.Render.Tests.csproj --nologo --verbosity quiet --logger "console;verbosity=minimal" \
+      && dotnet test MetaObjects.Codegen.Tests/MetaObjects.Codegen.Tests.csproj --nologo --verbosity quiet --logger "console;verbosity=minimal" \
+      && dotnet test MetaObjects.Cli.Tests/MetaObjects.Cli.Tests.csproj --nologo --verbosity quiet --logger "console;verbosity=minimal" )
 }
 # NOTE: these -Dtest= lists are a CHERRY-PICK, so a new test class that is not named here
 # runs in NO per-push lane and reports green. Adding a test to this module means adding its

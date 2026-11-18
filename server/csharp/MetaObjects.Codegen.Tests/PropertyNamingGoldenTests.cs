@@ -132,9 +132,28 @@ public class PropertyNamingGoldenTests
             foreach (var f in files) File.WriteAllText(Path.Combine(dir, System.IO.Path.GetFileName(f.Path)), f.Content);
             return;
         }
-        var expected = Directory.GetFiles(dir).Select(p => Path.GetFileName(p)).Order().ToList();
-        Assert.Equal(expected, files.Select(f => System.IO.Path.GetFileName(f.Path)).Order().ToList());
+        var expected = Directory.GetFiles(dir).Select(p => Path.GetFileName(p)).Order(StringComparer.Ordinal).ToList();
+        var actualNames = files.Select(f => System.IO.Path.GetFileName(f.Path)).Order(StringComparer.Ordinal).ToList();
+        Assert.True(expected.SequenceEqual(actualNames),
+            $"golden file set differs. missing from output: [{string.Join(", ", expected.Except(actualNames))}]; not in golden: [{string.Join(", ", actualNames.Except(expected))}]");
         foreach (var f in files)
-            Assert.Equal(File.ReadAllText(Path.Combine(dir, System.IO.Path.GetFileName(f.Path))), f.Content);
+        {
+            var name = System.IO.Path.GetFileName(f.Path);
+            var golden = File.ReadAllText(Path.Combine(dir, name));
+            if (golden != f.Content) Assert.Fail(FirstDifference(name, golden, f.Content));
+        }
+    }
+
+    // A golden mismatch names the file, the first differing line and both spellings, so a failure that
+    // shows only on another machine can be read from its log instead of reproduced.
+    private static string FirstDifference(string name, string golden, string actual)
+    {
+        var g = golden.Split('\n');
+        var a = actual.Split('\n');
+        var i = 0;
+        while (i < g.Length && i < a.Length && g[i] == a[i]) i++;
+        string At(string[] lines, int n) => n < lines.Length ? lines[n].Replace("\r", "\\r") : "<end of file>";
+        return $"{name}: output differs from its golden at line {i + 1} (golden {g.Length} lines, output {a.Length} lines)\n" +
+               $"  golden: {At(g, i)}\n  output: {At(a, i)}\n  culture: {System.Globalization.CultureInfo.CurrentCulture.Name}; cwd: {Directory.GetCurrentDirectory()}";
     }
 }
