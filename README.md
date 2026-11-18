@@ -329,7 +329,8 @@ metaobjects/
 │   ├── typescript/                 # the reference port
 │   ├── java/                       # Java port (incl. codegen-kotlin + metadata-ktx)
 │   ├── csharp/                     # C# port
-│   └── python/                     # Python port
+│   ├── python/                     # Python port
+│   └── rust/                       # Rust port (preview, ADR-0065 — unpublished; no codegen yet)
 │
 └── client/
     └── web/                        # universal browser packages (React, TanStack, Angular, framework-agnostic)
