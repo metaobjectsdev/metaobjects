@@ -39,35 +39,6 @@ here.**
   no version, vocabulary or `metamodelVersion` changes here. See `docs/RELEASING.md`, "The
   vocabulary rule".
 
-### Security
-
-- **Fix, Java and Kotlin: a credential was returned in every response under a snake or kebab
-  Jackson naming strategy.** The generated Spring controllers (`codegen-spring` and
-  `codegen-kotlin`) omitted a credential (a `view.password` field) by serializing the row to a
-  JSON tree and removing the key spelled with the field name (`pinHash`). The generated DTO and
-  data class carry no wire annotation for it, so its key is whatever the host's `ObjectMapper`
-  makes of the property: under `PropertyNamingStrategies.SNAKE_CASE` (what
-  `spring.jackson.property-naming-strategy=SNAKE_CASE` sets) the key is `pin_hash`, under
-  `KEBAB_CASE` it is `pin-hash`, the removal found nothing, and a multi-word credential was sent
-  in every list, get, create and update echo, M:N traversal, TPH, projection and report response.
-  **Released Java and Kotlin 8.2.0 to 8.2.3 are affected**; a host on Jackson's default naming
-  with no mixin or `@JsonProperty` rename was safe. 1.3.0 fixes it: the generated `redact` helper
-  reads each credential's key from the mapper's own serialization contract
-  (`SerializationConfig.introspect(...).findProperties()`, matched on the property's internal
-  name), so a naming strategy, a mixin or a `@JsonProperty` cannot escape it, and caches the keys
-  per row class. Stripping **fails closed**, as the C# fix does: when the contract cannot be read
-  (the row's serializer is not a bean serializer, or the class declares the credential but the
-  contract has no property for it and does not ignore it), the request is refused with an
-  exception naming the type and the credential property (never a value) instead of being sent
-  unstripped. A key that spells the credential ignoring case, `_` and `-` is also removed. The
-  report CSV and XML exports were not affected: they write a fixed column list chosen at codegen
-  time, with credential columns left out, and never go through Jackson. Regenerate every Java or
-  Kotlin project whose host sets a naming strategy; adopters with ejected (owned) controller
-  generators need the same change made by hand. Gated by a `none`/`snake`/`kebab` naming
-  parameter on the Java and Kotlin `secret-fields` generated-controller lanes (list, get by id and
-  an inheriting projection), which leak under `snake` and `kebab` without the fix. Request bodies
-  are unchanged and out of scope here: a PATCH or PUT key is still read by the field name.
-
 ## [1.3.0] — 2026-11-17
 
 
@@ -239,6 +210,33 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   value-object member is not listed, checked or stripped. Only an entity's top-level fields are
   treated as credentials, and stripping does not recurse into nested objects. Declare credentials
   as top-level entity fields until that is fixed.
+
+- **Fix, Java and Kotlin: a credential was returned in every response under a snake or kebab
+  Jackson naming strategy.** The generated Spring controllers (`codegen-spring` and
+  `codegen-kotlin`) omitted a credential (a `view.password` field) by serializing the row to a
+  JSON tree and removing the key spelled with the field name (`pinHash`). The generated DTO and
+  data class carry no wire annotation for it, so its key is whatever the host's `ObjectMapper`
+  makes of the property: under `PropertyNamingStrategies.SNAKE_CASE` (what
+  `spring.jackson.property-naming-strategy=SNAKE_CASE` sets) the key is `pin_hash`, under
+  `KEBAB_CASE` it is `pin-hash`, the removal found nothing, and a multi-word credential was sent
+  in every list, get, create and update echo, M:N traversal, TPH, projection and report response.
+  **Released Java and Kotlin 8.2.0 to 8.2.3 are affected**; a host on Jackson's default naming
+  with no mixin or `@JsonProperty` rename was safe. 1.3.0 fixes it: the generated `redact` helper
+  reads each credential's key from the mapper's own serialization contract
+  (`SerializationConfig.introspect(...).findProperties()`, matched on the property's internal
+  name), so a naming strategy, a mixin or a `@JsonProperty` cannot escape it, and caches the keys
+  per row class. Stripping **fails closed**, as the C# fix does: when the contract cannot be read
+  (the row's serializer is not a bean serializer, or the class declares the credential but the
+  contract has no property for it and does not ignore it), the request is refused with an
+  exception naming the type and the credential property (never a value) instead of being sent
+  unstripped. A key that spells the credential ignoring case, `_` and `-` is also removed. The
+  report CSV and XML exports were not affected: they write a fixed column list chosen at codegen
+  time, with credential columns left out, and never go through Jackson. Regenerate every Java or
+  Kotlin project whose host sets a naming strategy; adopters with ejected (owned) controller
+  generators need the same change made by hand. Gated by a `none`/`snake`/`kebab` naming
+  parameter on the Java and Kotlin `secret-fields` generated-controller lanes (list, get by id and
+  an inheriting projection), which leak under `snake` and `kebab` without the fix. Request bodies
+  are unchanged and out of scope here: a PATCH or PUT key is still read by the field name.
 
 ### Added
 
