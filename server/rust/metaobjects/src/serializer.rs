@@ -141,7 +141,7 @@ fn body(tree: &Tree, id: NodeId, effective: bool, pkg_slot: Option<String>) -> M
 
     // ADR-0039: own mode writes the declared layer, effective mode resolves.
     let mut attrs: BTreeMap<String, Value> = if effective {
-        tree.attrs(id).into_iter().collect()
+        tree.attrs(id).into_owned().into_iter().collect()
     } else {
         // ADR-0039: own — own-mode serialization writes the declared layer.
         tree.own_attrs(id)
@@ -156,7 +156,7 @@ fn body(tree: &Tree, id: NodeId, effective: bool, pkg_slot: Option<String>) -> M
     }
 
     let children = if effective {
-        tree.children(id)
+        tree.children(id).into_owned()
     } else {
         // ADR-0039: own — own-mode serialization writes the declared layer.
         tree.own_children(id).to_vec()

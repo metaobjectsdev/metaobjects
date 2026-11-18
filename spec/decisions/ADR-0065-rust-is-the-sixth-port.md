@@ -61,13 +61,35 @@ five".
 
 7. **Built for speed from the start.** Generation writes only files whose bytes changed, keeps
    no per-file manifest writes on the hot path, and runs no formatter in the generation path
-   (the emitter writes formatted output). A load benchmark over a 20-times copy of the public
+   (the emitter writes formatted output, as ADR-0063 rules for every port). A load benchmark over a 20-times copy of the public
    fitness model (`cargo run --release --example load_bench`) is kept beside the crate.
+
+8. **The runtime read path: freeze, then memoize, like the other ports.** Runtime metadata
+   access reads the same resolved values over and over from many threads, so the tree caches its
+   `extends`-chain walks the way TypeScript (`cached()`), C# (`Cached<T>`), Python (`_cached`) and
+   Java (`freeze()`/`useFrozenCache()`, FR-031) do. A tree has a mutable load phase and a frozen
+   phase. The loader calls `Tree::freeze()` at its terminal phase (where the other ports freeze at
+   REGISTERED); from then on every mutator panics, and the resolving accessors memoize: one
+   `OnceLock` per node and accessor, allocated at the freeze. Nothing is cached before the freeze,
+   so a value read during the load cannot be served stale, and nothing is invalidated. A frozen
+   `Tree` is `Sync`; a racing first read computes an entry once while the others wait, and a
+   cached read returns a borrow (`Cow::Borrowed`) rather than a copy.
+
+   The memoized set is the base-node set the other ports share: effective `children`, effective
+   `attrs` (and `attr`, which reads through that map once frozen) and `resolved_is_array`.
+   TypeScript and C# also cache snapshots of a node's own attrs and own children because they
+   copy them; the Rust own accessors already borrow the node's storage, so there is nothing to
+   memoize. Typed accessors that come with later phases (an object's fields, identities and
+   relationships, a root's object lookup) memoize through the same per-node cache, keyed the way
+   the other ports key theirs. Tests in `node.rs` hold the cached reads equal to the uncached
+   walks, prove a read before the freeze does not survive a later mutation, and read one frozen
+   tree from eight threads at once.
 
 ## Consequences
 
-- The `scripts/ci-affected-ports.sh` and `scripts/ci-ports-to-run.sh` selectors know six ports,
-  and `server/rust/**` selects the `rust` lane. `scripts/ci-local.sh --only rust` runs
+- The shared lane map (`scripts/ci-lane-map.txt`, read by `scripts/ci-select-lanes.sh`) has a
+  `rust` lane, `server/rust/**` selects it, and the `scripts/ci-affected-ports.sh` and
+  `scripts/ci-ports-to-run.sh` selectors know six ports. `scripts/ci-local.sh --only rust` runs
   `cargo fmt --check`, clippy with warnings denied and the crate's tests, and `pr-ci` and
   `local-ci` run it as their own job.
 - `docs/CONFORMANCE.md` names the port beside the matrix, not as a column, until it leaves

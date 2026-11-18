@@ -165,6 +165,9 @@ impl<'r> Loader<'r> {
             resolve_references(&mut tree, root);
             root
         };
+        // The terminal phase: the tree is complete, so it becomes read-only and its
+        // resolving reads memoize from here on (the other ports freeze at REGISTERED).
+        tree.freeze();
         LoadResult {
             tree,
             root,
@@ -497,7 +500,8 @@ impl SuperResolver<'_> {
                 let matches: Vec<NodeId> = self
                     .tree
                     .children(current)
-                    .into_iter()
+                    .iter()
+                    .copied()
                     .filter(|&c| self.tree.node(c).name == *seg)
                     .collect();
                 if matches.len() != 1 {
@@ -509,7 +513,8 @@ impl SuperResolver<'_> {
             return self
                 .tree
                 .children(current)
-                .into_iter()
+                .iter()
+                .copied()
                 .find(|&c| {
                     let n = self.tree.node(c);
                     n.name == last && n.type_name == referrer_type
@@ -601,7 +606,8 @@ fn did_you_mean_super_hint(tree: &Tree, root: NodeId, r: &str) -> String {
     let short = owner.rsplit(PACKAGE_SEP).next().unwrap_or(owner);
     let candidates: Vec<String> = tree
         .children(root)
-        .into_iter()
+        .iter()
+        .copied()
         .filter(|&c| {
             let n = tree.node(c);
             n.type_name == TYPE_OBJECT && n.name == short
