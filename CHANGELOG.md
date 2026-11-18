@@ -10,6 +10,24 @@ here.**
 
 ## [Unreleased]
 
+### Added
+
+- **Rust port foundation, in preview (ADR-0065).** `server/rust/` is a Cargo workspace with a
+  pinned toolchain and one crate, `metaobjects`: the node model, the type registry and the
+  built-in providers (strict, sealed after bootstrap, the same `ERR_*` codes), and a JSON loader
+  that reads packages, children, subtypes, attributes, `extends` and references, with the
+  canonical serializer. The loader freezes the tree when it finishes, and a frozen tree memoizes
+  its resolved reads (effective children, attrs and array-ness) for many concurrent readers, as
+  the other ports do. It passes `registry-conformance` byte for byte and 256 of the 510
+  metamodel fixtures; the other 254 are on a ledger that may only shrink (the validation passes,
+  merge warnings, the reporting short-name rule and `script.json` fixtures it does not run yet).
+  While the port is in preview, a new fixture that fails in Rust and is not on the ledger prints a
+  warning and does not fail the lane; a fixture that passed and regresses still fails it, because
+  the ledger records how many fixtures must pass. Nothing is published and there is no codegen
+  or `cargo meta` command yet. A `rust` lane runs `cargo fmt --check`, clippy and the tests in
+  `scripts/ci-local.sh --only rust`, `pr-ci` and `local-ci`, selected by changes under
+  `server/rust/`.
+
 ### Changed
 
 - **Release policy: vocabulary is versioned by feature, not by kind (ADR-0035 Amendment 5).** Adding

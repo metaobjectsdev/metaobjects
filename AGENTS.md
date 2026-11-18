@@ -167,7 +167,7 @@ metaobjects/
 ├── fixtures/conformance/          # cross-language test fixtures
 │
 ├── server/                        # runs on a server
-│   ├── typescript/   java/   python/   csharp/
+│   ├── typescript/   java/   python/   csharp/   rust/ (preview, ADR-0065)
 │
 └── client/                        # runs on an end-user device
     ├── web/                       # browser (TS-only — the browser is TS-native)
@@ -381,7 +381,7 @@ it is correct because the conformance corpus passes.
 
 🔗 Full vocabulary tables, the retired pre-v2 subtypes, and the per-contract traps:
 [.claude/rules/cross-language-porting.md](.claude/rules/cross-language-porting.md) (auto-loads on
-`server/{csharp,java,python,typescript}/**`, `client/web/**`, `spec/**`, `fixtures/**conformance**/**`,
+`server/{csharp,java,python,rust,typescript}/**`, `client/web/**`, `spec/**`, `fixtures/**conformance**/**`,
 `docs/ports/**`). Per-language notes live in [docs/ports/](docs/ports/).
 
 ## Design judgment (durable principles)
