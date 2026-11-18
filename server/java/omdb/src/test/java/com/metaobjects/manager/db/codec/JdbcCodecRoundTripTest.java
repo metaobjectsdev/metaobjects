@@ -347,6 +347,111 @@ public class JdbcCodecRoundTripTest {
         }
     }
 
+    private static ValueObject sampleRow(MetaObject mo, String label) {
+        ValueObject vo = (ValueObject) mo.newInstance();
+        vo.setString("label", label);
+        vo.setInt("count", 1);
+        vo.setLong("bignum", 1L);
+        vo.setBoolean("active", false);
+        vo.setDouble("ratio", 0d);
+        vo.setFloat("rate", 0f);
+        vo.setObject("amount", java.math.BigDecimal.ZERO);
+        vo.setDate("createdAt", new Date(0));
+        vo.setObject("startTime", LocalTime.of(0, 0, 0));
+        return vo;
+    }
+
+    /**
+     * A {@code @stringValueMap} enum stores the member's mapped string and hands the caller the
+     * member back, on a write, a read and a filter argument alike. Asks the database what it
+     * stored, because a symmetric bug (symbol written, symbol read) round-trips on its own.
+     */
+    @Test
+    public void stringValueMapEnumRoundTripsThroughItsStoredString() throws Exception {
+        MetaObject mo = registry.findMetaObjectByName("codectest::Sample");
+        assertNotNull(mo);
+
+        ObjectConnection oc = omdb.getConnection();
+        try {
+            String label = "string-map-enum-" + System.currentTimeMillis();
+            ValueObject vo = sampleRow(mo, label);
+            vo.setString("stage", "Done");
+            omdb.createObject(oc, vo);
+
+            Collection<?> rows = omdb.getObjects(oc, mo,
+                    new QueryOptions(new Expression("label", label, Expression.EQUAL)));
+            assertEquals("exactly one row written", 1, rows.size());
+            assertEquals("the caller gets the member, not the stored string",
+                    "Done", ((ValueObject) rows.iterator().next()).getString("stage"));
+
+            try (Connection c = getConnection();
+                 PreparedStatement ps = c.prepareStatement(
+                         "SELECT stage FROM CODEC_SAMPLE WHERE label = ?")) {
+                ps.setString(1, label);
+                try (ResultSet rs = ps.executeQuery()) {
+                    assertTrue("row present for raw column read", rs.next());
+                    assertEquals("the column must hold the mapped string, not the symbol",
+                            "q_done", rs.getString(1));
+                }
+            }
+
+            // A filter on the member binds the stored string too.
+            Collection<?> filtered = omdb.getObjects(oc, mo, new QueryOptions(
+                    new Expression("stage", "Done", Expression.EQUAL)));
+            assertTrue("a filter on the member must match the row stored as its string",
+                    filtered.stream().anyMatch(r -> label.equals(((ValueObject) r).getString("label"))));
+        } finally {
+            omdb.releaseConnection(oc);
+        }
+    }
+
+    /**
+     * An unmapped member throws on a write, and a stored string with no member throws on a
+     * read: nothing in the model describes either, so binding the symbol or surfacing the raw
+     * string would be a silently wrong row.
+     */
+    @Test
+    public void stringValueMapEnumThrowsOnAnUnmappedMemberAndAnUnmappedStoredString() throws Exception {
+        MetaObject mo = registry.findMetaObjectByName("codectest::Sample");
+        assertNotNull(mo);
+
+        ObjectConnection oc = omdb.getConnection();
+        try {
+            String label = "string-map-unmapped-" + System.currentTimeMillis();
+            ValueObject bad = sampleRow(mo, label);
+            bad.setString("stage", "Cancelled");   // no entry in @stringValueMap
+            try {
+                omdb.createObject(oc, bad);
+                fail("writing a member with no stored string must throw");
+            } catch (Exception e) {
+                assertTrue("the failure must name the member: " + messageChain(e),
+                        messageChain(e).contains("Cancelled"));
+                assertTrue("the failure must name the attribute: " + messageChain(e),
+                        messageChain(e).contains("stringValueMap"));
+            }
+
+            ValueObject ok = sampleRow(mo, label);
+            ok.setString("stage", "Queued");
+            omdb.createObject(oc, ok);
+            try (Connection c = getConnection();
+                 PreparedStatement ps = c.prepareStatement(
+                         "UPDATE CODEC_SAMPLE SET stage = 'q_gone' WHERE label = ?")) {
+                ps.setString(1, label);
+                assertEquals("exactly one row corrupted", 1, ps.executeUpdate());
+            }
+            try {
+                omdb.getObjects(oc, mo,
+                        new QueryOptions(new Expression("label", label, Expression.EQUAL)));
+                fail("reading a stored string with no member must throw, not surface it");
+            } catch (Exception e) {
+                assertTrue("the failure must name the stored value: " + messageChain(e),
+                        messageChain(e).contains("q_gone"));
+            }
+        } finally {
+            omdb.releaseConnection(oc);
+        }
+    }
+
     /** Every message in a throwable's cause chain, joined — OMDB wraps driver exceptions. */
     private static String messageChain(Throwable t) {
         StringBuilder sb = new StringBuilder();

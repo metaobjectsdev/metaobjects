@@ -57,7 +57,10 @@ public final class CodecSchema {
             // int-backed field.enum (@intValueMap): the member symbol persists as
             // its declared INTEGER, so this column's type differs from `status`
             // above even though both are field.enum.
-            + "  priority INTEGER\n"
+            + "  priority INTEGER,\n"
+            // string-backed field.enum (@stringValueMap): the member persists as its mapped
+            // stored string, not its symbol.
+            + "  stage VARCHAR(20)\n"
             + ")";
 
     /** Executes the CODEC_SAMPLE DDL on a fresh connection from {@code connector}. */

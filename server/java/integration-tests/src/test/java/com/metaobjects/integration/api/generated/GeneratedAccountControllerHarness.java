@@ -61,9 +61,12 @@ public final class GeneratedAccountControllerHarness implements AutoCloseable {
         ] } }
         """;
 
-    // Mirrors Spring Boot's default mapper. The generated request handling does not depend on it:
-    // it reads body keys off the raw JSON and the DTOs ignore unknown properties.
-    private final ObjectMapper mapper = new ObjectMapper()
+    // Mirrors Spring Boot's default mapper, plus the property naming strategy the host app may set
+    // (what spring.jackson.property-naming-strategy does). The generated request handling does not
+    // depend on it: it reads body keys off the raw JSON and the DTOs ignore unknown properties.
+    private final ObjectMapper mapper;
+    // Seeds the repository from the corpus's camelCase seed rows whatever the host's naming is.
+    private final ObjectMapper seedMapper = new ObjectMapper()
         .disable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     private final URLClassLoader classLoader;
     private final Class<?> dtoClass;
@@ -84,7 +87,33 @@ public final class GeneratedAccountControllerHarness implements AutoCloseable {
      */
     public GeneratedAccountControllerHarness(Path corpusRoot, Path configRoot, Path genDir,
                                              List<Map<String, Object>> seedRows) throws Exception {
+        this(corpusRoot, configRoot, genDir, seedRows, null);
+    }
+
+    /**
+     * @param naming the host mapper's property naming strategy, or null for Jackson's default (the
+     *               field name as written)
+     */
+    public GeneratedAccountControllerHarness(Path corpusRoot, Path configRoot, Path genDir,
+                                             List<Map<String, Object>> seedRows,
+                                             com.fasterxml.jackson.databind.PropertyNamingStrategy naming)
+            throws Exception {
+        this(corpusRoot, configRoot, genDir, seedRows, naming, null);
+    }
+
+    /**
+     * @param customize applied to the host mapper once the generated DTO class exists, with that class:
+     *                  registers a mixin or serializer on it, as an adopter's own mapper configuration may
+     */
+    public GeneratedAccountControllerHarness(Path corpusRoot, Path configRoot, Path genDir,
+                                             List<Map<String, Object>> seedRows,
+                                             com.fasterxml.jackson.databind.PropertyNamingStrategy naming,
+                                             java.util.function.BiConsumer<ObjectMapper, Class<?>> customize)
+            throws Exception {
         this.seedRows = seedRows;
+        ObjectMapper hostMapper = new ObjectMapper()
+            .disable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+        this.mapper = naming == null ? hostMapper : hostMapper.setPropertyNamingStrategy(naming);
         Path srcDir = genDir.resolve("src");
         Path classesDir = genDir.resolve("classes");
         Files.createDirectories(srcDir);
@@ -115,6 +144,7 @@ public final class GeneratedAccountControllerHarness implements AutoCloseable {
         this.classLoader = new URLClassLoader(
             new URL[]{ classesDir.toUri().toURL() }, getClass().getClassLoader());
         this.dtoClass = classLoader.loadClass(ENTITY_PKG + ".AccountDto");
+        if (customize != null) customize.accept(mapper, dtoClass);
         Class<?> repoInterface = classLoader.loadClass(ENTITY_PKG + ".AccountRepository");
         this.controllerCtor = classLoader.loadClass(ENTITY_PKG + ".AccountController")
             .getDeclaredConstructor(repoInterface, ObjectMapper.class, Validator.class);
@@ -130,14 +160,14 @@ public final class GeneratedAccountControllerHarness implements AutoCloseable {
     /** Re-seed for a scenario: a fresh repository, controller and Tomcat. */
     public void reset() throws Exception {
         List<Object> dtos = new ArrayList<>();
-        for (Map<String, Object> row : seedRows) dtos.add(mapper.convertValue(row, dtoClass));
+        for (Map<String, Object> row : seedRows) dtos.add(seedMapper.convertValue(row, dtoClass));
         this.repo = repoCtor.newInstance(dtos);
         Object controller = controllerCtor.newInstance(repo, mapper, validator);
         List<Object> viewDtos = new ArrayList<>();
         for (Map<String, Object> row : seedRows) {
             Map<String, Object> view = new java.util.LinkedHashMap<>();
             for (String col : List.of("id", "name", "pinHash")) view.put(col, row.get(col));
-            viewDtos.add(mapper.convertValue(view, viewDtoClass));
+            viewDtos.add(seedMapper.convertValue(view, viewDtoClass));
         }
         Object viewRepo = viewRepoCtor.newInstance(viewDtos);
         Object viewController = viewControllerCtor.getParameterCount() == 1
