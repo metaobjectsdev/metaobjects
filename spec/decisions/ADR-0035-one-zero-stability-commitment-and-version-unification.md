@@ -375,11 +375,10 @@ unchanged.
 
 **Why.** Amendment 1 sorted vocabulary by its KIND. In practice the kind did not track what an
 adopter experiences, and the rule pushed additions that belong to an existing feature into a
-MINOR or into a long-lived release line. The `1.2.x` line's `1.2.4` is the worked case: the
-view vocabulary added in its rc.21 candidate (`origin.function`, `@union` / `@unionAll`, `@grain` /
-`@grainOrdinal`, the `cast` node) extends projections and views that already had their page,
-their tooling and their adopters, yet a new subtype and a new expression node had to argue their
-way past the inert test. Owner ruling, 2026-11-18, in these words: *"Change the rules so we can
+MINOR or into a long-lived release line. The rc.21 view vocabulary (`origin.function`,
+`@union` / `@unionAll`, `@grain` / `@grainOrdinal`, the `cast` node) is the worked case: it
+extends projections and views that already had their page, their tooling and their adopters,
+yet a new subtype and a new expression node had to argue their way past the inert test. Owner ruling, 2026-11-18, in these words: *"Change the rules so we can
 add or augment metadata in a patch release for an existing feature. This should be normal. A
 whole new feature can be a minor increase."* And, on the metamodel number: *"Meta model version
 probably needs a patch now too, yes."*
@@ -416,8 +415,8 @@ page and tooling of its own ⇒ a new feature ⇒ MINOR. Worked examples from th
 |---|---|---|
 | `requirement.functional` / `requirement.architectural` (`0.22.0`) | **new feature ⇒ MINOR** | a new modeling concept with its own page (`docs/features/requirements.md`), its own `verify` pass and ledger output; nothing before it modeled requirements |
 | `object.report` with `dimension.*`, `measure.*`, `segment.*` (FR-044, `1.1.0`) | **new feature ⇒ MINOR** | its own page (`docs/features/reporting.md`), a SQL view lowered by `meta migrate`, served routes in every port and the `cube-model` generator |
-| the rc.21 view vocabulary: `origin.function`, `@union` / `@unionAll`, `@grain` / `@grainOrdinal`, `cast` (`1.2.4`) | **augments projections and views ⇒ PATCH** | documented as sections of the existing projection material in `docs/features/relationships.md`, served by the view lowering and routes that already existed |
-| `@dbCheck` on a validator or `field.enum` (`1.2.4`) | **augments validation and schema ⇒ PATCH** | a switch on the CHECK constraints `meta migrate` already wrote, documented in `docs/features/migrations-and-drift.md` |
+| the rc.21 view vocabulary: `origin.function`, `@union` / `@unionAll`, `@grain` / `@grainOrdinal`, `cast` | **augments projections and views ⇒ PATCH** | documented as sections of the existing projection material in `docs/features/relationships.md`, served by the view lowering and routes that already existed |
+| `@dbCheck` on a validator or `field.enum` | **augments validation and schema ⇒ PATCH** | a switch on the CHECK constraints `meta migrate` already wrote, documented in `docs/features/migrations-and-drift.md` |
 | `measure.derived` and its `@expr` (shipped in `1.3.0`) | **augments reporting ⇒ PATCH** on its own | a new measure kind beside `measure.aggregate` / `measure.ratio`, documented in `docs/features/reporting.md` |
 
 **The caret rule is still not to be inverted.** A maintainer may choose a MINOR on purpose for
@@ -473,7 +472,7 @@ tests, `expected-registry.json`, and the `dependency-conformance` and `shared-mo
 corpora. That lands as its own change, all ports together, with readers accepting both forms in
 the same release that first writes three. **Until it lands**, the gate and the ports keep
 `<major>.<minor>`, and a vocabulary-adding PATCH moves the metamodel MINOR, as `1.1.4` did
-(`1.1` to `1.2`) and the `1.2.x` line's `1.2.4` does (to `1.3`).
+(`1.1` to `1.2`).
 
 ### Alternatives considered
 
