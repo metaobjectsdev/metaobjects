@@ -18,9 +18,10 @@ here.**
   that reads packages, children, subtypes, attributes, `extends` and references, with the
   canonical serializer. The loader freezes the tree when it finishes, and a frozen tree memoizes
   its resolved reads (effective children, attrs and array-ness) for many concurrent readers, as
-  the other ports do. It passes `registry-conformance` byte for byte and 256 of the 510
-  metamodel fixtures; the other 254 are on a ledger that may only shrink (the validation passes,
-  merge warnings, the reporting short-name rule and `script.json` fixtures it does not run yet).
+  the other ports do. It passes `registry-conformance` byte for byte and 261 of the 526
+  metamodel fixtures; 254 of the rest are on a ledger that may only shrink (the validation passes,
+  merge warnings, the reporting short-name rule and `script.json` fixtures it does not run yet),
+  and 11 newer fixtures fail unlisted until those passes land.
   While the port is in preview, a new fixture that fails in Rust and is not on the ledger prints a
   warning and does not fail the lane; a fixture that passed and regresses still fails it, because
   the ledger records how many fixtures must pass. Nothing is published and there is no codegen

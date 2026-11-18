@@ -71,9 +71,10 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 
 **Rust (preview, ADR-0065) is not a column yet.** The sixth port runs five corpora
 today: `registry-conformance` (byte-identical manifest); the metamodel corpus, 261
-of 526 green with the rest on `server/rust/metaobjects/tests/conformance-expected-failures.json`
+of 526 green, 254 of the rest on `server/rust/metaobjects/tests/conformance-expected-failures.json`
 (validation passes, merge warnings, the reporting short-name rule and the `script.json`
-fixtures, none of them built yet); `yaml-conformance`, 15 of 19 (the four on
+fixtures, none of them built yet) and 11 fixtures from the newer corpus failing unlisted
+until those same validation passes land; `yaml-conformance`, 15 of 19 (the four on
 `yaml-conformance-expected-failures.json` wait for the attribute-schema pass and the
 ADR-0059 reference rules); `source-resolution-conformance` (all 28 cases); and
 `naming-conformance` (all of it). Those ledgers may only shrink. While the port is in
