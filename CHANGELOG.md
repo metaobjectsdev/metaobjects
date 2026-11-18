@@ -18,8 +18,9 @@ _npm `1.3.0` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates
 `validator.exactlyOne`, `@constraintName`, `@condition`, `@maxLength` on `field.enum`,
 `@sequenceStart`, `@sequenceName`, `@flattenedColumnPrefix`, the `pascal` column rule,
 `@collectionName`, `measure.derived` and its `@expr` arithmetic, the `case` and `now`
-expression nodes, `@segment` on `origin.first` / `origin.aggregate`, and the `isDistinctFrom` / `isNotDistinctFrom` filter ops) and nothing that
-loaded before stops loading. The registry gains two
+expression nodes, `@segment` on `origin.first` / `origin.aggregate`, and the `isDistinctFrom` / `isNotDistinctFrom` filter ops) and no metadata that
+loaded before stops loading; the generated and runtime behavior changes are under "Upgrading from 1.2.0"
+below. The registry gains two
 fields on a type or attr entry, carried into the registry manifest: `implementedIn` (cross-port
 vocabulary only the named ports implement so far, e.g. the `view.*` controls, `["typescript"]`) and
 `ports` (vocabulary only the named ports ever act on, e.g. `@objectAdapter`, `["java", "kotlin"]`:
