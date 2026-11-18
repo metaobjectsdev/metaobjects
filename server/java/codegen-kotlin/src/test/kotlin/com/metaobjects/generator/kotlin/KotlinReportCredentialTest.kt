@@ -70,7 +70,7 @@ class KotlinReportCredentialTest {
     fun `a report over a credential dimension omits it from its rows and export`() {
         val files = generate()
         val controller = file(files, "AccountsByPinController.kt")
-        assertTrue("remove(listOf(\"pinHash\"))" in controller, controller)
+        assertTrue("stripCredentials(mapper, row, \"pinHash\")" in controller, controller)
         assertTrue("redactAccountsByPin(objectMapper, rowToAccountsByPin(it))" in controller, controller)
         assertTrue("rows.map { redactAccountsByPin(objectMapper, it) }" in controller, controller)
         val export = file(files, "AccountsByPinExport.kt")
@@ -82,7 +82,7 @@ class KotlinReportCredentialTest {
     fun `a min measure over a credential is a credential too`() {
         val files = generate()
         val controller = file(files, "AccountPinRangeController.kt")
-        assertTrue("remove(listOf(\"firstPin\"))" in controller, controller)
+        assertTrue("stripCredentials(mapper, row, \"firstPin\")" in controller, controller)
         val export = file(files, "AccountPinRangeExport.kt")
         assertFalse("firstPin" in export, export)
         assertTrue("\"name\"" in export, export)

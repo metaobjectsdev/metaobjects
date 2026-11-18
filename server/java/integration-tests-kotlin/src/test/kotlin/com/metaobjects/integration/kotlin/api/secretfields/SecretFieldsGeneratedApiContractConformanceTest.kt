@@ -1,6 +1,8 @@
 package com.metaobjects.integration.kotlin.api.secretfields
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.PropertyNamingStrategies
+import com.fasterxml.jackson.databind.PropertyNamingStrategy
 import com.metaobjects.integration.kotlin.api.ApiContractAssertions
 import com.metaobjects.integration.kotlin.api.ApiContractScenarioLoader
 import com.metaobjects.integration.kotlin.api.ApiContractScenarios.ApiScenario
@@ -15,6 +17,9 @@ import org.junit.jupiter.params.provider.MethodSource
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.util.stream.Stream
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 /**
  * #484 secret-fields api-contract conformance, Kotlin GENERATED-controller lane: a `@formExclude` or
@@ -34,6 +39,34 @@ internal class SecretFieldsGeneratedApiContractConformanceTest {
                 ApiContractAssertions.assertResponse(scenario.name, req, res.status, parsed)
             }
             assertDeniedColumnsUntouched(scenario.name)
+        }
+    }
+
+    /**
+     * A credential is never returned whatever the host mapper's property naming strategy: under `SNAKE_CASE` the
+     * key is `pin_hash`, under `KEBAB_CASE` `pin-hash`, and the generated controller reads that key from the
+     * mapper's own contract rather than spelling it `pinHash`. Drives the entity's list and get-by-id and the
+     * inheriting projection's.
+     */
+    @ParameterizedTest(name = "naming={0}")
+    @MethodSource("namingStrategies")
+    fun `a credential is never returned under any naming strategy`(label: String, naming: PropertyNamingStrategy?) {
+        val corpus = ApiContractScenarioLoader.findCorpusRoot()
+        val genDir = Files.createTempDirectory("secret-fields-naming-$label")
+        GeneratedSecretFieldsControllerHarness(corpus, genDir, SEED, naming).use { harness ->
+            harness.reset()
+            for (path in listOf("/api/accounts", "/api/accounts/1", "/api/account_views", "/api/account_views/1")) {
+                val res = harness.exchange("GET", path, null)
+                assertEquals(200, res.status, "$label $path: ${res.body}")
+                assertTrue("Ada Lovelace" in res.body, "$label $path: ${res.body}")
+                for (secret in listOf("pin-hash-1", "pin-hash-2")) {
+                    assertFalse(secret in res.body, "$label $path leaked the credential: ${res.body}")
+                }
+            }
+            // @formExclude alone still returns the field, under the strategy's own key.
+            val tokenKey = (naming as? PropertyNamingStrategies.NamingBase)?.translate("tokenHash") ?: "tokenHash"
+            val one = harness.exchange("GET", "/api/accounts/1", null).body
+            assertTrue("\"$tokenKey\":\"token-hash-1\"" in one, "$label: tokenHash must still be returned as $tokenKey: $one")
         }
     }
 
@@ -79,6 +112,13 @@ internal class SecretFieldsGeneratedApiContractConformanceTest {
         fun tearDown() {
             if (::HARNESS.isInitialized) HARNESS.close()
         }
+
+        @JvmStatic
+        fun namingStrategies(): Stream<Arguments> = Stream.of(
+            Arguments.of("none", null),
+            Arguments.of("snake", PropertyNamingStrategies.SNAKE_CASE),
+            Arguments.of("kebab", PropertyNamingStrategies.KEBAB_CASE),
+        )
 
         @JvmStatic
         fun scenarios(): Stream<Arguments> {

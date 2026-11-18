@@ -44,7 +44,7 @@ class KotlinSecretFieldsTest {
     @Test
     fun `only the credential is redacted on read and the entity keeps its types`() {
         val (controller, entity) = controllerAndEntity(marked = true)
-        assertTrue("remove(listOf(\"pinHash\"))" in controller, controller)
+        assertTrue("stripCredentials(mapper, row, \"pinHash\")" in controller, controller)
         assertFalse("tokenHash\"" in controller.substringAfter("private fun redactAccount").substringBefore("\n\n"), controller)
         assertTrue("redactAccount(objectMapper, rowToAccount(it))" in controller, controller)
         assertTrue("tokenHash = row[AccountTable.tokenHash]," in controller, controller)
@@ -53,12 +53,24 @@ class KotlinSecretFieldsTest {
     }
 
     @Test
+    fun `the credential key is read from the mapper's contract, so a naming strategy cannot leak it`() {
+        val (controller, _) = controllerAndEntity(marked = true)
+        // The wire key comes from Jackson's own serialization contract (any naming strategy, mixin or
+        // @JsonProperty), not from the property name; the response is refused when it cannot be read.
+        assertTrue("mapper.serializationConfig.introspect(mapper.constructType(type))" in controller, controller)
+        assertTrue("it.internalName == name" in controller, controller)
+        assertTrue("throw unstrippable(" in controller, controller)
+        // Second line of defence: a key spelling the credential ignoring case, `_` and `-` goes too.
+        assertTrue("key.replace(\"_\", \"\").replace(\"-\", \"\").lowercase()" in controller, controller)
+    }
+
+    @Test
     fun `a required credential stays a non-null property with no JsonInclude`() {
         val (controller, entity) = controllerAndEntity(marked = true, requiredCredential = true)
         assertTrue(Regex("val pinHash: String[,\\s)]").containsMatchIn(entity), entity)
         assertFalse("val pinHash: String?" in entity, entity)
         assertFalse("JsonInclude" in entity, entity)
-        assertTrue("remove(listOf(\"pinHash\"))" in controller, controller)
+        assertTrue("stripCredentials(mapper, row, \"pinHash\")" in controller, controller)
     }
 
     /** A TPH base whose subtypes share `token` and `memo`: plain on AThing (first in subtype order), marked on BThing. */
@@ -88,7 +100,7 @@ class KotlinSecretFieldsTest {
             val loader = loadString("secret-fields-tph-shared", tphSharedColumn)
             KotlinSpringControllerGenerator().apply { setArgs(mapOf("outputDir" to out.toString())) }.execute(loader)
             val controller = Files.readString(out.resolve("acme/secrets/ThingController.kt"))
-            assertTrue("remove(listOf(\"token\"))" in controller, controller)
+            assertTrue("stripCredentials(mapper, row, \"token\")" in controller, controller)
             assertFalse("it[token] = dto.token" in controller, controller)
             assertFalse("it[memo] = dto.memo" in controller, controller)
         } finally {

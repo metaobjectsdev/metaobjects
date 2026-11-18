@@ -23,6 +23,7 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * #484 — the Java GENERATED-controller lane for the {@code secret-fields} api-contract
@@ -103,6 +104,42 @@ final class SecretFieldsGeneratedApiContractConformanceTest {
         Map<String, Object> row = (Map<String, Object>) HARNESS.parseBody(one.body());
         assertEquals("Ada Lovelace", row.get("name"));
         assertFalse(row.containsKey("pinHash"), one.body());
+    }
+
+    static Stream<Arguments> namingStrategies() {
+        return Stream.of(
+            Arguments.of("none", null),
+            Arguments.of("snake", com.fasterxml.jackson.databind.PropertyNamingStrategies.SNAKE_CASE),
+            Arguments.of("kebab", com.fasterxml.jackson.databind.PropertyNamingStrategies.KEBAB_CASE));
+    }
+
+    /**
+     * A credential is never returned whatever the host mapper's property naming strategy: under
+     * {@code SNAKE_CASE} the key is {@code pin_hash}, under {@code KEBAB_CASE} {@code pin-hash}, and
+     * the generated controller reads that key from the mapper's own contract rather than spelling it
+     * {@code pinHash}. Drives the entity's list and get-by-id and the inheriting projection's.
+     */
+    @ParameterizedTest(name = "naming={0}")
+    @MethodSource("namingStrategies")
+    void credentialIsNeverReturnedUnderAnyNamingStrategy(
+            String label, com.fasterxml.jackson.databind.PropertyNamingStrategy naming) throws Exception {
+        Path genDir = Files.createTempDirectory("secret-fields-naming-" + label);
+        try (GeneratedAccountControllerHarness harness =
+                 new GeneratedAccountControllerHarness(ROOT, CONFIG_ROOT, genDir, seedRows(), naming)) {
+            harness.reset();
+            for (String path : List.of("/api/accounts", "/api/accounts/1", "/api/account_views", "/api/account_views/1")) {
+                GeneratedAccountControllerHarness.Response res = harness.exchange("GET", path, null);
+                assertEquals(200, res.status(), label + " " + path + ": " + res.body());
+                assertTrue(res.body().contains("Ada Lovelace"), label + " " + path + ": " + res.body());
+                assertFalse(res.body().contains("pin-hash-1"), label + " " + path + " leaked the credential: " + res.body());
+                assertFalse(res.body().contains("pin-hash-2"), label + " " + path + " leaked the credential: " + res.body());
+            }
+            // @formExclude alone still returns the field, under the strategy's own key.
+            String tokenKey = naming == null ? "tokenHash"
+                : ((com.fasterxml.jackson.databind.PropertyNamingStrategies.NamingBase) naming).translate("tokenHash");
+            assertTrue(harness.exchange("GET", "/api/accounts/1", null).body().contains("\"" + tokenKey + "\":\"token-hash-1\""),
+                label + ": tokenHash must still be returned as " + tokenKey);
+        }
     }
 
     /**

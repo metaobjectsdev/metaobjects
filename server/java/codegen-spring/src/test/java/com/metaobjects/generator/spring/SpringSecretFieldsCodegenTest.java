@@ -87,6 +87,19 @@ public class SpringSecretFieldsCodegenTest extends SharedRegistryTestBase {
     }
 
     @Test
+    public void theCredentialKeyIsReadFromTheMappersContract() throws Exception {
+        String controller = generate("contract", MARKED, "AccountController.java", false);
+        // The wire key comes from Jackson's own serialization contract (any naming strategy, mixin or
+        // @JsonProperty), not from the field name; the response is refused when it cannot be read.
+        assertTrue(controller, controller.contains("config.introspect(objectMapper.constructType(type))"));
+        assertTrue(controller, controller.contains("p.getInternalName().equals(name)"));
+        assertTrue(controller, controller.contains("throw unstrippable("));
+        // Second line of defence: a key spelling the credential ignoring case, `_` and `-` goes too.
+        assertTrue(controller, controller.contains(
+            "key.replace(\"_\", \"\").replace(\"-\", \"\").toLowerCase(java.util.Locale.ROOT)"));
+    }
+
+    @Test
     public void unmarkedModelEmitsNoRedactionAndNoStrip() throws Exception {
         String controller = generate("plain", PLAIN, "AccountController.java", false);
         assertFalse(controller.contains("redact"));
