@@ -1,0 +1,6 @@
+<h1>Prompts</h1>
+<div class="sub">Each declared template, its typed payload, its reply type, and the requirements that claim it.</div>
+{{#hasRows}}<div class="tablewrap page"><table><tr><th>Template</th><th>Payload</th><th>Reply</th><th>Claimed by</th></tr>
+{{#rows}}<tr><td>{{{linkHtml}}} <span class="pill">{{{kind}}}</span>{{#description}}<div class="sub small">{{{description}}}</div>{{/description}}</td><td>{{{payloadHtml}}}</td><td>{{{replyHtml}}}</td><td>{{{claimsHtml}}}</td></tr>
+{{/rows}}</table></div>{{/hasRows}}
+{{^hasRows}}<div class="note page">This model declares no <code>template.*</code>.</div>{{/hasRows}}

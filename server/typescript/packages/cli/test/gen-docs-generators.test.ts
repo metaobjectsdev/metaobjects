@@ -244,22 +244,39 @@ describe("meta gen writes the documentation the list declares", () => {
   });
 
   test("the docs site lands under site/, and an ejected theme is what it renders with", async () => {
-    const root = project({ config: base(`[docsSiteFile()]`) });
+    const root = project({ config: base(`["entity", docsSiteFile()]`) });
     expect(await run(["gen", "--cwd", root])).toBe(0);
     const site = join(root, "docs", "generated", "site");
-    expect(existsSync(join(site, "index.html"))).toBe(true);
+    // The explorer is the default site: its main page, the data every page reads, a page per object.
+    const index = readFileSync(join(site, "index.html"), "utf8");
+    expect(index).toContain('content="metaobjects docs-site explorer"');
     // No date in the footer: the pages depend on the model alone.
-    expect(readFileSync(join(site, "index.html"), "utf8")).toContain("generated · metadata-docs");
+    expect(index).toContain("by the metaobjects <code>docs-site</code> generator. Static");
+    expect(existsSync(join(site, "model", "app", "Talk.html"))).toBe(true);
+    // It runs after the entity generator, so the files that run wrote are traced to their node.
+    const explorer = JSON.parse(readFileSync(join(site, "explorer.json"), "utf8")) as { generated?: { node: string; files: { path: string }[] }[] };
+    expect(explorer.generated?.find((g) => g.node === "app::Talk")?.files.map((f) => f.path)).toEqual(
+      expect.arrayContaining([expect.stringContaining("Talk.ts")]),
+    );
 
     expect(await run(["eject", "docs-site", "--cwd", root])).toBe(0);
-    const css = join(root, "codegen", "docs-site", "assets", "site.css");
+    const css = join(root, "codegen", "docs-site", "assets", "explorer.css");
     expect(existsSync(css)).toBe(true);
     writeFileSync(css, "/* owned theme */\n", "utf8");
     // A re-run keeps the edit.
     expect(await run(["eject", "docs-site", "--cwd", root])).toBe(0);
     expect(readFileSync(css, "utf8")).toBe("/* owned theme */\n");
     expect(await run(["gen", "--cwd", root])).toBe(0);
-    expect(readFileSync(join(site, "assets", "site.css"), "utf8")).toBe("/* owned theme */\n");
+    expect(readFileSync(join(site, "assets", "explorer.css"), "utf8")).toBe("/* owned theme */\n");
+  });
+
+  test("site: \"classic\" builds the site that shipped before the explorer", async () => {
+    const root = project({ config: base(`[docsSiteFile({ site: "classic" })]`) });
+    expect(await run(["gen", "--cwd", root])).toBe(0);
+    const site = join(root, "docs", "generated", "site");
+    expect(readFileSync(join(site, "index.html"), "utf8")).toContain("generated · metadata-docs");
+    expect(existsSync(join(site, "assets", "site.css"))).toBe(true);
+    expect(existsSync(join(site, "explorer.json"))).toBe(false);
   });
 });
 

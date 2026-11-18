@@ -133,11 +133,11 @@ test("providers.md indexes all six concern providers with descriptions", () => {
   }
 });
 
-test("providers.md 'Owns' and INDEX carry the kind-1 view.* controls (R40), marked on their pages", () => {
+test("providers.md 'Owns' and INDEX carry the kind-1 view.* controls, marked on their pages", () => {
   const out = docs();
   const providers = out.get("providers.md")!;
   // The generic view.* controls are cross-port vocabulary only TypeScript implements so
-  // far (R40 kind 1): IN the manifest, so the docs cover them like any other subtype.
+  // far: IN the manifest, so the docs cover them like any other subtype.
   const ownsMatch = providers.match(/\*\*Owns \(registers\):\*\* (.+)/);
   expect(ownsMatch).not.toBeNull();
   const owns = ownsMatch![1];

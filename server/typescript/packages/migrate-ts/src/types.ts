@@ -42,7 +42,8 @@ export interface TableDescriptor {
   /**
    * The primary-key constraint's name, when the project's schema conventions name it
    * something other than `<table>_pkey` (absent = `<table>_pkey`, which keeps every
-   * existing snapshot byte-identical). Rendered at create; not compared by the diff.
+   * existing snapshot byte-identical). Rendered at create; on Postgres the diff compares it
+   * and renames a live key whose name differs (`rename-constraints`).
    */
   primaryKeyName?: string;
   /**
@@ -143,6 +144,12 @@ export interface IndexDescriptor {
    * unique indexes (#285).
    */
   constraint?: "unique" | "primary" | "exclude";
+  /**
+   * EXPECTED-ONLY. Set when the schema conventions want this unique key as a plain index
+   * (`uniqueKeyKind` answers `index`), so a live UNIQUE constraint over it is converted. Absent,
+   * a live key of either kind satisfies the model.
+   */
+  plainIndex?: true;
 }
 
 export interface CheckDescriptor {
@@ -283,10 +290,24 @@ export type Change =
       constraintRenames?: NameChange[];
       /** Plain indexes on that table whose definition is unchanged and whose name differs. Postgres only. */
       indexRenames?: NameChange[];
+      /**
+       * Plain unique indexes the schema conventions now want as UNIQUE constraints, with the
+       * same name and definition. Promoted in place (`ADD CONSTRAINT … UNIQUE USING INDEX`), so
+       * a foreign key that relies on the index keeps it. Postgres only.
+       */
+      uniquePromotions?: IndexDescriptor[];
       status: ChangeStatus;
     }
   | { kind: "add-column"; table: string; schema?: string; column: ColumnDescriptor; status: ChangeStatus }
-  | { kind: "drop-column"; table: string; schema?: string; column: string; restore?: ColumnDescriptor; status: ChangeStatus }
+  | {
+      kind: "drop-column"; table: string; schema?: string; column: string; restore?: ColumnDescriptor; status: ChangeStatus;
+      /**
+       * Live views this tool does not own (declared `@unmanaged`, or outside the scoped
+       * schemas) whose recorded body names the dropped column. The drop fails at apply
+       * while they stand, so it is blocked pending `allow.dropColumnReadByView`.
+       */
+      readBy?: readonly string[];
+    }
   | {
       kind: "rename-column"; table: string; schema?: string; from: string; to: string;
       /**
@@ -516,6 +537,14 @@ export interface AllowOptions {
    */
   dropViewCascade?: boolean;
   /**
+   * Gates dropping a column that a live view this tool does NOT own still reads (a view
+   * declared `@unmanaged`, or one outside the scoped schemas). The tool never rewrites
+   * such a view, so the drop fails at apply on Postgres (`cannot drop column … other
+   * objects depend on it`) and on SQLite (`error in view … after drop column`). Granting
+   * this lets the plan through, for when the view is dealt with first or in the same release.
+   */
+  dropColumnReadByView?: boolean;
+  /**
    * Gates overwriting an existing view that carries NO MetaObjects fingerprint —
    * i.e. taking ownership of it. It is either hand-written or predates
    * fingerprinting, and on Postgres those are indistinguishable. Every environment
@@ -610,10 +639,14 @@ export interface DiffResult {
  *  - `sequence-not-applied`: a column created on SQLite or D1 whose primary key declares
  *    `@sequenceStart` or `@sequenceName`. SQLite has no sequence, so neither is applied; the
  *    key counts from 1. Reported when the column is created, not on every run.
+ *  - `view-names-renamed-column`: a view this migration (re)creates whose body still names a
+ *    column the same migration renames, on a table it reads. The body is written as declared
+ *    (an `@sql` view's text is never rewritten), so the CREATE VIEW fails at apply.
  */
 export type SchemaAdvisory =
   | { kind: "interval-as-string"; table: string; schema?: string; column: string }
-  | { kind: "sequence-not-applied"; table: string; schema?: string; column: string };
+  | { kind: "sequence-not-applied"; table: string; schema?: string; column: string }
+  | { kind: "view-names-renamed-column"; table: string; schema?: string; column: string; to: string; view: string };
 
 /**
  * Where Postgres's own spelling of an expected expression came from.
@@ -672,4 +705,35 @@ export interface EmitResult {
   notices?: readonly string[];
 }
 
-export type Dialect = "postgres" | "sqlite" | "d1";
+export const DIALECT_POSTGRES = "postgres";
+export const DIALECT_SQLITE = "sqlite";
+export const DIALECT_D1 = "d1";
+export const DIALECTS = [DIALECT_POSTGRES, DIALECT_SQLITE, DIALECT_D1] as const;
+export type Dialect = (typeof DIALECTS)[number];
+
+/** SQLite and D1 (which is SQLite) share one SQL dialect. */
+export function isSqliteFamily(dialect: Dialect | undefined): boolean {
+  return dialect === DIALECT_SQLITE || dialect === DIALECT_D1;
+}
+
+/** Postgres's identifier limit, in bytes (NAMEDATALEN - 1). The server truncates a longer name. */
+export const PG_IDENTIFIER_MAX_BYTES = 63;
+
+/**
+ * The name Postgres stores for `name`: its first 63 bytes, cut on a character boundary. A name
+ * within the limit is returned unchanged.
+ */
+export function pgStoredIdentifier(name: string): string {
+  if (Buffer.byteLength(name, "utf8") <= PG_IDENTIFIER_MAX_BYTES) return name;
+  let out = "";
+  for (const ch of name) {
+    if (Buffer.byteLength(out + ch, "utf8") > PG_IDENTIFIER_MAX_BYTES) break;
+    out += ch;
+  }
+  return out;
+}
+
+/** The name `dialect` stores for `name`: whole on SQLite and D1, cut to Postgres's 63 bytes elsewhere. */
+export function storedIdentifier(name: string, dialect: Dialect | undefined): string {
+  return isSqliteFamily(dialect) ? name : pgStoredIdentifier(name);
+}

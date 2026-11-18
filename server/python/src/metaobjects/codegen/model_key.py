@@ -1,4 +1,4 @@
-"""The model half of the skip key (ADR-0062 section 3): a hash tree over the LOADED root.
+"""The model half of the skip key (ADR-0064 section 3): a hash tree over the LOADED root.
 
 Each root-level node (an object, a shared field, a template node) is hashed in its canonical
 EFFECTIVE form (:func:`metaobjects.serializer_json.canonical_serialize_effective`: ``extends``

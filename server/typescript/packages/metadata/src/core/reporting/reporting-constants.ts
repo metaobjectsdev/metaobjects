@@ -25,10 +25,12 @@ export type DimensionSubType = (typeof DIMENSION_SUBTYPES)[number];
 
 /** One aggregate over the declaring entity's own rows. */
 export const MEASURE_SUBTYPE_AGGREGATE = "aggregate";
-/** A quotient of two `measure.aggregate` siblings, `numerator / NULLIF(denominator, 0)`.
- *  `measure.derived` is deliberately NOT registered: it waits for FR-037 R5. */
+/** A quotient of two `measure.aggregate` siblings, `numerator / NULLIF(denominator, 0)`. */
 export const MEASURE_SUBTYPE_RATIO = "ratio";
-export const MEASURE_SUBTYPES = [MEASURE_SUBTYPE_AGGREGATE, MEASURE_SUBTYPE_RATIO] as const;
+/** FR-044 R13: arithmetic (`@expr`) over sibling measures and the report's numeric attribute
+ *  dimensions, typed decimal. Uses FR-037 R5's first arithmetic wave. */
+export const MEASURE_SUBTYPE_DERIVED = "derived";
+export const MEASURE_SUBTYPES = [MEASURE_SUBTYPE_AGGREGATE, MEASURE_SUBTYPE_RATIO, MEASURE_SUBTYPE_DERIVED] as const;
 export type MeasureSubType = (typeof MEASURE_SUBTYPES)[number];
 
 /** A named, reusable row filter. The only concrete segment subtype: every `*.base`
@@ -58,6 +60,17 @@ export const REPORTING_ATTR_SEGMENT = "segment";
 /** `measure.ratio` operand names. */
 export const REPORTING_ATTR_NUMERATOR = "numerator";
 export const REPORTING_ATTR_DENOMINATOR = "denominator";
+/** `measure.derived`'s arithmetic expression (an attr.expression). */
+export const REPORTING_ATTR_EXPR = "expr";
+
+/** The arithmetic `fn` members a `measure.derived` `@expr` may use, each with exactly two args.
+ *  `divide` lowers as a ratio does: a zero divisor yields null. */
+export const DERIVED_FN_ADD = "add";
+export const DERIVED_FN_SUBTRACT = "subtract";
+export const DERIVED_FN_MULTIPLY = "multiply";
+export const DERIVED_FN_DIVIDE = "divide";
+export const DERIVED_FNS = [DERIVED_FN_ADD, DERIVED_FN_SUBTRACT, DERIVED_FN_MULTIPLY, DERIVED_FN_DIVIDE] as const;
+export type DerivedFn = (typeof DERIVED_FNS)[number];
 /** Integer a measure reads when it would otherwise be null (`measure.aggregate` / `measure.ratio`). */
 export const REPORTING_ATTR_DEFAULT = "default";
 

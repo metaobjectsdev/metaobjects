@@ -6,10 +6,11 @@
 // not need kysely installed. Its import graph is the model walk and nothing that opens a
 // connection; keep it that way.
 
-export { buildExpectedSchema, buildExpectedSchemaWithProvenance, fieldSqlType, fitPgIdentifier } from "./expected-schema.js";
+export { buildExpectedSchema, buildExpectedSchemaWithProvenance, fieldSqlType, fitPgIdentifier, foreignKeyIndexName, uncoveredForeignKeyColumns } from "./expected-schema.js";
 export { pgType } from "./emit/postgres.js";
 export type { BuildExpectedSchemaOptions, SchemaBuildSettings, ExpectedSchemaWithProvenance, SchemaProvenance } from "./expected-schema.js";
 export { qualifiedDbName } from "./qualified-name.js";
+export { storedIdentifier } from "./types.js";
 export type { SqlType } from "./sql-type.js";
 export type {
   CheckDescriptor,

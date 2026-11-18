@@ -31,14 +31,14 @@ This file covers what almost every model needs. The topics below live in
 | `references/identities-and-indexes.md` | declaring a primary, secondary or reference identity, an FK, or a non-unique `index.lookup` |
 | `references/sources.md` | the `source.rdb` shape and `@kind`; a store MetaObjects does not manage; a derived or computed column (reach for an entity read-view first) |
 | `references/abstracts-and-overlay.md` | a shared `abstract` base, `extends`, or a layered `overlay` file |
-| `references/declaring-reports.md` | declaring `dimension.*`, `measure.*`, `segment.filter` or an `object.report` |
+| `references/declaring-reports.md` | **open first** for a report, dashboard, totals, `GROUP BY`, "per client / per month" or a read-only summary view: declaring `dimension.*`, `measure.*`, `segment.filter` or an `object.report` |
 | `references/model-first-rationale.md` | someone argues that hand-writing a layer is cheaper this once |
 | `references/relationships.md` | a many-to-many link or self-join, or a "rows that reference this one" query |
-| `references/read-views-and-projections.md` | an `object.projection`, `origin.*` vocabulary, `@filter` / `@expr`, or an `@sql` / `@unmanaged` view |
+| `references/read-views-and-projections.md` | an `object.projection`, `origin.*` vocabulary, `@filter` / `@expr`, or an `@sql` / `@unmanaged` view (a grouped or aggregate view is `declaring-reports.md` first) |
 | `references/inheritance-tph.md` | several entities are variants of one thing sharing a single table (`@discriminator`) |
 | `references/metadata-dependencies.md` | the project builds on another package's metadata (`dependencies`, cross-package `overlay`) |
 | `references/reporting.md` | what a declared report gives you: what columns a report gets, time grains, null rules, rows with no facts (`@spine`), defaults (`@default`), engine differences |
-| `references/requirements.md` | installed only when the project declares `requirement.*` nodes |
+| `references/requirements.md` | you add, change or review a `requirement.*` node |
 
 ## The operating principle: model-first, generate-first
 
@@ -245,7 +245,7 @@ Reach for these before inventing anything. When no row fits, run the decision pr
 | Open JSON, no reader narrows it | `field.string` + `@dbColumnType: jsonb` | the LAST rung — see "A JSON column" |
 | URL / URI | `field.uri` | native `URI`/`Uri`; `text` column; strict absolute-URI validation (add `@lenient: true` to store any string) — a real native type + behavior, so a subtype (not a validated string) |
 | IP address | `field.inet` | native IP type; Postgres `inet` column; strict IPv4/IPv6-literal validation (add `@lenient: true` for a plain-string `text` column) |
-| Elapsed time / timeout / delay | `field.duration` | native `TimeSpan`/`Duration`/`timedelta`; Postgres `interval` column; ISO-8601 on the wire (`PT1H30M`). Not for a calendar span ("every 3 months"): that is an int and a unit. Never a string or a count of seconds |
+| Elapsed time / timeout / delay | `field.duration` | native `TimeSpan`/`Duration`/`timedelta`; Postgres `interval` column; wire form is the port's native one by default, canonical ISO-8601 (`PT1H30M`) under `wire.durations: iso`. Not for a calendar span ("every 3 months"): that is an int and a unit. Never a string or a count of seconds |
 | Validated plain string (email / hostname) | `field.string` + `@stringFormat` | `@stringFormat: email` or `@stringFormat: hostname` — idiomatic per-port validation; don't hand-write the `validator.regex` |
 
 Four rules behind those rows, in short (full text: `references/choosing-a-shape.md`):
@@ -286,13 +286,10 @@ Reuse a constraint set across entities with an abstract `field.enum` + `extends`
 `field.object` embeds another `object` declaration. `@objectRef` names it;
 `@storage` controls persistence:
 
-- `flattened` — one DB column per sub-field (`address_street`, `address_city`, …).
-  Illegal on array fields. The prefix is the field's column and `_`;
-  `@flattenedColumnPrefix` on the field replaces it verbatim (`""` keeps the members'
-  own columns). Refused on any other storage.
-- `jsonb` — one `jsonb` column.
+- `flattened` — one DB column per sub-field (`address_street`, …); illegal on arrays. `@flattenedColumnPrefix`
+  replaces the `<column>_` prefix verbatim (`""` keeps the members' own columns).
+- `jsonb` — one `jsonb` column; also the default when `@storage` is not set.
 - `subdocument` — single jsonb column (a hint for document-store targets).
-- not set (the default) — one `jsonb` column, as `jsonb`.
 
 ```json
 { "field.object": { "name": "address", "@objectRef": "Address", "@storage": "flattened" } }
@@ -430,25 +427,29 @@ behavior:
 
 Entity-scoped `validator.*` children declare invariants that reference sibling fields
 **by name** (the same name-reference pattern as `identity.*`). The backend derives the
-enforcement (a CHECK constraint / cross-field assertion) — no raw expression is stored.
+enforcement — no raw expression is stored. A DB `CHECK` constraint is emitted by `meta migrate`,
+and the generated full create/record model also enforces the rule in every port (Zod refinement,
+Bean Validation class-level constraint, `IValidatableObject`, Pydantic `model_validator`), so a
+store with no `CHECK` support is still covered. PATCH and partial-update models do not enforce them
+(a partial body cannot see the merged row); the DB `CHECK` is the enforcement there.
 
 | Subtype | Rule | Key attrs |
 |---|---|---|
-| `validator.comparison` | two fields stand in a relational order (`@left @op @right`) | `@left`, `@op` (`gt`/`gte`/`lt`/`lte`/`ne`/`eq`), `@right` |
+| `validator.comparison` | two fields stand in a relational order (`@left @op @right`). Numerics compare with each other; strings, temporals and durations only with the same subtype and `@localTime`; boolean, enum, uuid, uri and inet only `eq`/`ne`. Any other pair is skipped, never rejected. | `@left`, `@op` (`gt`/`gte`/`lt`/`lte`/`ne`/`eq`), `@right` |
 | `validator.requiredWhen` | `@field` is required when `@when` equals `@equals` | `@field`, `@when`, `@equals` |
 | `validator.presentIff` | `@field` is present **iff** `@when` equals `@equals` (biconditional) | `@field`, `@when`, `@equals` |
-| `validator.atLeastOne` | at least one of `@fields` (2+) is present; with `@max`, at most that many (`@max: 1` = exactly one) | `@fields`, `@max` |
+| `validator.atLeastOne` | at least one of `@fields` (2+) is present | `@fields` |
+| `validator.exactlyOne` | exactly one of `@fields` (2+) is present | `@fields` |
 
-All four take an optional `@condition`, an expression over the entity's fields (the
-`origin.computed` grammar): the rule then holds only where the condition does. And every validator
-that becomes a CHECK takes an optional db-provider `@constraintName` naming it.
+All five take an optional `@condition` (the `origin.computed` grammar): the rule holds only where it does.
+Every validator that becomes a CHECK takes an optional `@constraintName`.
 
 ```json
 { "validator.comparison":   { "name": "hpInRange", "@left": "currentHp", "@op": "lte", "@right": "maxHp" } }
 { "validator.requiredWhen": { "name": "reasonIfRejected", "@field": "rejectReason", "@when": "status", "@equals": "rejected" } }
 { "validator.presentIff":   { "name": "usedAtWhenUsed", "@field": "usedAt", "@when": "isUsed", "@equals": "true" } }
 { "validator.atLeastOne":   { "name": "emailOrPhone", "@fields": ["email", "phone"] } }
-{ "validator.atLeastOne":   { "name": "oneOwner", "@fields": ["customerId", "accountId"], "@max": 1 } }
+{ "validator.exactlyOne":   { "name": "oneOwner", "@fields": ["customerId", "accountId"] } }
 ```
 
 These are children of `object.entity`, alongside its fields and identities.
@@ -459,6 +460,12 @@ Several variants of one thing sharing **one table**: the base `object.entity` de
 `@discriminator` (naming a `field.enum` of subtype tags) and each subtype `extends` it with a
 `@discriminatorValue`. Codegen emits per-subtype routes with the discriminator injected and
 immutable. Supported in all five ports; the worked example is in `references/inheritance-tph.md`.
+
+## Your own vocabulary — a provider class, in every language
+
+A subtype or attribute the core does not ship (a `layout.picker`, `@searchable` on fields) is registered by a **provider class** in the project's own language — never a side file, never a loosened `strict`. Decide the shape first (`references/choosing-a-shape.md`, which also has the register/extend rules). List the provider once in the port's project configuration and every command that loads metadata — gen and its docs generators, verify, fmt — composes it. Where each port lists it, plus a worked example: `references/typescript-providers.md`, `references/python-providers.md`, `references/csharp-providers.md`, `references/java-providers.md`, `references/kotlin-providers.md` (only this stack's are installed).
+
+**Every port whose tools load the metadata needs its own copy**: a TypeScript-only provider leaves the Java, Python or C# side, and its docs build, failing with `ERR_UNKNOWN_SUBTYPE` / `ERR_UNKNOWN_ATTR`.
 
 ## Requirements — capability ledger (opt-in)
 
@@ -476,7 +483,7 @@ Every requirement must be **violable**: if you cannot say what breaking it looks
 
 **A commit that adds, changes or removes behaviour updates the ledger in the same commit** (the new or changed claim, its `@status` and `@implementedBy`), or says in the commit message why it does not. `verify` checks that links resolve, not that the ledger is current.
 
-If the project declares any `requirement.*` node, `references/requirements.md` is installed with the full authoring rules. If it does not and you are adding the first one, the shape is:
+`references/requirements.md` has the full authoring rules. The shape of one node:
 
 ```yaml
 - requirement.architectural:

@@ -43,7 +43,7 @@ from dataclasses import dataclass
 from typing import Any
 from pathlib import Path
 
-from metaobjects.apidocs.naming import route_path as _route_path
+from metaobjects.apidocs.naming import collection_segment as _collection_segment
 from metaobjects.apidocs.naming import reverse_finder_fn, reverse_finder_in_fn
 from metaobjects.apidocs.naming import snake_case as _snake_case
 from metaobjects.codegen.constants import GENERATED_MARKER, generated_header
@@ -52,6 +52,9 @@ from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, pe
 from metaobjects.codegen.generators.tph_plan import TphPlan, is_tph_subtype, tph_plan_for
 from metaobjects.codegen.instance_artifacts import has_item_route
 from metaobjects.source_resolution import primary_rdb_source
+from metaobjects.codegen.import_path import OUTPUT_LAYOUT_FLAT, ModuleScope, import_line
+from metaobjects.codegen.name_claims import claimed_module_path
+from metaobjects.codegen.value_objects import pkg_of
 from metaobjects.codegen.type_map import PyType, field_is_array, py_type_for
 from metaobjects.codegen.value_objects import object_ref_target
 from metaobjects.meta.core.field import field_constants as fc
@@ -75,7 +78,8 @@ from metaobjects.meta.persistence.source.source_constants import (
 from metaobjects.codegen.config import DEFAULT_API_PREFIX
 from metaobjects.naming import DEFAULT_COLUMN_NAMING
 from metaobjects.naming_refs import ref_target
-from metaobjects.wire import WIRE_NATIVE, WireFormat, wire_of
+from metaobjects.api_settings import UNKNOWN_FIELDS_REJECT, ApiPagination, api_of
+from metaobjects.wire import WIRE_DURATIONS_ISO, WIRE_NATIVE, WireFormat, wire_of
 from metaobjects.shared.base_types import TYPE_IDENTITY
 
 from ..runtime.fr010_field_mapping import is_required
@@ -133,10 +137,10 @@ RUNTIME_SUBPACKAGE = "_runtime"
 RUNTIME_SOURCE_DIR = Path(__file__).resolve().parent.parent / "runtime"
 
 
-def _runtime_module(module: str) -> str:
+def _runtime_module(module: str, scope: ModuleScope = ModuleScope()) -> str:
     """The module path an emitted router imports runtime *module* from."""
     if OWNED_RUNTIME:
-        return f".{RUNTIME_SUBPACKAGE}.{module}"
+        return scope.root(f"{RUNTIME_SUBPACKAGE}.{module}")
     return f"metaobjects.codegen.runtime.{module}"
 
 
@@ -188,14 +192,67 @@ def _scalar_fields(entity: MetaObject) -> list[MetaField]:
 
 #: ADR-0019 Amendment 1 (W2): a request body's decimal fields are parsed exactly (no float
 #: detour) before validation; a malformed one is the cross-port 400.
-_DECIMAL_COERCE: list[str] = [
+_BODY_CHECK: list[str] = [
     "    if dto is None:  # the body was not a JSON object: the cross-port 400, not FastAPI's 422",
-    '        return JSONResponse(status_code=400, content={"error": "validation"})',
+    "        return JSONResponse(",
+    "            status_code=400, content=validation_envelope(unreadable_body_issues())",
+    "        )",
+]
+
+#: ``api.unknownFields: reject`` (the default): a body key no declared field names is refused
+#: before anything else reads the body. A declared key the client may not set is NOT unknown;
+#: it is dropped later, as under ``drop``.
+_UNKNOWN_FIELDS_CHECK: list[str] = [
+    "    _unknown = unknown_body_keys(dto, _KNOWN_FIELDS)",
+    "    if _unknown:",
+    '        return JSONResponse(status_code=400, content={"error": "unknown_fields", "fields": _unknown})',
+]
+
+_DECIMAL_COERCE_BODY: list[str] = [
     "    try:",
     "        dto = coerce_decimal_fields(dto, _DECIMAL_FIELDS, _DECIMAL_LIMITS, _NESTED_DECIMALS)",
-    "    except ValueError:",
-    '        return JSONResponse(status_code=400, content={"error": "validation"})',
+    "    except ValueError as _exc:",
+    "        return JSONResponse(status_code=400, content=validation_envelope(value_error_issues(_exc)))",
 ]
+
+def _write_prelude(reject: bool) -> list[str]:
+    """The start of every create / PUT / PATCH handler: the unreadable-body answer, the
+    unknown-key refusal when the project rejects them (``api.unknownFields``), then the exact
+    decimal parse."""
+    return [*_BODY_CHECK, *(_UNKNOWN_FIELDS_CHECK if reject else []), *_DECIMAL_COERCE_BODY]
+
+
+def _known_fields_lines(entities: list[MetaObject]) -> list[str]:
+    """``_KNOWN_FIELDS``: every field the body may name, on the wire (RESOLVING ``fields()``,
+    ADR-0039; for a single-table hierarchy the base's and every subtype's)."""
+    names = list(dict.fromkeys(f.name for e in entities for f in e.fields()))
+    return ["", "", f"_KNOWN_FIELDS: frozenset[str] = {_py_set_literal(names, frozen=True)}"]
+
+
+def _list_limit_lines(page: ApiPagination | None) -> list[str]:
+    """The limit handling at the top of a list handler body. With no ``api.pagination`` it is the
+    historic default of 50 and no cap; with one, the project's default page and a refusal above
+    the cap (not a clamp: the client is told it asked for more than the server serves). A
+    negative limit is refused too, as the TypeScript routes refuse it, so it never reaches a
+    store that reads ``LIMIT -1`` as "no limit" (SQLite)."""
+    if page is None:
+        return ["    actual_limit = limit if limit is not None else 50"]
+    expected = "a non-negative integer (0 or more)"
+    return [
+        "    if limit is not None and limit < 0:",
+        "        return JSONResponse(",
+        "            status_code=400,",
+        "            content={",
+        '                "error": "pagination.invalid_value",',
+        '                "param": "limit",',
+        '                "value": str(limit),',
+        f'                "expected": "{expected}",',
+        "            },",
+        "        )",
+        f"    if limit is not None and limit > {page.max_limit}:",
+        f'        return JSONResponse(status_code=400, content={{"error": "limit_too_large", "maxLimit": {page.max_limit}}})',
+        f"    actual_limit = limit if limit is not None else {page.default_limit}",
+    ]
 
 #: The request-body dependency of every write route: the body is read with
 #: ``parse_float=Decimal`` so a JSON number never passes through a ``float`` (W2). A body that
@@ -220,6 +277,27 @@ def _decimal_field_names(entities: list[MetaObject]) -> list[str]:
             if f.sub_type == fc.FIELD_SUBTYPE_DECIMAL:
                 seen.setdefault(f.name, None)
     return list(seen)
+
+
+def _duration_field_names(entities: list[MetaObject]) -> list[str]:
+    """Names of the ``field.duration`` fields across *entities* (ADR-0039 resolving), in
+    declaration order, de-duplicated."""
+    seen: dict[str, None] = {}
+    for entity in entities:
+        for f in entity.fields():
+            if f.sub_type == fc.FIELD_SUBTYPE_DURATION:
+                seen.setdefault(f.name, None)
+    return list(seen)
+
+
+def _duration_fields_line(entities: list[MetaObject], wire: WireFormat) -> str:
+    """The ``_DURATION_FIELDS`` constant a list handler hands the filter coercion: each
+    duration field with the parser its filter operand goes through (D4: ISO-8601 only, a
+    malformed one is a 400). Under ``wire.durations: native`` there is no ISO rule to hold an
+    operand to, so the map is empty and the repository's own handling applies."""
+    names = _duration_field_names(entities) if wire.durations == WIRE_DURATIONS_ISO else []
+    body = ", ".join(f"{n!r}: parse_duration" for n in names)
+    return f"_DURATION_FIELDS: dict[str, object] = {{{body}}}"
 
 
 def _decimal_limits(entities: list[MetaObject]) -> dict[str, tuple[int, int]]:
@@ -328,7 +406,7 @@ def _wire_lines(entities: list[MetaObject], wire: WireFormat, name: str = "_WIRE
     if hidden := _hidden_names(entities):
         args += f", hidden={tuple(hidden)!r}"
     if has_duration_field(entities):
-        args += f", {_DURATION_WIRE_ARG}"
+        args += f", {_DURATION_WIRE_ARG if wire.durations == WIRE_DURATIONS_ISO else _NATIVE_DURATION_ARG}"
     return ["", "", f"{name} = WireOutput({args})"]
 
 
@@ -337,14 +415,23 @@ def _wire_lines(entities: list[MetaObject], wire: WireFormat, name: str = "_WIRE
 _DURATION_WIRE_ARG = "duration=format_duration"
 
 
-def _with_duration_import(parts: list[str]) -> list[str]:
+#: Under ``wire.durations: native`` a ``timedelta`` leaves as Pydantic itself writes it, not as
+#: FastAPI's ``jsonable_encoder`` would (a float of seconds).
+_NATIVE_DURATION_ARG = "duration=to_jsonable_python"
+
+
+def _with_duration_import(parts: list[str], scope: ModuleScope = ModuleScope()) -> list[str]:
     """*parts* plus the import of the duration formatter, when a wire constant uses it. The
     formatter is the generated package's own ``_duration_wire`` module, which the entity tier
     emits beside any model with a ``field.duration``."""
+    if any(_NATIVE_DURATION_ARG in line for line in parts):
+        at = next(i for i, line in enumerate(parts) if line.startswith("from ."))
+        return [*parts[:at], "from pydantic_core import to_jsonable_python", *parts[at:]]
     if not any(_DURATION_WIRE_ARG in line for line in parts):
         return parts
     at = next(i for i, line in enumerate(parts) if line.startswith("from ."))
-    return [*parts[:at], f"from .{DURATION_WIRE_MODULE} import format_duration", *parts[at:]]
+    names = "format_duration, parse_duration" if any("parse_duration}" in line for line in parts) else "format_duration"
+    return [*parts[:at], import_line(scope.root(DURATION_WIRE_MODULE), *names.split(", ")), *parts[at:]]
 
 
 def _m2m_wire_name(target: str) -> str:
@@ -509,15 +596,34 @@ _VALIDATED_INPUT_LINES: list[str] = [
 ]
 
 
-def _validated_input_lines(model: str, *comment: str) -> list[str]:
+def _validated_input_lines(model: str, *comment: str, patch: bool = False) -> list[str]:
     """Validate ``dto`` against the input *model*, then rebind it to what the model validated
-    (see :data:`_VALIDATED_INPUT_LINES`): the repository never sees any other key."""
+    (see :data:`_VALIDATED_INPUT_LINES`): the repository never sees any other key.
+
+    A body that fails answers ``400`` listing EVERY issue. On a *patch* the explicit nulls on
+    ``@required`` fields (FR-035 PATCH-2) are issues too, listed beside the model's."""
+    if patch:
+        check = [
+            "    _issues = required_null_issues(dto, _REQUIRED_FIELDS)",
+            "    try:",
+            f"        _valid = {model}(**dto)",
+            "    except ValidationError as _exc:",
+            "        _issues += pydantic_issues(_exc.errors())",
+            "    if _issues:",
+            "        return JSONResponse(status_code=400, content=validation_envelope(_issues))",
+        ]
+    else:
+        check = [
+            "    try:",
+            f"        _valid = {model}(**dto)",
+            "    except ValidationError as _exc:",
+            "        return JSONResponse(",
+            "            status_code=400, content=validation_envelope(pydantic_issues(_exc.errors()))",
+            "        )",
+        ]
     return [
         *(f"    # {line}" for line in comment),
-        "    try:",
-        f"        _valid = {model}(**dto)",
-        "    except ValidationError:",
-        '        return JSONResponse(status_code=400, content={"error": "validation"})',
+        *check,
         "    # SECURITY (1.2.1): only what the input model validated reaches the repository. A key",
         "    # it does not declare (an undeclared name, a server-generated id, a readOnly or derived",
         "    # field, a frozen one on update) is dropped silently, never 400'd.",
@@ -875,10 +981,9 @@ class RouterGenerator:
         entity), so same-pair FKs yield distinct finders with no collision. Returns
         ``Protocol``-body lines (each already 4-space indented). Override to customize."""
         lines: list[str] = []
-        entity_name = entity.name
         for rfk in reverse_fks_for(entity):
-            single = reverse_finder_fn(entity_name, rfk.fk_field)
-            batched = reverse_finder_in_fn(entity_name, rfk.fk_field)
+            single = reverse_finder_fn(entity, rfk.fk_field)
+            batched = reverse_finder_in_fn(entity, rfk.fk_field)
             arg = _snake_case(rfk.fk_field)
             lines.append(f"    def {single}(self, {arg}: Any) -> _list[Any]: ...")
             lines.append(
@@ -966,7 +1071,7 @@ class RouterGenerator:
             "    if filter_result.error_envelope is not None:",
             "        return JSONResponse(status_code=400, content=filter_result.error_envelope)",
             "    predicates, decimal_error = coerce_decimal_predicates(",
-            "        filter_result.predicates, _DECIMAL_FIELDS",
+            "        filter_result.predicates, _DECIMAL_FIELDS, _DURATION_FIELDS",
             "    )",
             "    if decimal_error is not None:",
             "        return JSONResponse(status_code=400, content=decimal_error)",
@@ -1012,13 +1117,17 @@ class RouterGenerator:
         denied_strip: list[str] = (),
         report_max_rows: int | None = None,
         report_export: bool = False,
+        reject_unknown: bool = False,
+        pagination: ApiPagination | None = None,
     ) -> list[str]:
         """One CRUD route handler block, dispatched by *name*
         (``list`` / ``get`` / ``create`` / ``update`` / ``delete``). Override to
         change a handler's body / decorators / response shape. *model_name* /
         *patch_model* are the generated create + all-optional PATCH Pydantic models
         used to run field constraints on POST / PATCH (FR-036). *report_max_rows* is
-        passed only for a served report's ``list``: every row up to that cap, refused above it."""
+        passed only for a served report's ``list``: every row up to that cap, refused above it.
+        *reject_unknown* adds the ``api.unknownFields: reject`` refusal to create / update;
+        *pagination* is the project's ``api.pagination`` for a ``list`` that is not a report's."""
         if name == "list" and report_max_rows is not None and report_export:
             return self._report_list_with_export(
                 plural=plural,
@@ -1079,7 +1188,7 @@ class RouterGenerator:
                 "    if filter_result.error_envelope is not None:",
                 "        return JSONResponse(status_code=400, content=filter_result.error_envelope)",
                 "    predicates, decimal_error = coerce_decimal_predicates(",
-                "        filter_result.predicates, _DECIMAL_FIELDS",
+                "        filter_result.predicates, _DECIMAL_FIELDS, _DURATION_FIELDS",
                 "    )",
                 "    if decimal_error is not None:",
                 "        return JSONResponse(status_code=400, content=decimal_error)",
@@ -1105,7 +1214,7 @@ class RouterGenerator:
                 "    sort: str | None = Query(None),",
                 '    with_count: int | None = Query(None, alias="withCount"),',
                 ") -> Any:",
-                "    actual_limit = limit if limit is not None else 50",
+                *_list_limit_lines(pagination),
                 "    actual_offset = offset if offset is not None else 0",
                 "    sort_clause: _SortClause | None = None",
                 "    if sort is not None:",
@@ -1116,7 +1225,7 @@ class RouterGenerator:
                 "    if filter_result.error_envelope is not None:",
                 "        return JSONResponse(status_code=400, content=filter_result.error_envelope)",
                 "    predicates, decimal_error = coerce_decimal_predicates(",
-                "        filter_result.predicates, _DECIMAL_FIELDS",
+                "        filter_result.predicates, _DECIMAL_FIELDS, _DURATION_FIELDS",
                 "    )",
                 "    if decimal_error is not None:",
                 "        return JSONResponse(status_code=400, content=decimal_error)",
@@ -1145,7 +1254,7 @@ class RouterGenerator:
                 "    dto: Annotated[dict[str, Any] | None, Depends(_json_body)],",
                 f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
                 ") -> Any:",
-                *_DECIMAL_COERCE,
+                *_write_prelude(reject_unknown),
                 *denied_strip,
                 *_validated_input_lines(
                     model_name,
@@ -1169,18 +1278,16 @@ class RouterGenerator:
                 "    dto: Annotated[dict[str, Any] | None, Depends(_json_body)],",
                 f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
                 ") -> Any:",
-                *_DECIMAL_COERCE,
+                *_write_prelude(reject_unknown),
                 *denied_strip,
-                "    # FR-035 PATCH-2: an explicit null on a @required field is a 400 —",
-                "    # a present null on a NON-required field falls through and clears it,",
-                "    # and an OMITTED required field is untouched (never a 400).",
-                "    for _k in _REQUIRED_FIELDS:",
-                "        if _k in dto and dto[_k] is None:",
-                '            return JSONResponse(status_code=400, content={"error": "validation"})',
                 *_validated_input_lines(
                     patch_model,
+                    "FR-035 PATCH-2: an explicit null on a @required field is a 400 — a present",
+                    "null on a NON-required field falls through and clears it, and an OMITTED",
+                    "required field is untouched (never a 400).",
                     "FR-036: validate PRESENT, non-null values with the create rules (the",
                     "all-optional patch model never fires required-checks on ABSENT fields).",
+                    patch=True,
                 ),
                 # #203/ADR-0045: bump onUpdate @autoSet columns (server-owned) on EVERY patch,
                 # above the repo seam — a server-inserted present key (compatible with the PATCH
@@ -1293,13 +1400,18 @@ class RouterGenerator:
         return lines
 
     def _emit_tph_list_body(
-        self, subtype_expr: str, fields_const: str, ops_const: str, repo_var: str = "repo"
+        self,
+        subtype_expr: str,
+        fields_const: str,
+        ops_const: str,
+        repo_var: str = "repo",
+        pagination: ApiPagination | None = None,
     ) -> list[str]:
         """The shared list-handler body (sort + filter parse → repo.list). *subtype_expr*
         is the Python literal threaded as the discriminator scope: ``None`` for the
         polymorphic base, or a quoted ``@discriminatorValue`` for a per-subtype route."""
         return [
-            "    actual_limit = limit if limit is not None else 50",
+            *_list_limit_lines(pagination),
             "    actual_offset = offset if offset is not None else 0",
             "    sort_clause: _SortClause | None = None",
             "    if sort is not None:",
@@ -1310,7 +1422,7 @@ class RouterGenerator:
             "    if filter_result.error_envelope is not None:",
             "        return JSONResponse(status_code=400, content=filter_result.error_envelope)",
             "    predicates, decimal_error = coerce_decimal_predicates(",
-            "        filter_result.predicates, _DECIMAL_FIELDS",
+            "        filter_result.predicates, _DECIMAL_FIELDS, _DURATION_FIELDS",
             "    )",
             "    if decimal_error is not None:",
             "        return JSONResponse(status_code=400, content=decimal_error)",
@@ -1329,6 +1441,7 @@ class RouterGenerator:
         column_naming: str = DEFAULT_COLUMN_NAMING,
         wire: WireFormat = WireFormat(),
         api_prefix: str = DEFAULT_API_PREFIX,
+        scope: ModuleScope = ModuleScope(),
     ) -> str:
         """FR-017 TPH: emit the discriminator base's router — a polymorphic collection
         at the base path + a full per-subtype CRUD set at /<base>/<segment>. The repo
@@ -1342,8 +1455,14 @@ class RouterGenerator:
         ``render_router``, which returns ``None`` for a TPH subtype before reaching
         M:N resolution at all — the two independent gaps this fix closes)."""
         short_name = entity.name
+        # The project's `api` setting: the page size of every list route here and whether an
+        # undeclared body key is refused (the default) or dropped.
+        api = api_of(entity)
+        page = api.pagination
+        reject = api.unknown_fields == UNKNOWN_FIELDS_REJECT
+        prelude = _write_prelude(reject)
         snake = _snake_case(short_name)
-        plural = _route_path(short_name)
+        plural = _collection_segment(entity)
         pk_param = f"{snake}_id"
         # PK type from the BASE's declared primary key (subtypes share the
         # base's single table — mirrors the C# TPH pkType threading).
@@ -1474,8 +1593,8 @@ class RouterGenerator:
             # #203/ADR-0045: the router stamps @autoSet columns inline (no runtime dependency).
             parts.append("import datetime as _dt")
             parts.append("")
-        for import_line in sorted(pk.imports):
-            parts.append(import_line)
+        for pk_import in sorted(pk.imports):
+            parts.append(pk_import)
         if pk.imports:
             parts.append("")
         parts.append(_BUILTIN_LIST_ALIAS_IMPORT)
@@ -1485,28 +1604,37 @@ class RouterGenerator:
         parts.append("from fastapi.responses import JSONResponse, Response")
         parts.append("from pydantic import BaseModel, ValidationError")
         parts.append("")
-        parts.append(f"from {_runtime_module('constraint_errors')} import (")
+        parts.append(f"from {_runtime_module('constraint_errors', scope)} import (")
         parts.append("    classify_constraint_error,")
+        parts.append("    pydantic_issues,")
+        parts.append("    required_null_issues,")
+        if reject:
+            parts.append("    unknown_body_keys,")
+        parts.append("    unreadable_body_issues,")
+        parts.append("    validation_envelope,")
+        parts.append("    value_error_issues,")
         parts.append(")")
-        parts.append(f"from {_runtime_module('decimal_wire')} import (")
+        parts.append(f"from {_runtime_module('decimal_wire', scope)} import (")
         parts.append("    coerce_decimal_fields,")
         parts.append("    coerce_decimal_predicates,")
         parts.append("    parse_json_object,")
         parts.append("    WireOutput,")
         parts.append("    render_wire,")
         parts.append(")")
-        parts.append(f"from {_runtime_module('filter_parser')} import (")
+        parts.append(f"from {_runtime_module('filter_parser', scope)} import (")
         parts.append("    FilterPredicate,")
         parts.append("    parse_filter,")
         parts.append(")")
         parts.append("")
-        parts.append(f"from .{allowlist_module} import {fields_const}, {ops_const}")
+        parts.append(import_line(scope.sibling(scope.pkg, allowlist_module), fields_const, ops_const))
         # FR-036: each concrete subtype's CREATE + all-optional PATCH validation models
         # drive the field constraints run on the per-subtype POST / PATCH (sibling
         # modules). These are the wire-shaped validation models, NOT the read model.
         for st in plan.subtypes:
             sub = st.entity.name
-            parts.append(f"from .{sub} import {sub}Create, {sub}Patch")
+            parts.append(
+                import_line(scope.sibling(pkg_of(st.entity), sub), f"{sub}Create", f"{sub}Patch")
+            )
         parts.append("")
         parts.append(f'router = APIRouter(prefix="{api_prefix}/{plural}", tags=["{plural}"])')
         parts.append("")
@@ -1518,6 +1646,7 @@ class RouterGenerator:
         parts.append("")
         parts.append("")
         parts.append(f"_DECIMAL_FIELDS: frozenset[str] = {decimal_set_body}")
+        parts.append(_duration_fields_line([entity, *(st.entity for st in plan.subtypes)], wire))
         parts.extend(_decimal_limits_lines([entity, *(st.entity for st in plan.subtypes)]))
         parts.extend(_wire_lines([entity, *(st.entity for st in plan.subtypes)], wire))
         parts.extend(_m2m_wire_lines(
@@ -1537,6 +1666,8 @@ class RouterGenerator:
         # the generated module always carries the seam (an entity that later gains a
         # writeOnce field changes one literal, not the module's shape).
         parts.append(f"_FROZEN_FIELDS: frozenset[str] = {frozen_set_body}")
+        if reject:
+            parts.extend(_known_fields_lines([entity, *(st.entity for st in plan.subtypes)]))
         parts.extend(_denied_const_lines(denied_names))
         parts.append("")
         parts.append("")
@@ -1602,7 +1733,7 @@ class RouterGenerator:
             sub = st.entity.name  # the subtype's generated create + PATCH model classes
             sfx = st.route_segment  # handler-name suffix = URL segment (e.g. "bridge"), matches the route
             parts.extend(list_sig(f"list_{plural}_{sfx}", f"/{seg}"))
-            parts.extend(self._emit_tph_list_body(f'"{val}"', fields_const, ops_const))
+            parts.extend(self._emit_tph_list_body(f'"{val}"', fields_const, ops_const, pagination=page))
             parts.append("")
             parts.append("")
             parts.append(f'@router.post("/{seg}", status_code=status.HTTP_201_CREATED)')
@@ -1610,8 +1741,12 @@ class RouterGenerator:
             parts.append("    dto: Annotated[dict[str, Any] | None, Depends(_json_body)],")
             parts.append(f"    repo: Annotated[{repo_class}, Depends(get_repository)],")
             parts.append(") -> Any:")
-            parts.extend(_DECIMAL_COERCE)
+            parts.extend(prelude)
             parts.extend(denied_strip_tph)
+            # The route's subtype is the only source of the discriminator: a body value is
+            # dropped silently before validation (as the TypeScript route's `.omit` does), so
+            # a foreign tag is never a 400 and never reaches the repository.
+            parts.append(f'    dto.pop("{plan.discriminator_field}", None)')
             parts.extend(_validated_input_lines(
                 f"{sub}Create", "FR-036: run the subtype's field constraints before persisting."
             ))
@@ -1641,14 +1776,14 @@ class RouterGenerator:
             parts.append("    dto: Annotated[dict[str, Any] | None, Depends(_json_body)],")
             parts.append(f"    repo: Annotated[{repo_class}, Depends(get_repository)],")
             parts.append(") -> Any:")
-            parts.extend(_DECIMAL_COERCE)
+            parts.extend(prelude)
             parts.extend(denied_strip_tph)
-            parts.append("    # FR-035 PATCH-2: an explicit null on a @required field is a 400.")
-            parts.append("    for _k in _REQUIRED_FIELDS:")
-            parts.append("        if _k in dto and dto[_k] is None:")
-            parts.append('            return JSONResponse(status_code=400, content={"error": "validation"})')
+            parts.append(f'    dto.pop("{plan.discriminator_field}", None)')
             parts.extend(_validated_input_lines(
-                f"{sub}Patch", "FR-036: validate PRESENT, non-null values with the subtype's create rules."
+                f"{sub}Patch",
+                "FR-035 PATCH-2: an explicit null on a @required field is a 400.",
+                "FR-036: validate PRESENT, non-null values with the subtype's create rules.",
+                patch=True,
             ))
             # #203/ADR-0045: pop the write-once onCreate column(s), bump onUpdate — ABOVE
             # the repo seam (empty for a non-@autoSet hierarchy — byte-identical output).
@@ -1699,7 +1834,7 @@ class RouterGenerator:
 
         # --- Polymorphic base routes LAST (so /{id} doesn't shadow /<segment>). ---
         parts.extend(list_sig(f"list_{plural}", ""))
-        parts.extend(self._emit_tph_list_body("None", fields_const, ops_const))
+        parts.extend(self._emit_tph_list_body("None", fields_const, ops_const, pagination=page))
         parts.append("")
         parts.append("")
         parts.append(f'@router.get("/{{{pk_param}}}")')
@@ -1731,7 +1866,7 @@ class RouterGenerator:
             ))
             parts.append("")
 
-        return "\n".join(_with_duration_import(parts))
+        return "\n".join(_with_duration_import(parts, scope))
 
     def render_router(
         self,
@@ -1741,6 +1876,7 @@ class RouterGenerator:
         wire: WireFormat | None = None,
         report_export: bool = False,
         api_prefix: str = DEFAULT_API_PREFIX,
+        output_layout: str = OUTPUT_LAYOUT_FLAT,
     ) -> str | None:
         """Render an entity as a FastAPI ``APIRouter`` module.
 
@@ -1773,6 +1909,10 @@ class RouterGenerator:
         # ADR-0019 Amendment 2: the project's `wire` setting, from the loaded root. A caller
         # that holds an object detached from the root (a report's read model) passes it.
         wire = wire if wire is not None else wire_of(entity)
+        api = api_of(entity)
+        page = api.pagination
+        reject = api.unknown_fields == UNKNOWN_FIELDS_REJECT
+        scope = ModuleScope(output_layout, pkg_of(entity))
         # FR-017 TPH: a concrete subtype is folded into its base's single table — it
         # emits no standalone router (its CRUD lives under the base's per-subtype segment).
         if object_index is not None and is_tph_subtype(entity):
@@ -1792,7 +1932,7 @@ class RouterGenerator:
             # fixtures/api-contract-conformance/projection/.
             if is_read_only_routed(entity):
                 return self._render_readonly_router(
-                    entity, column_naming, wire, report_export, api_prefix
+                    entity, column_naming, wire, report_export, api_prefix, scope
                 )
             return None
 
@@ -1802,7 +1942,7 @@ class RouterGenerator:
             plan = tph_plan_for(entity, object_index)
             if plan is not None:
                 return self._render_tph_router(
-                    entity, plan, object_index, column_naming, wire, api_prefix
+                    entity, plan, object_index, column_naming, wire, api_prefix, scope
                 )
 
         m2m: list[M2mDescriptor] = (
@@ -1813,7 +1953,7 @@ class RouterGenerator:
 
         short_name = entity.name
         snake = _snake_case(short_name)
-        plural = _route_path(short_name)
+        plural = _collection_segment(entity)
         pk_param = f"{snake}_id"
         pk = _pk_py_type(entity)
         pk_type = pk.expr
@@ -1865,8 +2005,8 @@ class RouterGenerator:
             # #203/ADR-0045: the router stamps @autoSet columns inline (no runtime dependency).
             parts.append("import datetime as _dt")
             parts.append("")
-        for import_line in sorted(pk.imports):
-            parts.append(import_line)
+        for pk_import in sorted(pk.imports):
+            parts.append(pk_import)
         if pk.imports:
             parts.append("")
         parts.append(_BUILTIN_LIST_ALIAS_IMPORT)
@@ -1876,27 +2016,36 @@ class RouterGenerator:
         parts.append("from fastapi.responses import JSONResponse, Response")
         parts.append("from pydantic import BaseModel, ValidationError")
         parts.append("")
-        parts.append(f"from {_runtime_module('constraint_errors')} import (")
+        parts.append(f"from {_runtime_module('constraint_errors', scope)} import (")
         parts.append("    classify_constraint_error,")
+        parts.append("    pydantic_issues,")
+        parts.append("    required_null_issues,")
+        if reject:
+            parts.append("    unknown_body_keys,")
+        parts.append("    unreadable_body_issues,")
+        parts.append("    validation_envelope,")
+        parts.append("    value_error_issues,")
         parts.append(")")
-        parts.append(f"from {_runtime_module('decimal_wire')} import (")
+        parts.append(f"from {_runtime_module('decimal_wire', scope)} import (")
         parts.append("    coerce_decimal_fields,")
         parts.append("    coerce_decimal_predicates,")
         parts.append("    parse_json_object,")
         parts.append("    WireOutput,")
         parts.append("    render_wire,")
         parts.append(")")
-        parts.append(f"from {_runtime_module('filter_parser')} import (")
+        parts.append(f"from {_runtime_module('filter_parser', scope)} import (")
         parts.append("    FilterPredicate,")
         parts.append("    parse_filter,")
         parts.append(")")
         parts.append("")
-        parts.append(f"from .{allowlist_module} import {fields_const}, {ops_const}")
+        parts.append(import_line(scope.sibling(scope.pkg, allowlist_module), fields_const, ops_const))
         # FR-036: the generated CREATE + all-optional PATCH validation models drive the
         # field constraints run on POST / PATCH. These are the WIRE-shaped validation
         # models (auto-gen PK / @readOnly omitted from create; PK omitted from patch;
         # both keyed by field.name), NOT the read/entity-shape model.
-        parts.append(f"from .{short_name} import {short_name}Create, {short_name}Patch")
+        parts.append(
+            import_line(scope.sibling(scope.pkg, short_name), f"{short_name}Create", f"{short_name}Patch")
+        )
         parts.append("")
         parts.append(f'router = APIRouter(prefix="{api_prefix}/{plural}", tags=["{plural}"])')
         parts.append("")
@@ -1910,6 +2059,7 @@ class RouterGenerator:
         parts.append("")
         parts.append("")
         parts.append(f"_DECIMAL_FIELDS: frozenset[str] = {decimal_set_body}")
+        parts.append(_duration_fields_line([entity], wire))
         parts.extend(_decimal_limits_lines([entity]))
         parts.extend(_wire_lines([entity], wire))
         parts.extend(_m2m_wire_lines(m2m, object_index or {}, wire))
@@ -1925,6 +2075,8 @@ class RouterGenerator:
         # the generated module always carries the seam (an entity that later gains a
         # writeOnce field changes one literal, not the module's shape).
         parts.append(f"_FROZEN_FIELDS: frozenset[str] = {frozen_set_body}")
+        if reject:
+            parts.extend(_known_fields_lines([entity]))
         denied_names = _denied_names(entity)
         parts.extend(_denied_const_lines(denied_names))
         parts.append("")
@@ -1960,6 +2112,8 @@ class RouterGenerator:
             # not in <Entity>Patch.
             frozen_strip=_frozen_strip_lines(entity),
             denied_strip=_denied_strip_lines(denied_names),
+            reject_unknown=reject,
+            pagination=page,
         )
         for i, hname in enumerate(("list", "get", "create", "update", "delete")):
             if i > 0:
@@ -1978,7 +2132,7 @@ class RouterGenerator:
             parts.extend(self._emit_m2m_route(d, snake, pk_param, pk_type, repo_class))
             parts.append("")
 
-        return "\n".join(_with_duration_import(parts))
+        return "\n".join(_with_duration_import(parts, scope))
 
     def _emit_readonly_reject_handlers(
         self,
@@ -2036,6 +2190,7 @@ class RouterGenerator:
         wire: WireFormat = WireFormat(),
         report_export: bool = False,
         api_prefix: str = DEFAULT_API_PREFIX,
+        scope: ModuleScope = ModuleScope(),
     ) -> str:
         """Render a read-only (`@kind: view` / `materializedView`) object as a FastAPI
         ``APIRouter``: GET list + GET by id, and the four write verbs answering 405. An
@@ -2052,7 +2207,7 @@ class RouterGenerator:
         allowlist wiring) by calling the same emitters."""
         short_name = entity.name
         snake = _snake_case(short_name)
-        plural = _route_path(short_name)
+        plural = _collection_segment(entity)
         pk_param = f"{snake}_id"
         # FR-044: a report (and any projection without a single-field identity) has no
         # item address. It gets the collection routes only: no GET /{id}, no item-verb
@@ -2090,8 +2245,8 @@ class RouterGenerator:
         parts.append("from __future__ import annotations")
         parts.append("")
         pk_imports = pk.imports if pk is not None else ()
-        for import_line in sorted(pk_imports):
-            parts.append(import_line)
+        for pk_import in sorted(pk_imports):
+            parts.append(pk_import)
         if pk_imports:
             parts.append("")
         parts.append(_BUILTIN_LIST_ALIAS_IMPORT)
@@ -2105,13 +2260,13 @@ class RouterGenerator:
             parts.append("from fastapi.responses import JSONResponse")
         parts.append("from pydantic import BaseModel")
         parts.append("")
-        parts.append(f"from {_runtime_module('decimal_wire')} import (")
+        parts.append(f"from {_runtime_module('decimal_wire', scope)} import (")
         parts.append("    coerce_decimal_predicates,")
         parts.append("    WireOutput,")
         parts.append("    render_wire,")
         parts.append(")")
         if export:
-            parts.append(f"from {_runtime_module(EXPORT_RUNTIME_MODULE)} import (")
+            parts.append(f"from {_runtime_module(EXPORT_RUNTIME_MODULE, scope)} import (")
             parts.append("    EXPORT_CONTENT_TYPES,")
             parts.append("    EXPORT_FORMATS,")
             parts.append("    content_disposition,")
@@ -2121,15 +2276,15 @@ class RouterGenerator:
             parts.append("    is_truthy_flag,")
             parts.append("    requested_format,")
             parts.append(")")
-        parts.append(f"from {_runtime_module('filter_parser')} import (")
+        parts.append(f"from {_runtime_module('filter_parser', scope)} import (")
         parts.append("    FilterPredicate,")
         parts.append("    parse_filter,")
         parts.append(")")
         parts.append("")
-        parts.append(f"from .{allowlist_module} import {fields_const}, {ops_const}")
+        parts.append(import_line(scope.sibling(scope.pkg, allowlist_module), fields_const, ops_const))
         if export:
-            parts.append(f"from .{snake}_export import export_csv, export_xml")
-            parts.append(f"from .{EXPORT_WRITER_MODULE} import EXPORT_MAX_ROWS")
+            parts.append(import_line(scope.sibling(scope.pkg, f"{snake}_export"), "export_csv", "export_xml"))
+            parts.append(import_line(scope.root(EXPORT_WRITER_MODULE), "EXPORT_MAX_ROWS"))
         parts.append("")
         parts.append(f'router = APIRouter(prefix="{api_prefix}/{plural}", tags=["{plural}"])')
         parts.append("")
@@ -2141,6 +2296,7 @@ class RouterGenerator:
             "_DECIMAL_FIELDS: frozenset[str] = "
             + _py_set_literal(_decimal_field_names([entity]), frozen=True)
         )
+        parts.append(_duration_fields_line([entity], wire))
         parts.extend(_wire_lines([entity], wire))
         parts.append("")
         parts.append("")
@@ -2185,6 +2341,7 @@ class RouterGenerator:
             # Only a report is capped; passed for it alone so an adopter's `_emit_route_handler`
             # override that does not take the keyword keeps working for a projection.
             **({"report_max_rows": self.report_max_rows} if is_report else {}),
+            **({"pagination": api_of(entity).pagination} if not is_report and api_of(entity).pagination else {}),
             **({"report_export": True} if export else {}),
         )
         for i, hname in enumerate(("list", "get") if item_route else ("list",)):
@@ -2200,7 +2357,7 @@ class RouterGenerator:
             )
         )
         parts.append("")
-        return "\n".join(_with_duration_import(parts))
+        return "\n".join(_with_duration_import(parts, scope))
 
     def generate(self, ctx: GenContext) -> list[EmittedFile]:
         index = build_object_index(ctx.entities)
@@ -2213,14 +2370,16 @@ class RouterGenerator:
             wire = wire_of(c.loaded_root) if c.loaded_root is not None else None
             source = self.render_router(
                 entity, index, c.config.column_naming, wire, REPORT_EXPORT_GENERATOR in c.generators,
-                c.config.api_prefix,
+                c.config.api_prefix, c.config.output_layout,
             )
             if source is None:
                 return []
             snake = _snake_case(entity.name)
             return [
                 EmittedFile(
-                    path=f"{snake}_router.py",
+                    path=claimed_module_path(
+                        c.claims, c.config, pkg_of(entity), f"{snake}_router", entity.resolution_key()
+                    ),
                     content=ruff_format(source),
                 )
             ]

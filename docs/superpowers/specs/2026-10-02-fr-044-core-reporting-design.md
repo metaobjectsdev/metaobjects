@@ -13,6 +13,9 @@ from a dimension's entity (`@spine`, R8), and a measure can declare its value wh
 (`@default`, R9). The register entries are in §3.2. Both are additive and `metamodelVersion`
 stays `1.1`. Plan:
 `docs/superpowers/plans/2026-10-09-fr-044-zero-rows-and-measure-defaults.md`.
+**Amended 2026-11-12:** `measure.derived` is registered, and a measure's `@of` may name a
+flattened value-object member (R11, below). Both came from a large-application smoke test whose
+dashboard reports fell back to `@sql`. Both are additive.
 **Target:** metamodel `1.1` (additive vocabulary is a MINOR — `docs/compatibility-policy.md`,
 `scripts/check-metamodel-version.mjs`). Nothing here is a PATCH.
 **Relates to:** [ADR-0037](../../../spec/decisions/ADR-0037-metamodel-vocabulary-expansion-decision-framework.md)
@@ -114,7 +117,7 @@ These bind every requirement below. They restate FR-037's shared obligations for
 The maintainer agreed to this list on 2026-10-03. Each entry carries its can't-be-computed
 justification. Nothing outside this list may be registered under FR-044 without a new
 agreement. `measure.derived` is deliberately absent: it waits for FR-037 R5's arithmetic wave
-and gets its own agreement then.
+and gets its own agreement then. *(2026-11-12: that agreement is R11 below.)*
 
 | New name | Kind | Why it cannot be computed from existing metadata |
 |---|---|---|
@@ -531,6 +534,45 @@ no `any` / `all` aggregation (`sum_boolean` counts the trues); the dbt exporter,
 must refuse it by name or map it to `max` / `min` over a 0/1 expression. It is not part of this
 change.
 
+### R11 — value-object members in `@of`, and `measure.derived` (added 2026-11-12)
+
+**Why.** A large-application smoke test wrote its dashboard reports in this vocabulary, and two
+of the five gaps that sent reports back to `@sql` are closed here. (1) Revenue by client by month
+sums `Payment.amount`, a required Money value object stored flattened (`amount_amount`,
+`amount_currency`); `@of` could not name a member. (2) Utilization is billable hours divided by
+capacity hours, and capacity is the member's weekly capacity x 52 / 12; budget burn is cost
+divided by budget. These need arithmetic between measures. The other three gaps (a calendar-month
+spine with no facts, product measures such as hours x rate, a member read out of a jsonb value
+object) stay `@sql`.
+
+**Members.** An `@of` path may step into a flattened `field.object` and name its member
+(`Payment.amount.amount`). A `sum`/`avg`/`min`/`max` over a numeric member requires the report
+to group, by an attribute dimension with no `@via`, on every non-numeric member of the same value
+object (its currency): units are never mixed silently, and a report that would mix them does not
+load (rule R12 in `docs/features/reporting.md`). The check follows ratio and derived operands. A
+member of a jsonb value object is a load error naming the storage. No new attribute: the path
+syntax already existed.
+
+**`measure.derived`.** A new subtype with one required attribute, `@expr` (type `expression`),
+over a closed subset of `attr.expression`: `{field: <measure or dimension>}`, `{value: <number>}`
+and `{fn: add | subtract | multiply | divide, args: [a, b]}`. The result is a nullable decimal.
+`divide` lowers as a ratio does: the dividend is cast to a decimal (Postgres `NUMERIC`, SQLite
+`REAL`) and a divisor that is not a nonzero literal is wrapped in `NULLIF(…, 0)`. A derived measure
+that reads a dimension requires the report to group by it (R13). `@default` is not registered on
+it; wrap the operand measures instead. This is FR-037 R5 wave 1 scoped to report measures:
+`origin.computed`'s grammar does not take these members yet, and when it does the two must agree.
+
+| New name | Kind | Why it cannot be computed from existing metadata |
+|---|---|---|
+| `measure.derived` | subtype of `measure` | an author's formula over measures; nothing in the model states it |
+| `@expr` on `measure.derived` | attribute (`expression`) | the formula itself |
+
+**Lowering and ports.** Loader validation (M11, R12, R13) and the report's column type in all
+four loader ports; view lowering in TypeScript (Postgres and SQLite), as for every report. Cube
+writes a derived measure over measures as a `number` member and refuses a member path
+(`ERR_CUBE_VALUE_OBJECT_MEMBER`) and a derived measure over a dimension
+(`ERR_CUBE_DERIVED_DIMENSION`).
+
 ## 5. Mapping contract (core → Cube → MetricFlow)
 
 | MetaObjects | Cube | dbt MetricFlow |
@@ -545,7 +587,7 @@ change.
 | `measure.aggregate` sum/avg/min/max | `sum`/`avg`/`min`/`max` | `sum`/`average`/`min`/`max` |
 | `measure.aggregate` any/all | `boolean` measure holding `bool_or(x)` / `bool_and(x)` (MySQL `MAX(x)` / `MIN(x)`) | none yet: `sum_boolean` counts the trues; the dbt exporter refuses it or maps `max` / `min` over a 0/1 expression |
 | `measure.ratio` | `number` measure `{a} / NULLIF({b}, 0)`; on Postgres `CAST({a} AS NUMERIC) / NULLIF({b}, 0)`, with no cast on MySQL | `ratio` metric |
-| `measure.derived` | `number` measure | `derived` metric |
+| `measure.derived` | `number` measure over the measures it reads; one that reads a dimension is refused (`ERR_CUBE_DERIVED_DIMENSION`) | `derived` metric |
 | `segment` | segment | metric `filter` / saved query filter |
 | relative filter `{ now: "-P7D" }` | the view's SQL in a segment or measure filter (no rollup for such a report) | `{{ TimeDimension(...) }} >= dateadd(...)` |
 | `object.report` | a rollup on the `@from` cube (coarsest first) | a saved query |
@@ -554,7 +596,7 @@ change.
 
 FR-044 Plan 4 ([plan](../plans/2026-10-09-fr-044-plan-4-cube-exporter.md)) built the Cube
 column as written above, the `@spine` and `@default` rows included once the zero-rows /
-measure-defaults build registered them, except `measure.derived`, which is not registered. The MetricFlow column waits for the first adopter who asks (D5).
+measure-defaults build registered them. `measure.derived` followed in R11 (2026-11-12). The MetricFlow column waits for the first adopter who asks (D5).
 
 ## 6. Dependencies and order
 
@@ -566,7 +608,8 @@ measure-defaults build registered them, except `measure.derived`, which is not r
    MySQL, persistence-conformance (read each report view in every port), api-contract
    `report/` sub-corpus (list, filter, sort, paging, 405 on writes) in every port. **R8 and
    R9** (added 2026-10-09) join this change set and are gated the same way.
-3. **R2 `measure.derived`** — once FR-037 R5's arithmetic lands.
+3. **R2 `measure.derived`** — shipped 2026-11-12 (R11), with a report-only arithmetic subset
+   in place of the full FR-037 R5 wave.
 4. **R6** — Cube exporter. MetricFlow on first adopter demand (D5).
 5. **R7** — the library.
 

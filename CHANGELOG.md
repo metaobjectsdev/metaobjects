@@ -10,7 +10,80 @@ here.**
 
 ## [Unreleased]
 
+**New metamodel vocabulary: `measure.derived` and its `@expr`.** It is additive: nothing that
+loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersion` 1.3 if it merges before the 1.3.0 publish; if it lands after, the next release moves `metamodelVersion`.
+
+### Upgrading
+
+- **`api.unknownFields: reject` is the one deliberate default change.** A generated create, PUT
+  or PATCH route that dropped an undeclared top-level key now answers `400 unknown_fields`, in
+  existing projects too, once they regenerate (under "Changed" below). Set
+  `"api": { "unknownFields": "drop" }` to keep the old answer. Everything else new here is either
+  a fix to input no client should send or a setting a project has to turn on.
+- **C#: a `readOnly` property has a private setter.** Regenerating gives every `readOnly`
+  property a private setter, whatever its shape (under "Security" below), so hand code that
+  assigned one (`row.Role = ...`) no longer compiles. The value belongs to the server: set it
+  through a database default or EF Core (`db.Entry(row).Property(r => r.Role).CurrentValue`),
+  which writes private setters.
+- **Java and Kotlin: `<filters>` now narrow every generator.** The `codegen-spring` and
+  `codegen-kotlin` generators ignored a generator's `<filters>` and wrote every object; they now
+  honour them, as the `codegen-base` generators always did. A pom whose filters were inert
+  generates fewer files: remove the `<filters>` that no longer describe what you want.
+
+### Security
+
+- **Generated create routes wrote fields a client must never set, in Java, Kotlin, C# and
+  Python; the TypeScript update shape let a client re-key a row.** An external review of 1.2.0
+  found that the Python routes passed raw request input to the repository (fixed for Python in
+  1.2.1). An audit of the other ports found the same class of hole on create, in the plain and
+  the TPH per-subtype handlers:
+  - **Java** (`codegen-spring`): create forwarded a client-sent generated `id`, `readOnly` and
+    derived fields to `repository.create`, and in TPH also the discriminator and a sibling
+    subtype's columns to `createWithType`.
+  - **Kotlin** (`codegen-kotlin`): create wrote `readOnly` columns, and TPH create wrote every
+    column of the union table, a sibling subtype's included.
+  - **C#** (`MetaObjects.Codegen`): create bound the request to the entity and added it as
+    sent, so a client-sent generated `id` was inserted, a POST to one subtype's route with
+    another subtype's `type` created a row of that other subtype, M:N navigation collections in
+    the body were inserted with the row, and a `readOnly` field other than a plain scalar (an
+    enum, array, value object or map, or any TPH subtype field) had a public setter. A `readOnly`
+    property now has a private setter on every shape, so System.Text.Json does not bind it, and
+    a `@required` `readOnly` field is neither demanded of the create body nor held to its
+    `[Required]` there, so such an entity stays creatable. A `readOnly` key or discriminator
+    gets no reset, because its private setter already keeps the body out.
+  - **Java and Kotlin**: a `@required` `readOnly` or derived column (a value object included)
+    is no longer demanded of the create body once the route drops it.
+  - **TypeScript** (`codegen-ts`): an ASSIGNED primary key stayed in `<Entity>UpdateSchema`, so
+    PATCH or PUT could change the row's key. A generated key was already refused.
+
+  Every port now drops these keys silently before the write, as the TypeScript create already
+  did: a server-generated key, a `readOnly` or derived field, and in TPH the discriminator (the
+  route's subtype is its only source) and every column the route's subtype does not declare. An
+  assigned key is still the caller's on create. No port answers them with a 400. A key the
+  entity does not declare is a separate case, now a project setting (`api.unknownFields`,
+  under "Changed" below). Java DTOs and Kotlin entity classes that are a
+  write route's request body (and the value objects nested in one) now carry
+  `@JsonIgnoreProperties(ignoreUnknown = true)`, so binding no longer depends on the host's
+  `ObjectMapper` (a plain one answered 400). The Python 1.2.1 fix is carried forward to this
+  line, and the Python TPH create and update now drop a body's discriminator instead of answering
+  400 for a foreign one.
+
+  Gated by three shared api-contract scenarios: `input-server-owned-dropped` (generated and
+  reference lanes in every port), and `tph/tph-input-server-owned-dropped` and
+  `tph/tph-input-foreign-discriminator-dropped`, which send a client `id`, a foreign
+  discriminator, a sibling subtype's column and a `writeOnce` change. The TPH scenarios run in
+  the generated and reference lanes in TypeScript and C#, and in the generated lane only in
+  Python, Java and Kotlin, which have no TPH reference server. A `readOnly` `role` column in the
+  `secret-fields` corpus covers the rest. Scenarios gain `absent: [keys]` (the key is missing)
+  and `unset: [keys]` (missing or null) assertions. These are the 1.2.2 fixes from the `1.2.x`
+  line, carried forward. Adopters with ejected (owned) generators need the same change made by
+  hand.
+
+
 ## [1.2.4] — 2026-11-15
+
+_PENDING: version to be chosen by the captain; metamodel 1.3 is claimed by both sides (this section is the release line's, merged beside main's 1.3.0)._
+
 
 _In preparation; cut as release candidates `1.2.4-rc.N` (npm and NuGet `1.2.4-rc.N`, Maven Central
 `8.2.4-rc.N`). It carries everything on the release line since 1.2.0 that 1.2.2 and 1.2.3 did not ship;
@@ -33,6 +106,347 @@ the kind-1 rows that used to be carved out. A port that reports `1.2` does not k
 vocabulary; upgrade every port together.
 
 ### Added
+
+- **A code writer for generators: `CodeWriter` and `TsWriter` in `@metaobjectsdev/codegen-ts`**
+  (ADR-0063). A generator says what a line contains, and the writer decides where it sits. It
+  builds the file in memory with no formatter. It collects imports while the body is written,
+  treats blank lines as requests that collapse, and prints a list on one line when the line fits
+  120 columns, otherwise one item per line. `TsWriter` accepts ts-poet `Code` fragments and
+  collects their `imp()` imports, so a generator can move to it one function at a time. The
+  writer is exported from the package root and from `@metaobjectsdev/codegen-ts/engine`, so an
+  owned (ejected) generator can use it too. Both classes are built to be extended: every
+  method is public or protected, so a subclass can override one step, such as import order,
+  and keep the rest. ADR-0063 also rules that reference generators will be extended the same
+  way, one overridable method per piece of output, without promising those methods are stable
+  between minor versions. The contract is `spec/code-writer.md`, pinned by
+  the new `fixtures/writer-conformance/` corpus. No shipped generator uses the writer yet, so
+  generated output does not change in this release.
+
+- **Select objects to regenerate in every port.** C# `dotnet meta gen --entities A,B` (and
+  `verify --codegen --entities`) and, for Java and Kotlin, `mvn metaobjects:generate
+  -Dmeta.entities=A,B` regenerate only the named objects' files, like TypeScript's
+  `meta gen A B` and Python's `--entities`. Names are short object names. A file built from the
+  whole model (C#'s `AppDbContext`, the Java and Kotlin validator registry, report export writer
+  and binding provider) still renders from the whole model, a narrowed run neither deletes nor
+  forgets the other objects' files, and a blank selection or a name that matches no object is
+  refused (exit 2 in C#, a failed goal in Maven).
+- **`meta gen <Name>...` refuses a name that matches no object**, with exit 2 and nothing
+  written, as Python, C# and the Maven plugin do. It used to drop the unknown name silently
+  when another name matched, and only warn when none did.
+- **The Java loader's initialization timeout is a setting.** It stays 30 seconds by default. Raise
+  it with `-Dmeta.loaderTimeoutMs` (or `<loaderTimeoutMs>`) on the Maven plugin,
+  `LoaderOptions.setInitTimeoutMs`, the loader argument `initTimeoutMs`, or the system property
+  `metaobjects.loader.initTimeoutMs`; the timeout error names them.
+- **A page size for generated list routes: `api.pagination`, in every port.** An external review
+  of 1.2.0 found that list endpoints had no hard cap: the TypeScript and C# routes returned the
+  whole table when `limit` was omitted, and `?limit=100000` was accepted in every port. The new
+  `api.pagination` block in `.metaobjects/config.json` gives a generated entity or projection list a
+  default page and refuses a larger `limit`; `meta init` writes it for a new project. **A project
+  without the setting behaves exactly as before**, because a cap added on upgrade would silently
+  truncate a client that reads a whole list; each port's verify advises (`unbounded-list-pages`,
+  never a failure). A negative `limit`, and in C# a `limit` or `offset` that is not a whole number,
+  now answers the malformed-bound 400 rather than reaching the store, and `limit=0` is a page of
+  zero rows in every port (the C# route served the default page). Every port's generated list
+  routes read it (TypeScript through a new `pagination` option on the runtime mounts); an owned
+  (ejected) routes copy picks it up when it is re-ejected. Gated in the generated lane of every port
+  by the new `fixtures/api-contract-conformance/api-settings/` sub-corpus, whose
+  `config-blocks.json` every port's config reader runs. The answers, limits and exceptions are in
+  [docs/features/api-contract.md](docs/features/api-contract.md#sort--pagination). A config key, not
+  vocabulary: `metamodelVersion` does not move.
+
+- **Report measures over Money and other value-object members (FR-044 R12).** A dimension's or
+  measure's `@of` may name `Entity.field.member`, a member of a value object stored with
+  `@storage: flattened` (`Payment.amount.amount`, `Payment.amount.currency`); the report reads
+  the member's own column. A `sum`, `avg`, `min` or `max` of a numeric member loads only when the
+  report lists a dimension over each non-numeric member of the same value object (its
+  currency), so amounts in different currencies are never combined; the rule follows the
+  measure into ratio and derived-measure operands. A member of a jsonb value object, an unknown
+  member and a deeper path are refused at load, and the Cube exporter refuses member paths.
+  Loader rules and report-shape derivation in TypeScript, C#, Java and Python.
+- **`measure.derived`: arithmetic between measures (FR-044 R13).** `@expr` is FR-037 R5's
+  first arithmetic wave: `add`, `subtract`, `multiply` and `divide` over two operands, where an
+  operand is `{ "field": <name> }` (a numeric `measure.aggregate` or `measure.ratio` of the
+  entity, or a numeric attribute dimension the report lists) or `{ "value": <number> }`. It
+  expresses a ratio scaled to a percent and a measure over a grouped quantity (utilization =
+  billable hours × 100 ÷ (weekly capacity × 52 ÷ 12); budget burn = cost ÷ budget). The result
+  is a nullable `decimal`; `divide` reads null on a zero divisor. `meta migrate` lowers it on
+  Postgres, SQLite, MySQL and D1, every port reads and serves it, and the Cube exporter writes
+  one over measures as a `number` member (one reading a dimension is refused). Loader rule M11,
+  report rule R13 and a conformance fixture per refusal, in every loader port.
+
+- **`verify.handEdits`: a hand-edited generated file can fail `meta verify`.** `meta verify
+  --codegen` already listed each generated file carrying a hand edit, but always exited 0, so a
+  rule changed by hand in generated code (a `max(32)` made `max(64)`) passed the gate. Set
+  `"verify": { "handEdits": "fail" }` in `.metaobjects/config.json` and it exits 1; `"notice"`
+  keeps the report and exit 0. `--allow-hand-edits` relaxes `fail` for one run, and the existing
+  `--forbid-hand-edits` still forces a failure for one run (passing both is refused). The report
+  names each file, how to see the edit, how to drop it (or move a changed rule into the
+  metadata), and how to keep it. A project without the key behaves exactly as before. The C#,
+  Java, Kotlin and Python gates compare generated files byte for byte and already fail on any
+  edit; the docs now say so.
+- **`migrate.foreignKeyIndexes`: an index on every foreign key, without the `efcore` renames.**
+  With it on, `meta migrate` gives each enforced foreign key that the primary key, a unique key or
+  an index does not already lead with a `<table>_<columns>_idx` index. The Drizzle and Prisma
+  generators, the C# `AppDbContext` and the Kotlin Exposed tables declare the same indexes under
+  the same names; Java and Python map no indexes. It adds nothing under the `efcore` conventions
+  (which already index every foreign key) or on MySQL. A project without the key is unchanged and
+  keeps the unindexed-foreign-key advisory, which now names the option. Gated by two new
+  persistence-corpus migration scenarios (adding the indexes to an existing schema, and the
+  converged no-op). Java's config reader now carries the `migrate` block's
+  `foreignKeyIndexes`, `conventions` and `dialect` on the loaded root (`MigrateSettings`).
+
+- **`meta init --skills-dir <dir>` and `meta agent-docs --skills-dir <dir>`: install the skills
+  for any coding assistant.** The `metaobjects-*` skills went only to `.claude/skills/`, which
+  Claude Code reads. `--skills-dir .agents/skills` (or any project-relative directory) puts them
+  where another assistant looks; the choice is recorded in `.metaobjects/.agent-context.json`,
+  so a later `--refresh-docs` keeps it, and moving the directory prunes the untouched copies at
+  the old one along with the skill directories that leaves empty (the old skills directory
+  itself stays, and so does any skill directory still holding a file of yours). The always-on file names the directory, so an assistant that does not load
+  skills opens `<dir>/<skill>/SKILL.md` by path. A directory outside the project is refused.
+- **[What differs by language](docs/features/language-differences.md).** One page lists what
+  the same model does differently per port: that schema migrations and database checks need
+  the Node `meta` tool in every language, the list default and cap, the validation error body,
+  filter extras, field names in code, generated data access and hand-edit handling. Every port
+  page now says up front that migrations and `verify --db` run in Node, and the README's
+  getting-started path says it for Java, Kotlin, C# and Python teams.
+- **The shared render-drift case now holds the email helper too.** 1.3.0 made a template
+  variable that is not on the payload raise `ERR_VAR_NOT_ON_PAYLOAD` at render time, and
+  `fixtures/template-output-render-conformance/runtime-drift/` held it for the `@kind: document`
+  helper and the `template.prompt` helper (the TypeScript `promptRender()` handle and the Python
+  helper over a Mustache body among them). A re-audit of every generated render path in the five
+  ports found none that still renders an unknown variable as empty, but the `@kind: email`
+  helper was not in the case. It now is: `runtime-drift/email-subject/`, `email-html/` and
+  `email-text/` each drift one part of a `WelcomeEmail`, and every port's runner checks that
+  the subject, the html body and the text body each raise. No generated code changes.
+
+### Changed
+
+- **Generation now skips when nothing changed, in every port (ADR-0064).** `meta gen`,
+  `metaobjects gen`, `dotnet meta gen` and `mvn metaobjects:generate` build a key from the loaded
+  model (each root node in canonical effective form), the generators' identity (built engine code,
+  config, owned generators, templates, declared extra inputs, project config) and the output-changing
+  flags, before anything renders. When it matches the last successful run and
+  every generated file still holds the bytes that run left, nothing renders and nothing is
+  written. The key is kept, uncommitted, in `.metaobjects/.gen-state/.fingerprint-<port>.json`. A
+  run that names entities forces exactly those: it never skips, and it neither writes nor
+  satisfies the full-run key. `--force`
+  (`-Dmetaobjects.force=true` on Maven) renders everything, and a generator that cannot declare
+  what it reads opts out with `cache: false` or its port's equivalent. Locally, `verify --codegen`
+  may answer "no drift" from the same key (`--full` renders; CI always renders), and compares in
+  memory, with no temp tree, whenever it renders. The hash manifest is written once per run in every
+  port, only when an entry changed; a file whose fresh bytes equal what is on disk is never
+  rewritten; TypeScript runs `git merge-file` only for a file edited by hand. A forward-port of
+  the 1.2.x change, with the skip ADR numbered ADR-0064 on this line.
+
+- **A write with a key the entity does not declare is refused by default: `api.unknownFields`.
+  Existing projects get `reject` when they regenerate.** Until now every port dropped an
+  undeclared body key silently, so a client that misspelled a field (`emial`) got a 200 and lost
+  the value without a word. A generated create, PUT or PATCH route now answers
+  `400 unknown_fields` before validation and writes nothing. To keep the old behaviour set
+  `"api": { "unknownFields": "drop" }` in `.metaobjects/config.json` and regenerate. A declared key
+  the client may not set is still dropped, not refused, so a client that sends back a row it read
+  keeps working. `meta init` writes `reject` for a new project. TypeScript passes the declared
+  field list to the runtime mounts as a new `knownFields` option (a mount given none keeps
+  dropping); Java and Kotlin read the raw body, so the answer does not depend on Jackson's
+  `FAIL_ON_UNKNOWN_PROPERTIES`, and the Java value-object records nested in a write route's body now
+  carry `@JsonIgnoreProperties(ignoreUnknown = true)` (they answered `400 invalid_type` before).
+  Pinned by `input-unknown-fields-rejected`, `tph/tph-unknown-fields-rejected` and
+  `jsonb/jsonb-nested-undeclared-key-dropped` (both lanes of every port) and
+  `api-settings/unknown-fields-dropped` (`drop`, generated lane). The rule, which keys count as
+  declared and how each port matches them:
+  [docs/features/api-contract.md](docs/features/api-contract.md#unknown-request-fields-apiunknownfields).
+  Upgrade notes:
+  [docs/features/migrations/unknown-fields-reject-by-default.md](docs/features/migrations/unknown-fields-reject-by-default.md).
+  A config key, not vocabulary: `metamodelVersion` does not move.
+
+- **A validation 400 lists every issue in every port.** The same model answered a failed create or
+  update differently by language: TypeScript listed each problem, while C#, Java, Kotlin and Python
+  returned a bare `{"error": "validation"}` (found by an external review of 1.2.0). Every port now
+  answers with an `issues` list holding every failure, in the shape
+  [docs/features/api-contract.md](docs/features/api-contract.md#a-validation-error-lists-every-issue)
+  defines. C# ships a new `ValidationIssues` runtime file (also copied by `dotnet meta eject routes`),
+  and its create route now reads the body itself so an unbindable body lists its issue rather than
+  answering an empty 400. Java ships `ValidationIssues` beside `PatchValidationException`, and a
+  patch binds every field before it throws. Kotlin emits `MetaValidationIssues.kt` with the
+  controllers. Python maps every Pydantic error in `constraint_errors`. The hand-rolled reference
+  servers list issues too, and two shared scenarios pin the list in both lanes
+  (`validation-lists-issues`, `tph/tph-validation-lists-issues`, with a new `issues` corpus
+  assertion). A client that read only `error` is unaffected. An owned (ejected) routes copy keeps
+  the bare answer until it is re-ejected.
+
+- **The always-on agent file works with any coding assistant, carries the REST conventions,
+  and is written once.** `.metaobjects/CLAUDE.md`, an identical copy of `.metaobjects/AGENTS.md`
+  that nothing imported, is no longer written; a refresh removes an untouched one and names a
+  hand-edited one. The text no longer tells the reader to use a root `CLAUDE.md` only, and
+  `--wire-root` on a project with neither root file now creates `AGENTS.md` as well as
+  `CLAUDE.md`, each with a plain pointer line beside the `@` import. A first init on a project
+  that has only a root `CLAUDE.md` creates `AGENTS.md` too (assistants other than Claude Code
+  read no `@` import out of `CLAUDE.md`); a refresh creates no root file and instead prints one
+  advisory line naming the missing `AGENTS.md`. A new "Calling the
+  generated REST API" block gives the filter form (`?filter[status][eq]=active`, never
+  `?status=active`) with its nine operators, sorting and paging (including each port's default
+  when `limit` is omitted), and the error bodies. To offset it, the Java and Kotlin generator
+  class lists, the TypeScript catalog pipeline and the prompt and report rules moved behind the
+  skills they already pointed to. Measured on the agent-context conformance stacks (C#,
+  Java + React, Java + Kotlin + React + TanStack, Python, TypeScript + React + TanStack), the
+  file an assistant loads each session is 5,580 / 6,045 / 6,705 / 5,585 / 6,572 bytes, from
+  4,978 / 5,767 / 6,731 / 4,983 / 6,207: the REST block adds more than the moved detail takes
+  out. The always-on bytes written to disk fall by 44 to 50% because the copy is gone. The C#,
+  Java and Python staleness notices no longer name `.claude/skills`.
+- **Breaking, TypeScript: a value object is never renamed; one claim registry refuses real
+  collisions** (amending ADR-0044 and ADR-0056). `acme::alpha::Note` is declared as `Note` in its
+  own module; the `AcmeAlphaNote` derived name, `assignEmittedNames` and its
+  `ERR_PAYLOAD_NAME_COLLISION` backstop (`naming/collision-names.ts`) are removed — the
+  entity-tier `ERR_COLLECTION_NAME_COLLISION` pre-pass (`naming/collection-name-collision.ts`)
+  stays, refusing two objects that claim one collection name —
+  and `RenderContext.valueObjectNames` and `RenderContext.packageOf` are `@deprecated` identity
+  shims for one release. Each generator claims what it emits through
+  `ctx.claim(scope, name, claimant, remedy)`: `entityFile()` and `queriesFile()` a module's type
+  and collection names in its directory, `barrel()` its re-exports, the routes generators their
+  REST segments per entry. A second claimant fails with `ERR_NAME_COLLISION` (a codegen-time code
+  declared by `@metaobjectsdev/codegen-ts`), naming both. A file that meets two same-named value
+  objects binds each under a package-qualified local alias (`import type { Note as AcmeAlphaNote }
+  from "../alpha/Note.js"`); the extract tier's mirrors and mappers are named by that alias
+  (`AcmeAlphaNoteExtracted`). `valueObjectModuleSpecifier` takes the value object's node.
+  **Upgrade note:** two same-named value objects in two packages under the flat layout (or behind
+  a barrel) now fail with the collision error; set `outputLayout: "package"` (and drop the barrel,
+  or rename one), and update imports of the old `AcmeAlphaNote` names. An owned generator copy is
+  refreshed with `meta eject --list`.
+- **`meta init` writes stricter defaults for a new project.** The scaffolded
+  `.metaobjects/config.json` now carries `"verify": { "handEdits": "fail" }` and (except on
+  MySQL) `"migrate": { "foreignKeyIndexes": true }`, each as its own visible setting, beside the
+  `api` block. `dotnet meta init` and `metaobjects init` now write the same `migrate`, `verify`
+  and `api` settings, so a new project starts the same in every port. An existing config is left
+  as it is.
+- **Agent context routes report work to the reporting vocabulary.** The `meta init` agent guide
+  and the `metaobjects-authoring` skill now send grouped totals, dashboard numbers and read-only
+  report views to `object.report` (`references/declaring-reports.md`) before the `@sql` escape,
+  which they describe as the last resort for bodies the vocabulary cannot express.
+- **`@metaobjectsdev/cli` no longer installs the native Biome binary.** `codegen-ts-react`,
+  `codegen-ts-tanstack` and the source-only `codegen-ts-angular` declared `@biomejs/biome` as a
+  peer dependency, which npm installs automatically, so every CLI install carried the ~94 MB
+  `@biomejs/cli-<platform>` binary that nothing runs: codegen formats through the WebAssembly
+  build (`@biomejs/wasm-nodejs`). The peer is gone (it stays a devDependency for this repo's own
+  lint gate), and a fresh npm install of the CLI drops from 245 MB to 151 MB of `node_modules`.
+  `scripts/check-peer-ranges.ts` now fails a publishable package that requires `@biomejs/biome`
+  through `dependencies` or a non-optional peer.
+- **Release scripts: a patch can be cut from a `release/<major>.<minor>` maintenance branch**
+  (brought from `release/1.2`, where 1.2.2 shipped this way). `scripts/release.mjs` and
+  `scripts/finish-release.mjs` accept that branch as well as `main`. The version must be on the
+  branch's own line, every push goes to that branch, and the sync check compares against it.
+  `release.mjs` also refuses, before anything is published, a version older than the newest
+  release and a release candidate of a version that already shipped, because either would move
+  npm's `latest` backwards. A minor or major cut is now refused while the previous maintenance
+  branch holds a commit that is not on `main`; `docs/RELEASING.md` Step 0 gains the same check.
+- **`@metaobjectsdev/cli` no longer installs `dprint-node`.** The TypeScript generators printed
+  code with `ts-poet`, which loads `dprint-node` on import, and dprint-node ships all seven of
+  its platform binaries in one package (24 MB, of which a machine runs one). `codegen-ts` now
+  vendors the part of ts-poet the generators use (`src/poet.ts`, Apache-2.0, licence in
+  `LICENSE.ts-poet`) and runs the same dprint TypeScript plugin as WebAssembly
+  (`@dprint/typescript`, pinned to 0.87.1, the version dprint-node 1.0.8 compiles in, 5 MB) with
+  ts-poet's configuration, so generated code is byte-identical: every codegen golden and
+  conformance fixture is unchanged. `codegen-ts-react`, `codegen-ts-tanstack` and
+  `codegen-ts-angular` drop their `ts-poet` dependency and import the printer from
+  `@metaobjectsdev/codegen-ts/engine`, which an ejected template also uses. A bare `ts-poet`
+  import in an older owned generator is still pointed at that entry by `meta gen`, which
+  carries `code`, `imp`, `joinCode`, `Import` and the `Code` type; ts-poet's `def`, `literalOf`,
+  `arrayOf`, `asOneline`, `Import.fromMaybeString`, `saveFiles`, `conditionalOutput` and its
+  `toString` import options are not carried over, so an owned generator that imports one of them
+  no longer loads. A fresh npm
+  install of the CLI drops from 151 MB (134,641,989 bytes) to 133 MB (115,302,944 bytes) of
+  `node_modules`. `scripts/check-peer-ranges.ts` now also fails a publishable package that
+  requires `dprint-node`, `ts-poet` or any `@types/*` package through `dependencies`,
+  `optionalDependencies` or a non-optional peer; a type package a published `.d.ts` imports goes
+  in its `ALLOWED_TYPES_DEPS`
+  with the reason. No `@metaobjectsdev/*` package declares `@types/node`: the 3 MB copy in the
+  install comes through the libSQL driver (`@libsql/isomorphic-ws` → `@types/ws`), which is
+  unchanged here. This also repairs the standalone binary (`bun run build:binary`): `--compile`
+  cannot embed dprint-node's native `.node` file, so a binary built from 1.2.0 crashed with
+  `Cannot find module './dprint-node.linux-x64-gnu.node'` on every command that loads the
+  codegen engine, `meta migrate` and `meta verify --db` included. Those schema commands, the
+  binary's documented scope, now run; `meta gen` is still not supported inside the binary.
+- **Test databases stay off the drives.** Every Docker-backed database launcher in every port
+  (the TypeScript `integration-tests` Postgres, MySQL and Cube containers; the Python MySQL and
+  Postgres launchers; the C# MySQL and Postgres runners; the Java and Kotlin Testcontainers
+  classes; the services and sidecars in the integration-test and local-CI workflows and
+  `scripts/ci-local.sh`) mounts a 2 GiB tmpfs at the image's `VOLUME` path, and Postgres runs
+  with `fsync`, `synchronous_commit` and `full_page_writes` off. Each container is removed when
+  its run ends: by `--rm`, by Ryuk when a killed process never reaches its own cleanup, and by an
+  exit or SIGTERM handler that also removes anonymous volumes. The Stryker mutation gate for the
+  metadata package builds its sandbox under `$DEV_SCRATCH` (the system temp directory when unset)
+  and stops its test runners with it. Contributor steps are in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+### Deprecated
+
+- **C#: `ValueObjectNames.Names(root)`.** A value object is never renamed, so it now returns the
+  identity map (resolution key to PascalCase name) and is `[Obsolete]` for one release, matching
+  the TypeScript and Python shims. Use `ValueObjectNames.TypeName(obj, root)`.
+
+### Fixed
+
+- **The Java loader loads a large model.** Each child added to a node was checked against a
+  list of the keys already added, so a root with 1,160 objects took more than the 30-second
+  timeout to load and failed. The check is a set lookup now, and a reference resolves through
+  the per-type name index instead of a scan of the root. Twenty copies of the canonical
+  conformance model (1,160 objects) load in about 2 seconds of CPU, and `LargeModelLoadTest`
+  holds that to a budget. Java and Kotlin.
+- **`gen <Entity>` no longer shrinks the files rendered from the whole model.** Narrowing a run
+  to some entities (`meta gen Post`, Python `metaobjects gen --entities Post`) handed every
+  generator only the named entities, so a whole-model file (the TypeScript barrel and Cube
+  model, Python's shared enums module, duration codec and report writers, and the object index
+  Python's entity and route generators resolve relations through) was rendered from just them. A narrowed run now writes only the named entities' own files,
+  and every whole-model file it writes is byte-identical to a full run's. A generator sees the
+  whole model in `ctx.entities` and the narrowing as `ctx.selected`; `perEntity` (`per_entity`)
+  applies it. A Python target's declared `entities` still bounds that target's model. The C# and
+  Maven entity selection added in this release follows the same rule. Two consequences to expect: a narrowed run
+  checks the whole model as a full run does (a sourced object with no `dialect`, colliding
+  collection names), because the files it writes are rendered from it; and an owned generator
+  that writes one file per object by looping over `ctx.entities` itself, instead of through
+  `perEntity`, now sees every object, so it should set each file's `sourceNode` (the runner
+  then drops the unnamed objects' files) or apply `ctx.selected`.
+- **`gen` writes `.hashes.json` once per run, and not at all when nothing changed.** TypeScript,
+  Python and C# re-read and re-wrote the whole manifest after every generated file, so a run of
+  N files wrote it N times; they now hold it in memory for the run and write it once, as Java
+  already did. Python's `metaobjects gen` output changes, which matters to a script that parses it:
+  it now lists only the files it wrote, and its summary line counts the files it left as they
+  were (unchanged or skipped) separately instead of reporting them as written. A run that
+  fails still records the files it wrote before failing, and a failed manifest write then no
+  longer hides the error that stopped the run.
+- **`meta gen` loads the metadata once.** The unknown-attribute warning re-loaded the project
+  strictly on every run; it now reuses the generation load and parses strictly again only when
+  the lenient load reported an unknown bare key. `meta gen` also no longer imports a database
+  driver: the migration advice it prints reads `@metaobjectsdev/migrate-ts/offline`, a new
+  subpath with the schema builder and diff and none of the introspection or apply code.
+
+- **A projection view keeps the columns a reverse `@via` hop feeds.** An origin `@via` that walks
+  an `identity.reference` backwards (`Project.timeEntries`, #560) loaded, but `meta migrate` left
+  its `origin.aggregate` / `origin.first` columns out of `CREATE VIEW` without a word. The view
+  emitter now resolves the hop the way the loader does and joins from the holder of the
+  reference. Gated by a Postgres test that creates the view and reads it.
+- **`origin.aggregate` `sum`/`avg`/`min`/`max` over a value-object field is refused at load.**
+  `@of: Invoice.total` on a flattened Money field loaded and emitted `SUM(i.total)`, a column that
+  does not exist. Every port now refuses it with `ERR_INVALID_ORIGIN` and says to aggregate a
+  scalar field; gated by the `error-origin-aggregate-value-object` conformance fixture. Refusing,
+  rather than summing the flattened amount column, keeps a sum from adding amounts in different
+  currencies. `count` is unaffected.
+- **A long foreign-key index or constraint name no longer reappears on every `meta migrate`.**
+  `migrate.foreignKeyIndexes` named an index `<table>_<columns>_idx` with no length check, and
+  Postgres stores a name over 63 bytes cut to 63, so the diff (which compares names exactly)
+  proposed the index again on every run. On Postgres the name is now cut to the 63 bytes Postgres
+  stores (SQLite and D1 keep it whole), and the C# EF context and the Kotlin Exposed tables
+  declare the same cut name. The diff also matches a foreign-key constraint by its stored name,
+  so a derived `<table>_<column>_fk` over the limit is no longer proposed as a rename. A new
+  shared corpus, `fixtures/foreign-key-index-conformance/`, pins which foreign keys get an index
+  and its name, and the TypeScript, C# and Kotlin rules all pass it; two migration scenarios
+  prove a long name converges on Postgres. A declared `index.lookup` or `identity.secondary`
+  name, and a `@unique` field's derived `<table>_<column>_unique`, is created under the name
+  Postgres stores in the same way, so it no longer reappears on every run either. The Drizzle
+  tables, the EF context and the Exposed tables declare that cut name too; the shared corpus
+  pins it with a long `index.lookup` and `identity.secondary` (`declared.<dialect>.json`).
+- **`mvn metaobjects:verify` refuses the model `mvn metaobjects:generate` refuses.** Two metadata
+  packages that generate into one output directory (`ERR_NAME_COLLISION`) and a REST collection
+  claimed twice (`ERR_COLLECTION_NAME_COLLISION`) were checked by the generate goal only, so a
+  project could verify clean on a model generate would refuse. Java and Kotlin.
 
 - **The rc.21 view vocabulary: what a projection needs to replace a hand-written `@sql` view.**
   Every construct is closed and typed, never free SQL; the TypeScript view emitter lowers them on
@@ -220,6 +634,402 @@ vocabulary; upgrade every port together.
   (`ERR_BAD_ATTR_VALUE`) in every port. A declared CHECK name another constraint on the table
   already has, or one over 63 bytes on Postgres, is refused by `meta migrate` and `meta verify`
   (`ERR_CHECK_NAME`). See `docs/features/migrations-and-drift.md`, "CHECKs from validators".
+## [1.3.0] — 2026-11-11
+
+_npm `1.3.0` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+
+**`metamodelVersion` moves to `1.3`.** This release adds vocabulary (`field.duration`,
+`validator.exactlyOne`, `@constraintName`, `@condition`, `@maxLength` on `field.enum`,
+`@sequenceStart`, `@sequenceName`, `@flattenedColumnPrefix`, the `pascal` column rule,
+`@collectionName`, the `case` and `now` expression nodes, `@segment` on `origin.first` /
+`origin.aggregate`, and the `isDistinctFrom` / `isNotDistinctFrom` filter ops) and nothing that
+loaded before stops loading. The registry gains two
+fields on a type or attr entry, carried into the registry manifest: `implementedIn` (cross-port
+vocabulary only the named ports implement so far, e.g. the `view.*` controls, `["typescript"]`) and
+`ports` (vocabulary only the named ports ever act on, e.g. `@objectAdapter`, `["java", "kotlin"]`:
+the JVM runtime both share acts on it). The manifest's row
+set grows by the `implementedIn` rows that used to be carved out. A port that reports `1.2` does not
+know that vocabulary; upgrade every port together.
+
+### Upgrading from 1.2.0
+
+Each item below is described in full under Added, Changed or Fixed; this list is where to start.
+
+- **`validator.atLeastOne` takes no `@max`.** A model that carries `@max: 1` on an `atLeastOne`
+  fails to load; a rule meaning "exactly one of these fields" is the new `validator.exactlyOne`.
+- **C# durations on the wire.** A `field.duration` is written in each language's standard form
+  by default (`TimeSpan`'s `"01:30:00"` in C#). A project that wants ISO-8601 (`"PT1H30M"`) in
+  every port sets `"wire": { "durations": "iso" }` in `.metaobjects/config.json`.
+- **Breaking, C#: `ColumnNamingStrategy` and `TableNamingRule` are classes, not enums.** The
+  built-ins keep their names and `Pascal` is new; code that switched on them or used them as
+  constants needs the change described under Changed. The new `pascal` column rule is opt-in
+  (`"naming": { "columns": "pascal" }`).
+- **Deprecated: `tsOnly` in `meta types --format json`.** It is still emitted through 1.3.x,
+  derived from the new `implementedIn`, and is removed in 1.4. Read `implementedIn` instead.
+- **A template that names a variable not on its payload now raises at render time** instead of
+  rendering the variable as empty. Regenerate, and fix the name the error reports.
+- **C#, EF Core migrations.** The first `dotnet ef migrations add` after upgrading scaffolds the
+  indexes, comments and CHECK constraints the context now declares. A Postgres context gets
+  generated design-time services that scaffold a changed `@sequenceStart` safely; in EF's default
+  layout they need no code, and `dotnet meta gen` prints the one line to add when the migrations
+  live in another project. A self-hosted codegen runner sets `GenConfig.Dialect`. A nullable enum
+  with `@default` now starts at its default instead of NULL. See the C# upgrade notes under
+  Changed.
+- **A changed `@sequenceStart` moves an existing counter forward only.** It records the start and,
+  when the next id would be below `GREATEST(start, max(id) + 1)`, moves the counter there. It never
+  restarts and never moves a counter back.
+- **A value object is never renamed.** One that shared its short name with a value object in
+  another package used to be generated under a package-qualified name (`AcmeAlphaNote`); it now
+  keeps its own name everywhere. Two objects that would emit one name into one scope are refused
+  with `ERR_NAME_COLLISION`, naming both. Place them apart: `outputLayout: "package"` in
+  TypeScript and Python, `csharp.packageNamespaces` in C#. Java and Kotlin never renamed.
+- **`meta init` and `metaobjects init` scaffold the package output layout.** New projects get
+  `outputLayout: "package"` (one directory per metadata package); `dotnet meta init` writes the
+  matching C# keys. An existing project changes nothing: the engine default stays flat.
+- **`@dbSetName` is `@collectionName`.** The attr was never published under its first name, so
+  there is no alias: a model that set `@dbSetName` in a pre-release build renames it.
+- **`metamodelVersion` is `1.3`.** Upgrade every port together.
+
+### Added
+
+- **A working loop first in the agent context.** The always-on file `meta init` scaffolds
+  (`.metaobjects/AGENTS.md` and `CLAUDE.md`) now opens with the whole loop for the declared
+  stack, in order: configure and run the generators (one step per declared server, with the
+  import or class names to wire, plus the web client when one is declared), the schema
+  (`meta migrate --from-db` for the first migration, `apply-pending` at boot, and a later
+  change with `--rename-column`, `--rename-table` and `--allow`), requirements, and the verify
+  commands to run before calling work done. It shrinks from about 19 KB to about 5 KB. The
+  principles it carried move, word for word, to `metaobjects-codegen/references/principles.md`,
+  and the port-sync and upgrade paragraphs to `metaobjects-verify/references/upgrading.md`. It
+  no longer tells an agent to read a skill's `SKILL.md` by path, and says the loop needs no
+  skill. The skill trigger evals gain mid-task cases.
+- **`meta init --dialect sqlite|postgres|mysql|d1`.** Writes the codegen `dialect` and, for
+  sqlite, postgres and d1, `migrate.dialect`, and the next steps print that dialect's first
+  migration. `--dialect d1` is `--d1`; the two together with different dialects are refused.
+  MySQL is codegen only, as before: the next steps say `meta migrate` does not own its schema.
+- **`meta gen` names `requirementTests()` when nothing tests the requirements.** A model that
+  declares `requirement.*` nodes, with no `requirement-tests` generator wired, gets one advisory
+  line naming the import. The exit code is unchanged.
+
+- **Cross-port vocabulary that only some ports implement so far (`implementedIn`).** A registry
+  type or attr may name the ports that implement it so far (`"implementedIn": ["typescript"]` on
+  its `spec/metamodel` entry, carried into the registry manifest). It is still cross-port
+  vocabulary: every port registers it and loads it strictly, and a port that has not implemented
+  it ignores it. The 13 generic `view.*` controls, `view.textarea @rows` and the five `view.image`
+  attrs are `["typescript"]`; `object.* @object` is `["java"]`. They used to be carved out of the
+  manifest (`PRESENTATION_ONLY`, `NATIVE_BINDING`); both carve-outs are gone, and the registry
+  canonical grows by those rows. `meta types` marks them `[ts; pending elsewhere]` / `[java;
+  pending elsewhere]` (it used to say `[ts-only]`, "the cross-port contract does not carry it"; its
+  JSON change is under Changed), and the metamodel docs now cover the view controls.
+  `@objectAdapter` is port-scoped (`"ports": ["java", "kotlin"]`, below). C#, Java,
+  Kotlin and Python now register the `metaobjects-ui-web` attrs (`view.textarea @rows` and the
+  `view.image` attrs), and C# and Python register `@object` / `@objectAdapter`, so a model that
+  uses any of them loads strictly in every port. Gated by the conformance fixtures
+  `view-kind1-controls`, `object-kind1-jvm-binding-attrs` and
+  `error-kind1-view-unregistered-attr`, and by the registry canonical.
+- **Port-scoped vocabulary.** A registry attr may name the ports
+  that act on it (`"ports": ["java", "kotlin"]` on its `spec/metamodel` entry, carried into the registry
+  manifest). Every port registers and type-checks it, so a model that carries it loads under every
+  port's strict loader; a port not named does nothing with it. An attr the registry does not carry
+  still fails, and a wrong value type fails in every port (Java now refuses a list given to a scalar
+  string attr, as the other ports did). `meta types` marks such an attr `[java+kotlin]` (one port:
+  `[csharp-only]`) and its JSON carries `ports`. `@objectAdapter` is the one there is.
+- **`@collectionName`, and the `naming.collections` pluralizer.** An `object.entity`,
+  `object.projection` or `object.report` may name its collection in its own casing
+  (`"@collectionName": "CaseHistory"`); it need not be a grammatical plural. In every port it
+  names the REST collection segment, snake_cased with an acronym-aware split (`FAQs` serves
+  `/faqs`, shared by `fixtures/naming-conformance/collection-segments.json`, which every port
+  runs), and the api reference and report export follow it. In C#, TypeScript and Python it also
+  names the reverse finders (Java and Kotlin name a finder by its foreign-key field); in C# the
+  DbSet property (in place of the derived plural, which the api reference reads through it), and
+  in TypeScript the list function, the list hook and the Drizzle table variable. Two objects whose collection names meet are refused by name. A project that declares
+  neither the attr nor `naming.collections` keeps every generated name and URL. Absent, the project's
+  pluralizer derives the name: `"naming": { "collections": "standard" }` (the default) or `"none"`
+  in `.metaobjects/config.json`, or one the application registers (`registerPluralizer` in
+  TypeScript, `NamingStrategies.RegisterPluralizer` in C#, `NamingStrategies.registerPluralizer` in
+  Java, `register_pluralizer` in Python). Every port registers the attr and reads the key, and
+  refuses an unknown pluralizer when it reads the config.
+- **Reverse `@via` hops.** An origin's `@via` hop may walk an `identity.reference` backwards, from
+  the entity it targets to the entity holding it, named by the holder's collection name in lower
+  camel case (`Patient.consents` walks `Consent.patient`; a declared `"@collectionName":
+  "CaseHistory"` gives `Case.caseHistory`). The hop is to-many, so a passthrough across it is
+  refused and an aggregate over it is allowed, and two references that answer one name are refused
+  (`ERR_AMBIGUOUS_PATH`). A declared relationship or reference of the same name still wins. Every
+  port's loader implements it, gated by `origin-reverse-reference-hop`,
+  `origin-reverse-hop-collection-name` and `error-origin-reverse-hop-ambiguous`.
+- **Expressions and relative dates in views.** These load and validate in every port's loader,
+  each gated by shared conformance fixtures:
+  - a projection's and an `origin.first` / `origin.aggregate`'s `@filter` take a relative date
+    (`{ "now": "-P7D" }`), checked for its shape (`projection-filter-relative-now`,
+    `origin-filter-relative-now`); the fixtures `error-relative-date-origin-host` and
+    `error-relative-date-wrong-host`, which asserted the refusal, are removed;
+  - an `origin.computed` expression may use `now` and `case` (searched, or simple with an
+    `operand`), and a ref in it may name another of the projection's own fields (a passthrough,
+    an `origin.first` or another `origin.computed`, never itself or an aggregate) before a base
+    field (`origin-computed-case-over-joined`, `error-origin-computed-case-mixed-types`). A
+    simple `case` compares a literal `when` with its `operand`, so an enum or long operand maps
+    its codes to labels. A literal compared with a field, as a `when` against a field operand or
+    on either side of a comparison, must be of that field's kind and, for a `field.enum`, one of
+    its `@values`, the rule a validator `@condition` already follows (`ERR_INVALID_ORIGIN`,
+    `error-origin-computed-literal-not-enum-member`, `error-origin-computed-literal-wrong-kind`).
+    A `case`'s results and a `coalesce`'s arguments unify a whole-number
+    literal with any numeric field, a fractional literal only with a `field.double`, `field.float`
+    or `field.decimal` (refused beside a long, int or currency field,
+    `error-origin-computed-literal-fractional`), and a `now` with a date or timestamp
+    (`origin-computed-literal-unifies`);
+  - the loaders refuse what a view cannot lower: a `now` whose value is not an ISO-8601 duration
+    or whose `startOf` is not day, week or month (`error-origin-computed-now-bad-duration`); a
+    searched `case` whose `when` is not boolean (`error-origin-computed-case-non-boolean-when`);
+    computed fields that refer to each other in a cycle (`error-origin-computed-cycle`); and a
+    malformed relative date in a view host's `@filter` (`error-relative-date-view-host-malformed`),
+    or one on a field that is not a `field.date` or `field.timestamp`, where a projection's key
+    names its own field and an origin's names a field of its `@of` entity or `@via` terminal
+    (`error-relative-date-non-temporal-field`); and an expression node that carries a key its
+    kind does not take, such as a misspelled `else` on a `case` or a `field` node that also
+    carries `case` (`ERR_UNKNOWN_EXPR_NODE`, `error-origin-computed-case-unknown-key`,
+    `error-origin-computed-node-mixed-keys`);
+  - a validator `@condition` still refuses `case` and `now` (`ERR_BAD_ATTR_VALUE`,
+    `error-validator-condition-now`): it becomes a database CHECK, which can hold neither.
+- **Segments and correlated filters on origins.** An `origin.first` / `origin.aggregate` may scope
+  its related rows by a `@segment` declared on that entity (`ERR_INVALID_ORIGIN` otherwise), and
+  its `@filter` may compare a related column with a base-row field (`{ "eq": { "field":
+  "statusId" } }`, or the null-safe `isDistinctFrom` / `isNotDistinctFrom`, which take only such an
+  operand; `ERR_BAD_ATTR_FILTER` for an unknown base field or another op). Every port's loader
+  validates them (`origin-segment-scoped`, `origin-correlated-filter-and-segment`,
+  `error-origin-segment-unresolved`, `error-origin-correlated-operand-unknown`).
+- **Filter paths, flattened members and inherited filters in projections.** A projection's
+  `@filter` key may name a field of its base entity the view does not output, or a path of to-one
+  hops from the base. A projection that extends another is checked against the effective (ANDed)
+  filter of its chain. An origin's `@from` / `@of` may name a member of a flattened value object.
+  Every port's loader validates them, gated by eleven new shared fixtures. A report dimension's
+  required flag now treats an unenforced reference, or a hop onto a TPH subtype, as possibly
+  missing.
+- **A view the lowering cannot express is refused, not shortened.** The TypeScript view extractor
+  skipped any origin it could not lower, so a projection loaded clean and `meta migrate` created a
+  view missing a column its generated type declares. Each such shape now fails, naming the
+  projection and the field: an aggregate-derived entity field read where a row-level value is
+  needed, a computed reference cycle, a relative date on a field that is not temporal, and an
+  unknown origin or aggregate.
+- **The view vocabulary lowers to SQL.** `meta migrate` builds every port's views, and it now
+  writes the shapes the loaders accept: an entity's derived `origin.first` / `origin.computed`
+  field is inlined wherever a projection reaches it (a `@filter` key or path, a passthrough
+  `@from`, a field bound with `extends`); an origin's `@segment` is ANDed with its `@filter`;
+  a base-row operand compares in place, with `isDistinctFrom` / `isNotDistinctFrom` written as
+  `IS [NOT] DISTINCT FROM` on Postgres and `IS NOT` / `IS` on SQLite; relative dates lower in
+  projection and origin filters; searched and simple `case` and a `now` leaf lower in a computed
+  expression, and a computed field may read the projection's other fields.
+- **A reference over a flattened member reads the member's column.** A reference whose `@fields`
+  names a member of a flattened value object (`"address.countryId"`) now resolves to that member's
+  real column in the foreign key `meta migrate` emits, a view's join, a passthrough `@from` onto
+  the member, and the Drizzle key the reverse finder and `relations()` block read. Two references
+  onto one target now each read the join their own `@via` walked, rather than the first join to
+  that entity.
+- **One wording for a to-many passthrough, in every port.** The refusal of a passthrough across a
+  reverse `@via` hop names the hop as the path wrote it and the reference it walks
+  (`@via hop "consents" is to-many (reverse hop over identity.reference "patient")`), and Java's and
+  Python's wording of the refusal now matches the other ports'. The fixtures
+  `error-origin-passthrough-reverse-hop` (new) and `error-origin-passthrough-to-many` pin the
+  message.
+
+- **An int-backed enum can be an array.** `@intValueMap` together with `isArray: true` (the
+  map on the field, or inherited from a shared enum) now loads in every port instead of
+  failing with `ERR_ENUM_INT_VALUE_MAP_ARRAY`, which is removed. Each element is stored as its
+  declared integer and read back as its member: `integer[]` on Postgres, and a JSON array of
+  numbers on SQLite, D1 and MySQL. A stored integer that maps to no member fails the read, as
+  it does for a scalar. The refusal had a cost beyond arrays: the map is read through
+  `extends`, so one map on a shared enum blocked every scalar column that used it whenever any
+  array field shared the enum too. Per port:
+  - TypeScript: ObjectManager and the generated Drizzle columns map elements on every engine
+    (Postgres through the element codec under `.array()`, SQLite and MySQL through a whole-array
+    JSON codec). An unmapped member throws on write, because the array column has no `CHECK`
+    to reject it. `meta migrate` already produced `integer[]`.
+  - C#: the generated array conversion now compiles (it wraps the pair in a `ValueConverter`),
+    the `UnmappedEnumValue` helper is emitted when a flattened value object's array member is
+    the only int-backed enum, projection and report-row enum arrays get the element converter
+    (they read stored ints as ordinals before), and a non-required int-backed enum array is
+    nullable.
+  - Python: ObjectManager maps elements on write, read and filter operands on Postgres. Its
+    SQLite and MySQL dialects store no primitive array, so the new scenario is deferred there.
+  - Java: OMDB stores no enum array on any engine, so its codec refuses an int-backed one on
+    write and read instead of writing symbols. Kotlin's Exposed table generator emits a scalar
+    column for an enum array, so generated code for an int-backed enum array does not compile
+    yet (see `KNOWN_GAPS.md`). Both defer the new scenario.
+  Gated by the positive conformance fixtures `enum-int-backed-array` and
+  `enum-int-backed-array-inherited`, and the persistence scenario `roundtrip-int-enum-array`.
+
+- **A shared model can carry its requirements, and a consumer can inherit them (FR-023).** The
+  publisher's `shared-model` generator takes `requirements: true` (TypeScript `sharedModelFile`,
+  the Java/Kotlin generator arg `requirements`, C# `SharedModelGenerator.Requirements`; default
+  off) and then publishes the selected `requirement.*` nodes beside the model they describe; a
+  requirement claiming a node outside the selection is refused at publish. `template.*` is never
+  published. On the consumer side, `requirements.inherit` in `.metaobjects/config.json` names the
+  dependency packages whose requirements join the project's ledger, by the same explicit-include
+  rule as `scope.include` (`**` names nothing). A dependency's requirement that is not inherited
+  still loads, so an overlay of it resolves, but the requirement gate, its summary and lint, the
+  `requirement-tests` generators and the requirements pages leave it out; `requirementTestIdentities`
+  (TypeScript) and `requirement_test_identities` (Python) take the collection's ledger predicate
+  as `inLedger` / `in_ledger`, as the generator does. An imported requirement never switches object
+  coverage on, inherited or not, as a library's never does. Every port reads the key (TypeScript,
+  Python, Java, Kotlin through Java, C#). A consumer on an older toolchain treats a published
+  requirement as its own, so upgrade consumers before publishing with `requirements: true`. See
+  `docs/features/metadata-dependencies.md`, "Inheriting a dependency's requirements".
+
+- **`maven` and `nuget` dependency transports (FR-023).** `meta deps sync` and `meta deps check` can
+  now read a shared model out of a published package that is already in the local cache, so a JVM or
+  .NET consumer no longer needs the publisher's directory on disk. `{ "name": "x", "maven":
+  "com.acme:model", "version": "1.0.0" }` reads the jar in the local Maven repository (honouring
+  `$MAVEN_REPO_LOCAL`, `-Dmaven.repo.local`, `settings.xml`'s `<localRepository>`, then
+  `~/.m2/repository`); `{ "name": "x", "nuget": "Acme.Model", "version": "1.0.0" }` reads the package
+  in the NuGet global packages folder (`$NUGET_PACKAGES`, else `~/.nuget/packages`). Both read the
+  manifest and artifact from the package's `metaobjects/` directory (`dir` changes it), write the same
+  snapshot and lock entry a `path` sync writes, and refuse a package that is not cached with the
+  coordinates and the command that fetches it (`mvn dependency:get`, `dotnet restore`); nothing is
+  downloaded. The config and lock readers in Java, Kotlin, Python and C# accept the new keys, and
+  their `check` reports such a dependency `unresolved` and names the Node `meta deps check`.
+  `dependency-conformance` gains 2 resolution cases and 18 transport cases.
+- **Java, Kotlin and C#: publish a shared model (FR-023).** A `shared-model` generator in every one
+  of the three ports writes the artifact `<name>.metaobjects.json` and the manifest
+  `metaobjects.pkg.json`, byte-identical to the TypeScript `sharedModelFile()` and gated by
+  `fixtures/shared-model-conformance/` (the engine is `SharedModel` in the Java `metadata` module
+  and `MetaObjects.Config.SharedModel` in C#). Java and Kotlin run it through `metaobjects:generate`
+  (version from the project's `<version>`) and eject it with `mvn metaobjects:eject`; C# declares
+  `SharedModelGenerator` in `codegen/Generators.cs` (version from `<Version>`) and ejects it with
+  `dotnet meta eject shared-model`. `generator-registry-conformance` now lists `java`, `kotlin` and
+  `csharp` under `shared-model`. The Node `meta deps sync` remains the only writer of the lock and
+  the snapshot.
+- **Java and Kotlin: a Spring app loads a shared model's committed snapshot at runtime, and
+  `metaobjects:verify` checks dependency drift.** `metaobjects:generate` now ships
+  `.metaobjects/deps.lock.json` and `.metaobjects/deps/**` as resources (target path `.metaobjects`)
+  when the project has a lock. When `classpath:.metaobjects/deps.lock.json` exists, the Spring
+  application loader loads each snapshot before `metaobjects.metadata-sources`, verified as the build
+  does (`ERR_DEPENDENCY_SNAPSHOT_STALE`, `ERR_DEPENDENCY_PACKAGE_NOT_OWNED`), so an entity that
+  `extends` an imported node boots; an imported node stays load-only. With no lock and nothing
+  declared, nothing changes. `mvn metaobjects:verify -Dmeta.verify.mode=deps` re-resolves each
+  declared `path` dependency, hashes its artifact against the lock and fails with
+  `ERR_DEPENDENCY_UPSTREAM_DRIFT` when it is `drifted` or `unresolved`, passing the shared
+  `expectCheck` corpus arm; it is opt-in and not part of the default gate set. New public API:
+  `Dependencies.check`, `Dependencies.SnapshotReader`, `DependencySet.ofSnapshot` and a
+  `MetaDataLoader.fromUris` overload that takes a `DependencySet`. See `docs/features/metadata-dependencies.md`.
+
+- **Python and C# check a shared model against its publisher (FR-023 Phase 2).** `metaobjects deps
+  check`, `metaobjects verify --deps` (Python) and `dotnet meta verify --deps` (C#) re-resolve each
+  declared dependency's `path`, read the publisher's `metaobjects.pkg.json`, hash the artifact and
+  compare with `deps.lock.json`, with the same three states as `meta deps check` (`current`,
+  `drifted`, `unresolved`) and the same `ERR_DEPENDENCY_UPSTREAM_DRIFT` exit for anything else.
+  Both run the 11 `expectCheck` cases of `fixtures/dependency-conformance/`. The check writes
+  nothing, is never part of a bare `verify`, and resolves the `path` transport only: an `npm` or
+  `python` dependency reports `unresolved` and names the Node `meta deps check`. In C# it runs
+  before the metadata loads, so a dependency declared but not yet synced is reported `unresolved`
+  first (the check exits 1); the load that follows still refuses the missing or stale snapshot with
+  `ERR_DEPENDENCY_SNAPSHOT_STALE` and exit 2. The Node `meta deps sync` stays the only writer of the lock and the
+  snapshot. See [docs/features/metadata-dependencies.md](docs/features/metadata-dependencies.md).
+
+- **A model explorer site, built by `docsSiteFile()`.** The docs site now shows what the
+  software does and how the model is designed: a main page with count tiles and the feature and
+  quality cards with their roll-ups, a model map with slices (package, requirement subtree,
+  prompt) and colour-by (kind, API, claims, capability, status), a page per object, projection,
+  report, prompt and requirement with a one-hop mini-map, the traceability matrix, a trace from a
+  requirement to the files generated from it, the API index and a gaps page. Every page is drawn
+  from `explorer.json`, which the generator builds in the same run from the loaded model, the
+  requirement gate's ledger, the files the run wrote and the routes it mounts; it runs after the
+  other generators wherever it is listed. Declared status is a filled chip with its glyph, gate
+  verdicts are outlines, roll-ups are bars, and no colour reports a test result. Pages are marked
+  for Pagefind, work at phone width, depend on the model alone (so `meta verify --codegen` holds
+  them) and are link-checked. The graphs load Cytoscape.js from `assetBase`. `meta eject
+  docs-site` now copies the explorer's `explorer-*.mustache` templates and `explorer.css` /
+  `explorer.js` beside the classic theme. `buildExplorer` takes an optional `routes` input, and
+  nodes carry their declaration `order`. Each `requirements.rows` entry in `meta verify
+  --format json` now carries `node`: the entity's resolution key on a
+  `WARN_REQUIREMENT_OBJECT_UNCLAIMED` row, `""` on every other row, and each finding in a
+  `requirementLedger` row carries its `message`. See `docs/features/explorer-site.md`.
+
+- **Generated record models enforce the cross-field validators in every port.**
+  `validator.comparison`, `validator.requiredWhen`, `validator.presentIff`,
+  `validator.atLeastOne` and the new `validator.exactlyOne` used to render only as DB `CHECK`
+  constraints, so a store with no `CHECK` support (a graph or document database) enforced none of
+  them and the application had to repeat the rules in its writer. The full create/insert model now enforces them with the language's native
+  mechanism: a Zod refinement on the insert schema (TypeScript), a class-level Bean Validation
+  constraint on the create DTO (Java, Kotlin), `IValidatableObject` (C#) and a Pydantic
+  `model_validator` (Python). Semantics mirror the `CHECK` derivation: null-safe, `comparison` passes
+  when either side is null, `@equals` is read per the gating field's subtype, and a rule with a
+  `@condition` is checked only when the condition is true (false or null lets the record through, as
+  the `CHECK`'s `NOT (condition) OR (rule)` does). PATCH and
+  partial-update models are unchanged (a partial body cannot see the merged row, so the database
+  `CHECK` remains the enforcement there), and `CHECK` emission is unchanged. A record that violates a
+  declared rule is now rejected at the model where it used to reach the database. Gated by
+  `fixtures/validation-conformance/cross-field-cases.json` in all five ports.
+
+- **Two providers can no longer claim one attribute name on a node type.** The registry now
+  records which provider registered each attribute and refuses a second provider's claim at
+  composition, in all five ports (TypeScript, Python, C#, Java, Kotlin). A repeat on the same
+  `(type, subType)` keeps `ERR_PROVIDER_ATTR_CONFLICT` (its message now names the owner); a name
+  another provider already holds on the shared root or a descendant subtype is the new
+  `ERR_PROVIDER_ATTR_SHADOW`. The refusal names both providers and the attribute, whichever
+  registers first, and leaves nothing in the registry. The same provider repeating its own name,
+  sibling subtypes sharing a name, and registration outside a provider all stay legal. The shipped
+  core providers have no such collision, so existing projects see no change. `meta types --detail`
+  prints the registering provider beside each attribute, and its JSON carries a `provider` field.
+  A common attribute is accepted on every node type, so it counts as a claim on every slot: a
+  second provider registering a common attribute name another provider holds, as a common
+  attribute or on any type, and a provider declaring a per-type attribute whose name another
+  provider registered as common, are both `ERR_PROVIDER_ATTR_CONFLICT`, in either order (two
+  common registrations used to be first-wins). The registry records each common attribute's
+  provider. Java's core providers no longer declare a per-type `@description` beside the
+  documentation provider's common one (same type, same meaning); `@description` is still accepted
+  on every node. This is how per-paradigm physical-name words (`@column`, `@field`) stay safe as
+  providers multiply; no wire-name attribute is added. See ADR-0062 and
+  `docs/features/extending-with-providers.md`. New conformance fixtures: `attr-shadow-inherited`,
+  `attr-shadow-descendant`, `attr-shadow-extend`, `common-attr-conflict`,
+  `common-attr-per-type-after`, `common-attr-per-type-before` and the `attr-ownership/` sub-corpus. Fixes #527.
+
+- **`field.duration`: a fixed-length span of time, in every port.** `TimeSpan` in C#,
+  `java.time.Duration` in Java and Kotlin, `timedelta` in Python, and a string in TypeScript;
+  a Postgres `interval` column, and a 64-bit integer of microseconds on SQLite, D1 and MySQL, so
+  sorting and range filters follow the span on every database. On the wire each port writes its own
+  language's standard form by default; `"wire": { "durations": "iso" }` makes every port write one
+  canonical ISO-8601 form (`PT1H30M`, `PT26H`, `-PT1M30S`, `PT0S`) at its own precision: as many
+  fractional digits as its duration type holds (6 in TypeScript and Python, 7 in C#, 9 in Java and
+  Kotlin). The database keeps microseconds, so a C#, Java or Kotlin server can answer a POST with
+  more digits than it stored; read the row back for the stored value. A week is 7 days and a day 24
+  hours; years and months are refused. Postgres does not accept a
+  signed ISO-8601 duration as input, so a value bound as text, and a declared `@default`, use
+  its own `HH:MM:SS` spelling, which it returns unchanged. Filters: every numeric operator.
+  Shared vectors in `fixtures/duration-wire/`; see `docs/features/field-types.md`. Each port is
+  limited only by its own duration type and each database by its own column.
+  - **`wire.durations`: `"native"` (default) or `"iso"`**, beside `decimals` and `nullMembers` in
+    `.metaobjects/config.json` (ADR-0019 Amendment 2). `native` is the language's own serializer,
+    both ways: System.Text.Json's `TimeSpan` form in C# (`"01:30:00"`), `Duration.toString()` in
+    Java and Kotlin, Pydantic's `timedelta` form in Python (which folds 24 hours into a day,
+    `"P1DT2H"`), and the canonical string in TypeScript. `iso` is the canonical form in every port.
+    A filter operand is ISO-8601 in both modes. **Upgrade note:** a C# project that wants
+    ISO-8601 durations on the wire (`"PT1H30M"`) sets `"wire": { "durations": "iso" }`; without
+    it, C# writes `TimeSpan`'s own form (`"01:30:00"`). The api-contract and persistence corpora pin `iso`,
+    and a new `api-contract-conformance/duration/` sub-corpus gates it through every port's
+    generated routes on Postgres and SQLite (and MySQL and D1 where a port has them).
+  - An owned (ejected) generator copy from before this release does not know `field.duration`:
+    re-eject it (`meta eject <name> --force`, or merge) before a model uses one. Models without a
+    duration are unaffected.
+  - A live Postgres `interval` column modelled as a `field.string`, the only way to model one
+    until now, is still read as text by `meta migrate` and `meta verify`, so it does not become
+    drift. Change it to `field.duration` to get the native column and type.
+- **CHECK names, conditions and "exactly one" from validators.** `@constraintName` on a validator
+  that generates a CHECK (`numeric`, `length`, `regex` and the cross-field validators), and on a
+  `field.enum` for its membership CHECK, names the CHECK `meta migrate`
+  generates, for a database whose CHECKs were named by hand. A cross-field validator
+  (`comparison`, `requiredWhen`, `presentIff`, `atLeastOne`, `exactlyOne`) takes `@condition`, an
+  expression over the entity's fields, so the rule holds only where it does. The new
+  `validator.exactlyOne` says exactly one of its `@fields` is present, and becomes a
+  `num_nonnulls(...) = 1` CHECK (a sum of presence tests on SQLite and D1). The generated create
+  model enforces both as well, in every port (see the record-model entry above): an `exactlyOne`
+  rule, and a conditional rule only where its condition is true. They are optional; a model without
+  them generates what it did. A `@condition` naming a field the entity does not have, one that is not
+  a boolean expression, one comparing a field with a literal of another kind (or with `null`), or an
+  `exactlyOne` naming fewer than two fields, is refused at load (`ERR_BAD_ATTR_VALUE`) in every port.
+  **Upgrade note:** `validator.atLeastOne` takes no `@max`; a rule meaning "exactly one of these
+  fields" is `validator.exactlyOne`, so a model carrying `@max: 1` on an `atLeastOne` fails to load
+  until the validator is renamed and the `@max` removed. A declared CHECK name another constraint on the table
+  already has, or one over 63 bytes on Postgres, is refused by `meta migrate` and `meta verify`
+  (`ERR_CHECK_NAME`). See `docs/features/migrations-and-drift.md`, "CHECKs from validators".
 - **Contract emitters: JSON Schema and OpenAPI generators (FR-022).** `jsonSchemaFile()`
   (`contract-schema`) writes JSON Schema 2020-12 for each object's read, create and update shapes, and
   a strict structured-output subset with `profile: "strict"`. `openApiFile()` (`openapi`) writes one
@@ -322,6 +1132,122 @@ vocabulary; upgrade every port together.
   only where the column type does not already enforce the rule. A validator with a declared
   `@constraintName` keeps its CHECK. A malformed `checks` block is refused when the config loads.
   See `docs/features/migrations-and-drift.md`, "CHECKs from validators".
+
+- **The data spine for a model explorer.** These changes are data only. No screen reads the new
+  data yet.
+  - `meta export --effective` writes the effective canonical JSON. Every field, child and attribute
+    a node inherits through `extends` is written onto that node.
+  - `meta verify --format json` adds `requirementLedger`, one row per requirement. A row carries its
+    digest, each `@implementedBy` link with the node the gate resolved it to, the findings against
+    it, and a `clean`, `warn` or `error` verdict. Text output is unchanged.
+  - `meta gen` records, in `.hashes.json`, the node each per-entity file was rendered from:
+    `{ "hash", "generatedBy", "sourceNode" }`. `EmittedFile.sourceNode` lets an owned generator set
+    it, and `perEntity` sets it automatically. A file rendered from the whole model keeps the plain
+    hash entry. The field is not called `generator`, because on the JVM that word claims ownership.
+  - `@metaobjectsdev/docs-site` exports `buildExplorer` and `serializeExplorer`. Together they build a
+    deterministic `explorer.json` from those three inputs. The file holds nodes, typed edges, the
+    requirement ledger, the generated files for each node, and derived slices for each package,
+    requirement subtree and prompt.
+
+  Gated by the new `fixtures/explorer-conformance/` corpus. See `docs/features/explorer-data.md`.
+  No metamodel vocabulary changes, and `metamodelVersion` does not move.
+- **`@flattenedColumnPrefix`: name a flattened value object's columns.** On a `field.object` with
+  `@storage: "flattened"`, it replaces the default prefix (the field's column and `_`) verbatim;
+  `""` keeps the members' own column names. It sits on the embedding field because one value
+  object embedded twice needs two prefixes. Flattened column names now come from core naming in
+  every port (`resolveFlattenedColumnName` in TypeScript, `PhysicalNaming.ResolveFlattenedColumnName`
+  in C#, `ColumnNaming.resolveFlattened` on the JVM, `resolve_flattened_column_name` in Python), and
+  `meta migrate`, the Prisma schema, the C# EF mapping and the Kotlin Exposed tables all use it. Set
+  on any other storage, it is refused at load (`ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE`).
+  See `docs/features/field-types.md`, "Embedded value objects".
+- **Names artifacts carry a flattened value object's member columns.** Each member of a
+  `@storage: "flattened"` value object is a column of the owning table, and the owner's names
+  artifact now has a constant for each, named by core naming: `fields.shipTo.members.street.column`
+  in TypeScript, `ShipToStreetColumn` in C#, `SHIP_TO_STREET_COLUMN` in Java and Kotlin,
+  `SHIPMENT_SHIP_TO_STREET_COLUMN` in Python, keyed `shipTo.street` in the column-by-field maps.
+  The generated EF Core and Exposed bindings spell these columns through the same core naming
+  function. A member constant
+  that would share its name with another constant is left out with a warning, so every model
+  that generated before still generates. In C# and Java, a names class no longer extends its
+  base's when that would make a base constant that is not a column of its own table reachable
+  through it (a flattened field redeclared as jsonb, say); it is emitted complete instead.
+- **`@sequenceStart` and `@sequenceName` on `identity.primary`.** An `@generation: increment`
+  key's sequence can be given its first value and its physical name, so a model can reproduce a
+  table that keeps a low id range for seeded rows, or adopt a sequence that kept its name across
+  a table rename. On Postgres `meta migrate` creates
+  `GENERATED BY DEFAULT AS IDENTITY (SEQUENCE NAME "…" START WITH n)`, reads the live sequence
+  back from the catalog, and alters one whose declared start or name differs in place: a new
+  start is recorded (`ALTER SEQUENCE … START WITH n`) and the counter moves forward only, to
+  `GREATEST(n, max(id) + 1)` when it sits below that, never back and never by `RESTART`, because
+  live rows hold the ids it handed out; a new name is a rename. The persistence migration scenarios
+  `sequence-start-change-moves-counter-forward` and `sequence-start-change-below-max-id` pin both
+  cases on live Postgres. The Drizzle schema template carries the start and name in the identity
+  column's options, the C# context and the Kotlin Exposed table carry them too, and Java and
+  Python, which write no DDL, leave schema to `meta migrate`. Only what
+  the model declares is compared, on the live, shadow and snapshot paths alike, so a model that
+  declares neither sees no new change and writes the same SQL and snapshots. Every port
+  registers both attributes and refuses either without `@generation: increment`
+  (`ERR_SEQUENCE_WITHOUT_INCREMENT`) and a start below 1 or past the key's range
+  (`ERR_SEQUENCE_START_OUT_OF_RANGE`); a name two tables declare is refused as a duplicate
+  database name. See `docs/features/migrations-and-drift.md`.
+- **A string-stored enum's column length: `@maxLength` on `field.enum`, and `enums.maxLength`.**
+  `@maxLength` on a `field.enum` makes its column `VARCHAR(n)`, and `"enums": { "maxLength": n }`
+  in `.metaobjects/config.json` gives every enum without one a default; with neither, the column
+  stays unbounded text, as before. The ports that size a column resolve the length through one
+  core function (`resolveEnumMaxLength` in TypeScript, `EnumLength.ResolveMaxLength` in C#,
+  `EnumLength.resolveMaxLength` on the JVM), and `meta migrate`, the Drizzle, Prisma, EF Core and
+  Exposed bindings use it. Python emits no column types, so it accepts the `enums` block and
+  sizes nothing. A member longer than the length is refused
+  (`ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH`): at load for `@maxLength`, when the column is sized for
+  the project default, which `meta migrate` and `meta verify` report by name. `@maxLength` beside
+  `@intValueMap` is refused at load (`ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP`). A new shared
+  corpus, `fixtures/enum-length-conformance/`, pins the resolution in those ports.
+- **A `pascal` column rule.** `"naming": { "columns": "pascal" }` in
+  `.metaobjects/config.json` upper-cases a field name's first letter and changes nothing else
+  (`createdAt` → `CreatedAt`, `requestURL` → `RequestURL`, `npi` → `Npi`, `address_line1` →
+  `Address_line1`), in every port. A schema whose columns are the field names with a capital
+  first letter (EF Core's default, for one) then needs `@column` only where the database spells
+  a name differently (`@column: "NPI"`). A column rule only; `literal` tables keep an object name
+  verbatim. See `docs/features/migrations/physical-naming.md`.
+- **Your own naming strategies, in every port (ADR-0058 Amendment 1).** The column and table
+  rules are now named strategies in a registry each port's application extends, and
+  `.metaobjects/config.json` selects a registered strategy by name exactly as it selects a
+  built-in: `"naming": { "columns": "pascal-acronyms" }`. A strategy is a function from a name
+  to a name and may wrap a built-in in one line. Register it with `namingStrategies` in
+  `metaobjects.config.ts` (every `meta` command registers it before reading the config) or
+  `registerColumnNamingStrategy` / `registerTableNamingRule` (TypeScript),
+  `NamingStrategies.RegisterColumns` / `RegisterTables` (C#),
+  `NamingStrategies.registerColumns` / `registerTables` (Java and Kotlin), or
+  `register_column_naming_strategy` / `register_table_naming_rule` (Python). Codegen, the
+  runtime, `verify` (its naming probe tries registered strategies after the built-ins),
+  `meta migrate` and the view and docs generators all resolve through the registry; `@column`
+  and `@table` still win. A name no registered strategy answers is refused when the config is
+  read, with one message in every port naming the setting, the name, the port and what is
+  registered. A built-in cannot be replaced. The shared naming corpus registers the same two
+  application strategies in every port and resolves the same names. Every port resolves a
+  strategy by name each time it applies, so a strategy registered or replaced after the config was
+  read is the one used. A Python provider module (`providers:` in `metaobjects.config.yaml`) that
+  registers a strategy when it is imported is in time for the stock `metaobjects` console script,
+  which imports providers before it reads the config. The C# type change and Java's new exception
+  are under Changed.
+- **Schema conventions for the database objects no code addresses.** `migrate.conventions` in
+  `.metaobjects/config.json` picks how `meta migrate` names primary-key and foreign-key
+  constraints, whether each foreign key gets an index, and whether a unique key an FK references
+  is a constraint or an index. `default` is what migrate has always emitted, so nothing changes
+  unless you set it. `efcore` reproduces EF Core's conventions (`PK_`, `FK_`, `IX_`, its
+  63-character `~` truncation, alternate keys as constraints), so a database built by EF Core
+  migrations and one built by `meta migrate` match. A project can supply its own conventions
+  object from `metaobjects.config.ts`; an unknown preset name, or an object missing a member, is
+  refused by name. The PK name is now introspected too, so a `baseline --from-db` snapshot of a
+  database whose primary keys are not named `<table>_pkey` records their names (not compared;
+  nothing churns). See `docs/features/migrations-and-drift.md`, "Schema conventions".
+- **`migrate.checks.skipRedundant`: leave out the CHECKs a column type already enforces.** Set in
+  `.metaobjects/config.json` (default `false`), `meta migrate` and `meta verify --db` leave out a
+  `validator.length` maximum the column's `VARCHAR(n)` enforces (not on SQLite or D1, which do not
+  enforce one) and a length minimum of 0 or less, for a database whose CHECKs were written by hand
+  only where the column type does not already enforce the rule. A validator with a declared
+  `@constraintName` keeps its CHECK. A malformed `checks` block is refused when the config loads.
+  See `docs/features/migrations-and-drift.md`, "CHECKs from validators".
 - **A recipe for checking an API change against the last release.** Emit the document at the last tag
   and at `HEAD`, then run oasdiff. See `docs/recipes/check-api-against-last-release.md`.
 - **A `pydantic` extra on the Python package.** `pip install "metaobjects[pydantic]"` installs
@@ -333,6 +1259,139 @@ vocabulary; upgrade every port together.
   The proof is a test file that `tsc` or pytest runs, so nothing reads your source and there is no
   new command. `examples/brownfield/` holds a runnable project for each, and the recipe ships in
   the `metaobjects-authoring` skill.
+- **A project's own provider class, wired in every port's config, loaded by every command.** A
+  project that declares its own vocabulary (a new subtype, or attributes on a core type) writes a
+  provider class in each language whose tools load the metadata, and names it once:
+  `defineConfig({ providers })` in TypeScript, `providers: ["module:symbol"]` in
+  `metaobjects.config.yaml` for Python, the new `csharp.providers: [{ "assembly", "type" }]` list
+  in `.metaobjects/config.json` for C#, and for Java and Kotlin the new Maven plugin
+  `<providers><provider>FQCN</provider></providers>` list, `MetaDataTypeProvider` beans composed by
+  the Spring auto-configured loader, `LoaderOptions.setProviders(...)`, and a `providers`
+  parameter on the `metadata-ktx` loader. C#, Java and Kotlin had no project-level way to do this
+  before; `META-INF/services` still does not add a provider to the JVM loader. Two new conformance
+  fixtures, `provider-custom-vocabulary-success` and
+  `provider-custom-vocabulary-missing-provider-fails`, hold every port to loading a project
+  subtype plus attributes with its provider and refusing the same file without it.
+  `docs/features/extending-with-providers.md` now has a worked example per language, and the
+  `metaobjects-authoring` skill teaches it, with a reference file per language.
+
+- **C#: one property-name resolver for every generator that names a field's property.**
+  `GenConfig.PropertyNaming` (`Func<MetaField, string>`, default PascalCase) is read by the
+  entity classes, the composite `[PrimaryKey(nameof(...))]`, every `AppDbContext` model line and
+  the reverse finders. `DbContextGenerator` gains the `protected virtual PropertyName` hook
+  `EntityGenerator` already had; both default to the resolver. Before, an adopter that overrode
+  `EntityGenerator.PropertyName` got a context that configured the PascalCased name, which did
+  not compile.
+- **C#: `EntityGenerator.EmitClassAttributes`,** a seam for class-level attributes of your own,
+  called for every class kind after the framework's attributes and before the declaration, so a
+  subclass no longer copies `EmitClassHeader` to add one.
+- **C#: `EntityGenerator.ScopesValueObjectClosure`** (default `false`). With it set, `Include`
+  also applies to the value objects reached through the model root (an emitted entity's object
+  fields, callable arguments, template payloads), so a value object `Include` rejects gets no
+  POCO even when an emitted type references it, and the adopter supplies the type. The default
+  still emits every reached value object, so the output compiles on its own.
+- **C#: `EntityGenerator.EmitsReverseFinders`** (default `true`) turns the ADR-0038
+  `<Entity>Queries.g.cs` finders off.
+
+- **C#: the DbContext and entity generators are overridable one line at a time.** An adopter that
+  needs one line of generated output different overrides one `protected virtual` hook, calls base and
+  adjusts what it returns, instead of rewriting the finished file or re-emitting a whole body. On
+  `DbContextGenerator`: `ContextBaseClass`, `ContextPreambleLines`, `ContextTrailerLines`,
+  `AlwaysEmitOnModelCreating`, `DbSetLine`, `DbColumnTypeConfig`, `ReferenceConfig`,
+  `DefaultValueConfig`, `EnumConversionCall` (now an instance method taking the `GenContext`),
+  `FieldTypeConfig`, `OwnedTypeConfig`, `TphSubtypeFieldConfig` and `EntityConfigTrailer` (new). On
+  `EntityGenerator`: `PropertyClrType` and `PropertyInitializer` (every scalar, enum, object and map
+  member), and `EmitValueObjectPoco`, which may now return `null` to drop a value object's file and is
+  asked about every one. The preamble comes first in `OnModelCreating`, the trailer last, and a split
+  model keeps its `ConfigureModelNN` calls between them. The default output is byte-identical.
+- **C#: more of the generated output is one hook away.** `EntityGenerator.ValueObjectMemberAttributes`
+  (the `[JsonPropertyName]` line before each value-object member), `ColumnAttributeArguments` (the
+  argument list of a mapped property's one `[Column(...)]`; append `TypeName = "jsonb"`, or return
+  none to leave the attribute out) and `TphDerivedTypeAttributes` (the `[JsonDerivedType]` lines on a
+  TPH base). The DbContext's head, which `EmitUsings` hard-coded, is built from `ContextUsings`
+  (the `using` lines), `ContextNamespace`, `ContextClassName` (default `AppDbContext`; a set
+  `GenConfig.ContextTypeName` still names only the type callables and finders take, and an override
+  leaves the routes generator naming `AppDbContext`), `EmitContextConstructor`, `ContextIsPartial`
+  and `ContextMemberLines` (extra members, after the constructor). `NamesGenerator` is no longer `sealed`, and its per-object emit,
+  `Render`, is `protected virtual`; a `null` from it emits no file. The default output is
+  byte-identical.
+- **A test-only reset of the naming registry, in every port.** `resetNamingStrategiesForTesting()`
+  (TypeScript), `NamingStrategies.ResetForTesting()` (C#), `NamingStrategies.resetForTesting()` (Java
+  and Kotlin) and `reset_naming_strategies_for_testing()` (Python) forget the strategies the
+  application registered and keep the built-ins.
+
+- **C#: the generated EF context declares the CHECK constraints `meta migrate` creates**, with the
+  same names and expression text: every scalar `field.enum` and every validator that can carry one
+  (`numeric`, `length`, `regex`, `comparison`, `requiredWhen`, `presentIff`, `atLeastOne`,
+  `exactlyOne`), with `@constraintName` and `@condition`. They are declared when `migrate.dialect` is
+  `postgres`, `sqlite` or `d1`, and `migrate.checks.skipRedundant` is followed. A new shared corpus,
+  `fixtures/check-constraint-conformance/`, pins the names and text per dialect; `meta migrate` is
+  its reference, and the C# context passes the same files (and creates them on live Postgres).
+- **C#: a value object stored as JSON carries its comment into the database.** Its `@description`
+  (else its value object's) is an owned-type annotation, and the generated design-time services
+  scaffold it as `COMMENT ON COLUMN`, Up and Down; a change to that comment alone is a pending model
+  change, so `has-pending-model-changes` and `migrations add` see it. Off Postgres the run warns.
+- **C#: the package output layout and per-package namespaces, as opt-ins.** `csharp.outputLayout:
+  "package"` in `.metaobjects/config.json` writes each per-object file under its metadata package
+  (`acme::blog::Author` is `acme/blog/Author.g.cs`), and each shared enum becomes its own
+  `<package>/<Enum>.g.cs`. `csharp.packageNamespaces: true` puts each packaged type in its
+  package's namespace even when `csharp.namespace` is set (an object maps packages explicitly), and
+  every reference across namespaces is written `global::`-qualified. `dotnet meta init` writes
+  both for a new project; a project that sets neither gets byte-identical output
+  ([#546](https://github.com/metaobjectsdev/metaobjects/issues/546)).
+- **Python: the package output layout.** `outputLayout: "package"` in `metaobjects.config.yaml`
+  (`GenConfig(output_layout=...)` for a self-hosted run) writes each object in the directory of its
+  metadata package (`acme::blog::Author` is `generated/acme/blog/Author.py`), with relative imports
+  and package `__init__.py` files. The default stays flat. Two objects that would generate one module
+  in one directory are refused with `ERR_NAME_COLLISION`, naming both. So is a tree Python could not
+  import: a package directory beside a module of the same name (a top-level package `enums` would
+  shadow the shared `enums.py`), and a package segment that is not a Python identifier (`my-co`)
+  ([#546](https://github.com/metaobjectsdev/metaobjects/issues/546)).
+- **Java and Kotlin: output paths keyed by metadata package, with a refusal.** Every per-object file
+  already landed in the directory of its metadata package; two metadata packages that would land in
+  one directory (a case-only difference, or `a.b` beside `a::b`) are now refused before any
+  generator runs, with `ERR_NAME_COLLISION` naming both objects, instead of one file overwriting the
+  other. Tests pin that two same-named objects in two packages are two files
+  ([#546](https://github.com/metaobjectsdev/metaobjects/issues/546)).
+- **Kotlin: Exposed tables begin at `@sequenceStart`.** An increment key that declares
+  `@sequenceStart` or `@sequenceName` is `autoIncrement(Sequence("<name>", startWith = n))` on both
+  Exposed lines, so a table Exposed creates begins at the start; pinned on live Postgres
+  ([#544](https://github.com/metaobjectsdev/metaobjects/issues/544)).
+
+### Documentation
+
+- **ADR-0015 Amendment 1: EF Core Migrations is a supported second C# path.** `meta migrate` stays
+  the reference engine; the EF context is held to it by the shared CHECK corpus and the identity
+  start rule.
+- **ADR-0044 Amendment 1 and ADR-0056 Amendment 2: a value object is never renamed.** The
+  package-qualified collision name is gone in every port; one claim registry per run refuses a real
+  clash with `ERR_NAME_COLLISION`.
+- **Index names and list-hook names, corrected.** The authoring reference's index examples are
+  table-scoped (`userByEmail`, not `byEmail`) and say an index name is schema-wide, so a repeated
+  one fails `meta migrate` with `ERR_DUPLICATE_SQL_NAME`. The generated list hook is
+  `use<plural>`, or `use<Name>List` when the plural equals the name; the reporting page had it
+  backwards, and the codegen and runtime-UI skills named only one form.
+
+- **Separate-repo model sharing (FR-023 Phase 2) close-out.** The feature page's Phase 2 section is now
+  the shipped per-port matrix (consume, check, publish, runtime load, transports), the deferred list
+  names what is still not built, and the verify, codegen, authoring, audit and capability-sheet skills
+  teach the Java, Kotlin and C# publish paths, the `deps` checks and the `maven` and `nuget` transports.
+- **The `metaobjects-audit` skill checks that a project uses MetaObjects as documented, not only
+  that it installed it.** Axis F now asks whether the verify gate blocks: it looks for swallowed
+  exit codes, runs the project's own verify and records the error count (recommending a ratchet
+  for a tolerated count), lists every deploy path that skips it, and scores the gate BLOCKING,
+  RUNS BUT DOES NOT BLOCK or ABSENT; a project with no CI answers NO whatever untracked hooks it
+  has. Axis F2 reports `consumed / emitted` per generator kind and raises one
+  `generated-and-bypassed` finding where a hand-built page stands beside an unused generated one.
+  The prompt reference counts payload fields linked to entity fields (`extends: Entity.field`)
+  against unlinked copies. The requirements reference adds three currency checks: ledger
+  staleness from git history, `--require-implementers`, and live claims whose generated
+  implementer nothing uses. The unmodified-owned-copy check now covers Java, Kotlin, C# and
+  Python (the Java and Kotlin references no longer say those ports cannot eject), reported as one
+  line total. Phase 1b adds a shape-coverage census of every boundary shape. The scorecard gains a
+  "used as described" line, a re-run marks each earlier finding fixed, open or deferred against
+  the previous `.metaobjects/adoption-audit.json`, and the report documents the JSON's top-level
+  fields.
 
 - **C#: one property-name resolver for every generator that names a field's property.**
   `GenConfig.PropertyNaming` (`Func<MetaField, string>`, default PascalCase) is read by the
@@ -660,6 +1719,110 @@ vocabulary; upgrade every port together.
   `drop-index` that dropped and rebuilt the object. It is now one `rename-constraints` change:
   `ALTER TABLE … RENAME CONSTRAINT` / `ALTER INDEX … RENAME`, and the down renames it back. SQLite
   cannot rename a constraint and keeps the rebuild.
+
+- **`meta init` and `metaobjects init` write `outputLayout: "package"`.** A new project gets one
+  directory per metadata package (`acme::blog` writes `src/generated/acme/blog/Author.ts`), so two
+  objects with one name in two packages are two files. The engine default stays `flat`, so an
+  existing project changes nothing. The Mongo document-store recipe's generator follows the layout.
+- **The codegen-compile gate and the generated-server api-contract lanes run in both output
+  layouts**, flat and package, so a defect that only the non-default layout shows fails a gate.
+- **TypeScript: one claim registry for every emitted name.** A generator claims each name it
+  writes into a shared scope (a module's exported types, an output file, a barrel entry, a route)
+  through `ctx.claim(scope, name, claimant, remedy)`; a second claimant of one name in one scope is
+  refused with `ERR_NAME_COLLISION`, naming both and the remedy. A collection-name clash keeps the
+  shared-ledger code `ERR_COLLECTION_NAME_COLLISION`, checked before any generator runs. The
+  `RenderContext` members `valueObjectNames` (now the identity map) and `packageOf` are deprecated
+  and kept one release so owned generator copies keep compiling; a referencing file reads the
+  local name through `resolveValueObjectName`. Re-eject an owned copy to drop them.
+- **C#: the same claim registry, and value objects keep their names.** Each generator claims the
+  names it emits (a type per namespace, a file per output path, a DbSet per context, a route segment
+  per routes entry, a finder per class); a second claimant is refused with `ERR_NAME_COLLISION`,
+  naming both and the remedy. The package-qualified value-object rename and its
+  `ERR_PAYLOAD_NAME_COLLISION` are gone.
+- **TypeScript and Python: two shared enums with one name are `ERR_NAME_COLLISION`.** Every shared
+  enum is generated into one module under its own name, so a second `Tier` from another package
+  was dropped and its fields typed with the first one's members. The pair is now refused, naming
+  both declarations. C# with package namespaces generates each in its own namespace.
+- **A collection-name clash is `ERR_COLLECTION_NAME_COLLISION` in every port.** Java's refusal (which
+  Kotlin shares) and C#'s DbSet and route-segment refusals now lead with the shared-ledger code
+  that TypeScript and Python already raise, and name `@collectionName` as the remedy.
+- **Every join a generated view or report makes is `LEFT OUTER`.** A row whose reference is null,
+  or whose related row is missing, used to vanish from a view that inner-joined it; it now appears
+  with nulls in the joined columns. A report dimension's `required` flag is read from the model,
+  and no longer changes the join. Expect the regenerated view bodies to differ in `meta migrate`.
+- **A Postgres view qualifies a relation only when its entity declares `@schema`.** A table in the
+  default schema stays unqualified, so the view follows the connection's `search_path` as the
+  table DDL does; SQLite and MySQL view bodies are never qualified.
+
+- **Quieter `meta verify` advisories.** The anti-pattern scanner skips comment lines; it flags
+  minor-unit math (`* 100`, `/ 100`, `.toFixed(2)`, `parseFloat`) only when the operand is
+  money-named, so hours formatted to two places no longer read as money; and a `.reduce` counts
+  as a hand-rolled aggregate only when it accumulates with `+` outside `.tsx`/`.jsx` UI source.
+  Unindexed foreign keys are one finding naming every key and its `index.lookup`, not one per
+  key. With a `--format` payload on stdout, the text on stderr gives each section's header and a
+  pointer instead of repeating every finding.
+
+- **The requirements reference pages install in every stack.** They used to install only when
+  `meta init` saw a `requirement.*` node, which a new project has not written yet, so a project
+  that declared requirements later had skills pointing at pages that were not there. `meta gen`
+  and `meta verify` now say so for a context scaffolded that way, and name
+  `meta init --docs-only --refresh-docs`.
+- **A shorter scaffolded `metaobjects.config.ts` comment.** It now shows the import line for the
+  usual data layer (`entityFile`, `namesFile`, `barrel`) and the catalog command, and drops the
+  rest.
+- **`meta gen --list` off a terminal is unchanged.** Its default there stays the TOON document,
+  which tools and the skills parse for `wire.import` and `layer`; the agent context gives a
+  one-line filter for a compact view instead.
+
+- **A new top-level requirement declared into a dependency's package is refused** with
+  `ERR_DEPENDENCY_PACKAGE_NOT_OWNED`, as a new object there already was. An overlay of the
+  dependency's own requirement is still accepted.
+
+- **`docsSiteFile()` builds the model explorer by default.** A project that lists
+  `docsSiteFile()` gets a different site under `site/` on its next `meta gen`, with new page
+  paths (object pages move under `model/`); `meta gen` removes the old pages it wrote, as it
+  does any untouched generated file it no longer emits, and `meta verify --codegen` reports
+  drift until it has run. Pass `docsSiteFile({ site: "classic" })` to keep the earlier
+  site byte for byte. A project that ejected the classic theme gets a warning and the packaged
+  explorer theme; run `meta eject docs-site` again to copy the explorer's files.
+
+- **Python and Java report a missing provider's errors in the same order as the other ports.**
+  When a file holds both an unknown subtype and unknown attributes, Python used to drop the whole
+  file at the unknown subtype and never report the attributes; it now reports
+  `ERR_UNKNOWN_SUBTYPE` and then each `ERR_UNKNOWN_ATTR`. Java reported the attribute errors
+  before the subtype error; it now reports them after it, as TypeScript and C# do. A load that
+  failed still fails; only the list of errors differs.
+- **`meta migrate` refuses a foreign key that references columns the target does not hold unique.**
+  Behaviour change: an `identity.reference` whose dotted `@references` names target fields that are
+  not the target's primary key, a plain `identity.secondary` (no `@where`, no `@expr`) or a single
+  `@unique` field used to emit an FK the database refuses at apply time ("there is no unique
+  constraint matching given keys"), after earlier statements had already run. `meta migrate` and
+  `meta verify --db` now fail first with `FkTargetNotUniqueError`, which lists every offending
+  reference at once (entity, reference, target and fields); both report it as a metadata refusal
+  with a hint. The check is against the table the model actually builds: a key declared on a TPH
+  subtype is not emitted, so it does not count (the message says to declare it on the base), and
+  a bare reference into a composite primary key with fewer FK fields is caught too. An FK on a
+  table this run does not govern (imported, or outside `migrate.scope`) is warned about, not
+  refused, and an FK into a table the model does not build (`@unmanaged`) is not checked. Postgres
+  refuses the DDL and D1 always enforces foreign keys, so both refuse. SQLite only warns: it accepts
+  the `CREATE TABLE`, and checks foreign keys only with `PRAGMA foreign_keys` on, which is off by
+  default, so the FK fails (`foreign key mismatch`) on a write with enforcement on. `meta verify
+  --db` gives the same verdict. Fix: declare an `identity.secondary` on those fields of the target.
+  This is a `meta migrate` correction; it moves no metamodel version.
+- **A constraint or index whose only change is its name is renamed in place on Postgres.** A
+  drop plus an add of the same definition under another name, on a table that is not itself
+  renamed (switching schema conventions renames every FK), used to be a gated `drop-fk` /
+  `drop-index` that dropped and rebuilt the object. It is now one `rename-constraints` change:
+  `ALTER TABLE … RENAME CONSTRAINT` / `ALTER INDEX … RENAME`, and the down renames it back. SQLite
+  cannot rename a constraint and keeps the rebuild. The primary key's name is now compared too,
+  so a convention switch, or a table rename (which keeps the old `<table>_pkey`), renames it, and
+  `meta verify --db` reports a mismatch it used to pass. A unique key that changes only between
+  plain index and UNIQUE constraint is promoted in place (`ADD CONSTRAINT … UNIQUE USING INDEX`);
+  the reverse, when the conventions ask for a plain index, drops the constraint, re-creates the
+  index, and drops and re-adds each FK onto it, behind `--allow drop-index` and `--allow drop-fk`.
+  The default conventions accept either kind, so a database built with Drizzle's `unique()`
+  constraints is left as it is. A key that changes both its name and its kind
+  is renamed, then promoted or demoted, in the same migration.
 - **A prompt or output template that names a variable not on its payload now raises at render time.**
   Behaviour change: a generated render helper used to render `Hi {{nmae}}` as `Hi ` with no error
   when the payload declares `name`; it now raises `ERR_VAR_NOT_ON_PAYLOAD (nmae)` (`RenderError` in
@@ -674,6 +1837,74 @@ vocabulary; upgrade every port together.
   Python, `Verify` in C#, the `verify` field of `RenderRequest` in Java and Kotlin). If a template
   already named a missing variable, regenerate and fix the name; the generated helper text changes
   (TypeScript `prompts.ts` and Python helpers gain a `verify` argument).
+- **Deprecated, CLI: `tsOnly` in `meta types --format json`; read `implementedIn`.** Each row
+  and attr now names the ports that implement it so far (`"implementedIn": ["typescript"]`), and a
+  port-scoped attr carries `ports`. `tsOnly` is still emitted through 1.3.x, derived from
+  `implementedIn` (`true` exactly when it is `["typescript"]`), and is removed in 1.4. The text
+  output's `[ts-only]` marker is now `[ts; pending elsewhere]`, and a port-scoped attr shows
+  `[<port>-only]` (`[java+kotlin]` for `@objectAdapter`, which names two).
+
+- **C#, upgrade note: the next EF migration scaffolds your indexes and comments.** The generated
+  context now declares every `@unique`, `identity.secondary` and `index.lookup` as an EF index
+  (named as `meta migrate` names them) and every `@description` as a table or column comment, which
+  the model never carried before. So the first `dotnet ef migrations add` after upgrading scaffolds a
+  `CreateIndex` for each index and an `AlterColumn`/`AlterTable` comment for each description, as
+  if they were new. On a database `meta migrate` (or your own SQL) already built, the indexes exist
+  and the migration fails on "relation already exists". If they exist under the same names, empty
+  the migration's `Up` and `Down` (keep the snapshot change) so EF records them as present; if they
+  exist under other names, rename them in the database or in the metadata first. Comments re-apply
+  harmlessly. A database built from the model (`EnsureCreated`, or a fresh migration chain) is
+  unaffected. An `@expr` index is never an EF index; `meta migrate` creates it.
+- **C#, upgrade note: identity starts never RESTART, through generated design-time services.** A
+  Postgres project's context now carries `identity.primary @sequenceStart` in its model, and a
+  generated `<Context>DesignTimeServices` makes `dotnet ef migrations add` scaffold every
+  start-only change (a start added, changed or removed) as SQL: `SET START WITH n` (a removed start
+  goes back to the identity default) and, for a declared start, a forward-only move of the counter
+  to `GREATEST(n, max(id) + 1)` when it sits below that. It never writes `RESTART`. The first
+  migration after upgrading shows that SQL for each table that declares a start; it is safe to
+  apply. EF finds the services through an `[assembly: DesignTimeServicesReference]` generated
+  beside them when the migrations live in the context's project, EF's default; for any other
+  migrations or startup project, `dotnet meta gen` warns and prints the line to add there. Nothing
+  is registered at runtime. `UseIdentityStartMigrations()` is kept as an `[Obsolete]` no-op so a
+  call to it compiles; remove it.
+- **C#, upgrade note: a self-hosted codegen runner sets `GenConfig.Dialect`.** `@sequenceStart` and
+  the identity-start rewrite are emitted only when the dialect is `postgres`. `CodegenCli` reads it
+  from `.metaobjects/config.json` `migrate.dialect`; a runner that builds its own `GenConfig` must
+  set `Dialect = "postgres"`, or it gets a warning and no start in the model.
+- **C#, upgrade note: an unset nullable enum with `@default` starts at `@default`, not NULL** (the
+  same rule as a nullable scalar with `@default`, which already started at it). An entity
+  created without setting the field now stores the default member; an explicit `null` is still
+  stored as NULL. To keep NULL as the starting value, do not declare `@default` on the field. The
+  same holds for a value object's enum member: a stored JSON document that lacks the member reads
+  as `@default`, not null.
+- **C#: one generated context maps each relation to one object.** Two concrete
+  objects of one context that resolve to the same table, view, procedure or function in the same
+  `@schema` are refused with `ERR_DUPLICATE_SQL_NAME`, naming both; before, they silently shared it
+  once `@collectionName` split their DbSet names. The same name in two schemas is two relations, and an
+  object that extends another and inherits its source is one EF hierarchy. A `@collectionName` that is not
+  a C# identifier, or names `Database`, `Model`, `ChangeTracker` or `ContextId`, is refused by name.
+- **TypeScript: the collision refusal checks only the names the run emits.** The pluralized module
+  names are checked when entity modules, queries or a UI tier are wired, and the REST segments when
+  a routes generator is, so a docs-only run never refuses names no generator writes.
+- **Breaking, C#: `ColumnNamingStrategy` and `TableNamingRule` are classes, not enums**
+  (ADR-0058 Amendment 1). They are compared by name. `ColumnNamingStrategy.SnakeCase` and the other
+  built-ins keep their names (`Pascal` is new). Code that switches on one, uses one as a constant
+  default parameter (`= ColumnNamingStrategy.Literal`) or as an `[InlineData]` argument has to
+  change: call `strategy.Apply(name)`, take a nullable parameter, or pass the name string.
+  `Apply` is an extension method, so `default(ColumnNamingStrategy)` (now `null`) applies as the
+  enum's default did, `Literal`, rather than throwing `NullReferenceException`; the same holds for
+  `TableNamingRule`. `EntityGenerator.ScalarProperty`'s `strategy` parameter is now
+  `ColumnNamingStrategy?` (default `Literal`), so an override changes its signature to match.
+  `NeutralConfig.Read` and `MetadataLocation.Resolve` gain a `validateNaming` overload that keeps a
+  name this process has not registered (`ColumnNamingStrategy.ByName`) for resolution to refuse.
+- **Java: `ColumnNaming.apply` throws `MetaDataException` for an unknown strategy name** where it
+  threw `IllegalArgumentException`.
+- **TypeScript: an entity's docs page names the column the naming strategy resolves.** The Fields
+  table's Column cell, a field's Column detail and the Storage payload printed only an explicit
+  `@column`, so a project that names its columns by rule (`pascal`, `snake_case`) instead of a
+  `@column` on every field lost them. They now print the resolved column wherever it differs from
+  the field name; a value object's members still show only an explicit `@column`, since each owner
+  maps them. A default (`snake_case`) page gains the column of each multi-word field.
 
 ### Security
 
@@ -1269,11 +2500,407 @@ vocabulary; upgrade every port together.
   `pg_constraint`, pairing `conkey` with `confkey` by position. As before, only same-schema foreign
   keys are read (the FK descriptor carries no referenced schema).
 
+
+- **No CHECK for a derived field.** A validator on a field that carries an `origin` (or a
+  cross-field validator naming one) made `meta migrate` emit a CHECK on a column that does not
+  exist, and `CREATE TABLE` failed. The derived field is skipped; the C# context does the same.
+- **View lowering, in TypeScript (which builds every port's views):**
+  - an origin `@filter` keeps every operator of a field clause (`{ "gte": 1, "lt": 10 }` lost
+    all but the first, so the view counted rows it should not);
+  - a projection that extends a projection outputs the inherited fields and applies the base's
+    `@filter`;
+  - a `@filter` on a base field the view does not output, or on a path of to-one hops, joins only
+    what it names;
+  - a multi-hop `origin.first` `@via` is lowered along its path, correlated on the first hop;
+  - a view over a TPH subtype, or a join onto one, is scoped by its discriminator, and an abstract
+    level by `IN` over its concrete subtypes;
+  - a Postgres view column takes its declared type (a bare `NULL` computed column, an `@convert`
+    passthrough);
+  - two aggregates through two references onto one target each read their own join.
+- **The Zod template's shared-enum import resolves in the package layout** when the owning object's
+  package is inherited from its file or root (`./enums` was one directory short).
+- **A docs page's References and identity-reference links reach the target page** when the target
+  lives in another package.
+- **An entity's derived field is not a column, in every port.** A projection-reached
+  `origin.first` / `origin.computed` on an entity with no read source is left out of table reads
+  and writes by the C# entity and DbContext, the Kotlin entity, Exposed table, repository and
+  controller, Java OMDB's mapping and Python's `ObjectManager`.
+- **C#: a reference over a member of a flattened value object** configures the foreign key on the
+  owned type instead of emitting a property EF rejects. A `field.duration` mapping names framework
+  types `global::`-qualified.
+
+- **Generated routes on Postgres answer 400, not 500, for bad uuid input.** On an entity with a
+  uuid foreign key, `?search=` ran ILIKE against the uuid column (the allowlist carries it as
+  `subType: "string", format: "uuid"`), and Postgres has no `uuid ~~* text` operator. The search
+  now skips string rules that carry a `format`. A malformed uuid in `:id` reached Postgres as a
+  literal ("invalid input syntax for type uuid"); `coerceIdForColumn` now rejects it, so GET,
+  PATCH and DELETE answer 400 `{"error":"invalid_id"}` as a malformed numeric id already did. A
+  `field.uuid` in the generated insert and update Zod schemas now checks the 8-4-4-4-12 shape, so
+  a malformed uuid foreign key in a POST or PATCH body answers 400 `validation`. SQLite stores a
+  uuid as text, so none of this showed there; a new integration test runs the stock
+  `routesFile()` output against Postgres with uuid keys and a uuid foreign key. Owned copies
+  pick the fix up when re-ejected.
+- **`meta migrate` warns when a renamed column is still named by a view.** A rename never
+  rewrites a view body, so a view whose `@sql` still names the old column is recreated as
+  declared and the migration fails at apply. The plan now names the view, the column and its new
+  name, and the "recreated only because" note no longer lists that view among the harmless ones.
+
+- **An enum's `@default` is what an untouched record stores**. C#: a scalar enum
+  started at `default(TEnum)`, not at `@default`, while the EF sentinel was `@default`, so EF
+  wrote it: a string-stored or int-mapped enum stored its first member, a nullable one NULL, and
+  a `@provided` int-backed enum with no 0 member threw `cannot write 0`. It now starts at its
+  `@default` member, as a scalar does. Kotlin: the generated data class gave a defaulted field no
+  ctor default, so a create body omitting a required one answered 400 and a nullable one was
+  written as an explicit NULL; a literal `@default` (enum member, Boolean, String, Int, Long,
+  Double) is now the ctor default. Java: the DTO is a record, which cannot default a
+  component, so a generated create handler for an entity with a literal `@default` binds the raw
+  body, fills the absent defaulted fields (an explicit value, null included, is kept) and then
+  binds the DTO, on the vanilla and the TPH per-subtype create alike; an entity with none keeps the
+  direct binding. TypeScript and Python were already right (a create that omits
+  the field leaves it out of the INSERT, and the Python model starts at `@default`); live tests
+  now prove it. The new api-contract `enum-default/` sub-corpus gates it in the generated lane of
+  all five ports: a create that omits the enum stores its default, and a supplied value is kept.
+  A nullable C# enum with `@default` now starts at it too: see the upgrade note under
+  Changed.
+- **A generated name collides only in the scope that carries it**. The run-wide
+  refusal of two objects whose short names pluralize alike is gone. C#: DbSet names are unique
+  within one generated context (the error says "rename one, or set @collectionName"), route segments
+  within one routes entry, reverse finders within their class. TypeScript: the pluralized names
+  within the entity modules' scope (one directory under the flat layout, one per package under
+  the package layout), REST segments across the app. Python and JVM keep one run-wide scope,
+  which is theirs (one flat module package; one Spring app). An abstract or sourceless object
+  emits nothing, so it never collides: a layered model's abstract `enterprise::Payer` beside a
+  concrete `core::Payer` generates. The naming-conformance corpus gains `shapeOnlyCases` and
+  `crossPackageCollisionCases`.
+- **Doc pages are keyed by package**. TypeScript's `docsFile()` and `apiDocsFile()` now
+  place every page under its package path whatever the docs target's `outputLayout` (which still
+  places code), and Java's and Kotlin's api-docs `layout` defaults to `package` (`flat` is still
+  honoured). Two same-named nodes in two packages are two pages, and an index entry that shares
+  its short name carries its package. In every port, two page paths that differ only in case
+  (`ProductNdc.md`, `ProductNDC.md`: one file on macOS and Windows) are refused by name instead of
+  one page silently replacing the other. **Upgrade note:** a TypeScript project on the flat
+  default sees its doc pages move under package directories on the next `meta gen`. A Java or
+  Kotlin build that relied on the old `flat` default for its api-docs sees the same move; set
+  `layout` to `flat` on that generator to keep the old paths.
+- **`@schema` reaches every mapping.** C#: a view mapping is `.ToView(name, schema)`, as a table's
+  `[Table]` already carried its schema. Python, TypeScript and Java: the runtime addressed a bare
+  table name, so an entity in `@schema: sales` was read and written in whatever `search_path`
+  resolved, and two entities mapping the same table name in two schemas read one table. Every read
+  and write now qualifies the relation: the Python ObjectManager, the TypeScript ObjectManager on
+  both its Kysely and Drizzle drivers, and Java OMDB (SQLite, which has no schemas, keeps bare
+  names). A new persistence scenario, `schema-qualified-same-name`, maps `ledger_entries` and
+  `archive.ledger_entries` to two entities and runs on Postgres in every port.
+- **C#: `identity.primary @sequenceStart` reaches the EF model, and no start-only change ever
+  restarts**. On Npgsql a fresh database's identity begins at `@sequenceStart`. A Postgres
+  context's generated design-time services (see Changed) scaffold a start added, changed or
+  removed as `SET START WITH n` plus the forward-only counter move, where Npgsql's own generator
+  writes `RESTART WITH n` (or `RESTART WITH 1` for a removed start), which hands out ids live rows
+  already hold. The start and the services are emitted only for a project whose
+  `migrate.dialect` is `postgres`; any other project gets a warning and needs no Npgsql package.
+  TypeScript's `meta migrate` writes the same change, and the Kotlin Exposed table begins a fresh
+  table at the start ([#544](https://github.com/metaobjectsdev/metaobjects/issues/544)); see
+  `docs/CONFORMANCE.md`, "Split coverage".
+- **C#: the EF model carries the index vocabulary and `@description`.** A field's `@unique`, an
+  `identity.secondary` and an `index.lookup` are EF indexes under the names `meta migrate` gives
+  them, with `@where` (`HasFilter`), `@orders` (`IsDescending`) and `@using` (the Npgsql index
+  method); `@description` is the table and column comment, on a TPH subtype's own fields too. A model over
+  the migrated database now declares its indexes, so a database EF builds has them (EF never
+  dropped them: an index its snapshot never knew is invisible to it); see Changed for the first
+  migration after upgrading. An `@expr` index an abstract base declares reaches each concrete
+  child's table. Kotlin's Exposed
+  table now carries an index's `@using` (`indexType`) and `@where` (`filterCondition`); what
+  Exposed and Drizzle cannot express is listed in `docs/CONFORMANCE.md`, "Split coverage".
+
+- **C#: a `<Entity>Names` whose base lives in another namespace compiles.** The names artifact
+  extends its base's (`<Entity>Names : <Base>Names`), and the base's file is emitted in the base's
+  own namespace, but the subtype's file carried no `using` for it: one CS0246 per artifact for a
+  model whose abstract bases bind to another namespace. It now writes that `using`.
+- **C#: a reference declared on an abstract TPH intermediate is configured.** The DbContext's TPH
+  pass read only the concrete subtypes' own references, so one declared on an abstract level
+  between the base and its leaves reached no `ReferenceConfig` call: EF built no relationship over
+  the column, and its `@onDelete` and `@constraintName` were lost. Each intermediate is now
+  configured once: on its own builder when it is a class (`EmitAbstractShapes`), else on each
+  topmost concrete subtype its fields are folded into (a concrete subtype under one of those
+  inherits its foreign key).
+- **C#: `dotnet meta verify --codegen` accepts a naming strategy only the project's codegen runner
+  registers.** Stock verify refused the config's `naming` value before it handed the `--codegen`
+  gate to `codegen/Program.cs`, which is where an application registers its strategy, so verify
+  failed where `gen` succeeded. It now hands off first and refuses an unknown name in its own process
+  only when no runner ran, or when `--templates` or `--db` (which run in that process) are asked for
+  too; either way it is exit 2 with the standard message, never an unhandled exception.
+- **TypeScript: `viewNameFromProjection` reads the separator from the strategy.** It switched on
+  the name `"kebab-case"`; the separator after `v` is now the one the strategy writes between two
+  words, else `_`. Every built-in keeps its view name, and an application strategy gets the same
+  rule.
+- **TypeScript: a `metaobjects.config.ts` that fails to load while the naming preload needs it is
+  reported.** The preload swallowed the error, and the command went on to refuse the strategy's
+  name as unregistered. It now stops and names the failed load, and the strategy it would have
+  registered when that is still missing.
+- **C#: a large model's `OnModelCreating` no longer overflows the stack.** The DbContext generator put
+  every configuration line in one method; on a model with hundreds of converters and owned types its
+  stack frame was too large for a thread-pool thread in a Debug build, so a test host crashed with a
+  stack overflow while building the model. Past `ModelConfigChunkSize` entries (default 200) the
+  configuration is split into `ConfigureModelNN` methods called in order; a smaller model is emitted
+  as before.
+
+- **C#: concurrent reads of a loaded model no longer corrupt its cache.** `MetaData.Cached`
+  memoized derived reads (`Validators()`, `ResolvedIsArray()`, `OwnAttrs()`, …) in a plain
+  `Dictionary`, so two threads touching a frozen node for the first time could corrupt it, and
+  every later read in the process then failed with "Operations that change non-concurrent
+  collections must have exclusive access". A host that loads metadata once and serves requests
+  from it in parallel, or a parallel test run, hit this. The cache is now a
+  `ConcurrentDictionary`.
+
+
+- **C#: a field's `@default` reaches the EF model.** The context configured no default at all,
+  so a database EF creates (`EnsureCreated`, an EF migration) had none, and an insert that relied
+  on one failed with a NOT NULL violation. A literal the property's CLR type holds (bool, string,
+  number, enum member) is now `HasDefaultValue(v).HasSentinel(v)`. The sentinel matters: EF leaves
+  a property with a database default out of the INSERT when its value equals the sentinel, which is
+  otherwise the CLR default, so a bool defaulting to `true` would have stored `true` when the app
+  set `false` (and a nullable one, or a string, would have lost an explicit NULL). With the
+  default as the sentinel, EF omits only a value the database would write anyway; a live test
+  sets every such property to its CLR default and reads it back. A SQL expression (`now()`,
+  anything function-like, `current_timestamp`; a bare `now` is `now()`), or a timestamp, date or
+  uuid literal, is `HasDefaultValueSql(...)` on a `@required` property only: on a nullable one EF
+  would replace an explicit NULL with the default, so it is left out there. Primary keys, arrays,
+  value objects, maps and durations get no default. A model whose database lacks a declared
+  default (one `meta migrate` did not build) now sees EF omit a column whose value equals it.
+
+- **C#: a `@required` value-object member of a value object starts as an instance.** It was
+  `public T X { get; set; } = default!;`, so a document that omitted it deserialized to null
+  behind a non-nullable type. It is now `= new T();` (an abstract target keeps `default!`, and
+  an entity's owned navigation is unchanged), so the member is present and its own members are
+  validated.
+
+- **C#: a value object nested inside a flattened one maps to one jsonb value.** The flattened
+  owner configured it as a nested owned `ToJson`, which EF Core 8 refuses inside a table-split
+  owned type ("All owned types containing a JSON column must be mapped to a JSON column
+  themselves"), so the whole context failed model validation. It is now one jsonb property
+  converted whole through the generated `MapJsonb.ObjectConverter`/`ObjectComparer`, pinned to the
+  same `<prefix><column>` the migration creates; members keep their `[JsonPropertyName]` keys and
+  enums their symbols. Every other flattened member, scalar enums included, keeps its
+  `HasColumnName`.
+
+- **C#: a TPH subtype's own fields get their EF configuration.** The context configured the
+  fields of the TPH root only, so a field a subtype declares itself got none: a `field.object`
+  was left for EF to discover as an entity (model validation failed with "requires a primary
+  key"), and a timestamp, enum, decimal precision, array, map, duration or `@readOnly` column
+  lost the mapping the same field gets on the root. Each concrete subtype now configures the
+  fields it adds, on its own builder. The integration corpus's `CopayAuth.copayAmount` gains its
+  `HasPrecision(10, 2)`.
+
+- **C#: under `EmitAbstractShapes`, a concrete entity extends its abstract shape and keeps the
+  facets of the fields it inherits.** The entity class left out the fields its abstract parent
+  declares, expecting the shape class to carry them, but never named the shape as its base, so
+  those fields were on no class and the context did not compile. It now declares `: <Shape>`
+  (an abstract shape extending another does too). The shape carries no EF attributes, so the
+  context configures what the inherited fields' attributes would have: the single-column key
+  (`HasKey`), each column name (`HasColumnName`) and a string's `@maxLength` (`HasMaxLength`).
+  Models without the knob are unchanged.
+
+- **C#: a TPH discriminator typed by a shared or `@provided` enum compiles.** `HasValue<Sub>(...)`
+  named the enum as a type nested in the base entity (`Vehicle.VehicleKind.Car`), which a shared
+  or provided enum (FR-019) is not; it now names it where it lives, as the enum conversions do.
+
+- **C#: a reference's `@constraintName` and non-primary-key target reach the EF model.** The
+  relationship line now ends in `.HasConstraintName("...")` when the `identity.reference` declares
+  `@constraintName` (the junction sides of an M:N too), so a database EF creates names its foreign
+  keys as the schema does. When `@references` names target fields that are not the target's
+  primary key (`"Warehouse.regionCode,siteNo"`), it carries `.HasPrincipalKey(...)`; EF paired
+  the FK with the primary key instead, which failed model validation for a composite FK and
+  joined the wrong column for a single one. The reverse finder for such a reference now types its
+  value by the named target field, where it used the target's primary key type and did not
+  compile.
+
+- **C#: `identity.primary @generation: assigned` configures the key `ValueGeneratedNever()`.**
+  EF's convention made a single integer or Guid key generated on add, so a caller-supplied key
+  equal to the CLR default (`0`) was left out of the INSERT and the row refused, and
+  `EnsureCreated` built an identity column. `increment`, `uuid` and an absent `@generation` keep
+  EF's convention.
+
+- **C#: an int-backed enum refuses to write a value its `@intValueMap` does not describe.** The
+  write converter was `v == A ? 1 : v == B ? 2 : 3`, so the last member was the else branch: a
+  cast like `(Status)99`, or a member a `@provided` C# enum declares that `@values` does not, was
+  stored as the last member's integer, and a single-member enum wrote its constant whatever the
+  value. Every member now has its own branch, ending in a generated `UnmappedEnumMember` helper
+  that throws, as the read side already did with `UnmappedEnumValue`. Scalars, array elements
+  and flattened value-object members alike.
+
+- **C#: the reverse finders take `GenConfig.ContextTypeName`.** They hardcoded `AppDbContext`
+  as their first parameter's type, so a project that renamed its context got finders that did
+  not compile.
+
+- **C#: a "-sis" entity name pluralizes to "-ses" in DbSet and finder names.** `Diagnosis` gave
+  `DbSet<Diagnosis> Diagnosises` and `FindDiagnosisesByPatient`; it now gives `Diagnoses` and
+  `FindDiagnosesByPatient` (`Analysis` → `Analyses`, `Basis` → `Bases`). The `-tion`, `-y` and
+  `-s` endings were already right and are now pinned by tests. The REST collection segment is a
+  cross-port wire contract and keeps the shared rule (`/api/diagnosises`) until every port
+  changes together. An adopter that aliased the old DbSet name can drop the alias. **Upgrade
+  note:** code that names `Diagnosises` or `FindDiagnosisesBy…` stops compiling; use the new name,
+  or set `"@collectionName": "Diagnosises"` on the entity to keep the old one.
+
+- **TypeScript: a derived flattened `field.object` no longer produces flat member keys (#524
+  follow-up).** A flattened field that carries an `origin.*` owns no column (the Drizzle table and
+  `meta migrate` skip it), but the flat keys (`shipToStreet`) still appeared in the read, create and
+  update schemas, the filter and sort allowlists, the OpenAPI bodies and the form, so a write dropped
+  them silently. The flattened member expansion now skips a derived parent, so every generated
+  surface agrees with the table.
+- **TypeScript: Drizzle now binds a `field.object` with `@storage: flattened` to its member columns
+  (#524).** The generator used to emit one `jsonb` column named for the field, while `meta migrate`
+  creates one column per member of the value object and none for the field, so every generated
+  query failed with an undefined-column error. The Drizzle table now carries one column per member,
+  named by the same `resolveFlattenedColumnName` the migration uses, and the Zod schemas, the
+  Row/Insert types and the filter allowlist expose them as flat keys (`shipToStreet`), the same
+  surface Prisma already has. Generated queries, Hono and Fastify routes need no change. The client filter
+  type, the sort allowlist, the OpenAPI filter and sort parameters and the string-decimal wire
+  rewrite use the same flat keys. A flattened field on a write-through entity is refused with a
+  `CodegenError` instead of generating code that cannot work. A flattened field declared on a TPH
+  subtype keeps a single column named for the field, as `meta migrate` creates it, and a value
+  object that declares one keeps it as one nested key. The React form and the TanStack grid
+  columns use the same flat keys, so a form posts `shipToStreet`, not a nested `shipTo`.
+
+- **TypeScript: every `meta` command now loads the providers in `metaobjects.config.ts`.**
+  `meta export`, `meta deps`, `meta fmt`, `meta types` and `meta upgrade` loaded the core
+  vocabulary only, so a project's own subtype or attribute failed there while `meta gen` accepted
+  it. A config that exists but fails to load is now reported as its own error by `meta verify`
+  (exit 2, in every mode) and `meta prompt-snapshot`, instead of continuing without its providers
+  and reporting an unknown subtype.
+- **Python: `metaobjects fmt` reads the configured providers, and `--provider` adds to them.**
+  `fmt` ignored `providers:` in `metaobjects.config.yaml` (it also gains `--config`), and
+  `metaobjects verify --provider` replaced the configured list instead of adding to it.
+- **`ERR_COLUMN_NAME_COLLISION` no longer rejects a read-only view whose columns come from `@sql`.**
+  The 1.2.0 check treated every field of a sourced object as a column MetaObjects creates. For a
+  `source.rdb @kind: view` with an `@sql` body, the author's SQL defines the columns and the fields
+  only read them, so two fields on one column are legal and nothing can be written. That object is
+  now exempt in all four ports (TypeScript, Java, C#, Python), provided every source of the object
+  is read-only. A derived view (no `@sql`), which emits a select list from its fields, and an object
+  with a writable table source plus an `@sql` view replica are still checked. When both colliding fields already carry an
+  explicit `@column`, the message now says to rename one field or point one `@column` at a different
+  column, instead of suggesting a `@column` they already have. The error code is unchanged. New
+  conformance fixtures: `column-name-shared-in-sql-view-ok`, `error-column-name-collision-derived-view` and
+  `error-column-name-collision-table-with-sql-view`.
+- **C# codegen: an entity that extends another no longer loses the parent's properties.** The member
+  loop skipped every inherited field but the class declaration never named the base, so the fields
+  appeared nowhere. A child of a **concrete** parent now declares the parent's properties itself and
+  names no base: each concrete entity owns a table with all its columns (what `meta migrate` creates
+  and the other ports' models carry), and `class Child : Parent` between two mapped entities is an EF
+  inheritance hierarchy (one shared table, or a child table holding only its own columns). A child of
+  an **abstract** parent with `EmitAbstractShapes` on now emits `class Child : Base`, as the
+  generator always meant to, and declares only its own members. Regenerating changes those two shapes
+  of C# output only. An adopter override of `EmitClassDeclarationLine` that names a concrete parent as
+  the base now gets that parent's properties twice; drop the base from the override.
+- **Test flakes fixed at their cause.** `GenCommandTests.Gen_writes_the_hash_manifest_beside_the_metadata_not_in_cwd`
+  (C# Cli) failed about one run in five because `DependencyCliTests` runs `gen` in process, which
+  changes the process-wide working directory, without joining the serial collection every other
+  such class is in; the two classes ran in parallel and one read the other's directory as the cwd.
+  The codegen-ts tests that type-check generated output with the real TypeScript compiler (28 files,
+  the slowest case measured at 3.3s against bun's 5s default) now run under a 30s timeout whose value
+  lives in one place, `test/compile-timeout.ts`. Each of those files calls `setDefaultTimeout` with
+  it, because bun applies that call only to the file that makes it, so the timeout holds in a plain
+  `bun test` as well as in CI, and a loaded machine no longer reports a timeout for correct code.
+- **A cross-field `validator.comparison` between fields of different kinds is skipped in every
+  port, never rejected and never a 500.** Comparing a `field.date` with a `field.timestamp` (or any
+  two strings or temporals of different subtype) has no ordering. Java and Kotlin cast both sides
+  to `Comparable` inside the class-level validity check, so the cast threw `ClassCastException` and
+  a create answered 500 instead of 400; TypeScript compared the two as strings and Python raised a
+  `TypeError` that surfaced as an invalid body. All five ports now follow one rule: numerics compare
+  with each other, strings and temporals only with their own subtype and `@localTime` flag (a
+  `field.timestamp` is an instant and a `@localTime` one a wall clock, which is a different native
+  type in every port), boolean and enum fields test
+  `eq` / `ne` only (also on two `uuid`, `uri` or `inet` fields), and any other pair emits no rule, so an
+  ordering test on two booleans or two enums is no longer enforced by the generated validators (C# never
+  did). The database `CHECK` still covers the pair where the database can compare it. New shared cases
+  `comparison-across-kinds-is-skipped`, `comparison-instant-vs-local-timestamp-is-skipped`,
+  `uuid-ne-rejects-equal-ids` and `uuid-ne-accepts-different-ids`
+  in `fixtures/validation-conformance/`, run by every port.
+- **Two `field.duration` fields order by length in every port, and a comparison inside `@condition`
+  follows the same kind rule.** The kind rule above listed no durations, so a `validator.comparison`
+  between two durations emitted no rule in any port. Durations now order with their own subtype, by
+  length rather than by their ISO-8601 text (`PT45M` is shorter than `PT1H`). A comparison inside an
+  `@condition` that reads two fields of different kinds (a date against a timestamp, or an enum
+  against a string) now leaves the whole validator to the database, as a field it cannot see already
+  did, where TypeScript, Java and Kotlin had compared the two as strings and C# had compared an enum
+  with a string. An `eq` / `ne` inside `@condition` on two uuid, uri or inet fields now tests
+  equality in every port: Python ordered the two values, so an IPv4 against an IPv6 address read as
+  unknown and the rule was skipped, and C# skipped those comparisons altogether. C# also gave
+  `field.uri` and `field.inet` no filter operators, so `@filterable` on either, or any `@condition`
+  that reads one, failed to load; they now take the same bands as in the other ports (uri the string
+  band, inet the uuid band), and the shared `filter-ops-matrix` fixture lists both. New shared cases
+  `duration-comparison-rejects-a-longer-span`, `duration-comparison-orders-by-length-not-text`,
+  `condition-comparing-across-kinds-leaves-rule-to-database`,
+  `condition-ne-on-ipv4-and-ipv6-addresses-enforces-the-rule` and
+  `condition-ne-on-equal-addresses-lets-the-record-through`.
+- **Test coverage for cross-field validators.** A subtype form on a TPH hierarchy that declares a
+  cross-field rule now has a test proving the generated form binds the refined body schema (the rule
+  itself was enforced by the cross-field build). The Java check that a Patch is not held to cross-field
+  validators now runs the generated classes (the violating body is rejected by the Dto and accepted
+  by the Patch) instead of comparing generated source text.
+
+- **`meta migrate` refuses, at plan time, to drop a column a view it does not own still reads.**
+  With `--from-db`, a declared-`@unmanaged` view or one outside the scoped schemas whose live body
+  names the dropped column now blocks the `drop-column`, and the message names the view and the
+  column. Before, the migration was written and failed at apply on both Postgres (`cannot drop
+  column … other objects depend on it`) and SQLite (`error in view … after drop column`). A view with
+  no recorded body is not matched, and an offline run cannot see live views. Pass
+  `--allow drop-column-read-by-view` (config token `drop-column-read-by-view`) to proceed.
+- **The SQLite and D1 down migration for `drop-column` re-adds the column.** It wrote a TODO comment
+  and still recreated the view with the old SQL, so the view failed with `no such column` after a
+  rollback. It now runs `ADD COLUMN` from the recorded column, as Postgres does; the data is not
+  restored, and a `NOT NULL` column with no default comes back nullable, which is all SQLite allows.
+- **Docs: edit an `@sql` body when you remove a column it reads.** The tool never parses the body;
+  Postgres fails at apply and SQLite applies and leaves a broken view.
+
+- **Postgres introspection reads a composite foreign key's columns once each, in order.** It joined
+  `information_schema.key_column_usage` to `constraint_column_usage`, which has no column position, so
+  every FK column was paired with every referenced column: a two-column FK read back as four columns and
+  a three-column one as nine. `meta migrate` reads its expected side back from the shadow database, so
+  the doubled columns reached the emitted DDL, which Postgres refused ("foreign key referenced-columns
+  list must not contain duplicates"); `verify --db` misreported every composite FK. It now reads
+  `pg_constraint`, pairing `conkey` with `confkey` by position. As before, only same-schema foreign
+  keys are read (the FK descriptor carries no referenced schema).
+
 - **Python: an array field's `default` generated a string.** A model with
   `field.string[]: { default: "{}" }` generated `tags: list[str] = '{}'`, which fails on first use.
   It now generates `tags: list[str] = []`, from the same four spellings TypeScript accepts, or
   from a native YAML list such as `default: [a, b]`. A default Python cannot spell as a list is
   left to the database.
+- **Java: a bare `@objectRef` on a field declared directly under `metadata.root` now resolves.**
+  A root-level `field.object` (the reusable template other fields `extends`) with
+  `@objectRef: "Address"` failed to load in Java even when `Address` sat in the same package,
+  while TypeScript loaded it. A root-level node now resolves a bare reference in its own
+  package, as ADR-0042 specifies, and a real miss still fails with `ERR_UNRESOLVED_OBJECT_REF`.
+  The error no longer names the loader as the owner of a root-level node. Two new conformance
+  fixtures (`root-level-field-object-bare-ref`, `error-root-level-field-objectref-unresolved`)
+  hold every port to it; C#, Python and TypeScript already passed.
+
+## [1.2.1] — Python only
+
+_PyPI `1.2.1` only. npm, NuGet and Maven Central stay at `1.2.0` (`8.2.0`): none of them has a
+product change. No vocabulary or `metamodelVersion` change._
+
+### Security
+
+- **The generated Python routes passed raw request input to the repository.** The FastAPI
+  create, PATCH and PUT handlers validated the body against `<Entity>Create` / `<Entity>Patch`
+  and then handed the repository the raw body, not what was validated. Pydantic ignores a key a
+  model does not declare, so a client could write fields it must never touch: a client-sent `id`
+  on create (or on update, changing the row's identity), a `@mutability: readOnly` field, and any
+  made-up field such as `isAdmin` all reached the repository. Found by an external review of
+  1.2.0. Every Python adopter serving the generated routes should upgrade and regenerate; an
+  ejected (owned) router needs the same change made by hand.
+
+  The repository now receives only the validated input, as the TypeScript routes already do.
+  Each handler validates the body, then keeps only the keys the input model validated, at every
+  depth (a nested value object included), before any repository call, in the plain and the TPH
+  per-subtype handlers. A field the entity does not declare, a server-generated id, a `readOnly`
+  or derived field on create, and the id, `readOnly` and `writeOnce` fields on update are all
+  dropped silently. None of them is answered with a 400, so a client that sends an extra harmless
+  field keeps working; a malformed value on a field the client may set is still
+  `400 {"error": "validation"}`. An assigned key is still the caller's on create. Values are the
+  body's own, so a repository receives the same value types as in 1.2.0.
+
+  Gated by `server/python/tests/integration/test_generated_router_validated_input.py`.
 
 ## [1.2.3] — 2026-11-15
 
@@ -1384,34 +3011,6 @@ file changes. No vocabulary or `metamodelVersion` change._
   collections must have exclusive access". A host that loads metadata once and serves requests
   from it in parallel, or a parallel test run, hit this. The cache is now a
   `ConcurrentDictionary`.
-
-## [1.2.1] — Python only
-
-_PyPI `1.2.1` only. npm, NuGet and Maven Central stay at `1.2.0` (`8.2.0`): none of them has a
-product change. No vocabulary or `metamodelVersion` change._
-
-### Security
-
-- **The generated Python routes passed raw request input to the repository.** The FastAPI
-  create, PATCH and PUT handlers validated the body against `<Entity>Create` / `<Entity>Patch`
-  and then handed the repository the raw body, not what was validated. Pydantic ignores a key a
-  model does not declare, so a client could write fields it must never touch: a client-sent `id`
-  on create (or on update, changing the row's identity), a `@mutability: readOnly` field, and any
-  made-up field such as `isAdmin` all reached the repository. Found by an external review of
-  1.2.0. Every Python adopter serving the generated routes should upgrade and regenerate; an
-  ejected (owned) router needs the same change made by hand.
-
-  The repository now receives only the validated input, as the TypeScript routes already do.
-  Each handler validates the body, then keeps only the keys the input model validated, at every
-  depth (a nested value object included), before any repository call, in the plain and the TPH
-  per-subtype handlers. A field the entity does not declare, a server-generated id, a `readOnly`
-  or derived field on create, and the id, `readOnly` and `writeOnce` fields on update are all
-  dropped silently. None of them is answered with a 400, so a client that sends an extra harmless
-  field keeps working; a malformed value on a field the client may set is still
-  `400 {"error": "validation"}`. An assigned key is still the caller's on create. Values are the
-  body's own, so a repository receives the same value types as in 1.2.0.
-
-  Gated by `server/python/tests/integration/test_generated_router_validated_input.py`.
 
 ## [1.2.0] — 2026-10-30
 

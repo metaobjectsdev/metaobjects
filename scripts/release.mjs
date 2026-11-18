@@ -33,7 +33,9 @@ import { createInterface } from "node:readline/promises";
 import { publishSet } from "./publish-set.mjs";
 import { mavenVersion } from "./maven-coordinate.mjs";
 import { ejectReleaseRefusalAt } from "./eject-release-gate.mjs";
-import { releaseBranchRefusal, newestNpmReleaseTag, latestRegressionRefusal } from "./lib/release-branch.mjs";
+import {
+  releaseBranchRefusal, newestNpmReleaseTag, latestRegressionRefusal, unmergedMaintenanceRefusal,
+} from "./lib/release-branch.mjs";
 
 const VERSION = process.argv[2];
 const DRY = process.argv.includes("--dry-run");
@@ -82,6 +84,15 @@ if (out(`git rev-parse --verify --quiet origin/${branch} || true`) === "") {
   die(`${branch} has no origin/${branch} — push the branch first`);
 }
 if (out(`git rev-list --count HEAD..origin/${branch}`) !== "0") die(`${branch} is behind origin/${branch} — pull first`);
+
+// A minor or major cut must already hold every commit of the previous release/<M>.<m>
+// maintenance branch: a fix shipped as a patch from it and never brought to main would
+// otherwise be missing from the new line (docs/RELEASING.md, Step 0).
+const maintenanceBranches = out("git branch -r --format='%(refname:short)'")
+  .split("\n").map((b) => b.trim().replace(/^origin\//, "")).filter(Boolean);
+const unmergedRefusal = unmergedMaintenanceRefusal(VERSION, maintenanceBranches,
+  (b) => Number(out(`git rev-list --count HEAD..origin/${b}`)));
+if (unmergedRefusal !== null) die(unmergedRefusal);
 
 // Clean tree, except the CHANGELOG (we promote its [Unreleased] section) and untracked noise.
 const dirty = out("git status --porcelain").split("\n")

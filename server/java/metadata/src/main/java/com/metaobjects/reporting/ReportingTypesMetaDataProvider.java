@@ -24,8 +24,8 @@ import com.metaobjects.registry.MetaDataTypeProvider;
  * <p>Registers the entity-member reporting vocabulary: {@code dimension.attribute},
  * {@code dimension.time}, {@code measure.aggregate}, {@code measure.ratio} and
  * {@code segment.filter}. {@code object.report} is an object subtype and is registered by
- * the object-types provider beside {@code object.projection}. {@code measure.derived} is
- * deliberately absent (it waits for FR-037 R5).</p>
+ * the object-types provider beside {@code object.projection}. {@code measure.derived} (R13) is
+ * FR-037 R5's first arithmetic wave.</p>
  *
  * <p>Depends on {@code core-types} for {@code metadata.base} inheritance.</p>
  */
@@ -37,6 +37,7 @@ public class ReportingTypesMetaDataProvider implements MetaDataTypeProvider {
         TimeDimension.registerTypes(registry);
         AggregateMeasure.registerTypes(registry);
         RatioMeasure.registerTypes(registry);
+        DerivedMeasure.registerTypes(registry);
         FilterSegment.registerTypes(registry);
     }
 

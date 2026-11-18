@@ -5,7 +5,7 @@ to store one. [`vectors.json`](./vectors.json) has two parts.
 
 ## `wire`: every port passes every vector
 
-The ISO-8601 text a caller sends and a port answers. Clients depend on it, so every port agrees.
+The ISO-8601 text a caller sends and a port answers under `"wire": { "durations": "iso" }`. Clients depend on it, so every port agrees in that mode. Under the default `native` mode each port writes its own standard form (see [the wire setting](../../docs/features/api-contract.md#the-wire-setting)).
 
 - **`parse`**: a duration a caller may send, and the canonical form a port answers for it. The
   canonical form is `[-]PT[<h>H][<m>M][<s>[.<f>]S]`: hours are never folded into days, zero

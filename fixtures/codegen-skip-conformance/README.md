@@ -1,6 +1,6 @@
 # codegen-skip-conformance
 
-The shared table of cases for [ADR-0062](../../spec/decisions/ADR-0062-skip-codegen-when-nothing-changed.md):
+The shared table of cases for [ADR-0064](../../spec/decisions/ADR-0064-skip-codegen-when-nothing-changed.md):
 which changes must make `gen` regenerate, which may let it skip, and what a local
 `verify --codegen` may do after each.
 

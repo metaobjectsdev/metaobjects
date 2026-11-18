@@ -68,7 +68,7 @@ public sealed class Fr010NestedExtractCodegenTests
 
         // The delegating overload + the loader convenience overload + the baked FQN.
         Assert.Contains("public const string PAYLOAD_FQN = \"OrderPayload\";", src);
-        Assert.Contains("public static global::MetaObjects.Render.Extract.ExtractionResult<global::Acme.Orders.OrderPayloadExtracted> ExtractLenient(\n        global::MetaObjects.Meta.MetaObject mo, string text, ExtractOptions? opts = null)", src);
+        Assert.Contains("public static global::MetaObjects.Render.Extract.ExtractionResult<OrderPayloadExtracted> ExtractLenient(\n        global::MetaObjects.Meta.MetaObject mo, string text, ExtractOptions? opts = null)", src);
         Assert.Contains("global::MetaObjects.Meta.MetaRoot root, string text, ExtractOptions? opts = null)", src);
         Assert.Contains("global::MetaObjects.Codegen.Runtime.ExtractObject.Extract(mo, text, Format.Json, opts)", src);
 
@@ -79,9 +79,9 @@ public sealed class Fr010NestedExtractCodegenTests
         // ADR-0056 rule 3: each mirror record is its own file, emitted once per run in the value
         // object's namespace — never inside a template's parser file.
         Assert.DoesNotContain("public sealed record", src);
-        var orderMirror = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "OrderPayloadExtracted.g.cs").Content;
-        Assert.Contains("public sealed record AddressExtracted", Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "AddressExtracted.g.cs").Content);
-        Assert.Contains("public sealed record LineItemExtracted", Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "LineItemExtracted.g.cs").Content);
+        var orderMirror = Assert.Single(files, f => f.Path == "OrderPayloadExtracted.g.cs").Content;
+        Assert.Contains("public sealed record AddressExtracted", Assert.Single(files, f => f.Path == "AddressExtracted.g.cs").Content);
+        Assert.Contains("public sealed record LineItemExtracted", Assert.Single(files, f => f.Path == "LineItemExtracted.g.cs").Content);
         // Nested-aware mirror typing — object fields are nested mirrors, NOT object?.
         Assert.Contains("public AddressExtracted? shipTo { get; init; }", orderMirror);
         Assert.Contains("public global::System.Collections.Generic.IReadOnlyList<LineItemExtracted?>? items { get; init; }", orderMirror);

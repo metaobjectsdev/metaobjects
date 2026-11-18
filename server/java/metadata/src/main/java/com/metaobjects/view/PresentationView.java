@@ -9,9 +9,11 @@ import java.util.List;
  * {@code view.dropdown}, ...).
  *
  * <p>They are registered so a metadata document that carries them LOADS in the
- * Java port, as it does in every other port. They stay TS-web-PRESENTATION-ONLY:
- * no Java codegen, render or runtime consumer reads them, and the registry
- * manifest excludes them ({@code RegistryManifest}, {@code PRESENTATION_ONLY}).
+ * Java port, as it does in every other port. They are cross-port vocabulary only
+ * TypeScript implements so far: no Java codegen, render or runtime consumer reads
+ * them, and the registry manifest carries them marked {@code implementedIn: ["typescript"]}.
+ * Their attrs ({@code view.textarea @rows}, the {@code view.image} attrs) come from
+ * the {@code metaobjects-ui-web} provider.
  * One class serves every control kind because a view carries no per-subtype
  * behavior here.</p>
  *

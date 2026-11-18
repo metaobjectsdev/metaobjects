@@ -15,7 +15,7 @@ There are **7 drift sources**, and the toolchain has a guard for each.
 | **Code-vs-API-doc** | Cross-port codegen from the same metadata. | Build time |
 | **DB-vs-metadata** | `meta verify --db` (TS CLI) — introspects the live DB and fails if it has drifted from metadata. Includes modeled projection **view bodies** (a changed `CREATE VIEW` is drift, reported with what differs: the first differing excerpt of the text on SQLite/D1, the deparsed body on Postgres's scratch-database path, a fingerprint mismatch otherwise). A view `meta migrate` drops and recreates only because the migration alters a table it reads, with its definition unchanged, is not drift and is not reported; a hand-authored *unmodeled* view is unmanaged and never flagged. A schema concern owned by the Node toolchain regardless of server language; on the JVM ports the runtime auto-create/validator path was removed (ADR-0015) and the `metaobjects:verify` Maven goal is not available. Cloudflare D1 has no client wire protocol, so it can't go through `--db`'s Kysely-driver introspection — use `meta verify --dialect d1 [--d1 <binding>] [--remote]` instead (the same wrangler-shelled-out path `meta migrate --dialect d1` uses); `--remote` is required to check the *deployed* database, not the local `wrangler dev` shadow copy. Pointing `--db file:` at wrangler's local D1 state directory (`.wrangler/state/**/d1/**`) still runs, but only verifies that local copy — `verify` warns when it detects this. | CI on every PR |
 | **Migration-vs-metadata** | The Node `meta migrate` emits migrations FROM metadata diffs — they cannot drift from metadata by construction. Schema migrations for **every** port are owned by this Node toolchain (`@metaobjectsdev/cli migrate`, ADR-0015); the C# and Python migrate surfaces were removed. | Build time |
-| **Generated-edited** | `@generated` headers in emitted code + a committed hash manifest that refuses an edited file by name; in TypeScript only, a three-way merge also preserves hand-edits on the machine that generated the file. | Code review |
+| **Generated-edited** | `@generated` headers in emitted code + a committed hash manifest that refuses an edited file by name; in TypeScript only, a three-way merge also preserves hand-edits on the machine that generated the file. `verify --codegen` names each edited file in every port. In TypeScript it fails on one when `.metaobjects/config.json` sets `"verify": { "handEdits": "fail" }` (what `meta init` writes) and reports it as a notice otherwise; the C#, Java, Kotlin and Python gates compare bytes, so an edit always fails there ([cli.md](cli.md)). | Build time (CI) |
 | **Prompt-vs-payload** | FR-004 `Renderer.verify` parses `{{...}}` references in templates and checks each one exists on the payload VO. | Build time + runtime |
 | **Generated-vs-runtime** | Kotlin / Java `MetadataStartupValidator` (from Spring `ApplicationReadyEvent`) re-loads metadata at startup and asserts the generated table objects match. | App startup |
 
@@ -285,17 +285,18 @@ gate (its default diff is skipped), so only the undeclared case fires.
 #### An increment key's sequence: `@sequenceStart` and `@sequenceName`
 
 An `@generation: increment` key draws from a sequence. Two attributes on the
-`identity.primary` describe it, for a database the model must reproduce or adopt:
+`identity.primary` declare the sequence's first value and its physical name, so the model can
+state both instead of taking the database's defaults:
 
 ```json
 { "identity.primary": { "@fields": "id", "@generation": "increment",
     "@sequenceStart": 1000000000, "@sequenceName": "Ticket_Id_seq" } }
 ```
 
-- `@sequenceStart` is the first value handed out. Absent: 1. Use it for a table that keeps a
+- `@sequenceStart` is the first value handed out. Absent: 1. For example, a table that keeps a
   low id range for rows it seeds itself.
 - `@sequenceName` is the sequence's physical name. Absent: the database's own default
-  (`<table>_<column>_seq` on Postgres). Use it for a sequence that kept its name when its
+  (`<table>_<column>_seq` on Postgres). For example, a sequence that kept its name when its
   table was renamed.
 
 On Postgres `meta migrate` creates the column as
@@ -304,17 +305,20 @@ existing column with the same options), and `meta verify --db` reads the live se
 from the catalog. A live sequence whose start or name differs from the declaration is altered
 in place, never dropped:
 
-- a different start sets it (`ALTER SEQUENCE … START WITH n`) and moves the counter up to it
-  when it has not got there (`setval(…, n, false)`), so the next insert takes the declared
-  start. It never moves the counter down, which could hand out an id already in use; the down
-  migration restores the old start value and leaves the counter where it is.
+- a different start records it (`ALTER SEQUENCE … START WITH n`) and moves the counter forward
+  only: when the next value would be below `GREATEST(n, max(id) + 1)`, a `setval` moves it there.
+  It never restarts the sequence and never moves a counter back, because live rows already hold
+  the ids it handed out. The down migration restores the old start value and leaves the counter
+  where it is. Every port that writes DDL holds the same rule (C# through its generated design-time
+  services, Kotlin's Exposed table on a fresh database).
 - a different name renames it (`ALTER SEQUENCE … RENAME TO …`); the down renames it back.
 
 Only what the model declares is compared, on every path (a live database, a shadow database,
 a committed snapshot): a database whose sequence kept an old name or a non-default start sees
 no change until the model names it, and a model that declares neither writes the same SQL and
-snapshots it always did. SQLite and D1 have no sequences to name, so both attributes change
-nothing there. At load, either attribute without `@generation: increment` is refused
+snapshots it always did. SQLite and D1 have no sequences, so both attributes change nothing
+there; `meta migrate` and `meta verify --db` print an advisory when they create such a column
+there. At load, either attribute without `@generation: increment` is refused
 (`ERR_SEQUENCE_WITHOUT_INCREMENT`), and so is a `@sequenceStart` below 1 or past what the key
 can hold, 2147483647 for a `field.int` (`ERR_SEQUENCE_START_OUT_OF_RANGE`). A declared name
 shares the namespace of tables, views and indexes, so two tables declaring one (an abstract
@@ -411,12 +415,16 @@ the re-diff is empty afterwards. Postgres keeps `IS [NOT] DISTINCT FROM`.
 
 ### CHECKs from validators: names, conditions, how many
 
-A `validator.*` node and a `field.enum`'s member list each become a CHECK constraint. Four
+A `validator.*` node and a `field.enum`'s member list each become a CHECK constraint. A validator
+on a derived field — one carrying an `origin.*`, or a cross-field validator naming one — makes
+none: the field is no column of the table, so a CHECK on it would fail `CREATE TABLE`; the C#
+context skips the same validators. Four
 attributes shape it, all database-only (no generated code reads them):
 
 - **`@constraintName`** names the CHECK, for a database whose CHECKs were named by hand. On the
   validators that generate a CHECK (`numeric`, `length`, `regex`, `comparison`, `requiredWhen`,
-  `presentIff`, `atLeastOne`; `required` is a NOT NULL, not a CHECK), and on a `field.enum` for its
+  `presentIff`, `atLeastOne`, `exactlyOne`; `required` is a NOT NULL, not a CHECK), and on a
+  `field.enum` for its
   membership CHECK. Absent, the name is derived (`<table>_<column>_<kind>_chk`,
   `<table>_<column>_chk` for an enum), as before. A declared name is refused (`ERR_CHECK_NAME`) when
   another constraint on the table already has it, or, on Postgres, when it is over 63 bytes
@@ -429,24 +437,25 @@ attributes shape it, all database-only (no generated code reads them):
   rows break the rule: a CHECK added `NOT VALID` still refuses an `UPDATE` of such a row, whatever
   the update changes. The generated app-level validation is unchanged, so the validator still holds
   every write and an enum's members still bound the property. A cross-field validator
-  (`comparison`, `requiredWhen`, `presentIff`, `atLeastOne`) is enforced only by its CHECK, so
+  (`comparison`, `requiredWhen`, `presentIff`, `atLeastOne`, `exactlyOne`) is enforced only by its CHECK, so
   `false` on one is refused (`ERR_CROSS_FIELD_WITHOUT_CHECK`): remove the validator instead.
   A live CHECK the model no longer declares is proposed for dropping (under `--allow drop-check`
   on Postgres). Declaring `@constraintName` too is refused (`ERR_CONSTRAINT_NAME_WITHOUT_CHECK`):
   there is no CHECK for the name to name. `migrate.checks.skipRedundant` (below) is independent:
   it only ever leaves more out.
 - **`@condition`** on a cross-field validator (`comparison`, `requiredWhen`, `presentIff`,
-  `atLeastOne`) is an expression, in the grammar `origin.computed` uses, over the entity's fields.
+  `atLeastOne`, `exactlyOne`) is an expression, in the grammar `origin.computed` uses, over the entity's fields.
+  It refuses `case` and `now` (`ERR_BAD_ATTR_VALUE`): a database CHECK can hold neither.
   The rule holds only where the condition does: the CHECK is `(NOT condition) OR (rule)`, with
   the negation folded in (`kind = 'Owned'` becomes `kind <> 'Owned'`). It is checked at load
   (`ERR_BAD_ATTR_VALUE`): every field it names is a field of the entity, it is a boolean
   expression, a literal compared with a field is of that field's kind (and, for an enum, one of
   its `@values`), and no comparison has a `null` literal (`x = NULL` is never true: use `isNull`
   or `isNotNull`). An int-backed enum's member is compared as its stored integer.
-- **`@max`** on `validator.atLeastOne` caps how many of its `@fields` may be present. `@max: 1`
-  is "exactly one": `num_nonnulls(a, b) = 1` on Postgres, a sum of `IS NOT NULL` tests on SQLite.
-  A higher `@max` is `count >= 1 AND count <= max`.
-  It must be between 1 and the number of `@fields` (`ERR_BAD_ATTR_VALUE`).
+- **`validator.exactlyOne`** says exactly one of its `@fields` is present:
+  `num_nonnulls(a, b) = 1` on Postgres, a sum of `IS NOT NULL` tests on SQLite and D1. Its CHECK
+  is `<table>_<column>_exactlyone_chk` after the first field. It must name two or more fields
+  (`ERR_BAD_ATTR_VALUE`): exactly one of one field is a required field.
 
 ```json
 { "object.entity": { "name": "Note", "children": [
@@ -456,7 +465,7 @@ attributes shape it, all database-only (no generated code reads them):
   { "field.long": { "name": "customerId" } },
   { "field.long": { "name": "accountId" } },
   { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "increment" } },
-  { "validator.atLeastOne": { "name": "oneOwner", "@fields": ["customerId", "accountId"], "@max": 1,
+  { "validator.exactlyOne": { "name": "oneOwner", "@fields": ["customerId", "accountId"],
     "@constraintName": "CK_Notes_Owner",
     "@condition": { "op": "eq", "left": { "field": "kind" }, "right": { "value": "Owned" } } } }
 ] } }
@@ -482,7 +491,8 @@ CHECKs were written by hand only where the column type does not already enforce 
 stands. A validator with a declared `@constraintName` keeps its CHECK whole: an explicit
 declaration beats a project default, as a declared name beats a convention. Default `false`. A
 `checks` that is not an object, a key other than `skipRedundant`, or a non-boolean value is
-refused when the config loads.
+refused when the config loads. Turning it on for a database migrate already built proposes a
+`drop-check` for each CHECK it now leaves out, which is gated behind `--allow drop-check`.
 
 ## Schema conventions: names for objects no code addresses
 
@@ -496,12 +506,15 @@ come from the project's **schema conventions**, selected in `.metaobjects/config
 
 | Decides | `default` (absent) | `efcore` |
 |---|---|---|
-| Primary-key constraint name | `<table>_pkey` | `PK_<table>` |
+| Primary-key constraint name (Postgres; SQLite and D1 emit an unnamed primary key) | `<table>_pkey` | `PK_<table>` |
 | Foreign-key constraint name | `<table>_<first column>_fk` | `FK_<table>_<principal>_<columns>` |
-| Index on a foreign key | none | `IX_<table>_<columns>`, unless the primary key or another index (a partial one included) already starts with the FK's columns; an FK index another FK index covers is dropped, so FK order does not matter |
-| Unique key (`identity.secondary`, a `@unique` field) | a unique index | a UNIQUE constraint when a foreign key references it, else a unique index |
+| Index on a foreign key | none (unless [`migrate.foreignKeyIndexes`](#foreign-key-indexes-migrateforeignkeyindexes) is on, which gives each uncovered one `<table>_<columns>_idx`) | `IX_<table>_<columns>`, unless the primary key or another index (a partial one included) already starts with the FK's columns; an FK index another FK index covers is dropped, so FK order does not matter |
+| Unique key (`identity.secondary`, a `@unique` field) | a unique index; a live UNIQUE constraint is also accepted | a UNIQUE constraint when a foreign key references it, else a unique index |
 
-`efcore` follows EF Core's own conventions, including, on PostgreSQL (Npgsql), its truncation of a
+`efcore` is a reference preset. It reproduces one ORM's documented naming to show what the
+mechanism does; the mechanism is general, and a project whose database was built by another tool
+supplies its own conventions (below). `efcore` follows EF Core's own conventions, including, on
+PostgreSQL (Npgsql), its truncation of a
 name longer than 63 characters to 62 characters and `~`. EF Core's SQLite provider truncates
 nothing, so on SQLite and D1 neither does `efcore`. A database first built by EF Core
 migrations and one built by `meta migrate` then agree on these objects. Where the EF Core model
@@ -509,13 +522,28 @@ carried something its conventions do not (a hand-named key, an index dropped by 
 it in metadata. A unique key keeps the name its metadata node declares (EF Core would call an
 alternate key `AK_…`; name the node that if you want EF's). A key with a `DESC` column or a
 non-btree `@using` stays an index, since a UNIQUE constraint carries neither. `default` is what
-migrate has always emitted.
+migrate has always emitted, and it has no preference between the two kinds of unique key: a
+database whose keys are UNIQUE constraints (Drizzle's `unique()` makes them) is left as it is.
+A conventions object says which kind it wants with `uniqueKeyKind`: `index`, `constraint`, or
+`either`, which is `default`'s answer.
 
 Names code does address are not conventions. Tables, views and columns resolve in core
 naming (`naming`, and `@table` / `@column`), the same in every port. A constraint or index a
 program compares against (a unique-violation handler checking the constraint name) is
 declared in metadata: `@constraintName` on an `identity.reference`, or the index node's own
 name. A declared name always wins over a convention.
+
+On Postgres an index name over the 63-byte identifier limit is created cut to its first 63
+bytes — the name Postgres stores — whether the name is declared (`index.lookup`,
+`identity.secondary`) or derived (a `@unique` field's `<table>_<column>_unique`, and the
+[foreign-key indexes](#foreign-key-indexes-migrateforeignkeyindexes)); two names that cut to the
+same 63 bytes are refused with `ERR_DUPLICATE_SQL_NAME`. A declared CHECK name is the exception,
+refused rather than cut, so the CHECK always matches its declaration. The generated Drizzle
+tables, EF Core context and Exposed tables declare the cut name on Postgres as well, so the
+mapping names the index the database holds; the generated names artifacts (`Names`,
+`IDENTITY_<NAME>_INDEX`) keep the declared name, which is dialect-neutral. MySQL refuses an
+over-long name rather than cutting it, and `meta migrate` writes no MySQL DDL, so nothing is cut
+there.
 
 A project can supply its own conventions from `metaobjects.config.ts`, which wins over the
 preset name. Start from a preset so every member is present; an object missing one is refused
@@ -531,14 +559,81 @@ export default defineConfig({
 });
 ```
 
-**Changing the conventions of an existing database.** On Postgres, an FK, CHECK or index whose
-definition is unchanged and whose name differs is renamed in place (`RENAME CONSTRAINT` /
-`ALTER INDEX … RENAME`), never dropped and re-created; new FK indexes are created. The PK name
-and whether a unique key is a constraint or an index are not compared by the diff, so they only
-shape what migrate creates: after a switch, an existing primary key keeps its old name, and
-neither `meta migrate` nor `meta verify` reports it. Rename one by hand if you want the new
-name (`ALTER TABLE "t" RENAME CONSTRAINT "t_pkey" TO "PK_t"` on Postgres). SQLite cannot rename
-a constraint and rebuilds the table instead.
+Such an object reaches only the TypeScript toolchain: `meta migrate`, `meta verify --db`, and
+the TypeScript generators resolve it. The C# and Kotlin generators read only the
+`migrate.conventions` preset name from `.metaobjects/config.json` and apply the default rule for
+every derived name, foreign-key indexes included.
+
+**Changing the conventions of an existing database.** On Postgres, a primary key, FK, CHECK or
+index whose definition is unchanged and whose name differs is renamed in place (`RENAME
+CONSTRAINT` / `ALTER INDEX … RENAME`), never dropped and re-created; new FK indexes are created.
+A unique key that is now wanted as a UNIQUE constraint instead of a plain index is promoted in
+place (`ADD CONSTRAINT … UNIQUE USING INDEX`), so an FK that relies on it keeps working. A key the
+conventions want as a plain index (`uniqueKeyKind` answers `index`, as `efcore` does for a key
+no FK references) is converted the other way, which has no in-place form: the constraint is dropped and the index re-created, and each FK
+onto that key is dropped first and added back after, so the plan is gated behind `--allow
+drop-index` and `--allow drop-fk`. `meta verify --db` reports each of these as drift. SQLite
+cannot rename a constraint and rebuilds the table instead.
+
+## Foreign-key indexes: `migrate.foreignKeyIndexes`
+
+Postgres and SQLite index the referenced side of a foreign key and not the referencing side, so
+without an index every join from the parent, and every `ON DELETE` check it runs, scans the child
+table. `migrate.foreignKeyIndexes` asks `meta migrate` to index each foreign key, with no other
+change to the schema's names:
+
+```json
+{ "schema_version": 1, "migrate": { "foreignKeyIndexes": true } }
+```
+
+With it on, each enforced foreign key that nothing already leads with gets a plain index named
+`<table>_<column>[_<column>…]_idx`. The primary key, a `@unique` field, an `identity.secondary`
+and an `index.lookup` without `@expr` (a partial one included) cover a foreign key whose columns
+they start with, in any order; a junction's first foreign key is usually covered by its composite
+primary key. Two foreign keys over the same columns get one index, and a foreign key that leads a
+longer one shares the longer one's index. A name that collides with another index is refused with
+`ERR_DUPLICATE_SQL_NAME`.
+
+On Postgres a name over 63 bytes is cut to its first 63 bytes (on a character boundary), which is
+the name Postgres stores for it, so a converged schema compares equal and the next run proposes
+nothing. SQLite and D1 have no limit and keep the whole name. Two foreign keys on one table whose
+names cut to the same 63 bytes are refused with `ERR_DUPLICATE_SQL_NAME`; cover one of them with
+an `index.lookup` of your own naming. The diff also matches a foreign-key constraint by the name
+Postgres stores, so a derived `<table>_<column>_fk` over the limit is not proposed as a rename on
+every run. The shared corpus
+[`fixtures/foreign-key-index-conformance/`](../../fixtures/foreign-key-index-conformance/README.md)
+pins which foreign keys get an index and under what name, and the TypeScript, C# and Kotlin rules
+all pass it.
+
+It is separate from the `efcore` conventions, which index every foreign key too but also rename
+the primary-key and foreign-key constraints: a team can have the indexes without the renames.
+Under `efcore` the option adds nothing, since the preset's `IX_` indexes already cover every
+foreign key. On MySQL it adds nothing either: MetaObjects emits no DDL there, and InnoDB indexes
+each foreign key itself.
+
+`meta init` writes it on for a new project. A project without the key is unchanged: migrate adds
+no foreign-key index, and `meta verify` keeps its advisory naming each unindexed foreign key
+(which now also names the option). Turning it on for an existing database is an additive
+migration (`CREATE INDEX` per key), with nothing blocked.
+
+The generators that map indexes declare the same indexes under the same names, from the same
+setting, so the mapping and the database agree:
+
+| Generator | With the option on |
+|---|---|
+| Drizzle (`entityFile()`, TypeScript) | `index("<name>").on(table.<column>)` in the table's index callback |
+| Prisma (`prismaSchemaFile()`, TypeScript) | `@@index([...], map: "<name>")`, read from the same expected schema |
+| EF Core `AppDbContext` (C#) | `HasIndex(x => x.<Property>, "<name>").HasDatabaseName("<name>")` |
+| Exposed table (Kotlin) | `index("<name>", false, <column>)` in the table's `init {}` |
+
+Java (OMDB is data access only and maps no indexes) and Python (Pydantic models and routes, no
+ORM mapping) generate nothing that declares an index, so the option changes no output there.
+
+A project that pairs its own conventions object with `migrate.foreignKeyIndexes` and a C# or
+Kotlin mapping should make the object's `foreignKeyIndexes` match the default rule (index each
+foreign key nothing leads with, named `<table>_<columns>_idx`) or leave the option off;
+otherwise the C# DbContext or Kotlin Exposed tables may declare an index `meta migrate` did not
+create.
 
 ## How CHECK constraints and expression indexes are compared
 
@@ -650,7 +745,7 @@ needs a `prompts/` (else `templates/`) directory, or `--templates <root>`, and e
 | Port | Bare command | Config each check needs | One check alone |
 |---|---|---|---|
 | TypeScript | `meta verify` | Codegen: `metaobjects.config.ts`. Templates: the `template.*` nodes in the model. | `meta verify --codegen`, `meta verify --templates` |
-| Java | `mvn metaobjects:verify` | Codegen: the `<generators>` in the plugin configuration. Templates: `-Dmeta.verify.templateRoot`. | `-Dmeta.verify.mode=codegen`, `-Dmeta.verify.mode=templates` |
+| Java | `mvn metaobjects:verify` | Codegen: the `<generators>` in the plugin configuration. Templates: `-Dmeta.verify.templateRoot`. | `-Dmeta.verify.mode=codegen`, `-Dmeta.verify.mode=templates` (`-Dmeta.verify.mode=deps` for dependency drift, opt-in) |
 | Kotlin | `mvn metaobjects:verify` (the same goal as Java) | As Java. `MetadataStartupValidator` adds a startup check. | As Java |
 | C# | `dotnet meta verify` | Codegen: an output directory (`csharp.outDir` in `.metaobjects/config.json`, or `--out <dir>`) and `codegen/Generators.cs`. Templates: `--templates <root>`, or a `prompts/` (else `templates/`) directory in the working directory; with neither, a bare run exits 2. | `dotnet meta verify --codegen`, `dotnet meta verify --templates <root>` |
 | Python | `metaobjects verify` | Codegen: `metaobjects.config.yaml`. Templates: `metaobjects.config.yaml` or `--prompts <dir>`. | `metaobjects verify --codegen`, `metaobjects verify --templates` |
@@ -736,14 +831,23 @@ and a `CREATE VIEW`:
 
 A drop and a create of the same view needs no `--allow`. It has two costs a replace does not:
 
-- **Privileges granted on the view are discarded.** `DROP VIEW` removes the view's grants with
-  it, and `meta migrate` writes no `GRANT`. A role that had `SELECT` on the view loses it, and
-  nothing reports that. In an offline plan every changed Postgres view takes this path.
+- **Privileges granted on the view are carried over, but the view gets a new owner.**
+  `DROP VIEW` removes the view's grants with it, so on Postgres the migration reads them from the
+  catalog first (the view's own privileges and its column privileges, not the owner's) into a
+  session temporary table, and after the `CREATE` grants each one again to the same role, `WITH
+  GRANT OPTION` where it was held. A column privilege is granted again only when the new view
+  still has that column; one on a column the new definition dropped is gone. The apply log shows
+  a `NOTICE` with the count carried over. The down migration does the same when it drops and
+  creates a view. The recreated view is owned by whoever applies the migration, not by the old
+  view's owner. In an offline plan every changed Postgres view takes this path. These are the
+  only `GRANT` statements `meta migrate` writes: it declares no privileges of its own (#574
+  tracks that). SQLite and D1 have no privileges.
 - If something depends on the view, Postgres refuses the `DROP VIEW` at apply and names the
   dependent.
 
-Plan with `--from-db` to get the in-place replace when it is legal, which keeps both. Otherwise
-grant the privileges again after the migration is applied.
+Plan with `--from-db` to get the in-place replace when it is legal, which keeps the view's
+owner and its dependents. Migrations are TypeScript-owned (ADR-0015): no other port writes a
+migration, so this is the only port that carries privileges over.
 
 A view whose definition does **not** change is dropped and created too, when the migration
 retypes, drops or renames a column the view reads: Postgres refuses to retype or drop it
@@ -751,6 +855,12 @@ while the view stands. The table may be one the model does not list for the view
 the case of an `@sql` body that joins it. `meta migrate` finds it by name in the view's
 stored definition, and recreates the view only when that definition also names the changed
 column. The same two costs apply.
+
+A rename never rewrites a view body. When a migration renames a column and a view's `@sql`
+still names the old one, that view is recreated as declared and the migration fails at apply.
+`meta migrate` prints an advisory for it (`view <name> still names <table>.<column>, which this
+migration renames to <new>`), so the view, column and new name are all shown. The advisory does not block the plan. Change the view's `@sql` to the
+new name before you apply.
 
 SQLite and D1 have no `CREATE OR REPLACE VIEW`: every replaced view is written as `DROP VIEW`
 and `CREATE VIEW` there, so there is no refusal to avoid and no probe. They refuse something
@@ -802,6 +912,28 @@ migrate` never creates, drops, or drift-checks it, and `meta verify --db` report
 *external (declared)*. The two are mutually exclusive. See
 [ADR-0043](../../spec/decisions/ADR-0043-ddl-ownership-escape-valves.md).
 
+**Removing a column a view reads.** For a view the tool derives, `meta migrate` finds the
+views that read the column and drops and recreates them around the change. Two kinds of view
+are not rewritten, so you edit them yourself:
+
+- **An `@sql` body.** The tool never parses it, so it cannot know the body still names a
+  column you removed. **Edit the body in the same change that removes the column.** Left
+  alone, the migration is still written. On Postgres it then fails at apply with `column
+  "…" does not exist`. On SQLite it applies and leaves a view that errors when queried.
+- **An `@unmanaged` view, or a hand-made one.** With `--from-db`, `meta migrate` reads the
+  live view bodies. If one it does not own names the column the plan drops, the drop is
+  blocked at plan time and the message names the view and the column; otherwise Postgres
+  fails at apply (`cannot drop column … because other objects depend on it`) and SQLite
+  fails with `error in view … after drop column`. Change the view first, or pass `--allow
+  drop-column-read-by-view` to proceed anyway. A view with no recorded body cannot be
+  matched, and an offline run (no database) cannot see live views, so neither is checked.
+
+A rollback of a dropped column re-adds it on every engine, with its type, but the data is
+not restored. On SQLite a column that was `NOT NULL` with no default comes back nullable,
+because SQLite cannot add it any other way. SQLite also cannot add a column with an
+expression default (or a `uuid` identity default) to a populated table, so the rollback
+omits that default and says so in a `NOTE`.
+
 ## Verified by
 
 The following conformance fixtures gate this feature's behavior across ports:
@@ -811,6 +943,9 @@ The following conformance fixtures gate this feature's behavior across ports:
 - [`bootstrap-canonical-from-empty.yaml`](../../fixtures/persistence-conformance/migrations/bootstrap-canonical-from-empty.yaml) — full-CREATE bootstrap from an empty database
 - [`add-nullable-column.yaml`](../../fixtures/persistence-conformance/migrations/add-nullable-column.yaml) — incremental `ALTER TABLE … ADD COLUMN` for a new nullable field
 - [`drop-table-blocked-without-allow.yaml`](../../fixtures/persistence-conformance/migrations/drop-table-blocked-without-allow.yaml) — destructive operations require an explicit allow-flag
+- [`foreign-key-indexes-added.yaml`](../../fixtures/persistence-conformance/migrations/foreign-key-indexes-added.yaml) — `migrate.foreignKeyIndexes` turned on for an existing schema adds one `<table>_<columns>_idx` per uncovered foreign key and nothing else
+- [`foreign-key-index-long-name-added.yaml`](../../fixtures/persistence-conformance/migrations/foreign-key-index-long-name-added.yaml) and [`noop-converged-long-foreign-key-index-name.yaml`](../../fixtures/persistence-conformance/migrations/noop-converged-long-foreign-key-index-name.yaml) — a foreign-key index name over Postgres's 63-byte limit is created under its cut name and the next run proposes nothing
+- [`noop-converged-foreign-key-indexes.yaml`](../../fixtures/persistence-conformance/migrations/noop-converged-foreign-key-indexes.yaml) — with the option on, a converged schema emits zero SQL (the indexes introspect back exactly as emitted)
 - [`noop-converged-canonical.yaml`](../../fixtures/persistence-conformance/migrations/noop-converged-canonical.yaml) — **the idempotence gate**: apply the whole canonical schema, then diff the same metadata against the database it just produced. A converged schema must emit **zero** SQL. This is what catches any asymmetry between what `emit` writes, what `introspect` reads back, and what the expected schema models — the class of bug that makes `meta migrate` re-propose (and on SQLite, destructively rebuild) unchanged tables forever.
 
 **Template drift (`fixtures/verify-conformance/`)** — the `Renderer.verify` engine

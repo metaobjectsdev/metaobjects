@@ -221,14 +221,31 @@ def _subtree_claims_anything(req: MetaRequirement) -> bool:
     return False
 
 
-def _project_authored_requirements(addressed: list[AddressedRequirement]) -> bool:
+def _project_authored_requirements(
+    addressed: list[AddressedRequirement], imported: Callable[[str], bool] | None = None
+) -> bool:
     """Did the ADOPTER author any of these requirements? (FR-043 §5.4.)
 
     Provenance is the library's declared PACKAGE, a manifest fact; a node's source id
     differs between a checkout and an installed wheel. An adopter OVERLAYING a library
-    requirement stays in the library's package and is deliberately not authoring one."""
+    requirement stays in the library's package and is deliberately not authoring one.
+    FR-023: a dependency's requirement, inherited or not, is the publisher's design for
+    the same reason, and cannot switch coverage on either."""
     lib_pkgs = library_packages()
-    return any(effective_package(item.node) not in lib_pkgs for item in addressed)
+    for item in addressed:
+        pkg = effective_package(item.node)
+        if pkg in lib_pkgs:
+            continue
+        if imported is not None and imported(requirement_fqn(pkg, item.path)):
+            continue
+        return True
+    return False
+
+
+def requirement_fqn(pkg: str, path: str) -> str:
+    """The key a collection predicate reads for a requirement: ``<package>::<path>``, or
+    the bare path when the effective package is empty."""
+    return path if pkg == "" else f"{pkg}::{path}"
 
 
 def _claimed_object_keys(root: MetaData, reqs: list[MetaRequirement]) -> frozenset[str]:
@@ -261,18 +278,32 @@ def scan_requirements(
     coverable: Callable[[str], bool] | None = None,
     measure_coverage: bool | None = None,
     require_implementers: bool = False,
+    in_ledger: Callable[[str], bool] | None = None,
+    imported: Callable[[str], bool] | None = None,
 ) -> RequirementScan:
     """Compute, once, what the gate and the summary both read.
 
     ``measure_coverage`` forces coverage on or off instead of deriving it; the one caller
     that legitimately knows better is a gate over a shipped library loaded standalone.
+
+    ``in_ledger`` (FR-023, ``Collection.in_ledger``) keeps a dependency's requirement the
+    project did not inherit out of everything here: it is loaded, so an overlay of it
+    resolves, and is not checked, summarised, linted or counted as a claim. ``imported``
+    (``Collection.imported``) marks a dependency's requirement, which never switches
+    coverage on. Both read ``<package>::<path>``; ``None`` keeps every requirement.
     """
-    addressed = collect_addressed_requirements(root)
+    addressed = [
+        a
+        for a in collect_addressed_requirements(root)
+        if in_ledger is None or in_ledger(requirement_fqn(effective_package(a.node), a.path))
+    ]
     return RequirementScan(
         addressed=addressed,
         claimed_objects=_claimed_object_keys(root, [a.node for a in addressed]),
         measure_coverage=(
-            measure_coverage if measure_coverage is not None else _project_authored_requirements(addressed)
+            measure_coverage
+            if measure_coverage is not None
+            else _project_authored_requirements(addressed, imported)
         ),
         require_implementers=require_implementers,
         coverable=coverable,

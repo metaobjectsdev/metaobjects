@@ -65,6 +65,7 @@ import {
   PACKAGE_SEPARATOR,
 } from "./shared/structural.js";
 import { ATTR_SUBTYPE_PROPERTIES, ATTR_SUBTYPE_STRINGARRAY } from "./core/attr/attr-constants.js";
+import { FIELD_ATTR_FLATTENED_COLUMN_PREFIX } from "./persistence/db/db-constants.js";
 import { attrClassFor } from "./attr-class-map.js";
 import type { AttrValue } from "./shared/meta-data.js";
 
@@ -1041,6 +1042,9 @@ function parseNodeInto(
   }
 }
 
+/** Attrs whose empty string is a meaningful value rather than "not set" (FR5c). */
+const EMPTY_STRING_IS_A_VALUE: ReadonlySet<string> = new Set([FIELD_ATTR_FLATTENED_COLUMN_PREFIX]);
+
 /** FR5c — for every @-prefixed inline attr in `nodeData`, check whether the
  *  target already declares the same attr (in `preAttrs`) with a different
  *  non-empty value. If so, emit ERR_MERGE_CONFLICT with a `format: "merged"`
@@ -1060,9 +1064,11 @@ function detectAttrMergeConflicts(
   const existingFiles =
     "files" in target.source ? [...target.source.files] : [];
 
-  function isEmptyValue(v: unknown): boolean {
+  function isEmptyValue(v: unknown, attrName: string): boolean {
     if (v === undefined || v === null) return true;
-    if (typeof v === "string" && v === "") return true;
+    // `@flattenedColumnPrefix: ""` is a value (keep the members' own columns), not "unset",
+    // so `""` in one file and `"home_"` in another is a conflict, not last-loaded-wins.
+    if (typeof v === "string" && v === "") return !EMPTY_STRING_IS_A_VALUE.has(attrName);
     if (Array.isArray(v) && v.length === 0) return true;
     return false;
   }
@@ -1112,7 +1118,7 @@ function detectAttrMergeConflicts(
     const existingVal = preAttrs.get(attrName);
 
     if (existingVal === undefined) continue;
-    if (isEmptyValue(newValRaw) || isEmptyValue(existingVal)) continue;
+    if (isEmptyValue(newValRaw, attrName) || isEmptyValue(existingVal, attrName)) continue;
     // Both sides set a non-empty value — compare. If equal, last-writer-wins
     // is a no-op; if different, that's a conflict.
     if (attrValuesEqual(existingVal, newValRaw as AttrValue)) continue;

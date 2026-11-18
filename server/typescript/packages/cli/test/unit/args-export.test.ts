@@ -2,19 +2,25 @@ import { describe, test, expect } from "bun:test";
 import { parseExportArgs } from "../../src/lib/args.js";
 
 describe("parseExportArgs", () => {
-  test("default flags — out is undefined", () => {
-    expect(parseExportArgs([])).toEqual({ out: undefined });
+  test("default flags — out is undefined, effective is off", () => {
+    expect(parseExportArgs([])).toEqual({ out: undefined, effective: false });
+  });
+
+  test("--effective selects the effective tree", () => {
+    expect(parseExportArgs(["--effective"])).toEqual({ out: undefined, effective: true });
   });
 
   test("--out sets the output path", () => {
     expect(parseExportArgs(["--out", "dist/metadata.json"])).toEqual({
       out: "dist/metadata.json",
+      effective: false,
     });
   });
 
   test("--out with absolute path", () => {
     expect(parseExportArgs(["--out", "/tmp/metadata.json"])).toEqual({
       out: "/tmp/metadata.json",
+      effective: false,
     });
   });
 

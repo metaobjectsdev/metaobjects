@@ -3,4 +3,5 @@
 export {
   DURATION_PATTERN, DURATION_RE, parseDurationLiteral, formatDuration, formatPostgresInterval,
   canonicalDuration, parseDurationInput, parsePostgresInterval, durationToWire, durationToStoredMicros,
+  DURATION_MICROS_MIN, DURATION_MICROS_MAX,
 } from "@metaobjectsdev/metadata";

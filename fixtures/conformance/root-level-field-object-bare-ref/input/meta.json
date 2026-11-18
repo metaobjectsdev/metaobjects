@@ -1,0 +1,32 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "object.value": {
+          "name": "Address",
+          "children": [
+            { "field.string": { "name": "street" } },
+            { "field.string": { "name": "city" } }
+          ]
+        }
+      },
+      {
+        "field.object": {
+          "name": "AddrTemplate",
+          "abstract": true,
+          "@objectRef": "Address"
+        }
+      },
+      {
+        "object.value": {
+          "name": "Contact",
+          "children": [
+            { "field.string": { "name": "name" } },
+            { "field.object": { "name": "billing", "extends": "AddrTemplate" } }
+          ]
+        }
+      }
+    ]
+  }
+}

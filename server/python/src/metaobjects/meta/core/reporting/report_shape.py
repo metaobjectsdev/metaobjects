@@ -19,7 +19,11 @@ from ....shared.separators import PACKAGE_SEP
 from ...meta_data import MetaData
 from ...meta_root import MetaRoot
 from ..field.field_constants import (
+    FIELD_ATTR_OBJECT_REF,
     FIELD_ATTR_REQUIRED,
+    FIELD_ATTR_STORAGE,
+    FIELD_SUBTYPE_OBJECT,
+    STORAGE_FLATTENED,
     FIELD_SUBTYPE_BOOLEAN,
     FIELD_SUBTYPE_CURRENCY,
     FIELD_SUBTYPE_DATE,
@@ -33,10 +37,12 @@ from ..field.field_constants import (
 from ..field.meta_field import MetaField
 from ..identity.identity_constants import (
     IDENTITY_ATTR_FIELDS,
+    IDENTITY_REFERENCE_ATTR_ENFORCE,
     IDENTITY_REFERENCE_ATTR_REFERENCES,
     IDENTITY_SUBTYPE_REFERENCE,
 )
 from ..object.meta_object import MetaObject
+from ..object.object_constants import OBJECT_ATTR_DISCRIMINATOR
 from ..relationship.relationship_constants import (
     RELATIONSHIP_ATTR_OBJECT_REF,
     RELATIONSHIP_ATTR_SOURCE_REF_FIELD,
@@ -154,9 +160,14 @@ def _resolve_reporting_field_ref_named(
     """:func:`resolve_reporting_field_ref`, also returning the entity the reference's
     entity half NAMES (which, with ``host``, may be an ancestor of the entity the field is
     read from). Table C reads that entity's primary identity."""
-    # ``Entity.field``; a package qualifier uses ``::``, so the member separator is the LAST dot.
-    dot = ref.rfind(CHILD_REF_SEP)
+    # ``Entity.field`` or ``Entity.field.member`` (FR-044 R12); a package qualifier uses ``::``
+    # and holds no dot, so the entity half ends at the first dot after the last ``::``.
+    last_sep = ref.rfind(PACKAGE_SEP)
+    dot = ref.find(CHILD_REF_SEP, 0 if last_sep == -1 else last_sep + len(PACKAGE_SEP))
     if dot <= 0:
+        return None
+    path = ref[dot + len(CHILD_REF_SEP):].split(CHILD_REF_SEP)
+    if len(path) > 2:
         return None
     named = resolve_object_ref(root, ref[:dot], _package_of_key(declaring.resolution_key()))
     if not isinstance(named, MetaObject):
@@ -164,9 +175,27 @@ def _resolve_reporting_field_ref_named(
     if host is not None and not _is_self_or_ancestor(named, host):
         return None
     # ADR-0039: resolving fields(), so a field inherited through extends is found.
-    member = ref[dot + len(CHILD_REF_SEP):]
-    field = next((f for f in (host if host is not None else named).fields() if f.name == member), None)
+    field = next((f for f in (host if host is not None else named).fields() if f.name == path[0]), None)
+    if field is not None and len(path) == 2:
+        field = flattened_member_of(field, path[1])
     return None if field is None else (named, field)
+
+
+def is_flattened_field(field: MetaData) -> bool:
+    """True for a ``field.object`` whose ``@storage`` is ``flattened`` (ADR-0039: resolving)."""
+    return field.sub_type == FIELD_SUBTYPE_OBJECT and field.get_meta_attr(FIELD_ATTR_STORAGE) == STORAGE_FLATTENED
+
+
+def flattened_member_of(embedding: MetaField, name: str) -> MetaField | None:
+    """FR-044 R12: member *name* of the value object a flattened ``field.object`` embeds
+    (resolving, so an inherited member counts). ``None`` when the field is not flattened,
+    names no value object, or the value object has no such member."""
+    if not is_flattened_field(embedding):
+        return None
+    value_object = ref_target(embedding, FIELD_ATTR_OBJECT_REF)
+    if not isinstance(value_object, MetaObject):
+        return None
+    return next((f for f in value_object.fields() if f.name == name), None)
 
 
 def resolve_dimension_of(
@@ -309,9 +338,9 @@ def _via_joins_inner(hops: list[str], from_: MetaObject, root: MetaRoot) -> bool
     """True when every hop of ``hops``, walked from ``from_``, is a belongs-to hop over a
     required foreign key: the hops the view joins INNER, so every row of the report has a
     match. This is the join-type rule of the view lowering (TypeScript ``walkViaPath``, #209):
-    the reference is held by the entity the hop leaves, its first FK field is required, and
-    every earlier hop is INNER too. ``@enforce: false`` does not change it. A hop that does
-    not resolve, an ambiguous reference or a has-many hop is not INNER."""
+    the reference is held by the entity the hop leaves, is enforced, its first FK field is
+    required, its target hides no rows (:func:`_hides_rows`), and every earlier hop matches
+    too. A hop that does not resolve, an ambiguous reference or a has-many hop does not."""
     current = from_
     for hop_name in hops:
         # ADR-0039: resolving children(), so a hop inherited through extends is found.
@@ -347,14 +376,36 @@ def _via_joins_inner(hops: list[str], from_: MetaObject, root: MetaRoot) -> bool
                 target,
                 source_ref_field if isinstance(source_ref_field, str) else None,
             )
-        if reference is None:
+        # ADR-0039: resolving — @enforce may be inherited; absent is enforced.
+        if reference is None or reference.get_meta_attr(IDENTITY_REFERENCE_ATTR_ENFORCE) is False:
             return False
         fk_fields = reference_fields(reference)
         fk = current.find_field(fk_fields[0]) if fk_fields else None
         if fk is None or not _is_required_field(fk):
             return False
+        if _hides_rows(target):
+            return False
         current = target
     return True
+
+
+def _hides_rows(obj: MetaData) -> bool:
+    """True when a join onto ``obj`` carries a row scope of its own: a TPH subtype, or an
+    abstract level beneath a TPH base (both scoped by the discriminator), whose FK may name a
+    sibling's row. The model has no soft-delete or query-filter vocabulary, so this is the only
+    row-hiding scope."""
+    # ADR-0039: own — the discriminator is declared on the level that owns it.
+    if OBJECT_ATTR_DISCRIMINATOR in obj.own_attrs():
+        return False
+    seen = {id(obj)}
+    sup = obj.super_data
+    while sup is not None and id(sup) not in seen:
+        seen.add(id(sup))
+        # ADR-0039: own — the TPH base is the ancestor that declares @discriminator.
+        if OBJECT_ATTR_DISCRIMINATOR in sup.own_attrs():
+            return True
+        sup = sup.super_data
+    return False
 
 
 def _dimension_required(
@@ -452,7 +503,8 @@ def _measure_field(item: str, report: MetaObject, from_: MetaObject, root: MetaR
 def _derive_measure(m: MetaMeasure, from_: MetaObject, root: MetaRoot) -> tuple[str, MetaField | None] | None:
     """Table B for one measure: its subtype, and the ``@of`` field it carries type attrs from
     (if any). None when its ``@of`` does not resolve."""
-    if m.is_ratio():
+    # A quotient, and (R13) an arithmetic expression, are decimal whatever their operands.
+    if m.is_ratio() or m.is_derived():
         return FIELD_SUBTYPE_DECIMAL, None
     agg = m.agg()
     if agg == AGG_COUNT:

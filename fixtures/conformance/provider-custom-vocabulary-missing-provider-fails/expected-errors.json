@@ -1,0 +1,29 @@
+{
+  "errors": [
+    {
+      "code": "ERR_UNKNOWN_SUBTYPE",
+      "source": {
+        "format": "json",
+        "files": ["meta.contacts.json"],
+        "jsonPath": "$['metadata.root'].children[0]['object.value'].children[2]['layout.picker']"
+      }
+    },
+    {
+      "code": "ERR_UNKNOWN_ATTR",
+      "source": {
+        "format": "json",
+        "files": ["meta.contacts.json"],
+        "jsonPath": "$['metadata.root'].children[0]['object.value'].children[0]['field.string']"
+      }
+    },
+    {
+      "code": "ERR_UNKNOWN_ATTR",
+      "source": {
+        "format": "json",
+        "files": ["meta.contacts.json"],
+        "jsonPath": "$['metadata.root'].children[0]['object.value'].children[1]['field.string']"
+      }
+    }
+  ],
+  "warnings": []
+}

@@ -45,7 +45,7 @@ public class RequiredNestedValueObjectTests
     [Fact]
     public void A_required_nested_value_object_is_initialized()
     {
-        var src = Generate().Single(f => System.IO.Path.GetFileName(f.Path) == "ScoringConfig.g.cs").Content;
+        var src = Generate().Single(f => f.Path == "ScoringConfig.g.cs").Content;
         Assert.Contains("public Thresholds Thresholds { get; set; } = new Thresholds();", src);
         Assert.Contains("public Thresholds? Fallback { get; set; }", src);
         // An abstract value object cannot be constructed, so it keeps the filler.
@@ -61,7 +61,7 @@ public class RequiredNestedValueObjectTests
         using var ms = new MemoryStream();
         var emit = comp.Emit(ms);
         Assert.True(emit.Success, string.Join("\n", emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
-        var type = Assembly.Load(ms.ToArray()).GetType("Acme.ScoringConfig")!;
+        var type = Assembly.Load(ms.ToArray()).GetType("Acme.Generated.ScoringConfig")!;
 
         var config = System.Text.Json.JsonSerializer.Deserialize("{}", type)!;
         Assert.NotNull(type.GetProperty("Thresholds")!.GetValue(config));

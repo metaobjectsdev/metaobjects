@@ -8,7 +8,7 @@
 
 import { type MetaObject, type MetaRoot } from "@metaobjectsdev/metadata";
 import { effectivePackage } from "../docs-paths.js";
-import type { EmittedFile, GenContext, Generator } from "../generator.js";
+import { type EmittedFile, type GenContext, type Generator, selectedEntities } from "../generator.js";
 import { packageToPath } from "../import-path.js";
 import type { ContractShape, JsonSchema } from "../contract/field-schema.js";
 import { collectContractEntries, contractObjects } from "../contract/object-schema.js";
@@ -71,7 +71,7 @@ function strictFiles(objects: readonly MetaObject[], root: MetaRoot): EmittedFil
 
 function generateSchemaFiles(ctx: GenContext, options: JsonSchemaFileOptions): EmittedFile[] {
   const root = ctx.loadedRoot;
-  const objects = contractObjects(ctx.entities.filter(ctx.matches), root);
+  const objects = contractObjects(selectedEntities(ctx), root);
   return options.profile === "strict" ? strictFiles(objects, root) : canonicalFiles(objects, root);
 }
 

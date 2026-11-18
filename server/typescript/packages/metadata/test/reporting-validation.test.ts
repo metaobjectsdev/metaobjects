@@ -902,7 +902,7 @@ describe("validateReporting — relative dates", () => {
     expect(await codes(m)).toEqual([]);
   });
 
-  test("F1 (rc.19 now): a relative value in a projection @filter is accepted", async () => {
+  test("F1 (now): a relative value in a projection @filter is accepted", async () => {
     const m = edit((x) =>
       x["metadata.root"].children.push({
         "object.projection": {
@@ -937,7 +937,7 @@ describe("validateReporting — relative dates", () => {
     expect(jsonPathOf(errors[0]!.source)).toContain("['layout.dataGrid']");
   });
 
-  test("F1 (rc.19 now): a relative value in an origin.aggregate @filter is accepted", async () => {
+  test("F1 (now): a relative value in an origin.aggregate @filter is accepted", async () => {
     const m = edit((x) =>
       x["metadata.root"].children.push({
         "object.projection": {

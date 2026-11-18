@@ -83,7 +83,7 @@ public class SpringControllerGeneratorTest extends SharedRegistryTestBase {
         // envelope); the handler binds the raw DTO and validates it explicitly with the injected
         // Validator, returning {"error":"validation"} on any field-constraint violation.
         assertTrue("expected @PostMapping create handler; saw:\n" + src,
-            Pattern.compile("@PostMapping\\s*\\n\\s*public ResponseEntity<\\?> create\\(@RequestBody AuthorDto dto\\)").matcher(src).find());
+            Pattern.compile("@PostMapping\\s*\\n\\s*public ResponseEntity<\\?> create\\(@RequestBody JsonNode body\\)").matcher(src).find());
         assertTrue("expected explicit validator.validate(dto) on create (FR-036); saw:\n" + src,
             src.contains("validator.validate(dto)"));
         // PATCH AND PUT share the update handler (per API contract) — expressed as a single
@@ -112,6 +112,36 @@ public class SpringControllerGeneratorTest extends SharedRegistryTestBase {
         // /api/<entity-plural-lowercase> per the cross-port contract; Author → authors.
         assertTrue("expected @RequestMapping(\"/api/authors\"); saw:\n" + src,
             src.contains("@RequestMapping(\"/api/authors\")"));
+    }
+
+    @Test
+    public void pathHonorsADeclaredCollectionNameAndTheConfiguredPluralizer() throws Exception {
+        // Shared contract: fixtures/naming-conformance/collection-segments.json.
+        String declared = AUTHOR_FIXTURE.replace("\"name\": \"Author\",", "\"name\": \"Author\", \"@collectionName\": \"People\",");
+        assertEquals("/api/people", controllerRouteFor(declared, null));
+        // No @collectionName, naming.collections: none -> the name as it is (snake_cased).
+        assertEquals("/api/author", controllerRouteFor(AUTHOR_FIXTURE, "none"));
+        // A declared name beats the configured pluralizer.
+        assertEquals("/api/people", controllerRouteFor(declared, "none"));
+    }
+
+    private String controllerRouteFor(String fixture, String pluralizer) throws Exception {
+        Path outDir = tempFolder.newFolder().toPath();
+        Path workspace = tempFolder.newFolder().toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(workspace, "author-collection", fixture);
+        if (pluralizer != null) {
+            loader.getRoot().setPhysicalNaming(
+                com.metaobjects.database.PhysicalNaming.of("snake_case", "snake_case", pluralizer));
+        }
+        SpringControllerGenerator gen = new SpringControllerGenerator();
+        Map<String, String> args = new HashMap<>();
+        args.put("outputDir", outDir.toString());
+        gen.setArgs(args);
+        gen.execute(loader);
+        String src = Files.readString(outDir.resolve("acme/blog/AuthorController.java"));
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("@RequestMapping\\(\"([^\"]*)\"\\)").matcher(src);
+        assertTrue(src, m.find());
+        return m.group(1);
     }
 
     @Test
@@ -320,7 +350,7 @@ public class SpringControllerGeneratorTest extends SharedRegistryTestBase {
 
         // The create handler must FILTER violations, not simply reject any.
         assertTrue("create must ignore violations on server-owned components; saw:\n" + src,
-            src.contains(".anyMatch(v -> !SERVER_OWNED_ON_CREATE.contains(v.getPropertyPath().toString()))"));
+            src.contains(".addViolationsExcept(validator.validate(dto), SERVER_OWNED_ON_CREATE)"));
         assertFalse("create must no longer reject on ANY violation; saw:\n" + src,
             src.contains("if (!validator.validate(dto).isEmpty())"));
 

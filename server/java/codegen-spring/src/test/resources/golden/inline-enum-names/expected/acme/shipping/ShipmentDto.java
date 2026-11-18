@@ -3,6 +3,7 @@ package acme.shipping;
 import jakarta.validation.constraints.*;
 
 /** GENERATED — wire DTO for Shipment. Do not hand-edit; regenerated from metadata. */
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
 public record ShipmentDto(
     @NotNull Long id,
     @NotNull ShipmentStatus status,

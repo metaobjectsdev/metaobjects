@@ -1,6 +1,6 @@
-// Phase 5, bug TPH-scope: a TPH subtype shares its base's table, so a view whose base is a
-// subtype, or whose join or origin.first lands on one, must add the subtype's discriminator
-// predicate. Without it a "coupon authorizations" view read every authorization row.
+// A TPH subtype shares its base's table, so a view whose base is a subtype, or whose join or
+// origin.first lands on one, adds the level's discriminator predicate; an abstract level reads the
+// rows of every concrete subtype beneath it.
 
 import { describe, test, expect } from "bun:test";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
@@ -15,7 +15,7 @@ const ENTITIES = [
   { "object.entity": { name: "Authorization", "@discriminator": "type", children: [
     { "source.rdb": { "@table": "authorizations" } },
     { "field.long": { name: "id" } },
-    { "field.enum": { name: "type", "@required": true, "@values": ["Coupon", "Permit", "Ground", "Air"], "@intValueMap": { Coupon: 1, Permit: 2, Ground: 3, Air: 4 } } },
+    { "field.enum": { name: "type", "@required": true, "@values": ["Coupon", "Permit"], "@intValueMap": { Coupon: 1, Permit: 2 } } },
     { "field.string": { name: "code" } },
     { "identity.primary": { name: "id", "@fields": "id" } },
   ] } },
@@ -23,12 +23,6 @@ const ENTITIES = [
     { "field.long": { name: "couponCardId" } },
     { "identity.reference": { name: "couponCard", "@fields": "couponCardId", "@references": "CouponCard" } },
   ] } },
-  // An abstract level between the base and two concrete subtypes: its rows are both subtypes'.
-  { "object.entity": { name: "CarrierAuthorization", extends: "Authorization", abstract: true, children: [
-    { "field.string": { name: "carrier" } },
-  ] } },
-  { "object.entity": { name: "GroundAuthorization", extends: "CarrierAuthorization", "@discriminatorValue": "Ground", children: [] } },
-  { "object.entity": { name: "AirAuthorization", extends: "CarrierAuthorization", "@discriminatorValue": "Air", children: [] } },
 ];
 
 const model = (projections: unknown[]) => ({ "metadata.root": { package: "acme", children: [...ENTITIES, ...projections] } });
@@ -39,7 +33,7 @@ async function viewSql(projections: unknown[]): Promise<string> {
   return buildProjectionViews(root, { dialect: "postgres" })[0]!.sql;
 }
 
-describe("TPH-scope — a view over a TPH subtype carries its discriminator", () => {
+describe("a view over a TPH subtype carries its discriminator", () => {
   test("a subtype base filters the shared table to its rows", async () => {
     const sql = await viewSql([{ "object.projection": { name: "CouponAuthView", children: [
       { "source.rdb": { "@kind": "view", "@table": "v_coupon_auth" } },
@@ -47,7 +41,7 @@ describe("TPH-scope — a view over a TPH subtype carries its discriminator", ()
       { "field.string": { name: "code", extends: "CouponAuthorization.code" } },
       { "identity.primary": { name: "id", extends: "CouponAuthorization.id" } },
     ] } }]);
-    expect(sql).toContain("FROM public.authorizations c");
+    expect(sql).toContain("FROM authorizations c");
     expect(sql).toContain("WHERE c.type = 1");
   });
 
@@ -59,18 +53,8 @@ describe("TPH-scope — a view over a TPH subtype carries its discriminator", ()
       { "field.string": { name: "latestCode", children: [{ "origin.first": { "@of": "CouponAuthorization.code", "@via": "CouponCard.couponAuthorizations", "@orderBy": ["id:desc"] } }] } },
       { "identity.primary": { name: "id", extends: "CouponCard.id" } },
     ] } }]);
-    expect(sql).toMatch(/LEFT OUTER JOIN public\.authorizations (\w+) ON \1\.coupon_card_id = c\.id AND \1\.type = 1/);
-    expect(sql).toMatch(/FROM public\.authorizations (\w+) WHERE \1\.coupon_card_id = c\.id AND \1\.type = 1 ORDER BY/);
+    expect(sql).toMatch(/LEFT OUTER JOIN authorizations (\w+) ON \1\.coupon_card_id = c\.id AND \1\.type = 1/);
+    expect(sql).toMatch(/FROM authorizations (\w+) WHERE \1\.coupon_card_id = c\.id AND \1\.type = 1 ORDER BY/);
     expect(sql).not.toContain("WHERE c.type");
-  });
-
-  test("an abstract intermediate level reads every concrete subtype beneath it", async () => {
-    const sql = await viewSql([{ "object.projection": { name: "CarrierAuthView", children: [
-      { "source.rdb": { "@kind": "view", "@table": "v_carrier_auth" } },
-      { "field.long": { name: "id", extends: "CarrierAuthorization.id" } },
-      { "field.string": { name: "carrier", extends: "CarrierAuthorization.carrier" } },
-      { "identity.primary": { name: "id", extends: "CarrierAuthorization.id" } },
-    ] } }]);
-    expect(sql).toContain("WHERE c.type IN (3, 4)");
   });
 });

@@ -65,6 +65,7 @@ open class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObj
         parseArgs()
         val outRoot = Paths.get(outDir.absolutePath)
         for (declared in loader.metaObjects) {
+            if (!isSelected(declared)) continue
             // FR-044: a served report filters on its DERIVED fields, so its allowlist is built
             // from its read model (which marks every banded derived field @filterable). Any
             // other report maps to null and gets no allowlist; a non-report is itself.

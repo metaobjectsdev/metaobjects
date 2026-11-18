@@ -92,6 +92,10 @@ const ALLOWED: ReadonlyMap<string, string> = new Map([
     "cli/src/commands/init.ts",
     "the scaffolder WRITING the default layout — creating that directory, never assuming one exists",
   ],
+  [
+    "cli/src/lib/dependency-transports.ts",
+    "PACKAGED_MODEL_DIR — the resource folder INSIDE a Maven jar / NuGet package where a published model sits (the maven and nuget transports' default `dir`). It is a packaging convention shared with the publishers, not this project's metadata collection, which stays resolveCollection's to name",
+  ],
 ]);
 
 // ---------------------------------------------------------------------------
@@ -235,10 +239,10 @@ describe("`metaobjects/` is a config default and nothing else", () => {
   });
 
   test("a comment-only mention is not a violation — proven against a real file", () => {
-    // `detect-stack.ts` explains, in a comment, that it reads the resolved
-    // collection "rather than assuming `metaobjects/`". Saying so is the
-    // opposite of a violation, and the guard must not convict it.
-    const file = join(PACKAGES, "cli", "src", "lib", "detect-stack.ts");
+    // `fmt-engine.ts` explains, in a comment, that it resolves the collection
+    // "never a hardcoded `metaobjects/`". Saying so is the opposite of a
+    // violation, and the guard must not convict it.
+    const file = join(PACKAGES, "cli", "src", "lib", "fmt-engine.ts");
     const raw = readFileSync(file, "utf8");
     expect(raw).toContain(`${DEFAULT_METADATA_DIR}/`); // the mention is really there
     expect(violationLines(stripComments(raw))).toEqual([]); // and it is in a comment

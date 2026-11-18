@@ -47,13 +47,11 @@ public sealed class GenListAndSelectionTests : IDisposable
     public void ListLines_prints_all_generators_with_stable_names_and_descriptions()
     {
         var lines = GenCommand.ListLines(_tmp);
-        Assert.Equal(15, lines.Count);
+        Assert.Equal(16, lines.Count);
         foreach (var name in new[]
         {
             "entity", "db-context", "routes", "output-parser", "extractor",
             "output-prompt", "render-helper", "filter-allowlist", "template",
-            // The @expr indexes the EF model cannot carry, as SQL.
-            "expression-indexes",
             // FR-015 — per-entity callable wrapper (storedProc / tableFunction).
             "callable",
             // Program A / §A5 — per-object physical database name constants.
@@ -63,6 +61,8 @@ public sealed class GenListAndSelectionTests : IDisposable
             "report-export",
             // ADR-0025 — the api reference, an ordinary entry since ADR-0034 Amendment 9.
             "api-docs",
+            // The @expr indexes the EF model cannot carry, as SQL.
+            "expression-indexes",
         })
         {
             Assert.Contains(lines, l => l.Contains($" {name} —"));
@@ -99,7 +99,7 @@ public sealed class GenListAndSelectionTests : IDisposable
 
         Assert.True(outcome.Ok, string.Join("; ", outcome.LoadErrors));
         Assert.Contains(outcome.Result!.Files, f => f.Status == "written");
-        Assert.True(File.Exists(Path.Combine(OutDir, "acme", "ai", "Alpha.responseFormat.cs")));
+        Assert.True(File.Exists(Path.Combine(OutDir, "Alpha.responseFormat.cs")));
     }
 
     [Fact]
@@ -151,6 +151,6 @@ public sealed class GenListAndSelectionTests : IDisposable
             generatorNames: ["entity", "output-parser"], templateRoot: null);
 
         Assert.True(outcome.Ok, string.Join("; ", outcome.LoadErrors));
-        Assert.True(File.Exists(Path.Combine(OutDir, "acme", "ai", "Alpha.response.cs")));
+        Assert.True(File.Exists(Path.Combine(OutDir, "Alpha.response.cs")));
     }
 }

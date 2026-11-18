@@ -1,7 +1,10 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test, setDefaultTimeout } from "bun:test";
+import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
+
+setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
 /**
  * A composition an adopter OWNS may only call what the package exports.

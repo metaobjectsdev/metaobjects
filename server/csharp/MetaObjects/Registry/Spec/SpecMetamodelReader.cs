@@ -562,7 +562,7 @@ public sealed class SpecMetamodelReader
 
     private static string Key(string type, string subType) => $"{type}.{subType}";
 
-    /// <summary>R40 — a list of strings under <paramref name="key"/> (<c>ports</c> / <c>implementedIn</c>), or null when absent.</summary>
+    /// <summary>A list of strings under <paramref name="key"/> (<c>ports</c> / <c>implementedIn</c>), or null when absent.</summary>
     private static IReadOnlyList<string>? StrList(JsonElement o, string key) =>
         o.TryGetProperty(key, out JsonElement e) && e.ValueKind == JsonValueKind.Array
             ? e.EnumerateArray().Select(x => x.GetString()!).ToList()

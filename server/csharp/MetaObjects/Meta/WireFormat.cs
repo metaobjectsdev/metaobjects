@@ -26,15 +26,24 @@ public enum NullMemberForm
     Omit,
 }
 
+/// <summary>How a <c>field.duration</c> is written and read (<c>wire.durations</c>).</summary>
+public enum DurationWireForm
+{
+    /// <summary>The default: System.Text.Json's own <c>TimeSpan</c> form, <c>01:30:00</c>, both ways.</summary>
+    Native,
+    /// <summary>Canonical ISO-8601 (<c>PT1H30M</c>), the form every port writes alike.</summary>
+    Iso,
+}
+
 /// <summary>
 /// The project's wire-format setting: <c>wire</c> in <c>.metaobjects/config.json</c>
-/// (ADR-0019 Amendment 2). Both keys default to native, each port's own language-standard output;
-/// <c>{ "decimals": "string", "nullMembers": "omit" }</c> is the cross-port form.
+/// (ADR-0019 Amendment 2). Every key defaults to native, each port's own language-standard output;
+/// <c>{ "decimals": "string", "nullMembers": "omit", "durations": "iso" }</c> is the cross-port form.
 /// </summary>
-public sealed record WireFormat(DecimalWireForm Decimals, NullMemberForm NullMembers)
+public sealed record WireFormat(DecimalWireForm Decimals, NullMemberForm NullMembers, DurationWireForm Durations = DurationWireForm.Native)
 {
-    /// <summary>Both keys native: what a tree loaded with no project carries.</summary>
-    public static readonly WireFormat Default = new(DecimalWireForm.Native, NullMemberForm.Native);
+    /// <summary>Every key native: what a tree loaded with no project carries.</summary>
+    public static readonly WireFormat Default = new(DecimalWireForm.Native, NullMemberForm.Native, DurationWireForm.Native);
 
     /// <summary>The setting the tree <paramref name="node"/> belongs to carries, else <see cref="Default"/>.</summary>
     public static WireFormat Of(MetaData node) =>
@@ -51,7 +60,10 @@ public sealed record WireFormat(DecimalWireForm Decimals, NullMemberForm NullMem
         _ => "native",
     };
 
+    /// <summary>The <c>wire.durations</c> spelling of <paramref name="form"/>.</summary>
+    public static string Spelling(DurationWireForm form) => form == DurationWireForm.Iso ? "iso" : "native";
+
     /// <summary>This setting as the <c>wire</c> block that declares it.</summary>
     public string Block() =>
-        $"\"wire\": {{ \"decimals\": \"{Spelling(Decimals)}\", \"nullMembers\": \"{Spelling(NullMembers)}\" }}";
+        $"\"wire\": {{ \"decimals\": \"{Spelling(Decimals)}\", \"nullMembers\": \"{Spelling(NullMembers)}\", \"durations\": \"{Spelling(Durations)}\" }}";
 }

@@ -31,11 +31,10 @@ export interface EmitOptions {
   /** Map from entity name → table name for every entity referenced in joins. */
   readonly joinTables: Readonly<Record<string, string>>;
   /**
-   * Map from entity name (the `joinTables` keys, the base entity included) → its declared
-   * `@schema`. Postgres only (ruling R54): every relation a view reads is schema-qualified,
-   * with its declared schema or, absent one, `public` — a bare name binds through the
-   * `search_path` current when the view is created, so `reporting.programs` over a bare
-   * `programs` is one `search_path` away from reading itself. SQLite/D1 stay bare.
+   * Map from entity name (the `joinTables` keys, the base entity included) to its declared
+   * `@schema`. Postgres qualifies a relation with it when the entity declares one, so the view
+   * reads that schema's table whatever `search_path` is current when it is created. An entity
+   * with no `@schema` stays a bare name. SQLite and D1 have no schemas here and stay bare.
    */
   readonly tableSchemas?: Readonly<Record<string, string | undefined>>;
   /**
@@ -46,18 +45,14 @@ export interface EmitOptions {
   readonly bodyOnly?: boolean;
 }
 
-/**
- * A relation a view reads, as the FROM / JOIN / subquery names it. Postgres qualifies
- * every one (ruling R54): `@schema`, else `public`. SQLite/D1 have no schemas here.
- */
+/** A relation a view reads, as the FROM / JOIN / subquery names it: schema-qualified on Postgres
+ *  only when the entity declares a `@schema`. */
 export function viewRelation(entity: string, table: string, options: EmitOptions): string {
-  if (options.dialect !== "postgres") return quoteIfNeeded(table);
-  const schema = options.tableSchemas?.[entity] ?? DEFAULT_DB_SCHEMA_POSTGRES;
-  return `${quoteIfNeeded(schema)}.${quoteIfNeeded(table)}`;
+  const schema = options.dialect === "postgres" ? options.tableSchemas?.[entity] : undefined;
+  return schema === undefined ? quoteIfNeeded(table) : `${quoteIfNeeded(schema)}.${quoteIfNeeded(table)}`;
 }
 
-/** SQL literal for a filter value, dialect-aware for booleans. A relative date (rc.19 `now`) is
- *  the dialect's shifted "now"; a base-row operand (correlated-filter) is its column. */
+/** SQL literal for a filter value, dialect-aware for booleans. */
 function sqlLiteral(value: unknown, dialect: EmitOptions["dialect"]): string {
   if (value === null || value === undefined) return "NULL";
   if (isRelativeNow(value)) return relativeNowSql(value.duration, value.temporal, dialect, value.startOf);
@@ -121,13 +116,23 @@ function renderOrderKeys(keys: readonly ViewOrderKey[], alias: string): string {
 }
 
 /** Lower a resolved computed expression tree (#195 origin.computed) to a SQL scalar expression. */
+/** An inlined `first` correlates with the row it sits in; without that alias the subquery
+ *  would compare against `.fk` and the view would fail only when it is applied. */
+function requireOuterAlias(column: Extract<SelectColumn, { kind: "first" }>): string {
+  const outer = column.outerAlias;
+  if (outer === undefined || outer.length === 0) {
+    throw new Error(`view-ddl-emit: an inlined origin.first for "${column.fieldName}" has no outer alias to correlate with.`);
+  }
+  return outer;
+}
+
 function renderExpr(node: ViewExprNode, options: EmitOptions): string {
   const dialect = options.dialect;
   switch (node.kind) {
     case "col":
       return quoteRef(node.ref);
     case "lit":
-      return sqlLiteral(node.value, dialect);
+      return sqlLiteral(node.value, options.dialect);
     case "cmp": {
       const op = FILTER_OP_SQL[node.op];
       if (!op) throw new Error(`view-ddl-emit: unsupported computed comparison operator "${node.op}".`);
@@ -144,7 +149,7 @@ function renderExpr(node: ViewExprNode, options: EmitOptions): string {
     case "coalesce":
       return `COALESCE(${node.args.map((a) => renderExpr(a, options)).join(", ")})`;
     case "first":
-      return firstSubquery(node.column, options, node.column.outerAlias ?? "");
+      return firstSubquery(node.column, options, requireOuterAlias(node.column));
     case "now":
       return relativeNowSql(node.value.duration, node.value.temporal, dialect, node.value.startOf);
     case "case": {
@@ -282,7 +287,7 @@ function firstSubquery(
   if (!childTable) {
     throw new Error(`view-ddl-emit: no table name registered for origin.first child entity "${c.childEntity}".`);
   }
-  // first-multihop: the selected row is the LAST join's; the first hop is the correlated one.
+  // The selected row is the LAST join's; the first hop is the correlated one.
   const term = c.innerJoins !== undefined && c.innerJoins.length > 0 ? c.innerJoins[c.innerJoins.length - 1]!.alias : c.childAlias;
   const of = `${term}.${quoteIfNeeded(c.sourceColumn)}`;
   let prev = c.childAlias;
@@ -293,7 +298,10 @@ function firstSubquery(
     const on = j.referenceHolder === "source"
       ? `${j.alias}.${quoteIfNeeded(j.pkColumn)} = ${prev}.${quoteIfNeeded(j.fkColumn)}`
       : `${j.alias}.${quoteIfNeeded(j.fkColumn)} = ${prev}.${quoteIfNeeded(j.pkColumn)}`;
-    joins += ` INNER JOIN ${viewRelation(j.entity, table, options)} ${j.alias} ON ${on}`;
+    const scope = j.tphScope !== undefined
+      ? ` AND ${j.alias}.${quoteIfNeeded(j.tphScope.column)}${tphScopeSql(j.tphScope.values, (v) => sqlLiteral(v, options.dialect))}`
+      : "";
+    joins += ` INNER JOIN ${viewRelation(j.entity, table, options)} ${j.alias} ON ${on}${scope}`;
     prev = j.alias;
   }
   const fk = quoteIfNeeded(c.fkColumn);
@@ -563,10 +571,9 @@ function renderJoin(
   const onClause = node.referenceHolder === "source"
     ? `${childAlias}.${pkCol} = ${parentAlias}.${fkCol}`
     : `${childAlias}.${fkCol} = ${parentAlias}.${pkCol}`;
-  // #209 — join type derived from FK optionality (extract-view-spec): a required
-  // rc.19 R62: every generated view join is LEFT OUTER.
+  // Every generated view join is LEFT OUTER.
   const joinKw = "LEFT OUTER JOIN";
-  // TPH-scope: a join onto a TPH subtype keeps only its rows of the shared table.
+  // A join onto a TPH level keeps only its rows of the shared table.
   const scope = node.tphScope !== undefined
     ? ` AND ${childAlias}.${quoteIfNeeded(node.tphScope.column)}${tphScopeSql(node.tphScope.values, (v) => sqlLiteral(v, options.dialect))}`
     : "";

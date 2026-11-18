@@ -12,6 +12,7 @@ from metaobjects.core_types import core_provider, core_providers
 from metaobjects.documentation import doc_provider
 from metaobjects.meta.persistence.db.db_provider import db_provider
 from metaobjects.meta.presentation.ui.ui_provider import ui_provider
+from metaobjects.meta.presentation.ui.ui_web_provider import ui_web_provider
 from metaobjects.meta.template.prompt_provider import prompt_provider
 from metaobjects.errors import ErrorCode, ParseError
 from metaobjects.meta.meta_data import MetaData
@@ -65,6 +66,42 @@ def _example_template_briefing_provider() -> Provider:
     return p
 
 
+def _example_custom_vocabulary_provider() -> Provider:
+    """Test-only: a project's own vocabulary (layout.picker + field.string attrs).
+
+    Mirrors the TS adapter's ``exampleCustomVocabularyProvider``: registers a new
+    ``layout.picker`` subtype (one optional ``displayField``) and extends
+    ``field.string`` with an optional boolean ``searchable`` and an optional
+    string-array ``valueLabels``. The ``provider-custom-vocabulary-*`` fixtures load
+    clean with it and are refused without it.
+    """
+    from metaobjects.meta.presentation.layout.meta_layout import MetaLayout
+
+    p = Provider("example-custom-vocabulary", dependencies=("metaobjects-core-types",))
+    p.add(
+        TypeDefinition(
+            type="layout",
+            sub_type="picker",
+            factory=MetaLayout,
+            attrs=[AttrSchema("displayField", "string", required=False)],
+            child_rules=[ChildRule(TYPE_ATTR, "*")],
+        )
+    )
+
+    def _extend(registry) -> None:
+        registry.extend(
+            "field",
+            "string",
+            attributes=[
+                AttrSchema("searchable", "boolean", required=False),
+                AttrSchema("valueLabels", "string", required=False, is_array=True),
+            ],
+        )
+
+    p.on_register(_extend)
+    return p
+
+
 def _noop_provider(provider_id: str, *deps: str) -> Provider:
     return Provider(provider_id, dependencies=tuple(deps))
 
@@ -90,12 +127,15 @@ _PROVIDER_MAP: dict[str, Provider] = {
     # The UI / query-surface domain provider — registers @filterable / @sortable /
     # @sortableDefaultOrder (field), view.currency @locale, layout.dataGrid attrs.
     ui_provider.id: ui_provider,                    # "metaobjects-ui"
+    # view.textarea @rows and the view.image attrs (ui-web.json).
+    ui_web_provider.id: ui_web_provider,            # "metaobjects-ui-web"
     # Back-compat alias: pre-rename fixtures (and other ports' fixtures) still name the
     # provider "metaobjects-template"; map it to the renamed prompt provider — the same
     # alias the TS adapter keeps (adapter.ts: "metaobjects-template": promptProvider).
     "metaobjects-template": prompt_provider,
     # Test-only — provider-extension-* fixtures.
     "example-template-briefing": _example_template_briefing_provider(),
+    "example-custom-vocabulary": _example_custom_vocabulary_provider(),
     "cycle-a": _noop_provider("cycle-a", "cycle-b"),
     "cycle-b": _noop_provider("cycle-b", "cycle-a"),
     "depends-on-missing": _noop_provider("depends-on-missing", "does-not-exist"),

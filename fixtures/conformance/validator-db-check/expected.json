@@ -132,6 +132,16 @@
                   "phone"
                 ]
               }
+            },
+            {
+              "validator.exactlyOne": {
+                "name": "oneOf",
+                "@dbCheck": true,
+                "@fields": [
+                  "email",
+                  "phone"
+                ]
+              }
             }
           ]
         }

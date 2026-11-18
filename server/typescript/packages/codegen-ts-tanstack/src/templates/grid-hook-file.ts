@@ -8,7 +8,7 @@
 //   const grid = useSubscriberDefaultGrid();
 //   <EntityGrid {...grid} columns={subscriberDefaultColumns} grid={subscriberDefaultGrid} />
 
-import { code, imp, joinCode, type Code } from "ts-poet";
+import { code, imp, joinCode, type Code } from "@metaobjectsdev/codegen-ts/engine";
 import type { MetaObject, MetaLayout } from "@metaobjectsdev/metadata";
 import { LAYOUT_SUBTYPE_DATA_GRID } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "@metaobjectsdev/codegen-ts/engine";

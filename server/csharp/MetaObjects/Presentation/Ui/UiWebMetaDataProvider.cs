@@ -1,4 +1,4 @@
-// R40 kind 1 — the metaobjects-ui-web concern provider.
+// The metaobjects-ui-web concern provider.
 //
 // Registers the web presentation view attrs declared in the embedded
 // spec/metamodel/ui-web.json `extends` directives: view.textarea @rows and the
@@ -12,7 +12,7 @@ using MetaObjects.Registry.Spec;
 namespace MetaObjects.Presentation.Ui;
 
 /// <summary>
-/// R40 kind-1 provider (<c>metaobjects-ui-web</c>): extends <c>view.textarea</c> and
+/// Kind-1 provider (<c>metaobjects-ui-web</c>): extends <c>view.textarea</c> and
 /// <c>view.image</c> with the attrs declared in <c>spec/metamodel/ui-web.json</c>.
 /// </summary>
 public sealed class UiWebMetaDataProvider : IMetaDataTypeProvider
@@ -29,7 +29,7 @@ public sealed class UiWebMetaDataProvider : IMetaDataTypeProvider
 
     public string? Description =>
         "Web presentation view attrs — @rows (view.textarea) and the view.image control attrs. " +
-        "Cross-port vocabulary only TypeScript implements so far; C# loads and type-checks them (R40 kind 1).";
+        "Cross-port vocabulary only TypeScript implements so far; C# loads and type-checks them.";
 
     public IReadOnlyList<string> Dependencies => ["metaobjects-core-types"];
 

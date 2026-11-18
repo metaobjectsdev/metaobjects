@@ -120,6 +120,7 @@ public class CSharpNamingTests
     [Theory]
     [InlineData("Analysis", "Analyses")]
     [InlineData("Thesis", "Theses")]
+    [InlineData("Diagnosis", "Diagnoses")]
     [InlineData("Basis", "Bases")]
     [InlineData("OrderAnalysis", "OrderAnalyses")]
     [InlineData("Notification", "Notifications")]
@@ -139,6 +140,8 @@ public class CSharpNamingTests
     {
         Assert.Equal("Analyses", CSharpNaming.DbSetName(Entity("Analysis")));
         Assert.Equal("FindAnalysesByPlayer", CSharpNaming.ReverseFinderName(Entity("Analysis"), "playerId"));
+        Assert.Equal("Diagnoses", CSharpNaming.DbSetName(Entity("Diagnosis")));
+        Assert.Equal("FindDiagnosesByPatient", CSharpNaming.ReverseFinderName(Entity("Diagnosis"), "patientId"));
     }
 
     [Fact]
@@ -148,8 +151,8 @@ public class CSharpNamingTests
         // (fixtures/naming-conformance); the "-sis" rule is a C# identifier fix only, so the
         // route does not move until every port moves with it.
         Assert.Equal("analysises", CSharpNaming.RoutePath(Entity("Analysis")));
+        Assert.Equal("diagnosises", CSharpNaming.RoutePath(Entity("Diagnosis")));
     }
-
     [Fact]
     public void Pluralize_documented_known_miss_Lens_reads_as_already_plural()
     {
@@ -268,7 +271,7 @@ public class CSharpNamingTests
     {
         var sources = objects.Select((o, i) =>
         {
-            var objAttrs = (o.Abstract ? "\"abstract\": true, " : "") + (o.DbSetName is { } d ? $"\"@dbSetName\": \"{d}\", " : "");
+            var objAttrs = (o.Abstract ? "\"abstract\": true, " : "") + (o.DbSetName is { } d ? $"\"@collectionName\": \"{d}\", " : "");
             var schema = o.Schema is { } sc ? $@", ""@schema"": ""{sc}""" : "";
             var source = o.Source
                 ? $@"{{ ""source.rdb"": {{ ""@table"": ""{o.Name.ToLowerInvariant()}s""{schema} }} }},"
@@ -294,6 +297,7 @@ public class CSharpNamingTests
         Config = new GenConfig
         {
             OutDir = "/unused", Namespace = "Acme.Generated",
+            OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true,
             PackageNamespaces = new() { ["enterprise"] = "Acme.Enterprise", ["core"] = "Acme.Core" },
         },
     };
@@ -371,7 +375,8 @@ public class CSharpNamingTests
         {
             var root = PackagedObjects(ReadObject(c.GetProperty("entityA")), ReadObject(c.GetProperty("entityB")));
             var ex = Assert.Throws<InvalidOperationException>(() => Run(new DbContextGenerator(), root));
-            Assert.Contains($"\"{c.GetProperty("collidesOn").GetString()}\" in the DbSet properties", ex.Message);
+            Assert.Contains("ERR_COLLECTION_NAME_COLLISION", ex.Message);
+            Assert.Contains($"both generate \"{c.GetProperty("collidesOn").GetString()}\" in the DbSet properties", ex.Message);
             Assert.Contains("@collectionName", ex.Message);
         }
     }
@@ -381,7 +386,8 @@ public class CSharpNamingTests
     {
         var root = PackagedObjects(new("enterprise", "Payer", false, true, "enterprise"), new("core", "Payer", false, true, "core"));
         var ex = Assert.Throws<InvalidOperationException>(() => Run(new RoutesGenerator(), root));
-        Assert.Contains("\"payers\" in the REST collection segments", ex.Message);
+        Assert.Contains("ERR_COLLECTION_NAME_COLLISION", ex.Message);
+        Assert.Contains("both generate \"payers\" in the REST collection segments", ex.Message);
     }
 
     [Fact]
@@ -391,7 +397,7 @@ public class CSharpNamingTests
         foreach (var pkg in new[] { "enterprise", "core" })
         {
             var context = Assert.Single(Run(new DbContextGenerator { Include = InPackage(pkg) }, root)).Content;
-            Assert.Contains($"DbSet<global::Acme.{CSharpNaming.Pascal(pkg)}.Payer> Payers", context);
+            Assert.Contains("Payers { get; set; }", context);
             Assert.NotEmpty(Run(new RoutesGenerator { Include = InPackage(pkg) }, root));
         }
         var entities = Run(new EntityGenerator(), root).Select(f => f.Content).ToList();
@@ -498,26 +504,8 @@ public class CSharpNamingTests
         Assert.Equal("consignmentHistory", MetaObjects.Meta.ReverseReferenceHops.HopName(history));
         var warnings = new List<string>();
         var context = Assert.Single(new DbContextGenerator().Generate(CtxWarn(root, warnings))).Content;
-        Assert.Contains("DbSet<global::Core.ConsignmentHistory> ConsignmentHistory { get; set; }", context);
+        Assert.Contains("DbSet<ConsignmentHistory> ConsignmentHistory { get; set; }", context);
         Assert.DoesNotContain(warnings, w => w.Contains("deprecated"));
-    }
-
-    [Fact]
-    public void DbSetName_is_a_deprecated_alias_that_warns()
-    {
-        var root = History("\"@dbSetName\": \"ConsignmentHistory\",");
-        Assert.Equal("consignment_history", CSharpNaming.RoutePath(HistoryOf(root)));
-        var warnings = new List<string>();
-        Assert.Contains("DbSet<global::Core.ConsignmentHistory> ConsignmentHistory { get; set; }", Assert.Single(new DbContextGenerator().Generate(CtxWarn(root, warnings))).Content);
-        Assert.Contains(warnings, w => w.Contains("@dbSetName is deprecated") && w.Contains("@collectionName"));
-    }
-
-    [Fact]
-    public void Declaring_both_is_refused()
-    {
-        var root = History("\"@collectionName\": \"ConsignmentHistory\", \"@dbSetName\": \"Histories\",");
-        var ex = Assert.Throws<MetaModelException>(() => CSharpNaming.DbSetName(HistoryOf(root)));
-        Assert.Contains("declares both @collectionName and @dbSetName", ex.Message);
     }
 
     [Fact]
@@ -557,13 +545,54 @@ public class CSharpNamingTests
     {
         var root = PackagedObjects(new NamedObject("core", "Payer", false, true, DbSetName: bad));
         var ex = Assert.Throws<InvalidOperationException>(() => Run(new DbContextGenerator(), root));
-        Assert.Contains("@dbSetName", ex.Message);
+        Assert.Contains("@collectionName", ex.Message);
         Assert.Contains($"\"{bad}\"", ex.Message);
     }
 
-    // R30's physical half is EF's (ruling R52): two entity types on one table fail EF's own model
-    // build ("Cannot use table … since it is being used for entity type …"), so codegen does not
-    // repeat it. The same table name in two schemas is two tables.
+    // One context, one relation per (schema, name). Two objects that map to one table would
+    // silently share it; the DbSet rule no longer catches them once @collectionName splits the
+    // property names.
+    [Theory]
+    [InlineData("billing")]
+    [InlineData(null)]
+    public void Two_objects_mapping_one_relation_in_one_context_are_refused_naming_both(string? schema)
+    {
+        var root = PackagedObjects(
+            new("enterprise", "Payer", false, true, schema, DbSetName: "EnterprisePayers"),
+            new("core", "Payer", false, true, schema));
+        var ex = Assert.Throws<InvalidOperationException>(() => Run(new DbContextGenerator(), root));
+        Assert.Contains("ERR_DUPLICATE_SQL_NAME", ex.Message);
+        Assert.Contains("\"enterprise::Payer\"", ex.Message);
+        Assert.Contains("\"core::Payer\"", ex.Message);
+        Assert.Contains(schema is null ? "\"payers\"" : "\"billing.payers\"", ex.Message);
+    }
+
+    [Fact]
+    public void Two_objects_mapping_one_routine_in_one_context_are_refused_naming_both()
+    {
+        const string json = """
+            { "metadata.root": { "package": "acme", "children": [
+              { "object.entity": { "name": "Alpha", "children": [
+                { "source.rdb": { "@role": "primary", "@kind": "table", "@table": "alphas" } },
+                { "source.rdb": { "@role": "replica", "@kind": "storedProc", "@proc": "refresh_totals" } },
+                { "field.long": { "name": "id" } },
+                { "identity.primary": { "@fields": "id" } } ] } },
+              { "object.entity": { "name": "Beta", "children": [
+                { "source.rdb": { "@role": "primary", "@kind": "table", "@table": "betas" } },
+                { "source.rdb": { "@role": "replica", "@kind": "storedProc", "@proc": "refresh_totals" } },
+                { "field.long": { "name": "id" } },
+                { "identity.primary": { "@fields": "id" } } ] } }
+            ] } }
+            """;
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(json, id: "routine.json")]);
+        Assert.Empty(r.Errors);
+        var ex = Assert.Throws<InvalidOperationException>(() => Run(new DbContextGenerator(), r.Root));
+        Assert.Contains("ERR_DUPLICATE_SQL_NAME", ex.Message);
+        Assert.Contains("acme::Alpha", ex.Message);
+        Assert.Contains("acme::Beta", ex.Message);
+        Assert.Contains("refresh_totals", ex.Message);
+    }
+
 
     [Fact]
     public void One_table_name_in_two_schemas_in_one_context_passes_schema_qualified()

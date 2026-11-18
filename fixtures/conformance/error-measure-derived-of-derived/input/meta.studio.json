@@ -1,0 +1,282 @@
+{
+  "metadata.root": {
+    "package": "acme::studio",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Member",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "members"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "firstName",
+                "@required": true
+              }
+            },
+            {
+              "field.decimal": {
+                "name": "weeklyCapacityHours",
+                "@required": true,
+                "@precision": 6,
+                "@scale": 2
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Project",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "projects"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "@required": true
+              }
+            },
+            {
+              "field.decimal": {
+                "name": "budget",
+                "@precision": 12,
+                "@scale": 2
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "TimeEntry",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "time_entries"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "memberId",
+                "@required": true
+              }
+            },
+            {
+              "field.long": {
+                "name": "projectId",
+                "@required": true
+              }
+            },
+            {
+              "field.decimal": {
+                "name": "hours",
+                "@required": true,
+                "@precision": 6,
+                "@scale": 2
+              }
+            },
+            {
+              "field.decimal": {
+                "name": "cost",
+                "@precision": 12,
+                "@scale": 2
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "billable",
+                "@required": true
+              }
+            },
+            {
+              "field.date": {
+                "name": "workedOn",
+                "@required": true
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "fkMember",
+                "@references": "Member",
+                "@fields": [
+                  "memberId"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "fkProject",
+                "@references": "Project",
+                "@fields": [
+                  "projectId"
+                ]
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "member",
+                "@objectRef": "Member",
+                "@cardinality": "one"
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "project",
+                "@objectRef": "Project",
+                "@cardinality": "one"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "memberId",
+                "@of": "Member.id",
+                "@via": "TimeEntry.member"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "memberName",
+                "@of": "Member.firstName",
+                "@via": "TimeEntry.member"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "weeklyCapacityHours",
+                "@of": "Member.weeklyCapacityHours",
+                "@via": "TimeEntry.member"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "projectId",
+                "@of": "Project.id",
+                "@via": "TimeEntry.project"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "projectBudget",
+                "@of": "Project.budget",
+                "@via": "TimeEntry.project"
+              }
+            },
+            {
+              "dimension.time": {
+                "name": "workedOn",
+                "@of": "TimeEntry.workedOn",
+                "@grains": [
+                  "month"
+                ]
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "totalHours",
+                "@agg": "sum",
+                "@of": "TimeEntry.hours",
+                "@default": 0
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "billableHours",
+                "@agg": "sum",
+                "@of": "TimeEntry.hours",
+                "@filter": {
+                  "billable": true
+                },
+                "@default": 0
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "cost",
+                "@agg": "sum",
+                "@of": "TimeEntry.cost"
+              }
+            },
+            {
+              "measure.derived": {
+                "name": "nonBillableHours",
+                "@expr": {
+                  "fn": "subtract",
+                  "args": [
+                    {
+                      "field": "totalHours"
+                    },
+                    {
+                      "field": "billableHours"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "measure.derived": {
+                "name": "nonBillableDays",
+                "@expr": {
+                  "fn": "divide",
+                  "args": [
+                    {
+                      "field": "nonBillableHours"
+                    },
+                    {
+                      "value": 8
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

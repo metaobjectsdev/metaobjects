@@ -47,16 +47,21 @@ async function schemas() {
 }
 
 describe("an FK whose only change is its name", () => {
-  test("Postgres: one rename-constraints change, no drop-fk / add-fk", async () => {
+  test("Postgres: one rename-constraints change per table, no drop-fk / add-fk", async () => {
     const { live, wanted } = await schemas();
     const { changes } = await diff(wanted, live, { dialect: "postgres" });
 
     expect(changes.filter((c) => c.kind === "drop-fk" || c.kind === "add-fk")).toEqual([]);
     const renames = changes.filter((c) => c.kind === "rename-constraints");
-    expect(renames).toHaveLength(1);
-    expect(renames[0]).toMatchObject({
-      table: "OrderLines",
-      constraintRenames: [{ from: "OrderLines_OrderId_fk", to: "FK_OrderLines_Orders_OrderId" }],
+    expect(renames.map((r) => r.table).sort()).toEqual(["OrderLines", "Orders"]);
+    expect(renames.find((r) => r.table === "OrderLines")).toMatchObject({
+      constraintRenames: [
+        { from: "OrderLines_OrderId_fk", to: "FK_OrderLines_Orders_OrderId" },
+        { from: "OrderLines_pkey", to: "PK_OrderLines" },
+      ],
+    });
+    expect(renames.find((r) => r.table === "Orders")).toMatchObject({
+      constraintRenames: [{ from: "Orders_pkey", to: "PK_Orders" }],
     });
   });
 
@@ -67,7 +72,26 @@ describe("an FK whose only change is its name", () => {
 
     expect(up).toContain('ALTER TABLE "OrderLines" RENAME CONSTRAINT "OrderLines_OrderId_fk" TO "FK_OrderLines_Orders_OrderId";');
     expect(down).toContain('ALTER TABLE "OrderLines" RENAME CONSTRAINT "FK_OrderLines_Orders_OrderId" TO "OrderLines_OrderId_fk";');
+    expect(up).toContain('ALTER TABLE "Orders" RENAME CONSTRAINT "Orders_pkey" TO "PK_Orders";');
+    expect(down).toContain('ALTER TABLE "Orders" RENAME CONSTRAINT "PK_Orders" TO "Orders_pkey";');
     expect(up).not.toContain("DROP CONSTRAINT");
+  });
+
+  test("after the rename, the database matches and nothing is proposed", async () => {
+    const { wanted } = await schemas();
+    const { changes } = await diff(wanted, structuredClone(wanted), { dialect: "postgres" });
+    expect(changes).toEqual([]);
+  });
+
+  test("a primary key the database truncated is compared as stored", async () => {
+    const { live } = await schemas();
+    const long = "T".repeat(60);
+    const want = structuredClone(live);
+    want.tables.find((t) => t.name === "Orders")!.name = long;
+    const actual = structuredClone(want);
+    actual.tables.find((t) => t.name === long)!.primaryKeyName = `${long}_pk`;
+    const { changes } = await diff(want, actual, { dialect: "postgres" });
+    expect(changes.filter((c) => c.kind === "rename-constraints")).toEqual([]);
   });
 
   test("an FK whose definition also changed is still dropped and re-added", async () => {
@@ -77,7 +101,9 @@ describe("an FK whose only change is its name", () => {
     const { changes } = await diff(wanted, actual, { dialect: "postgres" });
 
     expect(changes.some((c) => c.kind === "drop-fk")).toBe(true);
-    expect(changes.some((c) => c.kind === "rename-constraints")).toBe(false);
+    // Only the primary keys are renamed; the changed FK is not folded into a rename.
+    const renamed = changes.flatMap((c) => (c.kind === "rename-constraints" ? c.constraintRenames ?? [] : []));
+    expect(renamed.map((r) => r.to).sort()).toEqual(["PK_OrderLines", "PK_Orders"]);
   });
 
   test("SQLite does not fold (it cannot rename a constraint)", async () => {

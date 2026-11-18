@@ -10,9 +10,10 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Ruling R40: {@code @dbSetName} (the C# EF DbSet property name) is in the shared registry with
- * {@code ports: ["csharp"]}. Java registers and type-checks it, so a model that carries it loads
- * strictly here, and Java does nothing with it. An attribute the registry does not carry still
+ * {@code @collectionName} is shared vocabulary every port implements (the REST segment here, the
+ * DbSet property and generated names elsewhere). Java registers and type-checks it, so a model that
+ * carries it loads strictly here. The never-released
+ * {@code @dbSetName} it replaced is not vocabulary; an attribute the registry does not carry still
  * fails, and a wrong value type fails.
  */
 public class PortScopedAttrTest {
@@ -24,8 +25,8 @@ public class PortScopedAttrTest {
 
     private static String model(String attr) {
         return "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [\n"
-            + "  { \"object.entity\": { \"name\": \"Analysis\", " + attr + " \"children\": [\n"
-            + "    { \"source.rdb\": { \"@table\": \"analyses\" } },\n"
+            + "  { \"object.entity\": { \"name\": \"Diagnosis\", " + attr + " \"children\": [\n"
+            + "    { \"source.rdb\": { \"@table\": \"diagnoses\" } },\n"
             + "    { \"field.long\": { \"name\": \"id\" } },\n"
             + "    { \"identity.primary\": { \"@fields\": \"id\" } }\n"
             + "  ] } }\n] } }";
@@ -44,17 +45,22 @@ public class PortScopedAttrTest {
     }
 
     @Test
-    public void aCsharpOnlyAttributeLoadsStrictly() {
-        assertTrue(loads("\"@dbSetName\": \"Analysis\","));
+    public void aCollectionNameLoadsStrictly() {
+        assertTrue(loads("\"@collectionName\": \"Diagnoses\","));
     }
 
     @Test
     public void itIsTypeChecked() {
-        assertFalse(loads("\"@dbSetName\": [\"Analysis\"],"));
+        assertFalse(loads("\"@collectionName\": [\"Diagnoses\"],"));
+    }
+
+    @Test
+    public void theNeverReleasedDbSetNameIsNotVocabulary() {
+        assertFalse(loads("\"@dbSetName\": \"Diagnoses\","));
     }
 
     @Test
     public void anAttributeTheRegistryDoesNotCarryStillFails() {
-        assertFalse(loads("\"@dbSetNameX\": \"Analysis\","));
+        assertFalse(loads("\"@collectionNameX\": \"Diagnoses\","));
     }
 }

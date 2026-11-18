@@ -12,11 +12,11 @@ namespace Acme.Shop;
 /// </summary>
 public static class VehicleTagFilterAllowlist
 {
-    public static readonly HashSet<string> Fields = new(global::System.StringComparer.Ordinal)
+    public static readonly HashSet<string> Fields = new(System.StringComparer.Ordinal)
     {
     };
 
-    public static readonly Dictionary<string, HashSet<string>> OpsByField = new(global::System.StringComparer.Ordinal)
+    public static readonly Dictionary<string, HashSet<string>> OpsByField = new(System.StringComparer.Ordinal)
     {
     };
 }

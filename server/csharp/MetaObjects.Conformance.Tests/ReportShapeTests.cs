@@ -50,8 +50,8 @@ public class ReportShapeTests
         return result.Root;
     }
 
-    // rc.19 R62: every generated view join is LEFT OUTER, so a joined dimension's required comes from
-    // the model — a required, enforced belongs-to path onto a target that hides no rows. The shared
+    // A joined dimension's required comes from the model, never from the join type the view
+    // lowering picks — a required, enforced belongs-to path onto a target that hides no rows. The shared
     // table is the fixture's expected-report-required.json, which TypeScript reads too.
     [Fact]
     public void A_dimensions_required_is_the_shared_tables()
@@ -152,6 +152,42 @@ public class ReportShapeTests
         Assert.Equal("recordedAt", fields["recordedAtHour"].TypeSource?.Name);
         Assert.Equal(FIELD_SUBTYPE_DATE, fields["asOfDateWeek"].SubType);
         Assert.Null(fields["asOfDateWeek"].TypeSource);
+    }
+
+    [Fact]
+    public void A_value_object_member_derives_the_members_type()
+    {
+        // FR-044 R12: `Payment.amount.currency` and `Payment.amount.amount` read Money's members,
+        // so the derived fields take the member's subtype, nullability and type source. The
+        // same rows as the TypeScript report-shape derivation of this fixture.
+        var root = LoadFixture("reporting-value-object-members");
+        var rows = Shape(root, "RevenueByMonth").Fields.Select(f =>
+            $"{f.Name} {f.SubType} {f.Required} {(f.TypeSource is null ? "-" : $"{f.TypeSource.Parent!.Name}.{f.TypeSource.Name}")}");
+        Assert.Equal(
+            ["currency string True Money.currency", "kind string False Payment.kind", "receivedOnMonth date True -",
+             "revenue decimal False -", "largest decimal True Money.amount", "averagePayment decimal False -",
+             "payments long True -"],
+            rows.ToList());
+    }
+
+    [Fact]
+    public void A_derived_measure_is_a_nullable_decimal()
+    {
+        // FR-044 R13: a measure.derived is typed decimal, not required, with no type source,
+        // whatever its operands. The same rows as the TypeScript derivation of this fixture.
+        var root = LoadFixture("reporting-derived-measures");
+        string Rows(string report) => string.Join(", ", Shape(root, report).Fields.Select(f =>
+            $"{f.Name} {f.SubType} {f.Required} {(f.TypeSource is null ? "-" : $"{f.TypeSource.Parent!.Name}.{f.TypeSource.Name}")}"));
+        Assert.Equal(
+            "memberId long False Member.id, memberName string True Member.firstName, " +
+            "weeklyCapacityHours decimal True Member.weeklyCapacityHours, workedOnMonth date True -, " +
+            "totalHours decimal True -, billableHours decimal True -, capacityHours decimal False -, " +
+            "utilization decimal False -, nonBillableHours decimal False -, billableSharePct decimal False -",
+            Rows("MemberUtilization"));
+        Assert.Equal(
+            "projectId long False Project.id, projectBudget decimal False Project.budget, cost decimal False -, " +
+            "budgetBurn decimal False -",
+            Rows("ProjectBurn"));
     }
 
     [Fact]
@@ -629,7 +665,7 @@ public class ReportShapeTests
         var plain = RequiredOf(root, "Plain");
         Assert.True(plain["realmName"]);        // two required hops over a required field
         Assert.True(plain["sessionRealmId"]);   // one required hop
-        Assert.False(plain["looseRealmName"]);  // R62: an @enforce: false hop can name a missing row
+        Assert.False(plain["looseRealmName"]);  // an @enforce: false hop can name a missing row
         Assert.False(plain["realmMotto"]);      // the target field is optional
         Assert.False(plain["maybeRealmName"]);  // a hop over a nullable foreign key can have no match
 

@@ -93,8 +93,7 @@ artifact exists *for your code*, which is the only place a physical name appears
 `@storage: flattened` field has no column of its own: each member of the value object is a
 column of the owner's table, named by core naming (the field's `@flattenedColumnPrefix`,
 else `<field column>_`, then the member's column). The artifact carries one constant per
-member. The field's own column constant is still emitted, unchanged, but on a flattened
-field it names no column of the table; read the member constants:
+member, and the field itself has none, because the table has no column of that name:
 
 | Port | Reads as |
 |---|---|

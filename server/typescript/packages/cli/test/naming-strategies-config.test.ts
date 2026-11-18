@@ -17,7 +17,7 @@ afterAll(async () => { for (const d of dirs) await rm(d, { recursive: true, forc
 
 const MODEL = JSON.stringify({
   "metadata.root": {
-    package: "acme::depot",
+    package: "acme::clinic",
     children: [
       { "object.entity": { name: "Provider", children: [
         { "source.rdb": { name: "src", "@table": "providers" } },
@@ -47,7 +47,7 @@ async function project(columns: string, withTsConfig: boolean, tsConfig = TS_CON
   const root = await mkdtemp(join(tmpdir(), "naming-strategies-"));
   dirs.push(root);
   await mkdir(join(root, "metaobjects"), { recursive: true });
-  await writeFile(join(root, "metaobjects", "meta.depot.json"), MODEL, "utf8");
+  await writeFile(join(root, "metaobjects", "meta.clinic.json"), MODEL, "utf8");
   await mkdir(join(root, ".metaobjects", "migrations"), { recursive: true });
   await writeFile(join(root, ".metaobjects", "config.json"),
     JSON.stringify({ schema_version: 1, naming: { columns }, migrate: { dialect: "sqlite" } }), "utf8");

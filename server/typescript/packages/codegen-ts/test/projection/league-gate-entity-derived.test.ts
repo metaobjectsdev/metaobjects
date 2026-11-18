@@ -92,10 +92,10 @@ describe("the league gate: an entity-derived boolean over a segment, used in oth
   test("the path filter inlines the player's correlated subquery on the joined player", async () => {
     const views = buildProjectionViews(await load(), { dialect: "postgres" });
     const auth = views.find((v) => v.name === "v_authorization_extract")!;
-    expect(auth.sql).toContain("LEFT OUTER JOIN public.camps c ON c.id = a.camp_id");
-    expect(auth.sql).toContain("LEFT OUTER JOIN public.players p ON p.id = c.player_id");
+    expect(auth.sql).toContain("LEFT OUTER JOIN camps c ON c.id = a.camp_id");
+    expect(auth.sql).toContain("LEFT OUTER JOIN players p ON p.id = c.player_id");
     // The segment's predicate (with `now` of the date kind) scopes the subquery; it is ordered id:desc.
-    expect(auth.sql).toMatch(/WHERE \(\(SELECT (\w+)\.contract_is_on_file FROM public\.contracts \1 WHERE \1\.player_id = p\.id AND \(\1\.contract_type_id = 1 AND/);
+    expect(auth.sql).toMatch(/WHERE \(\(SELECT (\w+)\.contract_is_on_file FROM contracts \1 WHERE \1\.player_id = p\.id AND \(\1\.contract_type_id = 1 AND/);
     expect(auth.sql).toContain(".date_received <= CAST(((now() AT TIME ZONE 'UTC') + INTERVAL 'P0D') AS DATE)");
     expect(auth.sql).toMatch(/ORDER BY \w+\.id DESC NULLS LAST, \w+\.id ASC LIMIT 1\)\) = TRUE/);
     expect(auth.sql).not.toContain("has_active_league_contract");
@@ -105,7 +105,7 @@ describe("the league gate: an entity-derived boolean over a segment, used in oth
   test("on the base row, the same predicate filters the players", async () => {
     const views = buildProjectionViews(await load(), { dialect: "postgres" });
     const pat = views.find((v) => v.name === "v_player_extract")!;
-    expect(pat.sql).toMatch(/WHERE \(\(SELECT \w+\.contract_is_on_file FROM public\.contracts \w+ WHERE \w+\.player_id = p\.id/);
+    expect(pat.sql).toMatch(/WHERE \(\(SELECT \w+\.contract_is_on_file FROM contracts \w+ WHERE \w+\.player_id = p\.id/);
   });
 
   test("runs: the latest decisive row decides, an opt-out resets, future and expired rows do not count", async () => {

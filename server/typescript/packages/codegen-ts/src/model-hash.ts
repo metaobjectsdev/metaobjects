@@ -1,4 +1,4 @@
-// ADR-0062 §3 — the model half of the `meta gen` skip key, computed from the LOADED model.
+// ADR-0064 §3 — the model half of the `meta gen` skip key, computed from the LOADED model.
 //
 // Each root-level node is hashed in its canonical EFFECTIVE form (the serializer the
 // conformance corpus pins: `extends` and overlays applied, attributes in fixed order, no
@@ -35,7 +35,9 @@ function sha256(text: string): string {
 
 /** Fold `name hash` lines, sorted, so discovery order never matters. */
 function fold(label: string, lines: string[]): string {
-  return sha256(`${label} ${MODEL_HASH_FORMAT}\n${[...lines].sort().join("\n")}\n`);
+  // JSON, not text joined by line breaks: an unambiguous framing of the sorted lines, and
+  // no typed layout in a file that lays nothing out.
+  return sha256(JSON.stringify([label, MODEL_HASH_FORMAT, [...lines].sort()]));
 }
 
 function packageOf(node: MetaData): string {

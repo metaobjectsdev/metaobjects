@@ -2,8 +2,8 @@
 
 This recipe walks through adding a new metamodel subtype to a downstream
 project — using the same `example-template-toolcall` example the conformance
-fixtures use, so the example here matches a real test that runs in TS, C#,
-and Python.
+fixtures use, so the example here matches a real test that runs in every
+port.
 
 For the conceptual reference (what a provider is, the error codes, the
 cross-port semantic rule), see
@@ -202,18 +202,11 @@ That's the value: **the metamodel becomes self-checking**. The toolcall
 declarations and the provider that gives them meaning live in the same
 project, and any divergence is caught at the load boundary, not at runtime.
 
-## C# / Python equivalents
+## The other languages
 
-The C# and Python ports use the same provider contract — the only difference
-is the API surface for loader composition. See the per-port quickstarts:
-
-- [`../ports/csharp.md`](../ports/csharp.md)
-- [`../ports/python.md`](../ports/python.md)
-
-The provider object itself is structurally identical across languages
-(id + dependencies + description + a body that calls `registry.register` or
-`registry.extend`). A C# port of `exampleProvider` reads exactly like the TS
-version with C# spelling.
+Every port takes a provider the same way in principle, wired in its own config. The per-language
+wiring, with a worked example for each, is in
+[`../features/extending-with-providers.md`](../features/extending-with-providers.md#wiring-providers-into-the-loader).
 
 ## When NOT to write a provider
 
@@ -237,4 +230,4 @@ metadata files, requires its own validation, and benefits from custom codegen.
 - [`../../fixtures/conformance/provider-extension-new-subtype-success/`](../../fixtures/conformance/provider-extension-new-subtype-success/) — the matching conformance fixture
 - The conformance fixture at
   [`../../fixtures/conformance/provider-extension-new-subtype-success/`](../../fixtures/conformance/provider-extension-new-subtype-success/) —
-  a runnable proof of this exact pattern across TS / C# / Python
+  a runnable proof of this exact pattern in every port

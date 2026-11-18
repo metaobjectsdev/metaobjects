@@ -50,10 +50,21 @@ has no empty-string case):**
   (no anchors) accepts `"xxABCyy"` on TS/Python, rejects on Java/Kotlin/C#. Ruling 2 pins **full-match**.
 
 **Field-scoped vs entity-scoped split is correct and load-bearing:** cross-field validators
-(`comparison`, `presentIff`, `requiredWhen`, `atLeastOne`) render ONLY as TS-owned DB CHECK
+(`comparison`, `presentIff`, `requiredWhen`, `atLeastOne`) were rendered ONLY as TS-owned DB CHECK
 constraints (`migrate-ts/src/expected-schema.ts`), never as jakarta/Zod — so they evaluate the MERGED
-row after UPDATE and hold under PATCH with zero handler work. Do NOT add cross-field validation to any
-port's handler. Per-field only.
+row after UPDATE and hold under PATCH with zero handler work. PATCH and partial-update handlers still
+add nothing: a partial body cannot see the merged row, so the DB CHECK stays the enforcement there.
+
+> **Amended (Unreleased) — record models now enforce cross-field rules.** The original reading above
+> ("DB CHECK only") left a store with no CHECK constraints (a graph or document database, say) with
+> no enforcement of these four validators at all. Every port's generated **full record model** — the
+> create/insert shape — now also enforces them, in the language's native idiom: a Zod refinement on
+> the insert schema (TS), a class-level Bean Validation constraint on the create DTO (Java, Kotlin),
+> `IValidatableObject` on the create model (C#) and a Pydantic `model_validator(mode="after")`
+> (Python). The semantics mirror the DB CHECK derivation exactly (null-safe; `comparison` passes when
+> either side is null; `@equals` rendered per the gating field's subtype) and are gated by the shared
+> `fixtures/validation-conformance/cross-field-cases.json` cases in all five port runners. PATCH and
+> partial-update models are deliberately unchanged, and DB CHECK emission is unchanged.
 
 ---
 

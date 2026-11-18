@@ -6,6 +6,7 @@ import {
   packageOfResolutionKey,
   ParseError,
   TYPE_OBJECT,
+  TYPE_REQUIREMENT,
   type ErrorSource,
   type LoaderError,
   type LoadResult,
@@ -16,6 +17,8 @@ import {
   type PhysicalNaming,
   type WireFormat,
   type EnumDefaults,
+  type ApiPagination,
+  type UnknownFieldsMode,
 } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 // FR-043 — a node-only subpath (it reaches the filesystem), which is why it is imported
@@ -117,6 +120,10 @@ export interface LoadMemoryOptions {
   wireFormat?: WireFormat;
   /** The project's enum storage defaults; defaults to the collection's (`resolveCollection(...).enumDefaults`) when `files` is not passed. */
   enumDefaults?: EnumDefaults;
+  /** The project's list page size (`api.pagination`); defaults to the collection's when `files` is not passed. */
+  apiPagination?: ApiPagination | undefined;
+  /** `api.unknownFields`; on the no-`files` arm the collection supplies it. */
+  apiUnknownFields?: UnknownFieldsMode | undefined;
 }
 
 /** Default provider bundle threaded by {@link loadMemory} when no options
@@ -172,8 +179,45 @@ export async function loadMemory(
   repoRoot: string,
   options?: LoadMemoryOptions,
 ): Promise<MetaRoot> {
-  const { result, importedPackages, importedNodes, libraries, physicalNaming, wireFormat, enumDefaults } =
-    await loadCollectionRaw(repoRoot, options, options?.strict === true);
+  return finishLoad(await loadCollectionRaw(repoRoot, options, options?.strict === true));
+}
+
+/**
+ * {@link loadMemory} and {@link unknownAttributeFindings} from ONE load: the root, and the
+ * ADR-0023 unknown-attribute findings a strict load of the same collection would raise.
+ * For a command that loads leniently and must name those findings (`meta gen`), without
+ * loading the model three times to do it.
+ *
+ * A strict load (`options.strict`) has no findings: it throws on the first one instead.
+ * Otherwise the attribute-schema check runs strictly over the lenient tree, which is all
+ * a strict load adds for an `@attr`. A bare key (`isAbstrakt`) is the one thing the lenient
+ * tree cannot locate (the parser drops it, warning without a file), so only when the load
+ * reported one is the collection parsed strictly again, for the file and path.
+ */
+export async function loadMemoryWithFindings(
+  repoRoot: string,
+  options?: LoadMemoryOptions,
+): Promise<{ root: MetaRoot; unknownAttributes: readonly (Error & LoaderError)[] }> {
+  const strict = options?.strict === true;
+  const run = await loadCollectionRaw(repoRoot, options, strict);
+  const root = finishLoad(run);
+  if (strict) return { root, unknownAttributes: [] };
+  let unknownAttributes: readonly (Error & LoaderError)[];
+  try {
+    unknownAttributes = await findingsFrom(repoRoot, options, run);
+  } catch {
+    // The lenient load succeeded; a strict re-parse that cannot complete has nothing more
+    // precise to say, and must never turn an advisory into a failure.
+    unknownAttributes = [];
+  }
+  return { root, unknownAttributes };
+}
+
+type RawLoad = Awaited<ReturnType<typeof loadCollectionRaw>>;
+
+/** The checks {@link loadMemory} makes after the loader, and the root they leave. */
+function finishLoad(run: RawLoad): MetaRoot {
+  const { result, importedPackages, importedNodes, libraries, physicalNaming, wireFormat, enumDefaults, apiPagination, apiUnknownFields } = run;
 
   if (result.errors.length > 0) {
     const first = result.errors[0]!;
@@ -194,6 +238,8 @@ export async function loadMemory(
   if (physicalNaming !== undefined) result.root.physicalNaming = physicalNaming;
   if (wireFormat !== undefined) result.root.wireFormat = wireFormat;
   if (enumDefaults !== undefined) result.root.enumDefaults = enumDefaults;
+  if (apiPagination !== undefined) result.root.apiPagination = apiPagination;
+  if (apiUnknownFields !== undefined) result.root.apiUnknownFields = apiUnknownFields;
   return result.root;
 }
 
@@ -236,10 +282,22 @@ export async function unknownAttributeFindings(
   // the attribute-schema pass — so the strict load alone would hide every misspelt
   // `@attr` behind the first bare-key typo. The second pass runs that attribute-schema
   // check, strictly, over the lenient tree, where both kinds of typo are still present.
-  const strictRun = await loadCollectionRaw(repoRoot, options, true);
-  const lenientRun = await loadCollectionRaw(repoRoot, options, false);
+  return findingsFrom(repoRoot, options, await loadCollectionRaw(repoRoot, options, false));
+}
+
+/** The prefix the parser gives an unknown bare key's message (`parser-core.ts`), which a
+ *  lenient load records as a warning with no file or path. */
+const UNKNOWN_BARE_KEY = "Unknown key '";
+
+async function findingsFrom(
+  repoRoot: string,
+  options: LoadMemoryOptions | undefined,
+  lenientRun: RawLoad,
+): Promise<readonly (Error & LoaderError)[]> {
+  const bareKey = lenientRun.result.warnings.some((w) => w.message.startsWith(UNKNOWN_BARE_KEY));
+  const strictErrors = bareKey ? (await loadCollectionRaw(repoRoot, options, true)).result.errors : [];
   const found = [
-    ...strictRun.result.errors,
+    ...strictErrors,
     ...validateAttrSchema(lenientRun.result.root, lenientRun.registry, true).errors,
   ].filter(isUnknownAttrError);
   const seen = new Set<string>();
@@ -269,6 +327,8 @@ async function loadCollectionRaw(
   physicalNaming: PhysicalNaming | undefined;
   wireFormat: WireFormat | undefined;
   enumDefaults: EnumDefaults | undefined;
+  apiPagination: ApiPagination | undefined;
+  apiUnknownFields: UnknownFieldsMode | undefined;
 }> {
   const extra = options?.providers ?? [];
   let providers: readonly MetaDataTypeProvider[];
@@ -298,6 +358,8 @@ async function loadCollectionRaw(
   let physicalNaming: PhysicalNaming | undefined = options?.physicalNaming;
   let wireFormat: WireFormat | undefined = options?.wireFormat;
   let enumDefaults: EnumDefaults | undefined = options?.enumDefaults;
+  let apiPagination: ApiPagination | undefined = options?.apiPagination;
+  let apiUnknownFields: UnknownFieldsMode | undefined = options?.apiUnknownFields;
   if (options?.files !== undefined) {
     paths = [...options.files];
     fileIds = options.fileIds;
@@ -319,6 +381,8 @@ async function loadCollectionRaw(
     physicalNaming ??= collection.physicalNaming;
     wireFormat ??= collection.wireFormat;
     enumDefaults ??= collection.enumDefaults;
+    apiPagination ??= collection.apiPagination;
+    apiUnknownFields ??= collection.apiUnknownFields;
   }
 
   const loader = new MetaDataLoader({
@@ -344,7 +408,7 @@ async function loadCollectionRaw(
       return id === undefined ? new FileSource(p) : new FileSource(p, { id });
     }),
   ]);
-  return { result, registry, importedPackages, importedNodes, libraries, physicalNaming, wireFormat, enumDefaults };
+  return { result, registry, importedPackages, importedNodes, libraries, physicalNaming, wireFormat, enumDefaults, apiPagination, apiUnknownFields };
 }
 
 /** Every source file that contributed to a node, across the envelope variants that
@@ -457,8 +521,10 @@ function refuseUnownedPackages(
   // ADR-0039 SANCTIONED own-accessor case: a root-level scan. `MetaRoot` has no
   // super, so own and effective children are the same set here — and the
   // question asked is precisely "what did this tree declare at the top level",
-  // which is the own layer by definition.
-  for (const node of root.ownChildrenOfType(TYPE_OBJECT)) {
+  // which is the own layer by definition. Requirements too: a publisher may export its
+  // ledger, and a new requirement in its package would be the publisher's, not this
+  // project's, to every gate that reads the ledger by package.
+  for (const node of [...root.ownChildrenOfType(TYPE_OBJECT), ...root.ownChildrenOfType(TYPE_REQUIREMENT)]) {
     const key = node.resolutionKey();
     const pkg = packageOfResolutionKey(key);
     if (!packages.has(pkg) || nodes.has(key)) continue;

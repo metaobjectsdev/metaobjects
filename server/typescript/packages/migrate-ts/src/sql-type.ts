@@ -22,7 +22,7 @@ export type SqlType =
   | { kind: "blob" }
   | { kind: "uuid" }
   | { kind: "inet" }        // Postgres-native inet (IPv4/IPv6) — field.inet (ADR-0036/0037 Wave 3)
-  | { kind: "interval" }    // Postgres-native interval — field.duration (text elsewhere)
+  | { kind: "interval" }    // Postgres-native interval — field.duration (a BIGINT count of microseconds elsewhere)
   | { kind: "array"; element: SqlType };   // native SQL array (e.g. uuid[], text[])
 
 /**

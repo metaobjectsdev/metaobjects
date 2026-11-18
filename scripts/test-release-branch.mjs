@@ -3,7 +3,10 @@
 //
 //   node scripts/test-release-branch.mjs
 
-import { releaseBranchRefusal, latestRegressionRefusal, newestNpmReleaseTag } from "./lib/release-branch.mjs";
+import {
+  releaseBranchRefusal, latestRegressionRefusal, newestNpmReleaseTag,
+  previousMaintenanceBranch, unmergedMaintenanceRefusal,
+} from "./lib/release-branch.mjs";
 
 let fails = 0;
 const check = (cond, label) => (cond ? console.log(`ok:   ${label}`) : (console.error(`FAIL: ${label}`), fails++));
@@ -69,6 +72,24 @@ const fakeOut = (cmd) => {
 };
 check(newestNpmReleaseTag(fakeOut) === "v1.3.0",
   "the newest npm-line tag wins; a treeless tag and the JVM line are skipped");
+
+// A minor or major cut must already hold every commit of the previous maintenance branch,
+// or a fix shipped as a patch from it is silently missing from the new line.
+const lines = ["release/1.1", "release/1.2", "release/0.25", "release/2.0", "release-prep"];
+check(previousMaintenanceBranch("1.3.0", lines) === "release/1.2", "1.3.0 checks release/1.2");
+check(previousMaintenanceBranch("1.3.0-rc.1", lines) === "release/1.2", "an RC of a minor checks it too");
+check(previousMaintenanceBranch("2.0.0", lines) === "release/1.2", "a major checks the newest line below it");
+check(previousMaintenanceBranch("1.10.0", ["release/1.9", "release/1.2"]) === "release/1.9",
+  "lines compare numerically, not as strings");
+check(previousMaintenanceBranch("1.3.1", lines) === null, "a patch checks nothing");
+check(previousMaintenanceBranch("1.2.0", ["release/1.2", "release/2.0"]) === null,
+  "no lower maintenance branch, nothing to check");
+const counts = (n) => () => n;
+check(unmergedMaintenanceRefusal("1.3.0", lines, counts(0)) === null, "a fully merged branch passes");
+check(unmergedMaintenanceRefusal("1.3.0", lines, counts(2))?.includes("origin/release/1.2 has 2 commit(s)") === true,
+  "an unmerged commit refuses the cut and names the branch");
+check(unmergedMaintenanceRefusal("1.3.1", lines, counts(2)) === null, "a patch is not gated");
+check(unmergedMaintenanceRefusal("1.3.0", [], counts(2)) === null, "no maintenance branch, no gate");
 
 if (fails > 0) {
   console.error(`\n${fails} check(s) failed`);

@@ -66,26 +66,26 @@ CREATE VIEW "v_invoice_status_totals" AS
     COUNT(i."id") AS "invoices",
     CAST(SUM(i."amountCents") AS BIGINT) AS "totalCents",
     CAST(SUM(i."amountCents") FILTER (WHERE i."status" = 'PAID') AS BIGINT) AS "paidCents"
-  FROM "public"."invoices" i
+  FROM "invoices" i
   GROUP BY i."status";
-COMMENT ON VIEW "v_invoice_status_totals" IS 'metaobjects:v1:sha256:6b385e587edc2edcc9a198b8975934ce98458ad33169385d848cd16422ef9beb';
+COMMENT ON VIEW "v_invoice_status_totals" IS 'metaobjects:v1:sha256:e6680d9a571f00db22cea3a408719f2bf288c059dbf9da47a104130e0aa718c8';
 
 CREATE VIEW "v_invoices_by_month" AS
   SELECT
     CAST(date_trunc('month', CAST(i."issuedOn" AS TIMESTAMP)) AS DATE) AS "issuedOnMonth",
     COUNT(i."id") AS "invoices",
     CAST(SUM(i."amountCents") AS BIGINT) AS "totalCents"
-  FROM "public"."invoices" i
+  FROM "invoices" i
   GROUP BY CAST(date_trunc('month', CAST(i."issuedOn" AS TIMESTAMP)) AS DATE);
-COMMENT ON VIEW "v_invoices_by_month" IS 'metaobjects:v1:sha256:75b65a09345062e2f55fb67a941844ce3ff8e1432b9a6e337843c44b2e3bc5d0';
+COMMENT ON VIEW "v_invoices_by_month" IS 'metaobjects:v1:sha256:3fafe24c9b2e4f02f7d1d4c0860fdd67565c811e6cff57839e08e684632c2e40';
 
 CREATE VIEW "v_invoice_totals" AS
   SELECT
     COUNT(i."id") AS "invoices",
     CAST(SUM(i."amountCents") AS BIGINT) AS "totalCents",
     CAST(COUNT(i."id") FILTER (WHERE i."status" = 'PAID') AS NUMERIC) / NULLIF(COUNT(i."id"), 0) AS "paidShare"
-  FROM "public"."invoices" i;
-COMMENT ON VIEW "v_invoice_totals" IS 'metaobjects:v1:sha256:1e29ad7187a21622b2beeb203463a6fa112f23b3a4500d1919a92682689dda34';
+  FROM "invoices" i;
+COMMENT ON VIEW "v_invoice_totals" IS 'metaobjects:v1:sha256:d99e43a93181f09bf2af44297ae4bf3f0f52dc5fc1dd73279b2ab76fab12a5fb';
 
 CREATE VIEW "v_invoice_calendar" AS
   SELECT
@@ -93,18 +93,18 @@ CREATE VIEW "v_invoice_calendar" AS
     CAST(date_trunc('month', CAST(i."issuedOn" AS TIMESTAMP)) AS DATE) AS "issuedOnMonth",
     COUNT(i."id") AS "invoices",
     CAST(SUM(i."amountCents") AS BIGINT) AS "totalCents"
-  FROM "public"."invoices" i
+  FROM "invoices" i
   GROUP BY i."issuedOn", CAST(date_trunc('month', CAST(i."issuedOn" AS TIMESTAMP)) AS DATE);
-COMMENT ON VIEW "v_invoice_calendar" IS 'metaobjects:v1:sha256:dd492521ae3e29501f13e58fafc1168f66971a2d198f9c319c8114f27190688d';
+COMMENT ON VIEW "v_invoice_calendar" IS 'metaobjects:v1:sha256:bb09a6e3477ccb38cd7f38df162d5621f5bd50d457b80492dd2f6800ee07e91c';
 
 CREATE VIEW "v_invoice_disputes" AS
   SELECT
     i."disputed" AS "disputed",
     COUNT(i."id") AS "invoices",
     COUNT(i."id") FILTER (WHERE i."amountCents" >= 60000) AS "bigInvoices"
-  FROM "public"."invoices" i
+  FROM "invoices" i
   GROUP BY i."disputed";
-COMMENT ON VIEW "v_invoice_disputes" IS 'metaobjects:v1:sha256:07f9fb1f75ee4d6203b824e6d1699099897a50ebabbe0b2fe3d95b92268e287d';
+COMMENT ON VIEW "v_invoice_disputes" IS 'metaobjects:v1:sha256:728e28e8265487a06e3e24606e0cb1e18812f038f5da8b23313c2e6578b47992';
 
 CREATE VIEW "v_product_revenue" AS
   SELECT
@@ -113,10 +113,10 @@ CREATE VIEW "v_product_revenue" AS
     COUNT(s."id") AS "sales",
     CAST(SUM(s."amountCents") AS BIGINT) AS "revenueCents",
     COALESCE(CAST(SUM(s."amountCents") AS BIGINT), 0) AS "revenueOrZero"
-  FROM "public"."products" p
-  LEFT OUTER JOIN "public"."sales" s ON p."id" = s."productId"
+  FROM "products" p
+  LEFT OUTER JOIN "sales" s ON p."id" = s."productId"
   GROUP BY p."id", p."name";
-COMMENT ON VIEW "v_product_revenue" IS 'metaobjects:v1:sha256:cb336b1ab07b37709bcf9546992c082c98ef4cda356f47f5b73809102c919bf6';
+COMMENT ON VIEW "v_product_revenue" IS 'metaobjects:v1:sha256:4591ac33c76e8bd7078de8aa46d3f790deec87c7653d3d52d1b8ce93ee740949';
 
 CREATE VIEW "v_sales_by_category" AS
   SELECT
@@ -125,21 +125,21 @@ CREATE VIEW "v_sales_by_category" AS
     CAST(SUM(s."amountCents") AS BIGINT) AS "revenueCents",
     MAX(s."amountCents") AS "maxCents",
     COUNT(s."id") FILTER (WHERE s."amountCents" >= 10000) AS "largeSales"
-  FROM "public"."sales" s
-  LEFT OUTER JOIN "public"."products" p ON p."id" = s."productId"
-  LEFT OUTER JOIN "public"."categories" c ON c."id" = p."categoryId"
+  FROM "sales" s
+  LEFT OUTER JOIN "products" p ON p."id" = s."productId"
+  LEFT OUTER JOIN "categories" c ON c."id" = p."categoryId"
   GROUP BY c."name";
-COMMENT ON VIEW "v_sales_by_category" IS 'metaobjects:v1:sha256:750f4a95b2f6f44ee7da184b4b7a51d7dbdff5cba40d9e04472eb44f8b79bc42';
+COMMENT ON VIEW "v_sales_by_category" IS 'metaobjects:v1:sha256:71901b874d860e44f0ce7d7bbd2d2258fca3b9317f6181872bd15be2dfa74b2a';
 
 CREATE VIEW "v_sales_by_sku" AS
   SELECT
     p."sku" AS "productSku",
     COUNT(s."id") AS "sales",
     CAST(SUM(s."amountCents") AS BIGINT) AS "revenueCents"
-  FROM "public"."sales" s
-  LEFT OUTER JOIN "public"."products" p ON p."id" = s."productId"
+  FROM "sales" s
+  LEFT OUTER JOIN "products" p ON p."id" = s."productId"
   GROUP BY p."sku";
-COMMENT ON VIEW "v_sales_by_sku" IS 'metaobjects:v1:sha256:800b923b5923a66e5c2576d25e2130065084e5d2cf04cf3caceaec091e237ed2';
+COMMENT ON VIEW "v_sales_by_sku" IS 'metaobjects:v1:sha256:b60ca9c2d26bb2a9edcfd0cad6b52b19731bf0fced4c00cdd30f906399469822';
 
 CREATE VIEW "v_product_refunds" AS
   SELECT
@@ -148,33 +148,33 @@ CREATE VIEW "v_product_refunds" AS
     COUNT(s."id") AS "sales",
     bool_or(s."refunded") AS "hasRefund",
     COALESCE(bool_or(s."refunded"), FALSE) AS "hasRefundOrFalse"
-  FROM "public"."products" p
-  LEFT OUTER JOIN "public"."sales" s ON p."id" = s."productId"
+  FROM "products" p
+  LEFT OUTER JOIN "sales" s ON p."id" = s."productId"
   GROUP BY p."id", p."name";
-COMMENT ON VIEW "v_product_refunds" IS 'metaobjects:v1:sha256:b80d8f41f2e846e940c3fa7719d062d11171e9c44016fa071d5bd200024f2e0c';
+COMMENT ON VIEW "v_product_refunds" IS 'metaobjects:v1:sha256:afc9cfc384c2db9e29ddc26e0cac58ee5d555f452fb41446ad99eeeab05051af';
 
 CREATE VIEW "v_tickets_by_tags" AS
   SELECT
     t."tags" AS "tags",
     t."attrs" AS "attrs",
     COUNT(t."id") AS "tickets"
-  FROM "public"."tickets" t
+  FROM "tickets" t
   GROUP BY t."tags", t."attrs";
-COMMENT ON VIEW "v_tickets_by_tags" IS 'metaobjects:v1:sha256:02361a4a1d8a903e1b8e7b8f37ac253f009f28c4904518ee5405e7a551ed68d7';
+COMMENT ON VIEW "v_tickets_by_tags" IS 'metaobjects:v1:sha256:38b4020ab33a2857d8cdf5eb860216342aa43fa8c4a914d330dbdd72646f8793';
 
 CREATE VIEW "v_reading_log" AS
   SELECT
     r."seq" AS "seq",
     COUNT(r."id") AS "readings"
-  FROM "public"."readings" r
+  FROM "readings" r
   GROUP BY r."seq";
-COMMENT ON VIEW "v_reading_log" IS 'metaobjects:v1:sha256:a16c6fbc4b1dc93bcf94242817d2ab6fbfbd8f44c0456e6bf225df2c2ea69803';
+COMMENT ON VIEW "v_reading_log" IS 'metaobjects:v1:sha256:eb0bf93a21445f65232e7cb99c47c412aa5d352d56e11d5f3fdf594965ea6eb8';
 
 CREATE VIEW "v_export_cells" AS
   SELECT
     e."label" AS "label",
     COUNT(e."id") AS "cells",
     CAST(SUM(e."amountCents") AS BIGINT) AS "totalCents"
-  FROM "public"."export_cells" e
+  FROM "export_cells" e
   GROUP BY e."label";
-COMMENT ON VIEW "v_export_cells" IS 'metaobjects:v1:sha256:24eab0821b34c25b1bd2169d709bbe870a2bd1ca6b435a64816c04f3e1271d4c';
+COMMENT ON VIEW "v_export_cells" IS 'metaobjects:v1:sha256:1118c65eb1132035cdcf9895980ac0905fb61532016dc5fcb210d756269e01eb';

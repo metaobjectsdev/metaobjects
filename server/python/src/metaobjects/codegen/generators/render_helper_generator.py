@@ -54,7 +54,9 @@ from metaobjects.apidocs.naming import snake_case as _snake_case
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
-from metaobjects.codegen.value_objects import bound_payload_vo, model_class_name
+from metaobjects.codegen.import_path import ModuleScope
+from metaobjects.codegen.name_claims import claimed_module_path
+from metaobjects.codegen.value_objects import bound_payload_vo, local_name, pkg_of
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
@@ -242,10 +244,15 @@ class RenderHelperGenerator:
                 continue
             # _emit_helper runs the build-time drift gate first and RAISES (fails
             # codegen) on a mustache↔VO drift — intentionally NOT caught.
-            content = self._emit_helper(tmpl, vo, payload_ref, root)
+            content = self._emit_helper(
+                tmpl, vo, payload_ref, root, ModuleScope(ctx.config.output_layout, pkg_of(tmpl))
+            )
             files.append(
                 EmittedFile(
-                    path=f"{_snake_case(tmpl.name)}_render_helper.py",
+                    path=claimed_module_path(
+                        ctx.claims, ctx.config, pkg_of(tmpl),
+                        f"{_snake_case(tmpl.name)}_render_helper", tmpl.resolution_key(),
+                    ),
                     content=ruff_format(content),
                 )
             )
@@ -287,6 +294,7 @@ class RenderHelperGenerator:
         vo: MetaObject,
         payload_ref: str,
         root: MetaData,
+        scope: ModuleScope = ModuleScope(),
     ) -> str:
         template_name = tmpl.name
         snake = _snake_case(template_name)
@@ -300,16 +308,17 @@ class RenderHelperGenerator:
             else template_name
         )
         header = generated_header(template_name, fqn)
-        payload_class = model_class_name(vo)
+        payload_class = local_name(vo)
+        payload_import = scope.import_object(vo)
 
         if kind == tc.TEMPLATE_KIND_EMAIL:
             return self._emit_email(
                 header, template_name, snake, payload_ref, tmpl, fields,
-                payload_class=payload_class,
+                payload_class=payload_class, payload_import=payload_import,
             )
         return self._emit_document(
             header, template_name, snake, payload_ref, tmpl, fields,
-            payload_class=payload_class,
+            payload_class=payload_class, payload_import=payload_import,
         )
 
     def _emit_document(
@@ -322,6 +331,7 @@ class RenderHelperGenerator:
         fields: list[PayloadField],
         *,
         payload_class: str,
+        payload_import: str | None = None,
     ) -> str:
         text_ref = tmpl.get_meta_attr(tc.TEMPLATE_ATTR_TEXT_REF)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
         if not isinstance(text_ref, str) or not text_ref:
@@ -354,7 +364,7 @@ class RenderHelperGenerator:
             "from metaobjects.render.renderer import render, RenderRequest",
             *_jinja_imports(engine),
             "",
-            f"from .{payload_class} import {payload_class}",
+            payload_import or f"from .{payload_class} import {payload_class}",
             "",
             "",
             f"def render_{snake}(payload: {payload_class}, provider) -> str:",
@@ -383,6 +393,7 @@ class RenderHelperGenerator:
         fields: list[PayloadField],
         *,
         payload_class: str,
+        payload_import: str | None = None,
     ) -> str:
         subject_ref = tmpl.get_meta_attr(tc.TEMPLATE_ATTR_SUBJECT_REF)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
         html_body_ref = tmpl.get_meta_attr(tc.TEMPLATE_ATTR_HTML_BODY_REF)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
@@ -428,7 +439,7 @@ class RenderHelperGenerator:
             "from metaobjects.render.renderer import render, RenderRequest",
             *_jinja_imports(TEMPLATE_ENGINE_JINJA if any_jinja else TEMPLATE_ENGINE_MUSTACHE),
             "",
-            f"from .{payload_class} import {payload_class}",
+            payload_import or f"from .{payload_class} import {payload_class}",
             "",
             "",
             f"def render_{snake}(payload: {payload_class}, provider) -> EmailDocument:",

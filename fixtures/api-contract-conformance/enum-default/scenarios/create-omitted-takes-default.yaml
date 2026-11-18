@@ -1,0 +1,28 @@
+name: create-omitted-takes-default
+description: >
+  A create that omits a `field.enum` carrying `@default` stores the default. The echo of the
+  create carries it, and so does a GET by id afterwards, which proves it was written to the
+  store and not only added to the response. The seed holds ids 1 and 2, so the created row is 3.
+requests:
+  - id: r1
+    method: POST
+    path: /api/tickets
+    body:
+      title: "Broken monitor"
+    expect:
+      status: 201
+      body:
+        row:
+          title: "Broken monitor"
+          priority: "NORMAL"
+        hasId: true
+  - id: r2
+    method: GET
+    path: /api/tickets/3
+    expect:
+      status: 200
+      body:
+        equals:
+          id: 3
+          title: "Broken monitor"
+          priority: "NORMAL"

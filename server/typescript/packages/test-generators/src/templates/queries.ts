@@ -12,6 +12,7 @@ import {
 import type { RenderContext } from "@metaobjectsdev/codegen-ts/engine";
 import { getPkInfo, pkInfoOf, subTypeToTsType } from "@metaobjectsdev/codegen-ts/engine";
 import { supportsReturning } from "@metaobjectsdev/codegen-ts/engine";
+import { flatKeyOfPath } from "@metaobjectsdev/codegen-ts/engine";
 import {
   findByIdFnName,
   listFnName,
@@ -231,12 +232,11 @@ interface ReverseFk {
 export function reverseFksFor(entity: MetaObject): ReverseFk[] {
   const out: ReverseFk[] = [];
   for (const ref of entity.referenceIdentities()) {
-    const fkField = ref.fields[0];
+    const fkPath = ref.fields[0];
     const targetRef = ref.targetEntity;
-    if (!fkField || !targetRef) continue;
-    // G6: a reference over a flattened value-object member (`address.countryId`) names no
-    // property of the Drizzle table, so it gets no finder (the view and the FK still use it).
-    if (fkField.includes(".")) continue;
+    if (!fkPath || !targetRef) continue;
+    // A reference over a flattened value-object member names its flat key on the table.
+    const fkField = flatKeyOfPath(entity, fkPath);
     const bound = refTarget(ref, IDENTITY_REFERENCE_ATTR_REFERENCES);
     const target = isMetaObject(bound) ? bound : undefined;
     out.push({ fkField, targetEntity: target?.name ?? stripPackage(targetRef), target });

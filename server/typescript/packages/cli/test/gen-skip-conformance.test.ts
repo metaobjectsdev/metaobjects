@@ -1,4 +1,4 @@
-// ADR-0062 — the shared case table, `fixtures/codegen-skip-conformance/cases.json`, run
+// ADR-0064 — the shared case table, `fixtures/codegen-skip-conformance/cases.json`, run
 // against a TypeScript project: run `meta gen` once, apply each case's change, then ask
 // the skip decision `meta gen` makes (after loading the model, before rendering) and the
 // one a local `verify --codegen` makes.
@@ -233,7 +233,7 @@ const RUNNERS: Record<string, Runner> = {
   },
 };
 
-describe("codegen-skip-conformance (ADR-0062)", () => {
+describe("codegen-skip-conformance (ADR-0064)", () => {
   test("every case in the table has a runner, and every runner a case", () => {
     expect(CASES.cases.map((c) => c.id).sort()).toEqual(Object.keys(RUNNERS).sort());
   });
@@ -252,7 +252,7 @@ describe("codegen-skip-conformance (ADR-0062)", () => {
   }
 });
 
-describe("meta gen with nothing changed (ADR-0062)", () => {
+describe("meta gen with nothing changed (ADR-0064)", () => {
   test("renders nothing and writes nothing: no file, the manifest and the stored key included", async () => {
     const p = makeProject();
     expect(await gen(p)).toBe(0);
@@ -297,6 +297,20 @@ describe("meta gen with nothing changed (ADR-0062)", () => {
     expect(await genSkips(p, {})).toBe(true);
   }, 30_000);
 
+  test("a run that names entities renders, and neither writes nor satisfies the full-run key", async () => {
+    const p = makeProject();
+    expect(await gen(p)).toBe(0);
+    const key = readFileSync(stateFile(p), "utf-8");
+    const renders = readFileSync(join(p.root, "renders.log"), "utf-8");
+    expect(await gen(p, ["Order"])).toBe(0);
+    expect(readFileSync(join(p.root, "renders.log"), "utf-8").length).toBeGreaterThan(renders.length);
+    expect(readFileSync(stateFile(p), "utf-8")).toBe(key);
+    // The full-run key is still the full run's: the next full run skips.
+    expect(await genSkips(p, {})).toBe(true);
+    // And a narrowed run repeated over unchanged inputs still renders.
+    expect(await genSkips(p, { args: ["Order"] })).toBe(false);
+  }, 30_000);
+
   test("--dry-run neither skips nor stores a fingerprint", async () => {
     const p = makeProject();
     expect(await gen(p, ["--dry-run"])).toBe(0);
@@ -304,7 +318,7 @@ describe("meta gen with nothing changed (ADR-0062)", () => {
   }, 30_000);
 });
 
-describe("an output outside the project root (ADR-0062)", () => {
+describe("an output outside the project root (ADR-0064)", () => {
   test("a deleted output there makes the next gen and the local verify shortcut render", async () => {
     const p = makeProject();
     const outside = mkdtempSync(join(WORKSPACE_TMP, "gen-skip-out-"));
@@ -324,13 +338,12 @@ describe("an output outside the project root (ADR-0062)", () => {
   }, 30_000);
 });
 
-describe("an orphan the sweep refuses to delete (ADR-0062)", () => {
+describe("an orphan the sweep refuses to delete (ADR-0064)", () => {
   test("stores no key, so the next gen runs again and repeats the refusal", async () => {
     const p = makeProject();
     expect(await gen(p)).toBe(0);
     expect(existsSync(stateFile(p))).toBe(true);
-    // The default outputLayout is "package": the crm package's module lives under its directory.
-    const orphan = join(p.root, "generated", "crm", "Customer.ts");
+    const orphan = join(p.root, "generated", "Customer.ts");
     expect(existsSync(orphan)).toBe(true);
     append(orphan, "// mine\n");
     unlinkSync(join(p.root, "metaobjects", "meta.crm.json"));
@@ -342,7 +355,7 @@ describe("an orphan the sweep refuses to delete (ADR-0062)", () => {
   }, 30_000);
 });
 
-describe("verify --codegen renders in memory (ADR-0062)", () => {
+describe("verify --codegen renders in memory (ADR-0064)", () => {
   test("a full render writes no temp tree and no file anywhere", async () => {
     const p = makeProject();
     expect(await gen(p)).toBe(0);

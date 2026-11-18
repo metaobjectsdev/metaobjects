@@ -35,7 +35,9 @@ export function composeRegistry(
   const ordered = topoSortProviders(providers);
   const registry = new TypeRegistry();
   for (const provider of ordered) {
-    provider.registerTypes(registry);
+    // ADR-0062: the registry attributes every attribute registered or extended during
+    // this turn to the provider, and refuses another provider's claim on the same name.
+    registry.runAsProvider(provider.id, () => provider.registerTypes(registry));
   }
   // FR-033 — opt-in metamodel contradiction gate. The library bootstrap (the
   // loader's default registry) sets validate:true so a contradictory provider set

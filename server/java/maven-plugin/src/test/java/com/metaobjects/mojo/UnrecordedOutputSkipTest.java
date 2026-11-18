@@ -21,7 +21,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 /**
- * ADR-0062: an output a generator writes straight through {@code writeIfChanged} is in no hash
+ * ADR-0064: an output a generator writes straight through {@code writeIfChanged} is in no hash
  * manifest, yet a run that finds it gone must render again rather than skip.
  */
 public class UnrecordedOutputSkipTest {

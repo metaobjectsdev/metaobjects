@@ -1,0 +1,158 @@
+{
+  "metadata.root": {
+    "package": "acme::cases",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Case",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "cases"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "CaseHistory",
+          "@collectionName": "CaseHistory",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "case_history"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "caseId"
+              }
+            },
+            {
+              "field.string": {
+                "name": "status"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "createdDate"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "caseId",
+                "@fields": [
+                  "caseId"
+                ],
+                "@references": "acme::cases::Case"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "status",
+                "@of": "acme::cases::CaseHistory.status"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "entries",
+                "@agg": "count",
+                "@of": [
+                  "acme::cases::CaseHistory.id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "CaseActivity",
+          "@collectionName": "CaseActivity",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_case_activity"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "acme::cases::Case.id"
+              }
+            },
+            {
+              "field.int": {
+                "name": "historyCount",
+                "children": [
+                  {
+                    "origin.aggregate": {
+                      "@agg": "count",
+                      "@of": "acme::cases::CaseHistory.id",
+                      "@via": "acme::cases::Case.caseHistory"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::cases::Case.id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "HistoryCounts",
+          "@collectionName": "HistoryCounts",
+          "@dimensions": [
+            "status"
+          ],
+          "@from": "acme::cases::CaseHistory",
+          "@measures": [
+            "entries"
+          ],
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_history_counts"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -151,9 +151,7 @@ registers its own (`namingStrategies.collections` in `metaobjects.config.ts` or
 nothing answers is refused when the config is read. An object's own `@collectionName` always wins.
 
 `@collectionName` is implemented in C# and TypeScript (ruling R40 kind 1); Java, Kotlin and
-Python load it and do nothing with it yet. `@dbSetName` is its deprecated alias for one release:
-it means the same thing, code generation warns where it reads it, and an object declaring both is
-refused. In C#, a project that configures no pluralizer keeps its historical DbSet names (which
+Python load it and do nothing with it yet. In C#, a project that configures no pluralizer keeps its historical DbSet names (which
 add C#'s `-sis` → `-ses` rule).
 
 ## What each port generates
@@ -351,6 +349,55 @@ om = ObjectManager(root, driver)   # driver wraps a DB-API 2 connection
 row = om.create("Author", {"name": "Ada", "bio": None})
 found = om.find_by_id("Author", row["id"])
 ```
+
+## Cross-field validators
+
+`validator.comparison`, `validator.requiredWhen`, `validator.presentIff`, `validator.atLeastOne`
+and `validator.exactlyOne` are declared as children of the entity and reference sibling fields by
+name. They are enforced in two places:
+
+- **The generated full record (create) model**, in every port, with the language's native
+  mechanism: a Zod refinement on the insert schema (TypeScript), a class-level Bean Validation
+  constraint on the create DTO (Java, Kotlin), `IValidatableObject` (C#) and a Pydantic
+  `model_validator` (Python). A store with no `CHECK` support, such as a graph or document
+  database, is therefore still covered.
+- **A database `CHECK` constraint**, derived by `meta migrate`.
+
+The two share one set of semantics: absent or null is SQL `NULL`; `comparison` passes when either
+side is null; `requiredWhen` is violated only when the gate equals `@equals` and the target is null;
+`presentIff` requires the target to be present exactly when the gate equals `@equals`; `atLeastOne`
+needs one non-null field; `exactlyOne` needs exactly one. `@equals` is read per the gating field's
+subtype.
+
+Any of the five can carry a `@condition`, an expression over the entity's fields that says when the
+rule applies (the grammar and its load-time checks are in
+[migrations-and-drift.md](migrations-and-drift.md#checks-from-validators-names-conditions-how-many)). The rule is checked only
+when the condition is true. A condition that is false, or unknown because a field it reads is null,
+lets the record through, exactly as the `CHECK`'s `NOT (condition) OR (rule)` does in SQL.
+
+```json
+{ "object.entity": { "name": "Shift", "children": [
+  { "field.int": { "name": "startDay" } },
+  { "field.int": { "name": "endDay" } },
+  { "field.int": { "name": "startMin" } },
+  { "field.int": { "name": "endMin" } },
+  { "validator.comparison": { "name": "sameDayTimes", "@left": "endMin", "@op": "gt", "@right": "startMin",
+    "@condition": { "op": "eq", "left": { "field": "startDay" }, "right": { "field": "endDay" } } } }
+] } }
+```
+
+The shared cases in `fixtures/validation-conformance/cross-field-cases.json` gate all five ports.
+
+One difference: a `comparison` orders only fields of the same kind. Numerics compare with each other;
+strings, temporals and durations compare only with their own subtype and `@localTime` flag. `eq` and `ne` also
+apply to two booleans, enums, `uuid`, `uri` or `inet` fields, and ordering on a boolean or enum is not
+enforced. Any other pair is skipped in the generated model, never rejected, but the DB `CHECK` still
+covers it where the database can compare the two columns. A comparison inside an `@condition` follows
+the same rule: when two fields it reads are of different kinds, the generated model leaves the whole
+validator to the database. The full rule is in `fixtures/validation-conformance/README.md`.
+
+PATCH and partial-update models do **not** enforce these rules, because a partial body cannot see
+the merged row. The database `CHECK` is the enforcement there.
 
 ## Verified by
 

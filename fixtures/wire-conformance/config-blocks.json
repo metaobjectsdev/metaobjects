@@ -1,12 +1,13 @@
 {
-  "_comment": "Cross-port wire-format setting (ADR-0019 Amendment 2). Each case is the `wire` block of a project's .metaobjects/config.json (null = the key is absent). A port parses it with the reader it uses for that file and must resolve `decimals` and `nullMembers` to the values below; the default is `native` for both, which means each port's own language-standard output. `invalid` blocks must be refused when the config is read.",
+  "_comment": "Cross-port wire-format setting (ADR-0019 Amendment 2). Each case is the `wire` block of a project's .metaobjects/config.json (null = the key is absent). A port parses it with the reader it uses for that file and must resolve `decimals`, `nullMembers` and `durations` to the values below; the default is `native` for each, which means each port's own language-standard output. `invalid` blocks must be refused when the config is read.",
   "cases": [
-    { "name": "default", "wire": null, "decimals": "native", "nullMembers": "native" },
-    { "name": "empty block is the default", "wire": {}, "decimals": "native", "nullMembers": "native" },
-    { "name": "explicit native", "wire": { "decimals": "native", "nullMembers": "native" }, "decimals": "native", "nullMembers": "native" },
-    { "name": "portable form (what the corpora pin)", "wire": { "decimals": "string", "nullMembers": "omit" }, "decimals": "string", "nullMembers": "omit" },
-    { "name": "decimals alone", "wire": { "decimals": "string" }, "decimals": "string", "nullMembers": "native" },
-    { "name": "emit null members", "wire": { "nullMembers": "emit" }, "decimals": "native", "nullMembers": "emit" }
+    { "name": "default", "wire": null, "decimals": "native", "nullMembers": "native", "durations": "native" },
+    { "name": "empty block is the default", "wire": {}, "decimals": "native", "nullMembers": "native", "durations": "native" },
+    { "name": "explicit native", "wire": { "decimals": "native", "nullMembers": "native", "durations": "native" }, "decimals": "native", "nullMembers": "native", "durations": "native" },
+    { "name": "portable form (what the corpora pin)", "wire": { "decimals": "string", "nullMembers": "omit", "durations": "iso" }, "decimals": "string", "nullMembers": "omit", "durations": "iso" },
+    { "name": "decimals alone", "wire": { "decimals": "string" }, "decimals": "string", "nullMembers": "native", "durations": "native" },
+    { "name": "emit null members", "wire": { "nullMembers": "emit" }, "decimals": "native", "nullMembers": "emit", "durations": "native" },
+    { "name": "iso durations alone", "wire": { "durations": "iso" }, "decimals": "native", "nullMembers": "native", "durations": "iso" }
   ],
   "invalid": [
     { "name": "wire is not an object", "wire": "string" },
@@ -16,6 +17,8 @@
     { "name": "unknown decimals value", "wire": { "decimals": "canonical" } },
     { "name": "decimals is not a string", "wire": { "decimals": true } },
     { "name": "unknown nullMembers value", "wire": { "nullMembers": "skip" } },
-    { "name": "nullMembers is not a string", "wire": { "nullMembers": null } }
+    { "name": "nullMembers is not a string", "wire": { "nullMembers": null } },
+    { "name": "unknown durations value", "wire": { "durations": "iso8601" } },
+    { "name": "durations is not a string", "wire": { "durations": false } }
   ]
 }

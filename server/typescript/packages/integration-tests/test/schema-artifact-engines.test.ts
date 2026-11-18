@@ -18,7 +18,7 @@ import {
   generateCanonicalMysqlSchemaSql,
   readCanonicalMysqlSchemaSql,
 } from "../src/canonical-schema-mysql.ts";
-import { loadMetadataDir } from "../src/load-metadata.ts";
+import { loadMetadataDir, loadMetadataDirWithoutSchemas } from "../src/load-metadata.ts";
 import { CANONICAL_DIR } from "../src/paths.ts";
 
 /** The project setting `"naming": { "columns": "literal" }` (ADR-0058), set where the
@@ -30,7 +30,8 @@ function literalColumns<T>(root: T): T {
 
 describe("canonical schema artifacts for the other engines", () => {
   test("schema.sqlite.sql matches what TS generates from metadata (no drift)", async () => {
-    const root = await loadMetadataDir(CANONICAL_DIR);
+    // SQLite has no schemas, so its artifact is built from the model without the objects that declare one.
+    const root = await loadMetadataDirWithoutSchemas(CANONICAL_DIR);
     const generated = await generateCanonicalSchemaSql(root, { dialect: "sqlite" });
     if (generated !== readCanonicalSchemaSql("sqlite")) {
       throw new Error(

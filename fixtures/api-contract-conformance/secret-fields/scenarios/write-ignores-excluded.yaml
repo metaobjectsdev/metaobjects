@@ -1,8 +1,8 @@
 name: write-ignores-excluded
 description: >
   A field excluded from forms (`@formExclude`), marked as a credential (`view.password`) or
-  declared `@mutability: readOnly` (`role`) is not writable through the generated routes:
-  create, PATCH and PUT all leave it as it was. The value is IGNORED, never rejected (HTTP 200/201, not 400), the same rule as
+  declared `@mutability: readOnly` is not writable through the generated routes: create,
+  PATCH and PUT all leave it as it was. The value is IGNORED, never rejected (HTTP 200/201, not 400), the same rule as
   `@mutability: writeOnce` on PATCH (`writeonce-patch-stripped`), because a generated
   edit form submits every field it was given.
 
@@ -59,7 +59,7 @@ requests:
           name: "Grace Hopper"
           # Never written: the column stays null, and `forged` never landed.
           tokenHash: null
-          # readOnly is server-owned: a create cannot set it either (1.2.x security fix).
+          # readOnly is server-owned: a create cannot set it either.
           role: null
         hasId: true
   - id: r4

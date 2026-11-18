@@ -14,15 +14,21 @@ import { TYPE_VALIDATOR, TYPE_SEGMENT } from "../shared/base-types.js";
 import {
   CROSS_FIELD_VALIDATOR_SUBTYPES,
   VALIDATOR_ATTR_CONDITION,
+  VALIDATOR_ATTR_EQUALS,
   VALIDATOR_ATTR_FIELDS,
+  VALIDATOR_ATTR_WHEN,
   VALIDATOR_ATTR_MAX,
+  VALIDATOR_SUBTYPE_EXACTLY_ONE,
   VALIDATOR_SUBTYPE_AT_LEAST_ONE,
+  VALIDATOR_SUBTYPE_PRESENT_IFF,
+  VALIDATOR_SUBTYPE_REQUIRED_WHEN,
   VALIDATOR_ATTR_CONSTRAINT_NAME,
   VALIDATOR_ATTR_DB_CHECK,
   VALIDATOR_SUBTYPE_LENGTH,
   VALIDATOR_SUBTYPE_NUMERIC,
   VALIDATOR_SUBTYPE_REGEX,
 } from "../core/validator/validator-constants.js";
+import { parseDurationLiteral } from "../core/field/duration-wire.js";
 import type { MetaData } from "../shared/meta-data.js";
 import type { MetaObject } from "../core/object/meta-object.js";
 import { findReverseReferenceHops, reverseHopHint } from "../core/relationship/find-reference.js";
@@ -77,8 +83,8 @@ import {
   OBJECT_ATTR_DISCRIMINATOR,
 } from "../core/object/object-constants.js";
 import { MetaSource } from "../persistence/source/meta-source.js";
-import { resolveColumnName } from "../naming.js";
-import { isMetaField, isMetaRoot } from "../shared/node-guards.js";
+import { resolveColumnName, resolveFlattenedColumnName } from "../naming.js";
+import { isMetaField, isMetaObject, isMetaRoot } from "../shared/node-guards.js";
 import {
   LAYOUT_SUBTYPE_DATA_GRID,
   LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD,
@@ -113,8 +119,10 @@ import {
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_UUID,
+  FIELD_SUBTYPE_DURATION,
 } from "../core/field/field-constants.js";
 import { FIELD_ATTR_COLUMN, FIELD_ATTR_FLATTENED_COLUMN_PREFIX, FIELD_ATTR_DB_INDEXED, IDENTITY_ATTR_EXPR, IDENTITY_ATTR_WHERE, IDENTITY_ATTR_SEQUENCE_NAME, IDENTITY_ATTR_SEQUENCE_START } from "../persistence/db/db-constants.js";
+import { SOURCE_KIND_VIEW } from "../persistence/source/source-constants.js";
 import {
   IDENTITY_ATTR_FIELDS,
   IDENTITY_SUBTYPE_REFERENCE,
@@ -154,8 +162,15 @@ import {
   AGG_ALL,
   AGG_COLLECT,
   ASSEMBLY_ORIGIN_SUBTYPES,
+  COLUMN_VALUE_AGGREGATES,
 } from "../persistence/origin/origin-constants.js";
 import {
+  EXPR_CASE,
+  EXPR_CASE_ELSE,
+  EXPR_CASE_OPERAND,
+  EXPR_CASE_THEN,
+  EXPR_CASE_WHEN,
+  EXPR_NOW,
   inferExprType,
   validateExprNode,
   exprViewOnlyNode,
@@ -691,7 +706,7 @@ function _validateFromPath(
     );
     return undefined;
   }
-  // G6: a member of a flattened value object (`Plan.address.city`) is a column of the owning table.
+  // A member of a flattened value object (`Plan.address.city`) is a column of the owning table.
   const sourceField = _findField(sourceObj, targetFieldName)
     ?? resolveFlattenedMember(sourceObj, targetFieldName)?.member;
   if (!sourceField) {
@@ -710,6 +725,21 @@ function _validateFromPath(
   return { entity: sourceObj, field: sourceField };
 }
 
+/**
+ * The entity an origin.aggregate's or origin.first's `@filter` keys name: the `@of` entity,
+ * else the `@via` terminal. Undefined when neither resolves (validateOriginPaths reports why).
+ */
+export function originFilterEntity(origin: MetaData, root: MetaData): MetaData | undefined {
+  const field = origin.parent;
+  const projection = field?.parent;
+  if (field === undefined || projection === undefined) return undefined;
+  // ADR-0039: own — origin.* never inherits (ADR-0029).
+  const of_ = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_OF);
+  if (typeof of_ === "string" && of_ !== "") return _validateFromPath(of_, root, projection, field.name, origin.source, [])?.entity;
+  const via = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA);
+  return typeof via === "string" && via !== "" ? _validateViaPath(via, root, projection, field.name, origin.source, [])?.terminal : undefined;
+}
+
 /** A fully-walked `@via` path: the relationship hop nodes in path order, and
  *  the TERMINAL entity reached after the last hop. Both fall out of one walk,
  *  so they are returned together — recovering the terminal with a second walk
@@ -719,9 +749,9 @@ function _validateFromPath(
 interface WalkedViaPath {
   hops: MetaData[];
   terminal: MetaData;
-  /** The hops walked BACKWARDS (R-walk): an identity.reference of the next entity, walked from
-   *  the entity it targets, so the hop is to-many. */
-  reverse: ReadonlySet<MetaData>;
+  /** The hops walked BACKWARDS: an identity.reference of the next entity, walked from
+   *  the entity it targets, so the hop is to-many — keyed to the hop name the path wrote. */
+  reverse: ReadonlyMap<MetaData, string>;
 }
 
 /**
@@ -780,20 +810,20 @@ function _validateViaPath(
   // entity name; each successful relationship hop appends a segment.
   const validSegments: string[] = [entityName];
   const hops: MetaData[] = [];
-  const reverse = new Set<MetaData>();
+  const reverse = new Map<MetaData, string>();
   for (const relName of relSegments) {
     // FR-024: a hop may name a relationship OR a reference-only FK
     // (identity.reference) — the reference IS a navigable many-to-one edge.
     const rel = _findRelationship(currentObj, relName) ?? _findReference(currentObj, relName);
     if (!rel) {
-      // R-walk: a hop may walk an identity.reference BACKWARDS, from the entity it targets to the
-      // entity that declares it, named by that entity's collection name (`Player.contracts` for
-      // Contract.player). A declared relationship or reference of the same name wins (above).
+      // A hop may walk an identity.reference BACKWARDS, from the entity it targets to the
+      // entity that declares it, named by that entity's collection name (`Patient.consents` for
+      // Consent.patient). A declared relationship or reference of the same name wins (above).
       const reversed = findReverseReferenceHops(currentObj as MetaObject, relName, isMetaRoot(root) ? root.objects() : []);
       if (reversed.length === 1) {
         validSegments.push(relName);
         hops.push(reversed[0]!.referenceIdentity);
-        reverse.add(reversed[0]!.referenceIdentity);
+        reverse.set(reversed[0]!.referenceIdentity, relName);
         currentObj = reversed[0]!.holder;
         continue;
       }
@@ -881,7 +911,7 @@ function _validateViaPath(
 
 /** A hop's effective @cardinality, or undefined when not declared. A reference
  *  hop (a forward FK) is inherently to-one — a child names the parent it points at. */
-function _hopCardinality(rel: MetaData, reverse?: ReadonlySet<MetaData>, uniqueReverseIsOne = false): string | undefined {
+function _hopCardinality(rel: MetaData, reverse?: ReadonlyMap<MetaData, string>, uniqueReverseIsOne = false): string | undefined {
   // R-walk: a reference walked backwards reaches every row that references the walked-from one —
   // unless (rc.21 part B) its holder declares a unique identity over exactly the reference's fields,
   // so at most one row references it: then a passthrough may walk it (the aggregate rule keeps calling
@@ -1008,7 +1038,7 @@ function _deriveBaseEntity(
     }
   }
   if (targets.size === 1) return [...targets][0];
-  // G13: a projection that extends another projection, and anchors nothing of its own, has the
+  // A projection that extends another projection, and anchors nothing of its own, has the
   // base entity its super has (its inherited identity and fields are anchored there).
   const sup = obj.superResolved;
   if (targets.size === 0 && sup !== undefined && sup.type === TYPE_OBJECT && sup.subType === OBJECT_SUBTYPE_PROJECTION) {
@@ -1195,14 +1225,17 @@ function _checkPassthroughCardinality(
   fieldName: string,
   originSource: ErrorSource,
   errors: ParseError[],
-  reverse?: ReadonlySet<MetaData>,
+  reverse?: ReadonlyMap<MetaData, string>,
 ): void {
   for (const rel of hops) {
     if (_hopCardinality(rel, reverse, true) === CARDINALITY_MANY) {
       errors.push(
         new ParseError(
-          `origin.passthrough on ${obj.name}.${fieldName}: @via hop "${rel.name}" is to-many ` +
-            `(@cardinality "${CARDINALITY_MANY}") — a row-multiplying passthrough — you meant aggregate (ADR-0029).`,
+          `origin.passthrough on ${obj.name}.${fieldName}: @via hop "${reverse?.get(rel) ?? rel.name}" is to-many ` +
+            (reverse?.has(rel)
+              ? `(reverse hop over identity.reference "${rel.name}")`
+              : `(@cardinality "${CARDINALITY_MANY}")`) +
+            ` — a row-multiplying passthrough — you meant aggregate (ADR-0029).`,
           { code: "ERR_ORIGIN_CARDINALITY", source: originSource },
         ),
       );
@@ -1223,7 +1256,7 @@ function _checkAggregateCardinality(
   fieldName: string,
   originSource: ErrorSource,
   errors: ParseError[],
-  reverse?: ReadonlySet<MetaData>,
+  reverse?: ReadonlyMap<MetaData, string>,
 ): void {
   if (hops.length === 0) return;
   const provablyToOne = hops.every((rel) => _hopCardinality(rel, reverse) === CARDINALITY_ONE);
@@ -1706,6 +1739,21 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
           // an aggregate computes something new (count/sum/…); spec §4 defines
           // agreement for passthrough only.
           const ofTarget = _validateFromPath(of_, root, obj, field.name, src, errors, "origin.aggregate.@of");
+          // A sum/avg/min/max reduces ONE column. A value-object field is several columns
+          // (flattened) or a document (jsonb), so there is no column to reduce, and summing
+          // a Money-shaped value across rows would add amounts in different currencies.
+          if (
+            ofTarget !== undefined &&
+            (COLUMN_VALUE_AGGREGATES as readonly unknown[]).includes(agg) &&
+            // ADR-0039: resolving — @objectRef may be inherited via extends.
+            (ofTarget.field.subType === FIELD_SUBTYPE_OBJECT || ofTarget.field.attr(FIELD_ATTR_OBJECT_REF) !== undefined)
+          ) {
+            errors.push(new ParseError(
+              `origin.aggregate @agg:${String(agg)} on ${obj.name}.${field.name}: @of "${of_}" is a value-object ` +
+                `field (field.${ofTarget.field.subType}), which has no single column to aggregate. Aggregate a ` +
+                `scalar field instead: model the amount as its own field (and group by its currency).`,
+              { code: "ERR_INVALID_ORIGIN", source: resolvedSource(src, `${obj.fqn()}::${field.name}`, of_) }));
+          }
           // #195 — collect preserves the element type: the array field's own subType
           // must equal the @of column's subType (the #185 doctrine on the element).
           if (isCollect && ofTarget !== undefined && field.subType !== ofTarget.field.subType) {
@@ -1804,6 +1852,16 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
                 `origin.computed on ${obj.name}.${field.name}: ${m}`,
                 { code: "ERR_INVALID_ORIGIN", source: src }));
             }
+            continue;
+          }
+          // A literal compared with a field must be able to equal it: of its kind, and for an enum
+          // one of its @values (the same rule a validator's @condition follows). Resolved as the
+          // inference resolved the ref: a projection field first, else a base field.
+          const literalProblem = literalComparisonProblem(expr, (name) => fieldNode(name));
+          if (literalProblem !== undefined) {
+            errors.push(new ParseError(
+              `origin.computed on ${obj.name}.${field.name}: @expr ${literalProblem}`,
+              { code: "ERR_INVALID_ORIGIN", source: src }));
             continue;
           }
           if (inferred.type !== undefined && inferred.type !== field.subType) {
@@ -2000,7 +2058,7 @@ export function validateDerivedFieldProvidability(root: MetaData): ParseError[] 
 
 
 // ---------------------------------------------------------------------------
-// rc.19 entity-derived — the entity fields projections REACH without outputting them: a
+// The entity fields projections REACH without outputting them: a
 // projection @filter key naming a base field or a to-one path, and a passthrough @from. A
 // derived field reached this way is lowered inline where it is reached.
 // ---------------------------------------------------------------------------
@@ -2011,7 +2069,7 @@ export function projectionReachedEntityFields(root: MetaData): Set<MetaData> {
   for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT && c.subType === OBJECT_SUBTYPE_PROJECTION)) {
     const silent: ParseError[] = [];
     const base = _deriveBaseEntity(obj, root, "@filter", obj.source, silent);
-    // C1: the effective filter — an extender reaches what its supers' filters name, too.
+    // The effective filter — an extender reaches what its supers' filters name, too.
     const filter = effectiveProjectionFilter(obj);
     if (base !== undefined && base !== obj) {
       for (const key of filterKeys(filter)) {
@@ -2023,7 +2081,7 @@ export function projectionReachedEntityFields(root: MetaData): Set<MetaData> {
         }
       }
     }
-    // ADR-0039: resolving — inherited fields carry their own origins (G13).
+    // ADR-0039: resolving — inherited fields carry their own origins.
     for (const field of obj.children().filter((c) => c.type === TYPE_FIELD)) {
       for (const origin of field.ownChildren().filter((c) => c.type === TYPE_ORIGIN && c.subType === ORIGIN_SUBTYPE_PASSTHROUGH)) {
         const from = origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_FROM);
@@ -2119,7 +2177,7 @@ export function validateDerivedCycles(root: MetaData): ParseError[] {
 }
 
 /**
- * rc.19 origin-segment and correlated-filter, on every origin.first / origin.aggregate:
+ * Origin segments and correlated filters, on every origin.first / origin.aggregate:
  *   - `@segment` names a segment.filter declared on the related entity (the @of entity, else
  *     the @via terminal) — ERR_INVALID_ORIGIN otherwise;
  *   - an `@filter` operand `{ field: "<name>" }` names a field of the base row (the projection's
@@ -2159,11 +2217,10 @@ export function validateOriginSegmentsAndCorrelation(root: MetaData): ParseError
 /** The entity whose rows an origin.first / origin.aggregate spans: its @of entity, else its @via terminal. */
 function originRelatedEntity(origin: MetaData, obj: MetaData, root: MetaData): MetaData | undefined {
   const of_ = origin.ownAttr(ORIGIN_FIRST_ATTR_OF);
-  const referrerPkg = obj.package ?? obj.fileDefaultPackage ?? "";
-  if (typeof of_ === "string" && of_.lastIndexOf(".") > 0) {
-    const owner = resolveObjectRef(root, of_.slice(0, of_.lastIndexOf(".")), referrerPkg).node;
-    return owner;
+  if (typeof of_ === "string" && of_ !== "") {
+    return _validateFromPath(of_, root, obj, origin.parent?.name ?? "", origin.source, [])?.entity;
   }
+  const referrerPkg = obj.package ?? obj.fileDefaultPackage ?? "";
   const via = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA);
   if (typeof via !== "string") return undefined;
   const [head, ...hops] = via.split(".");
@@ -2226,31 +2283,45 @@ function checkCorrelatedOperands(
 }
 
 // ---------------------------------------------------------------------------
-// Cross-field validators (comparison / requiredWhen / presentIff / atLeastOne), which the
-// database enforces as CHECKs:
-//   - atLeastOne @max is between 1 and the number of its @fields (ERR_BAD_ATTR_VALUE);
+// Cross-field validators (comparison / requiredWhen / presentIff / atLeastOne / exactlyOne),
+// which the database enforces as CHECKs:
+//   - exactlyOne @fields names two or more fields (ERR_BAD_ATTR_VALUE): one is a required field;
 //   - every field a @condition expression names is a field of the owning entity
-//     (ERR_BAD_ATTR_VALUE), so the CHECK it renders to references a real column.
+//     (ERR_BAD_ATTR_VALUE), so the CHECK it renders to references a real column;
+//   - a requiredWhen / presentIff @equals gating a field.duration is an ISO-8601 duration
+//     (ERR_BAD_ATTR_VALUE), the form its CHECK literal is built from.
 // Read RESOLVING (ADR-0039): an entity's validators and fields include inherited ones.
 // ---------------------------------------------------------------------------
 
-/** The field names an attr.expression tree references. */
-function expressionFieldRefs(node: unknown, out: string[] = []): string[] {
+/** Every node of an attr.expression tree, root first. */
+function expressionNodes(node: unknown, out: Record<string, unknown>[] = []): Record<string, unknown>[] {
   if (typeof node !== "object" || node === null) return out;
   const n = node as Record<string, unknown>;
-  if (typeof n["field"] === "string") out.push(n["field"]);
-  for (const key of ["left", "right", "arg", "cast", "operand", "else"]) expressionFieldRefs(n[key], out);
-  for (const key of ["args"]) if (Array.isArray(n[key])) for (const a of n[key] as unknown[]) expressionFieldRefs(a, out);
-  if (Array.isArray(n["case"])) {
-    for (const arm of n["case"] as unknown[]) {
+  out.push(n);
+  for (const key of ["left", "right", "arg", "cast", EXPR_CASE_OPERAND, EXPR_CASE_ELSE]) expressionNodes(n[key], out);
+  if (Array.isArray(n["args"])) for (const a of n["args"] as unknown[]) expressionNodes(a, out);
+  if (Array.isArray(n[EXPR_CASE])) {
+    for (const arm of n[EXPR_CASE] as unknown[]) {
       if (typeof arm === "object" && arm !== null) {
-        expressionFieldRefs((arm as Record<string, unknown>)["when"], out);
-        expressionFieldRefs((arm as Record<string, unknown>)["then"], out);
+        expressionNodes((arm as Record<string, unknown>)[EXPR_CASE_WHEN], out);
+        expressionNodes((arm as Record<string, unknown>)[EXPR_CASE_THEN], out);
       }
     }
   }
   return out;
 }
+
+function isObj(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/** The field names an attr.expression tree references. */
+function expressionFieldRefs(node: unknown): string[] {
+  return expressionNodes(node).flatMap((n) => (typeof n["field"] === "string" ? [n["field"]] : []));
+}
+
+/** What a literal compared with a field.duration must be. */
+const DURATION_LITERAL_FORM = "an ISO-8601 duration (such as PT1H30M; no years or months)";
 
 /** Field subtypes whose values a condition compares with a number literal. */
 const _CONDITION_NUMBER_SUBTYPES = new Set<string>([
@@ -2264,10 +2335,15 @@ const _CONDITION_NUMBER_SUBTYPES = new Set<string>([
  *  - it types cleanly (the origin.computed inference) and its root is boolean, since a CHECK
  *    negates it;
  *  - a literal compared with a field is of that field's kind (a boolean for field.boolean, a
- *    number for a numeric field, a string otherwise) and, for field.enum, one of its @values;
+ *    number for a numeric field, a string otherwise) and, for field.enum, one of its @values,
+ *    for field.duration, an ISO-8601 duration;
  *  - no comparison has a null literal: `x = NULL` is never true, so use isNull / isNotNull.
  */
 function conditionProblem(condition: unknown, obj: MetaObject): string | undefined {
+  const unrenderable = expressionNodes(condition).find((n) => EXPR_CASE in n || EXPR_NOW in n);
+  if (unrenderable !== undefined) {
+    return `is not a valid expression: a condition takes no '${EXPR_CASE in unrenderable ? EXPR_CASE : EXPR_NOW}' node, since a CHECK can hold neither a CASE nor the current time.`;
+  }
   // rc.21 part B: a CHECK holds the condition's SQL, rendered by every port's CHECK emitter, which
   // takes fields, literals, comparisons, null tests, and / or / not and coalesce. The rest of the
   // expression grammar (case, now, cast, the other functions, paths) is for views only.
@@ -2281,55 +2357,100 @@ function conditionProblem(condition: unknown, obj: MetaObject): string | undefin
   if (inferred.type !== FIELD_SUBTYPE_BOOLEAN) {
     return `must be a boolean expression (a comparison, a null test, or and / or / not of them), not a field.${String(inferred.type)}.`;
   }
-  let problem: string | undefined;
-  const visit = (node: unknown): void => {
-    if (problem !== undefined || typeof node !== "object" || node === null) return;
-    const n = node as Record<string, unknown>;
-    if (n["left"] !== undefined && n["right"] !== undefined) {
-      for (const [a, b] of [[n["left"], n["right"]], [n["right"], n["left"]]] as const) {
-        const lit = a as Record<string, unknown>;
-        const ref = b as Record<string, unknown>;
-        if (!("value" in lit)) continue;
-        if (lit["value"] === null) {
-          problem = `compares with null, which is never true: use isNull or isNotNull.`;
-          return;
-        }
-        const field = typeof ref["field"] === "string" ? fields.get(ref["field"]) : undefined;
-        if (field === undefined) continue;
-        const value = lit["value"];
-        const kind = field.subType === FIELD_SUBTYPE_BOOLEAN ? "boolean"
-          : _CONDITION_NUMBER_SUBTYPES.has(field.subType) ? "number" : "string";
-        if (typeof value !== kind) {
-          problem = `compares "${field.name}" (field.${field.subType}) with ${JSON.stringify(value)}; it needs a ${kind}.`;
-          return;
-        }
-        const members = field.subType === FIELD_SUBTYPE_ENUM ? field.attr(FIELD_ATTR_VALUES) : undefined;
-        if (Array.isArray(members) && !members.map(String).includes(String(value))) {
-          problem = `compares "${field.name}" with ${JSON.stringify(value)}, which is not one of its @values (${members.join(", ")}).`;
-          return;
-        }
-      }
-    }
-    for (const key of ["left", "right", "arg"]) visit(n[key]);
-    if (Array.isArray(n["args"])) for (const a of n["args"]) visit(a);
-  };
-  visit(condition);
-  return problem;
+  const hasNull = expressionNodes(condition).some((n) =>
+    n["left"] !== undefined && n["right"] !== undefined &&
+    [n["left"], n["right"]].some((side) => isObj(side) && "value" in side && side["value"] === null));
+  if (hasNull) return `compares with null, which is never true: use isNull or isNotNull.`;
+  return literalComparisonProblem(condition, (name) => fields.get(name));
 }
 
-export function validateCrossFieldValidators(root: MetaData): ParseError[] {
+/**
+ * The first literal in `expr` that cannot equal the field it is compared with, or undefined. A
+ * literal is compared with a field by a comparison (`{op, left, right}`, either side) or as a
+ * simple case's `when` against a `{field}` operand. The rule, the same in every port and shared by
+ * a validator's @condition and an origin.computed @expr: the literal is of the field's kind (a
+ * boolean for field.boolean, a number for a numeric field, a string otherwise), one of its @values
+ * for field.enum, and an ISO-8601 duration for field.duration. A null literal, and a literal
+ * facing anything but a field ref, are not checked here.
+ */
+export function literalComparisonProblem(
+  expr: unknown,
+  fieldOf: (name: string) => MetaData | undefined,
+): string | undefined {
+  const check = (lit: unknown, ref: unknown): string | undefined => {
+    if (!isObj(lit) || !("value" in lit) || lit["value"] === null) return undefined;
+    if (!isObj(ref) || typeof ref["field"] !== "string") return undefined;
+    const field = fieldOf(ref["field"]);
+    if (field === undefined) return undefined;
+    const value = lit["value"];
+    const kind = field.subType === FIELD_SUBTYPE_BOOLEAN ? "boolean"
+      : _CONDITION_NUMBER_SUBTYPES.has(field.subType) ? "number" : "string";
+    if (typeof value !== kind) {
+      return `compares "${field.name}" (field.${field.subType}) with ${JSON.stringify(value)}; it needs a ${kind}.`;
+    }
+    const members = field.subType === FIELD_SUBTYPE_ENUM ? field.attr(FIELD_ATTR_VALUES) : undefined;
+    if (Array.isArray(members) && !members.map(String).includes(String(value))) {
+      return `compares "${field.name}" with ${JSON.stringify(value)}, which is not one of its @values (${members.join(", ")}).`;
+    }
+    if (field.subType === FIELD_SUBTYPE_DURATION && parseDurationLiteral(value as string) === undefined) {
+      return `compares "${field.name}" with ${JSON.stringify(value)}, which is not ${DURATION_LITERAL_FORM}.`;
+    }
+    return undefined;
+  };
+  for (const n of expressionNodes(expr)) {
+    if (n["left"] !== undefined && n["right"] !== undefined) {
+      const problem = check(n["left"], n["right"]) ?? check(n["right"], n["left"]);
+      if (problem !== undefined) return problem;
+    }
+    if (EXPR_CASE_OPERAND in n && Array.isArray(n[EXPR_CASE])) {
+      for (const arm of n[EXPR_CASE] as unknown[]) {
+        const problem = isObj(arm) ? check(arm[EXPR_CASE_WHEN], n[EXPR_CASE_OPERAND]) : undefined;
+        if (problem !== undefined) return problem;
+      }
+    }
+  }
+  return undefined;
+}
+
+export function validateCrossFieldValidators(root: MetaData, strict = false): ParseError[] {
   const errors: ParseError[] = [];
   for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
     const fieldNames = new Set((obj as MetaObject).fields().map((f) => f.name));
     // ADR-0039: own — each validator is checked where it is declared.
     for (const v of obj.ownChildren()) {
       if (v.type !== TYPE_VALIDATOR || !CROSS_FIELD_VALIDATOR_SUBTYPES.includes(v.subType)) continue;
-      if (v.subType === VALIDATOR_SUBTYPE_AT_LEAST_ONE) {
-        const max = v.attr(VALIDATOR_ATTR_MAX);
+      // validator.atLeastOne takes no @max (1.3.0): "exactly one of these fields" is
+      // validator.exactlyOne. A strict load already refuses the unregistered attr; this refuses it
+      // under the default (non-strict) load too, where it would otherwise be kept and ignored —
+      // silently a weaker constraint than its author wrote.
+      // ADR-0039: own — the attr is checked on the validator that declares it.
+      if (v.subType === VALIDATOR_SUBTYPE_AT_LEAST_ONE && v.ownAttr(VALIDATOR_ATTR_MAX) !== undefined) {
+        if (strict) continue;  // the attr-schema pass already refused it
+        errors.push(new ParseError(
+          `validator.atLeastOne "${obj.name}.${v.name}" carries @max, which atLeastOne does not take. ` +
+          `For "exactly one of these fields", declare validator.exactlyOne instead; for "at least one", remove @max.`,
+          { code: "ERR_UNKNOWN_ATTR", source: v.source },
+        ));
+        continue;
+      }
+      if (v.subType === VALIDATOR_SUBTYPE_EXACTLY_ONE) {
         const fields = [v.attr(VALIDATOR_ATTR_FIELDS)].flat().filter((f) => typeof f === "string");
-        if (typeof max === "number" && (max < 1 || max > fields.length)) {
+        if (fields.length < 2) {
           errors.push(new ParseError(
-            `validator.atLeastOne "${obj.name}.${v.name}" @max ${max} must be between 1 and the number of its @fields (${fields.length}).`,
+            `validator.exactlyOne "${obj.name}.${v.name}" @fields names ${fields.length} field${fields.length === 1 ? "" : "s"}; ` +
+            `it needs two or more. For one field, make that field required.`,
+            { code: "ERR_BAD_ATTR_VALUE", source: v.source },
+          ));
+          continue;
+        }
+      }
+      if (v.subType === VALIDATOR_SUBTYPE_REQUIRED_WHEN || v.subType === VALIDATOR_SUBTYPE_PRESENT_IFF) {
+        const when = (obj as MetaObject).fields().find((f) => f.name === v.attr(VALIDATOR_ATTR_WHEN));
+        const equals = v.attr(VALIDATOR_ATTR_EQUALS);
+        if (when?.subType === FIELD_SUBTYPE_DURATION && (typeof equals !== "string" || parseDurationLiteral(equals) === undefined)) {
+          errors.push(new ParseError(
+            `validator.${v.subType} "${obj.name}.${v.name}" @equals ${JSON.stringify(equals)} gates field.duration ` +
+            `"${when.name}"; it needs ${DURATION_LITERAL_FORM}.`,
             { code: "ERR_BAD_ATTR_VALUE", source: v.source },
           ));
           continue;
@@ -2498,7 +2619,6 @@ export function validateEnumMaxLength(root: MetaData): ParseError[] {
   visit(root);
   return errors;
 }
-
 // ---------------------------------------------------------------------------
 // field.object + @storage cross-attribute validation
 //
@@ -3566,7 +3686,7 @@ export function validateProjectionFilter(root: MetaData): ParseError[] {
   for (const obj of root
     .children()
     .filter((c) => c.type === TYPE_OBJECT && c.subType === OBJECT_SUBTYPE_PROJECTION)) {
-    // C1: the EFFECTIVE @filter — every level of an extends chain, supers first, ANDed — is
+    // The EFFECTIVE @filter — every level of an extends chain, supers first, ANDed — is
     // what the view applies, so it is what is checked (an inherited gate is checked against
     // the extender's fields too).
     const filter = effectiveProjectionFilter(obj);
@@ -3576,7 +3696,7 @@ export function validateProjectionFilter(root: MetaData): ParseError[] {
     // Classify the projection's EFFECTIVE fields (the declared set IS the exposure —
     // FR-024/ADR-0028): aggregate-derived-ness + the op-band legal for the field's
     // declared subType. ADR-0039: resolving — a field inherited from a super projection is
-    // a column of this view (G13) and carries its own origin child, read own below.
+    // a column of this view and carries its own origin child, read own below.
     const fields = new Map<string, ProjectionFilterField>();
     for (const f of obj.children().filter((c) => c.type === TYPE_FIELD)) {
       const origin = f.ownChildren().find((c) => c.type === TYPE_ORIGIN);
@@ -3588,7 +3708,7 @@ export function validateProjectionFilter(root: MetaData): ParseError[] {
       // stores as an integer, so `like` is not in its band.
       fields.set(f.name, { derived, ops: opsForField(f) });
     }
-    // G7: a field of the BASE entity the view does not output is filterable too (a WHERE reads
+    // A field of the BASE entity the view does not output is filterable too (a WHERE reads
     // the base row); a projection field of the same name wins. No base, no fallback: the
     // origin passes report why one cannot be derived.
     const base = _deriveBaseEntity(obj, root, "@filter", obj.source, []);
@@ -3596,8 +3716,8 @@ export function validateProjectionFilter(root: MetaData): ParseError[] {
       for (const f of base.children().filter((c) => c.type === TYPE_FIELD)) {
         if (!fields.has(f.name)) fields.set(f.name, { derived: entityFieldAggregates(f), ops: opsForField(f) });
       }
-      // G7 (joined) / entity-derived: a key that is a PATH of to-one hops from the base, then a
-      // field of the entity reached (`consignmentId.status`). Not output; the view joins what it walks.
+      // A key that is a PATH of to-one hops from the base, then a
+      // field of the entity reached (`caseId.status`). Not output; the view joins what it walks.
       for (const key of filterKeys(filter)) {
         if (fields.has(key)) continue;
         const path = resolveFilterPath(base as MetaObject, key);
@@ -3775,32 +3895,94 @@ export function validateRetiredRequirementLinks(root: MetaData): ParseError[] {
 // is compared, through the single door `resolveColumnName`, so an explicit @column
 // override, an inherited field and the project's column strategy are all honoured.
 // Scope: a concrete object that declares at least one source (a source-less
-// object generates nothing); derived fields (origin.*) and field.object (which may
-// flatten to several columns) are not columns of this table and are skipped.
+// object generates nothing); derived fields (origin.*) are not columns of this table
+// and are skipped. A `field.object @storage "flattened"` has no column of its own: each
+// member of its value object is a column, named by `resolveFlattenedColumnName` exactly
+// as migrate creates it, so two embeddings with one `@flattenedColumnPrefix` (or a `""`
+// prefix beside a field of the member's name) collide here. Any other field.object is
+// one jsonb column under its own resolved name.
 // ADR-0039: effective fields, so an inherited field collides like an own one.
+// Exempt: an object whose every source is read-only and at least one is a
+// `source.rdb @kind: view` with an `@sql` body. The author's SQL defines that view's
+// columns and the fields only READ them, so two fields on one column create no
+// duplicate column and nothing can be written. A derived view (no `@sql`) emits a
+// select list from its fields, and an object with a writable source has a real table
+// whose columns MetaObjects creates; both stay checked.
 // ---------------------------------------------------------------------------
+
+function readsThroughSqlView(obj: MetaData): boolean {
+  const sources = obj.children().filter((c): c is MetaSource => c instanceof MetaSource);
+  return (
+    sources.every((s) => s.isReadOnly()) &&
+    sources.some((s) => s.effectiveKind === SOURCE_KIND_VIEW && s.sqlBody !== undefined)
+  );
+}
+
+function hasExplicitColumn(field: MetaData): boolean {
+  const col = field.attr(FIELD_ATTR_COLUMN);
+  return typeof col === "string" && col !== "";
+}
+
+/** One physical column a field contributes to its object's table. */
+interface PhysicalColumn {
+  readonly column: string;
+  /** `street`, or `shipTo.street` for a member of a flattened value object. */
+  readonly label: string;
+  /** The field that names it: the field itself, or the flattened value object's member. */
+  readonly named: MetaData;
+  /** Set for a flattened member: the embedding field.object. */
+  readonly embedding?: MetaData;
+}
+
+function physicalColumnsOf(field: MetaData): PhysicalColumn[] {
+  // ADR-0039: resolving — @storage and @objectRef may be inherited via extends.
+  if (field.subType === FIELD_SUBTYPE_OBJECT && field.attr(FIELD_ATTR_STORAGE) === STORAGE_FLATTENED) {
+    const target = refTarget(field, FIELD_ATTR_OBJECT_REF);
+    if (target === undefined || !isMetaObject(target)) return [];
+    // Every member, as migrate's flattenObjectField expands it.
+    return target.fields().map((member) => ({
+      column: resolveFlattenedColumnName(field, member),
+      label: `${field.name}.${member.name}`,
+      named: member,
+      embedding: field,
+    }));
+  }
+  return [{ column: resolveColumnName(field), label: field.name, named: field }];
+}
+
+function collisionHint(a: PhysicalColumn, b: PhysicalColumn): string {
+  if (a.embedding !== undefined || b.embedding !== undefined) {
+    return "Give one flattened field a different @flattenedColumnPrefix, or rename one field.";
+  }
+  return hasExplicitColumn(a.named) && hasExplicitColumn(b.named)
+    ? "Rename one field, or point one @column at a different column."
+    : "Rename one field, or give one an explicit @column so the two columns differ.";
+}
 
 export function validateColumnNameCollisions(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
   for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
     if (obj.isAbstract) continue;
     if (!obj.children().some((c) => c.type === TYPE_SOURCE)) continue;
-    const seen = new Map<string, MetaData>();
+    if (readsThroughSqlView(obj)) continue;
+    const seen = new Map<string, PhysicalColumn>();
     for (const field of obj.children()) {
-      if (!isMetaField(field) || field.subType === FIELD_SUBTYPE_OBJECT || field.isDerived()) continue;
-      const column = resolveColumnName(field);
-      const first = seen.get(column);
-      if (first === undefined) {
-        seen.set(column, field);
-        continue;
+      if (!isMetaField(field) || field.isDerived()) continue;
+      for (const col of physicalColumnsOf(field)) {
+        const first = seen.get(col.column);
+        if (first === undefined) {
+          seen.set(col.column, col);
+          continue;
+        }
+        errors.push(
+          new ParseError(
+            `fields "${first.label}" and "${col.label}" on "${obj.name}" both resolve to physical column ` +
+              `"${col.column}". ` +
+              collisionHint(first, col),
+            { code: "ERR_COLUMN_NAME_COLLISION", source: field.source },
+          ),
+        );
       }
-      errors.push(
-        new ParseError(
-          `fields "${first.name}" and "${field.name}" on "${obj.name}" both resolve to physical column ` +
-            `"${column}". Rename one field, or give one an explicit @column so the two columns differ.`,
-          { code: "ERR_COLUMN_NAME_COLLISION", source: field.source },
-        ),
-      );
     }
   }
   return errors;

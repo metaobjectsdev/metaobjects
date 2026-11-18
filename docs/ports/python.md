@@ -9,6 +9,8 @@ with no ORM of any kind, so your SQLAlchemy or Django models stay hand-written b
 Python port has no `migrate` command by design; it consumes the canonical
 `schema.postgres.sql` artifact verbatim.
 
+> **Schema migrations and database checks run in the Node `meta` tool.** `metaobjects` generates and verifies code, but writing and applying migrations (`npx meta migrate`, `npx meta migrate apply-pending`) and checking a live database against the model (`npx meta verify --db`) need Node: `npm i -D @metaobjectsdev/cli`, then `npx meta init --config-only` to point it at your metadata. Node is needed where migrations are written or applied, not in your running service. What else behaves differently in this port is listed in [What differs by language](../features/language-differences.md).
+
 ## Regeneration and hand edits
 
 `metaobjects gen` has no three-way merge (that is TypeScript-only). It decides per file from a
@@ -99,23 +101,35 @@ metadata:
 
 ### Custom providers (optional)
 
-If your app needs a metamodel subtype the core doesn't ship, declare a
-`Provider` and pass it through `from_directory`:
+When the project needs a subtype or an attribute the core does not ship, declare a
+`metaobjects.provider.Provider` in a module beside `metaobjects.config.yaml` and list it as
+`module:symbol`:
 
-```python
-from metaobjects.provider import Provider
-from metaobjects import MetaDataLoader
-from .providers import your_provider
-
-result = MetaDataLoader.from_directory("./metaobjects", providers=[your_provider])
+```yaml
+metadata: metaobjects
+providers: ["acme_vocab:provider"]
 ```
 
-The provider object has the same four-member contract (`id`, `dependencies`,
-`description`, `register_types(registry)`) as TS / C#. Composition errors
-surface `ERR_PROVIDER_DUPLICATE_ID`, `ERR_PROVIDER_MISSING_DEPENDENCY`,
-`ERR_PROVIDER_DEPENDENCY_CYCLE` — codes match the cross-port contract. See
-[`../features/extending-with-providers.md`](../features/extending-with-providers.md)
-for the full reference and
+The module resolves relative to the config's directory. `metaobjects gen` (with its docs
+generators), every `metaobjects verify` mode and `metaobjects fmt` load that list, and
+`--provider module:symbol` adds to it for one run. Code that loads the model itself passes the
+full set, core first, because `providers=` is exactly what is composed:
+
+```python
+from metaobjects.core_types import core_providers
+from metaobjects.loader.meta_data_loader import MetaDataLoader
+from acme_vocab import provider
+
+result = MetaDataLoader.from_directory("./metaobjects", providers=[*core_providers, provider], strict=True)
+```
+
+The provider has the same contract (an id, its dependencies, `TypeDefinition`s added with
+`add`, and an `on_register` hook that `extend`s existing types) as the other ports.
+Composition errors surface `ERR_PROVIDER_DUPLICATE_ID`, `ERR_PROVIDER_MISSING_DEPENDENCY` and
+`ERR_PROVIDER_DEPENDENCY_CYCLE`. If another port's tools load the same metadata, that port needs its own copy of the
+provider (same id, same vocabulary); a provider registered in one language is invisible to
+the others. See [`../features/extending-with-providers.md`](../features/extending-with-providers.md) for the full reference with a worked
+provider, and
 [`../recipes/extending-metaobjects-with-providers.md`](../recipes/extending-metaobjects-with-providers.md)
 for a worked example.
 
@@ -141,6 +155,17 @@ metaobjects gen       # runs every target's generators into its outDir
 metaobjects verify    # drift gate; bare verify runs --codegen, which regenerates the same list, and --templates
 ```
 
+A model shared from another repository (`dependencies` in `.metaobjects/config.json`, synced by
+the Node `meta deps sync`) asks one more question: has the publisher moved since you synced?
+`metaobjects deps check` and `metaobjects verify --deps` re-resolve each dependency's `path`, hash
+the artifact beside its `metaobjects.pkg.json` and compare with `.metaobjects/deps.lock.json`.
+Each dependency is `current`, `drifted` or `unresolved` (no directory, a bad manifest, a hash that
+does not match, or no lock entry yet); anything but `current` exits 1 with
+`ERR_DEPENDENCY_UPSTREAM_DRIFT`, and a lock that cannot be read exits 2. `deps check` also loads
+the locked snapshots together once the hashes match. Neither writes anything, `--deps` is never
+part of a bare `verify`, and an `npm`, `python`, `maven` or `nuget` dependency reports `unresolved` (run the Node
+`meta deps check` for those). See [Metadata dependencies](../features/metadata-dependencies.md).
+
 `verify --codegen` regenerates exactly the list `gen` runs and compares, so the two can
 never disagree about what was generated. A target whose `generators` is empty writes
 nothing and says so. With no `metaobjects.config.yaml` at all, `gen` and `verify --codegen`
@@ -161,11 +186,24 @@ config is refused. Column naming is not a Python setting at all: it is `naming` 
 ([physical-naming.md](../features/migrations/physical-naming.md)). See [the migration section](../features/migrations/docs-are-generators.md#python)
 and the [config reference](../features/cli.md).
 
+**Select objects.** `metaobjects gen --entities Program,Week` (comma-separated short object
+names) regenerates only those objects' files; a target that lists `entities` keeps only the
+names in both. `metaobjects verify --codegen --entities ...` checks the same files. A narrowed
+run deletes no orphaned file; run without the flag to sweep. Two refusals, both exit 2:
+`--entities` naming nothing (`error: metaobjects gen: --entities names no object.`) and a
+name that matches no object (`error: metaobjects gen: --entities names 'X', which matches no
+object in the metadata.`). The same selection is a positional name list in TypeScript
+(`meta gen Program Week`), `--entities` in C#, and `-Dmeta.entities` on the Maven plugin.
+`gen` lists the files it changed and counts the rest separately
+(`metaobjects gen: wrote 2 file(s) across 1 target(s). 40 file(s) left as they were.`).
+
 **Start a project.** `metaobjects init` writes `metaobjects.config.yaml` (one `app` target
 with no generators) and an empty, loadable `metaobjects/meta.app.yaml`, and reports what it
 wrote. It never overwrites a file it finds; it says it kept it. `metaobjects init --with-docs`
 also adds a `docs` target running `api-docs`; without the flag no documentation generator is
-wired. Nothing writes docs until the config lists `api-docs`. The "Model / metadata" link on
+wired. Nothing writes docs until the config lists `api-docs`. It also writes `.metaobjects/config.json`
+with the `api` block (a page size and `api.unknownFields: reject`), `verify.handEdits: "fail"` and
+`migrate.foreignKeyIndexes: true`, unless that file exists ([the `api` block](#page-size-and-undeclared-body-keys-the-api-block)). The "Model / metadata" link on
 each api page is emitted only when `apiDocs.modelBaseUrl` is set (the Python port writes no
 model page, so a relative link would be dead).
 
@@ -336,6 +374,69 @@ The generated `get_repository` raises until you override it. Any object with the
 `AuthorRepository` methods above works, including an in-memory dict while you try it
 out. Serve the app with `uvicorn my_app.main:app --reload` (`pip install uvicorn`).
 
+### Output layout and name collisions
+
+By default every generated module lands flat in the target's `outDir`. Set `outputLayout`
+at the top level of `metaobjects.config.yaml` to place each module in the directory of its
+metadata package instead:
+
+```yaml
+# metaobjects.config.yaml
+metadata: metaobjects
+outputLayout: package   # "flat" (the default) or "package"
+```
+
+`metaobjects init` writes `outputLayout: package` into a new project. Delete the line for the
+flat layout. Any other value is refused. Embedding the generators in code uses the matching
+`GenConfig(output_layout="package")`.
+
+With the package layout, `acme::blog::Author` is generated as `generated/acme/blog/Author.py`,
+and an object with no package stays at the root of `outDir`. Each directory gets an
+`@generated` `__init__.py` (when `emit_package_init` is on). Imports between generated modules
+become relative: from `acme/blog` to `acme/beta` is `from ..beta.Note import Note`, and a
+module shared by all packages, such as the generated enums, is `from ...enums import ...`. The
+orphan sweep removes a subdirectory when it empties it. The flat layout is unchanged byte for
+byte.
+
+Two objects that would write one module into one directory are refused with
+`ERR_NAME_COLLISION`. The message names both nodes, for example `"acme::alpha::Note" and
+"acme::beta::Note" both generate "Note" in the generated package directory "."`. A value
+object is never renamed to avoid the clash. The remedy is the package layout, which gives
+each its own directory, or renaming one of them.
+
+### REST collection segments and reverse finders
+
+A route is mounted at `<apiPrefix>/<segment>`. With nothing configured the segment is the
+object name in snake_case, then pluralized (`PostCategory` -> `post_categories`). Two things
+change it:
+
+- `@collectionName` on the object, for example `@collectionName: PDFBoxes` serves
+  `/pdf_boxes`.
+- `naming.collections` in `.metaobjects/config.json`, the name of a pluralizer: `standard`,
+  `none` (keep the object name), or one registered with `register_pluralizer`.
+
+A declared name wins over the pluralizer. Either one is snake_cased with an acronym-aware
+split, so `FAQs` becomes `faqs`, not `fa_qs`. The router, the API docs, the M:N routes and the
+collision check all read one function, `collection_segment`. The same name also gives the
+reverse finders: `@collectionName: CaseHistory` on an object turns
+`find_<plural>_by_<fk>` into `find_case_history_by_<fk>` (and `..._in`). A project that sets
+neither keeps every route and finder name it has today. The shared cases are in
+`fixtures/naming-conformance/collection-segments.json`.
+
+### Page size and undeclared body keys: the `api` block
+
+The routers read the `api` block of `.metaobjects/config.json` from the loaded root:
+
+```json
+{ "api": { "pagination": { "defaultLimit": 50, "maxLimit": 1000 }, "unknownFields": "reject" } }
+```
+
+What each setting answers, and the default with no block, are in
+[api-contract](../features/api-contract.md) ([page size](../features/api-contract.md#sort--pagination), [unknown fields](../features/api-contract.md#unknown-request-fields-apiunknownfields)).
+Python-specific: with no `api.pagination`, `metaobjects verify` prints an `unbounded-list-pages`
+advisory that never changes the exit code, and the unknown-key check is `unknown_body_keys` in
+`metaobjects.codegen.runtime.constraint_errors`, run before validation.
+
 ### Decimals and null members on the wire
 
 What the generated routers write is the project setting `wire` in `.metaobjects/config.json`
@@ -408,7 +509,7 @@ SUBSCRIBER_COLUMNS_BY_FIELD: Final[dict[str, str]] = {
 | `<E>_<FIELD>_FIELD` | the **logical** name — the field as your code and the wire call it |
 | `<E>_<FIELD>_COLUMN` | the **physical** column — `@column` if declared, else the name through the project's `naming.columns` rule |
 | `<E>_IDENTITY_<NAME>_*` / `<E>_INDEX_<NAME>_*` | one `identity.*` / `index.*` child, keyed by its metamodel name |
-| `…_INDEX` | the database index name — on `identity.secondary` and `index.lookup` only |
+| `…_INDEX` | the index name — on `identity.secondary` and `index.lookup` only. It holds the declared name; on Postgres `meta migrate` creates a name over 63 bytes as its first 63 bytes ([stored names](../features/migrations-and-drift.md#schema-conventions-names-for-objects-no-code-addresses)) |
 
 **Why the physical name is not just `<E>_NAME`.** One member cannot hold a
 table, a view and a stored procedure and still mean something. In a single run
@@ -790,9 +891,11 @@ each as `<Name>.py`. So the prompt+parse story is two generators:
 
 - `entity` emits one Pydantic v2 `BaseModel` per value object — and per sourceless
   `object.projection` — including every `@payloadRef` and `@responseRef` target and every
-  value object nested in them (`field.object @objectRef`). The package is flat, so a value
-  object whose short name another top-level object shares is package-qualified:
-  `acme::alpha::Note` emits `AcmeAlphaNote.py` / `class AcmeAlphaNote`.
+  value object nested in them (`field.object @objectRef`). A value object is never
+  renamed. Two with the same short name need the package layout (see "Output layout and
+  name collisions"): `acme::alpha::Note` and `acme::beta::Note` each emit `Note.py` into
+  their own directory, and a module that uses both imports them under local aliases such as
+  `Note as AcmeAlphaNote`.
 - `output_parser_generator` emits one `<template_name>_response_parser.py` per
   responding `template.prompt` (one declaring `@responseRef`, ADR-0052). It imports the
   `@responseRef` value object's model from its `<Name>.py`. `template.output` gets no

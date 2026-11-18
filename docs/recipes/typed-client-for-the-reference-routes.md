@@ -162,7 +162,8 @@ export function fetchClientGenerator(): Generator {
       const layout = ctx.config.outputLayout ?? "flat";
       const prefix = ctx.renderContext?.apiPrefix ?? "";   // the same apiPrefix routesFile mounts under
       const files: EmittedFile[] = [{ path: "fetch-client.runtime.ts", content: RUNTIME }];
-      for (const obj of ctx.entities.filter(ctx.matches)) {
+      // ctx.entities is the whole model; ctx.selected narrows a `meta gen <Entity>` run to the named ones.
+      for (const obj of ctx.entities.filter((o) => ctx.matches(o) && (ctx.selected?.(o) ?? true))) {
         const n = obj.name, path = servedPath(obj, prefix);
         // Types come from the entity module `entity` wrote next to this file (flat layout).
         files.push({

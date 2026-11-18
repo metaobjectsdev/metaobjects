@@ -551,27 +551,23 @@ class KotlinNamesGeneratorTest {
 
         assertTrue("const val SHIP_TO_STREET_COLUMN: String = \"ship_to_street\"" in src, src)
         assertTrue("const val SHIP_TO_POSTAL_CODE_COLUMN: String = \"ship_to_ZIP\"" in src, src)
-        // The field's own constants are kept as they were, so nothing that reads them changes.
         assertTrue("const val SHIP_TO_FIELD: String = \"shipTo\"" in src, src)
-        assertTrue("const val SHIP_TO_COLUMN: String = \"ship_to\"" in src, src)
         assertTrue("const val PAYLOAD_COLUMN: String = \"payload\"" in src, src)
-        assertTrue("\"shipTo\" to SHIP_TO_COLUMN" in src, src)
+        // A flattened field has no column of its own, so no _COLUMN constant and no map key.
+        assertFalse("SHIP_TO_COLUMN" in src, src)
+        assertFalse("Deprecated" in src, src)
+        assertFalse("DEPRECATION" in src, src)
+        assertFalse("\"shipTo\" to" in src, src)
         assertTrue("\"shipTo.street\" to SHIP_TO_STREET_COLUMN" in src, src)
         assertTrue("\"shipTo.postalCode\" to SHIP_TO_POSTAL_CODE_COLUMN" in src, src)
-        // ...but the flattened field's own column constant names no column: it is deprecated.
-        assertTrue("    @Deprecated(\"A flattened field has no column of its own; use the member constants.\")\n" +
-            "    const val SHIP_TO_COLUMN: String = \"ship_to\"" in src, src)
-        assertFalse("@Deprecated(\"A flattened field has no column of its own; use the member constants.\")\n" +
-            "    const val PAYLOAD_COLUMN" in src, src)
-        assertTrue("    @Suppress(\"DEPRECATION\")\n    val COLUMNS_BY_FIELD" in src, src)
     }
 
     /**
-     * The deprecation costs a project that never uses the constant nothing: the generated names
-     * objects, a base and the child that re-exports the base's constant, compile with every
-     * warning an error. A use of the constant is what warns.
+     * A flattened field has no column constant: the generated names objects, a base and its
+     * child, compile with every warning an error, and reading the field's own column constant
+     * is a compile error.
      */
-    @Test fun `the deprecated flattened column warns only where it is used`() {
+    @Test fun `a flattened field has no column constant to read`() {
         val model = """{
           "metadata.root": { "package": "acme::ship", "children": [
             { "object.value": { "name": "Address", "children": [
@@ -590,8 +586,7 @@ class KotlinNamesGeneratorTest {
         }""".trimIndent()
         val files = emit(model).filterKeys { it.endsWith(".kt") }
         val order = files.getValue("acme/ship/OrderNames.kt")
-        assertTrue("const val SHIP_TO_COLUMN: String = acme.ship.BaseNames.SHIP_TO_COLUMN" in order ||
-            "const val SHIP_TO_COLUMN: String = BaseNames.SHIP_TO_COLUMN" in order, order)
+        assertFalse("SHIP_TO_COLUMN" in order, order)
 
         fun compile(extra: List<SourceFile>) = KotlinCompilation().apply {
             this.sources = files.map { (path, text) -> SourceFile.kotlin(path.substringAfterLast('/'), text) } + extra
@@ -606,7 +601,7 @@ class KotlinNamesGeneratorTest {
         val use = compile(listOf(SourceFile.kotlin("UsesIt.kt",
             "package acme.ship\nobject UsesIt { val c: String = OrderNames.SHIP_TO_COLUMN }\n")))
         assertEquals(KotlinCompilation.ExitCode.COMPILATION_ERROR, use.exitCode, use.messages)
-        assertTrue("deprecated" in use.messages.lowercase(), use.messages)
+        assertTrue("SHIP_TO_COLUMN" in use.messages, use.messages)
     }
 
     @Test fun `a flattened member constant colliding with a field constant is left out`() {

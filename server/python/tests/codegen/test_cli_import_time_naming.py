@@ -23,13 +23,13 @@ naming_provider = Provider("test-import-time-naming", ("metaobjects-core-types",
 
 META = {
     "metadata.root": {
-        "package": "acme::depot",
+        "package": "acme::clinic",
         "children": [
             {
                 "object.entity": {
-                    "name": "Player",
+                    "name": "Patient",
                     "children": [
-                        {"source.rdb": {"name": "src", "@table": "players"}},
+                        {"source.rdb": {"name": "src", "@table": "patients"}},
                         {"field.long": {"name": "id"}},
                         {"field.string": {"name": "firstName"}},
                         {"identity.primary": {"name": "pk", "@fields": ["id"], "@generation": "increment"}},

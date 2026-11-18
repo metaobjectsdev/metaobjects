@@ -69,6 +69,19 @@ public sealed class DependencyUnitTests : IDisposable
                       new DependencySpec("b.c-d", "npm", "@acme/common", "metaobjects")], cfg.Dependencies);
     }
 
+    [Fact]
+    public void Maven_and_nuget_dependencies_are_read_with_their_version_and_dir()
+    {
+        WriteConfig("""
+        { "schema_version": 1, "dependencies": [
+          { "name": "a", "maven": "com.acme:model", "version": "1.0.0", "dir": "shared" },
+          { "name": "b", "nuget": "Acme.Model", "version": "1.0" } ] }
+        """);
+        var cfg = NeutralConfig.Read(_root)!;
+        Assert.Equal([new DependencySpec("a", "maven", "com.acme:model", "shared", "1.0.0"),
+                      new DependencySpec("b", "nuget", "Acme.Model", null, "1.0")], cfg.Dependencies);
+    }
+
     [Theory]
     [InlineData("""[{ "name": "Bad", "path": "x" }]""")]                                        // uppercase name
     [InlineData("""[{ "name": "a" }]""")]                                                        // no transport
@@ -78,6 +91,9 @@ public sealed class DependencyUnitTests : IDisposable
     [InlineData("""[{ "name": "a", "path": "" }]""")]                                            // empty location
     [InlineData("""[{ "name": "a", "path": "x" }, { "name": "a", "python": "y" }]""")]           // duplicate name
     [InlineData("""{ "name": "a", "path": "x" }""")]                                             // not an array
+    [InlineData("""[{ "name": "a", "maven": "com.acme:model" }]""")]                           // no version
+    [InlineData("""[{ "name": "a", "nuget": "Acme.Model", "version": "" }]""")]                // empty version
+    [InlineData("""[{ "name": "a", "npm": "y", "version": "1.0.0" }]""")]                      // version beside npm
     public void A_malformed_dependency_declaration_is_refused(string dependenciesJson) =>
         AssertConfigRefused(dependenciesJson);
 
@@ -123,6 +139,28 @@ public sealed class DependencyUnitTests : IDisposable
         Assert.Equal(Hash, entries["a"].Integrity);
     }
 
+    [Theory]
+    [InlineData("""{ "maven": "com.acme:model", "version": "1.0.0" }""")]
+    [InlineData("""{ "maven": "com.acme:model", "version": "1.0.0", "dir": "shared" }""")]
+    [InlineData("""{ "nuget": "Acme.Model", "version": "1.0.0" }""")]
+    public void A_lock_written_from_a_packaged_transport_is_read(string resolvedFrom)
+    {
+        WriteLock(Lock("", resolvedFrom));
+        Assert.Equal(Hash, DependencyResolver.ReadLock(_root)!["a"].Integrity);
+    }
+
+    [Theory]
+    [InlineData("maven")]
+    [InlineData("nuget")]
+    public void Check_reports_a_packaged_transport_unresolved_and_names_the_node_command(string transport)
+    {
+        var spec = new DependencySpec("a", transport, "x", null, "1.0.0");
+        var result = Assert.Single(DependencyResolver.CheckDependencies(_root, [spec], null));
+        Assert.Equal(DependencyCheckStatus.Unresolved, result.Status);
+        Assert.Contains($"\"{transport}\" transport", result.Detail);
+        Assert.Contains("meta deps check", result.Detail);
+    }
+
     [Fact]
     public void No_lock_file_reads_as_null() => Assert.Null(DependencyResolver.ReadLock(_root));
 
@@ -131,6 +169,8 @@ public sealed class DependencyUnitTests : IDisposable
     [InlineData("", """{ "path": "../a", "npm": "x" }""", """["acme::common"]""")]                      // two transports
     [InlineData("", """{ "path": "../a", "dir": "d" }""", """["acme::common"]""")]                      // dir beside path
     [InlineData("", """{ "path": "../a" }""", """["b::x", "a::y"]""")]                                  // unsorted packages
+    [InlineData("", """{ "maven": "com.acme:model" }""", """["acme::common"]""")]                       // maven without a version
+    [InlineData("", """{ "nuget": "Acme.Model", "version": "" }""", """["acme::common"]""")]            // empty version
     public void A_malformed_lock_is_stale_never_trusted(string extras, string resolvedFrom, string packages)
     {
         WriteLock(Lock(extras, resolvedFrom, packages));

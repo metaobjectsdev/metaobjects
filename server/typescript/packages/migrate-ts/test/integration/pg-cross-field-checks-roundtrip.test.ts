@@ -1,5 +1,5 @@
 /**
- * Real Postgres: the CHECKs the cross-field validator extensions emit (atLeastOne @max, a
+ * Real Postgres: the CHECKs the cross-field validator extensions emit (exactlyOne, a
  * @condition with every node kind, an int-backed enum member in a condition) apply, and a
  * second diff proposes nothing. The diff here runs WITHOUT the expression-canonicalisation
  * probe, so this is the fallback normaliser a read-only `verify --db` role gets: Postgres
@@ -31,8 +31,8 @@ const META = JSON.stringify({ "metadata.root": { package: "acme", children: [{ "
   { "field.enum": { name: "kind", "@values": ["Owned", "Shared"], "@intValueMap": { Owned: 1, Shared: 2 } } },
   { "field.duration": { name: "wait" } },
   { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
-  { "validator.atLeastOne": { name: "few", "@fields": ["a", "b", "c"], "@max": 2, "@constraintName": "CK_Note_Few" } },
-  { "validator.atLeastOne": { name: "one", "@fields": ["a", "b"], "@max": 1, "@constraintName": "CK_Note_One",
+  { "validator.atLeastOne": { name: "few", "@fields": ["a", "b", "c"], "@constraintName": "CK_Note_Few" } },
+  { "validator.exactlyOne": { name: "one", "@fields": ["a", "b"], "@constraintName": "CK_Note_One",
     "@condition": { op: "eq", left: { field: "kind" }, right: { value: "Owned" } } } },
   { "validator.comparison": { name: "cmp", "@left": "a", "@op": "lt", "@right": "b", "@constraintName": "CK_Note_Cmp",
     "@condition": { op: "and", args: [
@@ -87,8 +87,8 @@ realDescribe("cross-field CHECK extensions — apply, then re-diff with no probe
     // kind = Owned (1): exactly one of a, b.
     await expect(sql.raw(`INSERT INTO "${TABLE}" ("a", "b", "kind") VALUES (1, 2, 1)`).execute(k)).rejects.toThrow(/CK_Note_One/);
     await sql.raw(`INSERT INTO "${TABLE}" ("a", "kind") VALUES (1, 1)`).execute(k);
-    // @max 2: three present is refused.
-    await expect(sql.raw(`INSERT INTO "${TABLE}" ("a", "b", "c", "kind") VALUES (1, 2, 3, 2)`).execute(k)).rejects.toThrow(/CK_Note_Few/);
+    // atLeastOne: none of a, b, c present is refused.
+    await expect(sql.raw(`INSERT INTO "${TABLE}" ("kind") VALUES (2)`).execute(k)).rejects.toThrow(/CK_Note_Few/);
   });
 
   test("a duration literal in a condition or @equals compares as the span", async () => {

@@ -61,6 +61,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from metaobjects import load_uris
 from metaobjects.codegen.config import GenConfig
 from metaobjects.codegen.generators.entity_model import entity_model
@@ -93,7 +95,7 @@ def _load_corpus():
     return result.root
 
 
-def _generate(out_dir: Path) -> list[Path]:
+def _generate(out_dir: Path, layout: str = "flat") -> list[Path]:
     """Run the model-tier generators through run_gen — the real orchestrator.
 
     Going through ``run_gen`` rather than calling ``generate()`` on each generator is
@@ -101,7 +103,7 @@ def _generate(out_dir: Path) -> list[Path]:
     (``runner._matcher``) and what emits the ``__init__.py`` files that make the output
     an importable package. A harness that skipped it would measure itself.
     """
-    config = GenConfig(out_dir=str(out_dir), emit_package_init=True)
+    config = GenConfig(out_dir=str(out_dir), emit_package_init=True, output_layout=layout)
     # render-helper runs a BUILD-TIME drift gate, so it needs the on-disk mustache the
     # corpus's @textRef points at; it ships beside the model so every port's lane resolves
     # the same bytes. On this port output-prompt takes no template_root — it bakes the
@@ -137,10 +139,16 @@ def _generate(out_dir: Path) -> list[Path]:
     return written
 
 
-def test_every_generated_module_imports(tmp_path: Path) -> None:
+# Both layouts are gated: the package layout swaps every emitted import for a relative
+# one into a subpackage, which is exactly the cross-module agreement this lane exists for.
+LAYOUTS = pytest.mark.parametrize("layout", ["flat", "package"])
+
+
+@LAYOUTS
+def test_every_generated_module_imports(tmp_path: Path, layout: str) -> None:
     """Import each emitted module for real — the cross-module resolution check."""
     out_dir = tmp_path / "generated"
-    written = _generate(out_dir)
+    written = _generate(out_dir, layout)
 
     sys.path.insert(0, str(tmp_path))
     try:
@@ -164,7 +172,8 @@ def test_every_generated_module_imports(tmp_path: Path) -> None:
             del sys.modules[name]
 
 
-def test_no_generated_module_references_an_undefined_name(tmp_path: Path) -> None:
+@LAYOUTS
+def test_no_generated_module_references_an_undefined_name(tmp_path: Path, layout: str) -> None:
     """ruff F821 over the emitted tree — the branches importing never executes.
 
     Scoped to the name-resolution rules on purpose. A generated file is allowed to be
@@ -172,7 +181,7 @@ def test_no_generated_module_references_an_undefined_name(tmp_path: Path) -> Non
     name something that does not exist.
     """
     out_dir = tmp_path / "generated"
-    _generate(out_dir)
+    _generate(out_dir, layout)
 
     proc = subprocess.run(
         [

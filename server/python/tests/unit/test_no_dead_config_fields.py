@@ -39,12 +39,6 @@ DECLARING_MODULE = SRC / "codegen" / "config.py"
 # is a claim on the record; a missing reader is an accident. Same shape as the view-renderer
 # gate's NO_RENDERER_BY_DESIGN in codegen-ts-tanstack.
 INERT_BY_DESIGN: dict[str, str] = {
-    "output_layout": (
-        "only 'flat' is implemented in this port, which is what the field's own comment "
-        "always said. REFUSED at construction for any other value, so the stub cannot be "
-        "mistaken for a working knob — a default-value test in test_constants_config.py "
-        "pinned it and made it look covered."
-    ),
     "emit_abstract_shapes": (
         "this port ALWAYS emits the abstract base model (concretes subclass it) and "
         "suppressing it is not implemented here. It is a REAL knob in C# (`dotnet meta gen "

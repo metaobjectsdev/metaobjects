@@ -6,17 +6,15 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace Acme;
+namespace Acme.Generated;
 
 public class BridgeAuth : Auth
 {
     [Column("quantity")]
     public int Quantity { get; set; } = 3;
     [Column("grace")]
-    [DurationWire.Iso]
     public TimeSpan? Grace { get; set; }
     [Column("retries")]
-    [DurationWire.Iso]
     public IList<TimeSpan> Retries { get; set; } = new List<TimeSpan>();
     [Column("fee")]
     [DecimalWire.Number(8, 2)]

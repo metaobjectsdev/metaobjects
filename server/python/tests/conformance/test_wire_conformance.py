@@ -1,7 +1,7 @@
 """ADR-0019 Amendment 2 cross-port conformance: ``fixtures/wire-conformance/config-blocks.json``.
 
 Every port parses each case's ``wire`` block with its OWN config reader
-(``metaobjects.config.neutral_config``) and must resolve ``decimals`` and ``nullMembers`` to
+(``metaobjects.config.neutral_config``) and must resolve ``decimals``, ``nullMembers`` and ``durations`` to
 the recorded values; every ``invalid`` block must be refused when the config is read.
 """
 from __future__ import annotations
@@ -37,6 +37,7 @@ def test_wire_block_resolves(case: dict[str, object], tmp_path: Path) -> None:
     assert cfg is not None
     assert cfg.wire.decimals == case["decimals"]
     assert cfg.wire.null_members == case["nullMembers"]
+    assert cfg.wire.durations == case["durations"]
 
 
 @pytest.mark.parametrize("case", _INVALID, ids=lambda c: c["name"])
@@ -51,4 +52,4 @@ def test_the_corpora_pin_the_portable_form() -> None:
     for corpus in ("api-contract-conformance", "persistence-conformance"):
         cfg = read_neutral_config(REPO / "fixtures" / corpus)
         assert cfg is not None
-        assert (cfg.wire.decimals, cfg.wire.null_members) == ("string", "omit"), corpus
+        assert (cfg.wire.decimals, cfg.wire.null_members, cfg.wire.durations) == ("string", "omit", "iso"), corpus

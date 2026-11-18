@@ -8,7 +8,7 @@
 // See docs/specs/2026-05-11-v0.2-sp4-migrate-ts-design.md.
 
 // Pipeline functions
-export { buildExpectedSchema, buildExpectedSchemaWithProvenance } from "./expected-schema.js";
+export { buildExpectedSchema, buildExpectedSchemaWithProvenance, foreignKeyIndexName, uncoveredForeignKeyColumns } from "./expected-schema.js";
 export {
   findReferentialActionConflict,
   describeReferentialActionConflict,
@@ -92,6 +92,7 @@ export type {
   AllowOptions, AmbiguousChange, AmbiguousResolution, AmbiguousCallback,
   DiffResult, DataHazard, DeclaredRename, EmitResult, Dialect, ExprCanonPath, SchemaAdvisory,
 } from "./types.js";
+export { DIALECT_POSTGRES, DIALECT_SQLITE, DIALECT_D1, DIALECTS, isSqliteFamily } from "./types.js";
 export type { DiffArgs } from "./diff/index.js";
 export type { EmitOptions } from "./emit/index.js";
 export type { WriteMigrationOptions, WriteMigrationResult } from "./write-migration.js";
@@ -103,7 +104,7 @@ export type { WriteMigrationFlywayOptions, WriteMigrationFlywayResult } from "./
 // there is no standalone view-migration emitter (the source-aware-diff / view-diff
 // / view-ddl-{postgres,sqlite} stack was folded into the schema-diff path).
 export { normalizeViewSql, viewSqlEquals } from "./view-sql-compare.js";
-export { isViewRecreateOnly, withoutViewRecreates } from "./view-change-reason.js";
+export { isViewRecreateOnly, withoutViewRecreates, viewsNamingRenamedColumns } from "./view-change-reason.js";
 // Whether a live Postgres view can be replaced in place is asked of the database, in a
 // transaction that is always rolled back. Pass the probe to `diff` on a live plan.
 export { postgresViewReplaceProbe } from "./view-replace-probe.js";

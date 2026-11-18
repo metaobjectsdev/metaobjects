@@ -10,6 +10,7 @@
     "gen:schema": "bun run src/gen-canonical-schema.ts",
     "gen:report-api-schema": "bun run src/gen-api-contract-report-schema.ts",
     "gen:decimal-api-schema": "bun run src/gen-api-contract-decimal-schema.ts",
+    "gen:duration-api-schema": "bun run src/gen-api-contract-duration-schema.ts",
     "gen:report-shapes": "bun run src/gen-report-shapes.ts",
     "oracle": "bun run src/oracle-cli.ts"
   },

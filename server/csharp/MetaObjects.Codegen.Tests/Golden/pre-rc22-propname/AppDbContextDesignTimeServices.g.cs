@@ -50,7 +50,10 @@ public sealed class AppDbContextDesignTimeServices : IDesignTimeServices
 
     private sealed class Differ(IMigrationsModelDiffer inner, ISqlGenerationHelper sql) : IMigrationsModelDiffer
     {
-        public bool HasDifferences(IRelationalModel? source, IRelationalModel? target) => inner.HasDifferences(source, target);
+        // A JSON column's comment is a difference the inner differ cannot see, so a change to it alone
+        // must still count: has-pending-model-changes and `migrations add` read this, not GetDifferences.
+        public bool HasDifferences(IRelationalModel? source, IRelationalModel? target) =>
+            inner.HasDifferences(source, target) || JsonColumnComments(source, target, sql).Any();
 
         public IReadOnlyList<MigrationOperation> GetDifferences(IRelationalModel? source, IRelationalModel? target)
         {
@@ -177,4 +180,21 @@ public sealed class AppDbContextDesignTimeServices : IDesignTimeServices
             ? Parts(operation[n] as string).SequenceEqual(Parts(oldOptions))
             : Equals(operation[n], o[n]));
     }
+}
+
+/// <summary>Kept for one release so code written against the earlier runtime registration still
+/// compiles. It does nothing: the identity start is applied at design time.</summary>
+public static class AppDbContextIdentityStartMigrations
+{
+    private const string Message = "UseIdentityStartMigrations() is no longer needed and does nothing: the identity start is " +
+        "applied at design time by AppDbContextDesignTimeServices, which dotnet ef migrations add finds on its own. Remove the call.";
+
+    /// <summary>Does nothing.</summary>
+    [Obsolete(Message)]
+    public static DbContextOptionsBuilder UseIdentityStartMigrations(this DbContextOptionsBuilder options) => options;
+
+    /// <summary>Does nothing.</summary>
+    [Obsolete(Message)]
+    public static DbContextOptionsBuilder<TContext> UseIdentityStartMigrations<TContext>(this DbContextOptionsBuilder<TContext> options)
+        where TContext : DbContext => options;
 }

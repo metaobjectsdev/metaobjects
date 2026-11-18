@@ -237,7 +237,7 @@ class KotlinReportRestSurfaceTest {
         val row = files.getValue("fitness/ProgramsByMonth.kt")
         val table = files.getValue("fitness/ProgramsByMonthTable.kt")
         assertTrue("  public val status: ProgramStatus" in row, row)
-        assertTrue("ProgramStatus::class" in table, table)
+        assertTrue("ProgramStatus.valueOf(" in table, table)
         // No generator materializes an enum for the report.
         assertFalse(files.keys.any { "ProgramsByMonthStatus" in it }, files.keys.toString())
         assertFalse("ProgramsByMonthStatus" in row, row)

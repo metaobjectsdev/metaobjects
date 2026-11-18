@@ -21,7 +21,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
- * ADR-0062: a run whose orphan sweep kept an edited orphan is incomplete. It stores no key, so
+ * ADR-0064: a run whose orphan sweep kept an edited orphan is incomplete. It stores no key, so
  * the next run renders again and repeats the refusal instead of printing "nothing changed".
  */
 public class RefusedOrphanSkipTest {

@@ -21,6 +21,7 @@ import { makeRenderContext } from "../../src/render-context.js";
 import { buildPkMap } from "../../src/pk-resolver.js";
 import { buildRelationMap } from "../../src/relation-resolver.js";
 import { GENERATED_HEADER } from "../../src/constants.js";
+import { ERR_COLLECTION_NAME_COLLISION } from "../../src/naming/collection-name-collision.js";
 
 // ---------------------------------------------------------------------------
 // Shared fixture loader
@@ -798,7 +799,7 @@ describe("renderRoutesFile — a served report (FR-044 Plan 3)", () => {
       metadata: root,
       dryRun: true,
     });
-    await expect(run).rejects.toThrow(ERR_NAME_COLLISION);
+    await expect(run).rejects.toThrow(ERR_COLLECTION_NAME_COLLISION);
     await expect(run).rejects.toThrow(/Invoice" and ".*Invoices"/);
   });
 });

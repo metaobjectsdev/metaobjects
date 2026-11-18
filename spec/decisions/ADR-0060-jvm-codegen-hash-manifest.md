@@ -130,5 +130,10 @@ does not cover deletion, and deletion without evidence is not safe on any port.
 - The JVM matches the other four ports on the overwrite rule and the orphan rule. It differs
   only in item 6 (a refusal is a warning) and in having no `--generators` narrowing: an
   execution's `<generators>` list is always complete, so every run is a full run.
+- (2026-11-13) `verify.handEdits`, which lets a hand-edited generated file pass `meta verify
+  --codegen` with a notice, is a Node CLI setting only, by design: TypeScript is the one port
+  whose `gen` merges a hand edit forward (three-way), so in Java, Kotlin, C# and Python the
+  drift gate compares bytes, any edit fails it, and the way to change generated output there is
+  to own the generator (`eject`). The language-differences page states the same split.
 
 Migration: [jvm-codegen-hash-manifest.md](../../docs/features/migrations/jvm-codegen-hash-manifest.md).

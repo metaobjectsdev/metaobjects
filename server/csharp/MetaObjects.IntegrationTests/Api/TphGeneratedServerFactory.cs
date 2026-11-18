@@ -113,6 +113,11 @@ internal sealed class TphGeneratedServerFactory : IAsyncDisposable
         // ADR-0058 — the corpus's committed naming rule, not a hardcoded default.
         loadResult.Root.PhysicalNaming = ApiContractCorpusPaths.Naming;
         loadResult.Root.WireFormat = ApiContractCorpusPaths.Wire;
+        // The host-variant credential tests post every spelling a client could forge for a denied field,
+        // most of which are no declared field at all. They pin credential stripping, not unknown-field
+        // handling (the default `api.unknownFields: reject` answers those with a 400, covered by the
+        // api-contract corpus), so those servers run under `drop`.
+        if (host is not null) loadResult.Root.Api = loadResult.Root.Api with { UnknownFields = UnknownFieldsMode.Drop };
         if (loadResult.Errors.Count != 0)
             throw new InvalidOperationException(
                 "tph corpus metadata failed to load: " +

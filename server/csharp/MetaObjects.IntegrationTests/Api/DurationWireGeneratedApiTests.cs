@@ -1,4 +1,4 @@
-// DurationWireGeneratedApiTests — field.duration through the C# generated routes over real HTTP
+// DurationWireGeneratedApiTests — field.duration arrays, jsonb and flattened members through the C# generated routes over real HTTP
 // bytes, on a model of its own, and the Postgres codec groups C# has (`postgres` and
 // `postgresRefused` in fixtures/duration-wire/vectors.json) against a live interval column, read
 // through the generated NpgsqlInterval mapping. C# binds a TimeSpan to Npgsql natively and never
@@ -64,42 +64,29 @@ public sealed class DurationWireGeneratedApiTests
     private static string Field(string body, string name) =>
         JsonDocument.Parse(body).RootElement.GetProperty(name).GetRawText();
 
-    // The HTTP contract, the same on every engine.
+    // The HTTP contract for what the shared api-contract duration/ sub-corpus does not cover: a
+    // nullable duration, an array of durations, a jsonb value object and a flattened member, on
+    // every engine. The scalar write/read/refuse/filter/sort rules (D1 to D4) are that corpus's.
     private static async Task Exercise(HttpClient c)
     {
-        // Read the accepted form, answer the canonical one.
         var (s1, b1) = await Send(c, "POST", "/api/timers",
             """{"label":"a","timeout":"P1DT2H","grace":"-PT90S","backoff":["PT5400S","PT0.5S"],"window":{"length":"PT90M"},"limits":{"cap":"PT7200S"}}""");
         Assert.True(s1 == 201, $"POST: {s1} {b1}");
-        Assert.Equal("\"PT26H\"", Field(b1, "timeout"));
         Assert.Equal("\"-PT1M30S\"", Field(b1, "grace"));
         Assert.Equal("[\"PT1H30M\",\"PT0.5S\"]", Field(b1, "backoff"));
         Assert.Contains("\"length\":\"PT1H30M\"", Field(b1, "window"));
         Assert.Contains("\"cap\":\"PT2H\"", Field(b1, "limits"));
         var (s2, b2) = await Send(c, "POST", "/api/timers", """{"label":"b","timeout":"P1W","backoff":[]}""");
         Assert.True(s2 == 201, $"POST: {s2} {b2}");
-        Assert.Equal("\"PT168H\"", Field(b2, "timeout")); // a week is exactly 7 days
-        (s2, b2) = await Send(c, "PATCH", "/api/timers/2", """{"timeout":"PT26H"}""");
-        Assert.True(s2 == 200, $"PATCH: {s2} {b2}");
         Assert.Equal("null", Field(b2, "grace"));
 
-        // A read goes back through the column.
         var (_, one) = await Send(c, "GET", "/api/timers/1");
-        Assert.Equal("\"PT26H\"", Field(one, "timeout"));
         Assert.Equal("\"-PT1M30S\"", Field(one, "grace"));
         Assert.Equal("[\"PT1H30M\",\"PT0.5S\"]", Field(one, "backoff"));
         Assert.Contains("\"length\":\"PT1H30M\"", Field(one, "window"));
         Assert.Contains("\"cap\":\"PT2H\"", Field(one, "limits"));
 
-        // Not a duration: 400 validation, never a stored value or a 500.
-        foreach (var bad in new[] { "\"P1M\"", "\"P1Y\"", "\"PT1W\"", "\"P1.5W\"", "\"01:30:00\"", "\"PT1.5H\"", "\"pt1h\"", "\"PT\"", "90", "true" })
-        {
-            var (st, body) = await Send(c, "POST", "/api/timers", $"{{\"label\":\"x\",\"timeout\":{bad},\"backoff\":[]}}");
-            Assert.True(st == 400, $"POST timeout={bad}: expected 400, got {st} {body}");
-            Assert.Contains("validation", body);
-        }
-
-        // PATCH reads the same wire form.
+        // PATCH reads the same wire form for a nullable duration and an array.
         var (sp, bp) = await Send(c, "PATCH", "/api/timers/2", """{"grace":"PT2700S","backoff":["P1D"]}""");
         Assert.True(sp == 200, $"PATCH: {sp} {bp}");
         Assert.Equal("\"PT45M\"", Field(bp, "grace"));
@@ -114,42 +101,17 @@ public sealed class DurationWireGeneratedApiTests
         Assert.Equal(200, sn);
         Assert.Equal("null", Field(bn, "grace"));
 
-        // A filter operand is a span: PT1560M is the stored PT26H, on a text column too.
-        var (sf, bf) = await Send(c, "GET", "/api/timers?filter%5Btimeout%5D=PT1560M");
-        Assert.Equal(200, sf);
-        Assert.Contains("\"label\":\"a\"", bf);
-        Assert.Contains("\"label\":\"b\"", bf);
+        // A nullable duration filters and sorts as a span (the corpus pins this on a required-less
+        // `timeout`; this pins the second column).
         var (sg, bg) = await Send(c, "GET", "/api/timers?filter%5Bgrace%5D=-PT90S");
         Assert.Equal(200, sg);
         Assert.Contains("\"label\":\"a\"", bg);
         Assert.DoesNotContain("\"label\":\"b\"", bg);
-        foreach (var bad in new[] { "P1M", "01:30:00", "abc" })
-        {
-            var (sx, bx) = await Send(c, "GET", $"/api/timers?filter%5Btimeout%5D%5Beq%5D={bad}");
-            Assert.True(sx == 400, $"filter operand {bad}: expected 400, got {sx} {bx}");
-            Assert.Contains("invalid_filter_value", bx);
-            Assert.Contains("\"field\":\"timeout\"", bx);
-        }
-
-        // A duration orders as the span: a gt / lt / gte filter and a sort compare lengths, not text.
         var (s3, b3) = await Send(c, "POST", "/api/timers", """{"label":"c","timeout":"PT30M","grace":"PT1S","backoff":[]}""");
         Assert.True(s3 == 201, $"POST: {s3} {b3}");
-        var (_, longer) = await Send(c, "GET", "/api/timers?filter%5Btimeout%5D%5Bgt%5D=PT1H");
-        Assert.Contains("\"label\":\"a\"", longer);
-        Assert.Contains("\"label\":\"b\"", longer);
-        Assert.DoesNotContain("\"label\":\"c\"", longer);
-        var (_, shorter) = await Send(c, "GET", "/api/timers?filter%5Btimeout%5D%5Blt%5D=P1D");
-        Assert.Contains("\"label\":\"c\"", shorter);
-        Assert.DoesNotContain("\"label\":\"a\"", shorter);
-        var (_, atLeast) = await Send(c, "GET", "/api/timers?filter%5Bgrace%5D%5Bgte%5D=-PT90S");
-        Assert.Contains("\"label\":\"a\"", atLeast);   // -PT1M30S: as long as the bound, not shorter
-        Assert.Contains("\"label\":\"c\"", atLeast);
         var (_, below) = await Send(c, "GET", "/api/timers?filter%5Bgrace%5D%5Blt%5D=PT0S");
-        Assert.Contains("\"label\":\"a\"", below);     // a negative span is shorter than zero
+        Assert.Contains("\"label\":\"a\"", below);
         Assert.DoesNotContain("\"label\":\"c\"", below);
-        var (ss, asc) = await Send(c, "GET", "/api/timers?sort=timeout:asc");
-        Assert.True(ss == 200, $"sort: {ss} {asc}");
-        Assert.True(asc.IndexOf("\"label\":\"c\"", StringComparison.Ordinal) < asc.IndexOf("\"label\":\"a\"", StringComparison.Ordinal), asc);
         var (_, desc) = await Send(c, "GET", "/api/timers?sort=grace:desc&filter%5Bgrace%5D%5BisNull%5D=false");
         Assert.True(desc.IndexOf("\"label\":\"c\"", StringComparison.Ordinal) < desc.IndexOf("\"label\":\"a\"", StringComparison.Ordinal), desc);
     }

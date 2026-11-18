@@ -16,7 +16,7 @@ import {
 } from "@metaobjectsdev/metadata";
 import { extractReportSpec, temporalOf } from "../../src/projection/extract-report-spec.js";
 import { isRelativeNow } from "../../src/projection/report-spec.js";
-import type { ReportViewSpec } from "../../src/projection/report-spec.js";
+import type { ReportDerivedTerm, ReportViewSpec } from "../../src/projection/report-spec.js";
 
 type Json = Record<string, unknown>;
 
@@ -107,7 +107,7 @@ describe("extractReportSpec", () => {
     expect(join.alias).not.toBe(s.joinTree.baseAlias);
   });
 
-  test("a required belongs-to FK joins LEFT OUTER (R62)", async () => {
+  test("a required belongs-to FK joins LEFT OUTER", async () => {
     const model = shopModel((children) => {
       const purchase = children.find((c) => (c["object.entity"] as Json | undefined)?.name === "Purchase")!;
       const fields = (purchase["object.entity"] as { children: Json[] }).children;
@@ -691,10 +691,32 @@ function joinTypes(nodes: Joins): string[] {
   return nodes.flatMap((n) => [n.joinType, ...joinTypes(n.children)]);
 }
 
+/** Every column reference a derived measure's term reads. */
+function derivedRefs(t: ReportDerivedTerm): unknown[] {
+  switch (t.kind) {
+    case "aggregate":
+      return [t.aggregate.refs];
+    case "ratio":
+      return [t.numerator.refs, t.denominator.refs];
+    case "ref":
+      return [t.ref];
+    case "value":
+      return [];
+    case "op":
+      return [...derivedRefs(t.left), ...derivedRefs(t.right)];
+  }
+}
+
 /** Every alias the spec names: the base, each join with its hop, and every column reference. */
 function aliasesOf(s: ReportViewSpec): unknown[] {
   const refs = s.columns.map((c) =>
-    c.kind === "aggregate" ? c.aggregate.refs : c.kind === "ratio" ? [c.numerator.refs, c.denominator.refs] : c.ref,
+    c.kind === "aggregate"
+      ? c.aggregate.refs
+      : c.kind === "ratio"
+        ? [c.numerator.refs, c.denominator.refs]
+        : c.kind === "derived"
+          ? derivedRefs(c.term)
+          : c.ref,
   );
   return [s.joinTree.baseAlias, joinsOfTree(s.joinTree.joins), refs];
 }
@@ -705,7 +727,7 @@ describe("extractReportSpec: @spine (Table D)", () => {
     const s = extractReportSpec(root.findObject("OwnerRoster")!, root, CTX);
     expect(s.spineDepth).toBe(1);
     expect(joinsOfTree(s.joinTree.joins)).toEqual([["fkProgram", "p", [["ownerRef", "o", []]]]]);
-    // Both foreign keys are @required; every hop is LEFT OUTER with or without @spine (R62).
+    // Both foreign keys are @required; every hop is LEFT OUTER with or without @spine.
     expect(joinTypes(s.joinTree.joins)).toEqual(["left", "left"]);
   });
 

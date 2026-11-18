@@ -45,10 +45,10 @@ public class FilterAllowlistGeneratorTests
         ]}}
         """;
         var file = Assert.Single(new FilterAllowlistGenerator().Generate(Ctx(Load(model))));
-        Assert.Equal("AuthorFilterAllowlist.g.cs", System.IO.Path.GetFileName(file.Path));
+        Assert.Equal("AuthorFilterAllowlist.g.cs", file.Path);
         var src = file.Content;
         // Field set is the empty initializer block.
-        Assert.Contains("public static readonly HashSet<string> Fields = new(global::System.StringComparer.Ordinal)", src);
+        Assert.Contains("public static readonly HashSet<string> Fields = new(System.StringComparer.Ordinal)", src);
         Assert.Contains("public static readonly Dictionary<string, HashSet<string>> OpsByField", src);
         // No field strings of any kind in the emitted source.
         Assert.DoesNotContain("\"name\"", src);
@@ -77,10 +77,10 @@ public class FilterAllowlistGeneratorTests
         Assert.Contains("\"name\",", src);
 
         // String operators on name: eq, ne, in, like, isNull (no gt/gte/lt/lte).
-        Assert.Contains("[\"name\"] = new(global::System.StringComparer.Ordinal) { \"eq\", \"ne\", \"in\", \"like\", \"isNull\" }", src);
+        Assert.Contains("[\"name\"] = new(System.StringComparer.Ordinal) { \"eq\", \"ne\", \"in\", \"like\", \"isNull\" }", src);
 
         // Numeric operators on id include the four ordering ops.
-        Assert.Contains("[\"id\"] = new(global::System.StringComparer.Ordinal) { \"eq\", \"ne\", \"gt\", \"gte\", \"lt\", \"lte\", \"in\", \"isNull\" }", src);
+        Assert.Contains("[\"id\"] = new(System.StringComparer.Ordinal) { \"eq\", \"ne\", \"gt\", \"gte\", \"lt\", \"lte\", \"in\", \"isNull\" }", src);
     }
 
     [Fact]
@@ -103,9 +103,9 @@ public class FilterAllowlistGeneratorTests
         Assert.Contains("\"ref\",", src);
         Assert.Contains("\"total\",", src);
         // uuid — identity-comparison only, no like.
-        Assert.Contains("[\"ref\"] = new(global::System.StringComparer.Ordinal) { \"eq\", \"ne\", \"in\", \"isNull\" }", src);
+        Assert.Contains("[\"ref\"] = new(System.StringComparer.Ordinal) { \"eq\", \"ne\", \"in\", \"isNull\" }", src);
         // currency — numeric ops.
-        Assert.Contains("[\"total\"] = new(global::System.StringComparer.Ordinal) { \"eq\", \"ne\", \"gt\", \"gte\", \"lt\", \"lte\", \"in\", \"isNull\" }", src);
+        Assert.Contains("[\"total\"] = new(System.StringComparer.Ordinal) { \"eq\", \"ne\", \"gt\", \"gte\", \"lt\", \"lte\", \"in\", \"isNull\" }", src);
     }
 
     private const string ProjectionModel = """
@@ -139,11 +139,11 @@ public class FilterAllowlistGeneratorTests
         var files = new FilterAllowlistGenerator().Generate(Ctx(Load(ProjectionModel))).ToList();
         Assert.Equal(
             new[] { "AuthorFilterAllowlist.g.cs", "AuthorViewFilterAllowlist.g.cs" },
-            files.Select(f => System.IO.Path.GetFileName(f.Path)).OrderBy(p => p, StringComparer.Ordinal).ToArray());
+            files.Select(f => f.Path).OrderBy(p => p, StringComparer.Ordinal).ToArray());
 
         // The projection's own @filterable field is in its allowlist, not merely an
         // empty stub emitted to satisfy the reference.
-        var view = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "AuthorViewFilterAllowlist.g.cs");
+        var view = Assert.Single(files, f => f.Path == "AuthorViewFilterAllowlist.g.cs");
         Assert.Contains("\"name\"", view.Content);
     }
 
@@ -157,7 +157,7 @@ public class FilterAllowlistGeneratorTests
         var ctx = Ctx(Load(ProjectionModel));
         var routes = new RoutesGenerator().Generate(ctx).ToList();
         var emitted = new FilterAllowlistGenerator().Generate(ctx)
-            .Select(f => System.IO.Path.GetFileName(f.Path)).ToHashSet(StringComparer.Ordinal);
+            .Select(f => f.Path).ToHashSet(StringComparer.Ordinal);
 
         var referenced = routes
             .SelectMany(f => System.Text.RegularExpressions.Regex

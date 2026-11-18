@@ -1,0 +1,21 @@
+{
+  "description": "Two providers declaring DISTINCT attr names on a type and the type it inherits from compose cleanly, and the registry records which provider owns each attribute.",
+  "providers": [
+    "shadow-base",
+    "shadow-sub-distinct"
+  ],
+  "expectOwners": [
+    {
+      "type": "template",
+      "subType": "base",
+      "attr": "shadowAttr",
+      "owner": "shadow-base"
+    },
+    {
+      "type": "template",
+      "subType": "shadowprobe",
+      "attr": "distinctAttr",
+      "owner": "shadow-sub-distinct"
+    }
+  ]
+}

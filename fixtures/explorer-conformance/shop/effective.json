@@ -1,0 +1,348 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "BaseEntity",
+          "abstract": true,
+          "children": [
+            {
+              "field.uuid": {
+                "name": "id"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "createdAt"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Address",
+          "children": [
+            {
+              "field.string": {
+                "name": "street"
+              }
+            },
+            {
+              "field.string": {
+                "name": "city"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Customer",
+          "extends": "acme::shop::BaseEntity",
+          "children": [
+            {
+              "field.uuid": {
+                "name": "id"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "createdAt"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "@required": true
+              }
+            },
+            {
+              "field.string": {
+                "name": "email"
+              }
+            },
+            {
+              "field.object": {
+                "name": "shippingAddress",
+                "@objectRef": "acme::shop::Address"
+              }
+            },
+            {
+              "source.rdb": {
+                "name": "db",
+                "@table": "customers"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Order",
+          "extends": "acme::shop::BaseEntity",
+          "children": [
+            {
+              "field.uuid": {
+                "name": "id"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "createdAt"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "field.uuid": {
+                "name": "customerId"
+              }
+            },
+            {
+              "field.string": {
+                "name": "reference"
+              }
+            },
+            {
+              "field.decimal": {
+                "name": "total"
+              }
+            },
+            {
+              "field.enum": {
+                "name": "state",
+                "@values": [
+                  "OPEN",
+                  "PAID",
+                  "SHIPPED"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "customerRef",
+                "@fields": [
+                  "customerId"
+                ],
+                "@references": "acme::shop::Customer"
+              }
+            },
+            {
+              "index.lookup": {
+                "name": "orderByCustomerId",
+                "@fields": [
+                  "customerId"
+                ]
+              }
+            },
+            {
+              "source.rdb": {
+                "name": "db",
+                "@table": "orders"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "AuditEntry",
+          "children": [
+            {
+              "field.uuid": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "message"
+              }
+            },
+            {
+              "source.rdb": {
+                "name": "db",
+                "@table": "audit_entries"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "OrderNoteRequest",
+          "children": [
+            {
+              "field.string": {
+                "name": "reference",
+                "@required": true
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "OrderNote",
+          "children": [
+            {
+              "field.string": {
+                "name": "text",
+                "@required": true
+              }
+            }
+          ]
+        }
+      },
+      {
+        "template.prompt": {
+          "name": "OrderNotePrompt",
+          "@format": "text",
+          "@payloadRef": "acme::shop::OrderNoteRequest",
+          "@responseFormat": "json",
+          "@responseRef": "acme::shop::OrderNote",
+          "@textRef": "shop/order-note"
+        }
+      },
+      {
+        "requirement.architectural": {
+          "name": "Addressable",
+          "@counterexample": "A row nobody can point at.",
+          "@implementedBy": [
+            "BaseEntity"
+          ],
+          "@statement": "Every stored row has a stable id.",
+          "@status": "live"
+        }
+      },
+      {
+        "requirement.functional": {
+          "name": "Shop",
+          "@counterexample": "A customer who cannot place an order.",
+          "@level": 1,
+          "@statement": "A customer can buy from the shop.",
+          "@status": "live",
+          "children": [
+            {
+              "requirement.functional": {
+                "name": "Checkout",
+                "@counterexample": "An order taken outside checkout.",
+                "@disposition": "deferred",
+                "@level": 2,
+                "@statement": "Orders are taken at checkout.",
+                "@status": "partial",
+                "@trackedBy": [
+                  "https://example.invalid/issues/1"
+                ],
+                "children": [
+                  {
+                    "requirement.functional": {
+                      "name": "Orders",
+                      "@counterexample": "A placed order that is lost.",
+                      "@level": 3,
+                      "@statement": "Every placed order is kept.",
+                      "@status": "live",
+                      "children": [
+                        {
+                          "requirement.functional": {
+                            "name": "Recorded",
+                            "@counterexample": "A placed order has no row.",
+                            "@implementedBy": [
+                              "Order",
+                              "Customer"
+                            ],
+                            "@level": 4,
+                            "@statement": "An order is recorded when it is placed.",
+                            "@status": "live",
+                            "children": [
+                              {
+                                "requirement.functional": {
+                                  "name": "Quotable",
+                                  "@counterexample": "An order nobody can quote back.",
+                                  "@implementedBy": [
+                                    "Order.reference"
+                                  ],
+                                  "@level": 5,
+                                  "@statement": "An order carries a reference the customer can quote.",
+                                  "@status": "live"
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "requirement.functional": {
+                            "name": "Noted",
+                            "@counterexample": "An order with no note.",
+                            "@implementedBy": [
+                              "OrderNotePrompt"
+                            ],
+                            "@level": 4,
+                            "@statement": "A placed order gets a short note for the customer.",
+                            "@status": "live"
+                          }
+                        },
+                        {
+                          "requirement.functional": {
+                            "name": "Refunded",
+                            "@counterexample": "A paid order that cannot be refunded.",
+                            "@implementedBy": [
+                              "Refund"
+                            ],
+                            "@level": 4,
+                            "@statement": "A paid order can be refunded.",
+                            "@status": "planned"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "requirement.functional": {
+                      "name": "Shipping",
+                      "@counterexample": "A paid order that never ships.",
+                      "@level": 3,
+                      "@statement": "A paid order is shipped.",
+                      "@status": "live"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

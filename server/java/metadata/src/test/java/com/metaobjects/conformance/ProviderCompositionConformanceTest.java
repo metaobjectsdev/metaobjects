@@ -15,6 +15,7 @@
  */
 package com.metaobjects.conformance;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.metaobjects.ErrorCode;
@@ -47,12 +48,14 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /**
@@ -106,6 +109,16 @@ public class ProviderCompositionConformanceTest {
 
     static final class SealProbeTemplate extends MetaTemplate {
         SealProbeTemplate(String name) { super("sealprobe", name); }
+    }
+
+    // ADR-0062 attribute-ownership probes: the shared root template.base and the fresh
+    // subtype template.shadowprobe (see the corpus README).
+    static final class ShadowRootTemplate extends MetaTemplate {
+        ShadowRootTemplate(String name) { super(TemplateConstants.SUBTYPE_BASE, name); }
+    }
+
+    static final class ShadowProbeTemplate extends MetaTemplate {
+        ShadowProbeTemplate(String name) { super("shadowprobe", name); }
     }
 
     // ------------------------------------------------------------------
@@ -173,6 +186,77 @@ public class ProviderCompositionConformanceTest {
         @Override public String getDescription() { return "Test-only — #265 compose-load probe: extends view.currency with @decimals."; }
     };
 
+    /** Registers the shared root {@code template.base} with one optional string attr. */
+    private static void registerShadowRoot(MetaDataRegistry registry, String attr) {
+        registry.registerType(ShadowRootTemplate.class, def -> {
+            def.type(TemplateConstants.TYPE_TEMPLATE).subType(TemplateConstants.SUBTYPE_BASE)
+               .description("Test-only — attribute-ownership probe root.");
+            def.optionalAttributeWithConstraints(attr)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+        });
+    }
+
+    /** Registers {@code template.shadowprobe} (inheriting the root) with one optional string attr. */
+    private static void registerShadowProbe(MetaDataRegistry registry, String attr) {
+        registry.registerType(ShadowProbeTemplate.class, def -> {
+            def.type(TemplateConstants.TYPE_TEMPLATE).subType("shadowprobe")
+               .description("Test-only — attribute-ownership probe subtype.")
+               .inheritsFrom(TemplateConstants.TYPE_TEMPLATE, TemplateConstants.SUBTYPE_BASE);
+            def.optionalAttributeWithConstraints(attr)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+        });
+    }
+
+    private static MetaDataTypeProvider shadowProvider(String id, String[] deps, Consumer<MetaDataRegistry> body) {
+        return new MetaDataTypeProvider() {
+            @Override public String getProviderId() { return id; }
+            @Override public String[] getDependencies() { return deps; }
+            @Override public void registerTypes(MetaDataRegistry registry) { body.accept(registry); }
+            @Override public String getDescription() { return "Test-only ADR-0062 attribute-ownership provider: " + id; }
+        };
+    }
+
+    private static final MetaDataTypeProvider SHADOW_BASE =
+        shadowProvider("shadow-base", new String[0], r -> registerShadowRoot(r, "shadowAttr"));
+    private static final MetaDataTypeProvider SHADOW_SUB_CLASH =
+        shadowProvider("shadow-sub-clash", new String[]{"shadow-base"}, r -> registerShadowProbe(r, "shadowAttr"));
+    private static final MetaDataTypeProvider SHADOW_SUB_OWNER =
+        shadowProvider("shadow-sub-owner", new String[0], r -> registerShadowProbe(r, "reverseAttr"));
+    private static final MetaDataTypeProvider SHADOW_BASE_LATE =
+        shadowProvider("shadow-base-late", new String[]{"shadow-sub-owner"}, r -> registerShadowRoot(r, "reverseAttr"));
+    private static final MetaDataTypeProvider SHADOW_SUB_DISTINCT =
+        shadowProvider("shadow-sub-distinct", new String[]{"shadow-base"}, r -> registerShadowProbe(r, "distinctAttr"));
+    private static final MetaDataTypeProvider SHADOW_SELF =
+        shadowProvider("shadow-self", new String[0], r -> {
+            registerShadowRoot(r, "selfAttr");
+            registerShadowProbe(r, "selfAttr");
+        });
+
+    private static final MetaDataTypeProvider SHADOW_SUB_EXTEND_CLASH =
+        shadowProvider("shadow-sub-extend-clash", new String[]{"shadow-sub-distinct"},
+            r -> r.extendType(ShadowProbeTemplate.class, def -> def
+                .optionalAttributeWithConstraints("shadowAttr")
+                .ofType(StringAttribute.SUBTYPE_STRING).asSingle()));
+    private static final MetaDataTypeProvider COMMON_OWNER =
+        shadowProvider("common-owner", new String[0],
+            r -> r.registerCommonAttribute("commonAttr", StringAttribute.SUBTYPE_STRING, false));
+    private static final MetaDataTypeProvider COMMON_CLASH =
+        shadowProvider("common-clash", new String[]{"common-owner"},
+            r -> r.registerCommonAttribute("commonAttr", StringAttribute.SUBTYPE_STRING, false));
+    private static final MetaDataTypeProvider COMMON_SELF =
+        shadowProvider("common-self", new String[0], r -> {
+            r.registerCommonAttribute("selfCommonAttr", StringAttribute.SUBTYPE_STRING, false);
+            registerShadowProbe(r, "selfCommonAttr");
+            r.registerCommonAttribute("selfCommonAttr", StringAttribute.SUBTYPE_STRING, false);
+        });
+    private static final MetaDataTypeProvider COMMON_SUB_CLASH =
+        shadowProvider("common-sub-clash", new String[]{"common-owner"}, r -> registerShadowProbe(r, "commonAttr"));
+    private static final MetaDataTypeProvider COMMON_SUB_OWNER =
+        shadowProvider("common-sub-owner", new String[0], r -> registerShadowProbe(r, "lateCommonAttr"));
+    private static final MetaDataTypeProvider COMMON_LATE =
+        shadowProvider("common-late", new String[]{"common-sub-owner"},
+            r -> r.registerCommonAttribute("lateCommonAttr", StringAttribute.SUBTYPE_STRING, false));
+
     private static MetaDataTypeProvider resolve(String id) {
         MetaDataTypeProvider p = ConformanceTestProviders.TEST_PROVIDERS.get(id);
         if (p != null) return p;
@@ -181,6 +265,19 @@ public class ProviderCompositionConformanceTest {
             case "attr-conflict-clash": return ATTR_CONFLICT_CLASH;
             case "seal-probe":          return SEAL_PROBE;
             case "extend-spec-subtype": return EXTEND_SPEC_SUBTYPE;
+            case "shadow-base":         return SHADOW_BASE;
+            case "shadow-sub-clash":    return SHADOW_SUB_CLASH;
+            case "shadow-sub-owner":    return SHADOW_SUB_OWNER;
+            case "shadow-base-late":    return SHADOW_BASE_LATE;
+            case "shadow-sub-distinct": return SHADOW_SUB_DISTINCT;
+            case "shadow-self":         return SHADOW_SELF;
+            case "shadow-sub-extend-clash": return SHADOW_SUB_EXTEND_CLASH;
+            case "common-owner":        return COMMON_OWNER;
+            case "common-clash":        return COMMON_CLASH;
+            case "common-self":         return COMMON_SELF;
+            case "common-sub-clash":    return COMMON_SUB_CLASH;
+            case "common-sub-owner":    return COMMON_SUB_OWNER;
+            case "common-late":         return COMMON_LATE;
             default:
                 throw new IllegalArgumentException(
                     "Unknown named provider \"" + id + "\" in provider-composition corpus");
@@ -272,6 +369,71 @@ public class ProviderCompositionConformanceTest {
             } catch (MetaDataException ex) {
                 assertEquals(expected, codeOf(ex));
             }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // ADR-0062 attr-ownership corpus — composition succeeds and the registry
+    // names the provider that owns each attribute.
+    // ------------------------------------------------------------------
+
+    @RunWith(Parameterized.class)
+    public static class AttrOwnership {
+
+        private static Path ownershipCorpusRoot() {
+            return corpusRoot().resolve("attr-ownership");
+        }
+
+        @Parameters(name = "{0}")
+        public static Collection<Object[]> manifests() {
+            try (Stream<Path> files = Files.list(ownershipCorpusRoot())) {
+                List<String> names = files
+                    .filter(p -> p.getFileName().toString().endsWith(".json"))
+                    .map(p -> p.getFileName().toString())
+                    .sorted()
+                    .collect(Collectors.toList());
+                if (names.isEmpty()) {
+                    throw new AssertionError("provider-composition attr-ownership corpus is empty (mis-pathed root?)");
+                }
+                List<Object[]> rows = new ArrayList<>(names.size());
+                for (String n : names) rows.add(new Object[]{n});
+                return rows;
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        }
+
+        @Parameter(0)
+        public String fileName;
+
+        @Test
+        public void providerCompositionAttrOwnership() throws IOException {
+            JsonObject manifest = JsonParser.parseString(
+                Files.readString(ownershipCorpusRoot().resolve(fileName))).getAsJsonObject();
+            List<MetaDataTypeProvider> resolved = new ArrayList<>();
+            manifest.getAsJsonArray("providers").forEach(e -> resolved.add(resolve(e.getAsString())));
+
+            MetaDataRegistry registry = MetaDataRegistry.compose(resolved);
+
+            JsonArray owners = manifest.has("expectOwners") ? manifest.getAsJsonArray("expectOwners") : new JsonArray();
+            JsonArray commonOwners = manifest.has("expectCommonOwners")
+                ? manifest.getAsJsonArray("expectCommonOwners") : new JsonArray();
+            assertTrue(owners.size() + commonOwners.size() > 0);
+            owners.forEach(el -> {
+                JsonObject expected = el.getAsJsonObject();
+                assertEquals(
+                    expected.get("owner").getAsString(),
+                    registry.getAttrProvider(
+                        expected.get("type").getAsString(),
+                        expected.get("subType").getAsString(),
+                        expected.get("attr").getAsString()));
+            });
+            commonOwners.forEach(el -> {
+                JsonObject expected = el.getAsJsonObject();
+                assertEquals(
+                    expected.get("owner").getAsString(),
+                    registry.getCommonAttrProvider(expected.get("attr").getAsString()));
+            });
         }
     }
 

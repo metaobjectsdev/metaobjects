@@ -1,11 +1,11 @@
-import { mkdir, writeFile, readFile, readdir, stat, rm } from "node:fs/promises";
-import { join } from "node:path";
-import { dirname } from "node:path";
+import { mkdir, writeFile, readFile, readdir, stat, rm, rmdir } from "node:fs/promises";
+import { join, dirname, posix } from "node:path";
 import { existsSync as existsSyncWrap, readFileSync as readFileSyncWrap } from "node:fs";
+import { INIT_DEFAULT_LIMIT, INIT_MAX_LIMIT, UNKNOWN_FIELDS_REJECT } from "@metaobjectsdev/metadata";
 import { DEFAULT_CONFIG, ConfigSchema, saveConfig, PACKAGE_MANIFEST_FILE, DEFAULT_METADATA_DIR, DEFAULT_METAOBJECTS_DIR, DEPS_DIR, LOCK_FILE } from "@metaobjectsdev/sdk";
 import {
   assemble, resolveAgentContextRoot, planScaffold,
-  AGENT_CONTEXT_MANIFEST_PATH, type Manifest, type Stack,
+  AGENT_CONTEXT_MANIFEST_PATH, DEFAULT_SKILLS_DIR, normalizeSkillsDir, type Manifest, type Stack,
 } from "@metaobjectsdev/sdk/agent-context";
 import { assertKnownStackValues, resolveStack } from "../lib/detect-stack.js";
 import { reportIgnoredScaffold } from "../lib/ignored-scaffold-check.js";
@@ -90,9 +90,34 @@ dist/
 *.tsbuildinfo
 `;
 
-// Codegen dialect only: Cloudflare D1 is SQLite, so `--d1` scaffolds "sqlite" here (the "d1" value
-// lives in `migrate.dialect` of .metaobjects/config.json, and codegen refuses it).
-function buildMetaobjectsConfigBody(dialect: "sqlite" | "postgres" = "sqlite", withDocs = false): string {
+/** `meta init --dialect`: the database the project targets. */
+export const INIT_DIALECTS = ["sqlite", "postgres", "mysql", "d1"] as const;
+export type InitDialect = (typeof INIT_DIALECTS)[number];
+type CodegenDialect = "sqlite" | "postgres" | "mysql";
+
+/**
+ * The dialect an init run targets, from `--dialect` and `--d1`. `--d1` is `--dialect d1`, so
+ * the two may be combined only when they agree. Throws on an unknown value or a conflict,
+ * before anything is written.
+ */
+export function resolveInitDialect(opts: { dialect?: string | undefined; d1?: boolean | undefined }): InitDialect {
+  const { dialect, d1 } = opts;
+  if (dialect !== undefined && !(INIT_DIALECTS as readonly string[]).includes(dialect)) {
+    throw new Error(`--dialect ${dialect} is not one of ${INIT_DIALECTS.join(", ")}.`);
+  }
+  if (d1 === true && dialect !== undefined && dialect !== "d1") {
+    throw new Error(`--d1 targets Cloudflare D1, and --dialect ${dialect} says otherwise. Pass one of them.`);
+  }
+  return d1 === true ? "d1" : ((dialect as InitDialect | undefined) ?? "sqlite");
+}
+
+/** Codegen's `dialect`: Cloudflare D1 is SQLite at the SQL level, and codegen refuses "d1"
+ *  (the "d1" value lives in `migrate.dialect` of .metaobjects/config.json). */
+function codegenDialectOf(dialect: InitDialect): CodegenDialect {
+  return dialect === "d1" ? "sqlite" : dialect;
+}
+
+function buildMetaobjectsConfigBody(dialect: CodegenDialect = "sqlite", withDocs = false): string {
   const docsImport = withDocs
     ? `import { docsFile, apiDocsFile } from "@metaobjectsdev/codegen-ts/generators";\n`
     : "";
@@ -103,48 +128,28 @@ ${docsImport}
 export default defineConfig({
   outDir:  "${SCAFFOLD_OUT_DIR}",
   dialect: "${dialect}",
+  // One directory per metadata package (acme::commerce -> acme/commerce/), so two objects
+  // with one name in two packages are two files. barrel() still exports every name from one
+  // module, so with a barrel listed that pair is ERR_NAME_COLLISION. Omit it for the flat layout.
+  outputLayout: "package",
 
-  // NOTHING IS GENERATED UNTIL YOU CHOOSE IT.
+  // Nothing is generated until it is listed in \`generators\`. The usual data layer
+  // (Drizzle tables, Zod schemas, physical-name constants and a barrel):
   //
-  // MetaObjects does not decide which code your application needs — you do, or the
-  // agent working in this repo does. The catalog is:
+  //   import { entityFile, namesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
   //
-  //   meta gen --list --format json --probe
+  // then call each one in the list below: entityFile(), namesFile(), barrel().
   //
-  // \`--probe\` runs every generator against YOUR model and reports how many files each
-  // would emit, so you can see what your metadata is already asking for. Group by
-  // \`layer\`: model / persistence / api / client / docs / capability.
+  // The catalog, with each generator's import line and what it would emit for this model:
   //
-  // Every row carries the import line that runs its generator as shipped
-  // (\`wire.import\`). Add it at the top of this file:
+  //   meta gen --list --probe
   //
-  //   import { entityFile, queriesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
+  // Documentation is chosen the same way (docsFile(), apiDocsFile(), agentDocsFile()), with
+  // a docs target beside \`generators\`: targets: { docs: { outDir: "${DEFAULT_DOCS_DIR}" } },
   //
-  // then call each one in the array below: entityFile(), queriesFile(), barrel(). A
-  // generator's options are in its documentation. The row also lists what to install
-  // and the config keys the generator reads (\`dbImport\`, \`apiPrefix\`, \`extStyle\`, …).
-  // Add them here as you go.
-  //
-  // Need one to emit something different? Own it:
-  //
-  //   meta eject entity
-  //
-  // copies that generator into ./codegen/generators/ — YOURS to edit — and prints the
-  // local import to swap in for the package one. \`meta gen\` then runs your copy.
-  //
-  // Documentation is chosen the same way: the \`docs\` layer of the catalog (docsFile(),
-  // apiDocsFile(), …) writes to a \`docs\` target you declare beside \`generators\`:
-  //
-  //   targets: { docs: { outDir: "${DEFAULT_DOCS_DIR}" } },
-  //
-  // Nothing is generated that this file does not declare, documentation included.
-  //
-  // Need an output nothing in that catalog emits — a client, a service layer? Write
-  // your own generator; that is the normal path:
-  //
-  //   meta generator new data-dictionary --scope model
-  //
-  // writes a working, commented generator into ./codegen/generators/ and adds it here.
+  // To change what a generator emits, own it: \`meta eject entity\` copies it into
+  // ./codegen/generators/ and prints the local import to swap in. Need an output nothing in
+  // that catalog emits? Write your own: \`meta generator new <name> --scope model\`.
 ${docsTarget}  generators: ${generators},
 });
 `;
@@ -155,7 +160,8 @@ Initialized metaobjects/ + .metaobjects/ + metaobjects.config.ts
 codegen/generators/ is EMPTY on purpose: no code is generated until you choose it.
 `;
 
-const NEXT_STEPS = `
+function nextSteps(dialect: InitDialect): string {
+  return `
 Next steps:
   0. Everything here is ESM — package.json needs "type": "module" (init sets it
      unless the project has CommonJS sources; without it the first tsc fails).
@@ -171,10 +177,27 @@ Next steps:
                                 #   scaffolds a working one and wires it
   4. meta gen                  # generate from exactly what you wired, documentation
                                 #   included (the docs layer of the catalog)
-  5. Create your tables: meta migrate --from-db --db file:dev.sqlite --dialect sqlite --slug init --apply
-     A new database later (a fresh clone, CI, tests) replays the committed migrations:
-       meta migrate apply-pending --db file:other.sqlite
-`;
+${MIGRATE_STEP[dialect]}`;
+}
+
+/** Step 5 of the next steps, per dialect: the first migration and the replay. */
+const MIGRATE_STEP: Record<InitDialect, string> = {
+  sqlite:
+    "  5. Create your tables: meta migrate --from-db --db file:dev.sqlite --dialect sqlite --slug init --apply\n" +
+    "     A new database later (a fresh clone, CI, tests) replays the committed migrations:\n" +
+    "       meta migrate apply-pending --db file:other.sqlite\n",
+  postgres:
+    "  5. Create your tables (an empty, reachable database):\n" +
+    "       meta migrate --from-db --db postgres://<user>@<host>/<db> --dialect postgres --slug init --apply\n" +
+    "     A new database later (a fresh clone, CI, tests) replays the committed migrations:\n" +
+    "       meta migrate apply-pending --db postgres://<user>@<host>/<other-db>\n",
+  d1:
+    "  5. Create your tables: meta migrate --dialect d1 --slug init writes migrations/<seq>_init.sql;\n" +
+    "     apply it with wrangler d1 migrations apply <binding>.\n",
+  mysql:
+    "  5. Schema: meta migrate does not own MySQL schema, so create and change the tables with\n" +
+    "     your own migration tool. The generated code targets MySQL.\n",
+};
 
 export interface InitOptions {
   cwd: string;
@@ -183,9 +206,18 @@ export interface InitOptions {
   printOnly?: boolean;
   refreshDocs?: boolean;
   d1?: boolean;
+  /** `--dialect`: see {@link resolveInitDialect}. Unset with no `d1` is sqlite. */
+  dialect?: string | undefined;
   servers?: string[];
   clients?: string[];
   noSkills?: boolean;
+  /**
+   * `--skills-dir`: where the skills install, relative to the project root. Unset reuses what
+   * the prior manifest recorded, then {@link DEFAULT_SKILLS_DIR}. Claude Code reads
+   * `.claude/skills`; other assistants read their own directory (`.agents/skills` is shared
+   * by several), and the always-on text names the choice either way.
+   */
+  skillsDir?: string;
   wireRoot?: boolean;
   /** Scaffold ONLY the agent-context (always-on + skills + root wiring), skipping the metaobjects/ project scaffold — for dropping context into an existing/polyglot repo. */
   docsOnly?: boolean;
@@ -258,9 +290,9 @@ function findGitRoot(start: string): string | undefined {
 
 /**
  * Issue #77 — Claude Code discovers `.claude/skills/` only from cwd + ANCESTOR
- * dirs + the user level; it never walks DOWN into subdirs. So scaffolding the
- * agent-context into a monorepo subdir means a root-launched session won't load
- * the skills (the common case). When the init dir is inside a git repo whose
+ * dirs + the user level, and the assistants that read `.agents/skills/` search the
+ * same way; none walks DOWN into subdirs. So scaffolding the agent-context into a
+ * monorepo subdir means a root-launched session won't load the skills (the common case). When the init dir is inside a git repo whose
  * root is an ANCESTOR (i.e. a subdir init), warn and point the user at the repo
  * root. The metadata/config/migrations correctly stay in the subdir regardless.
  */
@@ -271,7 +303,8 @@ function warnIfMonorepoSubdir(opts: InitOptions, result: InitResult): void {
   const lang = opts.servers && opts.servers.length > 0 ? opts.servers[0]! : "<lang>";
   result.warnings.push(
     "agent-context skills scaffolded into a monorepo subdir won't be discovered from a " +
-    "root-launched session (Claude Code only walks cwd + ancestors). Scaffold the context " +
+    "root-launched session (assistants search the working directory and its ancestors, not " +
+    "subdirectories). Scaffold the context " +
     `at the repo root instead: cd <repo-root> && meta init --docs-only --server ${lang}`,
   );
 }
@@ -315,6 +348,22 @@ async function removeUnlessDryRun(cwd: string, dryRun: boolean, path: string): P
   await rm(join(cwd, path), { force: true });
 }
 
+/** Remove the directories above a pruned file `rel` (repo-relative, posix) that are now empty,
+ *  walking up to, and never including, the skills directory that holds it. A file outside every
+ *  skills directory is left alone, and the walk stops at the first directory with anything in it. */
+async function removeEmptySkillDirs(cwd: string, rel: string, skillRoots: readonly string[]): Promise<void> {
+  const root = skillRoots.find((r) => rel.startsWith(`${r}/`));
+  if (root === undefined) return;
+  for (let dir = posix.dirname(rel); dir !== root && dir.startsWith(`${root}/`); dir = posix.dirname(dir)) {
+    try {
+      if ((await readdir(join(cwd, dir))).length > 0) return;
+      await rmdir(join(cwd, dir)); // removes only an empty directory, never anything in one
+    } catch {
+      return; // already gone, unreadable, or filled meanwhile: nothing more to tidy
+    }
+  }
+}
+
 /** "would be VERBED" during a dry run, plain VERBED otherwise — the one tense
  *  marker every reported write shares, so each call site states only its own
  *  past participle instead of writing out both tenses of the whole sentence. */
@@ -326,8 +375,11 @@ async function writeAgentContext(opts: InitOptions, result: InitResult): Promise
   warnIfMonorepoSubdir(opts, result);
   const prior = await readManifest(opts.cwd);
   const stack = await stackForAgentContext(opts, prior);
-  let assembled = assemble({ contentRoot: resolveAgentContextRoot(), stack, docsRef: docsRefForVersion(cliVersion()) });
-  if (opts.noSkills) assembled = assembled.filter((f) => !f.path.startsWith(".claude/skills/"));
+  // An explicit --skills-dir wins; otherwise the directory this project chose last time, so a
+  // refresh never quietly moves the skills back to the default.
+  const skillsDir = normalizeSkillsDir(opts.skillsDir ?? prior?.skillsDir ?? DEFAULT_SKILLS_DIR);
+  let assembled = assemble({ contentRoot: resolveAgentContextRoot(), stack, docsRef: docsRefForVersion(cliVersion()), skillsDir });
+  if (opts.noSkills) assembled = assembled.filter((f) => !f.path.startsWith(`${skillsDir}/`));
 
   const generatedBy = cliVersion();
   const contentHash = currentContentHash().currentContentHash;
@@ -339,6 +391,7 @@ async function writeAgentContext(opts: InitOptions, result: InitResult): Promise
     },
     generatedBy,
     ...(contentHash !== undefined && { contentHash }),
+    skillsDir,
   });
   // A pre-release CLI stamps its own pre-release version into the committed
   // .metaobjects/.agent-context.json ("generatedBy") and the skills/docs it scaffolds may
@@ -400,6 +453,14 @@ async function writeAgentContext(opts: InitOptions, result: InitResult): Promise
     await removeUnlessDryRun(opts.cwd, dryRun, orphan);
     result.removed.push(orphan);
   }
+  // A skill directory whose every file was just pruned (the skills moved with --skills-dir, or
+  // the stack dropped a skill) would otherwise stay behind as an empty husk that reads as "the
+  // old copy is still there". Remove the ones left empty, never the skills directory itself:
+  // it may hold the user's own skills.
+  if (!dryRun) {
+    const skillRoots = [skillsDir, normalizeSkillsDir(prior?.skillsDir ?? DEFAULT_SKILLS_DIR)];
+    for (const orphan of decision.prunes) await removeEmptySkillDirs(opts.cwd, orphan, skillRoots);
+  }
   // Hand-edited ones are never deleted — losing an adopter's writing is worse than leaving
   // a stale file behind — so they are named, with the reason and the remedy.
   for (const orphan of decision.removed) {
@@ -409,21 +470,49 @@ async function writeAgentContext(opts: InitOptions, result: InitResult): Promise
     );
   }
 
-  if (opts.wireRoot) await wireRootMemory(opts.cwd, result, dryRun);
+  // A refresh never creates a root memory file the user did not ask for; a first init may
+  // (see wireRootMemory). "Refresh" is the flag OR a prior agent-context manifest — `meta
+  // agent-docs` carries no flag of its own and reaches this same path with docsOnly.
+  const isRefresh = opts.refreshDocs === true || prior !== undefined;
+  if (opts.wireRoot) await wireRootMemory(opts.cwd, result, dryRun, isRefresh);
 }
 
 const ROOT_IMPORT_LINE = "@.metaobjects/AGENTS.md";
-async function wireRootMemory(cwd: string, result: InitResult, dryRun = false): Promise<void> {
+/**
+ * What the root file gains. The `@` line is Claude Code's import; the sentence before it is
+ * what any other assistant acts on, since only Claude Code expands an `@` path.
+ */
+const ROOT_IMPORT_BLOCK =
+  "Read `.metaobjects/AGENTS.md` before changing this project's metadata, generated code or schema.\n" +
+  `${ROOT_IMPORT_LINE}\n`;
+async function wireRootMemory(cwd: string, result: InitResult, dryRun = false, isRefresh = false): Promise<void> {
   const claudePath = join(cwd, "CLAUDE.md");
   const agentsPath = join(cwd, "AGENTS.md");
   const claudeExists = await fileExists(claudePath);
   const agentsExists = await fileExists(agentsPath);
 
-  // If neither root memory file exists, create CLAUDE.md (Claude Code's canonical) with the import.
+  // If neither root memory file exists, create both: AGENTS.md for the assistants that read it,
+  // CLAUDE.md for Claude Code.
   if (!claudeExists && !agentsExists) {
-    await writeUnlessDryRun(cwd, dryRun, "CLAUDE.md", `# Project memory\n\n${ROOT_IMPORT_LINE}\n`);
-    result.created.push(`CLAUDE.md (${verbed(dryRun, "created")} with MetaObjects @import)`);
+    for (const target of ["AGENTS.md", "CLAUDE.md"]) {
+      await writeUnlessDryRun(cwd, dryRun, target, `# Project memory\n\n${ROOT_IMPORT_BLOCK}`);
+      result.created.push(`${target} (${verbed(dryRun, "created")} with MetaObjects @import)`);
+    }
     return;
+  }
+  // A repo that predates the assistant-neutral layout has CLAUDE.md but no AGENTS.md, so every
+  // assistant other than Claude Code misses the context. A first init creates AGENTS.md too; a
+  // refresh never creates a root file — it says so once and leaves the decision to the user.
+  if (claudeExists && !agentsExists) {
+    if (!isRefresh) {
+      await writeUnlessDryRun(cwd, dryRun, "AGENTS.md", `# Project memory\n\n${ROOT_IMPORT_BLOCK}`);
+      result.created.push(`AGENTS.md (${verbed(dryRun, "created")} with MetaObjects @import)`);
+    } else {
+      result.warnings.push(
+        "no root AGENTS.md — assistants other than Claude Code will not load .metaobjects/AGENTS.md; " +
+          "add a root AGENTS.md containing @.metaobjects/AGENTS.md",
+      );
+    }
   }
   // Otherwise append the import to whichever exist (idempotent — never double-add).
   for (const [path, exists] of [[claudePath, claudeExists], [agentsPath, agentsExists]] as const) {
@@ -431,7 +520,7 @@ async function wireRootMemory(cwd: string, result: InitResult, dryRun = false): 
     const body = await readFile(path, "utf8");
     if (body.includes(ROOT_IMPORT_LINE)) continue;
     const target = path.endsWith("AGENTS.md") ? "AGENTS.md" : "CLAUDE.md";
-    await writeUnlessDryRun(cwd, dryRun, target, `${body.replace(/\n*$/, "\n")}\n${ROOT_IMPORT_LINE}\n`);
+    await writeUnlessDryRun(cwd, dryRun, target, `${body.replace(/\n*$/, "\n")}\n${ROOT_IMPORT_BLOCK}`);
     // Past tense only when it actually happened — this one mutates a file the user
     // owns, so a dry run reporting it as done is the most misleading of the three.
     result.warnings.push(`${verbed(dryRun, "wired")} ${ROOT_IMPORT_LINE} into ${target} so the MetaObjects context loads`);
@@ -505,15 +594,41 @@ async function writeCodegenTsconfig(opts: InitOptions, result: InitResult): Prom
   result.created.push(CODEGEN_TSCONFIG_REL);
 }
 
+/** The `migrate` settings a new project starts with (absent in an existing one: no FK indexes). */
+export const NEW_PROJECT_MIGRATE_DEFAULTS = { foreignKeyIndexes: true } as const;
+/** The `verify` settings a new project starts with (absent in an existing one: hand edits are a notice). */
+export const NEW_PROJECT_VERIFY_DEFAULTS = { handEdits: "fail" } as const;
+
 /**
  * .metaobjects/config.json — write fresh defaults, or preserve+merge an existing
  * valid config. Shared by the full scaffold and `--config-only` so the two paths
  * cannot drift on the config's default content.
  */
 async function writeConfigFile(opts: InitOptions, result: InitResult, agentDir: string, agentDirExists: boolean): Promise<void> {
-  const freshConfig = opts.d1
-    ? ConfigSchema.parse({ ...DEFAULT_CONFIG, migrate: buildD1MigrateBlock(opts.cwd) })
-    : DEFAULT_CONFIG;
+  // An explicit sqlite/postgres dialect is written so `meta migrate` needs no --dialect; an
+  // unflagged init keeps the defaults it always wrote. MySQL schema is not migrate's.
+  const dialect = resolveInitDialect(opts);
+  const migrate = dialect === "d1"
+    ? buildD1MigrateBlock(opts.cwd)
+    : opts.dialect !== undefined ? { dialect } : {};
+  // New-project defaults, each written as its own visible setting (a project that predates
+  // a setting keeps the behaviour it had, because the key is absent there): every foreign key
+  // gets an index, a hand edit to a generated file fails `meta verify --codegen`, and every
+  // generated list route has a page size. They are written here and not into DEFAULT_CONFIG:
+  // the merge below must not add them to an existing project on `--force` (a page size added
+  // on upgrade would truncate a client that reads a whole list). `unknownFields` is written out
+  // at its default, so the choice is visible where a project would change it.
+  // MySQL writes no `migrate` block at all: MetaObjects does not own MySQL schema, and InnoDB
+  // indexes every foreign key itself.
+  const freshConfig = ConfigSchema.parse({
+    ...DEFAULT_CONFIG,
+    ...(dialect === "mysql" ? {} : { migrate: { ...migrate, ...NEW_PROJECT_MIGRATE_DEFAULTS } }),
+    verify: NEW_PROJECT_VERIFY_DEFAULTS,
+    api: {
+      pagination: { defaultLimit: INIT_DEFAULT_LIMIT, maxLimit: INIT_MAX_LIMIT },
+      unknownFields: UNKNOWN_FIELDS_REJECT,
+    },
+  });
   const writeFresh = (): Promise<void> =>
     writeFile(join(agentDir, "config.json"), JSON.stringify(freshConfig, null, 2) + "\n", "utf8");
 
@@ -582,6 +697,8 @@ export async function init(opts: InitOptions): Promise<InitResult> {
   // detection, so a dropped value does not degrade, it inverts three statements in the
   // generated context.
   assertKnownStackValues({ servers: opts.servers ?? [], clients: opts.clients ?? [] });
+  resolveInitDialect(opts);
+  if (opts.skillsDir !== undefined) normalizeSkillsDir(opts.skillsDir);
   const result: InitResult = { created: [], preserved: [], removed: [], warnings: [] };
   const agentDir = join(opts.cwd, DEFAULT_METAOBJECTS_DIR);
   const metaobjectsDir = join(opts.cwd, DEFAULT_METADATA_DIR);
@@ -695,7 +812,7 @@ export async function init(opts: InitOptions): Promise<InitResult> {
   // Scaffold metaobjects.config.ts at the project root. Never overwrite if it exists.
   const forgeConfigPath = join(opts.cwd, "metaobjects.config.ts");
   if (!(await fileExists(forgeConfigPath))) {
-    await writeFile(forgeConfigPath, buildMetaobjectsConfigBody("sqlite", opts.withDocs === true), "utf8");
+    await writeFile(forgeConfigPath, buildMetaobjectsConfigBody(codegenDialectOf(resolveInitDialect(opts)), opts.withDocs === true), "utf8");
     result.created.push("metaobjects.config.ts");
   } else if (opts.withDocs === true) {
     result.warnings.push(
@@ -884,8 +1001,8 @@ function buildD1MigrateBlock(cwd: string): Record<string, unknown> {
  * every one. With nothing wired there is no `dbImport` and no stub, so the message is
  * the same on every path again.
  */
-export function nextStepsBlock(): string {
-  return SCAFFOLD_SUMMARY + NEXT_STEPS;
+export function nextStepsBlock(dialect: InitDialect = "sqlite"): string {
+  return SCAFFOLD_SUMMARY + nextSteps(dialect);
 }
 
 async function dirExists(p: string): Promise<boolean> {
@@ -913,6 +1030,8 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
     // Also here, so a bad value is a USAGE error (exit 2) rather than the exit 1 an
     // init failure gets. `init()` refuses it too, which is what covers every other door.
     assertKnownStackValues({ servers: flags.servers ?? [], clients: flags.clients ?? [] });
+    resolveInitDialect(flags);
+    if (flags.skillsDir !== undefined) normalizeSkillsDir(flags.skillsDir);
   } catch (err) {
     log.error(describeError(err));
     return 2;
@@ -926,9 +1045,11 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
       printOnly: flags.printOnly,
       refreshDocs: flags.refreshDocs,
       d1: flags.d1,
+      dialect: flags.dialect,
       servers: flags.servers,
       clients: flags.clients,
       noSkills: flags.noSkills,
+      ...(flags.skillsDir !== undefined && { skillsDir: flags.skillsDir }),
       wireRoot: flags.wireRoot,
       docsOnly: flags.docsOnly,
       configOnly: flags.configOnly,
@@ -961,14 +1082,14 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
       // was available from the outputs this command had just written.
       reportIgnoredScaffold(cwd, result.created);
       if (flags.docsOnly) {
-        log.info(`Scaffolded the MetaObjects agent context (${result.created.length} files): .metaobjects/AGENTS.md + .claude/skills/metaobjects-*.`);
+        log.info(`Scaffolded the MetaObjects agent context (${result.created.length} files): .metaobjects/AGENTS.md + the metaobjects-* skills.`);
         for (const w of result.warnings) log.info(`  ${w}`);
-        log.info("Re-run --docs-only --refresh-docs to update; --no-wire-root to skip the root CLAUDE.md @import.");
+        log.info("Re-run --docs-only --refresh-docs to update; --no-wire-root to skip the root AGENTS.md/CLAUDE.md @import.");
       } else if (result.refreshedDocsOnly) {
         // Report the refresh, not a scaffold. `result.refreshedDocsOnly` (not `flags.refreshDocs`)
         // because --refresh-docs on an uninitialized repo falls through to a full init, which
         // genuinely DID scaffold and must still say so.
-        log.info(`Refreshed the MetaObjects agent context in place (${result.created.length} files): .metaobjects/AGENTS.md + .metaobjects/CLAUDE.md + .claude/skills/metaobjects-*.`);
+        log.info(`Refreshed the MetaObjects agent context in place (${result.created.length} files): .metaobjects/AGENTS.md + the metaobjects-* skills.`);
         log.info("Your metadata, .metaobjects/config.json, codegen/generators/ and metaobjects.config.ts were left untouched.");
         for (const w of result.warnings) log.warn(w);
       } else if (flags.configOnly) {
@@ -979,7 +1100,7 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
         }
         for (const w of result.warnings) log.warn(w);
       } else {
-        log.info(nextStepsBlock());
+        log.info(nextStepsBlock(resolveInitDialect(flags)));
         // Surface any scaffold warnings (e.g. the #77 monorepo-subdir agent-context
         // discovery warning) — these are otherwise dropped on the normal init path.
         for (const w of result.warnings) log.warn(w);

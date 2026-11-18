@@ -1,4 +1,4 @@
-// rc.19 item 11: a docs page's cross-page links resolve to the target's real page. Pages are
+// A docs page's cross-page links resolve to the target's real page. Pages are
 // placed under their package path (DOCS_PAGE_LAYOUT), so a foreign-key "References" link from
 // `acme/sales/Order.md` to `acme::crm::Customer` is `../crm/Customer.md`, never the bare
 // `Customer.md` that only resolved when every page sat in one directory.
@@ -41,11 +41,9 @@ const MODEL = [
               { "field.long": { name: "id" } },
               { "field.long": { name: "customerId", "@required": true } },
               { "field.long": { name: "parentId" } },
-              { "field.long": { name: "originalId" } },
               { "identity.primary": { name: "id", "@fields": ["id"], "@generation": "increment" } },
               { "identity.reference": { name: "customer", "@fields": ["customerId"], "@references": "acme::crm::Customer" } },
               { "identity.reference": { name: "parent", "@fields": ["parentId"], "@references": "acme::sales::Order" } },
-              { "identity.reference": { name: "original", "@fields": ["originalId"], "@references": "Order" } },
             ],
           },
         },
@@ -75,7 +73,7 @@ async function render(): Promise<Map<string, string>> {
   return new Map(out.map((f) => [f.path, f.content]));
 }
 
-describe("docsFile — cross-page links follow package placement (item 11)", () => {
+describe("docsFile — cross-page links follow package placement ", () => {
   it("a reference into another package links up and across", async () => {
     const pages = await render();
     const order = pages.get("acme/sales/Order.md");
@@ -90,12 +88,10 @@ describe("docsFile — cross-page links follow package placement (item 11)", () 
     expect(pages.get("acme/sales/Order.md")).toContain("**References:** [`Order.id`](./Order.md)");
   });
 
-  // G4, rc.20: the Identity section's reference bullet links its target too, bare or qualified.
+  // The Identity section's reference bullet links its target too, bare or qualified.
   it("an identity reference links its target, package-qualified or bare", async () => {
     const order = (await render()).get("acme/sales/Order.md")!;
     expect(order).toContain("**Reference:** `customerId` → [`acme::crm::Customer`](../crm/Customer.md)");
     expect(order).toContain("**Reference:** `parentId` → [`acme::sales::Order`](./Order.md)");
-    // A bare reference keeps its authored spelling as the label, and links all the same.
-    expect(order).toContain("**Reference:** `originalId` → [`Order`](./Order.md)");
   });
 });

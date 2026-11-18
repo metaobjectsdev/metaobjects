@@ -391,9 +391,10 @@ class KotlinExposedTableGeneratorTest {
         assertTrue("enumerationByName(\"status\", 16, " in own, own)
         val byDefault = enumTable(values, maxLength = 24)
         assertTrue("enumerationByName(\"status\", 24, " in byDefault, byDefault)
-        // No length anywhere: the width it always had.
+        // No length anywhere: `text`, as `meta migrate` creates it.
         val none = enumTable(values)
-        assertTrue("enumerationByName(\"status\", ${KotlinTypeMapper.ENUM_VARCHAR_LEN}, " in none, none)
+        assertTrue("customEnumeration(\"status\", \"TEXT\", " in none, none)
+        assertFalse("enumerationByName(\"status\"" in none, none)
     }
 
     @Test fun storageJsonbEmitsJsonbColumn() {
@@ -479,8 +480,8 @@ class KotlinExposedTableGeneratorTest {
             val src = Files.readString(playerTable)
             // Typed enum column, not a varchar.
             assertTrue(
-                "val status = enumerationByName(\"status\", 64, PlayerStatus::class)" in src,
-                "expected enumerationByName column; saw:\n$src",
+                "val status = customEnumeration(\"status\", \"TEXT\", { v -> PlayerStatus.valueOf(v as String) }, { e -> e.name })" in src,
+                "expected text enum column; saw:\n$src",
             )
             assertTrue("varchar(\"status\"" !in src,
                 "expected NO varchar fallback for the enum column; saw:\n$src")

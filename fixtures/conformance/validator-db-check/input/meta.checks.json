@@ -23,7 +23,8 @@
             { "validator.comparison": { "name": "window", "@left": "startsAt", "@op": "lte", "@right": "endsAt", "@dbCheck": true } },
             { "validator.requiredWhen": { "name": "depotEmail", "@field": "email", "@when": "kind", "@equals": "depot", "@dbCheck": true } },
             { "validator.presentIff": { "name": "depotStart", "@field": "startsAt", "@when": "kind", "@equals": "depot", "@dbCheck": true } },
-            { "validator.atLeastOne": { "name": "contact", "@fields": ["email", "phone"], "@dbCheck": true } }
+            { "validator.atLeastOne": { "name": "contact", "@fields": ["email", "phone"], "@dbCheck": true } },
+            { "validator.exactlyOne": { "name": "oneOf", "@fields": ["email", "phone"], "@dbCheck": true } }
           ]
         }
       }

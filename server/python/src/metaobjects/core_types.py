@@ -61,7 +61,9 @@ from .meta.core.object.meta_object import MetaObject
 from .meta.core.object.object_constants import (
     OBJECT_ATTR_DISCRIMINATOR,
     OBJECT_ATTR_DISCRIMINATOR_VALUE,
-    OBJECT_ATTR_DB_SET_NAME,
+    OBJECT_ATTR_COLLECTION_NAME,
+    OBJECT_ATTR_OBJECT,
+    OBJECT_ATTR_OBJECT_ADAPTER,
     OBJECT_PROJECTION_ATTR_FILTER,
     OBJECT_REPORT_ATTR_DIMENSIONS,
     OBJECT_REPORT_ATTR_FILTER,
@@ -83,10 +85,12 @@ from .meta.core.reporting.reporting_constants import (
     DIMENSION_SUBTYPE_TIME,
     MEASURE_AGGS,
     MEASURE_SUBTYPE_AGGREGATE,
+    MEASURE_SUBTYPE_DERIVED,
     MEASURE_SUBTYPE_RATIO,
     REPORTING_ATTR_AGG,
     REPORTING_ATTR_DEFAULT,
     REPORTING_ATTR_DENOMINATOR,
+    REPORTING_ATTR_EXPR,
     REPORTING_ATTR_DISTINCT,
     REPORTING_ATTR_FILTER,
     REPORTING_ATTR_GRAINS,
@@ -132,6 +136,7 @@ from .meta.persistence.origin.origin_constants import (
     ORIGIN_ATTR_DISTINCT,
     ORIGIN_ATTR_EXPR,
     ORIGIN_ATTR_FILTER,
+    ORIGIN_ATTR_SEGMENT,
     ORIGIN_ATTR_FROM,
     ORIGIN_ATTR_OF,
     ORIGIN_ATTR_ORDER_BY,
@@ -297,10 +302,14 @@ _OBJECT_COMMON_ATTRS = [
         value_type=ATTR_SUBTYPE_STRING,
         required=False,
     ),
-    # R40 — @dbSetName, C#-only vocabulary every port loads and type-checks. object.json
+    # @collectionName, vocabulary every port loads and type-checks. object.json
     # declares it on entity / projection / report; the strict per-subtype scoping
     # (apply_spec_descriptions) prunes it from the others.
-    AttrSchema(name=OBJECT_ATTR_DB_SET_NAME, value_type=ATTR_SUBTYPE_STRING, required=False),
+    AttrSchema(name=OBJECT_ATTR_COLLECTION_NAME, value_type=ATTR_SUBTYPE_STRING, required=False),
+    # @object / @objectAdapter: the JVM's native binding attrs, declared on object.base
+    # in object.json and so kept on every subtype. Loaded and type-checked; unused here.
+    AttrSchema(name=OBJECT_ATTR_OBJECT, value_type=ATTR_SUBTYPE_STRING, required=False),
+    AttrSchema(name=OBJECT_ATTR_OBJECT_ADAPTER, value_type=ATTR_SUBTYPE_STRING, required=False),
 ]
 # FR-011: @normalize is an object-level default for the enum fields of a payload
 # value-object — registered on object.value ONLY (not entity/base). FR-033 re-homes
@@ -463,6 +472,18 @@ core_provider.add(
             AttrSchema(name=REPORTING_ATTR_NUMERATOR, value_type=ATTR_SUBTYPE_STRING, required=True),
             AttrSchema(name=REPORTING_ATTR_DENOMINATOR, value_type=ATTR_SUBTYPE_STRING, required=True),
             AttrSchema(name=REPORTING_ATTR_DEFAULT, value_type=ATTR_SUBTYPE_INT, required=False),
+        ],
+        child_rules=[ChildRule(TYPE_ATTR, "*")],
+    )
+)
+# FR-044 R13: measure.derived — FR-037 R5's first arithmetic wave; no @default.
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_MEASURE,
+        sub_type=MEASURE_SUBTYPE_DERIVED,
+        factory=MetaMeasure,
+        attrs=[
+            AttrSchema(name=REPORTING_ATTR_EXPR, value_type=ATTR_SUBTYPE_EXPRESSION, required=True),
         ],
         child_rules=[ChildRule(TYPE_ATTR, "*")],
     )
@@ -1027,6 +1048,7 @@ core_provider.add(
             AttrSchema(name=ORIGIN_ATTR_FILTER, value_type=ATTR_SUBTYPE_FILTER, required=False),
             AttrSchema(name=ORIGIN_ATTR_DISTINCT, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
             AttrSchema(name=ORIGIN_ATTR_ORDER_BY, value_type=ATTR_SUBTYPE_STRING, required=False, is_array=True),
+            AttrSchema(name=ORIGIN_ATTR_SEGMENT, value_type=ATTR_SUBTYPE_STRING, required=False),
         ],
         child_rules=[ChildRule(TYPE_ATTR, "*")],
     )
@@ -1058,6 +1080,7 @@ core_provider.add(
             AttrSchema(name=ORIGIN_ATTR_VIA, value_type=ATTR_SUBTYPE_STRING, required=False),
             AttrSchema(name=ORIGIN_ATTR_ORDER_BY, value_type=ATTR_SUBTYPE_STRING, required=True, is_array=True),
             AttrSchema(name=ORIGIN_ATTR_FILTER, value_type=ATTR_SUBTYPE_FILTER, required=False),
+            AttrSchema(name=ORIGIN_ATTR_SEGMENT, value_type=ATTR_SUBTYPE_STRING, required=False),
         ],
         child_rules=[ChildRule(TYPE_ATTR, "*")],
     )
@@ -1154,7 +1177,10 @@ _VALIDATOR_ATTRS_BY_SUBTYPE: dict[str, list[AttrSchema]] = {
     ],
     vc.VALIDATOR_SUBTYPE_AT_LEAST_ONE: [
         AttrSchema(name=vc.VALIDATOR_ATTR_FIELDS, value_type=ATTR_SUBTYPE_STRING, required=True, is_array=True),
-        AttrSchema(name=vc.VALIDATOR_ATTR_MAX, value_type=ATTR_SUBTYPE_INT),
+        _VALIDATOR_CONDITION_ATTR,
+    ],
+    vc.VALIDATOR_SUBTYPE_EXACTLY_ONE: [
+        AttrSchema(name=vc.VALIDATOR_ATTR_FIELDS, value_type=ATTR_SUBTYPE_STRING, required=True, is_array=True),
         _VALIDATOR_CONDITION_ATTR,
     ],
 }
@@ -1290,6 +1316,7 @@ for _tmpl_sub, _tmpl_attrs in _TEMPLATE_ATTRS_BY_SUBTYPE.items():
 from .meta.persistence.db.db_provider import db_provider  # noqa: E402
 from .meta.template.prompt_provider import prompt_provider  # noqa: E402
 from .meta.presentation.ui.ui_provider import ui_provider  # noqa: E402
+from .meta.presentation.ui.ui_web_provider import ui_web_provider  # noqa: E402
 from .documentation.doc_provider import doc_provider  # noqa: E402
 
 core_providers: list[Provider] = [
@@ -1298,6 +1325,9 @@ core_providers: list[Provider] = [
     doc_provider,
     prompt_provider,
     ui_provider,
+    # view.textarea @rows and the view.image attrs (ui-web.json): cross-port vocabulary
+    # only TypeScript implements so far. Loaded strictly here and ignored.
+    ui_web_provider,
 ]
 
 # #265 — the ids of the LIBRARY providers above, as a frozen set. Consulted by

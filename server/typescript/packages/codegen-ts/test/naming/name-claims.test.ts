@@ -1,6 +1,6 @@
-// The run's one claim registry (ruling R52). Each generator claims the names it emits, in the
-// scope they live in, as it emits them: a module's type and collection names in its directory,
-// the barrel's re-exports in the barrel, a REST segment in its routes entry. A real duplicate is
+// The run's one claim registry. Each generator claims the names it emits, in the
+// scope they live in, as it emits them: a module's type name in its directory,
+// the barrel's re-exports in the barrel. A real duplicate is
 // refused (ERR_NAME_COLLISION) naming both claimants and the remedy; nothing is renamed; and a
 // generator that is not wired claims nothing, so a docs-only run refuses nothing.
 
@@ -8,11 +8,13 @@ import { describe, test, expect } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
-import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
+import ts from "typescript";
+import { MetaDataLoader, InMemoryStringSource, type MetaObject } from "@metaobjectsdev/metadata";
 import { runGen } from "../../src/runner.js";
 import { defineConfig } from "../../src/metaobjects-config.js";
-import type { Generator } from "../../src/generator.js";
-import { NameClaims, ERR_NAME_COLLISION } from "../../src/naming/name-claims.js";
+import type { GenContext, Generator } from "../../src/generator.js";
+import { ERR_COLLECTION_NAME_COLLISION } from "../../src/naming/collection-name-collision.js";
+import { NameClaims, ERR_NAME_COLLISION, claimModuleNames } from "../../src/naming/name-claims.js";
 import { docsFile } from "../../src/generators/docs-file.js";
 import { apiDocsFile } from "../../src/generators/api-docs-file.js";
 import { entityFile } from "../../src/generators/entity-file.js";
@@ -53,14 +55,14 @@ async function load(...packages: { pkg: string; children: Json[] }[]) {
 async function run(
   root: Awaited<ReturnType<typeof load>>,
   generators: Generator[],
-  outputLayout: OutputLayout | "default" = "flat",
+  outputLayout: OutputLayout = "flat",
+  extra: { emitAbstractShapes?: boolean } = {},
 ): Promise<Map<string, string>> {
   const tmp = mkdtempSync(join(tmpdir(), "name-claims-"));
   try {
     await runGen({
       config: defineConfig({
-        outDir: join(tmp, "src"), extStyle: "js", dbImport: "../db", dialect: "sqlite",
-        ...(outputLayout !== "default" && { outputLayout }),
+        outDir: join(tmp, "src"), extStyle: "js", dbImport: "../db", dialect: "sqlite", outputLayout, ...extra,
         targets: { docs: { outDir: join(tmp, "docs") } }, generators,
       }),
       metadata: root, projectRoot: tmp,
@@ -98,43 +100,51 @@ describe("NameClaims", () => {
 });
 
 describe("the claims follow the wired generators", () => {
-  const twins = (a: string, b: string) => load({ pkg: "acme", children: [entity(a), entity(b)] });
+  const twoPackages = (a: Json, b: Json) => load({ pkg: "acme::alpha", children: [a] }, { pkg: "acme::beta", children: [b] });
 
-  test("a docs-only run claims nothing, so it refuses neither a module-name nor a route collision", async () => {
-    // Address / Addresses share one pluralized name AND one REST segment ("addresses").
-    await run(await twins("Address", "Addresses"), [docsFile(), apiDocsFile()]);
+  test("a docs-only run claims nothing, so it refuses no module-name collision", async () => {
+    await run(await twoPackages(entity("Payer"), entity("Payer")), [docsFile(), apiDocsFile()]);
   });
 
-  test("the entity modules claim the collection name", async () => {
-    await expect(run(await twins("Address", "Addresses"), [entityFile()])).rejects.toThrow(
-      new RegExp(`${ERR_NAME_COLLISION}: "acme::Address" and "acme::Addresses" both generate "Addresses" in the collection names of the module directory`),
+  test("the entity modules claim their type name in the module directory", async () => {
+    // Two concrete entities also share a collection name, which the pre-pass refuses first.
+    await expect(run(await twoPackages(entity("Payer"), entity("Payer")), [entityFile()])).rejects.toThrow(
+      `${ERR_COLLECTION_NAME_COLLISION}: "acme::alpha::Payer" and "acme::beta::Payer"`,
     );
   });
 
   test("the queries modules claim it too", async () => {
-    await expect(run(await twins("Order", "Orders"), [queriesFile()])).rejects.toThrow(
-      new RegExp(`${ERR_NAME_COLLISION}.*"Orders"`),
+    await expect(run(await twoPackages(entity("Payer"), entity("Payer")), [queriesFile()])).rejects.toThrow(
+      new RegExp(`${ERR_COLLECTION_NAME_COLLISION}.*"Payers"`),
     );
   });
 
-  test("a REST segment is claimed only when a routes generator is wired", async () => {
-    // ApiKey / APIKey: distinct pluralized names, one REST segment.
-    await run(await twins("ApiKey", "APIKey"), [entityFile()]);
-    await expect(run(await twins("ApiKey", "APIKey"), [entityFile(), routesFile()])).rejects.toThrow(
-      /both generate "api_keys" in the REST collection segments of routes entry #2/,
+  test("the flat layout names both remedies; the package layout, a rename", async () => {
+    const root = await twoPackages(entity("Payer"), entity("Payer"));
+    const claim = (outputLayout: "flat" | "package") => {
+      const claims = new NameClaims();
+      const ctx = { config: { outputLayout }, loadedRoot: root, claim: (...a: Parameters<NameClaims["claim"]>) => claims.claim(...a) } as unknown as GenContext;
+      return (key: string) => claimModuleNames(ctx, { name: "Payer", resolutionKey: () => key, subType: "value", type: "object" } as unknown as MetaObject);
+    };
+    const flat = claim("flat");
+    flat("acme::alpha::Payer");
+    expect(() => flat("acme::beta::Payer")).toThrow(
+      /rename one, or set outputLayout: "package" to place each object in the directory of its metadata package\.$/,
     );
-    await expect(run(await twins("ApiKey", "APIKey"), [routesFileHono()])).rejects.toThrow(/"api_keys"/);
+    const pkg = claim("package");
+    pkg("acme::alpha::Payer");
+    expect(() => pkg("acme::alpha::Payer")).not.toThrow();
+    pkg("acme::beta::Payer");
   });
 
-  test("a value object claims its type but no collection", async () => {
-    const root = await load({ pkg: "acme", children: [entity("Address"), value("Addresses", "text")] });
-    await run(root, [entityFile(), routesFile()]);
-  });
-
-  test("an abstract or sourceless twin gets no route, so it claims no segment", async () => {
-    for (const twin of [entity("APIKey", { abstract: true, source: false }), entity("APIKey", { source: false })]) {
-      await run(await load({ pkg: "acme", children: [entity("ApiKey"), twin] }), [routesFile()]);
+  test("an abstract object claims nothing when its shape is not emitted", async () => {
+    for (const layout of ["flat", "package"] as const) {
+      await run(await twoPackages(entity("Payer", { abstract: true, source: false }), value("Payer", "text")), [entityFile(), queriesFile()], layout, { emitAbstractShapes: false });
     }
+  });
+
+  test("the same object emitted by two generators claims its name once", async () => {
+    await run(await load({ pkg: "acme", children: [entity("Payer")] }), [entityFile(), queriesFile()]);
   });
 });
 
@@ -155,7 +165,7 @@ describe("fixtures/naming-conformance/already-plural-pluralize.json", () => {
   for (const c of corpus.collisionCases) {
     test(`refused: ${c.entityA} / ${c.entityB} on "${c.collidesOn}"`, async () => {
       const root = await load({ pkg: "acme", children: [entity(c.entityA), entity(c.entityB)] });
-      await expect(run(root, all())).rejects.toThrow(new RegExp(`${ERR_NAME_COLLISION}.*"${c.collidesOn}"`));
+      await expect(run(root, all())).rejects.toThrow(new RegExp(`${ERR_COLLECTION_NAME_COLLISION}.*"${c.collidesOn}"`));
     });
   }
 
@@ -171,7 +181,7 @@ describe("fixtures/naming-conformance/already-plural-pluralize.json", () => {
   test("two emitting entities of one name in two packages: one module directory under the flat layout", async () => {
     for (const c of corpus.crossPackageCollisionCases) {
       await expect(run(await packaged(c.entityA, c.entityB), [entityFile()])).rejects.toThrow(
-        new RegExp(`${ERR_NAME_COLLISION}.*"${c.entityA.name}" in the module directory "\\."`),
+        new RegExp(`${ERR_COLLECTION_NAME_COLLISION}.*"${c.entityA.name}s" in one module scope`),
       );
     }
   });
@@ -180,7 +190,35 @@ describe("fixtures/naming-conformance/already-plural-pluralize.json", () => {
     for (const c of corpus.crossPackageCollisionCases) {
       const root = await packaged(c.entityA, c.entityB);
       await run(root, [entityFile(), queriesFile()], "package");
-      await expect(run(root, all(), "package")).rejects.toThrow(new RegExp(`"${c.collidesOn}" in the REST collection segments`, "i"));
+      await expect(run(root, all(), "package")).rejects.toThrow(/ERR_COLLECTION_NAME_COLLISION.*REST collection segment/);
+    }
+  });
+});
+
+describe("the route and collection scopes", () => {
+  const twins = (a: string, b: string) => load({ pkg: "acme", children: [entity(a), entity(b)] });
+
+  test("a REST segment is claimed only when a routes generator is wired", async () => {
+    // ApiKey / APIKey: distinct pluralized names, one REST segment.
+    await run(await twins("ApiKey", "APIKey"), [entityFile()]);
+    await expect(run(await twins("ApiKey", "APIKey"), [entityFile(), routesFile()])).rejects.toThrow(
+      /ERR_COLLECTION_NAME_COLLISION.*"api_keys"/,
+    );
+    await expect(run(await twins("ApiKey", "APIKey"), [routesFileHono()])).rejects.toThrow(/"api_keys"/);
+  });
+
+  test("a docs-only run claims nothing", async () => {
+    await run(await twins("Address", "Addresses"), [docsFile(), apiDocsFile()]);
+  });
+
+  test("a value object claims its type but no collection", async () => {
+    const root = await load({ pkg: "acme", children: [entity("Address"), value("Addresses", "text")] });
+    await run(root, [entityFile(), routesFile()]);
+  });
+
+  test("an abstract or sourceless twin gets no route, so it claims no segment", async () => {
+    for (const twin of [entity("APIKey", { abstract: true, source: false }), entity("APIKey", { source: false })]) {
+      await run(await load({ pkg: "acme", children: [entity("ApiKey"), twin] }), [routesFile()]);
     }
   });
 });
@@ -221,10 +259,6 @@ describe("a value object is never renamed", () => {
     }
   });
 
-  test("with no outputLayout declared each takes its package's directory (the default is package, R63)", async () => {
-    await expect(run(await twoNotes(), [entityFile()], "default")).resolves.toBeDefined();
-  });
-
   test("under the flat layout they share one module directory, and the collision is refused naming both", async () => {
     await expect(run(await twoNotes(), [entityFile()])).rejects.toThrow(
       `${ERR_NAME_COLLISION}: "acme::alpha::Note" and "acme::beta::Note" both generate "Note" in the module directory "." of target "default"`,
@@ -235,5 +269,38 @@ describe("a value object is never renamed", () => {
     await expect(run(await twoNotes(), [entityFile(), barrel()], "package")).rejects.toThrow(
       /both generate "Note" in the barrel \(index\.ts\) of target "default" — rename one, or drop the barrel/,
     );
+  });
+
+  test("a derived local alias that lands on another object's name is refused, naming both", async () => {
+    const root = await load(
+      { pkg: "acme::alpha", children: [value("Note", "alphaText")] },
+      { pkg: "acme::beta", children: [value("Note", "betaText")] },
+      { pkg: "acme", children: [value("AcmeAlphaNote", "clash")] },
+    );
+    await expect(run(root, [entityFile()], "package")).rejects.toThrow(
+      `${ERR_NAME_COLLISION}: "acme::alpha::Note" and "acme::AcmeAlphaNote" both generate "AcmeAlphaNote" in the local type bindings of the model`,
+    );
+  });
+
+  test("the package layout output compiles: each Note is its own module and the aliases bind", async () => {
+    // Under the package directory, so the output resolves zod.
+    const dir = mkdtempSync(join(import.meta.dir, "name-claims-compile-"));
+    try {
+      await runGen({
+        config: defineConfig({ outDir: dir, extStyle: "js", dbImport: "./db", dialect: "sqlite", outputLayout: "package", generators: [entityFile()] }),
+        metadata: await twoNotes(),
+      });
+      const roots = readdirSync(dir, { recursive: true, withFileTypes: true })
+        .filter((e) => e.isFile() && e.name.endsWith(".ts"))
+        .map((e) => join(e.parentPath, e.name));
+      expect(roots.map((f) => relative(dir, f)).sort()).toEqual(["acme/alpha/Note.ts", "acme/app/Digest.ts", "acme/beta/Note.ts"]);
+      const program = ts.createProgram(roots, {
+        noEmit: true, strict: true, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext,
+        moduleResolution: ts.ModuleResolutionKind.Bundler, skipLibCheck: true,
+      });
+      const diagnostics = ts.getPreEmitDiagnostics(program)
+        .map((d) => `${d.file ? relative(dir, d.file.fileName) : "?"}: TS${d.code} ${ts.flattenDiagnosticMessageText(d.messageText, "\n")}`);
+      expect(diagnostics).toEqual([]);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });

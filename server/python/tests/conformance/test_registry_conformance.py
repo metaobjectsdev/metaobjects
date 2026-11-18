@@ -68,13 +68,15 @@ def test_every_registered_per_type_attr_is_explicitly_classified() -> None:
 def test_carve_outs_carry_their_declared_reason_category() -> None:
     assert classify_per_type_attr("extends") is ExclusionReason.STRUCTURAL_KEYWORD
     assert classify_per_type_attr("isArray") is ExclusionReason.STRUCTURAL_KEYWORD
-    assert classify_per_type_attr("object") is ExclusionReason.NATIVE_BINDING
-    assert classify_per_type_attr("objectAdapter") is ExclusionReason.NATIVE_BINDING
+    # @object / @objectAdapter are in the manifest (implementedIn / ports), not carved out.
+    assert classify_per_type_attr("object") is ExclusionReason.INCLUDED
+    assert classify_per_type_attr("objectAdapter") is ExclusionReason.INCLUDED
     assert classify_per_type_attr("description") is ExclusionReason.COMMON_ATTR_DUP
     # Genuinely logical attrs are INCLUDED.
     assert classify_per_type_attr("column") is ExclusionReason.INCLUDED
     assert classify_per_type_attr("maxLength") is ExclusionReason.INCLUDED
     # Row classification.
     assert classify_type_subtype("metadata", "base") is ExclusionReason.INHERITANCE_ANCHOR
-    assert classify_type_subtype("view", "dropdown") is ExclusionReason.PRESENTATION_ONLY
+    # The generic view controls are in the manifest, marked implementedIn.
+    assert classify_type_subtype("view", "dropdown") is ExclusionReason.INCLUDED
     assert classify_type_subtype("view", "currency") is ExclusionReason.INCLUDED

@@ -12,8 +12,9 @@ name: pr-ci
 # WHICH PORTS: `detect` maps the PR's changed paths to ports with
 # scripts/ci-affected-ports.sh, the same mapper local-ci.yml uses. A change under a
 # port's directory selects that port; a change to fixtures/, spec/, scripts/, .github/,
-# agent-context/ or anything unrecognised selects ALL ports (the mapper fails open); a
-# docs-only change selects none and runs only the offline `gates` lane.
+# agent-context/, docs/ or anything unrecognised selects ALL ports (the mapper fails
+# open); only the root prose files (README.md, CHANGELOG.md, CONTRIBUTING.md,
+# AGENTS.md, CLAUDE.md) select none and run only the offline `gates` lane.
 #
 # WHAT RUNS PER PORT: unit tests plus the conformance corpora, not the docker
 # integration suites (integration-tests.yml owns those, on tags and on demand):
@@ -96,6 +97,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          fetch-depth: 0          # the mutation gate needs a merge base with origin/$GITHUB_BASE_REF to diff-scope
           persist-credentials: false
       - uses: oven-sh/setup-bun@v2
         with:

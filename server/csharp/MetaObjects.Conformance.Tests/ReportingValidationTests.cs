@@ -600,7 +600,7 @@ public class ReportingValidationTests
                 { "field.timestamp": { "name": "purchasedAt", "extends": "Purchase.purchasedAt" } },
                 { "identity.primary": { "name": "id", "extends": "Purchase.id" } } ] }
             """));
-        // rc.19 `now`: a projection @filter takes a relative date, so only its malformed shape is refused.
+        // `now`: a projection @filter takes a relative date, so only its malformed shape is refused.
         string msg = Single(Load(m), ErrorCode.ERR_BAD_ATTR_FILTER);
         Assert.Contains("malformed relative date", msg);
     }

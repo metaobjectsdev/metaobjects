@@ -10,14 +10,16 @@ import { FilterParseError, parsePageBound, SORT_EXPECTED } from "./list-params.j
 
 // Re-exported so existing importers keep one door; the definitions live in the
 // drizzle-free list-params module, which the ObjectManager Fastify mount also uses.
-export { FilterParseError, parsePageBound, PAGINATION_EXPECTED, RAW_VIEW_MAX_LIMIT, REPORT_MAX_ROWS, ReportTooLargeError, parseReportPage, SORT_EXPECTED } from "./list-params.js";
+export { FilterParseError, parsePageBound, pageLimit, ERROR_CODE_LIMIT_TOO_LARGE, type PageSize, PAGINATION_EXPECTED, RAW_VIEW_MAX_LIMIT, REPORT_MAX_ROWS, ReportTooLargeError, parseReportPage, SORT_EXPECTED } from "./list-params.js";
 import {
   ANY_TEMPORAL_EXPECTED, FORMAT_EXPECTED, PLUS_OFFSET_HINT,
   looksLikeUnencodedPlusOffset, matchesAnyTemporal, matchesFormat, utcIsoIfZoned, utcIsoInstant,
 } from "./filter-value-format.js";
 import { FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_DURATION, FIELD_SUBTYPE_TIMESTAMP } from "@metaobjectsdev/metadata";
 import { canonicalDecimal } from "../decimal-wire.js";
-import { durationToStoredMicros, formatPostgresInterval, parseDurationLiteral } from "../duration-wire.js";
+import {
+  DURATION_MICROS_MAX, DURATION_MICROS_MIN, durationToStoredMicros, formatPostgresInterval, parseDurationLiteral,
+} from "../duration-wire.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: dynamic dispatch over user's Drizzle table
 type AnyTable = any;
@@ -128,7 +130,12 @@ export function parseFilterParams(opts: ParseFilterOpts): ParseFilterResult {
   if (typeof opts.query.search === "string" && opts.query.search !== "") {
     const term = `%${opts.query.search}%`;
     const stringCols = Object.entries(opts.allowlist)
-      .filter(([, rule]) => (rule as FilterFieldRule).subType === "string")
+      // A rule with a `format` (uuid, …) is a typed column on the wire as a string, not
+      // text: ILIKE on a Postgres uuid column is "operator does not exist" (a 500).
+      .filter(([, rule]) => {
+        const r = rule as FilterFieldRule;
+        return r.subType === "string" && r.format === undefined;
+      })
       .map(([field]) => opts.table[field]);
     if (stringCols.length > 0) {
       // `?search` is a TS-only extension (docs/features/api-contract.md) and is
@@ -350,6 +357,9 @@ function coerce(value: unknown, rule: FilterFieldRule, col: unknown, field: stri
   // compare and order as the span does.
   if (rule.format === FIELD_SUBTYPE_DURATION) {
     const micros = parseDurationLiteral(s) as bigint;
+    // A well-formed span past 64 bits of microseconds is no stored value on any database, so it is
+    // a bad operand (400), not an error out of the binder.
+    if (micros > DURATION_MICROS_MAX || micros < DURATION_MICROS_MIN) throw invalidValue(field, op, s, DURATION_IN_RANGE);
     return dialect === "sqlite" || dialect === "mysql" ? durationToStoredMicros(micros) : formatPostgresInterval(micros);
   }
   // A timestamp bound is compared in the same UTC spelling the generated schemas store:
@@ -372,6 +382,7 @@ function coerce(value: unknown, rule: FilterFieldRule, col: unknown, field: stri
 
 /** `expected` for a non-whole bound on an integer-valued field (`integer: true`). */
 const INTEGER_EXPECTED = "integer (a whole number)";
+const DURATION_IN_RANGE = "duration within the 64-bit microsecond range";
 
 function coerceAs(value: unknown, subType: string, field: string, op: string, dateValues?: boolean): unknown {
   if (value === null || value === undefined) return null;

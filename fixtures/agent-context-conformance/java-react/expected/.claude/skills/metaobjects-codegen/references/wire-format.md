@@ -21,13 +21,16 @@ not "fix" a port to match another one, or to match the corpus.
 loaded root; there is no CLI flag and no generator argument.
 
 ```json
-{ "schema_version": 1, "wire": { "decimals": "native", "nullMembers": "native" } }
+{ "schema_version": 1, "wire": { "decimals": "native", "nullMembers": "native", "durations": "native" } }
 ```
 
 - `decimals`: `native` (default) or `string`, the canonical string (`"12.5"`, zero `"0"`, no
   exponent, no trailing zeros).
 - `nullMembers`: `native` (default), `emit` or `omit`. It covers the members of an
   `object.value` only. A top-level entity field that is null is always written as `null`.
+- `durations`: `native` (default) or `iso`, for `field.duration`. `native` writes and reads each
+  port's standard duration form (C# `TimeSpan` is `"01:30:00"`). `iso` writes and reads the
+  canonical ISO-8601 form (`PT1H30M`) in every port.
 - An absent block or key means `native`. An unknown key or value is refused when the config is
   read. There is no `"number"` value: in C#, Java and Kotlin `native` already is a number.
 

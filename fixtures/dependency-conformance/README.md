@@ -13,11 +13,13 @@ cases.json          # { cases: [ { name, tree, treeFiles?, config, lock?,
                      #             resolveFrom?, expectFiles?, expectImported?,
                      #             expectSelected?, expectMigrateGoverned?,
                      #             expectLoadError?, expectErrorFiles?, expectError?,
+                     #             expectLedger?, expectCoverageMeasured?,
                      #             expectCheck? } ] }
-transport-cases.json # the npm / python transport arm (Node `meta deps sync` only — see below)
+transport-cases.json # the npm / python / maven / nuget transport arm (Node `meta deps sync` only — see below)
 README.md
 artifacts/           # pinned dependency artifacts, referenced by cases via `treeFiles`
   acme-common-v1.json
+  acme-common-v1-requirements.json
   acme-common-v1-widened.json
   acme-common-v2-email-removed.json
 ```
@@ -42,6 +44,8 @@ artifacts/           # pinned dependency artifacts, referenced by cases via `tre
                                      // (undefined inMigrateScope admits everything)
   "expectLoadError": "ERR_*",        // OPTIONAL: the collection resolves, then LOADING it fails with this code
   "expectErrorFiles": ["dep:…"],     // OPTIONAL with expectLoadError: source.files[0] of the first error
+  "expectLedger": { "<pkg>::<path>": "<status>" }, // OPTIONAL: the LEDGER arm, EXHAUSTIVE (see below)
+  "expectCoverageMeasured": true,    // OPTIONAL with expectLedger: default false
   "expectError": "ERR_*",            // resolution itself fails with this code
   "expectCheck": { "<name>": "current" | "drifted" | "unresolved" }  // the CHECK arm
 } ] }
@@ -95,6 +99,18 @@ belong to the other.
   (`dep:<name>/<artifact>`) rather than a local one.
 - **`expectError`** — the resolution-failure arm: `resolveCollection` itself must reject
   with this exact code.
+- **`expectLedger`** — OPTIONAL, alongside `expectFiles`: the LEDGER arm. The EXHAUSTIVE map,
+  over every loaded requirement, of the ones that are this project's own ledger, keyed
+  `<effective package>::<dotted path>` (the bare path when the package is empty), each to its
+  effective `@status` (after overlays). A requirement belongs to the ledger unless its package
+  is a dependency's and `requirements.inherit` does not NAME that package (the same
+  explicit-include rule as `scope.include`; `**` names nothing). A port asserts the map through
+  its requirement gate's scan, and the same set of addresses through its requirement-tests
+  identities walk; TypeScript also asserts the paths its requirements pages list (the only port
+  with a generator that lists requirements).
+- **`expectCoverageMeasured`** — OPTIONAL, alongside `expectLedger`, default `false`: whether
+  the gate measures object coverage. Only a requirement the project wrote itself switches it on;
+  an imported requirement never does, inherited or not, as a library's never does.
 
 - **`expectCheck`** — the check arm (`meta deps check` / `verify --deps`): for each declared
   dependency, resolve its `path` against the config's directory, read and validate the
@@ -122,6 +138,10 @@ belong to the other.
 `field.string @maxLength: 120`). `acme-common-v1-widened.json` is identical except
 `@maxLength: 200` (a compatible widening). `acme-common-v2-email-removed.json` is
 identical except the whole `email` field child is absent (a breaking removal).
+`acme-common-v1-requirements.json` is the base artifact plus the publisher's ledger, published
+with `requirements: true`: `requirement.functional Customers` (live, claiming `Customer`, with a
+`ReachableByEmail` child claiming `Customer.email`) and `requirement.architectural AuditedRows`
+(live, claiming `Audited`). The shared-model corpus produces it byte for byte.
 
 Verify the bytes from the repo root:
 
@@ -133,6 +153,7 @@ Expected, exactly:
 
 ```
 sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d fixtures/dependency-conformance/artifacts/acme-common-v1.json
+sha256-4a812237fec408e10eaf1dfa25550cc642c9b3c0e41dc72581db8ba93c87eb57 fixtures/dependency-conformance/artifacts/acme-common-v1-requirements.json
 sha256-fa00b9f3c54a2c302cf269af051589afc0a3217999ac82c54c77e33494638c36 fixtures/dependency-conformance/artifacts/acme-common-v1-widened.json
 sha256-c4ba364bff0071b164b127326c095d6d32915b57781271e0be64a7003c27ce7a fixtures/dependency-conformance/artifacts/acme-common-v2-email-removed.json
 ```
@@ -197,10 +218,10 @@ corpus expectation to update.
 
 `meta deps sync` / `check` find a dependency's manifest directory through its transport
 (DESIGN §2.1). Node `meta` is the only writer of snapshots and the lock, so only Node runs
-this arm; every port then loads the snapshot, and `cases.json` carries an `npm` and a
-`python` dependency (`an-npm-dependency-loads-from-its-committed-snapshot`,
-`a-python-dependency-loads-from-its-committed-snapshot`) to prove those load with nothing
-installed.
+this arm; every port then loads the snapshot, and `cases.json` carries an `npm`, a
+`python`, a `maven` and a `nuget` dependency (`an-npm-dependency-loads-from-its-committed-snapshot`,
+`a-python-dependency-…`, `a-maven-dependency-…`, `a-nuget-dependency-…`) to prove those load with
+nothing installed, and that every port's config and lock reader accepts them.
 
 ```jsonc
 { "cases": [ {
@@ -208,6 +229,12 @@ installed.
   "tree": { … }, "treeFiles": { … },   // as in cases.json: what an install leaves on disk
   "config": { … },                     // written to <resolveFrom>/.metaobjects/config.json
   "resolveFrom": "app",
+  "zipFiles": { "<path>": { "<entry>": { "text": "…" } | { "file": "artifacts/…" } } },
+                                       // OPTIONAL: archives (a `.jar`, a `.nupkg`) the runner
+                                       // writes, each entry inline text or a corpus file
+  "env": { "MAVEN_REPO_LOCAL": "m2" }, // OPTIONAL: environment variables that name a directory,
+                                       // mapped to project-root-relative paths. The runner always
+                                       // sets HOME to <root>/home and clears the others
   "pythonPath": ["site"],              // OPTIONAL: project-root-relative directories put on the
                                        // interpreter's import path (PYTHONPATH), standing in for
                                        // an installed site-packages
@@ -220,14 +247,20 @@ installed.
 
 Exactly one of `expectLock`, `expectError` per case. An `npm` package is laid out under a
 `node_modules` directory (beside the config, or hoisted above it); a `python` package under
-a `pythonPath` directory. The runner clears `$METAOBJECTS_PYTHON` and `$VIRTUAL_ENV`, so the
+a `pythonPath` directory; a `maven` jar under a local repository (`MAVEN_REPO_LOCAL`, a
+`settings.xml` under the case's `home/.m2`, or `home/.m2/repository`); a `nuget` package under a
+global packages folder (`NUGET_PACKAGES` or `home/.nuget/packages`), either extracted or as the
+`.nupkg` alone. The jar and the package hold the pair the S8/S9 publishers write
+(`metaobjects.pkg.json` and the artifact, byte-identical across publishers per
+`shared-model-conformance`), under `metaobjects/` or the declared `dir`. The runner clears `$METAOBJECTS_PYTHON` and `$VIRTUAL_ENV`, so the
 interpreter is `python3` on `PATH`; the interpreter ladder itself is a unit test
 (`cli/test/deps-sync-packages.test.ts`), because it depends on the machine. No case
 touches a network or a package manager.
 
-The refusals: a package not installed, a `dir` the package does not ship, a `dir` that
-climbs out of the package, and a Python module that is not a package are
-`ERR_DEPENDENCY_UNRESOLVED`; a `dir` that exists but holds no `metaobjects.pkg.json` is
+The refusals: a package not installed (or, for `maven` and `nuget`, not in the local cache),
+a `dir` the package does not ship, a `dir` that climbs out of the package, a jar with no model
+directory, a `maven` coordinate that carries a version, and a Python module that is not a
+package are `ERR_DEPENDENCY_UNRESOLVED`; a `dir` that exists but holds no `metaobjects.pkg.json` is
 `ERR_DEPENDENCY_MANIFEST_INVALID`.
 
 ## Which arms each port runs
@@ -236,23 +269,32 @@ climbs out of the package, and a Python module that is not a package are
   (`sdk/test/dependency-conformance.test.ts`), the check arm
   (`cli/test/dependency-check-conformance.test.ts`), and the transport arm
   (`cli/test/dependency-transport-conformance.test.ts`).
-- **Python** — resolution, load-time failure, lock/snapshot integrity. Not the check arm: Python
-  has no `deps check` yet, so its runner filters the `expectCheck` cases out. Not the transport
-  arm: Python never syncs.
+- **Python** — resolution, load-time failure, lock/snapshot integrity, and the check arm
+  (`metaobjects deps check` and `metaobjects verify --deps`,
+  `tests/conformance/test_dependency_conformance.py`). Its check resolves the `path` transport
+  only; an `npm` / `python` dependency reports `unresolved` and points at the Node `meta deps
+  check`, which the corpus does not exercise. Not the transport arm: Python never syncs.
 - **Java** — resolution, load-time failure, lock/snapshot integrity
-  (`DependencyConformanceTest`). Not the check arm: Java has no `deps check`, so its runner
-  skips the `expectCheck` cases. Not the transport arm: Java never syncs.
+  (`DependencyConformanceTest`), the check arm (`DependencyCheckConformanceTest`, over
+  `Dependencies.check`, the engine of `metaobjects:verify -Dmeta.verify.mode=deps`), and the
+  resolution and load-time arms again through the Spring runtime's classpath reader
+  (`DependencySnapshotRuntimeConformanceTest`: no file path, the project's own files handed over as
+  URIs). Not the transport arm: Java never syncs.
   `refuseUnownedPackages` runs after the loader's own errors,
   as the ordering note above requires. Java's `inScope` is the import-exclusion conjunct only,
   like Python's.
-- **Kotlin** — inherits via Java: it loads through the same loader and Maven plugin. The
+- **Kotlin** — inherits via Java: it loads through the same loader and Maven plugin, and checks
+  through the same `metaobjects:verify` goal. The
   Kotlin generators are covered by a codegen test that an imported entity emits nothing.
+- **The ledger arm** (`expectLedger`) runs in every port but Kotlin, which shares Java's gate:
+  TypeScript `cli/test/dependency-ledger-conformance.test.ts` (the gate lives in the CLI
+  package), Python, Java and C# in the same runners named below.
 - **C#** — the resolution arm: resolution, load-time failure, lock/snapshot integrity, on the
   neutral source ladder and again through the explicit metadata directory (C# has no native
   config surface, so `.metaobjects/config.json` is where a dependency is declared at every
-  rung). `inScope` is Python's formula, not TypeScript's. Not the check arm: C# has no
-  `deps check` yet (that is `verify --deps`), so its runner skips the `expectCheck` cases. Not the
-  transport arm: C# never syncs. The runner is
+  rung). `inScope` is Python's formula, not TypeScript's. Also the check arm
+  (`dotnet meta verify --deps`, through `DependencyResolver.CheckDependencies`), which like
+  Python's resolves the `path` transport only. Not the transport arm: C# never syncs. The runner is
   `server/csharp/MetaObjects.Conformance.Tests/DependencyConformanceTests.cs`.
 
 ## Reference implementation

@@ -12,9 +12,13 @@ export interface InitFlags {
   printOnly: boolean;
   refreshDocs: boolean;
   d1: boolean;
+  /** `--dialect`; validated by `init()`, not here, so every door refuses the same values. */
+  dialect: string | undefined;
   servers: string[];
   clients: string[];
   noSkills: boolean;
+  /** `--skills-dir`; validated by `init()`, not here, so every door refuses the same values. */
+  skillsDir: string | undefined;
   wireRoot: boolean;
   docsOnly: boolean;
   configOnly: boolean;
@@ -28,9 +32,11 @@ export const INIT_OPTIONS = {
   "print-only": { type: "boolean", default: false },
   "refresh-docs": { type: "boolean", default: false },
   d1: { type: "boolean", default: false },
+  dialect: { type: "string" },
   server: { type: "string", multiple: true },
   client: { type: "string", multiple: true },
   "no-skills": { type: "boolean", default: false },
+  "skills-dir": { type: "string" },
   "no-wire-root": { type: "boolean", default: false },
   "docs-only": { type: "boolean", default: false },
   "config-only": { type: "boolean", default: false },
@@ -50,9 +56,11 @@ export function parseInitArgs(argv: string[]): InitFlags {
     printOnly: !!values["print-only"],
     refreshDocs: !!values["refresh-docs"],
     d1: !!values.d1,
+    dialect: values.dialect as string | undefined,
     servers: (values.server as string[] | undefined) ?? [],
     clients: (values.client as string[] | undefined) ?? [],
     noSkills: !!values["no-skills"],
+    skillsDir: values["skills-dir"] as string | undefined,
     wireRoot: !values["no-wire-root"],
     docsOnly: !!values["docs-only"],
     configOnly: !!values["config-only"],
@@ -69,6 +77,7 @@ export interface AgentDocsFlags {
   clients: string[];
   out: string | undefined;
   noSkills: boolean;
+  skillsDir: string | undefined;
   wireRoot: boolean;
 }
 
@@ -78,6 +87,7 @@ export const AGENT_DOCS_OPTIONS = {
   client: { type: "string", multiple: true },
   out: { type: "string" },
   "no-skills": { type: "boolean", default: false },
+  "skills-dir": { type: "string" },
   "no-wire-root": { type: "boolean", default: false },
 } as const;
 
@@ -93,6 +103,7 @@ export function parseAgentDocsArgs(argv: string[]): AgentDocsFlags {
     clients: (values.client as string[] | undefined) ?? [],
     out: values.out as string | undefined,
     noSkills: !!values["no-skills"],
+    skillsDir: values["skills-dir"] as string | undefined,
     wireRoot: !values["no-wire-root"],
   };
 }
@@ -103,7 +114,7 @@ export function parseAgentDocsArgs(argv: string[]): AgentDocsFlags {
 
 export interface GenFlags {
   dryRun: boolean;
-  /** ADR-0062 — run in full even when nothing changed since the last run. */
+  /** ADR-0064 — run in full even when nothing changed since the last run. */
   force: boolean;
   entities: string[];
   /** First-time-on-existing-file behavior. Default: refuse a file that cannot be
@@ -203,11 +214,14 @@ function parseGeneratorNames(raw: string): string[] {
 
 export interface ExportFlags {
   out: string | undefined;
+  /** Emit the EFFECTIVE tree: inherited members and attributes materialized, overlays merged. */
+  effective: boolean;
 }
 
 /** The flag table `parseExportArgs` parses. Exported so the help text can be gated against it. */
 export const EXPORT_OPTIONS = {
   out: { type: "string" },
+  effective: { type: "boolean", default: false },
 } as const;
 
 export function parseExportArgs(argv: string[]): ExportFlags {
@@ -219,6 +233,7 @@ export function parseExportArgs(argv: string[]): ExportFlags {
   });
   return {
     out: values.out,
+    effective: values.effective,
   };
 }
 
@@ -318,6 +333,10 @@ export const ALLOW_TOKENS = [
   // views and materialized views owned by OTHER applications, which this tool
   // neither manages nor can restore. `--allow drop-view` alone never cascades.
   "drop-view-cascade",
+  // drop-column-read-by-view permits dropping a column that a live view this tool
+  // does not own (`@unmanaged`, or outside the scoped schemas) still reads. The tool
+  // never rewrites such a view, so without this `migrate` refuses at plan time.
+  "drop-column-read-by-view",
   // adopt-view permits overwriting an existing view that carries no MetaObjects
   // fingerprint — i.e. taking ownership of a hand-written view, or of one created
   // before fingerprinting existed. Every environment upgrading from an older
@@ -383,15 +402,19 @@ export interface VerifyFlags {
   /** Run the codegen-drift gate: is the GENERATED contribution of each file current? */
   codegen: boolean;
   /**
-   * With `--codegen`: fail the build on any hand edit inside a generated file, for teams
-   * that want generated code untouchable. Off by default, because hand edits are the
-   * documented workflow (`meta gen` three-way-merges them) — without it they are
-   * reported as a notice and never change the exit code. Refused without `--codegen`:
-   * it modifies that gate and would otherwise parse cleanly and do nothing.
+   * With `--codegen`: fail the build on any hand edit inside a generated file for THIS run,
+   * whatever `verify.handEdits` in `.metaobjects/config.json` says. Refused without
+   * `--codegen`: it modifies that gate and would otherwise parse cleanly and do nothing.
    */
   forbidHandEdits: boolean;
   /**
-   * ADR-0062 — `--codegen` renders and compares everything, even where a local run could
+   * With `--codegen`: list hand edits as a notice and exit 0 for THIS run, relaxing a
+   * project's `verify.handEdits: "fail"`. Refused without `--codegen`, and refused beside
+   * `--forbid-hand-edits`, which asks the opposite.
+   */
+  allowHandEdits: boolean;
+  /**
+   * ADR-0064 — `--codegen` renders and compares everything, even where a local run could
    * answer from the stored `meta gen` fingerprint. CI always does; this is for a local run.
    */
   full: boolean;
@@ -518,6 +541,7 @@ export const VERIFY_OPTIONS = {
   templates: { type: "boolean", default: false },
   codegen: { type: "boolean", default: false },
   "forbid-hand-edits": { type: "boolean", default: false },
+  "allow-hand-edits": { type: "boolean", default: false },
   full: { type: "boolean", default: false },
   // Removed in 1.1.0 (ADR-0034 Amendment 9). Still parsed, so `meta verify --docs` prints
   // where the check went instead of an unknown-flag error.
@@ -586,6 +610,15 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
       "--forbid-hand-edits only applies to the codegen gate. Run: meta verify --codegen --forbid-hand-edits",
     );
   }
+  const allowHandEdits = !!values["allow-hand-edits"];
+  if (allowHandEdits && !codegen) {
+    throw new Error(
+      "--allow-hand-edits only applies to the codegen gate. Run: meta verify --codegen --allow-hand-edits",
+    );
+  }
+  if (allowHandEdits && forbidHandEdits) {
+    throw new Error("--allow-hand-edits and --forbid-hand-edits ask for opposite things; pass one of them.");
+  }
   const docs = !!values.docs;
   const deps = !!values.deps;
   const replay = !!values.replay;
@@ -610,6 +643,7 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
     templates,
     codegen,
     forbidHandEdits,
+    allowHandEdits,
     full: !!values.full,
     docs,
     deps,

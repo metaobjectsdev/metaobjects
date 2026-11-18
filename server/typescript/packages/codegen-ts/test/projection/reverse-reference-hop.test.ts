@@ -75,8 +75,8 @@ describe("R-walk — a @via hop over the reverse of an identity.reference", () =
     expect(errors).toEqual([]);
     const [v] = buildProjectionViews(root, { dialect: "postgres" });
     expect(v!.sql).toContain("COUNT(DISTINCT c.id) AS contract_count");
-    expect(v!.sql).toContain("LEFT OUTER JOIN public.contracts c ON c.player_id = p.id");
-    expect(v!.sql).toMatch(/\(SELECT c0\.on_file FROM public\.contracts c0 WHERE c0\.player_id = p\.id ORDER BY c0\.id DESC NULLS LAST, c0\.id ASC LIMIT 1\) AS latest_on_file/);
+    expect(v!.sql).toContain("LEFT OUTER JOIN contracts c ON c.player_id = p.id");
+    expect(v!.sql).toMatch(/\(SELECT c0\.on_file FROM contracts c0 WHERE c0\.player_id = p\.id ORDER BY c0\.id DESC NULLS LAST, c0\.id ASC LIMIT 1\) AS latest_on_file/);
   });
 
   test("two references from the holder make the reverse hop ambiguous, named", async () => {

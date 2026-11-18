@@ -37,7 +37,7 @@ public sealed class OutputPathsTests
     {
         Entities = root.Objects(), Root = root,
         Config = new GenConfig
-        {
+        { OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true,
             OutDir = "/tmp", Namespace = "Acme.Generated",
             PackageNamespaces = mapped ? new() { ["acme::alpha"] = "Acme.Alpha", ["acme::beta"] = "Acme.Beta" } : new(),
         },
@@ -48,7 +48,7 @@ public sealed class OutputPathsTests
     {
         Entities = root.Objects(), Root = root,
         Config = new GenConfig
-        {
+        { OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true,
             OutDir = "/tmp", Namespace = "Acme.Generated",
             PackageNamespaces = new() { ["acme::alpha"] = "Acme.Shared", ["acme::beta"] = "Acme.Shared" },
         },
@@ -58,7 +58,8 @@ public sealed class OutputPathsTests
     public void A_file_is_written_under_its_objects_package()
     {
         var root = Load();
-        Assert.Equal("acme/alpha/Note.g.cs", OutputPaths.Of(root.Objects().First(o => o.ResolutionKey() == "acme::alpha::Note"), "Note.g.cs"));
+        Assert.Equal("acme/alpha/Note.g.cs", OutputPaths.Of(root.Objects().First(o => o.ResolutionKey() == "acme::alpha::Note"),
+            new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", OutputLayout = OutputLayout.Package }, "Note.g.cs"));
     }
 
     [Fact]

@@ -2,8 +2,8 @@
 // both `meta migrate` and `meta verify --db`. Keeping a single copy avoids the
 // two commands drifting on which `--allow` tokens exist or how a change reads.
 
-import { allowOptionFor, describeSqlType, isViewRecreateOnly, suggestColumnRenames } from "@metaobjectsdev/migrate-ts";
-import type { AllowOptions, Change, ColumnRenameSuggestion, ViewChangeReason } from "@metaobjectsdev/migrate-ts";
+import { allowOptionFor, describeSqlType, isViewRecreateOnly, suggestColumnRenames, viewsNamingRenamedColumns } from "@metaobjectsdev/migrate-ts/offline";
+import type { AllowOptions, Change, ColumnRenameSuggestion, ViewChangeReason } from "@metaobjectsdev/migrate-ts/offline";
 import type { BlockedEntry } from "./output.js";
 
 // Map CLI allow tokens → migrate-ts AllowOptions field names.
@@ -27,6 +27,8 @@ export const ALLOW_TOKEN_MAP: Record<string, keyof AllowOptions> = {
   "drop-view": "dropView",
   // Gates DROP VIEW ... CASCADE. Additional to drop-view, never implied by it.
   "drop-view-cascade": "dropViewCascade",
+  // Gates dropping a column a view this tool does not own still reads.
+  "drop-column-read-by-view": "dropColumnReadByView",
   // Gates overwriting an unfingerprinted (hand-written or pre-fingerprint) view.
   "adopt-view": "adoptView",
   "nullable-to-not-null": "nullableToNotNull",
@@ -68,7 +70,10 @@ export function describeChange(c: Change): string {
     case "rename-constraints":
       return `${c.table} ${[...(c.constraintRenames ?? []), ...(c.indexRenames ?? [])].map((r) => `${r.from} → ${r.to}`).join(", ")}`;
     case "add-column": return `${c.table}.${c.column.name}`;
-    case "drop-column": return `${c.table}.${c.column}`;
+    case "drop-column":
+      return c.readBy === undefined || c.readBy.length === 0
+        ? `${c.table}.${c.column}`
+        : `${c.table}.${c.column} (read by view ${c.readBy.join(", ")})`;
     case "rename-column": return `${c.table}.${c.from} → ${c.table}.${c.to}`;
     case "change-column-type": {
       // A type change carries its column's default change, so the default is reported here.
@@ -146,13 +151,19 @@ function tableList(tables: readonly string[]): string {
 
 /**
  * One line naming the views a migration drops and recreates only because it alters a table
- * they read. Their definitions match the metadata, and the migration needs the pair, but
+ * they read. Their declared definitions are unchanged, and the migration needs the pair, but
  * without this line the DROP VIEW / CREATE VIEW in the SQL reads like a view change (D3).
  */
 export function viewRecreateNote(changes: readonly Change[]): string | undefined {
-  const views = changes.flatMap((c) => c.kind === "create-view" && isViewRecreateOnly(c) ? [c.view.name] : []);
+  // A view whose body still names a column this migration renames does NOT match the change,
+  // whatever its fingerprint says: an `@sql` body is compared with itself. The advisory
+  // `viewsNamingRenamedColumns` reports it; this line must not vouch for it.
+  const stale = new Set(viewsNamingRenamedColumns(changes).flatMap((a) =>
+    a.kind === "view-names-renamed-column" ? [a.view] : []));
+  const views = changes.flatMap((c) =>
+    c.kind === "create-view" && isViewRecreateOnly(c) && !stale.has(c.view.name) ? [c.view.name] : []);
   if (views.length === 0) return undefined;
-  return `${views.length} view(s) match the metadata and are recreated only because the migration ` +
+  return `${views.length} view(s) keep their declared definition and are recreated only because the migration ` +
     `alters a table they read: ${views.join(", ")}`;
 }
 

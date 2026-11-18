@@ -1,0 +1,20 @@
+<div class="crumbs">{{{crumbsHtml}}}</div>
+<h1>{{{levelHtml}}}{{{name}}} {{{statusHtml}}}{{{dispositionHtml}}}{{{verdictHtml}}}</h1>
+<span hidden data-pagefind-filter="kind">requirement</span>
+<div class="sub mono">{{{address}}}</div>
+<div class="grid two page">
+<div>
+  <div class="card"><h3 class="first">Statement</h3>{{{statement}}}<h3>Counterexample</h3>{{{counterexample}}}{{#hasDescription}}<h3>Scope</h3><div class="sub">{{{description}}}</div>{{/hasDescription}}</div>
+  <h2>Implemented by</h2>
+  {{#hasLinks}}<div class="tablewrap"><table><tr><th>Reference</th><th>Kind</th><th>Resolves</th></tr>{{#linkRows}}<tr><td>{{{refHtml}}}</td><td class="mono">{{{kind}}}</td><td>{{{resolvesHtml}}}</td></tr>{{/linkRows}}</table></div>{{/hasLinks}}
+  {{^hasLinks}}<div class="sub">{{{linksEmpty}}}</div>{{/hasLinks}}
+  {{#hasBelow}}<h2>Below ({{childCount}}){{#deeper}} <span class="h-sub">{{belowCount}} in all</span>{{/deeper}}</h2>{{{belowBarHtml}}}<ul class="kids">{{#children}}<li>{{{levelHtml}}}{{{linkHtml}}} {{{statusHtml}}}</li>{{/children}}</ul>{{/hasBelow}}
+  <div class="toolbar">{{#sliceHref}}<a href="{{{sliceHref}}}">Show this slice on the model map</a>{{/sliceHref}}{{#sliceHref}}{{#traceHref}} · {{/traceHref}}{{/sliceHref}}{{#traceHref}}<a href="{{{traceHref}}}">Trace to code</a>{{/traceHref}}</div>
+</div>
+<div>
+  <h2>What the build proves about this entry</h2>
+  <div class="tablewrap"><table class="proof">{{#proof}}<tr><td>{{{what}}}</td><td>{{{verdictHtml}}}</td><td>{{{howHtml}}}</td></tr>{{/proof}}</table></div>
+  {{#trackedHtml}}<h3>Tracked by</h3>{{{trackedHtml}}}{{/trackedHtml}}
+  {{#digest}}<h3>Statement digest</h3><code class="digest">{{{digest}}}</code><div class="sub small">Moves when the statement changes; a summary of this entry would be pinned to it.</div>{{/digest}}
+</div>
+</div>

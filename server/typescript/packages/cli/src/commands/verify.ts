@@ -10,24 +10,30 @@
 import { ENUM_LENGTH_HINT, isEnumLengthRefusal } from "../lib/enum-length-refusal.js";
 import { existsSync } from "node:fs";
 import { join, relative, resolve as resolvePath } from "node:path";
-import { parseVerifyArgs, type MigrateFlags } from "../lib/args.js";
+import { parseVerifyArgs, type MigrateFlags, type VerifyFlags } from "../lib/args.js";
 import { log } from "../lib/log.js";
+import { requirementLedgerRows, type RequirementLedgerRow } from "../lib/requirement-ledger.js";
+import { warnUnenforcedFkTargets } from "../lib/fk-target-warning.js";
+import { requirementCountsOf, requirementDiagnosticRow, requirementPayload, type RequirementCounts, type RequirementDiagnosticRow } from "../lib/requirement-payload.js";
 import { emitStructured, type OutputFormat } from "../lib/format.js";
 import {
   antiPatternRows, missingBaseUrlRows, removedPropRows, ranSection, skippedSection, warnCapped,
   type AdvisoryDiagnosticRow, type AdvisoryFindingRow, type AdvisorySection,
   libraryPrefixRows,
   unindexedFkRows,
+  warnAdvisory,
   referentialActionConflictRows,
+  unboundedListRows,
   advisoryHelpLines,
 } from "../lib/advisory.js";
 import { scanForUnprovenancedLibraryPrefix } from "../lib/library-prefix-advisory.js";
-import { scanForUnindexedForeignKeys, type UnindexedFkFinding } from "../lib/fk-index-advisory.js";
+import { scanForUnindexedForeignKeys, summarizeUnindexedFks, type UnindexedFkFinding } from "../lib/fk-index-advisory.js";
 import { scanForReferentialActionConflicts, type ReferentialActionConflictFinding } from "../lib/referential-action-advisory.js";
-import { warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
+import { warnIfAgentContextMissesRequirements, warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
 import { warnIfManifestIgnored } from "../lib/manifest-ignored-check.js";
 import { scanSourceForAntiPatterns } from "../lib/anti-patterns.js";
 import { scanForMissingBaseUrl, type BaseUrlFinding } from "../lib/base-url-advisory.js";
+import { scanForUnsetPagination, type PaginationFinding } from "../lib/pagination-advisory.js";
 import { scanForRemovedProps, type RemovedPropFinding } from "../lib/removed-prop-advisory.js";
 import { replayRemedy } from "../lib/replay-remedy.js";
 import { FileProvider, templateReferenceLine } from "../lib/file-provider.js";
@@ -109,6 +115,7 @@ import {
   loadMemory,
   resolveCollection,
   type DependencySpec,
+  type HandEditsPolicy,
 } from "@metaobjectsdev/sdk";
 import { checkDependencies, ERR_DEPENDENCY_UPSTREAM_DRIFT, formatCheckLine, readLockOrThrow } from "../lib/dependency-sync.js";
 import { exclusionNotes, importedOption, migrateScopeMismatch } from "../lib/migrate-scope.js";
@@ -131,8 +138,10 @@ import {
   physicalNamingOf,
   WIRE_DECIMALS,
   WIRE_NULL_MEMBERS,
+  WIRE_DURATIONS,
   WIRE_KEY_DECIMALS,
   WIRE_KEY_NULL_MEMBERS,
+  WIRE_KEY_DURATIONS,
   type WireFormat,
 } from "@metaobjectsdev/metadata";
 import {
@@ -299,7 +308,7 @@ export async function verifyCommand(
   // project.
   const genConfigDir = resolveGenConfigDir(cwd, collection.configDir);
 
-  // Advisory: nudge to refresh the .claude/skills docs if they predate this CLI.
+  // Advisory: nudge to refresh the agent context and skills if they predate this CLI.
   warnIfAgentContextStale(projectRoot);
   // Advisory: the committed hash manifest is what makes hand-edit detection work on a
   // machine that did not generate the output. Silent unless it is ignored. Keyed on
@@ -327,6 +336,16 @@ export async function verifyCommand(
     forgeConfig = undefined;
     configLoadError = e;
   }
+  // A config that EXISTS but fails to load must be reported as itself in EVERY mode: continuing
+  // without its providers turns a config error into a misleading ERR_UNKNOWN_SUBTYPE on the
+  // custom vocabulary those providers register.
+  if (forgeConfig === undefined && existsSync(join(genConfigDir, "metaobjects.config.ts"))) {
+    log.error(
+      "meta verify: metaobjects.config.ts exists but failed to load: " +
+        (configLoadError instanceof Error ? configLoadError.message : String(configLoadError)),
+    );
+    return 2;
+  }
   // Both of the gen config's contributions to the load, together — see
   // `loadMemoryOptionsFrom`. Threading `providers` and forgetting `libraries` is how
   // a shipped library became unloadable through the CLI (#333).
@@ -337,13 +356,7 @@ export async function verifyCommand(
   // keeps a passing bare verify; the note says what was skipped and why.
   if (!flags.anyExplicit) {
     if (forgeConfig !== undefined) runCodegen = true;
-    else if (existsSync(join(genConfigDir, "metaobjects.config.ts"))) {
-      log.error(
-        "meta verify: metaobjects.config.ts exists but failed to load, so the codegen gate cannot run: " +
-          (configLoadError instanceof Error ? configLoadError.message : String(configLoadError)),
-      );
-      return 2;
-    } else say("meta verify — codegen gate skipped: no metaobjects.config.ts found, so there is no generated output to diff against");
+    else say("meta verify — codegen gate skipped: no metaobjects.config.ts found, so there is no generated output to diff against");
   }
 
   // ADR-0023 strict-by-default (#96): verify loads strict unless --lax is passed,
@@ -436,7 +449,7 @@ export async function verifyCommand(
   // can carry them IN FULL. They were previously formatted straight to stderr and
   // existed nowhere else, which is why 96% of a 239-finding report was unreachable
   // by any flag, env var or format.
-  let requirementSection: AdvisorySection<AdvisoryDiagnosticRow> =
+  let requirementSection: AdvisorySection<RequirementDiagnosticRow> =
     skippedSection("the requirement pass did not run");
   let antiPatternSection: AdvisorySection<AdvisoryFindingRow> =
     skippedSection("the advisory anti-pattern pass did not run");
@@ -461,6 +474,10 @@ export async function verifyCommand(
   // then omits the block rather than reporting zeroes that would read as an empty
   // ledger instead of no ledger.
   let requirementCounts: RequirementCounts | undefined;
+  // One row per requirement: its claim digest, each link as resolved, and the codes
+  // reported against its path. Undefined exactly when `requirementCounts` is — same
+  // opt-in-by-declaration rule.
+  let requirementLedger: RequirementLedgerRow[] | undefined;
 
   // Whether the schema gate is selected. `runSchemaVerify` makes this decision
   // internally (it is selected by --db or --dialect d1, not by a subverb flag);
@@ -555,6 +572,7 @@ export async function verifyCommand(
         exitCode,
         requirements: requirementSection,
         requirementCounts,
+        requirementLedger,
         antiPatterns: antiPatternSection,
         overlays: overlaySection,
         names: nameSection,
@@ -741,6 +759,7 @@ export async function verifyCommand(
       } catch (err) {
         if (isEnumLengthRefusal(err)) return refuseEnumLength(err);
         if (isInvalidCheckNameError(err)) { log.error(`verify: ${err.message}`); return 1; }
+        if (isFkTargetNotUniqueError(err)) return refuseFkTarget(err);
         throw err;
       }
     }
@@ -789,6 +808,8 @@ export async function verifyCommand(
     // command line it shares with local runs.
     const scan = scanRequirements(root, {
       coverable: collection.inCoverage,
+      inLedger: collection.inLedger,
+      imported: collection.imported,
       requireImplementers: flags.requireImplementers || process.env.META_REQUIRE_IMPLEMENTERS === "1",
     });
     const diags = [...checkRequirements(root, scan)];
@@ -797,6 +818,9 @@ export async function verifyCommand(
     // passes cannot be told apart from a gate that checked nothing, and the
     // recorded-gap counts are the whole reason to keep a ledger.
     const s = summariseRequirements(root, scan);
+    // Advisory: requirements declared, and the scaffolded agent context has no requirements
+    // pages (it predates their installing unconditionally). Never reaches the exit code.
+    if (s !== undefined && s.total > 0) warnIfAgentContextMissesRequirements(projectRoot, true);
     if (s !== undefined) {
       const order = [...REQUIREMENT_STATUSES];
       const parts = order
@@ -837,22 +861,7 @@ export async function verifyCommand(
       // reason the text line carries it: the claimed/total ratio is only ever taken
       // over what actually loaded, so a reader needs the denominator's provenance to
       // notice a spine that covers half an estate.
-      requirementCounts = {
-        total: s.total,
-        functional: s.functional,
-        architectural: s.architectural,
-        byStatus: order
-          .filter((k) => (s.byStatus[k] ?? 0) > 0)
-          .map((k) => ({ status: k, count: s.byStatus[k] ?? 0 })),
-        undecided: s.undecided,
-        // Absent when coverage was not measured (FR-043 §5.4), never zeroed: a reader
-        // cannot tell `0/0 claimed` from "not measured", and the two mean opposite
-        // things.
-        ...(s.entitiesTotal === undefined
-          ? {}
-          : { entitiesClaimed: s.entitiesClaimed ?? 0, entitiesTotal: s.entitiesTotal }),
-        metadataFiles: collection.files.length,
-      };
+      requirementCounts = requirementCountsOf(s, collection.files.length);
     }
 
     const errors = diags.filter((d) => d.severity === "error");
@@ -898,10 +907,15 @@ export async function verifyCommand(
     // Everything this pass found, uncapped, for the structured payload — gate
     // diagnostics and lint findings in one list, each row saying which it is, so a
     // reader can tell what can fail a build from what never can.
-    requirementSection = ranSection<AdvisoryDiagnosticRow>([
-      ...diags.map((d) => toDiagnosticRow(d, "gate")),
-      ...lint.map((d) => toDiagnosticRow(d, "lint")),
+    requirementSection = ranSection<RequirementDiagnosticRow>([
+      ...diags.map((d) => requirementDiagnosticRow(d, "gate")),
+      ...lint.map((d) => requirementDiagnosticRow(d, "lint")),
     ]);
+    // The same findings per ENTRY, beside what each entry declares — so a reader learns an
+    // entry was checked and found clean from a row saying so, not from its path's absence.
+    if (s !== undefined && structured) {
+      requirementLedger = requirementLedgerRows(root, scan, diags, lint);
+    }
 
     if (errors.length > 0) {
       log.error(`meta verify — requirements: ${errors.length} error(s).`);
@@ -1084,10 +1098,10 @@ export async function verifyCommand(
       // Same discipline as its siblings: an advisory scan never breaks verify.
     }
 
-    // Foreign keys migrate emits with no index on the referencing columns. Advisory: an
-    // automatic index would propose a migration to every existing adopter, so this names
-    // each one and says how to declare it (`index.lookup`) instead. Read off the SAME
-    // expected schema `meta migrate` builds, so "covered" means covered in its DDL.
+    // Foreign keys migrate emits with no index on the referencing columns. Advisory: the
+    // index is opt-in (`migrate.foreignKeyIndexes`), since turning it on proposes a migration
+    // to an existing project, so this names each one and says how to index it. Read off the
+    // SAME expected schema `meta migrate` builds, so with the option on there is none.
     let unindexedFks: UnindexedFkFinding[] = [];
     // Skipped on MySQL: MetaObjects emits no DDL there, and InnoDB indexes every foreign
     // key itself.
@@ -1115,55 +1129,76 @@ export async function verifyCommand(
       // advisory only — a model the schema builder refuses is migrate's to report.
     }
 
+    // Generated list routes with no page size: a route generator is wired and the project
+    // sets no `api.pagination`. Same discipline as its siblings.
+    let unboundedLists: PaginationFinding[] = [];
+    try {
+      unboundedLists = scanForUnsetPagination(
+        (forgeConfig?.generators ?? []).map((g) => (typeof g === "string" ? g : g.name)),
+        collection.apiPagination,
+      );
+    } catch {
+      // advisory only.
+    }
+
+    const unindexedFkSummary = summarizeUnindexedFks(unindexedFks);
     antiPatternSection = ranSection([
       ...antiPatternRows(findings),
       ...missingBaseUrlRows(baseUrl),
       ...removedPropRows(removedProps),
       ...libraryPrefixRows(libraryPrefix),
-      ...unindexedFkRows(unindexedFks),
+      ...unindexedFkRows(unindexedFkSummary === undefined ? [] : [unindexedFkSummary]),
       ...referentialActionConflictRows(actionConflicts),
+      ...unboundedListRows(unboundedLists),
     ]);
     if (findings.length > 0) {
       log.warn(
         `meta verify — ${findings.length} place(s) hand-roll what MetaObjects can model ` +
           `(advisory — does not fail the build):`,
       );
-      warnCapped(findings.map((f) => `  ${f.message}`), flags.limit, { structured });
+      warnAdvisory(findings.map((f) => `  ${f.message}`), flags.limit, { structured });
     }
     if (baseUrl.length > 0) {
       log.warn(
         `meta verify — ${baseUrl.length} entity-fetcher provider(s) mounted with no baseUrl ` +
           `while apiPrefix is "${forgeConfig?.apiPrefix ?? ""}" (advisory — does not fail the build):`,
       );
-      warnCapped(baseUrl.map((f) => `  ${f.message}`), flags.limit, { structured });
+      warnAdvisory(baseUrl.map((f) => `  ${f.message}`), flags.limit, { structured });
     }
     if (removedProps.length > 0) {
       log.warn(
         `meta verify — ${removedProps.length} provider(s) still mounted with a prop 1.0 ` +
           `renamed away (advisory — does not fail the build, but the runtime will):`,
       );
-      warnCapped(removedProps.map((f) => `  ${f.message}`), flags.limit, { structured });
+      warnAdvisory(removedProps.map((f) => `  ${f.message}`), flags.limit, { structured });
     }
-    if (unindexedFks.length > 0) {
+    if (unboundedLists.length > 0) {
+      log.warn(
+        `meta verify — generated list routes have no page size ` +
+          `(advisory — does not fail the build):`,
+      );
+      warnAdvisory(unboundedLists.map((f) => `  ${f.message}`), flags.limit, { structured });
+    }
+    if (unindexedFkSummary !== undefined) {
       log.warn(
         `meta verify — ${unindexedFks.length} foreign key(s) with no index on the referencing ` +
           `column(s) (advisory — does not fail the build):`,
       );
-      warnCapped(unindexedFks.map((f) => `  ${f.message}`), flags.limit, { structured });
+      warnAdvisory([`  ${unindexedFkSummary.message}`], flags.limit, { structured });
     }
     if (actionConflicts.length > 0) {
       log.warn(
         `meta verify — ${actionConflicts.length} foreign key(s) whose two sides declare relationships ` +
           `that disagree on its referential action (advisory — does not fail the build):`,
       );
-      warnCapped(actionConflicts.map((f) => `  ${f.message}`), flags.limit, { structured });
+      warnAdvisory(actionConflicts.map((f) => `  ${f.message}`), flags.limit, { structured });
     }
     if (libraryPrefix.length > 0) {
       log.warn(
         `meta verify — ${libraryPrefix.length} node(s) declared under "metaobjects::" with ` +
           `no ejection provenance (advisory — does not fail the build):`,
       );
-      warnCapped(libraryPrefix.map((f) => `  ${f.message}`), flags.limit, { structured });
+      warnAdvisory(libraryPrefix.map((f) => `  ${f.message}`), flags.limit, { structured });
     }
   }
 
@@ -1440,11 +1475,7 @@ export async function verifyCommand(
         });
       } catch (err) {
         // Metadata refusals raised while building the expected side, not introspection failures.
-        if (isFkTargetNotUniqueError(err)) {
-          log.error(`verify: ${err.message}`);
-          log.error("verify: declare an identity.secondary on the target entity with exactly the referenced fields, or reference its primary key");
-          return 1;
-        }
+        if (isFkTargetNotUniqueError(err)) return refuseFkTarget(err);
         if (isInvalidCheckNameError(err)) {
           log.error(`verify: ${err.message}`);
           return 1;
@@ -1454,6 +1485,8 @@ export async function verifyCommand(
         log.error(`verify: ${schemaRunError}`);
         return 1;
       }
+
+      warnUnenforcedFkTargets("verify", driftResult.unenforcedFkTargetViolations);
 
       if (driftResult.exprCanonPath !== undefined) {
         say(describeExprCanonPath(driftResult.exprCanonPath, driftResult.shadowUnavailable));
@@ -1778,8 +1811,10 @@ export async function verifyCommand(
       log.error(`verify --codegen: ${err.message}`);
       return 2;
     }
+    // The explorer's requirement ledger, built only if the docs site asks for it.
+    const requirementLedger = () => requirementPayload(codegenRoot, genCollection);
 
-    // ADR-0062 §4 — locally, a key that still matches the last successful `meta gen` (the
+    // ADR-0064 §4 — locally, a key that still matches the last successful `meta gen` (the
     // loaded model and every generator input) and a manifest whose every file still hashes to
     // its record answer "no drift" without rendering. Never in CI (it renders and compares
     // everything, which is the guard against a key that missed an input), and never with --full.
@@ -1807,7 +1842,9 @@ export async function verifyCommand(
           (m) => log.warn(`verify --codegen: [agent-docs] ${m}`),
           codegenSchema,
         ),
-        ...(codegenSchema !== undefined && { schemaSettings: codegenSchema }),
+        schemaSettings: codegenSchema,
+        requirementLedger,
+        inLedger: genCollection.inLedger,
       });
     } catch (err) {
       log.error(`verify --codegen: regeneration failed: ${describeError(err)}`);
@@ -1829,10 +1866,10 @@ export async function verifyCommand(
           const probe = await computeCodegenDrift(config, codegenRoot, genConfigDir, genCollection.inScope,
             genCollection.ownFiles, {
               sourceRoots: sourceRootsOf(genCollection),
-              agentSchema: () => codegenSchema === undefined
-                ? undefined
-                : buildAgentSchemaInput(codegenRoot, config.dialect, () => {}, codegenSchema),
-              ...(codegenSchema !== undefined && { schemaSettings: codegenSchema }),
+              agentSchema: () => buildAgentSchemaInput(codegenRoot, config.dialect, () => {}, codegenSchema),
+              schemaSettings: codegenSchema,
+              requirementLedger,
+              inLedger: genCollection.inLedger,
             });
           return probe.error === undefined && probe.clean;
         } finally {
@@ -1847,8 +1884,8 @@ export async function verifyCommand(
 
     // Hand edits are not drift, but they must never be INVISIBLE: a validator weakened
     // inside a generated file used to pass this gate with "every file's generated
-    // contribution is current" and nothing else. Reported on every run; fails the build
-    // only under --forbid-hand-edits.
+    // contribution is current" and nothing else. Reported on every run; fails the build when
+    // the run's policy is `fail` (verify.handEdits, or --forbid-hand-edits).
     const handEditExit = reportHandEdits(result.handEdited);
     // Say how much documentation was NOT checked, on the pass and the fail line alike, so a
     // gate that compared two pages of 589 cannot read as one that compared all of them.
@@ -1902,13 +1939,19 @@ export async function verifyCommand(
     return 1;
   }
 
-  /** Print the hand-edit notice (or failure, under --forbid-hand-edits); return its exit code. */
+  /**
+   * Print the hand-edit notice, or the failure when the run's policy is `fail`; return its exit
+   * code. The policy is the run's flag when one is passed, else `verify.handEdits` in
+   * `.metaobjects/config.json`, else `notice` (what a project that predates the key has always had).
+   */
   function reportHandEdits(handEdited: readonly string[]): number {
     if (handEdited.length === 0) return 0;
-    const [header, ...rest] = handEditNotice(handEdited, flags.forbidHandEdits);
+    const policy = handEditPolicy(flags, collection.handEdits);
+    const fail = policy.policy === "fail";
+    const [header, ...rest] = handEditNotice(handEdited, policy);
     const paths = rest.slice(0, handEdited.length);
     const footer = rest.slice(handEdited.length);
-    if (flags.forbidHandEdits) {
+    if (fail) {
       // A failure lists every path: truncating the list a build failed on hides the cause.
       for (const line of [header!, ...paths, ...footer]) log.error(line);
       return 1;
@@ -2042,20 +2085,6 @@ function toSchemaDriftRow(c: Change): SchemaDriftRow {
 // structured output (--format toon|json)
 // ---------------------------------------------------------------------------
 
-/** The ledger counts `meta verify` prints on every run, machine-readable. */
-interface RequirementCounts {
-  total: number;
-  functional: number;
-  architectural: number;
-  byStatus: { status: string; count: number }[];
-  undecided: number;
-  /** Absent when coverage was not measured — FR-043 §5.4. */
-  entitiesClaimed?: number;
-  entitiesTotal?: number;
-  /** How many metadata files the two entity counts were taken over. */
-  metadataFiles: number;
-}
-
 /** One gate's verdict. `ran: false` is NOT a pass — it is "not selected". */
 interface VerifyGateRow {
   gate: string;
@@ -2074,13 +2103,14 @@ interface VerifyGateRow {
  */
 /** A `wire` setting as the block that declares it in `.metaobjects/config.json`. */
 export function wireBlock(wire: WireFormat): string {
-  return `"wire": { "${WIRE_KEY_DECIMALS}": "${wire.decimals}", "${WIRE_KEY_NULL_MEMBERS}": "${wire.nullMembers}" }`;
+  return `"wire": { "${WIRE_KEY_DECIMALS}": "${wire.decimals}", "${WIRE_KEY_NULL_MEMBERS}": "${wire.nullMembers}", "${WIRE_KEY_DURATIONS}": "${wire.durations}" }`;
 }
 
 /**
  * ADR-0019 Amendment 2: the other `wire` setting under which `reproduces` says the generators
  * write the committed output exactly, or `undefined` when none does. Probes decimals {native,
- * string} x nullMembers {native, emit, omit}, skipping the setting this run used.
+ * string} x nullMembers {native, emit, omit} x durations {native, iso}, skipping the setting this
+ * run used.
  */
 export async function matchingWire(
   used: WireFormat,
@@ -2088,9 +2118,11 @@ export async function matchingWire(
 ): Promise<WireFormat | undefined> {
   for (const decimals of WIRE_DECIMALS) {
     for (const nullMembers of WIRE_NULL_MEMBERS) {
-      if (decimals === used.decimals && nullMembers === used.nullMembers) continue;
-      const wire: WireFormat = { decimals, nullMembers };
-      if (await reproduces(wire)) return wire;
+      for (const durations of WIRE_DURATIONS) {
+        if (decimals === used.decimals && nullMembers === used.nullMembers && durations === used.durations) continue;
+        const wire: WireFormat = { decimals, nullMembers, durations };
+        if (await reproduces(wire)) return wire;
+      }
     }
   }
   return undefined;
@@ -2101,23 +2133,65 @@ export function wireDiffersMessage(committed: WireFormat, used: WireFormat): str
   return (
     `The committed output was generated with ${wireBlock(committed)}; this run used ${wireBlock(used)} ` +
     "(.metaobjects/config.json; each key defaults to native). Do not regenerate: that changes the JSON " +
-    "your API writes for decimals or for a value object's null members. Declare " +
+    "your API writes for decimals, durations or a value object's null members. Declare " +
     `${wireBlock(committed)} in .metaobjects/config.json, and 'meta gen' and 'meta verify --codegen' both read it.`
   );
 }
 
-export function handEditNotice(paths: readonly string[], forbidden: boolean): string[] {
-  const header = forbidden
-    ? `meta verify — ${paths.length} generated file(s) carry hand edits, and --forbid-hand-edits is set:`
-    : `meta verify — ${paths.length} generated file(s) carry hand edits ` +
-      `(notice — 'meta gen' preserves them by design; does not fail the build — ` +
-      `pass --forbid-hand-edits to make it):`;
+/** Where a run's hand-edit policy came from: a flag on this run, the project's config, or neither. */
+export type HandEditPolicySource = "--forbid-hand-edits" | "--allow-hand-edits" | "config" | "default";
+
+/** The hand-edit policy one `meta verify --codegen` run applies, and what decided it. */
+export function handEditPolicy(
+  flags: Pick<VerifyFlags, "forbidHandEdits" | "allowHandEdits">,
+  configured: HandEditsPolicy | undefined,
+): { policy: HandEditsPolicy; source: HandEditPolicySource } {
+  if (flags.forbidHandEdits) return { policy: "fail", source: "--forbid-hand-edits" };
+  if (flags.allowHandEdits) return { policy: "notice", source: "--allow-hand-edits" };
+  if (configured !== undefined) return { policy: configured, source: "config" };
+  return { policy: "notice", source: "default" };
+}
+
+const HAND_EDITS_KEY = `"verify": { "handEdits": … } in .metaobjects/config.json`;
+
+/**
+ * The hand-edit report: a header, one line per file, then how to see an edit and the two ways
+ * forward — drop it (the change belongs in the metadata) or keep it on purpose.
+ */
+export function handEditNotice(
+  paths: readonly string[],
+  run: { policy: HandEditsPolicy; source: HandEditPolicySource },
+): string[] {
+  const n = `${paths.length} generated file(s) carry hand edits`;
+  let header: string;
+  switch (run.source) {
+    case "--forbid-hand-edits":
+      header = `meta verify — ${n}, and --forbid-hand-edits is set:`;
+      break;
+    case "--allow-hand-edits":
+      header = `meta verify — ${n} (notice — --allow-hand-edits is set, so this run does not fail on them):`;
+      break;
+    case "config":
+      header = run.policy === "fail"
+        ? `meta verify — ${n}, and verify.handEdits is "fail" in .metaobjects/config.json:`
+        : `meta verify — ${n} (notice — verify.handEdits is "notice" in .metaobjects/config.json, so this does not fail the build):`;
+      break;
+    default:
+      header = `meta verify — ${n} (notice — 'meta gen' preserves them by design; does not fail the build — ` +
+        `set "verify": { "handEdits": "fail" } in .metaobjects/config.json, or pass --forbid-hand-edits, to make it):`;
+  }
+  const keep = run.policy === "fail"
+    ? `To keep an edit on purpose: pass --allow-hand-edits for one run, or set "handEdits": "notice" (${HAND_EDITS_KEY}).`
+    : `To keep an edit on purpose: nothing to do while hand edits are a notice; a project that wants them to fail sets "handEdits": "fail" (${HAND_EDITS_KEY}).`;
   return [
     header,
     ...paths.map((p) => `  ${p}`),
     "To see an edit: delete the file and run 'meta gen' (it re-emits the pristine generation), " +
-      "then 'git diff -R -- <file>' shows the edit and 'git checkout -- <file>' restores it" +
-      (forbidden ? "; to drop the edit, commit the regenerated file instead." : "."),
+      "then 'git diff -R -- <file>' shows the edit and 'git checkout -- <file>' restores it.",
+    "To drop an edit: delete the file, run 'meta gen' and commit the regenerated file; if the edit " +
+      "changed a rule the model declares (a length, a range, a required field), make that change in " +
+      "the metadata instead, so the database and every port follow it.",
+    keep,
   ];
 }
 
@@ -2190,8 +2264,9 @@ function toDiagnosticRow(d: Diagnostic, source: "gate" | "lint"): AdvisoryDiagno
 function buildVerifyPayload(input: {
   gates: VerifyGateRow[];
   exitCode: number;
-  requirements: AdvisorySection<AdvisoryDiagnosticRow>;
+  requirements: AdvisorySection<RequirementDiagnosticRow>;
   requirementCounts: RequirementCounts | undefined;
+  requirementLedger?: RequirementLedgerRow[] | undefined;
   antiPatterns: AdvisorySection<AdvisoryFindingRow>;
   overlays: AdvisorySection<AdvisoryDiagnosticRow>;
   names: AdvisorySection<AdvisoryDiagnosticRow>;
@@ -2297,6 +2372,7 @@ function buildVerifyPayload(input: {
     deprecations: input.deprecations,
     fields: input.fields,
     ...(input.requirementCounts !== undefined ? { requirementCounts: input.requirementCounts } : {}),
+    ...(input.requirementLedger !== undefined ? { requirementLedger: input.requirementLedger } : {}),
     ...(input.schemaDrift !== undefined ? { schemaDrift: input.schemaDrift } : {}),
     // The honest boundary. Everything named here is REACHABLE — it is printed as
     // text on stderr — but it is not in this document, and a reader must not have
@@ -2306,4 +2382,11 @@ function buildVerifyPayload(input: {
       "the loader's own warnings and the agent-context/manifest advisories — printed as text on stderr",
     ],
   };
+}
+
+/** An FK whose target is not a unique key, refused by name on every `--db` path. */
+function refuseFkTarget(err: Error): number {
+  log.error(`verify: ${err.message}`);
+  log.error("verify: declare an identity.secondary on the target entity with exactly the referenced fields, or reference its primary key");
+  return 1;
 }

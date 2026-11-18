@@ -85,7 +85,7 @@ function compile(dir: string, files: string[]): readonly ts.Diagnostic[] {
 
 async function generate(dialect: Dialect, dir: string) {
   const root = await loadRoot();
-  const renderContext = makeRenderContext({ outputLayout: "flat",
+  const renderContext = makeRenderContext({
     dialect,
     loadedRoot: root,
     outDir: dir,
@@ -98,7 +98,7 @@ async function generate(dialect: Dialect, dir: string) {
     loadedRoot: root,
     matches: () => true,
     projectRoot: dir,
-    config: { outputLayout: "flat", outDir: dir, extStyle: "none", dbImport: "~/db", dialect } as never,
+    config: { outDir: dir, extStyle: "none", dbImport: "~/db", dialect } as never,
     renderContext,
     warn: () => {},
   };

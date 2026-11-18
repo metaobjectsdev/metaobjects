@@ -1,4 +1,4 @@
-"""ADR-0062 — the shared table of skip cases (``fixtures/codegen-skip-conformance/cases.json``).
+"""ADR-0064 — the shared table of skip cases (``fixtures/codegen-skip-conformance/cases.json``).
 
 Every case: run ``gen`` once (it must write and store a fingerprint), apply the change, then
 ask what the next ``gen`` does and what a LOCAL ``verify --codegen`` may do. A case id this
@@ -346,5 +346,23 @@ def test_unchanged_files_keep_their_timestamp_and_report_unchanged(
     assert all(f.stat().st_mtime == 1 for f in files), "an identical file was rewritten"
     assert manifest.stat().st_mtime == 1, "an unchanged manifest was rewritten"
     assert manifest.read_bytes() == manifest_bytes
-    assert "wrote 0 file(s)" in out and "unchanged" in out
+    assert "wrote 0 file(s)" in out and "left as they were" in out
     assert not [ln for ln in out.splitlines() if ln.startswith(str(generated))]
+
+
+def test_a_run_that_names_entities_renders_and_leaves_the_full_run_key_alone(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    project = _project(tmp_path)
+    h = Harness(project, monkeypatch, capsys)
+    assert h.gen() == (0, False)
+    stored = project.state / skip.FINGERPRINT_FILE
+    key = stored.read_bytes()
+    # Naming entities forces exactly those: it renders over unchanged inputs, never skips.
+    rc, skipped = h.gen("--entities", "Book")
+    assert rc == 0 and not skipped and h.renders > 0, h.out + h.err
+    rc, skipped = h.gen("--entities", "Book")
+    assert rc == 0 and not skipped and h.renders > 0
+    # It neither wrote nor forgot the full-run key, so the next full run still skips.
+    assert stored.read_bytes() == key
+    assert h.gen() == (0, True)

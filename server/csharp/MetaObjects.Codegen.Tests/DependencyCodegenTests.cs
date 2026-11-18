@@ -19,7 +19,8 @@ public sealed class DependencyCodegenTests : IDisposable
     private string OutDir => Path.Combine(_tmp, "generated");
 
     // render-helper needs a template root for its drift gate; template is a primitive configured by its caller.
-    private static readonly string[] Excluded = ["render-helper", "template"];
+    // shared-model publishes the files its options name and writes no code; a bare fixture names none.
+    private static readonly string[] Excluded = ["render-helper", "template", "shared-model"];
 
     public void Dispose() { try { Directory.Delete(_tmp, recursive: true); } catch { } }
 
@@ -103,7 +104,7 @@ public sealed class DependencyCodegenTests : IDisposable
         // The project's own package `app` and the imported `acme::common` share no root; only the
         // project's own package is generated, so only it names the home namespace.
         Assert.Contains("namespace App;", output["AppDbContext.g.cs"]);
-        Assert.Contains("namespace App;", output["app/Order.g.cs"]);
+        Assert.Contains("namespace App;", output["Order.g.cs"]);
     }
 
     [Fact]

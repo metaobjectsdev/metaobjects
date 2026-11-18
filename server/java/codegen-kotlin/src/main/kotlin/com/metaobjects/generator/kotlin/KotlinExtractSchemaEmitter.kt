@@ -367,21 +367,8 @@ object KotlinExtractSchemaEmitter {
         field.hasMetaAttr(MetaField.ATTR_REQUIRED)
             && "true".equals(field.getMetaAttr(MetaField.ATTR_REQUIRED).valueAsString, ignoreCase = true)
 
-    /**
-     * Escape a string for safe embedding in a Kotlin double-quoted string literal.
-     * Handles the six sequences that require escaping: `\`, `"`, `$`, newline, tab,
-     * carriage return. `$` must be escaped to `\$` because Kotlin uses `$` and `${}`
-     * for string-template interpolation — a bare `$identifier` in generated source
-     * would cause an unresolved-reference compile error in the consumer's code.
-     * Order: `\` must be first so its own replacement backslash is not re-escaped.
-     */
-    fun kotlinStringLiteral(s: String): String =
-        s.replace("\\", "\\\\")
-         .replace("\"", "\\\"")
-         .replace("$", "\\$")
-         .replace("\n", "\\n")
-         .replace("\t", "\\t")
-         .replace("\r", "\\r")
+    /** Escape a string for a Kotlin double-quoted literal; see [KotlinGenUtil.kotlinStringLiteral]. */
+    fun kotlinStringLiteral(s: String): String = KotlinGenUtil.kotlinStringLiteral(s)
 
     /**
      * Resolve a field's `@objectRef` to its target value object, or null when the field is not

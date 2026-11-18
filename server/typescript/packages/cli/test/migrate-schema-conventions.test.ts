@@ -36,13 +36,17 @@ const MODEL = JSON.stringify({
   },
 });
 
-async function project(conventions: string | undefined): Promise<string> {
+async function project(conventions: string | undefined, foreignKeyIndexes?: boolean): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "schema-conventions-"));
   dirs.push(root);
   await mkdir(join(root, "metaobjects"), { recursive: true });
   await writeFile(join(root, "metaobjects", "meta.platform.json"), MODEL, "utf8");
   await mkdir(join(root, ".metaobjects", "migrations"), { recursive: true });
-  const migrate = conventions === undefined ? { dialect: "sqlite" } : { dialect: "sqlite", conventions };
+  const migrate = {
+    dialect: "sqlite",
+    ...(conventions !== undefined && { conventions }),
+    ...(foreignKeyIndexes !== undefined && { foreignKeyIndexes }),
+  };
   await writeFile(join(root, ".metaobjects", "config.json"), JSON.stringify({ schema_version: 1, migrate }), "utf8");
   return root;
 }
@@ -75,6 +79,25 @@ describe("meta migrate with migrate.conventions", () => {
 
     expect(await dryRun(root)).toBe(0);
     expect(out.join("\n")).not.toContain("IX_OrderLines_OrderId");
+  });
+
+  test("migrate.foreignKeyIndexes: the foreign key gets <table>_<columns>_idx, with no renamed constraint", async () => {
+    const root = await project(undefined, true);
+
+    expect(await dryRun(root)).toBe(0);
+    const text = out.join("\n");
+    expect(text).toContain('CREATE INDEX "OrderLines_OrderId_idx" ON "OrderLines" ("OrderId");');
+    expect(text).not.toContain("IX_OrderLines_OrderId");
+    expect(text).not.toContain("PK_");
+  });
+
+  test("migrate.foreignKeyIndexes under efcore adds nothing: the preset already indexes it", async () => {
+    const root = await project("efcore", true);
+
+    expect(await dryRun(root)).toBe(0);
+    const text = out.join("\n");
+    expect(text).toContain('CREATE INDEX "IX_OrderLines_OrderId"');
+    expect(text).not.toContain("OrderLines_OrderId_idx");
   });
 
   test("an unknown preset is refused by name, not as an unexpected error", async () => {

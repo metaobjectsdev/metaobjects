@@ -32,9 +32,11 @@ DIMENSION_SUBTYPES: tuple[str, ...] = (DIMENSION_SUBTYPE_ATTRIBUTE, DIMENSION_SU
 #: One aggregate over the declaring entity's own rows.
 MEASURE_SUBTYPE_AGGREGATE = "aggregate"
 #: A quotient of two ``measure.aggregate`` siblings, ``numerator / NULLIF(denominator, 0)``.
-#: ``measure.derived`` is deliberately NOT registered: it waits for FR-037 R5.
 MEASURE_SUBTYPE_RATIO = "ratio"
-MEASURE_SUBTYPES: tuple[str, ...] = (MEASURE_SUBTYPE_AGGREGATE, MEASURE_SUBTYPE_RATIO)
+#: FR-044 R13: arithmetic (``@expr``) over sibling measures and the report's numeric attribute
+#: dimensions, typed decimal. Uses FR-037 R5's first arithmetic wave.
+MEASURE_SUBTYPE_DERIVED = "derived"
+MEASURE_SUBTYPES: tuple[str, ...] = (MEASURE_SUBTYPE_AGGREGATE, MEASURE_SUBTYPE_RATIO, MEASURE_SUBTYPE_DERIVED)
 
 #: A named, reusable row filter. The only concrete segment subtype.
 SEGMENT_SUBTYPE_FILTER = "filter"
@@ -63,6 +65,16 @@ REPORTING_ATTR_NUMERATOR = "numerator"
 REPORTING_ATTR_DENOMINATOR = "denominator"
 #: Integer a measure reads when it would otherwise be null (``measure.aggregate`` / ``measure.ratio``).
 REPORTING_ATTR_DEFAULT = "default"
+#: ``measure.derived``'s arithmetic expression (an attr.expression).
+REPORTING_ATTR_EXPR = "expr"
+
+#: The arithmetic ``fn`` members a ``measure.derived`` ``@expr`` may use, each with exactly two
+#: args. ``divide`` lowers as a ratio does: a zero divisor yields null.
+DERIVED_FN_ADD = "add"
+DERIVED_FN_SUBTRACT = "subtract"
+DERIVED_FN_MULTIPLY = "multiply"
+DERIVED_FN_DIVIDE = "divide"
+DERIVED_FNS: tuple[str, ...] = (DERIVED_FN_ADD, DERIVED_FN_SUBTRACT, DERIVED_FN_MULTIPLY, DERIVED_FN_DIVIDE)
 
 # ---------------------------------------------------------------------------
 # Closed sets — mirrored by ``allowedValues`` in spec/metamodel/reporting.json.

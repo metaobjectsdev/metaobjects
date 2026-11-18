@@ -79,7 +79,7 @@ public sealed class PackageNamespaceTests
     private static GenContext Ctx(MetaRoot root, GenConfig? config = null) => new()
     {
         Entities = root.Objects(), Root = root,
-        Config = config ?? new GenConfig { OutDir = "/tmp", Namespace = "Acme.App", Dialect = "postgres", IncludeNames = true },
+        Config = config ?? new GenConfig { OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true, OutDir = "/tmp", Namespace = "Acme.App", Dialect = "postgres", IncludeNames = true },
     };
 
     private static string TemplateRoot()
@@ -144,7 +144,7 @@ public sealed class PackageNamespaceTests
     public void PackageNamespaces_keeps_a_package_where_it_was()
     {
         var ctx = Ctx(Load(), new GenConfig
-        {
+        { OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true,
             OutDir = "/tmp", Namespace = "Acme.App", Dialect = "postgres",
             PackageNamespaces = new() { ["acme::alpha"] = "Acme.App" },
         });
@@ -157,7 +157,7 @@ public sealed class PackageNamespaceTests
     public void Two_packages_mapped_onto_one_namespace_are_still_refused()
     {
         var ctx = Ctx(Load(), new GenConfig
-        {
+        { OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true,
             OutDir = "/tmp", Namespace = "Acme.App",
             PackageNamespaces = new() { ["acme::alpha"] = "Acme.Shared", ["acme::beta"] = "Acme.Shared" },
         });
@@ -170,7 +170,7 @@ public sealed class PackageNamespaceTests
     [Fact]
     public void An_explicit_Error_strategy_under_a_namespace_keeps_its_meaning()
     {
-        var ctx = Ctx(Load(), new GenConfig { OutDir = "/tmp", Namespace = "Acme.App", UnmappedStrategy = UnmappedPackageStrategy.Error });
+        var ctx = Ctx(Load(), new GenConfig { OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true, OutDir = "/tmp", Namespace = "Acme.App", UnmappedStrategy = UnmappedPackageStrategy.Error });
         var ex = Assert.Throws<InvalidOperationException>(() => new EntityGenerator().Generate(ctx).ToList());
         Assert.Contains("has no namespace binding", ex.Message);
     }
@@ -188,7 +188,7 @@ public sealed class PackageNamespaceTests
         paths.Add(typeof(MetaObjects.Render.Extract.ExtractSchema).Assembly.Location);
         paths.Add(typeof(MetaObject).Assembly.Location);
         var comp = CSharpCompilation.Create("pkgns_" + Guid.NewGuid().ToString("N"),
-            sources.Select(f => CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12), path: f.Path)),
+            sources.Select(f => CSharpSyntaxTree.ParseText(MetaObjects.Codegen.FrameworkQualifier.Qualify(f.Content), new CSharpParseOptions(LanguageVersion.CSharp12), path: f.Path)),
             paths.Where(File.Exists).Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)),
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         return comp.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error)

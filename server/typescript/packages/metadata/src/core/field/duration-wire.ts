@@ -30,8 +30,9 @@ const MICROS_PER_HOUR = 60n * MICROS_PER_MINUTE;
 const MICROS_PER_DAY = 24n * MICROS_PER_HOUR;
 
 /** A 64-bit integer column (SQLite, D1, MySQL `BIGINT`) stores a duration as microseconds; it holds
- *  this many either way. A database's own limit, so it is checked only when binding to one. */
-const INT64_MAX = 9223372036854775807n;
+ *  this range either way. A database's own limit, so it is checked only when binding to one. */
+export const DURATION_MICROS_MIN = -9223372036854775808n;
+export const DURATION_MICROS_MAX = 9223372036854775807n;
 
 /** Fractional-second digits as microseconds, truncated toward zero. */
 function fractionMicros(digits: string | undefined): bigint {
@@ -55,8 +56,8 @@ export function parseDurationLiteral(text: string): bigint | undefined {
   return sign === "-" ? -magnitude : magnitude;
 }
 
-/** The canonical wire form of a span of `micros` microseconds. */
-export function formatDuration(micros: bigint): string {
+/** The magnitude of a span split into hours, minutes, seconds and microseconds of a second. */
+function splitMicros(micros: bigint): { negative: boolean; h: bigint; m: bigint; s: bigint; frac: bigint } {
   const negative = micros < 0n;
   let rest = negative ? -micros : micros;
   const h = rest / MICROS_PER_HOUR;
@@ -64,15 +65,21 @@ export function formatDuration(micros: bigint): string {
   const m = rest / MICROS_PER_MINUTE;
   rest %= MICROS_PER_MINUTE;
   const s = rest / MICROS_PER_SECOND;
-  const frac = rest % MICROS_PER_SECOND;
+  return { negative, h, m, s, frac: rest % MICROS_PER_SECOND };
+}
+
+/** `.` and the microseconds with trailing zeros trimmed, or `""` when there is no fraction. */
+function fractionSuffix(frac: bigint): string {
+  return frac > 0n ? "." + String(frac).padStart(6, "0").replace(/0+$/, "") : "";
+}
+
+/** The canonical wire form of a span of `micros` microseconds. */
+export function formatDuration(micros: bigint): string {
+  const { negative, h, m, s, frac } = splitMicros(micros);
   let out = "PT";
   if (h > 0n) out += `${h}H`;
   if (m > 0n) out += `${m}M`;
-  if (s > 0n || frac > 0n) {
-    out += String(s);
-    if (frac > 0n) out += "." + String(frac).padStart(6, "0").replace(/0+$/, "");
-    out += "S";
-  }
+  if (s > 0n || frac > 0n) out += `${s}${fractionSuffix(frac)}S`;
   if (out === "PT") return "PT0S";
   return negative ? "-" + out : out;
 }
@@ -84,17 +91,9 @@ export function formatDuration(micros: bigint): string {
  * interval written this way reads back in this exact spelling, so a default does not drift.
  */
 export function formatPostgresInterval(micros: bigint): string {
-  const negative = micros < 0n;
-  let rest = negative ? -micros : micros;
-  const h = rest / MICROS_PER_HOUR;
-  rest %= MICROS_PER_HOUR;
-  const m = rest / MICROS_PER_MINUTE;
-  rest %= MICROS_PER_MINUTE;
-  const s = rest / MICROS_PER_SECOND;
-  const frac = rest % MICROS_PER_SECOND;
+  const { negative, h, m, s, frac } = splitMicros(micros);
   const two = (n: bigint): string => String(n).padStart(2, "0");
-  let out = `${two(h)}:${two(m)}:${two(s)}`;
-  if (frac > 0n) out += "." + String(frac).padStart(6, "0").replace(/0+$/, "");
+  const out = `${two(h)}:${two(m)}:${two(s)}${fractionSuffix(frac)}`;
   return negative && micros !== 0n ? "-" + out : out;
 }
 
@@ -157,7 +156,7 @@ function intervalObjectMicros(v: PostgresIntervalLike): bigint {
  * which is that column's limit and no other database's.
  */
 export function durationToStoredMicros(micros: bigint): number | bigint {
-  if (micros > INT64_MAX || micros < -INT64_MAX - 1n) {
+  if (micros > DURATION_MICROS_MAX || micros < DURATION_MICROS_MIN) {
     throw new Error(`a span of ${formatDuration(micros)} does not fit the 64-bit microsecond column this database stores a field.duration in`);
   }
   const n = Number(micros);

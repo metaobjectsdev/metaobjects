@@ -115,11 +115,8 @@ export function renderNamesDecl(
   const fieldsBlock = collection("fields", n.fields, n.ownFields,
     (f: FieldNames) => f.members === undefined
       ? `{ name: ${q(f.name)}, column: ${q(f.column)} }`
-      // A flattened value object: each member's column, beside the field's own entry. The field's
-      // own `column` names no column of the table, so it is deprecated (a JSDoc tag: an editor and
-      // a deprecation lint flag a use, and nothing changes at runtime or in the type). On its own
-      // line, because TypeScript attaches a JSDoc comment only when a line break precedes it.
-      : `{\n      name: ${q(f.name)},\n      ${FLATTENED_COLUMN_DEPRECATION}\n      column: ${q(f.column)},\n` +
+      // A flattened value object: no column of its own, one per member of the value object.
+      : `{\n      name: ${q(f.name)},\n` +
         `      members: { ${Object.keys(f.members).sort()
           .map((m) => `${key(m)}: { name: ${q(f.members![m]!.name)}, column: ${q(f.members![m]!.column)} }`)
           .join(", ")} },\n    }`);

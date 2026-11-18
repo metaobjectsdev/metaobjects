@@ -19,6 +19,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MetaObjects.Cli", "MetaObje
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MetaObjects.Cli.Tests", "MetaObjects.Cli.Tests\MetaObjects.Cli.Tests.csproj", "{5B55ECEC-72F4-4344-8629-69C0C79893F6}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MetaObjects.TestVocabulary", "MetaObjects.TestVocabulary\MetaObjects.TestVocabulary.csproj", "{07E0DCA5-F951-44CA-9660-3C30E7EBA30B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -60,5 +62,9 @@ Global
 		{5B55ECEC-72F4-4344-8629-69C0C79893F6}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5B55ECEC-72F4-4344-8629-69C0C79893F6}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5B55ECEC-72F4-4344-8629-69C0C79893F6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{07E0DCA5-F951-44CA-9660-3C30E7EBA30B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{07E0DCA5-F951-44CA-9660-3C30E7EBA30B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{07E0DCA5-F951-44CA-9660-3C30E7EBA30B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{07E0DCA5-F951-44CA-9660-3C30E7EBA30B}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

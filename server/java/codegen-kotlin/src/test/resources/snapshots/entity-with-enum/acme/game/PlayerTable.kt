@@ -6,7 +6,7 @@ import org.jetbrains.exposed.sql.Table
 object PlayerTable : Table("players") {
     val id = long("id").autoIncrement()
     val username = varchar("username", 50).nullable()
-    val status = enumerationByName("status", 64, PlayerStatus::class).nullable()
+    val status = customEnumeration("status", "TEXT", { v -> PlayerStatus.valueOf(v as String) }, { e -> e.name }).nullable()
 
     override val primaryKey = PrimaryKey(id)
 }

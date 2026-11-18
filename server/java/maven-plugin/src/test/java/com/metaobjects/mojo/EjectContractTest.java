@@ -470,6 +470,15 @@ public class EjectContractTest {
             this.templates = templates == null ? null : repoRoot().resolve("fixtures").resolve(templates);
         }
 
+        /** The model's metadata files, comma-separated: the file itself, or every .json and .yaml under a directory. */
+        String modelFiles() throws IOException {
+            if (!Files.isDirectory(model)) return model.toString();
+            try (Stream<Path> s = Files.walk(model)) {
+                return s.filter(p -> Files.isRegularFile(p) && (p.toString().endsWith(".json") || p.toString().endsWith(".yaml"))).sorted()
+                        .map(Path::toString).collect(Collectors.joining(","));
+            }
+        }
+
         private MetaDataLoader loader;
 
         /** Loaded once and shared by both sides: generated headers name the loader. */
@@ -511,6 +520,11 @@ public class EjectContractTest {
         args.put("testPackage", "com.example.requirements");
         args.put("witnessClass", "com.example.Witnesses");
         args.put("warnUncovered", "false");
+        // shared-model publishes a slice of the model it is given: all of it, from the corpus's files.
+        args.put("name", "contract");
+        args.put("include", "**");
+        args.put("version", "1.0.0");
+        args.put("files", corpus.modelFiles());
         // The file the single-file generators write: the docs, diagram and schema generators. The
         // per-object ones read this arg as the name of a file to merge into, so they must not get it.
         if (generator instanceof DirectGeneratorBase && !(generator instanceof MultiFileDirectGeneratorBase)) {

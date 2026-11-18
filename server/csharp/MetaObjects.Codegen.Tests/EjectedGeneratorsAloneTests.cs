@@ -58,9 +58,13 @@ public class EjectedGeneratorsAloneTests
         ["MetaObjects.Codegen.Generators.CheckConstraints"] = "the CHECKs meta migrate derives: a schema contract both delivery paths must agree on, not emitted code an owned copy should change",
         ["MetaObjects.Codegen.Generators.CheckConstraint"] = "one of those CHECKs, a name and an expression",
         ["MetaObjects.Codegen.DesignTimeServicesReferences"] = "whether EF reads the generated design-time services reference: a question about the adopter's project layout, not emitted code",
+        ["MetaObjects.Codegen.Generators.ForeignKeyIndexes"] = "the indexes and index names meta migrate creates (foreign-key indexes, and a declared name cut to what Postgres stores): a schema contract both delivery paths must agree on, held by fixtures/foreign-key-index-conformance",
+        ["MetaObjects.Codegen.Generators.ForeignKeyIndex"] = "one of those indexes, a name and its columns",
         ["MetaObjects.Codegen.ValueObjectNames"] = "the one answer to what a value object's type is called and where it lives",
         ["MetaObjects.Codegen.PackageBindingResolver"] = "package -> namespace binding",
-        ["MetaObjects.Codegen.OutputPaths"] = "package -> output directory (R39): where a per-object file is written",
+        ["MetaObjects.Codegen.OutputPaths"] = "where an object's file lands under the output layout, and the claim that no two share a path: a path table, ruled engine",
+        ["MetaObjects.Codegen.OutputLayout"] = "the output layout setting (flat or package) OutputPaths reads",
+        ["MetaObjects.Codegen.NameClaims"] = "the claim registry: the code a clash raises and the scopes it keys on, one answer for every generator in the run",
         // Questions about the model.
         ["MetaObjects.Codegen.InstanceArtifacts"] = "the predicate: does this object produce instance artifacts",
         ["MetaObjects.Codegen.ReportRows"] = "the row model a view-backed report is generated from: a model derivation",
@@ -69,6 +73,7 @@ public class EjectedGeneratorsAloneTests
         ["MetaObjects.Codegen.Generators.TphPlan"] = "the model plan: which entities share a table and how they are told apart",
         ["MetaObjects.Codegen.Generators.TphPlanBuilder"] = "builds the TPH plan from the model",
         ["MetaObjects.Codegen.Generators.TphSubtypePlan"] = "one subtype's place in the TPH plan",
+        ["MetaObjects.Codegen.DesignTimeServicesReferences"] = "whether EF reads the generated design-time services reference: a question about the adopter's project layout, not emitted code",
         ["MetaObjects.Codegen.ObjectNames"] = "the resolved physical names of an object, what CSharpNaming returns",
         ["MetaObjects.Codegen.FieldNames"] = "the resolved physical names of a field, what CSharpNaming returns",
         ["MetaObjects.Codegen.KeyNames"] = "the resolved physical names of a key, what CSharpNaming returns",
@@ -295,7 +300,9 @@ public class EjectedGeneratorsAloneTests
     public void Ejected_alone_it_emits_what_the_packaged_generator_emits_byte_for_byte(string name)
     {
         var alone = EjectAlone(name);
-        var packaged = GeneratorRegistry.Get(name)!.Factory(new GeneratorBuildContext(CorpusPaths.FitnessTemplateRoot));
+        var packaged = SharedModelTestSupport.Configure(
+            GeneratorRegistry.Get(name)!.Factory(new GeneratorBuildContext(CorpusPaths.FitnessTemplateRoot)));
+        SharedModelTestSupport.Configure(alone.Generator);
         // The ONE documented difference: a generator whose output imports the helper runtime imports the
         // adopter's owned copy once ejected — `using Codegen.Runtime;` where the packaged output says
         // `using MetaObjects.Codegen.Runtime;`. Nothing else.

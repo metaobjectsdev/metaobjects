@@ -11,6 +11,7 @@ import com.metaobjects.generator.spring.SpringNaming;
 import com.metaobjects.generator.spring.SpringTypeMapper;
 import com.metaobjects.generator.spring.TphPlan;
 
+import com.metaobjects.config.ApiSettings;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.ObjectField;
 import com.metaobjects.query.FilterOps;
@@ -25,6 +26,7 @@ import com.metaobjects.generator.util.RestSurfaceGate;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.source.MetaSource;
 import com.metaobjects.source.RdbSource;
+import com.metaobjects.validator.MetaValidator;
 import static com.metaobjects.generator.spring.SpringNaming.firstRdbSource;
 
 import java.io.IOException;
@@ -36,6 +38,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -166,6 +169,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         this.loader = loader;
         Path outRoot = Paths.get(outDir.getAbsolutePath());
         for (MetaObject declared : loader.getMetaObjects()) {
+            if (!isSelected(declared)) continue;
             // FR-044: a served report is emitted from its read model; any other report
             // has no shape and emits nothing.
             MetaObject entity = RestSurfaceGate.restShapeOf(declared);
@@ -236,7 +240,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         String dtoName = SpringNaming.dtoName(shortName);
         String repoName = SpringNaming.repositoryName(shortName);
         String controllerName = SpringNaming.controllerName(shortName);
-        String routeBase = SpringNaming.controllerPath(shortName);
+        String routeBase = SpringNaming.controllerPath(entity);
         // PK type derived from identity.primary (uuid → java.util.UUID, long → Long, …);
         // a hard-coded Long made Spring 400 every uuid-keyed by-id request.
         String pkType = SpringTypeMapper.primaryKeyJavaType(entity);
@@ -260,6 +264,8 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("import ").append(runtimePackage).append(".ConstraintErrors;\n");
         src.append("import ").append(runtimePackage).append(".PatchValidationException;\n");
         src.append("import ").append(runtimePackage).append(".UnreadableBody;\n");
+        src.append("import ").append(runtimePackage).append(".UnknownBodyKeys;\n");
+        src.append("import ").append(runtimePackage).append(".ValidationIssues;\n");
         // The escape the PATCH loop applies to each assigned key before naming a Bean
         // Validation property — see RecordComponentNames for why it is needed at run time.
         src.append("import ").append(runtimePackage).append(".RecordComponentNames;\n");
@@ -302,6 +308,8 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // private to this controller (no cross-file collision risk).
         appendSortAllowlist(src, entity, sortFields);
         appendServerOwnedOnCreate(src, entity);
+        ApiSettings api = ApiSettings.of(entity);
+        appendKnownFields(src, api, new ArrayList<>(entity.getMetaFields()));
         // #484: the credential fields this entity's rows carry, hidden from every response body.
         List<String> hidden = SpringGeneratorSupport.credentialNames(entity);
         List<SpringM2mSupport.M2mNav> navs = SpringM2mSupport.resolve(entity, loader);
@@ -330,7 +338,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // HttpServletRequest carries the raw query string so the bracketed
         // filter[<field>][<op>]=<value> grammar reaches FilterParser intact
         // (Spring's @RequestParam would collapse same-key occurrences).
-        appendListHandler(src, shortName, dtoName, repoName, hidden);
+        appendListHandler(src, shortName, dtoName, repoName, hidden, api.pagination());
 
         // GET /{id} — single by primary key.
         appendGetByIdHandler(src, pkType, hidden);
@@ -340,24 +348,26 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // validate it EXPLICITLY with the injected Validator, emitting {"error":"validation"} on
         // any field-constraint violation BEFORE persisting.
         src.append("    @PostMapping\n");
-        // R35: a create body that omits a field with a literal @default binds @default, as every
+        // A create body that omits a field with a literal @default binds @default, as every
         // other port's create shape does. The DTO is a record, which cannot default a component,
         // so the handler binds the raw body, fills the absent defaulted fields, and then binds the
         // DTO (an explicit value, null included, is kept). An entity with no such field keeps the
         // direct DTO binding, byte-identical.
         List<MetaField> components = SpringGeneratorSupport.dtoComponentFields(entity);
         List<String> defaultPuts = createDefaultPuts(entity, components);
-        if (defaultPuts.isEmpty()) {
+        // api.unknownFields = reject (the default) binds the raw body too: the undeclared keys are
+        // read off the JSON itself, so the answer does not depend on how the host's ObjectMapper
+        // treats an unknown property.
+        if (defaultPuts.isEmpty() && !api.rejectsUnknownFields()) {
             src.append("    public ResponseEntity<?> create(@RequestBody ").append(dtoName).append(" dto) {\n");
         } else {
             src.append("    public ResponseEntity<?> create(@RequestBody JsonNode body) {\n");
-            appendFillDefaults(src, dtoName, defaultPuts);
+            appendFillDefaults(src, dtoName, defaultPuts, api.rejectsUnknownFields());
         }
         // #484: a @formExclude / credential value is IGNORED (never rejected): the DTO is rebuilt
         // without it, so the column is left to the repository's default.
-        // SECURITY (1.2.x): also dropped, never rejected — a server-generated primary key and a
-        // readOnly or derived field, none of which a client may set on create. The repository is
-        // handed only what the client may set.
+        // Also dropped (never rejected): a server-generated primary key, a readOnly field and a derived
+        // field, none of which a client may set on create.
         appendStripWriteDenied(src, dtoName, components, createDeniedNames(entity, components));
         // A caller does not supply server-owned columns, so a @NotNull on one must not reject
         // the request. The DTO is BOTH the request and the response body, so `id` carries
@@ -376,15 +386,15 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // it is what cascades @Valid into nested value objects. The violations are FILTERED,
         // and only by TOP-LEVEL property name — a nested path like "labels[0].code" can never
         // match, so cascaded constraints still reject.
+        // Every violation is listed (never just the first): the issues are collected, then answered once.
         if (serverOwnedOnCreate(entity).isEmpty()) {
-            // Byte-identical to the pre-fix handler for an entity with no server-owned column,
-            // so this change moves only the output it has to.
-            src.append("        if (!validator.validate(dto).isEmpty()) {\n");
+            src.append("        ValidationIssues __issues = new ValidationIssues().addViolations(validator.validate(dto));\n");
         } else {
-            src.append("        if (validator.validate(dto).stream()\n");
-            src.append("                .anyMatch(v -> !SERVER_OWNED_ON_CREATE.contains(v.getPropertyPath().toString()))) {\n");
+            src.append("        ValidationIssues __issues = new ValidationIssues()\n");
+            src.append("                .addViolationsExcept(validator.validate(dto), SERVER_OWNED_ON_CREATE);\n");
         }
-        src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
+        src.append("        if (!__issues.isEmpty()) {\n");
+        src.append("            return ResponseEntity.badRequest().body(__issues.body());\n");
         src.append("        }\n");
         // Issue #203: honor @autoSet — stamp EVERY onCreate AND onUpdate column with now() before
         // persisting (the caller's value is ignored; a fresh row's updated_at equals its created_at).
@@ -414,28 +424,15 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("    @RequestMapping(value = \"/{id}\", method = { RequestMethod.PATCH, RequestMethod.PUT })\n");
         src.append("    public ResponseEntity<?> update(@PathVariable ").append(pkType)
            .append(" id, @RequestBody JsonNode body) {\n");
-        src.append("        ").append(patchName).append(" patch;\n");
-        src.append("        try {\n");
-        src.append("            patch = ").append(patchName).append(".fromJson(body, objectMapper);\n");
-        src.append("        } catch (PatchValidationException e) {\n");
-        src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
-        src.append("        }\n");
-        // FR-036: validate each PRESENT patch value against the DTO's field constraints (per-field,
-        // NOT a whole-bean validate — that would fire @NotNull on ABSENT fields). jakarta
-        // validateValue skips null for @Size/@Pattern and non-required fields carry no @NotNull, so
-        // a present-null-clears on a nullable field composes cleanly.
-        src.append("        for (Map.Entry<String, Object> __e : patch.assignedValues().entrySet()) {\n");
-        src.append("            if (!validator.validateValue(").append(dtoName)
-           .append(".class, RecordComponentNames.escape(__e.getKey()), __e.getValue()).isEmpty()) {\n");
-        src.append("                return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
-        src.append("            }\n");
-        src.append("        }\n");
+        appendUnknownFieldsGuard(src, api);
+        appendPatchBinding(src, patchName, dtoName);
         // Program D (spec section 0): validateValue does NOT cascade @Valid into a nested value
         // object's own constraints, so validate each PRESENT VO element EXPLICITLY. The property's
         // OWN constraints (@NotNull on a @required column, present-null tristate) are already
         // covered above / in <Entity>Patch.fromJson; this closes the nested-constraint gap (e.g. a
         // Marker.label over @maxLength, or null on a @required nested member) with a 400.
         appendValueObjectValidation(src, entity);
+        appendPatchVerdict(src);
         // Issue #203: honor @autoSet onUpdate — bump every onUpdate column to now() on EVERY partial
         // update (the model value is ignored; the server owns the timestamp), injected AFTER the
         // caller's present values are validated and BEFORE delegating so a PATCH that omits the
@@ -501,26 +498,58 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
     }
 
     /**
-     * Program D — append per-value-object nested-validation guards into the vanilla PATCH handler,
-     * one per {@code field.object @storage:jsonb} column (spec section 0). A present single VO
-     * value is validated whole; a present array is validated element-by-element. Skips null
-     * (present-null clears / is caught upstream) so the tristate composes. Emits nothing for an
-     * entity with no value-object columns, keeping non-VO controllers byte-identical.
+     * The head of a PATCH handler: bind the body to the presence-tracked patch and validate each
+     * PRESENT value against the DTO's field constraints, collecting EVERY issue into
+     * {@code __issues} (a bind failure lists all its problems, and the values that did bind are
+     * still validated). Per-field and NOT a whole-bean validate, which would fire {@code @NotNull}
+     * on ABSENT fields; {@code validateValue} skips null for {@code @Size}/{@code @Pattern} and a
+     * non-required field carries no {@code @NotNull}, so a present-null-clears composes cleanly.
+     * Leaves {@code __assigned} (the bound values) and {@code __patch} (null after a bind failure)
+     * for {@link #appendPatchVerdict}.
+     */
+    private static void appendPatchBinding(StringBuilder src, String patchName, String dtoName) {
+        src.append("        ValidationIssues __issues = new ValidationIssues();\n");
+        src.append("        ").append(patchName).append(" __patch = null;\n");
+        src.append("        Map<String, Object> __assigned;\n");
+        src.append("        try {\n");
+        src.append("            __patch = ").append(patchName).append(".fromJson(body, objectMapper);\n");
+        src.append("            __assigned = __patch.assignedValues();\n");
+        src.append("        } catch (PatchValidationException e) {\n");
+        src.append("            __issues.addPatchFailure(e);\n");
+        src.append("            __assigned = e.assignedValues();\n");
+        src.append("        }\n");
+        src.append("        for (Map.Entry<String, Object> __e : __assigned.entrySet()) {\n");
+        src.append("            __issues.addAt(validator.validateValue(").append(dtoName)
+           .append(".class, RecordComponentNames.escape(__e.getKey()), __e.getValue()), __e.getKey());\n");
+        src.append("        }\n");
+    }
+
+    /** The end of the PATCH validation: answer every collected issue at once, else expose {@code patch}. */
+    private static void appendPatchVerdict(StringBuilder src) {
+        src.append("        if (!__issues.isEmpty()) {\n");
+        src.append("            return ResponseEntity.badRequest().body(__issues.body());\n");
+        src.append("        }\n");
+        src.append("        final var patch = __patch;\n");
+    }
+
+    /**
+     * Program D — append per-value-object nested-validation guards into a PATCH handler, one per
+     * {@code field.object @storage:jsonb} column (spec section 0), reading the BOUND values from
+     * {@code __assigned}. A present single VO value is validated whole; a present array is validated
+     * element-by-element. Skips null (present-null clears / is caught upstream) so the tristate
+     * composes. Every violation is collected into {@code __issues}, its path the field's wire name
+     * then the element index or key then the member. Emits nothing for an entity with no
+     * value-object columns, keeping non-VO controllers byte-identical.
      */
     private static void appendValueObjectValidation(StringBuilder src, MetaObject entity) {
         for (ObjectField vf : SpringGeneratorSupport.valueObjectJsonbFields(entity)) {
-            String name = vf.getName();
-            // has<Cap>() needs no escape — capitalisation already clears the collision — but
-            // the value accessor does.
-            String accessor = SpringNaming.recordComponentName(name);
-            String cap = SpringNaming.capitalize(name);
+            String name = SpringGeneratorSupport.escapeJavaString(vf.getName());
             if (vf.isArrayType()) {
-                appendElementValidationLoop(src, accessor, cap, "patch." + accessor + "()");
+                appendAssignedElementLoop(src, name);
             } else {
-                src.append("        if (patch.has").append(cap).append("() && patch.")
-                   .append(accessor).append("() != null && !validator.validate(patch.")
-                   .append(accessor).append("()).isEmpty()) {\n");
-                src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
+                src.append("        if (__assigned.get(\"").append(name).append("\") != null) {\n");
+                src.append("            __issues.addViolations(validator.validate(__assigned.get(\"").append(name)
+                   .append("\")), \"").append(name).append("\");\n");
                 src.append("        }\n");
             }
         }
@@ -529,58 +558,54 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // with validateValue, which does NOT cascade — so without this the two write paths
         // disagree for maps where they agree for field.object, and a PATCH could write a
         // nested value object POST rejects. The map's VALUES are the beans (keys are strings).
+        appendValueObjectMapValidation(src, entity);
+    }
+
+    /** The map-of-value-object part of {@link #appendValueObjectValidation}, for a TPH subtype's PATCH. */
+    private static void appendValueObjectMapValidation(StringBuilder src, MetaObject entity) {
         for (MetaField vf : SpringGeneratorSupport.valueObjectMapFields(entity)) {
-            String name = vf.getName();
-            String accessor = SpringNaming.recordComponentName(name);
-            appendElementValidationLoop(
-                src, accessor, SpringNaming.capitalize(name), "patch." + accessor + "().values()");
+            appendAssignedMapLoop(src, SpringGeneratorSupport.escapeJavaString(vf.getName()));
         }
     }
 
-    /**
-     * Emit the present-and-non-null guard plus an element-wise {@code validator.validate} loop
-     * over {@code iterableExpr}. Shared by the array-of-value-object branch and the
-     * map-of-value-object branch: they differ ONLY in the iterable expression, and writing the
-     * body twice meant the 400 envelope existed in three places, so adding an error code (as
-     * other ports have) would have missed one.
-     *
-     * @param accessor the field's Java accessor name — ALREADY escaped via
-     *     {@link SpringNaming#recordComponentName}. Each caller escapes once and derives both
-     *     this and {@code iterableExpr} from that one local, so the two cannot disagree; the
-     *     escape is not repeated here because {@code iterableExpr} is the caller's to build.
-     * @param cap the DECLARED name capitalised, for {@code has<Cap>()} — never escaped,
-     *     because capitalisation already clears the collision with {@code Object}'s methods.
-     */
-    private static void appendElementValidationLoop(
-            StringBuilder src, String accessor, String cap, String iterableExpr) {
-        src.append("        if (patch.has").append(cap).append("() && patch.")
-           .append(accessor).append("() != null) {\n");
-        src.append("            for (var __el : ").append(iterableExpr).append(") {\n");
-        src.append("                if (__el != null && !validator.validate(__el).isEmpty()) {\n");
-        src.append("                    return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
-        src.append("                }\n");
+    /** The element-wise validation of a present array-of-value-object {@code __assigned} entry. */
+    private static void appendAssignedElementLoop(StringBuilder src, String name) {
+        src.append("        if (__assigned.get(\"").append(name).append("\") instanceof java.util.Collection<?> __c) {\n");
+        src.append("            int __i = 0;\n");
+        src.append("            for (Object __el : __c) {\n");
+        src.append("                if (__el != null) __issues.addViolations(validator.validate(__el), \"")
+           .append(name).append("\", __i);\n");
+        src.append("                __i++;\n");
+        src.append("            }\n");
+        src.append("        }\n");
+    }
+
+    /** The value-wise validation of a present map-of-value-object {@code __assigned} entry. */
+    private static void appendAssignedMapLoop(StringBuilder src, String name) {
+        src.append("        if (__assigned.get(\"").append(name).append("\") instanceof Map<?, ?> __m) {\n");
+        src.append("            for (Map.Entry<?, ?> __en : __m.entrySet()) {\n");
+        src.append("                if (__en.getValue() != null) __issues.addViolations(validator.validate(__en.getValue()), \"")
+           .append(name).append("\", String.valueOf(__en.getKey()));\n");
         src.append("            }\n");
         src.append("        }\n");
     }
 
     /**
-     * The same element-wise {@code validator.validate} loop as
-     * {@link #appendElementValidationLoop}, minus the presence guard — for a body bound as the
-     * union {@code <Base>Dto}, whose accessors are plain (no {@code hasX()} tristate). Used by
-     * the TPH per-subtype CREATE path, where absent and null are already indistinguishable on
-     * the bound DTO, so a null check is the whole guard.
+     * The map-of-value-object validation for a body bound as the union {@code <Base>Dto}, whose
+     * accessors are plain (no {@code hasX()} tristate). Used by the TPH per-subtype CREATE path,
+     * where absent and null are already indistinguishable on the bound DTO, so a null check is
+     * the whole guard.
      *
      * <p>#362: without this the TPH create validated a {@code field.map @objectRef} with
      * {@code validateValue}, which applies the property's own constraints and does NOT cascade
      * {@code @Valid} into the map's values — so a posted
      * {@code {"labels": {"k": {...invalid...}}}} was accepted and written.
      */
-    private static void appendMapValueValidationLoop(StringBuilder src, String accessorExpr) {
+    private static void appendMapValueValidationLoop(StringBuilder src, String accessorExpr, String wireName) {
         src.append("        if (").append(accessorExpr).append(" != null) {\n");
-        src.append("            for (var __el : ").append(accessorExpr).append(".values()) {\n");
-        src.append("                if (__el != null && !validator.validate(__el).isEmpty()) {\n");
-        src.append("                    return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
-        src.append("                }\n");
+        src.append("            for (var __en : ").append(accessorExpr).append(".entrySet()) {\n");
+        src.append("                if (__en.getValue() != null) __issues.addViolations(validator.validate(__en.getValue()), \"")
+           .append(SpringGeneratorSupport.escapeJavaString(wireName)).append("\", String.valueOf(__en.getKey()));\n");
         src.append("            }\n");
         src.append("        }\n");
     }
@@ -628,7 +653,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         String dtoName = SpringNaming.dtoName(shortName);
         String repoName = SpringNaming.repositoryName(shortName);
         String controllerName = SpringNaming.controllerName(shortName);
-        String routeBase = SpringNaming.controllerPath(shortName);
+        String routeBase = SpringNaming.controllerPath(entity);
         boolean hasItem = RestSurfaceGate.hasItemRoute(entity);
         String pkType = SpringTypeMapper.primaryKeyJavaType(entity);
 
@@ -714,7 +739,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         if (com.metaobjects.generator.util.GeneratorUtil.isReport(entity)) {
             appendReportListHandler(src, shortName, dtoName, repoName, reportMaxRows, reportExport, routeBase, hidden);
         } else {
-            appendListHandler(src, shortName, dtoName, repoName, hidden);
+            appendListHandler(src, shortName, dtoName, repoName, hidden, ApiSettings.of(entity).pagination());
         }
         if (hasItem) {
             appendGetByIdHandler(src, pkType, hidden);
@@ -827,7 +852,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * (Spring's {@code @RequestParam} would collapse same-key occurrences).
      */
     private static void appendListHandler(StringBuilder src, String shortName, String dtoName, String repoName,
-            List<String> hidden) {
+            List<String> hidden, ApiSettings.Pagination page) {
         String allowlistName = SpringNaming.filterAllowlistName(shortName);
         src.append("    @GetMapping\n");
         src.append("    public ResponseEntity<?> list(\n");
@@ -836,7 +861,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("            @RequestParam(required = false) String sort,\n");
         src.append("            @RequestParam(required = false, name = \"withCount\") Integer withCount,\n");
         src.append("            HttpServletRequest request) {\n");
-        src.append("        int actualLimit = limit != null ? limit : 50;\n");
+        appendLimit(src, page);
         src.append("        int actualOffset = offset != null ? offset : 0;\n");
         src.append("        ").append(repoName).append(".SortClause sortClause = null;\n");
         src.append("        if (sort != null) {\n");
@@ -850,7 +875,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("        }\n");
         src.append("        FilterParseResult filter = FilterParser.parse(\n");
         src.append("                request.getQueryString(), ").append(allowlistName).append(".FIELDS, ")
-           .append(allowlistName).append(".OPS_BY_FIELD, ").append(allowlistName).append(".DECIMAL_FIELDS);\n");
+           .append(allowlistName).append(".OPS_BY_FIELD, ").append(allowlistName).append(".DECIMAL_FIELDS, ").append(allowlistName).append(".DURATION_FIELDS);\n");
         src.append("        if (filter.error() != null) {\n");
         src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error(), \"field\", filter.field()));\n");
         src.append("        }\n");
@@ -952,7 +977,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("        }\n");
         src.append("        FilterParseResult filter = FilterParser.parse(\n");
         src.append("                request.getQueryString(), ").append(allowlistName).append(".FIELDS, ")
-           .append(allowlistName).append(".OPS_BY_FIELD, ").append(allowlistName).append(".DECIMAL_FIELDS);\n");
+           .append(allowlistName).append(".OPS_BY_FIELD, ").append(allowlistName).append(".DECIMAL_FIELDS, ").append(allowlistName).append(".DURATION_FIELDS);\n");
         src.append("        if (filter.error() != null) {\n");
         src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error(), \"field\", filter.field()));\n");
         src.append("        }\n");
@@ -1039,7 +1064,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("        }\n");
         src.append("        FilterParseResult filter = FilterParser.parse(\n");
         src.append("                request.getQueryString(), ").append(allowlistName).append(".FIELDS, ")
-           .append(allowlistName).append(".OPS_BY_FIELD, ").append(allowlistName).append(".DECIMAL_FIELDS);\n");
+           .append(allowlistName).append(".OPS_BY_FIELD, ").append(allowlistName).append(".DECIMAL_FIELDS, ").append(allowlistName).append(".DURATION_FIELDS);\n");
         src.append("        if (filter.error() != null) {\n");
         src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error(), \"field\", filter.field()));\n");
         src.append("        }\n");
@@ -1123,7 +1148,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         String dtoName = SpringNaming.dtoName(shortName);
         String repoName = SpringNaming.repositoryName(shortName);
         String controllerName = SpringNaming.controllerName(shortName);
-        String routeBase = SpringNaming.controllerPath(shortName);
+        String routeBase = SpringNaming.controllerPath(base);
         String allowlistName = SpringNaming.filterAllowlistName(shortName);
         // The single TPH table is keyed by the BASE's primary identity — every polymorphic
         // + per-subtype by-id route binds that derived PK type (uuid → java.util.UUID, …).
@@ -1149,6 +1174,8 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("import ").append(runtimePackage).append(".ConstraintErrors;\n");
         src.append("import ").append(runtimePackage).append(".PatchValidationException;\n");
         src.append("import ").append(runtimePackage).append(".UnreadableBody;\n");
+        src.append("import ").append(runtimePackage).append(".UnknownBodyKeys;\n");
+        src.append("import ").append(runtimePackage).append(".ValidationIssues;\n");
         // The escape the PATCH loop applies to each assigned key before naming a Bean
         // Validation property — see RecordComponentNames for why it is needed at run time.
         src.append("import ").append(runtimePackage).append(".RecordComponentNames;\n");
@@ -1197,6 +1224,12 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // The polymorphic sort surface is the BASE's own columns, so the declared orders
         // are read off the base too — same owner the allowlist above was built from.
         appendSortDefaultOrders(src, base, sortFields);
+        // A key declared by the base or by ANY subtype is known on every subtype route: a sibling
+        // subtype's column is dropped there (it is not this route's to write), never refused.
+        ApiSettings api = ApiSettings.of(base);
+        List<MetaField> declared = new ArrayList<>(base.getMetaFields());
+        declared.addAll(TphPlan.everySubtypeField(base, loader));
+        appendKnownFields(src, api, declared);
 
         // FR-036 Program B: constructor-inject the ObjectMapper (binds each present PATCH value via
         // <Sub>Patch.fromJson, same wire codecs as create) + the jakarta Validator (per-field
@@ -1237,7 +1270,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("            @RequestParam(required = false) String sort,\n");
         src.append("            @RequestParam(required = false, name = \"withCount\") Integer withCount,\n");
         src.append("            HttpServletRequest request) {\n");
-        src.append("        int actualLimit = limit != null ? limit : 50;\n");
+        appendLimit(src, api.pagination());
         src.append("        int actualOffset = offset != null ? offset : 0;\n");
         src.append("        ").append(repoName).append(".SortClause sortClause = null;\n");
         src.append("        if (sort != null) {\n");
@@ -1245,7 +1278,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("            if (sortClause == null) return ResponseEntity.badRequest().body(Map.of(\"error\", \"invalid_sort\", \"field\", sort.split(\":\", 2)[0]));\n");
         src.append("        }\n");
         src.append("        FilterParseResult filter = FilterParser.parse(request.getQueryString(), ")
-           .append(allowlistName).append(".FIELDS, ").append(allowlistName).append(".OPS_BY_FIELD, ").append(allowlistName).append(".DECIMAL_FIELDS);\n");
+           .append(allowlistName).append(".FIELDS, ").append(allowlistName).append(".OPS_BY_FIELD, ").append(allowlistName).append(".DECIMAL_FIELDS, ").append(allowlistName).append(".DURATION_FIELDS);\n");
         src.append("        if (filter.error() != null) return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error(), \"field\", filter.field()));\n");
         src.append("        List<FilterPredicate> filters = filter.predicates();\n");
         src.append("        List<").append(dtoName).append("> rows = repository.list(actualLimit, actualOffset, sortClause, filters);\n");
@@ -1310,7 +1343,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             src.append("            @RequestParam(required = false) Integer offset,\n");
             src.append("            @RequestParam(required = false) String sort,\n");
             src.append("            HttpServletRequest request) {\n");
-            src.append("        int actualLimit = limit != null ? limit : 50;\n");
+            appendLimit(src, api.pagination());
             src.append("        int actualOffset = offset != null ? offset : 0;\n");
             src.append("        ").append(repoName).append(".SortClause sortClause = null;\n");
             src.append("        if (sort != null) {\n");
@@ -1318,7 +1351,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             src.append("            if (sortClause == null) return ResponseEntity.badRequest().body(Map.of(\"error\", \"invalid_sort\", \"field\", sort.split(\":\", 2)[0]));\n");
             src.append("        }\n");
             src.append("        FilterParseResult filter = FilterParser.parse(request.getQueryString(), ")
-               .append(allowlistName).append(".FIELDS, ").append(allowlistName).append(".OPS_BY_FIELD, ").append(allowlistName).append(".DECIMAL_FIELDS);\n");
+               .append(allowlistName).append(".FIELDS, ").append(allowlistName).append(".OPS_BY_FIELD, ").append(allowlistName).append(".DECIMAL_FIELDS, ").append(allowlistName).append(".DURATION_FIELDS);\n");
             src.append("        if (filter.error() != null) return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error(), \"field\", filter.field()));\n");
             src.append("        return ResponseEntity.ok(").append(redactAll(
                 "repository.listByType(\"" + disc + "\", actualLimit, actualOffset, sortClause, filter.predicates())",
@@ -1345,27 +1378,41 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             // is auto-generated and the discriminator is injected from the URL, so neither is checked.
             // validateValue applies @NotNull to a null value, so an absent @required column 400s too —
             // matching the vanilla create's whole-bean validate, scoped to this subtype.
-            List<MetaField> createValidated =
-                SpringGeneratorSupport.settableFields(st.entity(), TphPlan.discriminatorFieldOf(st.entity()));
+            String discField = TphPlan.discriminatorFieldOf(st.entity());
+            List<MetaField> createValidated = SpringGeneratorSupport.settableFields(st.entity(), discField);
+            // The subtype's cross-field rules are class-level @AssertTrue methods on <Sub>Dto, which
+            // the per-property validateValue below never reaches. They are evaluated here against the
+            // bound union body instead, the discriminator read as this route's pinned value.
+            List<Map.Entry<MetaValidator, String>> crossFieldRules = SpringGeneratorSupport.crossFieldRules(
+                st.entity(), SpringGeneratorSupport.dtoComponentFields(st.entity()),
+                f -> f.getName().equals(discField)
+                    ? "\"" + SpringGeneratorSupport.escapeJavaString(disc) + "\""
+                    : "dto." + SpringNaming.recordComponentName(f.getName()) + "()");
+            if (!crossFieldRules.isEmpty()) src.append("    @SuppressWarnings(\"unchecked\")\n");
             src.append("    @PostMapping(\"/").append(seg).append("\")\n");
-            // R35: as the vanilla create — fill the subtype's omitted literal @default fields into
+            // As the vanilla create — fill the subtype's omitted literal @default fields into
             // the raw body, then bind the union DTO. No such field: the direct binding, byte-identical.
             List<String> subDefaultPuts = createDefaultPuts(st.entity(), SpringGeneratorSupport.dtoComponentFields(st.entity()));
-            if (subDefaultPuts.isEmpty()) {
+            if (subDefaultPuts.isEmpty() && !api.rejectsUnknownFields()) {
                 src.append("    public ResponseEntity<?> create").append(suffix)
                    .append("(@RequestBody ").append(dtoName).append(" dto) {\n");
             } else {
                 src.append("    public ResponseEntity<?> create").append(suffix).append("(@RequestBody JsonNode body) {\n");
-                appendFillDefaults(src, dtoName, subDefaultPuts);
+                appendFillDefaults(src, dtoName, subDefaultPuts, api.rejectsUnknownFields());
             }
+            src.append("        ValidationIssues __issues = new ValidationIssues();\n");
             for (MetaField vf : createValidated) {
                 // Both the property STRING and the accessor take the escaped component name:
                 // Bean Validation resolves a record's property by its COMPONENT, and
                 // `dto.notify()` would bind to Object.notify().
                 String vc = SpringNaming.recordComponentName(vf.getName());
-                src.append("        if (!validator.validateValue(").append(subDto).append(".class, \"")
-                   .append(vc).append("\", dto.").append(vc).append("()).isEmpty()) {\n");
-                src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
+                src.append("        __issues.addAt(validator.validateValue(").append(subDto).append(".class, \"")
+                   .append(vc).append("\", dto.").append(vc).append("()), \"")
+                   .append(SpringGeneratorSupport.escapeJavaString(vf.getName())).append("\");\n");
+            }
+            for (Map.Entry<MetaValidator, String> rule : crossFieldRules) {
+                src.append("        if (!(").append(rule.getValue()).append(")) {\n");
+                src.append("            __issues.add(ValidationIssues.CUSTOM, java.util.List.of(), \"a cross-field rule failed\");\n");
                 src.append("        }\n");
             }
             // #362: validateValue above checks each property against the subtype DTO's own
@@ -1376,8 +1423,11 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             // path's equivalent, so the two write surfaces agree.
             for (MetaField vf : SpringGeneratorSupport.valueObjectMapFields(st.entity())) {
                 appendMapValueValidationLoop(
-                    src, "dto." + SpringNaming.recordComponentName(vf.getName()) + "()");
+                    src, "dto." + SpringNaming.recordComponentName(vf.getName()) + "()", vf.getName());
             }
+            src.append("        if (!__issues.isEmpty()) {\n");
+            src.append("            return ResponseEntity.badRequest().body(__issues.body());\n");
+            src.append("        }\n");
             // ADR-0045 (#203/#229): honor @autoSet on the TPH per-subtype create — stamp EVERY
             // onCreate AND onUpdate column with now() before persisting (the caller's value is
             // ignored), mirroring the vanilla create handler's createArg above. The stamp helper
@@ -1395,11 +1445,10 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             // OWN @autoSet column is a documented non-goal (uniform with the Kotlin and Python
             // ports, both base-scoped): the column is simply never stamped, not a compile break.
             // #484: ignore (never reject) a @formExclude / credential value in the body.
-            // SECURITY (1.2.x): also dropped — the generated key, readOnly/derived columns, the
-            // discriminator (the route's subtype is its only source) and every column only a
-            // SIBLING subtype declares.
+            // Also dropped: the generated key, readOnly/derived columns, the discriminator (the
+            // route's subtype is its only source) and every column only a SIBLING subtype declares.
             appendStripWriteDenied(src, dtoName, unionFields,
-                tphCreateDeniedNames(st.entity(), unionFields, writeDenied, TphPlan.discriminatorFieldOf(st.entity())));
+                tphCreateDeniedNames(st.entity(), unionFields, writeDenied, discField));
             String createArg = SpringGeneratorSupport.hasAutoSetFields(base)
                 ? dtoName + ".stampForInsert(dto)" : "dto";
             src.append("        try {\n");
@@ -1421,28 +1470,10 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
                .append("/{id}\", method = { RequestMethod.PATCH, RequestMethod.PUT })\n");
             src.append("    public ResponseEntity<?> update").append(suffix)
                .append("(@PathVariable ").append(pkType).append(" id, @RequestBody JsonNode body) {\n");
-            src.append("        ").append(subPatch).append(" patch;\n");
-            src.append("        try {\n");
-            src.append("            patch = ").append(subPatch).append(".fromJson(body, objectMapper);\n");
-            src.append("        } catch (PatchValidationException e) {\n");
-            src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
-            src.append("        }\n");
-            src.append("        for (Map.Entry<String, Object> __e : patch.assignedValues().entrySet()) {\n");
-            src.append("            if (!validator.validateValue(").append(subDto)
-               .append(".class, RecordComponentNames.escape(__e.getKey()), __e.getValue()).isEmpty()) {\n");
-            src.append("                return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
-            src.append("            }\n");
-            src.append("        }\n");
-            // #362: as on the create path above, validateValue does not cascade into a nested
-            // bean, so a PRESENT field.map @objectRef had its values written unvalidated. The
-            // <Sub>Patch carries the hasX()/x() tristate, so this is the same loop the vanilla
-            // PATCH runs — skipping absent keys, and skipping an explicit null (which clears).
-            for (MetaField vf : SpringGeneratorSupport.valueObjectMapFields(st.entity())) {
-                String mvc = SpringNaming.recordComponentName(vf.getName());
-                appendElementValidationLoop(
-                    src, mvc, SpringNaming.capitalize(vf.getName()),
-                    "patch." + mvc + "().values()");
-            }
+            appendUnknownFieldsGuard(src, api);
+            appendPatchBinding(src, subPatch, subDto);
+            appendValueObjectMapValidation(src, st.entity());
+            appendPatchVerdict(src);
             // ADR-0045 (#203/#229): bump every onUpdate @autoSet column on the per-subtype PATCH,
             // mirroring the vanilla update handler above — injected after present-value
             // validation, before delegating, so the timestamp bumps even when the caller omits
@@ -1677,58 +1708,8 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         return List.of();
     }
 
-    /** A field no client may set on create, whatever the entity's key: readOnly or derived. */
-    private static boolean isNonSettableOnCreate(MetaField f) {
-        return MetaField.MUTABILITY_READ_ONLY.equals(f.getMutability()) || f.isDerived();
-    }
-
-    /** The field names of {@code entity}'s primary key when the server generates it (increment / uuid). */
-    private static Set<String> generatedPkNames(MetaObject entity) {
-        return entity.getIdentities(true).stream()
-            .filter(com.metaobjects.identity.MetaIdentity::isPrimary)
-            .findFirst()
-            .filter(com.metaobjects.identity.MetaIdentity::isAutoGenerated)
-            .<Set<String>>map(pk -> new java.util.LinkedHashSet<>(pk.getFields()))
-            .orElse(Set.of());
-    }
-
     /**
-     * The components a plain create drops from the bound body before it reaches the repository:
-     * write-denied ({@code @formExclude} / credential), a server-generated primary key (an assigned
-     * key is the caller's to choose), and {@code readOnly} and derived fields.
-     */
-    private static Set<String> createDeniedNames(MetaObject entity, List<MetaField> components) {
-        Set<String> out = new java.util.LinkedHashSet<>(SpringGeneratorSupport.writeDeniedNames(components));
-        Set<String> pk = generatedPkNames(entity);
-        for (MetaField f : components) {
-            if (pk.contains(f.getName()) || isNonSettableOnCreate(f)) out.add(f.getName());
-        }
-        return out;
-    }
-
-    /**
-     * The union-DTO components a TPH per-subtype create drops: the hierarchy's write-denied names,
-     * the generated key, readOnly and derived columns, the discriminator, and every column the
-     * route's subtype does not itself have (a sibling subtype's, never this route's to write).
-     */
-    private static Set<String> tphCreateDeniedNames(MetaObject subtype, List<MetaField> union,
-                                                    Set<String> writeDenied, String discField) {
-        Set<String> out = new java.util.LinkedHashSet<>(writeDenied);
-        Set<String> pk = generatedPkNames(subtype);
-        java.util.Map<String, MetaField> own = new java.util.HashMap<>();
-        for (MetaField f : SpringGeneratorSupport.scalarFields(subtype)) own.put(f.getName(), f);
-        for (MetaField u : union) {
-            MetaField f = own.get(u.getName());
-            if (f == null || pk.contains(u.getName()) || u.getName().equals(discField) || isNonSettableOnCreate(f)) {
-                out.add(u.getName());
-            }
-        }
-        return out;
-    }
-
-    /** The fields of a create body that a generated write route ignores (#484). */
-    /**
-     * R35 — one {@code filled.put(...)} statement per DTO component with a literal {@code @default}
+     * One {@code filled.put(...)} statement per DTO component with a literal {@code @default}
      * this can spell (an enum member, a boolean, a number, a string), guarded by its absence from
      * the body. A SQL-expression default is the database's, an array or a temporal default has no
      * literal here, and a server-owned or {@code @autoSet} column is never the caller's to send.
@@ -1745,33 +1726,44 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             if (raw == null) continue;
             String text = raw.toString();
             String value = switch (f.getSubType()) {
-                case "enum" -> {
+                case com.metaobjects.field.EnumField.SUBTYPE_ENUM -> {
                     Object values = f.hasMetaAttr(com.metaobjects.field.EnumField.ATTR_VALUES)
                         ? f.getMetaAttr(com.metaobjects.field.EnumField.ATTR_VALUES).getValue() : null;
-                    yield values instanceof List<?> l && l.stream().anyMatch(v -> text.equals(String.valueOf(v))) ? javaString(text) : null;
+                    yield values instanceof List<?> l && l.stream().anyMatch(v -> text.equals(String.valueOf(v))) ? javaLiteral(text) : null;
                 }
-                case "boolean" -> "true".equalsIgnoreCase(text) || "false".equalsIgnoreCase(text) ? text.toLowerCase() : null;
-                case "int", "long" -> text.matches("-?\\d+") ? text + "L" : null;
-                case "double", "float" -> text.matches("-?\\d+(\\.\\d+)?([eE][-+]?\\d+)?") ? text + "d" : null;
-                case "decimal" -> text.matches("-?\\d+(\\.\\d+)?") ? "new java.math.BigDecimal(\"" + text + "\")" : null;
-                case "string" -> text.contains("(") || text.equalsIgnoreCase("now") || text.equalsIgnoreCase("current_timestamp")
-                    ? null : javaString(text);
+                case com.metaobjects.field.BooleanField.SUBTYPE_BOOLEAN ->
+                    "true".equalsIgnoreCase(text) || "false".equalsIgnoreCase(text) ? text.toLowerCase() : null;
+                case com.metaobjects.field.IntegerField.SUBTYPE_INT, com.metaobjects.field.LongField.SUBTYPE_LONG ->
+                    text.matches("-?\\d+") ? text + "L" : null;
+                case com.metaobjects.field.DoubleField.SUBTYPE_DOUBLE, com.metaobjects.field.FloatField.SUBTYPE_FLOAT ->
+                    text.matches("-?\\d+(\\.\\d+)?([eE][-+]?\\d+)?") ? text + "d" : null;
+                case com.metaobjects.field.DecimalField.SUBTYPE_DECIMAL ->
+                    text.matches("-?\\d+(\\.\\d+)?") ? "new java.math.BigDecimal(\"" + text + "\")" : null;
+                // A database expression (now(), gen_random_uuid()) is the database's to fill.
+                case com.metaobjects.field.StringField.SUBTYPE_STRING ->
+                    com.metaobjects.generator.util.GeneratorUtil.isSqlExpressionDefault(text) ? null : javaLiteral(text);
                 default -> null;
             };
             if (value == null) continue;
-            String key = javaString(f.getName());
+            String key = javaLiteral(f.getName());
             out.add("if (!filled.has(" + key + ")) filled.put(" + key + ", " + value + ");");
         }
         return out;
     }
 
-    /** R35 — the body of a create handler bound to the raw {@code JsonNode body}: refuse a
+    private static String javaLiteral(String text) {
+        return "\"" + SpringGeneratorSupport.escapeJavaString(text) + "\"";
+    }
+
+    /** The body of a create handler bound to the raw {@code JsonNode body}: refuse a
      *  non-object body, fill the absent defaulted fields ({@link #createDefaultPuts}), bind
      *  {@code dto}. */
-    private static void appendFillDefaults(StringBuilder src, String dtoName, List<String> puts) {
+    private static void appendFillDefaults(StringBuilder src, String dtoName, List<String> puts, boolean rejectUnknown) {
         src.append("        if (!(body instanceof com.fasterxml.jackson.databind.node.ObjectNode given)) {\n");
-        src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
+        src.append("            return ResponseEntity.badRequest().body(new ValidationIssues()\n");
+        src.append("                    .add(ValidationIssues.INVALID_TYPE, java.util.List.of(), \"request body must be a JSON object\").body());\n");
         src.append("        }\n");
+        if (rejectUnknown) appendUnknownFieldsGuard(src, true);
         src.append("        com.fasterxml.jackson.databind.node.ObjectNode filled = given.deepCopy();\n");
         for (String put : puts) src.append("        ").append(put).append("\n");
         src.append("        ").append(dtoName).append(" dto;\n");
@@ -1782,8 +1774,110 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("        }\n");
     }
 
-    private static String javaString(String text) {
-        return "\"" + text.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+    /**
+     * The {@code KNOWN_FIELDS} constant of a controller that refuses undeclared body keys
+     * ({@code api.unknownFields: reject}, the default): every declared field name of
+     * {@code declared} (the entity, or for a single-table hierarchy the base and every subtype).
+     * A declared key the client may not set (generated key, readOnly, derived, {@code @autoSet},
+     * a sibling subtype's column) is known: it is dropped, never refused. Emits nothing under
+     * {@code drop}, which keeps the controller byte-identical to one without the setting.
+     */
+    private static void appendKnownFields(StringBuilder src, ApiSettings api, List<MetaField> declared) {
+        if (!api.rejectsUnknownFields()) return;
+        Set<String> names = new java.util.LinkedHashSet<>();
+        for (MetaField f : declared) names.add(f.getName());
+        src.append("    /** Every field the entity declares, as named on the wire: a body key outside it is refused. */\n");
+        src.append("    private static final Set<String> KNOWN_FIELDS = Set.of(");
+        int i = 0;
+        for (String n : names) {
+            if (i++ > 0) src.append(", ");
+            src.append(javaLiteral(n));
+        }
+        src.append(");\n\n");
+    }
+
+    /** The unknown-key check at the head of a PUT/PATCH handler (see {@link #appendUnknownFieldsGuard(StringBuilder, boolean)}). */
+    private static void appendUnknownFieldsGuard(StringBuilder src, ApiSettings api) {
+        if (api.rejectsUnknownFields()) appendUnknownFieldsGuard(src, true);
+    }
+
+    /** Answer {@code 400 unknown_fields} for an undeclared top-level key of {@code body}, checked on the raw JSON before any binding. */
+    private static void appendUnknownFieldsGuard(StringBuilder src, boolean enabled) {
+        if (!enabled) return;
+        src.append("        Map<String, Object> __unknown = UnknownBodyKeys.refusal(body, KNOWN_FIELDS);\n");
+        src.append("        if (__unknown != null) {\n");
+        src.append("            return ResponseEntity.badRequest().body(__unknown);\n");
+        src.append("        }\n");
+    }
+
+    /**
+     * The {@code actualLimit} line of a list handler: no {@code limit} reads the page default
+     * (50 unless the project sets {@code api.pagination}), and a {@code limit} above
+     * {@code api.pagination.maxLimit} is {@code 400 {"error": "limit_too_large", "maxLimit": N}}.
+     * Under {@code api.pagination} a negative {@code limit} is refused with the malformed-bound
+     * envelope, as the TypeScript routes refuse it, so it never reaches a store that reads
+     * {@code LIMIT -1} as no limit (SQLite) and steps around the cap.
+     */
+    private static void appendLimit(StringBuilder src, ApiSettings.Pagination page) {
+        if (page == null) {
+            src.append("        int actualLimit = limit != null ? limit : 50;\n");
+            return;
+        }
+        src.append("        if (limit != null && limit < 0) {\n");
+        src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"pagination.invalid_value\", \"param\", \"limit\", ")
+           .append("\"value\", String.valueOf(limit), \"expected\", \"a non-negative integer (0 or more)\"));\n");
+        src.append("        }\n");
+        src.append("        if (limit != null && limit > ").append(page.maxLimit()).append(") {\n");
+        src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"limit_too_large\", \"maxLimit\", ")
+           .append(page.maxLimit()).append("));\n");
+        src.append("        }\n");
+        src.append("        int actualLimit = limit != null ? limit : ").append(page.defaultLimit()).append(";\n");
+    }
+
+    /** A field no client may set on create regardless of the entity's key: readOnly or derived. */
+    private static boolean isNonSettableOnCreate(MetaField f) {
+        return MetaField.MUTABILITY_READ_ONLY.equals(f.getMutability()) || f.isDerived();
+    }
+
+    /** The names of {@code fields} that are a server-generated primary key of {@code entity}. */
+    private static Set<String> generatedPkNames(MetaObject entity) {
+        com.metaobjects.identity.PrimaryIdentity pk = entity.getPrimaryIdentity();
+        if (pk == null || !pk.isAutoGenerated()) return Set.of();
+        return new java.util.LinkedHashSet<>(pk.getFields());
+    }
+
+    /**
+     * The components a plain create handler drops from the bound body before it reaches the
+     * repository: write-denied ({@code @formExclude} / credential), a generated primary key (an
+     * assigned key is the caller's), {@code readOnly} and derived fields.
+     */
+    private static Set<String> createDeniedNames(MetaObject entity, List<MetaField> components) {
+        Set<String> out = new java.util.LinkedHashSet<>(SpringGeneratorSupport.writeDeniedNames(components));
+        Set<String> pk = generatedPkNames(entity);
+        for (MetaField f : components) {
+            if (pk.contains(f.getName()) || isNonSettableOnCreate(f)) out.add(f.getName());
+        }
+        return out;
+    }
+
+    /**
+     * The union-DTO components a TPH per-subtype create drops: everything in
+     * {@link #createDeniedNames}, the discriminator, and every column the route's subtype does not
+     * itself declare (a sibling subtype's, never this route's to write).
+     */
+    private static Set<String> tphCreateDeniedNames(MetaObject subtype, List<MetaField> union,
+                                                    Set<String> writeDenied, String discField) {
+        Set<String> out = new java.util.LinkedHashSet<>(writeDenied);
+        Set<String> pk = generatedPkNames(subtype);
+        java.util.Map<String, MetaField> own = new java.util.HashMap<>();
+        for (MetaField f : SpringGeneratorSupport.scalarFields(subtype)) own.put(f.getName(), f);
+        for (MetaField u : union) {
+            MetaField f = own.get(u.getName());
+            if (f == null || pk.contains(u.getName()) || u.getName().equals(discField) || isNonSettableOnCreate(f)) {
+                out.add(u.getName());
+            }
+        }
+        return out;
     }
 
     private static void appendStripWriteDenied(StringBuilder src, String dtoName, List<MetaField> components,

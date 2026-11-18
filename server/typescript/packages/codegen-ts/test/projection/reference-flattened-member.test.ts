@@ -74,7 +74,7 @@ describe("G6 — an identity.reference over a flattened value-object member", ()
   test("a @via hop over it joins on the member's prefixed column", async () => {
     const { root } = await load();
     const [v] = buildProjectionViews(root, { dialect: "postgres" });
-    expect(v!.sql).toContain("public.countries c ON c.id = p.address_country_id");
+    expect(v!.sql).toContain("countries c ON c.id = p.address_country_id");
   });
 
   test("meta migrate puts the foreign key on the member's column", async () => {

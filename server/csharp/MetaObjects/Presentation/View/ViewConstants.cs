@@ -12,7 +12,7 @@ namespace MetaObjects.Presentation.View;
 /// Every port REGISTERS the full view vocabulary, so one metadata document
 /// loads in every port. The generic web-presentation control kinds (text/
 /// textarea/date/month/hotlink/dropdown/radio/checkbox/number/password/hidden/
-/// web/image) are R40 kind-1 vocabulary: cross-port, in the registry manifest with
+/// web/image) are kind-1 vocabulary: cross-port, in the registry manifest with
 /// <c>implementedIn: ["typescript"]</c>, and implemented only in TypeScript so far.
 /// C# loads them strictly (their attrs come from <c>UiWebMetaDataProvider</c>) and
 /// does not act on them.

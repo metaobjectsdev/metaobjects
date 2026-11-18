@@ -7,7 +7,7 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 
-namespace Acme;
+namespace Acme.Generated;
 
 [Table("invoices")]
 public class Invoice
@@ -18,10 +18,8 @@ public class Invoice
     [Column("client_id")]
     public long ClientId { get; set; }
     [Column("term")]
-    [DurationWire.Iso]
     public TimeSpan? Term { get; set; }
     [Column("reminders")]
-    [DurationWire.Iso]
     public IList<TimeSpan> Reminders { get; set; } = new List<TimeSpan>();
     [Column("total")]
     [DecimalWire.Number(12, 2)]

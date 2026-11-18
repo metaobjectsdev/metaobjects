@@ -51,7 +51,7 @@ public class ValueMappedEnumConverterTypeTests
         return new GenContext
         {
             Entities = r.Root.Objects(), Root = r.Root,
-            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", IncludeNames = true },
+            Config = new GenConfig { OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true, OutDir = "/tmp", Namespace = "Acme.Generated", IncludeNames = true },
         };
     }
 

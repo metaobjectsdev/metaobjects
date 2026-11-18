@@ -28,7 +28,7 @@ bun run build:binary        # → dist/meta (compiled for the build host's OS/ar
 ./dist/meta --help
 ```
 
-The build externalizes two optional Biome WASM backends (`@biomejs/wasm-bundler`, `@biomejs/wasm-web`) that the CLI never loads — only the native Biome backend is used.
+The build externalizes two optional Biome WASM backends (`@biomejs/wasm-bundler`, `@biomejs/wasm-web`) that the CLI never loads — codegen formats through the Node WebAssembly backend (`@biomejs/wasm-nodejs`), and the native Biome binary is not installed with the CLI.
 
 ### Cross-compiling for other platforms
 
@@ -107,7 +107,7 @@ Running `meta` with no arguments prints a concise status line (whether a `metaob
 
 ### `meta init`
 
-Scaffolds `metaobjects/` (visible entity declarations, with a placeholder `meta.common.json`), `.metaobjects/` (hidden tool state: `config.json`, `AGENTS.md`, `CLAUDE.md`, `.gitignore`, `.gen-state/`), an **empty** `codegen/generators/` plus its `tsconfig.codegen.json`, and `metaobjects.config.ts` at the repo root.
+Scaffolds `metaobjects/` (visible entity declarations, with a placeholder `meta.common.json`), `.metaobjects/` (hidden tool state: `config.json`, the always-on `AGENTS.md`, `.gitignore`, `.gen-state/`), the `metaobjects-*` skills under `.claude/skills/` (or `--skills-dir`), a root `AGENTS.md` / `CLAUDE.md` import of the always-on file, an **empty** `codegen/generators/` plus its `tsconfig.codegen.json`, and `metaobjects.config.ts` at the repo root. The scaffolded config carries `outputLayout: "package"` — one directory per metadata package, so two objects with one name in two packages are two files. The engine default stays `flat`; delete the line (or set `"flat"`) for the old layout.
 
 **It copies no generators and declares no dependencies.** Codegen is opt-in (ADR-0034 Amendment 2): the scaffolded config carries `generators: []` and a comment pointing at the catalog. `meta gen --list --probe` shows what each generator would emit for your model, with the import line that runs it as shipped; `meta gen --list --format json` adds what to install (`install.dev`, `install.runtime`) and the config keys each generator reads (`configKeys`), which the text listing does not print. Import a generator from its package to use it unchanged; `meta eject <name>...` copies the ones you want to change into `codegen/generators/` — **yours to edit** — and prints the import line to swap in, the entry to add, the install command and any config keys those generators read. `meta gen` runs whatever `generators: [...]` holds: the package's generator where you imported it, your copy where you ejected it.
 
@@ -115,7 +115,10 @@ Flags:
 - `--force` — overwrite scaffold files (memory records preserved)
 - `--quiet` — suppress next-steps output
 - `--print-only` — show what would be created without writing
-- `--refresh-docs` — refresh AGENTS.md + CLAUDE.md after a CLI upgrade
+- `--refresh-docs` — refresh `.metaobjects/AGENTS.md` and the skills after a CLI upgrade
+- `--skills-dir <dir>` — install the skills somewhere other than `.claude/skills` (Claude Code's directory), such as `.agents/skills` for assistants that read that; remembered for later refreshes
+- `--no-wire-root` — do not add the `.metaobjects/AGENTS.md` import to the root `AGENTS.md` / `CLAUDE.md`
+- `--dialect sqlite|postgres|mysql|d1` — the database the project targets. Writes the codegen `dialect`, and `migrate.dialect` in `.metaobjects/config.json` for sqlite, postgres and d1 (`--d1` is `--dialect d1`; a conflicting pair is refused). MySQL is codegen-only: `meta migrate` does not own its schema. Default `sqlite`; the next steps print that dialect's first migration.
 
 ### `meta gen [<entity>...]`
 
@@ -124,7 +127,7 @@ Generates TS code (Drizzle schema, Zod validators, query helpers, TanStack Query
 Flags:
 - `--dry-run` — preview only: renders and reports what would be written, touching nothing on disk (no output files, no `.gen-state/` snapshot)
 - `--no-antipatterns` — suppress the advisory anti-pattern pass (see below)
-- `--force` — render and write everything even when nothing changed since the last run; without it a run that matches the stored key renders nothing ([docs/features/cli.md](../../../../docs/features/cli.md#gen-skips-a-run-when-nothing-changed--and---force-runs-it-anyway-adr-0062))
+- `--force` — render and write everything even when nothing changed since the last run; without it a run that matches the stored key renders nothing ([docs/features/cli.md](../../../../docs/features/cli.md#gen-skips-a-run-when-nothing-changed--and---force-runs-it-anyway-adr-0064))
 
 Positional args filter entities by name. All other knobs (`outDir`, `targets`, `dialect`, `dbImport`, `extStyle`, `apiPrefix`, generator list) live in `metaobjects.config.ts`.
 
@@ -177,7 +180,7 @@ Flags:
 - `--shadow-db <url>` — Postgres scratch database the expected schema is applied to for `--from-db` / `--apply` drift (also `SHADOW_DATABASE_URL` or `migrate.shadowDatabaseUrl`). Read [How CHECK constraints and expression indexes are compared](../../../../docs/features/migrations-and-drift.md#how-check-constraints-and-expression-indexes-are-compared) for the three paths.
 - `--out-dir <path>` (default `./.metaobjects/migrations`)
 - `--slug <name>` — required when changes are pending (e.g., `add-user-shipping`)
-- `--allow <csv>` — destructive-change permissions: `drop-column,drop-table,type-change,drop-index,drop-fk,drop-check,drop-view,drop-view-cascade,adopt-view,nullable-to-not-null,drop-identity-default,drop-unmanaged,drop-comment`
+- `--allow <csv>` — destructive-change permissions: `drop-column,drop-table,type-change,drop-index,drop-fk,drop-check,drop-view,drop-view-cascade,drop-column-read-by-view,adopt-view,nullable-to-not-null,drop-identity-default,drop-unmanaged,drop-comment`
 - `--on-ambiguous abort|rename|drop-add` (default `abort`) — non-interactive
 - `--rename-table [schema.]old=new` / `--rename-column [schema.]table.old=new` — declare a rename (repeatable), so the migration is `RENAME` instead of drop+add whatever the rename heuristic makes of the names. Refused if nothing matches. See [Renames and populated tables](../../../../docs/features/migrations-and-drift.md#renames-and-populated-tables).
 - `--dry-run` — print the SQL pair, write nothing (under `--format json|toon` the pair is the document's `sql` field, so stdout stays one parseable document)
@@ -395,7 +398,7 @@ example: [docs/features/metadata-sources.md](../../../../docs/features/metadata-
 
 ## Metadata format
 
-See `.metaobjects/AGENTS.md` (scaffolded by `meta init`) for the metaobjects metamodel rules, attribute conventions, and worked examples. Deeper references:
+`.metaobjects/AGENTS.md` (scaffolded by `meta init`) holds the short working loop and rules; the `metaobjects-authoring` skill it points to has the metamodel detail and worked examples. Deeper references:
 
 - `@metaobjectsdev/metadata` [METAMODEL.md](../metadata/METAMODEL.md) — full metaobjects metamodel reference
 - `@metaobjectsdev/sdk` [FORGE-METADATA.md](../sdk/FORGE-METADATA.md) — MetaObjects metadata additions

@@ -1,0 +1,38 @@
+{
+  "description": "open() writes its line then indents; close() dedents then writes its line. Depth comes from nesting only.",
+  "dialect": "core",
+  "options": {
+    "indent": "    ",
+    "width": 40,
+    "trailingComma": true
+  },
+  "ops": [
+    [
+      "open",
+      "class A {"
+    ],
+    [
+      "open",
+      "run() {"
+    ],
+    [
+      "line",
+      "go();"
+    ],
+    [
+      "close",
+      "}"
+    ],
+    [
+      "close",
+      "}"
+    ]
+  ],
+  "expected": [
+    "class A {",
+    "    run() {",
+    "        go();",
+    "    }",
+    "}"
+  ]
+}

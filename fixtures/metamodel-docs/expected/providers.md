@@ -13,7 +13,7 @@ provider owns. This is the ownership lens over the same vocabulary
 
 Core metaobjects metamodel types and subtypes.
 
-**Owns (registers):** `attr.base`, `attr.boolean`, `attr.class`, `attr.double`, `attr.expression`, `attr.filter`, `attr.int`, `attr.intMap`, `attr.long`, `attr.properties`, `attr.string`, `field.base`, `field.boolean`, `field.currency`, `field.date`, `field.decimal`, `field.double`, `field.duration`, `field.enum`, `field.float`, `field.inet`, `field.int`, `field.long`, `field.map`, `field.object`, `field.string`, `field.time`, `field.timestamp`, `field.uri`, `field.uuid`, `identity.primary`, `identity.reference`, `identity.secondary`, `layout.base`, `layout.dataGrid`, `object.base`, `object.entity`, `object.projection`, `object.report`, `object.value`, `origin.aggregate`, `origin.base`, `origin.computed`, `origin.first`, `origin.function`, `origin.passthrough`, `relationship.aggregation`, `relationship.association`, `relationship.base`, `relationship.composition`, `source.base`, `source.rdb`, `template.base`, `template.output`, `template.prompt`, `template.toolcall`, `validator.array`, `validator.atLeastOne`, `validator.base`, `validator.comparison`, `validator.length`, `validator.numeric`, `validator.presentIff`, `validator.regex`, `validator.required`, `validator.requiredWhen`, `view.base`, `view.checkbox`, `view.currency`, `view.date`, `view.dropdown`, `view.hidden`, `view.hotlink`, `view.image`, `view.month`, `view.number`, `view.password`, `view.radio`, `view.text`, `view.textarea`, `view.web`
+**Owns (registers):** `attr.base`, `attr.boolean`, `attr.class`, `attr.double`, `attr.expression`, `attr.filter`, `attr.int`, `attr.intMap`, `attr.long`, `attr.properties`, `attr.string`, `field.base`, `field.boolean`, `field.currency`, `field.date`, `field.decimal`, `field.double`, `field.duration`, `field.enum`, `field.float`, `field.inet`, `field.int`, `field.long`, `field.map`, `field.object`, `field.string`, `field.time`, `field.timestamp`, `field.uri`, `field.uuid`, `identity.primary`, `identity.reference`, `identity.secondary`, `layout.base`, `layout.dataGrid`, `object.base`, `object.entity`, `object.projection`, `object.report`, `object.value`, `origin.aggregate`, `origin.base`, `origin.computed`, `origin.first`, `origin.function`, `origin.passthrough`, `relationship.aggregation`, `relationship.association`, `relationship.base`, `relationship.composition`, `source.base`, `source.rdb`, `template.base`, `template.output`, `template.prompt`, `template.toolcall`, `validator.array`, `validator.atLeastOne`, `validator.base`, `validator.comparison`, `validator.exactlyOne`, `validator.length`, `validator.numeric`, `validator.presentIff`, `validator.regex`, `validator.required`, `validator.requiredWhen`, `view.base`, `view.checkbox`, `view.currency`, `view.date`, `view.dropdown`, `view.hidden`, `view.hotlink`, `view.image`, `view.month`, `view.number`, `view.password`, `view.radio`, `view.text`, `view.textarea`, `view.web`
 
 **Contributes attributes:**
 
@@ -30,9 +30,9 @@ Core metaobjects metamodel types and subtypes.
 - `identity.reference`: `@enforce`, `@fields`, `@references`
 - `identity.secondary`: `@fields`
 - `object.base`: `@object`, `@objectAdapter`
-- `object.entity`: `@collectionName`, `@dbSetName`, `@discriminator`, `@discriminatorValue`
-- `object.projection`: `@collectionName`, `@dbSetName`, `@filter`, `@grain`, `@grainOrdinal`, `@union`, `@unionAll`
-- `object.report`: `@collectionName`, `@dbSetName`, `@dimensions`, `@filter`, `@from`, `@measures`, `@segment`, `@spine`
+- `object.entity`: `@collectionName`, `@discriminator`, `@discriminatorValue`
+- `object.projection`: `@collectionName`, `@filter`, `@grain`, `@grainOrdinal`, `@union`, `@unionAll`
+- `object.report`: `@collectionName`, `@dimensions`, `@filter`, `@from`, `@measures`, `@segment`, `@spine`
 - `origin.aggregate`: `@agg`, `@distinct`, `@filter`, `@of`, `@orderBy`, `@segment`, `@via`
 - `origin.computed`: `@expr`
 - `origin.first`: `@filter`, `@of`, `@orderBy`, `@segment`, `@via`
@@ -46,9 +46,10 @@ Core metaobjects metamodel types and subtypes.
 - `template.prompt`: `@format`, `@maxChars`, `@maxTokens`, `@model`, `@owner`, `@payloadRef`, `@promptStyle`, `@requiredSlots`, `@requiredTags`, `@responseFormat`, `@responseRef`, `@since`, `@textRef`
 - `template.toolcall`: `@maxTokens`, `@owner`, `@payloadRef`, `@since`, `@toolName`
 - `validator.array`: `@max`, `@min`
-- `validator.atLeastOne`: `@condition`, `@fields`, `@max`
+- `validator.atLeastOne`: `@condition`, `@fields`
 - `validator.base`: `@max`, `@min`
 - `validator.comparison`: `@condition`, `@left`, `@op`, `@right`
+- `validator.exactlyOne`: `@condition`, `@fields`
 - `validator.length`: `@max`, `@min`
 - `validator.numeric`: `@max`, `@min`
 - `validator.presentIff`: `@condition`, `@equals`, `@field`, `@when`
@@ -87,6 +88,7 @@ DB-domain attributes — @column / @db.indexed / @dbColumnType on every field, @
 - `source.rdb`: `@function`, `@kind`, `@materializedView`, `@parameterRef`, `@proc`, `@role`, `@schema`, `@sql`, `@table`, `@unmanaged`, `@view`
 - `validator.atLeastOne`: `@constraintName`, `@dbCheck`
 - `validator.comparison`: `@constraintName`, `@dbCheck`
+- `validator.exactlyOne`: `@constraintName`, `@dbCheck`
 - `validator.length`: `@constraintName`, `@dbCheck`
 - `validator.numeric`: `@constraintName`, `@dbCheck`
 - `validator.presentIff`: `@constraintName`, `@dbCheck`
@@ -156,7 +158,7 @@ UI/query-surface domain — @filterable / @sortable / @sortableDefaultOrder fiel
 
 ## metaobjects-ui-web
 
-Web presentation view attrs — @rows (view.textarea) and the view.image control attrs. Every port applies this provider and loads them strictly; only TypeScript acts on them so far (ruling R40 kind 1).
+Web presentation view attrs — @rows (view.textarea) and the view.image control attrs. Every port applies this provider and loads them strictly; only TypeScript acts on them so far.
 
 **Contributes attributes:**
 

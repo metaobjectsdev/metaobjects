@@ -6,8 +6,8 @@
 export { runGen, declaredGeneratorNames, stableGeneratorName, undeclaredGeneratorsMessage } from "./runner.js";
 export type { RunGenOpts, RunGenResult } from "./runner.js";
 
-export type { Generator, GenContext, EmittedFile, GeneratorFactory } from "./generator.js";
-export { perEntity, perPackage, perModel, oncePerRun } from "./generator.js";
+export type { Generator, GenContext, EmittedFile, GeneratorFactory, RunOutputFile } from "./generator.js";
+export { perEntity, perPackage, perModel, oncePerRun, selectedEntities } from "./generator.js";
 // The one aggregation of the UI-tier markers, Hono routes and the routes' `expose` option:
 // the run's own answers to "does this run emit a UI tier?" and "which verbs are mounted?".
 export { runEmitsUiTier, runEmitsHonoRoutes, runRoutesExpose, UI_TIER_GENERATOR_NAMES } from "./ui-tier-gate.js";
@@ -95,7 +95,8 @@ export { decideAndWrite, GitMissingError, WRITE_STATUSES } from "./overwrite-pol
 // `listGeneratedPaths` answers the sibling question — WHICH paths we have ever
 // written — which is how the gate scopes itself to its own output instead of
 // convicting every stranger's file that happens to sit in the same directory.
-export { contentHash, readGeneratedHash, listGeneratedPaths } from "./overwrite-policy.js";
+export { contentHash, readGeneratedHash, listGeneratedPaths, recordGeneratedProvenance } from "./overwrite-policy.js";
+export type { GeneratedProvenance } from "./overwrite-policy.js";
 export { modelHashTree, MODEL_HASH_FORMAT, type ModelHashTree, type ModelHashNode } from "./model-hash.js";
 
 export { CodegenError } from "./errors.js";
@@ -146,7 +147,7 @@ export { renderAgentApi, renderApiIndex, renderEntityApiPage } from "./generator
 export { isProjection, isWriteThrough } from "./projection/projection-detector.js";
 export { isAbstract, emitsInstanceArtifacts, emitsWriteArtifacts } from "./instance-artifacts.js";
 // The UI tier asks THESE — "is there an endpoint?" — never the storage predicates.
-export { hasGeneratedForm, hasItemRoute, decimalColumnsLine, writeDeniedColumnsLine, isCredentialField, decimalFieldNames, itemRouteField, restPath, servesClientHooks, servesClientTier, servesReadApi, servesWriteApi } from "./api-surface.js";
+export { hasGeneratedForm, hasItemRoute, decimalColumnsLine, paginationLine, knownFieldsLine, knownFieldNames, writeDeniedColumnsLine, isCredentialField, decimalFieldNames, itemRouteField, restPath, servesClientHooks, servesClientTier, servesReadApi, servesWriteApi } from "./api-surface.js";
 // #356 — every emitter selects a field's view by the SURFACE it renders, never by
 // declaration position. An owned generator (FR-040) composing the render layer must
 // use this too, or it reinstates the order-dependence in its own copy.
@@ -193,19 +194,46 @@ export { renderSharedEnumsFile, SHARED_ENUMS_BASENAME } from "./templates/enums-
 export { resolveReferenceRoot, readReferenceTemplate, REFERENCE_GENERATOR_NAMES, makeReferenceReader } from "./reference-templates.js";
 export type { ReferenceGeneratorName } from "./reference-templates.js";
 
-// ts-poet composition primitives, re-exported from THIS package's own ts-poet
-// instance. The ADR-0034 owned/scaffolded generators MUST import these from here
-// rather than from a bare "ts-poet": ts-poet recognizes nested Code/Import
-// placeholders by `instanceof`, so a Code built by this package's render*
-// primitives is only recognized by a `code`/`joinCode` from the SAME physical
-// ts-poet copy. With a globally-installed or linked CLI, the project tree and the
-// CLI tree each hold their own ts-poet, and a bare project-side import split the
-// class identity — every cross-boundary section was then stringified standalone
-// with its own import header (duplicate `import { eq } from "drizzle-orm"`,
-// TS2300 on the adopter's first tsc). Gated by
+// Code-printing primitives (src/poet.ts, a vendored copy of ts-poet's printer; this package
+// no longer depends on ts-poet). Generators compose a `Code` with these, and the printer
+// recognises nested Code/Import placeholders by `instanceof`, so a Code built by this
+// package's render* primitives is only recognised by a `code`/`joinCode` from the SAME
+// physical module. An owned generator imports them from here or from the engine entry, never
+// from a second copy. Before the printer was vendored, a bare "ts-poet" import in the
+// project tree did exactly that and split the class identity: every cross-boundary section
+// was then printed standalone with its own import header (duplicate `import { eq } from
+// "drizzle-orm"`, TS2300 on the adopter's first tsc). `meta gen` still points a bare
+// "ts-poet" import in an older scaffold at the engine entry. Gated by
 // cli/test/gen-split-tree-single-import.test.ts.
-export { code, imp, joinCode } from "ts-poet";
-export type { Code } from "ts-poet";
+export { code, imp, joinCode } from "./poet.js";
+export type { Code } from "./poet.js";
+
+// The code writer (ADR-0063): generators say what a line contains, the writer decides where
+// it sits. No formatter runs over its output. `TsWriter` accepts the `Code` fragments above,
+// so a generator can move to it one function at a time.
+export {
+  CodeWriter,
+  flat,
+  Group,
+  list,
+  WRITER_ERRORS,
+  WriterError,
+  type CodeWriterOptions,
+  type Piece,
+  type WriterErrorCode,
+} from "./writer/code-writer.js";
+export {
+  arr,
+  call,
+  key,
+  type ModuleImports,
+  type NamedImport,
+  Props,
+  props,
+  str,
+  TsWriter,
+  type TsWriterOptions,
+} from "./writer/ts-writer.js";
 
 export {
   renderFindByIdFn,
@@ -390,6 +418,7 @@ export {
   requirementTestUnits,
   requirementTestIdentity,
   requirementTestIdentities,
+  requirementLedgerKey,
   witnessKeyCollisions,
 } from "./requirement-walk.js";
 export type {

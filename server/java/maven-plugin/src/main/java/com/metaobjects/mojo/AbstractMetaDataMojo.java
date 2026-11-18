@@ -9,6 +9,7 @@ import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorBase;
 import com.metaobjects.generator.ProjectClassLoaderAware;
 import com.metaobjects.generator.RunAware;
+import com.metaobjects.generator.SharedModelGenerator;
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
 import com.metaobjects.generator.spring.SpringRenderHelperGenerator;
 import com.metaobjects.generator.template.TemplateScopeGenerator;
@@ -336,6 +337,61 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         this.loaderConfig = loaderConfig;
     }
 
+    /**
+     * A project's own metamodel vocabulary: fully-qualified names of
+     * {@link com.metaobjects.registry.MetaDataTypeProvider} classes (public, no-arg constructor)
+     * composed after the metamodel set for every goal that loads metadata
+     * ({@code generate}, {@code verify}, {@code fmt}, {@code editor}). Explicit list only — no
+     * classpath scan, so a library jar's own SPI providers never leak into the measured vocabulary.
+     * The classes are loaded through the project class loader: they must be in a dependency module
+     * or in the plugin's own {@code <dependencies>}; a provider in the module being built is not
+     * compiled yet at {@code generate-sources}.
+     */
+    @Parameter(property = "meta.providers")
+    public List<String> providers;
+
+    private List<com.metaobjects.registry.MetaDataTypeProvider> resolvedProviders;
+
+    /** Instantiate {@link #providers} (once per execution) through {@code projectClassLoader}. */
+    protected List<com.metaobjects.registry.MetaDataTypeProvider> resolveProviders(ClassLoader projectClassLoader)
+            throws MojoExecutionException {
+        if (resolvedProviders != null) return resolvedProviders;
+        List<com.metaobjects.registry.MetaDataTypeProvider> out = new ArrayList<>();
+        if (providers != null) {
+            for (String raw : providers) {
+                String className = raw == null ? "" : raw.trim();
+                if (className.isEmpty()) {
+                    throw new MojoExecutionException("<providers> contains an empty class name");
+                }
+                Class<?> c;
+                try {
+                    c = Class.forName(className, true, projectClassLoader);
+                } catch (ClassNotFoundException | LinkageError ex) {
+                    throw new MojoExecutionException("<providers> class [" + className + "] was not found. "
+                        + "A provider must be on the plugin's classpath: in a dependency module of this project "
+                        + "or in the plugin's <dependencies>. A provider in the same module is not compiled yet "
+                        + "at generate-sources, so it cannot be used here.", ex);
+                }
+                if (!com.metaobjects.registry.MetaDataTypeProvider.class.isAssignableFrom(c)) {
+                    throw new MojoExecutionException("<providers> class [" + className + "] does not implement "
+                        + com.metaobjects.registry.MetaDataTypeProvider.class.getName());
+                }
+                try {
+                    out.add((com.metaobjects.registry.MetaDataTypeProvider)
+                        c.getConstructor().newInstance());
+                } catch (NoSuchMethodException ex) {
+                    throw new MojoExecutionException("<providers> class [" + className
+                        + "] needs a public no-argument constructor", ex);
+                } catch (ReflectiveOperationException ex) {
+                    throw new MojoExecutionException("<providers> class [" + className
+                        + "] could not be instantiated: " + ex, ex);
+                }
+            }
+        }
+        resolvedProviders = List.copyOf(out);
+        return resolvedProviders;
+    }
+
     @Parameter
     public Map<String,String> globals;
     public Map<String, String> getGlobals() {
@@ -371,6 +427,21 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
      */
     @Parameter(property = "meta.lax", defaultValue = "false")
     private boolean lax;
+
+    /**
+     * How long the metadata load may take, in milliseconds, before the goal fails with a
+     * timeout ({@code LoaderOptions.setInitTimeoutMs}). Unset keeps the loader's default of
+     * 30 seconds. Raise it for a very large model on a slow or busy machine:
+     * {@code -Dmeta.loaderTimeoutMs=120000}.
+     */
+    @Parameter(property = "meta.loaderTimeoutMs")
+    private Long loaderTimeoutMs;
+    public Long getLoaderTimeoutMs() {
+        return loaderTimeoutMs;
+    }
+    public void setLoaderTimeoutMs(Long loaderTimeoutMs) {
+        this.loaderTimeoutMs = loaderTimeoutMs;
+    }
     public boolean isLax() {
         return lax;
     }
@@ -426,10 +497,11 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         warnIfAgentContextStale();
 
         ClassLoader projectClassLoader = createProjectClassLoader();
+        resolveProviders(projectClassLoader);
 
         MetaDataLoader loader = createLoader(projectClassLoader);
 
-        // ADR-0062: the metadata is loaded (the model key is made of it), and nothing has
+        // ADR-0064: the metadata is loaded (the model key is made of it), and nothing has
         // rendered yet: decide from the model and the generator identity whether this run can
         // change anything.
         if ( planWholeRun(loader) ) {
@@ -447,7 +519,7 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
     }
 
     // ---------------------------------------------------------------------------------
-    // ADR-0062: skip the whole run when none of its inputs changed
+    // ADR-0064: skip the whole run when none of its inputs changed
 
     /** Whether this goal skips a run whose fingerprint matches the stored one. */
     protected boolean skipsWhenUnchanged() {
@@ -456,6 +528,12 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
 
     /** Whether this run was asked to run in full whatever the fingerprint says. */
     protected boolean forced() {
+        return false;
+    }
+
+    /** Whether this run was narrowed to a selection of objects. A narrowed run did not try to
+     *  produce every file, so it can neither satisfy the full-run key nor store it. */
+    protected boolean narrowed() {
         return false;
     }
 
@@ -496,7 +574,8 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
     }
 
     /**
-     * Decide, before anything loads, whether this run can be skipped. Returns {@code true} to
+     * Decide whether this run can be skipped: the metadata is loaded (the model key is made
+     * of it, via {@link ModelKey#of}) and nothing has rendered yet. Returns {@code true} to
      * skip. Otherwise it deletes the stored fingerprint, so a run that fails halfway can never
      * leave one claiming its half-written output is current.
      */
@@ -505,6 +584,10 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         fingerprintFile = null;
         Path genStateDir = moduleGenStateDir();
         if ( !skipsWhenUnchanged() || genStateDir == null ) return false;
+        // A narrowed run (entity selection) never reads or writes the full-run key. It leaves
+        // the stored fingerprint alone: the recorded output hashes already stop a later full run
+        // from trusting a file this run changed.
+        if ( narrowed() ) return false;
         try {
             fingerprintFile = GenFingerprint.fileFor(genStateDir, fingerprintOwnerTag());
             fingerprintBase = fingerprintInputs(loader);
@@ -851,9 +934,15 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
             // Kotlin's render helper reads the same key (KotlinRenderHelperGenerator.ARG_TEMPLATE_ROOT).
             SpringRenderHelperGenerator.ARG_TEMPLATE_ROOT);
 
+    /** Generator args holding a comma-separated list of filesystem paths, resolved like {@link #PATH_ARGS}
+     *  element by element (the shared-model generator's {@code files}). */
+    static final Set<String> PATH_LIST_ARGS = Set.of(SharedModelGenerator.ARG_FILES);
+
     public Map<String, String> mergeAndOverwriteArgs(GeneratorParam g) {
 
         Map<String,String> allargs = mergeArgs(globals, g.getArgs());
+        // Maven's project version, as a default a generator's own `version` arg overrides.
+        if ( project != null && project.getVersion() != null ) allargs.putIfAbsent(SharedModelGenerator.ARG_VERSION, project.getVersion());
 
         // Dump the args to debug
         getLog().debug( "-- Generator ["+g.getClass().getSimpleName()+"] merged Args");
@@ -876,11 +965,28 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         if ( basedir != null ) {
             for ( String key : PATH_ARGS ) {
                 String value = allargs.get(key);
-                if ( value == null || value.isEmpty() || new File(value).isAbsolute() ) continue;
-                allargs.put(key, basedir.toPath().resolve(value).normalize().toString());
+                if ( value == null || value.isEmpty() ) continue;
+                allargs.put(key, resolveAgainstBasedir(basedir, value));
+            }
+            // Path LISTS (comma-separated): each element resolves the same way.
+            for ( String key : PATH_LIST_ARGS ) {
+                String value = allargs.get(key);
+                if ( value == null || value.isBlank() ) continue;
+                List<String> resolved = new ArrayList<>();
+                for ( String part : value.split(",") ) {
+                    String p = part.trim();
+                    if ( p.isEmpty() ) continue;
+                    resolved.add( resolveAgainstBasedir(basedir, p) );
+                }
+                allargs.put(key, String.join(",", resolved));
             }
         }
         return allargs;
+    }
+
+    /** {@code value} as-is when absolute, otherwise resolved against {@code basedir} and normalized. */
+    private static String resolveAgainstBasedir(File basedir, String value) {
+        return new File(value).isAbsolute() ? value : basedir.toPath().resolve(value).normalize().toString();
     }
 
     /**
@@ -927,6 +1033,14 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
 
     protected MetaDataLoader createLoader(ClassLoader projectClassLoader) {
 
+        // Normally primed by the goal's execute() (which reports a bad <providers> entry as a
+        // MojoExecutionException); a direct caller that skipped that gets the same message unchecked.
+        List<com.metaobjects.registry.MetaDataTypeProvider> extraProviders;
+        try {
+            extraProviders = resolveProviders(projectClassLoader);
+        } catch (MojoExecutionException e) {
+            throw new MetaDataException(e.getMessage(), e);
+        }
         LoaderConfigurable configurable = null;
         String loaderClass = loaderConfig.getClassname();
         String loaderName = loaderConfig.getName();
@@ -943,6 +1057,12 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
             configurable = new MetaDataLoader(
                     LoaderOptions.create(false, false, strict),
                     MetaDataLoader.SUBTYPE_MANUAL, loaderName);
+        }
+
+        // The project's own vocabulary (<providers>): the loader composes its registry from the
+        // metamodel set plus these, sealed and strict like the default.
+        if (!extraProviders.isEmpty()) {
+            configurable.getLoader().getLoaderOptions().setProviders(extraProviders);
         }
 
         // Configure the loader using the new pattern
@@ -1021,14 +1141,25 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         // ADR-0058 — the project's physical-naming rules, set on the loaded root so every
         // resolver downstream of this load (codegen, OMDB) reads the one setting.
         loader.getRoot().setPhysicalNaming(resolvePhysicalNaming(srcDir));
+        // The project's config file is read once; each setting below is mapped from it.
+        java.util.Optional<com.metaobjects.config.NeutralConfig> projectConfig = resolveProjectConfig(srcDir);
         // ADR-0019 Amendment 2 — the wire setting, from the same file, read by the generators.
-        loader.getRoot().setWireFormat(resolveProjectConfig(srcDir)
+        loader.getRoot().setWireFormat(projectConfig
                 .map(com.metaobjects.config.NeutralConfig::getWireFormat)
                 .orElse(com.metaobjects.config.WireFormat.DEFAULT));
         // The enum storage defaults (`enums`), from the same file, read by the table generators.
-        loader.getRoot().setEnumDefaults(resolveProjectConfig(srcDir)
+        loader.getRoot().setEnumDefaults(projectConfig
                 .map(com.metaobjects.config.NeutralConfig::getEnumDefaults)
                 .orElse(com.metaobjects.config.EnumDefaults.DEFAULT));
+        // The `api` block (`api.pagination`, `api.unknownFields`), from the same file, read by the generators.
+        loader.getRoot().setApiSettings(projectConfig
+                .map(com.metaobjects.config.NeutralConfig::getApiSettings)
+                .orElse(com.metaobjects.config.ApiSettings.DEFAULT));
+        // The `migrate` schema settings (foreignKeyIndexes, conventions, dialect), read by the
+        // table generators so a mapping declares the indexes `meta migrate` creates.
+        loader.getRoot().setMigrateSettings(projectConfig
+                .map(com.metaobjects.config.NeutralConfig::getMigrateSettings)
+                .orElse(com.metaobjects.config.MigrateSettings.DEFAULT));
 
         getLog().info("MetaData Mojo > Create Loader: " + loader.toString());
 
@@ -1054,10 +1185,13 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
      * wins (advanced override). Kept separate from {@link #mergeAndOverwriteArgs} so the
      * injected flag never pollutes generator args.
      */
-    private Map<String, String> loaderArgs(boolean strict) {
+    Map<String, String> loaderArgs(boolean strict) {
         Map<String, String> args = new HashMap<>();
         if (globals != null) args.putAll(globals);
         args.putIfAbsent(LoaderConfigurationConstants.ARG_STRICT, String.valueOf(strict));
+        if (loaderTimeoutMs != null) {
+            args.put(LoaderConfigurationConstants.ARG_INIT_TIMEOUT_MS, String.valueOf(loaderTimeoutMs));
+        }
         return args;
     }
 

@@ -642,7 +642,7 @@ describe("reportShape required of a dimension reached through @via", () => {
     const req = requiredOf(root, "Plain");
     expect(req["realmName"]).toBe(true);        // two required hops over a required field
     expect(req["sessionRealmId"]).toBe(true);   // one required hop
-    expect(req["looseRealmName"]).toBe(false);  // R62: an @enforce: false hop can name a missing row
+    expect(req["looseRealmName"]).toBe(false);  // an @enforce: false hop can name a missing row
     expect(req["realmMotto"]).toBe(false);      // the target field is optional
     expect(req["maybeRealmName"]).toBe(false);  // a hop over a nullable foreign key is a LEFT join
   });
@@ -716,6 +716,28 @@ describe("reportShape: @agg any / all without @of (R6)", () => {
       ["hasError", "boolean", false],
       ["allSlow", "boolean", true],
       ["anySlowFailure", "boolean", false],
+    ]);
+  });
+});
+
+describe("reportShape: measure.derived (FR-044 R13)", () => {
+  test("a derived measure is a nullable decimal with no type source, whatever its operands", async () => {
+    const fixture = join(REPO_ROOT, "fixtures", "conformance", "reporting-derived-measures", "input", "meta.studio.json");
+    const result = await loadUris([pathToFileURL(fixture).href]);
+    expect(result.errors).toEqual([]);
+    const rows = (name: string) =>
+      reportShape(report(result.root, name), result.root).fields.map(
+        (f) => `${f.name} ${f.subType} ${f.required} ${f.typeSource ? `${f.typeSource.parent!.name}.${f.typeSource.name}` : "-"}`,
+      );
+    expect(rows("MemberUtilization")).toEqual([
+      "memberId long false Member.id", "memberName string true Member.firstName",
+      "weeklyCapacityHours decimal true Member.weeklyCapacityHours", "workedOnMonth date true -",
+      "totalHours decimal true -", "billableHours decimal true -", "capacityHours decimal false -",
+      "utilization decimal false -", "nonBillableHours decimal false -", "billableSharePct decimal false -",
+    ]);
+    expect(rows("ProjectBurn")).toEqual([
+      "projectId long false Project.id", "projectBudget decimal false Project.budget", "cost decimal false -",
+      "budgetBurn decimal false -",
     ]);
   });
 });

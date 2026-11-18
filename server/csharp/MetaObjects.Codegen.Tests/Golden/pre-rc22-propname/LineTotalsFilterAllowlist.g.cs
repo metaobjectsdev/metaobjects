@@ -12,15 +12,15 @@ namespace Acme.Shop;
 /// </summary>
 public static class LineTotalsFilterAllowlist
 {
-    public static readonly HashSet<string> Fields = new(global::System.StringComparer.Ordinal)
+    public static readonly HashSet<string> Fields = new(System.StringComparer.Ordinal)
     {
         "label",
         "lines",
     };
 
-    public static readonly Dictionary<string, HashSet<string>> OpsByField = new(global::System.StringComparer.Ordinal)
+    public static readonly Dictionary<string, HashSet<string>> OpsByField = new(System.StringComparer.Ordinal)
     {
-        ["label"] = new(global::System.StringComparer.Ordinal) { "eq", "ne", "in", "like", "isNull" },
-        ["lines"] = new(global::System.StringComparer.Ordinal) { "eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull" },
+        ["label"] = new(System.StringComparer.Ordinal) { "eq", "ne", "in", "like", "isNull" },
+        ["lines"] = new(System.StringComparer.Ordinal) { "eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull" },
     };
 }

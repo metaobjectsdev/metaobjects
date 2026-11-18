@@ -1,8 +1,6 @@
-// Phase 5, bug cast: a view column whose declared type differs from what its expression
-// yields carries the declared type's cast on Postgres. A bare NULL in a view is `text`, so
-// `origin.computed { @expr: { value: null } }` on a field.int became a text column; an
-// `@convert: true` passthrough (the author's acknowledgement that the types differ) read the
-// source column unconverted. The cast spells the type `meta migrate` gives the field's column.
+// A view column whose declared type differs from what its expression yields carries the declared
+// type's cast on Postgres: a bare NULL in a view is text, and an @convert passthrough reads the
+// source column unconverted. The cast spells the type meta migrate gives the field's column.
 
 import { describe, test, expect } from "bun:test";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
@@ -12,22 +10,22 @@ const MODEL = {
   "metadata.root": {
     package: "acme",
     children: [
-      { "object.entity": { name: "Pilot", children: [
-        { "source.rdb": { "@table": "pilots" } },
+      { "object.entity": { name: "Physician", children: [
+        { "source.rdb": { "@table": "physicians" } },
         { "field.long": { name: "id" } },
         { "field.string": { name: "externalReferenceId", "@maxLength": 100 } },
         { "field.int": { name: "rank" } },
         { "identity.primary": { name: "id", "@fields": "id" } },
       ] } },
-      { "object.projection": { name: "PilotExtract", children: [
-        { "source.rdb": { "@kind": "view", "@table": "v_pilot_extract" } },
-        { "field.long": { name: "id", extends: "Pilot.id" } },
+      { "object.projection": { name: "PhysicianExtract", children: [
+        { "source.rdb": { "@kind": "view", "@table": "v_physician_extract" } },
+        { "field.long": { name: "id", extends: "Physician.id" } },
         { "field.int": { name: "locationType", children: [{ "origin.computed": { "@expr": { value: null } } }] } },
         { "field.string": { name: "territoryName", children: [{ "origin.computed": { "@expr": { value: null } } }] } },
         { "field.timestamp": { name: "removedAt", children: [{ "origin.computed": { "@expr": { value: null } } }] } },
-        { "field.string": { name: "externalRef", children: [{ "origin.passthrough": { "@from": "Pilot.externalReferenceId", "@convert": true } }] } },
-        { "field.long": { name: "rankWide", children: [{ "origin.passthrough": { "@from": "Pilot.rank", "@convert": true } }] } },
-        { "identity.primary": { name: "id", extends: "Pilot.id" } },
+        { "field.string": { name: "externalRef", children: [{ "origin.passthrough": { "@from": "Physician.externalReferenceId", "@convert": true } }] } },
+        { "field.long": { name: "rankWide", children: [{ "origin.passthrough": { "@from": "Physician.rank", "@convert": true } }] } },
+        { "identity.primary": { name: "id", extends: "Physician.id" } },
       ] } },
     ],
   },
@@ -39,7 +37,7 @@ async function views(dialect: "postgres" | "sqlite") {
   return buildProjectionViews(root, { dialect })[0]!.sql;
 }
 
-describe("cast — the declared type wins in a generated Postgres view", () => {
+describe("view cast — the declared type wins in a generated Postgres view", () => {
   test("a typed null is cast; a text null stays bare", async () => {
     const sql = await views("postgres");
     expect(sql).toContain("CAST(NULL AS INTEGER) AS location_type");

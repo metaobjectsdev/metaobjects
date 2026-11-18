@@ -49,7 +49,7 @@ public class ValueObjectValidationCodegenTests
     public void Marker_poco_carries_validation_and_json_property_name_attributes()
     {
         var files = new EntityGenerator().Generate(Ctx(Load())).ToList();
-        var marker = files.Single(f => System.IO.Path.GetFileName(f.Path) == "Marker.g.cs").Content;
+        var marker = files.Single(f => f.Path == "Marker.g.cs").Content;
 
         // The VO's own members carry validation DataAnnotations so a nested VO validates in
         // FULL on POST/PATCH: label is required (non-empty) AND <= 40 chars.
@@ -68,7 +68,7 @@ public class ValueObjectValidationCodegenTests
     public void Routes_emit_typed_vo_merge_arms_and_post_validation()
     {
         var files = new RoutesGenerator().Generate(Ctx(Load())).ToList();
-        var routes = files.Single(f => System.IO.Path.GetFileName(f.Path) == "DocumentRoutes.g.cs").Content;
+        var routes = files.Single(f => f.Path == "DocumentRoutes.g.cs").Content;
 
         // PATCH merge — a typed arm per VO column (keyed on the wire field name), assigning
         // the CLR owned-nav property (EF .ToJson persists via full-document replacement).
@@ -77,11 +77,11 @@ public class ValueObjectValidationCodegenTests
         Assert.Contains("\"markers\"", routes);
         Assert.Contains("existing.OptionalMarker = null;", routes);        // nullable single: present-null clears
         Assert.Contains("existing.Markers = null;", routes);              // nullable array: present-null clears
-        Assert.Contains("Deserialize<global::Acme.Store.Marker>", routes);                  // single VO
-        Assert.Contains("Deserialize<global::System.Collections.Generic.List<global::Acme.Store.Marker>>", routes); // array VO
+        Assert.Contains("Deserialize<Marker>", routes);                  // single VO
+        Assert.Contains("Deserialize<System.Collections.Generic.List<Marker>>", routes); // array VO
         // Recursive VO validation on BOTH PATCH and POST.
-        Assert.Contains("ValueObjectValidator.Validate", routes);
-        Assert.Contains("ValueObjectValidator.Validate(input.PrimaryMarker)", routes);
+        Assert.Contains("ValueObjectValidator.Collect", routes);
+        Assert.Contains("ValueObjectValidator.Collect(input.PrimaryMarker, __issues, jsonOpts, \"primaryMarker\")", routes);
     }
 
     [Fact]

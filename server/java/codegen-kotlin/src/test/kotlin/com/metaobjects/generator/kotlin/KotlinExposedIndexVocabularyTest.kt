@@ -11,7 +11,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * R33: the Exposed table carries the index vocabulary Exposed can express: an index's resolved
+ * The Exposed table carries the index vocabulary Exposed can express: an index's resolved
  * name, `@using` (Exposed's `indexType`) and `@where` (its `filterCondition`, the predicate as
  * written), on an identity.secondary (unique) and an index.lookup. What Exposed cannot express
  * (`@orders`, `@expr`, `@description`) is recorded in docs/CONFORMANCE.md "Split coverage";

@@ -1,6 +1,6 @@
-// rc.19 (C1) — a projection's EFFECTIVE row scope. `@filter` composes down an `extends` chain
+// A projection's EFFECTIVE row scope. `@filter` composes down an `extends` chain
 // rather than overriding: a projection that extends a filtered projection keeps the base's row
-// scope (an access gate on an abstract base must survive in every extender). Every
+// scope (a row gate on an abstract base must survive in every extender). Every
 // level's own `@filter`, root-most first, ANDed. One reader for the loaders and the view lowering.
 
 import type { MetaData } from "../../shared/meta-data.js";

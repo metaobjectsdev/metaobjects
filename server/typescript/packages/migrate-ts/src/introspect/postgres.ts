@@ -549,8 +549,11 @@ async function readPgCatalogColumnFacts(
 async function readPgColumnSequences(
   k: RawKysely, schema: string, tableName: string, columns: ColumnDescriptor[],
 ): Promise<void> {
-  // pg-mem gap: pg_depend / pg_sequence are not supported — the query throws and the
-  // columns carry no sequence, so nothing about one is compared.
+  // pg-mem gap: pg_depend / pg_sequence do not exist there — the query throws and the
+  // columns carry no sequence, so nothing about one is compared. Only that error is
+  // swallowed: on a real server any other failure (a permission error) must surface, or
+  // the diff would fall back to the default sequence name and could rename a sequence that
+  // does not exist.
   try {
     const rows = await sql<{ column_name: string; sequence_schema: string; sequence_name: string; seqstart: string | number }>`
       SELECT a.attname AS column_name, sn.nspname AS sequence_schema, seq.relname AS sequence_name, ps.seqstart
@@ -576,9 +579,15 @@ async function readPgColumnSequences(
         start: Number(r.seqstart),
       };
     }
-  } catch {
-    // see above
+  } catch (err) {
+    if (!isMissingCatalogRelation(err, ["pg_depend", "pg_sequence"])) throw err;
   }
+}
+
+/** pg-mem's error for a catalog relation it does not implement. */
+function isMissingCatalogRelation(err: unknown, relations: readonly string[]): boolean {
+  const message = err instanceof Error ? err.message : "";
+  return relations.some((r) => message.includes(`relation "${r}" does not exist`));
 }
 
 // Typed alias for raw Kysely — avoids per-call `as any` casts in the helpers below.

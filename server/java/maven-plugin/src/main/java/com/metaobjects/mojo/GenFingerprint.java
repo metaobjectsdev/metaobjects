@@ -26,7 +26,7 @@ import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 /**
- * The whole-run codegen fingerprint of ADR-0062, JVM edition.
+ * The whole-run codegen fingerprint of ADR-0064, JVM edition.
  *
  * <p>A fingerprint is one SHA-256 folded over a sorted list of small named {@link Input}
  * entries (a kind, a name, a content hash). The entries are what a later per-object key would

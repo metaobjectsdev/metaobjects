@@ -75,7 +75,7 @@ describe("U11 string functions, and U3 a path the view does not output", () => {
     expect(sql).toContain("CONCAT(LEFT(o.external_ref, 1), RIGHT(o.external_ref, 1)) AS ends");
     expect(sql).toContain("CHAR_LENGTH(UPPER(o.external_ref)) AS len");
     expect(sql).toContain("NULLIF(o.external_ref, 'NONE') AS no_ref");
-    expect(sql).toContain("LEFT OUTER JOIN public.customers c ON c.id = o.customer_id");
+    expect(sql).toContain("LEFT OUTER JOIN customers c ON c.id = o.customer_id");
     expect(sql).not.toMatch(/AS zip\b/);
   });
   test("sqlite: the same values from SQLite's own functions", async () => {
@@ -164,7 +164,7 @@ describe("U14 @grain — one row per array element", () => {
   test("postgres", async () => {
     const sql = await one("postgres", p);
     // fix round M3: a non-array value (JSON null, an object, a scalar) has no element.
-    expect(sql).toContain("FROM public.customers c CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(c.contacts) = 'array' THEN c.contacts END) WITH ORDINALITY AS mo_el(value, ordinality)");
+    expect(sql).toContain("FROM customers c CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(c.contacts) = 'array' THEN c.contacts END) WITH ORDINALITY AS mo_el(value, ordinality)");
     expect(sql).toContain("CAST(mo_el.ordinality AS INTEGER) AS position");
     expect(sql).toContain("(mo_el.value ->> 'kind') AS kind");
     expect(sql).toContain("CAST((mo_el.value ->> 'rank') AS INTEGER) AS rank");
@@ -196,9 +196,9 @@ describe("U15 @union", () => {
   test("postgres: UNION by default, UNION ALL on request, and each branch reads its own base", async () => {
     const sql = (await views("postgres", ...branches, union(false))).get("v_people")!;
     expect(sql).toBe([
-      "  SELECT\n    c.id AS person_id,\n    LOWER(c.last_name) AS label\n  FROM public.customers c",
+      "  SELECT\n    c.id AS person_id,\n    LOWER(c.last_name) AS label\n  FROM customers c",
       "  UNION",
-      "  SELECT\n    a.customer_id AS person_id,\n    LOWER(a.street) AS label\n  FROM public.addresses a",
+      "  SELECT\n    a.customer_id AS person_id,\n    LOWER(a.street) AS label\n  FROM addresses a",
     ].join("\n"));
     expect((await views("postgres", ...branches, union(true))).get("v_people")).toContain("\n  UNION ALL\n");
   });
@@ -257,7 +257,7 @@ describe("a projection over a TPH root reads its subtypes' columns; a unique rev
     const sql = buildProjectionViews(root, { dialect: "postgres" })[0]!.sql;
     expect(sql).toContain("v.id AS vehicle_id");
     expect(sql).toContain("v.payload_class AS external_key");
-    expect(sql).toContain("FROM public.vehicles v");
+    expect(sql).toContain("FROM vehicles v");
     expect(sql).not.toContain("'TRUCK'");
   });
   const viaCard = (unique: boolean | "partial") => [
@@ -284,7 +284,7 @@ describe("a projection over a TPH root reads its subtypes' columns; a unique rev
     };
     const ok = await withUnique(true);
     expect(ok.errors).toEqual([]);
-    expect(buildProjectionViews(ok.root, { dialect: "postgres" })[0]!.sql).toContain("LEFT OUTER JOIN public.locker_keys l0 ON l0.locker_id = l.id");
+    expect(buildProjectionViews(ok.root, { dialect: "postgres" })[0]!.sql).toContain("LEFT OUTER JOIN locker_keys l0 ON l0.locker_id = l.id");
     expect((await withUnique(false)).errors.some((m) => /is to-many/.test(m))).toBe(true);
     // A partial unique index is unique only over its subset, so the hop stays to-many.
     expect((await withUnique("partial")).errors.some((m) => /is to-many/.test(m))).toBe(true);

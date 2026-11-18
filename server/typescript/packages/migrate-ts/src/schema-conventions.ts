@@ -13,15 +13,16 @@
  * Selected with `migrate.conventions` in `.metaobjects/config.json` (a preset name), or
  * supplied as an object by the project (`schemaConventions` in `metaobjects.config.ts`).
  * `default` is what migrate has always emitted, so a project that sets nothing sees no
- * change; `efcore` reproduces EF Core's conventions, for a database first built by EF
- * Core migrations.
+ * change. `efcore` is a reference preset: it reproduces one ORM's documented naming (EF
+ * Core's, for a database first built by EF Core migrations). The mechanism is general; a
+ * project with another tool's conventions supplies its own object.
  *
  * Which CHECKs exist is not a convention: that is the project's `migrate.checks` setting,
  * passed to the expected-schema build as `skipRedundantChecks`.
  */
 
 import { InvalidSchemaConventionsError, UnknownSchemaConventionsError } from "./errors.js";
-import type { Dialect, IndexDescriptor } from "./types.js";
+import { PG_IDENTIFIER_MAX_BYTES, isSqliteFamily, type Dialect, type IndexDescriptor } from "./types.js";
 
 /** A key on one table: the table's database name and the key's columns, in key order, and the
  *  database the schema is built for (undefined is Postgres, as elsewhere in migrate). */
@@ -55,12 +56,14 @@ export interface SchemaConventions {
   foreignKeyName(fk: ForeignKeyContext): string;
   /** The indexes the conventions add for a table's foreign keys (none, for most conventions). */
   foreignKeyIndexes(table: TableKeys): { name: string; columns: string[] }[];
-  /** How a unique key (`identity.secondary`) is created. A partial or expression key is always an index. */
-  uniqueKeyKind(key: KeyContext & { referencedByForeignKey: boolean }): "index" | "constraint";
+  /**
+   * How a unique key (`identity.secondary`) is created. A partial or expression key is always an index.
+   * `either` creates a plain index and accepts a live key of either kind, so a database whose keys
+   * are UNIQUE constraints (Drizzle's `unique()`) is left as it is. `index` and `constraint` are a
+   * preference: a live key of the other kind is converted.
+   */
+  uniqueKeyKind(key: KeyContext & { referencedByForeignKey: boolean }): "index" | "constraint" | "either";
 }
-
-/** Postgres's identifier limit (NAMEDATALEN - 1), which Npgsql gives EF Core. */
-const PG_MAX_IDENTIFIER_LENGTH = 63;
 
 /**
  * EF Core's truncation: a name over the provider's identifier limit keeps one character fewer
@@ -68,8 +71,8 @@ const PG_MAX_IDENTIFIER_LENGTH = 63;
  * truncates nothing, so neither does this on SQLite or D1.
  */
 function efTruncate(name: string, dialect: Dialect | undefined): string {
-  if (dialect === "sqlite" || dialect === "d1") return name;
-  return name.length <= PG_MAX_IDENTIFIER_LENGTH ? name : `${name.slice(0, PG_MAX_IDENTIFIER_LENGTH - 1)}~`;
+  if (isSqliteFamily(dialect)) return name;
+  return name.length <= PG_IDENTIFIER_MAX_BYTES ? name : `${name.slice(0, PG_IDENTIFIER_MAX_BYTES - 1)}~`;
 }
 
 /** True when `columns` are the leading columns of `key`, in order. */
@@ -82,7 +85,7 @@ export const defaultConventions: SchemaConventions = {
   primaryKeyName: ({ table }) => `${table}_pkey`,
   foreignKeyName: ({ table, columns }) => `${table}_${columns[0]}_fk`,
   foreignKeyIndexes: () => [],
-  uniqueKeyKind: () => "index",
+  uniqueKeyKind: () => "either",
 };
 
 export const efcoreConventions: SchemaConventions = {

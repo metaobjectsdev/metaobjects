@@ -122,16 +122,16 @@ class KotlinExposedTableNamesTest {
         // above) -- asserted here so a fix that only patched the enum branch, and broke
         // the plain-column branch it sits beside, can't pass this test either.
         assertTrue("varchar(TicketNames.REFERENCE_COLUMN, 40)" in src, src)
-        assertTrue("enumerationByName(TicketNames.STATUS_COLUMN, 64, TicketStatus::class)" in src, src)
+        assertTrue("customEnumeration(TicketNames.STATUS_COLUMN, \"TEXT\", { v -> TicketStatus.valueOf(v as String) }, { e -> e.name })" in src, src)
         // The literal the strategy WOULD have produced must be GONE -- a positive
         // assertion alone would still pass a generator emitting BOTH the constant
         // reference and the old literal side by side.
-        assertFalse("enumerationByName(\"status\"" in src, src)
+        assertFalse("customEnumeration(\"status\"" in src, src)
     }
 
     @Test fun `an own field-enum column keeps its literal by default`() {
         val src = ticketTableSrc()
-        assertTrue("enumerationByName(\"status\", 64, TicketStatus::class)" in src, src)
+        assertTrue("customEnumeration(\"status\", \"TEXT\", { v -> TicketStatus.valueOf(v as String) }, { e -> e.name })" in src, src)
         assertTrue("varchar(\"reference\", 40)" in src, src)
         assertFalse("TicketNames" in src, src)
     }
@@ -279,11 +279,11 @@ class KotlinExposedTableNamesTest {
         // The base's own columns: this entity's artifact (a hit — never redirected).
         assertTrue("object VehicleTable : Table(VehicleNames.SOURCE_PRIMARY_TABLE)" in src, src)
         assertTrue("long(VehicleNames.ID_COLUMN)" in src, src)
-        assertTrue("enumerationByName(VehicleNames.KIND_COLUMN, 64, VehicleKind::class)" in src, src)
+        assertTrue("customEnumeration(VehicleNames.KIND_COLUMN, \"TEXT\", { v -> VehicleKind.valueOf(v as String) }, { e -> e.name })" in src, src)
         // A same-package concrete subtype's column, through the enum-free fold arm...
         assertTrue("integer(CarNames.DOORS_COLUMN).nullable()" in src, src)
         // ...and through the enum arm.
-        assertTrue("enumerationByName(CarNames.GRADE_COLUMN, 64, VehicleGrade::class).nullable()" in src, src)
+        assertTrue("customEnumeration(CarNames.GRADE_COLUMN, \"TEXT\", { v -> VehicleGrade.valueOf(v as String) }, { e -> e.name }).nullable()" in src, src)
         // A cross-package subtype's column: the reference is package-qualified.
         assertTrue("integer(acme.haulage.TruckNames.PAYLOAD_COLUMN).nullable()" in src, src)
         // A column declared on an ABSTRACT intermediate resolves to that object's fragment.
@@ -301,7 +301,7 @@ class KotlinExposedTableNamesTest {
         val src = vehicleTableSrc()
         assertTrue("object VehicleTable : Table(\"phys_vehicles\")" in src, src)
         assertTrue("integer(\"phys_doors\").nullable()" in src, src)
-        assertTrue("enumerationByName(\"phys_grade\", 64, VehicleGrade::class).nullable()" in src, src)
+        assertTrue("customEnumeration(\"phys_grade\", \"TEXT\", { v -> VehicleGrade.valueOf(v as String) }, { e -> e.name }).nullable()" in src, src)
         assertTrue("integer(\"phys_payload\").nullable()" in src, src)
         assertTrue("integer(\"phys_wheels\").nullable()" in src, src)
         assertFalse("Names" in src, src)

@@ -16,12 +16,15 @@ from .collection_name_collision import assert_no_collection_name_collisions
 from .config import GenConfig
 from .constants import generated_package_init
 from .generator import GenContext, Generator
+from .import_path import OUTPUT_LAYOUT_PACKAGE
+from .name_claims import NameClaims, assert_importable_package_tree
 from .instance_artifacts import is_served_report
 from .overwrite_policy import (
     STATUS_OVERWROTE_EDIT,
     HashManifest,
     decide_and_write,
     has_hash_manifest,
+    manifest_batch,
 )
 
 _VALID_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -76,8 +79,15 @@ def run_gen(
     entity_filter: list[str] | None = None,
     select: Callable[[str], bool] | None = None,
     merge_strategy: str = "overwrite",
+    in_ledger: Callable[[str], bool] | None = None,
+    entity_scope: list[str] | None = None,
 ) -> RunGenResult:
     """Mirrors ``codegen-ts``'s ``runner.ts``.
+
+    ``entity_filter`` (``gen --entities``) narrows what is WRITTEN: per-entity files for
+    the named entities only, while every generator still sees the whole model in
+    ``ctx.entities`` (``ctx.selected`` says which entities were named). ``entity_scope``
+    narrows the model itself — a config target's declared ``entities``.
 
     ``select`` (FR-023 §11.1 item 2) — applied AFTER ``entity_filter``, over each
     object's ``resolution_key()`` (never the bare name — two packages may declare
@@ -96,6 +106,19 @@ def run_gen(
 
     objs = _objects(metadata)
     model_has_objects = bool(objs)
+    # The WHOLE model in scope. `entity_filter` narrows what is written, never what a
+    # generator sees: a whole-model file (shared enums, the duration codec, the report
+    # writers, relation targets in the object index) rendered from the filtered set would
+    # shrink to it, and `gen <Entity>` would rewrite those files for one entity.
+    #
+    # ``entity_scope`` is the one thing that does shrink it: a config target's declared
+    # ``entities``, which IS that target's model (two targets may split one out dir by
+    # entity, and each must render its shared files from its own half).
+    whole = [
+        o for o in objs
+        if (entity_scope is None or o.name in entity_scope)
+        and (select is None or select(o.resolution_key()))
+    ]
     if entity_filter is not None:
         objs = [o for o in objs if o.name in entity_filter]
     if select is not None:
@@ -119,12 +142,21 @@ def run_gen(
     # read-only generators emit as a keyless object. Every other report generates nothing:
     # a sourceless report, or one over a kind the lowering skips, has no relation to read.
     # Decided here, at the entity set every generator reads, and not per generator.
-    objs = [
-        report_read_model(o, metadata) if o.sub_type == OBJECT_SUBTYPE_REPORT else o
-        for o in objs
-        if o.sub_type != OBJECT_SUBTYPE_REPORT or is_served_report(o)
-    ]
-    if not objs and not result.warnings:
+    def _generatable(candidates: list[MetaObject]) -> list[MetaObject]:
+        return [
+            report_read_model(o, metadata) if o.sub_type == OBJECT_SUBTYPE_REPORT else o
+            for o in candidates
+            if o.sub_type != OBJECT_SUBTYPE_REPORT or is_served_report(o)
+        ]
+
+    narrowed = entity_filter is not None
+    selected_objs = _generatable(objs)
+    selected_keys = {o.resolution_key() for o in [*objs, *selected_objs]}
+
+    def is_selected(o: MetaObject) -> bool:
+        return o.resolution_key() in selected_keys
+
+    if not selected_objs and not result.warnings:
         result.warnings.append(
             "No entities to generate — every selected object is an object.report with no "
             "view source, which has no generated output (FR-044)."
@@ -132,20 +164,22 @@ def run_gen(
         return result
 
     safe: list[MetaObject] = []
-    for o in objs:
+    for o in _generatable(whole) if narrowed else selected_objs:
         if not _VALID_NAME.match(o.name):
-            result.warnings.append(
-                f"Skipping entity with unsafe name {o.name!r} — must match ^[A-Za-z_]\\w*$."
-            )
+            if is_selected(o):
+                result.warnings.append(
+                    f"Skipping entity with unsafe name {o.name!r} — must match ^[A-Za-z_]\\w*$."
+                )
             continue
         safe.append(o)
-    if not safe and objs:
+    if selected_objs and not any(is_selected(o) for o in safe):
         return result
 
     # Refuse before any generator runs — the one choke point that sees the WHOLE
     # entity set every route/router-emitting generator below reads from.
     assert_no_collection_name_collisions(safe)
 
+    claims = NameClaims()  # one registry per run, shared by every generator
     emitted: dict[str, tuple[str, str]] = {}  # full_path -> (content, generated_by)
     for gen in generators:
         ctx = GenContext(
@@ -155,6 +189,9 @@ def run_gen(
             config=config,
             warn=_warn_collector(gen.name, result.warnings),
             generators=tuple(g.name for g in generators),
+            in_ledger=in_ledger,
+            claims=claims,
+            selected=is_selected if narrowed else None,
         )
         for f in gen.generate(ctx):
             full = os.path.join(config.out_dir, f.path)
@@ -164,6 +201,11 @@ def run_gen(
                     f"{emitted[full][1]!r} and {gen.name!r}."
                 )
             emitted[full] = (f.content, gen.name)
+
+    if config.output_layout == OUTPUT_LAYOUT_PACKAGE:
+        assert_importable_package_tree(
+            [os.path.relpath(full, config.out_dir).replace(os.sep, "/") for full in emitted]
+        )
 
     # Make the out dir an importable package: emit an @generated __init__.py in
     # every directory that received a generated file (and the intermediate dirs up
@@ -195,20 +237,23 @@ def run_gen(
 
     refused: list[str] = []
     adopted: list[str] = []
-    # ONE manifest session for the whole write loop (ADR-0062 decision 1): loaded here,
+    # ONE manifest session for the whole write loop (ADR-0064 decision 1): loaded here,
     # saved once below, and only when an entry changed. A caller that runs several passes
     # hands in its own session through ``config.manifest`` and saves it itself.
     own_session = config.manifest is None and config.gen_state_dir is not None
     session = config.manifest
     if session is None and config.gen_state_dir is not None:
         session = HashManifest(config.gen_state_dir)
-    try:
-        _write_all(
-            config, emitted, merge_strategy, session, result, refused, adopted
-        )
-    finally:
-        if own_session and session is not None:
-            session.save()
+    # ``manifest_batch`` joins an outer batch (the CLI's), so the file is still written once
+    # per gen-state dir however many passes run.
+    with manifest_batch(config.gen_state_dir):
+        try:
+            _write_all(
+                config, emitted, merge_strategy, session, result, refused, adopted
+            )
+        finally:
+            if own_session and session is not None:
+                session.save()
     return _finish(result, config, emitted, refused, adopted, tracking_hashes, had_manifest)
 
 

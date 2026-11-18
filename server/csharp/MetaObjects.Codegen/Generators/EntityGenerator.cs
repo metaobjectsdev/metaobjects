@@ -20,6 +20,7 @@ using MetaObjects.Meta;
 using MetaObjects.Persistence.Origin;
 using static MetaObjects.Core.Field.FieldConstants;
 using static MetaObjects.Core.Validator.ValidatorConstants;
+using static MetaObjects.Core.Query.QueryConstants;
 using static MetaObjects.Persistence.Origin.OriginConstants;
 using static MetaObjects.Persistence.Source.SourceConstants;
 
@@ -98,17 +99,17 @@ public class EntityGenerator : IGenerator
     private WireFormat _wire = WireFormat.Default;
 
     /// <summary>
-    /// Adds a type's file, claiming its type name in its namespace first (ruling R52): two objects
-    /// that emit one type into one namespace are refused, naming both, and neither is renamed. The
-    /// name is the emitted file's (<c>&lt;Type&gt;.g.cs</c>), so an override that renames a class
-    /// claims the name it actually emits.
+    /// Adds a type's file, claiming its type name in its namespace first: two objects that emit one
+    /// type into one namespace are refused, naming both, and neither is renamed. The name is the
+    /// emitted file's (<c>&lt;Type&gt;.g.cs</c>), so an override that renames a class claims the
+    /// name it actually emits.
     /// </summary>
     private static void Claimed(List<EmittedFile> files, EmittedFile file, MetaObject owner, GenContext ctx)
     {
         var fileName = Path.GetFileName(file.Path);
         var typeName = fileName.EndsWith(".g.cs", StringComparison.Ordinal) ? fileName[..^".g.cs".Length] : fileName;
         ctx.Claim($"the C# namespace {ValueObjectNames.Namespace(owner, ctx.Config)}", typeName, owner.ResolutionKey(),
-            "map the packages to distinct namespaces (GenConfig.PackageNamespaces), or rename one");
+            "map the packages to distinct namespaces (csharp.packageNamespaces, or GenConfig.PackageNamespaces), or rename one");
         files.Add(file);
     }
 
@@ -370,6 +371,12 @@ public class EntityGenerator : IGenerator
         sb.AppendLine();
 
         EmitClassHeader(sb, entity, className, isProjection, pkFields, ctx);
+        // Cross-field validators run on the full create record only (never a read-only view).
+        // A non-TPH entity never has a validating base: its only possible base is an abstract
+        // shape, which declares no Validate, and every property it carries is present on this
+        // class (own or inherited through the base chain), so every effective rule is emitted here.
+        var validateMethod = isProjection ? null : CrossFieldValidateMethod(entity, validatingBase: null);
+        if (validateMethod is not null) AppendValidatableInterface(sb);
         sb.AppendLine("{");
 
         // Nested enum declarations (before the class properties, as C# enum members
@@ -377,9 +384,10 @@ public class EntityGenerator : IGenerator
         var enumDecls = CollectEnumDecls(entity);
 
         // Members in declared order: scalar columns + enum-typed props + (entities only) owned-type navs.
-        // When this entity extends an emitted base class (DirectMappedParent), the base carries
+        // When this entity extends an emitted abstract shape (DirectMappedParent), the shape carries
         // the inherited fields — emit ONLY this entity's own fields and let C# inheritance supply
-        // the rest (mirrors the metadata `extends` chain; the PK lives on the declaring base).
+        // the rest. A concrete parent is never a C# base (two mapped entities in one hierarchy would
+        // be an EF TPH/TPT mapping, not the one-table-per-entity model), so its fields are declared here.
         var inheritedNames = DirectMappedParent(entity, ctx.Config) is { } mp
             ? new HashSet<string>(mp.Fields().Select(f => f.Name), StringComparer.Ordinal)
             : new HashSet<string>(StringComparer.Ordinal);
@@ -436,7 +444,7 @@ public class EntityGenerator : IGenerator
         // relationship — for a self-join the member is named after the relationship.
         if (!isProjection)
             foreach (var nav in M2MNavigationBuilder.For(entity, ctx.Root, ctx.Warn))
-                members.Add(M2mNavProperty(nav));
+                members.Add(M2mNavProperty(nav, ctx.Config));
 
         if (enumDecls.Count > 0)
         {
@@ -445,9 +453,14 @@ public class EntityGenerator : IGenerator
         }
         sb.Append(string.Join("\n", members));
         sb.AppendLine();
+        if (validateMethod is not null)
+        {
+            sb.AppendLine();
+            sb.Append(validateMethod);
+        }
         EmitClassBodyTrailer(sb, entity, ctx);
         sb.AppendLine("}");
-        return new EmittedFile(OutputPaths.Of(entity, $"{className}.g.cs"), sb.ToString());
+        return new EmittedFile(OutputPaths.Of(entity, ctx, $"{className}.g.cs"), sb.ToString());
     }
 
     // Extension hook — owns the per-class header for a mapped entity/projection: the
@@ -530,7 +543,7 @@ public class EntityGenerator : IGenerator
     protected virtual IEnumerable<string> TphDerivedTypeAttributes(MetaObject root, GenContext ctx) =>
         TphPlanBuilder.For(root, ctx.Root) is { } plan
             ? plan.Subtypes.Select(sub =>
-                $"[global::System.Text.Json.Serialization.JsonDerivedType(typeof({CSharpNaming.Pascal(sub.Entity.Name)}))]")
+                $"[System.Text.Json.Serialization.JsonDerivedType(typeof({ValueObjectNames.Ref(sub.Entity, ctx.Config)}))]")
             : [];
 
     // Extension hook — class-level attributes of an adopter's own, emitted after the framework's
@@ -573,7 +586,7 @@ public class EntityGenerator : IGenerator
                 // HasValue<Base>(...) fails model validation ("has a discriminator property,
                 // but does not have a discriminator value configured").
                 var classKeyword = TphPlanBuilder.IsTphDiscriminatorBase(entity, ctx.Root) ? "abstract class" : "class";
-                sb.AppendLine($"public {classKeyword} {className}{AbstractShapeBaseClause(entity, ctx)}");
+                sb.AppendLine($"public {classKeyword} {className}{MappedBaseClause(entity, ctx)}");
                 break;
             case ClassDeclarationKind.TphSubtype:
                 // Extend the nearest ancestor that actually GETS EMITTED as a class — the
@@ -590,18 +603,34 @@ public class EntityGenerator : IGenerator
                 // level — see EmitTphSubtypeClass for the other half (that level's OWN
                 // fields must still land on the subtype, or skipping its class would silently
                 // drop them instead of merely failing to compile).
-                var baseClass = CSharpNaming.Pascal(EmittedTphAncestor(entity, ctx).Name);
+                var baseClass = ValueObjectNames.Ref(EmittedTphAncestor(entity, ctx), ctx.Config);
                 var tphKeyword = InstanceArtifacts.IsAbstract(entity) ? "abstract class" : "class";
                 sb.AppendLine($"public {tphKeyword} {className} : {baseClass}");
                 break;
             case ClassDeclarationKind.AbstractShape:
-                sb.AppendLine($"public abstract class {className}{AbstractShapeBaseClause(entity, ctx)}");
+                sb.AppendLine($"public abstract class {className}{MappedBaseClause(entity, ctx)}");
                 break;
             case ClassDeclarationKind.ValueObject:
                 sb.AppendLine($"public class {className}");
                 break;
         }
     }
+
+    // ` : Base` when this non-TPH entity or abstract shape extends an emitted abstract shape
+    // (DirectMappedParent), else empty. The member loops skip the fields that base carries,
+    // so the declaration line MUST name it or those properties exist nowhere on the class.
+    private static string MappedBaseClause(MetaObject entity, GenContext ctx) =>
+        DirectMappedParent(entity, ctx.Config) is { } parent ? $" : {ValueObjectNames.Ref(parent, ctx.Config)}" : "";
+
+    // FR-037 R1 / input hardening — the accessor pair of a mapped property. A `readOnly` field takes a
+    // PRIVATE setter on EVERY property shape (scalar, enum, array, value object, map; plain entity
+    // or TPH subtype): EF materializes it on read and application code cannot write it, so the
+    // generated create route's body binding (System.Text.Json skips a non-public setter) can never
+    // hand a client-supplied value to storage. Chosen over resetting the member in each route
+    // because it holds for every writer of the class, not just the routes, and needs no per-shape
+    // reset code. `writeOnce` keeps a PUBLIC setter on purpose (the caller supplies it on insert).
+    private static string SetterFor(MetaField field) =>
+        field.IsReadOnlyMutability ? "get; private set;" : "get; set;";
 
     // A M:N navigation collection property on the source entity. The collection is
     // the relationship name PascalCased; its element type is the target entity.
@@ -616,9 +645,9 @@ public class EntityGenerator : IGenerator
     //
     // Eject (ADR-0034 Amendment 3): public so an owned copy of another generator can
     // emit the SAME M:N nav-property shape this one does, rather than re-deriving it.
-    public static string M2mNavProperty(M2MNavigation nav)
+    public static string M2mNavProperty(M2MNavigation nav, GenConfig? config = null)
     {
-        var target = CSharpNaming.Pascal(nav.Target.Name);
+        var target = config is null ? CSharpNaming.Pascal(nav.Target.Name) : ValueObjectNames.Ref(nav.Target, config);
         var prop = CSharpNaming.Pascal(nav.Name);
         var notMapped = nav.IsSelfJoin ? "    [NotMapped]\n" : "";
         return $"{notMapped}    public ICollection<{target}> {prop} {{ get; set; }} = new List<{target}>();";
@@ -666,6 +695,10 @@ public class EntityGenerator : IGenerator
         XmlDocBuilder.AppendTo(sb, entity);
         EmitClassAttributes(sb, entity, className, ClassDeclarationKind.TphSubtype, ctx);
         EmitClassDeclarationLine(sb, entity, className, ClassDeclarationKind.TphSubtype, ctx);
+        var tphAncestor = EmittedTphAncestor(entity, ctx);
+        var validatingBase = HasEffectiveCrossField(tphAncestor) ? tphAncestor : null;
+        var validateMethod = CrossFieldValidateMethod(entity, validatingBase);
+        if (validateMethod is not null && validatingBase is null) AppendValidatableInterface(sb);
         sb.AppendLine("{");
 
         // Subtype-only enum declarations (an enum field declared on the subtype, not the base).
@@ -708,9 +741,14 @@ public class EntityGenerator : IGenerator
         }
         sb.Append(string.Join("\n", members));
         sb.AppendLine();
+        if (validateMethod is not null)
+        {
+            sb.AppendLine();
+            sb.Append(validateMethod);
+        }
         EmitClassBodyTrailer(sb, entity, ctx);
         sb.AppendLine("}");
-        return new EmittedFile(OutputPaths.Of(entity, $"{className}.g.cs"), sb.ToString());
+        return new EmittedFile(OutputPaths.Of(entity, ctx, $"{className}.g.cs"), sb.ToString());
     }
 
     // A subtype-only scalar property: [Column]-mapped, with the field's validator
@@ -737,7 +775,7 @@ public class EntityGenerator : IGenerator
             }
             AppendArrayValidatorAttributes(arr, field);
             AppendDecimalConverterAttribute(arr, field, nullable: false, _wire);
-            AppendDurationConverterAttribute(arr, field);
+            AppendDurationConverterAttribute(arr, field, _wire);
             // A NON-required decimal array is nullable (no initializer) so PATCH null / an omitted
             // POST value stays a NULL column instead of failing as a required collection.
             arr.Append(PropertyDeclaration(entity, field, propName, SetterFor(field)));
@@ -755,7 +793,7 @@ public class EntityGenerator : IGenerator
             AppendNumericValidatorAttributes(sb, field);
         var required = CSharpNaming.IsRequired(entity, field);
         AppendDecimalConverterAttribute(sb, field, nullable: !required, _wire);
-        AppendDurationConverterAttribute(sb, field);
+        AppendDurationConverterAttribute(sb, field, _wire);
         // Mirrors ScalarProperty's own initializer handling (its non-TPH sibling): a
         // literal-safe @default (bool/int/long/double/float/decimal/string) wins over the
         // `= default!;` filler a required REFERENCE-type property would otherwise need.
@@ -819,27 +857,25 @@ public class EntityGenerator : IGenerator
         return cursor;
     }
 
-    // ` : <Shape>` when the entity's direct parent is an emitted abstract SHAPE (EmitAbstractShapes):
-    // the class body leaves out the fields that shape declares (inheritedNames), so without the
-    // clause they are on no class at all. "" otherwise — a concrete parent is not named here,
-    // since a mapped C# base class would make EF read the pair as an inheritance hierarchy.
-    private static string AbstractShapeBaseClause(MetaObject entity, GenContext ctx) =>
-        DirectMappedParent(entity, ctx.Config) is { } parent && InstanceArtifacts.IsAbstract(parent)
-            ? $" : {CSharpNaming.Pascal(parent.Name)}"
-            : string.Empty;
-
     // The directly-extended entity to emit as a C# base class for a NON-TPH entity (mapped
     // entity or abstract shape). The metadata `extends` chain becomes the C# inheritance
-    // chain: `class Pilot : BaseAuditableEntity`, `abstract class BaseAuditableEntity :
-    // BaseEntity`. Returns the immediate `extends` target when it is an emitted entity — an
-    // abstract base (only when EmitAbstractShapes is on, since the base must exist as a type)
-    // or a concrete parent. Null when there is no such parent: the entity then flattens its
-    // (un-emitted) abstract ancestors' fields as before. TPH members use DirectTphParent.
+    // chain ONLY through abstract shapes: `class Physician : BaseAuditableEntity`, `abstract
+    // class BaseAuditableEntity : BaseEntity`. An abstract shape is not mapped, so EF folds
+    // its properties into each derived entity's own table — exactly what every other port
+    // and the migrate-ts schema give a child of an abstract parent.
+    //
+    // Returns null otherwise: the entity then declares every resolved field itself. That
+    // includes a CONCRETE parent. Each concrete entity owns a table carrying ALL its columns
+    // (the migrate-ts schema gives `Child` a table with the parent's columns and its own,
+    // and the other ports' child models carry both), but a C# `Child : Parent` between two
+    // MAPPED entities is an EF inheritance hierarchy — TPH (one shared table plus a
+    // discriminator) or TPT (child table holding only the child's own columns). Either
+    // contradicts that schema, so a concrete parent is flattened, never named as a base.
+    // TPH members use DirectTphParent.
     protected static MetaObject? DirectMappedParent(MetaObject entity, GenConfig config)
     {
         if (entity.SuperData is not MetaObject sup || !sup.IsEntity()) return null;
-        if (InstanceArtifacts.IsAbstract(sup)) return config.EmitAbstractShapes ? sup : null;
-        return sup;
+        return InstanceArtifacts.IsAbstract(sup) && config.EmitAbstractShapes ? sup : null;
     }
 
     // The nearest @discriminator-bearing ancestor of a TPH subtype (its TPH base).
@@ -928,7 +964,7 @@ public class EntityGenerator : IGenerator
         sb.AppendLine();
         EmitClassBodyTrailer(sb, entity, ctx);
         sb.AppendLine("}");
-        return new EmittedFile(OutputPaths.Of(entity, $"{className}.g.cs"), sb.ToString());
+        return new EmittedFile(OutputPaths.Of(entity, ctx, $"{className}.g.cs"), sb.ToString());
     }
 
     // Plain POCO for a value object nested by an owned-type navigation. No [Table] /
@@ -1023,7 +1059,7 @@ public class EntityGenerator : IGenerator
         sb.AppendLine();
         EmitClassBodyTrailer(sb, vo, ctx);
         sb.AppendLine("}");
-        return new EmittedFile(OutputPaths.Of(vo, $"{className}.g.cs"), sb.ToString());
+        return new EmittedFile(OutputPaths.Of(vo, ctx, $"{className}.g.cs"), sb.ToString());
     }
 
     /// <summary>
@@ -1088,54 +1124,89 @@ public class EntityGenerator : IGenerator
         // FR-023: an imported value object this run emits a POCO for (a generated type needs it), so
         // the enums IT uses are part of the output too.
         var importedShapes = valueShapes.Where(vo => !ctx.Root.InScope(vo)).ToList();
-        // G2 (rc.20): a narrowed run (Include) declares the enums of the objects it accepts and of
-        // every value object it emits beyond them (a reached closure POCO), not the whole model's;
-        // another entry declares the rest, and an enum both use is declared once (below).
-        // Un-narrowed, the set is unchanged.
+        // A narrowed run (Include) declares the enums of the objects it accepts and of every value
+        // object it emits beyond them (a reached closure POCO), not the whole model's; another entry
+        // declares the rest, and an enum both use is declared once (below). Un-narrowed, the set is
+        // unchanged.
         var reached = ctx.Scope is null ? importedShapes : valueShapes.ToList();
 
         foreach (var shared in Fr019SharedEnum.CollectSharedEnums(ctx.Root, reached, ctx.Scope))
             if (shared.Provided)
                 _ = Fr019SharedEnum.SharedEnumTypeReference(shared, ctx.Config);
 
-        var files = new List<EmittedFile>();
+        var declared = new List<SharedEnum>();
         foreach (var e in Fr019SharedEnum.MaterializedSharedEnums(ctx.Root, reached, ctx.Scope))
         {
-            // G2 (rc.20, fix round 1): an enum two narrowed entries both use is declared by ONE of them,
-            // so the entries' outputs build together (no CS0101). Decided from the model alone, so each
-            // entry reaches the same answer in its own run: the enum's home is its first consumer by
-            // resolution key, and the entry that emits that object declares it.
+            // An enum two narrowed entries both use is declared by ONE of them, so the entries'
+            // outputs build together. Decided from the model alone, so each entry reaches the same
+            // answer in its own run: the enum's home is its first consumer by resolution key, and
+            // the entry that emits that object declares it.
             if (ctx.Scope is { } scope && SharedEnumHome(ctx, e, importedShapes) is { } home
                 && !scope(home) && !valueShapes.Contains(home))
                 continue;
-            // rc.19 R65: a shared enum is declared in its package's namespace; consumers name it
-            // global::-qualified (Fr019SharedEnum.SharedEnumTypeReference).
             var ns = Fr019SharedEnum.MaterializedNamespace(e, ctx.Config);
             ctx.Claim($"the C# namespace {ns}", e.Name, e.Declaration?.ResolutionKey() ?? e.Name,
-                "map the packages to distinct namespaces (GenConfig.PackageNamespaces), or rename one");
-            var sb = new StringBuilder();
-            sb.AppendLine("// <auto-generated/>");
-            sb.AppendLine("// Generated by MetaObjects entity-generator (FR-019 shared enum). Do not edit by hand.");
-            sb.AppendLine("// A reused package-level field.enum; consuming entities reference it.");
-            sb.AppendLine("#nullable enable");
-            sb.AppendLine();
-            sb.AppendLine($"namespace {ns};");
-            sb.AppendLine();
-            sb.Append(SharedEnumDeclaration(e));
-            var fileName = $"{e.Name}.g.cs";
-            files.Add(new EmittedFile(e.Declaration is { } decl ? OutputPaths.Of(decl, fileName) : fileName, sb.ToString()));
+                "map the packages to distinct namespaces (csharp.packageNamespaces, or GenConfig.PackageNamespaces), or rename one");
+            declared.Add(e);
         }
-        return files;
+        if (declared.Count == 0) return [];
+
+        // The package layout writes each enum as its own <package>/<Enum>.g.cs, with its
+        // @intValueMap integers and XML docs. The flat layout keeps the one Enums.g.cs.
+        if (ctx.Config.OutputLayout == OutputLayout.Package)
+            return declared.Select(e =>
+            {
+                var sb = new StringBuilder();
+                sb.AppendLine("// <auto-generated/>");
+                sb.AppendLine("// Generated by MetaObjects entity-generator (FR-019 shared enum). Do not edit by hand.");
+                sb.AppendLine("// A reused package-level field.enum; consuming entities reference it.");
+                sb.AppendLine("#nullable enable");
+                sb.AppendLine();
+                sb.AppendLine($"namespace {Fr019SharedEnum.MaterializedNamespace(e, ctx.Config)};");
+                sb.AppendLine();
+                sb.Append(SharedEnumDeclaration(e));
+                var fileName = $"{e.Name}.g.cs";
+                return new EmittedFile(e.Declaration is { } decl ? OutputPaths.Of(decl, ctx, fileName) : fileName, sb.ToString()) { WholeModel = true };
+            }).ToList();
+
+        var flat = new StringBuilder();
+        flat.AppendLine("// <auto-generated/>");
+        flat.AppendLine("// Generated by MetaObjects entity-generator (FR-019 shared enums). Do not edit by hand.");
+        flat.AppendLine("// One declaration per reused package-level field.enum; consuming entities reference these.");
+        flat.AppendLine("#nullable enable");
+        flat.AppendLine();
+        var groups = declared.GroupBy(e => Fr019SharedEnum.MaterializedNamespace(e, ctx.Config), StringComparer.Ordinal).ToList();
+        if (groups.Count == 1)
+        {
+            // One namespace (the default: GenConfig.Namespace), as ever.
+            flat.AppendLine($"namespace {groups[0].Key};");
+            flat.AppendLine();
+            foreach (var e in groups[0])
+                flat.AppendLine($"public enum {e.Name} {{ {string.Join(", ", e.Values)} }}");
+        }
+        else
+        {
+            foreach (var g in groups.OrderBy(g => g.Key, StringComparer.Ordinal))
+            {
+                flat.AppendLine($"namespace {g.Key}");
+                flat.AppendLine("{");
+                foreach (var e in g)
+                    flat.AppendLine($"    public enum {e.Name} {{ {string.Join(", ", e.Values)} }}");
+                flat.AppendLine("}");
+                flat.AppendLine();
+            }
+        }
+        return [new EmittedFile("Enums.g.cs", flat.ToString()) { WholeModel = true }];
     }
 
     /// <summary>
-    /// The object a narrowed run's shared enum is declared beside (G2): the first, by resolution key,
-    /// of every object this project generates (and every imported value object this run emits) that has
+    /// The object a narrowed run's shared enum is declared beside: the first, by resolution key, of
+    /// every object this project generates (and every imported value object this run emits) that has
     /// a field of the enum. Null when nothing consumes it.
     /// </summary>
     private static MetaObject? SharedEnumHome(GenContext ctx, SharedEnum e, IReadOnlyList<MetaObject> importedShapes) =>
         ctx.Root.Objects().Where(ctx.Root.InScope).Concat(importedShapes)
-            .Where(o => o.Fields().Any(f => Fr019SharedEnum.SharedEnumForField(f)?.Name == e.Name))
+            .Where(o => o.Fields().Any(f => Fr019SharedEnum.SharedEnumForField(f) is { } u && u.Name == e.Name && u.Package == e.Package))
             .OrderBy(o => o.ResolutionKey(), StringComparer.Ordinal)
             .FirstOrDefault();
 
@@ -1175,6 +1246,484 @@ public class EntityGenerator : IGenerator
             sb.AppendLine($"    {Member(m)},");
         }
         sb.AppendLine("}");
+        return sb.ToString();
+    }
+
+    // -------------------------------------------------------------------------
+    // Entity-scoped cross-field validators (validator.comparison / requiredWhen /
+    // presentIff / atLeastOne / exactlyOne, each with an optional @condition) -> IValidatableObject.Validate on the FULL record model,
+    // the class the generated create handler runs through Validator.TryValidateObject.
+    // Semantics mirror the schema-side CHECK derivation (migrate-ts crossFieldCheck):
+    // null = SQL NULL, "" is NOT null; a comparison with a null side passes; a null gate
+    // is unconstrained for requiredWhen and counts as "not equal" for presentIff.
+    // A validator naming a missing / array / non-scalar field is skipped silently.
+    //
+    // NOT emitted onto partial/PATCH handling: the update handler validates per property
+    // (TryValidateProperty), never TryValidateObject, so IValidatableObject does not run
+    // there; a partial body cannot see the merged row, and the DB CHECK stays the
+    // enforcement. Nuance: Validator.TryValidateObject runs IValidatableObject.Validate
+    // ONLY when every property-level attribute passed, so a body with a property-level
+    // violation reports that one first and the cross-field rules on a later pass.
+    // -------------------------------------------------------------------------
+
+    private static bool IsCrossFieldValidator(MetaValidator v) =>
+        v.SubType is VALIDATOR_SUBTYPE_COMPARISON or VALIDATOR_SUBTYPE_REQUIRED_WHEN
+            or VALIDATOR_SUBTYPE_PRESENT_IFF or VALIDATOR_SUBTYPE_AT_LEAST_ONE or VALIDATOR_SUBTYPE_EXACTLY_ONE;
+
+    private enum CrossKind { Other, Numeric, Temporal, Str, Bool, Enum, Duration }
+
+    private static CrossKind KindOf(MetaField f) => f.SubType switch
+    {
+        FIELD_SUBTYPE_INT or FIELD_SUBTYPE_LONG or FIELD_SUBTYPE_DOUBLE or FIELD_SUBTYPE_FLOAT
+            or FIELD_SUBTYPE_DECIMAL or FIELD_SUBTYPE_CURRENCY => CrossKind.Numeric,
+        FIELD_SUBTYPE_DATE or FIELD_SUBTYPE_TIME or FIELD_SUBTYPE_TIMESTAMP => CrossKind.Temporal,
+        FIELD_SUBTYPE_STRING => CrossKind.Str,
+        FIELD_SUBTYPE_BOOLEAN => CrossKind.Bool,
+        FIELD_SUBTYPE_ENUM => CrossKind.Enum,
+        FIELD_SUBTYPE_DURATION => CrossKind.Duration,
+        _ => CrossKind.Other,
+    };
+
+    // Whether a comparison between these two fields has a sound meaning, as in every port:
+    // numerics compare with each other, strings, temporals and durations only with their own
+    // subtype and CLR type (a date against a timestamp, or an instant against a @localTime wall
+    // clock, has no ordering), and boolean, enum, uuid, uri and inet fields only test equality.
+    // Anything else is skipped, never rejected.
+    private static bool CrossComparable(MetaField l, MetaField r, string op)
+    {
+        var lk = KindOf(l); var rk = KindOf(r);
+        if (lk == CrossKind.Numeric && rk == CrossKind.Numeric) return true;
+        if (l.SubType != r.SubType || CSharpNaming.ScalarForField(l) != CSharpNaming.ScalarForField(r)) return false;
+        if (lk is CrossKind.Str or CrossKind.Temporal or CrossKind.Duration) return true;
+        return op is "eq" or "ne"
+            && (lk is CrossKind.Bool or CrossKind.Enum || l.SubType is FIELD_SUBTYPE_UUID or FIELD_SUBTYPE_URI or FIELD_SUBTYPE_INET)
+            && (l.SubType != FIELD_SUBTYPE_ENUM
+                || ReferenceEquals(Fr019SharedEnum.ResolveSharedEnumDecl(l) ?? l, Fr019SharedEnum.ResolveSharedEnumDecl(r) ?? r));
+    }
+
+    // An ISO-8601 duration (weeks, days, hours, minutes, seconds) as microseconds, or null.
+    private static long? ParseIsoDurationMicros(string text)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(text,
+            @"^([-+])?P(?!$)(?:(\d+)W)?(?:(\d+)D)?(?:T(?=\d)(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)(?:\.(\d+))?S)?)?$");
+        if (!m.Success) return null;
+        long G(int i) => m.Groups[i].Success ? long.Parse(m.Groups[i].Value, System.Globalization.CultureInfo.InvariantCulture) : 0;
+        var hours = (G(2) * 7 + G(3)) * 24 + G(4);
+        var frac = m.Groups[7].Success ? long.Parse(m.Groups[7].Value.PadRight(6, '0')[..6], System.Globalization.CultureInfo.InvariantCulture) : 0;
+        var us = ((hours * 60 + G(5)) * 60 + G(6)) * 1_000_000L + frac;
+        return m.Groups[1].Value == "-" ? -us : us;
+    }
+
+    private static string CsLiteral(string s) =>
+        "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n") + "\"";
+
+    // The cross-field validators THIS class must evaluate: its effective set, minus the ones the
+    // emitted base class's Validate already evaluates. Subtracting the base's effective set (not
+    // reading own validators) keeps a validator declared on an un-emitted intermediate level.
+    private static List<MetaValidator> CrossFieldValidatorsFor(MetaObject entity, MetaObject? validatingBase)
+    {
+        var inherited = validatingBase is null
+            ? new HashSet<MetaValidator>(ReferenceEqualityComparer.Instance)
+            : new HashSet<MetaValidator>(validatingBase.Validators(), ReferenceEqualityComparer.Instance);
+        return entity.Validators().Where(v => IsCrossFieldValidator(v) && !inherited.Contains(v)).ToList();
+    }
+
+    // A class whose effective validators include a cross-field one always declares or inherits
+    // Validate (CrossFieldValidateMethod emits it even when every rule is skipped), so a subclass
+    // may override it on exactly this test.
+    private static bool HasEffectiveCrossField(MetaObject entity) =>
+        entity.Validators().Any(IsCrossFieldValidator);
+
+    // Appends `, IValidatableObject` (or ` : IValidatableObject`) to the just-written class
+    // declaration line. Works on the builder so an overridden declaration seam still applies.
+    private static void AppendValidatableInterface(StringBuilder sb)
+    {
+        var len = sb.Length;
+        while (len > 0 && (sb[len - 1] == '\n' || sb[len - 1] == '\r')) len--;
+        var lineStart = len;
+        while (lineStart > 0 && sb[lineStart - 1] != '\n') lineStart--;
+        var line = sb.ToString(lineStart, len - lineStart);
+        sb.Length = len;
+        sb.AppendLine(line.Contains(" : ", StringComparison.Ordinal) ? ", IValidatableObject" : " : IValidatableObject");
+    }
+
+    // Returns the emitted Validate method (4-space class-body indent), or null when nothing to emit.
+    private string? CrossFieldValidateMethod(MetaObject entity, MetaObject? validatingBase)
+    {
+        var validators = CrossFieldValidatorsFor(entity, validatingBase);
+        if (validators.Count == 0) return null;
+        var baseHasValidate = validatingBase is not null;
+        HashSet<string> generatedKey = entity.PrimaryIdentity() is MetaPrimaryIdentity
+            {
+                Generation: MetaObjects.Core.Identity.IdentityConstants.GENERATION_INCREMENT
+                    or MetaObjects.Core.Identity.IdentityConstants.GENERATION_UUID,
+            } pk
+            ? new HashSet<string>(pk.Fields, StringComparer.Ordinal)
+            : new HashSet<string>(StringComparer.Ordinal);
+
+        MetaField? Scalar(object? name)
+        {
+            if (name is not string n || n.Length == 0) return null;
+            // ADR-0039: resolving Fields() — a referenced field may be inherited.
+            var f = entity.Fields().FirstOrDefault(x => x.Name == n);
+            if (f is null || f.ResolvedIsArray()) return null;
+            if (f.IsReadOnlyMutability || f.IsDerived() || generatedKey.Contains(f.Name)) return null;
+            return CSharpNaming.ScalarFor(f.SubType) is not null || f.SubType == FIELD_SUBTYPE_ENUM ? f : null;
+        }
+
+        string Gate(MetaField when, string raw)
+        {
+            var p = PropertyName(when);
+            switch (KindOf(when))
+            {
+                case CrossKind.Bool:
+                    var truthy = raw is "true" or "1" or "TRUE";
+                    return $"({p} == {(truthy ? "true" : "false")})";
+                case CrossKind.Numeric:
+                    if (!System.Text.RegularExpressions.Regex.IsMatch(raw, @"^-?\d+(\.\d+)?$")) return "false";
+                    var isInt = when.SubType is FIELD_SUBTYPE_INT or FIELD_SUBTYPE_LONG;
+                    if (isInt && raw.Contains('.')) return "false";
+                    var suffix = when.SubType switch
+                    {
+                        FIELD_SUBTYPE_DECIMAL or FIELD_SUBTYPE_CURRENCY => "m",
+                        FIELD_SUBTYPE_DOUBLE => "d",
+                        FIELD_SUBTYPE_FLOAT => "f",
+                        _ => "",
+                    };
+                    return $"({p} == {raw}{suffix})";
+                case CrossKind.Str:
+                    return $"({p} == {CsLiteral(raw)})";
+                default:
+                    return $"(((object?){p})?.ToString() == {CsLiteral(raw)})";
+            }
+        }
+
+
+        // ---- @condition -> a C# expression of type bool? (SQL three-valued logic) ----------
+        // bool?'s lifted & and | are SQL AND / OR (false & null = false, true | null = true) and !
+        // keeps null, so only comparisons need care: a null side gives null, not false. The
+        // expression is emitted into the model, never interpreted at runtime. Null = the
+        // condition is not expressible here (names a field outside the create model, or a
+        // type this tier does not compare), and the whole rule is left to the database.
+        var condN = 0;
+
+        // The field a node compares as: itself, or a coalesce's first field.
+        MetaField? NodeField(object? node)
+        {
+            if (node is not IReadOnlyDictionary<string, object?> n) return null;
+            if (n.TryGetValue("field", out var fn) && fn is string) return Scalar(fn);
+            if (n.TryGetValue("fn", out var f) && f as string == MetaObjects.Core.Attr.ExpressionGrammar.EXPR_FN_COALESCE
+                && n.TryGetValue("args", out var args) && args is IEnumerable<object?> list)
+                foreach (var a in list) if (NodeField(a) is { } found) return found;
+            return null;
+        }
+
+        IEnumerable<object?> Leaves(object? node)
+        {
+            if (node is not IReadOnlyDictionary<string, object?> n) yield break;
+            if (n.ContainsKey("field") || n.ContainsKey("value")) { yield return node; yield break; }
+            if (n.TryGetValue("args", out var args) && args is IEnumerable<object?> list)
+                foreach (var a in list) foreach (var l in Leaves(a)) yield return l;
+        }
+
+        // A comparison inside a condition follows the validator rule: every pair of fields it
+        // reads must be comparable, or the whole rule is left to the database.
+        bool CondComparable(object? left, object? right, string op)
+        {
+            var fields = Leaves(left).Concat(Leaves(right))
+                .Select(l => l is IReadOnlyDictionary<string, object?> ln && ln.TryGetValue("field", out var fnm) ? Scalar(fnm) : null)
+                .OfType<MetaField>().ToList();
+            for (var x = 0; x < fields.Count; x++)
+                for (var y = x + 1; y < fields.Count; y++)
+                    if (!CrossComparable(fields[x], fields[y], op)) return false;
+            return true;
+        }
+
+        static string InvariantNumber(object v)
+        {
+            if (v is not double d) return Convert.ToString(v, System.Globalization.CultureInfo.InvariantCulture) ?? "0";
+            var t = d.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+            return t.Contains('.') || t.Contains('E') ? t : t + ".0";
+        }
+
+        // A value node as (expr, mayBeNull) compared as `kind`; numeric operands are normalised
+        // to `numTarget` ("decimal", "double" or "" for integers). Null = unsupported.
+        (string Expr, bool MayBeNull)? Val(object? node, CrossKind kind, string numTarget, string? temporalClr)
+        {
+            if (node is not IReadOnlyDictionary<string, object?> n) return null;
+            if (n.TryGetValue("field", out var fname))
+            {
+                var f = Scalar(fname);
+                if (f is null) return null;
+                var p = PropertyName(f);
+                // Enum, uuid, uri and inet values compare by their text form.
+                if (kind == CrossKind.Enum || (kind == CrossKind.Str && f.SubType != FIELD_SUBTYPE_STRING))
+                    return ($"((object?){p})?.ToString()", true);
+                if (kind == CrossKind.Numeric && numTarget.Length > 0) return ($"(({numTarget}?){p})", true);
+                return (p, true);
+            }
+            if (n.TryGetValue("value", out var lit))
+            {
+                switch (kind)
+                {
+                    case CrossKind.Numeric when lit is long or int or double:
+                        return (numTarget.Length > 0 ? $"(({numTarget}){InvariantNumber(lit)})" : InvariantNumber(lit), false);
+                    case CrossKind.Str or CrossKind.Enum when lit is string s:
+                        return (CsLiteral(s), false);
+                    case CrossKind.Bool when lit is bool b:
+                        return (b ? "true" : "false", false);
+                    case CrossKind.Duration when lit is string d:
+                        return ParseIsoDurationMicros(d) is { } us ? ($"TimeSpan.FromTicks({us * 10}L)", false) : null;
+                    case CrossKind.Temporal when lit is string t && temporalClr is not null:
+                    {
+                        var inv = "System.Globalization.CultureInfo.InvariantCulture";
+                        return temporalClr switch
+                        {
+                            "DateOnly" => ($"DateOnly.Parse({CsLiteral(t)}, {inv})", false),
+                            "TimeOnly" => ($"TimeOnly.Parse({CsLiteral(t)}, {inv})", false),
+                            "DateTimeOffset" => ($"DateTimeOffset.Parse({CsLiteral(t)}, {inv}, System.Globalization.DateTimeStyles.AssumeUniversal)", false),
+                            "DateTime" => ($"DateTime.Parse({CsLiteral(t)}, {inv})", false),
+                            _ => null,
+                        };
+                    }
+                    default: return null;
+                }
+            }
+            if (n.TryGetValue("fn", out var fnName) && fnName as string == MetaObjects.Core.Attr.ExpressionGrammar.EXPR_FN_COALESCE
+                && n.TryGetValue("args", out var args) && args is IEnumerable<object?> list)
+            {
+                var parts = new List<(string Expr, bool MayBeNull)>();
+                foreach (var a in list)
+                {
+                    if (Val(a, kind, numTarget, temporalClr) is not { } part) return null;
+                    parts.Add(part);
+                }
+                if (parts.Count == 0) return null;
+                return ($"({string.Join(" ?? ", parts.Select(x => x.Expr))})", parts.All(x => x.MayBeNull));
+            }
+            return null;
+        }
+
+        string? CondCs(object? node)
+        {
+            if (node is not IReadOnlyDictionary<string, object?> n || n.GetValueOrDefault("op") is not string op) return null;
+            switch (op)
+            {
+                case FILTER_OP_EQ or FILTER_OP_NE or FILTER_OP_GT or FILTER_OP_GTE or FILTER_OP_LT or FILTER_OP_LTE:
+                {
+                    var left = n.GetValueOrDefault("left"); var right = n.GetValueOrDefault("right");
+                    if (!CondComparable(left, right, op)) return null;
+                    var anchor = NodeField(left) ?? NodeField(right);
+                    if (anchor is null) return null;
+                    // CondComparable has checked every pair of fields; what is left is how the anchor
+                    // compares: its CLR type, its numeric promotion, or its text form.
+                    var kind = KindOf(anchor);
+                    var ordering = op is FILTER_OP_GT or FILTER_OP_GTE or FILTER_OP_LT or FILTER_OP_LTE;
+                    string? temporalClr = null; var numTarget = "";
+                    switch (kind)
+                    {
+                        case CrossKind.Temporal:
+                            temporalClr = CSharpNaming.ScalarForField(anchor);
+                            break;
+                        case CrossKind.Numeric:
+                            foreach (var l in Leaves(left).Concat(Leaves(right)))
+                            {
+                                if (l is not IReadOnlyDictionary<string, object?> ln) continue;
+                                if (ln.TryGetValue("field", out var fnm))
+                                {
+                                    if (Scalar(fnm) is not { } lf) return null;
+                                    if (lf.SubType is FIELD_SUBTYPE_DECIMAL) numTarget = "decimal";
+                                    else if (lf.SubType is FIELD_SUBTYPE_DOUBLE or FIELD_SUBTYPE_FLOAT && numTarget != "decimal") numTarget = "double";
+                                }
+                                else if (ln.GetValueOrDefault("value") is double && numTarget.Length == 0) numTarget = "double";
+                            }
+                            break;
+                        case CrossKind.Str or CrossKind.Enum:
+                            kind = CrossKind.Str;
+                            break;
+                        case CrossKind.Bool when !ordering:
+                        case CrossKind.Duration:
+                            break;
+                        case CrossKind.Other when !ordering && anchor.SubType is FIELD_SUBTYPE_UUID or FIELD_SUBTYPE_URI or FIELD_SUBTYPE_INET:
+                            kind = CrossKind.Str;
+                            break;
+                        default:
+                            return null;
+                    }
+                    if (Val(left, kind, numTarget, temporalClr) is not { } lv || Val(right, kind, numTarget, temporalClr) is not { } rv) return null;
+                    var csOp = op switch { FILTER_OP_GT => ">", FILTER_OP_GTE => ">=", FILTER_OP_LT => "<", FILTER_OP_LTE => "<=", FILTER_OP_NE => "!=", _ => "==" };
+                    var guards = new List<string>();
+                    string Unwrap((string Expr, bool MayBeNull) x)
+                    {
+                        if (!x.MayBeNull) return x.Expr;
+                        var name = $"__c{++condN}";
+                        guards.Add($"{x.Expr} is {{ }} {name}");
+                        return name;
+                    }
+                    var a = Unwrap(lv); var b = Unwrap(rv);
+                    var cmp = kind == CrossKind.Str ? $"string.CompareOrdinal({a}, {b}) {csOp} 0" : $"{a} {csOp} {b}";
+                    return guards.Count == 0
+                        ? $"(bool?)({cmp})"
+                        : $"({string.Join(" && ", guards)} ? (bool?)({cmp}) : null)";
+                }
+                case FILTER_OP_IS_NULL or MetaObjects.Core.Attr.ExpressionGrammar.EXPR_OP_IS_NOT_NULL:
+                {
+                    var arg = n.GetValueOrDefault("arg");
+                    if (arg is IReadOnlyDictionary<string, object?> an && an.ContainsKey("value"))
+                        return (an["value"] is null) == (op == FILTER_OP_IS_NULL) ? "true" : "false";
+                    var anchor = NodeField(arg);
+                    if (anchor is null) return null;
+                    var kind = KindOf(anchor);
+                    if (kind == CrossKind.Enum) kind = CrossKind.Str;
+                    // Only the null-ness is read, so any operand type works; temporal and numeric need no normalisation.
+                    if (Val(arg, kind, "", null) is not { } v) return null;
+                    return $"(((object?){v.Expr}) is {(op == FILTER_OP_IS_NULL ? "null" : "not null")})";
+                }
+                case MetaObjects.Core.Attr.ExpressionGrammar.EXPR_OP_NOT:
+                    return CondCs(n.GetValueOrDefault("arg")) is { } inner ? $"!({inner})" : null;
+                case FILTER_COMPOSE_AND or FILTER_COMPOSE_OR:
+                {
+                    if (n.GetValueOrDefault("args") is not IEnumerable<object?> list) return null;
+                    var parts = new List<string>();
+                    foreach (var a in list)
+                    {
+                        if (CondCs(a) is not { } part) return null;
+                        parts.Add(part);
+                    }
+                    return parts.Count == 0 ? null : "(" + string.Join(op == FILTER_COMPOSE_AND ? " & " : " | ", parts) + ")";
+                }
+                default: return null;
+            }
+        }
+
+        var body = new StringBuilder();
+        var i = 0;
+        foreach (var v in validators)
+        {
+            i++;
+            var rule = new StringBuilder();
+            switch (v.SubType)
+            {
+                case VALIDATOR_SUBTYPE_COMPARISON:
+                {
+                    var l = Scalar(v.Attr(VALIDATOR_ATTR_LEFT));
+                    var r = Scalar(v.Attr(VALIDATOR_ATTR_RIGHT));
+                    var op = v.Attr(VALIDATOR_ATTR_OP) as string;
+                    if (l is null || r is null || op is null) break;
+                    var csOp = op switch { "gt" => ">", "gte" => ">=", "lt" => "<", "lte" => "<=", "ne" => "!=", "eq" => "==", _ => null };
+                    if (csOp is null || !CrossComparable(l, r, op)) break;
+                    var lk = KindOf(l);
+                    string cond;
+                    var a = $"__l{i}"; var b = $"__r{i}";
+                    if (lk == CrossKind.Str)
+                        cond = $"string.CompareOrdinal({a}, {b}) {csOp} 0";
+                    else if (lk == CrossKind.Numeric)
+                    {
+                        var ls = CSharpNaming.ScalarForField(l); var rs = CSharpNaming.ScalarForField(r);
+                        var la = ls != "decimal" && rs == "decimal" ? $"(decimal){a}" : a;
+                        var rb = rs != "decimal" && ls == "decimal" ? $"(decimal){b}" : b;
+                        cond = $"{la} {csOp} {rb}";
+                    }
+                    else if (lk is CrossKind.Temporal or CrossKind.Duration)
+                        cond = $"{a} {csOp} {b}";
+                    else
+                        cond = op == "eq" ? $"Equals({a}, {b})" : $"!Equals({a}, {b})";
+                    var lp = PropertyName(l); var rp = PropertyName(r);
+                    rule.AppendLine($"        if ({lp} is {{ }} {a} && {rp} is {{ }} {b} && !({cond}))");
+                    rule.AppendLine($"            yield return new ValidationResult({CsLiteral($"{lp} must be {op} {rp}.")}, new[] {{ nameof({lp}), nameof({rp}) }});");
+                    break;
+                }
+                case VALIDATOR_SUBTYPE_REQUIRED_WHEN:
+                case VALIDATOR_SUBTYPE_PRESENT_IFF:
+                {
+                    var target = Scalar(v.Attr(VALIDATOR_ATTR_FIELD));
+                    var when = Scalar(v.Attr(VALIDATOR_ATTR_WHEN));
+                    if (target is null || when is null) break;
+                    var raw = Convert.ToString(v.Attr(VALIDATOR_ATTR_EQUALS), System.Globalization.CultureInfo.InvariantCulture) ?? "";
+                    var gate = Gate(when, raw);
+                    var tp = PropertyName(target); var wp = PropertyName(when);
+                    if (v.SubType == VALIDATOR_SUBTYPE_REQUIRED_WHEN)
+                    {
+                        rule.AppendLine($"        if ({gate} && {tp} is null)");
+                        rule.AppendLine($"            yield return new ValidationResult({CsLiteral($"{tp} is required when {wp} is {raw}.")}, new[] {{ nameof({tp}) }});");
+                    }
+                    else
+                    {
+                        rule.AppendLine($"        if (({tp} is not null) != {gate})");
+                        rule.AppendLine($"            yield return new ValidationResult({CsLiteral($"{tp} must be present if and only if {wp} is {raw}.")}, new[] {{ nameof({tp}) }});");
+                    }
+                    break;
+                }
+                case VALIDATOR_SUBTYPE_AT_LEAST_ONE:
+                {
+                    var raw = v.Attr(VALIDATOR_ATTR_FIELDS);
+                    var names = raw switch
+                    {
+                        string one => new List<object?> { one },
+                        System.Collections.IEnumerable many => many.Cast<object?>().ToList(),
+                        _ => new List<object?>(),
+                    };
+                    var fs = names.Select(Scalar).ToList();
+                    if (fs.Count == 0 || fs.Any(f => f is null)) break;
+                    var props = fs.Select(f => PropertyName(f!)).ToList();
+                    rule.AppendLine($"        if ({string.Join(" && ", props.Select(p => $"{p} is null"))})");
+                    rule.AppendLine($"            yield return new ValidationResult({CsLiteral($"At least one of {string.Join(", ", props)} is required.")}, new[] {{ {string.Join(", ", props.Select(p => $"nameof({p})"))} }});");
+                    break;
+                }
+                case VALIDATOR_SUBTYPE_EXACTLY_ONE:
+                {
+                    var raw = v.Attr(VALIDATOR_ATTR_FIELDS);
+                    var names = raw switch
+                    {
+                        string one => new List<object?> { one },
+                        System.Collections.IEnumerable many => many.Cast<object?>().ToList(),
+                        _ => new List<object?>(),
+                    };
+                    var fs = names.Select(Scalar).ToList();
+                    if (fs.Count == 0 || fs.Any(f => f is null)) break;
+                    var props = fs.Select(f => PropertyName(f!)).ToList();
+                    // Exactly one non-null: absent is null, "" is not null. (object?) keeps the test valid for any property type.
+                    var count = string.Join(" + ", props.Select(p => $"(((object?){p}) is null ? 0 : 1)"));
+                    rule.AppendLine($"        if ({count} != 1)");
+                    rule.AppendLine($"            yield return new ValidationResult({CsLiteral($"Exactly one of {string.Join(", ", props)} is required.")}, new[] {{ {string.Join(", ", props.Select(p => $"nameof({p})"))} }});");
+                    break;
+                }
+            }
+            if (rule.Length == 0) continue;
+            // A rule with an @condition is checked only when the condition is TRUE (the CHECK is
+            // NOT (condition) OR (rule)); false or NULL lets the record through. A condition that
+            // names a field outside the create model leaves the whole rule to the database.
+            if (v.Attr(VALIDATOR_ATTR_CONDITION) is { } condition)
+            {
+                var guard = CondCs(condition);
+                if (guard is null) continue;
+                body.AppendLine($"        if (({guard}) == true)");
+                body.AppendLine("        {");
+                foreach (var line in rule.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                    body.AppendLine("    " + line.TrimEnd('\r'));
+                body.AppendLine("        }");
+            }
+            else body.Append(rule);
+        }
+        if (body.Length == 0)
+        {
+            if (baseHasValidate) return null;
+            body.AppendLine("        yield break;");
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine("    /// <summary>Entity-scoped cross-field validators (comparison / requiredWhen / presentIff / atLeastOne / exactlyOne, each with its optional @condition). Create-time only; the database CHECK is the enforcement on partial updates.</summary>");
+        sb.AppendLine(baseHasValidate
+            ? "    public override IEnumerable<ValidationResult> Validate(ValidationContext validationContext)"
+            : "    public virtual IEnumerable<ValidationResult> Validate(ValidationContext validationContext)");
+        sb.AppendLine("    {");
+        if (baseHasValidate)
+        {
+            sb.AppendLine("        foreach (var __inherited in base.Validate(validationContext))");
+            sb.AppendLine("            yield return __inherited;");
+        }
+        sb.Append(body);
+        sb.AppendLine("    }");
         return sb.ToString();
     }
 
@@ -1586,7 +2135,7 @@ public static class DecimalWire
 """;
 
     private static EmittedFile EmitDecimalWireFile(string ns, string fileName) =>
-        new(fileName, DecimalWireSourceTemplate.Replace("__NS__", ns, StringComparison.Ordinal) + "\n");
+        new(fileName, DecimalWireSourceTemplate.Replace("__NS__", ns, StringComparison.Ordinal) + "\n") { WholeModel = true };
 
     // field.duration — the duration wire form (fixtures/duration-wire/). This text is the
     // Runtime/DurationWire.cs source with its namespace as __NS__; DurationWireTests gates the two
@@ -1596,14 +2145,15 @@ public static class DecimalWire
 // <auto-generated/>
 // DurationWire — the wire form of a field.duration: a fixed-length span of time, a TimeSpan in C#.
 //
-// On the wire a duration is an ISO-8601 duration STRING. Every port writes the canonical form
+// Under `wire.durations: iso` a duration is an ISO-8601 duration STRING on the wire. Every port writes the canonical form
 // `[-]PT[<h>H][<m>M][<s>[.<f>]S]`: hours never folded into days, zero components left out, zero
 // as `PT0S`, one leading `-` for a negative span, and as many fractional digits as the port's own
 // type holds, trailing zeros dropped: seven here (a TimeSpan tick is 100 ns). Every port reads that
 // form plus a leading week count (`nW`, exactly 7 days) and day count (`nD`, exactly 24 hours), an
 // optional `+`, and a fraction of any length; the digits past a tick are truncated toward zero,
 // never rounded. Years and months are refused: a calendar span has no fixed length.
-// System.Text.Json's own TimeSpan form (`01:30:00`) is refused too. A span longer than a TimeSpan
+// Under `wire.durations: native` the property carries no converter and System.Text.Json's own
+// TimeSpan form (`01:30:00`) is the wire form instead. A span longer than a TimeSpan
 // holds (about 10.7 million days) is refused, never wrapped: that is this port's own limit, not a
 // cross-port one. On a database without an interval type (SQLite, MySQL) a duration is stored as a
 // 64-bit count of microseconds (ToMicros / FromMicros), the column's own precision. The rule and its
@@ -1853,7 +2403,7 @@ public static class DurationWire
 """;
 
     private static EmittedFile EmitDurationWireFile(string ns, string fileName) =>
-        new(fileName, DurationWireSourceTemplate.Replace("__NS__", ns, StringComparison.Ordinal) + "\n");
+        new(fileName, DurationWireSourceTemplate.Replace("__NS__", ns, StringComparison.Ordinal) + "\n") { WholeModel = true };
 
     // true iff FIELD is a field.duration (single or @isArray): a System.TimeSpan property carrying
     // the per-property ISO-8601 converter.
@@ -1862,12 +2412,13 @@ public static class DurationWire
 
     private static bool HasDurationField(MetaObject entity) => entity.Fields().Any(IsDurationField);
 
-    // The per-property converter: System.Text.Json's own TimeSpan form ("01:30:00") is not the wire
-    // form, and host JSON options cannot drop a property attribute. One attribute serves
-    // TimeSpan, TimeSpan? and IList<TimeSpan>.
-    private static void AppendDurationConverterAttribute(StringBuilder sb, MetaField field)
+    // Under `wire.durations: iso` the per-property converter writes and reads ISO-8601 (host JSON
+    // options cannot drop a property attribute). One attribute serves TimeSpan, TimeSpan? and
+    // IList<TimeSpan>. Under the default `native` there is no attribute: System.Text.Json's own
+    // TimeSpan form ("01:30:00") is the wire form, both ways.
+    private static void AppendDurationConverterAttribute(StringBuilder sb, MetaField field, WireFormat wire)
     {
-        if (IsDurationField(field)) sb.AppendLine("    [DurationWire.Iso]");
+        if (wire.Durations == DurationWireForm.Iso && IsDurationField(field)) sb.AppendLine("    [DurationWire.Iso]");
     }
 
     // true iff FIELD surfaces as a CLR decimal (single or @isArray) and so carries the
@@ -1899,7 +2450,7 @@ public static class DurationWire
         }
         var converter = field.ResolvedIsArray() ? "DecimalListJsonConverter"
             : nullable ? "NullableDecimalJsonConverter" : "DecimalJsonConverter";
-        sb.AppendLine($"    [global::System.Text.Json.Serialization.JsonConverter(typeof(DecimalWire.{converter}))]");
+        sb.AppendLine($"    [System.Text.Json.Serialization.JsonConverter(typeof(DecimalWire.{converter}))]");
     }
 
     // #234 — emit the codegen-owned MetaNetValidation.cs into `ns`: two strict System.Text.Json
@@ -1998,7 +2549,7 @@ public static class DurationWire
         sb.AppendLine("        }");
         sb.AppendLine("    }");
         sb.AppendLine("}");
-        return new EmittedFile(fileName, sb.ToString());
+        return new EmittedFile(fileName, sb.ToString()) { WholeModel = true };
     }
 
     // One property's declaration line, from the two hooks: `public <type> <name> { <setter> }`
@@ -2258,7 +2809,7 @@ public static class DurationWire
             // EF Core 8 on SQLite materializes a primitive collection only through IList<T> (an
             // ICollection<T> property throws at query compile time), so a scalar array is an IList<T>.
             AppendDecimalConverterAttribute(arr, field, nullable: false, _wire);
-            AppendDurationConverterAttribute(arr, field);
+            AppendDurationConverterAttribute(arr, field, _wire);
             // A NON-required decimal array is nullable (no initializer) so PATCH null / an omitted
             // POST value stays a NULL column instead of failing as a required collection; a
             // NON-required value-object array is nullable so a null member is omitted on the wire.
@@ -2322,7 +2873,7 @@ public static class DurationWire
         AppendDecimalConverterAttribute(sb, field, nullable: !ScalarIsNonNull(owner, field), _wire);
         // field.duration: a TimeSpan crosses JSON as its canonical ISO-8601 string, never as
         // System.Text.Json's own "01:30:00".
-        AppendDurationConverterAttribute(sb, field);
+        AppendDurationConverterAttribute(sb, field, _wire);
 
         // The type and initializer are the hooks' defaults: nullable unless required (or
         // origin-guaranteed non-null), a literal-safe @default as the initializer (e.g. `= false;`)
@@ -2336,16 +2887,6 @@ public static class DurationWire
         sb.Append(PropertyDeclaration(owner, field, propName, setter));
         return sb.ToString();
     }
-
-    // FR-037 R1 / SECURITY (1.2.x) — the accessor pair of a mapped property. A `readOnly` field
-    // takes a PRIVATE setter on EVERY property shape (scalar, enum, array, value object, map; plain
-    // entity or TPH subtype): EF materializes it on read and application code cannot write it, so
-    // the generated create route's body binding (System.Text.Json skips a non-public setter) can
-    // never hand a client-supplied value to storage. Before 1.2.x only the plain scalar shape did,
-    // so a readOnly enum, array, value-object, map or TPH-subtype field was writable on create.
-    // `writeOnce` keeps a PUBLIC setter on purpose (the caller supplies it on insert).
-    private static string SetterFor(MetaField field) =>
-        field.IsReadOnlyMutability ? "get; private set;" : "get; set;";
 
     // String length + pattern DataAnnotations for a string scalar, combining the field
     // @maxLength attr with validator.length (@min/@max) and validator.regex (@pattern).

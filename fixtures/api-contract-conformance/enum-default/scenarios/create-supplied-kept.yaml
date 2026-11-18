@@ -1,0 +1,29 @@
+name: create-supplied-kept
+description: >
+  A create that supplies a member of a defaulted `field.enum` keeps it. The supplied value is
+  deliberately not the default, so a generated handler that always writes the default fails
+  here. The seed holds ids 1 and 2, so the created row is 3.
+requests:
+  - id: r1
+    method: POST
+    path: /api/tickets
+    body:
+      title: "Leaking pipe"
+      priority: "HIGH"
+    expect:
+      status: 201
+      body:
+        row:
+          title: "Leaking pipe"
+          priority: "HIGH"
+        hasId: true
+  - id: r2
+    method: GET
+    path: /api/tickets/3
+    expect:
+      status: 200
+      body:
+        equals:
+          id: 3
+          title: "Leaking pipe"
+          priority: "HIGH"

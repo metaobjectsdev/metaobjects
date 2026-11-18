@@ -47,8 +47,9 @@ class KotlinExposedTableStringValueMapEnumTest {
                 gen.execute(loader)
             }
             val src = outDir.resolve("acme/shop/ArticleTable.kt").readText()
-            assertTrue("customEnumeration(\"status\", \"VARCHAR(${KotlinTypeMapper.ENUM_VARCHAR_LEN})\"" in src,
-                "status must use customEnumeration over VARCHAR; saw:\n$src")
+            // No `enums.maxLength` configured: `meta migrate` creates `text`, so the column is TEXT.
+            assertTrue("customEnumeration(\"status\", \"TEXT\"" in src,
+                "status must use customEnumeration over TEXT; saw:\n$src")
             assertTrue("\"draft\" -> ArticleStatus.Draft" in src && "ArticleStatus.Published -> \"published\"" in src,
                 "both lambdas must carry the stored strings; saw:\n$src")
             val result = compile(outDir)

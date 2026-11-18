@@ -66,12 +66,15 @@ class PostgresContainer : AutoCloseable {
             // needed. close() force-removes, and Ryuk removes it when a killed run never
             // reaches close() (see ReaperLabels).
             jdbcUrl = try {
+                ReaperLabels.removeAtExit(name)
                 runDocker(
                     *ReaperLabels.dockerRun(
                         "--name", name,
+                        *ReaperLabels.ramVolume(DATA_DIR),
                         "-e", "POSTGRES_PASSWORD=$PG_PASSWORD",
                         "-p", "127.0.0.1::5432",
                         IMAGE,
+                        *ReaperLabels.POSTGRES_DURABILITY_OFF,
                     ),
                 )
                 val url = "jdbc:postgresql://127.0.0.1:${publishedPort(name, 5432)}/postgres"
@@ -98,6 +101,7 @@ class PostgresContainer : AutoCloseable {
         } catch (_: RuntimeException) {
             // Container may already be gone; ignore.
         }
+        ReaperLabels.forget(name!!)
     }
 
     // -----------------------------------------------------------------------
@@ -159,6 +163,7 @@ class PostgresContainer : AutoCloseable {
     /** Best-effort teardown of a container that failed to start. */
     private fun forceRemove() {
         try { runDocker("rm", "-f", "-v", name!!) } catch (_: RuntimeException) { /* already gone */ }  // non-null in per-container mode
+        ReaperLabels.forget(name!!)
     }
 
     /** The container's docker state, or "gone" when it cannot be determined. */
@@ -179,6 +184,8 @@ class PostgresContainer : AutoCloseable {
         /** Env var naming the shared CI Postgres sidecar (admin URL). Unset = per-container fallback. */
         private const val SHARED_PG_URL_ENV = "METAOBJECTS_TEST_PG_URL"
         private const val IMAGE = "postgres:16-alpine"
+        /** The image's VOLUME (`docker image inspect`); a tmpfs there keeps the data in RAM. */
+        private const val DATA_DIR = "/var/lib/postgresql/data"
         private const val PG_USER = "postgres"
         private const val PG_PASSWORD = "test"
 

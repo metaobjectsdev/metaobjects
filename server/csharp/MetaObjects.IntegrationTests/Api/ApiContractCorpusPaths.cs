@@ -93,6 +93,15 @@ internal static class ApiContractCorpusPaths
     public static readonly string DecimalSchemaSqliteSql = Path.Combine(DecimalDir, "schema.sqlite.sql");
     public static readonly string DecimalSchemaMysqlSql = Path.Combine(DecimalDir, "schema.mysql.sql");
 
+    // field.duration subcorpus — one writable Timer with a nullable duration, under duration/.
+    public static readonly string DurationDir = Path.Combine(Corpus, "duration");
+    public static readonly string DurationScenariosDir = Path.Combine(DurationDir, "scenarios");
+    public static readonly string DurationSeedFile = Path.Combine(DurationDir, "seed.json");
+    public static readonly string DurationMetaJson = Path.Combine(DurationDir, "meta.json");
+    public static readonly string DurationSchemaSql = Path.Combine(DurationDir, "schema.postgres.sql");
+    public static readonly string DurationSchemaSqliteSql = Path.Combine(DurationDir, "schema.sqlite.sql");
+    public static readonly string DurationSchemaMysqlSql = Path.Combine(DurationDir, "schema.mysql.sql");
+
     // #214 write-through read-your-writes subcorpus.
     public static readonly string WriteThroughDir = Path.Combine(Corpus, "write-through");
     public static readonly string WriteThroughScenariosDir = Path.Combine(WriteThroughDir, "scenarios");
@@ -104,4 +113,17 @@ internal static class ApiContractCorpusPaths
     public static readonly string SecretFieldsScenariosDir = Path.Combine(SecretFieldsDir, "scenarios");
     public static readonly string SecretFieldsSeedFile = Path.Combine(SecretFieldsDir, "seed.json");
     public static readonly string SecretFieldsMetaJson = Path.Combine(SecretFieldsDir, "meta.json");
+
+    // api-settings subcorpus (api.pagination + api.unknownFields from its own config), generated lane only.
+    public static readonly string ApiSettingsDir = Path.Combine(Corpus, "api-settings");
+    public static readonly string ApiSettingsScenariosDir = Path.Combine(ApiSettingsDir, "scenarios");
+    public static readonly string ApiSettingsSeedFile = Path.Combine(ApiSettingsDir, "seed.json");
+    public static readonly string ApiSettingsMetaJson = Path.Combine(ApiSettingsDir, "meta.json");
+
+    // enum-default subcorpus (a defaulted enum on create), generated lane only.
+    public static readonly string EnumDefaultDir = Path.Combine(Corpus, "enum-default");
+    public static readonly string EnumDefaultScenariosDir = Path.Combine(EnumDefaultDir, "scenarios");
+    public static readonly string EnumDefaultSeedFile = Path.Combine(EnumDefaultDir, "seed.json");
+    public static readonly string EnumDefaultMetaJson = Path.Combine(EnumDefaultDir, "meta.json");
 }
+

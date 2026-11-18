@@ -89,7 +89,7 @@
           "valueType": "string",
           "isArray": false,
           "required": true,
-          "description": "Dotted Entity.field reference naming the grouped column (e.g. 'Purchase.programId', or 'Program.title' with @via)."
+          "description": "Dotted Entity.field reference naming the grouped column (e.g. 'Purchase.programId', or 'Program.title' with @via). Entity.field.member names a member of a value object stored with @storage: flattened (e.g. 'Payment.amount.currency'), which has a column of its own."
         },
         {
           "name": "via",
@@ -127,7 +127,7 @@
           "valueType": "string",
           "isArray": false,
           "required": true,
-          "description": "Dotted Entity.field reference naming the date or timestamp column."
+          "description": "Dotted Entity.field reference naming the date or timestamp column, or Entity.field.member for a member of a flattened value object."
         },
         {
           "name": "via",
@@ -1003,7 +1003,7 @@
     {
       "type": "field",
       "subType": "duration",
-      "description": "A fixed-length span of time: days, hours, minutes and seconds (ADR-0036/0037 — a concept with a native type + behavior). Binds to TS string (TS has no native duration type); other ports bind to their native type (C# System.TimeSpan, Java and Kotlin java.time.Duration, Python datetime.timedelta). DB column is the Postgres-native interval type; SQLite, D1 and MySQL store a 64-bit integer count of microseconds, which orders and compares as the span does. The wire form is an ISO-8601 duration: every port writes [-]PT[nH][nM][n[.f]S] (hours never folded into days, as many fractional digits as its native type holds, zero is PT0S) and reads that form plus leading week and day counts (nW, exactly 7 days; nD, exactly 24 hours) and a fraction of any length, truncated toward zero. Years and months are refused: a calendar span is not a fixed length.",
+      "description": "A fixed-length span of time: days, hours, minutes and seconds (ADR-0036/0037 — a concept with a native type + behavior). Binds to TS string (TS has no native duration type); other ports bind to their native type (C# System.TimeSpan, Java and Kotlin java.time.Duration, Python datetime.timedelta). DB column is the Postgres-native interval type; SQLite, D1 and MySQL store a 64-bit integer count of microseconds, which orders and compares as the span does. The wire form is an ISO-8601 duration: every port writes [-]PT[nH][nM][n[.f]S] (hours never folded into days, as many fractional digits as its native type holds, zero is PT0S) and reads that form plus leading week and day counts (nW, exactly 7 days; nD, exactly 24 hours) and a fraction of any length, truncated toward zero. Years and months are refused: a calendar span is not a fixed length. Justified in ADR-0023 Amendment 1.",
       "whenToUse": "A field holds an elapsed time, a timeout or a delay. Use it for a native Postgres interval column and a native duration type instead of a string or a number of seconds. A calendar span (\"every 3 months\") is not a duration: model it as an int and a unit.",
       "attrs": [
         {
@@ -1164,7 +1164,7 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "description": "The database name of the CHECK constraint this enum's member list generates. Absent: <table>_<column>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider."
+          "description": "The database name of the CHECK constraint this enum's member list generates. Absent: <table>_<column>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1."
         },
         {
           "name": "db.indexed",
@@ -1248,7 +1248,7 @@
           "valueType": "int",
           "isArray": false,
           "required": false,
-          "description": "Column length of a string-stored enum (drives VARCHAR(n)); every member must fit. Overrides the project's enums.maxLength. Refused with @intValueMap, whose column is an integer."
+          "description": "Column length of a string-stored enum (drives VARCHAR(n)); every member must fit. Overrides the project's enums.maxLength. Refused with @intValueMap, whose column is an integer. Justified in ADR-0023 Amendment 1."
         },
         {
           "name": "mutability",
@@ -2124,7 +2124,7 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "description": "On a field.object with @storage \"flattened\": the text put before each member's column, verbatim (\"\" allowed, so the members keep their own column names). Absent: this field's resolved column name and \"_\" (with @column \"bill\", the members are bill_<member column>). A fact about the owning table, so it lives on the embedding field, never on the value object. Refused on any other storage (ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE)."
+          "description": "On a field.object with @storage \"flattened\": the text put before each member's column, verbatim (\"\" allowed, so the members keep their own column names). Absent: this field's resolved column name and \"_\" (with @column \"bill\", the members are bill_<member column>). A fact about the owning table, so it lives on the embedding field, never on the value object. Refused on any other storage (ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE). Justified in ADR-0023 Amendment 1."
         },
         {
           "name": "formExclude",
@@ -3008,14 +3008,14 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "description": "The physical name of an @generation \"increment\" key's sequence (Postgres: GENERATED BY DEFAULT AS IDENTITY (SEQUENCE NAME ...)). Absent: the database's own default, <table>_<column>_seq on Postgres. Lets a model adopt a sequence that kept its name across a table rename. Refused without @generation \"increment\" (ERR_SEQUENCE_WITHOUT_INCREMENT). RDB-physical — contributed by the db provider."
+          "description": "The physical name of an @generation \"increment\" key's sequence (Postgres: GENERATED BY DEFAULT AS IDENTITY (SEQUENCE NAME ...)). Absent: the database's own default, <table>_<column>_seq on Postgres. Lets a model adopt a sequence that kept its name across a table rename. Refused without @generation \"increment\" (ERR_SEQUENCE_WITHOUT_INCREMENT). RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1."
         },
         {
           "name": "sequenceStart",
           "valueType": "long",
           "isArray": false,
           "required": false,
-          "description": "The first value an @generation \"increment\" key's sequence hands out (Postgres: GENERATED BY DEFAULT AS IDENTITY (START WITH n)). Absent: 1. Lets a model reproduce a table that keeps a low id range for seeded rows. Refused without @generation \"increment\" (ERR_SEQUENCE_WITHOUT_INCREMENT). RDB-physical — contributed by the db provider."
+          "description": "The first value an @generation \"increment\" key's sequence hands out (Postgres: GENERATED BY DEFAULT AS IDENTITY (START WITH n)). Absent: 1. Lets a model reproduce a table that keeps a low id range for seeded rows. Refused without @generation \"increment\" (ERR_SEQUENCE_WITHOUT_INCREMENT). RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1."
         }
       ],
       "children": []
@@ -3031,7 +3031,7 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "description": "Physical foreign-key constraint name override. Absent → the backend's auto-derived default (e.g. `<table>_<firstFkColumn>_fk`). Lets a model adopt an existing database whose FK constraints follow a different naming convention without a destructive rename. RDB-physical — contributed by the db provider."
+          "description": "Physical foreign-key constraint name override. Absent → the backend's auto-derived default (e.g. `<table>_<firstFkColumn>_fk`). Lets a model adopt an existing database whose FK constraints follow a different naming convention without a destructive rename. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1."
         },
         {
           "name": "enforce",
@@ -3288,7 +3288,7 @@
           "valueType": "string",
           "isArray": true,
           "required": false,
-          "description": "Dotted Entity.field reference(s) on the declaring entity. A bare string is one column; more than one requires @agg: count and @distinct: true. Required for every @agg except any/all, which may omit it to quantify their @filter / @segment over the rows."
+          "description": "Dotted Entity.field reference(s) on the declaring entity, or Entity.field.member for a member of a value object stored with @storage: flattened (e.g. 'Payment.amount.amount'). A report that takes sum, avg, min or max of a numeric member must group by every non-numeric member of the same value object (its currency), so amounts in different units are never combined. A bare string is one column; more than one requires @agg: count and @distinct: true. Required for every @agg except any/all, which may omit it to quantify their @filter / @segment over the rows."
         },
         {
           "name": "segment",
@@ -3296,6 +3296,22 @@
           "isArray": false,
           "required": false,
           "description": "Optional name of a segment declared on the same entity. Combines with @filter by AND."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "measure",
+      "subType": "derived",
+      "description": "A named arithmetic expression (FR-044 R13) over measures of the same entity and the report's numeric attribute dimensions, typed decimal. @expr is FR-037 R5's first arithmetic wave: add, subtract, multiply and divide, each of two operands. divide lowers as a ratio does, so a zero divisor yields null. A report listing a derived measure that reads a dimension must list that dimension.",
+      "whenToUse": "A number computed from other measures or from a grouped value: utilization percent (billable hours x 100 / capacity), budget burn (cost / budget), net revenue (revenue - refunds).",
+      "attrs": [
+        {
+          "name": "expr",
+          "valueType": "expression",
+          "isArray": false,
+          "required": true,
+          "description": "The arithmetic: { field: name } names a numeric measure.aggregate or measure.ratio of the same entity, or one of its numeric attribute dimensions (never another measure.derived); { value: n } is a number; { fn: add | subtract | multiply | divide, args: [a, b] } combines two operands."
         }
       ],
       "children": []
@@ -3447,21 +3463,7 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "implementedIn": [
-            "csharp",
-            "typescript"
-          ],
-          "description": "The name of this object's collection, in the object's own casing (e.g. 'ConsignmentHistory', 'Queues'): the C# DbSet property, the REST collection segment (snake_cased: consignment_history), the TypeScript collection exports and finders (list<Name>), and the reverse @via hop other objects walk to reach it. It need not be a grammatical plural. Absent, the project's pluralizer derives it from the object's name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own)."
-        },
-        {
-          "name": "dbSetName",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "ports": [
-            "csharp"
-          ],
-          "description": "DEPRECATED (rc.19): use @collectionName, which this is an alias of for one release; code generation warns where it reads it, and refuses an object declaring both. Every port loads and type-checks it."
+          "description": "The name of this object's collection, in the object's own casing (e.g. 'CaseHistory', 'Queues'): the REST collection segment (snake_cased) in every port, the reverse-finder names in C#, TypeScript and Python, the C# DbSet property, and the TypeScript list function, list hook and Drizzle table variable. It need not be a grammatical plural. Absent, the project's pluralizer derives it from the object's name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own)."
         },
         {
           "name": "discriminator",
@@ -3591,21 +3593,7 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "implementedIn": [
-            "csharp",
-            "typescript"
-          ],
-          "description": "The name of this object's collection, in the object's own casing (e.g. 'ConsignmentHistory', 'Queues'): the C# DbSet property, the REST collection segment (snake_cased: consignment_history), the TypeScript collection exports and finders (list<Name>), and the reverse @via hop other objects walk to reach it. It need not be a grammatical plural. Absent, the project's pluralizer derives it from the object's name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own)."
-        },
-        {
-          "name": "dbSetName",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "ports": [
-            "csharp"
-          ],
-          "description": "DEPRECATED (rc.19): use @collectionName, which this is an alias of for one release; code generation warns where it reads it, and refuses an object declaring both. Every port loads and type-checks it."
+          "description": "The name of this object's collection, in the object's own casing (e.g. 'CaseHistory', 'Queues'): the REST collection segment (snake_cased) in every port, the reverse-finder names in C#, TypeScript and Python, the C# DbSet property, and the TypeScript list function, list hook and Drizzle table variable. It need not be a grammatical plural. Absent, the project's pluralizer derives it from the object's name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own)."
         },
         {
           "name": "filter",
@@ -3720,21 +3708,7 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "implementedIn": [
-            "csharp",
-            "typescript"
-          ],
-          "description": "The name of this object's collection, in the object's own casing (e.g. 'ConsignmentHistory', 'Queues'): the C# DbSet property, the REST collection segment (snake_cased: consignment_history), the TypeScript collection exports and finders (list<Name>), and the reverse @via hop other objects walk to reach it. It need not be a grammatical plural. Absent, the project's pluralizer derives it from the object's name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own)."
-        },
-        {
-          "name": "dbSetName",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "ports": [
-            "csharp"
-          ],
-          "description": "DEPRECATED (rc.19): use @collectionName, which this is an alias of for one release; code generation warns where it reads it, and refuses an object declaring both. Every port loads and type-checks it."
+          "description": "The name of this object's collection, in the object's own casing (e.g. 'CaseHistory', 'Queues'): the REST collection segment (snake_cased) in every port, the reverse-finder names in C#, TypeScript and Python, the C# DbSet property, and the TypeScript list function, list hook and Drizzle table variable. It need not be a grammatical plural. Absent, the project's pluralizer derives it from the object's name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own)."
         },
         {
           "name": "dimensions",
@@ -5025,14 +4999,14 @@
           "valueType": "expression",
           "isArray": false,
           "required": false,
-          "description": "The case this rule applies in: an expression over the owning entity's fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced by the database only, like the rule itself."
+          "description": "The case this rule applies in: an expression over the owning entity's fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced like the rule itself: by the database CHECK and, on create, by the generated record model in every port. Justified in ADR-0023 Amendment 1."
         },
         {
           "name": "constraintName",
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "description": "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider."
+          "description": "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1."
         },
         {
           "name": "dbCheck",
@@ -5047,13 +5021,6 @@
           "isArray": true,
           "required": true,
           "description": "Names of the candidate fields; at least one must be present."
-        },
-        {
-          "name": "max",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "The most of @fields that may be present. Absent: no upper bound; @max 1 makes it exactly one of them. Between 1 and the number of @fields (ERR_BAD_ATTR_VALUE)."
         }
       ],
       "children": []
@@ -5092,14 +5059,14 @@
           "valueType": "expression",
           "isArray": false,
           "required": false,
-          "description": "The case this rule applies in: an expression over the owning entity's fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced by the database only, like the rule itself."
+          "description": "The case this rule applies in: an expression over the owning entity's fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced like the rule itself: by the database CHECK and, on create, by the generated record model in every port. Justified in ADR-0023 Amendment 1."
         },
         {
           "name": "constraintName",
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "description": "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider."
+          "description": "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1."
         },
         {
           "name": "dbCheck",
@@ -5142,6 +5109,44 @@
     },
     {
       "type": "validator",
+      "subType": "exactlyOne",
+      "description": "Cardinality of presence: exactly one of the named fields (@fields) is present (NOT NULL), and the others are null. Entity-scoped; references fields by name (same @fields-by-name pattern as identity.*). Justified in ADR-0023 Amendment 1.",
+      "rules": "@fields names two or more fields of the owning entity (ERR_BAD_ATTR_VALUE): one field would just be a required field. Satisfied when exactly one of them is non-null.",
+      "whenToUse": "A row belongs to exactly one of several alternatives (a store or a kiosk, never both, never neither). Declare it instead of hand-written count-of-non-nulls checks.",
+      "attrs": [
+        {
+          "name": "condition",
+          "valueType": "expression",
+          "isArray": false,
+          "required": false,
+          "description": "The case this rule applies in: an expression over the owning entity's fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced like the rule itself: by the database CHECK and, on create, by the generated record model in every port. Justified in ADR-0023 Amendment 1."
+        },
+        {
+          "name": "constraintName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1."
+        },
+        {
+          "name": "dbCheck",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "On a numeric, length or regex validator, false generates no database CHECK (meta migrate and a generated EF model leave it out); the generated app-level validators still enforce it on every write. On a cross-field validator (comparison, requiredWhen, presentIff, atLeastOne), which only its CHECK enforces, false is refused (ERR_CROSS_FIELD_WITHOUT_CHECK). Absent: true. For a column whose legacy rows break the rule, which a CHECK would refuse on their next UPDATE even NOT VALID. Refused with @constraintName (ERR_CONSTRAINT_NAME_WITHOUT_CHECK). RDB-physical — contributed by the db provider."
+        },
+        {
+          "name": "fields",
+          "valueType": "string",
+          "isArray": true,
+          "required": true,
+          "description": "Names of the alternative fields; exactly one must be present."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "validator",
       "subType": "length",
       "description": "Bounds string length / collection size via @min/@max.",
       "whenToUse": "Bound a string's length or a collection's size. Use @min/@max instead of hand-written guards.",
@@ -5151,7 +5156,7 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "description": "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider."
+          "description": "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1."
         },
         {
           "name": "dbCheck",
@@ -5188,7 +5193,7 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "description": "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider."
+          "description": "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1."
         },
         {
           "name": "dbCheck",
@@ -5226,14 +5231,14 @@
           "valueType": "expression",
           "isArray": false,
           "required": false,
-          "description": "The case this rule applies in: an expression over the owning entity's fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced by the database only, like the rule itself."
+          "description": "The case this rule applies in: an expression over the owning entity's fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced like the rule itself: by the database CHECK and, on create, by the generated record model in every port. Justified in ADR-0023 Amendment 1."
         },
         {
           "name": "constraintName",
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "description": "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider."
+          "description": "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1."
         },
         {
           "name": "dbCheck",
@@ -5277,7 +5282,7 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "description": "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider."
+          "description": "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1."
         },
         {
           "name": "dbCheck",
@@ -5330,14 +5335,14 @@
           "valueType": "expression",
           "isArray": false,
           "required": false,
-          "description": "The case this rule applies in: an expression over the owning entity's fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced by the database only, like the rule itself."
+          "description": "The case this rule applies in: an expression over the owning entity's fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced like the rule itself: by the database CHECK and, on create, by the generated record model in every port. Justified in ADR-0023 Amendment 1."
         },
         {
           "name": "constraintName",
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "description": "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider."
+          "description": "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1."
         },
         {
           "name": "dbCheck",

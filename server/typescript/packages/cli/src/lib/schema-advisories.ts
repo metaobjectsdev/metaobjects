@@ -12,8 +12,12 @@ export function schemaAdvisoryLines(advisories: readonly SchemaAdvisory[] | unde
           + `it is compared as text, so it is not drift. Model it as field.duration for the native type, `
           + `span ordering and range filters.`;
       case "sequence-not-applied":
-        return `${t}.${a.column}: SQLite has no sequence, so the primary key's @sequenceStart / @sequenceName `
-          + `is not applied and the key counts from 1.`;
+        return `${t}.${a.column}: SQLite and D1 have no sequence, so the primary key's @sequenceStart / `
+          + `@sequenceName is not applied and the key counts from 1.`;
+      case "view-names-renamed-column":
+        return `view ${a.view} still names ${t}.${a.column}, which this migration renames to ${a.to}. `
+          + `A rename never rewrites a view body, so this view is recreated as declared and the `
+          + `migration fails at apply; change its definition (its @sql) to ${a.to} first.`;
     }
   });
 }

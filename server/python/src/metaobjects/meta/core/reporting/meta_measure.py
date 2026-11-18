@@ -9,16 +9,19 @@ from __future__ import annotations
 from ...meta_data import MetaData
 from .reporting_constants import (
     MEASURE_AGGS,
+    MEASURE_SUBTYPE_DERIVED,
     MEASURE_SUBTYPE_RATIO,
     REPORTING_ATTR_AGG,
     REPORTING_ATTR_DEFAULT,
     REPORTING_ATTR_DENOMINATOR,
     REPORTING_ATTR_DISTINCT,
+    REPORTING_ATTR_EXPR,
     REPORTING_ATTR_FILTER,
     REPORTING_ATTR_NUMERATOR,
     REPORTING_ATTR_OF,
     REPORTING_ATTR_SEGMENT,
 )
+from .derived_expr import is_derived_expr
 
 
 def _optional_string(v: object) -> str | None:
@@ -27,8 +30,18 @@ def _optional_string(v: object) -> str | None:
 
 class MetaMeasure(MetaData):
     def is_ratio(self) -> bool:
-        """True for ``measure.ratio``; False for ``measure.aggregate``."""
+        """True for ``measure.ratio``."""
         return self.sub_type == MEASURE_SUBTYPE_RATIO
+
+    def is_derived(self) -> bool:
+        """True for ``measure.derived`` (R13)."""
+        return self.sub_type == MEASURE_SUBTYPE_DERIVED
+
+    def expr(self) -> dict[str, object] | None:
+        """ADR-0039: resolving. A ``measure.derived``'s ``@expr`` when it is a well-formed
+        arithmetic expression (rule M11 refuses any other)."""
+        v = self.get_meta_attr(REPORTING_ATTR_EXPR)
+        return v if is_derived_expr(v) else None
 
     def agg(self) -> str | None:
         """ADR-0039: resolving. The aggregate function (``measure.aggregate`` only)."""

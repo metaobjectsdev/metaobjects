@@ -21,7 +21,7 @@ export const REPORTING_DEFINITION: ProviderDefinition = {
           "name": "of",
           "min": 1,
           "max": 1,
-          "description": "Dotted Entity.field reference naming the grouped column (e.g. 'Purchase.programId', or 'Program.title' with @via)."
+          "description": "Dotted Entity.field reference naming the grouped column (e.g. 'Purchase.programId', or 'Program.title' with @via). Entity.field.member names a member of a value object stored with @storage: flattened (e.g. 'Payment.amount.currency'), which has a column of its own."
         },
         {
           "type": "attr",
@@ -45,7 +45,7 @@ export const REPORTING_DEFINITION: ProviderDefinition = {
           "name": "of",
           "min": 1,
           "max": 1,
-          "description": "Dotted Entity.field reference naming the date or timestamp column."
+          "description": "Dotted Entity.field reference naming the date or timestamp column, or Entity.field.member for a member of a flattened value object."
         },
         {
           "type": "attr",
@@ -104,7 +104,7 @@ export const REPORTING_DEFINITION: ProviderDefinition = {
           "isArray": true,
           "min": 0,
           "max": 1,
-          "description": "Dotted Entity.field reference(s) on the declaring entity. A bare string is one column; more than one requires @agg: count and @distinct: true. Required for every @agg except any/all, which may omit it to quantify their @filter / @segment over the rows."
+          "description": "Dotted Entity.field reference(s) on the declaring entity, or Entity.field.member for a member of a value object stored with @storage: flattened (e.g. 'Payment.amount.amount'). A report that takes sum, avg, min or max of a numeric member must group by every non-numeric member of the same value object (its currency), so amounts in different units are never combined. A bare string is one column; more than one requires @agg: count and @distinct: true. Required for every @agg except any/all, which may omit it to quantify their @filter / @segment over the rows."
         },
         {
           "type": "attr",
@@ -169,6 +169,22 @@ export const REPORTING_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "Optional integer the measure reads when it would otherwise be null: nothing matched, every matched value is null, or (a ratio) the denominator is zero or null. The derived report field is then never null. Refused on @agg: count (a count is never null) and on min/max over a field that is not numeric. A ratio's operand carries its own @default into the ratio."
+        }
+      ]
+    },
+    {
+      "type": "measure",
+      "subType": "derived",
+      "description": "A named arithmetic expression (FR-044 R13) over measures of the same entity and the report's numeric attribute dimensions, typed decimal. @expr is FR-037 R5's first arithmetic wave: add, subtract, multiply and divide, each of two operands. divide lowers as a ratio does, so a zero divisor yields null. A report listing a derived measure that reads a dimension must list that dimension.",
+      "whenToUse": "A number computed from other measures or from a grouped value: utilization percent (billable hours x 100 / capacity), budget burn (cost / budget), net revenue (revenue - refunds).",
+      "children": [
+        {
+          "type": "attr",
+          "subType": "expression",
+          "name": "expr",
+          "min": 1,
+          "max": 1,
+          "description": "The arithmetic: { field: name } names a numeric measure.aggregate or measure.ratio of the same entity, or one of its numeric attribute dimensions (never another measure.derived); { value: n } is a number; { fn: add | subtract | multiply | divide, args: [a, b] } combines two operands."
         }
       ]
     },

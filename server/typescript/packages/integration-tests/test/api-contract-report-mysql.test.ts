@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { API_CONTRACT_REPORT_DIR, API_CONTRACT_REPORT_SCENARIOS_DIR } from "../src/paths.ts";
 import { loadScenarios, runScenario } from "../src/api-contract-scenario.ts";
 import { rowsEqual, type ReportSeed } from "../src/api-contract-report-generated-server.ts";
+import { OUTPUT_LAYOUTS, type OutputLayout } from "../src/output-layout.ts";
 import { startMysqlReportServer, type MysqlReportServerHandle } from "../src/api-contract-report-mysql-server.ts";
 import { startMysql, type MysqlContainerHandle } from "../src/mysql-container.ts";
 
@@ -32,8 +33,8 @@ let container: MysqlContainerHandle;
 beforeAll(async () => { container = await startMysql(); }, 240_000);
 afterAll(() => { container?.stop(); }, 60_000);
 
-async function withServer(fn: (server: MysqlReportServerHandle) => Promise<void>, seed: ReportSeed = SEED): Promise<void> {
-  const server = await startMysqlReportServer(container.url, META_PATH);
+async function withServer(layout: OutputLayout, fn: (server: MysqlReportServerHandle) => Promise<void>, seed: ReportSeed = SEED): Promise<void> {
+  const server = await startMysqlReportServer(container.url, META_PATH, layout);
   try {
     await server.applySeed(seed);
     await fn(server);
@@ -42,9 +43,9 @@ async function withServer(fn: (server: MysqlReportServerHandle) => Promise<void>
   }
 }
 
-describe("api contract report (FR-044) — GENERATED routes on MySQL", () => {
+for (const layout of OUTPUT_LAYOUTS) describe(`"api contract report (FR-044) — GENERATED routes on MySQL [${layout}]`, () => {
   test("a ratio is a decimal string (MySQL keeps its scale), and the integers around it stay numbers", async () => {
-    await withServer(async (server) => {
+    await withServer(layout, async (server) => {
       const res = await fetch(server.baseUrl + "/api/invoice_totals");
       expect(res.status).toBe(200);
       const rows = (await res.json()) as Array<Record<string, unknown>>;
@@ -57,14 +58,14 @@ describe("api contract report (FR-044) — GENERATED routes on MySQL", () => {
   }, { timeout: 120_000 });
 
   test("a ratio over zero rows is null", async () => {
-    await withServer(async (server) => {
+    await withServer(layout, async (server) => {
       const res = await fetch(server.baseUrl + "/api/invoice_totals");
       expect(await res.json()).toEqual([{ invoices: 0, totalCents: null, paidShare: null }]);
     }, { invoices: [] });
   }, { timeout: 120_000 });
 
   test("the seeded report rows are what the views return", async () => {
-    await withServer(async (server) => {
+    await withServer(layout, async (server) => {
       for (const [name, path] of SERVED_PATHS) {
         const res = await fetch(server.baseUrl + path);
         expect(res.status).toBe(200);
@@ -81,9 +82,12 @@ describe("api contract report (FR-044) — GENERATED routes on MySQL", () => {
     });
   }, { timeout: 120_000 });
 
-  for (const scenario of loadScenarios(API_CONTRACT_REPORT_SCENARIOS_DIR)) {
+  // The package layout runs the named tests above only: a MySQL scenario costs a server boot
+  // and a schema rebuild, the layout does not change what a scenario asserts, and the
+  // Postgres report lane runs every scenario in both layouts.
+  for (const scenario of layout === "flat" ? loadScenarios(API_CONTRACT_REPORT_SCENARIOS_DIR) : []) {
     test(`shared scenario: ${scenario.name}`, async () => {
-      await withServer((server) => runScenario(scenario, server.baseUrl));
+      await withServer(layout, (server) => runScenario(scenario, server.baseUrl));
     }, { timeout: 120_000 });
   }
 });

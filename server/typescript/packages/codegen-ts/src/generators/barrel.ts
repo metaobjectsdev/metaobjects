@@ -12,7 +12,7 @@ export const barrel = function barrel(opts?: BarrelOpts): Generator {
   const generator: Generator = {
     name: "barrel",
     generate: oncePerRun(async (entities, ctx) => {
-      // Ruling R52: every name the barrel re-exports lives in its one namespace.
+      // every name the barrel re-exports lives in its one namespace.
       for (const e of entities) claimBarrelNames(ctx, e);
       return {
       path: "index.ts",

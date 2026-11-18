@@ -103,6 +103,11 @@ export interface ScopedExpectedSchema {
    * refused. The ones on governed tables are refused by `scopeExpectedSchema` itself.
    */
   ungovernedFkTargetViolations?: FkTargetViolation[];
+  /**
+   * SQLite only: FKs whose target is not a unique key, on any table. SQLite accepts the DDL
+   * and checks foreign keys only with `PRAGMA foreign_keys` on, so they are reported, not refused.
+   */
+  unenforcedFkTargetViolations?: FkTargetViolation[];
 }
 
 /**
@@ -349,6 +354,7 @@ export function scopeExpectedSchema(
 function withFkTargetVerdict(built: ExpectedSchemaWithProvenance, scoped: ScopedExpectedSchema): ScopedExpectedSchema {
   const violations = built.fkTargetViolations ?? [];
   if (violations.length === 0) return scoped;
+  if (built.fkTargetsUnenforced !== undefined) return { ...scoped, unenforcedFkTargetViolations: violations };
   const governedTables = new Set(scoped.snapshot.tables.map(qualifiedDbName));
   const governed = violations.filter((v) => governedTables.has(v.table));
   if (governed.length > 0) throw new FkTargetNotUniqueError(governed);

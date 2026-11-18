@@ -1,0 +1,16 @@
+{
+  "metadata.root": {
+    "package": "acme::paging",
+    "children": [
+      { "object.entity": {
+        "name": "Item",
+        "children": [
+          { "source.rdb":       { "@table": "items" } },
+          { "field.long":       { "name": "id", "@filterable": true, "@sortable": true } },
+          { "field.string":     { "name": "title", "@required": true, "@maxLength": 100, "@filterable": true, "@sortable": true } },
+          { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
+        ]
+      }}
+    ]
+  }
+}

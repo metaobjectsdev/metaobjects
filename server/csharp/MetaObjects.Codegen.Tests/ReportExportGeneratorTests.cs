@@ -167,7 +167,7 @@ public class ReportExportGeneratorTests
     private static string Xml(MethodInfo[] h, object?[][] rows, params string[] cols) => (string)h[1].Invoke(null, [rows, cols])!;
 
     private static string Writer(string model) =>
-        new ReportExportGenerator().Generate(Ctx(Load(model))).Single(f => System.IO.Path.GetFileName(f.Path) == "ReportExportWriter.g.cs").Content;
+        new ReportExportGenerator().Generate(Ctx(Load(model))).Single(f => f.Path == "ReportExportWriter.g.cs").Content;
 
     // field.duration: the writer of a model with no duration column is the writer from before
     // durations existed, byte for byte (the hash of that writer for this model, pinned).

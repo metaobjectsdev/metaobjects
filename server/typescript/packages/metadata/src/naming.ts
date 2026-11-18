@@ -17,7 +17,7 @@ import type { MetaSource } from "./persistence/source/meta-source.js";
 // also make the divergence refusal see no primaries at all, and say nothing.)
 import { isMetaSource } from "./shared/node-guards.js";
 import { MetaModelError } from "./errors.js";
-import { OBJECT_ATTR_COLLECTION_NAME, OBJECT_ATTR_DB_SET_NAME } from "./core/object/object-constants.js";
+import { OBJECT_ATTR_COLLECTION_NAME } from "./core/object/object-constants.js";
 
 /**
  * Strip the package prefix from a metadata-qualified name
@@ -104,11 +104,11 @@ export type TableNamingRule = BuiltinTableNamingRule | (string & {});
 interface NamingRegistry {
   readonly columns: Map<string, NamingFunction>;
   readonly tables: Map<string, NamingFunction>;
-  /** rc.19 (R57) — pluralizers, by name: an object name in, its collection name out. */
+  /** Pluralizers, by name: an object name in, its collection name out. */
   collections?: Map<string, NamingFunction>;
 }
 
-/** The kinds of naming strategy a project selects in `naming` (ADR-0058; `collections`, R57). */
+/** The kinds of naming strategy a project selects in `naming` (ADR-0058), `collections` among them. */
 export type NamingKind = "columns" | "tables" | "collections";
 
 /**
@@ -150,7 +150,7 @@ const BUILTIN_TABLE_FUNCTIONS: ReadonlyMap<string, NamingFunction> = new Map<str
 ]);
 
 /**
- * rc.19 (R57) — the pluralizers every port builds in. `standard` is the cross-port rule
+ * The pluralizers every port builds in. `standard` is the cross-port rule
  * ({@link pluralize}: already-plural detection, then the suffix rule) every port already applies
  * to REST segments and generated function names; `none` keeps the name as it is (a project whose
  * collections are named like its objects).
@@ -211,7 +211,7 @@ export function registerTableNamingRule(name: string, apply: NamingFunction): vo
 }
 
 /**
- * Register a named pluralizer (rc.19, R57): an object name (Pascal, as declared) in, its
+ * Register a named pluralizer: an object name (Pascal, as declared) in, its
  * collection name out. `.metaobjects/config.json` selects it as `"naming": { "collections":
  * "<name>" }`; an object's own `@collectionName` always wins over it. A built-in (`standard`,
  * `none`) cannot be replaced; registering a name of your own again replaces it.
@@ -316,7 +316,7 @@ export const TABLE_NAMING_RULES: readonly TableNamingRule[] = BUILTIN_TABLE_NAMI
 export interface PhysicalNaming {
   readonly columns: ColumnNamingStrategy;
   readonly tables: TableNamingRule;
-  /** rc.19 (R57) — the pluralizer an object without `@collectionName` takes its collection name
+  /** The pluralizer an object without `@collectionName` takes its collection name
    *  from (`naming.collections`). Not a physical name; it rides here because it is the same
    *  project setting, read the same way. Absent is {@link DEFAULT_PLURALIZER}. */
   readonly collections?: string;
@@ -439,8 +439,8 @@ export function pluralize(s: string): string {
 }
 
 /**
- * rc.19 (R57) — an object's collection name, in the object's own casing: its own
- * `@collectionName` (or the deprecated `@dbSetName` alias), else the project's pluralizer
+ * An object's collection name, in the object's own casing: its own
+ * `@collectionName`, else the project's pluralizer
  * (`naming.collections`, {@link physicalNamingOf}) over its name. Each artifact then applies its
  * own casing (REST: snake_case; a TS export: as is; a Drizzle variable: lowerFirst). Own, not
  * resolving: a name inherited from an abstract base would give every subtype one collection.
@@ -488,22 +488,11 @@ export function snakeCollectionName(s: string): string {
 
 /**
  * The collection name an object declares itself, and through which attr; undefined when it
- * declares none. Refuses both at once: an alias and its replacement disagreeing has no answer.
+ * declares none.
  */
-export function declaredCollectionName(obj: MetaData): { name: string; deprecatedAlias: boolean } | undefined {
+export function declaredCollectionName(obj: MetaData): { name: string } | undefined {
   const own = obj.ownAttr(OBJECT_ATTR_COLLECTION_NAME);
-  const alias = obj.ownAttr(OBJECT_ATTR_DB_SET_NAME);
-  const hasOwn = typeof own === "string" && own !== "";
-  const hasAlias = typeof alias === "string" && alias !== "";
-  if (hasOwn && hasAlias) {
-    throw new MetaModelError(
-      `${obj.resolutionKey()}: declares both @${OBJECT_ATTR_COLLECTION_NAME} and @${OBJECT_ATTR_DB_SET_NAME}; ` +
-        `@${OBJECT_ATTR_DB_SET_NAME} is a deprecated alias of @${OBJECT_ATTR_COLLECTION_NAME} — keep only @${OBJECT_ATTR_COLLECTION_NAME}.`,
-    );
-  }
-  if (hasOwn) return { name: own as string, deprecatedAlias: false };
-  if (hasAlias) return { name: alias as string, deprecatedAlias: true };
-  return undefined;
+  return typeof own === "string" && own !== "" ? { name: own } : undefined;
 }
 
 /**

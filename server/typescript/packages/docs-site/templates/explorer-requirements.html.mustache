@@ -1,0 +1,6 @@
+<h1>Requirements</h1>
+<div class="sub">Hierarchy is nesting. L1 to L3 describe the problem; only L4 (an object or prompt) and L5 (a member) may name the model.</div>
+<div class="tabs"><a href="{{{featuresHref}}}"{{#isFeatures}} class="on"{{/isFeatures}}>Features ({{featureCount}})</a><a href="{{{qualitiesHref}}}"{{^isFeatures}} class="on"{{/isFeatures}}>Qualities, non-functional ({{qualityCount}})</a></div>
+{{{legendHtml}}}
+{{#hasTree}}<div class="card tree">{{{treeHtml}}}</div>{{/hasTree}}
+{{^hasTree}}<div class="note page">{{{emptyNote}}}</div>{{/hasTree}}

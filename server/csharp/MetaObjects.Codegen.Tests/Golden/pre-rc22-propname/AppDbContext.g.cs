@@ -3,7 +3,6 @@
 #nullable enable
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
-using Acme.Shop;
 
 namespace Acme.Generated;
 
@@ -44,40 +43,40 @@ public class AppDbContext : DbContext
     /// </summary>
     private static class MapJsonb
     {
-        private static readonly global::System.Text.Json.JsonSerializerOptions Options = new()
+        private static readonly System.Text.Json.JsonSerializerOptions Options = new()
         {
-            Converters = { new global::System.Text.Json.Serialization.JsonStringEnumConverter() }
+            Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
         };
 
-        internal static global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<
-            global::System.Collections.Generic.Dictionary<string, TValue>, string> RequiredConverter<TValue>() => new(
-                v => global::System.Text.Json.JsonSerializer.Serialize(v, Options),
-                v => global::System.Text.Json.JsonSerializer.Deserialize<
-                    global::System.Collections.Generic.Dictionary<string, TValue>>(v, Options)!);
+        internal static Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<
+            System.Collections.Generic.Dictionary<string, TValue>, string> RequiredConverter<TValue>() => new(
+                v => System.Text.Json.JsonSerializer.Serialize(v, Options),
+                v => System.Text.Json.JsonSerializer.Deserialize<
+                    System.Collections.Generic.Dictionary<string, TValue>>(v, Options)!);
 
         /// <summary>Same conversion as RequiredConverter, over the NULLABLE dictionary a
         /// non-required map's property carries — keep the two bodies identical. EF Core's
         /// nullability-aware HasConversion checks the converter's model type against the
         /// property's own annotation, so one factory cannot serve both arms.</summary>
-        internal static global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<
-            global::System.Collections.Generic.Dictionary<string, TValue>?, string> Converter<TValue>() => new(
-                v => global::System.Text.Json.JsonSerializer.Serialize(v, Options),
-                v => global::System.Text.Json.JsonSerializer.Deserialize<
-                    global::System.Collections.Generic.Dictionary<string, TValue>>(v, Options)!);
+        internal static Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<
+            System.Collections.Generic.Dictionary<string, TValue>?, string> Converter<TValue>() => new(
+                v => System.Text.Json.JsonSerializer.Serialize(v, Options),
+                v => System.Text.Json.JsonSerializer.Deserialize<
+                    System.Collections.Generic.Dictionary<string, TValue>>(v, Options)!);
 
         /// <summary>A whole value-object document (or collection of them) as one jsonb value,
         /// for a value object that holds a map (EF Core 8 cannot own a dictionary inside JSON).</summary>
-        internal static global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<TModel, string> ObjectConverter<TModel>() => new(
-            v => global::System.Text.Json.JsonSerializer.Serialize(v, Options),
-            v => global::System.Text.Json.JsonSerializer.Deserialize<TModel>(v, Options)!);
+        internal static Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<TModel, string> ObjectConverter<TModel>() => new(
+            v => System.Text.Json.JsonSerializer.Serialize(v, Options),
+            v => System.Text.Json.JsonSerializer.Deserialize<TModel>(v, Options)!);
 
-        internal static global::Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<TModel> ObjectComparer<TModel>() => new(
-            (a, b) => global::System.Text.Json.JsonSerializer.Serialize(a, Options) == global::System.Text.Json.JsonSerializer.Serialize(b, Options),
-            v => global::System.Text.Json.JsonSerializer.Serialize(v, Options).GetHashCode(),
-            v => global::System.Text.Json.JsonSerializer.Deserialize<TModel>(global::System.Text.Json.JsonSerializer.Serialize(v, Options), Options)!);
+        internal static Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<TModel> ObjectComparer<TModel>() => new(
+            (a, b) => System.Text.Json.JsonSerializer.Serialize(a, Options) == System.Text.Json.JsonSerializer.Serialize(b, Options),
+            v => System.Text.Json.JsonSerializer.Serialize(v, Options).GetHashCode(),
+            v => System.Text.Json.JsonSerializer.Deserialize<TModel>(System.Text.Json.JsonSerializer.Serialize(v, Options), Options)!);
 
-        internal static global::Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<
-            global::System.Collections.Generic.Dictionary<string, TValue>?> Comparer<TValue>() => new(
+        internal static Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<
+            System.Collections.Generic.Dictionary<string, TValue>?> Comparer<TValue>() => new(
                 (a, b) => Eq(a, b), v => Hash(v), v => Snap(v));
 
         /// <summary>Order-INDEPENDENT equality: a dictionary rebuilt in a different key
@@ -86,17 +85,17 @@ public class AppDbContext : DbContext
         /// comparer (no serialization at all); a value-object value falls through to a JSON
         /// compare, since the generated POCO is a class and compares by reference.</summary>
         private static bool Eq<TValue>(
-            global::System.Collections.Generic.Dictionary<string, TValue>? a,
-            global::System.Collections.Generic.Dictionary<string, TValue>? b)
+            System.Collections.Generic.Dictionary<string, TValue>? a,
+            System.Collections.Generic.Dictionary<string, TValue>? b)
         {
             if (a is null || b is null) return ReferenceEquals(a, b);
             if (a.Count != b.Count) return false;
             foreach (var kv in a)
             {
                 if (!b.TryGetValue(kv.Key, out var other)) return false;
-                if (global::System.Collections.Generic.EqualityComparer<TValue>.Default.Equals(kv.Value, other)) continue;
-                if (global::System.Text.Json.JsonSerializer.Serialize(kv.Value, Options)
-                    != global::System.Text.Json.JsonSerializer.Serialize(other, Options)) return false;
+                if (System.Collections.Generic.EqualityComparer<TValue>.Default.Equals(kv.Value, other)) continue;
+                if (System.Text.Json.JsonSerializer.Serialize(kv.Value, Options)
+                    != System.Text.Json.JsonSerializer.Serialize(other, Options)) return false;
             }
             return true;
         }
@@ -104,7 +103,7 @@ public class AppDbContext : DbContext
         /// <summary>Keys and count only — order-independent (XOR), allocation-free, and
         /// stable for a value-object value whose GetHashCode is reference-based. Equal
         /// dictionaries always hash equal, which is all EF requires.</summary>
-        private static int Hash<TValue>(global::System.Collections.Generic.Dictionary<string, TValue>? v)
+        private static int Hash<TValue>(System.Collections.Generic.Dictionary<string, TValue>? v)
         {
             if (v is null) return 0;
             var h = v.Count;
@@ -115,14 +114,14 @@ public class AppDbContext : DbContext
         /// <summary>The change-tracking snapshot. A value-object value needs a DEEP copy or
         /// an in-place edit to a nested object mutates the snapshot too and goes undetected;
         /// an immutable scalar only needs the dictionary copied.</summary>
-        private static global::System.Collections.Generic.Dictionary<string, TValue>? Snap<TValue>(
-            global::System.Collections.Generic.Dictionary<string, TValue>? v) =>
+        private static System.Collections.Generic.Dictionary<string, TValue>? Snap<TValue>(
+            System.Collections.Generic.Dictionary<string, TValue>? v) =>
             v is null
                 ? null
                 : typeof(TValue).IsValueType || typeof(TValue) == typeof(string)
-                    ? new global::System.Collections.Generic.Dictionary<string, TValue>(v)
-                    : global::System.Text.Json.JsonSerializer.Deserialize<
-                        global::System.Collections.Generic.Dictionary<string, TValue>>(
-                            global::System.Text.Json.JsonSerializer.Serialize(v, Options), Options)!;
+                    ? new System.Collections.Generic.Dictionary<string, TValue>(v)
+                    : System.Text.Json.JsonSerializer.Deserialize<
+                        System.Collections.Generic.Dictionary<string, TValue>>(
+                            System.Text.Json.JsonSerializer.Serialize(v, Options), Options)!;
     }
 }

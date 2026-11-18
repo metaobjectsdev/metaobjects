@@ -29,7 +29,7 @@ public static class ValidatorSchema
     /// <summary>@condition on a cross-field validator: the case the rule applies in (an attr.expression).</summary>
     private static readonly AttrSchema ConditionAttr = new(Name: ValidatorConstants.VALIDATOR_ATTR_CONDITION,
         ValueType: AttrConstants.ATTR_SUBTYPE_EXPRESSION, Required: false,
-        Description: "The case this rule applies in: an expression over the owning entity's fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced by the database only, like the rule itself.");
+        Description: "The case this rule applies in: an expression over the owning entity's fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced like the rule itself: by the database CHECK and, on create, by the generated record model in every port. Justified in ADR-0023 Amendment 1.");
 
     /// <summary>
     /// Attrs per validator subtype. required uses none; regex adds @pattern;
@@ -89,8 +89,12 @@ public static class ValidatorSchema
                 new AttrSchema(Name: ValidatorConstants.VALIDATOR_ATTR_FIELDS, ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
                     Required: true, IsArray: true, Description: "Names of the candidate fields; at least one must be present."),
                 ConditionAttr,
-                new AttrSchema(Name: ValidatorConstants.VALIDATOR_ATTR_MAX, ValueType: AttrConstants.ATTR_SUBTYPE_INT,
-                    Required: false, Description: "The most of @fields that may be present. Absent: no upper bound; @max 1 makes it exactly one of them. Between 1 and the number of @fields (ERR_BAD_ATTR_VALUE)."),
+            ],
+            [ValidatorConstants.VALIDATOR_SUBTYPE_EXACTLY_ONE] =
+            [
+                new AttrSchema(Name: ValidatorConstants.VALIDATOR_ATTR_FIELDS, ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+                    Required: true, IsArray: true, Description: "Names of the alternative fields; exactly one must be present."),
+                ConditionAttr,
             ],
         };
 }

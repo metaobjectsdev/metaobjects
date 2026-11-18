@@ -1,6 +1,4 @@
-// Phase 5, bug multi-op: an origin @filter clause with several operators on one field
-// (`{ ordinal: { gte: 1, lte: 5 } }`) keeps every one of them. resolveAggregateFilter kept only
-// the first, so the aggregate silently spanned a wider row set than declared.
+// An origin @filter clause with several operators on one field keeps every one of them.
 
 import { describe, test, expect } from "bun:test";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";

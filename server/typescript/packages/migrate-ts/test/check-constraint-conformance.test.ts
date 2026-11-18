@@ -1,4 +1,4 @@
-// The shared CHECK corpus (rc.19 item 13, rulings R55): `fixtures/check-constraint-conformance/`
+// The shared CHECK corpus: `fixtures/check-constraint-conformance/`
 // pins the name and the expression text of every CHECK `meta migrate` derives from the corpus's
 // validators and enums, per dialect, with and without `migrate.checks.skipRedundant`. Every port
 // that writes CHECKs into its own model (the C# EF context) passes the same expected files, so

@@ -56,7 +56,7 @@ const DEFAULT_PROVIDERS = [
 	"metaobjects-documentation",
 	"metaobjects-prompt",
 	"metaobjects-ui",
-	// R40 kind 1 — view.textarea @rows and the view.image attrs are cross-port vocabulary.
+	// View.textarea @rows and the view.image attrs are cross-port vocabulary.
 	"metaobjects-ui-web",
 ];
 

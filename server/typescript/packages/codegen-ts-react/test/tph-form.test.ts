@@ -16,7 +16,7 @@ import { formFile } from "../src/form-file.js";
 import { renderFormFile } from "../src/templates/form-file.js";
 import { makeRenderContext, buildPkMap, buildRelationMap } from "@metaobjectsdev/codegen-ts";
 
-async function loadTph(): Promise<{ root: MetaRoot; base: MetaObject; bridge: MetaObject }> {
+async function loadTph(withRule = false): Promise<{ root: MetaRoot; base: MetaObject; bridge: MetaObject }> {
   const loader = new MetaDataLoader();
   const { root, errors } = await loader.load([
     new InMemoryStringSource(
@@ -41,7 +41,15 @@ async function loadTph(): Promise<{ root: MetaRoot; base: MetaObject; bridge: Me
                 name: "BridgeAuth",
                 extends: "Auth",
                 "@discriminatorValue": "Bridge",
-                children: [{ "field.int": { name: "quantity", "@required": true } }],
+                children: [
+                  { "field.int": { name: "quantity", "@required": true } },
+                  ...(withRule
+                    ? [
+                        { "field.int": { name: "minQty" } },
+                        { "validator.comparison": { name: "qtyOrder", "@left": "minQty", "@op": "lte", "@right": "quantity" } },
+                      ]
+                    : []),
+                ],
               },
             },
             {
@@ -95,5 +103,17 @@ describe("FR-017 Tier 3 — TPH React forms", () => {
     // Own subtype field renders; the discriminator field does not.
     expect(out).toContain("BridgeAuth.quantity");
     expect(out).not.toContain("BridgeAuth.type.name");
+  });
+
+  // A refined Zod schema has no `.omit()`, so the form must bind the schema codegen exports
+  // for exactly this case (refined, discriminator already omitted), never the unrefined base
+  // (which would drop the cross-field rule from the form) and never `.omit()` on the refined one.
+  // The schema's behaviour is executed in codegen-ts `tph-cross-field.test.ts`.
+  test("a subtype form with a cross-field rule binds the refined body schema", async () => {
+    const { root, bridge } = await loadTph(true);
+    const out = renderFormFile(bridge, ctxFor(root));
+    expect(out).toContain("BridgeAuthInsertBodySchema");
+    expect(out).not.toContain("BridgeAuthInsertBaseSchema");
+    expect(out).not.toContain("BridgeAuthInsertSchema.omit");
   });
 });

@@ -224,10 +224,11 @@ public class DurationWireTests
     ]}}
     """;
 
-    private static List<EmittedFile> Emit()
+    private static List<EmittedFile> Emit(DurationWireForm durations = DurationWireForm.Iso)
     {
         var r = new MetaDataLoader().Load([new InMemoryStringSource(Model, id: "duration-model.json")]);
         Assert.Empty(r.Errors);
+        r.Root.WireFormat = WireFormat.Default with { Durations = durations };
         var ctx = new GenContext
         {
             Entities = r.Root.Objects(), Root = r.Root,
@@ -251,7 +252,7 @@ public class DurationWireTests
     [Fact]
     public void The_emitted_helper_is_the_production_helper_with_only_the_namespace_changed()
     {
-        var emitted = Emit().Single(f => System.IO.Path.GetFileName(f.Path) == "DurationWire.g.cs");
+        var emitted = Emit().Single(f => f.Path == "DurationWire.g.cs");
         var production = File.ReadAllText(Path.Combine(
             CorpusPaths.RepoRoot(), "server", "csharp", "MetaObjects.Codegen", "Runtime", "DurationWire.cs")).Replace("\r\n", "\n");
         Assert.Equal(production.Replace("namespace MetaObjects.Codegen.Runtime;", "namespace Acme.Ops;"), emitted.Content.Replace("\r\n", "\n"));
@@ -261,38 +262,38 @@ public class DurationWireTests
     public void A_duration_is_a_TimeSpan_with_the_wire_converter_an_interval_on_Postgres_and_text_elsewhere()
     {
         var files = Emit();
-        var timer = files.Single(f => System.IO.Path.GetFileName(f.Path) == "Timer.g.cs").Content;
+        var timer = files.Single(f => f.Path == "Timer.g.cs").Content;
         Assert.Contains("    [DurationWire.Iso]\n    public TimeSpan Timeout { get; set; } = DurationWire.Parse(\"PT90M\");", timer.Replace("\r\n", "\n"));
         Assert.Contains("public TimeSpan? Grace { get; set; }", timer);
         Assert.Contains("public IList<TimeSpan> Backoff { get; set; } = new List<TimeSpan>();", timer);
         Assert.DoesNotContain("using MetaObjects", timer);
 
-        var window = files.Single(f => System.IO.Path.GetFileName(f.Path) == "Window.g.cs").Content;
+        var window = files.Single(f => f.Path == "Window.g.cs").Content;
         Assert.Contains("[DurationWire.Iso]", window);
 
-        var ctx = files.Single(f => System.IO.Path.GetFileName(f.Path) == "AppDbContext.g.cs").Content.Replace("\r\n", "\n");
+        var ctx = files.Single(f => f.Path == "AppDbContext.g.cs").Content.Replace("\r\n", "\n");
         const string Npgsql = "if (Database.ProviderName == \"Npgsql.EntityFrameworkCore.PostgreSQL\")";
-        const string Micros = "new global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<global::System.TimeSpan, long>(" +
+        const string Micros = "new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<System.TimeSpan, long>(" +
             "v => global::Acme.Ops.DurationWire.ToMicros(v), v => global::Acme.Ops.DurationWire.FromMicros(v))";
         // Npgsql: the native interval, read through the generated NpgsqlInterval mapping; anything
         // else: an integer count of microseconds.
         Assert.Contains(
             $"        {Npgsql}\n" +
-            "            modelBuilder.Entity<global::Acme.Ops.Timer>().Property(x => x.Timeout).HasColumnType(\"interval\").Metadata.SetTypeMapping(DurationInterval.Mapping);\n" +
+            "            modelBuilder.Entity<Timer>().Property(x => x.Timeout).HasColumnType(\"interval\").Metadata.SetTypeMapping(DurationInterval.Mapping);\n" +
             "        else\n" +
-            $"            modelBuilder.Entity<global::Acme.Ops.Timer>().Property(x => x.Timeout).HasConversion({Micros});",
+            $"            modelBuilder.Entity<Timer>().Property(x => x.Timeout).HasConversion({Micros});",
             ctx);
         Assert.Contains(
             $"        {Npgsql}\n" +
-            "            modelBuilder.Entity<global::Acme.Ops.Timer>().PrimitiveCollection(x => x.Backoff).Metadata.SetTypeMapping(DurationInterval.ArrayMapping);\n" +
+            "            modelBuilder.Entity<Timer>().PrimitiveCollection(x => x.Backoff).Metadata.SetTypeMapping(DurationInterval.ArrayMapping);\n" +
             "        else\n" +
-            $"            modelBuilder.Entity<global::Acme.Ops.Timer>().PrimitiveCollection(x => x.Backoff).ElementType().HasConversion({Micros});",
+            $"            modelBuilder.Entity<Timer>().PrimitiveCollection(x => x.Backoff).ElementType().HasConversion({Micros});",
             ctx);
         Assert.Contains("internal static class DurationInterval", ctx);
         Assert.DoesNotContain("using Npgsql", ctx);
         // A duration member of a jsonb value object is stored as its canonical string on every provider.
-        Assert.Contains("b.Property(p => p.Length).HasConversion(new global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<global::System.TimeSpan, string>(", ctx);
-        Assert.Contains("b.PrimitiveCollection(p => p.Steps).ElementType().HasConversion(new global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<global::System.TimeSpan, string>(", ctx);
+        Assert.Contains("b.Property(p => p.Length).HasConversion(new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<System.TimeSpan, string>(", ctx);
+        Assert.Contains("b.PrimitiveCollection(p => p.Steps).ElementType().HasConversion(new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<System.TimeSpan, string>(", ctx);
         // ...and a duration member of a FLATTENED value object takes the top-level column mapping.
         Assert.Contains(
             "            b.Property(p => p.Cap).HasColumnName(\"limits_cap\");\n" +
@@ -303,12 +304,12 @@ public class DurationWireTests
             ctx);
         Assert.Contains($"                b.PrimitiveCollection(p => p.Marks).ElementType().HasConversion({Micros});", ctx);
 
-        var allowlist = files.Single(f => System.IO.Path.GetFileName(f.Path) == "TimerFilterAllowlist.g.cs").Content;
-        Assert.Contains("[\"grace\"] = new(global::System.StringComparer.Ordinal) { \"eq\", \"ne\", \"gt\", \"gte\", \"lt\", \"lte\", \"in\", \"isNull\" },", allowlist);
+        var allowlist = files.Single(f => f.Path == "TimerFilterAllowlist.g.cs").Content;
+        Assert.Contains("[\"grace\"] = new(System.StringComparer.Ordinal) { \"eq\", \"ne\", \"gt\", \"gte\", \"lt\", \"lte\", \"in\", \"isNull\" },", allowlist);
 
         // The PATCH merge reads a duration through the wire helper, not System.Text.Json's own form.
-        var routes = files.Single(f => System.IO.Path.GetFileName(f.Path) == "TimerRoutes.g.cs").Content;
-        Assert.Contains("if (clr == typeof(global::System.TimeSpan))", routes);
+        var routes = files.Single(f => f.Path == "TimerRoutes.g.cs").Content;
+        Assert.Contains("if (clr == typeof(System.TimeSpan))", routes);
         Assert.Contains("DurationWire.TryParseElement(prop.Value, out var __dur)", routes);
     }
 
@@ -359,5 +360,24 @@ public class DurationWireTests
         Assert.ThrowsAny<JsonException>(() => JsonSerializer.Deserialize("{\"Timeout\":\"01:30:00\"}", timer));
         Assert.ThrowsAny<JsonException>(() => JsonSerializer.Deserialize("{\"Grace\":\"P1M\"}", timer));
         Assert.ThrowsAny<JsonException>(() => JsonSerializer.Deserialize("{\"Backoff\":[\"P1Y\"]}", timer));
+    }
+
+    // wire.durations: native (the default) puts no converter on the property: System.Text.Json's
+    // own TimeSpan form is the wire form, both ways.
+    [Fact]
+    public void Under_native_durations_the_property_has_no_converter_and_crosses_in_the_STJ_form()
+    {
+        var files = Emit(DurationWireForm.Native);
+        Assert.DoesNotContain("[DurationWire.Iso]", files.Single(f => f.Path == "Timer.g.cs").Content);
+        Assert.DoesNotContain("[DurationWire.Iso]", files.Single(f => f.Path == "Window.g.cs").Content);
+        var asm = Compile(files);
+        var timer = asm.GetType("Acme.Ops.Timer")!;
+        var row = JsonSerializer.Deserialize(
+            "{\"Id\":1,\"Timeout\":\"1.02:00:00\",\"Grace\":\"-00:01:30\",\"Backoff\":[\"00:00:01\"]}", timer)!;
+        var json = JsonSerializer.Serialize(row, timer);
+        Assert.Contains("\"Timeout\":\"1.02:00:00\"", json);
+        Assert.Contains("\"Grace\":\"-00:01:30\"", json);
+        Assert.Contains("\"Backoff\":[\"00:00:01\"]", json);
+        Assert.ThrowsAny<JsonException>(() => JsonSerializer.Deserialize("{\"Timeout\":\"PT1H\"}", timer));
     }
 }

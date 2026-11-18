@@ -59,6 +59,7 @@ import {
   FIELD_SUBTYPE_DATE,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_ATTR_OBJECT_REF,
+  FIELD_ATTR_STORAGE,
 } from "../core/field/field-constants.js";
 import {
   IDENTITY_SUBTYPE_REFERENCE,
@@ -79,6 +80,7 @@ import {
   opsForField,
 } from "../core/query/query-constants.js";
 import { ATTR_SUBTYPE_FILTER } from "../core/attr/attr-constants.js";
+import { originFilterEntity } from "./validation-passes.js";
 import { isMetaObject, isMetaRoot, isReadOnlySource, isWritableSource } from "../shared/node-guards.js";
 import { SOURCE_KIND_VIEW } from "../persistence/source/source-constants.js";
 import { AGG_ALL, AGG_ANY, ORIGIN_SUBTYPE_FIRST, ORIGIN_SUBTYPE_AGGREGATE } from "../persistence/origin/origin-constants.js";
@@ -98,11 +100,15 @@ import {
   REPORTING_ATTR_DEFAULT,
   REPORTING_ATTR_VIA,
   MEASURE_SUBTYPE_AGGREGATE,
+  MEASURE_SUBTYPE_DERIVED,
+  REPORTING_ATTR_EXPR,
+  DERIVED_FNS,
 } from "../core/reporting/reporting-constants.js";
 import { MetaDimension } from "../core/reporting/meta-dimension.js";
 import { MetaMeasure } from "../core/reporting/meta-measure.js";
 import { MetaSegment } from "../core/reporting/meta-segment.js";
-import { measureResultSubType } from "../core/reporting/report-shape.js";
+import { isFlattenedField, measureResultSubType, resolveDimensionOf } from "../core/reporting/report-shape.js";
+import { derivedExprFields } from "../core/reporting/derived-expr.js";
 import {
   reportDerivedFieldName,
   reportDimensionItems,
@@ -165,7 +171,7 @@ export function validateReporting(root: MetaData): ParseError[] {
   }
 
   // F1 on every host that is not a reporting host.
-  checkNoRelativeDates(root, sink);
+  checkNoRelativeDates(root, root, sink);
   return sink.errors;
 }
 
@@ -243,6 +249,53 @@ function objectRefOf(field: MetaData): unknown {
 
 function fieldOf(obj: MetaData, name: string): MetaData | undefined {
   return childOfType(obj, TYPE_FIELD, name);
+}
+
+/**
+ * R12 — the column an `@of` path names on `entity`: `field`, or `field.member` for a member of a
+ * value object stored flattened (one column per member). Reports the first failure through
+ * `err` and returns undefined. `fieldMissing` words the message for an absent `field`.
+ */
+function ofColumn(
+  entity: MetaData,
+  path: readonly string[],
+  item: string,
+  err: (message: string) => void,
+  fieldMissing: () => string,
+): MetaData | undefined {
+  const field = fieldOf(entity, path[0]!);
+  if (field === undefined) {
+    err(fieldMissing());
+    return undefined;
+  }
+  const memberName = path[1];
+  if (memberName === undefined) return field;
+  const valueObject = field.subType === FIELD_SUBTYPE_OBJECT ? refTargetOf(field) : undefined;
+  if (valueObject === undefined) {
+    err(`@of '${item}' names member '${memberName}' of '${path[0]!}', a field.${field.subType} with no value object.`);
+    return undefined;
+  }
+  if (!isFlattenedField(field)) {
+    const storage = field.attr(FIELD_ATTR_STORAGE);
+    err(
+      `@of '${item}' names a member of '${path[0]!}', whose value object is stored as ` +
+        `${typeof storage === "string" ? storage : "jsonb (the default)"}. A report reads a member only under ` +
+        `@storage: flattened, where the member has a column of its own.`,
+    );
+    return undefined;
+  }
+  const member = fieldOf(valueObject, memberName);
+  if (member === undefined) {
+    err(`@of '${item}' names no member '${memberName}' on value object '${valueObject.resolutionKey()}'.`);
+    return undefined;
+  }
+  return member;
+}
+
+/** The object a field's `@objectRef` resolves to (ADR-0059 R3 package rule), when it is one. */
+function refTargetOf(field: MetaData): MetaData | undefined {
+  const target = refTarget(field, FIELD_ATTR_OBJECT_REF);
+  return target !== undefined && target.type === TYPE_OBJECT ? target : undefined;
 }
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -381,8 +434,8 @@ function checkDimension(ctx: MemberCtx, dim: MetaDimension): void {
   const of = dim.of();
   if (of === undefined) return; // missing @of is ERR_MISSING_REQUIRED_ATTR (attr schema pass)
   const parts = splitDotted(of);
-  if (parts === undefined || parts.path.length !== 1) {
-    err(`@of '${of}' must be Entity.field.`);
+  if (parts === undefined || parts.path.length > 2) {
+    err(`@of '${of}' must be Entity.field or Entity.field.member.`);
     return;
   }
   // D1 — after @via, a bare Owner resolves in the package of the entity @via reaches: the path
@@ -408,17 +461,13 @@ function checkDimension(ctx: MemberCtx, dim: MetaDimension): void {
   // the host IS the checked entity: a dimension inherited from a base is checked against the
   // inheritor's own (possibly overriding) field.
   const lookup = via === undefined ? ofEntity : named!;
-  const field = fieldOf(lookup, fieldName);
-  if (field === undefined) {
-    const declaredOnTerminal = lookup !== ofEntity && fieldOf(ofEntity, fieldName) !== undefined;
-    err(
-      declaredOnTerminal
-        ? `@of '${of}' names no field '${fieldName}' on '${shown(ctx, lookup)}': only '${shown(ctx, ofEntity)}', ` +
-            `the entity @via reaches, declares it. Name it '${ofEntity.name}.${fieldName}'.`
-        : `@of '${of}' names no field '${fieldName}' on '${shown(ctx, lookup)}'.`,
-    );
-    return;
-  }
+  const field = ofColumn(lookup, parts.path, of, err, () =>
+    lookup !== ofEntity && fieldOf(ofEntity, fieldName) !== undefined
+      ? `@of '${of}' names no field '${fieldName}' on '${shown(ctx, lookup)}': only '${shown(ctx, ofEntity)}', ` +
+          `the entity @via reaches, declares it. Name it '${ofEntity.name}.${fieldName}'.`
+      : `@of '${of}' names no field '${fieldName}' on '${shown(ctx, lookup)}'.`,
+  );
+  if (field === undefined) return;
 
   // D5 — a dimension groups by a scalar. A field.object (or a field carrying @objectRef) is a JSON
   // document: no port serves a report over one, and a document is not a value to group rows by.
@@ -579,6 +628,10 @@ function checkMeasure(ctx: MemberCtx, measure: MetaMeasure): void {
     checkRatioOperands(ctx, measure, err);
     return;
   }
+  if (measure.isDerived()) {
+    checkDerivedExpr(ctx, measure, err);
+    return;
+  }
   if (measure.subType !== MEASURE_SUBTYPE_AGGREGATE) return;
 
   const checked = checkAggregateColumns(ctx, measure, err);
@@ -667,8 +720,8 @@ function checkAggregateColumns(
   const fields: MetaData[] = [];
   for (const item of columns) {
     const parts = splitDotted(item);
-    if (parts === undefined || parts.path.length !== 1) {
-      err(`@of '${item}' must be Entity.field.`);
+    if (parts === undefined || parts.path.length > 2) {
+      err(`@of '${item}' must be Entity.field or Entity.field.member.`);
       return undefined;
     }
     const named = resolveObjectRef(ctx.root, parts.owner, pkgOf(ctx.declaring)).node;
@@ -679,11 +732,14 @@ function checkAggregateColumns(
       );
       return undefined;
     }
-    const field = fieldOf(ctx.host, parts.path[0]!);
-    if (field === undefined) {
-      err(`@of '${item}' names no field '${parts.path[0]!}' on '${ctx.declaring.resolutionKey()}'.`);
-      return undefined;
-    }
+    const field = ofColumn(
+      ctx.host,
+      parts.path,
+      item,
+      err,
+      () => `@of '${item}' names no field '${parts.path[0]!}' on '${ctx.declaring.resolutionKey()}'.`,
+    );
+    if (field === undefined) return undefined;
     // M10 — a measure aggregates scalars. A field.object (or a field carrying @objectRef) is a JSON
     // document, which no port aggregates in a report.
     if (field.subType === FIELD_SUBTYPE_OBJECT || objectRefOf(field) !== undefined) {
@@ -761,6 +817,54 @@ function checkRatioOperands(ctx: MemberCtx, ratio: MetaMeasure, err: (message: s
   }
 }
 
+/**
+ * M11 — a measure.derived's @expr is FR-037 R5's arithmetic over operands a report can read:
+ * each `{ field }` names a numeric measure.aggregate or measure.ratio of the same entity, or a
+ * numeric attribute dimension of it (R13 then requires the report to list that dimension). A
+ * derived measure never reads another derived measure, and a name both a measure and a
+ * dimension carry is refused rather than guessed. One error per offending operand.
+ */
+function checkDerivedExpr(ctx: MemberCtx, measure: MetaMeasure, err: (message: string) => void): void {
+  const raw = measure.attr(REPORTING_ATTR_EXPR);
+  if (raw === undefined) return; // missing @expr is ERR_MISSING_REQUIRED_ATTR
+  const expr = measure.expr();
+  if (expr === undefined) {
+    err(
+      `@expr is not an arithmetic expression. Each node is { field: <measure or ` +
+        `dimension> }, { value: <number> } or { fn: ${DERIVED_FNS.join(" | ")}, args: [<a>, <b>] }.`,
+    );
+    return;
+  }
+  const entityKey = ctx.declaring.resolutionKey();
+  for (const name of derivedExprFields(expr)) {
+    const target = childOfType(ctx.host, TYPE_MEASURE, name);
+    const dim = childOfType(ctx.host, TYPE_DIMENSION, name);
+    if (target !== undefined && dim !== undefined) {
+      err(`@expr names '${name}', which is both a measure and a dimension of '${entityKey}'. Rename one.`);
+    } else if (target !== undefined) {
+      if (target.subType === MEASURE_SUBTYPE_DERIVED) {
+        err(`@expr names '${name}', a measure.derived. A derived measure reads aggregates, ratios and dimensions, not another derived measure.`);
+      } else if (target instanceof MetaMeasure && isMetaObject(ctx.host) && isMetaRoot(ctx.root)) {
+        const result = measureResultSubType(target, ctx.host, ctx.root);
+        if (result !== undefined && !NUMERIC_FIELD_SUBTYPES.includes(result)) {
+          err(`@expr names measure '${name}', whose result is a ${result}, not a number.`);
+        }
+      }
+    } else if (dim instanceof MetaDimension) {
+      if (dim.isTime()) {
+        err(`@expr names '${name}', a dimension.time. Arithmetic reads a numeric attribute dimension.`);
+      } else if (isMetaObject(ctx.host) && isMetaRoot(ctx.root)) {
+        const of = resolveDimensionOf(dim, ctx.host, ctx.root);
+        if (of !== undefined && !NUMERIC_FIELD_SUBTYPES.includes(of.field.subType)) {
+          err(`@expr names dimension '${name}', whose @of is a field.${of.field.subType}, not a number.`);
+        }
+      }
+    } else {
+      err(`@expr names '${name}', which is no measure or dimension of '${entityKey}'.`);
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // S1 / F2 — a reporting-host @filter over its entity
 // ---------------------------------------------------------------------------
@@ -812,47 +916,50 @@ function checkFilter(
         continue;
       }
       const relative = relativeOperand(operand);
-      if (relative === undefined) continue;
-      if (!isExactRelativeValue(relative)) {
-        err(
-          `@filter on '${key}' has a malformed relative date ${JSON.stringify(relative)}; a relative date is ` +
-            `{ now: "<ISO-8601 duration>" } with an optional startOf, and no other keys.`,
-        );
-        continue;
-      }
-      if (!TEMPORAL_FIELD_SUBTYPES.includes(field.subType)) {
-        err(
-          `@filter on '${key}' uses a relative date ({ now: ... }), but '${key}' is field.${field.subType}; ` +
-            `relative dates apply only to field.date and field.timestamp.`,
-        );
-        continue;
-      }
-      if (!RELATIVE_DATE_OPS.includes(op)) {
-        err(
-          `@filter on '${key}' puts a relative date under op '${op}'; relative dates are legal only under ` +
-            `gt, gte, lt and lte.`,
-        );
-        continue;
-      }
-      const duration = relative[FILTER_RELATIVE_NOW];
-      if (typeof duration !== "string" || !ISO_DURATION_RE.test(duration)) {
-        err(
-          `@filter on '${key}' has relative date '${quoteValue(duration)}', which is not an ISO-8601 ` +
-            `duration (e.g. '-P7D', '-PT12H').`,
-        );
-        continue;
-      }
-      if (FILTER_RELATIVE_START_OF in relative) {
-        const startOf = relative[FILTER_RELATIVE_START_OF];
-        if (typeof startOf !== "string" || !(RELATIVE_START_OF_UNITS as readonly string[]).includes(startOf)) {
-          err(
-            `@filter on '${key}' has startOf '${quoteValue(startOf)}'; startOf is one of ` +
-              `${RELATIVE_START_OF_UNITS.join(", ")}.`,
-          );
-        }
-      }
+      const problem = relative === undefined ? undefined : relativeDateProblem(key, op, relative, field.subType);
+      if (problem !== undefined) err(problem);
     }
   }
+}
+
+/**
+ * F2 — why a relative-date operand under `op` on `key` is refused, or undefined when it is
+ * well-formed: its exact shape, the field's type (when the key resolves), a range op, an
+ * ISO-8601 duration and a startOf unit, in that order. One mistake, one message.
+ */
+function relativeDateProblem(
+  key: string,
+  op: string,
+  relative: Record<string, unknown>,
+  subType: string | undefined,
+): string | undefined {
+  if (!isExactRelativeValue(relative)) {
+    return (
+      `@filter on '${key}' has a malformed relative date ${JSON.stringify(relative)}; a relative date is ` +
+      `{ now: "<ISO-8601 duration>" } with an optional startOf, and no other keys.`
+    );
+  }
+  if (subType !== undefined && !TEMPORAL_FIELD_SUBTYPES.includes(subType)) {
+    return (
+      `@filter on '${key}' uses a relative date ({ now: ... }), but '${key}' is field.${subType}; ` +
+      `relative dates apply only to field.date and field.timestamp.`
+    );
+  }
+  if (!RELATIVE_DATE_OPS.includes(op)) {
+    return `@filter on '${key}' puts a relative date under op '${op}'; relative dates are legal only under gt, gte, lt and lte.`;
+  }
+  const duration = relative[FILTER_RELATIVE_NOW];
+  if (typeof duration !== "string" || !ISO_DURATION_RE.test(duration)) {
+    return (
+      `@filter on '${key}' has relative date '${quoteValue(duration)}', which is not an ISO-8601 ` +
+      `duration (e.g. '-P7D', '-PT12H').`
+    );
+  }
+  const startOf = relative[FILTER_RELATIVE_START_OF];
+  if (FILTER_RELATIVE_START_OF in relative && (typeof startOf !== "string" || !(RELATIVE_START_OF_UNITS as readonly string[]).includes(startOf))) {
+    return `@filter on '${key}' has startOf '${quoteValue(startOf)}'; startOf is one of ${RELATIVE_START_OF_UNITS.join(", ")}.`;
+  }
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -994,6 +1101,11 @@ function checkReport(root: MetaData, report: MetaData, sink: ErrorSink): void {
     if (measureName !== undefined) claim(measureName, `measure '${measureName}'`);
   }
 
+  // R12 — amounts in different units are never combined.
+  checkValueObjectUnits(report, from, err);
+  // R13 — a derived measure reads only dimensions the report groups by.
+  checkDerivedDimensions(report, from, err);
+
   // R7 — @segment names a segment of @from.
   const segment = report.attr(OBJECT_REPORT_ATTR_SEGMENT);
   if (typeof segment === "string" && childOfType(from, TYPE_SEGMENT, segment) === undefined) {
@@ -1049,6 +1161,94 @@ function checkReport(root: MetaData, report: MetaData, sink: ErrorSink): void {
   // S1 / F2 — the report's row scope over @from.
   const filter = report.attr(OBJECT_REPORT_ATTR_FILTER);
   if (isPlainObject(filter)) checkFilter(filter, from, fromKey, label, report, "", sink);
+}
+
+/**
+ * R12 — a measure that sums, averages or takes the min or max of a numeric member of a flattened
+ * value object (Money's amount) combines rows only when the report groups by each non-numeric
+ * member of that value object (Money's currency): otherwise amounts in different currencies are
+ * added. Checked for every listed measure.aggregate and every operand of a listed ratio; the
+ * grouping is an attribute dimension of @from, with no @via, whose @of names the same
+ * `field.member`. A measure whose @of fails M1 is skipped (M1 reports it).
+ */
+function checkValueObjectUnits(report: MetaData, from: MetaData, err: (message: string) => void): void {
+  const grouped = new Set<string>();
+  for (const item of reportDimensionItems(report)) {
+    const dim = childOfType(from, TYPE_DIMENSION, item.name);
+    if (!(dim instanceof MetaDimension) || dim.isTime() || dim.via() !== undefined) continue;
+    const path = splitDotted(dim.of() ?? "")?.path;
+    if (path?.length === 2) grouped.add(path.join(CHILD_REF_SEPARATOR));
+  }
+  const checked = new Set<MetaData>();
+  for (const item of reportMeasureNames(report)) {
+    const listed = childOfType(from, TYPE_MEASURE, item.slice(item.lastIndexOf(CHILD_REF_SEPARATOR) + 1));
+    if (!(listed instanceof MetaMeasure)) continue;
+    for (const m of aggregatesRead(listed, from)) {
+      if (!(m instanceof MetaMeasure) || m.subType !== MEASURE_SUBTYPE_AGGREGATE || checked.has(m)) continue;
+      checked.add(m);
+      const agg = m.agg();
+      if (agg !== AGG_SUM && agg !== AGG_AVG && agg !== AGG_MIN && agg !== AGG_MAX) continue;
+      const of = m.ofColumns()[0] ?? "";
+      const parts = splitDotted(of);
+      if (parts?.path.length !== 2) continue;
+      const [fieldName, memberName] = parts.path as [string, string];
+      const field = fieldOf(from, fieldName);
+      const valueObject = field !== undefined && isFlattenedField(field) ? refTargetOf(field) : undefined;
+      const member = valueObject === undefined ? undefined : fieldOf(valueObject, memberName);
+      if (valueObject === undefined || member === undefined || !NUMERIC_FIELD_SUBTYPES.includes(member.subType)) continue;
+      // ADR-0039: resolving — a unit member the value object inherits qualifies its amounts too.
+      for (const unit of valueObject.children().filter((c) => c.type === TYPE_FIELD)) {
+        if (NUMERIC_FIELD_SUBTYPES.includes(unit.subType) || grouped.has(`${fieldName}.${unit.name}`)) continue;
+        err(
+          `: measure '${m.name}' takes @agg '${agg}' of '${of}', a member of value object ` +
+            `'${valueObject.resolutionKey()}', but the report does not group by its member '${unit.name}', so ` +
+            `amounts with different '${unit.name}' values would be combined. List an attribute dimension of ` +
+            `@from whose @of is '${parts.owner}.${fieldName}.${unit.name}'.`,
+        );
+      }
+    }
+  }
+}
+
+/**
+ * The measures `listed` aggregates through: itself for a measure.aggregate, its two operands for a
+ * ratio, and for a measure.derived each measure its @expr names (a ratio there read through its
+ * operands). Unresolved names are left out; the member rules report them.
+ */
+function aggregatesRead(listed: MetaMeasure, from: MetaData): MetaData[] {
+  const measure = (n: string | undefined): MetaData | undefined =>
+    n === undefined ? undefined : childOfType(from, TYPE_MEASURE, n);
+  const operandsOf = (m: MetaData | undefined): (MetaData | undefined)[] =>
+    m instanceof MetaMeasure && m.isRatio() ? [measure(m.numerator()), measure(m.denominator())] : [m];
+  if (listed.isDerived()) {
+    const expr = listed.expr();
+    return (expr === undefined ? [] : derivedExprFields(expr))
+      .flatMap((n) => operandsOf(measure(n)))
+      .filter((m): m is MetaData => m !== undefined);
+  }
+  return operandsOf(listed).filter((m): m is MetaData => m !== undefined);
+}
+
+/**
+ * R13 — a measure.derived that reads an attribute dimension reads that dimension's value for each
+ * group, so the report must list the dimension in @dimensions. A name that is also a measure is
+ * M11's to report.
+ */
+function checkDerivedDimensions(report: MetaData, from: MetaData, err: (message: string) => void): void {
+  const listedDims = new Set(reportDimensionItems(report).map((i) => i.name));
+  for (const item of reportMeasureNames(report)) {
+    const m = childOfType(from, TYPE_MEASURE, item.slice(item.lastIndexOf(CHILD_REF_SEPARATOR) + 1));
+    const expr = m instanceof MetaMeasure && m.isDerived() ? m.expr() : undefined;
+    if (expr === undefined) continue;
+    for (const name of derivedExprFields(expr)) {
+      if (listedDims.has(name) || childOfType(from, TYPE_MEASURE, name) !== undefined) continue;
+      if (childOfType(from, TYPE_DIMENSION, name) === undefined) continue;
+      err(
+        `: measure '${m!.name}' reads dimension '${name}', which @dimensions does not list. A derived measure ` +
+          `reads a dimension's value for each group, so the report must group by it.`,
+      );
+    }
+  }
 }
 
 /**
@@ -1115,7 +1315,7 @@ function checkReportMeasure(
 // F1 — relative-date values only on reporting hosts
 // ---------------------------------------------------------------------------
 
-/** rc.19 `now` — the view hosts whose `@filter` may carry a relative-date value too. */
+/** The view hosts whose `@filter` may carry a relative-date value too. */
 function isRelativeViewFilterHost(node: MetaData): boolean {
   return (
     (node.type === TYPE_OBJECT && node.subType === OBJECT_SUBTYPE_PROJECTION) ||
@@ -1123,31 +1323,25 @@ function isRelativeViewFilterHost(node: MetaData): boolean {
   );
 }
 
-/** F2's value rules (exact shape, range op, ISO-8601 duration, startOf unit) on every relative
- *  operand of a filter, without its field-type rule. */
-function checkRelativeShapes(filter: unknown, host: MetaData, sink: ErrorSink): void {
+/** F2 on every relative operand of a projection's or an origin's filter; `subTypeOf` resolves a
+ *  key to its field's subtype, undefined when it does not resolve (reported elsewhere). */
+function checkRelativeShapes(
+  filter: unknown,
+  host: MetaData,
+  subTypeOf: (key: string) => string | undefined,
+  sink: ErrorSink,
+): void {
   if (!isPlainObject(filter)) return;
-  const err = (message: string): void => sink.push(host, ERR_BAD_ATTR_FILTER, nodeLabel(host), `: ${message}`);
   for (const [key, clause] of Object.entries(filter)) {
     if (key === FILTER_COMPOSE_OR || key === FILTER_COMPOSE_AND) {
-      if (Array.isArray(clause)) for (const sub of clause) checkRelativeShapes(sub, host, sink);
+      if (Array.isArray(clause)) for (const sub of clause) checkRelativeShapes(sub, host, subTypeOf, sink);
       continue;
     }
     if (!isPlainObject(clause)) continue;
     for (const [op, operand] of Object.entries(clause)) {
       const relative = relativeOperand(operand);
-      if (relative === undefined) continue;
-      const duration = relative[FILTER_RELATIVE_NOW];
-      const startOf = relative[FILTER_RELATIVE_START_OF];
-      if (!isExactRelativeValue(relative)) {
-        err(`@filter on '${key}' has a malformed relative date ${JSON.stringify(relative)}; a relative date is { now: "<ISO-8601 duration>" } with an optional startOf, and no other keys.`);
-      } else if (!RELATIVE_DATE_OPS.includes(op)) {
-        err(`@filter on '${key}' puts a relative date under op '${op}'; relative dates are legal only under gt, gte, lt and lte.`);
-      } else if (typeof duration !== "string" || !ISO_DURATION_RE.test(duration)) {
-        err(`@filter on '${key}' has relative date '${quoteValue(duration)}', which is not an ISO-8601 duration (e.g. '-P7D', '-PT12H').`);
-      } else if (FILTER_RELATIVE_START_OF in relative && (typeof startOf !== "string" || !(RELATIVE_START_OF_UNITS as readonly string[]).includes(startOf))) {
-        err(`@filter on '${key}' has startOf '${quoteValue(startOf)}'; startOf is one of ${RELATIVE_START_OF_UNITS.join(", ")}.`);
-      }
+      const problem = relative === undefined ? undefined : relativeDateProblem(key, op, relative, subTypeOf(key));
+      if (problem !== undefined) sink.push(host, ERR_BAD_ATTR_FILTER, nodeLabel(host), `: ${problem}`);
     }
   }
 }
@@ -1163,16 +1357,18 @@ function isReportingFilterHost(node: MetaData): boolean {
 
 /**
  * F1 — walk the whole tree and refuse a `{ now: ... }` value in any attr.filter
- * outside a reporting host (a projection @filter, a dataGrid preset, an
- * origin.aggregate/first @filter): those hosts have no lowering for it.
+ * outside a host that lowers it (a dataGrid preset, for one), and check every relative value
+ * in a projection's or an origin.aggregate/first's @filter, which lower it into the view.
  */
-function checkNoRelativeDates(node: MetaData, sink: ErrorSink): void {
+function checkNoRelativeDates(root: MetaData, node: MetaData, sink: ErrorSink): void {
   if (isRelativeViewFilterHost(node)) {
-    // rc.19 `now`: a projection's and an origin's @filter lower relative dates into the view.
-    // Their keys resolve elsewhere (projection fields, base paths, the related entity), so the
-    // value's own shape is checked here and the field's type where it is lowered.
+    // `now`: a projection's and an origin's @filter lower relative dates into the view. A
+    // projection's keys name its own fields; an origin's name fields of the related entity.
+    const target = node.type === TYPE_ORIGIN ? originFilterEntity(node, root) : node;
+    const subTypeOf = (key: string): string | undefined => (target === undefined ? undefined : fieldOf(target, key)?.subType);
+    // ADR-0039: own — only locally declared filters are lowered (origin.* never inherits, ADR-0029).
     for (const attr of node.ownMetaAttrs()) {
-      if (attr.subType === ATTR_SUBTYPE_FILTER) checkRelativeShapes(attr.value, node, sink);
+      if (attr.subType === ATTR_SUBTYPE_FILTER) checkRelativeShapes(attr.value, node, subTypeOf, sink);
     }
   } else if (!isReportingFilterHost(node)) {
     // ADR-0039: own — only locally declared filters are lowered, and the walk
@@ -1185,11 +1381,11 @@ function checkNoRelativeDates(node: MetaData, sink: ErrorSink): void {
           ERR_BAD_ATTR_FILTER,
           nodeLabel(node),
           `: @${attr.name} uses a relative date ({ now: ... }), which is legal only in the ` +
-            `@filter of a segment, measure.aggregate or object.report.`,
+            `@filter of a segment, measure.aggregate, object.report, object.projection, origin.aggregate or origin.first.`,
         );
       }
     }
   }
   // ADR-0039: own — a tree walk; each declared node is visited once, at its declaration.
-  for (const child of node.ownChildren()) checkNoRelativeDates(child, sink);
+  for (const child of node.ownChildren()) checkNoRelativeDates(root, child, sink);
 }

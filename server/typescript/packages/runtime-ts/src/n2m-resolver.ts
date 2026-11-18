@@ -31,7 +31,7 @@ import {
 import type { MetaRelationship } from "@metaobjectsdev/metadata";
 import { MetadataError } from "./errors.js";
 import { buildSelectSpec, resolvePkFields } from "./query-builder.js";
-import type { SelectSpec, WhereClause, PrimitiveValue, Row } from "./persistence-driver.js";
+import type { Dialect, SelectSpec, WhereClause, PrimitiveValue, Row } from "./persistence-driver.js";
 
 export interface N2mDescriptor {
   /** Entity that declares the relationship (source of the lookup; its PK feeds sourceField). */
@@ -108,8 +108,9 @@ export function buildN2mLazySpecs(
   sourceRecord: Row,
   root: MetaData,
   strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
+  dialect?: Dialect,
 ): N2mLazyOutput {
-  return buildSpecs(desc, sourceRecord, root, strategy);
+  return buildSpecs(desc, sourceRecord, root, strategy, dialect);
 }
 
 export function buildN2mBatchSpecs(
@@ -117,8 +118,9 @@ export function buildN2mBatchSpecs(
   sourceRecords: Row[],
   root: MetaData,
   strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
+  dialect?: Dialect,
 ): N2mBatchOutput {
-  return buildSpecs(desc, sourceRecords, root, strategy);
+  return buildSpecs(desc, sourceRecords, root, strategy, dialect);
 }
 
 // Single + batch share one code path: a single record is the one-element case.
@@ -127,6 +129,7 @@ function buildSpecs(
   source: Row | Row[],
   root: MetaData,
   strategy: ColumnNamingStrategy,
+  dialect: Dialect | undefined,
 ): N2mLazyOutput {
   const joinEntity = mustGetEntity(root, desc.joinEntityName);
   const targetEntity = mustGetEntity(root, desc.targetEntityName);
@@ -143,7 +146,7 @@ function buildSpecs(
   // buildSelectSpec compiles a filter on the entity's fields; for symmetric we
   // need an OR across two columns, which the filter DSL can't express. So we
   // build the join spec directly off buildSelectSpec then swap in the where.
-  const joinSpec = buildSelectSpec(joinEntity, undefined, {}, undefined, strategy);
+  const joinSpec = buildSelectSpec(joinEntity, undefined, {}, undefined, strategy, dialect);
   joinSpec.where = desc.symmetric
     ? { kind: "or", clauses: [inOrEq(sourceCol, sourceIds), inOrEq(targetCol, sourceIds)] }
     : inOrEq(sourceCol, sourceIds);
@@ -156,7 +159,7 @@ function buildSpecs(
     const targetPkField = resolvePkFields(targetEntity)[0]!;
     // PK values are always string|number; the IN filter type excludes boolean.
     const ids = targetIds.filter((v): v is string | number => typeof v !== "boolean");
-    return buildSelectSpec(targetEntity, { [targetPkField]: ids }, {}, undefined, strategy);
+    return buildSelectSpec(targetEntity, { [targetPkField]: ids }, {}, undefined, strategy, dialect);
   };
 
   return { joinSpec, makeTargetSpec };

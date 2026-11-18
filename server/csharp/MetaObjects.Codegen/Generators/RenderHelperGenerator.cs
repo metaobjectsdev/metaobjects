@@ -151,7 +151,6 @@ public class RenderHelperGenerator : IGenerator
     {
         var templateName = tmpl.Name;
         var helperClass = CSharpNaming.RenderHelperName(templateName);
-        // rc.19 fix round (I2): the template tier always emits into GenConfig.Namespace.
         ctx.Claim($"the C# namespace {ctx.Config.Namespace}", helperClass, tmpl.ResolutionKey(), "rename one (a render helper is declared in the configured namespace, GenConfig.Namespace, whatever its package, "
             + "so the two packages do not keep them apart)");
         // ADR-0056: the payload type IS the value object's own POCO (EntityGenerator), named the
@@ -225,7 +224,7 @@ public class RenderHelperGenerator : IGenerator
         }
 
         sb.AppendLine("}");
-        return new EmittedFile(OutputPaths.Of(tmpl, $"{templateName}.render.cs"), sb.ToString());
+        return new EmittedFile(OutputPaths.Of(tmpl, ctx, $"{templateName}.render.cs"), sb.ToString());
     }
 
     // -------------------------------------------------------------------------

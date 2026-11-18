@@ -99,7 +99,7 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
     /** Arg key for the on-disk template dir used by the build-time drift gate. */
     public static final String ARG_TEMPLATE_ROOT = "templateRoot";
 
-    /** The template root is an input (ADR-0062): editing a template regenerates. */
+    /** The template root is an input (ADR-0064): editing a template regenerates. */
     @Override
     public java.util.List<String> extraInputs() {
         return hasArg(ARG_TEMPLATE_ROOT) ? java.util.List.of(getArg(ARG_TEMPLATE_ROOT)) : java.util.List.of();

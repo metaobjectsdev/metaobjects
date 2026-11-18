@@ -104,6 +104,9 @@ export const ORIGIN_FUNCTION_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
 export const AGGREGATE_FUNCTIONS = ["count", "sum", "avg", "min", "max"] as const;
 export type AggregateFunction = (typeof AGGREGATE_FUNCTIONS)[number];
 
+/** The @agg values that reduce the VALUES of the @of column (count only counts non-null rows). */
+export const COLUMN_VALUE_AGGREGATES: readonly AggregateFunction[] = ["sum", "avg", "min", "max"];
+
 // #195 — the predicate-quantifier + array-rollup @agg values.
 export const AGG_ANY     = "any";
 export const AGG_ALL     = "all";

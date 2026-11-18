@@ -1,0 +1,30 @@
+{
+  "description": "A list prints on one line, items separated by \", \", when the whole line fits the width.",
+  "dialect": "core",
+  "options": {
+    "indent": "  ",
+    "width": 40,
+    "trailingComma": true
+  },
+  "ops": [
+    [
+      "line",
+      "f",
+      {
+        "list": {
+          "open": "(",
+          "items": [
+            "a",
+            "b",
+            "c"
+          ],
+          "close": ")"
+        }
+      },
+      ";"
+    ]
+  ],
+  "expected": [
+    "f(a, b, c);"
+  ]
+}

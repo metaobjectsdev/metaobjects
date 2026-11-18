@@ -52,13 +52,13 @@ def format_decimal(value: Decimal) -> str:
         return "0"
     normalized = _normalize(value)
     if abs(normalized.adjusted()) > MAX_DIGITS:
-        raise ValueError("decimal out of range")
+        raise _RangeError("decimal out of range")
     return format(normalized, "f")
 
 
 def _checked(value: Decimal) -> Decimal:
     if abs(value.adjusted()) > MAX_DIGITS and value != 0:
-        raise ValueError("decimal out of range")
+        raise _RangeError("decimal out of range")
     return value
 
 
@@ -93,11 +93,11 @@ def _reject() -> Decimal:
 
 def _parse_text(text: str) -> Decimal:
     if _JSON_NUMBER.fullmatch(text) is None:
-        raise ValueError(f"{text!r} is not a decimal")
+        raise ValueError("the text is not a decimal")
     try:
         return _checked(Decimal(text))
     except InvalidOperation:
-        raise ValueError(f"{text!r} is not a decimal") from None
+        raise ValueError("the text is not a decimal") from None
 
 
 def decimal_from_double15(value: float | str) -> Decimal:
@@ -131,10 +131,30 @@ def check_decimal_range(value: Decimal, precision: int, scale: int) -> None:
     if not isinstance(exponent, int):
         raise ValueError("not a finite number")
     if -exponent > scale:
-        raise ValueError(f"more than {scale} fraction digit(s)")
+        raise _RangeError(f"more than {scale} fraction digit(s)")
     integer_digits = max(d.adjusted() + 1, 0) if d != 0 else 0
     if integer_digits > precision - scale:
-        raise ValueError(f"more than {precision - scale} integer digit(s)")
+        raise _RangeError(f"more than {precision - scale} integer digit(s)")
+
+
+class DecimalIssue(ValueError):
+    """A request-body decimal that cannot be accepted. ``issues`` is the validation envelope's
+    list for it (one issue: ``code``, wire ``path``, ``message``), so a route lists it beside
+    every other issue; ``str()`` keeps the ``name: reason`` text."""
+
+    def __init__(self, path: list[str | int], code: str, reason: str) -> None:
+        super().__init__(f"{'.'.join(str(p) for p in path)}: {reason}")
+        self.issues: list[dict[str, Any]] = [{"code": code, "path": path, "message": reason}]
+
+
+def _decimal_issue(path: list[str | int], exc: ValueError) -> DecimalIssue:
+    """*exc* (a ``parse_decimal`` or range ``ValueError``) as an issue at *path*: a range
+    refusal is ``too_big``, anything unparseable is ``invalid_type``."""
+    return DecimalIssue(path, "too_big" if isinstance(exc, _RangeError) else "invalid_type", str(exc))
+
+
+class _RangeError(ValueError):
+    """The value parsed but cannot be held by the column (W3)."""
 
 
 def coerce_decimal_fields(
@@ -156,7 +176,7 @@ def coerce_decimal_fields(
         if k in decimal_fields:
             out[k] = v
         elif k in nested:
-            out[k] = _nested(v, nested[k], k)
+            out[k] = _nested(v, nested[k], [k])
         else:
             out[k] = _floats(v)
     for name in decimal_fields:
@@ -170,24 +190,24 @@ def coerce_decimal_fields(
                     else _coerce_decimal(value, limit)
                 )
             except ValueError as exc:
-                raise ValueError(f"{name}: {exc}") from None
+                raise _decimal_issue([name], exc) from None
     return out
 
 
-def _nested(value: Any, spec: dict[str, Any], path: str) -> Any:
+def _nested(value: Any, spec: dict[str, Any], path: list[str | int]) -> Any:
     """A jsonb value-object field (*value* a dict, or a list of them) under the top-level
     decimal rule: each declared decimal inside is parsed under W2, held to its range under W3
     (*spec*: ``{"d": {name: (precision, scale) | None}, "o": {name: spec}}``, or ``{"m": spec}`` for a
     ``field.map`` of value objects, applied to each value) and stored as its
-    canonical string; every other number is a float. Raises ``ValueError`` naming the path."""
+    canonical string; every other number is a float. Raises ``DecimalIssue`` naming the path."""
     if isinstance(value, list):
-        return [_nested(v, spec, path) for v in value]
+        return [_nested(v, spec, [*path, i]) for i, v in enumerate(value)]
     if not isinstance(value, dict):
         return _floats(value)
     if "m" in spec:
         # a field.map of value objects: the spec applies to EACH value; keys are arbitrary
         # text and never matched against member names.
-        return {k: _nested(v, spec["m"], f"{path}.{k}") for k, v in value.items()}
+        return {k: _nested(v, spec["m"], [*path, k]) for k, v in value.items()}
     out: dict[str, Any] = {}
     for k, v in value.items():
         if k in spec["d"] and v is not None:
@@ -195,9 +215,9 @@ def _nested(value: Any, spec: dict[str, Any], path: str) -> Any:
             try:
                 out[k] = [None if e is None else _canonical(e, limit) for e in v] if isinstance(v, list) else _canonical(v, limit)
             except ValueError as exc:
-                raise ValueError(f"{path}.{k}: {exc}") from None
+                raise _decimal_issue([*path, k], exc) from None
         elif k in spec["o"]:
-            out[k] = _nested(v, spec["o"][k], f"{path}.{k}")
+            out[k] = _nested(v, spec["o"][k], [*path, k])
         else:
             out[k] = _floats(v)
     return out
@@ -226,15 +246,31 @@ def _coerce_decimal(value: Any, limit: tuple[int, int] | None) -> Decimal:
 
 
 def coerce_decimal_predicates(
-    predicates: Iterable[Any], decimal_fields: frozenset[str]
+    predicates: Iterable[Any],
+    decimal_fields: frozenset[str],
+    duration_fields: Mapping[str, Any] | None = None,
 ) -> tuple[list[Any], dict[str, str] | None]:
     """W2 for a filter: each predicate (a dataclass with ``field`` / ``op`` / ``value``, the
     shape ``filter_parser.parse_filter`` returns) on a decimal field has its operand parsed
     exactly, so a repository compares a ``Decimal``, never a float or text. Returns
     ``(predicates, None)``, or ``([], envelope)`` where *envelope* is the corpus's existing
-    ``invalid_filter_value`` body naming the first malformed field."""
+    ``invalid_filter_value`` body naming the first malformed field. An operand on a duration
+    field (D4) is likewise parsed by the parser the router names for it (ISO-8601 only, to a ``timedelta``), so a repository
+    compares a span, never text."""
     out: list[Any] = []
+    durations = duration_fields or {}
     for p in predicates:
+        if p.field in durations and p.op != "isNull":
+            try:
+                value = (
+                    [durations[p.field](v) for v in p.value]
+                    if isinstance(p.value, list)
+                    else durations[p.field](p.value)
+                )
+            except ValueError:
+                return [], {"error": "invalid_filter_value", "field": p.field}
+            out.append(dataclasses.replace(p, value=value))
+            continue
         if p.field in decimal_fields and p.op != "isNull":
             try:
                 value = (
@@ -301,8 +337,10 @@ class WireOutput:
     shapes: dict[str, Any] = dataclasses.field(default_factory=dict)
     #: #484: credential fields, which no response carries (the key is absent, not null).
     hidden: tuple[str, ...] = ()
-    #: field.duration: how a ``timedelta`` leaves (the canonical ISO-8601 duration), whatever
-    #: *decimals* says. ``None`` for an entity with no duration field.
+    #: field.duration: how a ``timedelta`` leaves, whatever *decimals* says: the canonical
+    #: ISO-8601 duration under ``wire.durations: iso``, Pydantic's own form under ``native``
+    #: (the router hands in ``pydantic_core.to_jsonable_python``). ``None`` for an entity with
+    #: no duration field.
     duration: DurationFormat | None = None
 
 

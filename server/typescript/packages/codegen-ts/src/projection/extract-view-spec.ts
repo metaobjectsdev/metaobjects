@@ -87,6 +87,8 @@ import {
   isMetaField,
   resolveRelationshipReference,
   resolveObjectRef,
+  FILTER_OP_IS_DISTINCT_FROM,
+  FILTER_OP_IS_NOT_DISTINCT_FROM,
   refTarget,
   type AggregateFunction,
   type ReferenceLookup,
@@ -149,8 +151,7 @@ const EXPR_COMPARISON_OPS: ReadonlySet<string> = new Set([
  *
  * The `now` rule matters here: `{ now: "-P7D" }` is a relative-date VALUE (FR-044 F2),
  * never an op map. Read as-is, a programmatic, pre-desugar shorthand `{ f: { now: "x" } }`
- * would lower as op `now` with value `"x"`, and `assertNoRelativeDate` — which inspects the
- * VALUE — would never see it.
+ * would lower as op `now` with value `"x"`.
  */
 export function desugarClause(raw: unknown): Record<string, unknown> {
   if (raw === null) return { [FILTER_OP_IS_NULL]: true };
@@ -159,25 +160,6 @@ export function desugarClause(raw: unknown): Record<string, unknown> {
     return FILTER_RELATIVE_NOW in raw ? { [FILTER_OP_EQ]: raw } : (raw as Record<string, unknown>);
   }
   return { [FILTER_OP_EQ]: raw };
-}
-
-/**
- * FR-044 — a relative-date value `{ now: "<ISO duration>" }` is legal only in the
- * `@filter` of a segment, measure.aggregate or object.report (the loader's F1 rule), and
- * this lowering has no rendering for it: it would otherwise land as a SQL literal of
- * `[object Object]`. A programmatic caller skips the loader, so refuse it here, loudly.
- * The throw stays for projection and `origin.aggregate` filters. A report lowers its relative
- * values through `extract-report-spec.ts` and renders them in `report-ddl-emit.ts`.
- */
-function assertNoRelativeDate(value: unknown, where: string): void {
-  const isRelative = (v: unknown): boolean =>
-    typeof v === "object" && v !== null && !Array.isArray(v) && FILTER_RELATIVE_NOW in v;
-  if (isRelative(value) || (Array.isArray(value) && value.some(isRelative))) {
-    throw new Error(
-      `${where}: a relative-date filter value ({ ${FILTER_RELATIVE_NOW}: "<ISO-8601 duration>" }) cannot be ` +
-        `lowered to a view; it is legal only in the @filter of a segment, measure.aggregate or object.report.`,
-    );
-  }
 }
 
 /**
@@ -205,10 +187,13 @@ function resolveAggregateFilter(
       continue;
     }
     const field = entity.fields().find((f) => f.name === key);
-    if (!field) continue;
+    // The loader resolves every key; one that reaches here unresolved would drop a predicate.
+    if (!field) throw new Error(`origin @filter key "${key}" names no field of "${entity.name}".`);
+    const filterOps = Object.entries(desugarClause(val));
+    if (filterOps.length === 0) throw new Error(`origin @filter on "${key}" has no operator.`);
     // multi-op: a field clause may carry several ops (a range { gte: 1, lte: 5 }); each is its own
     // comparison, AND-composed. Keeping only the first widened the row set silently.
-    const fieldClauses: ViewFilterClause[] = Object.entries(desugarClause(val)).map(([op, raw]) => ({
+    const fieldClauses: ViewFilterClause[] = filterOps.map(([op, raw]) => ({
       kind: "cmp",
       ref: `${alias}.${sourceColumnNameFor(field, ctx)}`,
       op,
@@ -293,6 +278,9 @@ function lowerFilterValue(
     }
     return { kind: "colRef", ref: `${outer.alias}.${sourceColumnNameFor(other, ctx)}` } satisfies ColRef;
   }
+  if (op === FILTER_OP_IS_DISTINCT_FROM || op === FILTER_OP_IS_NOT_DISTINCT_FROM) {
+    throw new Error(`${where}: "${op}" on "${key}" needs a { field } operand.`);
+  }
   return encodeIntEnumFilterValue(
     raw, op, field.subType === FIELD_SUBTYPE_ENUM ? enumStorageMapOf(field as MetaField) : undefined, key, where,
   );
@@ -352,11 +340,6 @@ export function encodeIntEnumFilterValue(
    *  (`origin.aggregate @filter over E`). */
   host: string,
 ): unknown {
-  // Every filter value this lowering renders as a SQL literal passes through here — the
-  // row-scope view @filter AND the origin.aggregate scoping @filter — so this is the one
-  // place a relative-date value (FR-044, legal only on reporting hosts) is refused before
-  // it could land as `[object Object]`. Runs before the intMap early return on purpose.
-  assertNoRelativeDate(value, `${host} on "${fieldName}"`);
   if (intMap === undefined) return value;
   if (op === FILTER_OP_IS_NULL) return value;
   if (op === FILTER_OP_LIKE && Object.values(intMap).some((n) => typeof n === "number")) {
@@ -435,8 +418,11 @@ function resolveViewFilter(
       const where = `Projection ${projectionName}: view @filter`;
       const keyField = fieldsByKey.get(key);
       // rc.19 `now`: a relative date lowers to the dialect's "now" shifted, of the field's kind.
-      const value = isRelativeOperand(rawValue) && keyField !== undefined
-        ? relativeNowOf(rawValue, keyField, key, where)
+      const value = keyField !== undefined && (isRelativeOperand(rawValue)
+        || (Array.isArray(rawValue) && rawValue.some(isRelativeOperand)))
+        ? Array.isArray(rawValue)
+          ? rawValue.map((v) => (isRelativeOperand(v) ? relativeNowOf(v, keyField, key, where) : v))
+          : relativeNowOf(rawValue, keyField, key, where)
         : encodeIntEnumFilterValue(rawValue, op, intMapsByField.get(key), key, where);
       if (col.kind === "passthrough") {
         clauses.push({ kind: "cmp", ref: `${col.sourceAlias}.${col.sourceColumn}`, op, value });
@@ -484,11 +470,16 @@ function findReferenceHop(obj: MetaData, name: string): MetaData | undefined {
 }
 
 /** Resolve a `@via` hop (relationship OR reference) to its target + cardinality.
- *  A reference hop is a to-one forward FK; its target is `@references`. */
+ *  A reference hop is a to-one forward FK; its target is `@references`. A hop naming
+ *  neither may walk an identity.reference BACKWARDS (#560): `Project.timeEntries` is the
+ *  reference TimeEntry holds onto Project, named by TimeEntry's collection name — a to-many
+ *  hop whose target is the holder (`reverse`). It resolves only when exactly one reference
+ *  answers the name; the loader refuses an ambiguous one (ERR_AMBIGUOUS_PATH). */
 function resolveHop(
   obj: MetaData,
   name: string,
-): { hop: MetaData; target: MetaObject | undefined; cardinality: "one" | "many" } | undefined {
+  root: MetaRoot,
+): { hop: MetaData; target: MetaObject | undefined; cardinality: "one" | "many"; reverse?: true } | undefined {
   // ADR-0059 R3/R7 — a hop's target is the object its reference attribute binds to, resolved
   // in the package of the node that declares that attribute, never the walked entity's.
   const rel = findRelationship(obj, name);
@@ -508,16 +499,11 @@ function resolveHop(
     const target = refTarget(ref, IDENTITY_REFERENCE_ATTR_REFERENCES);
     return { hop: ref, target: isMetaObject(target) ? target : undefined, cardinality: "one" };
   }
-  // R-walk: the reverse of another entity's identity.reference, named by that entity's
-  // collection name (the loader resolves the same hop the same way, and refuses an ambiguous one).
-  if (isMetaObject(obj)) {
-    const root = obj.root();
-    const reversed = findReverseReferenceHops(obj, name, isMetaRoot(root) ? root.objects() : []);
-    if (reversed.length === 1) {
-      return { hop: reversed[0]!.referenceIdentity, target: reversed[0]!.holder, cardinality: "many" };
-    }
-  }
-  return undefined;
+  if (!isMetaObject(obj)) return undefined;
+  const reverse = findReverseReferenceHops(obj, name, root.objects());
+  if (reverse.length !== 1) return undefined;
+  const { holder, referenceIdentity } = reverse[0]!;
+  return { hop: referenceIdentity, target: holder, cardinality: "many", reverse: true };
 }
 
 /**
@@ -544,13 +530,12 @@ function resolveHopReference(
   hop: MetaData,
   hopName: string,
   target: MetaObject,
+  reverse = false,
 ): ReferenceLookup | ReferenceLookup[] {
+  // #560 — a reverse hop walks the reference `target` holds onto `holder`.
+  if (reverse) return { holder: target, other: holder, referenceIdentity: hop as unknown as MetaReferenceIdentity };
   if (hop.type === TYPE_IDENTITY && hop.subType === IDENTITY_SUBTYPE_REFERENCE) {
-    // R-walk: a reference hop walked backwards is held by the hop's target, not by `holder`.
-    const reversed = resolveHop(holder, hopName)?.cardinality === "many";
-    return reversed
-      ? { holder: target, other: holder, referenceIdentity: hop as unknown as MetaReferenceIdentity }
-      : { holder, other: target, referenceIdentity: hop as unknown as MetaReferenceIdentity };
+    return { holder, other: target, referenceIdentity: hop as unknown as MetaReferenceIdentity };
   }
   // ADR-0039: resolving — @sourceRefField may be inherited via extends.
   const sourceRefField = hop.attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD) as string | undefined;
@@ -568,11 +553,11 @@ function resolveHopReference(
  * reads it for the reference's full `@fields` list, where a view join reads the first.
  */
 export function hopReferenceIdentity(holder: MetaObject, hopName: string, root: MetaRoot): MetaReferenceIdentity | undefined {
-  const resolved = resolveHop(holder, hopName);
+  const resolved = resolveHop(holder, hopName, root);
   if (!resolved) return undefined;
   const target = resolved.target;
   if (!target) return undefined;
-  const ref = resolveHopReference(holder, resolved.hop, hopName, target);
+  const ref = resolveHopReference(holder, resolved.hop, hopName, target, resolved.reverse);
   if (Array.isArray(ref)) return ref.length === 1 ? ref[0]!.referenceIdentity : undefined;
   return ref.referenceIdentity;
 }
@@ -877,7 +862,7 @@ function viaTerminalEntity(via: string, root: MetaRoot, referrerPkg: string): Me
   let currentObj = resolveEntityRef(root, rawEntity, referrerPkg);
   if (!currentObj) return undefined;
   for (const relName of segments.slice(1)) {
-    const resolved = resolveHop(currentObj, relName);
+    const resolved = resolveHop(currentObj, relName, root);
     if (!resolved) return undefined;
     const target = resolved.target;
     if (!target) return undefined;
@@ -1236,7 +1221,7 @@ interface TrieNode {
 /** Walk one dotted `@via` (`Owner.hop[.hop…]`) into join steps. Returns [] when the
  *  head or any hop does not resolve. Throws on an ambiguous hop (#368). A report dimension
  *  joins through this same walk as a projection origin, so hop resolution, the ambiguity
- *  errors and the #209 join type are one implementation. */
+ *  errors and the LEFT OUTER join type are one implementation. */
 export function walkViaPath(via: string, root: MetaRoot, referrerPkg: string, ctx: ExtractContext): Path {
   const segments = via.split(".");
   const rawEntity = segments[0];
@@ -1253,9 +1238,9 @@ export function walkViaPath(via: string, root: MetaRoot, referrerPkg: string, ct
     // FR-024: a hop may name a relationship OR a reference-only FK
     // (identity.reference — a to-one forward-FK edge). ADR-0039: resolving —
     // a traversed relationship/reference may inherit its target via extends.
-    const resolved = resolveHop(currentObj, relName);
+    const resolved = resolveHop(currentObj, relName, root);
     if (!resolved) break;
-    const { hop, target, cardinality } = resolved;
+    const { hop, target, cardinality, reverse } = resolved;
     if (!target) break;
 
     // #368: two identity.reference declarations onto the same target are legal
@@ -1264,7 +1249,7 @@ export function walkViaPath(via: string, root: MetaRoot, referrerPkg: string, ct
     // one from the target alone, so an explicit `@via: "Match.homeTeamRef"` (or a
     // relationship disambiguated by @sourceRefField/name-pairing) resolves cleanly.
     // Only a relationship hop that even the ladder cannot choose reaches the throw.
-    const resolvedRef = resolveHopReference(currentObj as MetaObject, hop, relName, target);
+    const resolvedRef = resolveHopReference(currentObj as MetaObject, hop, relName, target, reverse);
     let ref: ReferenceLookup | undefined;
     if (Array.isArray(resolvedRef)) {
       if (resolvedRef.length > 1) {
@@ -1314,8 +1299,9 @@ export function walkViaPath(via: string, root: MetaRoot, referrerPkg: string, ct
 
     const resolvedPkField = ref.referenceIdentity.resolvedTargetPkField(root) ?? "id";
 
+    // A reverse hop's reference is always on the far side, even on a self-reference.
     const referenceHolder: "source" | "target" =
-      ref.holder.name === currentObj.name ? "source" : "target";
+      !reverse && ref.holder.name === currentObj.name ? "source" : "target";
 
     // FK lives on the holder; PK on the entity it references. Resolve both to
     // physical columns now so the ON clause is naming-strategy correct.
@@ -1480,6 +1466,53 @@ function findAliasInTree(
   return recurse(joinTree.joins);
 }
 
+/**
+ * The alias of the join a walked `@via` path ends on: follow its hops down the join tree by
+ * relationship name (pathsToJoins collapsed every path into this trie, so the walk is exact).
+ * Undefined when the path is empty or does not end on `targetEntity` — the caller then refuses.
+ */
+function aliasForVia(joinTree: JoinTree, path: Path, targetEntity: string): string | undefined {
+  if (path.length === 0) return joinTree.baseEntity === targetEntity ? joinTree.baseAlias : undefined;
+  let nodes: readonly JoinNode[] = joinTree.joins;
+  let node: JoinNode | undefined;
+  for (const step of path) {
+    node = nodes.find((n) => n.relationship === step.relationship);
+    if (node === undefined) return undefined;
+    nodes = node.children;
+  }
+  return node !== undefined && node.targetEntity === targetEntity ? node.alias : undefined;
+}
+
+/**
+ * The loaders accept this field's origin, but the view lowering cannot express it. Refuse it
+ * by name: dropping the column would leave a view without a column the generated type declares.
+ */
+function cannotLower(projection: MetaObject, field: MetaData, why: string): never {
+  throw new Error(
+    `Projection ${projection.name}: field "${field.name}" cannot be lowered into the view: ${why}.`,
+  );
+}
+
+/** Refuse by name: `fail` names the field (and projection) the lowering was building. */
+type Refuse = (why: string) => never;
+
+/** An origin's `@segment` and `@filter`, resolved for this field, or refused naming the field it is on. */
+function originFilterFor(
+  fail: Refuse,
+  origin: MetaData,
+  filterAttr: unknown,
+  entity: MetaObject,
+  alias: string,
+  ctx: ExtractContext,
+  outer: OuterRow,
+): ViewFilterClause | undefined {
+  try {
+    return originScope(origin, filterAttr, entity, alias, ctx, outer);
+  } catch (e) {
+    return fail((e as Error).message.replace(/\.$/, ""));
+  }
+}
+
 function buildSelectSpec(
   projection: MetaObject,
   base: MetaObject,
@@ -1550,11 +1583,14 @@ function buildSelectSpec(
       continue;
     }
 
+    const fail: Refuse = (why) => cannotLower(projection, field, why);
+    const outer: OuterRow = { entity: base, alias: joinTree.baseAlias };
+
     if (origin.subType === ORIGIN_SUBTYPE_PASSTHROUGH) {
       // ADR-0039: own (category 4) — origin.* never inherits (ADR-0029).
       const from = origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_FROM) as string;
       const dotIdx = from.indexOf(".");
-      if (dotIdx < 1) continue;
+      if (dotIdx < 1) cannotLower(projection, field, 'its @of/@from is not "Entity.field"');
       // @from may be package-qualified ("pkg::Entity.field"). Resolve package-aware and
       // key the alias lookup on the SAME resolutionKey() the joinTree stored (#244).
       const fieldName = from.slice(dotIdx + 1);
@@ -1570,7 +1606,8 @@ function buildSelectSpec(
       if (sourceAlias === undefined) continue;
       // EFFECTIVE fields — the source column may be inherited via `extends`
       // (e.g. created_at/updated_at/created_by from an audited base), which
-      // ownChildren() would miss.
+      // ownChildren() would miss. A member of a flattened value object (`address.city`) is a
+      // column of the entity's own table.
       const targetField = targetEntity.fields().find((f) => f.name === fieldName);
       // G6: a member of a flattened value object reads the owning table's prefixed column.
       const flattened = targetField === undefined ? resolveFlattenedMember(targetEntity, fieldName) : undefined;
@@ -1596,14 +1633,14 @@ function buildSelectSpec(
     } else if (origin.subType === ORIGIN_SUBTYPE_AGGREGATE) {
       // ADR-0039: own (category 4) — origin.* never inherits (ADR-0029).
       const agg = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_AGG) as string | undefined;
-      if (!agg) continue;
+      if (!agg) cannotLower(projection, field, "it declares no @agg");
       const filterAttr = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_FILTER);
 
       if (agg === AGG_ANY || agg === AGG_ALL) {
         // #195 predicate quantifier — no @of; the related entity is @via's terminal
         // hop, and @filter is the (required) quantified predicate.
         const via = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA) as string | undefined;
-        if (!via) continue;
+        if (!via) cannotLower(projection, field, "it declares no @via");
         const relatedEntity = viaTerminalEntity(via, root, projPkg);
         if (!relatedEntity) continue;
         const sourceAlias = originSourceAlias(joinTree, via, relatedEntity.resolutionKey(), root, projPkg, ctx);
@@ -1638,27 +1675,27 @@ function buildSelectSpec(
         // ERR_COLLECT_MEMBER_UNRESOLVED before codegen runs); they are defence for a
         // caller that reached codegen without loading, never a silent-drop path.
         const via = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA) as string | undefined;
-        if (!via) continue;
+        if (!via) cannotLower(projection, field, "it declares no @via");
         const relatedEntity = viaTerminalEntity(via, root, projPkg);
         if (!relatedEntity) continue;
         const sourceAlias = originSourceAlias(joinTree, via, relatedEntity.resolutionKey(), root, projPkg, ctx);
         if (sourceAlias === undefined) continue;
         const joinedPk = primaryKeyColumn(relatedEntity, ctx);
-        if (joinedPk === undefined) continue;
+        if (joinedPk === undefined) cannotLower(projection, field, "the related entity has no primary key");
         // ADR-0059 R7 — the VO the loader bound for @objectRef, resolved where it was declared.
         // ADR-0039: resolving — @objectRef may be inherited via extends.
         const vo = refTarget(field, FIELD_ATTR_OBJECT_REF);
-        if (!vo) continue;
+        if (!vo) cannotLower(projection, field, "its @objectRef does not resolve");
         // ADR-0039: resolving — a value object may inherit members via extends, and the
         // terminal entity may inherit fields. The VO's member list IS the exposure: a
         // field the terminal has but the VO omits is deliberately not projected (#270).
         const members: { memberName: string; sourceColumn: string }[] = [];
         for (const m of vo.children().filter((c): c is MetaField => c.type === TYPE_FIELD)) {
           const target = relatedEntity.fields().find((f) => f.name === m.name);
-          if (target === undefined) continue; // loader: ERR_COLLECT_MEMBER_UNRESOLVED
+          if (target === undefined) cannotLower(projection, field, "a member of its value object is not a field of the related entity");
           members.push({ memberName: m.name, sourceColumn: sourceColumnNameFor(target, ctx) });
         }
-        if (members.length === 0) continue;
+        if (members.length === 0) cannotLower(projection, field, "no member of its value object resolves on the related entity");
         columns.push({
           kind: "collectObjectAgg",
           fieldName: field.name,
@@ -1675,22 +1712,22 @@ function buildSelectSpec(
 
       // collect + the scalar reduces (count/sum/avg/min/max) all name @of.
       const of_ = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_OF) as string | undefined;
-      if (!of_) continue;
+      if (!of_) cannotLower(projection, field, "it declares no @of");
       const dotIdx = of_.indexOf(".");
-      if (dotIdx < 1) continue;
+      if (dotIdx < 1) cannotLower(projection, field, 'its @of/@from is not "Entity.field"');
       const fieldName = of_.slice(dotIdx + 1);
       const targetEntity = resolveEntityRef(root, of_.slice(0, dotIdx), projPkg);
       if (!targetEntity) continue;
       const sourceAlias = originSourceAlias(joinTree, origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA) as string | undefined, targetEntity.resolutionKey(), root, projPkg, ctx);
       if (sourceAlias === undefined) continue;
       const targetField = targetEntity.fields().find((f) => f.name === fieldName);
-      if (!targetField) continue;
+      if (!targetField) cannotLower(projection, field, "its @of/@from names no field of that entity");
 
       if (agg === AGG_COLLECT) {
         // #195 array rollup — collect @of across the related set. @distinct = set
         // semantics; @orderBy (non-distinct) sets element order, else value-ascending.
         const joinedPk = primaryKeyColumn(targetEntity, ctx);
-        if (joinedPk === undefined) continue;
+        if (joinedPk === undefined) cannotLower(projection, field, "the related entity has no primary key");
         const distinct = origin.ownAttr(ORIGIN_ATTR_DISTINCT) === true;
         const orderBy = resolveOrderByKeys(origin.ownAttr(ORIGIN_ATTR_ORDER_BY), targetEntity, ctx);
         columns.push({
@@ -1719,6 +1756,8 @@ function buildSelectSpec(
           sourceColumn: sourceColumnNameFor(targetField, ctx),
           ...(filter !== undefined ? { filter } : {}),
         });
+      } else {
+        cannotLower(projection, field, `@agg "${agg}" has no view lowering`);
       }
     } else if (origin.subType === ORIGIN_SUBTYPE_COMPUTED) {
       // #195 row-level computed value from the base entity's own fields (@expr tree,
@@ -1947,13 +1986,15 @@ function firstAlongPath(
     referenceHolder: step.referenceHolder,
     fkColumn: step.fkColumn,
     pkColumn: step.pkColumn,
+    ...(step.tphScope !== undefined ? { tphScope: step.tphScope } : {}),
   }));
   const termAlias = innerJoins[innerJoins.length - 1]!.alias;
   const filterAttr = origin.ownAttr(ORIGIN_FIRST_ATTR_FILTER);
-  const ofScope = tphScopeOf(ofEntity, ctx);
+  // The later hops carry their TPH scope on their ON clause; the correlated first hop's goes in the WHERE.
+  const firstScope = first.tphScope;
   const filter = andClauses(
     originScope(origin, filterAttr, ofEntity, termAlias, ctx, outer),
-    ofScope !== undefined ? tphScopeClause(ofScope, termAlias) : undefined,
+    firstScope !== undefined ? tphScopeClause(firstScope, childAlias) : undefined,
   );
   return {
     kind: "first",
@@ -2040,7 +2081,7 @@ export function inlineEntityDerived(
   } else if (origin?.subType === ORIGIN_SUBTYPE_FIRST) {
     const first = buildFirstColumn(field, origin, entity, alias, root, packageOf(entity), usedAliases, ctx);
     if (first !== undefined) return { kind: "first", column: { ...first, outerAlias: alias } };
-  } else if (origin?.subType === ORIGIN_SUBTYPE_FUNCTION) {
+  } else if (origin !== undefined && origin.subType === ORIGIN_SUBTYPE_FUNCTION) {
     // rc.21 part B (U10): the call, its arguments read on the reached row.
     const call = functionCall(origin, field, (arg) => {
       const f = entity.fields().find((x) => x.name === arg);

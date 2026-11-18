@@ -1,0 +1,7 @@
+<div class="card capcard">
+  <h3>{{{levelHtml}}}{{{linkHtml}}} {{{statusHtml}}}{{{verdictHtml}}}</h3>
+  <div class="statement">{{{statement}}}</div>
+  <div class="rollup">{{{barHtml}}}<div class="sub small">{{{countsLine}}}</div></div>
+  {{#hasChildren}}<ul class="kids">{{#children}}<li>{{{levelHtml}}}{{{linkHtml}}} {{{glyphHtml}}}</li>{{/children}}</ul>{{/hasChildren}}
+  <details class="summary"><summary>Summary from the levels below</summary><div class="sub small">No summary is generated in this build.</div></details>
+</div>

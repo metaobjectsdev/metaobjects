@@ -266,7 +266,7 @@ describe("shared-model — published by an owned copy, verified by a consumer", 
       const lookup = "const version = opts.version ?? nearestPackageVersion(ctx.inputRoot ?? ctx.projectRoot ?? process.cwd());";
       expect(source).toContain(lookup);
       // A file the copy reads that the gen skip key does not cover is declared as an input
-      // (ADR-0062), so editing it makes `gen` and a local `verify --codegen` render again.
+      // (ADR-0064), so editing it makes `gen` and a local `verify --codegen` render again.
       writeFileSync(
         copy,
         source

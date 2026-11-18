@@ -7,7 +7,8 @@
 // optional fields (matching Zod's `.optional()` inference — `T | undefined` —
 // without the superfluous `| null` that Drizzle nullable columns introduce).
 
-import { code, imp, joinCode, type Code } from "ts-poet";
+import { flatSurfaceFields } from "../flattened.js";
+import { code, imp, joinCode, type Code } from "../poet.js";
 import type { MetaObject, MetaField } from "@metaobjectsdev/metadata";
 import {
   FIELD_SUBTYPE_ENUM,
@@ -146,7 +147,7 @@ export function renderEnumTypeAliases(entity: MetaObject, ctx?: RenderContext): 
   // and non-colliding value objects keep their bare name (byte-identical).
   const ownerName = ctx ? ctx.valueObjectEmittedName(entity) : entity.name;
 
-  for (const field of entity.fields()) {
+  for (const field of flatSurfaceFields(entity)) {
     if (field.subType !== FIELD_SUBTYPE_ENUM) continue;
 
     const values = enumValues(field);
@@ -308,7 +309,7 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
     if (typeof ref === "string" && ref.length > 0) {
       // @objectRef may be authored fully-qualified (acme::sales::Brief) or bare. The
       // referenced interface is the bound value object's, imported under its local name
-      // (aliased when another object shares the short name; ruling R52) through the
+      // (aliased when another object shares the short name) through the
       // shared layout/package/extStyle-aware helper the Zod schema + Drizzle .$type<>
       // use, so all three agree. Without a ctx (bare unit-test calls) fall back to the
       // bare name + flat same-dir specifier.
@@ -394,7 +395,7 @@ export function renderValueObjectInterface(entity: MetaObject, ctx?: RenderConte
   const objName = ctx ? ctx.valueObjectEmittedName(entity) : entity.name;
 
   const lines: Code[] = [];
-  for (const field of entity.fields()) {
+  for (const field of flatSurfaceFields(entity)) {
     const required = field.attr(FIELD_ATTR_REQUIRED) === true;
     const optional = required ? "" : "?";
     const undefinedArm = required ? "" : " | undefined";

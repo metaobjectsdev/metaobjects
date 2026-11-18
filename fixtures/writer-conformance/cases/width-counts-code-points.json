@@ -1,0 +1,29 @@
+{
+  "description": "Width is counted in Unicode code points: an emoji is one, though it is two UTF-16 units.",
+  "dialect": "core",
+  "options": {
+    "indent": "  ",
+    "width": 15,
+    "trailingComma": true
+  },
+  "ops": [
+    [
+      "line",
+      "s = ",
+      {
+        "list": {
+          "open": "[",
+          "items": [
+            "\"😀\"",
+            "\"b\""
+          ],
+          "close": "]"
+        }
+      },
+      ";"
+    ]
+  ],
+  "expected": [
+    "s = [\"😀\", \"b\"];"
+  ]
+}

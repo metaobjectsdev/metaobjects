@@ -108,8 +108,10 @@ holds), the naming tables and the type-mapping tables (`names.ts`, `naming.ts`,
 `column-mapper.ts`), the primary-key and TPH walks (`pk-resolver.ts`, `tph.ts`), and the
 projection and report lowering that `meta migrate` and `meta verify` run. An owned file
 imports the engine from the package's engine entry, `@metaobjectsdev/codegen-ts/engine`,
-which also re-exports `ts-poet`'s `code`, `imp` and `joinCode`. The list is
-`ENGINE_MODULES`, exported from that entry; a module
+which also exports the code printer's `code`, `imp` and `joinCode` (`poet.ts`, the package's
+vendored copy of `ts-poet`) and the code writer (`CodeWriter`, `TsWriter`, ADR-0063),
+which lays a file out but decides nothing about what the file contains, so like the
+printer it stays with the engine. The list is `ENGINE_MODULES`, exported from that entry; a module
 that is not on it and that a generator reaches is copied. An owned generator therefore
 imports no packaged module that returns emitted text, and a test ejects each generator alone
 into an empty project to prove it: it compiles as your `tsconfig.codegen.json` checks it and
@@ -117,8 +119,8 @@ writes what the packaged generator writes, byte for byte.
 
 A copy differs from the packaged module in its **import lines only**. A relative import of
 an engine module becomes an import of `@metaobjectsdev/codegen-ts/engine`, a relative import of
-another template module becomes the path to your copy of it, and `ts-poet` becomes the
-engine's own (a copy must build `Code` with the same `ts-poet` the engine uses). Nothing else
+another template module becomes the path to your copy of it, and the printer stays the
+engine's (a copy must build `Code` with the same printer the engine uses). Nothing else
 is touched, so "what did upstream change?" is a diff of two files whose body is the same.
 
 - **Two generators that call one module share one copy.** `entity` and `queries` both call
@@ -299,10 +301,12 @@ wins over the packaged one.
 
 ### The docs site: `meta eject docs-site` copies the theme
 
-`docsSiteFile()` writes the HTML site (package navigation, search, a page per object and
-package, the ER diagrams) under `site/` in the `docs` target. It loads the model from your
-declared source directories, with your config's providers. To change how it looks, copy the
-templates and assets into your repo:
+`docsSiteFile()` writes the HTML site under `site/` in the `docs` target. By default that is
+the model explorer ([explorer-site.md](explorer-site.md)), drawn from the model this run
+loaded; `docsSiteFile({ site: "classic" })` writes the earlier site (package navigation,
+search, a page per object and package, the ER diagrams), which loads the model from your
+declared source directories with your config's providers. To change how either looks, copy
+the templates and assets into your repo:
 
 ```bash
 meta eject docs-site
@@ -314,10 +318,11 @@ That writes the Mustache templates to `codegen/docs-site/templates/` and the CSS
 packaged one. The site prints no date, so its pages depend on the model alone and
 `meta verify --codegen` can check them; `docsSiteFile({ stamp })` adds footer text.
 
-The page chrome loads daisyUI, Tailwind's browser build, Mermaid and svg-pan-zoom from
-jsDelivr, so a site opened offline renders unstyled and its diagrams do not work.
-`docsSiteFile({ assetBase: "/vendor/npm" })` replaces that base; serving the five files from
-it is on you. The files and how to fetch them are in the `@metaobjectsdev/docs-site` README,
+The explorer loads one file from jsDelivr, Cytoscape.js, for its graphs. The classic page
+chrome loads daisyUI, Tailwind's browser build, Mermaid and svg-pan-zoom from jsDelivr, so a
+classic site opened offline renders unstyled and its diagrams do not work.
+`docsSiteFile({ assetBase: "/vendor/npm" })` replaces that base for either site; serving the
+files from it is on you. The files and how to fetch them are in the `@metaobjectsdev/docs-site` README,
 "Offline use".
 
 ### The ER diagram comes from `docsFile()`
@@ -355,14 +360,18 @@ import { sharedModelFile } from "./codegen/generators/shared-model.js";
 generators: [sharedModelFile({ name: "acme-common", include: ["acme::common::**"] })],
 ```
 
+Java, Kotlin and C# publish with the same generator and eject it with their own commands; see
+[Java and Kotlin](../ports/java.md#publishing-a-shared-model), [Kotlin](../ports/kotlin.md#publishing-a-shared-model-shared-model)
+and [C#](../ports/csharp.md#publishing-a-shared-model-shared-model).
+
 An unchanged copy publishes exactly what the packaged generator publishes, and a consumer's
 sync accepts it. The two functions are in your project now, so they are yours to change, and
 a consumer is the one that checks them: the selection, the closure, the bytes, the hash and
 the manifest. Change what they do and you have stopped agreeing with every consumer of the
 artifact. Read the project's
 own files through `ctx.inputRoot`, as the copy does for the version: under
-`meta verify --codegen` the run renders in memory and `ctx.projectRoot` is the real project root,
-tree. The docs generators read your template overrides and site theme through it too.
+`meta verify --codegen` the run renders in memory and `ctx.projectRoot` is the real project
+root. The docs generators read your template overrides and site theme through it too.
 
 ## What `meta eject` hands over, and what stays core (TypeScript)
 
@@ -511,6 +520,11 @@ overwritten; an edited one is refused by name (`<handEdits>keep</handEdits>`, th
 replaced (`<handEdits>overwrite</handEdits>`). There is **no three-way merge**
 (TypeScript-only). **Commit the manifest.**
 
+A TypeScript entry can also carry the node the file was rendered from,
+`{ "hash", "generatedBy", "sourceNode" }`. That is provenance, not ownership, which is why it
+does not use the JVM's `generator` field. Every reader takes `hash` from either form. See
+[explorer-data.md](explorer-data.md#node-provenance-in-hashesjson).
+
 The `GENERATED` token in the header still matters at one moment: a file at a generated path
 that the manifest has no record of. A file that carries the token is taken as generated
 output (**adopted**: written fresh and recorded); one that does not is refused, whatever
@@ -579,7 +593,8 @@ handles those files by one rule:
 
 - **Only a full run cleans up.** A run of the project's whole generator list decides; a run
   narrowed to some generators (`--generators`), to some entities (`meta gen <Entity>`,
-  `metaobjects gen --entities`), or to a target that shares its directory with a target left
+  `metaobjects gen --entities`, `dotnet meta gen --entities`, Maven `-Dmeta.entities`), or to
+  a target that shares its directory with a target left
   out, deletes nothing, because the files of the part it skipped would all look stale. So
   does `--baseline=adopt`, which writes nothing by definition.
 - **A candidate is a file the manifest says `gen` wrote.** It lies under an output directory
@@ -615,8 +630,10 @@ recorded hash, an edited one cannot be told from an untouched one, so none is de
 over files already on disk records the ones that match the fresh output and refuses the rest, as
 any first `gen` with a manifest does; `Baseline = "adopt"` records what is on disk instead.
 
-On **Java and Kotlin** every `mvn metaobjects:generate` execution is a full run, since its
-`<generators>` list is always complete. Every manifest entry names its owner: the generator's
+On **Java and Kotlin** every `mvn metaobjects:generate` execution runs the whole
+`<generators>` list, since there is no `--generators` narrowing; a run narrowed by
+`meta.entities` is the one exception, and it deletes no orphaned file (see
+[Select objects](../ports/java.md#generate) on the Java page). Every manifest entry names its owner: the generator's
 registry id and its output directory within the module, not the Maven execution, so
 `default-cli`, a renamed execution and the lifecycle execution agree. A recorded file no
 generator emitted in this build is an orphan when this run's own generators own it, or when
@@ -921,13 +938,13 @@ provider class** in each language: a JSON file could express the declarative sur
 
 | Port | How the CLI / build tool loads your provider |
 |---|---|
-| **TypeScript** | `metaobjects.config.ts` → `providers: [myProvider]`. Threaded into `meta gen` (the docs site included), `meta verify`, **and** the offline `meta migrate` paths (baseline + generate). |
+| **TypeScript** | `metaobjects.config.ts` → `providers: [myProvider]`. Every command that loads metadata reads it: `meta gen` (the docs site included), `verify`, `export`, `deps`, `fmt`, `types`, `upgrade` and the offline `migrate` paths. |
 | **Python** | `metaobjects gen \| verify --provider module:symbol` (repeatable). The symbol resolves to a `Provider` (or a list, or a zero-arg factory returning one) and is composed **on top of** the core providers — parity with TS `config.providers`. E.g. `metaobjects gen --provider myapp.providers:view_provider`. A declarative `metaobjects.config.yaml` `providers:` list is also supported (resolved config-relative, no `PYTHONPATH=` — mirroring TS's config-file providers); see [`cli.md`](cli.md). |
-| **Java / Kotlin** | Put your compiled `MetaDataTypeProvider` on the **project classpath** with a `META-INF/services/com.metaobjects.registry.MetaDataTypeProvider` entry. `metaobjects-maven-plugin` builds the loader with the project classloader, so **Java ServiceLoader auto-discovers it** — no plugin config needed. |
-| **C#** | The loader accepts providers like every port; a first-class `dotnet meta` consumer-provider hook is tracked for a future release ([#158](https://github.com/metaobjectsdev/metaobjects/issues/158)). Today, extend the metamodel from an app that constructs the loader directly. |
+| **Java / Kotlin** | Name the class in the `metaobjects-maven-plugin` `<providers>` list (or `-Dmeta.providers`), or declare it as a Spring `MetaDataTypeProvider` bean. Nothing is discovered from the classpath: a `META-INF/services` entry does not add the provider to the loader. See [`extending-with-providers.md`](extending-with-providers.md#java). |
+| **C#** | Name the built assembly and type under `csharp.providers: [{ assembly, type }]` in `.metaobjects/config.json`; `dotnet meta gen`, `verify`, `fmt` load it. See [`extending-with-providers.md`](extending-with-providers.md#c). |
 
 This split follows each ecosystem's norms — interpreted ports (TS / Python) name or
-import the provider module; compiled ports (JVM) discover it on the build classpath —
+import the provider module; compiled ports (JVM, C#) name the provider class in their build config —
 the same "idiomatic per port" principle as generator ownership ([Per port](#per-port)).
 
 ## Removed at 1.0, restored in 1.1
@@ -1415,11 +1432,11 @@ on are yours too. Eject copies two kinds of source with a Java generator:
 
 | Ejecting | Shared emit rules, beside the generator | Helper runtime its output imports |
 |---|---|---|
-| `routes` | `SpringGeneratorSupport` | `CanonicalDecimal`, `ConstraintErrors`, `FilterParseResult`, `FilterParser`, `FilterPredicate`, `PatchValidationException`, `RecordComponentNames`, `UnreadableBody` |
-| `dto` | `SpringGeneratorSupport` | `CanonicalDecimal`, `CanonicalDecimalDeserializer`, `CanonicalDecimalSerializer`, `DeclaredDecimal`, `PatchValidationException` |
+| `routes` | `SpringGeneratorSupport` | `CanonicalDecimal`, `CanonicalDuration`, `ConstraintErrors`, `FilterParseResult`, `FilterParser`, `FilterPredicate`, `PatchValidationException`, `RecordComponentNames`, `ReportExport`, `UnknownBodyKeys`, `UnreadableBody`, `ValidationIssues` |
+| `dto` | `SpringGeneratorSupport` | `CanonicalDecimal`, `CanonicalDecimalDeserializer`, `CanonicalDecimalSerializer`, `CanonicalDuration`, `CanonicalDurationDeserializer`, `CanonicalDurationSerializer`, `DeclaredDecimal`, `PatchValidationException` |
 | `repository` | `SpringGeneratorSupport` | `FilterPredicate` |
-| `value-object` | `SpringGeneratorSupport` | `CanonicalDecimal`, `CanonicalDecimalDeserializer`, `CanonicalDecimalSerializer`, `DeclaredDecimal` |
-| any other Java generator, every Kotlin generator | nothing | nothing: its output imports only core (Kotlin writes its decimal wire into the output as `MetaDecimalWire.kt`) |
+| `value-object` | `SpringGeneratorSupport` | `CanonicalDecimal`, `CanonicalDecimalDeserializer`, `CanonicalDecimalSerializer`, `CanonicalDuration`, `CanonicalDurationDeserializer`, `CanonicalDurationSerializer`, `DeclaredDecimal` |
+| any other Java generator, every Kotlin generator | nothing | nothing: its output imports only core (Kotlin writes its decimal wire and its validation-issue list into the output, as `MetaDecimalWire.kt` and `MetaValidationIssues.kt`, and its unknown-body-key check as `MetaUnknownBodyKeys.kt`) |
 
 **The shared emit rules.** `SpringGeneratorSupport` holds the rules those four generators
 apply together: which fields a DTO and a patch carry, which of them are stamped for
@@ -1659,7 +1676,7 @@ Otherwise a bug in the filter parser would still mean waiting for a MetaObjects 
 
 `dotnet meta eject routes` therefore also writes their source to `codegen/runtime/`:
 `FilterParser.cs`, `FilterParseResult.cs`, `FilterPredicate.cs`,
-`EfCoreFilterDispatch.cs`, `ValueObjectValidator.cs`, `ConstraintErrors.cs` and
+`EfCoreFilterDispatch.cs`, `ValueObjectValidator.cs`, `ValidationIssues.cs`, `UnknownFieldCheck.cs`, `ConstraintErrors.cs` and
 `Iso8601TimestampConverter.cs`, the converter your host registers for the api contract's
 timestamp spelling. Each file is the packaged source with one change: its namespace becomes
 `Codegen.Runtime`, matching the folder the way `codegen/generators/` matches

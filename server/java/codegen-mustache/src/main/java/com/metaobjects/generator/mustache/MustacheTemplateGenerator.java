@@ -73,7 +73,7 @@ public class MustacheTemplateGenerator implements Generator {
     private String templateName = null; // If null, auto-discover templates
     
     /**
-     * Not cacheable (ADR-0062): a template is looked up under {@code templatePath} relative to
+     * Not cacheable (ADR-0064): a template is looked up under {@code templatePath} relative to
      * the working directory or on the classpath, and which one answers is not something the
      * build can name, so a run that includes this generator always runs in full.
      */

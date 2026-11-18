@@ -1,0 +1,18 @@
+{
+  "errors": [
+    {
+      "code": "ERR_ORIGIN_CARDINALITY",
+      "messageIncludes": [
+        "origin.passthrough on PatientConsentRow.onFile: @via hop \"consents\" is to-many (reverse hop over identity.reference \"patient\") — a row-multiplying passthrough — you meant aggregate (ADR-0029)."
+      ],
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.care.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[2]['object.projection'].children[2]['field.boolean'].children[0]['origin.passthrough']"
+      }
+    }
+  ],
+  "warnings": []
+}

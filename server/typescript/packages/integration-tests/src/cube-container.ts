@@ -28,6 +28,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { reaperLabelArgs } from "./test-reaper.ts";
+import { MYSQL_8_DATA_DIR, POSTGRES_DURABILITY_OFF, postgresDataDir, ramVolume } from "./throwaway.ts";
 
 export const CUBE_IMAGE = "cubejs/cube:v1.7.43";
 export const CUBE_POSTGRES_IMAGE = "postgres:16-alpine";
@@ -131,8 +132,8 @@ export async function startCubeStack(modelDir: string, options: CubeStackOptions
     process.off("exit", stop);
     process.off("SIGINT", onSignal);
     process.off("SIGTERM", onSignal);
-    // Containers first: a network with an attached container cannot be removed. `-v` takes the
-    // postgres image's anonymous data volume with its container.
+    // Containers first: a network with an attached container cannot be removed. The database's
+    // data directory is a tmpfs; `-v` would also take any anonymous volume with its container.
     for (const name of [cubeContainer, pgContainer]) removeQuietly(["rm", "-f", "-v", name], `container '${name}'`, NO_SUCH_CONTAINER);
     removeQuietly(["network", "rm", network], `network '${network}'`, NO_SUCH_NETWORK);
   };
@@ -150,13 +151,14 @@ export async function startCubeStack(modelDir: string, options: CubeStackOptions
     const labels = await reaperLabelArgs();
     docker(["network", "create", ...labels, network]);
     if (dataSource === "mysql") {
-      docker(["run", "-d", ...labels, "--name", pgContainer, "--network", network,
+      docker(["run", "-d", ...labels, "--name", pgContainer, "--network", network, ...ramVolume(MYSQL_8_DATA_DIR),
         "-e", `MYSQL_ROOT_PASSWORD=${PG_PASSWORD}`, "-e", `MYSQL_DATABASE=${MYSQL_DATABASE}`, CUBE_MYSQL_IMAGE]);
       await waitForMysql(pgContainer);
       for (const script of options.initSql ?? []) mysqlExec(pgContainer, script);
     } else {
       docker(["run", "-d", ...labels, "--name", pgContainer, "--network", network,
-        "-e", `POSTGRES_PASSWORD=${PG_PASSWORD}`, CUBE_POSTGRES_IMAGE]);
+        ...ramVolume(postgresDataDir(CUBE_POSTGRES_IMAGE)),
+        "-e", `POSTGRES_PASSWORD=${PG_PASSWORD}`, CUBE_POSTGRES_IMAGE, ...POSTGRES_DURABILITY_OFF]);
       await waitForPostgres(pgContainer);
       for (const script of options.initSql ?? []) psql(pgContainer, script);
     }

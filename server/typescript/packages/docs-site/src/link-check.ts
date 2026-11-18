@@ -15,7 +15,9 @@ export function checkLinks(outDir: string, pages: string[]): string[] {
       // A root-relative href is served from outside the site (an `assetBase` mirror); the site's
       // own links are all relative.
       if (/^(https?:|mailto:|#$|\/)/.test(href)) continue;
-      const [file = "", anchor] = href.split("#");
+      const [target0 = "", anchor] = href.split("#");
+      // A query string selects a view on the page (`map.html?slice=…`); the file is what must exist.
+      const file = target0.split("?")[0] ?? "";
       const target = file === "" ? page : normalize(join(dirname(page), file));
       const abs = join(outDir, target);
       if (!existsSync(abs)) { errs.push(`${page} -> ${href}`); continue; }

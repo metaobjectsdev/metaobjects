@@ -15,7 +15,7 @@ public interface Generator {
 
     /**
      * Whether a run that includes this generator may be skipped when none of its inputs changed
-     * (ADR-0062). Return {@code false} when the output depends on anything the build cannot
+     * (ADR-0064). Return {@code false} when the output depends on anything the build cannot
      * name: an environment variable, the network, a file lookup relative to the working
      * directory. A run that includes such a generator always runs in full.
      */

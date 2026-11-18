@@ -150,31 +150,34 @@ with `ERR_DEPENDENCY_SNAPSHOT_STALE` naming the fix: run `meta deps sync`.
 - **`--codegen`** — regeneration drift. Re-runs generation and diffs the result
   against the committed generated files; a stale generated part (someone skipped a
   regen) fails the build. Wire it into CI so a stale `@generated` file fails.
-  **A hand edit inside a generated file is NOT drift** — `meta gen` three-way-merges
-  hand edits by design, and the Node gate judges the *generated contribution* against
-  the committed `.metaobjects/.gen-state/.hashes.json`, not the bytes. So a weakened
-  validator passes this gate. The Node `meta verify --codegen` therefore LISTS every
-  generated file carrying a hand edit (count + paths, a notice that does not change
-  the exit code), and `--forbid-hand-edits` turns any hand edit into a failure for a
-  team that wants generated code untouchable. Read that list at review time. To see
-  one edit: delete the file, run `meta gen` (it re-emits the pristine generation),
-  then `git diff -R -- <file>`; `git checkout -- <file>` restores it. The one
-  exception is an `<Entity>.names.ts` artifact: a hand edit there always fails.
+  **A hand edit inside a generated file is reported apart from drift** — `meta gen`
+  three-way-merges hand edits by design, and the Node gate judges the *generated
+  contribution* against the committed `.metaobjects/.gen-state/.hashes.json`, not the
+  bytes, then lists every generated file carrying a hand edit (count + paths). Whether
+  that list fails the build is `verify.handEdits` in `.metaobjects/config.json`:
+  `"fail"` exits 1 (what `meta init` writes for a new project), `"notice"` (and a
+  project without the key) exits 0, so a weakened validator passes there. Check the
+  key; `--allow-hand-edits` relaxes `fail` for one run, `--forbid-hand-edits` forces it
+  for one run. If an edit changed a rule the model declares (a length, a range, a
+  required field), make the change in the metadata instead, so the database and every
+  port follow it. To see one edit: delete the file, run `meta gen` (it re-emits the
+  pristine generation), then `git diff -R -- <file>`; `git checkout -- <file>`
+  restores it. An `<Entity>.names.ts` artifact always fails on a hand edit. The C#,
+  Java, Kotlin and Python gates compare bytes, so any edit fails there.
 
 - **`--templates`** — prompt/payload drift. For every `template.prompt` /
   `template.output`, resolves the text, parses each `{{...}}` reference, and fails
   if any reference isn't on the payload VO. This is the build-time gate for the
   prompt-construction pillar.
 
-- **`--deps`** — dependency drift (FR-023, **Node `meta` only** — but **any
-  backend**, like `--db`: the check reads only `.metaobjects/config.json` and has
-  no backend dependency of its own). Re-resolves each declared dependency's `path`
+- **`--deps`** — dependency drift (FR-023). Re-resolves each declared dependency
   right now and compares its installed artifact's hash against
-  `.metaobjects/deps.lock.json` — the same comparison `meta deps check` runs. Only
-  TypeScript and Python additionally LOAD the resulting snapshot and honour the
-  default-exclusion it implies — a Java/Kotlin/C# project can run this gate today
-  even though its own codegen can't yet consume a dependency. Never part of the
-  bare-`verify` default: it
+  `.metaobjects/deps.lock.json` — the same comparison `meta deps check` runs. Node
+  `meta` resolves every transport (`path`, `npm`, `python`, `maven`, `nuget`); the
+  Python, Java/Kotlin and C# checks resolve `path` only and report any other
+  transport `unresolved`, naming Node `meta deps check` (a check that cannot check
+  must not pass). Every port also loads the committed snapshot and honours the
+  default-exclusion it implies. Never part of the bare-`verify` default: it
   needs the publisher's `path` reachable, which CI checking out only your own repo
   may not have. Reports `current` / `drifted` / `unresolved` per dependency;
   `drifted` or `unresolved` fails with `ERR_DEPENDENCY_UPSTREAM_DRIFT`, fix is
@@ -188,7 +191,16 @@ port's own build tool, not the Node `meta`:
 | TS | `meta verify --codegen` | `meta verify --templates` | `meta verify --db <url>` |
 | Java / Kotlin | `mvn metaobjects:verify -Dmeta.verify.mode=codegen` | `mvn metaobjects:verify -Dmeta.verify.mode=templates` | Node `meta verify --db` only |
 | C# | `dotnet meta verify --codegen` | `dotnet meta verify --templates` | Node `meta verify --db` only |
-| Python | `metaobjects verify --codegen` | `metaobjects verify --templates` | Node `meta verify --db` only |
+| Python | `metaobjects verify` (`--codegen` is in the default) | n/a | Node `meta verify --db` only |
+
+Dependency drift (`--deps`) per port:
+
+| Port | Dependency drift |
+|---|---|
+| TS | `meta deps check`, `meta verify --deps` |
+| Python | `metaobjects deps check`, `metaobjects verify --deps` |
+| Java / Kotlin | `mvn metaobjects:verify -Dmeta.verify.mode=deps` |
+| C# | `dotnet meta verify --deps` |
 
 Every non-TS port's `verify` rejects `--db` outright (exit 2, "schema verify is the
 migrate engine") — schema drift always runs through the Node `meta verify --db`,
@@ -326,4 +338,5 @@ what's wrong.
 
 ---
 
-For the migration tooling read `references/migration.md`.
+For the migration tooling read `references/migration.md`. Before upgrading MetaObjects, or
+when a project runs more than one port, read `references/upgrading.md`.

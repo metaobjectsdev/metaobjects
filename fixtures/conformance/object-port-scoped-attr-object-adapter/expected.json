@@ -1,0 +1,94 @@
+{
+  "metadata.root": {
+    "package": "acme::clinical",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Diagnosis",
+          "@objectAdapter": "com.acme.clinical.DiagnosisAdapter",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "diagnoses"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "code"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "code",
+                "@of": "acme::clinical::Diagnosis.code"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "diagnoses",
+                "@agg": "count",
+                "@of": [
+                  "acme::clinical::Diagnosis.id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "DiagnosisSummary",
+          "@objectAdapter": "com.acme.clinical.DiagnosisSummaryAdapter",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_diagnosis_summary"
+              }
+            },
+            {
+              "field.string": {
+                "name": "code"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "DiagnosisCounts",
+          "@dimensions": [
+            "code"
+          ],
+          "@from": "acme::clinical::Diagnosis",
+          "@measures": [
+            "diagnoses"
+          ],
+          "@objectAdapter": "com.acme.clinical.DiagnosisCountsAdapter",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_diagnosis_counts"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+

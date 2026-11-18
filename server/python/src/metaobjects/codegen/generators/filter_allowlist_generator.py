@@ -35,6 +35,8 @@ from __future__ import annotations
 from metaobjects.apidocs.naming import snake_case as _snake_case
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
+from metaobjects.codegen.name_claims import claimed_module_path
+from metaobjects.codegen.value_objects import pkg_of
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, per_entity
 from metaobjects.codegen.generators.tph_plan import tph_plan_for
 from metaobjects.codegen.instance_artifacts import is_sourceless_entity
@@ -316,14 +318,17 @@ class FilterAllowlistGenerator:
     def generate(self, ctx: GenContext) -> list[EmittedFile]:
         index = build_object_index(ctx.entities)
 
-        def emit(entity: MetaObject, _c: GenContext) -> list[EmittedFile]:
+        def emit(entity: MetaObject, c: GenContext) -> list[EmittedFile]:
             source = self.render_filter_allowlist(entity, index)
             if source is None:
                 return []
             snake = _snake_case(entity.name)
             return [
                 EmittedFile(
-                    path=f"{snake}_filter_allowlist.py",
+                    path=claimed_module_path(
+                        c.claims, c.config, pkg_of(entity), f"{snake}_filter_allowlist",
+                        entity.resolution_key(),
+                    ),
                     content=ruff_format(source),
                 )
             ]

@@ -50,6 +50,9 @@ private val AuthSortDefaultOrder: Map<String, String> = mapOf(
     "reference" to "desc",
 )
 
+/** GENERATED — every field Auth declares, as named on the wire: a body key outside it is refused. */
+private val AuthKnownFields: Set<String> = setOf("id", "type", "reference", "quantity", "couponAmount", "permitNumber")
+
 private fun parseAuthSort(raw: String): Pair<String, SortOrder>? {
     val parts = raw.split(":", limit = 2)
     val field = parts.getOrNull(0) ?: return null
@@ -418,13 +421,23 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
     }
 
     @PostMapping("/bridge")
-    fun createBridge(@RequestBody dto: Auth): ResponseEntity<Any> = transaction {
-        if (validator.validateValue(BridgeAuthValidation::class.java, "quantity", dto.quantity).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
-        if (validator.validateValue(BridgeAuthValidation::class.java, "reference", dto.reference).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+    fun createBridge(@RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
+        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(MetaValidationIssues.Collector().add("invalid_type", emptyList(), "request body must be a JSON object").body() as Any)
+        val unknownKeys = MetaUnknownBodyKeys.refusal(body, AuthKnownFields)
+        if (unknownKeys != null) return@transaction ResponseEntity.badRequest().body(unknownKeys as Any)
+        val dto: Auth = try {
+            objectMapper.treeToValue(body, Auth::class.java)
+        } catch (e: Exception) {
+            return@transaction ResponseEntity.badRequest().body(MetaDecimalWire.unreadableBody(e) as Any)
+        }
+        val issues = MetaValidationIssues.Collector()
+        issues.addAt(validator.validateValue(BridgeAuthValidation::class.java, "quantity", dto.quantity), "quantity")
+        issues.addAt(validator.validateValue(BridgeAuthValidation::class.java, "reference", dto.reference), "reference")
+        if (!issues.isEmpty()) return@transaction ResponseEntity.badRequest().body(issues.body() as Any)
         val newId = AuthTable.insert {
-            it[type] = AuthType.Bridge
-            it[reference] = dto.reference!!
-            it[quantity] = dto.quantity
+            it[AuthTable.type] = AuthType.Bridge
+            it[AuthTable.reference] = dto.reference!!
+            it[AuthTable.quantity] = dto.quantity
         }[AuthTable.id]
         val saved = AuthTable.selectAll().where { AuthTable.id eq newId }.single()
         ResponseEntity.status(HttpStatus.CREATED).body(rowToAuth(saved) as Any)
@@ -432,23 +445,27 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
 
     @RequestMapping(value = ["/bridge/{id}"], method = [RequestMethod.PATCH, RequestMethod.PUT])
     fun updateBridge(@PathVariable id: Long, @RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
-        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
-        if (body.has("quantity") && body.get("quantity").isNull) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
-        if (body.has("reference") && body.get("reference").isNull) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+        val issues = MetaValidationIssues.Collector()
+        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(issues.add("invalid_type", emptyList(), "request body must be a JSON object").body() as Any)
+        val unknownKeys = MetaUnknownBodyKeys.refusal(body, AuthKnownFields)
+        if (unknownKeys != null) return@transaction ResponseEntity.badRequest().body(unknownKeys as Any)
+        if (body.has("quantity") && body.get("quantity").isNull) issues.add("invalid_type", listOf("quantity"), "field 'quantity' cannot be null")
+        if (body.has("reference") && body.get("reference").isNull) issues.add("invalid_type", listOf("reference"), "field 'reference' cannot be null")
         if (listOf("quantity", "reference").any { body.has(it) }) {
-            try {
+            run {
                 val hasQuantity = body.has("quantity")
-                val vQuantity: kotlin.Int? = if (hasQuantity) objectMapper.treeToValue(body.get("quantity"), object : TypeReference<kotlin.Int>() {}) else null
-                if (hasQuantity && validator.validateValue(BridgeAuthValidation::class.java, "quantity", vQuantity).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+                val nullQuantity = hasQuantity && body.get("quantity").isNull
+                val vQuantity: kotlin.Int? = if (hasQuantity && !nullQuantity) issues.bind<kotlin.Int>("quantity") { objectMapper.treeToValue(body.get("quantity"), object : TypeReference<kotlin.Int>() {}) } else null
+                if (vQuantity != null) issues.addAt(validator.validateValue(BridgeAuthValidation::class.java, "quantity", vQuantity), "quantity")
                 val hasReference = body.has("reference")
-                val vReference: kotlin.String? = if (hasReference) objectMapper.treeToValue(body.get("reference"), object : TypeReference<kotlin.String>() {}) else null
-                if (hasReference && validator.validateValue(BridgeAuthValidation::class.java, "reference", vReference).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+                val nullReference = hasReference && body.get("reference").isNull
+                val vReference: kotlin.String? = if (hasReference && !nullReference) issues.bind<kotlin.String>("reference") { objectMapper.treeToValue(body.get("reference"), object : TypeReference<kotlin.String>() {}) } else null
+                if (vReference != null) issues.addAt(validator.validateValue(BridgeAuthValidation::class.java, "reference", vReference), "reference")
+                if (!issues.isEmpty()) return@transaction ResponseEntity.badRequest().body(issues.body() as Any)
                 AuthTable.update({ (AuthTable.id eq id) and (AuthTable.type eq AuthType.Bridge) }) {
                     if (hasQuantity) it[AuthTable.quantity] = vQuantity!!
                     if (hasReference) it[AuthTable.reference] = vReference!!
                 }
-            } catch (e: com.fasterxml.jackson.databind.JsonMappingException) {
-                return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
             }
         }
         val row = AuthTable.selectAll().where { (AuthTable.id eq id) and (AuthTable.type eq AuthType.Bridge) }.singleOrNull()
@@ -501,14 +518,24 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
     }
 
     @PostMapping("/coupon")
-    fun createCoupon(@RequestBody dto: Auth): ResponseEntity<Any> = transaction {
-        if (validator.validateValue(CouponAuthValidation::class.java, "couponAmount", dto.couponAmount).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
-        if (!MetaDecimalWire.fits(dto.couponAmount, 10, 2)) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation", "field" to "couponAmount") as Any)
-        if (validator.validateValue(CouponAuthValidation::class.java, "reference", dto.reference).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+    fun createCoupon(@RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
+        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(MetaValidationIssues.Collector().add("invalid_type", emptyList(), "request body must be a JSON object").body() as Any)
+        val unknownKeys = MetaUnknownBodyKeys.refusal(body, AuthKnownFields)
+        if (unknownKeys != null) return@transaction ResponseEntity.badRequest().body(unknownKeys as Any)
+        val dto: Auth = try {
+            objectMapper.treeToValue(body, Auth::class.java)
+        } catch (e: Exception) {
+            return@transaction ResponseEntity.badRequest().body(MetaDecimalWire.unreadableBody(e) as Any)
+        }
+        val issues = MetaValidationIssues.Collector()
+        issues.addAt(validator.validateValue(CouponAuthValidation::class.java, "couponAmount", dto.couponAmount), "couponAmount")
+        if (!MetaDecimalWire.fits(dto.couponAmount, 10, 2)) issues.add("too_big", listOf("couponAmount"), "decimal does not fit the declared precision and scale")
+        issues.addAt(validator.validateValue(CouponAuthValidation::class.java, "reference", dto.reference), "reference")
+        if (!issues.isEmpty()) return@transaction ResponseEntity.badRequest().body(issues.body() as Any)
         val newId = AuthTable.insert {
-            it[type] = AuthType.Coupon
-            it[reference] = dto.reference!!
-            it[couponAmount] = dto.couponAmount
+            it[AuthTable.type] = AuthType.Coupon
+            it[AuthTable.reference] = dto.reference!!
+            it[AuthTable.couponAmount] = dto.couponAmount
         }[AuthTable.id]
         val saved = AuthTable.selectAll().where { AuthTable.id eq newId }.single()
         ResponseEntity.status(HttpStatus.CREATED).body(rowToAuth(saved) as Any)
@@ -516,24 +543,27 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
 
     @RequestMapping(value = ["/coupon/{id}"], method = [RequestMethod.PATCH, RequestMethod.PUT])
     fun updateCoupon(@PathVariable id: Long, @RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
-        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
-        if (body.has("reference") && body.get("reference").isNull) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+        val issues = MetaValidationIssues.Collector()
+        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(issues.add("invalid_type", emptyList(), "request body must be a JSON object").body() as Any)
+        val unknownKeys = MetaUnknownBodyKeys.refusal(body, AuthKnownFields)
+        if (unknownKeys != null) return@transaction ResponseEntity.badRequest().body(unknownKeys as Any)
+        if (body.has("reference") && body.get("reference").isNull) issues.add("invalid_type", listOf("reference"), "field 'reference' cannot be null")
         if (listOf("couponAmount", "reference").any { body.has(it) }) {
-            try {
+            run {
                 val hasCouponAmount = body.has("couponAmount")
                 val nullCouponAmount = hasCouponAmount && body.get("couponAmount").isNull
-                val vCouponAmount: java.math.BigDecimal? = if (hasCouponAmount && !nullCouponAmount) runCatching { MetaDecimalWire.fromNode(body.get("couponAmount")) }.getOrElse { return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation", "field" to "couponAmount") as Any) } else null
-                if (hasCouponAmount && !nullCouponAmount && validator.validateValue(CouponAuthValidation::class.java, "couponAmount", vCouponAmount).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
-                if (!MetaDecimalWire.fits(vCouponAmount, 10, 2)) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation", "field" to "couponAmount") as Any)
+                val vCouponAmount: java.math.BigDecimal? = if (hasCouponAmount && !nullCouponAmount) issues.bind<java.math.BigDecimal>("couponAmount") { MetaDecimalWire.fromNode(body.get("couponAmount")) } else null
+                if (vCouponAmount != null) issues.addAt(validator.validateValue(CouponAuthValidation::class.java, "couponAmount", vCouponAmount), "couponAmount")
+                if (!MetaDecimalWire.fits(vCouponAmount, 10, 2)) issues.add("too_big", listOf("couponAmount"), "decimal does not fit the declared precision and scale")
                 val hasReference = body.has("reference")
-                val vReference: kotlin.String? = if (hasReference) objectMapper.treeToValue(body.get("reference"), object : TypeReference<kotlin.String>() {}) else null
-                if (hasReference && validator.validateValue(CouponAuthValidation::class.java, "reference", vReference).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+                val nullReference = hasReference && body.get("reference").isNull
+                val vReference: kotlin.String? = if (hasReference && !nullReference) issues.bind<kotlin.String>("reference") { objectMapper.treeToValue(body.get("reference"), object : TypeReference<kotlin.String>() {}) } else null
+                if (vReference != null) issues.addAt(validator.validateValue(CouponAuthValidation::class.java, "reference", vReference), "reference")
+                if (!issues.isEmpty()) return@transaction ResponseEntity.badRequest().body(issues.body() as Any)
                 AuthTable.update({ (AuthTable.id eq id) and (AuthTable.type eq AuthType.Coupon) }) {
                     if (hasCouponAmount) { if (nullCouponAmount) it[AuthTable.couponAmount] = null else it[AuthTable.couponAmount] = vCouponAmount }
                     if (hasReference) it[AuthTable.reference] = vReference!!
                 }
-            } catch (e: com.fasterxml.jackson.databind.JsonMappingException) {
-                return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
             }
         }
         val row = AuthTable.selectAll().where { (AuthTable.id eq id) and (AuthTable.type eq AuthType.Coupon) }.singleOrNull()
@@ -586,13 +616,23 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
     }
 
     @PostMapping("/permit")
-    fun createPermit(@RequestBody dto: Auth): ResponseEntity<Any> = transaction {
-        if (validator.validateValue(PermitAuthValidation::class.java, "permitNumber", dto.permitNumber).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
-        if (validator.validateValue(PermitAuthValidation::class.java, "reference", dto.reference).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+    fun createPermit(@RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
+        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(MetaValidationIssues.Collector().add("invalid_type", emptyList(), "request body must be a JSON object").body() as Any)
+        val unknownKeys = MetaUnknownBodyKeys.refusal(body, AuthKnownFields)
+        if (unknownKeys != null) return@transaction ResponseEntity.badRequest().body(unknownKeys as Any)
+        val dto: Auth = try {
+            objectMapper.treeToValue(body, Auth::class.java)
+        } catch (e: Exception) {
+            return@transaction ResponseEntity.badRequest().body(MetaDecimalWire.unreadableBody(e) as Any)
+        }
+        val issues = MetaValidationIssues.Collector()
+        issues.addAt(validator.validateValue(PermitAuthValidation::class.java, "permitNumber", dto.permitNumber), "permitNumber")
+        issues.addAt(validator.validateValue(PermitAuthValidation::class.java, "reference", dto.reference), "reference")
+        if (!issues.isEmpty()) return@transaction ResponseEntity.badRequest().body(issues.body() as Any)
         val newId = AuthTable.insert {
-            it[type] = AuthType.Permit
-            it[reference] = dto.reference!!
-            it[permitNumber] = dto.permitNumber
+            it[AuthTable.type] = AuthType.Permit
+            it[AuthTable.reference] = dto.reference!!
+            it[AuthTable.permitNumber] = dto.permitNumber
         }[AuthTable.id]
         val saved = AuthTable.selectAll().where { AuthTable.id eq newId }.single()
         ResponseEntity.status(HttpStatus.CREATED).body(rowToAuth(saved) as Any)
@@ -600,23 +640,26 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
 
     @RequestMapping(value = ["/permit/{id}"], method = [RequestMethod.PATCH, RequestMethod.PUT])
     fun updatePermit(@PathVariable id: Long, @RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
-        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
-        if (body.has("reference") && body.get("reference").isNull) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+        val issues = MetaValidationIssues.Collector()
+        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(issues.add("invalid_type", emptyList(), "request body must be a JSON object").body() as Any)
+        val unknownKeys = MetaUnknownBodyKeys.refusal(body, AuthKnownFields)
+        if (unknownKeys != null) return@transaction ResponseEntity.badRequest().body(unknownKeys as Any)
+        if (body.has("reference") && body.get("reference").isNull) issues.add("invalid_type", listOf("reference"), "field 'reference' cannot be null")
         if (listOf("permitNumber", "reference").any { body.has(it) }) {
-            try {
+            run {
                 val hasPermitNumber = body.has("permitNumber")
                 val nullPermitNumber = hasPermitNumber && body.get("permitNumber").isNull
-                val vPermitNumber: kotlin.String? = if (hasPermitNumber && !nullPermitNumber) objectMapper.treeToValue(body.get("permitNumber"), object : TypeReference<kotlin.String>() {}) else null
-                if (hasPermitNumber && !nullPermitNumber && validator.validateValue(PermitAuthValidation::class.java, "permitNumber", vPermitNumber).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+                val vPermitNumber: kotlin.String? = if (hasPermitNumber && !nullPermitNumber) issues.bind<kotlin.String>("permitNumber") { objectMapper.treeToValue(body.get("permitNumber"), object : TypeReference<kotlin.String>() {}) } else null
+                if (vPermitNumber != null) issues.addAt(validator.validateValue(PermitAuthValidation::class.java, "permitNumber", vPermitNumber), "permitNumber")
                 val hasReference = body.has("reference")
-                val vReference: kotlin.String? = if (hasReference) objectMapper.treeToValue(body.get("reference"), object : TypeReference<kotlin.String>() {}) else null
-                if (hasReference && validator.validateValue(PermitAuthValidation::class.java, "reference", vReference).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+                val nullReference = hasReference && body.get("reference").isNull
+                val vReference: kotlin.String? = if (hasReference && !nullReference) issues.bind<kotlin.String>("reference") { objectMapper.treeToValue(body.get("reference"), object : TypeReference<kotlin.String>() {}) } else null
+                if (vReference != null) issues.addAt(validator.validateValue(PermitAuthValidation::class.java, "reference", vReference), "reference")
+                if (!issues.isEmpty()) return@transaction ResponseEntity.badRequest().body(issues.body() as Any)
                 AuthTable.update({ (AuthTable.id eq id) and (AuthTable.type eq AuthType.Permit) }) {
                     if (hasPermitNumber) { if (nullPermitNumber) it[AuthTable.permitNumber] = null else it[AuthTable.permitNumber] = vPermitNumber }
                     if (hasReference) it[AuthTable.reference] = vReference!!
                 }
-            } catch (e: com.fasterxml.jackson.databind.JsonMappingException) {
-                return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
             }
         }
         val row = AuthTable.selectAll().where { (AuthTable.id eq id) and (AuthTable.type eq AuthType.Permit) }.singleOrNull()

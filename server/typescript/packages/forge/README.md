@@ -16,8 +16,8 @@ nothing here should accumulate dependencies from the published packages.
 
 If you are looking for:
 
-- **AI-assistant context files** (`.metaobjects/AGENTS.md`, `.metaobjects/CLAUDE.md`,
-  `.claude/skills/metaobjects-*/`) → `meta agent-docs`, implemented in
+- **AI-assistant context files** (`.metaobjects/AGENTS.md` and the `metaobjects-*`
+  skills) → `meta agent-docs`, implemented in
   `@metaobjectsdev/sdk`.
 - **Prompt construction** (declared payloads, deterministic render, drift checks)
   → [`docs/features/templates-and-payloads.md`](../../../../docs/features/templates-and-payloads.md).

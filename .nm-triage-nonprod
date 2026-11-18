@@ -1,0 +1,11 @@
+# Paths that no-mistakes triage counts as non-production (one glob per line).
+# Conformance corpora and other test fixtures: data, gated by every port's runner.
+fixtures/**
+# The metamodel spec and the copies generated from it into each port.
+spec/metamodel/*.json
+server/csharp/MetaObjects/SpecMetamodel/*.json
+server/python/src/metaobjects/spec_metamodel/*.json
+server/typescript/packages/metadata/src/**/*.embedded.ts
+# The generated reference site and showcase payload.
+site-reference/**
+examples/showcase/site-payload.json

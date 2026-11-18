@@ -12,13 +12,13 @@ namespace Acme.Shop;
 /// </summary>
 public static class VehicleFilterAllowlist
 {
-    public static readonly HashSet<string> Fields = new(global::System.StringComparer.Ordinal)
+    public static readonly HashSet<string> Fields = new(System.StringComparer.Ordinal)
     {
         "plate",
     };
 
-    public static readonly Dictionary<string, HashSet<string>> OpsByField = new(global::System.StringComparer.Ordinal)
+    public static readonly Dictionary<string, HashSet<string>> OpsByField = new(System.StringComparer.Ordinal)
     {
-        ["plate"] = new(global::System.StringComparer.Ordinal) { "eq", "ne", "in", "like", "isNull" },
+        ["plate"] = new(System.StringComparer.Ordinal) { "eq", "ne", "in", "like", "isNull" },
     };
 }

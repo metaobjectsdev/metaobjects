@@ -6,10 +6,10 @@
 // owned-type navigations, and the template tier's render helpers, parsers, extractors and api-docs
 // — asks this class, so none of them can disagree with the declaration.
 //
-// Naming (ruling R52, amending ADR-0044 and ADR-0056): a value object's type is its own name,
+// Naming (ADR-0044 Amendment 1, ADR-0056 Amendment 2): a value object's type is its own name,
 // PascalCased, and is never rewritten. Two objects that share a short name in one namespace are a
 // real collision, refused by the run's claim registry (GenContext.Claim) with the remedy: map the
-// packages to distinct namespaces (GenConfig.PackageNamespaces), or rename one.
+// packages to distinct namespaces, or rename one.
 
 using MetaObjects.Meta;
 using static MetaObjects.Shared.BaseTypes;
@@ -30,10 +30,20 @@ public static class ValueObjectNames
 
     /// <summary>
     /// The emitted C# type name for <paramref name="obj"/>: its name, PascalCased. A value object is
-    /// never renamed to avoid a collision (ruling R52). <paramref name="root"/> is unused, and kept
-    /// so an owned generator copy calling it keeps compiling.
+    /// never renamed to avoid a collision. <paramref name="root"/> is unused, and kept so an owned
+    /// generator copy calling it keeps compiling.
     /// </summary>
     public static string TypeName(MetaData obj, MetaData root) => CSharpNaming.Pascal(obj.Name);
+
+    /// <summary>
+    /// The value-object name map: <c>ResolutionKey()</c> → emitted C# name. A value object is never
+    /// renamed, so this is the identity map (resolution key → PascalCase name).
+    /// </summary>
+    [Obsolete("A value object is never renamed; use TypeName(obj, root). Removed after one release.")]
+    public static IReadOnlyDictionary<string, string> Names(MetaData root) =>
+        root.Children()
+            .Where(IsValueShape)
+            .ToDictionary(o => o.ResolutionKey(), o => CSharpNaming.Pascal(o.Name), StringComparer.Ordinal);
 
     /// <summary>The namespace <paramref name="obj"/>'s type is emitted into (package binding).</summary>
     public static string Namespace(MetaData obj, GenConfig config) =>
@@ -53,45 +63,20 @@ public static class ValueObjectNames
     }
 
     /// <summary>
-    /// rc.19 R65: <paramref name="obj"/>'s type (entity, value object, projection, report),
-    /// <c>global::</c>-qualified — how every generated file outside the type's own declaration
-    /// names it, so no namespace can capture the name (CS0234) and no pair of <c>using</c>s can make
-    /// it ambiguous (CS0104).
-    /// </summary>
-    public static string GlobalRef(MetaData obj, GenConfig config) =>
-        Global(Namespace(obj, config), CSharpNaming.Pascal(obj.Name));
-
-    /// <summary><paramref name="name"/> in <paramref name="ns"/> as a <c>global::</c>-qualified name.
-    /// A <paramref name="name"/> that is already qualified (<c>global::…</c>) is returned as is.</summary>
-    public static string Global(string ns, string name) =>
-        name.StartsWith("global::", StringComparison.Ordinal) ? name : $"global::{ns}.{name}";
-
-    /// <summary>
-    /// rc.19 R65: <see cref="GenConfig.ContextTypeName"/> as generated code names it from any
-    /// namespace: as written when already <c>global::</c>-qualified, <c>global::</c> + the name when
-    /// dotted (the adopter named its namespace), otherwise in <see cref="GenConfig.Namespace"/>,
-    /// where the DbContext generator declares it.
-    /// </summary>
-    public static string ContextTypeRef(GenConfig config)
-    {
-        var name = config.ContextTypeName;
-        if (name.StartsWith("global::", StringComparison.Ordinal)) return name;
-        return name.Contains('.') ? "global::" + name : Global(config.Namespace, name);
-    }
-
-    /// <summary>
     /// How code in <paramref name="fromNamespace"/> names <paramref name="obj"/>'s type when a
     /// <c>using</c> of its namespace is in scope: bare, unless another object in the model shares its
-    /// short name and it lives in another namespace — then <c>global::</c>-qualified, since a bare
-    /// name would be ambiguous (CS0104) between the two namespaces' types.
+    /// short name and it lives in another namespace, then <c>global::</c>-qualified, since a bare
+    /// name would be ambiguous between the two namespaces' types.
     /// </summary>
     public static string ShortRef(MetaData obj, MetaData root, GenConfig config, string fromNamespace) =>
-        SharesShortName(obj, root) ? TypeRef(obj, root, config, fromNamespace) : TypeName(obj, root);
+        SharesShortName(obj, root) || config.PackageNamespacesFromMetadata
+            ? TypeRef(obj, root, config, fromNamespace)
+            : TypeName(obj, root);
 
     /// <summary>
     /// A name for <paramref name="obj"/> unique in the model, for a PRIVATE member of a generated class
     /// (a mapper method): its PascalCase name, prefixed with its PascalCased package when another
-    /// object shares the short name. Types are never renamed (ruling R52); this names members only.
+    /// object shares the short name. Types are never renamed; this names members only.
     /// </summary>
     public static string MemberKey(MetaData obj, MetaData root) =>
         SharesShortName(obj, root) && PackageBindingResolver.EffectivePackage(obj) is { Length: > 0 } pkg
@@ -100,6 +85,56 @@ public static class ValueObjectNames
 
     private static bool SharesShortName(MetaData obj, MetaData root) =>
         root.Children().Count(c => c.Type == TYPE_OBJECT && c.Name == obj.Name) > 1;
+
+    /// <summary>
+    /// <paramref name="obj"/>'s type (entity, value object, projection, report),
+    /// <c>global::</c>-qualified: how a generated file outside the type's own declaration names it
+    /// when package namespaces are on, so no namespace can capture the name and no pair of
+    /// <c>using</c>s can make it ambiguous.
+    /// </summary>
+    public static string GlobalRef(MetaData obj, GenConfig config) =>
+        Global(Namespace(obj, config), CSharpNaming.Pascal(obj.Name));
+
+    /// <summary><paramref name="obj"/>'s type as the context names it: PascalCase name in the earlier
+    /// layout (a using brings the namespace in), <c>global::</c>-qualified when package namespaces are on.</summary>
+    public static string Ref(MetaData obj, GenConfig config) =>
+        config.PackageNamespacesFromMetadata ? GlobalRef(obj, config) : CSharpNaming.Pascal(obj.Name);
+
+    /// <summary>A generated class named <paramref name="className"/> in <paramref name="obj"/>'s namespace, as
+    /// the context names it (see <see cref="Ref"/>).</summary>
+    public static string RefOf(MetaData obj, GenConfig config, string className) =>
+        config.PackageNamespacesFromMetadata ? Global(Namespace(obj, config), className) : className;
+
+    /// <summary><paramref name="name"/> in <paramref name="ns"/> as a <c>global::</c>-qualified name.
+    /// A name that is already qualified is returned as is.</summary>
+    public static string Global(string ns, string name) =>
+        name.StartsWith("global::", StringComparison.Ordinal) ? name : $"global::{ns}.{name}";
+
+    /// <summary>
+    /// The namespace a per-object companion of <paramref name="obj"/> (names, filter allowlist,
+    /// routes, reverse finders, report export) is declared in: the object's own when package
+    /// namespaces are on, otherwise <see cref="GenConfig.Namespace"/> as before.
+    /// </summary>
+    public static string CompanionNamespace(MetaData obj, GenConfig config) =>
+        config.PackageNamespacesFromMetadata ? Namespace(obj, config) : config.Namespace;
+
+    /// <summary>
+    /// A companion class of <paramref name="obj"/> as another file names it: bare in the earlier
+    /// layout (its file has the <c>using</c>), <c>global::</c>-qualified when package namespaces are on.
+    /// </summary>
+    public static string CompanionRef(MetaData obj, GenConfig config, string className) =>
+        config.PackageNamespacesFromMetadata ? Global(CompanionNamespace(obj, config), className) : className;
+
+    /// <summary>
+    /// <see cref="GenConfig.ContextTypeName"/> as generated code names it: as written in the earlier
+    /// layout; with package namespaces on, <c>global::</c>-qualified (dotted names are the adopter's own).
+    /// </summary>
+    public static string ContextTypeRef(GenConfig config)
+    {
+        var name = config.ContextTypeName;
+        if (!config.PackageNamespacesFromMetadata || name.StartsWith("global::", StringComparison.Ordinal)) return name;
+        return name.Contains('.') ? "global::" + name : Global(config.Namespace, name);
+    }
 
     /// <summary>
     /// The object a field's <c>@objectRef</c> names (ADR-0059 R7): the target the loader bound,

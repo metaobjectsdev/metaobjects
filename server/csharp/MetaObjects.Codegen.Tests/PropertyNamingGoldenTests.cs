@@ -111,7 +111,7 @@ public class PropertyNamingGoldenTests
         GenContext Ctx(string? dialect = null) => new()
         {
             Entities = r.Root.Objects(), Root = r.Root,
-            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", ColumnNamingStrategy = ColumnNamingStrategy.Literal, Dialect = dialect },
+            Config = new GenConfig { OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true, OutDir = "/tmp", Namespace = "Acme.Generated", ColumnNamingStrategy = ColumnNamingStrategy.Literal, Dialect = dialect },
         };
         var files = new RoutesGenerator().Generate(Ctx())
             .Concat(new CallableGenerator().Generate(Ctx()))

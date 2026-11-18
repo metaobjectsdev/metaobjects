@@ -23,6 +23,8 @@ import java.util.UUID;
 public final class MySqlContainer implements AutoCloseable, JdbcTarget {
     private static final String URL_ENV = "METAOBJECTS_TEST_MYSQL_URL";
     private static final String IMAGE = "mysql:8.4";
+    /** The image's VOLUME ({@code docker image inspect}); a tmpfs there keeps the data in RAM. */
+    private static final String DATA_DIR = "/var/lib/mysql";
     private static final String DB = "mo_test";
     private static final String PASSWORD = "test";
     private static final int READY_TIMEOUT_S =
@@ -47,7 +49,9 @@ public final class MySqlContainer implements AutoCloseable, JdbcTarget {
         this.password = PASSWORD;
         // Docker assigns the host port at bind time; see the port note in PostgresContainer.
         try {
+            ReaperLabels.removeAtExit(name);
             runDocker(ReaperLabels.dockerRun("--name", name,
+                "--tmpfs", DATA_DIR + ":rw,size=" + ReaperLabels.TMPFS_SIZE,
                 "-e", "MYSQL_ROOT_PASSWORD=" + PASSWORD,
                 "-e", "MYSQL_DATABASE=" + DB,
                 "-p", "127.0.0.1::3306",
@@ -110,6 +114,7 @@ public final class MySqlContainer implements AutoCloseable, JdbcTarget {
 
     private void forceRemove() {
         try { runDocker("rm", "-f", "-v", name); } catch (RuntimeException ignored) { /* already gone */ }
+        ReaperLabels.forget(name);
     }
 
     private String inspectState() {

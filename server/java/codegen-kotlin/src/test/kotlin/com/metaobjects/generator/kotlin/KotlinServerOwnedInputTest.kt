@@ -59,9 +59,9 @@ class KotlinServerOwnedInputTest {
         try {
             val controller = Files.readString(out.resolve("acme/own/DocController.kt"))
             val create = controller.substringAfter("fun create(").substringBefore("fun update(")
-            assertTrue("it[title] = dto.title" in create, create)
-            assertFalse("it[role]" in create, create)
-            assertFalse("it[id] = dto.id" in create, create)
+            assertTrue("it[DocTable.title] = dto.title" in create, create)
+            assertFalse("it[DocTable.role]" in create, create)
+            assertFalse("it[DocTable.id] = dto.id" in create, create)
         } finally {
             out.toFile().deleteRecursively()
         }
@@ -74,14 +74,14 @@ class KotlinServerOwnedInputTest {
             val controller = Files.readString(out.resolve("acme/own/AuthController.kt"))
             val bridge = controller.substringAfter("fun createBridge(").substringBefore("@RequestMapping")
             val permit = controller.substringAfter("fun createPermit(").substringBefore("@RequestMapping")
-            assertTrue("it[reference] = dto.reference" in bridge, bridge)
-            assertTrue("it[quantity] = dto.quantity" in bridge, bridge)
-            assertFalse("it[approver]" in bridge, bridge)
-            assertFalse("it[grade]" in bridge, bridge)
-            assertFalse("it[type] = dto.type" in bridge, bridge)
-            assertTrue("it[approver] = dto.approver" in permit, permit)
-            assertFalse("it[quantity]" in permit, permit)
-            assertFalse("it[grade]" in permit, permit)
+            assertTrue("it[AuthTable.reference] = dto.reference" in bridge, bridge)
+            assertTrue("it[AuthTable.quantity] = dto.quantity" in bridge, bridge)
+            assertFalse("it[AuthTable.approver]" in bridge, bridge)
+            assertFalse("it[AuthTable.grade]" in bridge, bridge)
+            assertFalse("it[AuthTable.type] = dto.type" in bridge, bridge)
+            assertTrue("it[AuthTable.approver] = dto.approver" in permit, permit)
+            assertFalse("it[AuthTable.quantity]" in permit, permit)
+            assertFalse("it[AuthTable.grade]" in permit, permit)
         } finally {
             out.toFile().deleteRecursively()
         }

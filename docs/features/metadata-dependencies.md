@@ -8,7 +8,7 @@ alternative: declare a published metadata package as a dependency, `meta deps sy
 it into a committed snapshot, and build on it the same way you build on any other
 metadata in your own tree — `extends`, `overlay: true`, and plain FQN references.
 
-**What ships today:** the `path`, `npm` and `python` transports, the
+**What ships today:** the `path`, `npm`, `python`, `maven` and `nuget` transports, the
 generated shared-model artifact, the lock + snapshot, default exclusion from your own
 codegen/schema/ledger, and the loader errors that fire when upstream moves. See
 [Deferred](#deferred) for what is designed but not built yet — read that section
@@ -47,7 +47,9 @@ going away.
   "dependencies": [
     { "name": "acme-common", "path": "../acme-common/metaobjects" },
     { "name": "acme-billing", "npm": "@acme/billing-model", "dir": "metaobjects" },
-    { "name": "acme-scheduling", "python": "acme_scheduling", "dir": "metaobjects" }
+    { "name": "acme-scheduling", "python": "acme_scheduling", "dir": "metaobjects" },
+    { "name": "acme-ledger", "maven": "com.acme:ledger-model", "version": "2.3.0" },
+    { "name": "acme-invoicing", "nuget": "Acme.Invoicing.Model", "version": "2.3.0" }
   ]
 }
 ```
@@ -56,7 +58,7 @@ A dependency spec carries a `name` (`/^[a-z0-9][a-z0-9._-]*$/`, unique across th
 array — this is the LOCAL alias your config, lock, and `.metaobjects/deps/<name>/`
 snapshot directory key on) and exactly one transport key.
 
-Three transports locate the publisher's `metaobjects.pkg.json` + artifact (below).
+Five transports locate the publisher's `metaobjects.pkg.json` + artifact (below).
 Each answers one question, *which directory holds the manifest?*, and only `meta deps
 sync` and `meta deps check` ask it. Every other command loads the committed snapshot.
 
@@ -65,9 +67,15 @@ sync` and `meta deps check` ask it. Every other command loads the committed snap
 | `path` | `{ "name": "x", "path": "../lib/metaobjects" }` | that directory, relative to the directory holding `.metaobjects/`: a sibling checkout, a git submodule, or any directory your build can reach |
 | `npm` | `{ "name": "x", "npm": "@acme/model", "dir": "metaobjects" }` | the installed npm package, found from the directory holding `.metaobjects/` the way Node resolves it (`node_modules` up the tree, workspaces and hoisting included), then `dir` inside it |
 | `python` | `{ "name": "x", "python": "acme_model", "dir": "metaobjects" }` | the installed Python package, as `importlib.util.find_spec("acme_model")` reports it in your project's interpreter, then `dir` inside it |
+| `maven` | `{ "name": "x", "maven": "com.acme:acme-model", "version": "1.0.0" }` | that artifact's jar in your **local Maven repository** (`~/.m2/repository`, or the location below), then the jar's `metaobjects/` resources (`dir` changes the directory) |
+| `nuget` | `{ "name": "x", "nuget": "Acme.Model", "version": "1.0.0" }` | that package in the **NuGet global packages folder** (`$NUGET_PACKAGES`, else `~/.nuget/packages`), then its `metaobjects/` content (`dir` changes the directory) |
 
-`dir` is optional (default: the package root), must stay inside the package, and is
-legal only beside `npm` or `python`. `python` takes an importable package name (dotted
+`dir` is optional, must stay inside the package, and is legal beside every transport
+but `path`. For `npm` and `python` its default is the package root; for `maven` and
+`nuget` it is `metaobjects`. `maven` and `nuget` also require `version`: a local Maven
+repository and the NuGet cache hold many versions side by side, so the declaration, not a
+lock file elsewhere, says which one to read. `maven` is `groupId:artifactId` (the version
+goes in `version`, not in the coordinate). `python` takes an importable package name (dotted
 names such as `acme.model` work), not the distribution name you `pip install`. The `npm`
 transport reads a `node_modules` tree; a Yarn Plug'n'Play install has none, so set
 `nodeLinker: node-modules` for that project.
@@ -79,6 +87,47 @@ lock (`package-lock.json`, `uv.lock`, …) pins which version is installed. The
 dependency lock records what that version's shared model was when you last synced.
 Because the snapshot is committed, only the machine that runs `sync` needs the package
 installed. CI, `meta gen`, `meta migrate` and every other port load the snapshot.
+
+**What a Java or .NET publisher packs.** The `shared-model` generator writes
+`metaobjects.pkg.json` and `<name>.metaobjects.json` into its output directory; the build
+that packages your library puts that directory at `metaobjects/` in the package. In Maven
+that is a resource with a target path (`<resource><directory>shared</directory>
+<targetPath>metaobjects</targetPath></resource>`); in a .NET project it is a packed file
+(`<None Include="shared/**" Pack="true" PackagePath="metaobjects/" />`). `sync` reads the
+pair out of the jar (a ZIP, unpacked to a temporary directory) or out of the package
+folder the NuGet cache extracted (falling back to the `.nupkg` when only the archive is
+there), and writes the same snapshot and lock entry a `path` sync writes. The lock records
+`{"maven": "...", "version": "..."}` or `{"nuget": "...", "version": "..."}`.
+
+**Where the local Maven repository is.** The first of: `$MAVEN_REPO_LOCAL`;
+`-Dmaven.repo.local=<dir>` in `$MAVEN_ARGS` or `$MAVEN_OPTS`; `<localRepository>` in
+`~/.m2/settings.xml` (`${user.home}` and `${env.X}` expanded); `~/.m2/repository`. The
+error names which one it used. `nuget` reads `$NUGET_PACKAGES`, else `~/.nuget/packages`;
+a `globalPackagesFolder` set only in `NuGet.Config` is not read, so export
+`$NUGET_PACKAGES` for it.
+
+**Neither downloads anything.** A package that is not in the local cache is
+`ERR_DEPENDENCY_UNRESOLVED`, naming the artifact and the command that fetches it:
+
+```
+dependency "acme-billing": the Maven artifact com.acme:billing-model:1.4.0 is not in the local
+repository <home>/.m2/repository (the default ~/.m2/repository); expected
+<home>/.m2/repository/com/acme/billing-model/1.4.0/billing-model-1.4.0.jar. Fetch it with
+`mvn dependency:get -Dartifact=com.acme:billing-model:1.4.0` (add -DremoteRepositories=<url>
+for a repository other than Central), then re-run. meta deps sync does not download.
+
+dependency "acme-billing": the NuGet package Acme.Billing.Model 1.4.0 is not in the global
+packages folder <home>/.nuget/packages (the default ~/.nuget/packages); expected
+<home>/.nuget/packages/acme.billing.model/1.4.0. Fetch it with `dotnet restore` in a
+project that references Acme.Billing.Model 1.4.0 (or `dotnet add package Acme.Billing.Model
+--version 1.4.0`), then re-run. meta deps sync does not download.
+```
+
+A jar or package that is in the cache but ships no `metaobjects/` directory is also
+`ERR_DEPENDENCY_UNRESOLVED` (check `dir`, or ask the publisher to pack the output); one
+whose directory holds no `metaobjects.pkg.json` is `ERR_DEPENDENCY_MANIFEST_INVALID`. When
+the version you declared differs from the version the manifest records, `sync` warns, as it
+does for `npm` and `python`.
 
 **Which Python interpreter.** `python` runs one interpreter, the first of:
 `$METAOBJECTS_PYTHON`; the active virtualenv (`$VIRTUAL_ENV`); a `.venv` beside
@@ -170,7 +219,7 @@ owned packages — with no resolution at all; it just reads
 ## Every dependency-aware port loads the committed snapshot, never the live path
 
 Once synced, TypeScript's, Python's and Java's collection resolvers (Kotlin loads through
-Java's) load dependency artifacts from the committed
+Java's; a Spring app's runtime loader reads the same snapshot off the classpath) load dependency artifacts from the committed
 snapshot **first**, then your own project files, offline, with no transport
 involved. At load time it checks the snapshot against the lock and refuses
 (`ERR_DEPENDENCY_SNAPSHOT_STALE`) when they disagree — a missing lock for a declared
@@ -352,6 +401,53 @@ scope too, whether or not it has any dependencies at all.
 `field.enum` reaches the generated `enums.ts` iff a *selected* entity's field resolves
 to it — decided by the using entity, never by the enum's own package.
 
+## Inheriting a dependency's requirements
+
+A dependency published with `requirements: true` carries its requirements, and they load
+with its model: an overlay of one resolves, and `meta verify` can see it. By default they
+stay the **publisher's** ledger, not yours. The requirement gate does not check, count,
+summarise or lint them, the `requirement-tests` generator writes no test for them, and the
+requirements pages (`requirementsFile()`, the agent docs' `requirements.md`, an entity page's
+"Required by") do not list them.
+That is the same default as an imported entity's code generation, for the same reason:
+you did not declare them.
+
+To take them on, name the dependency's package in `requirements.inherit`:
+
+```jsonc
+// .metaobjects/config.json (consumer)
+{
+  "dependencies": [{ "name": "acme-common", "npm": "@acme/common-model" }],
+  "requirements": { "inherit": ["acme::common::**"] }
+}
+```
+
+The inherited requirements then join your ledger: `meta verify` resolves their
+`@implementedBy` against the loaded model and reports each by its status, and
+`requirement-tests` scaffolds a test per claim. Change one's verdict for your project with
+an overlay (same package, same name, `overlay: true`, a new `@status`); a NEW requirement
+declared into the dependency's package is refused with `ERR_DEPENDENCY_PACKAGE_NOT_OWNED`,
+as a new object there is.
+
+Three rules keep it predictable:
+
+- **A pattern must NAME the package.** `acme::common::**` (or a node pattern such as
+  `acme::common::Customers`) inherits `acme::common`; a bare `acme::common` names the
+  package `acme`, and `**` alone names nothing, so neither inherits it. The final segment
+  names a node, which is the explicit-include rule `scope.include` follows.
+- **It is a separate key from `scope.include`.** Naming a package in `scope.include`
+  also generates code for it, which is not what taking on its requirements means.
+  `scope.include` alone inherits nothing.
+- **An imported requirement never switches object coverage on**, inherited or not. Only a
+  requirement you wrote yourself does, as for a [library](libraries.md)'s requirements:
+  depending on a model must not enrol you in a gate you did not ask for.
+
+`requirements` refuses any key but `inherit`, so a misspelling fails the load instead of
+quietly leaving the ledger out. A consumer on a toolchain older than this key treats a
+published requirement as its own, so pin the toolchain before you publish with
+`requirements: true` to a consumer you do not control. The manifest's `schema_version` does
+not change.
+
 ## What fails at load, when upstream moves
 
 The loader's own validation already fails your build the moment a target you built on
@@ -375,10 +471,21 @@ classifies those as breaking automatically — see [Deferred](#deferred).
 
 ## What fails at `meta deps check` / `verify --deps`
 
+The check ships in TypeScript (`meta deps check`, `meta verify --deps`), Python (`metaobjects deps
+check`, `metaobjects verify --deps`) and C# (`dotnet meta verify --deps`), against the same corpus
+and with the same three states and the same `ERR_DEPENDENCY_UPSTREAM_DRIFT`. The Python and C#
+check resolve the `path` transport only (see [Deferred](#deferred)). Python's `deps check`, like
+TypeScript's, also loads the locked snapshots together once the hashes match; `verify --deps` is
+the comparison alone in all three. Run `verify --deps` before `verify`'s own load: C# runs it
+first, so a dependency that is declared but not yet synced is reported as `unresolved` (the
+check exits 1). The load that follows still refuses the missing or stale snapshot with
+`ERR_DEPENDENCY_SNAPSHOT_STALE` and exit 2.
+
 `verify --deps` runs `meta deps check`'s comparison as one of `verify`'s gated
 subverbs (never part of the bare default — it needs the publisher reachable, its
 `path` or its installed package, which CI checking out only your own repo may not
-have). Each declared
+have). Java and Kotlin run the `path` case of the same comparison as
+`mvn metaobjects:verify -Dmeta.verify.mode=deps` ([Java port page](../ports/java.md#consuming-a-shared-model-dependencies)). Each declared
 dependency reports one of:
 
 - **`current`** — the installed artifact's hash matches the lock.
@@ -397,8 +504,8 @@ publisher reachable.
 
 ## Publishing a dependency: `sharedModelFile()`
 
-A publisher wires the `shared-model` generator (TypeScript only, in Phase 1a) to
-select a subset of its own metadata by the same include/exclude scope-pattern
+A publisher wires the `shared-model` generator (TypeScript, Java, Kotlin and C#; Python
+consumes only) to select a subset of its own metadata by the same include/exclude scope-pattern
 grammar `scope` already uses, and emit it as one canonical-JSON artifact plus a
 manifest:
 
@@ -413,6 +520,7 @@ export default defineConfig({
       name: "acme-common",
       include: ["acme::common::**"],
       // exclude: ["acme::common::InternalOnly"],
+      // requirements: true, // also publish the selected requirement.* nodes (default false)
       // files: [...],       // default: the run's own source files
       // version: "1.2.0",   // default: the nearest package.json version
       target: "shared",
@@ -430,13 +538,19 @@ it:
 
 1. Loads `files` standalone with your project's own registry, strict.
 2. Selects top-level nodes matching `include`/`exclude` — always excluding
-   `requirement.*` and `template.*` (a publisher's ledger and prompts are not a
-   consumer's shapes).
+   `template.*` (a publisher's prompts are not a consumer's shapes), and excluding
+   `requirement.*` unless `requirements: true`. With it, the publisher's ledger ships
+   with the model it describes, so a consumer can inherit it (see
+   [Inheriting a dependency's requirements](#inheriting-a-dependencys-requirements)).
+   Java and Kotlin take the same switch as the generator arg `requirements`, and C# as
+   `SharedModelGenerator.Requirements`.
 3. **Checks the selection is closed** — every `extends` target and every ref-bearing
    attribute of a selected node (and its descendants) must resolve to another
    *selected* node, or the build fails naming the `(referrer → target)` pairs. This
    is what stops an internal shape from silently leaking through a dangling
-   reference.
+   reference. A published requirement's `@implementedBy` targets count as references
+   too: a requirement claiming a node you did not select is refused, so a consumer
+   never inherits a claim that cannot resolve.
 4. **Re-loads the emitted artifact standalone with core providers only** — your
    provider vocabulary is not carried into the export; a Phase 1a export that needs
    it fails here, at publish time, not on a consumer's `meta deps sync`.
@@ -460,7 +574,8 @@ verify what an ejected copy published. See
 
 A published model travels inside the package that implements it, the way a JVM
 library's jar once carried its `metadata/*.json`. Consumers install your package with
-their package manager and declare an `npm` or `python` dependency on it. Publishing is
+their package manager and declare an `npm`, `python`, `maven` or `nuget` dependency on it
+(the last two are covered under [Declaring a dependency](#declaring-a-dependency)). Publishing is
 two steps: generate the shared model into the package, then release the package as you
 already do.
 
@@ -569,16 +684,18 @@ Then `meta deps sync` as for any other installed package. Nothing about the regi
 reaches `.metaobjects/`: the lock records the transport (`npm`/`python` + `dir`), never a
 URL.
 
-**Only TypeScript publishes in Phase 1a — TypeScript, Python, Java, Kotlin and C# consume.**
+**TypeScript, Java, Kotlin and C# publish; TypeScript, Python, Java, Kotlin and C# consume.**
 TypeScript, Python, Java, Kotlin and C# can *consume* a dependency (load its snapshot, extend
 it, overlay it). Java reads it at every rung of the Maven plugin's source ladder
 (`<sourceDir>`/`<sources>`, the neutral config, the default directory), and Kotlin inherits that
 through the same plugin and loader, so a Spring or Kotlin build consumes a shared model with no
-extra configuration. Only the TypeScript toolchain can *publish*: it alone can generate the
-artifact a publisher ships, and the Node `meta deps sync` is the only writer of the lock and the
-snapshot. A Python, Java, Kotlin or C# project that wants to publish a shared model runs a
-TypeScript `sharedModelFile()` generator against its own metadata the same way any TypeScript
-consumer would.
+extra configuration. Java, Kotlin and C# can also *publish*: each ships a `shared-model`
+generator (Java and Kotlin through the Maven plugin's `metaobjects:generate`, C# through
+`dotnet meta gen`; all three ejectable) that writes the artifact and manifest, byte-identical to
+the TypeScript one and gated by `fixtures/shared-model-conformance/`. The Node `meta deps sync`
+stays the only writer of the lock and the snapshot, in every port. A Python project that wants
+to publish a shared model runs a TypeScript `sharedModelFile()` generator against its own
+metadata.
 
 **C#.** `dotnet meta` reads `dependencies` from `.metaobjects/config.json` at every rung of its
 source ladder — C# has no native config surface, so the explicit `<metadataDir>` form reads the
@@ -591,8 +708,11 @@ the snapshots first under `dep:<name>/<artifact>` source ids. It never writes ei
 POCO of a *value object* (and the shared enums it uses) that a generated type reaches — an entity
 or local value object that holds it, or a local template whose `@payloadRef` / `@responseRef` names
 it — because that generated type needs it to compile. `inScope` is Python's formula (no `matchesScope` on the
-project's own objects), and C# has no entity-name positional on `gen`, so the TypeScript
-"refuse an explicitly named imported object" check has no C# surface. Known edge: a local entity
+project's own objects). `dotnet meta gen --entities` resolves names against the in-scope
+objects only, so naming an excluded import is refused the way TypeScript's "refuse an
+explicitly named imported object" check refuses it (exit 2, `--entities names 'X', which
+matches no object in the metadata.` — C#'s wording, not TypeScript's imported-specific
+message). Known edge: a local entity
 that `extends` an imported concrete entity in a table-per-hierarchy mapping is not specially handled.
 
 ## Vendoring vs. depending
@@ -622,29 +742,50 @@ manager. What's different: the artifact is **one flattened, generated file** rat
 than a directory of hand-placed sources, its manifest is generated rather than
 hand-written, and `meta deps sync` copies it into a **committed snapshot** rather
 than reading it live off the classpath at build time — the classpath-at-build-time
-read is recorded as a Phase 2 JVM option, not gone, but the committed snapshot is the
-cross-port contract every consumer gets today.
+read with no committed snapshot (`"commit": false`) is [deferred](#deferred), and the committed snapshot is the
+cross-port contract every consumer gets.
 
-## Phase 2: Java, Kotlin and C#
+## Phase 2: Java, Kotlin and C# (shipped)
 
-Tracked in [#482](https://github.com/metaobjectsdev/metaobjects/issues/482). Today TypeScript,
-Python, Java, Kotlin and C# consume a dependency (Java and Kotlin shipped in slice S3, C# in S6).
-A port that does not read the lock fails loudly on a model that references a node a dependency
-would supply (`ERR_UNRESOLVED_OBJECT_REF`), never silently. Phase 2 adds no new contract. The manifest, the
-lock, the committed snapshot and the 26-case resolution corpus are plain files that every port
-already has the pieces to read; what is missing is each port *loading* the snapshot.
+Phase 2 ([#482](https://github.com/metaobjectsdev/metaobjects/issues/482)) is built. It added no new
+contract: the manifest, the lock, the committed snapshot and the resolution corpus are plain files
+every port reads. What it added is each port *loading* the snapshot, *checking* it, and (for Java,
+Kotlin and C#) *publishing* one. A port that does not read the lock still fails loudly on a model
+that references a node a dependency would supply (`ERR_UNRESOLVED_OBJECT_REF`), never silently.
+
+| | TypeScript | Python | Java | Kotlin | C# |
+|---|---|---|---|---|---|
+| **Consume** (load the snapshot, scope, extend, overlay) | ✓ | ✓ | ✓ every rung of the Maven plugin's source ladder | ✓ through Java's loader and plugin | ✓ every rung of `dotnet meta`'s source ladder |
+| **Runtime load** | Node reads it | n/a (build-time) | ✓ Spring loads `.metaobjects/deps.lock.json` and `deps/**` from the classpath | ✓ same | n/a (build-time) |
+| **Check** | `meta deps check`, `meta verify --deps` | `metaobjects deps check`, `verify --deps` | `mvn metaobjects:verify -Dmeta.verify.mode=deps` | same goal | `dotnet meta verify --deps` |
+| **Publish** (`shared-model`, ejectable) | `sharedModelFile()` | no | ✓ `SharedModelGenerator` via `metaobjects:generate` | ✓ `KotlinSharedModelGenerator` | ✓ `SharedModelGenerator` via `dotnet meta gen` |
+| **Transports `sync` reads** | `path`, `npm`, `python`, `maven`, `nuget` (Node `meta deps sync` is the only writer, for every port) | | | | |
+| **Transports `check` resolves** | all five | `path` | `path` | `path` | `path` |
+
+Publishers in all three ports write the same artifact and manifest bytes as `sharedModelFile()`,
+gated by `fixtures/shared-model-conformance/`. See the port pages: [Java](../ports/java.md#consuming-a-shared-model-dependencies),
+[Kotlin](../ports/kotlin.md), [C#](../ports/csharp.md#publishing-a-shared-model-shared-model).
 
 Two rulings shape it:
 
 - **Node `meta deps sync` stays the only writer of the lock and the snapshot.** The other ports
-  load and check; a Java or C# project needs Node to sync, as a schema-owning project already
+  load, check and publish; a Java or C# project needs Node to sync, as a schema-owning project already
   needs it for `meta migrate`. Because the lock is then written by one tool, its byte format
   never becomes a cross-port contract.
 - **The Java Spring runtime loads the snapshot automatically** when
   `.metaobjects/deps.lock.json` is on the classpath, so a Spring app whose entity `extends` a
   dependency's node does not fail at boot for want of one line of configuration.
 
-**`meta deps sync` and `check` on a Maven- or C#-shaped project (shipped).** Both commands read
+**Java and Kotlin: runtime load and `verify`.** `metaobjects:generate` ships
+`.metaobjects/deps.lock.json` and `.metaobjects/deps/**` on the classpath, and the application loader
+reads them when the lock is there, with the build-time scoping and error codes.
+`mvn metaobjects:verify -Dmeta.verify.mode=deps` is the Java and Kotlin `meta deps check`: it
+resolves a `path` dependency, hashes its artifact against the lock and fails with
+`ERR_DEPENDENCY_UPSTREAM_DRIFT` on `drifted` or `unresolved`. It is opt-in, and an `npm`, `python`,
+`maven` or `nuget` dependency is `unresolved` there (run the Node `meta deps check` for those). See
+[the Java port page](../ports/java.md#consuming-a-shared-model-dependencies).
+
+**`meta deps sync` and `check` on a Maven- or C#-shaped project.** Both commands read
 only `.metaobjects/config.json`, and finish with a proof that the dependency set loads. A project
 whose own metadata is in a build-tool directory (`src/main/resources/metadata`, a C# project's
 metadata directory) declares no neutral `sources`, and a project may use vocabulary only its own
@@ -657,25 +798,25 @@ same path, which is why the fallback is announced. A load that also has any othe
 an unresolved `extends` onto a removed dependency node, still fails the command and, for `sync`,
 rolls the lock and snapshot back.
 
-**Packaged transports: Maven and NuGet (design only, not built).** The `path` transport needs the
-publisher's directory on disk. A JVM or .NET consumer that cannot reach it can instead resolve a
-published model from the package manager's own store: a Maven artifact (a JAR in the local
-repository, or on the classpath) and a NuGet package (in the global packages folder), each
-carrying the same `metaobjects.pkg.json` and artifact pair that `sharedModelFile()` writes. Per the
-single-writer ruling it is Node `meta deps sync` that reads the pair out of the JAR or the package
-and writes the same snapshot and lock entry a `path` sync writes, so everything downstream
-(`check`, load, scope, the corpus) is unchanged; nothing in a port's own build resolves a
-dependency. This generalizes the resources-JAR pattern described above, and it is a later slice
-than consume and check. A JVM *classpath read with no committed snapshot* (the legacy behaviour)
-stays a separate, deferred option.
+**Packaged transports: Maven and NuGet.** The `path` transport needs the
+publisher's directory on disk. A JVM or .NET consumer that cannot reach it resolves a
+published model from the package manager's own store instead: a Maven artifact (a JAR in the
+local repository) or a NuGet package (in the global packages folder), each carrying the same
+`metaobjects.pkg.json` and artifact pair that a publisher writes (see
+[the transports](#declaring-a-dependency) above). A publisher ships the pair inside its JAR (as
+`metaobjects/` resources) or its NuGet package (as `metaobjects/` content), declared as
+`{ "name": "x", "maven": "com.acme:acme-model", "version": "1.0.0" }` or
+`{ "name": "x", "nuget": "Acme.Model", "version": "1.0.0" }`. Per the single-writer ruling it is Node `meta
+deps sync` that reads the pair out of the JAR or the package and writes the same snapshot and
+lock entry a `path` sync writes, so everything downstream (`check`, load, scope, the corpus) is
+unchanged; nothing in a port's own build resolves a dependency. This generalizes the resources-JAR
+pattern described above.
 
 ## Deferred
 
 Designed (see `docs/superpowers/specs/2026-09-11-fr-023-metadata-dependencies-design.md`)
 but **not** built yet — do not assume any of the following exists:
 
-- **The `maven` and `nuget` transports** (Phase 2, with the JVM and .NET consumers; see
-  [Phase 2](#phase-2-java-kotlin-and-c)).
 - **A local co-development override** (`deps.local.json`) that would point `sync` at
   an unpublished local checkout without editing the committed config. Today, switch the
   spec to `path` while co-developing, and back to `npm`/`python` before committing.
@@ -690,35 +831,49 @@ but **not** built yet — do not assume any of the following exists:
 - **A runtime `ObjectManager` scope predicate.** Nothing at runtime refuses to serve
   an imported entity — "what's imported" is a load-time/codegen concept today, not a
   runtime one.
-- **Java, Kotlin, Python and C# as publishers** — Java, Kotlin and C# consume (S3 and S6);
-  publishing is TypeScript only. Spring apps do not yet auto-load the snapshot at runtime (S4).
+- **Python as a publisher** — Java, Kotlin and C# publish; Python consumes only.
+- **A JVM classpath read with `"commit": false`** — a Java or Kotlin build reading a dependency's
+  artifact straight off the classpath with no committed snapshot. The committed snapshot is the only
+  shipped path.
+- **`npm`, `python`, `maven` and `nuget` transports in the Python, Java and C# check.** Those
+  ports' check resolves `path` only; any other dependency reports `unresolved` and names the Node
+  `meta deps check`, because resolving it needs the consumer's installed packages or local package
+  caches (a check that cannot check must not pass).
 
 ## Verified by
 
-- [`fixtures/dependency-conformance/`](../../fixtures/dependency-conformance/) — 37
-  cases. 26 pin resolution (including `npm` and `python` dependencies loading from their
+- [`fixtures/dependency-conformance/`](../../fixtures/dependency-conformance/) — 47
+  cases. 36 pin resolution (including `npm`, `python`, `maven` and `nuget` dependencies loading from their
   committed snapshot with nothing installed), the exhaustive `imported`/`inScope`/`inMigrateScope` sets,
   overlay/extends/reference behavior against a synced snapshot, and every load- and
   resolution-time error above, run by TypeScript (the reference implementation),
   Python and Java (Kotlin loads through the Java loader and Maven plugin, so it inherits the
   corpus run and adds a codegen test that an imported entity emits nothing). 11 pin the upstream
-  check (`current`, `drifted`, `unresolved`), run by TypeScript; Python and Java have no check yet.
-  Three artifacts under `fixtures/dependency-conformance/artifacts/` are
+  check (`current`, `drifted`, `unresolved`), run by TypeScript, Java (Kotlin through the same
+  `metaobjects:verify` goal), Python (`metaobjects deps check`, `verify --deps`) and C#
+  (`dotnet meta verify --deps`).
+  Four artifacts under `fixtures/dependency-conformance/artifacts/` are
   pinned by sha256 in the README so the corpus itself can never silently drift.
-  Python's runner asserts all 26 resolution cases identically to TypeScript's, with no
+  Python's runner asserts all 36 resolution cases identically to TypeScript's, with no
   exemptions — the two overlay cases that need a view child as incidental content
   use `view.currency` (the one concrete `view.*` subtype registered cross-port,
   per `fixtures/registry-conformance/expected-registry.json`), not `view.text`,
   so they exercise the full imported/selected/governed assertions like every
-  other case. `transport-cases.json` beside it pins the `npm` and `python` transports
-  themselves (14 cases: packages laid out under a temp `node_modules` and on a temp
-  Python import path, the directory each resolves to, the exact lock `sync` writes, and
+  other case. Seven resolution cases also pin the ledger (`expectLedger`, `expectCoverageMeasured`):
+  which requirements are the project's own and whether coverage is measured, asserted in
+  TypeScript, Python, Java and C# through each port's requirement gate and through its
+  `requirement-tests` identities walk, and in TypeScript through the rows the requirements
+  pages list (the documentation generators that list requirements are TypeScript-only). `transport-cases.json` beside it pins the `npm`, `python`, `maven` and `nuget` transports
+  themselves (32 cases: packages laid out under a temp `node_modules`, on a temp
+  Python import path, as a jar in a temp local Maven repository and as a package in a temp NuGet
+  cache, the directory each resolves to, the exact lock `sync` writes, and
   each refusal), run by Node `meta deps sync`, the only writer.
-- [`fixtures/shared-model-conformance/`](../../fixtures/shared-model-conformance/) — 11 cases
+- [`fixtures/shared-model-conformance/`](../../fixtures/shared-model-conformance/) — 15 cases
   pinning what a publisher writes: the exact artifact and manifest bytes for a source tree and
-  `include` / `exclude` / `files`, and the refusals (an empty selection, a closure failure naming
-  every `referrer → target` pair, vocabulary a consumer's toolchain does not ship). TypeScript runs
-  all of it; Python runs the serializer arm.
+  `include` / `exclude` / `files` / `requirements`, and the refusals (an empty selection, a
+  requirement claiming a node outside the selection, a closure failure naming every
+  `referrer → target` pair, vocabulary a consumer's toolchain does not ship). TypeScript, Java
+  (Kotlin through the same engine) and C# run all of it; Python runs the serializer arm.
 
 ## See also
 

@@ -3,7 +3,7 @@
 // DesignTimeServicesReference with Type.GetType, which needs the assembly name, and generated code
 // cannot name its own assembly as a constant.
 //
-// Limits (rc.19 M7): the name is the project file's own <AssemblyName> (else its file name); a name
+// Limits: the name is the project file's own <AssemblyName> (else its file name); a name
 // set in Directory.Build.props, a conditional <AssemblyName>, or an MSBuild expression is not read —
 // set GenConfig.ContextAssemblyName then. A found project is cached per directory for the process;
 // a miss is not cached, so a project created later in the same process is found.
@@ -64,14 +64,14 @@ internal static class CSharpProjectAssembly
     }
 
     /// <summary>
-    /// rc.19 fix round (I4) — whether EF will read the <c>[assembly: DesignTimeServicesReference]</c>
+    /// Whether EF will read the <c>[assembly: DesignTimeServicesReference]</c>
     /// generated into the context's project. EF reads that attribute only from the startup and the
     /// migrations assemblies, so it is read when the context's project holds the migrations. Those are
     /// found by the model snapshot EF writes beside them (<c>&lt;Context&gt;ModelSnapshot.cs</c>), searched
     /// from the repository (the nearest directory above the project holding <c>.git</c>, else the
     /// farthest holding a <c>.sln</c>); another project holding them must carry the reference itself, in
     /// any of its <c>.cs</c> files but the migrations. Returns the migrations project when one was found.
-    /// <para>rc.19 fix round 2 (N1): it errs toward warning, because a false all-clear is a silent
+    /// <para>It errs toward warning, because a false all-clear is a silent
     /// RESTART. Every snapshot is examined (a stale copy in the context's project does not hide a real
     /// migrations project elsewhere); a snapshot counts only when it names THIS context (its
     /// <c>typeof</c> qualified with, or a <c>using</c> / <c>namespace</c> of, the context's namespace),
@@ -207,7 +207,7 @@ internal static class CSharpProjectAssembly
 }
 
 /// <summary>
-/// rc.19 fix round (I4) — the engine's answer to "will EF read the design-time services reference
+/// The engine's answer to "will EF read the design-time services reference
 /// generated into the context's assembly?". EF reads <c>[assembly: DesignTimeServicesReference]</c>
 /// only from the startup and migrations assemblies, so the generated one is read when the context's
 /// project holds the migrations; elsewhere the migrations project carries the line itself.

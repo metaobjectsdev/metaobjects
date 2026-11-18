@@ -41,10 +41,19 @@ replace those calls: an unmodified copy publishes the same bytes as the packaged
 generator. To publish through a package, point its `target` inside the package
 (an npm package's directory listed in `files`; a Python package's directory shipped
 as package data), run `meta gen`, then release the package as usual; consumers
-declare an `npm` or `python` dependency on it. With no `version` option the
+declare an `npm`, `python`, `maven` or `nuget` dependency on it. With no `version` option the
 manifest takes the nearest `package.json` version, else a `pyproject.toml`
 `[project]` version — pass `version` when neither is the package consumers install.
-Only TypeScript can run it in Phase 1a. TypeScript, Python, Java, Kotlin (through
-Java's loader and Maven plugin) and C# can *consume* a dependency, and only the
-TypeScript toolchain can *publish* one.
+TypeScript, Java, Kotlin and C# can *publish* with byte-identical output: the Java and Kotlin
+`shared-model` generator runs through `mvn metaobjects:generate` (`SharedModelGenerator` /
+`KotlinSharedModelGenerator`, args `name`, `include`, `exclude`, `files`, `version`; the version
+defaults to the module `<version>`); the C# one is `new SharedModelGenerator { ModelName, Include,
+Files, OutDir }` in `codegen/Generators.cs` through `dotnet meta gen` (version from the project
+`<Version>`). Eject with `mvn metaobjects:eject -Dnames=shared-model -Dport=java|kotlin` or `dotnet
+meta eject shared-model`. A JVM publisher ships the pair as the JAR's `metaobjects/` resources and a
+C# publisher as the NuGet package's `metaobjects/` content; consumers declare
+`{ "name": "x", "maven": "com.acme:model", "version": "1.0.0" }` or
+`{ "name": "x", "nuget": "Acme.Model", "version": "1.0.0" }` (also `npm`/`python`/`path`).
+TypeScript, Python, Java, Kotlin and C# *consume*; Python cannot publish. Node `meta deps sync`
+remains the only writer of the lock and snapshot in every port.
 Full detail: `docs/features/metadata-dependencies.md`.

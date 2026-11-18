@@ -233,7 +233,8 @@ class _RequirementTestsGenerator:
             return []
         planned: list[tuple[RequirementTestIdentity, RequirementTestArgs]] = []
         uncovered: list[str] = []
-        for walked in walk_requirements(ctx.loaded_root):
+        # FR-023 — a dependency's requirement the project did not inherit is not its ledger.
+        for walked in walk_requirements(ctx.loaded_root, ctx.in_ledger):
             if not self._include(walked.view):
                 # Named by PATH: diagnostics use the path (contract Table A).
                 uncovered.append(walked.view.path)

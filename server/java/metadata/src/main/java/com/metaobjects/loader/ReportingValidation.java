@@ -40,6 +40,7 @@ import com.metaobjects.loader.parser.BaseMetaDataParser;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.query.FilterOps;
 import com.metaobjects.relationship.MetaRelationship;
+import com.metaobjects.reporting.DerivedExpr;
 import com.metaobjects.reporting.MetaDimension;
 import com.metaobjects.reporting.MetaMeasure;
 import com.metaobjects.reporting.MetaSegment;
@@ -163,7 +164,7 @@ final class ReportingValidation {
         }
 
         // F1 on every host that is not a reporting host.
-        checkNoRelativeDates(root, sink);
+        checkNoRelativeDates(root, root, sink);
 
         // Java-only: closed-set membership the TS registry enforces generically.
         checkClosedSets(root, sink);
@@ -251,6 +252,43 @@ final class ReportingValidation {
 
     private static MetaData fieldOf(MetaData obj, String name) {
         return childOfType(obj, MetaField.TYPE_FIELD, name);
+    }
+
+    /**
+     * R12 — the column an {@code @of} path names on {@code entity}: {@code field}, or
+     * {@code field.member} for a member of a value object stored flattened (one column per
+     * member). Reports the first failure through {@code err} and returns {@code null}.
+     */
+    private static MetaData ofColumn(MetaData entity, List<String> path, String item, Consumer<String> err,
+            java.util.function.Supplier<String> fieldMissing) {
+        MetaData field = fieldOf(entity, path.get(0));
+        if (field == null) {
+            err.accept(fieldMissing.get());
+            return null;
+        }
+        if (path.size() == 1) return field;
+        String memberName = path.get(1);
+        MetaObject valueObject = ObjectField.SUBTYPE_OBJECT.equals(field.getSubType())
+                ? References.refTarget(field, MetaObject.ATTR_OBJECT_REF) : null;
+        if (valueObject == null) {
+            err.accept("@of '" + item + "' names member '" + memberName + "' of '" + path.get(0) + "', a field."
+                    + field.getSubType() + " with no value object.");
+            return null;
+        }
+        if (!ReportShape.isFlattenedField(field)) {
+            String storage = stringAttr(field, ObjectField.ATTR_STORAGE);
+            err.accept("@of '" + item + "' names a member of '" + path.get(0) + "', whose value object is stored as "
+                    + (storage == null ? "jsonb (the default)" : storage) + ". A report reads a member only under "
+                    + "@storage: flattened, where the member has a column of its own.");
+            return null;
+        }
+        MetaData member = fieldOf(valueObject, memberName);
+        if (member == null) {
+            err.accept("@of '" + item + "' names no member '" + memberName + "' on value object '"
+                    + valueObject.getName() + "'.");
+            return null;
+        }
+        return member;
     }
 
     /** An object operand carrying a {@code now} key — a relative-date value, well-formed
@@ -434,8 +472,8 @@ final class ReportingValidation {
         String of = dim.getOf();
         if (of == null) return; // missing @of is ERR_MISSING_REQUIRED_ATTR (attr schema pass)
         Dotted parts = splitDotted(of);
-        if (parts == null || parts.path().size() != 1) {
-            err.accept("@of '" + of + "' must be Entity.field.");
+        if (parts == null || parts.path().size() > 2) {
+            err.accept("@of '" + of + "' must be Entity.field or Entity.field.member.");
             return;
         }
         // D1 — after @via, a bare Owner resolves in the package of the entity @via reaches: the
@@ -459,16 +497,14 @@ final class ReportingValidation {
         // field, or the dimension names a column the base table lacks. Without @via the host IS
         // the checked entity.
         MetaData lookup = via == null ? ofEntity : named;
-        MetaData field = fieldOf(lookup, fieldName);
-        if (field == null) {
-            boolean declaredOnTerminal = lookup != ofEntity && fieldOf(ofEntity, fieldName) != null;
-            err.accept(declaredOnTerminal
+        final MetaData terminalEntity = ofEntity;
+        MetaData field = ofColumn(lookup, parts.path(), of, err, () ->
+                lookup != terminalEntity && fieldOf(terminalEntity, fieldName) != null
                     ? "@of '" + of + "' names no field '" + fieldName + "' on '" + shown(ctx, lookup) + "': only '"
-                        + shown(ctx, ofEntity) + "', the entity @via reaches, declares it. Name it '"
-                        + ofEntity.getShortName() + "." + fieldName + "'."
+                        + shown(ctx, terminalEntity) + "', the entity @via reaches, declares it. Name it '"
+                        + terminalEntity.getShortName() + "." + fieldName + "'."
                     : "@of '" + of + "' names no field '" + fieldName + "' on '" + shown(ctx, lookup) + "'.");
-            return;
-        }
+        if (field == null) return;
 
         // D5 — a dimension groups by a scalar. A field.object (or a field carrying @objectRef) is
         // a JSON document: no port serves a report over one, and a document is not a value to
@@ -646,6 +682,10 @@ final class ReportingValidation {
             checkRatioOperands(ctx, measure, err);
             return;
         }
+        if (measure.isDerived()) {
+            checkDerivedExpr(ctx, measure, err);
+            return;
+        }
         if (!ReportingConstants.MEASURE_SUBTYPE_AGGREGATE.equals(measure.getSubType())) return;
 
         AggregateColumns checked = checkAggregateColumns(ctx, measure, err);
@@ -720,8 +760,8 @@ final class ReportingValidation {
         List<MetaData> fields = new ArrayList<>();
         for (String item : columns) {
             Dotted parts = splitDotted(item);
-            if (parts == null || parts.path().size() != 1) {
-                err.accept("@of '" + item + "' must be Entity.field.");
+            if (parts == null || parts.path().size() > 2) {
+                err.accept("@of '" + item + "' must be Entity.field or Entity.field.member.");
                 return null;
             }
             MetaData named = ValidationPhase.resolveRootObject(ctx.root(), parts.owner(), pkgOf(ctx.declaring()));
@@ -730,12 +770,9 @@ final class ReportingValidation {
                         + "'. A measure aggregates its own entity's rows; declare it on the entity that owns the column.");
                 return null;
             }
-            MetaData field = fieldOf(ctx.host(), parts.path().get(0));
-            if (field == null) {
-                err.accept("@of '" + item + "' names no field '" + parts.path().get(0) + "' on '"
-                        + ctx.declaring().getName() + "'.");
-                return null;
-            }
+            MetaData field = ofColumn(ctx.host(), parts.path(), item, err, () -> "@of '" + item
+                    + "' names no field '" + parts.path().get(0) + "' on '" + ctx.declaring().getName() + "'.");
+            if (field == null) return null;
             // M10 — a measure aggregates scalars. A field.object (or a field carrying @objectRef)
             // is a JSON document, which no port aggregates in a report.
             if (isDocumentField(field)) {
@@ -811,6 +848,55 @@ final class ReportingValidation {
         }
     }
 
+    /**
+     * M11 — a measure.derived's @expr is FR-037 R5's arithmetic over operands a report can read:
+     * each {@code { field }} names a numeric measure.aggregate or measure.ratio of the same entity,
+     * or a numeric attribute dimension of it (R13 then requires the report to list that
+     * dimension). A derived measure never reads another derived measure, and a name both a
+     * measure and a dimension carry is refused rather than guessed. One error per offending operand.
+     */
+    private static void checkDerivedExpr(MemberCtx ctx, MetaMeasure measure, Consumer<String> err) {
+        if (!measure.hasMetaAttr(ReportingConstants.ATTR_EXPR)) return; // ERR_MISSING_REQUIRED_ATTR
+        Map<String, Object> expr = measure.getExpr();
+        if (expr == null) {
+            err.accept("@expr is not an arithmetic expression. Each node is { field: <measure or dimension> }, "
+                    + "{ value: <number> } or { fn: " + String.join(" | ", ReportingConstants.DERIVED_FNS)
+                    + ", args: [<a>, <b>] }.");
+            return;
+        }
+        String entityKey = ctx.declaring().getName();
+        for (String name : DerivedExpr.fields(expr)) {
+            MetaData target = childOfType(ctx.host(), ReportingConstants.TYPE_MEASURE, name);
+            MetaData dim = childOfType(ctx.host(), ReportingConstants.TYPE_DIMENSION, name);
+            if (target != null && dim != null) {
+                err.accept("@expr names '" + name + "', which is both a measure and a dimension of '" + entityKey
+                        + "'. Rename one.");
+            } else if (target != null) {
+                if (ReportingConstants.MEASURE_SUBTYPE_DERIVED.equals(target.getSubType())) {
+                    err.accept("@expr names '" + name + "', a measure.derived. A derived measure reads aggregates, "
+                            + "ratios and dimensions, not another derived measure.");
+                } else if (target instanceof MetaMeasure operand) {
+                    String result = ReportShape.measureResultSubType(operand, ctx.host(), ctx.root());
+                    if (result != null && !NUMERIC_FIELD_SUBTYPES.contains(result)) {
+                        err.accept("@expr names measure '" + name + "', whose result is a " + result + ", not a number.");
+                    }
+                }
+            } else if (dim instanceof MetaDimension d) {
+                if (d.isTime()) {
+                    err.accept("@expr names '" + name + "', a dimension.time. Arithmetic reads a numeric attribute dimension.");
+                } else {
+                    MetaField<?> of = ReportShape.resolveDimensionOf(d, ctx.host(), ctx.root());
+                    if (of != null && !NUMERIC_FIELD_SUBTYPES.contains(of.getSubType())) {
+                        err.accept("@expr names dimension '" + name + "', whose @of is a field." + of.getSubType()
+                                + ", not a number.");
+                    }
+                }
+            } else {
+                err.accept("@expr names '" + name + "', which is no measure or dimension of '" + entityKey + "'.");
+            }
+        }
+    }
+
     // ---------------------------------------------------------------------------
     // S1 / F2 — a reporting-host @filter over its entity
     // ---------------------------------------------------------------------------
@@ -862,41 +948,42 @@ final class ReportingValidation {
                     continue;
                 }
                 Map<?, ?> relative = relativeOperand(opEntry.getValue());
-                if (relative == null) continue;
-                if (!ReportingConstants.isWellFormedRelativeKeys(relative.keySet())) {
-                    err.accept("@filter on '" + key + "' has a malformed relative date " + GSON.toJson(relative)
-                            + "; a relative date is { now: \"<ISO-8601 duration>\" } with an optional startOf, and no other keys.");
-                    continue;
-                }
-                if (!TEMPORAL_FIELD_SUBTYPES.contains(field.getSubType())) {
-                    err.accept("@filter on '" + key + "' uses a relative date ({ now: ... }), but '" + key
-                            + "' is field." + field.getSubType()
-                            + "; relative dates apply only to field.date and field.timestamp.");
-                    continue;
-                }
-                if (!RELATIVE_DATE_OPS.contains(op)) {
-                    err.accept("@filter on '" + key + "' puts a relative date under op '" + op
-                            + "'; relative dates are legal only under gt, gte, lt and lte.");
-                    continue;
-                }
-                Object duration = relative.get(ReportingConstants.FILTER_RELATIVE_NOW);
-                if (!(duration instanceof String)
-                        || !ReportingConstants.ISO_DURATION_RE.matcher((String) duration).matches()) {
-                    err.accept("@filter on '" + key + "' has relative date '" + quoteValue(duration)
-                            + "', which is not an ISO-8601 duration (e.g. '-P7D', '-PT12H').");
-                    continue;
-                }
-                if (relative.containsKey(ReportingConstants.FILTER_RELATIVE_START_OF)) {
-                    Object startOf = relative.get(ReportingConstants.FILTER_RELATIVE_START_OF);
-                    if (!(startOf instanceof String)
-                            || !ReportingConstants.RELATIVE_START_OF_UNITS.contains(startOf)) {
-                        err.accept("@filter on '" + key + "' has startOf '" + quoteValue(startOf)
-                                + "'; startOf is one of "
-                                + String.join(", ", ReportingConstants.RELATIVE_START_OF_UNITS) + ".");
-                    }
-                }
+                String problem = relative == null ? null : relativeDateProblem(key, op, relative, field.getSubType());
+                if (problem != null) err.accept(problem);
             }
         }
+    }
+
+    /**
+     * F2 — why a relative-date operand under {@code op} on {@code key} is refused, or null when
+     * it is well-formed: its exact shape, the field's type (when the key resolves), a range op,
+     * an ISO-8601 duration and a startOf unit, in that order. One mistake, one message.
+     */
+    private static String relativeDateProblem(String key, String op, Map<?, ?> relative, String subType) {
+        if (!ReportingConstants.isWellFormedRelativeKeys(relative.keySet())) {
+            return "@filter on '" + key + "' has a malformed relative date " + GSON.toJson(relative)
+                    + "; a relative date is { now: \"<ISO-8601 duration>\" } with an optional startOf, and no other keys.";
+        }
+        if (subType != null && !TEMPORAL_FIELD_SUBTYPES.contains(subType)) {
+            return "@filter on '" + key + "' uses a relative date ({ now: ... }), but '" + key
+                    + "' is field." + subType + "; relative dates apply only to field.date and field.timestamp.";
+        }
+        if (!RELATIVE_DATE_OPS.contains(op)) {
+            return "@filter on '" + key + "' puts a relative date under op '" + op
+                    + "'; relative dates are legal only under gt, gte, lt and lte.";
+        }
+        Object duration = relative.get(ReportingConstants.FILTER_RELATIVE_NOW);
+        if (!(duration instanceof String) || !ReportingConstants.ISO_DURATION_RE.matcher((String) duration).matches()) {
+            return "@filter on '" + key + "' has relative date '" + quoteValue(duration)
+                    + "', which is not an ISO-8601 duration (e.g. '-P7D', '-PT12H').";
+        }
+        Object startOf = relative.get(ReportingConstants.FILTER_RELATIVE_START_OF);
+        if (relative.containsKey(ReportingConstants.FILTER_RELATIVE_START_OF)
+                && (!(startOf instanceof String) || !ReportingConstants.RELATIVE_START_OF_UNITS.contains(startOf))) {
+            return "@filter on '" + key + "' has startOf '" + quoteValue(startOf)
+                    + "'; startOf is one of " + String.join(", ", ReportingConstants.RELATIVE_START_OF_UNITS) + ".";
+        }
+        return null;
     }
 
     // ---------------------------------------------------------------------------
@@ -1031,6 +1118,12 @@ final class ReportingValidation {
             if (measureName != null) claim.accept(measureName, "measure '" + measureName + "'");
         }
 
+        // R12 — amounts in different units are never combined.
+        checkValueObjectUnits(report, from, message -> sink.push(report, ErrorCode.ERR_INVALID_REPORT, label, message));
+
+        // R13 — a derived measure reads only dimensions the report groups by.
+        checkDerivedDimensions(report, from, message -> sink.push(report, ErrorCode.ERR_INVALID_REPORT, label, message));
+
         // R7 — @segment names a segment of @from.
         String segment = stringAttr(report, MetaObject.ATTR_REPORT_SEGMENT);
         if (segment != null && childOfType(from, ReportingConstants.TYPE_SEGMENT, segment) == null) {
@@ -1102,6 +1195,108 @@ final class ReportingValidation {
      * ERR_REPORT_FOREIGN_MEASURE (it is another entity's measure) or ERR_INVALID_REPORT (it
      * is nobody's) and returns {@code null}.
      */
+    /**
+     * R12 — a measure that sums, averages or takes the min or max of a numeric member of a
+     * flattened value object (Money's amount) combines rows only when the report groups by each
+     * non-numeric member of that value object (Money's currency). Checked for every listed
+     * measure.aggregate and every operand of a listed ratio; the grouping is an attribute
+     * dimension of @from, with no @via, whose @of names the same {@code field.member}. A measure
+     * whose @of fails M1 is skipped (M1 reports it).
+     */
+    private static void checkValueObjectUnits(MetaObject report, MetaObject from, Consumer<String> err) {
+        Set<String> grouped = new HashSet<>();
+        for (ReportDimensionItem item : ReportAccessors.reportDimensionItems(report)) {
+            if (!(childOfType(from, ReportingConstants.TYPE_DIMENSION, item.name()) instanceof MetaDimension dim)
+                    || dim.isTime() || dim.getVia() != null || dim.getOf() == null) continue;
+            Dotted parts = splitDotted(dim.getOf());
+            if (parts != null && parts.path().size() == 2) grouped.add(String.join(SEP, parts.path()));
+        }
+        Set<MetaData> checked = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
+        for (String item : ReportAccessors.reportMeasureNames(report)) {
+            String name = item.substring(item.lastIndexOf(SEP) + 1);
+            if (!(childOfType(from, ReportingConstants.TYPE_MEASURE, name) instanceof MetaMeasure listed)) continue;
+            for (MetaData candidate : aggregatesRead(listed, from)) {
+                if (!(candidate instanceof MetaMeasure m)
+                        || !ReportingConstants.MEASURE_SUBTYPE_AGGREGATE.equals(m.getSubType()) || !checked.add(m)) continue;
+                String agg = m.getAgg();
+                if (agg == null || !List.of(ReportingConstants.AGG_SUM, ReportingConstants.AGG_AVG,
+                        ReportingConstants.AGG_MIN, ReportingConstants.AGG_MAX).contains(agg)) continue;
+                String of = m.getOfColumns().isEmpty() ? "" : m.getOfColumns().get(0);
+                Dotted parts = splitDotted(of);
+                if (parts == null || parts.path().size() != 2) continue;
+                String fieldName = parts.path().get(0);
+                MetaData field = fieldOf(from, fieldName);
+                MetaObject valueObject = field != null && ReportShape.isFlattenedField(field)
+                        ? References.refTarget(field, MetaObject.ATTR_OBJECT_REF) : null;
+                MetaData member = valueObject == null ? null : fieldOf(valueObject, parts.path().get(1));
+                if (member == null || !NUMERIC_FIELD_SUBTYPES.contains(member.getSubType())) continue;
+                // ADR-0039: resolving — a unit member the value object inherits qualifies its amounts too.
+                for (MetaData unit : valueObject.getChildren(MetaData.class, true)) {
+                    if (!MetaField.TYPE_FIELD.equals(unit.getType())
+                            || NUMERIC_FIELD_SUBTYPES.contains(unit.getSubType())
+                            || grouped.contains(fieldName + SEP + unit.getShortName())) continue;
+                    err.accept(": measure '" + m.getShortName() + "' takes @agg '" + agg + "' of '" + of
+                            + "', a member of value object '" + valueObject.getName() + "', but the report does not "
+                            + "group by its member '" + unit.getShortName() + "', so amounts with different '"
+                            + unit.getShortName() + "' values would be combined. List an attribute dimension of @from "
+                            + "whose @of is '" + parts.owner() + SEP + fieldName + SEP + unit.getShortName() + "'.");
+                }
+            }
+        }
+    }
+
+    /**
+     * The measures {@code listed} aggregates through: itself for a measure.aggregate, its two
+     * operands for a ratio, and for a measure.derived each measure its @expr names (a ratio there
+     * read through its operands). Unresolved names are left out; the member rules report them.
+     */
+    private static List<MetaData> aggregatesRead(MetaMeasure listed, MetaObject from) {
+        List<MetaData> direct = new ArrayList<>();
+        if (listed.isDerived()) {
+            Map<String, Object> expr = listed.getExpr();
+            if (expr != null) {
+                for (String n : DerivedExpr.fields(expr)) direct.add(childOfType(from, ReportingConstants.TYPE_MEASURE, n));
+            }
+        } else {
+            direct.add(listed);
+        }
+        List<MetaData> out = new ArrayList<>();
+        for (MetaData m : direct) {
+            if (m instanceof MetaMeasure r && r.isRatio()) {
+                for (String operand : new String[] {r.getNumerator(), r.getDenominator()}) {
+                    MetaData o = operand == null ? null : childOfType(from, ReportingConstants.TYPE_MEASURE, operand);
+                    if (o != null) out.add(o);
+                }
+            } else if (m != null) {
+                out.add(m);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * R13 — a measure.derived that reads an attribute dimension reads that dimension's value for
+     * each group, so the report must list the dimension in @dimensions. A name that is also a
+     * measure is M11's to report.
+     */
+    private static void checkDerivedDimensions(MetaObject report, MetaObject from, Consumer<String> err) {
+        Set<String> listedDims = new HashSet<>();
+        for (ReportDimensionItem item : ReportAccessors.reportDimensionItems(report)) listedDims.add(item.name());
+        for (String item : ReportAccessors.reportMeasureNames(report)) {
+            String name = item.substring(item.lastIndexOf(SEP) + 1);
+            if (!(childOfType(from, ReportingConstants.TYPE_MEASURE, name) instanceof MetaMeasure m) || !m.isDerived()) continue;
+            Map<String, Object> expr = m.getExpr();
+            if (expr == null) continue;
+            for (String read : DerivedExpr.fields(expr)) {
+                if (listedDims.contains(read) || childOfType(from, ReportingConstants.TYPE_MEASURE, read) != null) continue;
+                if (childOfType(from, ReportingConstants.TYPE_DIMENSION, read) == null) continue;
+                err.accept(": measure '" + m.getShortName() + "' reads dimension '" + read + "', which @dimensions "
+                        + "does not list. A derived measure reads a dimension's value for each group, so the report "
+                        + "must group by it.");
+            }
+        }
+    }
+
     private static String checkReportMeasure(MetaRoot root, MetaObject report, MetaObject from, String item,
                                              String label, ErrorSink sink) {
         String fromKey = from.getName();
@@ -1148,6 +1343,37 @@ final class ReportingValidation {
     // F1 — relative-date values only on reporting hosts
     // ---------------------------------------------------------------------------
 
+    /** The view hosts whose {@code @filter} may carry a relative-date value too: a projection's
+     *  and an origin.first / origin.aggregate's, which lower it into the view. */
+    private static boolean isRelativeViewFilterHost(MetaData node) {
+        return (MetaObject.TYPE_OBJECT.equals(node.getType()) && MetaObject.SUBTYPE_PROJECTION.equals(node.getSubType()))
+                || (com.metaobjects.origin.MetaOrigin.TYPE_ORIGIN.equals(node.getType())
+                    && (com.metaobjects.origin.FirstOrigin.SUBTYPE_FIRST.equals(node.getSubType())
+                        || com.metaobjects.origin.AggregateOrigin.SUBTYPE_AGGREGATE.equals(node.getSubType())));
+    }
+
+    /** F2 on every relative operand of a projection's or an origin's filter; {@code subTypeOf}
+     *  resolves a key to its field's subtype, null when it does not resolve (reported elsewhere). */
+    private static void checkRelativeShapes(Object filter, MetaData host,
+                                            java.util.function.Function<String, String> subTypeOf, ErrorSink sink) {
+        if (!(filter instanceof Map)) return;
+        for (Map.Entry<?, ?> entry : ((Map<?, ?>) filter).entrySet()) {
+            String key = String.valueOf(entry.getKey());
+            Object clause = entry.getValue();
+            if (FILTER_COMPOSE_AND.equals(key) || FILTER_COMPOSE_OR.equals(key)) {
+                if (clause instanceof List) for (Object sub : (List<?>) clause) checkRelativeShapes(sub, host, subTypeOf, sink);
+                continue;
+            }
+            if (!(clause instanceof Map)) continue;
+            for (Map.Entry<?, ?> opEntry : ((Map<?, ?>) clause).entrySet()) {
+                Map<?, ?> relative = relativeOperand(opEntry.getValue());
+                String problem = relative == null ? null
+                        : relativeDateProblem(key, String.valueOf(opEntry.getKey()), relative, subTypeOf.apply(key));
+                if (problem != null) sink.push(host, ErrorCode.ERR_BAD_ATTR_FILTER, nodeLabel(host), ": " + problem);
+            }
+        }
+    }
+
     /** True for the hosts whose {@code @filter} may carry a relative-date value. */
     private static boolean isReportingFilterHost(MetaData node) {
         return ReportingConstants.TYPE_SEGMENT.equals(node.getType())
@@ -1158,26 +1384,38 @@ final class ReportingValidation {
 
     /**
      * F1 — walk the whole tree and refuse a {@code { now: ... }} value in any attr.filter
-     * outside a reporting host (a projection {@code @filter}, a dataGrid preset, an
-     * origin.aggregate/first {@code @filter}): those hosts have no lowering for it.
+     * outside a host that lowers it (a dataGrid preset, for one), and check every relative value
+     * in a projection's or an origin.aggregate/first's {@code @filter}, which lower it into the view.
      */
-    private static void checkNoRelativeDates(MetaData node, ErrorSink sink) {
+    private static void checkNoRelativeDates(MetaRoot root, MetaData node, ErrorSink sink) {
         // ADR-0039: own — a tree walk; each declared node (and each locally declared attr)
         // is visited once, at its declaration (an inherited filter is checked where it is
         // declared; origin.* never inherits, ADR-0029). Attrs are children in this port.
         List<MetaData> own = node.getChildren(MetaData.class, false);
-        if (!isReportingFilterHost(node)) {
+        if (isRelativeViewFilterHost(node)) {
+            // A projection's and an origin's @filter lower relative dates into the view. A
+            // projection's keys name its own fields; an origin's name fields of the related entity.
+            MetaData target = node instanceof com.metaobjects.origin.MetaOrigin
+                    ? ValidationPhase.originFilterEntity((com.metaobjects.origin.MetaOrigin) node, root) : node;
+            java.util.function.Function<String, String> subTypeOf = key -> {
+                MetaData f = target == null ? null : fieldOf(target, key);
+                return f == null ? null : f.getSubType();
+            };
+            for (MetaData c : own) {
+                if (c instanceof FilterAttribute) checkRelativeShapes(((MetaAttribute<?>) c).getValue(), node, subTypeOf, sink);
+            }
+        } else if (!isReportingFilterHost(node)) {
             for (MetaData c : own) {
                 if (c instanceof FilterAttribute
                         && filterContainsRelativeValue(((MetaAttribute<?>) c).getValue())) {
                     sink.push(node, ErrorCode.ERR_BAD_ATTR_FILTER, nodeLabel(node),
                             ": @" + c.getShortName() + " uses a relative date ({ now: ... }), which is legal only in "
-                                    + "the @filter of a segment, measure.aggregate or object.report.");
+                                    + "the @filter of a segment, measure.aggregate, object.report, object.projection, origin.aggregate or origin.first.");
                 }
             }
         }
         for (MetaData c : own) {
-            if (!(c instanceof MetaAttribute)) checkNoRelativeDates(c, sink);
+            if (!(c instanceof MetaAttribute)) checkNoRelativeDates(root, c, sink);
         }
     }
 

@@ -34,7 +34,9 @@ public final class ShipmentSummaryPatch {
     public static ShipmentSummaryPatch fromJson(JsonNode body, ObjectMapper mapper) {
         if (!body.isObject()) throw new PatchValidationException("(request body)");
         Map<String, Object> assigned = new LinkedHashMap<>();
-        bind(body, mapper, assigned, "status", new TypeReference<ShipmentSummaryDto.Status>() {}, true);
+        java.util.List<PatchValidationException.Problem> problems = PatchValidationException.newProblems();
+        PatchValidationException.collect(problems, () -> bind(body, mapper, assigned, "status", new TypeReference<ShipmentSummaryDto.Status>() {}, true));
+        if (!problems.isEmpty()) throw new PatchValidationException(problems, assigned);
         return new ShipmentSummaryPatch(assigned);
     }
 
@@ -50,7 +52,7 @@ public final class ShipmentSummaryPatch {
         try {
             assigned.put(field, mapper.treeToValue(node, type));
         } catch (JsonProcessingException e) {
-            throw new PatchValidationException(field);
+            throw new PatchValidationException(field, e);
         }
     }
 }

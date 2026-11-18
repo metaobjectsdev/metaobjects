@@ -251,3 +251,58 @@ describe("verify --replay-snapshot runs BOTH tiers", () => {
     expect(await verifyCommand(["--replay-snapshot"], root)).toBe(1); // tier 2: must not pass vacuously
   });
 });
+
+describe("verify --replay-snapshot under migrate.scope", () => {
+  // The scoped branch rebuilds the expected schema to decide what it governs, and that
+  // build refuses an FK into a non-unique target on Postgres. The refusal must come out
+  // by name, exit 1, as on every other --db path, not as an unexpected error.
+  test("an FK to a non-unique target on Postgres is refused by name", async () => {
+    const root = await project();
+    const pgCfg = () =>
+      ({ dialect: "postgres", outDir: MIGRATIONS, onAmbiguous: "abort",
+         allow: [], slug: "init", dryRun: false } as never);
+    await writeFile(join(root, "metaobjects", "meta.platform.json"), NO_TABLES, "utf8");
+    await writeFile(
+      join(root, ".metaobjects", "config.json"),
+      JSON.stringify({ schema_version: 1, migrate: { dialect: "postgres", outDir: MIGRATIONS } }),
+      "utf8",
+    );
+    expect(await runBaseline(pgCfg(), root)).toBe(0);
+    await writeFile(join(root, "metaobjects", "meta.platform.json"), JSON.stringify({ "metadata.root": {
+      package: "acme::platform",
+      children: [
+        { "object.entity": { name: "Person", children: [
+          { "source.rdb": { name: "src", "@table": "people" } },
+          { "field.long": { name: "id" } },
+          { "field.string": { name: "code" } },
+          { "identity.primary": { name: "pk", "@fields": ["id"], "@generation": "increment" } },
+        ] } },
+        { "object.entity": { name: "Visit", children: [
+          { "source.rdb": { name: "src", "@table": "visits" } },
+          { "field.long": { name: "id" } },
+          { "field.string": { name: "personCode" } },
+          { "identity.primary": { name: "pk", "@fields": ["id"], "@generation": "increment" } },
+          { "identity.reference": { name: "ref_person", "@fields": ["personCode"], "@references": "Person.code" } },
+        ] } },
+      ],
+    } }), "utf8");
+    await writeFile(
+      join(root, ".metaobjects", "config.json"),
+      JSON.stringify({ schema_version: 1, migrate: { dialect: "postgres", outDir: MIGRATIONS, scope: ["acme::platform::*"] } }),
+      "utf8",
+    );
+
+    const lines: string[] = [];
+    const orig = [console.log, console.error] as const;
+    console.log = (...a: unknown[]) => { lines.push(a.map(String).join(" ")); };
+    console.error = (...a: unknown[]) => { lines.push(a.map(String).join(" ")); };
+    let code: number;
+    try {
+      code = await verifyCommand(["--replay-snapshot", "--skip-schema"], root);
+    } finally {
+      [console.log, console.error] = orig;
+    }
+    expect(code).toBe(1);
+    expect(lines.join("\n")).toContain('reference "ref_person" targets [code] on "Person"');
+  }, 60_000);
+});

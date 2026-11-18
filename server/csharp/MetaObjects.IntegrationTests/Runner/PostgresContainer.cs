@@ -47,7 +47,10 @@ public sealed class PostgresContainer : IAsyncDisposable
             return await StartOnSharedAsync(sharedUrl);
         }
 
-        var container = new PostgreSqlBuilder("postgres:16-alpine").Build();
+        // Data on a tmpfs, durability off (the builder's default), Ryuk-reaped (RamStorage).
+        var container = new PostgreSqlBuilder("postgres:16-alpine")
+            .WithCreateParameterModifier(RamStorage.Tmpfs(RamStorage.Postgres16DataDir))
+            .Build();
         await container.StartAsync();
         return new PostgresContainer(container);
     }

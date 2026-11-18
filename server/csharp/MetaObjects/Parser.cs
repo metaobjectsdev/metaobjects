@@ -974,7 +974,7 @@ public static class Parser
                 continue;
             }
 
-            if (IsEmptyAttrValue(newValRaw) || IsEmptyAttrValue(existingVal)) continue;
+            if (IsEmptyAttrValue(newValRaw, attrName) || IsEmptyAttrValue(existingVal, attrName)) continue;
             // Both sides set a non-empty value — compare. If equal, last-writer-wins
             // is a no-op; if different, that's a conflict.
             if (AttrValuesEqual(existingVal, newValRaw)) continue;
@@ -998,10 +998,14 @@ public static class Parser
         }
     }
 
-    private static bool IsEmptyAttrValue(object? v)
+    /// <summary>Attrs whose empty string is a meaningful value rather than "not set" (FR5c).</summary>
+    private static readonly HashSet<string> EmptyStringIsAValue =
+        new(StringComparer.Ordinal) { MetaObjects.Persistence.Db.DbConstants.FIELD_ATTR_FLATTENED_COLUMN_PREFIX };
+
+    private static bool IsEmptyAttrValue(object? v, string attrName)
     {
         if (v is null) return true;
-        if (v is string s && s == "") return true;
+        if (v is string s && s == "") return !EmptyStringIsAValue.Contains(attrName);
         if (v is System.Collections.ICollection col && col.Count == 0) return true;
         return false;
     }

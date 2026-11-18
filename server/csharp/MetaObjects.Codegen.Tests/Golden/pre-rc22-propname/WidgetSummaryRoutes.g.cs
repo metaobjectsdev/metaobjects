@@ -12,12 +12,12 @@ namespace Acme.Shop;
 
 public static class WidgetSummaryRoutes
 {
-    private static readonly global::System.Collections.Generic.HashSet<string> SortAllowlist = new(global::System.StringComparer.OrdinalIgnoreCase)
+    private static readonly System.Collections.Generic.HashSet<string> SortAllowlist = new(System.StringComparer.OrdinalIgnoreCase)
     {
         "WidgetId",
     };
 
-    private static readonly global::System.Collections.Generic.Dictionary<string, bool> SortDefaultDesc = new(global::System.StringComparer.OrdinalIgnoreCase)
+    private static readonly System.Collections.Generic.Dictionary<string, bool> SortDefaultDesc = new(System.StringComparer.OrdinalIgnoreCase)
     {
     };
 
@@ -51,21 +51,21 @@ public static class WidgetSummaryRoutes
                 if (!SortAllowlist.TryGetValue(field, out var resolved))
                     return Results.BadRequest(new { error = "invalid_sort", field });
                 var desc = parts.Length > 1
-                    ? string.Equals(parts[1], "desc", global::System.StringComparison.OrdinalIgnoreCase)
+                    ? string.Equals(parts[1], "desc", System.StringComparison.OrdinalIgnoreCase)
                     : SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;
                 q = ApplySortWidgetSummary(q, resolved, desc);
             }
 
             // Pagination: ?offset=N first (skip), then ?limit=N (take).
-            if (qs.TryGetValue("offset", out var offsetRaw) && int.TryParse(offsetRaw, global::System.Globalization.NumberStyles.Integer, global::System.Globalization.CultureInfo.InvariantCulture, out var offset) && offset > 0)
+            if (qs.TryGetValue("offset", out var offsetRaw) && int.TryParse(offsetRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var offset) && offset > 0)
                 q = q.Skip(offset);
-            if (qs.TryGetValue("limit", out var limitRaw) && int.TryParse(limitRaw, global::System.Globalization.NumberStyles.Integer, global::System.Globalization.CultureInfo.InvariantCulture, out var limit) && limit > 0)
+            if (qs.TryGetValue("limit", out var limitRaw) && int.TryParse(limitRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var limit) && limit > 0)
                 q = q.Take(limit);
 
             var rows = await q.ToListAsync();
 
             // withCount=1 → { rows, total } envelope; otherwise bare row array.
-            var withCount = qs.TryGetValue("withCount", out var wc) && (wc == "1" || string.Equals(wc, "true", global::System.StringComparison.OrdinalIgnoreCase));
+            var withCount = qs.TryGetValue("withCount", out var wc) && (wc == "1" || string.Equals(wc, "true", System.StringComparison.OrdinalIgnoreCase));
             if (!withCount) return Results.Ok(rows);
             var totalQ = EfCoreFilterDispatch.ApplyFilter(db.WidgetSummaries.AsNoTracking(), filter.Predicates);
             var total = await totalQ.CountAsync();

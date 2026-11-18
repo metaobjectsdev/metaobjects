@@ -14,6 +14,7 @@
 // renders clickable for a field the endpoint rejects, or a grid whose initial sort
 // runs the opposite way from the endpoint it queries.
 
+import { flatSurfaceFields } from "@metaobjectsdev/codegen-ts/engine";
 import { MetaField, MetaObject, type MetaData } from "@metaobjectsdev/metadata";
 import {
   FIELD_ATTR_FILTERABLE,
@@ -47,7 +48,7 @@ export function isSortableField(field: MetaField): boolean {
  */
 export function sortableFields(entity: MetaObject): MetaField[] {
   // fields() returns effective fields, so inherited fields (from extends:/super:) are included in sort ops.
-  return entity.fields().filter(isSortableField);
+  return flatSurfaceFields(entity).filter(isSortableField);
 }
 
 /**
@@ -110,6 +111,6 @@ export function resolveGridDefaultSort(
   const declared = layout.attr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER);
   if (declared === "asc" || declared === "desc") return { field: fieldName, order: declared };
 
-  const field = entity.fields().find((f) => f.name === fieldName);
+  const field = flatSurfaceFields(entity).find((f) => f.name === fieldName);
   return { field: fieldName, order: field === undefined ? "asc" : sortDefaultOrder(field) };
 }

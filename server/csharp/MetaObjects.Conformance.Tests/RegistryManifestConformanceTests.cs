@@ -30,7 +30,7 @@ public class RegistryManifestConformanceTests
             // (read spec/metamodel/ui.json + prompt.json). The prompt provider
             // absorbs the @xmlText marker the former TemplateTypesProvider registered.
             MetaObjects.Presentation.Ui.UiMetaDataProvider.Instance,
-            // R40 kind 1 — view.textarea @rows and the view.image attrs (ui-web.json).
+            // View.textarea @rows and the view.image attrs (ui-web.json).
             MetaObjects.Presentation.Ui.UiWebMetaDataProvider.Instance,
             MetaObjects.Template.PromptMetaDataProvider.Instance,
             DocumentationTypes.DocTypesProvider,
@@ -67,7 +67,7 @@ public class RegistryManifestConformanceTests
             // (read spec/metamodel/ui.json + prompt.json). The prompt provider
             // absorbs the @xmlText marker the former TemplateTypesProvider registered.
             MetaObjects.Presentation.Ui.UiMetaDataProvider.Instance,
-            // R40 kind 1 — view.textarea @rows and the view.image attrs (ui-web.json).
+            // View.textarea @rows and the view.image attrs (ui-web.json).
             MetaObjects.Presentation.Ui.UiWebMetaDataProvider.Instance,
             MetaObjects.Template.PromptMetaDataProvider.Instance,
             DocumentationTypes.DocTypesProvider,
@@ -90,7 +90,7 @@ public class RegistryManifestConformanceTests
     {
         Assert.Equal(RegistryManifest.ExclusionReason.StructuralKeyword, RegistryManifest.ClassifyPerTypeAttr("extends"));
         Assert.Equal(RegistryManifest.ExclusionReason.StructuralKeyword, RegistryManifest.ClassifyPerTypeAttr("isArray"));
-        // R40 — the JVM's @object (kind 1) and @objectAdapter (kind 2) are in the contract.
+        // The JVM's @object (kind 1) and @objectAdapter (kind 2) are in the contract.
         Assert.Equal(RegistryManifest.ExclusionReason.Included, RegistryManifest.ClassifyPerTypeAttr("object"));
         Assert.Equal(RegistryManifest.ExclusionReason.Included, RegistryManifest.ClassifyPerTypeAttr("objectAdapter"));
         Assert.Equal(RegistryManifest.ExclusionReason.CommonAttrDup, RegistryManifest.ClassifyPerTypeAttr("description"));
@@ -98,7 +98,7 @@ public class RegistryManifestConformanceTests
         Assert.Equal(RegistryManifest.ExclusionReason.Included, RegistryManifest.ClassifyPerTypeAttr("column"));
         Assert.Equal(RegistryManifest.ExclusionReason.Included, RegistryManifest.ClassifyPerTypeAttr("maxLength"));
         // Row classification: only the metadata.base anchor. The generic view controls are
-        // R40 kind-1 vocabulary, in the manifest.
+        // kind-1 vocabulary, in the manifest.
         Assert.Equal(RegistryManifest.ExclusionReason.InheritanceAnchor, RegistryManifest.ClassifyTypeSubType("metadata", "base"));
         Assert.Equal(RegistryManifest.ExclusionReason.Included, RegistryManifest.ClassifyTypeSubType("view", "dropdown"));
         Assert.Equal(RegistryManifest.ExclusionReason.Included, RegistryManifest.ClassifyTypeSubType("view", "currency"));

@@ -40,6 +40,7 @@ import {
   TYPE_LAYOUT,
 } from "@metaobjectsdev/metadata";
 import type { MetaData, MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
+import { flatSurfaceFields } from "../flattened.js";
 import { GENERATED_HEADER } from "../constants.js";
 import { generatableObjects, isReport } from "../source-detect.js";
 import { hasGeneratedForm, restPath, servedPath, servesClientHooks } from "../api-surface.js";
@@ -252,7 +253,7 @@ export function renderAgentUiPage(root: MetaRoot, apiPrefix = ""): string {
     if (descriptor.fields.length > 0) {
       // The field nodes, keyed by name, so the three non-descriptor columns can be read
       // off the field the descriptor row came from.
-      const byName = new Map(obj.fields().map((f) => [f.name, f]));
+      const byName = new Map(flatSurfaceFields(obj).map((f) => [f.name, f]));
       out.push("| Field | Label | Control | HTML type | Rules | Excluded | Filter | Sort |");
       out.push("|---|---|---|---|---|---|---|---|");
       for (const f of descriptor.fields) {

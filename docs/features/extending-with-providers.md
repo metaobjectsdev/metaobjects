@@ -11,6 +11,8 @@ This page covers:
 
 - The provider contract (what a provider declares)
 - How to register a new subtype or extend an existing one
+- How to wire a project's own provider into each port (TypeScript, Python, C#, Java,
+  Kotlin), with a worked example per language, and which commands load it
 - The cross-port semantic rules (explicit providers bypass ambient discovery)
 - Stable error codes for composition failures
 
@@ -37,9 +39,9 @@ unregistered id throws `ERR_PROVIDER_MISSING_DEPENDENCY`; a cycle throws
 `ERR_PROVIDER_DUPLICATE_ID`. All three codes are stable across ports — see
 [`../../fixtures/conformance/ERROR-CODES.json`](../../fixtures/conformance/ERROR-CODES.json).
 
-## The two rules that govern every provider
+## The three rules that govern every provider
 
-Before the mechanics, the two rules a provider must obey. Both are machine-enforced —
+Before the mechanics, the three rules a provider must obey. All three are machine-enforced —
 you will hit an error, not a review comment.
 
 ### 1. Own vs projected attributes (ADR-0050)
@@ -77,6 +79,28 @@ So vendor or domain vocabulary enters by **registration**:
 
 "Declared" includes "declared by your provider" — that is what keeps strict provenance
 meaningful while still letting you extend the metamodel.
+
+### 3. One attribute name, one provider, per node type (ADR-0062)
+
+**Two providers may not claim the same attribute name on a node type.** The registry records
+which provider registered each attribute, and refuses a second provider's claim at composition:
+
+- on the same `(type, subType)` — `ERR_PROVIDER_ATTR_CONFLICT`;
+- on the shared root `(type, base)` that the subtype inherits from, or on a subtype of it —
+  `ERR_PROVIDER_ATTR_SHADOW`, whether the second provider registers the type or `extend`s it;
+- as a common attribute (accepted on every node type), or on any type when another provider
+  already registered it as a common attribute — `ERR_PROVIDER_ATTR_CONFLICT`. A common attribute
+  is on every slot, so it collides with the same name on any type, in either order.
+
+The message names both providers and the attribute. The check runs both ways, so it does not
+matter which provider registers first. The same provider repeating its own name, sibling
+subtypes using one name, and registration outside a provider's turn are all legal.
+
+This is what keeps per-paradigm physical names safe (ADR-0007, ADR-0018). Name your store's
+address in your store's own word (`@column` for a relational field, `@field` for a document
+field) and pick a word no other provider on that node type already holds. A store you have no
+provider for goes in the `attr.properties` bag, not an invented attribute. `meta types
+--detail` prints the registering provider next to each attribute, so you can see what is taken.
 
 ## What modularity does and does not mean
 
@@ -176,52 +200,294 @@ provider. This is conformance-gated across all five ports (the
 
 ## Wiring providers into the loader
 
-Each port has its own loader entry point. The contract is identical:
-**provide an explicit list of providers, and the loader composes them in
-dependency order, skipping any ambient discovery.**
+A provider is code, so it lives in the language of the tools that load the metadata, and it
+is wired in that port's own config. Each port then loads it at **every** entry point that
+reads metadata, not only codegen. The contract is the same everywhere:
+
+> **The loader composes the core vocabulary plus exactly the providers you name, in
+> dependency order.** Nothing is discovered from the classpath, the bundler's import order or
+> an installed package. The same provider list and the same metadata give the same registry.
+
+**Every port whose tools load the metadata needs its own copy of the provider.** A provider
+registered only in TypeScript is invisible to the Java build, the Python CLI or the C# tool,
+and they refuse the same file with `ERR_UNKNOWN_SUBTYPE` / `ERR_UNKNOWN_ATTR`. Give each copy
+the same `id` and the same vocabulary; the shared conformance fixtures
+`provider-custom-vocabulary-success` and `provider-custom-vocabulary-missing-provider-fails`
+hold every port to that.
+
+The examples below all add the same vocabulary: a new `layout.picker` subtype with its own
+`@displayField` attribute, and two optional attributes on the core `field.string`,
+`@searchable` (boolean) and `@valueLabels` (string array). The metadata then uses it like
+core vocabulary:
+
+<!-- meta-example: external-provider -->
+```json
+{ "metadata.root": { "package": "acme", "children": [
+  { "object.value": { "name": "Contact", "children": [
+    { "field.string": { "name": "name", "@searchable": true } },
+    { "field.string": { "name": "status", "@valueLabels": ["Active", "On hold"] } },
+    { "layout.picker": { "name": "contactPicker", "@displayField": "name" } }
+  ]}}
+]}}
+```
+
+The agent-context skill carries the same example per language
+(`agent-context/skills/metaobjects-authoring/references/<language>-providers.md`).
+
+### TypeScript
 
 ```ts
-// TypeScript
-import { loadMemory } from "@metaobjectsdev/sdk";
-import { exampleToolcallProvider } from "./codegen/providers";
+// codegen/vocabulary.ts
+import { TypeId, MetaLayout, type MetaDataTypeProvider } from "@metaobjectsdev/metadata";
+import {
+  TYPE_FIELD, TYPE_LAYOUT, FIELD_SUBTYPE_STRING,
+  ATTR_SUBTYPE_STRING, ATTR_SUBTYPE_BOOLEAN,
+} from "@metaobjectsdev/metadata/constants";
 
-const root = await loadMemory("./", {
-  providers: [exampleToolcallProvider],   // composed AFTER core providers
-});
+export const vocabulary: MetaDataTypeProvider = {
+  id: "acme-vocabulary",
+  dependencies: ["metaobjects-core-types"],
+  registerTypes(registry) {
+    registry.register({
+      typeId: new TypeId(TYPE_LAYOUT, "picker"),
+      description: "A picker over the owning object.",
+      factory: (typeId, name) => new MetaLayout(typeId, name),
+      childRules: [],
+      attributes: [
+        { name: "displayField", valueType: ATTR_SUBTYPE_STRING, required: false, description: "Field shown per choice." },
+      ],
+    });
+    registry.extend(TYPE_FIELD, FIELD_SUBTYPE_STRING, {
+      attributes: [
+        { name: "searchable", valueType: ATTR_SUBTYPE_BOOLEAN, required: false, description: "Offer in search." },
+        { name: "valueLabels", valueType: ATTR_SUBTYPE_STRING, isArray: true, required: false, description: "Display labels." },
+      ],
+    });
+  },
+};
 ```
 
-```csharp
-// C#
-var loader = MetaDataLoader.FromDirectory("./metadata", registry);
-// where `registry` is built via Provider.ComposeRegistry(providers)
+Wire it in `metaobjects.config.ts`:
+
+```ts
+import { defineConfig } from "@metaobjectsdev/cli";
+import { vocabulary } from "./codegen/vocabulary";
+
+export default defineConfig({ generators: [/* ... */], providers: [vocabulary] });
 ```
+
+**Loaded by:** `meta gen` (including the docs generators and the docs site), `meta verify`
+(every mode), `meta migrate`, `meta fmt`, `meta types`, `meta export`, `meta deps`,
+`meta upgrade` and `meta prompt-snapshot`. A config that fails to load is reported as its own
+error, never misreported as an unknown subtype. Programmatic loads pass the list:
+`loadMemory(root, { providers: [vocabulary] })` composes the default core set plus yours;
+`replaceDefaults: true` composes yours alone (rare).
+
+### Python
 
 ```python
-# Python
-loader = MetaDataLoader.from_directory("./metadata", providers=[example_toolcall_provider])
+# acme_vocab.py (beside metaobjects.config.yaml)
+from metaobjects.meta.presentation.layout.meta_layout import MetaLayout
+from metaobjects.provider import Provider
+from metaobjects.registry import AttrSchema, ChildRule, TypeDefinition
+from metaobjects.shared.base_types import TYPE_ATTR
+
+provider = Provider("acme-vocabulary", dependencies=("metaobjects-core-types",))
+provider.add(TypeDefinition(
+    type="layout", sub_type="picker", factory=MetaLayout,
+    attrs=[AttrSchema("displayField", "string", required=False)],
+    child_rules=[ChildRule(TYPE_ATTR, "*")],
+))
+provider.on_register(lambda registry: registry.extend(
+    "field", "string",
+    attributes=[
+        AttrSchema("searchable", "boolean", required=False),
+        AttrSchema("valueLabels", "string", required=False, is_array=True),
+    ],
+))
 ```
+
+Wire it in `metaobjects.config.yaml` as `module:symbol`; the module resolves relative to the
+config's directory:
+
+```yaml
+metadata: metaobjects
+providers: ["acme_vocab:provider"]
+```
+
+**Loaded by:** `metaobjects gen` (including the docs generators), every `metaobjects verify`
+mode and `metaobjects fmt`. `--provider module:symbol` adds to the configured list for one
+run. Programmatic loads pass the full set, core first, because `providers=` is exactly what
+is composed:
+`MetaDataLoader.from_directory("metaobjects", providers=[*core_providers, provider], strict=True)`
+(`core_providers` from `metaobjects.core_types`).
+
+### C#
+
+```csharp
+// vocabulary/AcmeVocabularyProvider.cs, in a class library referencing the MetaObjects
+// package at the version your `dotnet meta` tool runs.
+using MetaObjects;
+using MetaObjects.Meta;
+using MetaObjects.Shared;
+
+namespace Acme.Vocabulary;
+
+public sealed class AcmeVocabularyProvider : IMetaDataTypeProvider
+{
+    public string Id => "acme-vocabulary";
+    public IReadOnlyList<string> Dependencies => ["metaobjects-core-types"];
+
+    public void RegisterTypes(TypeRegistry registry)
+    {
+        registry.Register(new TypeDefinition(
+            typeId: new TypeId("layout", "picker"),
+            description: "A picker over the owning object.",
+            childRules: [new ChildRule(BaseTypes.TYPE_ATTR, Structural.CHILD_RULE_WILDCARD, Structural.CHILD_RULE_WILDCARD)],
+            factory: (typeId, name) => new MetaLayout(typeId, name),
+            attributes: [new AttrSchema("displayField", "string", Required: false)]));
+
+        registry.Extend("field", "string", attributes:
+        [
+            new AttrSchema("searchable", "boolean", Required: false),
+            new AttrSchema("valueLabels", "string", Required: false, IsArray: true),
+        ]);
+    }
+}
+```
+
+Wire it in `.metaobjects/config.json`. `assembly` is the built dll, relative to the directory
+holding `.metaobjects/`; `type` is the provider's full type name, and the class needs a public
+parameterless constructor:
+
+```json
+{
+  "schema_version": 1,
+  "csharp": {
+    "providers": [
+      { "assembly": "vocabulary/bin/Debug/net8.0/Acme.Vocabulary.dll", "type": "Acme.Vocabulary.AcmeVocabularyProvider" }
+    ]
+  }
+}
+```
+
+**Loaded by:** `dotnet meta gen` and `verify --codegen` (through the project's `codegen/`
+runner), `dotnet meta verify` (templates, requirements, field lint) and `dotnet meta fmt`.
+Build the vocabulary first; a missing dll, a missing type or a type that is not a provider is
+refused with an error naming `csharp.providers`. If the `codegen/` project also references
+the vocabulary project, the already-loaded assembly is reused. Programmatic loads compose the
+registry themselves, and `ComposeRegistry` takes exactly the set given:
+`Provider.ComposeRegistry([.. CoreTypes.LibraryProviders, new AcmeVocabularyProvider()])`,
+then `MetaDataLoader.FromDirectory(dir, registry, strict: true)`.
+
+### Java
 
 ```java
-// Java — SPI auto-discovery is the default; META-INF/services lists every provider
-// (no API call required). When a consumer genuinely needs extra vocabulary
-// composed with the full metamodel provider set — so its metadata still
-// strict-loads against the spec contract instead of getting the weaker
-// classpath-SPI registry — the sanctioned seam is:
-loader.setTypeRegistry(RegistryManifest.composeMetamodelRegistry(List.of(myProvider)));
-// Calling MetaDataRegistry.compose(...) directly does NOT run spec scoping —
-// use composeMetamodelRegistry(extras), not a raw compose() call.
+package com.acme.vocab;
+
+import com.metaobjects.attr.BooleanAttribute;
+import com.metaobjects.attr.StringAttribute;
+import com.metaobjects.field.StringField;
+import com.metaobjects.layout.MetaLayout;
+import com.metaobjects.registry.MetaDataRegistry;
+import com.metaobjects.registry.MetaDataTypeProvider;
+
+public final class AcmeVocabulary implements MetaDataTypeProvider {
+    /** The node class behind layout.picker. */
+    public static final class PickerLayout extends MetaLayout {
+        public PickerLayout(String name) { super("picker", name); }
+    }
+
+    @Override public String getProviderId() { return "acme-vocabulary"; }
+    @Override public String[] getDependencies() { return new String[] {"field-types", "layout-types"}; }
+
+    @Override public void registerTypes(MetaDataRegistry registry) {
+        registry.registerType(PickerLayout.class, def -> {
+            def.type("layout").subType("picker").inheritsFrom("layout", "base");
+            def.optionalAttributeWithConstraints("displayField").ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+        });
+        registry.extendType(StringField.class, def -> {
+            def.optionalAttributeWithConstraints("searchable").ofType(BooleanAttribute.SUBTYPE_BOOLEAN).asSingle();
+            def.optionalAttributeWithConstraints("valueLabels").ofType(StringAttribute.SUBTYPE_STRING).asArray();
+        });
+    }
+}
 ```
 
-The semantic rule is identical across ports:
+The JVM provider ids differ from the other ports': depend on `field-types` and
+`layout-types` (the providers that register those types), not `metaobjects-core-types`.
 
-> **Explicit `providers` declarations bypass any ambient discovery.** The
-> set you pass is exactly the set the loader composes. This guarantees
-> determinism — same providers list + same metadata → same registry, no
-> classpath order surprises, no bundler import-order surprises.
+Wire it in the `metaobjects-maven-plugin` configuration. The class must be on the plugin's
+classpath, so put it in its own module and add that module as a project dependency or under
+the plugin's `<dependencies>`; a provider in the same module is not compiled yet when
+`generate` runs at `generate-sources`.
 
-Every port's loader defaults to `[...coreProviders, ...callerProviders]` when the
-caller supplies `providers`. Pass `{ replaceDefaults: true }` (TS) or the per-port
-equivalent to skip the defaults entirely — rare, but supported.
+```xml
+<plugin>
+  <groupId>com.metaobjects</groupId>
+  <artifactId>metaobjects-maven-plugin</artifactId>
+  <configuration>
+    <providers>
+      <provider>com.acme.vocab.AcmeVocabulary</provider>
+    </providers>
+  </configuration>
+  <dependencies>
+    <dependency><groupId>com.acme</groupId><artifactId>acme-vocabulary</artifactId><version>1.0</version></dependency>
+  </dependencies>
+</plugin>
+```
+
+**Loaded by:** `metaobjects:generate` (including the docs generators), `metaobjects:verify`,
+`metaobjects:fmt` and `metaobjects:editor` (`-Dmeta.providers=...` on the command line works
+too). A Spring Boot app declares the provider as a bean, and the auto-configured loader
+composes every `MetaDataTypeProvider` bean:
+`@Bean MetaDataTypeProvider acmeVocabulary() { return new AcmeVocabulary(); }`.
+Programmatic loads pass it on the options:
+`LoaderOptions.create(false, false, true).setProviders(List.of(new AcmeVocabulary()))`.
+The loader composes the full metamodel set plus these
+(`RegistryManifest.composeLoaderRegistry(extras)`).
+
+**Listing a class in `META-INF/services` does not add it to the loader.** The strict loader
+composes a fixed metamodel set plus the providers you name, so a jar on the classpath cannot
+change the vocabulary by accident.
+
+### Kotlin
+
+Kotlin runs on the JVM registry, so the provider is the same interface written in Kotlin, and
+it is wired the same way: the Maven plugin's `<providers>` list (Kotlin generators run
+through `metaobjects:generate`), a Spring bean, or `providers = listOf(...)` on the
+`metadata-ktx` loader:
+
+```kotlin
+class PickerLayout(name: String) : MetaLayout("picker", name)
+
+class AcmeVocabulary : MetaDataTypeProvider {
+    override fun getProviderId() = "acme-vocabulary"
+    override fun getDependencies() = arrayOf("field-types", "layout-types")
+
+    override fun registerTypes(registry: MetaDataRegistry) {
+        registry.registerType(PickerLayout::class.java) { def ->
+            def.type("layout").subType("picker").inheritsFrom("layout", "base")
+            def.optionalAttributeWithConstraints("displayField").ofType("string").asSingle()
+        }
+        registry.extendType(StringField::class.java) { def ->
+            def.optionalAttributeWithConstraints("searchable").ofType("boolean").asSingle()
+            def.optionalAttributeWithConstraints("valueLabels").ofType("string").asArray()
+        }
+    }
+}
+
+val result = loadUris("app", uris, LoaderOptions.create(false, false, true), providers = listOf(AcmeVocabulary()))
+```
+
+### Without the provider
+
+The same file, loaded strictly without the provider, fails with `ERR_UNKNOWN_SUBTYPE` on
+`layout.picker` and `ERR_UNKNOWN_ATTR` on each of `@searchable` and `@valueLabels`, in that
+order, in every port. A lax load accepts the unknown attributes but still refuses the unknown
+subtype.
+
+### The TypeScript forge provider
 
 **`forgeTypesProvider` is TypeScript-only, and is no longer in any default
 composition.** It was listed here as part of the default composition for "the TS / C# /
@@ -249,17 +515,23 @@ Composition surfaces these codes consistently across all ports (see
 | Code | When | Conformance fixture |
 |---|---|---|
 | `ERR_UNKNOWN_TYPE` | YAML/JSON references a `type` not registered by any provider — including a BARE wrapper key naming an unregistered type, which is an unknown type and not a missing subType | `error-unknown-bare-child-type` |
-| `ERR_UNKNOWN_SUBTYPE` | `type` is known but `subType` is not | `provider-extension-missing-provider-fails` |
+| `ERR_UNKNOWN_SUBTYPE` | `type` is known but `subType` is not | `provider-extension-missing-provider-fails`, `provider-custom-vocabulary-missing-provider-fails` |
+| `ERR_UNKNOWN_ATTR` | A strict load meets an attribute no provider declared on that `(type, subType)` | `provider-custom-vocabulary-missing-provider-fails` |
 | `ERR_CHILD_NOT_OBJECT` | A `children` entry's body is not an object, so there is no node to read — checked AFTER the wrapper key resolves | `error-child-not-object` |
 | `ERR_PROVIDER_DUPLICATE_ID` | Two provider objects report the same `id` | `provider-extension-duplicate-id` |
 | `ERR_PROVIDER_MISSING_DEPENDENCY` | Provider declares dep on an unregistered id | `provider-extension-missing-dependency` |
 | `ERR_PROVIDER_DEPENDENCY_CYCLE` | Provider dependencies form a cycle | `provider-extension-dependency-cycle` |
-| `ERR_PROVIDER_ATTR_CONFLICT` | Two providers declare the same attr on the same `(type, subType)` | (covered by negative tests in core) |
+| `ERR_PROVIDER_ATTR_CONFLICT` | Two providers declare the same attr on the same `(type, subType)`, or one registers a common attr whose name the other holds as a common attr or on any type | `attr-conflict`, `common-attr-conflict`, `common-attr-per-type-after`, `common-attr-per-type-before` (provider-composition corpus) |
+| `ERR_PROVIDER_ATTR_SHADOW` | A provider declares an attr another provider already holds on the shared root or a descendant subtype of the same type | `attr-shadow-inherited`, `attr-shadow-descendant`, `attr-shadow-extend` (provider-composition corpus) |
 
 Each conformance fixture's `providers.json: string[]` lists the provider ids to
-compose for that test — the same wire format consumers use at runtime. The
-fixtures are run in every port (TS / C# / Python today; Java SPI version
-forthcoming), so any future port automatically inherits the contract.
+compose for that test — the same wire format consumers use at runtime. Each
+port's conformance adapter maps those ids to its own provider objects, and the
+fixtures run in every port (TypeScript, C#, Java, Kotlin, Python), so any future
+port inherits the contract. `provider-custom-vocabulary-success` loads a
+project-defined subtype plus attributes on a core type with the provider;
+`provider-custom-vocabulary-missing-provider-fails` refuses the same file
+without it.
 
 ## When to write a provider vs. inline metadata
 
@@ -384,15 +656,14 @@ overlay semantics, common patterns).
   core vocabulary.** Example: `source.rdb` is a persistence-paradigm split —
   there will eventually be `source.kv`, `source.graph`, etc., and they all
   need first-class subtype identity for cross-port codegen routing.
-- **You need load-time error detection when the provider is missing.** The
-  loader treats undeclared `@-attrs` as **open policy** — they're silently
-  accepted, no error or warning (`attr-schema-validate.ts:15`). Only the
-  *subtype* itself is validated against the registry. So if your concept's
-  correctness depends on the provider being loaded (e.g., a custom generator
-  must run when the metadata is present), subtype registration is the only
-  mechanism that catches "consumer forgot to wire the provider" at load
-  time via `ERR_UNKNOWN_SUBTYPE`. With pure attr-extension, missing
-  providers silently no-op.
+- **You need load-time error detection even in a lax load.** A strict load
+  (the default for every tool) refuses an undeclared `@-attr` with
+  `ERR_UNKNOWN_ATTR`, so a missing provider is caught either way. A lax load
+  (`--lax`, `strict: false`) accepts undeclared attrs and refuses only an
+  unknown *subtype*. So if your concept's correctness depends on the provider
+  being loaded even where a project loads laxly, subtype registration is the
+  mechanism that still catches "consumer forgot to wire the provider", via
+  `ERR_UNKNOWN_SUBTYPE`.
 
 If the only argument for a new subtype is "the name reads nicer," add an
 attr instead. A subtype is a permanent commitment in every port's registry;
@@ -419,13 +690,13 @@ configuration rich.
 
 ## Cross-port parity status
 
-| Port | API | Status |
-|---|---|---|
-| TypeScript | `loadMemory(repoRoot, { providers })` + `defineConfig({ providers })` | Shipped |
-| C# | `Provider.ComposeRegistry(providers)` → `MetaDataLoader.FromDirectory(dir, registry)` | Shipped |
-| Python | `MetaDataLoader.from_directory(dir, providers=...)` | Shipped |
-| Java | SPI via `META-INF/services/com.metaobjects.registry.MetaDataTypeProvider` | Shipped (SPI auto-discovery; programmatic `compose()` factory is a follow-up) |
-| Kotlin | Inherits Java SPI through `metadata-ktx` | Shipped |
+| Port | Project config | Programmatic | Status |
+|---|---|---|---|
+| TypeScript | `defineConfig({ providers })` in `metaobjects.config.ts` | `loadMemory(root, { providers })` | Shipped |
+| Python | `providers: ["module:symbol"]` in `metaobjects.config.yaml`, plus `--provider` | `MetaDataLoader.from_directory(dir, providers=[*core_providers, ...])` | Shipped |
+| C# | `csharp.providers: [{ assembly, type }]` in `.metaobjects/config.json` | `Provider.ComposeRegistry(...)` → `MetaDataLoader.FromDirectory(dir, registry)` | Shipped |
+| Java | Maven plugin `<providers>`; Spring `MetaDataTypeProvider` beans | `LoaderOptions.setProviders(...)` | Shipped |
+| Kotlin | Maven plugin `<providers>`; Spring beans | `metadata-ktx` `loadUris(..., providers = listOf(...))` | Shipped |
 
 All five ports compose providers in **dependency order** (Kahn's algorithm)
 and emit the same stable error codes when composition fails.
@@ -466,10 +737,10 @@ root-level), so you do **not** hand-walk the tree in a `validate` hook.
 ## See also
 
 - [`../recipes/extending-metaobjects-with-providers.md`](../recipes/extending-metaobjects-with-providers.md) — hands-on walkthrough
-- [`../ports/typescript.md`](../ports/typescript.md), [`../ports/csharp.md`](../ports/csharp.md), [`../ports/python.md`](../ports/python.md), [`../ports/java.md`](../ports/java.md) — per-port quickstarts
+- [`../ports/typescript.md`](../ports/typescript.md), [`../ports/csharp.md`](../ports/csharp.md), [`../ports/python.md`](../ports/python.md), [`../ports/java.md`](../ports/java.md), [`../ports/kotlin.md`](../ports/kotlin.md) — per-port quickstarts
 - [`templates-and-payloads.md`](templates-and-payloads.md) — the core
   `template.prompt` + `template.output` subtypes that a custom `template.toolcall` slots alongside
 - [`source-kinds.md`](source-kinds.md) — the `source.rdb` example of `extend`-style
   provider use (adds `@table`, `@kind`, `@role`, `@schema` to a core subtype)
-- [`../../fixtures/conformance/`](../../fixtures/conformance/) — `provider-extension-*` fixtures
+- [`../../fixtures/conformance/`](../../fixtures/conformance/) — `provider-extension-*` and `provider-custom-vocabulary-*` fixtures
 - [`../../fixtures/conformance/ERROR-CODES.json`](../../fixtures/conformance/ERROR-CODES.json) — stable error code dictionary

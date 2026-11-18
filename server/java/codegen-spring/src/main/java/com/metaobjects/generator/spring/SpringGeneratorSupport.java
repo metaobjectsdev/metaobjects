@@ -12,10 +12,24 @@ import com.metaobjects.generator.spring.TphPlan;
 
 import com.metaobjects.MetaData;
 import com.metaobjects.config.WireFormat;
+import com.metaobjects.field.BooleanField;
+import com.metaobjects.field.CurrencyField;
+import com.metaobjects.field.DateField;
+import com.metaobjects.field.DecimalField;
+import com.metaobjects.field.DoubleField;
+import com.metaobjects.field.DurationField;
 import com.metaobjects.field.EnumField;
+import com.metaobjects.field.FloatField;
+import com.metaobjects.field.IntegerField;
+import com.metaobjects.field.LongField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.ObjectField;
 import com.metaobjects.field.StringField;
+import com.metaobjects.field.TimeField;
+import com.metaobjects.field.TimestampField;
+import com.metaobjects.field.InetField;
+import com.metaobjects.field.UriField;
+import com.metaobjects.field.UuidField;
 import com.metaobjects.generator.util.RestSurfaceGate;
 import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.identity.PrimaryIdentity;
@@ -23,6 +37,11 @@ import com.metaobjects.object.MetaObject;
 import com.metaobjects.origin.AggregateOrigin;
 import com.metaobjects.origin.MetaOrigin;
 import com.metaobjects.validator.ArrayValidator;
+import com.metaobjects.validator.AtLeastOneValidator;
+import com.metaobjects.validator.ComparisonValidator;
+import com.metaobjects.validator.ExactlyOneValidator;
+import com.metaobjects.validator.PresentIffValidator;
+import com.metaobjects.validator.RequiredWhenValidator;
 import com.metaobjects.validator.LengthValidator;
 import com.metaobjects.validator.MetaValidator;
 import com.metaobjects.validator.NumericValidator;
@@ -31,6 +50,7 @@ import com.metaobjects.validator.RequiredValidator;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * The static helpers the Spring generators share: which fields a DTO / patch carries, the
@@ -633,6 +653,335 @@ public final class SpringGeneratorSupport {
         return validator(field, type) != null;
     }
 
+    // === entity-scoped cross-field validators (class-level Bean Validation) ==========
+
+    private static boolean isNumericCrossField(MetaField<?> f) {
+        return f instanceof IntegerField || f instanceof LongField || f instanceof DoubleField
+            || f instanceof FloatField || f instanceof DecimalField || f instanceof CurrencyField;
+    }
+
+    private static boolean isTemporalCrossField(MetaField<?> f) {
+        return f instanceof DateField || f instanceof TimeField || f instanceof TimestampField;
+    }
+
+    /**
+     * The comparison expression for two fields, or null when the pair has no sound one. Mirrors the
+     * C# generator: numerics compare with each other, strings, temporals and durations only with their own
+     * subtype and Java type (a date has no ordering against a timestamp, nor an Instant against a
+     * {@code @localTime} LocalDateTime, and casting both to Comparable would
+     * throw ClassCastException inside the constraint method, turning a create into a 500), and
+     * boolean, enum, uuid, uri and inet fields only test equality. Anything else is skipped, like every other port.
+     */
+    private static boolean orderableCrossField(MetaField<?> f) {
+        return isNumericCrossField(f) || f instanceof StringField || isTemporalCrossField(f) || f instanceof DurationField;
+    }
+
+    private static boolean equatableCrossField(MetaField<?> f) {
+        return f instanceof BooleanField || f instanceof EnumField || f instanceof UuidField
+                || f instanceof UriField || f instanceof InetField;
+    }
+
+    /** Whether the pair has a sound comparison (see {@link #crossComparison}); emits nothing. */
+    private static boolean crossComparable(MetaField<?> l, MetaField<?> r, String op) {
+        boolean ordering = op.equals("gt") || op.equals("gte") || op.equals("lt") || op.equals("lte");
+        boolean sameSubType = l.getSubType().equals(r.getSubType());
+        if (isNumericCrossField(l) && isNumericCrossField(r) && !sameSubType) return true;
+        if (!sameSubType) return false;
+        if (!orderableCrossField(l) && !(!ordering && equatableCrossField(l))) return false;
+        return SpringTypeMapper.javaTypeName(l).equals(SpringTypeMapper.javaTypeName(r));
+    }
+
+    private static String crossComparison(MetaField<?> l, MetaField<?> r, String lc, String rc, String op, String jop) {
+        if (!crossComparable(l, r, op)) return null;
+        if (isNumericCrossField(l) && isNumericCrossField(r) && !l.getSubType().equals(r.getSubType())) {
+            return "new java.math.BigDecimal(String.valueOf(" + lc + ")).compareTo(new java.math.BigDecimal(String.valueOf(" + rc + "))) " + jop + " 0";
+        }
+        if (orderableCrossField(l)) {
+            return "((Comparable<Object>) (Object) " + lc + ").compareTo(" + rc + ") " + jop + " 0";
+        }
+        return (op.equals("eq") ? "" : "!") + "java.util.Objects.equals(" + lc + ", " + rc + ")";
+    }
+
+    private static String crossAttr(MetaData v, String attr) {
+        if (!v.hasMetaAttr(attr)) return null;
+        Object raw = v.getMetaAttr(attr).getValue();
+        return raw == null ? null : String.valueOf(raw);
+    }
+
+    /**
+     * Resolve a by-name field reference through the resolving accessor; null when unknown or when
+     * the create body never carries the field (readOnly, derived, or a store-generated key).
+     */
+    private static MetaField<?> crossField(MetaObject entity, String name, List<MetaField> components) {
+        if (name == null || name.isEmpty()) return null;
+        PrimaryIdentity pk = entity.getPrimaryIdentity();
+        for (MetaField f : components) {
+            if (!f.getName().equals(name)) continue;
+            if (f.isReadOnlyMutability() || f.isDerived()) return null;
+            if (pk != null && pk.isAutoGenerated() && pk.getFields().contains(name)) return null;
+            return f;
+        }
+        return null;
+    }
+
+    /** Java boolean expression: does the gating field equal the @equals literal (null gate = false)? */
+    private static String crossEqualsExpr(String ref, MetaField<?> when, String raw) {
+        String s = raw == null ? "" : raw;
+        if (when instanceof BooleanField) {
+            boolean truthy = s.equals("true") || s.equals("1") || s.equals("TRUE");
+            return "(" + ref + " != null && " + ref + ".booleanValue() == " + truthy + ")";
+        }
+        if (isNumericCrossField(when) && s.matches("-?\\d+(\\.\\d+)?")) {
+            return "(" + ref + " != null && new java.math.BigDecimal(String.valueOf(" + ref
+                + ")).compareTo(new java.math.BigDecimal(\"" + s + "\")) == 0)";
+        }
+        return "(" + ref + " != null && \"" + escapeJavaString(s) + "\".equals(String.valueOf(" + ref + ")))";
+    }
+
+    /**
+     * Record-body members enforcing the entity-scoped cross-field validators
+     * ({@code validator.comparison / requiredWhen / presentIff / atLeastOne / exactlyOne}, each with an optional
+     * {@code @condition}) on the FULL create
+     * DTO: one {@code @AssertTrue} {@code isXxxValid()} method per validator (Bean Validation
+     * reads it as a class-level rule; {@code @JsonIgnore} keeps it off the wire). Null-safe in
+     * the DB CHECK sense (SQL NULL = Java null; "" is not null). A validator whose referenced
+     * field is missing is skipped. NOT added to the PATCH body: a partial body cannot see the
+     * merged row, so the DB CHECK stays the enforcement there.
+     */
+    public static List<String> crossFieldValidationMembers(MetaObject entity, List<MetaField> components) {
+        List<String> out = new ArrayList<>();
+        java.util.Set<String> used = new java.util.HashSet<>();
+        for (Map.Entry<MetaValidator, String> rule : crossFieldRules(
+                entity, components, f -> "this." + SpringNaming.recordComponentName(f.getName()))) {
+            MetaValidator v = rule.getKey();
+            StringBuilder id = new StringBuilder();
+            for (char ch : v.getName().toCharArray()) id.append(Character.isJavaIdentifierPart(ch) ? ch : '_');
+            String base = id.length() == 0 ? "CrossField" : Character.toUpperCase(id.charAt(0)) + id.substring(1);
+            String method = "is" + base + "Valid";
+            for (int n = 2; !used.add(method); n++) method = "is" + base + n + "Valid";
+            out.add("\n    /** Cross-field validator " + v.getName().replace("*/", "* /")
+                + " (class-level Bean Validation; the DB CHECK enforces the PATCH path). */\n"
+                + "    @com.fasterxml.jackson.annotation.JsonIgnore\n"
+                + "    @AssertTrue(message = \"validator " + escapeJavaString(v.getName()) + " violated\")\n"
+                + "    @SuppressWarnings(\"unchecked\")\n"
+                + "    public boolean " + method + "() {\n"
+                + "        return " + rule.getValue() + ";\n"
+                + "    }\n");
+        }
+        return out;
+    }
+
+    /**
+     * The entity-scoped cross-field validators as Java boolean expressions (true = satisfied), in
+     * declaration order. {@code ref} renders a field reference: {@code this.<component>} inside the
+     * DTO, or a body accessor / pinned literal in a controller that validates a different bean.
+     */
+    public static List<Map.Entry<MetaValidator, String>> crossFieldRules(
+            MetaObject entity, List<MetaField> components, java.util.function.Function<MetaField<?>, String> ref) {
+        List<Map.Entry<MetaValidator, String>> out = new ArrayList<>();
+        if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) return out;
+        for (MetaValidator v : entity.getChildren(MetaValidator.class)) {
+            String expr = null;
+            if (v instanceof ComparisonValidator) {
+                MetaField<?> l = crossField(entity, crossAttr(v, ComparisonValidator.ATTR_LEFT), components);
+                MetaField<?> r = crossField(entity, crossAttr(v, ComparisonValidator.ATTR_RIGHT), components);
+                String op = crossAttr(v, ComparisonValidator.ATTR_OP);
+                String jop = op == null ? null : switch (op) {
+                    case "gt" -> ">"; case "gte" -> ">="; case "lt" -> "<"; case "lte" -> "<=";
+                    case "ne" -> "!="; case "eq" -> "=="; default -> null; };
+                if (l == null || r == null || jop == null || l.isArrayType() || r.isArrayType()) continue;
+                String lc = ref.apply(l);
+                String rc = ref.apply(r);
+                String cmp = crossComparison(l, r, lc, rc, op, jop);
+                if (cmp == null) continue;
+                expr = lc + " == null || " + rc + " == null || " + cmp;
+            } else if (v instanceof RequiredWhenValidator || v instanceof PresentIffValidator) {
+                MetaField<?> t = crossField(entity, crossAttr(v, RequiredWhenValidator.ATTR_FIELD), components);
+                MetaField<?> w = crossField(entity, crossAttr(v, RequiredWhenValidator.ATTR_WHEN), components);
+                if (t == null || w == null || w.isArrayType()) continue;
+                String tc = ref.apply(t);
+                String gate = crossEqualsExpr(ref.apply(w), w,
+                    crossAttr(v, RequiredWhenValidator.ATTR_EQUALS));
+                expr = v instanceof RequiredWhenValidator
+                    ? "!" + gate + " || " + tc + " != null"
+                    : "(" + tc + " != null) == " + gate;
+            } else if (v instanceof AtLeastOneValidator || v instanceof ExactlyOneValidator) {
+                // atLeastOne and exactlyOne both name @fields; they differ only in the count they allow.
+                Object raw = v.hasMetaAttr(AtLeastOneValidator.ATTR_FIELDS)
+                    ? v.getMetaAttr(AtLeastOneValidator.ATTR_FIELDS).getValue() : null;
+                List<String> names = new ArrayList<>();
+                if (raw instanceof java.util.Collection<?> c) { for (Object o : c) names.add(String.valueOf(o)); }
+                else if (raw != null) names.add(String.valueOf(raw));
+                List<String> parts = new ArrayList<>();
+                boolean missing = names.isEmpty();
+                for (String n : names) {
+                    MetaField<?> f = crossField(entity, n, components);
+                    if (f == null) { missing = true; break; }
+                    parts.add(ref.apply(f) + (v instanceof AtLeastOneValidator ? " != null" : " != null ? 1 : 0"));
+                }
+                if (missing) continue;
+                expr = v instanceof AtLeastOneValidator
+                    ? String.join(" || ", parts)
+                    : "((" + String.join(") + (", parts) + ")) == 1";
+            }
+            if (expr != null && v.hasMetaAttr(MetaValidator.ATTR_CONDITION)) {
+                // The CHECK is NOT (condition) OR (rule): the rule binds only when the condition is TRUE
+                // under SQL three-valued logic; FALSE and NULL (unknown) let the record through.
+                String cond = conditionExpr(v.getMetaAttr(MetaValidator.ATTR_CONDITION).getValue(), entity, components, ref);
+                if (cond == null) continue; // names a field the create model lacks: left to the database
+                expr = "!Boolean.TRUE.equals(" + cond + ") || (" + expr + ")";
+            }
+            if (expr == null) continue;
+            out.add(Map.entry(v, expr));
+        }
+        return out;
+    }
+
+    // --- @condition: a three-valued (Boolean, null = unknown) Java expression ----------------------
+    // Generated code stays self-contained (JDK types only); there is no runtime expression interpreter.
+
+    private enum CompareKind { NUMBER, DURATION, PLAIN }
+
+    private static CompareKind compareKind(MetaField<?> f) {
+        if (f == null) return CompareKind.PLAIN;
+        if (isNumericCrossField(f)) return CompareKind.NUMBER;
+        if (f instanceof com.metaobjects.field.DurationField) return CompareKind.DURATION;
+        return CompareKind.PLAIN;
+    }
+
+    /** The field a value node compares as: itself, or a coalesce's first field. */
+    private static MetaField<?> nodeField(Object node, MetaObject entity, List<MetaField> components) {
+        if (!(node instanceof Map<?, ?> n)) return null;
+        if (n.get("field") instanceof String name) return crossField(entity, name, components);
+        if ("coalesce".equals(n.get("fn")) && n.get("args") instanceof java.util.Collection<?> args) {
+            for (Object a : args) {
+                MetaField<?> f = nodeField(a, entity, components);
+                if (f != null) return f;
+            }
+        }
+        return null;
+    }
+
+    /** Every field a value node reads: the field itself, or each field among a coalesce's arguments. */
+    private static List<MetaField<?>> nodeFields(Object node, MetaObject entity, List<MetaField> components) {
+        List<MetaField<?>> out = new ArrayList<>();
+        if (!(node instanceof Map<?, ?> n)) return out;
+        if (n.get("field") instanceof String name) {
+            MetaField<?> f = crossField(entity, name, components);
+            if (f != null) out.add(f);
+        } else if ("coalesce".equals(n.get("fn")) && n.get("args") instanceof java.util.Collection<?> args) {
+            for (Object a : args) out.addAll(nodeFields(a, entity, components));
+        }
+        return out;
+    }
+
+    /** A comparison inside a condition follows the validator rule: every pair of fields it reads
+     *  must be comparable, or the whole rule is left to the database. */
+    private static boolean conditionComparable(Object left, Object right, String op,
+            MetaObject entity, List<MetaField> components) {
+        List<MetaField<?>> fields = nodeFields(left, entity, components);
+        fields.addAll(nodeFields(right, entity, components));
+        for (int i = 0; i < fields.size(); i++) {
+            for (int j = i + 1; j < fields.size(); j++) {
+                if (!crossComparable(fields.get(i), fields.get(j), op)) return false;
+            }
+        }
+        return true;
+    }
+
+    /** A value node (field, literal, coalesce) as a Java expression compared as {@code kind}, or null. */
+    private static String conditionValue(Object node, CompareKind kind, MetaObject entity,
+            List<MetaField> components, java.util.function.Function<MetaField<?>, String> ref) {
+        if (!(node instanceof Map<?, ?> n)) return null;
+        if (n.get("field") instanceof String name) {
+            MetaField<?> f = crossField(entity, name, components);
+            if (f == null || f.isArrayType()) return null;
+            String r = ref.apply(f);
+            return switch (kind) {
+                case NUMBER -> "(" + r + " == null ? null : new java.math.BigDecimal(String.valueOf(" + r + ")))";
+                case DURATION -> r;
+                case PLAIN -> "(" + r + " == null ? null : String.valueOf(" + r + "))";
+            };
+        }
+        if (n.containsKey("value")) {
+            Object value = n.get("value");
+            if (value == null) return null;
+            String text = String.valueOf(value);
+            switch (kind) {
+                case NUMBER:
+                    return "new java.math.BigDecimal(\"" + escapeJavaString(text) + "\")";
+                case DURATION:
+                    try {
+                        java.time.Duration d = com.metaobjects.field.DurationWire.parse(text);
+                        return "java.time.Duration.ofSeconds(" + d.getSeconds() + "L, " + d.getNano() + "L)";
+                    } catch (RuntimeException e) {
+                        return null;
+                    }
+                default:
+                    return "\"" + escapeJavaString(text) + "\"";
+            }
+        }
+        if ("coalesce".equals(n.get("fn")) && n.get("args") instanceof java.util.Collection<?> args) {
+            List<String> parts = new ArrayList<>();
+            for (Object a : args) {
+                String part = conditionValue(a, kind, entity, components, ref);
+                if (part == null) return null;
+                parts.add(part);
+            }
+            return "java.util.Arrays.<Object>asList(" + String.join(", ", parts)
+                + ").stream().filter(java.util.Objects::nonNull).findFirst().orElse(null)";
+        }
+        return null;
+    }
+
+    /** A condition node as a Java {@code Boolean} expression (null = SQL unknown), or null when unresolvable. */
+    private static String conditionExpr(Object node, MetaObject entity, List<MetaField> components,
+            java.util.function.Function<MetaField<?>, String> ref) {
+        if (!(node instanceof Map<?, ?> n)) return null;
+        Object op = n.get("op");
+        if (!(op instanceof String opName)) return null;
+        String jop = switch (opName) {
+            case "gt" -> ">"; case "gte" -> ">="; case "lt" -> "<"; case "lte" -> "<=";
+            case "ne" -> "!="; case "eq" -> "=="; default -> null; };
+        if (jop != null) {
+            if (!conditionComparable(n.get("left"), n.get("right"), opName, entity, components)) return null;
+            MetaField<?> typed = nodeField(n.get("left"), entity, components);
+            if (typed == null) typed = nodeField(n.get("right"), entity, components);
+            CompareKind kind = compareKind(typed);
+            String l = conditionValue(n.get("left"), kind, entity, components, ref);
+            String r = conditionValue(n.get("right"), kind, entity, components, ref);
+            if (l == null || r == null) return null;
+            return "((java.util.function.BiFunction<Comparable<Object>, Object, Boolean>) (l_, r_) -> "
+                + "l_ == null || r_ == null ? null : Boolean.valueOf(l_.compareTo(r_) " + jop + " 0))"
+                + ".apply((Comparable<Object>) (Object) " + l + ", " + r + ")";
+        }
+        if (opName.equals("isNull") || opName.equals("isNotNull")) {
+            String a = conditionValue(n.get("arg"), CompareKind.PLAIN, entity, components, ref);
+            if (a == null) return null;
+            return "Boolean.valueOf(" + a + (opName.equals("isNull") ? " == null)" : " != null)");
+        }
+        if (opName.equals("not")) {
+            String a = conditionExpr(n.get("arg"), entity, components, ref);
+            if (a == null) return null;
+            return "((java.util.function.Function<Boolean, Boolean>) v_ -> v_ == null ? null : Boolean.valueOf(!v_)).apply(" + a + ")";
+        }
+        if ((opName.equals("and") || opName.equals("or")) && n.get("args") instanceof java.util.Collection<?> args) {
+            List<String> parts = new ArrayList<>();
+            for (Object a : args) {
+                String part = conditionExpr(a, entity, components, ref);
+                if (part == null) return null;
+                parts.add(part);
+            }
+            boolean and = opName.equals("and");
+            String decisive = and ? "Boolean.FALSE" : "Boolean.TRUE";
+            String other = and ? "Boolean.TRUE" : "Boolean.FALSE";
+            return "((java.util.function.Function<java.util.List<Boolean>, Boolean>) v_ -> v_.contains(" + decisive
+                + ") ? " + decisive + " : v_.contains(null) ? null : " + other
+                + ").apply(java.util.Arrays.asList(" + String.join(", ", parts) + "))";
+        }
+        return null;
+    }
+
     /** Escape a regex/string literal for safe embedding in generated Java source. */
     public static String escapeJavaString(String s) {
         return com.metaobjects.generator.util.JavaIdentifiers.escapeStringLiteral(s);
@@ -781,10 +1130,12 @@ public final class SpringGeneratorSupport {
      * runtime package. Both halves ride in every wire mode: a host ObjectMapper's JavaTimeModule
      * writes a Duration as decimal seconds (or {@code Duration.toString()}, which differs from the
      * canonical form for negatives), and {@code Duration.parse} accepts more than the accepted form.
-     * A {@code List<Duration>} binds its elements ({@code contentUsing}). Empty for any other type.
+     * A {@code List<Duration>} binds its elements ({@code contentUsing}). Empty for any other type,
+     * and under {@code wire.durations: native} (the default), where the host ObjectMapper's own
+     * {@code java.time} handling writes and reads the duration with no override.
      */
-    public static String durationJsonAnnotations(String type) {
-        if (!isDurationComponent(type)) return "";
+    public static String durationJsonAnnotations(String type, WireFormat wire) {
+        if (!wire.durationsIso() || !isDurationComponent(type)) return "";
         String key = DURATION_LIST_TYPE.equals(type) ? "contentUsing" : "using";
         return "@JsonSerialize(" + key + " = CanonicalDurationSerializer.class) "
             + "@JsonDeserialize(" + key + " = CanonicalDurationDeserializer.class)";

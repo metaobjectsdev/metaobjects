@@ -1,0 +1,9 @@
+{
+  "description": "A provider extends a subtype with an attr name that another provider already declares on the subtype's shared root (<type>.base). The subtype only inherits the name, so the extend is a shadow, not a same-slot redefinition.",
+  "providers": [
+    "shadow-base",
+    "shadow-sub-distinct",
+    "shadow-sub-extend-clash"
+  ],
+  "expectedError": "ERR_PROVIDER_ATTR_SHADOW"
+}

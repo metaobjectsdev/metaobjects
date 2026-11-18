@@ -63,9 +63,10 @@ public class WireConformanceTest {
             WireFormat wire = parse(c.get("wire"), "case:" + name);
             assertEquals(name + ": decimals", c.get("decimals").getAsString(), wire.decimals().wireName());
             assertEquals(name + ": nullMembers", c.get("nullMembers").getAsString(), wire.nullMembers().wireName());
+            assertEquals(name + ": durations", c.get("durations").getAsString(), wire.durations().wireName());
             n++;
         }
-        assertEquals(6, n);
+        assertEquals(7, n);
     }
 
     @Test
@@ -77,6 +78,6 @@ public class WireConformanceTest {
             assertThrows(name, MetaDataException.class, () -> parse(c.get("wire"), "invalid-case:" + name));
             n++;
         }
-        assertEquals(8, n);
+        assertEquals(10, n);
     }
 }

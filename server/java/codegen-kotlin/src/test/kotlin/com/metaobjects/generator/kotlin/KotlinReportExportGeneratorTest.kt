@@ -216,7 +216,7 @@ class KotlinReportExportGeneratorTest {
         val native = W(writer(emptyMap()))
         assertEquals("a\r\n$jackson\r\n", native.csv(listOf("a"), listOf(listOf(native.decimal(value)))))
         // string: the canonical form (ADR-0019 Amendment 1)
-        val pinned = W(writer(emptyMap(), WireFormat(WireFormat.Decimals.STRING, WireFormat.NullMembers.OMIT)))
+        val pinned = W(writer(emptyMap(), WireFormat(WireFormat.Decimals.STRING, WireFormat.NullMembers.OMIT, WireFormat.Durations.ISO)))
         assertEquals(
             "a,b,c\r\n12.5,0,1000\r\n",
             pinned.csv(listOf("a", "b", "c"), listOf(listOf(

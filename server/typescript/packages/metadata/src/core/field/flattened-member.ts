@@ -1,4 +1,4 @@
-// Phase 5 bug G6 — a path into a member of a FLATTENED value object (`address.city`): the
+// A path into a member of a FLATTENED value object (`address.city`): the
 // member's column lives on the owning table, under the embedding field's prefix
 // (resolveFlattenedColumnName). One resolver for the loader and every lowering.
 
@@ -37,7 +37,7 @@ export function resolveFlattenedMember(entity: MetaData, path: string): Flattene
 }
 
 /**
- * G6 (reference half): the physical column a field PATH names on `entity` — a plain field
+ * The physical column a field PATH names on `entity` — a plain field
  * (`countryId`, effective) or a flattened member (`address.countryId`, the embedding's prefix
  * plus the member's column). An `identity.reference @fields` entry may be either, so every
  * consumer of reference columns (view joins, `meta migrate`'s foreign keys) resolves through

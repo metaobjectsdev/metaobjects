@@ -71,6 +71,19 @@ def _walk(out_dir: Path, nested: list[Path] | None = None) -> list[Path]:
     return files
 
 
+def _remove_empty_parents(path: Path, out_dirs: list[Path]) -> None:
+    """After deleting *path*, remove the subpackage directories it leaves empty (the package
+    output layout puts files in ``acme/alpha/``), never an output directory itself."""
+    stop = {d for d in out_dirs}
+    parent = path.parent
+    while parent not in stop and any(parent.is_relative_to(d) for d in out_dirs):
+        try:
+            parent.rmdir()
+        except OSError:
+            return  # not empty (or gone): leave it
+        parent = parent.parent
+
+
 def sweep_orphans(
     gen_state_dir: str,
     project_root: str,
@@ -159,6 +172,7 @@ def sweep_orphans(
                 os.remove(path)
             except FileNotFoundError:
                 pass
+            _remove_empty_parents(Path(path), resolved)
         if forget:
             _save_hashes(gen_state_dir, {k: v for k, v in hashes.items() if k not in forget})
     result.removed.sort()

@@ -12,8 +12,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-import static com.metaobjects.object.MetaObject.ATTR_DESCRIPTION;
-
 /**
  * Reference identity — declares that this entity has fields whose value(s)
  * identify an instance of another entity.
@@ -65,7 +63,6 @@ public class ReferenceIdentity extends MetaIdentity {
             def.reference(new com.metaobjects.validation.ReferenceDescriptor(
                 ATTR_REFERENCES, com.metaobjects.object.MetaObject.TYPE_OBJECT, null, true, "ERR_INVALID_REFERENCE"));
             def.optionalAttributeWithConstraints(ATTR_ENFORCE).ofType(BooleanAttribute.SUBTYPE_BOOLEAN).asSingle();
-            def.optionalAttributeWithConstraints(ATTR_DESCRIPTION).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
             // RDB-physical FK constraint-name override contributed by the db provider
             // (db.json extends identity.reference). Description sourced from the embedded
             // spec/metamodel/db.json by applySpecDescriptions.

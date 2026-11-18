@@ -1,0 +1,46 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Visit",
+          "children": [
+            {
+              "source.rdb": {}
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "storeId"
+              }
+            },
+            {
+              "field.long": {
+                "name": "kioskId"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": "id"
+              }
+            },
+            {
+              "validator.exactlyOne": {
+                "name": "oneSource",
+                "@fields": [
+                  "storeId"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

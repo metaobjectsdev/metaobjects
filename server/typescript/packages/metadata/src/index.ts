@@ -48,6 +48,7 @@ export * from "./core/reporting/reporting-constants.js";
 export { MetaDimension } from "./core/reporting/meta-dimension.js";
 export { MetaMeasure } from "./core/reporting/meta-measure.js";
 export { MetaSegment } from "./core/reporting/meta-segment.js";
+export { isDerivedExpr, derivedExprFields, type DerivedExprNode } from "./core/reporting/derived-expr.js";
 export {
   reportFrom,
   reportSpine,
@@ -66,6 +67,9 @@ export {
   reportingMemberOwner,
   reportingViaHops,
   resolveReportingFieldRef,
+  resolveReportingColumnRef,
+  flattenedMemberOf,
+  type ReportingColumnRef,
   resolveDimensionOf,
   type ReportField,
   type ReportFieldRole,
@@ -408,15 +412,23 @@ export type {
 } from "./naming.js";
 export { resolveEnumMaxLength, enumDefaultsOf, DEFAULT_ENUM_DEFAULTS, ENUMS_KEY_MAX_LENGTH } from "./enum-length.js";
 export type { EnumDefaults } from "./enum-length.js";
+export {
+  apiPaginationOf, API_KEY_PAGINATION, PAGINATION_KEY_DEFAULT_LIMIT, PAGINATION_KEY_MAX_LIMIT,
+  INIT_DEFAULT_LIMIT, INIT_MAX_LIMIT,
+  apiUnknownFieldsOf, API_KEY_UNKNOWN_FIELDS, UNKNOWN_FIELDS_REJECT, UNKNOWN_FIELDS_DROP,
+  UNKNOWN_FIELDS_MODES, DEFAULT_UNKNOWN_FIELDS, ERROR_UNKNOWN_FIELDS,
+} from "./api-pagination.js";
+export type { ApiPagination, UnknownFieldsMode } from "./api-pagination.js";
 
 // Wire format (ADR-0019 Amendment 2): the `wire` block of .metaobjects/config.json.
 export {
-  WIRE_DECIMALS, WIRE_NULL_MEMBERS, WIRE_KEY_DECIMALS, WIRE_KEY_NULL_MEMBERS,
+  WIRE_DECIMALS, WIRE_NULL_MEMBERS, WIRE_DURATIONS, WIRE_KEY_DECIMALS, WIRE_KEY_NULL_MEMBERS, WIRE_KEY_DURATIONS,
   WIRE_DECIMALS_NATIVE, WIRE_DECIMALS_STRING,
   WIRE_NULL_MEMBERS_NATIVE, WIRE_NULL_MEMBERS_EMIT, WIRE_NULL_MEMBERS_OMIT,
+  WIRE_DURATIONS_NATIVE, WIRE_DURATIONS_ISO,
   DEFAULT_WIRE_FORMAT, wireFormatOf,
 } from "./wire.js";
-export type { WireFormat, WireDecimals, WireNullMembers } from "./wire.js";
+export type { WireFormat, WireDecimals, WireNullMembers, WireDurations } from "./wire.js";
 
 // Retired vocabulary: the map the loader reads to explain a retirement, and the raw-document
 // rewriter `meta upgrade` drives from the SAME entries — so the error message and the fix

@@ -472,7 +472,7 @@ public class GeneratedFileWriterTest {
         assertEquals(GENERATED_BODY, Files.readString(outside));
     }
 
-    // ---- ADR-0062: identical bytes are never rewritten, and the manifest is written once ----
+    // ---- ADR-0064: identical bytes are never rewritten, and the manifest is written once ----
 
     private static final java.nio.file.attribute.FileTime LONG_AGO =
         java.nio.file.attribute.FileTime.fromMillis(1_000_000_000_000L);

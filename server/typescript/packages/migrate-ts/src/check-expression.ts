@@ -22,7 +22,7 @@ import {
   FILTER_OP_NE,
   type ExprNode,
 } from "@metaobjectsdev/metadata";
-import type { Dialect } from "./types.js";
+import { isSqliteFamily, type Dialect } from "./types.js";
 
 const SQL_OP: Readonly<Record<string, string>> = {
   [FILTER_OP_EQ]: "=", [FILTER_OP_NE]: "<>", [FILTER_OP_GT]: ">",
@@ -126,7 +126,7 @@ function storedFieldOf(node: unknown): string | undefined {
 
 function renderLiteral(v: unknown, dialect: Dialect | undefined): string {
   if (v === null) return "NULL";
-  if (typeof v === "boolean") return dialect === "sqlite" || dialect === "d1" ? (v ? "1" : "0") : (v ? "TRUE" : "FALSE");
+  if (typeof v === "boolean") return isSqliteFamily(dialect) ? (v ? "1" : "0") : (v ? "TRUE" : "FALSE");
   if (typeof v === "number") return String(v);
   return `'${String(v).replace(/'/g, "''")}'`;
 }

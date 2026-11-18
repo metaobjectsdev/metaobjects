@@ -24,13 +24,24 @@ export type Lesson = InferSelectModel<typeof lessons>;
 export type LessonInsert = InferInsertModel<typeof lessons>;
 export type LessonUpdate = Partial<LessonInsert>;
 export const LessonInsertSchema = z.object({
-  programId: z.string(),
+  programId: z
+    .string()
+    .regex(
+      /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
+      "Invalid uuid",
+    ),
   title: z.string().min(1).max(200),
   position: z.number().int(),
 });
 
 export const LessonUpdateSchema = z.object({
-  programId: z.string().optional(),
+  programId: z
+    .string()
+    .regex(
+      /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
+      "Invalid uuid",
+    )
+    .optional(),
   title: z.string().min(1).max(200).optional(),
   position: z.number().int().optional(),
 });

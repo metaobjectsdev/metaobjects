@@ -247,7 +247,7 @@ def make_jsonb_app(repo: DocumentRepository) -> FastAPI:
         # Present values validated with the create rules (title @maxLength + nested VO).
         if _title_violation(dto) or _vo_present_violation(dto) or not _canonicalize_measures(dto) or not _canonicalize_tiers(dto):
             return _validation_400()
-        return repo.create(dto)
+        return repo.create(_drop_undeclared_members(dto))
 
     @app.patch("/api/documents/{document_id}")
     @app.put("/api/documents/{document_id}")
@@ -261,7 +261,7 @@ def make_jsonb_app(repo: DocumentRepository) -> FastAPI:
         # Validate PRESENT, non-null values (nested VO recurses into each element).
         if _title_violation(dto) or _vo_present_violation(dto) or not _canonicalize_measures(dto) or not _canonicalize_tiers(dto):
             return _validation_400()
-        saved = repo.update(document_id, dto)
+        saved = repo.update(document_id, _drop_undeclared_members(dto))
         if saved is None:
             return JSONResponse(status_code=404, content={"error": "not_found"})
         return saved
@@ -273,6 +273,37 @@ def make_jsonb_app(repo: DocumentRepository) -> FastAPI:
 # Validation helpers — mirror the TS reference (nested VO validates in FULL even
 # inside a partial parent update).
 # ---------------------------------------------------------------------------
+
+
+# A member a value object does not declare is dropped before the write (scenario
+# jsonb-nested-undeclared-key-dropped): `api.unknownFields` judges the top level only, so a
+# nested undeclared key is never refused and never stored. `payload` is the open bag and keeps
+# every key. Mirrors the TS reference.
+_MARKER_MEMBERS = ("label", "score")
+_MEASURE_MEMBERS = ("ratio", "samples", "amount")
+_VO_MEMBERS: dict[str, tuple[str, ...]] = {
+    "primaryMarker": _MARKER_MEMBERS,
+    "optionalMarker": _MARKER_MEMBERS,
+    "markers": _MARKER_MEMBERS,
+    "measure": _MEASURE_MEMBERS,
+    "measures": _MEASURE_MEMBERS,
+    "telemetry": ("capturedAt", "latitude", "tempC"),
+}
+
+
+def _keep_declared(value: Any, members: tuple[str, ...]) -> Any:
+    if isinstance(value, list):
+        return [_keep_declared(v, members) for v in value]
+    if isinstance(value, dict):
+        return {k: v for k, v in value.items() if k in members}
+    return value
+
+
+def _drop_undeclared_members(dto: dict[str, Any]) -> dict[str, Any]:
+    return {
+        k: _keep_declared(v, _VO_MEMBERS[k]) if k in _VO_MEMBERS else v
+        for k, v in dto.items()
+    }
 
 
 def _validation_400() -> JSONResponse:

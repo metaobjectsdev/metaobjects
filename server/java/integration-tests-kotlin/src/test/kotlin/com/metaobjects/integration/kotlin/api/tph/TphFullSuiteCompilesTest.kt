@@ -142,7 +142,8 @@ class TphFullSuiteCompilesTest {
             assertTrue("integer(BridgeAuthNames.QUANTITY_COLUMN).nullable()" in authTable, authTable)
             assertTrue("portableDecimal(CouponAuthNames.COUPON_AMOUNT_COLUMN, 10, 2).nullable()" in authTable, authTable)
             assertTrue("varchar(PermitAuthNames.PERMIT_NUMBER_COLUMN, 80).nullable()" in authTable, authTable)
-            assertTrue("enumerationByName(CouponAuthNames.TIER_COLUMN, 64, AuthTier::class).nullable()" in authTable, authTable)
+            // An enum with no configured length is a text column, as `meta migrate` creates it.
+            assertTrue("customEnumeration(CouponAuthNames.TIER_COLUMN, \"TEXT\", { v -> AuthTier.valueOf(v as String) }, { e -> e.name }).nullable()" in authTable, authTable)
 
             val sources = emitted.map { path ->
                 SourceFile.kotlin(outDir.relativize(path).toString().replace('/', '_'), path.readText())

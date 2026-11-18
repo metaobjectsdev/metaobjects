@@ -154,8 +154,12 @@ run_kotlin() {
   echo "==> Kotlin persistence conformance"
   # See run_java: install the SNAPSHOT module deps to .m2 (serially) before the
   # docker-only integration-tests-kotlin module (also excluded from the reactor).
+  # Every metaobjects-* artifact either out-of-reactor module below depends on is
+  # listed, so a standalone `kotlin` run resolves from an .m2 that has none of them:
+  # integration-tests-kotlin needs core-spring and om beside codegen-kotlin, and
+  # codegen-kotlin-exposed1x-check needs metadata-ktx.
   ( cd server/java \
-      && { [ "${MO_CI_JAVA_INSTALLED:-0}" = "1" ] || mvn -q -DskipTests install -pl metadata,codegen-kotlin -am; } \
+      && { [ "${MO_CI_JAVA_INSTALLED:-0}" = "1" ] || mvn -q -DskipTests install -pl metadata,metadata-ktx,om,core-spring,codegen-kotlin -am; } \
       && mvn -f integration-tests-kotlin/pom.xml test $(jvm_test_args) ) || FAIL=1
   # Issue #390 — exposedApi=1 (Exposed 1.x) compile + round-trip check. Same
   # docker-only / excluded-from-the-reactor shape as integration-tests-kotlin

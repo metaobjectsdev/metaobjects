@@ -266,4 +266,17 @@ describe("FR-019 shared + provided enum conformance (TS)", () => {
     expect(err).toBeInstanceOf(Error);
     expect((err as Error).message).toContain("Currency");
   });
+
+  test("two shared enums with one name in two packages are ERR_NAME_COLLISION, never one dropped", async () => {
+    // One enums.ts holds every shared enum under its own name: keeping the first Tier would
+    // type beta's fields with alpha's members.
+    const pkg = (name: string, values: string[]) => new InMemoryStringSource(JSON.stringify({ "metadata.root": {
+      package: name, children: [
+        { "field.enum": { name: "Tier", abstract: true, "@values": values } },
+        { "object.value": { name: "Plan", children: [ { "field.enum": { name: "tier", extends: `${name}::Tier` } } ] } },
+      ] } }), { id: `${name}.json`, format: "json" });
+    const res = await new MetaDataLoader().load([pkg("alpha", ["GOLD", "SILVER"]), pkg("beta", ["FREE", "PRO"])]);
+    expect(res.errors).toEqual([]);
+    expect(() => materializedSharedEnums(res.root)).toThrow('ERR_NAME_COLLISION: "alpha::Tier" and "beta::Tier"');
+  });
 });

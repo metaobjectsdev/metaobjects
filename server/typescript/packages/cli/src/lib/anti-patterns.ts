@@ -174,23 +174,88 @@ function globToRegExp(glob: string): RegExp {
 
 // --- rules: each tests one source line, returns a finding shape or null -------
 
-const MONEY_WORD = /\b(?:price|amount|cost|total|subtotal|fee|balance|cents|dollars)\w*/i;
-const MONEY_MATH = /(?:\*\s*100\b|\/\s*100\b|\.toFixed\s*\(\s*2\s*\)|parseFloat\s*\()/;
+// Words that name money. Matched against the words of an OPERAND (split on camelCase and
+// underscores), never the whole line: `total` is absent because a total is as often hours or
+// a count as an amount, and `totalAmount` still matches through `amount`.
+const MONEY_WORDS = new Set([
+  "price", "prices", "amount", "amounts", "cost", "costs", "subtotal", "fee", "fees",
+  "balance", "balances", "cents", "dollars",
+]);
+// Minor-unit math, each form with the side its operand sits on.
+const MONEY_MATH = /\*\s*100\b|\/\s*100\b|\.toFixed\s*\(\s*2\s*\)|parseFloat\s*\(/g;
+// A line that is only a comment: prose about money or sums is not code doing it.
+const TS_COMMENT_LINE = /^\s*(?:\/\/|\/\*|\*|\{\s*\/\*)/;
+const SQL_COMMENT_LINE = /^\s*(?:--|\/\*|\*)/;
+// UI source: a `.reduce` there sums the rows already on screen (a timesheet's row and column
+// totals), which is presentation, not a figure the model should derive.
+const UI_FILE = /\.(?:tsx|jsx)$/;
 
-function matchLine(line: string, isSql: boolean):
+// `.reduce((acc, …) => acc + …`: the body accumulates into its first parameter with `+`.
+const SUM_REDUCE = /\.reduce\s*\(\s*\(?\s*([\w$]+)[^)=]*\)?\s*=>\s*\(?\s*\1\s*\+/;
+
+function wordsOf(text: string): string[] {
+  return text
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length > 0);
+}
+
+/** The expression ending just before `end`: a balanced `(…)` group and/or an identifier chain. */
+function operandBefore(line: string, end: number): string {
+  let i = end - 1;
+  while (i >= 0 && /\s/.test(line[i]!)) i--;
+  const stop = i + 1;
+  if (line[i] === ")") {
+    let depth = 0;
+    for (; i >= 0; i--) {
+      if (line[i] === ")") depth++;
+      else if (line[i] === "(" && --depth === 0) { i--; break; }
+    }
+  }
+  while (i >= 0 && /[\w$.\]\[]/.test(line[i]!)) i--;
+  return line.slice(i + 1, stop);
+}
+
+/** The argument list of the call whose `(` is at `open`. */
+function argumentAfter(line: string, open: number): string {
+  let depth = 0;
+  for (let i = open; i < line.length; i++) {
+    if (line[i] === "(") depth++;
+    else if (line[i] === ")" && --depth === 0) return line.slice(open + 1, i);
+  }
+  return line.slice(open + 1);
+}
+
+/** Does any minor-unit math on the line operate on a money-named value? */
+function moneyMath(line: string): boolean {
+  for (const m of line.matchAll(MONEY_MATH)) {
+    const at = m.index ?? 0;
+    const operand = m[0].startsWith("parseFloat")
+      ? argumentAfter(line, at + m[0].length - 1)
+      : operandBefore(line, at);
+    if (wordsOf(operand).some((w) => MONEY_WORDS.has(w))) return true;
+  }
+  return false;
+}
+
+function matchLine(line: string, isSql: boolean, isUi: boolean):
   | { rule: AntiPatternFinding["rule"]; construct: string }
   | null {
+  if ((isSql ? SQL_COMMENT_LINE : TS_COMMENT_LINE).test(line)) return null;
+
   // 1) Hand-written aggregate. AVG/SUM in SQL are almost always a derived metric
   //    you'd project (COUNT is deliberately excluded — too often a pagination
-  //    total). A `.reduce(...)` that sums (a `+` body or a `, 0)` seed) is the TS
-  //    equivalent.
+  //    total). A `.reduce(...)` that ACCUMULATES with `+` is the TS equivalent; a
+  //    reduce taking a max or building a map is not a sum, and one in UI source is
+  //    summing what is already on screen.
   if (/\b(?:AVG|SUM)\s*\(/i.test(line)) return { rule: "hand-rolled-aggregate", construct: "origin.aggregate" };
-  if (/\.reduce\s*\(/.test(line) && (/=>[^;]*\+/.test(line) || /,\s*0\s*\)/.test(line)))
+  if (!isUi && SUM_REDUCE.test(line))
     return { rule: "hand-rolled-aggregate", construct: "origin.aggregate" };
 
-  // 2) Money handled as a float / hand-rolled minor units. Require BOTH a money
-  //    word AND minor-unit math on the same line to stay high-precision.
-  if (MONEY_WORD.test(line) && MONEY_MATH.test(line))
+  // 2) Money handled as a float / hand-rolled minor units: minor-unit math whose
+  //    operand is money-named, so hours or a count formatted to two places is not.
+  if (moneyMath(line))
     return { rule: "money-float", construct: "field.currency" };
 
   // 3) A fixed value set enforced by a SQL CHECK (... IN (...)) — that's an enum.
@@ -215,7 +280,7 @@ const ADVICE: Record<AntiPatternFinding["rule"], string> = {
 };
 
 function findingFor(file: string, lineNo: number, raw: string, isSql: boolean): AntiPatternFinding | null {
-  const hit = matchLine(raw, isSql);
+  const hit = matchLine(raw, isSql, UI_FILE.test(file));
   if (!hit) return null;
   const snippet = raw.trim();
   return {

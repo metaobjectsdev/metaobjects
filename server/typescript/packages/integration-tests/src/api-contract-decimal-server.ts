@@ -12,7 +12,7 @@
 
 import Fastify, { type FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
@@ -28,14 +28,25 @@ import {
   API_CONTRACT_DECIMAL_SQLITE_SCHEMA_SQL_PATH,
 } from "./paths.ts";
 import { splitStatements } from "./sql-script.ts";
+import { indexEmitted, type EmittedFiles, type OutputLayout } from "./output-layout.ts";
 
 export type DecimalEngine = "postgres" | "mysql" | "sqlite" | "d1";
+/** The engines a generated-lane sub-corpus served by this module runs on. */
+export type CorpusEngine = DecimalEngine;
 
-/** The served objects: the emitted routes file and the route the corpus calls. */
-const SERVED = ["Entry", "EntryTotals", "Sample"] as const;
-
-/** The tables the seed fills (and resets), in the order they are emptied. */
-const TABLES = ["entries", "samples"] as const;
+/** What differs between the sub-corpora this module serves (decimal/, duration/). */
+export interface GeneratedCorpusSpec {
+  /** A short name for temp directories and globals. */
+  name: string;
+  /** The served objects: each has an emitted <Object>.routes.ts the server mounts. */
+  served: readonly string[];
+  /** The tables the seed fills (and resets), in the order they are emptied. */
+  tables: readonly string[];
+  /** Views a previous server on a shared MySQL database may have left behind. */
+  mysqlViews: readonly string[];
+  /** The committed schema artifact of each engine. */
+  schemaPath: Record<CorpusEngine, string>;
+}
 
 export interface DecimalServerHandle {
   baseUrl: string;
@@ -51,23 +62,44 @@ interface EngineClient {
   close(): Promise<void>;
 }
 
-const SCHEMA_PATH: Record<DecimalEngine, string> = {
-  postgres: API_CONTRACT_DECIMAL_SCHEMA_SQL_PATH,
-  mysql: API_CONTRACT_DECIMAL_MYSQL_SCHEMA_SQL_PATH,
-  sqlite: API_CONTRACT_DECIMAL_SQLITE_SCHEMA_SQL_PATH,
-  d1: API_CONTRACT_DECIMAL_SQLITE_SCHEMA_SQL_PATH,
+const DECIMAL: GeneratedCorpusSpec = {
+  name: "decimal",
+  served: ["Entry", "EntryTotals", "Sample"],
+  tables: ["entries", "samples"],
+  mysqlViews: ["v_entry_totals"],
+  schemaPath: {
+    postgres: API_CONTRACT_DECIMAL_SCHEMA_SQL_PATH,
+    mysql: API_CONTRACT_DECIMAL_MYSQL_SCHEMA_SQL_PATH,
+    sqlite: API_CONTRACT_DECIMAL_SQLITE_SCHEMA_SQL_PATH,
+    d1: API_CONTRACT_DECIMAL_SQLITE_SCHEMA_SQL_PATH,
+  },
 };
 
-export async function startDecimalServer(
+export function startDecimalServer(
   engine: DecimalEngine,
   metaPath: string,
   /** The Postgres or MySQL connection URL; unused by SQLite and D1. */
   connectionUrl?: string,
+  outputLayout: OutputLayout = "flat",
 ): Promise<DecimalServerHandle> {
+  return startGeneratedCorpusServer(DECIMAL, engine, metaPath, connectionUrl, outputLayout);
+}
+
+/** Generate, provision and mount one generated-lane sub-corpus on `engine`. */
+export async function startGeneratedCorpusServer(
+  spec: GeneratedCorpusSpec,
+  engine: CorpusEngine,
+  metaPath: string,
+  /** The Postgres or MySQL connection URL; unused by SQLite and D1. */
+  connectionUrl?: string,
+  outputLayout: OutputLayout = "flat",
+): Promise<DecimalServerHandle> {
+  const SERVED = spec.served;
+  const TABLES = spec.tables;
   const here = dirname(fileURLToPath(import.meta.url));
   const genTmpRoot = join(here, "..", ".gen-tmp");
   mkdirSync(genTmpRoot, { recursive: true });
-  const tmp = mkdtempSync(join(genTmpRoot, `api-contract-decimal-${engine}-`));
+  const tmp = mkdtempSync(join(genTmpRoot, `api-contract-${spec.name}-${engine}-`));
   const fail = (message: string): never => {
     rmSync(tmp, { recursive: true, force: true });
     throw new Error(message);
@@ -80,6 +112,7 @@ export async function startDecimalServer(
     config: defineConfig({ outputLayout: "flat", 
       outDir: tmp,
       extStyle: "none",
+      outputLayout,
       dbImport: "./db",
       dialect: engine === "d1" ? "sqlite" : engine, // codegen has no d1 dialect: D1 is SQLite to Drizzle
       apiPrefix: "/api",
@@ -87,15 +120,17 @@ export async function startDecimalServer(
     }),
     metadata: root,
   });
-  for (const name of SERVED) if (!existsSync(join(tmp, `${name}.routes.ts`))) fail(`codegen emitted no ${name}.routes.ts`);
+  let emitted: EmittedFiles;
+  try { emitted = indexEmitted(tmp, lr.files, outputLayout); } catch (e) { return fail(e instanceof Error ? e.message : String(e)); }
+  for (const name of SERVED) if (!emitted.has(`${name}.routes.ts`)) fail(`codegen emitted no ${name}.routes.ts`);
   if (lr.warnings.length > 0) fail(`codegen produced warnings: ${lr.warnings.join("; ")}`);
 
-  const client = await openEngine(engine, tmp, connectionUrl);
-  for (const stmt of splitStatements(readFileSync(SCHEMA_PATH[engine], "utf8"))) await client.run(stmt);
+  const client = await openEngine(spec, engine, tmp, connectionUrl);
+  for (const stmt of splitStatements(readFileSync(spec.schemaPath[engine], "utf8"))) await client.run(stmt);
 
   const fastify = Fastify();
   for (const name of SERVED) {
-    const mod = (await import(pathToFileURL(join(tmp, `${name}.routes.ts`)).href)) as Record<string, unknown>;
+    const mod = (await import(pathToFileURL(emitted.locate(`${name}.routes.ts`)).href)) as Record<string, unknown>;
     const registrar = Object.values(mod).find((v): v is (f: FastifyInstance) => Promise<void> => typeof v === "function");
     if (registrar === undefined) fail(`${name}.routes.ts exports no registrar`);
     await fastify.register(registrar!);
@@ -128,7 +163,8 @@ export async function startDecimalServer(
 }
 
 /** Write the `db` module the emitted routes import and open the engine behind it. */
-async function openEngine(engine: DecimalEngine, tmp: string, url: string | undefined): Promise<EngineClient> {
+async function openEngine(spec: GeneratedCorpusSpec, engine: CorpusEngine, tmp: string, url: string | undefined): Promise<EngineClient> {
+  const TABLES = spec.tables;
   if (engine === "postgres") {
     if (url === undefined) throw new Error("postgres needs a connection URL");
     const bigintTypes = pathToFileURL(join(dirname(fileURLToPath(import.meta.url)), "pg-bigint-number-types.ts")).href;
@@ -166,17 +202,17 @@ export const db = drizzle(pool);
     const mod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { pool: { end(cb: () => void): void } };
     const admin = await mysql.createConnection({ uri: url, timezone: "Z" });
     // A previous server on this database may have left the objects behind.
-    await admin.query("DROP VIEW IF EXISTS `v_entry_totals`");
-    await admin.query("DROP TABLE IF EXISTS `entries`");
-    await admin.query("DROP TABLE IF EXISTS `samples`");
+    const dropAll = async () => {
+      for (const view of spec.mysqlViews) await admin.query(`DROP VIEW IF EXISTS \`${view}\``);
+      for (const table of TABLES) await admin.query(`DROP TABLE IF EXISTS \`${table}\``);
+    };
+    await dropAll();
     return {
       run: async (sql, params = []) => { await admin.query(sql, params); },
       afterSeed: async () => {},
       close: async () => {
         await new Promise<void>((done) => mod.pool.end(done));
-        await admin.query("DROP VIEW IF EXISTS `v_entry_totals`");
-        await admin.query("DROP TABLE IF EXISTS `entries`");
-        await admin.query("DROP TABLE IF EXISTS `samples`");
+        await dropAll();
         await admin.end();
       },
     };
@@ -184,7 +220,7 @@ export const db = drizzle(pool);
   if (engine === "d1") {
     const local = await startLocalD1();
     // One key per server, so two servers in flight never read each other's binding.
-    const key = `__decimalD1_${randomUUID().replaceAll("-", "")}`;
+    const key = `__${spec.name}D1_${randomUUID().replaceAll("-", "")}`;
     (globalThis as Record<string, unknown>)[key] = local.d1;
     writeFileSync(join(tmp, "db.ts"), `
 import { drizzle } from "drizzle-orm/d1";

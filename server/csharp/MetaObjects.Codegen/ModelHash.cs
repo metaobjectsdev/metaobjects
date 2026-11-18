@@ -1,4 +1,4 @@
-// ADR-0062 — the hash tree of a LOADED model: one hash per root-level node, one per package, one
+// ADR-0064 — the hash tree of a LOADED model: one hash per root-level node, one per package, one
 // for the model. A node is hashed in its canonical EFFECTIVE form (the serializer the conformance
 // runner uses for expected-effective fixtures): `extends` and overlays applied, attributes in a
 // fixed order, no source positions. So reformatting a metadata file, reordering it, or moving an

@@ -1,0 +1,30 @@
+{
+  "description": "A blank line inside a snippet is a blank-line request: runs collapse, and one at a block edge is dropped.",
+  "dialect": "core",
+  "options": {
+    "indent": "  ",
+    "width": 40,
+    "trailingComma": true
+  },
+  "ops": [
+    [
+      "open",
+      "{"
+    ],
+    [
+      "text",
+      "\na;\n\n\nb;\n\n"
+    ],
+    [
+      "close",
+      "}"
+    ]
+  ],
+  "expected": [
+    "{",
+    "  a;",
+    "",
+    "  b;",
+    "}"
+  ]
+}

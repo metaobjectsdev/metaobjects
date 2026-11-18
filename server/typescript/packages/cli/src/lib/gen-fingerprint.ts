@@ -1,6 +1,6 @@
 // server/typescript/packages/cli/src/lib/gen-fingerprint.ts
 //
-// ADR-0062 — `meta gen` skips rendering when the loaded model and its generators are
+// ADR-0064 — `meta gen` skips rendering when the loaded model and its generators are
 // unchanged since the last successful run.
 //
 // The key has two halves. The MODEL half is computed from the loaded model, never from the
@@ -463,7 +463,7 @@ export type SkipVerdict =
   | { skip: false; reason: string };
 
 /**
- * The `meta gen` decision (ADR-0062 §3): skip when the stored key matches, and every file
+ * The `meta gen` decision (ADR-0064 §3): skip when the stored key matches, and every file
  * the manifest records still exists with the bytes the last successful run left. It reads
  * the generated files (no render, no write); a file changed since then makes the run render.
  */
@@ -487,7 +487,7 @@ export function decideGenSkip(inputs: GenInputs): SkipVerdict {
 }
 
 /**
- * The local `verify --codegen` shortcut (ADR-0062 §4): the stored key matches AND every
+ * The local `verify --codegen` shortcut (ADR-0064 §4): the stored key matches AND every
  * recorded file still hashes to its record. Hashing the files on disk is the point here: a
  * hand edit is not an input, so `gen` may skip over one, but `verify` must still see it.
  */

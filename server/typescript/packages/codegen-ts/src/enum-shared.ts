@@ -25,6 +25,7 @@ import type { MetaField, MetaRoot } from "@metaobjectsdev/metadata";
 import { FIELD_ATTR_PROVIDED, resolveSharedEnumDeclaration } from "@metaobjectsdev/metadata";
 import { toPascalCase } from "./naming.js";
 import { enumValues } from "./enum-meta.js";
+import { ERR_NAME_COLLISION } from "./naming/name-claims.js";
 
 /** A shared (root-level abstract) enum declaration the codegen must reason about. */
 export interface SharedEnum {
@@ -65,7 +66,8 @@ export function sharedEnumForField(field: MetaField): SharedEnum | undefined {
  * All shared (root-level abstract) enum declarations in the loaded root that are
  * actually CONSUMED by at least one object field (entity, projection or value
  * object, through any number of `extends` hops) — keyed by the materialized type
- * name. A declaration nobody extends is not materialized (no dangling type).
+ * name. A declaration nobody extends is not materialized (no dangling type). Two
+ * declarations with one materialized name are ERR_NAME_COLLISION (they share one module).
  * Deterministic order: first-consumption order across objects.
  *
  * `select` (FR-023 §11.1 item 2), when given, narrows which CONSUMING entities
@@ -85,7 +87,15 @@ export function collectSharedEnums(
     for (const field of entity.fields()) {
       const shared = sharedEnumForField(field);
       if (shared === undefined) continue;
-      if (!out.has(shared.name)) out.set(shared.name, shared);
+      const existing = out.get(shared.name);
+      if (existing === undefined) out.set(shared.name, shared);
+      else if (existing.declaration !== shared.declaration) {
+        // One shared module holds every shared enum under its own name, so two declarations
+        // with one name would keep the first and silently type the second's fields with it.
+        throw new Error(
+          `${ERR_NAME_COLLISION}: "${existing.declaration}" and "${shared.declaration}" both generate the shared enum "${shared.name}" — rename one.`,
+        );
+      }
     }
   }
   return out;

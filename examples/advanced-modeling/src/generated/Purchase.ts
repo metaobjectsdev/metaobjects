@@ -67,7 +67,12 @@ function utcIsoTimestamp(v: string): string {
 }
 
 export const PurchaseInsertSchema = z.object({
-  programId: z.string(),
+  programId: z
+    .string()
+    .regex(
+      /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
+      "Invalid uuid",
+    ),
   amountCents: z.number().int().optional(),
   status: z.enum(["pending", "completed", "refunded"]).optional(),
   purchasedAt: z
@@ -81,7 +86,13 @@ export const PurchaseInsertSchema = z.object({
 });
 
 export const PurchaseUpdateSchema = z.object({
-  programId: z.string().optional(),
+  programId: z
+    .string()
+    .regex(
+      /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
+      "Invalid uuid",
+    )
+    .optional(),
   amountCents: z.number().int().optional().nullable(),
   status: z.enum(["pending", "completed", "refunded"]).optional().nullable(),
   purchasedAt: z

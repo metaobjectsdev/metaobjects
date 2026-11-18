@@ -109,7 +109,7 @@ public class DerivedNamespaceTests
     private static IEnumerable<string> Usings(string source) =>
         CSharpSyntaxTree.ParseText(source).GetCompilationUnitRoot().Usings.Select(u => u.Name!.ToString());
 
-    private static GenConfig Bare() => new() { OutDir = "/tmp" };
+    private static GenConfig Bare() => new() { OutDir = "/tmp", OutputLayout = OutputLayout.Package };
 
     private static string Content(List<EmittedFile> files, string name) =>
         files.Single(f => System.IO.Path.GetFileName(f.Path) == name).Content;
@@ -142,7 +142,7 @@ public class DerivedNamespaceTests
     [Fact]
     public void A_configured_namespace_places_only_the_artifacts_of_no_package()
     {
-        var files = Generate(Load(Billing(), Crm, Ops), Bare() with { Namespace = "My.App" });
+        var files = Generate(Load(Billing(), Crm, Ops), Bare() with { PackageNamespacesFromMetadata = true, Namespace = "My.App" });
         Assert.Contains("namespace Acme.Billing;", Content(files, "Invoice.g.cs"));
         Assert.Contains("namespace Acme.Crm;", Content(files, "Order.g.cs"));
         Assert.Contains("namespace My.App;", Content(files, "AppDbContext.g.cs"));
@@ -180,7 +180,7 @@ public class DerivedNamespaceTests
         // asserted by Routes_reach_the_package_namespaces_of_the_types_they_name.
         var comp = CSharpCompilation.Create(
             "derived_ns_" + Guid.NewGuid().ToString("N"),
-            files.Where(f => !f.Path.EndsWith("Routes.g.cs", StringComparison.Ordinal)).Select(f => CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12), path: f.Path)),
+            files.Where(f => !f.Path.EndsWith("Routes.g.cs", StringComparison.Ordinal)).Select(f => CSharpSyntaxTree.ParseText(MetaObjects.Codegen.FrameworkQualifier.Qualify(f.Content), new CSharpParseOptions(LanguageVersion.CSharp12), path: f.Path)),
             DbContextCompileTests.BuildReferences(),
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         var errors = comp.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error)
@@ -193,7 +193,7 @@ public class DerivedNamespaceTests
     {
         // rc.19 R65: a per-object class follows its object; what it names from elsewhere (the
         // context, another package's types) is global::-qualified, so it needs no using.
-        var files = Generate(Load(Billing(), Crm, Ops), Bare());
+        var files = Generate(Load(Billing(), Crm, Ops), Bare() with { PackageNamespacesFromMetadata = true });
         Assert.Contains("namespace Acme.Billing;", Content(files, "InvoiceRoutes.g.cs"));
         Assert.Contains("namespace Acme.Crm;", Content(files, "OrderRoutes.g.cs"));
         Assert.Contains("global::Acme.AppDbContext db", Content(files, "OrderRoutes.g.cs"));

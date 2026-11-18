@@ -30,7 +30,7 @@ public sealed class ValueObjectReuseTests
     private static GenContext Ctx(MetaRoot root) => new()
     {
         Entities = root.Objects(), Root = root,
-        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
+        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated"},
     };
 
     // ---- the value-object tier ----
@@ -48,7 +48,7 @@ public sealed class ValueObjectReuseTests
         ]}}
         """);
 
-        var paths = new EntityGenerator().Generate(Ctx(root)).Select(f => System.IO.Path.GetFileName(f.Path)).ToList();
+        var paths = new EntityGenerator().Generate(Ctx(root)).Select(f => f.Path).ToList();
 
         // The concrete value object and the sourceless projection; not the unreached abstract.
         Assert.Equal(["Brief.g.cs", "Note.g.cs"], paths.OrderBy(p => p, StringComparer.Ordinal));
@@ -63,12 +63,19 @@ public sealed class ValueObjectReuseTests
       { "object.value": { "name": "Note", "children": [ { "field.string": { "name": "betaText" } } ] } } ] } }
     """;
 
+    private static GenContext PackageCtx(MetaRoot root) => new()
+    {
+        Entities = root.Objects(),
+        Root = root,
+        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true },
+    };
+
     private static GenContext Split(MetaRoot root) => new()
     {
         Entities = root.Objects(), Root = root,
         Config = new GenConfig
         {
-            OutDir = "/tmp", Namespace = "Acme.Generated",
+            OutDir = "/tmp", Namespace = "Acme.Generated", OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true,
             PackageNamespaces = new() { ["acme::alpha"] = "Acme.Alpha", ["acme::beta"] = "Acme.Beta" },
         },
     };
@@ -80,10 +87,53 @@ public sealed class ValueObjectReuseTests
         Entities = root.Objects(), Root = root,
         Config = new GenConfig
         {
-            OutDir = "/tmp", Namespace = "Acme.Generated",
+            OutDir = "/tmp", Namespace = "Acme.Generated", OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true,
             PackageNamespaces = new() { ["acme::alpha"] = "Acme.Generated", ["acme::beta"] = "Acme.Generated" },
         },
     };
+
+    [Fact]
+    public void Two_value_objects_sharing_a_short_name_keep_it_in_their_own_package_namespaces()
+    {
+        var root = Load(Alpha, Beta);
+        var files = new EntityGenerator().Generate(PackageCtx(root)).ToList();
+
+        Assert.Equal(["acme/alpha/Note.g.cs", "acme/beta/Note.g.cs"], files.Select(f => f.Path).OrderBy(p => p, StringComparer.Ordinal));
+        Assert.Contains("namespace Acme.Alpha;", files.Single(f => f.Path == "acme/alpha/Note.g.cs").Content);
+        Assert.Contains("namespace Acme.Beta;", files.Single(f => f.Path == "acme/beta/Note.g.cs").Content);
+        // A value object is never renamed.
+        Assert.Equal("Note", ValueObjectNames.TypeName(root.Objects().First(o => o.ResolutionKey() == "acme::alpha::Note"), root));
+    }
+
+    [Fact]
+#pragma warning disable CS0618
+    public void The_obsolete_name_map_is_the_identity_map_of_value_objects()
+    {
+        var root = Load(Alpha, Beta);
+        var names = ValueObjectNames.Names(root);
+
+        Assert.Equal("Note", names["acme::alpha::Note"]);
+        Assert.Equal("Note", names["acme::beta::Note"]);
+    }
+#pragma warning restore CS0618
+
+    [Fact]
+    public void A_unique_short_name_stays_bare()
+    {
+        var root = Load(Alpha);
+        Assert.Equal("Note.g.cs", Assert.Single(new EntityGenerator().Generate(Ctx(root))).Path);
+    }
+
+    [Fact]
+    public void Two_value_objects_sharing_a_short_name_in_one_namespace_fail_loud_naming_both()
+    {
+        var root = Load(Alpha, Beta);
+
+        var ex = Assert.ThrowsAny<InvalidOperationException>(() => new EntityGenerator().Generate(Ctx(root)).ToList());
+        Assert.Contains("ERR_NAME_COLLISION", ex.Message);
+        Assert.Contains("acme::alpha::Note", ex.Message);
+        Assert.Contains("acme::beta::Note", ex.Message);
+    }
 
     // Ruling R52 — a value object is never renamed. Two that share a short name in one namespace are
     // a real collision, refused by the run's claim registry with the remedy; in two namespaces they
@@ -143,13 +193,6 @@ public sealed class ValueObjectReuseTests
     }
 
     [Fact]
-    public void A_unique_short_name_stays_bare()
-    {
-        var root = Load(Alpha);
-        Assert.Equal("Note.g.cs", System.IO.Path.GetFileName(Assert.Single(new EntityGenerator().Generate(Ctx(root))).Path));
-    }
-
-    [Fact]
     public void The_same_claimant_claiming_again_is_not_a_collision_and_a_second_is()
     {
         var root = Load(Alpha);
@@ -191,7 +234,7 @@ public sealed class ValueObjectReuseTests
         // declare `AnswerExtracted` twice in one namespace (CS0101).
         Assert.Equal(
             ["AnswerExtracted.g.cs", "AskA.response.cs", "AskB.response.cs", "DetailExtracted.g.cs"],
-            parserFiles.Select(f => System.IO.Path.GetFileName(f.Path)).OrderBy(p => p, StringComparer.Ordinal));
+            parserFiles.Select(f => f.Path).OrderBy(p => p, StringComparer.Ordinal));
         // The parsers declare no type for the shape.
         foreach (var f in parserFiles.Where(f => f.Path.EndsWith(".response.cs")))
         {
@@ -224,7 +267,7 @@ public sealed class ValueObjectReuseTests
         // also what gives it `{{#hasBio}}` — the accessor a JVM payload record used to generate.
         var root = Load(SharedResponse);
         var asm = Compile(GeneratedValueObjects.Sources(root));
-        var answerType = asm.GetType("Acme.Ai.Answer")!;
+        var answerType = asm.GetType("Acme.Generated.Answer")!;
 
         var with = Activator.CreateInstance(answerType)!;
         answerType.GetProperty("Text")!.SetValue(with, "hi");

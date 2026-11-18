@@ -307,7 +307,9 @@ plus finer hooks — `EmitClassHeader` / `EmitClassDeclarationLine` (class decla
 `partial`, marker interfaces), `EmitPropertyAttributes` (per-property C# attributes),
 `EmitFileUsings` (extra usings), `EmitClassBodyTrailer` (extra members). Subclass a
 generator and override only the seam you need rather than forking. `@default` on a
-scalar emits a literal initializer; an `object.value`'s default storage is jsonb.
+scalar emits a literal initializer; an override of `EmitClassDeclarationLine` must not name a
+concrete parent as the C# base (the child already declares the parent's properties, so a base would
+redeclare them; only an emitted abstract shape is a base); an `object.value`'s default storage is jsonb.
 
 **Shared + externally-provided enums (FR-019).** A package-level abstract
 `field.enum` (`abstract: true`, `@values`) extended by concrete entity fields is

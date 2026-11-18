@@ -53,7 +53,6 @@ public class OutputPromptGenerator : IGenerator
     {
         var templateName = tmpl.Name;
         var promptClass = CSharpNaming.ResponseFormatClassName(templateName);
-        // rc.19 fix round (I2): the template tier always emits into GenConfig.Namespace.
         ctx.Claim($"the C# namespace {ctx.Config.Namespace}", promptClass, tmpl.ResolutionKey(), "rename one (an output prompt is declared in the configured namespace, GenConfig.Namespace, whatever its package, "
             + "so the two packages do not keep them apart)");
         // rootName == the response value object's short name, so the fragment and extract()
@@ -83,6 +82,6 @@ public class OutputPromptGenerator : IGenerator
         sb.AppendLine("}");
         // ADR-0052 D4: the artifact name follows the DIRECTION axis. A file named
         // `<Prompt>.prompt.cs` generated from a prompt reproduces the confusion being removed.
-        return new EmittedFile(OutputPaths.Of(tmpl, $"{templateName}.responseFormat.cs"), sb.ToString());
+        return new EmittedFile(OutputPaths.Of(tmpl, ctx, $"{templateName}.responseFormat.cs"), sb.ToString());
     }
 }

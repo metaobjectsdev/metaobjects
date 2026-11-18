@@ -1,0 +1,11 @@
+{
+  "metadata.root": {
+    "package": "acme::contacts",
+    "children": [
+      { "object.value": { "name": "Contact", "children": [
+        { "field.string": { "name": "name", "@searchable": true } },
+        { "layout.picker": { "name": "contactPicker", "@displayField": "name" } }
+      ] } }
+    ]
+  }
+}

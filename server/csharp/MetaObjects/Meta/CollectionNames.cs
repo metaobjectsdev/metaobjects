@@ -1,13 +1,9 @@
-// rc.19 (R57) — an object's collection name: its own @collectionName (or the deprecated @dbSetName
-// alias), else the project's pluralizer (naming.collections) over its name. Ported from
+// rc.19 (R57) — an object's collection name: its own @collectionName, else the project's pluralizer (naming.collections) over its name. Ported from
 // typescript/packages/metadata/src/naming.ts (collectionNameOf, declaredCollectionName).
 
 using static MetaObjects.Core.Object.ObjectConstants;
 
 namespace MetaObjects.Meta;
-
-/// <summary>A collection name an object declares itself, and whether through the deprecated alias.</summary>
-public sealed record DeclaredCollectionName(string Name, bool DeprecatedAlias);
 
 public static class CollectionNames
 {
@@ -19,7 +15,7 @@ public static class CollectionNames
     /// every subtype one collection.
     /// </summary>
     public static string Of(MetaObject obj) =>
-        Declared(obj)?.Name ?? NamingStrategies.Pluralizer(ConfiguredPluralizer(obj) ?? NamingStrategies.DefaultPluralizer)(obj.Name);
+        Declared(obj) ?? NamingStrategies.Pluralizer(ConfiguredPluralizer(obj) ?? NamingStrategies.DefaultPluralizer)(obj.Name);
 
     /// <summary>
     /// rc.19 fix round (I3) — the REST collection segment, shared with TypeScript
@@ -29,7 +25,7 @@ public static class CollectionNames
     /// </summary>
     public static string Segment(MetaObject obj, Func<string, string> unconfigured)
     {
-        if (Declared(obj)?.Name is { } declared) return SnakeCollectionName(declared);
+        if (Declared(obj) is { } declared) return SnakeCollectionName(declared);
         if (ConfiguredPluralizer(obj) is { } configured) return SnakeCollectionName(NamingStrategies.Pluralizer(configured)(obj.Name));
         return unconfigured(obj.Name);
     }
@@ -50,25 +46,10 @@ public static class CollectionNames
     /// <summary>The pluralizer the project configures (<c>naming.collections</c>), or null when it names none.</summary>
     public static string? ConfiguredPluralizer(MetaData node) => PhysicalNaming.Of(node).Collections;
 
-    /// <summary>
-    /// The collection name <paramref name="obj"/> declares, or null. Declaring both <c>@collectionName</c>
-    /// and its deprecated alias <c>@dbSetName</c> is refused: the two disagreeing has no answer.
-    /// </summary>
-    public static DeclaredCollectionName? Declared(MetaObject obj)
-    {
-        var own = obj.OwnAttr(OBJECT_ATTR_COLLECTION_NAME) as string;
-        var alias = obj.OwnAttr(OBJECT_ATTR_DB_SET_NAME) as string;
-        var hasOwn = !string.IsNullOrEmpty(own);
-        var hasAlias = !string.IsNullOrEmpty(alias);
-        if (hasOwn && hasAlias)
-            throw new MetaModelException(
-                $"{obj.ResolutionKey()}: declares both @{OBJECT_ATTR_COLLECTION_NAME} and @{OBJECT_ATTR_DB_SET_NAME}; " +
-                $"@{OBJECT_ATTR_DB_SET_NAME} is a deprecated alias of @{OBJECT_ATTR_COLLECTION_NAME} — keep only @{OBJECT_ATTR_COLLECTION_NAME}.",
-                ErrorCode.ERR_BAD_ATTR_VALUE);
-        if (hasOwn) return new DeclaredCollectionName(own!, false);
-        if (hasAlias) return new DeclaredCollectionName(alias!, true);
-        return null;
-    }
+    /// <summary>The collection name <paramref name="obj"/> declares (<c>@collectionName</c>), or null.</summary>
+    public static string? Declared(MetaObject obj) =>
+        // ADR-0039: own — a collection name is the declaring object's alone (see Of).
+        obj.OwnAttr(OBJECT_ATTR_COLLECTION_NAME) is string { Length: > 0 } own ? own : null;
 
     /// <summary>
     /// The <c>standard</c> pluralizer, the rule every port shares (<c>fixtures/naming-conformance</c>):

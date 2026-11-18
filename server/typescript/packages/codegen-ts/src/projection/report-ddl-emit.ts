@@ -4,8 +4,8 @@
 // quotes every identifier unconditionally, so a measure named `order` is valid DDL.
 import { tphScopeSql } from "./view-ddl-emit.js";
 import type { JoinNode } from "./view-spec.js";
-import type { ReportAggregate, ReportColumn, ReportViewSpec } from "./report-spec.js";
-import { AGG_ALL, AGG_ANY, DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
+import type { ReportAggregate, ReportColumn, ReportDerivedTerm, ReportViewSpec } from "./report-spec.js";
+import { AGG_ALL, AGG_ANY, DERIVED_FN_ADD, DERIVED_FN_DIVIDE, DERIVED_FN_SUBTRACT } from "@metaobjectsdev/metadata";
 import { cond, mysqlTupleCount, q, ref } from "./report-sql.js";
 import { truncateToGrain, type ReportDialect } from "./time-sql.js";
 
@@ -14,7 +14,7 @@ export interface ReportEmitOptions {
   readonly baseTableName: string;
   /** Map from entity name → table name for every entity referenced in joins. */
   readonly joinTables: Readonly<Record<string, string>>;
-  /** Entity name → declared `@schema`. Postgres qualifies every relation, `public` when absent (ruling R54). */
+  /** Entity name to declared `@schema`. Postgres qualifies a relation with it when declared; otherwise the name stays bare. */
   readonly tableSchemas?: Readonly<Record<string, string | undefined>>;
   /** Body only (no CREATE VIEW wrapper, no trailing `;`), as migrate-ts consumes it. */
   readonly bodyOnly?: boolean;
@@ -95,6 +95,63 @@ function aggregate(a: ReportAggregate, d: ReportDialect, factRef?: string): stri
   return withDefault(type === undefined ? sql : `CAST(${sql} AS ${type})`, a.defaultValue, d);
 }
 
+/** A ratio (Table C/D): each operand its full aggregate, the quotient real, its own default around it. */
+function ratio(
+  numerator: ReportAggregate,
+  denominator: ReportAggregate,
+  defaultValue: number | undefined,
+  d: ReportDialect,
+  factRef: string | undefined,
+): string {
+  // Each operand is its FULL Table C expression (condition and cast included), and its own
+  // Table D default; the ratio's default wraps the whole quotient, which is always real.
+  const num = aggregate(numerator, d, factRef);
+  const den = aggregate(denominator, d, factRef);
+  const quotient = `${realOf(num, d)} / NULLIF(${den}, 0)`;
+  const dv = defaultValue === undefined ? undefined : { value: defaultValue, real: true };
+  return withDefault(quotient, dv, d);
+}
+
+/** `CAST(x AS <real>)` where the dialect would otherwise divide integers as integers. */
+function realOf(sql: string, d: ReportDialect): string {
+  const top = d === "postgres" ? "NUMERIC" : d === "sqlite" ? "REAL" : undefined;
+  return top === undefined ? sql : `CAST(${sql} AS ${top})`;
+}
+
+/** FR-044 R13: a derived measure's expression. An operation or ratio under another operator is
+ *  parenthesised; `divide` divides as a ratio does (real, a zero divisor reads null), and a
+ *  nonzero literal divisor needs no NULLIF. */
+function derived(t: ReportDerivedTerm, d: ReportDialect, factRef: string | undefined, top = true): string {
+  switch (t.kind) {
+    case "aggregate":
+      return aggregate(t.aggregate, d, factRef);
+    case "ratio": {
+      const sql = ratio(t.numerator, t.denominator, t.defaultValue, d, factRef);
+      return top || t.defaultValue !== undefined ? sql : `(${sql})`;
+    }
+    case "ref":
+      return ref(t.ref, d);
+    case "value":
+      return t.value < 0 ? `(${String(t.value)})` : String(t.value);
+    case "op": {
+      let sql: string;
+      if (t.fn === DERIVED_FN_DIVIDE) {
+        // Inside CAST(...) the dividend needs no parentheses of its own; MySQL has no cast.
+        const dividend = d === "mysql" ? derived(t.left, d, factRef, false) : realOf(derived(t.left, d, factRef), d);
+        const divisor =
+          t.right.kind === "value" && t.right.value !== 0
+            ? derived(t.right, d, factRef, false)
+            : `NULLIF(${derived(t.right, d, factRef)}, 0)`;
+        sql = `${dividend} / ${divisor}`;
+      } else {
+        const sign = t.fn === DERIVED_FN_ADD ? "+" : t.fn === DERIVED_FN_SUBTRACT ? "-" : "*";
+        sql = `${derived(t.left, d, factRef, false)} ${sign} ${derived(t.right, d, factRef, false)}`;
+      }
+      return top ? sql : `(${sql})`;
+    }
+  }
+}
+
 interface RenderedColumn {
   readonly expr: string;
   readonly alias: string;
@@ -111,15 +168,13 @@ function column(c: ReportColumn, d: ReportDialect, factRef: string | undefined):
       return { expr: truncateToGrain(ref(c.ref, d), c.grain, c.temporal, d), alias, grouped: true };
     case "aggregate":
       return { expr: aggregate(c.aggregate, d, factRef), alias, grouped: false };
-    case "ratio": {
-      // Each operand is its FULL Table C expression (condition and cast included), and its own
-      // Table D default; the ratio's default wraps the whole quotient, which is always real.
-      const num = aggregate(c.numerator, d, factRef);
-      const den = aggregate(c.denominator, d, factRef);
-      const top = d === "postgres" ? "NUMERIC" : d === "sqlite" ? "REAL" : undefined;
-      const quotient = `${top === undefined ? num : `CAST(${num} AS ${top})`} / NULLIF(${den}, 0)`;
-      const dv = c.defaultValue === undefined ? undefined : { value: c.defaultValue, real: true };
-      return { expr: withDefault(quotient, dv, d), alias, grouped: false };
+    case "ratio":
+      return { expr: ratio(c.numerator, c.denominator, c.defaultValue, d, factRef), alias, grouped: false };
+    case "derived": {
+      // Typed decimal (Table B) whatever its operands: the whole expression is real.
+      const top = c.term.kind === "op" && c.term.fn === DERIVED_FN_DIVIDE;
+      const sql = derived(c.term, d, factRef);
+      return { expr: top ? sql : realOf(sql, d), alias, grouped: false };
     }
   }
 }
@@ -133,11 +188,11 @@ function tableOf(entity: string, options: ReportEmitOptions): string {
   return table;
 }
 
-/** A relation the view reads: schema-qualified on Postgres (`@schema`, else `public`; ruling R54). */
+/** A relation the view reads: schema-qualified on Postgres only when the entity declares a `@schema`. */
 function relation(entity: string, table: string, options: ReportEmitOptions): string {
   const d = options.dialect;
-  if (d !== "postgres") return q(table, d);
-  return `${q(options.tableSchemas?.[entity] ?? DEFAULT_DB_SCHEMA_POSTGRES, d)}.${q(table, d)}`;
+  const schema = d === "postgres" ? options.tableSchemas?.[entity] : undefined;
+  return schema === undefined ? q(table, d) : `${q(schema, d)}.${q(table, d)}`;
 }
 
 /** The `ON` predicate of the hop `node` from `parentAlias`. An equality, so the same text
@@ -154,9 +209,9 @@ function onPredicate(node: JoinNode, parentAlias: string, d: ReportDialect): str
 function renderJoin(node: JoinNode, parentAlias: string, options: ReportEmitOptions): string {
   const table = tableOf(node.targetEntity, options);
   const d = options.dialect;
-  // rc.19 R62: every generated join is LEFT OUTER.
+  // Every generated join is LEFT OUTER.
   const kw = "LEFT OUTER JOIN";
-  // TPH-scope: a join onto a TPH subtype keeps only its rows of the shared table.
+  // A join onto a TPH level keeps only its rows of the shared table.
   const scope = node.tphScope !== undefined
     ? ` AND ${node.alias}.${q(node.tphScope.column, d)}${tphScopeSql(node.tphScope.values, (v) => typeof v === "number" ? String(v) : `'${v.replace(/'/g, "''")}'`)}`
     : "";

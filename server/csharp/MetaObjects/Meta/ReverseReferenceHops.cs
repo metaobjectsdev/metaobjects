@@ -1,4 +1,4 @@
-// Phase 5 bug R-walk — a `@via` hop may walk an identity.reference BACKWARDS, from the entity
+// A `@via` hop may walk an identity.reference BACKWARDS, from the entity
 // it targets to the entity that declares it, with no relationship declared for it. Ported from
 // typescript/packages/metadata/src/core/relationship/find-reference.ts (reverseHopName,
 // findReverseReferenceHops); the loader corpus fixtures/conformance/origin-reverse-reference-hop
@@ -15,12 +15,12 @@ public static class ReverseReferenceHops
 {
     /// <summary>
     /// The name a reverse hop takes: the holder's collection name (its @collectionName, else the project's pluralizer), lowerFirst —
-    /// <c>contracts</c> for <c>Contract</c>. The pluralization is the one every port shares
+    /// <c>consents</c> for <c>Consent</c>. The pluralization is the one every port shares
     /// (already-plural names stay; else the suffix rule), as <c>fixtures/naming-conformance</c> pins it.
     /// </summary>
     public static string HopName(MetaObject holder)
     {
-        // rc.19 (R57): the holder's collection name — its @collectionName, else the project's pluralizer.
+        // The holder's collection name — its @collectionName, else the project's pluralizer.
         var plural = CollectionNames.Of(holder);
         return plural.Length == 0 ? plural : char.ToLowerInvariant(plural[0]) + plural[1..];
     }

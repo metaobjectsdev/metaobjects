@@ -12,13 +12,13 @@ namespace Acme.Shop;
 /// </summary>
 public static class GizmoFilterAllowlist
 {
-    public static readonly HashSet<string> Fields = new(global::System.StringComparer.Ordinal)
+    public static readonly HashSet<string> Fields = new(System.StringComparer.Ordinal)
     {
         "title",
     };
 
-    public static readonly Dictionary<string, HashSet<string>> OpsByField = new(global::System.StringComparer.Ordinal)
+    public static readonly Dictionary<string, HashSet<string>> OpsByField = new(System.StringComparer.Ordinal)
     {
-        ["title"] = new(global::System.StringComparer.Ordinal) { "eq", "ne", "in", "like", "isNull" },
+        ["title"] = new(System.StringComparer.Ordinal) { "eq", "ne", "in", "like", "isNull" },
     };
 }

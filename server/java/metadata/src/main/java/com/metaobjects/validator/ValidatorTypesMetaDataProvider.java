@@ -46,6 +46,7 @@ public class ValidatorTypesMetaDataProvider implements MetaDataTypeProvider {
         RequiredWhenValidator.registerTypes(registry);
         PresentIffValidator.registerTypes(registry);
         AtLeastOneValidator.registerTypes(registry);
+        ExactlyOneValidator.registerTypes(registry);
 
         log.debug("Validator types registered via provider");
     }

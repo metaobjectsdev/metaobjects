@@ -1,7 +1,8 @@
 """A throwaway MySQL 8.4 server for the MySQL conformance lanes.
 
-Shells out to the ``docker`` CLI exactly like :mod:`postgres_container`, with Ryuk
-removing it when a killed run never reaches teardown (see :mod:`reaper`). One server is started for a whole pytest session (see ``conftest.py``); every scenario starts
+Shells out to the ``docker`` CLI exactly like :mod:`postgres_container`, with its data on a
+tmpfs and Ryuk removing it when a killed run never reaches teardown (see :mod:`reaper` and
+:mod:`throwaway`). One server is started for a whole pytest session (see ``conftest.py``); every scenario starts
 from an EMPTY schema via :func:`reset_database`, which is what the Java and Kotlin lanes do.
 
 Set ``METAOBJECTS_TEST_MYSQL_URL`` (``mysql://user:password@host:port/database``) to run
@@ -20,6 +21,7 @@ from urllib.parse import unquote, urlsplit
 
 from .postgres_container import published_port
 from .reaper import reaper_label_args
+from .throwaway import forget, ram_volume, remove_on_exit
 
 SHARED_MYSQL_URL_ENV = "METAOBJECTS_TEST_MYSQL_URL"
 
@@ -63,6 +65,8 @@ def reset_database(info: MySqlInfo) -> None:
 
 class MySqlContainer:
     IMAGE = "mysql:8.4"
+    #: The image's ``VOLUME`` (``docker image inspect``); a tmpfs there keeps the data in RAM.
+    DATA_DIR = "/var/lib/mysql"
     DATABASE = "mo_test"
     USER = "root"
     PASSWORD = "test"
@@ -81,8 +85,10 @@ class MySqlContainer:
         self._name = f"metaobjects-mysql-py-{uuid.uuid4().hex[:8]}"
         # Docker assigns the host port at bind time; see the port note in postgres_container.
         try:
+            remove_on_exit(self._name)
             _docker(
                 "run", "-d", *reaper_label_args(), "--name", self._name,
+                *ram_volume(self.DATA_DIR),
                 "-e", f"MYSQL_ROOT_PASSWORD={self.PASSWORD}",
                 "-e", f"MYSQL_DATABASE={self.DATABASE}",
                 # Native AIO reserves ~17k kernel aio-nr slots per server; with the default
@@ -115,6 +121,7 @@ class MySqlContainer:
             _docker("rm", "-f", "-v", str(self._name))
         except Exception:  # noqa: BLE001 -- already gone
             pass
+        forget(str(self._name))
 
     def _state(self) -> str:
         r = subprocess.run(

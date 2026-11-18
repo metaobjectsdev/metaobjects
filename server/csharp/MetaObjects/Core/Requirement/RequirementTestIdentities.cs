@@ -155,7 +155,9 @@ public static class RequirementTestIdentities
     public static IReadOnlyList<WalkedRequirement> Walk(MetaData root)
     {
         var output = new List<WalkedRequirement>();
-        foreach (var addressed in RequirementCheck.CollectAddressed(root))
+        // FR-023: only this project's ledger. A dependency's requirement it did not inherit
+        // (`requirements.inherit`) is loaded and gets no test.
+        foreach (var addressed in RequirementCheck.CollectLedger(root))
         {
             var node = addressed.Node;
             // One effective package, shared with the gate.

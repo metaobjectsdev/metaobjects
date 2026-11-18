@@ -85,3 +85,54 @@ export function latestRegressionRefusal(version, newestTag) {
       `backwards.`
     : null;
 }
+
+/**
+ * The maintenance branch a minor or major cut of `version` must already contain: the
+ * `release/<major>.<minor>` with the highest line below `version`'s own, among `branches`.
+ * `null` for a patch (a patch cuts from its own line, which the branch rule already
+ * guards) and when no lower maintenance branch exists.
+ *
+ * @param {string} version the version being cut (`1.3.0`, `2.0.0-rc.1`)
+ * @param {readonly string[]} branches maintenance branch names (`release/1.2`), as on origin
+ * @returns {string | null}
+ */
+export function previousMaintenanceBranch(version, branches) {
+  const v = /^(\d+)\.(\d+)\.(\d+)/.exec(version);
+  if (v === null || Number(v[3]) !== 0) return null;
+  const [major, minor] = [Number(v[1]), Number(v[2])];
+  /** @type {string | null} */
+  let best = null;
+  let bestMajor = -1;
+  let bestMinor = -1;
+  for (const b of branches) {
+    const m = MAINTENANCE_BRANCH.exec(b);
+    if (m === null) continue;
+    const bMajor = Number(m[1]);
+    const bMinor = Number(m[2]);
+    const below = bMajor < major || (bMajor === major && bMinor < minor);
+    const higher = bMajor > bestMajor || (bMajor === bestMajor && bMinor > bestMinor);
+    if (below && higher) [best, bestMajor, bestMinor] = [b, bMajor, bMinor];
+  }
+  return best;
+}
+
+/**
+ * Why a minor or major cut of `version` may not proceed because the previous maintenance
+ * branch holds commits `main` does not, or `null` when it may. A fix shipped as a patch from
+ * `release/1.2` and never brought to `main` would otherwise silently vanish from 1.3.0.
+ *
+ * @param {string} version the version being cut
+ * @param {readonly string[]} branches maintenance branch names on origin (`release/1.2`)
+ * @param {(branch: string) => number} unmergedCount how many commits `origin/<branch>` holds
+ *   that the cut's HEAD does not (`git rev-list --count HEAD..origin/<branch>`)
+ * @returns {string | null}
+ */
+export function unmergedMaintenanceRefusal(version, branches, unmergedCount) {
+  const prev = previousMaintenanceBranch(version, branches);
+  if (prev === null) return null;
+  const n = unmergedCount(prev);
+  if (n === 0) return null;
+  return `origin/${prev} has ${n} commit(s) that are not on this branch — every commit on the ` +
+    `previous maintenance branch must be an ancestor of main before ${version} is cut. Merge ` +
+    `${prev} into main by PR (docs/RELEASING.md, "Patch from a maintenance branch").`;
+}

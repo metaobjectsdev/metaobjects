@@ -1,6 +1,6 @@
 # Conformance coverage
 
-The MetaObjects standard ships **39 shared conformance corpora** under
+The MetaObjects standard ships **42 shared conformance corpora** under
 [`fixtures/`](../fixtures/). Every port runs every corpus that is *applicable to
 it* and asserts the same expected behaviour against the same fixtures. **This page
 is the inverse index**: fixture → feature doc + per-port pass status, and it is the
@@ -26,7 +26,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 
 | Corpus | Fixtures | TS | Java | Kotlin | C# | Python |
 |---|---|---|---|---|---|---|
-| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 475 | ✓ | ✓ but the rc.19 fixtures — the two reverse-hop fixtures (`origin-reverse-reference-hop`, `error-origin-reverse-hop-ambiguous`; bug R-walk), `origin-passthrough-flattened-member` and `reference-flattened-member` (bug G6), `projection-filter-unprojected-base-field`, `projection-filter-joined-path` and `error-projection-filter-path-to-many` (bug G7), `projection-extends-abstract-projection`, `projection-extends-filtered-projection` and `error-projection-extends-filter-sql-body` (bug G13; the last two from the fix round's C1), `object-collection-name` (R57), `report-dimension-required-by-model` (R62; its `expected-report-required.json` holds the model-derived `required` every port's report shape must give — Java, Kotlin and Python still derive it from the INNER-join rule), and the Tier 2 view vocabulary (R58: `entity-derived-league-gate`, `origin-computed-case-over-joined`, `origin-correlated-filter-and-segment`, `origin-filter-relative-now`, `projection-filter-relative-now`, `error-origin-computed-case-mixed-types`, `error-origin-segment-unresolved`, `error-origin-correlated-operand-unknown`) — not run in this port; expected red until [#544](https://github.com/metaobjectsdev/metaobjects/issues/544)–#549 | inherits via `metadata-ktx` (the same) | ✓ | ✓ but the same, #544–#549 |
+| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 526 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
 | [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 16 | 16 / 16 | 15 / 16 (1 ledgered: `yaml-quoted-leading-zero` — Java pipeline strips quotes off `"007"`) | inherits via Java | 15 / 16 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 16 / 16 |
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 45 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/verify-strict-conformance/`](../fixtures/verify-strict-conformance/) | 1 | ✓ | — | — | — | ✓ |
@@ -35,36 +35,39 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/jinja-verify-conformance/`](../fixtures/jinja-verify-conformance/) (ADR-0061 — the payload check over a Jinja body) | 31 | ✓ | refuses Jinja | refuses, via Java | refuses Jinja | ✓ |
 | [`fixtures/extract-conformance/`](../fixtures/extract-conformance/) | 58 | ✓ | ✓ | inherits the shared JVM engine | ✓ | ✓ |
 | [`fixtures/output-prompt-conformance/`](../fixtures/output-prompt-conformance/) | 17 | ✓ | ✓ | ✓ | ✓ | ✓ |
-| [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 59 (53 query + 6 migration) | all 59; the 24 `report-*` and the `-15` decimal scenarios also on SQLite, MySQL and D1, `decimal-exact` also on MySQL (a scenario's `engines:` key is exact) | 53 query (migrations TS-only, ADR-0015); the `report-*` and `engines:` scenarios also on SQLite and MySQL | 53 query (via Exposed); the `report-*` and `engines:` scenarios also on SQLite and MySQL | 53 query; the `report-*` and `engines:` scenarios also on SQLite and MySQL | 53 query (pg8000); the `report-*` and `engines:` scenarios also on SQLite (`sqlite3`) and MySQL (PyMySQL) |
-| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 122 (32 core + 12 tph + 9 m2m + 5 jsonb + 2 write-through + 2 secret-fields + 12 projection + 37 report + 11 decimal) | ✓ (Fastify reference + generated lane); `report/` and `decimal/` also on SQLite, MySQL and D1 | ✓ (embedded HTTP + JDBC); `report/` and `decimal/` generated controllers over OMDB on Postgres, SQLite and MySQL | ✓ (embedded HTTP + Exposed); `report/` and `decimal/` also on SQLite and MySQL | ✓ (Kestrel + Npgsql); `report/` and `decimal/` also on SQLite and MySQL | ✓ (FastAPI + pg8000); `report/` and `decimal/` also on SQLite and MySQL |
+| [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 67 (55 query + 12 migration) | all 67; the 24 `report-*` and the `-15` decimal scenarios also on SQLite, MySQL and D1, `decimal-exact` also on MySQL (a scenario's `engines:` key is exact) | 55 query (migrations TS-only, ADR-0015); the `report-*` and `engines:` scenarios also on SQLite and MySQL | 55 query (via Exposed); the `report-*` and `engines:` scenarios also on SQLite and MySQL | 55 query; the `report-*` and `engines:` scenarios also on SQLite and MySQL | 55 query (pg8000); the `report-*` and `engines:` scenarios also on SQLite (`sqlite3`) and MySQL (PyMySQL) |
+| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 139 (34 core + 14 tph + 9 m2m + 6 jsonb + 2 write-through + 2 secret-fields + 2 enum-default + 12 projection + 37 report + 11 decimal + 2 duration + 8 api-settings) | ✓ (Fastify reference + generated lane); `report/`, `decimal/` and `duration/` also on SQLite, MySQL and D1 | ✓ (embedded HTTP + JDBC); `report/`, `decimal/` and `duration/` generated controllers over OMDB on Postgres, SQLite and MySQL | ✓ (embedded HTTP + Exposed); `report/`, `decimal/` and `duration/` also on SQLite and MySQL | ✓ (Kestrel + Npgsql); `report/`, `decimal/` and `duration/` also on SQLite and MySQL | ✓ (FastAPI + pg8000); `report/`, `decimal/` and `duration/` also on SQLite and MySQL |
 | [`fixtures/decimal-wire/`](../fixtures/decimal-wire/) | 1 vector file (format, parse, filter operand, 15-digit read) | ✓ (`runtime-ts` and the generated helper) | ✓ (`CanonicalDecimal`) | ✓ (the generated wire file) | ✓ (`DecimalWire`) | ✓ (`decimal_wire`) |
 | [`fixtures/duration-wire/`](../fixtures/duration-wire/) | 1 vector file: the `wire` vectors (parse, precision, refused) every port passes, and the `codecs` groups (Postgres text read and write, stored microseconds) each port passes only for the codecs it has | ✓ (`metadata` / `runtime-ts` and the generated helper) | ✓ | ✓ | ✓ | ✓ |
-| [`fixtures/validation-conformance/`](../fixtures/validation-conformance/) | 42 cases | ✓ (generated Zod + run-time `runValidators`) | ✓ | ✓ | ✓ | ✓ (generated Pydantic + run-time `run_validators`) |
+| [`fixtures/validation-conformance/`](../fixtures/validation-conformance/) | 42 cases + 43 cross-field cases (`cross-field-cases.json`, generated record model only) | ✓ (generated Zod + run-time `runValidators`) | ✓ | ✓ | ✓ | ✓ (generated Pydantic + run-time `run_validators`) |
 | [`fixtures/registry-conformance/`](../fixtures/registry-conformance/) | 1 canonical manifest | ✓ (reference emitter) | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/object-model-conformance/`](../fixtures/object-model-conformance/) | 1 shared metadata fixture (per-port scenarios) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/codegen-conformance/`](../fixtures/codegen-conformance/) | 7 shared inputs; `shared-provided-enum` carries the enum-type decision table and `cross-package-binding` the reference-binding decision table (ADR-0059) every port answers; `xpkg-value-object-refs` (ruling R52) is run by C# and TypeScript only so far — Java, Kotlin and Python in [#544](https://github.com/metaobjectsdev/metaobjects/issues/544)–#549 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/template-codegen-conformance/`](../fixtures/template-codegen-conformance/) | 3 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/template-output-render-conformance/`](../fixtures/template-output-render-conformance/) | 5 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/generator-registry-conformance/`](../fixtures/generator-registry-conformance/) | 1 canonical manifest | ✓ | ✓ | ✓ | ✓ | ✓ |
-| [`fixtures/provider-composition-conformance/`](../fixtures/provider-composition-conformance/) | 9 (5 error-shape + 4 compose-load) | ✓ | ✓ | — (JVM registry via Java) | ✓ | ✓ |
+| [`fixtures/provider-composition-conformance/`](../fixtures/provider-composition-conformance/) | 18 (11 error-shape + 4 compose-load + 3 attr-ownership) | ✓ | ✓ | — (JVM registry via Java) | ✓ | ✓ |
 | [`fixtures/source-resolution-conformance/`](../fixtures/source-resolution-conformance/) | 25 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/scope-conformance/`](../fixtures/scope-conformance/) | 10 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
-| [`fixtures/dependency-conformance/`](../fixtures/dependency-conformance/) | 37 cases (26 resolution + 11 check) + 14 transport cases | ✓ (reference implementation; all three arms) | ✓ (resolution arm, all 26; no check, so the 11 check cases are not run) | inherits via Java | ✓ (resolution arm, all 26; no check, so the 11 check cases are not run) | ✓ (resolution arm, all 26 identically; no check yet, so the 11 check cases are not run; the transport arm is Node-only) |
-| [`fixtures/shared-model-conformance/`](../fixtures/shared-model-conformance/) | 11 cases (7 publish + 4 refusal) | ✓ (reference implementation) | — (Phase 2) | — (Phase 2) | — (Phase 2) | ✓ (serializer arm: the 7 publish cases' document bytes; no publisher) |
-| [`fixtures/agent-context-conformance/`](../fixtures/agent-context-conformance/) | 4 | ✓ (the emitter is TS-owned) | — | — | — | — |
+| [`fixtures/dependency-conformance/`](../fixtures/dependency-conformance/) | 47 cases (36 resolution, 7 of them with a ledger arm, + 11 check) + 32 transport cases | ✓ (reference implementation; all four arms) | ✓ (resolution arm, all 36, ledger included; check arm, all 11) | inherits via Java | ✓ (resolution arm, all 36, ledger included; check arm, all 11, as `verify --deps`) | ✓ (resolution arm, all 36 identically, ledger included; check arm, all 11, as `deps check` and `verify --deps`; the transport arm is Node-only) |
+| [`fixtures/shared-model-conformance/`](../fixtures/shared-model-conformance/) | 15 cases (9 publish + 6 refusal) | ✓ (reference implementation) | ✓ (all 15; `SharedModelConformanceTest`) | inherits via Java (`KotlinSharedModelGeneratorTest` pins the generator) | ✓ (all 15; `SharedModelConformanceTests`) | ✓ (serializer arm: the 9 publish cases' document bytes; no publisher) |
+| [`fixtures/agent-context-conformance/`](../fixtures/agent-context-conformance/) | 5 | ✓ (the emitter is TS-owned) | — | — | — | — |
 | [`fixtures/metamodel-docs/`](../fixtures/metamodel-docs/) | 1 | ✓ (docs emit is TS-owned) | — | — | — | — |
 | [`fixtures/fmt-conformance/`](../fixtures/fmt-conformance/) (#304 — `meta fmt`) | 12 | ✓ (reference) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/field-lint-conformance/`](../fixtures/field-lint-conformance/) (the `verify` field authoring lint) | 15 | ✓ (reference) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/requirement-check-conformance/`](../fixtures/requirement-check-conformance/) (the `verify` requirement gate, ADR-0057) | 43 cases | ✓ (reference) | ✓ | inherits via Java (one Maven `metaobjects:verify` goal) | ✓ | ✓ |
 | [`fixtures/requirement-test-identity-conformance/`](../fixtures/requirement-test-identity-conformance/) (the identity, skip state and digest of each generated requirement test, and the filter seam, ADR-0057) | 26 cases | ✓ (reference) | ✓ | identity function inherits via Java; emitted names asserted by its own generator test | ✓ | ✓ |
-| [`fixtures/naming-conformance/`](../fixtures/naming-conformance/) | 8 cases | ✓ | ✓ | inherits via Java (`RouteNaming.pluralize`) | ✓ | ✓ |
+| [`fixtures/naming-conformance/`](../fixtures/naming-conformance/) | 8 cases + 23 collection segments (`@collectionName`, `naming.collections`) | ✓ | ✓ | inherits via Java (`RouteNaming.pluralize`, `RouteNaming.collectionSegment`) | ✓ | ✓ |
 | [`fixtures/wire-conformance/`](../fixtures/wire-conformance/) (the `wire` setting, ADR-0019 Amendment 2) | 6 cases + 8 refusals | ✓ | ✓ | inherits via Java (one config reader) | ✓ | ✓ |
 | [`fixtures/enum-length-conformance/`](../fixtures/enum-length-conformance/) (a string-stored enum's column length: `@maxLength`, else `enums.maxLength`) | 5 cases + 1 overflow + 5 refusals; run by a port that sizes the column | ✓ | ✓ | inherits via Java (one config reader, one resolver) | ✓ | — (sizes no column: emits no DDL or column type; the config reader accepts and shape-checks the `enums` block) |
-| [`fixtures/check-constraint-conformance/`](../fixtures/check-constraint-conformance/) (rc.19 item 13 — the CHECKs one model gets through `meta migrate` and through a generated EF model) | 1 model, 3 expected files (Postgres, Postgres with `skipRedundant`, SQLite) | ✓ (reference: `meta migrate`) | — (declares no CHECK in a generated model) | — | ✓ (the EF context, and live Postgres) | — (declares no CHECK in a generated model) |
-| [`fixtures/codegen-skip-conformance/`](../fixtures/codegen-skip-conformance/) (when `gen` may skip and what a local `verify --codegen` may answer, ADR-0062) | one case table in `cases.json` | ✓ | ✓ | ✓ (through the Java runner) | ✓ | ✓ |
+| [`fixtures/check-constraint-conformance/`](../fixtures/check-constraint-conformance/) (the CHECK constraints `meta migrate` derives: name and expression text per dialect) | 1 model, 5 expected files (postgres, sqlite, d1, and both skip-redundant variants) | ✓ (reference, `migrate-ts`) | — (no CHECK in a generated model) | — (same) | ✓ (the EF context declares them; live-Postgres `EnsureCreated` lane) | — (same) |
+| [`fixtures/foreign-key-index-conformance/`](../fixtures/foreign-key-index-conformance/) (the indexes `migrate.foreignKeyIndexes` adds: which foreign keys are uncovered, and each index's name per dialect, a name over 63 bytes cut on Postgres; and the name each declared `identity.secondary` / `index.lookup` is created under) | 1 model, 4 expected files (FK and declared, postgres and sqlite) | ✓ (reference, `migrate-ts`; the Drizzle tables declare the declared names) | — (no index in a generated model) | ✓ (the Exposed tables declare them) | ✓ (the EF context declares them) | — (same as Java) |
+| [`fixtures/codegen-skip-conformance/`](../fixtures/codegen-skip-conformance/) (when `gen` may skip and what a local `verify --codegen` may answer, ADR-0064) | one case table in `cases.json` | ✓ | ✓ | ✓ (through the Java runner) | ✓ | ✓ |
 | [`fixtures/codegen-noop/`](../fixtures/codegen-noop/) (FR-044 — reporting vocabulary: what is lowered, what stays inert) | 1 model pair (`reporting/with` vs `reporting/without`) | ✓ (codegen + migrate) | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/cube-model/`](../fixtures/cube-model/) (FR-044 Plan 4 — the `cube-model` generator's golden Cube files, plus the canonical model's golden) | 46 cases (36 trees + 10 errors) + 1 canonical golden | ✓ (the exporter is TypeScript-only, spec R6; its `cube` lane also loads the files into a real Cube) | — | — | — | — |
+| [`fixtures/writer-conformance/`](../fixtures/writer-conformance/) (ADR-0063 — the code writer generators write through) | 41 cases (31 core + 10 TypeScript) | ✓ (the first writer; core and TypeScript dialect) | — (writer not built yet) | — (writer not built yet) | — (writer not built yet) | — (writer not built yet) |
 | [`fixtures/contract-conformance/`](../fixtures/contract-conformance/) (FR-022 — the `contract-schema` and `openapi` generators' golden trees and refusals) | 19 cases (14 trees + 5 errors) | ✓ (one neutral engine, ADR-0034 Amendment 10; the generated API lanes also hold real traffic to the documents) | — | — | — | — |
+| [`fixtures/explorer-conformance/`](../fixtures/explorer-conformance/) (the `explorer.json` data spine: `meta export --effective` + `meta verify --format json` + the generated-file manifest in, one explorer document out) | 1 case (`shop`) | ✓ (the builder is TypeScript, and reads only port-neutral inputs) | — | — | — | — |
 
 A ✓ means the port runs the corpus green; an explicit `n / m` is used where a port
 carries a ledgered divergence. The two ledgered YAML fixtures are documented
@@ -92,11 +95,12 @@ the corpora above do two different jobs. Only the first is a promise to adopters
   (the canonical serializer, surfaced per-file — ADR-0034's "canonical format" is core),
   `field-lint-conformance/` (the advisory field lint every port's `verify` prints) and
   `requirement-check-conformance/` (the requirement gate every port's `verify` runs; a
-  drift gate is core, and it is not ejectable in any port). `codegen-skip-conformance/` (ADR-0062: which changes make `gen` render, and what a local `verify --codegen` may answer from the stored key) is core for the same reason.
+  drift gate is core, and it is not ejectable in any port). `codegen-skip-conformance/` (ADR-0064: which changes make `gen` render, and what a local `verify --codegen` may answer from the stored key) is core for the same reason.
   A red cell here is a MetaObjects bug.
 - **Template quality checks — not a promise.** The generated lane of
   `api-contract-conformance/`, `generator-registry-conformance/` (stable generator names),
-  `codegen-noop/` (vocabulary with no lowering yet emits nothing), `contract-conformance/` (the JSON Schema and OpenAPI output), `cube-model/` (the Cube
+  `codegen-noop/` (vocabulary with no lowering yet emits nothing), `writer-conformance/` (the code
+  writer the reference generators write through, ADR-0063), `contract-conformance/` (the JSON Schema and OpenAPI output), `cube-model/` (the Cube
   exporter's output, a TypeScript reference helper),
   `requirement-test-identity-conformance/` (which tests the `requirement-tests` reference
   generator yields from a ledger and what each is called; the text it writes is not
@@ -112,51 +116,34 @@ corpora, or between its *vocabulary* and its *behaviour* — never gets a row of
 own, and its boundary ends up discoverable only from the feature doc. The split ones
 are recorded here instead.
 
-**Value-object names and the claim registry** (ruling R52): no port renames a value object to
-avoid a collision; a real collision (two objects emitting one name into one scope) is refused by
-the run's claim registry with `ERR_NAME_COLLISION`, naming both and the remedy.
+**`identity.primary @sequenceStart`** (one semantic in every port that writes DDL): on a fresh
+database the identity or sequence begins at `@sequenceStart`; when the start changes on an
+existing database, the change sets `START WITH n` and moves the counter FORWARD only, to
+`GREATEST(n, max(id) + 1)` when it sits below that. It never `RESTART`s and never moves a counter
+back, because live rows already hold the ids it handed out. Tracked in
+[#544](https://github.com/metaobjectsdev/metaobjects/issues/544).
 
-- *Done:* C# (`GenContext.Claim`: types per namespace, DbSets per context, route segments per
-  routes entry, finders per class, expression indexes per schema). Since rc.19 R65 each package
-  is its own namespace by default, so the `xpkg-collision` pair is two types; mapping both
-  packages onto one namespace (`PackageNamespaces`) is what the refusal tests use.
-- *Done:* TypeScript (`ctx.claim`, helpers in `codegen-ts/src/naming/name-claims.ts`: a module's
-  type and collection names per module directory, the barrel's re-exports per barrel, REST
-  segments per routes entry). The `xpkg-collision` tests use the package output layout; a file
-  that meets both `Note`s binds each under a package-qualified local alias
-  (`import type { Note as AcmeAlphaNote }`), which names no type. The UI tier
-  (`codegen-ts-tanstack`, `-react`, `-angular`) claims nothing yet: its hooks import the entity
-  modules, whose claims cover the same names.
-- *TODO, Python:* still renames (`collision_names.py`, `ERR_PAYLOAD_NAME_COLLISION`) in its flat
-  generated package. Java and Kotlin never renamed (the Java package disambiguates). Tracked in
-  [#544](https://github.com/metaobjectsdev/metaobjects/issues/544)–#549.
-
-**`identity.primary @sequenceStart`** (rulings R36, R51, one semantic in every port): on a fresh
-database the identity or sequence begins at `@sequenceStart`. When the start changes on an
-existing database, the change records the new start, and, for a declared start, moves the
-counter forward to `GREATEST(n, max(id) + 1)` when it is below that. It never `RESTART`s and never
-moves the counter back, because live rows already hold the ids it has handed out. A database
-rebuilt by replaying migrations then begins at the start, as a fresh one does. The port TODOs
-below are tracked in [#544](https://github.com/metaobjectsdev/metaobjects/issues/544).
-
+- *Honoured and pinned:* TypeScript (`meta migrate`). A fresh table is created `START WITH n`. A
+  changed start writes `ALTER SEQUENCE … START WITH n` plus an advance-only `setval`. The
+  persistence migration scenarios `sequence-start-change-moves-counter-forward` and
+  `sequence-start-change-below-max-id` pin on live Postgres that the next id is the start, or the
+  highest id plus one when a row already holds an id past the start.
+- *Honoured, string-tested only:* the Drizzle schema template (`entityFile()`). It writes the
+  start into the identity column's options (`startWith: n`), and a codegen unit test asserts that
+  text (`codegen-ts/test/templates/drizzle-schema.test.ts`). No test creates a table from the
+  Drizzle mapping and reads the first id, so the option's effect is not pinned.
 - *Honoured and pinned:* C#. The generated context carries the start on Npgsql, and the generated
-  design-time services (`<Context>DesignTimeServices`, ruling R50) scaffold every
-  start-only change — added, changed or removed — as SQL, Up and Down (Npgsql alone writes
-  `RESTART WITH n`, or `RESTART WITH 1` for a removed start). `EfModelGapsTests` pins the
-  transitions, the adopter's own differ being kept, and, on live Postgres, a replayed database
-  beginning at the start, a populated table advancing to it, an explicit id above the counter,
-  and a lowered or removed start leaving the counter where it was.
-- *TODO, TypeScript (`meta migrate`, Drizzle):* a fresh table is created `START WITH n`, and a
-  changed start runs `setval(seq, n, false)` when `last_value` is below it
-  (`emit/postgres.ts` `renderAlterSequence`). That is the semantic, except that it compares with
-  the counter only: bring it to `GREATEST(n, max(id) + 1)`, so an explicit id above the counter is
-  not handed out again, and pin it.
-- *TODO, Java (OMDB) and Kotlin (Exposed):* the vocabulary loads; neither emits or honours the
-  start in its DDL or mapping. Add it with the same semantic and the same pin.
-- *TODO, Python:* the vocabulary loads; the runtime has no DDL path. If it gains one, the same
-  semantic and pin apply.
+  `<Context>DesignTimeServices` makes `dotnet ef migrations add` scaffold a start-only change as
+  `SET START WITH n` plus the same advance-only move (Npgsql alone writes `RESTART WITH n`).
+  `EfModelGapsTests` pins the transitions, and on live Postgres the next id after the change.
+- *Honoured and pinned:* Kotlin (Exposed 0.x and 1.x). A declared start or name generates
+  `autoIncrement(Sequence("<name>", startWith = n))`; a live-Postgres test pins that a fresh
+  table's first id is the start. Exposed generated code has no migration path, so a changed start
+  is `meta migrate`'s job.
+- *Not applicable:* Java (OMDB is pure data access with no DDL, ADR-0015) and Python (no DDL
+  path). The vocabulary loads in both; schema comes from `meta migrate`.
 
-**Kind-1 vocabulary: cross-port, implemented in some ports so far** (ruling R40). Each entry
+**Cross-port vocabulary implemented in some ports so far (`implementedIn`).** Each entry
 below is in the shared registry and the registry manifest, marked `implementedIn`. A port that
 has not implemented it must still register it and load it strictly (and then ignore it); an
 unregistered attr on it still fails. Gated by the conformance fixtures `view-kind1-controls`,
@@ -169,25 +156,15 @@ canonical (`fixtures/registry-conformance/expected-registry.json`).
     `view.number`, `view.password`, `view.radio`, `view.text`, `view.web` (types, no attrs)
   - `view.textarea`, and its `@rows`
   - `view.image`, and its `@accept`, `@aspectRatio`, `@maxBytes`, `@maxEdge`, `@store`
-- *Implemented in C# and TypeScript* (`implementedIn: ["csharp", "typescript"]`, rc.19 R57):
-  `object.entity` / `object.projection` / `object.report` `@collectionName`, with the pluggable
-  pluralizer (`naming.collections`). *TODO, Java, Kotlin and Python:* register the attr (the
-  manifest is spec-driven; Python's spec copy is synced) and derive their collection names
-  (REST segment, finders) from it; the loader fixture `object-collection-name` names its
-  reverse hop `Consignment.consignmentHistory` by it, so it is red in those ports until they do (#544–#549).
 - *Implemented in Java only* (`implementedIn: ["java"]`): `object.* @object` (ADR-0001), the
   native class an object binds to. Java's runtime acts on it; Java's own behaviour is unchanged.
-- *Loads strictly, per port:*
-  - TypeScript and C#: every entry above loads strictly, and the manifest byte-matches
-    (`KindOneVocabularyTests` in C#; `registry-conformance.test.ts` and the fixtures in TS).
-  - *TODO, Java and Kotlin:* the view controls load, but `view.textarea @rows` and the
-    `view.image` attrs are not registered (`view-kind1-controls` fails with
-    `ERR_UNKNOWN_ATTR`), and the manifest still carves out the views, `@object` and
-    `@objectAdapter`, so registry-conformance fails. `object-kind1-jvm-binding-attrs` passes.
-  - *TODO, Python:* the same view-attr gap, plus `@object` and `@objectAdapter` are not
-    registered (both loading fixtures fail), and registry-conformance fails.
-- *Kind 2, for comparison* (`ports`, language-specific by nature, never "pending"):
-  `@dbSetName` (`["csharp"]`; deprecated in rc.19 as an alias of `@collectionName`) and
+- *Loads strictly in every port.* Each port registers the `metaobjects-ui-web` provider
+  (`view.textarea @rows`, the `view.image` attrs) and `@object` / `@objectAdapter` on
+  `object.*`, loads all three fixtures strictly, and emits `implementedIn` in its manifest, which
+  byte-matches the canonical in all five ports (`KindOneVocabularyTests` in C#;
+  `registry-conformance.test.ts` in TypeScript; `RegistryManifestConformanceTest` in Java and
+  Kotlin; `test_registry_conformance.py` in Python).
+- *Port-scoped, for comparison* (`ports`, language-specific by nature, never "pending"):
   `@objectAdapter` (`["java", "kotlin"]`).
 
 **Generated paths keyed by package** (ruling R39). Every port's generated output is keyed by
@@ -199,22 +176,22 @@ collide on an output path. State per port:
   package, not `PackageNamespaces`. Since rc.19 R65 the namespace follows the package too
   (`acme::alpha` → `Acme.Alpha`) unless a binding maps it; every cross-namespace reference is
   `global::`-qualified. Tests: `OutputPathsTests`, `PackageNamespaceTests`.
-- *Done, TypeScript:* `outputLayout` defaults to `"package"` (`DEFAULT_OUTPUT_LAYOUT`, ruling
-  R63); `"flat"` stays available. Tests: `barrel-layout.test.ts` (the barrel exports the same
+- *Done, TypeScript:* `outputLayout` defaults to `"flat"`; `"package"` is opt-in (ruling
+  R63). Tests: `barrel-layout.test.ts` (the barrel exports the same
   names in both layouts), `naming/name-claims.test.ts`.
 - *TODO, Python:* only the flat layout exists. A package layout is new work.
 - *TODO, Java and Kotlin:* files land in the mapped Java package directories, so two metadata
   packages mapped to one Java package would collide.
 - Tracked in [#544](https://github.com/metaobjectsdev/metaobjects/issues/544)–#549.
 
-**Native index vocabulary and `@description` in the ORM models** (R33). `meta migrate` creates
+**Native index vocabulary and `@description` in the ORM models.** `meta migrate` creates
 every index (`identity.secondary`, `index.lookup`, a field's `@unique`, with `@where`, `@using`,
 `@orders`, `@expr` and the resolved name) and writes `@description` as `COMMENT ON`. What each
 port's ORM model carries beside it:
 
 - *C# (EF Core):* every index, with `@where`, `@orders`, `@using` and its name, and the table and
-  column comments. An `@expr` index is not an EF index: the `expression-indexes` generator writes it
-  as SQL. Pinned by `EfModelGapsTests` and `ExpressionIndexesGeneratorTests`.
+  column comments. An `@expr` index is not an EF index; `meta migrate` creates it. Pinned by
+  `EfModelGapsTests`.
 - *TypeScript (Drizzle):* every index, with `@where`, `@orders`, `@using`, `@expr` and its name
   (`templates/drizzle-schema.ts`). Not expressible: `@description`, which Drizzle has no API for;
   an `@expr` index on SQLite (Drizzle's `.on()` there takes columns only).
@@ -330,6 +307,10 @@ manifest contains without moving these boundaries.
   classpath and stubbing them drowns the signal; that tier is compiled and booted over
   real HTTP in the api-contract integration lane instead. The boundary is one
   cross-port rule, not four local concessions.
+- *The gate and the generated-server api-contract lanes run in both output layouts* —
+  the engine default `flat` and `outputLayout: "package"` (which `meta init` writes) —
+  so a defect only the non-default layout shows (a relative import one directory short,
+  two packages landing in one directory) fails a gate rather than an adopter's build.
 - *The prompt tier is out of scope here* because the fitness corpus declares no
   `template.*` nodes. Including those generators would emit nothing and read as
   coverage that is not there.
@@ -401,7 +382,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 
 ## Fixture-to-doc mapping
 
-### `fixtures/conformance/` — metamodel loader + canonical serializer (460)
+### `fixtures/conformance/` — metamodel loader + canonical serializer (526)
 
 | Fixture prefix | Feature doc |
 |---|---|
@@ -425,6 +406,8 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 | `projection-*`, `error-projection-*`, `field-readonly-on-view-projection` | [features/source-kinds.md](features/source-kinds.md) (projections + the object taxonomy, ADR-0028) |
 | `requirement-*`, `error-unknown-attr-requirement` | [features/requirements.md](features/requirements.md) (vocabulary only — the gate has its own corpus, `requirement-check-conformance/`; see "Split coverage" above) |
 | `reporting-*`, `error-dimension-*`, `error-measure-*`, `error-ratio-*`, `error-segment-*`, `error-report-*`, `error-relative-date-*` | [features/reporting.md](features/reporting.md) (the `dimension` / `measure` / `segment` / `object.report` vocabulary and its load-time rules; design in the [FR-044 spec](superpowers/specs/2026-10-02-fr-044-core-reporting-design.md)) |
+| `provider-extension-*`, `provider-custom-vocabulary-*` | [features/extending-with-providers.md](features/extending-with-providers.md) (a project's own provider: a new subtype plus attributes on an existing type load with it and are refused without it, every port writing the provider in its own language) |
+| `object-collection-name` | [features/migrations/physical-naming.md](features/migrations/physical-naming.md) (`@collectionName` and the `collections` pluralizer) |
 | `smoke-empty-metadata` | [features/entities.md](features/entities.md) |
 
 ### `fixtures/yaml-conformance/` (16)
@@ -464,10 +447,10 @@ All 37 fixtures → [features/migrations-and-drift.md](features/migrations-and-d
 may carry `"isArray": true`; with `fields` it is a list of objects, without it a list of
 scalars. The six `verify-positional-accessor-*` cases pin where `-last` is available.
 
-### `fixtures/persistence-conformance/` (59 — 53 query + 6 migration)
+### `fixtures/persistence-conformance/` (67 — 55 query + 12 migration)
 
-- `migrations/*` (6) → [features/migrations-and-drift.md](features/migrations-and-drift.md) (schema migration section)
-- `queries/*` (53) → [features/source-kinds.md](features/source-kinds.md) (query semantics against `source.rdb`)
+- `migrations/*` (12) → [features/migrations-and-drift.md](features/migrations-and-drift.md) (schema migration section)
+- `queries/*` (55) → [features/source-kinds.md](features/source-kinds.md) (query semantics against `source.rdb`)
 
 **Engines beyond Postgres (FR-044 reports, decimals).** The twenty-four `queries/report-*.yaml`
 scenarios also run on SQLite and MySQL 8.4 in every port, and on D1's local runtime in
@@ -483,9 +466,9 @@ REAL, a MySQL `DECIMAL` keeps its scale, a MySQL `DATETIME` is the UTC wall cloc
 `report-relative-date` carries a per-engine seed (`seed-data-engine`). `op: relate` and the
 write ops stay Postgres-only. See [features/reporting.md](features/reporting.md#what-the-corpus-gates).
 
-### `fixtures/api-contract-conformance/` (122)
+### `fixtures/api-contract-conformance/` (139)
 
-All 122 scenarios → [features/api-contract.md](features/api-contract.md) (cross-port
+All 139 scenarios → [features/api-contract.md](features/api-contract.md) (cross-port
 REST API URL grammar + JSON wire format). Verifies every backend's emitted CRUD
 routes answer identically over HTTP — list / get / create / patch+put / delete,
 plus pagination (`limit`/`offset`), sort (`sort=field:dir`), the `withCount=1`
@@ -495,22 +478,30 @@ status codes.
 The corpus also covers the 9 cross-port filter operators (`eq`, `ne`, `gt`,
 `gte`, `lt`, `lte`, `in`, `like`, `isNull`) plus the implicit-AND combinator
 and 2 error shapes (`invalid_filter_field` / `invalid_filter_op`) under the
-URL grammar `?filter[<field>][<op>]=<value>` (FR-009). On top of the 32 core
-scenarios the corpus carries eight sub-corpora — `tph/` (12, single-table
-inheritance; a subtype decimal filters and refuses extra digits), `m2m/` (9 — 3 plain, 5 gating TPH x M:N together, the combination
+URL grammar `?filter[<field>][<op>]=<value>` (FR-009). On top of the 34 core
+scenarios (among them the write-input rules: server-owned keys dropped, an undeclared key
+refused under the default `api.unknownFields: reject`, and every validation issue listed)
+the corpus carries eleven sub-corpora — `tph/` (14, single-table
+inheritance; a subtype decimal filters and refuses extra digits, and the input rules hold over
+the whole hierarchy), `m2m/` (9 — 3 plain, 5 gating TPH x M:N together, the combination
 each corpus alone could not reach, and 1 pinning the collection-URL spelling),
-`jsonb/` (5, typed value-object columns; numbers inside them: a double stays a JSON number, a decimal is the canonical string),
-`write-through/` (2, table-write + view-read entities), `secret-fields/` (2, #484 + the 1.2.x input gate: a `@formExclude` or credential `view.password` field is ignored on create, PATCH and PUT, a credential is never returned, and a `@mutability: readOnly` field is ignored on write too), `projection/` (12, a
+`jsonb/` (6, typed value-object columns; numbers inside them: a double stays a JSON number, a decimal is the canonical string; an undeclared member inside a value object is dropped),
+`write-through/` (2, table-write + view-read entities), `secret-fields/` (2, #484: a `@formExclude` or credential `view.password` field is ignored on create, PATCH and PUT, and a credential is never returned), `enum-default/` (2, a create that omits a `field.enum` with `@default` stores the default, and a supplied value is kept), `projection/` (12, a
 read-only view answers reads and refuses writes with 405; a projection with no declared
 identity has no item route; a projection keyed on a field not named `id` is addressed by
 it, whether its identity names `@fields` or derives them; decimal and float fields filter), `decimal/` (11, ADR-0019 Amendment 1: a decimal, array element and undeclared-precision column included, is one
-canonical string, read exactly, filtered exactly and refused past its declared digits) and `report/` (37,
+canonical string, read exactly, filtered exactly and refused past its declared digits), `duration/` (2, a
+`field.duration` under `"wire": { "durations": "iso" }` is one canonical ISO-8601 string, refused
+in a calendar or clock spelling, and filtered and sorted as a span on every engine), `api-settings/` (8,
+the project's `api` block: `api.pagination`'s default page, `limit_too_large` cap and refused
+negative `limit`, an empty page for `limit=0`, and
+`api.unknownFields: drop`) and `report/` (37,
 FR-044: a view-backed `object.report` is listed, filtered, sorted and paged on
 its derived fields, answers `POST` with 405 and mounts no `/{id}`; a `@spine` report keeps
 a row with no facts, and a measure with `@default` filters and sorts as its default). All 5 ports — TS, Java,
 Kotlin, C#, Python — run it in BOTH lanes: a hand-rolled reference server and
 the port's own GENERATED API artifact booted over HTTP. `write-through/`,
-`secret-fields/`, `projection/`, `decimal/` and `report/` run the generated lane only, on all five ports: what
+`secret-fields/`, `enum-default/`, `projection/`, `decimal/`, `duration/` and `report/` run the generated lane only, on all five ports: what
 they test is whether a port's generator emits the routes. The `report/` sub-corpus is the one
 that reads real views, so it runs full stack on Postgres, SQLite and MySQL
 (`report/schema.sqlite.sql`, `report/schema.mysql.sql`, both TypeScript-produced) in every
@@ -573,55 +564,71 @@ also matches before a trailing newline. Kotlin has no runner of its own: it inhe
 the Java loader. Each of those two guards is pinned by a test beside the corpus, since
 the corpus asserts matches only and carries no invalid-pattern case.
 
-### `fixtures/dependency-conformance/` (37 cases + 14 transport cases)
+### `fixtures/dependency-conformance/` (47 cases + 32 transport cases)
 
-All 37 cases → [features/metadata-dependencies.md](features/metadata-dependencies.md)
+All 47 cases → [features/metadata-dependencies.md](features/metadata-dependencies.md)
 (declaring a dependency, `meta deps sync`, the committed snapshot + lock, default
 exclusion of imported metadata, overlay/extends across the boundary, every load-
-and resolution-time failure, and the upstream check). File-shaped like `scope-conformance/`
-above: one committed `cases.json`, no per-port fixture, no ledger. The corpus has three arms:
+and resolution-time failure, the upstream check, and which imported requirements are the
+project's own ledger). File-shaped like `scope-conformance/` above: one committed `cases.json`,
+no per-port fixture. The corpus has four arms:
 
-- **Resolution (26 cases).** Every case's `expectFiles`/`expectImported`/`expectSelected`/
+- **Resolution (36 cases).** Every case's `expectFiles`/`expectImported`/`expectSelected`/
   `expectMigrateGoverned`/`expectLoadError` assertions. **TypeScript (the reference
-  implementation), Python, Java and C# all run all 26, identically**, with no exemption. The two
+  implementation), Python, Java and C# all run all 36, identically**, with no exemption. The two
   overlay cases that need a view child as incidental content use `view.currency` (the one
   concrete `view.*` subtype registered cross-port), not `view.text` — a prior revision used
   `view.text`, which Python did not register then, and carried a since-discharged allowlist
   for it. Kotlin inherits the Java run through the same loader and Maven plugin.
+- **Ledger (7 of the resolution cases, `expectLedger` / `expectCoverageMeasured`).** Which loaded
+  requirements are this project's ledger (its own, plus a dependency's only when
+  `requirements.inherit` names the dependency's package) with each one's effective `@status`, and
+  whether object coverage is measured (never by an imported requirement). Each port asserts it
+  through its requirement gate's scan and again through its requirement-tests walk: TypeScript in
+  `cli/test/dependency-ledger-conformance.test.ts`, the other ports in their resolution runner.
+  An eighth case refuses a new requirement declared into a dependency's package
+  (`ERR_DEPENDENCY_PACKAGE_NOT_OWNED`) on the load-time path.
 - **Check (11 cases, `expectCheck`).** For each declared dependency, `current`, `drifted` or
   `unresolved` (a missing path, a bad manifest, a hash mismatch, or not yet in the lock). Run
-  by TypeScript only, in `cli/test/dependency-check-conformance.test.ts`; Python and Java have no
-  `deps check` yet and filter these cases out. The arm exists so that each port's check is
-  written against the same edge cases (Phase 2, #482).
-- **Transport (14 cases, `transport-cases.json`).** The `npm` and `python` transports `meta deps sync`
-  uses to find an installed package: npm packages under a temp `node_modules`, Python packages on a
-  temp import path, the directory each resolves to, the exact lock written, and each refusal. Run by
+  by TypeScript, in `cli/test/dependency-check-conformance.test.ts`, by Java in
+  `DependencyCheckConformanceTest` (the engine behind `metaobjects:verify -Dmeta.verify.mode=deps`;
+  Kotlin runs the same goal), by **Python**, in `tests/conformance/test_dependency_conformance.py`
+  (`metaobjects deps check` and `verify --deps`), and by **C#**, in `DependencyConformanceTests`
+  (`dotnet meta verify --deps`). The arm exists so that each port's check is written against the
+  same edge cases (FR-023 Phase 2, #482, shipped).
+- **Transport (32 cases, `transport-cases.json`).** The `npm`, `python`, `maven` and `nuget` transports
+  `meta deps sync` uses to find an installed package: npm packages under a temp `node_modules`, Python
+  packages on a temp import path, jars in a temp local Maven repository, packages in a temp NuGet cache,
+  the directory each resolves to, the exact lock written, and each refusal. Run by
   Node only, in `cli/test/dependency-transport-conformance.test.ts`, because Node `meta deps sync` is
-  the only writer of snapshots and the lock. `cases.json` also carries an `npm` and a `python`
-  dependency loading from their committed snapshot with nothing installed, which both ports run.
+  the only writer of snapshots and the lock. `cases.json` also carries an `npm`, a `python`, a `maven` and a `nuget`
+  dependency loading from their committed snapshot with nothing installed, which every port runs.
 
 **C#** (S6 of FR-023 Phase 2) runs the resolution arm on two rungs of the source ladder: the
 neutral one (`Resolve(null, dir)`), and the explicit metadata directory a
 `dotnet meta gen <metadataDir>` takes, where the case has one. Its runner is
-`DependencyConformanceTests`; it skips the 11 check cases (C# has no `deps check` yet) and the
-transport cases (C# never syncs).
+`DependencyConformanceTests`; it runs the 11 check cases through `DependencyResolver.CheckDependencies`
+(S7) and skips the transport cases (C# never syncs).
 
-### `fixtures/shared-model-conformance/` (11 cases)
+### `fixtures/shared-model-conformance/` (15 cases)
 
 → [features/metadata-dependencies.md](features/metadata-dependencies.md) (the publisher's
 `sharedModelFile()`). A source tree under `source/`, plus `files` / `include` / `exclude` /
-`version`, must produce **exactly** the pinned artifact and manifest bytes (seven cases), or be
-refused for the pinned reason (four: an empty selection, a reference or `extends` outside the
-selection with the `referrer → target` pairs named, and vocabulary only a consumer provider
-registers). `requirement.*` and `template.*` nodes are always dropped, and the order of `files`
-does not change the bytes. The manifest goldens carry the token `@@METAMODEL_VERSION@@` where
+`version` / `requirements`, must produce **exactly** the pinned artifact and manifest bytes (nine
+cases), or be refused for the pinned reason (six: an empty selection, a requirement alone
+without `requirements`, a requirement claiming a node outside the selection, a reference or
+`extends` outside the selection with the `referrer → target` pairs named, and vocabulary only a
+consumer provider registers). `template.*` nodes are always dropped and `requirement.*` nodes
+unless `requirements` is set, and the order of `files` does not change the bytes. The manifest goldens carry the token `@@METAMODEL_VERSION@@` where
 the manifest records the toolchain's `metamodelVersion`, so they do not move with it.
 
-**TypeScript runs all 11**, in `codegen-ts/test/shared-model-conformance.test.ts`. **Python runs
+**TypeScript runs all 15**, in `codegen-ts/test/shared-model-conformance.test.ts`. **Python runs
 the serializer arm**: for each publish case it loads `files`, takes the nodes the pinned manifest
 lists, and `serialize_shared_document` must reproduce the artifact byte for byte (and the sha256
 the manifest records). Python has no publisher, so selection and the refusals are TypeScript's.
-Java, Kotlin and C# have no runner (Phase 2).
+**Java runs all 15**, in `metadata`'s `SharedModelConformanceTest` against the `SharedModel` engine
+the `shared-model` generator calls; **Kotlin** runs through that same engine and Maven goals and adds
+only `KotlinSharedModelGeneratorTest`. **C# runs all 15**, in `SharedModelConformanceTests`.
 
 > **ADR-0055 (deferred overlay application) — SHIPPED in every port.** The nine cases added
 > for it (`overlay-mixed-file-base-in-later-file`, `overlay-mixed-file-base-in-earlier-file`,
@@ -634,7 +641,17 @@ Java, Kotlin and C# have no runner (Phase 2).
 > recorded here rather than in a ledger, because ledgering a fixture the design intends to pass
 > is how a port quietly stays behind.
 
-### `fixtures/naming-conformance/` (8 cases)
+### `fixtures/naming-conformance/` (8 cases + 23 collection segments)
+
+`collection-segments.json` (23 cases) pins the REST collection segment from an object's
+`@collectionName` and the project's `naming.collections` pluralizer; every port runs it (see the
+corpus README). It holds segment cases only. The collection-name clash refusal
+(`ERR_COLLECTION_NAME_COLLISION`, two objects mounting one collection) is not in it: each port
+gates the refusal with its own unit tests, which run the corpus's `collisionCases` pairs where
+the README's runner table says so. Kotlin has no refusal of its own (the Maven goal runs the
+shared JVM `RouteNaming` one before the Kotlin generators), and
+`codegen-kotlin`'s `KotlinRouteNamingTest` checks it refuses a model the Kotlin facade loads,
+for coinciding plurals and for a declared `@collectionName` that repeats another's segment. The pluralize cases:
 
 All 8 cases → the already-plural pluralize fix (CHANGELOG `## [Unreleased]`):
 an entity whose name is already a plural noun (`Stats`, `Settings`, `Series`)
@@ -725,12 +742,28 @@ message. The case list, with the rule each pins, is the
 (`server/typescript/packages/integration-tests/cube-live/cube-model.live.ts`) loads the same
 files into a real Cube.
 
+### `fixtures/explorer-conformance/` (1 case)
+
+The `shop` case → [features/explorer-data.md](features/explorer-data.md). Its `project/` is a
+small model with inheritance, a value object, a reference, a prompt with a payload and a reply,
+and a five-level requirement tree that has a resolved member claim, a dangling planned claim and a
+live requirement nothing implements. `effective.json` and `verify.json` are what
+`meta export --effective` and `meta verify --format json` write for it, `hashes.json` is a
+hand-written manifest with node provenance, and `expected.json` is the explorer document built
+from the three, compared byte for byte.
+
+**One port runs it:** TypeScript, in
+`server/typescript/packages/docs-site/test/explorer-build.test.ts` (the builder) and
+`server/typescript/packages/cli/test/explorer-fixture.test.ts` (the two committed inputs are
+what the CLI writes today). The builder reads no loader, so a port that writes the same effective
+JSON and verify payload feeds it unchanged.
+
 ## Orphaned fixtures (tested but not yet documented)
 
-The fixtures in the nine corpora mapped above (metamodel 475 + yaml 16 + verify 45
-+ render 18 + persistence 59 + api-contract 122 + source-resolution 25 + scope 10 +
-dependency 37) each map to a feature doc, and so do the two requirement corpora, `shared-model-conformance` and the
-`cube-model` corpus, whose case lists live in their own READMEs. None are orphaned today. The remaining
+The fixtures in the nine corpora mapped above (metamodel 526 + yaml 16 + verify 45
++ render 18 + persistence 67 + api-contract 139 + source-resolution 25 + scope 10 +
+dependency 47) each map to a feature doc, and so do the two requirement corpora, `shared-model-conformance`, the
+`cube-model` corpus and `explorer-conformance`, whose case lists live in their own READMEs. None are orphaned today. The remaining
 corpora in the totals table gate tooling contracts (registry manifests, provider
 composition, agent context, docs emit) rather than user-facing metamodel behaviour,
 so they have no feature-doc row.

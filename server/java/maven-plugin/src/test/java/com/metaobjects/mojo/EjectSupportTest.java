@@ -328,6 +328,7 @@ public class EjectSupportTest {
         assertEquals(List.of("com.metaobjects.generator.kotlin.KotlinEntityGenerator",
                 "com.metaobjects.generator.kotlin.KotlinEnumEmitter",
                 "com.metaobjects.generator.kotlin.KotlinDecimalWireEmitter",
+                "com.metaobjects.generator.kotlin.KotlinCrossFieldRules",
                 "com.metaobjects.generator.kotlin.KotlinDurationWireEmitter"), entity.sources());
         assertTrue(entity.resourceOf("com.metaobjects.generator.kotlin.KotlinDecimalWireEmitter")
                 .endsWith("/kotlin/KotlinDecimalWireEmitter.kt"));

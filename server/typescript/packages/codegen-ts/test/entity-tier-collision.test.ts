@@ -8,7 +8,7 @@ import { entityFile } from "../src/generators/entity-file.js";
 import { barrel } from "../src/generators/barrel.js";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 
-// ADR-0044 / #228, amended by ruling R52 — two same-short-name `object.value`s across
+// ADR-0044 / #228, amended — two same-short-name `object.value`s across
 // packages. Nothing is renamed: under the package layout each `Note` is declared under its own
 // name in its own package's module, and every value-object-routed reference (Zod
 // `<Ref>InsertSchema`, Drizzle `.$type<>()`, inferred-types field.object/field.map) imports the
@@ -56,7 +56,7 @@ async function genFiles(
   return out;
 }
 
-describe("entity tier — cross-package value-object short-name sharing (ADR-0044, ruling R52)", () => {
+describe("entity tier — cross-package value-object short-name sharing (ADR-0044)", () => {
   test("two same-short-name object.values keep their names in two modules; every reference binds its own node under a local alias", async () => {
     const root = await loadMultiPackageRoot([
       {

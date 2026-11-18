@@ -145,6 +145,6 @@ public final class ModelWalk {
     /** The cross-port REST collection segment the reference routes serve an object at
      *  ({@code PostCategory} → {@code post_categories}). */
     public static String collectionSegment(MetaObject o) {
-        return RouteNaming.collectionSegment(o.getShortName());
+        return RouteNaming.collectionSegment(o);
     }
 }

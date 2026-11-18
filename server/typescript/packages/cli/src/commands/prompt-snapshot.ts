@@ -61,17 +61,21 @@ export async function promptSnapshotCommand(args: string[], cwd: string): Promis
   // or invalid, fall back to defaults — the loader still works for any
   // metadata that only uses core+forge subtypes.
   let configLoadOptions: ReturnType<typeof loadMemoryOptionsFrom> = {};
-  try {
-    // `metaobjects.config.ts` gets its own nearest-ancestor walk, not `projectRoot`:
-    // it answers a different question from `.metaobjects/config.json` (design §4.6)
-    // and in a Maven- or pip-rooted monorepo the two legitimately sit in different
-    // directories, so reading it from the collection's would silently drop this
-    // package's providers (#326). Same path whenever the two files sit together.
-    configLoadOptions = loadMemoryOptionsFrom(
-      await loadMetaobjectsConfig(resolveGenConfigDir(cwd, projectRoot)),
-    );
-  } catch {
-    configLoadOptions = {};
+  // `metaobjects.config.ts` gets its own nearest-ancestor walk, not `projectRoot`:
+  // it answers a different question from `.metaobjects/config.json` (design §4.6)
+  // and in a Maven- or pip-rooted monorepo the two legitimately sit in different
+  // directories, so reading it from the collection's would silently drop this
+  // package's providers (#326). Same path whenever the two files sit together.
+  const genConfigDir = resolveGenConfigDir(cwd, projectRoot);
+  if (existsSync(join(genConfigDir, "metaobjects.config.ts"))) {
+    try {
+      configLoadOptions = loadMemoryOptionsFrom(await loadMetaobjectsConfig(genConfigDir));
+    } catch (err) {
+      // A config that exists but fails to load is reported as itself, not as the
+      // unknown-subtype error its providers would have prevented.
+      log.error(`metaobjects.config.ts failed to load: ${describeError(err)}`);
+      return 1;
+    }
   }
 
   let root;

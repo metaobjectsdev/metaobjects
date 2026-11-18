@@ -45,5 +45,6 @@ export async function weekRoutes(fastify: FastifyInstance) {
     filterAllowlist: WeekFilterAllowlist,
     sortAllowlist: WeekSortAllowlist,
     dialect: "sqlite",
+    knownFields: ["id", "programId", "weekNumber", "title"],
   });
 }

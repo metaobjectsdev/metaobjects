@@ -70,8 +70,8 @@ describe("emitViewDdl — postgres", () => {
     });
     expect(sql).toContain("CREATE VIEW v_program_summary AS");
     // Ruling R54: Postgres qualifies every relation (`public` when no @schema is declared).
-    expect(sql).toMatch(/FROM public\.programs p\b/);
-    expect(sql).toMatch(/LEFT OUTER JOIN public\.weeks w ON/);
+    expect(sql).toMatch(/FROM programs p\b/);
+    expect(sql).toMatch(/LEFT OUTER JOIN weeks w ON/);
   });
 });
 
@@ -305,6 +305,27 @@ describe("emitViewDdl — #195 computed expression", () => {
     const sql = emitViewDdl(spec, { dialect: "postgres", baseTableName: "sessions", joinTables: {} });
     expect(sql).toContain("(s.payload_json IS NOT NULL AND COALESCE(s.score, 0) > 90) AS flag");
   });
+
+  test("an inlined first with no outer alias is refused, never emitted against an empty alias", () => {
+    const inlined = (outerAlias?: string): ViewSpec => ({
+      viewName: "v_flags",
+      joinTree: { baseEntity: "Parent", baseAlias: "p", joins: [] },
+      selectSpec: {
+        columns: [
+          { kind: "computed", fieldName: "flag", dbColAlias: "flag",
+            expr: { kind: "nullTest", negated: true, arg: { kind: "first", column: {
+              kind: "first", fieldName: "latest", dbColAlias: "latest", childEntity: "Child", childAlias: "c0",
+              sourceColumn: "label", referenceHolder: "target", fkColumn: "parent_id", pkColumn: "id",
+              childPkColumn: "id", orderBy: [{ column: "id", dir: "desc" }],
+              ...(outerAlias !== undefined ? { outerAlias } : {}) } } } },
+        ],
+      },
+      groupBy: [],
+    });
+    const options = { dialect: "postgres" as const, baseTableName: "parents", joinTables: { Child: "children" } };
+    expect(emitViewDdl(inlined("p"), options)).toContain("WHERE c0.parent_id = p.id");
+    expect(() => emitViewDdl(inlined(), options)).toThrow(/no outer alias/);
+  });
 });
 
 describe("emitViewDdl — #195 correlated first (argmax-then-project)", () => {
@@ -328,7 +349,7 @@ describe("emitViewDdl — #195 correlated first (argmax-then-project)", () => {
   test("emits a correlated scalar subquery with the PK tie-breaker appended, on postgres", () => {
     const sql = emitViewDdl(firstSpec(), { dialect: "postgres", baseTableName: "parents", joinTables: { ChildA: "child_as" } });
     expect(sql).toContain(
-      "(SELECT c0.label FROM public.child_as c0 WHERE c0.parent_id = p.id AND c0.is_active = TRUE ORDER BY c0.created_at DESC NULLS LAST, c0.id ASC LIMIT 1) AS current_label",
+      "(SELECT c0.label FROM child_as c0 WHERE c0.parent_id = p.id AND c0.is_active = TRUE ORDER BY c0.created_at DESC NULLS LAST, c0.id ASC LIMIT 1) AS current_label",
     );
   });
 
@@ -368,7 +389,7 @@ describe("emitViewDdl — #195 correlated first (argmax-then-project)", () => {
     expect(sql).toContain("GROUP BY p.id");
     expect(sql).toContain("COUNT(DISTINCT c1.id) AS child_count");
     expect(sql).toContain(
-      "(SELECT c0.label FROM public.child_as c0 WHERE c0.parent_id = p.id ORDER BY c0.created_at DESC NULLS LAST, c0.id ASC LIMIT 1) AS current_label",
+      "(SELECT c0.label FROM child_as c0 WHERE c0.parent_id = p.id ORDER BY c0.created_at DESC NULLS LAST, c0.id ASC LIMIT 1) AS current_label",
     );
   });
 });

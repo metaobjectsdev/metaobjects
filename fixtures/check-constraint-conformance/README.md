@@ -2,7 +2,7 @@
 
 The metadata input (`input/`) and the CHECK constraints `meta migrate` derives for it: every
 validator that can carry one (`validator.numeric`, `validator.length`, `validator.regex`, the
-cross-field `comparison` / `requiredWhen` / `presentIff` / `atLeastOne`, with an `@condition`)
+cross-field `comparison` / `requiredWhen` / `presentIff` / `exactlyOne` / `atLeastOne`, with an `@condition`)
 and every scalar `field.enum`. Each expected file maps a table to its CHECKs, in order, as a name
 and an expression (the text inside `CHECK (…)`, as written, never Postgres's normalized
 `pg_get_constraintdef` form).
@@ -18,7 +18,7 @@ and an expression (the text inside `CHECK (…)`, as written, never Postgres's n
 The rules the corpus pins (ruling R55, which follows `meta migrate`):
 
 - names `<table>_<column>_chk` (enum), `_numeric_chk`, `_length_chk`, `_regex_chk`, `_cmp_chk`,
-  `_reqwhen_chk`, `_presentiff_chk`, `_atleastone_chk`; a declared `@constraintName` replaces the
+  `_reqwhen_chk`, `_presentiff_chk`, `_exactlyone_chk`, `_atleastone_chk`; a declared `@constraintName` replaces the
   name and is kept even where `skipRedundant` would leave the CHECK out;
 - `@dbCheck: false` leaves a numeric, length or regex validator's or an enum's CHECK out, under
   `skipRedundant` too (`npi`, `legacyState`, `rank`'s minimum); a sibling validator on the same
@@ -26,7 +26,7 @@ The rules the corpus pins (ruling R55, which follows `meta migrate`):
   cross-field validator always keeps its CHECK: `false` on one is a load error;
 - comparisons, not `BETWEEN`; columns double-quoted; an int-backed enum lists its integers; a
   duration literal is the interval text on Postgres and microseconds on SQLite;
-- no CHECK on an array column, and none on a derived (origin-bearing) field — it has no column —
+- no CHECK on an array column, and none on a derived (origin-bearing) field — it has no column, whether it comes from an `origin.computed` or an `origin.passthrough` (`Parcel.ownerName`, from `Owner.name`, which carries a length validator) —
   nor a cross-field CHECK naming one (`band`, an `origin.computed` reached by the `HighGadgets`
   projection's `@filter`);
 - FR-017 TPH (`input/meta.tph.json`): the discriminator base's table carries its concrete

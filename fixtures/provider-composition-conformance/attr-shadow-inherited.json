@@ -1,0 +1,8 @@
+{
+  "description": "A provider declares an attr on a subtype whose shared root (<type>.base) another provider already declares with that name.",
+  "providers": [
+    "shadow-base",
+    "shadow-sub-clash"
+  ],
+  "expectedError": "ERR_PROVIDER_ATTR_SHADOW"
+}

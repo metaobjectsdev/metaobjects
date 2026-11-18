@@ -563,8 +563,9 @@ function canonicalizeDurations(entity: MetaData, row: Row): Row {
 
 /** Write side: a duration column is bound as the 64-bit microsecond integer SQLite, D1 and MySQL
  *  store it as, in the Postgres interval spelling on Postgres, which refuses a signed ISO-8601
- *  duration, and as a bigint microsecond count in the in-memory driver. A duration inside a jsonb value object is JSON, so it is the canonical ISO string. A
- *  value that is not a duration is refused here, not by the database. */
+ *  duration, and as a bigint microsecond count in the in-memory driver. A duration inside a jsonb value object,
+ *  or an element of an `isArray` duration on SQLite / D1 / MySQL (a JSON array column), is JSON, so it is the
+ *  canonical ISO string. A value that is not a duration is refused here, not by the database. */
 function bindDurations(entity: MetaData, row: Row, dialect: Dialect): Row {
   return mapDurations(entity, row, (child, v, top) => {
     const micros = typeof v === "string" ? parseDurationLiteral(v) : undefined;
@@ -573,6 +574,9 @@ function bindDurations(entity: MetaData, row: Row, dialect: Dialect): Row {
     }
     if (!top) return formatDuration(micros);
     if (dialect === "postgres") return formatPostgresInterval(micros);
+    // ADR-0039: resolving. An array has no 64-bit column on SQLite or MySQL: it is a JSON array
+    // in one text/json column, holding the canonical ISO strings, as the generated schema writes it.
+    if ((dialect === "sqlite" || dialect === "mysql") && child.resolvedIsArray()) return formatDuration(micros);
     if (dialect === "sqlite" || dialect === "mysql") return durationToStoredMicros(micros);
     // The in-memory driver holds the exact microsecond count, so it compares and sorts as the
     // span does; it has no column, so no 64-bit limit.

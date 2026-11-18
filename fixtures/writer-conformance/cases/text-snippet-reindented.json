@@ -1,0 +1,30 @@
+{
+  "description": "text() removes a snippet's common margin, drops its first and last empty lines, and re-indents it to the current level.",
+  "dialect": "core",
+  "options": {
+    "indent": "  ",
+    "width": 40,
+    "trailingComma": true
+  },
+  "ops": [
+    [
+      "open",
+      "class A {"
+    ],
+    [
+      "text",
+      "\n        get x() {\n          return 1;\n        }\n      "
+    ],
+    [
+      "close",
+      "}"
+    ]
+  ],
+  "expected": [
+    "class A {",
+    "  get x() {",
+    "    return 1;",
+    "  }",
+    "}"
+  ]
+}

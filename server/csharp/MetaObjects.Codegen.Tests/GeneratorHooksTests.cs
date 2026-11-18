@@ -168,7 +168,7 @@ public class GeneratorHooksTests
 
         var stock = Entities(new EntityGenerator(), root);
         var hooked = Entities(new RecordingEntity(), root);
-        Assert.Equal(stock.Select(f => System.IO.Path.GetFileName(f.Path)), hooked.Select(f => System.IO.Path.GetFileName(f.Path)));
+        Assert.Equal(stock.Select(f => f.Path), hooked.Select(f => f.Path));
         Assert.Equal(stock.Select(f => f.Content), hooked.Select(f => f.Content));
 
         var names = new NamesGenerator().Generate(Ctx(root)).ToList();
@@ -224,7 +224,7 @@ public class GeneratorHooksTests
     {
         var g = new RecordingDb();
         Db(g, Load());
-        Assert.Equal(["DbColumnTypeConfig:global::Acme.Auth.uid"], g.Calls.Where(c => c.StartsWith("DbColumnTypeConfig:")));
+        Assert.Equal(["DbColumnTypeConfig:Auth.uid"], g.Calls.Where(c => c.StartsWith("DbColumnTypeConfig:")));
     }
 
     [Fact]
@@ -416,8 +416,8 @@ public class GeneratorHooksTests
     {
         var root = Load();
         var (removed, added) = Diff(Db(new DbContextGenerator(), root), Db(new DbSetDb(), root));
-        Assert.Equal(["    public DbSet<global::Acme.Auth> Auths { get; set; } = default!;"], removed);
-        Assert.Equal(["    public virtual DbSet<global::Acme.Auth> Auths { get; set; } = default!;"], added);
+        Assert.Equal(["    public DbSet<Auth> Auths { get; set; } = default!;"], removed);
+        Assert.Equal(["    public virtual DbSet<Auth> Auths { get; set; } = default!;"], added);
     }
 
     private sealed class DbColumnTypeDb : DbContextGenerator
@@ -435,28 +435,6 @@ public class GeneratorHooksTests
         Assert.Contains(".Property(x => x.Uid).HasColumnType(\"uuid\")", line);
     }
 
-    // rc.21 part B (U2): a text @dbColumnType spelling is the EF column type, as meta migrate creates it.
-    [Fact]
-    public void A_text_db_column_type_spelling_is_the_column_type()
-    {
-        var root = Load("""
-            { "metadata.root": { "package": "acme", "children": [
-              { "object.entity": { "name": "Region", "children": [
-                { "source.rdb": { "@table": "regions" } },
-                { "field.long": { "name": "id" } },
-                { "field.string": { "name": "code", "@dbColumnType": "character(3)" } },
-                { "field.string": { "name": "label", "@dbColumnType": "varchar" } },
-                { "field.string": { "name": "note", "@dbColumnType": "varchar(20)" } },
-                { "field.string": { "name": "body", "@dbColumnType": "text" } },
-                { "identity.primary": { "name": "id", "@fields": "id" } } ] } } ] } }
-            """);
-        var db = Db(new DbContextGenerator(), root);
-        Assert.Contains(".Property(x => x.Code).HasColumnType(\"character(3)\");", db);
-        Assert.Contains(".Property(x => x.Label).HasColumnType(\"character varying\");", db);
-        Assert.Contains(".Property(x => x.Note).HasColumnType(\"character varying(20)\");", db);
-        Assert.Contains(".Property(x => x.Body).HasColumnType(\"text\");", db);
-    }
-
     private sealed class NoReferenceDb : DbContextGenerator
     {
         protected override IEnumerable<string> ReferenceConfig(MetaObject entity, MetaReferenceIdentity reference, GenContext ctx) => [];
@@ -469,7 +447,7 @@ public class GeneratorHooksTests
         var (removed, added) = Diff(Db(new DbContextGenerator(), root), Db(new NoReferenceDb(), root));
         Assert.Empty(added);
         var line = Assert.Single(removed);
-        Assert.Contains("modelBuilder.Entity<global::Acme.Auth>().HasOne<global::Acme.Auth>().WithMany().HasForeignKey(e => e.ParentId)", line);
+        Assert.Contains("modelBuilder.Entity<Auth>().HasOne<Auth>().WithMany().HasForeignKey(e => e.ParentId)", line);
     }
 
     private sealed class DefaultValueDb : DbContextGenerator
@@ -519,7 +497,7 @@ public class GeneratorHooksTests
         var root = Load();
         var (removed, added) = Diff(Db(new DbContextGenerator(), root), Db(new FieldTypeDb(), root));
         Assert.Empty(removed);
-        Assert.Equal(["        // adopter line for global::Acme.Auth.note"], added);
+        Assert.Equal(["        // adopter line for Auth.note"], added);
     }
 
     private sealed class OwnedDb : DbContextGenerator
@@ -536,7 +514,7 @@ public class GeneratorHooksTests
         Assert.Empty(added);
         // The jsonb value object's block (it holds an enum, so it is the multi-line form) is
         // gone; the flattened ones are not.
-        Assert.Contains(removed, l => l.Contains("modelBuilder.Entity<global::Acme.Auth>().OwnsOne(x => x.Config"));
+        Assert.Contains(removed, l => l.Contains("modelBuilder.Entity<Auth>().OwnsOne(x => x.Config"));
         Assert.DoesNotContain(removed, l => l.Contains("OwnsOne(x => x.Home"));
         Assert.DoesNotContain(removed, l => l.Contains("OwnsOne(x => x.Site"));
     }
@@ -556,8 +534,8 @@ public class GeneratorHooksTests
         Assert.Equal(["        // adopter Auth>BridgeAuth"], added);
         // Everything removed is configuration of the subtype's own builder, nothing of the root's.
         Assert.NotEmpty(removed);
-        Assert.Contains(removed, l => l.Contains("modelBuilder.Entity<global::Acme.BridgeAuth>()"));
-        Assert.DoesNotContain(removed, l => l.Contains("Entity<global::Acme.Auth>()"));
+        Assert.Contains(removed, l => l.Contains("modelBuilder.Entity<BridgeAuth>()"));
+        Assert.DoesNotContain(removed, l => l.Contains("Entity<Auth>()"));
     }
 
     private sealed class TrailerDb : DbContextGenerator
@@ -587,12 +565,12 @@ public class GeneratorHooksTests
         var root = Load();
         var stock = Entities(new EntityGenerator(), root);
         var hooked = Entities(new PropTypeEntity(), root);
-        var s = stock.Single(f => System.IO.Path.GetFileName(f.Path) == "Auth.g.cs").Content;
-        var h = hooked.Single(f => System.IO.Path.GetFileName(f.Path) == "Auth.g.cs").Content;
+        var s = stock.Single(f => f.Path == "Auth.g.cs").Content;
+        var h = hooked.Single(f => f.Path == "Auth.g.cs").Content;
         var (removed, added) = Diff(s, h);
         Assert.Equal(["    public string? Note { get; set; }"], removed);
         Assert.Equal(["    public global::System.Text.StringBuilder? Note { get; set; }"], added);
-        foreach (var f in stock.Where(f => System.IO.Path.GetFileName(f.Path) != "Auth.g.cs"))
+        foreach (var f in stock.Where(f => f.Path != "Auth.g.cs"))
             Assert.Equal(f.Content, hooked.Single(x => x.Path == f.Path).Content);
     }
 
@@ -606,8 +584,8 @@ public class GeneratorHooksTests
     public void Override_of_PropertyInitializer_changes_only_its_lines()
     {
         var root = Load();
-        var s = Entities(new EntityGenerator(), root).Single(f => System.IO.Path.GetFileName(f.Path) == "Auth.g.cs").Content;
-        var h = Entities(new PropInitEntity(), root).Single(f => System.IO.Path.GetFileName(f.Path) == "Auth.g.cs").Content;
+        var s = Entities(new EntityGenerator(), root).Single(f => f.Path == "Auth.g.cs").Content;
+        var h = Entities(new PropInitEntity(), root).Single(f => f.Path == "Auth.g.cs").Content;
         var (removed, added) = Diff(s, h);
         Assert.Equal(["    public string? Note { get; set; }"], removed);
         Assert.Equal(["    public string? Note { get; set; } = \"n/a\";"], added);
@@ -625,10 +603,10 @@ public class GeneratorHooksTests
         var root = Load();
         var stock = Entities(new EntityGenerator(), root);
         var hooked = Entities(new DropAddressEntity(), root);
-        Assert.Contains(stock, f => System.IO.Path.GetFileName(f.Path) == "Address.g.cs");
-        Assert.DoesNotContain(hooked, f => System.IO.Path.GetFileName(f.Path) == "Address.g.cs");
+        Assert.Contains(stock, f => f.Path == "Address.g.cs");
+        Assert.DoesNotContain(hooked, f => f.Path == "Address.g.cs");
         Assert.Equal(
-            stock.Where(f => System.IO.Path.GetFileName(f.Path) != "Address.g.cs").Select(f => (f.Path, f.Content)),
+            stock.Where(f => f.Path != "Address.g.cs").Select(f => (f.Path, f.Content)),
             hooked.Select(f => (f.Path, f.Content)));
     }
 
@@ -768,7 +746,7 @@ public class GeneratorHooksTests
         var files = GeneratorGoldenTests.GenerateRound2(shapes: true);
         var g = new RecordingNames();
         var emitted = g.Generate(GeneratorGoldenTests.Round2Context(shapes: true)).ToList();
-        Assert.Equal(files.Where(f => f.Path.EndsWith("Names.g.cs")).Select(f => System.IO.Path.GetFileName(f.Path)).Order(), emitted.Select(f => System.IO.Path.GetFileName(f.Path)).Order());
+        Assert.Equal(files.Where(f => f.Path.EndsWith("Names.g.cs")).Select(f => f.Path).Order(), emitted.Select(f => f.Path).Order());
         // Pass 1 (the participants) and pass 2 (the bases they extend, as fragments).
         Assert.Contains("Render:Workflow:False", g.Calls);
         Assert.Contains("Render:BaseEntity:True", g.Calls);
@@ -789,11 +767,11 @@ public class GeneratorHooksTests
         var stock = Entities(new EntityGenerator(), root);
         var hooked = Entities(new NoVoAttributesEntity(), root);
         var (removed, added) = Diff(
-            stock.Single(f => System.IO.Path.GetFileName(f.Path) == "Address.g.cs").Content,
-            hooked.Single(f => System.IO.Path.GetFileName(f.Path) == "Address.g.cs").Content);
+            stock.Single(f => f.Path == "Address.g.cs").Content,
+            hooked.Single(f => f.Path == "Address.g.cs").Content);
         Assert.Empty(added);
         Assert.Equal(["    [JsonPropertyName(\"street\")]", "    [JsonPropertyName(\"kind\")]"], removed);
-        foreach (var f in stock.Where(f => System.IO.Path.GetFileName(f.Path) != "Address.g.cs"))
+        foreach (var f in stock.Where(f => f.Path != "Address.g.cs"))
             Assert.Equal(f.Content, hooked.Single(x => x.Path == f.Path).Content);
     }
 
@@ -812,11 +790,11 @@ public class GeneratorHooksTests
         var stock = Entities(new EntityGenerator(), root);
         var hooked = Entities(new TypeNameEntity(), root);
         var (removed, added) = Diff(
-            stock.Single(f => System.IO.Path.GetFileName(f.Path) == "Auth.g.cs").Content,
-            hooked.Single(f => System.IO.Path.GetFileName(f.Path) == "Auth.g.cs").Content);
+            stock.Single(f => f.Path == "Auth.g.cs").Content,
+            hooked.Single(f => f.Path == "Auth.g.cs").Content);
         Assert.Equal(["    [Column(\"uid\")]"], removed);
         Assert.Equal(["    [Column(\"uid\", TypeName = \"uuid\")]"], added);
-        foreach (var f in stock.Where(f => System.IO.Path.GetFileName(f.Path) != "Auth.g.cs"))
+        foreach (var f in stock.Where(f => f.Path != "Auth.g.cs"))
             Assert.Equal(f.Content, hooked.Single(x => x.Path == f.Path).Content);
     }
 
@@ -831,8 +809,8 @@ public class GeneratorHooksTests
     {
         var root = Load();
         var (removed, added) = Diff(
-            Entities(new EntityGenerator(), root).Single(f => System.IO.Path.GetFileName(f.Path) == "Auth.g.cs").Content,
-            Entities(new NoColumnEntity(), root).Single(f => System.IO.Path.GetFileName(f.Path) == "Auth.g.cs").Content);
+            Entities(new EntityGenerator(), root).Single(f => f.Path == "Auth.g.cs").Content,
+            Entities(new NoColumnEntity(), root).Single(f => f.Path == "Auth.g.cs").Content);
         Assert.Empty(added);
         Assert.Equal(["    [Column(\"note\")]"], removed);
     }
@@ -849,11 +827,11 @@ public class GeneratorHooksTests
         var stock = Entities(new EntityGenerator(), root);
         var hooked = Entities(new NoDerivedTypesEntity(), root);
         var (removed, added) = Diff(
-            stock.Single(f => System.IO.Path.GetFileName(f.Path) == "Auth.g.cs").Content,
-            hooked.Single(f => System.IO.Path.GetFileName(f.Path) == "Auth.g.cs").Content);
+            stock.Single(f => f.Path == "Auth.g.cs").Content,
+            hooked.Single(f => f.Path == "Auth.g.cs").Content);
         Assert.Empty(added);
-        Assert.Equal(["[global::System.Text.Json.Serialization.JsonDerivedType(typeof(BridgeAuth))]"], removed);
-        foreach (var f in stock.Where(f => System.IO.Path.GetFileName(f.Path) != "Auth.g.cs"))
+        Assert.Equal(["[System.Text.Json.Serialization.JsonDerivedType(typeof(BridgeAuth))]"], removed);
+        foreach (var f in stock.Where(f => f.Path != "Auth.g.cs"))
             Assert.Equal(f.Content, hooked.Single(x => x.Path == f.Path).Content);
     }
 
@@ -904,9 +882,8 @@ public class GeneratorHooksTests
         var root = Load();
         var (removed, added) = Diff(Db(new DbContextGenerator(), root), Db(new NamespaceDb(), root));
         Assert.Equal(["namespace Acme.Generated;"], removed);
-        // The entities stay in their package's namespace (rc.19 R65: `Acme`), which the context
-        // already imports, so only the namespace line moves.
-        Assert.Equal(["namespace Acme.Data;"], added);
+        // The entities stay where they are, so the context now needs their namespace.
+        Assert.Equal(["using Acme.Generated;", "namespace Acme.Data;"], added);
     }
 
     private sealed class NoCtorDb : DbContextGenerator
@@ -1013,10 +990,10 @@ public class GeneratorHooksTests
         var ctx = GeneratorGoldenTests.Round2Context(shapes: true);
         var stock = new NamesGenerator().Generate(ctx).ToList();
         var hooked = new NoWorkflowNames().Generate(ctx).ToList();
-        Assert.Contains(stock, f => System.IO.Path.GetFileName(f.Path) == "WorkflowNames.g.cs");
-        Assert.DoesNotContain(hooked, f => System.IO.Path.GetFileName(f.Path) == "WorkflowNames.g.cs");
+        Assert.Contains(stock, f => f.Path == "WorkflowNames.g.cs");
+        Assert.DoesNotContain(hooked, f => f.Path == "WorkflowNames.g.cs");
         Assert.Equal(
-            stock.Where(f => System.IO.Path.GetFileName(f.Path) != "WorkflowNames.g.cs").Select(f => (f.Path, f.Content)),
+            stock.Where(f => f.Path != "WorkflowNames.g.cs").Select(f => (f.Path, f.Content)),
             hooked.Select(f => (f.Path, f.Content)));
     }
 
@@ -1030,12 +1007,12 @@ public class GeneratorHooksTests
     public void Names_for_cross_namespace_base_compiles(bool shapes)
     {
         var files = GeneratorGoldenTests.GenerateRound2(shapes);
-        var workflow = files.Single(f => System.IO.Path.GetFileName(f.Path) == "WorkflowNames.g.cs").Content;
+        var workflow = files.Single(f => f.Path == "WorkflowNames.g.cs").Content;
         Assert.Contains("public abstract class WorkflowNames : BaseEntityNames", workflow);
         Assert.Contains("using Acme.Base;", workflow);
-        Assert.Contains("namespace Acme.Base;", files.Single(f => System.IO.Path.GetFileName(f.Path) == "BaseEntityNames.g.cs").Content);
+        Assert.Contains("namespace Acme.Base;", files.Single(f => f.Path == "BaseEntityNames.g.cs").Content);
         // A base in the SAME namespace needs none.
-        Assert.DoesNotContain("using Acme.Work;", files.Single(f => System.IO.Path.GetFileName(f.Path) == "CallJobNames.g.cs").Content);
+        Assert.DoesNotContain("using Acme.Work;", files.Single(f => f.Path == "CallJobNames.g.cs").Content);
 
         var comp = CSharpCompilation.Create(
             "names_xns_" + Guid.NewGuid().ToString("N"),
@@ -1078,29 +1055,51 @@ public class GeneratorHooksTests
         ]}}
         """;
         var lines = Lines(Db(new DbContextGenerator(), Load(model)));
-        var fks = lines.Where(l => l.Contains(".HasOne<global::Acme.Workflow>()")).ToList();
+        var fks = lines.Where(l => l.Contains(".HasOne<Workflow>()")).ToList();
         Assert.Equal(2, fks.Count);
-        Assert.Single(fks, l => l.Contains("Entity<global::Acme.CallJob>()"));
-        Assert.Single(fks, l => l.Contains("Entity<global::Acme.MailJob>()"));
-        Assert.DoesNotContain(fks, l => l.Contains("Entity<global::Acme.UrgentCallJob>()"));
+        Assert.Single(fks, l => l.Contains("Entity<CallJob>()"));
+        Assert.Single(fks, l => l.Contains("Entity<MailJob>()"));
+        Assert.DoesNotContain(fks, l => l.Contains("Entity<UrgentCallJob>()"));
     }
 
     [Fact]
     public void Reference_on_abstract_tph_intermediate_is_configured()
     {
-        const string onCaseJob = "        modelBuilder.Entity<global::Acme.Work.CaseJob>().HasOne<global::Acme.Work.Workflow>().WithMany().HasForeignKey(e => e.WorkflowId).OnDelete(DeleteBehavior.NoAction);";
-        var shapes = Lines(GeneratorGoldenTests.GenerateRound2(shapes: true).Single(f => System.IO.Path.GetFileName(f.Path) == "AppDbContext.g.cs").Content);
+        const string onCaseJob = "        modelBuilder.Entity<CaseJob>().HasOne<Workflow>().WithMany().HasForeignKey(e => e.WorkflowId).OnDelete(DeleteBehavior.NoAction);";
+        var shapes = Lines(GeneratorGoldenTests.GenerateRound2(shapes: true).Single(f => f.Path == "AppDbContext.g.cs").Content);
         Assert.Single(shapes, l => l == onCaseJob);
-        Assert.DoesNotContain(shapes, l => l.Contains("Entity<global::Acme.Work.CallJob>().HasOne<global::Acme.Work.Workflow>()"));
+        Assert.DoesNotContain(shapes, l => l.Contains("Entity<CallJob>().HasOne<Workflow>()"));
 
-        var folded = Lines(GeneratorGoldenTests.GenerateRound2(shapes: false).Single(f => System.IO.Path.GetFileName(f.Path) == "AppDbContext.g.cs").Content);
-        Assert.DoesNotContain(folded, l => l.Contains("Entity<global::Acme.Work.CaseJob>()"));
+        var folded = Lines(GeneratorGoldenTests.GenerateRound2(shapes: false).Single(f => f.Path == "AppDbContext.g.cs").Content);
+        Assert.DoesNotContain(folded, l => l.Contains("Entity<CaseJob>()"));
         foreach (var leaf in new[] { "CallJob", "MailJob" })
-            Assert.Single(folded, l => l == onCaseJob.Replace("Entity<global::Acme.Work.CaseJob>", $"Entity<global::Acme.Work.{leaf}>"));
-        Assert.DoesNotContain(folded, l => l.Contains("Entity<global::Acme.Work.PlainJob>().HasOne<global::Acme.Work.Workflow>().WithMany().HasForeignKey(e => e.WorkflowId)"));
+            Assert.Single(folded, l => l == onCaseJob.Replace("Entity<CaseJob>", $"Entity<{leaf}>"));
+        Assert.DoesNotContain(folded, l => l.Contains("Entity<PlainJob>().HasOne<Workflow>().WithMany().HasForeignKey(e => e.WorkflowId)"));
 
         var g = new RecordingDb();
         g.Generate(GeneratorGoldenTests.Round2Context(shapes: true)).ToList();
         Assert.Single(g.Calls, c => c == "ReferenceConfig:CaseJob.refWorkflow");
+    }
+
+    // rc.21 part B (U2): a text @dbColumnType spelling is the EF column type, as meta migrate creates it.
+    [Fact]
+    public void A_text_db_column_type_spelling_is_the_column_type()
+    {
+        var root = Load("""
+            { "metadata.root": { "package": "acme", "children": [
+              { "object.entity": { "name": "Region", "children": [
+                { "source.rdb": { "@table": "regions" } },
+                { "field.long": { "name": "id" } },
+                { "field.string": { "name": "code", "@dbColumnType": "character(3)" } },
+                { "field.string": { "name": "label", "@dbColumnType": "varchar" } },
+                { "field.string": { "name": "note", "@dbColumnType": "varchar(20)" } },
+                { "field.string": { "name": "body", "@dbColumnType": "text" } },
+                { "identity.primary": { "name": "id", "@fields": "id" } } ] } } ] } }
+            """);
+        var db = Db(new DbContextGenerator(), root);
+        Assert.Contains(".Property(x => x.Code).HasColumnType(\"character(3)\");", db);
+        Assert.Contains(".Property(x => x.Label).HasColumnType(\"character varying\");", db);
+        Assert.Contains(".Property(x => x.Note).HasColumnType(\"character varying(20)\");", db);
+        Assert.Contains(".Property(x => x.Body).HasColumnType(\"text\");", db);
     }
 }

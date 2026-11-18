@@ -280,7 +280,7 @@ public class GeneratedRenderHelperConformanceTest extends SharedRegistryTestBase
     // runtime-drift/ -> a variable not on the payload RAISES at render time. The helpers are
     // generated against the clean templates/; runtime-drift/templates/ serves {{nmae}} for
     // name (text edited after codegen, which the build-time gate cannot see). Covers a
-    // template.output and a template.prompt over the same payload.
+    // template.output, a template.prompt and an email template.output over the same payload.
     // -------------------------------------------------------------------------
     @Test
     public void runtimeDriftRaisesForOutputAndPromptHelpers() throws Exception {
@@ -309,6 +309,22 @@ public class GeneratedRenderHelperConformanceTest extends SharedRegistryTestBase
                 } catch (java.lang.reflect.InvocationTargetException e) {
                     String msg = String.valueOf(e.getCause().getMessage());
                     assertTrue(helper + ": " + msg, msg.contains("ERR_VAR_NOT_ON_PAYLOAD (nmae)"));
+                }
+            }
+
+            // runtime-drift/email-<part>/ drifts one part of WelcomeEmail each: the subject,
+            // the html body and the text body must each raise.
+            Method email = cl.loadClass("acme.ai.prompts.WelcomeEmailRenderHelper")
+                    .getMethod("render", payloadClass, providerClass);
+            email.invoke(null, payload, newFilesystemProvider(clean));
+            for (String part : new String[]{ "subject", "html", "text" }) {
+                try {
+                    Object out = email.invoke(null, payload,
+                            newFilesystemProvider(CORPUS.resolve("runtime-drift").resolve("email-" + part)));
+                    fail("email " + part + " rendered a variable not on the payload instead of raising: " + out);
+                } catch (java.lang.reflect.InvocationTargetException e) {
+                    String msg = String.valueOf(e.getCause().getMessage());
+                    assertTrue("email " + part + ": " + msg, msg.contains("ERR_VAR_NOT_ON_PAYLOAD (nmae)"));
                 }
             }
         }

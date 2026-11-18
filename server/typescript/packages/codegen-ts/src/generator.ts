@@ -18,10 +18,25 @@ export interface EmittedFile {
   content: string;
   /** Set by the runner from generator.name — generators should not set this. */
   generatedBy?: string;
+  /** The resolution key of the metadata node this file was rendered from
+   *  (`acme::shop::Order`), recorded beside the file's hash in `.gen-state/.hashes.json`.
+   *  `perEntity` sets it for you; a generator rendering one file from one node by other
+   *  means sets it itself. Leave it unset for a file rendered from the whole model or a
+   *  whole package (a barrel, a docs index). */
+  sourceNode?: string;
 }
 
 export interface GenContext {
+  /** Every object the run generates for: the WHOLE model (after the project's `scope`),
+   *  even when `meta gen <Entity>` names some of them. A file rendered from the whole
+   *  model — a barrel, an index, a shared schema — reads this and so never shrinks to
+   *  the named entities. A per-entity file honours `selected` as well. */
   entities: MetaObject[];
+  /** The objects `meta gen <Entity>` named, as a predicate. Undefined ⇒ every object
+   *  in `entities` is selected. `perEntity` applies it for you; a generator that emits
+   *  one file per object by other means applies it itself, and one that renders a
+   *  single file from the whole model ignores it. */
+  selected?: (entity: MetaObject) => boolean;
   loadedRoot: MetaRoot;
   /** Pre-composed by the runner from generator.filter (returns true when no
    *  filter is set). Always call this from helpers; do not call generator.filter
@@ -37,6 +52,11 @@ export interface GenContext {
    *  read `select` directly to honour the same exclusion. Undefined ⇒ every
    *  node is in scope, byte-identical to a project with no `scope` declared. */
   select?: (fqn: string) => boolean;
+  /** FR-023 — is the requirement at `<package>::<dotted path>` part of this project's ledger
+   *  (`RunGenOpts.inLedger`, the collection's `inLedger`)? A dependency's requirement the
+   *  project did not inherit is loaded and gets no generated test. Undefined ⇒ every loaded
+   *  requirement is the project's, as before the option existed. */
+  inLedger?: (fqn: string) => boolean;
   config: ResolvedGenConfig;
   /** Pre-built by the runner: the resolved config keys that are not on `config` —
    *  `apiPrefix`, `columnNamingStrategy`, `collectionName`, `timestampMode` — plus the
@@ -130,18 +150,44 @@ export interface GenContext {
    */
   schemaSettings?: SchemaBuildSettings;
   /**
-   * The run's one claim registry (ruling R52): claim a name as it is emitted into a shared scope.
-   * The first claimant owns it; another claimant of the same name in the same scope is refused
+   * The files this run generated, for a generator marked `readsRunOutput` (the docs site's
+   * model explorer, which lists what was generated from each node). The runner runs such a
+   * generator after every other one, so the list is complete. Paths are project-relative,
+   * as `.gen-state/.hashes.json` keys them. A run narrowed with `--generators` adds the
+   * files the committed manifest records for the generators it did not run, so a narrowed
+   * run lists what a full run lists. Absent for a generator without the marker.
+   */
+  runOutput?: () => readonly RunOutputFile[];
+  /**
+   * The requirement ledger as `meta verify --format json` states it (`requirementLedger`,
+   * `requirementCounts`, `requirements.rows`), computed by the caller that owns the
+   * requirement gate (`meta gen`, `meta verify --codegen`), which codegen-ts cannot import.
+   * Called at most once per run, and only when a generator asks. Absent when the caller
+   * supplied none; returns undefined when the model declares no requirement.
+   */
+  requirementLedger?: () => unknown;
+  /**
+   * The run's one claim registry: claim a name as it is emitted into a shared scope. The first
+   * claimant owns it; another claimant of the same name in the same scope is refused
    * (`ERR_NAME_COLLISION`), naming both and `remedy`. The same claimant claiming again is not a
    * collision, and one name in two scopes is two names. Shared by every generator of a `runGen`;
    * absent on a direct `.generate(ctx)` call, where nothing is claimed. The helpers in
    * `naming/name-claims.ts` claim the names the reference generators emit.
    */
   claim?: (scope: string, name: string, claimant: string, remedy: string) => void;
-  /** This generator's entry in the run's list, `#n` — for a scope that is one entry's own (a
+  /** This generator's entry in the run's list, `#n`: for a scope that is one entry's own (a
    *  routes entry's segments). Absent outside `runGen`. */
   entryLabel?: string;
   warn: (msg: string) => void;
+}
+
+/** One file of the run, as `GenContext.runOutput` lists it. */
+export interface RunOutputFile {
+  /** Project-relative path, `/`-separated. */
+  path: string;
+  generatedBy: string;
+  /** The node the file was rendered from (`EmittedFile.sourceNode`), when it was. */
+  sourceNode?: string;
 }
 
 export interface Generator {
@@ -177,7 +223,7 @@ export interface Generator {
    */
   handEdits?: HandEdits;
   /**
-   * ADR-0062 — `false` when this generator reads something `meta gen` cannot fingerprint
+   * ADR-0064 — `false` when this generator reads something `meta gen` cannot fingerprint
    * (the network, an environment variable, a file it cannot name in advance). A run that
    * includes it never skips. Default `true`: what a generator reads from the model, its
    * options, the config and the project's `templates/` and `codegen/` directories is
@@ -185,13 +231,13 @@ export interface Generator {
    */
   cache?: boolean;
   /**
-   * ADR-0062 — further files or directories this generator reads, relative to the project
+   * ADR-0064 — further files or directories this generator reads, relative to the project
    * root (a directory counts every file under it). Their contents join the fingerprint, so
    * editing one makes the next `meta gen` regenerate instead of skipping.
    */
   inputs?: readonly string[];
   /**
-   * ADR-0062 — `true` when this generator reads the raw metadata source files beside the
+   * ADR-0064 — `true` when this generator reads the raw metadata source files beside the
    * loaded model (their comments, say), which the model hash does not carry. The files under
    * the run's metadata source roots join the fingerprint, so a comment-only edit makes the
    * next `meta gen` regenerate instead of skipping.
@@ -225,6 +271,10 @@ export interface Generator {
    *  pages in the same target link to them (`ctx.docs.apiSurfaces`). Like `emitsModelDocs`,
    *  a cross-link fact only. */
   emitsApiDocs?: { readonly subDir: string };
+  /** Marks a generator that reads the files the rest of the run generated
+   *  (`ctx.runOutput`). The runner runs every marked generator after every unmarked one,
+   *  in declared order, so the list it reads is complete. */
+  readsRunOutput?: boolean;
   /** §A6 — marks the generator that emits the <Entity>Names artifact. The runner
    *  aggregates this across the suite into ResolvedGenConfig.includeNames, which the
    *  entity generator reads to decide whether it may reference those constants.
@@ -261,6 +311,12 @@ export type GeneratorFactory<TOpts = void> = TOpts extends void
   ? () => Generator
   : (opts?: TOpts) => Generator;
 
+/** The objects this run generates for: `ctx.entities` narrowed by `ctx.matches` and the
+ *  `meta gen <Entity>` selection. The one predicate every per-object emitter applies. */
+export function selectedEntities(ctx: GenContext): MetaObject[] {
+  return ctx.entities.filter((e) => ctx.matches(e) && (ctx.selected?.(e) ?? true));
+}
+
 /** One-file-per-entity convenience. Async-safe. */
 export function perEntity(
   fn: (entity: MetaObject, ctx: GenContext) =>
@@ -269,13 +325,21 @@ export function perEntity(
     | Promise<EmittedFile | EmittedFile[]>,
 ): (ctx: GenContext) => Promise<EmittedFile[]> {
   return async (ctx) => {
-    const matched = ctx.entities.filter(ctx.matches);
-    const results = await Promise.all(matched.map((e) => fn(e, ctx)));
-    return results.flatMap((r) => (Array.isArray(r) ? r : [r]));
+    const matched = selectedEntities(ctx);
+    const results = await Promise.all(matched.map(async (e) => {
+      const r = await fn(e, ctx);
+      // Each file names the object it was rendered from, unless the generator said
+      // otherwise — so every per-entity generator, owned copies included, records its
+      // provenance without a line of its own.
+      const key = e.resolutionKey();
+      return (Array.isArray(r) ? r : [r]).map((f) => (f.sourceNode !== undefined ? f : { ...f, sourceNode: key }));
+    }));
+    return results.flat();
   };
 }
 
-/** Called once with all matching entities. Use for barrels and cross-entity files.
+/** Called once with all matching entities of the whole model, whatever `meta gen <Entity>`
+ *  named. Use for barrels and cross-entity files.
  *  @deprecated Use {@link perModel} — "run" is ambiguous under multi-target output
  *  (it reads as "per target"); `perModel` names the data scope (the whole model). */
 export function oncePerRun(

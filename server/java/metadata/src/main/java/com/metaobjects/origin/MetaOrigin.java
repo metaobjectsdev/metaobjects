@@ -83,6 +83,24 @@ public abstract class MetaOrigin extends MetaData {
     public static final String ATTR_FILTER = "filter";
 
     /**
+     * Optional on {@code origin.aggregate} / {@code origin.first}: the name of a
+     * {@code segment.filter} declared on the related entity. Its predicate scopes the related
+     * rows, ANDed with {@code @filter} (mirrors {@code measure.aggregate @segment}).
+     */
+    public static final String ATTR_SEGMENT = "segment";
+
+    /** The null-safe comparisons a correlated operand may make (IS [NOT] DISTINCT FROM). */
+    public static final String FILTER_OP_IS_DISTINCT_FROM = "isDistinctFrom";
+    public static final String FILTER_OP_IS_NOT_DISTINCT_FROM = "isNotDistinctFrom";
+
+    /** The ops a correlated (base-row field) operand may take in an origin {@code @filter}. */
+    public static final java.util.List<String> CORRELATED_FILTER_OPS = java.util.List.of(
+        "eq", "ne", "gt", "gte", "lt", "lte", FILTER_OP_IS_DISTINCT_FROM, FILTER_OP_IS_NOT_DISTINCT_FROM);
+
+    /** The key of a correlated operand: {@code { field: "<base field>" }}. */
+    public static final String FILTER_OPERAND_FIELD = "field";
+
+    /**
      * #185 — boolean acknowledgement that a passthrough field's declared type
      * deliberately differs from its {@code @from} source field's type. Optional on
      * {@code origin.passthrough}. Absent/false (the default) ⇒ the passthrough is
@@ -123,6 +141,11 @@ public abstract class MetaOrigin extends MetaData {
     public static final String AGG_ANY     = "any";
     public static final String AGG_ALL     = "all";
     public static final String AGG_COLLECT = "collect";
+
+    /** The {@code @agg} values that reduce the VALUES of the {@code @of} column (count only counts
+     *  non-null rows). Mirrors the TS COLUMN_VALUE_AGGREGATES. */
+    public static final java.util.List<String> COLUMN_VALUE_AGGREGATES =
+        java.util.List.of(AGG_SUM, AGG_AVG, AGG_MIN, AGG_MAX);
 
     /**
      * Closed set of valid {@code @agg} values. Used by

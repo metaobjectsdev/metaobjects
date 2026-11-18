@@ -1,6 +1,6 @@
 // server/typescript/packages/codegen-ts/test/extract-tier-collision.test.ts
 //
-// ADR-0044 / #228, amended by ruling R52 — the EXTRACT / OUTPUT-PARSER tier (the runtime-delegating
+// ADR-0044 / #228, amended — the EXTRACT / OUTPUT-PARSER tier (the runtime-delegating
 // JSON extract path: extract-delegate-emitter.ts, extractor.ts, output-parser.ts) over two value
 // objects that share a short name. No type is renamed: each `Note` keeps its name in its own
 // package's module (the package output layout). A file that meets both binds each under a
@@ -75,7 +75,7 @@ describe("extract/output-parser tier — ADR-0044 cross-package collision (#228)
     const dir = mkdtempSync(join(import.meta.dir, "extract-tier-xpkg-"));
     TEMP_DIRS.push(dir);
 
-    // Ruling R52: the package layout — two Notes are two modules; nothing is renamed.
+    // the package layout — two Notes are two modules; nothing is renamed.
     const files = await genFiles(root, dir, "package");
     const names = [...files.keys()].sort();
 
@@ -233,7 +233,7 @@ describe("output-parser runtime payload lookup — ADR-0042 FQN fix for a collid
 
     const dir = mkdtempSync(join(import.meta.dir, "extract-tier-payload-collision-"));
     TEMP_DIRS.push(dir);
-    // Two value objects named Report: one module per package (ruling R52).
+    // Two value objects named Report: one module per package.
     const files = await genFiles(root, dir, "package");
 
     const alphaOut = files.get("ReportDocAlpha.response.ts")!;

@@ -27,6 +27,7 @@ every runtime `ObjectManager` and `verify` read it, so they always produce the s
 |---|---|---|---|
 | `columns` | `snake_case`, `literal`, `kebab-case`, `pascal`, or a name your application registered | a field with no `@column` | `snake_case` |
 | `tables` | `snake_case`, `literal`, or a name your application registered | a source with no `@table`/`@view`/`@proc`/`@function`: its `name`, else the object's name made plural | `snake_case` |
+| `collections` | `standard`, `none`, or a name your application registered | an object with no `@collectionName`: its collection name (see below) and the name a backwards `@via` hop is named by | `standard` |
 
 An unknown key fails when the file is read, and so does a name no registered strategy answers.
 Index and constraint names are unchanged.
@@ -61,13 +62,40 @@ and is `pascal` otherwise:
 
 Table rules register the same way (`namingStrategies.tables`, `RegisterTables`, `registerTables`,
 `register_table_naming_rule`) and name a source with no physical name; the entity-name fallback
-is still made plural after the rule. A built-in name cannot be replaced. Register the same
+is still made plural after the rule. Pluralizers register the same way (`registerPluralizer`,
+`RegisterPluralizer`, `registerPluralizer`, `register_pluralizer`): an object name in, in its
+declared casing, its collection name out. `standard` is the cross-port plural and `none` keeps the
+name as it is. A built-in name cannot be replaced. Register the same
 strategy in every port that reads the database, because each port resolves the names itself.
 Every port looks a strategy up by name each time it applies one, so registering again under the
 same name replaces it for everything that runs afterwards. A test that registers its own calls
 the port's reset when it is done (`resetNamingStrategiesForTesting()`,
 `NamingStrategies.ResetForTesting()`, `NamingStrategies.resetForTesting()`,
 `reset_naming_strategies_for_testing()`), which leaves only the built-ins.
+
+### Collection names
+
+An object's collection name is its own `@collectionName`, else the `collections` pluralizer over
+its name. Every port's generators read it:
+
+| Artifact | Port | `Faq` with `@collectionName: "FAQs"` | `Order` under `collections: "none"` |
+|---|---|---|---|
+| REST collection segment | every port | `/faqs` | `/order` |
+| Reverse finder | C#, TypeScript, Python | `FindFAQsByOwner` / `findFAQsByOwner` / `find_faqs_by_owner` | `FindOrderByFaq` / `findOrderByFaq` / `find_order_by_faq` |
+| DbSet property | C# | `FAQs` | `Order` |
+| List function, list hook, Drizzle table variable | TypeScript | `listFAQs`, `useFAQs`, `fAQs` | `listOrder`, `useOrderList`, `order` |
+
+The REST segment is the collection name snake_cased, with a trailing plural `s` after an acronym
+kept on it (`FAQs` serves `/faqs`, `TaxIDs` serves `/tax_ids`). With neither `@collectionName` nor
+a `collections` setting, every name is what it has always been: the segment is the snake_cased
+name made plural, as every port serves it. A list hook whose name would equal the detail hook's
+takes a `List` suffix. Java and Kotlin name a reverse finder by its foreign-key field
+(`findByOwnerId`), so a collection name does not change it. The cases every port runs are in
+`fixtures/naming-conformance/collection-segments.json`. Two objects that would take one
+collection name — the same REST segment, or (in C#) one DbSet property — are refused before
+anything is written, with `ERR_COLLECTION_NAME_COLLISION` naming both and `@collectionName` as
+the remedy, in every port. Changing either one changes URLs and
+generated names an application calls, so treat it as an API change.
 
 A name nothing registered fails when the file is read, naming the setting, the name, the port,
 and what is registered:

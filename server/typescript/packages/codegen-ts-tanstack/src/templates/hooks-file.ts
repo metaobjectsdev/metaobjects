@@ -1,4 +1,4 @@
-import { code, imp, joinCode, Import, type Code } from "ts-poet";
+import { code, imp, joinCode, Import, type Code } from "@metaobjectsdev/codegen-ts/engine";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import type { RenderContext, RelationEntry } from "@metaobjectsdev/codegen-ts/engine";
 

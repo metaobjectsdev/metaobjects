@@ -38,10 +38,10 @@ public static class RegistryManifest
     //    them as such; `description` stays in commonAttrs);
     //  - `metadata.base` is a per-port inheritance anchor (Java's), not in the
     //    cross-port contract — other ports register only `metadata.root`;
-    //  - NOT carved out (ruling R40): vocabulary only some ports act on. Kind 1
+    //  - NOT carved out: vocabulary only some ports act on. Kind 1
     //    (implemented in some ports so far — the generic `view.*` controls,
     //    `@object`) carries `implementedIn`; kind 2 (language-specific —
-    //    `@dbSetName`, `@objectAdapter`) carries `ports`. Both are IN the manifest.
+    //    `@objectAdapter`) carries `ports`. Both are IN the manifest.
     // ------------------------------------------------------------------
 
     // Wave 3b — the in/out boundary is an EXPLICIT CLASSIFICATION (a reason
@@ -100,7 +100,7 @@ public static class RegistryManifest
 
     /// <summary>
     /// Classify a <c>(type, subType)</c> row: the metadata.base inheritance anchor / Included.
-    /// The generic <c>view.*</c> controls are NOT carved out: they are R40 kind-1 vocabulary,
+    /// The generic <c>view.*</c> controls are NOT carved out: they are kind-1 vocabulary,
     /// in the manifest with <c>implementedIn</c>.
     /// </summary>
     public static ExclusionReason ClassifyTypeSubType(string type, string subType)
@@ -421,7 +421,7 @@ public static class RegistryManifest
                 writer.WriteStartObject();
                 writer.WriteString("type", t.Type);
                 writer.WriteString("subType", t.SubType);
-                // R40 kind 1 — the ports that implement it so far, only when named.
+                // The ports that implement it so far, only when named.
                 WriteStringArrayIfAny(writer, "implementedIn", t.ImplementedIn);
                 // FR-033 — description (required) then the optional docs facets,
                 // each emitted ONLY when present so absent keys stay absent.
@@ -482,7 +482,7 @@ public static class RegistryManifest
         return json + "\n";
     }
 
-    /// <summary>R40 — write <paramref name="name"/> as a string array, only when it has members.</summary>
+    /// <summary>Write <paramref name="name"/> as a string array, only when it has members.</summary>
     private static void WriteStringArrayIfAny(Utf8JsonWriter writer, string name, IReadOnlyList<string>? values)
     {
         if (values is not { Count: > 0 })
@@ -524,7 +524,7 @@ public static class RegistryManifest
             }
             writer.WriteEndArray();
         }
-        // R40 — kind 1 (the ports that implement it so far), then kind 2 (the ports that
+        // Kind 1 (the ports that implement it so far), then kind 2 (the ports that
         // act on a language-specific attr); each sorted, only when named.
         WriteStringArrayIfAny(writer, "implementedIn", a.ImplementedIn);
         WriteStringArrayIfAny(writer, "ports", a.Ports);

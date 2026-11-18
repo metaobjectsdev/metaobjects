@@ -1,0 +1,112 @@
+{
+  "metadata.root": {
+    "package": "acme::billing",
+    "children": [
+      {
+        "object.value": {
+          "name": "Money",
+          "children": [
+            {
+              "field.decimal": {
+                "name": "amount",
+                "@required": true,
+                "@precision": 12,
+                "@scale": 2
+              }
+            },
+            {
+              "field.string": {
+                "name": "currency",
+                "@required": true,
+                "@maxLength": 3
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Payment",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "payments"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "kind"
+              }
+            },
+            {
+              "field.date": {
+                "name": "receivedOn",
+                "@required": true
+              }
+            },
+            {
+              "field.object": {
+                "name": "amount",
+                "@objectRef": "Money",
+                "@storage": "flattened",
+                "@required": true
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "revenue",
+                "@agg": "sum",
+                "@of": "Payment.amount.amount"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "payments",
+                "@agg": "count",
+                "@of": "Payment.id"
+              }
+            },
+            {
+              "measure.ratio": {
+                "name": "averagePayment",
+                "@numerator": "revenue",
+                "@denominator": "payments"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "AveragePayment",
+          "@from": "Payment",
+          "@dimensions": [],
+          "@measures": [
+            "averagePayment"
+          ],
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_averagepayment"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

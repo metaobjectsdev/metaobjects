@@ -3,6 +3,7 @@ package acme;
 import jakarta.validation.constraints.*;
 
 /** GENERATED — wire DTO for Subscriber. Do not hand-edit; regenerated from metadata. */
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
 public record SubscriberDto(
     Long id,
     @NotNull @Size(min = 1, max = 320) String email,

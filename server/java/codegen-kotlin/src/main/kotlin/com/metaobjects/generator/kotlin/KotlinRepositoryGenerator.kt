@@ -84,6 +84,7 @@ open class KotlinRepositoryGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         val outRoot = Paths.get(outDir.absolutePath)
 
         for (entity in GeneratorUtil.ownMetaObjects(loader)) {
+            if (!isSelected(entity)) continue
             if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
             if (KotlinGenUtil.isAbstractEntity(entity)) continue
             // TODO(FR-035 Phase 2): a TPH subtype folds into its base's table — the base's
@@ -148,8 +149,8 @@ open class KotlinRepositoryGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         // incl. derived; the WRITE set (insert / update / patch / @autoSet) EXCLUDES derived
         // fields — they have no column on the write table (computed by the view). Vanilla entity =
         // no derived fields, so the two sets are equal → byte-identical output.
-        val readScalarFields = entity.metaFields.filter { it !is ObjectField && it !is MapField }
-        val scalarFields = readScalarFields.filterNot { writeThrough && KotlinGenUtil.isDerivedField(it) }
+        val readScalarFields = KotlinGenUtil.columnFields(entity).filter { it !is ObjectField && it !is MapField }
+        val scalarFields = readScalarFields.filterNot { KotlinGenUtil.isDerivedField(it) }
         val hasUuidColumn = readScalarFields.any { columnElementType(it) == "UUID" }
         val uuidPk = primary?.isUuid == true
         val incrementPk = primary?.isIncrement == true

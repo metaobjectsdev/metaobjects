@@ -6,7 +6,10 @@ import org.testcontainers.utility.ResourceReaper;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Puts a {@code docker} CLI test container under Ryuk, the Testcontainers reaper.
@@ -20,9 +23,21 @@ import java.util.TreeMap;
  *
  * <p>Each JVM gets its own session, so one fork's death reaps that fork's containers and no other
  * run's. {@code TESTCONTAINERS_RYUK_DISABLED=true} turns the reaper off.
+ *
+ * <p>{@link #removeAtExit} covers what Ryuk does not: a run with Ryuk disabled, and a SIGTERM, which
+ * runs shutdown hooks. {@link #ramVolume} keeps a database's data directory in RAM: an image's
+ * {@code VOLUME} with no mount becomes an anonymous volume on disk.
  */
 final class ReaperLabels {
+    /** Upper bound for one database's data directory; tmpfs takes RAM only for what is written. */
+    static final String TMPFS_SIZE = "2g";
+    /** {@code postgres} server options for a database whose contents may be lost at any moment. */
+    static final List<String> POSTGRES_DURABILITY_OFF = List.of(
+        "-c", "fsync=off", "-c", "synchronous_commit=off", "-c", "full_page_writes=off");
+
     private static List<String> labelArgs;
+    private static final Set<String> started = ConcurrentHashMap.newKeySet();
+    private static boolean shutdownHookInstalled;
 
     private ReaperLabels() {}
 
@@ -47,5 +62,36 @@ final class ReaperLabels {
             labelArgs = args;
         }
         return labelArgs;
+    }
+
+    /** {@code docker run} flags mounting a size-capped tmpfs at {@code path}, the image's VOLUME. */
+    static List<String> ramVolume(String path) {
+        return List.of("--tmpfs", path + ":rw,size=" + TMPFS_SIZE);
+    }
+
+    /** Remove container {@code name} when the JVM shuts down, unless {@link #forget} says it is gone. */
+    static synchronized void removeAtExit(String name) {
+        started.add(name);
+        if (!shutdownHookInstalled) {
+            shutdownHookInstalled = true;
+            Runtime.getRuntime().addShutdownHook(new Thread(ReaperLabels::removeAll, "remove-test-containers"));
+        }
+    }
+
+    /** The launcher removed {@code name} itself. */
+    static void forget(String name) {
+        started.remove(name);
+    }
+
+    private static void removeAll() {
+        for (String name : started) {
+            try {
+                new ProcessBuilder("docker", "rm", "-f", "-v", name)
+                    .redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                    .start().waitFor(60, TimeUnit.SECONDS);
+            } catch (Exception ignored) {
+                // Best effort: Ryuk still removes a labelled container.
+            }
+        }
     }
 }

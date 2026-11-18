@@ -5,6 +5,8 @@ The reference implementation. Published to npm at `1.2.0` as 14
 runtimes: the generated code and the CLI run on stock Node (via `tsx` or after a `tsc`
 build), and Bun is simply the fastest dev workflow in this repo.
 
+> The Node `meta` CLI is also the schema tool for the other four ports, so a Java, C# or Python team runs `npx meta migrate` and `npx meta verify --db` too. Where the TypeScript output behaves differently from theirs (list defaults, error bodies, filter extensions) is listed in [What differs by language](../features/language-differences.md).
+
 ## Regeneration and hand edits
 
 Three-way merge is a TypeScript feature: on the machine that generated a file, `meta gen`
@@ -260,9 +262,12 @@ export default defineConfig({
 });
 ```
 
-The CLI threads the list into every `meta gen` / `meta verify` / `meta
-migrate` / `meta prompt-snapshot` invocation. At the SDK level the same
-list is accepted directly:
+Every `meta` command that loads metadata reads the list: `gen` (with the docs
+generators and the docs site), `verify`, `migrate`, `fmt`, `types`, `export`,
+`deps`, `upgrade` and `prompt-snapshot`. A config that fails to load is reported
+as its own error, never as an unknown subtype. If another port's tools load the
+same metadata, that port needs its own copy of the provider. At the SDK level
+the same list is accepted directly:
 
 ```ts
 import { loadMemory } from "@metaobjectsdev/sdk";
@@ -313,6 +318,12 @@ meta verify --codegen     # committed output, docs included, vs a fresh regen
 
 meta verify --db <url>    # live DB schema vs metadata
 ```
+
+`meta gen Author Post` names objects by their short name (without the package). Each
+generator's `filter` option applies on top. A name that matches no object is refused with
+exit 2 before anything is written, even beside names that match (`meta gen: names 'Ordr',
+which matches no object in the metadata.`). Every port has the same selection: `--entities` in Python and C#,
+`-Dmeta.entities` on the Maven plugin for Java and Kotlin.
 
 ### Schema — first migration on a brand-new database
 
@@ -400,7 +411,7 @@ like a keyless read-only projection. For a report `<R>` the generators you have 
 | `queriesFile()` | `<R>.queries.ts` | `list<Plural>` only. No by-id query |
 | `routesFile()` / `routesFileHono()` | `<R>.routes.ts` / `<R>.routes.hono.ts` | GET list; `POST` answers 405; no `/:id` route |
 | `namesFile()` | `<R>.names.ts` | the view and column names |
-| `tanstackQuery()` | `<R>.hooks.ts`, `<R>.meta.ts` | the list hook (`use<R>List`, with the report's filter type) and its descriptor. No detail hook, no mutation |
+| `tanstackQuery()` | `<R>.hooks.ts`, `<R>.meta.ts` | the list hook (`use<plural of R>`, or `use<R>List` when the plural is the name; with the report's filter type) and its descriptor. No detail hook, no mutation |
 | `barrel()` | `index.ts` | one export |
 
 Every derived field with filter operators is filterable and sortable. A derived field that can
@@ -466,6 +477,22 @@ export default defineConfig({
 
 The mapping, the refusals, the Cube query that reproduces a report and the `cube` lane that
 checks the output against a real Cube are in [cube-export](../features/cube-export.md).
+
+### Page size and undeclared body keys: the `api` block
+
+`routesFile()` reads the `api` block of `.metaobjects/config.json` and hands it to the runtime
+mounts (`mountCrudRoutes` in `@metaobjectsdev/runtime-ts/drizzle-fastify` and `/hono`):
+
+```json
+{ "api": { "pagination": { "defaultLimit": 50, "maxLimit": 1000 }, "unknownFields": "reject" } }
+```
+
+`api.pagination` becomes the mount's `pagination` option, and under `api.unknownFields: reject` the
+generated mount passes the entity's declared field names as `knownFields`, checked before Zod runs; a
+hand-written mount given no `knownFields` ignores an undeclared key. What each setting answers, and
+the default with no block, are in [api-contract](../features/api-contract.md) ([page size](../features/api-contract.md#sort--pagination),
+[unknown fields](../features/api-contract.md#unknown-request-fields-apiunknownfields)); the per-port defaults are in
+[What differs by language](../features/language-differences.md).
 
 ### Decimals and null members on the wire
 
@@ -562,7 +589,7 @@ export const ProgramNames = {
 | `fields.<field>.name` | the **logical** name — the field as your code and the wire call it |
 | `fields.<field>.column` | the **physical** column — `@column` if declared, else `name` through the project's `naming.columns` rule (`.metaobjects/config.json`) |
 | `identities.<name>` / `indexes.<name>` | one `identity.*` / `index.*` child, keyed by its metamodel name |
-| `…​.index` | the database index name — on `identity.secondary` and `index.lookup` only |
+| `…​.index` | the index name — on `identity.secondary` and `index.lookup` only. It holds the declared name; on Postgres `meta migrate` creates a name over 63 bytes as its first 63 bytes, so the Drizzle table spells the cut form while this member keeps the declared name ([stored names](../features/migrations-and-drift.md#schema-conventions-names-for-objects-no-code-addresses)) |
 
 **Why the physical name is not just `name`.** One key cannot hold a table, a view and a
 stored procedure and still mean something. In a single run it used to:
@@ -649,12 +676,13 @@ with the literal types intact.
 
 The entity module imports only Drizzle and Zod; the generated routes mount through
 `@metaobjectsdev/runtime-ts`, an ordinary Apache-2.0 package, and Drizzle, Zod and
-Fastify are direct user-app deps. With the default (`package`)
-`outputLayout`, entity output lands under `outDir` in a directory per metadata package —
-`acme::blog`'s `Author` is `src/generated/acme/blog/Author.ts`, `Author.queries.ts` and
-`Author.routes.ts`. Imports through the generated barrel (`src/generated/index.ts`) do not
-name the directory. Set `outputLayout: "flat"` in `metaobjects.config.ts` to put every file
-directly under `outDir` (the layout before rc.19).
+Fastify are direct user-app deps. `meta init` writes `outputLayout: "package"`, so entity
+output lands under one directory per metadata package — `acme::blog` gives
+`src/generated/acme/blog/Author.ts`, `Author.queries.ts`, `Author.routes.ts` — and two
+objects with one name in two packages are two files (a `barrel()`, which exports every
+name from one module, still refuses that pair as `ERR_NAME_COLLISION`). A config without the key gets the
+engine default, `flat`: everything directly under `outDir`, with no per-package
+subdirectory.
 
 The generated `Author.routes.ts` imports a module-level `db` singleton from the
 path configured by `dbImport` in `metaobjects.config.ts` (the generated queries take

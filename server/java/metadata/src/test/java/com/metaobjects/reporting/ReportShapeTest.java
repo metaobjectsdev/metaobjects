@@ -229,6 +229,48 @@ public class ReportShapeTest extends SharedRegistryTestBase {
     }
 
     @Test
+    public void aValueObjectMemberDerivesTheMembersType() throws IOException {
+        // FR-044 R12: `Payment.amount.currency` and `Payment.amount.amount` read Money's members,
+        // so the derived fields take the member's subtype, nullability and type source. The same
+        // rows as the TypeScript report-shape derivation of this fixture.
+        Path input = corpusDir().resolveSibling("conformance")
+                .resolve("reporting-value-object-members/input/meta.billing.json");
+        MetaRoot root = loadJson(new String(Files.readAllBytes(input), StandardCharsets.UTF_8));
+        List<String> rows = ReportShape.of(object(root, "RevenueByMonth"), root).fields().stream()
+                .map(f -> f.name() + " " + f.subType() + " " + f.required() + " "
+                        + (f.typeSourceKey() == null ? "-" : f.typeSourceKey()))
+                .collect(Collectors.toList());
+        assertEquals(List.of("currency string true acme::billing::Money.currency",
+                "kind string false acme::billing::Payment.kind", "receivedOnMonth date true -",
+                "revenue decimal false -", "largest decimal true acme::billing::Money.amount",
+                "averagePayment decimal false -", "payments long true -"), rows);
+    }
+
+    @Test
+    public void aDerivedMeasureIsANullableDecimal() throws IOException {
+        // FR-044 R13: a measure.derived is typed decimal, not required, with no type source,
+        // whatever its operands. The same rows as the TypeScript derivation of this fixture.
+        Path input = corpusDir().resolveSibling("conformance")
+                .resolve("reporting-derived-measures/input/meta.studio.json");
+        MetaRoot root = loadJson(new String(Files.readAllBytes(input), StandardCharsets.UTF_8));
+        java.util.function.Function<String, List<String>> rows = name ->
+                ReportShape.of(object(root, name), root).fields().stream()
+                        .map(f -> f.name() + " " + f.subType() + " " + f.required() + " "
+                                + (f.typeSourceKey() == null ? "-" : f.typeSourceKey()))
+                        .collect(Collectors.toList());
+        assertEquals(List.of("memberId long false acme::studio::Member.id",
+                "memberName string true acme::studio::Member.firstName",
+                "weeklyCapacityHours decimal true acme::studio::Member.weeklyCapacityHours",
+                "workedOnMonth date true -", "totalHours decimal true -", "billableHours decimal true -",
+                "capacityHours decimal false -", "utilization decimal false -",
+                "nonBillableHours decimal false -", "billableSharePct decimal false -"),
+                rows.apply("MemberUtilization"));
+        assertEquals(List.of("projectId long false acme::studio::Project.id",
+                "projectBudget decimal false acme::studio::Project.budget", "cost decimal false -",
+                "budgetBurn decimal false -"), rows.apply("ProjectBurn"));
+    }
+
+    @Test
     public void aReportWithNoDimensionsHasOnlyMeasures() {
         ReportShape shape = ReportShape.of(object(canonical, "FitnessTotals"), canonical);
         assertEquals(List.of("weeks", "totalMinutes", "longShare"),
@@ -794,7 +836,7 @@ public class ReportShapeTest extends SharedRegistryTestBase {
         ReportShape plain = ReportShape.of(object(root, "Plain"), root);
         assertTrue("two required hops over a required field", field(plain, "realmName").required());
         assertTrue("one required hop", field(plain, "sessionRealmId").required());
-        assertTrue("@enforce: false does not change the join type", field(plain, "looseRealmName").required());
+        assertFalse("an @enforce: false hop can name a missing row", field(plain, "looseRealmName").required());
         assertFalse("the target field is optional", field(plain, "realmMotto").required());
         assertFalse("a hop over a nullable foreign key is a LEFT join", field(plain, "maybeRealmName").required());
 
@@ -874,5 +916,29 @@ public class ReportShapeTest extends SharedRegistryTestBase {
                 realmName.required());
         assertSame("ofEntity resolves in the terminal's package too",
                 object(root, "Realm"), shape.ofEntity(realmName));
+    }
+    // A joined dimension's required comes from the model, never from the join type the view
+    // lowering picks: a required, enforced belongs-to path onto a target that hides no rows. The shared
+    // table is the fixture's expected-report-required.json, which every port reads.
+    @Test
+    public void aDimensionsRequiredIsTheSharedTables() throws IOException {
+        Path fixture = corpusDir().getParent().resolve("conformance/report-dimension-required-by-model");
+        com.google.gson.JsonObject doc = com.google.gson.JsonParser.parseString(
+                Files.readString(fixture.resolve("expected-report-required.json"), StandardCharsets.UTF_8))
+            .getAsJsonObject();
+        String reportKey = doc.get("report").getAsString();
+        java.util.Map<String, Boolean> expected = new java.util.LinkedHashMap<>();
+        for (java.util.Map.Entry<String, com.google.gson.JsonElement> e : doc.getAsJsonObject("required").entrySet()) {
+            expected.put(e.getKey(), e.getValue().getAsBoolean());
+        }
+        MetaRoot root = MetaDataLoader.fromDirectory("report-required", fixture.resolve("input")).getRoot();
+        MetaObject report = null;
+        for (MetaObject o : root.getChildren(MetaObject.class, false)) {
+            if (reportKey.equals(o.getName())) report = o;
+        }
+        assertNotNull(reportKey, report);
+        java.util.Map<String, Boolean> actual = new java.util.LinkedHashMap<>();
+        for (ReportShape.Field f : ReportShape.of(report, root).fields()) actual.put(f.name(), f.required());
+        assertEquals(expected, actual);
     }
 }

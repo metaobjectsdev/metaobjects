@@ -13,6 +13,7 @@ import {
   type MetaField,
   type MetaObject,
   WIRE_DECIMALS_STRING,
+  WIRE_DURATIONS_ISO,
   type WireFormat,
 } from "@metaobjectsdev/metadata";
 import {
@@ -187,6 +188,12 @@ function plainValueSchema(field: MetaField, shape: ContractShape, wire: WireForm
   switch (field.subType) {
     case FIELD_SUBTYPE_DECIMAL:
       return decimalSchema(field, shape, wire);
+    // `wire.durations: native` leaves the form to the serving port's own serializer (a C#
+    // server writes `01:30:00`), so only `iso` can state one.
+    case FIELD_SUBTYPE_DURATION:
+      return wire.durations === WIRE_DURATIONS_ISO
+        ? scalarSchema(field.subType)
+        : { type: "string", description: `A span of time, in the serving language's own form. Set wire.durations to "iso" to fix ISO-8601 across server languages.` };
     case FIELD_SUBTYPE_TIMESTAMP:
       if (shape !== "read") return timestampInputSchema(field);
       return field.attr(FIELD_ATTR_LOCAL_TIME) === true

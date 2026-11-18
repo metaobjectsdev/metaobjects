@@ -18,6 +18,7 @@ import { API_CONTRACT_TPH_DIR, API_CONTRACT_TPH_SCENARIOS_DIR } from "../src/pat
 import { openApiCheck, type ContractCheck } from "../src/api-contract-openapi-check.ts";
 import { loadScenarios, assertResponse, type ApiScenario, parseBodyExact } from "../src/api-contract-scenario.ts";
 import { startPostgres } from "../src/postgres-container.ts";
+import { OUTPUT_LAYOUTS, postgresFor } from "../src/output-layout.ts";
 import { startTphServer, type TphServerHandle } from "../src/api-contract-tph-server.ts";
 import {
   startGeneratedTphServer,
@@ -53,13 +54,14 @@ describe("api contract TPH — hand-rolled reference lane", () => {
   }
 });
 
-describe("api contract TPH — GENERATED routes lane", () => {
+for (const layout of OUTPUT_LAYOUTS) describe(`api contract TPH — GENERATED routes lane [${layout}]`, () => {
+  const startDb = postgresFor(layout);
   for (const scenario of loadScenarios(API_CONTRACT_TPH_SCENARIOS_DIR)) {
     test(scenario.name, async () => {
-      const pg = await startPostgres();
+      const pg = await startDb();
       let server: GeneratedTphServerHandle | null = null;
       try {
-        server = await startGeneratedTphServer(pg.connectionUri, META_PATH);
+        server = await startGeneratedTphServer(pg.connectionUri, META_PATH, layout);
         await server.applySeed(SEED);
         await runScenario(scenario, server, openApiCheck("tph"));
       } finally {

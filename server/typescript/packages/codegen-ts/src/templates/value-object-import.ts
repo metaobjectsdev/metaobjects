@@ -27,7 +27,7 @@ export interface ValueObjectImport {
  * The local name a template-tier file uses for `vo`: its declared name, or — with a `ctx`, when
  * another object in the model shares the short name — its package-qualified alias
  * (`localTypeName`), so two same-named value objects can meet in one file. The type itself is
- * never renamed (ruling R52). This is the name {@link valueObjectImport} binds.
+ * never renamed. This is the name {@link valueObjectImport} binds.
  */
 export function emittedVoName(ctx: RenderContext | undefined, vo: MetaData): string {
   return ctx ? localTypeName(vo, ctx.loadedRoot) : vo.name;

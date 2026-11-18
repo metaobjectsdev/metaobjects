@@ -7,8 +7,8 @@
 // deployed artifact implements the cross-port contract, not just the
 // golden-snapshot structure.
 //
-// One Postgres testcontainer per scenario (full isolation, matches the
-// hand-rolled lane). Reuses the server-agnostic runner
+// Flat layout: one Postgres testcontainer per scenario. Package layout: one container
+// for the file and a fresh database per scenario. Reuses the server-agnostic runner
 // (loadScenarios/assertResponse).
 
 import { describe, test } from "bun:test";
@@ -22,20 +22,21 @@ import {
   type GeneratedServerHandle,
 } from "../src/api-contract-generated-server.ts";
 import { type AuthorRow } from "../src/api-contract-server.ts";
-import { startPostgres } from "../src/postgres-container.ts";
+import { OUTPUT_LAYOUTS, postgresFor } from "../src/output-layout.ts";
 
 const SEED = JSON.parse(readFileSync(join(API_CONTRACT_DIR, "seed.json"), "utf8")) as { rows: AuthorRow[] };
 const META_PATH = join(API_CONTRACT_DIR, "meta.json");
 
 const contractCheck: ContractCheck = openApiCheck("blog");
 
-describe("api contract conformance — TS GENERATED routes runner", () => {
+for (const layout of OUTPUT_LAYOUTS) describe(`api contract conformance — TS GENERATED routes runner [${layout}]`, () => {
+  const startPostgres = postgresFor(layout);
   for (const scenario of loadScenarios(API_CONTRACT_SCENARIOS_DIR)) {
     test(scenario.name, async () => {
       const pg = await startPostgres();
       let server: GeneratedServerHandle | null = null;
       try {
-        server = await startGeneratedServer(pg.connectionUri, META_PATH);
+        server = await startGeneratedServer(pg.connectionUri, META_PATH, layout);
         if (scenario.setup?.truncate) await server.truncate();
         else await server.applySeed(SEED.rows);
 

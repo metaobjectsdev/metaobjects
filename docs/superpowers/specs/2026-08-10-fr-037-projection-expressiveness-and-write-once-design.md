@@ -877,6 +877,10 @@ a second arrives.
    declared subtype VERIFIED; registered cross-port; a `registry-conformance` fixture;
    and a lowering in the existing `view-ddl-emit` switch. No member is added without at
    least one non-RDB lowering demonstrated or specified.
+   *(2026-11-12: arithmetic shipped first for report measures only. `measure.derived`'s
+   `@expr` takes `add`/`subtract`/`multiply`/`divide` with two operands and a decimal result
+   (FR-044 R11). `origin.computed`'s grammar does not take them yet; when it does, it takes the
+   same members with the same semantics, `divide`'s null-on-zero included.)*
 2. **Regex extraction is capability-gated, not core** — SQLite has no regex without an
    extension and Search scripting is commonly disabled. If admitted, it errors on a
    lowering that cannot support it.

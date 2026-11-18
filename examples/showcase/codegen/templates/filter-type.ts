@@ -2,6 +2,7 @@
 // String fields get eq/ne/in/like; numbers get eq/ne/gt/gte/lt/lte/in; booleans get eq/isNull only;
 // datetimes get eq/ne/gt/gte/lt/lte/in. An enum's operand type is its member union.
 
+import { flatSurfaceFields } from "@metaobjectsdev/codegen-ts/engine";
 import { code, type Code } from "@metaobjectsdev/codegen-ts/engine";
 import { MetaField, MetaObject } from "@metaobjectsdev/metadata";
 import {
@@ -82,7 +83,7 @@ function renderFieldUnion(field: MetaField): string {
 export function renderFilterType(entity: MetaObject, exclude?: string): Code {
   const filterName = entityTypeNames(entity).filter;
   // fields() returns effective fields, so inherited fields (from extends:/super:) are included in filter types.
-  const allFields = entity.fields().filter((c) => c.name !== exclude);
+  const allFields = flatSurfaceFields(entity).filter((c) => c.name !== exclude);
   const filterableFieldsList = allFields.filter((c) => c.attr(FIELD_ATTR_FILTERABLE) === true);
   // Sort union uses isSortableField — same predicate as renderSortAllowlist to prevent
   // client/server mismatches (@filterable: true + @sortable: false must be excluded from both).

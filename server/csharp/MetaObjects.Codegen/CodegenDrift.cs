@@ -94,7 +94,7 @@ public static class CodegenDrift
         var tempConfig = config with
         {
             OutDir = temps[0], ContextAssemblyName = config.ContextAssemblyName,
-            GenStateDir = null, ProjectRoot = null, SweepOrphans = false,
+            GenStateDir = null, ProjectRoot = null, InputRoot = config.InputRoot ?? config.ProjectRoot, SweepOrphans = false,
         };
         var rendered = new Dictionary<string, string>(StringComparer.Ordinal);
         CodegenRunner.RunResult regen;

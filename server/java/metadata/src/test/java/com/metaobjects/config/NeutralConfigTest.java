@@ -25,6 +25,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertThrows;
 
 /**
@@ -51,6 +54,25 @@ public class NeutralConfigTest {
         // by design.
         Path dir = writeConfig("{ \"schema_version\": 1, \"sources\": [ { \"path\": \"   \" } ] }");
         assertThrows(MetaDataException.class, () -> NeutralConfig.read(dir));
+    }
+
+    @Test
+    public void migrateSchemaSettingsAreReadLeniently() throws IOException {
+        // migrate.foreignKeyIndexes / conventions / dialect: the settings a table generator
+        // must agree with `meta migrate` on. TS-owned and validated there, so a wrong type
+        // reads as absent rather than failing this port's load.
+        Path dir = writeConfig("{ \"schema_version\": 1, \"migrate\": { \"foreignKeyIndexes\": true, "
+            + "\"conventions\": \"efcore\", \"dialect\": \"postgres\" } }");
+        MigrateSettings m = NeutralConfig.read(dir).orElseThrow().getMigrateSettings();
+        assertTrue(m.isForeignKeyIndexes());
+        assertEquals("efcore", m.getConventions());
+        assertEquals("postgres", m.getDialect());
+        assertFalse("the efcore conventions already index every foreign key", m.indexesForeignKeys());
+
+        Path loose = writeConfig("{ \"schema_version\": 1, \"migrate\": { \"foreignKeyIndexes\": \"yes\" } }");
+        assertFalse(NeutralConfig.read(loose).orElseThrow().getMigrateSettings().isForeignKeyIndexes());
+        Path none = writeConfig("{ \"schema_version\": 1 }");
+        assertSame(MigrateSettings.DEFAULT, NeutralConfig.read(none).orElseThrow().getMigrateSettings());
     }
 
     @Test
@@ -150,5 +172,27 @@ public class NeutralConfigTest {
     @Test
     public void refusesDirBesideAPathTransport() {
         assertBadAttr("[{\"name\":\"a\",\"path\":\"../a\",\"dir\":\"x\"}]");
+    }
+
+    @Test
+    public void readsMavenAndNugetDependenciesWithTheirVersionAndDir() {
+        NeutralConfig cfg = dep("[{\"name\":\"a\",\"maven\":\"com.acme:model\",\"version\":\"1.0.0\",\"dir\":\"shared\"},"
+                + "{\"name\":\"b\",\"nuget\":\"Acme.Model\",\"version\":\"1.0\"}]");
+        assertEquals("com.acme:model", cfg.getDependencies().get(0).get("maven"));
+        assertEquals("1.0.0", cfg.getDependencies().get(0).get("version"));
+        assertEquals("shared", cfg.getDependencies().get(0).get("dir"));
+        assertEquals("Acme.Model", cfg.getDependencies().get(1).get("nuget"));
+        assertEquals("1.0", cfg.getDependencies().get(1).get("version"));
+    }
+
+    @Test
+    public void refusesAPackagedTransportWithoutAVersion() {
+        assertBadAttr("[{\"name\":\"a\",\"maven\":\"com.acme:model\"}]");
+        assertBadAttr("[{\"name\":\"a\",\"nuget\":\"Acme.Model\",\"version\":\"\"}]");
+    }
+
+    @Test
+    public void refusesAVersionBesideAnotherTransport() {
+        assertBadAttr("[{\"name\":\"a\",\"npm\":\"@x/y\",\"version\":\"1.0.0\"}]");
     }
 }

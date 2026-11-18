@@ -1,4 +1,4 @@
-// Issue #209 made a join over a REQUIRED belongs-to reference INNER. rc.19 R62 (review item 9)
+// A join over a REQUIRED belongs-to reference used to be INNER. That
 // reverses it: every generated view join is LEFT OUTER, whatever the FK's optionality or
 // enforcement, so no base row is ever dropped silently (an `@enforce: false` reference can name a
 // missing row; a TPH-subtype target's join carries its discriminator). A view that must require
@@ -41,11 +41,11 @@ const belongsToModel = (customerIdRequired: boolean, enforce = true) => [
   ] } },
 ];
 
-describe("R62 — a belongs-to join is LEFT OUTER whatever the FK", () => {
+describe("a belongs-to join is LEFT OUTER whatever the FK", () => {
   test("required FK → LEFT OUTER JOIN", async () => {
     const root = await load(belongsToModel(true));
     const [v] = buildProjectionViews(root, { dialect: "postgres" });
-    expect(v!.sql).toContain("LEFT OUTER JOIN public.customers");
+    expect(v!.sql).toContain("LEFT OUTER JOIN customers");
     expect(v!.sql).not.toContain("INNER JOIN");
   });
 
@@ -55,15 +55,15 @@ describe("R62 — a belongs-to join is LEFT OUTER whatever the FK", () => {
   test("required but UNENFORCED FK → LEFT OUTER JOIN", async () => {
     const root = await load(belongsToModel(true, false));
     const [v] = buildProjectionViews(root, { dialect: "postgres" });
-    expect(v!.sql).toContain("LEFT OUTER JOIN public.customers");
+    expect(v!.sql).toContain("LEFT OUTER JOIN customers");
     expect(v!.sql).not.toContain("INNER JOIN");
   });
 
   test("nullable FK → LEFT OUTER JOIN (preserved)", async () => {
     const root = await load(belongsToModel(false));
     const [v] = buildProjectionViews(root, { dialect: "postgres" });
-    expect(v!.sql).toContain("LEFT OUTER JOIN public.customers");
-    expect(v!.sql).not.toContain("INNER JOIN public.customers");
+    expect(v!.sql).toContain("LEFT OUTER JOIN customers");
+    expect(v!.sql).not.toContain("INNER JOIN customers");
   });
 });
 
@@ -71,7 +71,7 @@ describe("R62 — a belongs-to join is LEFT OUTER whatever the FK", () => {
 // chain is LEFT: joins render flat + left-associative, so an INNER whose ON
 // references a NULLed ancestor column drops the base row (where a LEFT keeps it
 // with NULLs). INNER only survives when the ENTIRE ancestor chain is INNER.
-describe("R62 — a nested join chain is LEFT OUTER at every hop", () => {
+describe("a nested join chain is LEFT OUTER at every hop", () => {
   // Order --(customerId)--> Customer --(countryId, required)--> Country.
   const nestedModel = (orderCustomerIdRequired: boolean) => [
     { "object.entity": { name: "Country", children: [
@@ -108,22 +108,22 @@ describe("R62 — a nested join chain is LEFT OUTER at every hop", () => {
     const root = await load(nestedModel(false));
     const [v] = buildProjectionViews(root, { dialect: "postgres" });
     // Both joins LEFT OUTER — an order with no customer must survive with NULLs, not
-    // be dropped by an INNER JOIN public.countries whose ON references a NULLed customer col.
-    expect(v!.sql).toContain("LEFT OUTER JOIN public.customers");
-    expect(v!.sql).toContain("LEFT OUTER JOIN public.countries");
+    // be dropped by an INNER JOIN countries whose ON references a NULLed customer col.
+    expect(v!.sql).toContain("LEFT OUTER JOIN customers");
+    expect(v!.sql).toContain("LEFT OUTER JOIN countries");
     expect(v!.sql).not.toContain("INNER JOIN");
   });
 
   test("an all-required chain is LEFT OUTER too", async () => {
     const root = await load(nestedModel(true));
     const [v] = buildProjectionViews(root, { dialect: "postgres" });
-    expect(v!.sql).toContain("LEFT OUTER JOIN public.customers");
-    expect(v!.sql).toContain("LEFT OUTER JOIN public.countries");
+    expect(v!.sql).toContain("LEFT OUTER JOIN customers");
+    expect(v!.sql).toContain("LEFT OUTER JOIN countries");
     expect(v!.sql).not.toContain("INNER JOIN");
   });
 });
 
-describe("#209 — has-many (inverse-FK) join stays LEFT OUTER", () => {
+describe("has-many (inverse-FK) join stays LEFT OUTER", () => {
   // Program 1→many Week (FK on Week). Even though Week.programId is required, the
   // Program→weeks join must stay LEFT OUTER: a program with zero weeks must survive
   // (the aggregate COALESCEs to 0, not drops the row).
@@ -150,7 +150,7 @@ describe("#209 — has-many (inverse-FK) join stays LEFT OUTER", () => {
       ] } },
     ]);
     const [v] = buildProjectionViews(root, { dialect: "postgres" });
-    expect(v!.sql).toContain("LEFT OUTER JOIN public.weeks");
-    expect(v!.sql).not.toContain("INNER JOIN public.weeks");
+    expect(v!.sql).toContain("LEFT OUTER JOIN weeks");
+    expect(v!.sql).not.toContain("INNER JOIN weeks");
   });
 });

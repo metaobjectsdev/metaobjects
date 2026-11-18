@@ -1,0 +1,25 @@
+{
+  "metadata.root": {
+    "package": "fulfilment",
+    "children": [
+      { "object.entity": {
+        "name": "Warehouse",
+        "children": [
+          { "source.rdb": { "@table": "warehouses" } },
+          { "field.long": { "name": "id" } },
+          { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "increment" } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "Allocation",
+        "children": [
+          { "source.rdb": { "@table": "customer_order_line_item_allocations_by_region" } },
+          { "field.long": { "name": "id" } },
+          { "field.long": { "name": "fulfilmentWarehouseReferenceId", "@column": "fulfilment_warehouse_reference_id", "@required": true } },
+          { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "increment" } },
+          { "identity.reference": { "name": "warehouse", "@fields": ["fulfilmentWarehouseReferenceId"], "@references": "Warehouse" } }
+        ]
+      }}
+    ]
+  }
+}

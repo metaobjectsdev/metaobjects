@@ -41,9 +41,11 @@ but the semantics are one contract — call them **PATCH-1..7** (FR-035):
   simply omits every non-settable field, and Zod drops unknown keys — so
   `safeParse` succeeds and the key never reaches the `SET`. The TPH discriminator
   is additionally deleted by hand after parse, the same convention. A malformed
-  *value* on a settable key is still `400 {"error":"validation"}`. A key the entity
-  does not declare at all is dropped the same way. The Python routes hand the
-  repository only the keys their input model validated.
+  *value* on a settable key is still `400 {"error":"validation", "issues": [...]}`. A key the entity
+  does not declare at all is NOT one of these: under `api.unknownFields: reject` (the default)
+  it answers `400 {"error":"unknown_fields","fields":[...]}` before validation, and only under
+  `drop` is it ignored the same way ([api-contract.md](api-contract.md#unknown-request-fields-apiunknownfields)).
+  The Python routes hand the repository only the keys their input model validated.
   This matters for `writeOnce` specifically: the generated edit form submits EVERY
   registered field (`handleSubmit` passes all values, and 0.19.2 switched the
   resolver to `UpdateSchema` on edit rather than diff-and-omit), so rejecting a
@@ -75,9 +77,10 @@ answered with a 400. An assigned key (no `@generation`) is the caller's on creat
 TypeScript, C#, Java and Python, and on update it is the primary key like any other, so it
 is left out of the TypeScript `<Entity>UpdateSchema` too. (Kotlin's generated create is the
 exception: it never binds a declared key, assigned or not — `increment` is left to the
-column and a `uuid` key is minted app-side.) A key the entity does not declare is dropped in TypeScript,
-C# and Python; in Java and Kotlin that answer belongs to the host's Jackson
-`ObjectMapper` (Spring Boot's default ignores it, a plain `ObjectMapper` answers 400).
+column and a `uuid` key is minted app-side.) A key the entity does not declare at all is
+a separate case: `api.unknownFields` decides it in every port, `400 unknown_fields` under
+`reject` (the default) and dropped under `drop`
+([api-contract.md](api-contract.md#unknown-request-fields-apiunknownfields)).
 Gated cross-port by `fixtures/api-contract-conformance/scenarios/input-server-owned-dropped.yaml`
 and the `tph/` and `secret-fields/` input scenarios.
 

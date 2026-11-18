@@ -76,7 +76,6 @@ public class ExtractorGenerator : IGenerator
         string rootMirror = ExtractDelegateEmitter.MirrorRef(vo, ctx.Root, ctx.Config, ns);
         string extractorClass = CSharpNaming.ExtractorClassName(templateName);
         string rootMapper = MapperName(vo, ctx.Root);
-        // rc.19 fix round (I2): the template tier always emits into GenConfig.Namespace.
         ctx.Claim($"the C# namespace {ns}", extractorClass, tmpl.ResolutionKey(), "rename one (an extractor is declared in the configured namespace, GenConfig.Namespace, whatever its package, "
             + "so the two packages do not keep them apart)");
 
@@ -131,7 +130,7 @@ public class ExtractorGenerator : IGenerator
 
         sb.AppendLine("}");
 
-        return new EmittedFile(OutputPaths.Of(tmpl, $"{extractorClass}.cs"), sb.ToString());
+        return new EmittedFile(OutputPaths.Of(tmpl, ctx, $"{extractorClass}.cs"), sb.ToString());
     }
 
     private static string MapperName(MetaData vo, MetaData root) => $"ToStrict_{ValueObjectNames.MemberKey(vo, root)}";
@@ -181,8 +180,8 @@ public class ExtractorGenerator : IGenerator
             string et = EnumTypeRef(owner, field, ctx);
             if (Fr010FieldMapping.IsArray(field))
                 return $"({m} ?? global::System.Linq.Enumerable.Empty<string?>()).Where(x => x is not null)" +
-                       $".Select(x => global::System.Enum.Parse<{et}>(x!)).ToList()";
-            return required ? $"global::System.Enum.Parse<{et}>({m}!)" : $"{m} is null ? ({et}?)null : global::System.Enum.Parse<{et}>({m})";
+                       $".Select(x => System.Enum.Parse<{et}>(x!)).ToList()";
+            return required ? $"System.Enum.Parse<{et}>({m}!)" : $"{m} is null ? ({et}?)null : System.Enum.Parse<{et}>({m})";
         }
 
         string baseType = CSharpNaming.DbColumnTypeClrOverride(field) ?? CSharpNaming.ScalarForField(field) ?? "string";

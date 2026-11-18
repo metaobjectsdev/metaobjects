@@ -20,6 +20,7 @@ import { join } from "node:path";
 import { API_CONTRACT_REPORT_DIR, API_CONTRACT_REPORT_SCENARIOS_DIR } from "../src/paths.ts";
 import { loadScenarios, runScenario } from "../src/api-contract-scenario.ts";
 import type { ReportSeed } from "../src/api-contract-report-generated-server.ts";
+import { OUTPUT_LAYOUTS, type OutputLayout } from "../src/output-layout.ts";
 import { startSqliteReportServer, type SqliteReportEngine, type SqliteReportServerHandle } from "../src/api-contract-report-sqlite-server.ts";
 
 const SEED = JSON.parse(readFileSync(join(API_CONTRACT_REPORT_DIR, "seed.json"), "utf8")) as ReportSeed;
@@ -34,10 +35,11 @@ const ENGINES: readonly SqliteReportEngine[] = ["sqlite", "d1"];
 
 async function withServer(
   engine: SqliteReportEngine,
+  layout: OutputLayout,
   fn: (server: SqliteReportServerHandle) => Promise<void>,
   seed: ReportSeed = SEED,
 ): Promise<void> {
-  const server = await startSqliteReportServer(META_PATH, engine);
+  const server = await startSqliteReportServer(META_PATH, engine, layout);
   try {
     await server.applySeed(seed);
     await fn(server);
@@ -52,9 +54,11 @@ async function getJson(server: SqliteReportServerHandle, path: string): Promise<
   return res.json();
 }
 
-for (const engine of ENGINES) describe(`api contract report (FR-044) — GENERATED routes on ${engine === "d1" ? "Cloudflare D1 (local)" : "SQLite"}`, () => {
+// D1 starts a Miniflare (workerd) process per test and emits the same routes as SQLite (only the
+// db module differs), so the package layout runs on SQLite alone.
+for (const layout of OUTPUT_LAYOUTS) for (const engine of layout === "flat" ? ENGINES : ENGINES.filter((e) => e !== "d1")) describe(`api contract report (FR-044) — GENERATED routes on ${engine === "d1" ? "Cloudflare D1 (local)" : "SQLite"} [${layout}]`, () => {
   test("a ratio is a JSON string, as it is on Postgres, and the integers around it stay numbers", async () => {
-    await withServer(engine, async (server) => {
+    await withServer(engine, layout, async (server) => {
       const rows = (await getJson(server, "/api/invoice_totals")) as Array<Record<string, unknown>>;
       expect(rows.length).toBe(1);
       const row = rows[0]!;
@@ -66,7 +70,7 @@ for (const engine of ENGINES) describe(`api contract report (FR-044) — GENERAT
   }, { timeout: SERVER_TEST_TIMEOUT_MS });
 
   test("a ratio is a string in the withCount envelope too", async () => {
-    await withServer(engine, async (server) => {
+    await withServer(engine, layout, async (server) => {
       const body = (await getJson(server, "/api/invoice_totals?withCount=1")) as {
         rows: Array<Record<string, unknown>>; total: number;
       };
@@ -76,14 +80,14 @@ for (const engine of ENGINES) describe(`api contract report (FR-044) — GENERAT
   }, { timeout: SERVER_TEST_TIMEOUT_MS });
 
   test("a ratio over zero rows is null, not the string 'null' or 0", async () => {
-    await withServer(engine, async (server) => {
+    await withServer(engine, layout, async (server) => {
       const rows = (await getJson(server, "/api/invoice_totals")) as Array<Record<string, unknown>>;
       expect(rows).toEqual([{ invoices: 0, totalCents: null, paidShare: null }]);
     }, { invoices: [] });
   }, { timeout: SERVER_TEST_TIMEOUT_MS });
 
   test("a report with no decimal field is untouched: every value keeps its type", async () => {
-    await withServer(engine, async (server) => {
+    await withServer(engine, layout, async (server) => {
       expect(await getJson(server, "/api/invoice_status_totals?sort=status:asc")).toEqual(
         SEED.reports!["InvoiceStatusTotals"],
       );
@@ -97,7 +101,7 @@ for (const engine of ENGINES) describe(`api contract report (FR-044) — GENERAT
   }, { timeout: SERVER_TEST_TIMEOUT_MS });
 
   test("the filter and the sort on a ratio still compare numerically after the wire change", async () => {
-    await withServer(engine, async (server) => {
+    await withServer(engine, layout, async (server) => {
       const hit = async (path: string): Promise<number> => ((await getJson(server, path)) as unknown[]).length;
       expect(await hit("/api/invoice_totals?filter[paidShare][gt]=0.3")).toBe(1);
       expect(await hit("/api/invoice_totals?filter[paidShare][gt]=0.5")).toBe(0);
@@ -110,7 +114,7 @@ for (const engine of ENGINES) describe(`api contract report (FR-044) — GENERAT
 
   for (const scenario of loadScenarios(API_CONTRACT_REPORT_SCENARIOS_DIR)) {
     test(`shared scenario: ${scenario.name}`, async () => {
-      await withServer(engine, (server) => runScenario(scenario, server.baseUrl));
+      await withServer(engine, layout, (server) => runScenario(scenario, server.baseUrl));
     }, { timeout: SERVER_TEST_TIMEOUT_MS });
   }
 });

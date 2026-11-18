@@ -152,7 +152,21 @@ implementation proved wrong.
    example Kotlin's `KotlinTemplateTierValueObjectTest`, Java's
    `OutputParserExtractTierCollisionTest`, and Python's `test_extract_tier_collision.py`.
 
-## Amendment 2 (2026-11-09) — value-object names are never rewritten (ruling R52)
+## Amendment 2 (2026-11-12): value-object names are never rewritten
+
+Rule 2's collision-aware name (the package-qualified `AcmeAlphaNote`) is removed in every port;
+see [ADR-0044 Amendment 1](ADR-0044-payload-record-naming-cross-package-collision.md). The type is
+generated once, under its own name, in its own namespace, module or package, and every tier
+references that name. Two objects that would emit one type into one scope are refused by the
+run's claim registry (`ERR_NAME_COLLISION`), with the remedy of placing the packages apart (the
+package output layout in TypeScript and Python, `csharp.packageNamespaces` in C#). A private member
+of a generated class that is keyed by a value object (C#'s extract-tier mappers) may still carry the
+package to stay unique inside that class; that is a member name, never a type. Likewise a file that
+meets two same-named value objects binds them under local import aliases, and the extract tier's
+mirrors and mappers, declarations of that one module, take the alias (`AcmeAlphaNoteExtracted`).
+No module declares a renamed type.
+
+## Amendment 2, release-line text (2026-11-09) — superseded by Amendment 2 above
 
 Rule 2's collision-aware name (the package-qualified `AcmeAlphaNote`) is removed in C# and
 TypeScript; see [ADR-0044's amendment](ADR-0044-payload-record-naming-cross-package-collision.md).

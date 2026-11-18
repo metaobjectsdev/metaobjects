@@ -20,6 +20,7 @@ import {
 } from "@metaobjectsdev/metadata";
 import { DOC_ATTR_DESCRIPTION, OBJECT_SUBTYPE_VALUE } from "@metaobjectsdev/metadata/constants";
 import { hiddenFieldNames, servesWriteApi, tphHierarchy, writeDeniedFieldNames } from "../api-surface.js";
+import { flatSurfaceFields } from "../flattened.js";
 import { isAbstract } from "../instance-artifacts.js";
 import { tphPlan } from "../templates/tph-discriminator.js";
 import { insertSchemaFields, updateSchemaFields } from "../templates/zod-validators.js";
@@ -77,7 +78,7 @@ function readSchema(obj: MetaObject, env: ObjectSchemaEnv, wire: WireFormat): Js
   const properties: Record<string, JsonSchema> = {};
   const required: string[] = [];
   // A credential is never on the wire: the key is absent, not null.
-  for (const field of obj.fields().filter((f) => !hidden.has(f.name))) {
+  for (const field of flatSurfaceFields(obj).filter((f) => !hidden.has(f.name))) {
     if (pin !== undefined && field.name === pin.fieldName) {
       properties[field.name] = { const: pin.value };
       required.push(field.name);
@@ -110,7 +111,7 @@ function isClientWritten(field: MetaField | undefined, serverSet: boolean | unde
 }
 
 function createSchema(obj: MetaObject, env: ObjectSchemaEnv, wire: WireFormat): JsonSchema {
-  const fieldByName = new Map(obj.fields().map((f) => [f.name, f]));
+  const fieldByName = new Map(flatSurfaceFields(obj).map((f) => [f.name, f]));
   const denied = writeDenied(obj, env);
   const properties: Record<string, JsonSchema> = {};
   const required: string[] = [];
@@ -125,7 +126,7 @@ function createSchema(obj: MetaObject, env: ObjectSchemaEnv, wire: WireFormat): 
 }
 
 function updateSchema(obj: MetaObject, env: ObjectSchemaEnv, wire: WireFormat): JsonSchema {
-  const fieldByName = new Map(obj.fields().map((f) => [f.name, f]));
+  const fieldByName = new Map(flatSurfaceFields(obj).map((f) => [f.name, f]));
   const pk = new Set<string>(obj.primaryIdentity()?.fields ?? []);
   const denied = writeDenied(obj, env);
   const properties: Record<string, JsonSchema> = {};

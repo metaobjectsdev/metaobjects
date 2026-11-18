@@ -176,11 +176,19 @@ ends_in_newline() {  # ends_in_newline <file>
 # it afterward (a plain `&&`/`||` can't survive being stored and read back later).
 had_newline() { ends_in_newline "$1" && echo 1 || echo 0; }
 
+# In-place extended-regex sed that works on GNU and BSD (macOS) sed alike. Both accept the
+# backup suffix only ATTACHED to -i (-i.suffix); a bare `-i -E` makes BSD sed take "-E" as the
+# suffix, leaving <file>-E behind and running the expression as a basic regex, whose ( ) groups
+# do not capture. Neither sed adds a missing trailing newline here (verified on both).
+sed_inplace() {  # sed_inplace <expression> <file>
+  sed -E -i.mo-sed-bak "$1" "$2" && rm -f "$2.mo-sed-bak"
+}
+
 # Every in-place rewrite in this script writes to a tmp file and moves it over the original.
 # awk's `print` unconditionally terminates the last line with a newline, even when the file
 # being rewritten had none — so a no-op "link, then unlink" round trip left every pom.xml that
 # lacked a trailing newline with one, which `git status` then reported as modified. sed
-# does not have this problem (verified: `sed_inplace` below preserves a missing trailing newline whether
+# does not have this problem (verified: `sed_inplace` above preserves a missing trailing newline whether
 # or not anything matched), so only the awk call sites route through this. <had> is
 # `had_newline` captured on <file> immediately before the awk call that produced <tmpfile>; a
 # caller that already knows nothing needs preserving can pass "1", which is a no-op here.

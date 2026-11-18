@@ -96,16 +96,34 @@ public static class ReportShapes
     private static (MetaObject Named, MetaField Field)? ResolveReportingFieldRefNamed(
         string reference, MetaData declaring, MetaRoot root, MetaObject? host)
     {
-        // `Entity.field`; a package qualifier uses `::`, so the member separator is the LAST dot.
-        int dot = reference.LastIndexOf(CHILD_REF_SEPARATOR, StringComparison.Ordinal);
+        // `Entity.field` or `Entity.field.member`; a package qualifier uses `::` and holds no `.`,
+        // so the owner ends at the first `.` after the last `::`.
+        int lastSep = reference.LastIndexOf(PACKAGE_SEPARATOR, StringComparison.Ordinal);
+        int dot = reference.IndexOf(CHILD_REF_SEPARATOR, lastSep == -1 ? 0 : lastSep + PACKAGE_SEPARATOR.Length, StringComparison.Ordinal);
         if (dot <= 0) return null;
+        string[] path = reference[(dot + CHILD_REF_SEPARATOR.Length)..].Split(CHILD_REF_SEPARATOR);
+        if (path.Length > 2) return null;
         if (NamingRefs.ResolveObjectRef(root, reference[..dot], NamingRefs.EffectivePackage(declaring))
             is not MetaObject named) return null;
         if (host is not null && !ValidationPasses.IsSelfOrAncestor(named, host)) return null;
         // ADR-0039: resolving, so a field inherited through extends is found.
-        var field = (host ?? named).FindField(reference[(dot + CHILD_REF_SEPARATOR.Length)..]);
-        return field is null ? null : (named, field);
+        var field = (host ?? named).FindField(path[0]);
+        if (field is null) return null;
+        if (path.Length == 1) return (named, field);
+        var member = FlattenedMemberOf(field, path[1]);
+        return member is null ? null : (named, member);
     }
+
+    /// <summary>
+    /// FR-044 R12: member <paramref name="name"/> of the value object a flattened
+    /// <c>field.object</c> embeds (resolving, so an inherited member counts). Null when the field
+    /// is not flattened, names no value object, or the value object has no such member.
+    /// </summary>
+    public static MetaField? FlattenedMemberOf(MetaField embedding, string name) =>
+        ValidationPasses.IsFlattenedField(embedding) &&
+        NamingRefs.RefTarget(embedding, FIELD_ATTR_OBJECT_REF) is MetaObject valueObject
+            ? valueObject.FindField(name)
+            : null;
 
     /// <summary>
     /// A dimension's <c>@of</c> field, read as the loader's rule D1 reads it. Without
@@ -215,12 +233,12 @@ public static class ReportShapes
     }
 
     /// <summary>
-    /// rc.19 R62 — true when every hop of <paramref name="hops"/>, walked from <paramref name="from"/>,
+    /// True when every hop of <paramref name="hops"/>, walked from <paramref name="from"/>,
     /// is certain to match: a belongs-to hop (the reference is held by the entity the hop leaves)
     /// whose first FK field is required, whose reference is enforced (not <c>@enforce: false</c>,
     /// which can name a row that does not exist), onto a target that hides no rows (not a TPH
-    /// subtype, whose join carries the discriminator). That is exactly when the view's LEFT OUTER
-    /// joins return what INNER would. Every generated view join is LEFT OUTER; this reads the model,
+    /// subtype, whose join carries the discriminator). That is exactly when a LEFT OUTER join
+    /// returns what INNER would, whichever join type the view lowering picks; this reads the model,
     /// never the join type. Ported from report-shape.ts <c>viaAlwaysMatches</c>.
     /// </summary>
     private static bool ViaAlwaysMatches(IReadOnlyList<string> hops, MetaObject from, MetaRoot root)
@@ -360,7 +378,7 @@ public static class ReportShapes
     /// </summary>
     private static (string SubType, MetaField? TypeSource)? DeriveMeasure(MetaMeasure m, MetaObject from, MetaRoot root)
     {
-        if (m.IsRatio()) return (FIELD_SUBTYPE_DECIMAL, null);
+        if (m.IsRatio() || m.IsDerived()) return (FIELD_SUBTYPE_DECIMAL, null);
         string? agg = m.Agg();
         if (agg == AGG_COUNT) return (FIELD_SUBTYPE_LONG, null);
         // any / all are boolean whatever the source (the loader's M4 refuses a non-boolean @of).

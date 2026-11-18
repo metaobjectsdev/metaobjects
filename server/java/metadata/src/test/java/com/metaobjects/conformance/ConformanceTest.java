@@ -103,7 +103,7 @@ public class ConformanceTest {
 
     private static final Path CORPUS = CorpusRoot.locate();
     private static final Set<String> REGISTERED_CODES = FixtureLint.loadRegisteredCodes(CORPUS);
-    private static final ExpectedFailures.Ledger LEDGER = ExpectedFailures.load(locateLedger());
+    static final ExpectedFailures.Ledger LEDGER = ExpectedFailures.load(locateLedger());
 
     /**
      * Cross-language provider-id aliases: the corpus uses canonical provider
@@ -186,6 +186,9 @@ public class ConformanceTest {
             // a provider id is ever renamed.
             "metaobjects-ui", List.of(
                 com.metaobjects.presentation.ui.UiTypesMetaDataProvider.PROVIDER_ID
+            ),
+            "metaobjects-ui-web", List.of(
+                com.metaobjects.presentation.ui.UiWebTypesMetaDataProvider.PROVIDER_ID
             ),
             "metaobjects-prompt", List.of(
                 com.metaobjects.template.PromptTypesMetaDataProvider.PROVIDER_ID
@@ -362,6 +365,11 @@ public class ConformanceTest {
         String loaderName = detectLoaderName(inputFiles);
 
         LoaderOptions opts = LoaderOptions.create(false, false, true);
+        // A fixture naming the project-vocabulary provider loads through the SANCTIONED path:
+        // LoaderOptions.setProviders -> RegistryManifest.composeLoaderRegistry (sealed, strict).
+        if (fix.hasProvidersJson && fix.requiredProviders.contains("example-custom-vocabulary")) {
+            opts.setProviders(List.of(ConformanceTestProviders.EXAMPLE_CUSTOM_VOCABULARY));
+        }
         MetaDataLoader loader = new MetaDataLoader(opts, MetaDataLoader.SUBTYPE_MANUAL, loaderName);
         // A fixture that requires the test-only example-template-briefing provider
         // gets its OWN registry (core + briefing) via setTypeRegistry — no global

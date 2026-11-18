@@ -73,14 +73,19 @@ function stringAttr(node: MetaData, name: string): string | undefined {
 }
 
 /**
- * Project every `requirement.*` node — nested ones included — into render-ready rows.
+ * Project every `requirement.*` node in the project's ledger — nested ones included — into
+ * render-ready rows. `inLedger` is the collection's ledger predicate, as `walkRequirements`
+ * reads it: a dependency's requirement the project did not inherit is not listed.
  *
  * Returns `[]` for a model declaring no requirements, which is what lets the surface
  * emit NOTHING rather than an empty page, and is in turn what makes turning the surface
  * on by default a no-op for every project without a ledger.
  */
-export function requirementRows(root: MetaData): RequirementRow[] {
-  return walkRequirements(root).map((walked) => {
+export function requirementRows(
+  root: MetaData,
+  inLedger?: (fqn: string) => boolean,
+): RequirementRow[] {
+  return walkRequirements(root, inLedger).map((walked) => {
     const { node, view, targets } = walked;
     return {
       path: view.path,

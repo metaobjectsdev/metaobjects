@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_INVALID_MEASURE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.studio.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[2]['object.entity'].children[24]['measure.derived']"
+      }
+    }
+  ],
+  "warnings": []
+}
