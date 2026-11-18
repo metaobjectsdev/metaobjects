@@ -205,7 +205,6 @@ def read_neutral_config(config_dir: Path) -> NeutralConfig | None:
     wire = _read_wire(raw, path)
     _check_enums(raw, path)
     api = _read_api(raw, path)
-    _check_enums(raw, path)
     requirements_inherit = _read_requirements_inherit(raw, path)
 
     # Unknown top-level keys are IGNORED by design — see the module docstring.
@@ -368,42 +367,6 @@ def _read_naming(raw: dict[str, object], path: Path) -> NamingRules:
             code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
         )
     return NamingRules(columns=columns, tables=tables, collections=collections)
-
-
-#: Every key the `enums` block accepts, and the ONLY ones it accepts (refused, not ignored, like `naming`).
-_ENUMS_KEYS = ("maxLength",)
-
-
-def _check_enums(raw: dict[str, object], path: Path) -> None:
-    """The `enums` block: `maxLength`, a positive integer, is the column length a port that
-    sizes a string-stored enum's column gives one with no @maxLength. This port sizes no
-    column (it emits no DDL and no column type), so it reads nothing from the block, but a
-    project shared with a port that does has one: the block is accepted, and its shape is
-    checked so a typo is refused here as it is there (a non-object block, an unknown key, or
-    a value that is not a positive integer)."""
-    if "enums" not in raw:
-        return
-    enums = raw["enums"]
-    if not isinstance(enums, dict):
-        raise ParseError(f"{path}: 'enums' must be an object", code=ErrorCode.ERR_BAD_ATTR_VALUE)
-    unknown = sorted(set(enums) - set(_ENUMS_KEYS))
-    if unknown:
-        raise ParseError(
-            f"{path}: 'enums' has unknown key(s) {unknown}; accepted: {list(_ENUMS_KEYS)}",
-            code=ErrorCode.ERR_BAD_ATTR_VALUE,
-        )
-    if "maxLength" not in enums:
-        return
-    value = enums["maxLength"]
-    # A whole number however JSON spells it (32, 32.0, 1e2): a reader that parses numbers as
-    # doubles (TypeScript's) cannot tell those apart, so every port accepts all three.
-    if isinstance(value, float) and value.is_integer():
-        value = int(value)
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ParseError(
-            f"{path}: 'enums.maxLength' must be a positive integer, got {value!r}",
-            code=ErrorCode.ERR_BAD_ATTR_VALUE,
-        )
 
 
 _PAGE_SIZE_MAX = 2147483647

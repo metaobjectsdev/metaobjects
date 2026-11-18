@@ -276,40 +276,6 @@ def _flattened_member_consts(
     field: MetaData, members: list[tuple[str, str]]
 ) -> list[tuple[str, _Const]]:
     """A flattened value object's ``<FIELD>_<MEMBER>_COLUMN`` constants, one per member,
-    emitted beside the field's own ``_FIELD`` constant (a flattened field has no column
-    constant of its own)."""
-    member = _member(field.name)
-    return [
-        (
-            f"{field.name}.{name}",
-            _Const(f"{member}_{_member(name)}_COLUMN", _q(column), f"field {field.name + '.' + name!r}"),
-        )
-        for name, column in sorted(members)
-    ]
-
-
-def _flattened_members(field: MetaData, strategy: str) -> list[tuple[str, str]] | None:
-    """The ``(member name, column)`` pairs of a ``@storage: "flattened"`` value object, or
-    ``None`` for any other field.
-
-    The flattened test is migrate's own: a ``field.object`` whose RESOLVED ``@storage`` is
-    ``flattened`` (ADR-0039 — it may be inherited). Each member's column is core naming's
-    :func:`metaobjects.naming.resolve_flattened_column_name`, the rule ``meta migrate`` names
-    it by. A flattened field whose ``@objectRef`` does not resolve has no members; the loader
-    refuses that model before codegen runs.
-    """
-    if field.sub_type != FIELD_SUBTYPE_OBJECT or field.get_meta_attr(FIELD_ATTR_STORAGE) != STORAGE_FLATTENED:
-        return None
-    target = ref_target(field, FIELD_ATTR_OBJECT_REF)
-    if not isinstance(target, MetaObject):
-        return []
-    return [(m.name, resolve_flattened_column_name(field, m, strategy)) for m in target.fields()]
-
-
-def _flattened_member_consts(
-    field: MetaData, members: list[tuple[str, str]]
-) -> list[tuple[str, _Const]]:
-    """A flattened value object's ``<FIELD>_<MEMBER>_COLUMN`` constants, one per member,
     emitted beside the field's own ``_FIELD``/``_COLUMN`` pair (kept as it always was, so
     nothing that imports it changes; on a flattened field ``_COLUMN`` names no column of the
     table)."""
