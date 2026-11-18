@@ -286,11 +286,14 @@ expressions read.
 column type, the one its table column would have (length or `@dbColumnType` spelling, precision and
 scale, a local or zoned timestamp). The signature is a declaration that `meta verify --db` checks:
 it reads the function from `pg_proc` and fails on a missing function, or a parameter or return
-type that differs, so the cast never hides a wrong `@returns`. A declared arity between the
-function's required and full parameter counts matches (the rest take their defaults). The
-comparison is by plain type name: a json, array, enum or user-defined kind is not type-checked
-(only the arity is), and a domain is compared by its own name, so a domain-typed parameter or
-result is reported as a mismatch. Declared on an entity, it is
+type that Postgres would not accept for the call, so the cast never hides a wrong `@returns`. A
+declared arity between the function's required and full parameter counts matches (the rest take
+their defaults). A declared `integer`, `bigint`, `numeric` or `real` matches a wider numeric
+parameter that Postgres widens it to implicitly, and a polymorphic `any*` parameter takes any
+type. A variadic function's trailing parameter count and type are not checked, though its required
+fixed parameters still are. Beyond those, the comparison is by plain type name: a json, array, enum
+or user-defined kind is not type-checked (only the arity is), and a domain is compared by its own
+name, so a domain-typed parameter or result is reported as a mismatch. Declared on an entity, it is
 entity-derived: a projection reaching the entity reads it like any derived field. MetaObjects
 never creates the function (it is owned SQL, created before the view). Postgres only.
 
