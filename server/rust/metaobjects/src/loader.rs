@@ -131,11 +131,14 @@ impl<'r> Loader<'r> {
         }
     }
 
-    /// The project's physical naming (`naming` in `.metaobjects/config.json`), which
-    /// column-collision and `@via` reverse-hop validation resolve names through.
-    /// Defaults to [`PhysicalNaming::default`].
+    /// The project's physical naming (`naming` in `.metaobjects/config.json`) and the
+    /// registry its strategy names resolve in; column-collision and `@via` reverse-hop
+    /// validation resolve names through both. Defaults to the built-in registry and
+    /// [`PhysicalNaming::default`]. A name the registry does not answer is one load
+    /// error, and validation then runs under the defaults.
     #[must_use]
-    pub fn naming(mut self, naming: PhysicalNaming) -> Self {
+    pub fn naming(mut self, registry: NamingRegistry, naming: PhysicalNaming) -> Self {
+        self.naming_registry = registry;
         self.naming = naming;
         self
     }
@@ -231,6 +234,25 @@ impl<'r> Loader<'r> {
         }
         let mut warnings = Vec::new();
         let mut merged = MergeOut::default();
+        let naming_errors: Vec<MetaError> = [
+            self.naming_registry
+                .column_strategy(&self.naming.columns)
+                .err(),
+            self.naming
+                .collections
+                .as_deref()
+                .and_then(|p| self.naming_registry.pluralizer(p).err()),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        let default_naming = (NamingRegistry::builtin(), PhysicalNaming::default());
+        let (naming_registry, naming) = if naming_errors.is_empty() {
+            (&self.naming_registry, &self.naming)
+        } else {
+            (&default_naming.0, &default_naming.1)
+        };
+        errors.extend(naming_errors);
         let root = if roots.is_empty() {
             tree.add(Node::new(TYPE_METADATA, SUBTYPE_ROOT, ""))
         } else {
@@ -249,7 +271,7 @@ impl<'r> Loader<'r> {
                 registry: self.registry,
                 strict: self.strict,
                 objects: &top.objects,
-                naming: NamingCtx::new(&self.naming_registry, &self.naming),
+                naming: NamingCtx::new(naming_registry, naming),
             };
             validate::run(&ctx, &mut findings, &mut timings);
             errors.append(&mut findings.errors);

@@ -4,14 +4,15 @@
 //! `resolveFlattenedColumnName` and `reverseHopName` behaviour.
 
 use metaobjects::LoadResult;
+use metaobjects::config::parse_config_text;
 use metaobjects::loader::Loader;
-use metaobjects::naming::PhysicalNaming;
+use metaobjects::naming::{NamingRegistry, PhysicalNaming};
 use metaobjects::providers::default_registry;
 
 fn load(doc: &str, naming: PhysicalNaming) -> LoadResult {
     let registry = default_registry().expect("the built-in providers compose");
     Loader::new(&registry)
-        .naming(naming)
+        .naming(NamingRegistry::builtin(), naming)
         .load_sources(&[("meta.t.json".to_string(), doc.to_string())])
 }
 
@@ -147,4 +148,72 @@ fn the_project_pluralizer_names_the_hop() {
         PhysicalNaming::default(),
     );
     assert!(!hop_resolved(&standard, "consent"), "{:?}", standard.errors);
+}
+
+fn project_registry() -> NamingRegistry {
+    let mut r = NamingRegistry::builtin();
+    r.register_column_strategy("lower-first", |n| {
+        let mut c = n.chars();
+        c.next()
+            .map(|f| f.to_lowercase().chain(c).collect())
+            .unwrap_or_default()
+    })
+    .unwrap();
+    r.register_pluralizer("add-list", |n| format!("{n}List"))
+        .unwrap();
+    r
+}
+
+fn load_configured(doc: &str, registry: NamingRegistry, naming_json: &str) -> LoadResult {
+    let text = format!(r#"{{"schema_version": 1, "naming": {naming_json}}}"#);
+    let naming = parse_config_text(&text, "config.json", &registry)
+        .expect("the config names registered strategies")
+        .config
+        .physical_naming();
+    Loader::new(&default_registry().unwrap())
+        .naming(registry, naming)
+        .load_sources(&[("meta.t.json".to_string(), doc.to_string())])
+}
+
+#[test]
+fn a_registered_column_strategy_resolves_column_names() {
+    let doc = entity_with_fields("userId", "UserId");
+    let r = load_configured(&doc, project_registry(), r#"{"columns": "lower-first"}"#);
+    assert!(collides(&r), "{:?}", r.errors);
+    let r = load_configured(
+        &entity_with_fields("userId", "user_id"),
+        project_registry(),
+        r#"{"columns": "lower-first"}"#,
+    );
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+}
+
+#[test]
+fn a_registered_pluralizer_names_the_reverse_hop() {
+    let naming = r#"{"collections": "add-list"}"#;
+    let r = load_configured(
+        &hop_doc("", "Consent", "", "consentList"),
+        project_registry(),
+        naming,
+    );
+    assert!(hop_resolved(&r, "consentList"), "{:?}", r.errors);
+    let r = load_configured(
+        &hop_doc("", "Consent", "", "consents"),
+        project_registry(),
+        naming,
+    );
+    assert!(!hop_resolved(&r, "consents"), "{:?}", r.errors);
+}
+
+#[test]
+fn an_unregistered_strategy_is_one_error_not_one_per_field() {
+    let doc = entity_with_fields("userId", "name");
+    let r = load(&doc, columns("no-such-strategy"));
+    let unknown: Vec<_> = r
+        .errors
+        .iter()
+        .filter(|e| e.message.contains("no-such-strategy"))
+        .collect();
+    assert_eq!(unknown.len(), 1, "{:?}", r.errors);
+    assert_eq!(r.errors.len(), 1, "{:?}", r.errors);
 }
