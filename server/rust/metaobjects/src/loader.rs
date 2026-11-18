@@ -2,7 +2,8 @@
 //! spell every reference canonically.
 //!
 //! Order of passes, as in every port: parse → merge → super resolution →
-//! (validation, a later step of this port) → reference resolution.
+//! validation (its passes are registered as the validation features land) →
+//! reference resolution.
 //!
 //! Built for speed from the start: each file is read once and parsed straight into
 //! one arena, nothing is written to disk, and the passes walk the tree a fixed
