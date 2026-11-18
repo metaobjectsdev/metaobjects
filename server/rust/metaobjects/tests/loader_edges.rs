@@ -175,7 +175,11 @@ fn string_array_coercion_reports_every_bad_element() {
     )]);
     assert_eq!(codes(&r), ["ERR_YAML_COERCION", "ERR_YAML_COERCION"]);
     for (i, e) in r.errors.iter().enumerate() {
-        assert!(e.message.contains(&format!("'@values[{i}]'")), "{i}: {}", e.message);
+        assert!(
+            e.message.contains(&format!("'@values[{i}]'")),
+            "{i}: {}",
+            e.message
+        );
         assert_eq!(e.source.json_path(), Some("$"), "{i}: {:?}", e.source);
     }
 }

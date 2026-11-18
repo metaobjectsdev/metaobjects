@@ -352,9 +352,11 @@ impl Desugar<'_> {
     fn check_coercion(&mut self, name: &str, raw: &Value, value_type: &str, at: &str) {
         let mismatch = |expected: &str| Some((name.to_string(), raw.clone(), expected.to_string()));
         let found: Vec<(String, Value, String)> = match value_type {
-            ATTR_SUBTYPE_STRING | ATTR_SUBTYPE_CLASS => {
-                (!raw.is_string()).then(|| mismatch("string")).flatten().into_iter().collect()
-            }
+            ATTR_SUBTYPE_STRING | ATTR_SUBTYPE_CLASS => (!raw.is_string())
+                .then(|| mismatch("string"))
+                .flatten()
+                .into_iter()
+                .collect(),
             ATTR_SUBTYPE_BOOLEAN => (!raw.is_boolean())
                 .then(|| mismatch("boolean"))
                 .flatten()
