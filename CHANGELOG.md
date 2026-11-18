@@ -24,9 +24,15 @@ here.**
   While the port is in preview, a new fixture that fails in Rust and is not on the ledger prints a
   warning and does not fail the lane; a fixture that passed and regresses still fails it, because
   the ledger records how many fixtures must pass. Nothing is published and there is no codegen
-  or `cargo meta` command yet. A `rust` lane runs `cargo fmt --check`, clippy and the tests in
-  `scripts/ci-local.sh --only rust`, `pr-ci` and `local-ci`, selected by changes under
-  `server/rust/`.
+  or `cargo meta` command yet. Every load records how long each phase and each validation pass
+  took (`LoadResult::timings`; the `validate` module's ordered pass list is empty on purpose
+  until those passes land), and `load_bench` prints the per-phase and per-pass medians, with
+  `--write-baseline` / `--baseline` to record and compare a run — a baseline is a record to
+  read, never a threshold, and the committed 20x baseline is a machine-local reference. A
+  `rust` lane runs `cargo fmt --check`, clippy, the tests and the `load_bench` table (record
+  only, printed without a baseline delta — a cross-machine delta measures the machine, not the
+  change) in `scripts/ci-local.sh --only rust`, `pr-ci` and `local-ci`, selected by changes
+  under `server/rust/`.
 
 ### Changed
 
