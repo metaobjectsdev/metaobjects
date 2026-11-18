@@ -19,6 +19,7 @@ pub mod structure;
 pub mod util;
 
 use crate::errors::MetaError;
+use crate::naming::NamingCtx;
 use crate::node::{NodeId, Tree};
 use crate::registry::TypeRegistry;
 use crate::timing::{LoadTimings, PHASE_VALIDATE};
@@ -32,6 +33,8 @@ pub struct Ctx<'a> {
     pub strict: bool,
     /// The root's objects by resolution key, built once per load.
     pub objects: &'a util::ObjectIndex,
+    /// The project's physical naming and the registry its names resolve in.
+    pub naming: NamingCtx<'a>,
 }
 
 /// What a pass writes. Errors and warnings are separate channels, as in every port.

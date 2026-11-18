@@ -13,6 +13,7 @@ use serde_json::Value;
 
 use crate::errors::{MetaError, WARN_LEGACY};
 use crate::loader::split_child_tail;
+use crate::naming::{NamingCtx, collection_name_of};
 use crate::node::{NodeId, Tree};
 use crate::source::ErrorSource;
 use crate::validate::field_expr::{
@@ -83,6 +84,7 @@ const FILTER_OR: &str = "or";
 struct M<'a> {
     tree: &'a Tree,
     index: &'a ObjectIndex,
+    naming: NamingCtx<'a>,
 }
 
 type Errs = Vec<MetaError>;
@@ -101,28 +103,12 @@ fn resolved_src(src: &ErrorSource, referrer: String, target: &str) -> ErrorSourc
     }
 }
 
-/// A minimal English pluralizer standing in for the project pluralizer a reverse hop's
-/// default collection name uses; `@collectionName` always wins.
-fn pluralize(name: &str) -> String {
-    let lower = name.to_ascii_lowercase();
-    let vowel = |c: char| "aeiou".contains(c);
-    if lower.ends_with('y') && name.len() > 1 && !vowel(lower.chars().rev().nth(1).unwrap_or('a')) {
-        return format!("{}ies", &name[..name.len() - 1]);
-    }
-    if ["s", "x", "z", "ch", "sh"]
-        .iter()
-        .any(|s| lower.ends_with(s))
-    {
-        return format!("{name}es");
-    }
-    format!("{name}s")
-}
-
 impl<'a> M<'a> {
     fn new(ctx: &Ctx<'a>) -> Self {
         M {
             tree: ctx.tree,
             index: ctx.objects,
+            naming: ctx.naming,
         }
     }
 
@@ -247,23 +233,22 @@ impl<'a> M<'a> {
         false
     }
 
-    fn collection_hop_name(&self, holder: NodeId) -> String {
-        let plural = self
-            .attr_str(holder, "collectionName")
-            .map(str::to_string)
-            .unwrap_or_else(|| pluralize(&self.tree.node(holder).name));
+    fn collection_hop_name(&self, holder: NodeId) -> Option<String> {
+        let plural = collection_name_of(self.tree, holder, &self.naming).ok()?;
         let mut c = plural.chars();
-        match c.next() {
+        Some(match c.next() {
             Some(f) => f.to_lowercase().chain(c).collect(),
             None => plural,
-        }
+        })
     }
 
     /// Every identity.reference onto `target` from a concrete object whose reverse hop is `hop`.
     fn reverse_hops(&self, target: NodeId, hop: &str) -> Vec<(NodeId, NodeId)> {
         let mut found = Vec::new();
         for &holder in self.index.objects() {
-            if self.tree.node(holder).is_abstract || self.collection_hop_name(holder) != hop {
+            if self.tree.node(holder).is_abstract
+                || self.collection_hop_name(holder).as_deref() != Some(hop)
+            {
                 continue;
             }
             for &r in self.kids(holder).iter() {
@@ -2697,13 +2682,6 @@ mod tests {
                 "{code} is not in ERROR-CODES.json"
             );
         }
-    }
-
-    #[test]
-    fn pluralizes_like_a_collection_name() {
-        assert_eq!(pluralize("Consent"), "Consents");
-        assert_eq!(pluralize("Category"), "Categories");
-        assert_eq!(pluralize("Box"), "Boxes");
     }
 
     #[test]

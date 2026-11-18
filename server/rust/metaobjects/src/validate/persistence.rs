@@ -12,6 +12,7 @@ use serde_json::{Map, Value};
 use super::util::{error_at, ops_for_field, ops_for_subtype};
 use super::{Ctx, Findings};
 use crate::errors::{MetaError, WARN_LEGACY};
+use crate::naming::{resolve_column_name, resolve_flattened_column_name};
 use crate::node::{NodeId, Tree};
 
 pub const ERR_SOURCE_NO_PRIMARY: &str = "ERR_SOURCE_NO_PRIMARY";
@@ -62,7 +63,6 @@ const ATTR_FILTERABLE: &str = "filterable";
 const ATTR_SORTABLE: &str = "sortable";
 const ATTR_DB_INDEXED: &str = "db.indexed";
 const ATTR_COLUMN: &str = "column";
-const ATTR_FLATTENED_PREFIX: &str = "flattenedColumnPrefix";
 const ATTR_STORAGE: &str = "storage";
 const ATTR_OBJECT_REF: &str = "objectRef";
 const ATTR_FIELDS: &str = "fields";
@@ -389,63 +389,14 @@ pub fn validate_source_parameter_ref(ctx: &Ctx<'_>, out: &mut Findings) {
 
 // ---- validateColumnNameCollisions ------------------------------------------------------------
 
-/// `toSnakeCase` (ASCII word splitting, as the reference's two regexes): a run of
-/// capitals followed by a lowercase letter splits before its last capital, and a
-/// lowercase letter or digit followed by a capital splits between them.
-fn to_snake_case(s: &str) -> String {
-    let chars: Vec<char> = s.chars().collect();
-    let mut first = String::with_capacity(s.len() + 4);
-    let mut i = 0;
-    while i < chars.len() {
-        if chars[i].is_ascii_uppercase() {
-            let mut j = i;
-            while j < chars.len() && chars[j].is_ascii_uppercase() {
-                j += 1;
-            }
-            let split = j - i >= 2 && j < chars.len() && chars[j].is_ascii_lowercase();
-            for (k, &c) in chars[i..j].iter().enumerate() {
-                if split && i + k == j - 1 {
-                    first.push('_');
-                }
-                first.push(c);
-            }
-            i = j;
-        } else {
-            first.push(chars[i]);
-            i += 1;
-        }
-    }
-    let mut out = String::with_capacity(first.len() + 4);
-    let mut prev: Option<char> = None;
-    for c in first.chars() {
-        if c.is_ascii_uppercase()
-            && prev.is_some_and(|p| p.is_ascii_lowercase() || p.is_ascii_digit())
-        {
-            out.push('_');
-        }
-        out.push(c);
-        prev = Some(c);
-    }
-    out.to_lowercase()
-}
-
-/// The column of a field: `@column`, else the name under the default `snake_case` rule
-/// (the Rust loader carries no `naming.columns` setting yet).
-fn column_of<'a>(tree: &'a Tree, f: NodeId) -> std::borrow::Cow<'a, str> {
-    match nonempty_str_attr(tree, f, ATTR_COLUMN) {
-        Some(c) => c.into(),
-        None => to_snake_case(&tree.node(f).name).into(),
-    }
-}
-
-struct PhysicalColumn<'a> {
-    column: std::borrow::Cow<'a, str>,
+struct PhysicalColumn {
+    column: String,
     field: NodeId,
     /// Set for a flattened member: the member's field node.
     member: Option<NodeId>,
 }
 
-impl PhysicalColumn<'_> {
+impl PhysicalColumn {
     fn label(&self, tree: &Tree) -> String {
         match self.member {
             Some(m) => format!("{}.{}", tree.node(self.field).name, tree.node(m).name),
@@ -481,7 +432,7 @@ pub fn validate_column_name_collisions(ctx: &Ctx<'_>, out: &mut Findings) {
         if !has_source || (all_read_only && sql_view) {
             continue;
         }
-        let mut seen: HashMap<String, PhysicalColumn<'_>> = HashMap::new();
+        let mut seen: HashMap<String, PhysicalColumn> = HashMap::new();
         for &f in kids.iter() {
             if tree.node(f).type_name != TYPE_FIELD
                 // ADR-0039 own: origin.* never inherits (ADR-0029), so derived-ness is own-only.
@@ -489,7 +440,7 @@ pub fn validate_column_name_collisions(ctx: &Ctx<'_>, out: &mut Findings) {
             {
                 continue;
             }
-            let mut columns: Vec<PhysicalColumn<'_>> = Vec::new();
+            let mut columns: Vec<PhysicalColumn> = Vec::new();
             if tree.node(f).sub_type == FIELD_OBJECT
                 && str_attr(tree, f, ATTR_STORAGE) == Some(STORAGE_FLATTENED)
             {
@@ -497,29 +448,31 @@ pub fn validate_column_name_collisions(ctx: &Ctx<'_>, out: &mut Findings) {
                 if let Some(target) = idx.ref_target(tree, f, ATTR_OBJECT_REF)
                     && tree.node(target).type_name == TYPE_OBJECT
                 {
-                    let prefix = match tree.attr(f, ATTR_FLATTENED_PREFIX).and_then(Value::as_str) {
-                        Some(p) => p.to_string(),
-                        None => format!("{}_", column_of(tree, f)),
-                    };
                     for &m in tree.children(target).iter() {
                         if tree.node(m).type_name == TYPE_FIELD {
-                            columns.push(PhysicalColumn {
-                                column: format!("{prefix}{}", column_of(tree, m)).into(),
-                                field: f,
-                                member: Some(m),
-                            });
+                            match resolve_flattened_column_name(tree, f, m, &ctx.naming) {
+                                Ok(column) => columns.push(PhysicalColumn {
+                                    column,
+                                    field: f,
+                                    member: Some(m),
+                                }),
+                                Err(e) => out.errors.push(e),
+                            }
                         }
                     }
                 }
             } else {
-                columns.push(PhysicalColumn {
-                    column: column_of(tree, f),
-                    field: f,
-                    member: None,
-                });
+                match resolve_column_name(tree, f, &ctx.naming) {
+                    Ok(column) => columns.push(PhysicalColumn {
+                        column,
+                        field: f,
+                        member: None,
+                    }),
+                    Err(e) => out.errors.push(e),
+                }
             }
             for col in columns {
-                if let Some(first) = seen.get(col.column.as_ref()) {
+                if let Some(first) = seen.get(&col.column) {
                     let hint = if first.member.is_some() || col.member.is_some() {
                         "Give one flattened field a different @flattenedColumnPrefix, or rename one field."
                     } else if has_explicit_column(tree, first.named())
@@ -533,7 +486,7 @@ pub fn validate_column_name_collisions(ctx: &Ctx<'_>, out: &mut Findings) {
                         "fields \"{}\" and \"{}\" on \"{}\" both resolve to physical column \"{}\". {hint}",
                         first.label(tree), col.label(tree), tree.node(obj).name, col.column)));
                 } else {
-                    seen.insert(col.column.to_string(), col);
+                    seen.insert(col.column.clone(), col);
                 }
             }
         }
@@ -868,21 +821,6 @@ mod tests {
             ERR_SORTABLE_UNSUPPORTED_SUBTYPE,
         ] {
             assert!(codes.contains_key(c), "{c} is not in ERROR-CODES.json");
-        }
-    }
-
-    #[test]
-    fn snake_case_matches_the_reference_rule() {
-        for (i, o) in [
-            ("userId", "user_id"),
-            ("userID", "user_id"),
-            ("HTTPServer", "http_server"),
-            ("address1Line", "address1_line"),
-            ("id", "id"),
-            ("ABC", "abc"),
-            ("aBC", "a_bc"),
-        ] {
-            assert_eq!(to_snake_case(i), o, "{i}");
         }
     }
 

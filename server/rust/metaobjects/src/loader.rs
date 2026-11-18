@@ -19,6 +19,7 @@ use crate::errors::{
     ERR_OVERLAY_NO_TARGET, ERR_UNKNOWN, ERR_UNKNOWN_SUBTYPE, ERR_UNKNOWN_TYPE,
     ERR_UNRESOLVED_SUPER, MetaError, WARN_DUPLICATE_DECLARATION,
 };
+use crate::naming::{NamingCtx, NamingRegistry, PhysicalNaming};
 use crate::node::{Node, NodeId, PACKAGE_SEP, Tree};
 use crate::parser::{SUBTYPE_ROOT, TYPE_METADATA, TYPE_OBJECT, parse_document_with};
 use crate::registry::TypeRegistry;
@@ -73,6 +74,8 @@ pub struct LoadResult {
 pub struct Loader<'r> {
     registry: &'r TypeRegistry,
     strict: bool,
+    naming_registry: NamingRegistry,
+    naming: PhysicalNaming,
 }
 
 /// Every metadata file under `dir`, recursively, sorted by file name as every
@@ -123,7 +126,18 @@ impl<'r> Loader<'r> {
         Self {
             registry,
             strict: false,
+            naming_registry: NamingRegistry::builtin(),
+            naming: PhysicalNaming::default(),
         }
+    }
+
+    /// The project's physical naming (`naming` in `.metaobjects/config.json`), which
+    /// column-collision and `@via` reverse-hop validation resolve names through.
+    /// Defaults to [`PhysicalNaming::default`].
+    #[must_use]
+    pub fn naming(mut self, naming: PhysicalNaming) -> Self {
+        self.naming = naming;
+        self
     }
 
     /// Load strictly (ADR-0023): an authored attribute the registry does not declare
@@ -235,6 +249,7 @@ impl<'r> Loader<'r> {
                 registry: self.registry,
                 strict: self.strict,
                 objects: &top.objects,
+                naming: NamingCtx::new(&self.naming_registry, &self.naming),
             };
             validate::run(&ctx, &mut findings, &mut timings);
             errors.append(&mut findings.errors);
