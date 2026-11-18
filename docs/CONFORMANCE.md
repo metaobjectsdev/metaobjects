@@ -648,7 +648,7 @@ shared JVM `RouteNaming` one before the Kotlin generators), and
 `codegen-kotlin`'s `KotlinRouteNamingTest` checks it refuses a model the Kotlin facade loads,
 for coinciding plurals and for a declared `@collectionName` that repeats another's segment. The pluralize cases:
 
-All 8 cases → the already-plural pluralize fix (CHANGELOG `## [Unreleased]`):
+All 8 cases → the already-plural pluralize fix (CHANGELOG `## [1.0.13]`):
 an entity whose name is already a plural noun (`Stats`, `Settings`, `Series`)
 used to get double-pluralized (`ProgramPurchaseStats` → `ProgramPurchaseStatses`)
 in every port's REST collection path, generated hook/query/finder/list names,

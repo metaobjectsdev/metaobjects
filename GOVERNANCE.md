@@ -96,6 +96,24 @@ area:
 - **Releases**, described next.
 - **This file.**
 
+### Extension packs and the core metamodel
+
+An **extension pack** is a capability library that adds vocabulary or generators on top of
+MetaObjects, in the way the [`library/`](library/) entries do (see
+[docs/features/libraries.md](docs/features/libraries.md)). Two rules apply:
+
+- **Extension packs are allowed under the MetaObjects name.** A pack may be built and published as
+  a MetaObjects library or generator package, inside this repository or in a separate one.
+  A pack built on the model format does not need core-maintainer approval to exist. The
+  Ownership section below still governs the name and trademark.
+- **Core vocabulary needs a second consumer.** A new type, subtype or attribute enters the core
+  metamodel only when a second, independent consumer needs it. Until then it lives in an
+  extension pack. The decision procedure for vocabulary is
+  [ADR-0037](spec/decisions/ADR-0037-metamodel-vocabulary-expansion-decision-framework.md), and
+  what belongs in the project at all is set out in "What belongs in MetaObjects" in
+  [docs/features/libraries.md](docs/features/libraries.md). Moving vocabulary into core is a
+  model-format change, so it needs a core maintainer (above).
+
 ### Releases
 
 The core maintainers decide when a release happens, what version it carries, and what goes in
