@@ -134,7 +134,7 @@ fn main() {
         "yaml" => (false, true, false),
         "project" => (false, false, true),
         "all" => (true, true, true),
-        other => panic!("mode is json, yaml or all, not {other}"),
+        other => panic!("mode is json, yaml, project or all, not {other}"),
     };
     assert!(
         FITNESS.contains(ROOT_PACKAGE),

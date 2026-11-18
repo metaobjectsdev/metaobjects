@@ -75,7 +75,7 @@ of 526 green with the rest on `server/rust/metaobjects/tests/conformance-expecte
 (validation passes, merge warnings, the reporting short-name rule and the `script.json`
 fixtures, none of them built yet); `yaml-conformance`, 15 of 19 (the four on
 `yaml-conformance-expected-failures.json` wait for the attribute-schema pass and the
-ADR-0059 reference rules); `source-resolution-conformance` (all 27 cases); and
+ADR-0059 reference rules); `source-resolution-conformance` (all 28 cases); and
 `naming-conformance` (all of it). Those ledgers may only shrink. While the port is in
 preview, a new fixture that fails in Rust and is not on the ledger prints a warning and does
 not fail the lane; it becomes a hard failure when the port leaves preview. A regression still
