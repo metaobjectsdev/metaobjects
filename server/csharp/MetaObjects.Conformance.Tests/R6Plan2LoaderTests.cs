@@ -137,6 +137,20 @@ public class R6Plan2LoaderTests
         Assert.Contains("allowed", err.Message);
     }
 
+    // L7: .NET's `$` also matches before a final newline; the sized pattern ends at `\z`, so a sized
+    // spelling followed by a newline is not a legal value (it would otherwise emit a sized column).
+    [Theory]
+    [InlineData("varchar(10)")]
+    [InlineData("character varying(10)")]
+    [InlineData("character(3)")]
+    public void A_sized_DbColumnType_with_a_trailing_newline_is_ERR_BAD_ATTR_VALUE(string sized)
+    {
+        Assert.NotNull(ParseDbColumnType(sized));
+        Assert.Null(ParseDbColumnType(sized + "\n"));
+        var res = LoadJson(Pairing(FIELD_SUBTYPE_STRING, sized + "\\n"));   // a JSON-escaped newline
+        Assert.Contains(res.Errors, e => e.Code == ErrorCode.ERR_BAD_ATTR_VALUE && e.Message.Contains("dbColumnType"));
+    }
+
     // ------------------------------------------------------------------------
     // Phase 1 slim-and-derive: uuid_array + text_array are removed values.
     // They now fall through Rule 1 (unknown value) → ERR_BAD_ATTR_VALUE.

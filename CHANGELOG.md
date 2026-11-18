@@ -184,13 +184,20 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   the same way under any policy. Only single-word credentials, or a host with the default
   camelCase policy and no rename, were safe. 1.3.0 fixes it: the omit list and the PATCH and PUT
   key lookup read the key from the serializer's own contract (`JsonSerializerOptions.GetTypeInfo`),
-  so a naming policy, a rename or an attribute cannot escape them. Stripping **fails closed**: when
-  the contract cannot be read (a custom converter for the row type, a custom type-info resolver or a
+  so a naming policy, a rename or an attribute cannot escape them. What is stripped, exactly: each
+  top-level credential property of the entity (and, on a TPH route, of every subtype), under the key
+  the host's serializer writes for it, from the single row of a read, create, PATCH or PUT response,
+  from each row of a list or M:N response, from each row under the `rows` key of a `?withCount=`
+  `{ rows, total }` envelope, and from each row of the JSON report export. The envelope's own
+  `rows` key is read from the same contract, so an upper-case policy (`ROWS`) on a host that sets
+  `PropertyNameCaseInsensitive = false` is stripped too. A key in those rows that spells the
+  credential ignoring case, `_` and `-` is also removed. Stripping **fails closed**: when the
+  contract cannot be read (a custom converter for the row type, a custom type-info resolver or a
   modifier that leaves a property without its reflection member, a contract that lacks the
   credential), the generated route mapping throws at startup, and a response that reaches
-  `CredentialOmittingResult` anyway is refused with an exception naming the type and the credential
-  property (never a value), instead of being sent unstripped. A key that spells the credential
-  ignoring case, `_` and `-` is also removed. A host that sets a custom `TypeInfoResolver` or a
+  `CredentialOmittingResult` anyway (or an envelope whose `rows` key or array cannot be found) is
+  refused with an exception naming the type and the credential property (never a value), instead
+  of being sent unstripped. A host that sets a custom `TypeInfoResolver` or a
   source-generated `JsonSerializerContext` must give the entity properties their reflection member
   (the default reflection resolver does), or the app will not start. The write side of the released
   1.2.0, 1.2.2 and 1.2.3 was not exploitable: a PATCH or PUT body key that missed the deny list also missed
@@ -294,7 +301,9 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   - the loaders refuse what a view cannot lower: a `now` whose value is not an ISO-8601 duration
     or whose `startOf` is not day, week or month (`error-origin-computed-now-bad-duration`); a
     searched `case` whose `when` is not boolean (`error-origin-computed-case-non-boolean-when`);
-    computed fields that refer to each other in a cycle (`error-origin-computed-cycle`); and a
+    computed fields that refer to each other in a cycle (`error-origin-computed-cycle`), and a
+    computed field that reads its own name, which loaded before and is now `ERR_INVALID_ORIGIN` at
+    load (it never lowered to valid SQL; `meta gen` recursed on it until the stack ran out); and a
     malformed relative date in a view host's `@filter` (`error-relative-date-view-host-malformed`),
     or one on a field that is not a `field.date` or `field.timestamp`, where a projection's key
     names its own field and an origin's names a field of its `@of` entity or `@via` terminal
@@ -1396,13 +1405,14 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   metadata package builds its sandbox under `$DEV_SCRATCH` (the system temp directory when unset)
   and stops its test runners with it. Contributor steps are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-- **Behaviour change, C#: with a property rename beyond case, the accepted `?sort=` key is the
-  resolved property name (rc.22).** The sort allowlist, `@sortableDefaultOrder` keys and the
+- **Fix, C#: with a property rename beyond case, `?sort=` accepts the field name and the resolved
+  property name (rc.22).** The sort allowlist, `@sortableDefaultOrder` keys and the
   `EF.Property` names carry the resolved name (EF matches the model's property name, so before
-  this any rename made a sort return 500). A project with no resolver, or one whose rename differs
-  only in case, is unchanged (the key is matched case-insensitively). With `ownerRef` spelled
-  `OwnerKey`, `?sort=ownerRef` becomes `400 invalid_sort` and `?sort=OwnerKey` is accepted.
-  `?filter[<field>]` keeps the field name.
+  this any rename made a sort return 500). With a rename beyond case the allowlist also accepts the
+  field name, the key `?filter[<field>]` takes, so a client built from the metadata's field names
+  sorts and filters with the same key. A project with no resolver, or one whose rename differs only
+  in case, is unchanged (the key is matched case-insensitively). With `ownerRef` spelled `OwnerKey`,
+  `?sort=ownerRef` and `?sort=OwnerKey` both sort by it.
 
 - **Behaviour change, C#: a `PropertyName` hook that disagrees with `GenConfig.PropertyNaming` is
   refused (rc.22).** `EntityGenerator.PropertyName` and `DbContextGenerator.PropertyName` default to
@@ -2188,9 +2198,10 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   entry splitting the model declared all of them (`CS0101` where two outputs build together). A
   narrowed entry now declares only the enums used by the objects it accepts and the value objects it
   emits beyond them, and an enum several entries use is declared by one: the entry that emits its
-  first consumer by resolution key. Each entry reaches that answer from the model alone, in its own
-  run. An enum whose first consumer no entry emits is declared by none; give that object an entry,
-  or use an un-narrowed entry, which declares every enum as before. Placing an enum in a project of
+  first consumer by resolution key. Each entry reaches that answer in its own run, from the model and
+  the run's entry list: an entry leaves the enum to another only when another `EntityGenerator`
+  entry of the same run accepts that first consumer, and declares it itself otherwise, so a single
+  narrowed entry still builds on its own. An un-narrowed entry declares every enum, as before. Placing an enum in a project of
   its own choosing is G3, not built.
 
 - **Fix, TypeScript docs: an identity reference's target links to its page (G4).** The Identity

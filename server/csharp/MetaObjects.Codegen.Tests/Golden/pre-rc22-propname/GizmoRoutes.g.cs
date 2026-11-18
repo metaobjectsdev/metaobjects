@@ -301,9 +301,8 @@ public static class GizmoRoutes
                 http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)
                 .Value.SerializerOptions;
             var node = System.Text.Json.JsonSerializer.SerializeToNode(_value, _value.GetType(), opts);
-            // The keys are the serializer's own for these properties (naming policy, rename, attribute), never guessed from names.
-            SerializerKeys.Strip(_envelope && node is System.Text.Json.Nodes.JsonObject env ? env["rows"] : node,
-                SerializerKeys.KeysOf(_value, _envelope, opts, _names), _names);
+            // The keys are the serializer's own for these properties and the envelope's rows (naming policy, rename, attribute), never guessed from names.
+            SerializerKeys.StripBody(node, _value, _envelope, opts, _names);
             http.Response.StatusCode = _status;
             if (_location is not null) http.Response.Headers.Location = _location;
             await http.Response.WriteAsJsonAsync(node, opts);

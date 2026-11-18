@@ -1138,11 +1138,13 @@ public class EntityGenerator : IGenerator
         foreach (var e in Fr019SharedEnum.MaterializedSharedEnums(ctx.Root, reached, ctx.Scope))
         {
             // An enum two narrowed entries both use is declared by ONE of them, so the entries'
-            // outputs build together. Decided from the model alone, so each entry reaches the same
-            // answer in its own run: the enum's home is its first consumer by resolution key, and
-            // the entry that emits that object declares it.
+            // outputs build together. Decided from the model and the run's entry list, so each entry
+            // reaches the same answer in its own run: the enum's home is its first consumer by
+            // resolution key, and the entry that emits that object declares it. An entry skips the
+            // enum only when ANOTHER entity entry of this run accepts the home; with no such entry
+            // (a single narrowed entry, or a home another tool generates) it declares the enum itself.
             if (ctx.Scope is { } scope && SharedEnumHome(ctx, e, importedShapes) is { } home
-                && !scope(home) && !valueShapes.Contains(home))
+                && !scope(home) && !valueShapes.Contains(home) && AnotherEntryEmits(ctx, home))
                 continue;
             var ns = Fr019SharedEnum.MaterializedNamespace(e, ctx.Config);
             ctx.Claim($"the C# namespace {ns}", e.Name, e.Declaration?.ResolutionKey() ?? e.Name,
@@ -1198,6 +1200,14 @@ public class EntityGenerator : IGenerator
         }
         return [new EmittedFile("Enums.g.cs", flat.ToString()) { WholeModel = true }];
     }
+
+    /// <summary>
+    /// Whether another entity entry of this run (<see cref="GenContext.Generators"/>) accepts
+    /// <paramref name="home"/>, so that entry declares the shared enum homed there. A run that does not
+    /// list its entries answers false, and the enum is declared here.
+    /// </summary>
+    private bool AnotherEntryEmits(GenContext ctx, MetaObject home) =>
+        ctx.Generators.OfType<EntityGenerator>().Any(g => !ReferenceEquals(g, this) && (g.Include is null || g.Include(home)));
 
     /// <summary>
     /// The object a narrowed run's shared enum is declared beside: the first, by resolution key, of
