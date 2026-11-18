@@ -147,3 +147,29 @@ fn a_symlink_cycle_is_walked_once() {
     std::fs::remove_dir_all(&dir).expect("clean up");
     assert_eq!(found.expect("walk").len(), 1);
 }
+
+#[test]
+fn a_load_records_the_time_of_every_phase() {
+    use metaobjects::timing::{
+        PHASE_FREEZE, PHASE_JSON, PHASE_MERGE, PHASE_REFS, PHASE_SUPERS, PHASE_TREE, PHASE_VALIDATE,
+    };
+    let r = load(&[(
+        "meta.a.json",
+        r#"{"metadata.root": {"package": "acme", "children": [
+              {"object.entity": {"name": "A"}}]}}"#,
+    )]);
+    let names: Vec<&str> = r.timings.phases.iter().map(|t| t.name).collect();
+    assert_eq!(
+        names,
+        [
+            PHASE_JSON,
+            PHASE_TREE,
+            PHASE_MERGE,
+            PHASE_SUPERS,
+            PHASE_VALIDATE,
+            PHASE_REFS,
+            PHASE_FREEZE
+        ]
+    );
+    assert!(r.timings.total() > std::time::Duration::ZERO);
+}
