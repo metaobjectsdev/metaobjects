@@ -50,8 +50,9 @@ here.**
   declared `origin.function` signature check compared parameter types by exact name, so an
   `integer` argument for a `bigint` or `numeric` parameter, a polymorphic `any*` parameter and a
   variadic function were all reported as mismatches. It now allows integer to bigint to numeric
-  widening, treats `any*` parameters as wildcards and does not check a variadic function's
-  trailing arity (its required fixed parameters still are). A genuine mismatch (a narrowing,
+  widening and the float widenings onto real and double precision, treats `any*` parameters as
+  wildcards and does not check a variadic function's trailing arity (its required fixed
+  parameters still are). A genuine mismatch (a narrowing,
   an unrelated type, a wrong return type) still fails.
 - **Fix, TypeScript and C#: the widened-extender warning covers every extender whose base
   changed.** An extender with no identity of its own keeps its super's identity anchor (rc.21).

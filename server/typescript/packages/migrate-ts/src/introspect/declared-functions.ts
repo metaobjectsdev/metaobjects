@@ -53,8 +53,10 @@ export interface PgFunction {
 
 /** Implicit numeric widening Postgres applies to a call argument: a declared type may call a wider parameter. */
 const WIDER_NUMERIC: Readonly<Record<string, readonly string[]>> = {
-  integer: ["bigint", "numeric"],
-  bigint: ["numeric"],
+  integer: ["bigint", "numeric", "real", "double precision"],
+  bigint: ["numeric", "real", "double precision"],
+  numeric: ["real", "double precision"],
+  real: ["double precision"],
 };
 
 /** Postgres's closed set of polymorphic pseudo-types (`pg_type.typtype = 'p'`): each takes any argument. */

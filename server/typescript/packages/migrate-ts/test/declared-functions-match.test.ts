@@ -22,6 +22,21 @@ describe("declared origin.function signature matching", () => {
     expect(signatureMatches(declared([["bigint"]]), pg(["numeric"]))).toBe(true);
   });
 
+  test("Postgres's implicit float widening is accepted: each numeric to real, to double precision", () => {
+    expect(signatureMatches(declared([["integer"]]), pg(["real"]))).toBe(true);
+    expect(signatureMatches(declared([["integer"]]), pg(["double precision"]))).toBe(true);
+    expect(signatureMatches(declared([["bigint"]]), pg(["real"]))).toBe(true);
+    expect(signatureMatches(declared([["bigint"]]), pg(["double precision"]))).toBe(true);
+    expect(signatureMatches(declared([["numeric"]]), pg(["real"]))).toBe(true);
+    expect(signatureMatches(declared([["numeric"]]), pg(["double precision"]))).toBe(true);
+    expect(signatureMatches(declared([["real"]]), pg(["double precision"]))).toBe(true);
+  });
+
+  test("a float narrowing is a mismatch: double precision to real, real to integer", () => {
+    expect(signatureMatches(declared([["double precision"]]), pg(["real"]))).toBe(false);
+    expect(signatureMatches(declared([["real"]]), pg(["integer"]))).toBe(false);
+  });
+
   test("a narrowing is a mismatch: bigint to integer, numeric to bigint", () => {
     expect(signatureMatches(declared([["bigint"]]), pg(["integer"]))).toBe(false);
     expect(signatureMatches(declared([["numeric"]]), pg(["bigint"]))).toBe(false);
