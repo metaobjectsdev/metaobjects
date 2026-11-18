@@ -57,9 +57,15 @@ const WIDER_NUMERIC: Readonly<Record<string, readonly string[]>> = {
   bigint: ["numeric"],
 };
 
+/** Postgres's closed set of polymorphic pseudo-types (`pg_type.typtype = 'p'`): each takes any argument. */
+const POLYMORPHIC_PSEUDOTYPES: readonly string[] = [
+  "any", "anyarray", "anyelement", "anyenum", "anynonarray", "anyrange", "anymultirange",
+  "anycompatible", "anycompatiblearray", "anycompatiblenonarray", "anycompatiblerange", "anycompatiblemultirange",
+];
+
 /** A polymorphic parameter (`anyelement`, `anyarray`, `anycompatible`, the pseudo-type `"any"`, ...) takes any argument. */
 function isPolymorphic(pgType: string): boolean {
-  return pgType.replaceAll('"', "").startsWith("any");
+  return POLYMORPHIC_PSEUDOTYPES.includes(pgType.replaceAll('"', ""));
 }
 
 const TEXT_TYPES = ["text", "character varying", "character"] as const;

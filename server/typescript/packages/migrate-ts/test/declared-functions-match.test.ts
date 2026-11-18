@@ -38,6 +38,13 @@ describe("declared origin.function signature matching", () => {
     }
   });
 
+  test("a user-defined type merely named with the polymorphic prefix is not a wildcard", () => {
+    // Postgres's polymorphic pseudo-types are a closed set; `anyflags` is an ordinary user
+    // type, so a genuine mismatch on it is still reported rather than waved through.
+    expect(signatureMatches(declared([["text"]]), pg(["anyflags"]))).toBe(false);
+    expect(signatureMatches(declared([["anyflags"]]), pg(["anyflags"]))).toBe(true);
+  });
+
   test("a variadic function takes any arity for its trailing parameter, its fixed ones still checked", () => {
     const variadic = pg(["text", "anyarray"], { variadic: true });
     expect(signatureMatches(declared([["text"], ["integer"], ["integer"], ["integer"]]), variadic)).toBe(true);
