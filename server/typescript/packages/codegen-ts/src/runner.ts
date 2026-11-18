@@ -34,6 +34,7 @@ import {
   loadEngineVersion,
   saveEngineVersion,
   recordGeneratedProvenance,
+  withManifestBatch,
   listGeneratedProvenance,
   type GeneratedProvenance,
   type WriteResult,
@@ -231,6 +232,15 @@ export interface RunGenResult {
   /** The jobs the orphan sweep ran (or, on a dry run, would run) with, so a caller can
    *  classify an orphan by `orphanVerdict` exactly as the sweep does. */
   orphanSweepJobs?: readonly OrphanJob[];
+  /** On a dry run only: every rendered file's absolute path and content, so a caller can
+   *  compare the output with disk in memory (`verify --codegen`, ADR-0064) with no temp tree. */
+  rendered?: ReadonlyMap<string, string>;
+  /** The absolute paths this run wrote outside the project root. The manifest records none of
+   *  them, so the stored skip key lists them and a later skip needs each to exist (ADR-0064). */
+  outsidePaths?: readonly string[];
+  /** True when the orphan sweep kept an edited orphan. Such a run is incomplete: it stores no
+   *  skip key, so the next run repeats the warning (ADR-0064). */
+  sweepRefused?: boolean;
 }
 
 /**
@@ -390,9 +400,11 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     return untrackedOutDirs.some((dir) => isNestedIn(fullPath, dir));
   };
   let untrackedCount = 0;
+  const outsidePaths: string[] = [];
   const policyFor = (fullPath: string, handEdits?: HandEdits): DecideAndWriteOpts => {
     if (outsideProject(fullPath)) {
       untrackedCount++;
+      outsidePaths.push(fullPath);
       // With no record to consult, the default baseline REFUSES any existing file that
       // differs from fresh output — so a second run over its own earlier output refused
       // every changed file, the opposite of the warning below. Such a file is overwritten
@@ -456,6 +468,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // packages may declare the same short name).
   const allObjects = root.objects();
   const entityFilter = opts.entityFilter;
+  const entityNarrowed = entityFilter !== undefined && entityFilter.length > 0;
   const afterEntityFilter = entityFilter
     ? allObjects.filter((o) => entityFilter.includes(o.name))
     : allObjects;
@@ -498,6 +511,15 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // generates nothing. A selection made only of unserved reports gets the same
   // "nothing to generate" warning as an empty one.
   const generatable = generatableObjects(filtered, root);
+  // `meta gen <Entity>` narrows what is WRITTEN per entity, never what a whole-model file
+  // sees: a barrel, an index or a shared schema rendered from the named entities alone
+  // dropped every other entity's export. So every generator gets the whole (scoped) model
+  // in `ctx.entities`, and the entity filter reaches it only as `ctx.selected`.
+  // Keyed by the generated object (a served report generates as its read model) and by
+  // the declared one, so either names the selection.
+  const selectedKeys = new Set([...filtered, ...generatable].map((o) => o.resolutionKey()));
+  const isSelected = (o: MetaObject): boolean => selectedKeys.has(o.resolutionKey());
+  const wholeModel = scope ? allObjects.filter((o) => scope(o.resolutionKey())) : allObjects;
   if (generatable.length === 0) {
     warnings.push(
       "No entities to generate — every selected object is an object.report that is not " +
@@ -508,16 +530,20 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   }
 
   const safeEntities: MetaObject[] = [];
-  for (const entity of generatable) {
+  for (const entity of entityNarrowed ? generatableObjects(wholeModel, root) : generatable) {
     if (!VALID_ENTITY_NAME.test(entity.name)) {
-      warnings.push(
-        `Skipping entity with unsafe name "${entity.name}" — must match /^[A-Za-z_][A-Za-z0-9_]*$/.`,
-      );
+      if (isSelected(entity)) {
+        warnings.push(
+          `Skipping entity with unsafe name "${entity.name}" — must match /^[A-Za-z_][A-Za-z0-9_]*$/.`,
+        );
+      }
       continue;
     }
     safeEntities.push(entity);
   }
-  if (safeEntities.length === 0) {
+  // The entities this run writes per-entity output for: all of them, or the ones named.
+  const selectedEntities = entityNarrowed ? safeEntities.filter(isSelected) : safeEntities;
+  if (selectedEntities.length === 0) {
     return { files: [], warnings, conflicts: [] };
   }
 
@@ -770,7 +796,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // the run's own entity set (the same set every generator sees), so `meta gen <entity>`
   // reports on what it just generated rather than on objects it was told to skip.
   // See retired-codegen-attrs.ts. Self-extinguishing; warning only.
-  warnRetiredCodegenAttrs(safeEntities, (m) => warnings.push(m));
+  warnRetiredCodegenAttrs(selectedEntities, (m) => warnings.push(m));
 
   // What the documentation generators in one target must agree on (docs-run.ts), built from
   // the generators the run declares for that target. The schema builder is shared by all
@@ -833,7 +859,6 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // for the rest — the declared generators it did not run, and the objects it did not render —
   // so a narrowed run reads what a full run reads. A record for a generator no longer declared,
   // or for a file no longer on disk, is stale and stays out.
-  const entityNarrowed = opts.entityFilter !== undefined && opts.entityFilter.length > 0;
   const runOutputFiles = (): RunOutputFile[] => {
     const out = new Map<string, RunOutputFile>();
     const keyOf = (fullPath: string): string | undefined => {
@@ -844,7 +869,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     if (opts.generatorNames !== undefined || entityNarrowed) {
       const ranNames = new Set(selected.map((g) => g.name));
       const declaredNames = new Set(config.generators.map((g) => g.name));
-      const renderedNodes = new Set(safeEntities.map((e) => e.resolutionKey()));
+      const renderedNodes = new Set(selectedEntities.map((e) => e.resolutionKey()));
       for (const rec of listGeneratedProvenance(genStateDir)) {
         if (!declaredNames.has(rec.generatedBy)) continue;
         // A generator that ran states its own output, except for the objects an entity
@@ -866,6 +891,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     return [...out.values()].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   };
 
+  const wholeKeys = new Set(safeEntities.map((e) => e.resolutionKey()));
   for (const generator of selected) {
     const selfTarget = targetOf(generator);
     // Resolve the WRITE-time location against projectRoot when outDir is
@@ -919,6 +945,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     });
     const ctx: GenContext = {
       entities: safeEntities,
+      ...(entityNarrowed && { selected: isSelected }),
       loadedRoot: root,
       matches: (e) => generator.filter?.(e) ?? true,
       // FR-023 §11.1 item 2 — the SAME `scope` predicate that already narrowed
@@ -1007,6 +1034,10 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     }
 
     for (const file of files) {
+      // A file rendered from one object the entity filter did not name is not this run's
+      // to write: `perEntity` already skips those, and this holds a generator that renders
+      // per object by other means to the same rule.
+      if (entityNarrowed && file.sourceNode !== undefined && wholeKeys.has(file.sourceNode) && !selectedKeys.has(file.sourceNode)) continue;
       const fullPath = join(writeOutDir, file.path);
       const collision = emitted.find((prev) => prev.fullPath === fullPath);
       if (collision) {
@@ -1193,6 +1224,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
         ]
       : orphanJobs;
 
+  let sweepRefused = false;
   const sweep = (dryRun: boolean): void => {
     if (projectRoot === undefined || sweepJobs.length === 0) return;
 
@@ -1246,6 +1278,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       writes.push({ path: join(projectRoot, relPath), status: "removed" });
     }
     if (result.refused.length > 0) {
+      sweepRefused = true;
       // Grouped by the generator that refused, so each message names a generator the
       // project actually registered. `orphanPolicy` is generic and apps are encouraged
       // to compose their own, so one blanket message naming `requirement-tests` would
@@ -1305,56 +1338,67 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     // A preview that hides a pending deletion is worse than no preview at all, so
     // the sweep still runs — in decide-and-report mode, touching nothing.
     sweep(true);
-    return { files: writes, warnings, conflicts, handEditsOverwrite: handEditsOverwrite(), orphanSweepJobs: sweepJobs };
+    return {
+      files: writes,
+      warnings,
+      conflicts,
+      handEditsOverwrite: handEditsOverwrite(),
+      orphanSweepJobs: sweepJobs,
+      rendered: new Map(emitted.map((f) => [f.fullPath, f.content])),
+    };
   }
 
-  for (const file of emitted) {
-    // Key the snapshot by project-relative path so multi-target projects keep
-    // distinct entries (e.g. `database/Post.ts` vs `web/Post.queries.ts`).
-    // Without an explicit projectRoot we let decideAndWrite derive a stable
-    // hash-of-path key — fine for ephemeral test runs.
-    const result = decideAndWrite(file.fullPath, file.content, policyFor(file.fullPath, file.handEdits));
-    writes.push(result);
-    if (result.discardedEdit === true) {
-      warnings.push(
-        `overwrote hand-edited ${relativeForDisplay(file.fullPath)} with fresh output ` +
-          `(handEdits: "overwrite" on ${file.generatedBy})`,
-      );
-    }
-    if (result.status === "conflict") {
-      conflicts.push(result);
-      warnings.push(
-        `Merge conflict in ${file.fullPath}: resolve diff3 markers and re-run ` +
-        `'meta gen' to advance the canonical state.`,
-      );
-    }
-    // Refusals are reported together after the loop (see reportRefusals) so a
-    // whole-project cause can be stated once instead of once per file.
-  }
-
-  reportRefusals();
-  noteUntracked();
-  reportAdoptions();
-
-  // G3 — which node each recorded file came from, beside its hash. Only with a real
-  // projectRoot: without one the manifest is keyed by path hashes, not paths.
-  if (projectRoot !== undefined) {
-    const provenance = new Map<string, GeneratedProvenance>();
+  // The whole write phase shares one in-memory manifest, written once at its end — the
+  // writes, the provenance and the sweep all record into it. See `withManifestBatch`.
+  withManifestBatch(genStateDir, () => {
     for (const file of emitted) {
-      if (outsideProject(file.fullPath)) continue;
-      // The same key policyFor gives the write, so the two always name one entry.
-      provenance.set(relative(projectRoot, file.fullPath), {
-        generatedBy: file.generatedBy,
-        ...(file.sourceNode !== undefined && { sourceNode: file.sourceNode }),
-      });
+      // Key the snapshot by project-relative path so multi-target projects keep
+      // distinct entries (e.g. `database/Post.ts` vs `web/Post.queries.ts`).
+      // Without an explicit projectRoot we let decideAndWrite derive a stable
+      // hash-of-path key — fine for ephemeral test runs.
+      const result = decideAndWrite(file.fullPath, file.content, policyFor(file.fullPath, file.handEdits));
+      writes.push(result);
+      if (result.discardedEdit === true) {
+        warnings.push(
+          `overwrote hand-edited ${relativeForDisplay(file.fullPath)} with fresh output ` +
+            `(handEdits: "overwrite" on ${file.generatedBy})`,
+        );
+      }
+      if (result.status === "conflict") {
+        conflicts.push(result);
+        warnings.push(
+          `Merge conflict in ${file.fullPath}: resolve diff3 markers and re-run ` +
+          `'meta gen' to advance the canonical state.`,
+        );
+      }
+      // Refusals are reported together after the loop (see reportRefusals) so a
+      // whole-project cause can be stated once instead of once per file.
     }
-    recordGeneratedProvenance(genStateDir, provenance);
-  }
 
-  // Sweep AFTER the writes: writing is the primary job, and a deletion that runs
-  // first would be unrecoverable if a later write threw. Ordering cannot change
-  // the decision — a path this run emitted is never an orphan either way.
-  sweep(false);
+    reportRefusals();
+    noteUntracked();
+    reportAdoptions();
+
+    // G3 — which node each recorded file came from, beside its hash. Only with a real
+    // projectRoot: without one the manifest is keyed by path hashes, not paths.
+    if (projectRoot !== undefined) {
+      const provenance = new Map<string, GeneratedProvenance>();
+      for (const file of emitted) {
+        if (outsideProject(file.fullPath)) continue;
+        // The same key policyFor gives the write, so the two always name one entry.
+        provenance.set(relative(projectRoot, file.fullPath), {
+          generatedBy: file.generatedBy,
+          ...(file.sourceNode !== undefined && { sourceNode: file.sourceNode }),
+        });
+      }
+      recordGeneratedProvenance(genStateDir, provenance);
+    }
+
+    // Sweep AFTER the writes: writing is the primary job, and a deletion that runs
+    // first would be unrecoverable if a later write threw. Ordering cannot change
+    // the decision — a path this run emitted is never an orphan either way.
+    sweep(false);
+  });
 
   // #232 — stamp the engine version that produced this snapshot, so the NEXT gen can
   // detect an engine change. Written after a successful run only, and only by a run that
@@ -1362,7 +1406,10 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // Amendment 9), tool state included.
   if (installedEngine !== undefined && config.generators.length > 0) saveEngineVersion(genStateDir, installedEngine);
 
-  return { files: writes, warnings, conflicts, handEditsOverwrite: handEditsOverwrite(), orphanSweepJobs: sweepJobs };
+  return {
+    files: writes, warnings, conflicts, handEditsOverwrite: handEditsOverwrite(), orphanSweepJobs: sweepJobs,
+    outsidePaths, sweepRefused,
+  };
 }
 
 /**

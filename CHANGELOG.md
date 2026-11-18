@@ -25,6 +25,10 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   assigned one (`row.Role = ...`) no longer compiles. The value belongs to the server: set it
   through a database default or EF Core (`db.Entry(row).Property(r => r.Role).CurrentValue`),
   which writes private setters.
+- **Java and Kotlin: `<filters>` now narrow every generator.** The `codegen-spring` and
+  `codegen-kotlin` generators ignored a generator's `<filters>` and wrote every object; they now
+  honour them, as the `codegen-base` generators always did. A pom whose filters were inert
+  generates fewer files: remove the `<filters>` that no longer describe what you want.
 
 ### Security
 
@@ -77,7 +81,7 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
 
 ### Added
 
-- **Rust port foundation, in preview (ADR-0063).** `server/rust/` is a Cargo workspace with a
+- **Rust port foundation, in preview (ADR-0065).** `server/rust/` is a Cargo workspace with a
   pinned toolchain and one crate, `metaobjects`: the node model, the type registry and the
   built-in providers (strict, sealed after bootstrap, the same `ERR_*` codes), and a JSON loader
   that reads packages, children, subtypes, attributes, `extends` and references, with the
@@ -90,6 +94,36 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   the tests in `scripts/ci-local.sh --only rust`, `pr-ci` and `local-ci`, selected by changes
   under `server/rust/`.
 
+- **A code writer for generators: `CodeWriter` and `TsWriter` in `@metaobjectsdev/codegen-ts`**
+  (ADR-0063). A generator says what a line contains, and the writer decides where it sits. It
+  builds the file in memory with no formatter. It collects imports while the body is written,
+  treats blank lines as requests that collapse, and prints a list on one line when the line fits
+  120 columns, otherwise one item per line. `TsWriter` accepts ts-poet `Code` fragments and
+  collects their `imp()` imports, so a generator can move to it one function at a time. The
+  writer is exported from the package root and from `@metaobjectsdev/codegen-ts/engine`, so an
+  owned (ejected) generator can use it too. Both classes are built to be extended: every
+  method is public or protected, so a subclass can override one step, such as import order,
+  and keep the rest. ADR-0063 also rules that reference generators will be extended the same
+  way, one overridable method per piece of output, without promising those methods are stable
+  between minor versions. The contract is `spec/code-writer.md`, pinned by
+  the new `fixtures/writer-conformance/` corpus. No shipped generator uses the writer yet, so
+  generated output does not change in this release.
+
+- **Select objects to regenerate in every port.** C# `dotnet meta gen --entities A,B` (and
+  `verify --codegen --entities`) and, for Java and Kotlin, `mvn metaobjects:generate
+  -Dmeta.entities=A,B` regenerate only the named objects' files, like TypeScript's
+  `meta gen A B` and Python's `--entities`. Names are short object names. A file built from the
+  whole model (C#'s `AppDbContext`, the Java and Kotlin validator registry, report export writer
+  and binding provider) still renders from the whole model, a narrowed run neither deletes nor
+  forgets the other objects' files, and a blank selection or a name that matches no object is
+  refused (exit 2 in C#, a failed goal in Maven).
+- **`meta gen <Name>...` refuses a name that matches no object**, with exit 2 and nothing
+  written, as Python, C# and the Maven plugin do. It used to drop the unknown name silently
+  when another name matched, and only warn when none did.
+- **The Java loader's initialization timeout is a setting.** It stays 30 seconds by default. Raise
+  it with `-Dmeta.loaderTimeoutMs` (or `<loaderTimeoutMs>`) on the Maven plugin,
+  `LoaderOptions.setInitTimeoutMs`, the loader argument `initTimeoutMs`, or the system property
+  `metaobjects.loader.initTimeoutMs`; the timeout error names them.
 - **A page size for generated list routes: `api.pagination`, in every port.** An external review
   of 1.2.0 found that list endpoints had no hard cap: the TypeScript and C# routes returned the
   whole table when `limit` was omitted, and `?limit=100000` was accepted in every port. The new
@@ -173,6 +207,23 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   the subject, the html body and the text body each raise. No generated code changes.
 
 ### Changed
+
+- **Generation now skips when nothing changed, in every port (ADR-0064).** `meta gen`,
+  `metaobjects gen`, `dotnet meta gen` and `mvn metaobjects:generate` build a key from the loaded
+  model (each root node in canonical effective form), the generators' identity (built engine code,
+  config, owned generators, templates, declared extra inputs, project config) and the output-changing
+  flags, before anything renders. When it matches the last successful run and
+  every generated file still holds the bytes that run left, nothing renders and nothing is
+  written. The key is kept, uncommitted, in `.metaobjects/.gen-state/.fingerprint-<port>.json`. A
+  run that names entities forces exactly those: it never skips, and it neither writes nor
+  satisfies the full-run key. `--force`
+  (`-Dmetaobjects.force=true` on Maven) renders everything, and a generator that cannot declare
+  what it reads opts out with `cache: false` or its port's equivalent. Locally, `verify --codegen`
+  may answer "no drift" from the same key (`--full` renders; CI always renders), and compares in
+  memory, with no temp tree, whenever it renders. The hash manifest is written once per run in every
+  port, only when an entry changed; a file whose fresh bytes equal what is on disk is never
+  rewritten; TypeScript runs `git merge-file` only for a file edited by hand. A forward-port of
+  the 1.2.x change, with the skip ADR numbered ADR-0064 on this line.
 
 - **A write with a key the entity does not declare is refused by default: `api.unknownFields`.
   Existing projects get `reject` when they regenerate.** Until now every port dropped an
@@ -301,6 +352,16 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   `Cannot find module './dprint-node.linux-x64-gnu.node'` on every command that loads the
   codegen engine, `meta migrate` and `meta verify --db` included. Those schema commands, the
   binary's documented scope, now run; `meta gen` is still not supported inside the binary.
+- **Test databases stay off the drives.** Every Docker-backed database launcher in every port
+  (the TypeScript `integration-tests` Postgres, MySQL and Cube containers; the Python MySQL and
+  Postgres launchers; the C# MySQL and Postgres runners; the Java and Kotlin Testcontainers
+  classes; the services and sidecars in the integration-test and local-CI workflows and
+  `scripts/ci-local.sh`) mounts a 2 GiB tmpfs at the image's `VOLUME` path, and Postgres runs
+  with `fsync`, `synchronous_commit` and `full_page_writes` off. Each container is removed when
+  its run ends: by `--rm`, by Ryuk when a killed process never reaches its own cleanup, and by an
+  exit or SIGTERM handler that also removes anonymous volumes. The Stryker mutation gate for the
+  metadata package builds its sandbox under `$DEV_SCRATCH` (the system temp directory when unset)
+  and stops its test runners with it. Contributor steps are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Deprecated
 
@@ -309,6 +370,40 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   the TypeScript and Python shims. Use `ValueObjectNames.TypeName(obj, root)`.
 
 ### Fixed
+
+- **The Java loader loads a large model.** Each child added to a node was checked against a
+  list of the keys already added, so a root with 1,160 objects took more than the 30-second
+  timeout to load and failed. The check is a set lookup now, and a reference resolves through
+  the per-type name index instead of a scan of the root. Twenty copies of the canonical
+  conformance model (1,160 objects) load in about 2 seconds of CPU, and `LargeModelLoadTest`
+  holds that to a budget. Java and Kotlin.
+- **`gen <Entity>` no longer shrinks the files rendered from the whole model.** Narrowing a run
+  to some entities (`meta gen Post`, Python `metaobjects gen --entities Post`) handed every
+  generator only the named entities, so a whole-model file (the TypeScript barrel and Cube
+  model, Python's shared enums module, duration codec and report writers, and the object index
+  Python's entity and route generators resolve relations through) was rendered from just them. A narrowed run now writes only the named entities' own files,
+  and every whole-model file it writes is byte-identical to a full run's. A generator sees the
+  whole model in `ctx.entities` and the narrowing as `ctx.selected`; `perEntity` (`per_entity`)
+  applies it. A Python target's declared `entities` still bounds that target's model. The C# and
+  Maven entity selection added in this release follows the same rule. Two consequences to expect: a narrowed run
+  checks the whole model as a full run does (a sourced object with no `dialect`, colliding
+  collection names), because the files it writes are rendered from it; and an owned generator
+  that writes one file per object by looping over `ctx.entities` itself, instead of through
+  `perEntity`, now sees every object, so it should set each file's `sourceNode` (the runner
+  then drops the unnamed objects' files) or apply `ctx.selected`.
+- **`gen` writes `.hashes.json` once per run, and not at all when nothing changed.** TypeScript,
+  Python and C# re-read and re-wrote the whole manifest after every generated file, so a run of
+  N files wrote it N times; they now hold it in memory for the run and write it once, as Java
+  already did. Python's `metaobjects gen` output changes, which matters to a script that parses it:
+  it now lists only the files it wrote, and its summary line counts the files it left as they
+  were (unchanged or skipped) separately instead of reporting them as written. A run that
+  fails still records the files it wrote before failing, and a failed manifest write then no
+  longer hides the error that stopped the run.
+- **`meta gen` loads the metadata once.** The unknown-attribute warning re-loaded the project
+  strictly on every run; it now reuses the generation load and parses strictly again only when
+  the lenient load reported an unknown bare key. `meta gen` also no longer imports a database
+  driver: the migration advice it prints reads `@metaobjectsdev/migrate-ts/offline`, a new
+  subpath with the schema builder and diff and none of the introspection or apply code.
 
 - **A projection view keeps the columns a reverse `@via` hop feeds.** An origin `@via` that walks
   an `identity.reference` backwards (`Project.timeEntries`, #560) loaded, but `meta migrate` left

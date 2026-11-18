@@ -319,6 +319,12 @@ meta verify --codegen     # committed output, docs included, vs a fresh regen
 meta verify --db <url>    # live DB schema vs metadata
 ```
 
+`meta gen Author Post` names objects by their short name (without the package). Each
+generator's `filter` option applies on top. A name that matches no object is refused with
+exit 2 before anything is written, even beside names that match (`meta gen: names 'Ordr',
+which matches no object in the metadata.`). Every port has the same selection: `--entities` in Python and C#,
+`-Dmeta.entities` on the Maven plugin for Java and Kotlin.
+
 ### Schema — first migration on a brand-new database
 
 `meta migrate` diffs your metadata against a **committed schema snapshot**,

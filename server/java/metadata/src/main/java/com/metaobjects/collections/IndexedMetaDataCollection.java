@@ -173,8 +173,10 @@ public class IndexedMetaDataCollection {
      * @return Optional containing the child if found
      */
     public Optional<MetaData> findByNameAndType(String name, String type) {
-        ConcurrentHashMap<String, MetaData> typeSpecificIndex = getNamespaceIndexForType(type);
-        return Optional.ofNullable(typeSpecificIndex.get(name));
+        // A read: look the namespace up without creating it, so an empty one never appears
+        // in getSupportedTypes().
+        ConcurrentHashMap<String, MetaData> typeSpecificIndex = typeNamespaces.get(type);
+        return typeSpecificIndex == null ? Optional.empty() : Optional.ofNullable(typeSpecificIndex.get(name));
     }
 
     /**

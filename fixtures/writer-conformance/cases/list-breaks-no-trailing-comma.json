@@ -1,0 +1,34 @@
+{
+  "description": "With trailingComma off, a broken list puts no comma after its last item.",
+  "dialect": "core",
+  "options": {
+    "indent": "  ",
+    "width": 30,
+    "trailingComma": false
+  },
+  "ops": [
+    [
+      "line",
+      "call",
+      {
+        "list": {
+          "open": "(",
+          "items": [
+            "alphaAlpha",
+            "betaBeta",
+            "gammaGamma"
+          ],
+          "close": ")"
+        }
+      },
+      ";"
+    ]
+  ],
+  "expected": [
+    "call(",
+    "  alphaAlpha,",
+    "  betaBeta,",
+    "  gammaGamma",
+    ");"
+  ]
+}

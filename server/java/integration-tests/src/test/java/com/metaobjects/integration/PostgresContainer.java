@@ -9,6 +9,8 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -37,6 +39,8 @@ public final class PostgresContainer implements AutoCloseable, JdbcTarget {
     private static final String SHARED_PG_URL_ENV = "METAOBJECTS_TEST_PG_URL";
 
     private static final String IMAGE = "postgres:16-alpine";
+    /** The image's VOLUME ({@code docker image inspect}); a tmpfs there keeps the data in RAM. */
+    private static final String DATA_DIR = "/var/lib/postgresql/data";
     private static final String PG_USER = "postgres";
     private static final String PG_PASSWORD = "test";
 
@@ -82,11 +86,12 @@ public final class PostgresContainer implements AutoCloseable, JdbcTarget {
         // needed. close() force-removes, and Ryuk removes it when a killed run never
         // reaches close() (see ReaperLabels).
         try {
-            runDocker(ReaperLabels.dockerRun(
-                "--name", name,
-                "-e", "POSTGRES_PASSWORD=" + PG_PASSWORD,
-                "-p", "127.0.0.1::5432",
-                IMAGE));
+            ReaperLabels.removeAtExit(name);
+            List<String> run = new ArrayList<>(List.of("--name", name));
+            run.addAll(ReaperLabels.ramVolume(DATA_DIR));
+            run.addAll(List.of("-e", "POSTGRES_PASSWORD=" + PG_PASSWORD, "-p", "127.0.0.1::5432", IMAGE));
+            run.addAll(ReaperLabels.POSTGRES_DURABILITY_OFF);
+            runDocker(ReaperLabels.dockerRun(run.toArray(String[]::new)));
             String url = "jdbc:postgresql://127.0.0.1:" + publishedPort(name, 5432) + "/postgres";
             waitForReady(url);
             this.jdbcUrl = url;
@@ -108,6 +113,7 @@ public final class PostgresContainer implements AutoCloseable, JdbcTarget {
         }
         try { runDocker("rm", "-f", "-v", name); }
         catch (RuntimeException ignored) { /* container may already be gone */ }
+        ReaperLabels.forget(name);
     }
 
     /** Run a statement against the shared sidecar's admin database (auto-commit). */
@@ -203,6 +209,7 @@ public final class PostgresContainer implements AutoCloseable, JdbcTarget {
     /** Best-effort teardown of a container that failed to start. */
     private void forceRemove() {
         try { runDocker("rm", "-f", "-v", name); } catch (RuntimeException ignored) { /* already gone */ }
+        ReaperLabels.forget(name);
     }
 
     /** The container's docker state, or null when it cannot be determined. */

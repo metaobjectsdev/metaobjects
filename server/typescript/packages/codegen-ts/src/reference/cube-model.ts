@@ -161,7 +161,7 @@ function generateCubeFiles(ctx: GenContext, options: CubeModelGeneratorOptions):
   // The run's selection, narrowed by the filter, keeping the entities that are their own cube;
   // a cube is named after its entity. A report is never selected itself: its rollup rides with
   // its @from cube.
-  const selected = ctx.entities.filter((o) => ctx.matches(o) && hasReportingVocabulary(o));
+  const selected = ctx.entities.filter((o) => ctx.matches(o) && (ctx.selected?.(o) ?? true) && hasReportingVocabulary(o));
   if (selected.length === 0) return [];
 
   const dialect = options.dialect ?? ctx.config.dialect;

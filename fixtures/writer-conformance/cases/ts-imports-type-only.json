@@ -1,0 +1,36 @@
+{
+  "description": "A module whose every name is type-only prints `import type`; a module mixing both marks the type names inline.",
+  "dialect": "typescript",
+  "ops": [
+    [
+      "line",
+      "x;"
+    ],
+    [
+      "useType",
+      "Row",
+      "./row"
+    ],
+    [
+      "useType",
+      "Filter",
+      "./row"
+    ],
+    [
+      "use",
+      "table",
+      "./table"
+    ],
+    [
+      "useType",
+      "Cols",
+      "./table"
+    ]
+  ],
+  "expected": [
+    "import type { Filter, Row } from \"./row\";",
+    "import { type Cols, table } from \"./table\";",
+    "",
+    "x;"
+  ]
+}

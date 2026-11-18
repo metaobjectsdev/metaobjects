@@ -95,6 +95,7 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
         val outRoot = Paths.get(outDir.absolutePath)
 
         for (entity in GeneratorUtil.ownMetaObjects(loader)) {
+            if (!isSelected(entity)) continue
             if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
             // Abstract entities are inheritance scaffolding — never emit relation helpers.
             if (KotlinGenUtil.isAbstractEntity(entity)) continue

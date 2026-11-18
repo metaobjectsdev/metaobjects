@@ -84,6 +84,10 @@ export const docsSiteFile = function docsSiteFile(opts?: DocsSiteFileOpts): Gene
     target: opts?.target ?? DOCS_TARGET_NAME,
     // The explorer lists the files the run generated, so it runs after the rest.
     ...(kind === DOCS_SITE_EXPLORER && { readsRunOutput: true }),
+    readsMetadataSources: true,
+    // ADR-0064: the prompts directory is read beside the model. `templates/` and the owned
+    // copy under `codegen/` are fingerprinted for every run already.
+    ...(opts?.prompts !== undefined ? { inputs: [opts.prompts] } : {}),
     async generate(ctx) {
       const project = ctx.inputRoot ?? ctx.projectRoot ?? process.cwd();
       if (kind === DOCS_SITE_EXPLORER) return explorerSite(ctx, project, prefix, opts);

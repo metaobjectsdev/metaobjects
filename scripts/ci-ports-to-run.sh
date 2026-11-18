@@ -46,7 +46,7 @@ RUN_WINDOW="${MO_PORTS_RUN_WINDOW:-20}"
 lane_port() {
   case "$1" in
     ts-fast|ts-unit|ts-slow) echo ts ;;
-    java-fast|java-slow)     echo java ;;
+    java-slow)               echo java ;;
     python)                  echo python ;;
     csharp)                  echo csharp ;;
     rust)                    echo rust ;;
@@ -54,7 +54,7 @@ lane_port() {
   esac
 }
 
-all_lanes() { echo "ts-fast ts-unit ts-slow java-fast java-slow python csharp rust"; }
+all_lanes() { echo "ts-fast ts-unit ts-slow java-slow python csharp rust"; }
 
 # Canonical order, deduplicated, unknown tokens dropped. The order is FIXED rather than
 # sorted because the workflow tests the result with `contains(..., 'ts')` — a substring

@@ -2,7 +2,7 @@
 //!
 //! The metamodel registry, the JSON loader and the canonical serializer. The
 //! behaviour is defined by the shared conformance corpora that every port runs;
-//! ADR-0063 records how this port differs from the other five.
+//! ADR-0065 records how this port differs from the other five.
 
 pub mod errors;
 pub mod json;

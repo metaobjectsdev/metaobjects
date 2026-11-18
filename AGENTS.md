@@ -71,7 +71,7 @@ PyPI has had no product change since `0.25.0` — nothing is broken.
 - **Kotlin** — `codegen-kotlin` (KotlinPoet on JVM): entity + Exposed table + Spring controller + payload + relations + filter allowlist + validator + stored-proc + output-parser generators. `integration-tests-kotlin` runs the persistence-conformance corpus through Exposed against Testcontainers Postgres.
 
 **Cross-port conformance corpora** (every port runs the shared corpus):
-- Metamodel: `fixtures/conformance/` (510 fixtures; 40 shared corpora in total — per-corpus counts + the corpus x port matrix live in `docs/CONFORMANCE.md`). TS / C# / Java / Python all green.
+- Metamodel: `fixtures/conformance/` (510 fixtures; 42 shared corpora in total — per-corpus counts + the corpus x port matrix live in `docs/CONFORMANCE.md`). TS / C# / Java / Python all green.
 - Render: `fixtures/render-conformance/`. TS / C# / Java / Kotlin / Python byte-identical.
 - Persistence: `fixtures/persistence-conformance/`. **Query** scenarios run on every port (TS / C# / Java / Kotlin / Python), each provisioning its test DB by executing the committed, TS-produced `canonical/schema.postgres.sql` (Postgres only — Derby dropped for the cross-port query corpus, ADR-0015; the FR-044 `report-*` scenarios also run on SQLite, MySQL and D1 where a port has the engine, see [docs/CONFORMANCE.md](docs/CONFORMANCE.md)). The **migration** scenarios are exercised by **TS only** (TS owns schema migrations). **The corpus now gates WRITES, not just reads (SP-H):** an `op: roundtrip` scenario type INSERTs through each port's runtime/ORM write codec (NOT raw SQL), reads the row back, and asserts the wire-normalized value. The `AllTypes` entity (`roundtrip-all-types.yaml`) carries one field of **every** persistable `field.*` subtype — string/int/long/double/float/decimal/boolean/date/time/timestamp(+tz)/currency/enum/uuid/object — plus an **array-of-VO** `field.object @isArray @storage:jsonb` column (`labels`, written as 2-element / empty-`[]` / single-element arrays across the three rows) — so every subtype write+read (incl. the array-of-value-object jsonb codec) round-trips through every port against Testcontainers PG. (`field.byte`/`field.short`/`field.class` were cut as non-functional registration-only stubs — the matrix tracks only genuinely-supported subtypes; see `fixtures/registry-conformance/README.md` → "Per-subtype write-round-trip matrix".)
 - API-contract: `fixtures/api-contract-conformance/`. TS / C# / Java / Kotlin / Python all green — each port runs **two lanes**: a hand-rolled reference server AND its **generated** API artifact booted over HTTP (the deployed controller/routes; TS+C# full-stack vs Testcontainers PG, Java/Kotlin/Python generated controller + in-memory repo behind the consumer seam). The generated fan-out found 10 real deployment bugs golden snapshots missed. Three sub-corpora run the **generated lane only, on all five ports** — `write-through/`, `projection/` (F22: a view-only `object.projection` serves GET list + GET by id and answers every write verb with `405 {"error": "method_not_allowed"}`) and `report/` (FR-044: a view-backed `object.report` serves GET list, answers `POST` with that same `405`, and mounts no `/{id}` route). That is deliberate, not a gap: what is under test is whether a port's GENERATOR emits those routes, and a hand-rolled reference server would answer every scenario by construction. The `m2m/` sub-corpus also gates **TPH x M:N together** (base-declared, subtype-declared, abstract-mid-declared, a non-subtype source onto a subtype TARGET, and the cross-subtype source id answering `200 []`) — the two corpora were originally built disjoint (`tph/` had no relationships, `m2m/` no discriminators), which is precisely how that defect class survived.
@@ -129,7 +129,8 @@ adds the C#/Java/Kotlin/Python conformance lanes, the Java reactor and `integrat
 Testcontainers matrix. Run `--quick` before opening a PR and the full script before a tag;
 `MO_CI_LIST_ONLY=1 scripts/ci-local.sh [flags]` prints what a selection would run without
 running it. The no-mistakes validation gate runs the script for you — see `.no-mistakes.yaml`,
-whose `lint` and `test` commands partition `--quick` between the two steps. That file is read
+whose `test` command runs `--affected` (only the lanes the change touches, per
+`scripts/ci-lane-map.txt`) and whose `lint` command runs `--only gates`. That file is read
 from the **default branch**, so it does nothing until it is merged to `main`.
 
 **`leak-scan` is hosted again.** `main`'s protection requires that one status, and `hygiene.yml`
@@ -499,3 +500,27 @@ inverse of metadata-is-the-spine. *OMDB engine debt* — FR-003 Plan 4 closed th
 anti-patterns; the Spring Boot 3 starter and OMDB autoconfiguration shipped. *WARN
 envelope-shape on `expected-warnings.json`* — every runner asserts it; the legacy string-list
 path is retired.
+
+## Disk I/O: keep throwaway data off the drives
+
+Test databases, sandboxes and temp files must not wear out the developer's drives.
+
+- **Throwaway data goes in RAM.** Put scratch files, mutation-testing sandboxes (Stryker
+`tempDirName`) and test-only temp directories under `$DEV_SCRATCH` (fall back to the system temp
+directory when it is unset). Delete what you create when the run ends.
+- **Test databases run on a capped tmpfs at the image's `VOLUME` path** (`postgres:18*`:
+`/var/lib/postgresql`; `postgres:16/17` and `pgvector:*-pg17`: `/var/lib/postgresql/data`;
+`mysql:8*`: `/var/lib/mysql`; check others with `docker image inspect -f '{{json .Config.Volumes}}'`),
+`size=2g`, with Postgres durability off: `-c fsync=off -c synchronous_commit=off -c full_page_writes=off`.
+- **Every container you start, you remove.** Use `docker run --rm`, Testcontainers with Ryuk enabled,
+or explicit teardown in a `finally`/`trap`. Never leave a hand-started database running after your
+task. A database you mean to keep gets the label `dev.keep=true`.
+- **Generators and tools never rewrite a file whose bytes did not change**, write any manifest once per
+run (not once per file), and verify drift in memory rather than by rendering everything to a temp
+directory.
+- **Run the narrowest tests that prove the change** while iterating (one module, the affected test
+classes); run the full suite once, before the PR.
+- **No background processes outlive the task.** Kill test watchers, dev servers and sandboxes you
+started before you finish.
+
+Project specifics: test databases start in the TypeScript `integration-tests` package (`src/postgres-container.ts`, `src/mysql-container.ts`, `src/cube-container.ts`, sharing `src/throwaway.ts`), the Python `tests/integration/` launchers (`postgres_container.py`, `mysql_container.py`, `throwaway.py`), the C# `MetaObjects.IntegrationTests/Runner/PostgresContainer.cs`, the Java and Kotlin Testcontainers `PostgresContainer` classes under `server/java/integration-tests*`, and the services and sidecars in `.github/workflows/integration-tests.yml` and `local-ci.yml`.

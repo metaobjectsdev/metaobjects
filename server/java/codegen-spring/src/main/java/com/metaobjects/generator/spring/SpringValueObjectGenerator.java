@@ -108,6 +108,7 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
         }
         requestBodies = RestSurfaceGate.requestBodyShapes(loader);
         for (MetaObject vo : valueShapes(loader)) {
+            if (!isSelected(vo)) continue;
             emit(vo, outRoot);
         }
     }

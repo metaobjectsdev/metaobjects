@@ -11,7 +11,7 @@ import {
   missingDialectMessage,
 } from "@metaobjectsdev/codegen-ts";
 import type { AgentSchemaInput, Dialect, SchemaColumnLike } from "@metaobjectsdev/codegen-ts";
-import { buildExpectedSchemaWithProvenance, columnTypeSql, qualifiedDbName } from "@metaobjectsdev/migrate-ts";
+import { buildExpectedSchemaWithProvenance, columnTypeSql, qualifiedDbName } from "@metaobjectsdev/migrate-ts/offline";
 import type { MetaRoot } from "@metaobjectsdev/metadata";
 import { describeError } from "./error-text.js";
 import type { SchemaBuildOptions } from "./schema-build-options.js";

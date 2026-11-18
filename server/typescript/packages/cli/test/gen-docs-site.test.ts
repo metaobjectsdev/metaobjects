@@ -9,6 +9,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { run } from "../src/index.js";
+import { FINGERPRINT_FILE } from "../src/lib/gen-fingerprint.js";
 
 const META = {
   "metadata.root": {
@@ -157,4 +158,21 @@ describe("meta gen with docsSiteFile()", () => {
     expect(await readFile(join(root, "docs-out", "site", "index.html"), "utf8")).toBe(first);
     expect(await run(["verify", "--codegen", "--cwd", root])).toBe(0);
   });
+
+  test("a comment-only edit to a YAML metadata file makes gen render again, since the site reads comments", async () => {
+    const root = await project(META, config(""));
+    await rm(join(root, "metaobjects", "meta.json"));
+    const yaml = (comment: string): string =>
+      `metadata.root:\n  package: acme::site\n  children:\n    ${comment}\n    - object.value:\n        name: Welcome\n        children:\n          - field.string: { name: name }\n`;
+    const file = join(root, "metaobjects", "meta.site.yaml");
+    await writeFile(file, yaml("# first wording"), "utf8");
+    expect(await run(["gen", "--cwd", root])).toBe(0);
+    const stored = join(root, ".metaobjects", ".gen-state", FINGERPRINT_FILE);
+    const first = await readFile(stored, "utf8");
+    expect(await run(["gen", "--cwd", root])).toBe(0);
+    expect(await readFile(stored, "utf8")).toBe(first);
+    await writeFile(file, yaml("# second wording"), "utf8");
+    expect(await run(["gen", "--cwd", root])).toBe(0);
+    expect(await readFile(stored, "utf8")).not.toBe(first);
+  }, 30_000);
 });

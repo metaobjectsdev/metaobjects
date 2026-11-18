@@ -295,13 +295,34 @@ mvn metaobjects:generate     # or run it alone
 The generators write the DTO records, the Spring controller, the repository and the filter
 allowlist under `target/generated-sources/java`, which Maven compiles with your code.
 
+**Select objects.** `mvn metaobjects:generate -Dmeta.entities=Program,Week` (or
+`<entities>Program,Week</entities>` in the plugin `<configuration>`) regenerates only those
+objects' files: comma-separated short object names, the selection TypeScript's
+`meta gen Program Week` and the `--entities` flag in Python and C# make. Only per-object output
+narrows. A file built from the whole model (a validator registry, the report export writer,
+the class-binding provider, a package's wire support classes) still renders from the whole model
+and is byte-identical to an unnarrowed run. A narrowed run deletes no orphaned file and keeps
+the manifest entry of every file it did not write; run without the property to sweep. Two
+refusals fail the goal: a blank selection (`mvn metaobjects:generate: meta.entities names no
+object.`) and a name that matches no object (`... meta.entities names 'X', which matches no
+object in the metadata.`). Each generator's `<filters>` apply on top. Unlike the selection, a
+generator's `<filters>` narrow its whole-model files too, since they configure that generator.
+Through 8.2.x the `codegen-spring` and `codegen-kotlin` generators ignored `<filters>`; from
+8.3.0 they honour them, so a pom whose filters were inert now generates less.
+
+**Large models.** The loader gives initialization 30 seconds by default. A model large enough
+to need longer sets `-Dmeta.loaderTimeoutMs=120000` (or `<loaderTimeoutMs>` in the plugin
+`<configuration>`). Outside Maven, the same setting is `LoaderOptions.setInitTimeoutMs`, the
+loader argument `initTimeoutMs`, or the system property `metaobjects.loader.initTimeoutMs`.
+The timeout error names all three.
+
 ## Verify
 
 ```bash
 mvn metaobjects:verify       # fails with the stale files named when the model moved and nobody regenerated
 ```
 
-It regenerates into a temporary directory and compares: change `src/main/metaobjects/` without
+It regenerates in memory and compares: change `src/main/metaobjects/` without
 regenerating and the build exits 1 with `generated code is stale` and a `[content-differs]` line
 per file; `mvn metaobjects:generate` (or `mvn compile`) and it is green again. The same goal also
 runs the requirement gate. Add it to your CI after `mvn compile`.

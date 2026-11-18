@@ -5,14 +5,15 @@
 // `gen` now names each finding — attribute, node and file — as a warning, and keeps its
 // exit code.
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { run } from "../src/index.js";
 import { ejectCommand } from "../src/commands/eject.js";
+import { FINGERPRINT_FILE } from "../src/lib/gen-fingerprint.js";
 
 const WORKSPACE_TMP = resolve(import.meta.dirname, "fixtures", "__tmp__");
 
-function model(opts: { typos: boolean }): string {
+function model(opts: { typos: boolean; bareTypo?: boolean }): string {
   return JSON.stringify({
     "metadata.root": {
       package: "app",
@@ -21,6 +22,7 @@ function model(opts: { typos: boolean }): string {
           "object.entity": {
             name: "BaseThing",
             ...(opts.typos ? { isAbstrakt: true } : { abstract: true }),
+            ...(opts.bareTypo === true ? { isAbstrakt: true } : {}),
             children: [{ "field.long": { name: "id" } }],
           },
         },
@@ -152,6 +154,51 @@ describe("meta gen --strict — an unknown attribute is an error", () => {
     try {
       expect(await run(["gen", "--cwd", root])).toBe(0);
       expect(existsSync(join(root, "generated"))).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("meta gen — a run that skips still names the unknown attribute (ADR-0064 × ADR-0023)", () => {
+  test("a bare typo'd key the lenient load drops leaves the stored key matched: warn, then skip", async () => {
+    const root = setupRepo({ typos: false });
+    try {
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      const stateFile = join(root, ".metaobjects", ".gen-state", FINGERPRINT_FILE);
+      expect(existsSync(stateFile)).toBe(true);
+      const stored = readFileSync(stateFile, "utf8");
+      // A bare typo'd key: the lenient load drops it (a warning, never a tree
+      // change), so the loaded model — and the skip key made of it — is unchanged.
+      writeFileSync(join(root, "metaobjects", "meta.app.json"), model({ typos: false, bareTypo: true }), "utf8");
+      out = [];
+      err = [];
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      // The run skipped: its summary says so, and nothing the last run recorded —
+      // the stored key included — was rewritten.
+      expect(out.join("\n")).toContain("nothing changed since the last meta gen");
+      expect(readFileSync(stateFile, "utf8")).toBe(stored);
+      // And the typo is still named, with the verify advice.
+      const stderr = err.join("\n");
+      expect(stderr).toContain("ERR_UNKNOWN_ATTR");
+      expect(stderr).toContain("isAbstrakt");
+      expect(stderr).toContain("meta verify");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("the skipped structured document carries the same warning", async () => {
+    const root = setupRepo({ typos: false });
+    try {
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      writeFileSync(join(root, "metaobjects", "meta.app.json"), model({ typos: false, bareTypo: true }), "utf8");
+      out = [];
+      err = [];
+      expect(await run(["gen", "--cwd", root, "--format", "json"])).toBe(0);
+      const payload = JSON.parse(out.join("\n")) as { skipped?: boolean; warnings?: string[] };
+      expect(payload.skipped).toBe(true);
+      expect(payload.warnings?.some((w) => w.includes("isAbstrakt"))).toBe(true);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

@@ -1,0 +1,40 @@
+{
+  "description": "Default and named imports from one module share a line; a namespace import is its own line; a side-effect import prints only when nothing else comes from that module.",
+  "dialect": "typescript",
+  "ops": [
+    [
+      "line",
+      "x;"
+    ],
+    [
+      "useDefault",
+      "React",
+      "react"
+    ],
+    [
+      "use",
+      "useState",
+      "react"
+    ],
+    [
+      "useNamespace",
+      "path",
+      "node:path"
+    ],
+    [
+      "useSideEffect",
+      "./polyfill"
+    ],
+    [
+      "useSideEffect",
+      "react"
+    ]
+  ],
+  "expected": [
+    "import * as path from \"node:path\";",
+    "import React, { useState } from \"react\";",
+    "import \"./polyfill\";",
+    "",
+    "x;"
+  ]
+}

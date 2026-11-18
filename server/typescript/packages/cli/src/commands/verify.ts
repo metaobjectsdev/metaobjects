@@ -42,6 +42,8 @@ import { loadMemoryOptionsFrom, loadMetaobjectsConfig, RemovedNamingConfigError,
 import { collectionLoadOptions } from "../lib/collection-load-options.js";
 import { schemaBuildOptions, type SchemaBuildOptions } from "../lib/schema-build-options.js";
 import { computeCodegenDrift } from "../lib/codegen-drift.js";
+import { computeGenInputs, decideVerifyNoDrift, isCi, withModel } from "../lib/gen-fingerprint.js";
+import { modelHashTree } from "@metaobjectsdev/codegen-ts";
 import { hasLegacyDocsBlock, legacyDocsConfigMessage, REMOVED_VERIFY_DOCS } from "../lib/docs-removed.js";
 import { buildAgentSchemaInput } from "../lib/agent-schema.js";
 import { sourceRootsOf } from "./gen.js";
@@ -1793,6 +1795,25 @@ export async function verifyCommand(
     }
     // The explorer's requirement ledger, built only if the docs site asks for it.
     const requirementLedger = () => requirementPayload(codegenRoot, genCollection);
+
+    // ADR-0064 §4 — locally, a key that still matches the last successful `meta gen` (the
+    // loaded model and every generator input) and a manifest whose every file still hashes to
+    // its record answer "no drift" without rendering. Never in CI (it renders and compares
+    // everything, which is the guard against a key that missed an input), and never with --full.
+    if (!flags.full && !isCi()) {
+      const inputs = withModel(computeGenInputs(genConfigDir, collection, genCollection, {
+        entities: [], generators: undefined, strict: false, baseline: "default",
+      }), modelHashTree(codegenRoot));
+      const verdict = decideVerifyNoDrift(inputs);
+      if (verdict.skip) {
+        say(
+          `meta verify — nothing changed since the last \`meta gen\`, and all ${verdict.recorded.length} ` +
+            "generated file(s) match their record (no codegen drift; --full renders and compares).",
+        );
+        return 0;
+      }
+    }
+
     let result;
     try {
       result = await computeCodegenDrift(config, codegenRoot, genConfigDir, genCollection.inScope, genCollection.ownFiles, {

@@ -78,17 +78,22 @@ or when you want the same output across languages. Mustache is also the natural
 cross-language bridge: the render engine is byte-identical in every port, so one
 template emits identical output anywhere.
 
-## 4. Regeneration strategy — only optimize when it's worth it
+## 4. Regeneration strategy — the run skips itself
 
-A common optimization: **skip regeneration when the output is already up-to-date** —
-compare the mtime of the generator code and/or template against the mtime of the
-existing generated file, and don't regenerate if the output is newer.
+**Skipping unchanged work is the engine's job now, and it happens before anything
+renders:** `gen` keys the run on the loaded model and everything the generators are
+built from — content hashes, never timestamps — and a match, with every generated
+file still holding the bytes the last run left, renders and writes nothing
+([ADR-0064](../../spec/decisions/ADR-0064-skip-codegen-when-nothing-changed.md);
+`--force` runs it anyway).
 
-The catch: **it's only worth the effort for the slow paths.** Mustache and Groovy
-templates are slow enough that skipping unchanged output is a real win. **Direct-code
-codegen is so fast that the skip logic costs more than it saves** — just regenerate
-every time. Match the optimization to the mechanism: timestamp-skip for templates,
-always-regenerate for direct code.
+What that leaves a generator author is not a skip to build but a dependency to
+declare: a file or directory the generator reads beyond the model and the template
+roots goes in `inputs` (the port's equivalent elsewhere), and a generator that cannot
+name what it reads sets `cache: false`, which opts its runs out of skipping. An
+mtime-based skip built inside a generator is the one thing to avoid: timestamps are
+never an input to the key, and such a skip can serve stale output inside a run that
+did render.
 
 ## 5. Preserving hand edits — one shipped strategy, and two you would build
 
@@ -226,6 +231,15 @@ custom iteration:
 - **`perModel(fn)`** — app scope: run once over all matching objects. (`oncePerRun`
   is kept as a soft-deprecated alias — "run" is ambiguous under multi-target output;
   `perModel` names the data scope.)
+
+**`meta gen <Entity>` narrows what is written, never what a whole-model file sees.** `ctx.entities`
+is the whole model in scope (after the project's `scope`), even when the run names some entities.
+`ctx.selected` is the predicate for the named ones; it is absent when every object is selected.
+`perEntity` applies it. A file rendered from the whole model (a barrel, an index, a shared schema)
+reads `ctx.entities`, so it is the same on a narrowed run as on a full one. A generator that loops
+over `ctx.entities` itself must apply `ctx.selected` (TypeScript: `ctx.selected?.(o) ?? true`;
+Python: `ctx.is_selected(o)`), or set `sourceNode` on each per-object file, which lets the runner
+drop the files of objects the run did not name.
 
 A generator picks its scope by which helper it composes — the same way it picks
 object vs model today. Reference templates and the guidance call out the scope each

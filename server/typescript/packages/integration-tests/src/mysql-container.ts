@@ -18,6 +18,7 @@
 import { execFile, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { reaperLabelArgs } from "./test-reaper.ts";
+import { MYSQL_8_DATA_DIR, ramVolume, removeOnExit } from "./throwaway.ts";
 import mysql from "mysql2/promise";
 
 const URL_ENV = "METAOBJECTS_TEST_MYSQL_URL";
@@ -39,12 +40,18 @@ export async function startMysql(): Promise<MysqlContainerHandle> {
   if (existing !== undefined && existing !== "") return { url: existing, stop: () => {} };
 
   const name = `metaobjects-mysql-${randomUUID().slice(0, 8)}`;
-  // Teardown is one quick call after the tests, the same as postgres-container.ts.
-  const stop = () => { spawnSync("docker", ["rm", "-f", "-v", name], { stdio: "ignore", timeout: 60_000 }); };
+  // Teardown is one quick call after the tests, the same as postgres-container.ts, and
+  // removeOnExit covers a run interrupted before it (throwaway.ts).
+  const forget = removeOnExit(name);
+  const stop = () => {
+    spawnSync("docker", ["rm", "-f", "-v", name], { stdio: "ignore", timeout: 60_000 });
+    forget();
+  };
   // Docker assigns the host port at bind time; see the port note in postgres-container.ts.
   let url: string;
   try {
-    await docker(["run", "-d", ...(await reaperLabelArgs()), "--name", name, "-e", `MYSQL_ROOT_PASSWORD=${PASSWORD}`,
+    await docker(["run", "-d", ...(await reaperLabelArgs()), "--name", name, ...ramVolume(MYSQL_8_DATA_DIR),
+      "-e", `MYSQL_ROOT_PASSWORD=${PASSWORD}`,
       "-e", `MYSQL_DATABASE=${DATABASE}`, "-p", "127.0.0.1::3306", IMAGE, "--innodb-use-native-aio=0"]);
     url = `mysql://root:${PASSWORD}@127.0.0.1:${await publishedPort(name)}/${DATABASE}`;
   } catch (e) {

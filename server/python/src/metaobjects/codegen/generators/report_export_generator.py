@@ -227,6 +227,8 @@ class ReportExportGenerator:
             )
         ]
         for report in reports:
+            if not ctx.is_selected(report):
+                continue  # the writers module is shared; a report's own module is per-entity
             files.append(
                 EmittedFile(
                     path=claimed_module_path(

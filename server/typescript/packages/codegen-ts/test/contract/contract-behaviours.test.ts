@@ -303,6 +303,21 @@ describe("what a project's run changes", () => {
     expect(narrowed.get("openapi.json")).toBe(whole.get("openapi.json")!);
   });
 
+  for (const [label, factory] of [["jsonSchemaFile", jsonSchemaFile], ["the reference jsonSchemaFile", refJsonSchemaFile]] as const) {
+    test(`${label} writes only the named entity's schema on a narrowed run`, async () => {
+      const c = corpusCase("m2m");
+      const whole = await emit(c, [factory()]);
+      const named = (await loadCaseModel(c)).objects()[0]!.name;
+      const narrowed = await emit(c, [factory()], { entityFilter: [named] });
+      const ownFile = [...narrowed.keys()].filter((p) => p.endsWith(`/${named}.schema.json`));
+      expect(ownFile.length).toBe(1);
+      expect(narrowed.size).toBeLessThan(whole.size);
+      for (const [path, content] of narrowed) expect(whole.get(path), path).toBe(content);
+      const others = [...whole.keys()].filter((p) => p.endsWith(".schema.json") && !p.endsWith(`/${named}.schema.json`) && !narrowed.has(p));
+      expect(others.length).toBeGreaterThan(0);
+    });
+  }
+
   test("a generator filter narrows the document, and keeps what a kept object references", async () => {
     const c = corpusCase("all-fields");
     const onlyAllFields = (o: MetaObject): boolean => o.name === "AllFields";

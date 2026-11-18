@@ -1161,7 +1161,7 @@ public class EntityGenerator : IGenerator
                 sb.AppendLine();
                 sb.Append(SharedEnumDeclaration(e));
                 var fileName = $"{e.Name}.g.cs";
-                return new EmittedFile(e.Declaration is { } decl ? OutputPaths.Of(decl, ctx, fileName) : fileName, sb.ToString());
+                return new EmittedFile(e.Declaration is { } decl ? OutputPaths.Of(decl, ctx, fileName) : fileName, sb.ToString()) { WholeModel = true };
             }).ToList();
 
         var flat = new StringBuilder();
@@ -1191,7 +1191,7 @@ public class EntityGenerator : IGenerator
                 flat.AppendLine();
             }
         }
-        return [new EmittedFile("Enums.g.cs", flat.ToString())];
+        return [new EmittedFile("Enums.g.cs", flat.ToString()) { WholeModel = true }];
     }
 
     /// <summary>
@@ -2130,7 +2130,7 @@ public static class DecimalWire
 """;
 
     private static EmittedFile EmitDecimalWireFile(string ns, string fileName) =>
-        new(fileName, DecimalWireSourceTemplate.Replace("__NS__", ns, StringComparison.Ordinal) + "\n");
+        new(fileName, DecimalWireSourceTemplate.Replace("__NS__", ns, StringComparison.Ordinal) + "\n") { WholeModel = true };
 
     // field.duration — the duration wire form (fixtures/duration-wire/). This text is the
     // Runtime/DurationWire.cs source with its namespace as __NS__; DurationWireTests gates the two
@@ -2398,7 +2398,7 @@ public static class DurationWire
 """;
 
     private static EmittedFile EmitDurationWireFile(string ns, string fileName) =>
-        new(fileName, DurationWireSourceTemplate.Replace("__NS__", ns, StringComparison.Ordinal) + "\n");
+        new(fileName, DurationWireSourceTemplate.Replace("__NS__", ns, StringComparison.Ordinal) + "\n") { WholeModel = true };
 
     // true iff FIELD is a field.duration (single or @isArray): a System.TimeSpan property carrying
     // the per-property ISO-8601 converter.
@@ -2544,7 +2544,7 @@ public static class DurationWire
         sb.AppendLine("        }");
         sb.AppendLine("    }");
         sb.AppendLine("}");
-        return new EmittedFile(fileName, sb.ToString());
+        return new EmittedFile(fileName, sb.ToString()) { WholeModel = true };
     }
 
     // One property's declaration line, from the two hooks: `public <type> <name> { <setter> }`

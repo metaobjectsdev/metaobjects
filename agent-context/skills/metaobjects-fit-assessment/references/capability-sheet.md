@@ -25,7 +25,7 @@ building block. Every generator is a reference helper an adopter selects, ejects
   type and nothing else: no table, no migration, no routes (#248; `docs/features/libraries.md`).
   A TypeScript model of only value objects and sourceless projections needs no `dialect`
   (`server/typescript/packages/codegen-ts/src/db-emitting.ts`).
-- **The drift gate per port** — regenerate into a temp tree and diff: `meta verify --codegen`
+- **The drift gate per port** — regenerate in memory and diff: `meta verify --codegen`
   (TS); `mvn metaobjects:verify` (Java/Kotlin; unset `meta.verify.mode` runs both the codegen and the template gate); `dotnet meta
   verify --codegen` (C#; bare `verify` runs it when `csharp.outDir` (or `--out`) and `codegen/Generators.cs` are present);
   `metaobjects verify` (Python; `--codegen` is part of the default). Since 1.2 a bare `verify` runs

@@ -84,6 +84,7 @@ open class KotlinRepositoryGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         val outRoot = Paths.get(outDir.absolutePath)
 
         for (entity in GeneratorUtil.ownMetaObjects(loader)) {
+            if (!isSelected(entity)) continue
             if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
             if (KotlinGenUtil.isAbstractEntity(entity)) continue
             // TODO(FR-035 Phase 2): a TPH subtype folds into its base's table — the base's

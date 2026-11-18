@@ -148,6 +148,15 @@ class TargetConfig:
     #: The ``generators`` entries (as written in ``generators``) declared with
     #: ``handEdits: overwrite``. Every other entry keeps hand edits.
     overwrite_hand_edits: frozenset[str] = frozenset()
+    #: ``gen --entities``: the entities this RUN writes, within ``entities``. Never read
+    #: from the file. ``entities`` stays the target's model, so a whole-model file (shared
+    #: enums, the duration codec, the report writers) still renders from all of it.
+    run_selection: list[str] | None = None
+
+    @property
+    def written_entities(self) -> list[str] | None:
+        """The entities whose output this run writes: the selection, else the target's."""
+        return self.run_selection if self.run_selection is not None else self.entities
 
 
 @dataclass(frozen=True)

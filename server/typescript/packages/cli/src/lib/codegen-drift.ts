@@ -1,9 +1,9 @@
 // `meta verify --codegen` — the codegen-drift gate (ADR-0021 D2).
 //
-// Regenerates the configured codegen into a throwaway temp directory and DIFFs
-// the freshly-generated file tree against the committed output (the config's
-// outDir / per-target outDirs). Reuses the exact same `runGen` pipeline `meta gen`
-// uses, so the comparison is faithful.
+// Renders the configured codegen IN MEMORY (a dry run of the exact `runGen` pipeline
+// `meta gen` uses, against the real project paths) and compares the rendered files with
+// the committed output (the config's outDir / per-target outDirs). Nothing is written:
+// no temp tree, no snapshot, no manifest (ADR-0064).
 //
 // A DIFFERENCE IS NOT AUTOMATICALLY DRIFT. This gate used to treat "metadata
 // changed but `meta gen` wasn't re-run" and "a generated file was hand-edited" as
@@ -23,21 +23,10 @@
 // Design: spec/design-docs/2026-08-27-codegen-drift-hand-edits-design.md
 //
 // Faithfulness note: generated content can embed import paths computed RELATIVE
-// to a target's outDir (and between targets). To keep the regen byte-identical
-// to the committed output, each outDir is remapped into the temp tree at the
-// SAME path it has relative to the project root — preserving the inter-target
-// layout. `importBase` (a stable string, not a path) is untouched.
+// to a target's outDir (and between targets). The dry run renders at the real paths,
+// so those imports come out exactly as `meta gen` writes them.
 
-import {
-  mkdtempSync,
-  rmSync,
-  existsSync,
-  readFileSync,
-  readdirSync,
-  statSync,
-  cpSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve, isAbsolute } from "node:path";
 import {
   runGen,
@@ -162,7 +151,7 @@ function listFiles(dir: string): string[] {
 }
 
 /**
- * Run codegen into a temp tree and diff it against the committed output.
+ * Render codegen in memory and diff it against the committed output.
  *
  * @param config   the loaded metaobjects config (provides outDir/targets).
  * @param metadata the loaded MetaRoot (same object `meta gen` would use).
@@ -214,70 +203,17 @@ export async function computeCodegenDrift(
     };
   }
 
-  // Build a temp tree that mirrors each outDir at its project-relative path, so
-  // relative import paths in generated content come out identical.
-  const tempRoot = mkdtempSync(join(tmpdir(), "meta-verify-codegen-"));
-  try {
-    const untrackedOutDirs: string[] = [];
-    const tempFor = (committed: string): string => {
-      const rel = relative(root, committed);
-      // If a committed outDir lives outside the project root, fall back to a
-      // flattened, collision-safe slot under the temp root. (Relative-import
-      // fidelity for out-of-tree targets isn't guaranteed, but the diff is
-      // still meaningful per-file.)
-      if (rel.startsWith("..") || isAbsolute(rel)) {
-        const slot = join(tempRoot, committed.replace(/[^A-Za-z0-9]+/g, "_"));
-        untrackedOutDirs.push(slot);
-        return slot;
-      }
-      return join(tempRoot, rel);
-    };
-
-    // Remap the config so runGen writes into the temp mirror instead of the
-    // committed output. Default outDir + each named target's outDir are
-    // rewritten — resolved against `root` (see committedOutDirs above), not
-    // the ambient process.cwd(), so this stays correct under `--cwd`.
-    const remappedTargets: Record<string, TargetConfig> = {};
-    for (const [name, t] of Object.entries(config.targets ?? {})) {
-      remappedTargets[name] = { ...t, outDir: tempFor(resolve(root, t.outDir)) };
-    }
-    const tempConfig: MetaobjectsGenConfig = {
-      ...config,
-      outDir: tempFor(resolve(root, config.outDir)),
-      ...(config.targets !== undefined ? { targets: remappedTargets } : {}),
-    };
-
-    // runGen is called with `projectRoot: tempRoot` below (so relative outDir
-    // remapping stays correct — see the module doc). Some generators resolve
-    // ancillary project-relative input at generation time rather than through
-    // `config` — namely the template-output codegen family (e.g. render-helper,
-    // via codegen-ts's `projectProvider(ctx.projectRoot)`), which reads a
-    // `<projectRoot>/templates/` dir to build-time-verify each referenced
-    // mustache. Mirror it into the temp root so that lookup succeeds the same
-    // way it does for `meta gen` against the real project root — otherwise
-    // every project using those generators would spuriously fail `--codegen`
-    // with an "unresolved" template error that has nothing to do with drift.
-    const projectTemplatesDir = join(root, "templates");
-    if (existsSync(projectTemplatesDir)) {
-      cpSync(projectTemplatesDir, join(tempRoot, "templates"), { recursive: true });
-    }
-
-    // Generate fresh into the temp tree. "overwrite" + "fresh" + a temp
-    // gen-state dir guarantees every file is written (no merge/skip), so the
-    // temp tree is the canonical "what gen would produce right now".
+  // Render what `meta gen` would write right now, IN MEMORY (ADR-0064, item 9): a dry run
+  // against the real project renders exactly what a real run renders (same paths, so the
+  // same relative imports) and writes nothing — no temp tree, no snapshot, no manifest.
+  {
     const regen = await runGen({
-      config: tempConfig,
+      config,
       metadata,
-      projectRoot: tempRoot,
-      genStateDir: join(tempRoot, ".gen-state"),
-      mergeStrategy: "overwrite",
-      baseline: "fresh",
-      // The real project, for a generator that reads its files (`ctx.inputRoot`):
-      // `shared-model` takes its default version from the nearest package.json, and an
-      // owned generator may read anything. `projectRoot` stays the temp tree, which the
-      // owned route and entity generators compute their adapter import against.
+      projectRoot: root,
+      dryRun: true,
+      // A generator that reads the project's files (`ctx.inputRoot`) reads them here.
       inputRoot: root,
-      untrackedOutDirs,
       ...(scope !== undefined ? { scope } : {}),
       ...(sourceFiles !== undefined ? { sourceFiles } : {}),
       ...(run?.sourceRoots !== undefined ? { sourceRoots: run.sourceRoots } : {}),
@@ -286,6 +222,16 @@ export async function computeCodegenDrift(
       ...(run?.requirementLedger !== undefined ? { requirementLedger: run.requirementLedger } : {}),
       ...(run?.inLedger !== undefined ? { inLedger: run.inLedger } : {}),
     });
+    const rendered = regen.rendered ?? new Map<string, string>();
+    /** The rendered files under `dir`, by path relative to it. */
+    const renderedUnder = (dir: string): Map<string, string> => {
+      const out = new Map<string, string>();
+      for (const [full, content] of rendered) {
+        const rel = relative(dir, full);
+        if (rel !== "" && !rel.startsWith("..") && !isAbsolute(rel)) out.set(rel, content);
+      }
+      return out;
+    };
 
     // Where gen discards hand edits instead of keeping them (handEdits: "overwrite").
     const overwrite = regen.handEditsOverwrite;
@@ -306,9 +252,9 @@ export async function computeCodegenDrift(
     const docsIgnoredDirs: string[] = [];
     let docsIgnoreUnavailable: string | undefined;
     for (const committed of committedDirs) {
-      const fresh = tempFor(committed);
+      const freshContent = renderedUnder(committed);
       const committedFiles = new Set(listFiles(committed));
-      const freshFiles = new Set(listFiles(fresh));
+      const freshFiles = new Set(freshContent.keys());
       const all = new Set([...committedFiles, ...freshFiles]);
 
       // Documentation the project git-ignores is not checked (carried from 1.0's
@@ -353,7 +299,7 @@ export async function computeCodegenDrift(
             continue;
           }
           const verdict = haveWriteRecords
-            ? orphanVerdict(regen.orphanSweepJobs ?? [], tempRoot, relative(tempRoot, join(fresh, rel)))
+            ? orphanVerdict(regen.orphanSweepJobs ?? [], root, relKey)
             : undefined;
           if (verdict?.kept === true) continue;
           driftedFiles.add(relKey);
@@ -384,7 +330,7 @@ export async function computeCodegenDrift(
           lines.push(`+ ${relKey} (regen would emit it; not committed — run 'meta gen')`);
         } else {
           const a = readFileSync(join(committed, rel), "utf8");
-          const b = readFileSync(join(fresh, rel), "utf8");
+          const b = freshContent.get(rel)!;
           if (a !== b) {
             // A `<Entity>Names` artifact is the ONE generated file where a hand edit is
             // itself the defect, so the exemption below does not reach it. RULED: if you
@@ -428,7 +374,7 @@ export async function computeCodegenDrift(
               // nothing is proven, so the old byte verdict stands.
               driftedFiles.add(relKey);
               lines.push(`~ ${relKey} (committed content differs from a fresh regen)`);
-            } else if (overwrite?.paths.has(join(fresh, rel)) === true) {
+            } else if (overwrite?.paths.has(join(committed, rel)) === true) {
               // Its generator says handEdits: "overwrite": `meta gen` replaces the edit
               // with fresh output, so it is drift that gen fixes, not a kept edit.
               driftedFiles.add(relKey);
@@ -458,7 +404,5 @@ export async function computeCodegenDrift(
       docsIgnoredDirs,
       ...(docsIgnoreUnavailable !== undefined ? { docsIgnoreUnavailable } : {}),
     };
-  } finally {
-    rmSync(tempRoot, { recursive: true, force: true });
   }
 }

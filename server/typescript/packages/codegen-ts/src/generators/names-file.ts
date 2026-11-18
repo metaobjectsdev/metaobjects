@@ -1,4 +1,5 @@
 import type { Generator, GenContext, EmittedFile } from "../generator.js";
+import { selectedEntities } from "../generator.js";
 import { entityOutputPath, crossEntitySpecifier } from "../import-path.js";
 import { NAMES_FILE_SUFFIX } from "../constants.js";
 import { renderNamesDecl } from "../templates/names-decl.js";
@@ -77,7 +78,8 @@ export function namesFile(opts?: NamesFileOpts): Generator {
       // abstract base emits nothing here, and seeding it as already-emitted is what would
       // make pass 2 skip the very object it exists to produce.
       const emitted = new Set<string>();
-      const participants = ctx.entities.filter(ctx.matches);
+      // The objects `meta gen <Entity>` named (all of them on a full run): one file each.
+      const participants = selectedEntities(ctx);
       for (const entity of participants) {
         const content = renderNamesDecl(entity, {
           strategy, superSpecifier: superSpecifierFor(entity),

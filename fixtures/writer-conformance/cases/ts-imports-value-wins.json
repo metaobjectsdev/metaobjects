@@ -1,0 +1,25 @@
+{
+  "description": "A name used both as a type and as a value is imported as a value.",
+  "dialect": "typescript",
+  "ops": [
+    [
+      "line",
+      "x;"
+    ],
+    [
+      "useType",
+      "User",
+      "./user"
+    ],
+    [
+      "use",
+      "User",
+      "./user"
+    ]
+  ],
+  "expected": [
+    "import { User } from \"./user\";",
+    "",
+    "x;"
+  ]
+}

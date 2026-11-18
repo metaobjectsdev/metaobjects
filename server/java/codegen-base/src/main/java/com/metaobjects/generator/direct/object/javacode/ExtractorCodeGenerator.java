@@ -93,7 +93,7 @@ public class ExtractorCodeGenerator extends GeneratorBase {
         try {
             for (MetaObject mo : GeneratorUtil.getFilteredMetaData(
                     loader, MetaObject.class, getMetaDataFilters())) {
-                if (IOUtil.isAbstract(mo)) {
+                if (IOUtil.isAbstract(mo) || !inEntitySelection(mo)) {
                     continue;
                 }
                 emit(outputDir, namer.getLanguagePackage(mo), namer.getClassName(mo), mo.getName());

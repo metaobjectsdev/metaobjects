@@ -1,4 +1,4 @@
-# The Rust port of MetaObjects (preview). ADR-0063 records why it exists and how it
+# The Rust port of MetaObjects (preview). ADR-0065 records why it exists and how it
 # differs from the other five ports.
 #
 # One crate today: `metaobjects` (metamodel registry, JSON loader, canonical

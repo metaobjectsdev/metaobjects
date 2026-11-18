@@ -101,6 +101,7 @@ open class KotlinNamesGenerator :
         // Pass 1 — every object that participates in the database (#248).
         val emitted = mutableSetOf<String>()
         for (entity in GeneratorUtil.ownMetaObjects(loader)) {
+            if (!isSelected(entity)) continue
             // FR-044: a served report (a view-backed one) gets a names artifact built from its
             // READ MODEL, so the derived columns have constants for hand-written SQL over the
             // view to use; its Exposed table still binds by literal. A report that is not

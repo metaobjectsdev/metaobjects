@@ -7,7 +7,7 @@ export { runGen, declaredGeneratorNames, stableGeneratorName, undeclaredGenerato
 export type { RunGenOpts, RunGenResult } from "./runner.js";
 
 export type { Generator, GenContext, EmittedFile, GeneratorFactory, RunOutputFile } from "./generator.js";
-export { perEntity, perPackage, perModel, oncePerRun } from "./generator.js";
+export { perEntity, perPackage, perModel, oncePerRun, selectedEntities } from "./generator.js";
 // The one aggregation of the UI-tier markers, Hono routes and the routes' `expose` option:
 // the run's own answers to "does this run emit a UI tier?" and "which verbs are mounted?".
 export { runEmitsUiTier, runEmitsHonoRoutes, runRoutesExpose, UI_TIER_GENERATOR_NAMES } from "./ui-tier-gate.js";
@@ -97,6 +97,7 @@ export { decideAndWrite, GitMissingError, WRITE_STATUSES } from "./overwrite-pol
 // convicting every stranger's file that happens to sit in the same directory.
 export { contentHash, readGeneratedHash, listGeneratedPaths, recordGeneratedProvenance } from "./overwrite-policy.js";
 export type { GeneratedProvenance } from "./overwrite-policy.js";
+export { modelHashTree, MODEL_HASH_FORMAT, type ModelHashTree, type ModelHashNode } from "./model-hash.js";
 
 export { CodegenError } from "./errors.js";
 export { GENERATED_HEADER, GENERATED_EDIT_NOTE, NAMES_FILE_SUFFIX, DEFAULT_OUT_DIR, RETIRED_CODEGEN_ATTRS, sidecarLine, type RetiredCodegenAttr } from "./constants.js";
@@ -206,6 +207,33 @@ export type { ReferenceGeneratorName } from "./reference-templates.js";
 // cli/test/gen-split-tree-single-import.test.ts.
 export { code, imp, joinCode } from "./poet.js";
 export type { Code } from "./poet.js";
+
+// The code writer (ADR-0063): generators say what a line contains, the writer decides where
+// it sits. No formatter runs over its output. `TsWriter` accepts the `Code` fragments above,
+// so a generator can move to it one function at a time.
+export {
+  CodeWriter,
+  flat,
+  Group,
+  list,
+  WRITER_ERRORS,
+  WriterError,
+  type CodeWriterOptions,
+  type Piece,
+  type WriterErrorCode,
+} from "./writer/code-writer.js";
+export {
+  arr,
+  call,
+  key,
+  type ModuleImports,
+  type NamedImport,
+  Props,
+  props,
+  str,
+  TsWriter,
+  type TsWriterOptions,
+} from "./writer/ts-writer.js";
 
 export {
   renderFindByIdFn,
