@@ -1,14 +1,13 @@
-//! Field-level validation: the field.enum / `@dbColumnType` rules the TypeScript
-//! reference keeps in `validateAttrSchema` (Checks 4, 5, 5b, 5c, 6), and the passes
-//! `validateFieldObjectStorage`, `validateFieldMap`, `validateEnumMaxLength` and
-//! `validateFieldDefaults`.
+//! Field-level validation: the passes `validateFieldObjectStorage`, `validateFieldMap`,
+//! `validateEnumMaxLength` and `validateFieldDefaults`, plus the `@dbColumnType`
+//! parser the attribute-schema and expression passes share.
 
 use serde_json::Value;
-use std::collections::{HashMap, HashSet};
 
 use super::util::error_at;
 use super::{Ctx, Findings};
 use crate::errors::{ERR_BAD_ATTR_VALUE, MetaError};
+use crate::json::js_display;
 use crate::node::NodeId;
 
 pub const ERR_ENUM_EXTENDS_VALUES_CONFLICT: &str = "ERR_ENUM_EXTENDS_VALUES_CONFLICT";
@@ -21,24 +20,19 @@ pub const ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE: &str =
 
 const TYPE_OBJECT: &str = "object";
 const TYPE_FIELD: &str = "field";
-const TYPE_METADATA: &str = "metadata";
 const SUB_ENUM: &str = "enum";
 const SUB_OBJECT: &str = "object";
 const SUB_MAP: &str = "map";
-const SUB_STRING: &str = "string";
 const A_VALUES: &str = "values";
 const A_INT_VALUE_MAP: &str = "intValueMap";
 const A_STRING_VALUE_MAP: &str = "stringValueMap";
 const A_MAX_LENGTH: &str = "maxLength";
-const A_COERCE_DEFAULT: &str = "coerceDefault";
 const A_DEFAULT: &str = "default";
-const A_DB_COLUMN_TYPE: &str = "dbColumnType";
 const A_OBJECT_REF: &str = "objectRef";
 const A_STORAGE: &str = "storage";
 const A_FLATTENED_COLUMN_PREFIX: &str = "flattenedColumnPrefix";
 const A_VALUE_TYPE: &str = "valueType";
 const STORAGE_FLATTENED: &str = "flattened";
-const ENUM_MEMBER_PATTERN: &str = "^[A-Za-z_][A-Za-z0-9_]*$";
 const MAP_SCALAR_VALUE_SUBTYPES: &[&str] = &[
     "string",
     "int",
@@ -92,300 +86,6 @@ pub fn parse_db_column_type(value: &str) -> Option<DbColumnType> {
     })
 }
 
-fn js_string(v: &Value) -> String {
-    match v {
-        Value::String(s) => s.clone(),
-        other => other.to_string(),
-    }
-}
-
-/// The entries of a JS object or array value, as `Object.entries` lists them.
-fn entries(v: &Value) -> Vec<(String, &Value)> {
-    match v {
-        Value::Object(m) => m.iter().map(|(k, v)| (k.clone(), v)).collect(),
-        Value::Array(a) => a
-            .iter()
-            .enumerate()
-            .map(|(i, v)| (i.to_string(), v))
-            .collect(),
-        _ => Vec::new(),
-    }
-}
-
-fn node_label(ctx: &Ctx<'_>, id: NodeId) -> String {
-    let n = ctx.tree.node(id);
-    if n.name.is_empty() {
-        format!("{}.{}", n.type_name, n.sub_type)
-    } else {
-        format!("{}.{} '{}'", n.type_name, n.sub_type, n.name)
-    }
-}
-
-fn is_member(s: &str) -> bool {
-    let mut it = s.chars();
-    matches!(it.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
-        && it.all(|c| c.is_ascii_alphanumeric() || c == '_')
-}
-
-/// A field.enum directly under the metadata root and abstract: a shared enum declaration.
-fn shared_super(ctx: &Ctx<'_>, id: NodeId) -> Option<NodeId> {
-    let tree = ctx.tree;
-    let s = tree.node(id).super_node?;
-    let n = tree.node(s);
-    (n.type_name == TYPE_FIELD
-        && n.sub_type == SUB_ENUM
-        && n.is_abstract
-        && n.parent
-            .is_some_and(|p| tree.node(p).type_name == TYPE_METADATA))
-    .then_some(s)
-}
-
-/// Checks 4, 5, 5b, 5c (field.enum) and 6 (`@dbColumnType`) of the reference's
-/// attr-schema pass, on every node in document order.
-pub fn validate_field_attr_rules(ctx: &Ctx<'_>, f: &mut Findings) {
-    fn walk(ctx: &Ctx<'_>, f: &mut Findings, id: NodeId) {
-        let n = ctx.tree.node(id);
-        if n.type_name == TYPE_FIELD {
-            if n.sub_type == SUB_ENUM {
-                check_enum(ctx, f, id);
-            }
-            check_db_column_type(ctx, f, id);
-        }
-        for &c in ctx.tree.own_children(id) {
-            walk(ctx, f, c);
-        }
-    }
-    walk(ctx, f, ctx.root);
-}
-
-fn check_enum(ctx: &Ctx<'_>, f: &mut Findings, id: NodeId) {
-    let tree = ctx.tree;
-    let label = node_label(ctx, id);
-    let shared = shared_super(ctx, id);
-    let bad =
-        |f: &mut Findings, msg: String| f.errors.push(error_at(tree, id, ERR_BAD_ATTR_VALUE, msg));
-    // ADR-0039: own — @values is validated where it is declared.
-    if let Some(Value::Array(raw)) = tree.own_attr(id, A_VALUES).map(|a| &a.value) {
-        if raw.is_empty() {
-            bad(
-                f,
-                format!("{label} must declare at least one value in '@{A_VALUES}'."),
-            );
-        } else {
-            let mut seen: HashSet<String> = HashSet::new();
-            for m in raw {
-                let member = js_string(m);
-                if !is_member(&member) {
-                    bad(
-                        f,
-                        format!(
-                            "{label} attribute '@{A_VALUES}' member '{member}' is not a valid identifier (must match {ENUM_MEMBER_PATTERN}). Non-identifier-safe member strings require a symbol↔value mapping (deferred)."
-                        ),
-                    );
-                } else if !seen.insert(member.clone()) {
-                    bad(
-                        f,
-                        format!("{label} attribute '@{A_VALUES}' has duplicate member '{member}'."),
-                    );
-                }
-            }
-        }
-        if let Some(s) = shared {
-            f.errors.push(error_at(tree, id, ERR_ENUM_EXTENDS_VALUES_CONFLICT, format!(
-                "{label} extends shared abstract enum '{}' AND declares its own '@{A_VALUES}' — a shared enum's member set is owned by the shared declaration; remove the own '@{A_VALUES}' to inherit it, or extend a non-shared enum instead.", node_label(ctx, s))));
-        }
-    }
-    // Check 5: the fallback attrs name a member of the EFFECTIVE @values.
-    let members: Vec<String> = match tree.attr(id, A_VALUES) {
-        Some(Value::Array(a)) => a.iter().map(js_string).collect(),
-        _ => Vec::new(),
-    };
-    for attr in [A_COERCE_DEFAULT, A_DEFAULT] {
-        // ADR-0039: own — the fallback attr DECLARED on this node.
-        if let Some(Value::String(v)) = tree.own_attr(id, attr).map(|a| &a.value)
-            && !members.contains(v)
-        {
-            bad(
-                f,
-                format!(
-                    "{label} attribute '@{attr}' value '{v}' is not one of '@{A_VALUES}': {}.",
-                    members.join(", ")
-                ),
-            );
-        }
-    }
-    // Check 5b.
-    if let Some(raw) = tree
-        .own_attr(id, A_INT_VALUE_MAP)
-        .map(|a| &a.value)
-        .filter(|v| v.is_object() || v.is_array())
-    {
-        if let Some(s) = shared {
-            f.errors.push(error_at(tree, id, ERR_ENUM_EXTENDS_VALUES_CONFLICT, format!(
-                "{label} extends shared abstract enum '{0}' AND declares its own '@{A_INT_VALUE_MAP}' — a shared enum's integer backing is owned by the shared declaration; move '@{A_INT_VALUE_MAP}' onto '{0}' to inherit it, or extend a non-shared enum instead.", node_label(ctx, s))));
-        }
-        let ents = entries(raw);
-        key_mismatch(f, tree, id, &label, A_INT_VALUE_MAP, &members, &ents, false);
-        let mut seen: HashMap<u64, &str> = HashMap::new();
-        for (member, v) in &ents {
-            let Some(num) = v.as_f64().filter(|x| v.is_number() && x.fract() == 0.0) else {
-                continue;
-            };
-            if let Some(owner) = seen.get(&num.to_bits()) {
-                bad(
-                    f,
-                    format!(
-                        "{label} attribute '@{A_INT_VALUE_MAP}' members '{owner}' and '{member}' share the same value {v}; every member must have a unique int."
-                    ),
-                );
-            } else {
-                seen.insert(num.to_bits(), member);
-            }
-        }
-    }
-    // Check 5c.
-    if let Some(raw) = tree.own_attr(id, A_STRING_VALUE_MAP).map(|a| &a.value) {
-        let pre = format!("{label} attribute '@{A_STRING_VALUE_MAP}'");
-        if let Some(s) = shared {
-            f.errors.push(error_at(tree, id, ERR_ENUM_EXTENDS_VALUES_CONFLICT, format!(
-                "{pre} is declared on a field extending shared abstract enum '{0}' — a shared enum's stored strings are owned by the shared declaration; move it onto '{0}' to inherit it.", node_label(ctx, s))));
-        } else if tree.attr(id, A_INT_VALUE_MAP).is_some() {
-            bad(
-                f,
-                format!(
-                    "{pre} is refused beside '@{A_INT_VALUE_MAP}': an @intValueMap enum is stored as integers, not strings. Keep one."
-                ),
-            );
-        } else if tree.resolved_is_array(id) {
-            bad(
-                f,
-                format!(
-                    "{pre} is refused on an array enum: its column holds the members as text[] elements, which no port maps through @{A_STRING_VALUE_MAP}."
-                ),
-            );
-        } else if !raw.is_object() {
-            bad(
-                f,
-                format!("{pre} must be an object of {{ member: storedString }}."),
-            );
-        } else {
-            let ents = entries(raw);
-            key_mismatch(
-                f,
-                tree,
-                id,
-                &label,
-                A_STRING_VALUE_MAP,
-                &members,
-                &ents,
-                true,
-            );
-            let mut seen: HashMap<&str, &str> = HashMap::new();
-            for (member, v) in &ents {
-                match v.as_str().filter(|s| !s.is_empty()) {
-                    None => bad(
-                        f,
-                        format!("{pre} member '{member}' must map to a non-empty string."),
-                    ),
-                    Some(s) => {
-                        if let Some(owner) = seen.get(s) {
-                            bad(
-                                f,
-                                format!(
-                                    "{pre} members '{owner}' and '{member}' share the stored string '{s}'; every member must have a unique one."
-                                ),
-                            );
-                        } else {
-                            seen.insert(s, member);
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn key_mismatch(
-    f: &mut Findings,
-    tree: &crate::node::Tree,
-    id: NodeId,
-    label: &str,
-    attr: &str,
-    members: &[String],
-    ents: &[(String, &Value)],
-    with_prefix: bool,
-) {
-    let keys: HashSet<&str> = ents.iter().map(|(k, _)| k.as_str()).collect();
-    let member_set: HashSet<&str> = members.iter().map(String::as_str).collect();
-    let missing: Vec<&str> = members
-        .iter()
-        .map(String::as_str)
-        .filter(|m| !keys.contains(m))
-        .collect();
-    let extra: Vec<&str> = ents
-        .iter()
-        .map(|(k, _)| k.as_str())
-        .filter(|k| !member_set.contains(k))
-        .collect();
-    if missing.is_empty() && extra.is_empty() {
-        return;
-    }
-    let _ = with_prefix;
-    let mut msg =
-        format!("{label} attribute '@{attr}' keys must exactly match '@{A_VALUES}' members");
-    if !missing.is_empty() {
-        msg.push_str(&format!(" (missing: {})", missing.join(", ")));
-    }
-    if !extra.is_empty() {
-        msg.push_str(&format!(" (unknown: {})", extra.join(", ")));
-    }
-    msg.push('.');
-    f.errors.push(error_at(tree, id, ERR_BAD_ATTR_VALUE, msg));
-}
-
-fn check_db_column_type(ctx: &Ctx<'_>, f: &mut Findings, id: NodeId) {
-    let tree = ctx.tree;
-    // ADR-0039: own — @dbColumnType is physical, never inherited.
-    let Some(Value::String(own)) = tree.own_attr(id, A_DB_COLUMN_TYPE).map(|a| &a.value) else {
-        return;
-    };
-    let label = node_label(ctx, id);
-    let parsed = parse_db_column_type(own);
-    if parsed.is_none() || tree.node(id).sub_type != SUB_STRING {
-        let legal = [
-            "uuid",
-            "jsonb",
-            "text",
-            "varchar",
-            "character varying",
-            "varchar(n)",
-            "character varying(n)",
-            "character(n)",
-        ];
-        let list: Vec<String> = legal
-            .iter()
-            .map(|v| format!("{v} (field.string)"))
-            .collect();
-        f.errors.push(error_at(tree, id, ERR_BAD_ATTR_VALUE, format!(
-            "{label} attribute '@{A_DB_COLUMN_TYPE}' value '{own}' is not legal on field.{}. Legal @{A_DB_COLUMN_TYPE} pairings: {}.", tree.node(id).sub_type, list.join(", "))));
-        return;
-    }
-    let length = match parsed {
-        Some(DbColumnType::Varchar(Some(n))) | Some(DbColumnType::Char(n)) => Some(n),
-        _ => None,
-    };
-    // ADR-0039: resolving — @maxLength may be inherited.
-    if let (Some(len), Some(max)) = (
-        length,
-        tree.attr(id, A_MAX_LENGTH).filter(|v| v.is_number()),
-    ) && max.as_f64().is_some_and(|m| m > f64::from(len))
-    {
-        f.errors.push(error_at(tree, id, ERR_BAD_ATTR_VALUE, format!(
-            "{label} declares @{A_MAX_LENGTH}: {max} over '@{A_DB_COLUMN_TYPE}: {own}', which holds {len}; a value the field accepts would not fit the column.")));
-    }
-}
-
 // ---- validateFieldObjectStorage / validateFieldMap -----------------------------------
 
 fn non_empty_str(v: Option<&Value>) -> Option<&str> {
@@ -418,7 +118,7 @@ pub fn validate_field_object_storage(ctx: &Ctx<'_>, f: &mut Findings) {
             if tree.attr(fld, A_FLATTENED_COLUMN_PREFIX).is_some() && !is_flat {
                 let shown = match storage {
                     None | Some(Value::Null) => "not set (jsonb)".to_string(),
-                    Some(s) => format!("\"{}\"", js_string(s)),
+                    Some(s) => format!("\"{}\"", js_display(s)),
                 };
                 f.errors.push(error_at(tree, fld, ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE, format!(
                     "field.object \"{oname}.{}\" sets @flattenedColumnPrefix, but its @storage is {shown}; only a @storage \"flattened\" value object puts its members' columns in the owning table. Set @storage \"flattened\", or remove @flattenedColumnPrefix.", n.name)));
@@ -581,7 +281,7 @@ fn finite_number(t: &str) -> bool {
 fn stringify_default(v: &Value) -> String {
     match v {
         Value::Bool(b) => b.to_string(),
-        other => js_string(other),
+        other => js_display(other),
     }
 }
 

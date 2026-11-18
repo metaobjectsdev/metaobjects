@@ -23,6 +23,19 @@ pub fn error_at(
     MetaError::at(code, message, tree.node(id).source.clone())
 }
 
+/// A node as error messages name it: `type.subType 'name'`, or `type.subType` unnamed.
+pub fn child_label(tree: &Tree, id: NodeId) -> String {
+    let n = tree.node(id);
+    if n.name.is_empty() {
+        format!("{}.{}", n.type_name, n.sub_type)
+    } else {
+        format!("{}.{} '{}'", n.type_name, n.sub_type, n.name)
+    }
+}
+
+/// The grains `startOf` accepts on a relative date.
+pub const START_OF_UNITS: &[&str] = &["day", "week", "month"];
+
 // ---- the object index ---------------------------------------------------------------
 
 /// Root-level objects by resolution key (ADR-0042 / ADR-0059), first declaration

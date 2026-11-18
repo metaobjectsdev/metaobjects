@@ -12,6 +12,7 @@ use serde_json::{Map, Value};
 use super::util::{error_at, ops_for_field, ops_for_subtype};
 use super::{Ctx, Findings};
 use crate::errors::{MetaError, WARN_LEGACY};
+use crate::json::js_display;
 use crate::naming::{resolve_column_name, resolve_flattened_column_name};
 use crate::node::{NodeId, Tree};
 
@@ -139,14 +140,6 @@ fn own_rdb_sources<'a>(tree: &'a Tree, obj: NodeId) -> impl Iterator<Item = Node
 fn js_blank(s: &str) -> bool {
     s.chars()
         .all(|c| (c.is_whitespace() && c != '\u{85}') || c == '\u{feff}')
-}
-
-/// How JavaScript would print a JSON element in a template literal.
-fn js_display(v: &Value) -> String {
-    match v {
-        Value::String(s) => s.clone(),
-        other => other.to_string(),
-    }
 }
 
 // ---- reference resolution (ADR-0059 R2, objects only) ---------------------------

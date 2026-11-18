@@ -9,7 +9,7 @@
 
 use std::collections::HashMap;
 
-use serde_json::{Map, Value};
+use serde_json::Value;
 
 use crate::errors::{
     ERR_BAD_ATTR_VALUE, ERR_MISSING_REQUIRED_ATTR, ERR_PROVIDER_ATTR_CONFLICT, ERR_UNKNOWN_ATTR,
@@ -17,8 +17,9 @@ use crate::errors::{
 use crate::json::{js_display, js_number};
 use crate::node::{NodeId, Tree};
 use crate::registry::{AttrSchema, TypeDefinition};
+use crate::validate::field::{DbColumnType, parse_db_column_type};
 use crate::validate::structure::preorder;
-use crate::validate::util::error_at;
+use crate::validate::util::{child_label, error_at};
 use crate::validate::{Ctx, Findings};
 
 pub const ERR_CHILD_NOT_ALLOWED: &str = "ERR_CHILD_NOT_ALLOWED";
@@ -48,15 +49,6 @@ struct Effective<'r> {
     /// The first common attribute that collides with a per-type one, until reported.
     pending_conflict: Option<&'r str>,
     def: Option<&'r TypeDefinition>,
-}
-
-fn label(tree: &Tree, id: NodeId) -> String {
-    let n = tree.node(id);
-    if n.name.is_empty() {
-        format!("{}.{}", n.type_name, n.sub_type)
-    } else {
-        format!("{}.{} '{}'", n.type_name, n.sub_type, n.name)
-    }
 }
 
 fn runtime_type_name(v: &Value) -> &'static str {
@@ -177,27 +169,6 @@ fn is_enum_member(m: &str) -> bool {
         && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
-/// A `@dbColumnType` value parsed: `Some(None)` unsized, `Some(Some(n))` sized.
-fn parse_db_column_type(v: &str) -> Option<Option<u64>> {
-    match v {
-        "uuid" | "jsonb" | "text" | "varchar" | "character varying" => return Some(None),
-        _ => {}
-    }
-    let (head, rest) = v.split_once('(')?;
-    if !matches!(head, "varchar" | "character varying" | "character") {
-        return None;
-    }
-    let digits = rest.strip_suffix(')')?;
-    let ok = (1..=9).contains(&digits.len())
-        && !digits.starts_with('0')
-        && digits.bytes().all(|b| b.is_ascii_digit());
-    if !ok {
-        return None;
-    }
-    let n = digits.parse().ok()?;
-    Some(Some(n))
-}
-
 const DB_COLUMN_TYPE_PAIRINGS: &str = "uuid (field.string), jsonb (field.string), text (field.string), varchar (field.string), character varying (field.string), varchar(n) (field.string), character varying(n) (field.string), character(n) (field.string)";
 
 fn enum_members(tree: &Tree, id: NodeId) -> Vec<String> {
@@ -223,10 +194,10 @@ fn own_value<'a>(tree: &'a Tree, id: NodeId, name: &str) -> Option<&'a Value> {
 }
 
 fn check_enum(tree: &Tree, id: NodeId, out: &mut Findings) {
-    let lbl = label(tree, id);
+    let lbl = child_label(tree, id);
     let super_node = tree.node(id).super_node;
     let shared = is_shared_enum_declaration(tree, super_node);
-    let shared_label = || super_node.map(|s| label(tree, s)).unwrap_or_default();
+    let shared_label = || super_node.map(|s| child_label(tree, s)).unwrap_or_default();
     let mut push = |code: &'static str, msg: String| out.errors.push(error_at(tree, id, code, msg));
 
     // Check 4: @values content.
@@ -285,7 +256,9 @@ fn check_enum(tree: &Tree, id: NodeId, out: &mut Findings) {
     }
 
     // Check 5b: @intValueMap content.
-    if let Some(Value::Object(map)) = own_value(tree, id, A_INT_VALUE_MAP) {
+    if let Some(raw) =
+        own_value(tree, id, A_INT_VALUE_MAP).filter(|v| v.is_object() || v.is_array())
+    {
         if shared {
             push(
                 ERR_ENUM_EXTENDS_VALUES_CONFLICT,
@@ -296,7 +269,8 @@ fn check_enum(tree: &Tree, id: NodeId, out: &mut Findings) {
                 ),
             );
         }
-        let (missing, extra) = key_diff(&members, map);
+        let ents = entries(raw);
+        let (missing, extra) = key_diff(&members, ents.iter().map(|(k, _)| k.as_str()));
         if !missing.is_empty() || !extra.is_empty() {
             push(
                 ERR_BAD_ATTR_VALUE,
@@ -307,16 +281,17 @@ fn check_enum(tree: &Tree, id: NodeId, out: &mut Findings) {
                 ),
             );
         }
-        let mut seen: Vec<(i64, &str)> = Vec::new();
-        for (member, value) in map {
-            let Some(n) = value.as_i64().filter(|_| is_integer(value)) else {
+        let mut seen: Vec<(f64, &str)> = Vec::new();
+        for (member, value) in &ents {
+            let Some(n) = value.as_f64().filter(|_| is_integer(value)) else {
                 continue; // reported by the attr's own shape check
             };
             match seen.iter().find(|(v, _)| *v == n) {
                 Some((_, owner)) => push(
                     ERR_BAD_ATTR_VALUE,
                     format!(
-                        "{lbl} attribute '@{A_INT_VALUE_MAP}' members '{owner}' and '{member}' share the same value {n}; every member must have a unique int."
+                        "{lbl} attribute '@{A_INT_VALUE_MAP}' members '{owner}' and '{member}' share the same value {}; every member must have a unique int.",
+                        js_display(value)
                     ),
                 ),
                 None => seen.push((n, member)),
@@ -356,7 +331,7 @@ fn check_enum(tree: &Tree, id: NodeId, out: &mut Findings) {
                 ),
             );
         } else if let Value::Object(map) = raw {
-            let (missing, extra) = key_diff(&members, map);
+            let (missing, extra) = key_diff(&members, map.keys().map(String::as_str));
             if !missing.is_empty() || !extra.is_empty() {
                 bad(
                     ERR_BAD_ATTR_VALUE,
@@ -394,16 +369,31 @@ fn check_enum(tree: &Tree, id: NodeId, out: &mut Findings) {
     }
 }
 
-fn key_diff(members: &[String], map: &Map<String, Value>) -> (Vec<String>, Vec<String>) {
+/// The entries of a JS object or array value, as `Object.entries` lists them.
+fn entries(v: &Value) -> Vec<(String, &Value)> {
+    match v {
+        Value::Object(m) => m.iter().map(|(k, v)| (k.clone(), v)).collect(),
+        Value::Array(a) => a
+            .iter()
+            .enumerate()
+            .map(|(i, v)| (i.to_string(), v))
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn key_diff<'a>(
+    members: &[String],
+    keys: impl Iterator<Item = &'a str> + Clone,
+) -> (Vec<String>, Vec<String>) {
     let missing = members
         .iter()
-        .filter(|m| !map.contains_key(m.as_str()))
+        .filter(|m| !keys.clone().any(|k| k == m.as_str()))
         .cloned()
         .collect();
-    let extra = map
-        .keys()
-        .filter(|k| !members.contains(k))
-        .cloned()
+    let extra = keys
+        .filter(|k| !members.iter().any(|m| m == k))
+        .map(str::to_string)
         .collect();
     (missing, extra)
 }
@@ -422,9 +412,13 @@ fn check_db_column_type(tree: &Tree, id: NodeId, out: &mut Findings) {
     let Some(Value::String(value)) = own_value(tree, id, A_DB_COLUMN_TYPE) else {
         return;
     };
-    let lbl = label(tree, id);
+    let lbl = child_label(tree, id);
     let sub = &tree.node(id).sub_type;
     let parsed = parse_db_column_type(value);
+    let length = match parsed {
+        Some(DbColumnType::Varchar(Some(n))) | Some(DbColumnType::Char(n)) => Some(n),
+        _ => None,
+    };
     if parsed.is_none() || sub != SUB_STRING {
         out.errors.push(error_at(
             tree,
@@ -434,9 +428,8 @@ fn check_db_column_type(tree: &Tree, id: NodeId, out: &mut Findings) {
                 "{lbl} attribute '@{A_DB_COLUMN_TYPE}' value '{value}' is not legal on field.{sub}. Legal @{A_DB_COLUMN_TYPE} pairings: {DB_COLUMN_TYPE_PAIRINGS}."
             ),
         ));
-    } else if let (Some(Some(length)), Some(Value::Number(max))) =
-        (parsed, tree.attr(id, A_MAX_LENGTH))
-        && max.as_f64().is_some_and(|m| m > length as f64)
+    } else if let (Some(length), Some(Value::Number(max))) = (length, tree.attr(id, A_MAX_LENGTH))
+        && max.as_f64().is_some_and(|m| m > f64::from(length))
     {
         out.errors.push(error_at(
             tree,
@@ -516,7 +509,7 @@ pub fn attr_schema(ctx: &Ctx<'_>, out: &mut Findings) {
                     ERR_UNKNOWN_ATTR,
                     format!(
                         "Unknown attribute '@{name}' on {} — not declared by any registered provider for {}",
-                        label(tree, id),
+                        child_label(tree, id),
                         type_key()
                     ),
                 ));
@@ -537,8 +530,8 @@ pub fn attr_schema(ctx: &Ctx<'_>, out: &mut Findings) {
                             ERR_CHILD_NOT_ALLOWED,
                             format!(
                                 "Child {} is not allowed under {} — no registered child rule for {} admits (type='{}', subType='{}', name='{}')",
-                                label(tree, child),
-                                label(tree, id),
+                                child_label(tree, child),
+                                child_label(tree, id),
                                 type_key(),
                                 c.type_name,
                                 c.sub_type,
@@ -561,7 +554,7 @@ pub fn attr_schema(ctx: &Ctx<'_>, out: &mut Findings) {
                             ERR_MISSING_REQUIRED_ATTR,
                             format!(
                                 "{} is missing required attribute '@{}'",
-                                label(tree, id),
+                                child_label(tree, id),
                                 spec.name
                             ),
                         ));
@@ -588,7 +581,7 @@ pub fn attr_schema(ctx: &Ctx<'_>, out: &mut Findings) {
                                 tree,
                                 id,
                                 ERR_BAD_ATTR_VALUE,
-                                format!("{} {e}", label(tree, id)),
+                                format!("{} {e}", child_label(tree, id)),
                             ));
                         }
                         continue;
@@ -616,7 +609,7 @@ pub fn attr_schema(ctx: &Ctx<'_>, out: &mut Findings) {
                         ERR_BAD_ATTR_VALUE,
                         format!(
                             "{} attribute '@{name}' has value '{}' which is not one of the allowed values: {}",
-                            label(tree, id),
+                            child_label(tree, id),
                             js_display(bad),
                             allowed.iter().map(js_display).collect::<Vec<_>>().join(", ")
                         ),
@@ -673,9 +666,15 @@ mod tests {
 
     #[test]
     fn db_column_types_parse_like_the_reference() {
-        assert_eq!(parse_db_column_type("uuid"), Some(None));
-        assert_eq!(parse_db_column_type("varchar(40)"), Some(Some(40)));
-        assert_eq!(parse_db_column_type("character(3)"), Some(Some(3)));
+        assert_eq!(parse_db_column_type("uuid"), Some(DbColumnType::Uuid));
+        assert_eq!(
+            parse_db_column_type("varchar(40)"),
+            Some(DbColumnType::Varchar(Some(40)))
+        );
+        assert_eq!(
+            parse_db_column_type("character(3)"),
+            Some(DbColumnType::Char(3))
+        );
         assert_eq!(parse_db_column_type("varchar(0)"), None);
         assert_eq!(parse_db_column_type("varchar(1234567890)"), None);
         assert_eq!(parse_db_column_type("char(3)"), None);

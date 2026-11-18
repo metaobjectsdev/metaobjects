@@ -7,6 +7,7 @@ use serde_json::Value;
 use super::util::error_at;
 use super::{Ctx, Findings};
 use crate::errors::MetaError;
+use crate::json::js_display;
 use crate::node::NodeId;
 
 pub const WARN_ENUM_NORMALIZE_AMBIGUOUS: &str = "WARN_ENUM_NORMALIZE_AMBIGUOUS";
@@ -73,13 +74,6 @@ fn segment_into<'a>(target: &str, dict: &[(&'a str, &str)]) -> Option<Vec<&'a st
     best[n].take().filter(|s| s.len() >= 2)
 }
 
-fn js_string(v: &Value) -> String {
-    match v {
-        Value::String(s) => s.clone(),
-        other => other.to_string(),
-    }
-}
-
 /// `(mode, explicit)`: own/inherited, then the owning object, then the default.
 fn effective_normalize(ctx: &Ctx<'_>, field: NodeId) -> (String, bool) {
     let tree = ctx.tree;
@@ -111,7 +105,7 @@ fn for_each_enum(ctx: &Ctx<'_>, mut f: impl FnMut(NodeId, Vec<String>, bool)) {
             {
                 let (mode, explicit) = effective_normalize(ctx, id);
                 if mode == NORMALIZE_DEFAULT {
-                    f(id, vals.iter().map(js_string).collect(), explicit);
+                    f(id, vals.iter().map(js_display).collect(), explicit);
                 }
             }
         }

@@ -6,9 +6,10 @@
 use serde_json::Value;
 use std::collections::HashMap;
 
-use super::util::{error_at, ops_for_subtype};
+use super::util::{START_OF_UNITS, error_at, ops_for_subtype};
 use super::{Ctx, Findings};
 use crate::errors::{ERR_BAD_ATTR_VALUE, ERR_UNKNOWN_ATTR};
+use crate::json::js_display;
 use crate::node::NodeId;
 
 pub const ERR_CROSS_FIELD_WITHOUT_CHECK: &str = "ERR_CROSS_FIELD_WITHOUT_CHECK";
@@ -70,7 +71,6 @@ const OP_IS_NULL: &str = "isNull";
 const OP_IS_NOT_NULL: &str = "isNotNull";
 const COMPARISON_OPS: &[&str] = &["eq", "ne", "gt", "gte", "lt", "lte"];
 const LOGIC_OPS: &[&str] = &["and", "or"];
-const START_OF_UNITS: &[&str] = &["day", "week", "month"];
 pub(crate) const CAST_TARGETS: &[&str] = &[
     SUB_STRING,
     SUB_INT,
@@ -773,13 +773,6 @@ fn expr_view_only_node(node: &Value) -> Option<String> {
         .and_then(|a| a.iter().find_map(expr_view_only_node))
 }
 
-fn js_string(v: &Value) -> String {
-    match v {
-        Value::String(s) => s.clone(),
-        other => other.to_string(),
-    }
-}
-
 /// A field as the literal check sees it: subtype, name and enum members.
 pub(crate) struct FieldView<'a> {
     pub(crate) name: &'a str,
@@ -810,9 +803,9 @@ pub(crate) fn literal_comparison_problem<'a>(
             ));
         }
         if let Some(members) = field.members.filter(|_| field.sub == SUB_ENUM)
-            && !members.iter().any(|m| js_string(m) == js_string(value))
+            && !members.iter().any(|m| js_display(m) == js_display(value))
         {
-            let list: Vec<String> = members.iter().map(js_string).collect();
+            let list: Vec<String> = members.iter().map(js_display).collect();
             return Some(format!(
                 "compares \"{}\" with {value}, which is not one of its @values ({}).",
                 field.name,

@@ -16,9 +16,13 @@ use std::rc::Rc;
 
 use serde_json::{Map, Value};
 
-use super::util::{ObjectIndex, find_hop, ops_for_field, split_dotted};
+use super::field_expr::is_iso_duration;
+use super::util::{
+    ObjectIndex, START_OF_UNITS, child_label, find_hop, ops_for_field, split_dotted,
+};
 use super::{Ctx, Findings};
 use crate::errors::MetaError;
+use crate::json::js_display;
 use crate::node::{NodeId, PACKAGE_SEP, Tree};
 
 pub const ERR_INVALID_DIMENSION: &str = "ERR_INVALID_DIMENSION";
@@ -80,7 +84,6 @@ const AGG_ANY: &str = "any";
 const AGG_ALL: &str = "all";
 const NOW: &str = "now";
 const START_OF: &str = "startOf";
-const START_OF_UNITS: [&str; 3] = ["day", "week", "month"];
 const NUMERIC: [&str; 6] = ["int", "long", "double", "float", "decimal", "currency"];
 const UNORDERED: [&str; 3] = ["boolean", "object", "map"];
 const TEMPORAL: [&str; 2] = ["date", "timestamp"];
@@ -111,13 +114,6 @@ fn is_integral_number(v: &Value) -> bool {
         .is_some_and(|f| f.is_finite() && f.fract() == 0.0)
 }
 
-fn js_number(v: &Value) -> String {
-    match v.as_f64() {
-        Some(f) if f.is_finite() && f.fract() == 0.0 && f.abs() < 1e15 => format!("{}", f as i64),
-        _ => v.to_string(),
-    }
-}
-
 fn is_self_or_ancestor(tree: &Tree, candidate: Option<NodeId>, entity: NodeId) -> bool {
     let Some(candidate) = candidate else {
         return false;
@@ -137,15 +133,6 @@ fn is_self_or_ancestor(tree: &Tree, candidate: Option<NodeId>, entity: NodeId) -
     false
 }
 
-fn child_label(tree: &Tree, id: NodeId) -> String {
-    let n = tree.node(id);
-    if n.name.is_empty() {
-        format!("{}.{}", n.type_name, n.sub_type)
-    } else {
-        format!("{}.{} '{}'", n.type_name, n.sub_type, n.name)
-    }
-}
-
 fn node_label(tree: &Tree, id: NodeId) -> String {
     let n = tree.node(id);
     let parent = n.parent;
@@ -160,46 +147,6 @@ fn node_label(tree: &Tree, id: NodeId) -> String {
             tree.resolution_key(id)
         ),
     }
-}
-
-/// Signed ISO-8601 duration, as `ISO_DURATION_RE` in the reference.
-fn iso_duration(s: &str) -> bool {
-    fn take<'a>(mut rest: &'a str, designators: &str) -> Option<&'a str> {
-        let mut at = 0usize;
-        loop {
-            let digits = rest.bytes().take_while(u8::is_ascii_digit).count();
-            if digits == 0 {
-                return Some(rest);
-            }
-            let d = rest[digits..].chars().next()?;
-            let p = designators.find(d)?;
-            if p < at {
-                return None;
-            }
-            at = p + 1;
-            rest = &rest[digits + d.len_utf8()..];
-        }
-    }
-    let s = s.strip_prefix(['+', '-']).unwrap_or(s);
-    let Some(rest) = s.strip_prefix('P') else {
-        return false;
-    };
-    if rest.is_empty() {
-        return false;
-    }
-    let Some(mut rest) = take(rest, "YMWD") else {
-        return false;
-    };
-    if let Some(t) = rest.strip_prefix('T') {
-        if !t.starts_with(|c: char| c.is_ascii_digit()) {
-            return false;
-        }
-        let Some(r) = take(t, "HMS") else {
-            return false;
-        };
-        rest = r;
-    }
-    rest.is_empty()
 }
 
 // ---- shared state ---------------------------------------------------------------
@@ -841,7 +788,7 @@ fn check_measure(env: &Env<'_>, mc: &Member, sink: &Sink<'_>) {
         {
             err(&format!(
                 "@default '{}' on @agg '{}' must be 0 (false) or 1 (true): the measure is a boolean.",
-                js_number(d),
+                js_display(d),
                 agg.unwrap_or("")
             ));
         } else if (agg == Some(AGG_MIN) || agg == Some(AGG_MAX))
@@ -1168,7 +1115,10 @@ fn relative_date_problem(
         ));
     }
     let duration = rel.get(NOW);
-    if !duration.and_then(Value::as_str).is_some_and(iso_duration) {
+    if !duration
+        .and_then(Value::as_str)
+        .is_some_and(is_iso_duration)
+    {
         return Some(format!(
             "@filter on '{key}' has relative date '{}', which is not an ISO-8601 duration (e.g. '-P7D', '-PT12H').",
             quote_value(duration)
@@ -1837,12 +1787,12 @@ mod tests {
     #[test]
     fn iso_duration_matches_the_reference_pattern() {
         for ok in ["-P7D", "P1Y2M", "-PT12H", "+P1W", "P1DT1H30M5S"] {
-            assert!(iso_duration(ok), "{ok}");
+            assert!(is_iso_duration(ok), "{ok}");
         }
         for bad in [
             "P", "PT", "P1YT", "7D", "-P1H", "P1D1Y", "P1.5D", "PT1H1D", "",
         ] {
-            assert!(!iso_duration(bad), "{bad}");
+            assert!(!is_iso_duration(bad), "{bad}");
         }
     }
 
