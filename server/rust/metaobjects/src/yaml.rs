@@ -330,13 +330,13 @@ impl Desugar<'_> {
                 let mut built = Vec::with_capacity(items.len());
                 for (i, item) in items.iter().enumerate() {
                     let child_at = format!("{at}.{KEY_CHILDREN}[{i}]");
-                    // A child that could not be read is dropped, as in every port;
-                    // the problem is already collected.
-                    if let Some(child) =
-                        self.node(Some(item), &children_path.index(built.len()), &child_at)
-                    {
-                        built.push(child);
-                    }
+                    // On a bad child keep an empty-object placeholder so sibling
+                    // indices stay stable; the problem is already collected, and
+                    // the parser skips the placeholder.
+                    let child = self
+                        .node(Some(item), &children_path.index(i), &child_at)
+                        .unwrap_or_else(|| Value::Object(Map::new()));
+                    built.push(child);
                 }
                 out.insert(KEY_CHILDREN.to_string(), Value::Array(built));
             } else {
@@ -351,47 +351,56 @@ impl Desugar<'_> {
     /// a boolean, number or null where the schema declares something else.
     fn check_coercion(&mut self, name: &str, raw: &Value, value_type: &str, at: &str) {
         let mismatch = |expected: &str| Some((name.to_string(), raw.clone(), expected.to_string()));
-        let found = match value_type {
+        let found: Vec<(String, Value, String)> = match value_type {
             ATTR_SUBTYPE_STRING | ATTR_SUBTYPE_CLASS => {
-                (!raw.is_string()).then(|| mismatch("string")).flatten()
+                (!raw.is_string()).then(|| mismatch("string")).flatten().into_iter().collect()
             }
-            ATTR_SUBTYPE_BOOLEAN => (!raw.is_boolean()).then(|| mismatch("boolean")).flatten(),
-            ATTR_SUBTYPE_INT | ATTR_SUBTYPE_LONG | ATTR_SUBTYPE_DOUBLE => {
-                (!raw.is_number()).then(|| mismatch("number")).flatten()
-            }
+            ATTR_SUBTYPE_BOOLEAN => (!raw.is_boolean())
+                .then(|| mismatch("boolean"))
+                .flatten()
+                .into_iter()
+                .collect(),
+            ATTR_SUBTYPE_INT | ATTR_SUBTYPE_LONG | ATTR_SUBTYPE_DOUBLE => (!raw.is_number())
+                .then(|| mismatch("number"))
+                .flatten()
+                .into_iter()
+                .collect(),
             ATTR_SUBTYPE_STRINGARRAY => match raw {
                 // A bare string is the one-element shorthand, not a coercion.
-                Value::String(_) => None,
-                Value::Array(items) => {
-                    let bad = items.iter().position(|v| !v.is_string());
-                    bad.map(|i| {
+                Value::String(_) => Vec::new(),
+                Value::Array(items) => items
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, v)| !v.is_string())
+                    .map(|(i, v)| {
                         (
                             format!("{name}[{i}]"),
-                            items[i].clone(),
+                            v.clone(),
                             "string (in string-array)".to_string(),
                         )
                     })
-                }
-                _ => mismatch("string-array (or single string)"),
+                    .collect(),
+                _ => mismatch("string-array (or single string)")
+                    .into_iter()
+                    .collect(),
             },
             // Object-shaped attributes accept any object or array.
-            _ => None,
+            _ => Vec::new(),
         };
-        let Some((label, value, expected)) = found else {
-            return;
-        };
-        let literal = match &value {
-            Value::Null => "null".to_string(),
-            Value::Object(_) | Value::Array(_) => value.to_string(),
-            other => js_display(other),
-        };
-        self.error(
-            ERR_YAML_COERCION,
-            format!(
-                "Attribute '@{label}' at {at}: expected {expected} but got {} ({literal}). YAML 1.2 silently coerced an unquoted value — quote it in YAML: '@{label}: \"{literal}\"' not '@{label}: {literal}'.",
-                coerced_type_name(&value)
-            ),
-        );
+        for (label, value, expected) in found {
+            let literal = match &value {
+                Value::Null => "null".to_string(),
+                Value::Object(_) | Value::Array(_) => value.to_string(),
+                other => js_display(other),
+            };
+            self.error(
+                ERR_YAML_COERCION,
+                format!(
+                    "Attribute '@{label}' at {at}: expected {expected} but got {} ({literal}). YAML 1.2 silently coerced an unquoted value — quote it in YAML: '@{label}: \"{literal}\"' not '@{label}: {literal}'.",
+                    coerced_type_name(&value)
+                ),
+            );
+        }
     }
 }
 

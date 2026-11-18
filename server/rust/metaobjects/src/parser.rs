@@ -423,6 +423,12 @@ fn build(
                 );
                 continue;
             };
+            // An empty child in a YAML document is the desugar's placeholder for
+            // a child that could not be read; the desugar already collected the
+            // problem, so the placeholder itself is skipped without an error.
+            if entry.is_empty() && ctx.positions.is_some() {
+                continue;
+            }
             if entry.len() != 1 {
                 let message = if entry.is_empty() {
                     format!("Child at {} has no type wrapper key", entry_path.as_str())
