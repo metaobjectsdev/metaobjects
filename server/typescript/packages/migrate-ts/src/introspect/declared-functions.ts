@@ -9,9 +9,10 @@
 // that position (only the arity is checked there). A domain is not seen through: `format_type`
 // names the domain, so a domain-typed parameter or result is reported as a mismatch.
 //
-// What it accepts, as Postgres does: an `integer` argument for a `bigint` or `numeric` parameter (and
-// `bigint` for `numeric`), any argument for a polymorphic `any*` parameter, and any arity for the
-// trailing parameter of a `VARIADIC` function.
+// What it accepts, as Postgres does: implicit numeric widening (an `integer` argument for a
+// `bigint`, `numeric`, `real` or `double precision` parameter, `bigint`/`numeric`/`real` for a
+// wider float), any argument for a polymorphic `any*` parameter, and any arity for the trailing
+// parameter of a `VARIADIC` function.
 
 import type { Kysely } from "kysely";
 import { sql } from "kysely";
@@ -194,8 +195,8 @@ export function signatureMatches(declared: DeclaredFunction, fn: PgFunction): bo
  */
 /** Printed under any finding: what the comparison does not see (fix round 3, M2). */
 export const DECLARED_FUNCTION_CHECK_LIMITS =
-  "origin.function signatures are compared by plain type name, allowing Postgres's implicit integer " +
-  "widening (integer to bigint to numeric) and treating polymorphic (any*) parameters as wildcards: " +
+  "origin.function signatures are compared by plain type name, allowing Postgres's implicit numeric " +
+  "widening (integer to bigint to numeric, and each onto real or double precision) and treating polymorphic (any*) parameters as wildcards: " +
   "a json, array, enum or user-defined kind is not type-checked (only the arity is), a variadic " +
   "function's trailing parameter count and type are not checked (its required fixed arity is), and " +
   "a domain is compared by its own name, not its base type.";
