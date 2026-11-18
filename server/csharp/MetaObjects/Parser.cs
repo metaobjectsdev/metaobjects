@@ -1069,27 +1069,10 @@ public static class Parser
 
         // Look up an existing child with (type, name). Skip unnamed nodes —
         // they are always distinct (e.g. inline validators, anonymous attrs).
-        //
-        // ROOT-LEVEL lookups are PACKAGE-QUALIFIED: two files declaring the same
-        // (type, name) under different packages are DISTINCT root nodes, never a
-        // merge pair (mirrors the Java parser, which searches root children by
-        // "pkg::name"). Nested children stay bare-name matched — they are scoped
-        // by their parent, and packages don't disambiguate siblings inside a node.
-        MetaData? existing = name != ""
-            ? parent.OwnChildByTypeAndName(type, name)
-            : null;
-        if (existing is not null && parent is MetaRoot)
-        {
-            string candidateKey = RootChildResolutionKey(nodeData, inheritedContextPkg, name);
-            if (existing.ResolutionKey() != candidateKey)
-            {
-                // The first same-name hit is a different package — scan for an
-                // exact package-qualified match (several packages may declare
-                // this name).
-                existing = parent.OwnChildren().FirstOrDefault(
-                    c => c.Type == type && c.Name == name && c.ResolutionKey() == candidateKey);
-            }
-        }
+        // One lookup shared with overlay targeting, so "which node does this
+        // declaration merge into" cannot drift between the walk and the
+        // deferred overlay pass.
+        MetaData? existing = FindOverlayTarget(parent, type, name, nodeData, inheritedContextPkg);
 
         if (isOverlayNode)
         {
