@@ -98,6 +98,18 @@ public final class GeneratedAccountControllerHarness implements AutoCloseable {
                                              List<Map<String, Object>> seedRows,
                                              com.fasterxml.jackson.databind.PropertyNamingStrategy naming)
             throws Exception {
+        this(corpusRoot, configRoot, genDir, seedRows, naming, null);
+    }
+
+    /**
+     * @param customize applied to the host mapper once the generated DTO class exists, with that class:
+     *                  registers a mixin or serializer on it, as an adopter's own mapper configuration may
+     */
+    public GeneratedAccountControllerHarness(Path corpusRoot, Path configRoot, Path genDir,
+                                             List<Map<String, Object>> seedRows,
+                                             com.fasterxml.jackson.databind.PropertyNamingStrategy naming,
+                                             java.util.function.BiConsumer<ObjectMapper, Class<?>> customize)
+            throws Exception {
         this.seedRows = seedRows;
         ObjectMapper hostMapper = new ObjectMapper()
             .disable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
@@ -132,6 +144,7 @@ public final class GeneratedAccountControllerHarness implements AutoCloseable {
         this.classLoader = new URLClassLoader(
             new URL[]{ classesDir.toUri().toURL() }, getClass().getClassLoader());
         this.dtoClass = classLoader.loadClass(ENTITY_PKG + ".AccountDto");
+        if (customize != null) customize.accept(mapper, dtoClass);
         Class<?> repoInterface = classLoader.loadClass(ENTITY_PKG + ".AccountRepository");
         this.controllerCtor = classLoader.loadClass(ENTITY_PKG + ".AccountController")
             .getDeclaredConstructor(repoInterface, ObjectMapper.class, Validator.class);

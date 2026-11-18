@@ -33,7 +33,9 @@ import kotlin.io.path.readText
  * Beside the corpus model it loads [ACCOUNT_VIEW], a read-only projection whose `pinHash` extends
  * `Account.pinHash`, and mounts its generated controller too, so the read-only path's credential
  * redaction is driven over HTTP as well. [naming] is the host mapper's property naming strategy (what
- * `spring.jackson.property-naming-strategy` sets), null for Jackson's default.
+ * `spring.jackson.property-naming-strategy` sets), null for Jackson's default. [customize] is applied to the host
+ * mapper once the generated data class exists, with that class: it registers a mixin or serializer on it, as an
+ * adopter's own mapper configuration may.
  */
 @OptIn(org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi::class)
 class GeneratedSecretFieldsControllerHarness(
@@ -41,6 +43,7 @@ class GeneratedSecretFieldsControllerHarness(
     genDir: Path,
     private val rows: List<Map<String, Any?>>,
     naming: PropertyNamingStrategy? = null,
+    customize: ((ObjectMapper, Class<*>) -> Unit)? = null,
 ) : AutoCloseable {
 
     private val mapper: ObjectMapper = ObjectMapper()
@@ -113,6 +116,7 @@ class GeneratedSecretFieldsControllerHarness(
             "generated Kotlin failed to compile:\n${result.messages}"
         }
 
+        customize?.invoke(mapper, result.classLoader.loadClass("$ENTITY_PKG.Account"))
         this.controllerClass = result.classLoader.loadClass(CONTROLLER_FQCN)
         this.viewControllerClass = result.classLoader.loadClass(VIEW_CONTROLLER_FQCN)
         this.accountTable = result.classLoader.loadClass(ACCOUNT_TABLE_FQCN).getDeclaredField("INSTANCE").get(null) as Table

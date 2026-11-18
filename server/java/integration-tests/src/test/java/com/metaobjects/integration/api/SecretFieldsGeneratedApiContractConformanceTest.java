@@ -142,6 +142,82 @@ final class SecretFieldsGeneratedApiContractConformanceTest {
         }
     }
 
+    /** Renames the credential's JSON key to one that does not spell its field name at all. */
+    abstract static class RenameCredentialMixin {
+        @com.fasterxml.jackson.annotation.JsonProperty("secret")
+        abstract String pinHash();
+    }
+
+    /**
+     * A credential is never returned when the host mapper renames it with a mixin to a key that does
+     * not normalise to the field name ({@code secret}): only the mapper's own contract reveals the key.
+     * Oracle: the seeded {@code pinHash} values from {@code seed.json}; a helper that removed the key
+     * spelled {@code pinHash} would return them under {@code secret}.
+     */
+    @Test
+    void credentialRenamedByAMixinIsNeverReturned() throws Exception {
+        Path genDir = Files.createTempDirectory("secret-fields-mixin");
+        try (GeneratedAccountControllerHarness harness = new GeneratedAccountControllerHarness(
+                ROOT, CONFIG_ROOT, genDir, seedRows(), null,
+                (mapper, dto) -> mapper.addMixIn(dto, RenameCredentialMixin.class))) {
+            harness.reset();
+            for (String path : List.of("/api/accounts", "/api/accounts/1")) {
+                GeneratedAccountControllerHarness.Response res = harness.exchange("GET", path, null);
+                assertEquals(200, res.status(), path + ": " + res.body());
+                assertTrue(res.body().contains("Ada Lovelace"), path + ": " + res.body());
+                assertFalse(res.body().contains("secret"), path + " kept the renamed credential key: " + res.body());
+                for (Map<String, Object> row : seedRows()) {
+                    assertFalse(res.body().contains((String) row.get("pinHash")),
+                        path + " leaked the credential: " + res.body());
+                }
+            }
+        }
+    }
+
+    /**
+     * Fail closed: when the mapper writes the row through a custom serializer, the credential's key
+     * cannot be read from its contract, so the response is refused (500) instead of returning the row.
+     * Oracle: the seeded {@code pinHash} values from {@code seed.json}, which this serializer writes
+     * out in full, so a helper that sent the row unstripped would return them.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void customSerializerForTheRowRefusesTheResponse() throws Exception {
+        Path genDir = Files.createTempDirectory("secret-fields-custom-serializer");
+        try (GeneratedAccountControllerHarness harness = new GeneratedAccountControllerHarness(
+                ROOT, CONFIG_ROOT, genDir, seedRows(), null,
+                (mapper, dto) -> {
+                    com.fasterxml.jackson.databind.module.SimpleModule module =
+                        new com.fasterxml.jackson.databind.module.SimpleModule();
+                    module.addSerializer((Class<Object>) dto, new com.fasterxml.jackson.databind.JsonSerializer<Object>() {
+                        @Override
+                        public void serialize(Object value, com.fasterxml.jackson.core.JsonGenerator gen,
+                                              com.fasterxml.jackson.databind.SerializerProvider provider)
+                                throws IOException {
+                            try {
+                                gen.writeStartObject();
+                                gen.writeStringField("name", (String) dto.getMethod("name").invoke(value));
+                                gen.writeStringField("pinHash", (String) dto.getMethod("pinHash").invoke(value));
+                                gen.writeEndObject();
+                            } catch (ReflectiveOperationException e) {
+                                throw new IOException(e);
+                            }
+                        }
+                    });
+                    mapper.registerModule(module);
+                })) {
+            harness.reset();
+            for (String path : List.of("/api/accounts", "/api/accounts/1")) {
+                GeneratedAccountControllerHarness.Response res = harness.exchange("GET", path, null);
+                assertEquals(500, res.status(), path + ": " + res.body());
+                for (Map<String, Object> row : seedRows()) {
+                    assertFalse(res.body().contains((String) row.get("pinHash")),
+                        path + " leaked the credential: " + res.body());
+                }
+            }
+        }
+    }
+
     /**
      * The stored rows, read from the repository seam: a seeded row still holds its seed
      * {@code tokenHash} and {@code pinHash} (neither was writable), and a row the scenario created

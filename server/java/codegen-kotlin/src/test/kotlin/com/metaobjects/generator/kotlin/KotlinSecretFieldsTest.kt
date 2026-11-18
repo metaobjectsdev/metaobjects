@@ -53,18 +53,6 @@ class KotlinSecretFieldsTest {
     }
 
     @Test
-    fun `the credential key is read from the mapper's contract, so a naming strategy cannot leak it`() {
-        val (controller, _) = controllerAndEntity(marked = true)
-        // The wire key comes from Jackson's own serialization contract (any naming strategy, mixin or
-        // @JsonProperty), not from the property name; the response is refused when it cannot be read.
-        assertTrue("mapper.serializationConfig.introspect(mapper.constructType(type))" in controller, controller)
-        assertTrue("it.internalName == name" in controller, controller)
-        assertTrue("throw unstrippable(" in controller, controller)
-        // Second line of defence: a key spelling the credential ignoring case, `_` and `-` goes too.
-        assertTrue("key.replace(\"_\", \"\").replace(\"-\", \"\").lowercase()" in controller, controller)
-    }
-
-    @Test
     fun `a required credential stays a non-null property with no JsonInclude`() {
         val (controller, entity) = controllerAndEntity(marked = true, requiredCredential = true)
         assertTrue(Regex("val pinHash: String[,\\s)]").containsMatchIn(entity), entity)
