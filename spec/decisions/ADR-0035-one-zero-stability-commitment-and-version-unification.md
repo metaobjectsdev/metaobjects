@@ -418,7 +418,7 @@ page and tooling of its own ⇒ a new feature ⇒ MINOR. Worked examples from th
 | `object.report` with `dimension.*`, `measure.*`, `segment.*` (FR-044, `1.1.0`) | **new feature ⇒ MINOR** | its own page (`docs/features/reporting.md`), a SQL view lowered by `meta migrate`, served routes in every port and the `cube-model` generator |
 | the rc.21 view vocabulary: `origin.function`, `@union` / `@unionAll`, `@grain` / `@grainOrdinal`, `cast` (`1.2.4`) | **augments projections and views ⇒ PATCH** | documented as sections of the existing projection material in `docs/features/relationships.md`, served by the view lowering and routes that already existed |
 | `@dbCheck` on a validator or `field.enum` (`1.2.4`) | **augments validation and schema ⇒ PATCH** | a switch on the CHECK constraints `meta migrate` already wrote, documented in `docs/features/migrations-and-drift.md` |
-| `measure.derived` and its `@expr` (unreleased at this writing) | **augments reporting ⇒ PATCH** | a new measure kind beside `measure.aggregate` / `measure.ratio`, documented in `docs/features/reporting.md` |
+| `measure.derived` and its `@expr` (shipped in `1.3.0`) | **augments reporting ⇒ PATCH** on its own | a new measure kind beside `measure.aggregate` / `measure.ratio`, documented in `docs/features/reporting.md` |
 
 **The caret rule is still not to be inverted.** A maintainer may choose a MINOR on purpose for
 an augmentation that headlines a release; that is a choice, never a requirement. A minor spent
