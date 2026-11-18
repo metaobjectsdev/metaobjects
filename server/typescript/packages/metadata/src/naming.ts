@@ -444,7 +444,6 @@ export function pluralize(s: string): string {
  * (`naming.collections`, {@link physicalNamingOf}) over its name. Each artifact then applies its
  * own casing (REST: snake_case; a TS export: as is; a Drizzle variable: lowerFirst). Own, not
  * resolving: a name inherited from an abstract base would give every subtype one collection.
- * Throws when an object declares both attrs — the caller reports it.
  */
 export function collectionNameOf(obj: MetaData): string {
   const declared = declaredCollectionName(obj);
@@ -487,7 +486,7 @@ export function snakeCollectionName(s: string): string {
 }
 
 /**
- * The collection name an object declares itself, and through which attr; undefined when it
+ * The collection name an object declares itself (`@collectionName`); undefined when it
  * declares none.
  */
 export function declaredCollectionName(obj: MetaData): { name: string } | undefined {
