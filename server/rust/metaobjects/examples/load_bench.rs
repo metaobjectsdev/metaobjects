@@ -9,8 +9,15 @@
 //!
 //! ```text
 //! cargo run --release --example load_bench [-- <copies> <iterations>
-//!     [--baseline <file>] [--write-baseline <file>]]
+//!     [json|yaml|project] [--baseline <file>] [--write-baseline <file>]]
 //! ```
+//!
+//! The mode picks what is loaded: `json` (the default) loads the model as JSON;
+//! `yaml` loads the same model as sigil-free authoring YAML, so the phase table
+//! shows the YAML parse and desugar as its own row; `project` times the
+//! project-reading steps (the config read, the directory walk, reading the file
+//! text and the library sources) and exits. Each mode is its own process, so a
+//! peak-memory reading belongs to that mode alone.
 //!
 //! It prints one table of time per load phase and one of time per validation pass
 //! (the median over the iterations), and the peak memory of the process. With
@@ -22,7 +29,9 @@ use std::time::{Duration, Instant};
 
 use serde_json::{Map, Value, json};
 
+use metaobjects::collection::resolve_collection;
 use metaobjects::loader::Loader;
+use metaobjects::naming::NamingRegistry;
 use metaobjects::node::{NodeId, Tree};
 use metaobjects::providers::default_registry;
 use metaobjects::serializer::canonical_serialize;
@@ -104,6 +113,83 @@ fn from_json_rows(v: &Value) -> Vec<(String, f64)> {
         .unwrap_or_default()
 }
 
+/// A canonical node as sigil-free authoring YAML (ADR-0006): attributes lose
+/// their `@`, and the fused `type.subType` key stays. `prefix` is the text before
+/// the key on its first line (`"- "` for a list item), which also sets the
+/// column the body lines up under.
+fn emit_node(out: &mut String, prefix: &str, node: &Value) {
+    let (key, body) = node
+        .as_object()
+        .and_then(|m| m.iter().next())
+        .expect("a node is a one-key wrapper");
+    out.push_str(&format!("{prefix}{key}:\n"));
+    let pad = " ".repeat(prefix.len() + 2);
+    for (k, v) in body.as_object().expect("a node body is a mapping") {
+        if k == "children" {
+            out.push_str(&format!("{pad}children:\n"));
+            for child in v.as_array().expect("children is a list") {
+                emit_node(out, &format!("{pad}  - "), child);
+            }
+        } else {
+            let k = k.strip_prefix('@').unwrap_or(k);
+            // A JSON value is a YAML flow value.
+            out.push_str(&format!("{pad}{k}: {v}\n"));
+        }
+    }
+}
+
+fn to_yaml(json: &str) -> String {
+    let doc: Value = serde_json::from_str(json).expect("the model is JSON");
+    let mut out = String::new();
+    emit_node(&mut out, "", &doc);
+    out
+}
+
+/// The project-reading steps, each timed on its own: read the config, walk the
+/// metadata directory, and read every file's text. The model is written to a
+/// scratch directory (`$DEV_SCRATCH`, a RAM disk) and removed afterwards.
+fn project_rows(sources: &[(String, String)], iterations: usize) {
+    let base = std::env::var_os("DEV_SCRATCH")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
+    let dir = base.join(format!("mo-load-bench-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join(".metaobjects")).expect("scratch dir");
+    std::fs::create_dir_all(dir.join("metaobjects")).expect("scratch dir");
+    std::fs::write(
+        dir.join(".metaobjects/config.json"),
+        r#"{ "schema_version": 1, "naming": { "columns": "snake_case" }, "libraries": ["iam", "ai"] }"#,
+    )
+    .expect("config");
+    for (id, text) in sources {
+        std::fs::write(dir.join("metaobjects").join(id), text).expect("model file");
+    }
+    let naming = NamingRegistry::builtin();
+    let (mut resolves, mut reads) = (Vec::new(), Vec::new());
+    for _ in 0..iterations {
+        let t = Instant::now();
+        let collection = resolve_collection(&dir, None, &naming).expect("the project resolves");
+        resolves.push(t.elapsed());
+        let t = Instant::now();
+        let (pairs, errors) = collection.read_sources();
+        reads.push(t.elapsed());
+        assert!(errors.is_empty(), "{errors:?}");
+        std::hint::black_box(pairs);
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+    println!(
+        "project: config read + directory walk ({} files), median of {iterations}: {:?}",
+        sources.len(),
+        median(resolves)
+    );
+    println!(
+        "project: read every file's text plus the library sources, median of {iterations}: {:?}",
+        median(reads)
+    );
+    if let Some(kib) = peak_rss_kib() {
+        println!("peak memory: {kib} KiB");
+    }
+}
+
 fn main() {
     let mut baseline_path = None;
     let mut write_path = None;
@@ -125,6 +211,11 @@ fn main() {
     let iterations: usize = args
         .next()
         .map_or(15, |a| a.parse().expect("iterations is a number"));
+    let mode = args.next().unwrap_or_else(|| "json".to_string());
+    assert!(
+        ["json", "yaml", "project"].contains(&mode.as_str()),
+        "mode is json, yaml or project, not {mode}"
+    );
     assert!(
         FITNESS.contains(ROOT_PACKAGE),
         "the fitness model declares its root package"
@@ -139,6 +230,18 @@ fn main() {
             (format!("meta.fitness_x{i:02}.json"), text)
         })
         .collect();
+    if mode == "project" {
+        project_rows(&sources, iterations);
+        return;
+    }
+    let sources: Vec<(String, String)> = if mode == "yaml" {
+        sources
+            .iter()
+            .map(|(id, text)| (id.replace(".json", ".yaml"), to_yaml(text)))
+            .collect()
+    } else {
+        sources
+    };
     let bytes: usize = sources.iter().map(|(_, t)| t.len()).sum();
 
     let t = Instant::now();
@@ -178,8 +281,9 @@ fn main() {
         std::hint::black_box(out);
     }
     println!(
-        "model: {copies} copies of the fitness model, {} KiB of JSON, {nodes} nodes",
-        bytes / 1024
+        "model: {copies} copies of the fitness model, {} KiB of {}, {nodes} nodes",
+        bytes / 1024,
+        mode.to_uppercase()
     );
     println!("registry compose: {compose:?}");
     println!(

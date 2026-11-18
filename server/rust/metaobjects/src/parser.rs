@@ -16,7 +16,8 @@ use crate::errors::{
 use crate::json::{js_display, safe_whole_i64};
 use crate::node::{Attr, Node, NodeId, PACKAGE_SEP, Tree};
 use crate::registry::{SUBTYPE_BASE, TypeRegistry};
-use crate::source::{ErrorSource, JsonPath};
+use crate::source::{ErrorSource, JsonPath, YamlPosition};
+use crate::yaml::Positions;
 
 pub const TYPE_METADATA: &str = "metadata";
 pub const SUBTYPE_ROOT: &str = "root";
@@ -48,7 +49,7 @@ pub const ATTR_SUBTYPE_PROPERTIES: &str = "properties";
 /// (a bare string becomes a one-element list).
 pub const ATTR_SUBTYPE_STRINGARRAY: &str = "stringarray";
 
-const RESERVED_STRUCTURAL_KEYS: &[&str] = &[
+pub(crate) const RESERVED_STRUCTURAL_KEYS: &[&str] = &[
     KEY_NAME,
     KEY_PACKAGE,
     KEY_EXTENDS,
@@ -70,12 +71,25 @@ struct Ctx<'a> {
     registry: &'a TypeRegistry,
     file: &'a str,
     errors: Vec<MetaError>,
+    /// Set for a YAML document: where each node's key sits, by canonical path.
+    positions: Option<&'a Positions>,
+    /// The position of the node being built, stamped on the errors it raises.
+    cur_pos: Option<YamlPosition>,
 }
 
 impl Ctx<'_> {
+    /// Note that the walk entered the node at `path`.
+    fn enter(&mut self, path: &JsonPath) {
+        if let Some(p) = self.positions {
+            self.cur_pos = p.get(path.as_str()).copied();
+        }
+    }
+
     fn here(&self, path: &JsonPath) -> ErrorSource {
         if self.file.is_empty() {
             ErrorSource::Code
+        } else if self.positions.is_some() {
+            ErrorSource::yaml(self.file, path.as_str(), self.cur_pos)
         } else {
             ErrorSource::json(self.file, path.as_str())
         }
@@ -89,11 +103,25 @@ impl Ctx<'_> {
 
 /// Parse one document into `tree`. `file` names it in error envelopes.
 pub fn parse_document(doc: &Value, registry: &TypeRegistry, tree: &mut Tree, file: &str) -> Parsed {
+    parse_document_with(doc, registry, tree, file, None)
+}
+
+/// [`parse_document`] for a document that came from YAML: errors carry the
+/// `yaml` format and the position of the node they were raised in.
+pub fn parse_document_with(
+    doc: &Value,
+    registry: &TypeRegistry,
+    tree: &mut Tree,
+    file: &str,
+    positions: Option<&Positions>,
+) -> Parsed {
     let mut ctx = Ctx {
         tree,
         registry,
         file,
         errors: Vec::new(),
+        positions,
+        cur_pos: None,
     };
     let root_path = JsonPath::root();
     let Some(map) = doc.as_object() else {
@@ -127,6 +155,7 @@ pub fn parse_document(doc: &Value, registry: &TypeRegistry, tree: &mut Tree, fil
     }
     let (wrapper, body) = wrappers[0];
     let path = root_path.key(wrapper);
+    ctx.enter(&path);
     let root = build(&mut ctx, wrapper, body, &path, &Scope::root());
     Parsed {
         root,
@@ -394,6 +423,12 @@ fn build(
                 );
                 continue;
             };
+            // An empty child in a YAML document is the desugar's placeholder for
+            // a child that could not be read; the desugar already collected the
+            // problem, so the placeholder itself is skipped without an error.
+            if entry.is_empty() && ctx.positions.is_some() {
+                continue;
+            }
             if entry.len() != 1 {
                 let message = if entry.is_empty() {
                     format!("Child at {} has no type wrapper key", entry_path.as_str())
@@ -411,6 +446,7 @@ fn build(
             let (cw, cbody) = entry.iter().next().expect("one entry");
             let cpath = entry_path.key(cw);
             let (ctype, csub) = split_wrapper(cw);
+            ctx.enter(&cpath);
             if ctype == TYPE_ATTR {
                 parse_attr_child(ctx, id, cw, csub, cbody, &cpath);
             } else {

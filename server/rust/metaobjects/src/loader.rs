@@ -19,17 +19,17 @@ use crate::errors::{
     ERR_UNKNOWN, ERR_UNKNOWN_SUBTYPE, ERR_UNKNOWN_TYPE, ERR_UNRESOLVED_SUPER, MetaError,
 };
 use crate::node::{Node, NodeId, PACKAGE_SEP, Tree};
-use crate::parser::{SUBTYPE_ROOT, TYPE_METADATA, TYPE_OBJECT, parse_document};
+use crate::parser::{SUBTYPE_ROOT, TYPE_METADATA, TYPE_OBJECT, parse_document_with};
 use crate::registry::TypeRegistry;
 use crate::source::ErrorSource;
 use crate::timing::{
     LoadTimings, PHASE_FREEZE, PHASE_JSON, PHASE_MERGE, PHASE_READ, PHASE_REFS, PHASE_SUPERS,
-    PHASE_TREE,
+    PHASE_TREE, PHASE_YAML,
 };
 use crate::validate::{self, Ctx, Findings};
+use crate::yaml::parse_yaml;
 
-/// The extensions a directory load picks up. YAML is a later step of this port;
-/// a `.yaml` file is reported rather than silently skipped.
+/// The extensions a directory load picks up.
 const JSON_SUFFIX: &str = "json";
 const YAML_SUFFIXES: &[&str] = &["yaml", "yml"];
 /// A directory of drafts that a directory load never descends into.
@@ -158,28 +158,31 @@ impl<'r> Loader<'r> {
             } else {
                 ErrorSource::json(id, "$")
             };
-            let lower = id.to_ascii_lowercase();
-            if YAML_SUFFIXES
-                .iter()
-                .any(|s| lower.ends_with(&format!(".{s}")))
-            {
-                errors.push(MetaError::at(
-                    ERR_UNKNOWN,
-                    format!("{id}: YAML metadata is not supported by the Rust port yet"),
-                    envelope,
-                ));
-                continue;
-            }
-            let doc: Result<Value, _> = timings.phase(PHASE_JSON, || serde_json::from_str(text));
-            let doc: Value = match doc {
-                Ok(v) => v,
-                Err(e) => {
-                    errors.push(MetaError::at(ERR_MALFORMED_JSON, e.to_string(), envelope));
-                    continue;
+            let is_yaml = id
+                .rsplit_once('.')
+                .is_some_and(|(_, ext)| YAML_SUFFIXES.iter().any(|s| ext.eq_ignore_ascii_case(s)));
+            let (doc, positions) = if is_yaml {
+                match timings.phase(PHASE_YAML, || parse_yaml(text, self.registry, id)) {
+                    Ok(d) => {
+                        errors.extend(d.errors);
+                        (d.canonical, Some(d.positions))
+                    }
+                    Err(e) => {
+                        errors.push(e);
+                        continue;
+                    }
+                }
+            } else {
+                match timings.phase(PHASE_JSON, || serde_json::from_str::<Value>(text)) {
+                    Ok(v) => (v, None),
+                    Err(e) => {
+                        errors.push(MetaError::at(ERR_MALFORMED_JSON, e.to_string(), envelope));
+                        continue;
+                    }
                 }
             };
             let parsed = timings.phase(PHASE_TREE, || {
-                parse_document(&doc, self.registry, &mut tree, id)
+                parse_document_with(&doc, self.registry, &mut tree, id, positions.as_ref())
             });
             // An unknown type or subtype drops only that node, so the rest of the
             // document is kept; any other parse error drops the document, as the

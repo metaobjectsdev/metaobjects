@@ -18,9 +18,10 @@ here.**
   that reads packages, children, subtypes, attributes, `extends` and references, with the
   canonical serializer. The loader freezes the tree when it finishes, and a frozen tree memoizes
   its resolved reads (effective children, attrs and array-ness) for many concurrent readers, as
-  the other ports do. It passes `registry-conformance` byte for byte and 256 of the 510
-  metamodel fixtures; the other 254 are on a ledger that may only shrink (the validation passes,
-  merge warnings, the reporting short-name rule and `script.json` fixtures it does not run yet).
+  the other ports do. It passes `registry-conformance` byte for byte and 261 of the 526
+  metamodel fixtures; 254 of the rest are on a ledger that may only shrink (the validation passes,
+  merge warnings, the reporting short-name rule and `script.json` fixtures it does not run yet),
+  and 11 newer fixtures fail unlisted until those passes land.
   While the port is in preview, a new fixture that fails in Rust and is not on the ledger prints a
   warning and does not fail the lane; a fixture that passed and regresses still fails it, because
   the ledger records how many fixtures must pass. Nothing is published and there is no codegen
@@ -33,6 +34,14 @@ here.**
   only, printed without a baseline delta — a cross-machine delta measures the machine, not the
   change) in `scripts/ci-local.sh --only rust`, `pr-ci` and `local-ci`, selected by changes
   under `server/rust/`.
+- **Rust port reads a real project, in preview.** The loader now reads YAML authoring files
+  (ADR-0006: bare type keys, scalar-body names, the `[]` suffix, sigil-free attributes, anchors and
+  aliases, the `ERR_YAML_COERCION` guard, and a line and column on every error from a YAML file),
+  and the crate resolves a project the way the other ports do: the `.metaobjects/config.json`
+  reader, the four source kinds, directory discovery (symlinks followed, `_pending` skipped), the
+  `iam` and `ai` library sources embedded in the crate, and the naming strategies, pluralizers and
+  collection-name collision check. It passes `yaml-conformance` 15 of 19, and the
+  `source-resolution-conformance` and `naming-conformance` corpora in full. Nothing is published.
 
 ### Changed
 

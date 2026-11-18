@@ -11,6 +11,13 @@ pub enum ErrorSource {
         files: Vec<String>,
         json_path: String,
     },
+    /// A location in one YAML document: the same path, plus the line and column of
+    /// the node's key when the parse knows them.
+    Yaml {
+        files: Vec<String>,
+        json_path: String,
+        position: Option<YamlPosition>,
+    },
     /// A reference that did not resolve: the referring node and the reference.
     Resolved {
         files: Vec<String>,
@@ -20,7 +27,22 @@ pub enum ErrorSource {
     },
 }
 
+/// A 1-indexed line and column in a YAML document.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct YamlPosition {
+    pub line: u32,
+    pub col: u32,
+}
+
 impl ErrorSource {
+    pub fn yaml(file: &str, json_path: impl Into<String>, position: Option<YamlPosition>) -> Self {
+        ErrorSource::Yaml {
+            files: vec![file.to_string()],
+            json_path: json_path.into(),
+            position,
+        }
+    }
+
     pub fn json(file: &str, json_path: impl Into<String>) -> Self {
         ErrorSource::Json {
             files: vec![file.to_string()],
@@ -33,6 +55,7 @@ impl ErrorSource {
         match self {
             ErrorSource::Code => "code",
             ErrorSource::Json { .. } => "json",
+            ErrorSource::Yaml { .. } => "yaml",
             ErrorSource::Resolved { .. } => "resolved",
         }
     }
@@ -40,22 +63,35 @@ impl ErrorSource {
     pub fn files(&self) -> &[String] {
         match self {
             ErrorSource::Code => &[],
-            ErrorSource::Json { files, .. } | ErrorSource::Resolved { files, .. } => files,
+            ErrorSource::Json { files, .. }
+            | ErrorSource::Yaml { files, .. }
+            | ErrorSource::Resolved { files, .. } => files,
         }
     }
 
     pub fn json_path(&self) -> Option<&str> {
         match self {
             ErrorSource::Code => None,
-            ErrorSource::Json { json_path, .. } | ErrorSource::Resolved { json_path, .. } => {
-                Some(json_path)
-            }
+            ErrorSource::Json { json_path, .. }
+            | ErrorSource::Yaml { json_path, .. }
+            | ErrorSource::Resolved { json_path, .. } => Some(json_path),
+        }
+    }
+
+    /// The YAML position, when this envelope has one.
+    pub fn yaml_position(&self) -> Option<YamlPosition> {
+        match self {
+            ErrorSource::Yaml { position, .. } => *position,
+            _ => None,
         }
     }
 
     /// Rewrite every file path with `f` (the conformance runner makes them relative).
     pub fn map_files(&mut self, f: impl Fn(&str) -> String) {
-        if let ErrorSource::Json { files, .. } | ErrorSource::Resolved { files, .. } = self {
+        if let ErrorSource::Json { files, .. }
+        | ErrorSource::Yaml { files, .. }
+        | ErrorSource::Resolved { files, .. } = self
+        {
             for file in files.iter_mut() {
                 *file = f(file);
             }

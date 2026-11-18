@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 /// A load phase, in the order the loader runs them.
 pub const PHASE_READ: &str = "read files";
 pub const PHASE_JSON: &str = "json parse";
+pub const PHASE_YAML: &str = "yaml parse and desugar";
 pub const PHASE_TREE: &str = "tree build";
 pub const PHASE_MERGE: &str = "merge";
 pub const PHASE_SUPERS: &str = "super resolution";

@@ -148,6 +148,42 @@ fn a_symlink_cycle_is_walked_once() {
     assert_eq!(found.expect("walk").len(), 1);
 }
 
+// The TypeScript reference keeps an empty-object placeholder for a YAML child
+// that could not be desugared, so a later sibling's error keeps its source
+// index (and its no-wrapper complaint is a warning there, not an error).
+#[test]
+fn a_bad_yaml_child_keeps_later_sibling_indices_stable() {
+    let r = load(&[(
+        "meta.a.yaml",
+        "metadata.root:\n  name: test\n  package: acme\n  children:\n    - object.entity:\n        name: Thing\n        children:\n          - field.string: a\n            field.int: b\n          - field.nonesuch: c\n",
+    )]);
+    assert_eq!(codes(&r), ["ERR_MALFORMED_YAML", "ERR_UNKNOWN_SUBTYPE"]);
+    assert_eq!(r.errors[0].source.json_path(), Some("$"));
+    assert_eq!(
+        r.errors[1].source.json_path(),
+        Some("$['metadata.root'].children[0]['object.entity'].children[1]['field.nonesuch']")
+    );
+}
+
+// The TypeScript reference reports one ERR_YAML_COERCION per non-string element
+// of a string-array value, not just the first.
+#[test]
+fn string_array_coercion_reports_every_bad_element() {
+    let r = load(&[(
+        "meta.a.yaml",
+        "metadata.root:\n  name: test\n  package: acme\n  children:\n    - object.entity:\n        name: Thing\n        children:\n          - field.enum:\n              name: color\n              values: [true, false]\n",
+    )]);
+    assert_eq!(codes(&r), ["ERR_YAML_COERCION", "ERR_YAML_COERCION"]);
+    for (i, e) in r.errors.iter().enumerate() {
+        assert!(
+            e.message.contains(&format!("'@values[{i}]'")),
+            "{i}: {}",
+            e.message
+        );
+        assert_eq!(e.source.json_path(), Some("$"), "{i}: {:?}", e.source);
+    }
+}
+
 #[test]
 fn a_load_records_the_time_of_every_phase() {
     use metaobjects::timing::{
@@ -172,4 +208,17 @@ fn a_load_records_the_time_of_every_phase() {
         ]
     );
     assert!(r.timings.total() > std::time::Duration::ZERO);
+}
+
+#[test]
+fn a_yaml_load_times_its_own_parse_phase() {
+    use metaobjects::timing::{PHASE_JSON, PHASE_YAML};
+    let r = load(&[(
+        "meta.a.yaml",
+        "metadata:\n  package: acme\n  children:\n    - object.entity: A\n",
+    )]);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    let names: Vec<&str> = r.timings.phases.iter().map(|t| t.name).collect();
+    assert!(names.contains(&PHASE_YAML), "{names:?}");
+    assert!(!names.contains(&PHASE_JSON), "{names:?}");
 }

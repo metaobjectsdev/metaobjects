@@ -27,7 +27,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | Corpus | Fixtures | TS | Java | Kotlin | C# | Python |
 |---|---|---|---|---|---|---|
 | [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 526 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
-| [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 16 | 16 / 16 | 15 / 16 (1 ledgered: `yaml-quoted-leading-zero` — Java pipeline strips quotes off `"007"`) | inherits via Java | 15 / 16 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 16 / 16 |
+| [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 19 | 19 / 19 | 18 / 19 (1 ledgered: `yaml-quoted-leading-zero` — Java pipeline strips quotes off `"007"`) | inherits via Java | 18 / 19 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 19 / 19 |
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 45 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/verify-strict-conformance/`](../fixtures/verify-strict-conformance/) | 1 | ✓ | — | — | — | ✓ |
 | [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 18 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
@@ -47,7 +47,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/template-output-render-conformance/`](../fixtures/template-output-render-conformance/) | 5 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/generator-registry-conformance/`](../fixtures/generator-registry-conformance/) | 1 canonical manifest | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/provider-composition-conformance/`](../fixtures/provider-composition-conformance/) | 18 (11 error-shape + 4 compose-load + 3 attr-ownership) | ✓ | ✓ | — (JVM registry via Java) | ✓ | ✓ |
-| [`fixtures/source-resolution-conformance/`](../fixtures/source-resolution-conformance/) | 25 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
+| [`fixtures/source-resolution-conformance/`](../fixtures/source-resolution-conformance/) | 28 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/scope-conformance/`](../fixtures/scope-conformance/) | 10 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/dependency-conformance/`](../fixtures/dependency-conformance/) | 47 cases (36 resolution, 7 of them with a ledger arm, + 11 check) + 32 transport cases | ✓ (reference implementation; all four arms) | ✓ (resolution arm, all 36, ledger included; check arm, all 11) | inherits via Java | ✓ (resolution arm, all 36, ledger included; check arm, all 11, as `verify --deps`) | ✓ (resolution arm, all 36 identically, ledger included; check arm, all 11, as `deps check` and `verify --deps`; the transport arm is Node-only) |
 | [`fixtures/shared-model-conformance/`](../fixtures/shared-model-conformance/) | 15 cases (9 publish + 6 refusal) | ✓ (reference implementation) | ✓ (all 15; `SharedModelConformanceTest`) | inherits via Java (`KotlinSharedModelGeneratorTest` pins the generator) | ✓ (all 15; `SharedModelConformanceTests`) | ✓ (serializer arm: the 9 publish cases' document bytes; no publisher) |
@@ -69,14 +69,18 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/contract-conformance/`](../fixtures/contract-conformance/) (FR-022 — the `contract-schema` and `openapi` generators' golden trees and refusals) | 19 cases (14 trees + 5 errors) | ✓ (one neutral engine, ADR-0034 Amendment 10; the generated API lanes also hold real traffic to the documents) | — | — | — | — |
 | [`fixtures/explorer-conformance/`](../fixtures/explorer-conformance/) (the `explorer.json` data spine: `meta export --effective` + `meta verify --format json` + the generated-file manifest in, one explorer document out) | 1 case (`shop`) | ✓ (the builder is TypeScript, and reads only port-neutral inputs) | — | — | — | — |
 
-**Rust (preview, ADR-0065) is not a column yet.** The sixth port runs two corpora
-today: `registry-conformance` (byte-identical manifest) and the metamodel corpus, 256
-of 510 green with the rest on `server/rust/metaobjects/tests/conformance-expected-failures.json`
+**Rust (preview, ADR-0065) is not a column yet.** The sixth port runs five corpora
+today: `registry-conformance` (byte-identical manifest); the metamodel corpus, 261
+of 526 green, 254 of the rest on `server/rust/metaobjects/tests/conformance-expected-failures.json`
 (validation passes, merge warnings, the reporting short-name rule and the `script.json`
-fixtures, none of them built yet). That ledger may only shrink. While the port is in
+fixtures, none of them built yet) and 11 fixtures from the newer corpus failing unlisted
+until those same validation passes land; `yaml-conformance`, 15 of 19 (the four on
+`yaml-conformance-expected-failures.json` wait for the attribute-schema pass and the
+ADR-0059 reference rules); `source-resolution-conformance` (all 28 cases); and
+`naming-conformance` (all of it). Those ledgers may only shrink. While the port is in
 preview, a new fixture that fails in Rust and is not on the ledger prints a warning and does
 not fail the lane; it becomes a hard failure when the port leaves preview. A regression still
-fails: the ledger's `minPassing` (256) is the number of fixtures known to pass, and the run
+fails: the ledger's `minPassing` (261) is the number of fixtures known to pass, and the run
 fails when fewer do. The column joins this table when the port leaves
 preview.
 
@@ -394,7 +398,7 @@ Per-port runners + commands:
 | Kotlin | `cd server/java && mvn -pl codegen-kotlin test` (snapshot suite) | `mvn -f server/java/integration-tests-kotlin/pom.xml test` (needs Docker) | `mvn -f server/java/integration-tests-kotlin/pom.xml test -Dtest=ApiContractConformanceTest` (needs Docker) |
 | C# | `dotnet test` (per project) | `scripts/integration-test.sh csharp` (needs Docker) | `dotnet test server/csharp/MetaObjects.IntegrationTests/MetaObjects.IntegrationTests.csproj --filter "FullyQualifiedName~ApiContractConformanceTest"` (needs Docker) |
 | Python | `pytest` (per package) | `scripts/integration-test.sh python` (needs Docker) | `cd server/python && uv run --extra integration pytest tests/integration/test_api_contract.py` (needs Docker) |
-| Rust (preview) | `cd server/rust && cargo test` (registry + metamodel corpora) | — | — |
+| Rust (preview) | `cd server/rust && cargo test` (registry, metamodel, YAML, source-resolution and naming corpora) | — | — |
 
 The `persistence-conformance` corpus is intentionally **on-demand** — none of the
 unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
@@ -431,12 +435,13 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 | `object-collection-name` | [features/migrations/physical-naming.md](features/migrations/physical-naming.md) (`@collectionName` and the `collections` pluralizer) |
 | `smoke-empty-metadata` | [features/entities.md](features/entities.md) |
 
-### `fixtures/yaml-conformance/` (16)
+### `fixtures/yaml-conformance/` (19)
 
-All 16 fixtures → [features/yaml-authoring.md](features/yaml-authoring.md). The corpus
-splits into 9 happy-path fixtures (sigil-free attrs, array suffix, anchor/alias,
+All 19 fixtures → [features/yaml-authoring.md](features/yaml-authoring.md). The corpus
+splits into 12 happy-path fixtures (sigil-free attrs, array suffix, anchor/alias,
 block scalars, mixed bare-and-prefixed, quoted leading zero, an overlay declared
-before its base in one file, etc.) and 7 `error-yaml-*` fixtures that pin the
+before its base in one file, parent-relative and root-escape `ref`s, a bare `of`
+on a reporting measure, etc.) and 7 `error-yaml-*` fixtures that pin the
 YAML 1.1 coercion guards (bool / null / hex in string contexts; numeric in enum
 contexts; reserved-as-attr).
 
@@ -529,9 +534,9 @@ that reads real views, so it runs full stack on Postgres, SQLite and MySQL
 port, and on D1's local runtime in TypeScript. The `decimal/` sub-corpus does the same over
 decimal columns.
 
-### `fixtures/source-resolution-conformance/` (25 cases)
+### `fixtures/source-resolution-conformance/` (28 cases)
 
-All 25 cases → [features/metadata-sources.md](features/metadata-sources.md) (how a
+All 28 cases → [features/metadata-sources.md](features/metadata-sources.md) (how a
 declared `sources` set resolves to a file list). Companion to
 `scope-conformance/` below — `sources` decides which files are read, `scope`
 filters what is emitted from them. The corpus is file-shaped: one committed
@@ -781,8 +786,8 @@ JSON and verify payload feeds it unchanged.
 
 ## Orphaned fixtures (tested but not yet documented)
 
-The fixtures in the nine corpora mapped above (metamodel 526 + yaml 16 + verify 45
-+ render 18 + persistence 67 + api-contract 139 + source-resolution 25 + scope 10 +
+The fixtures in the nine corpora mapped above (metamodel 526 + yaml 19 + verify 45
++ render 18 + persistence 67 + api-contract 139 + source-resolution 28 + scope 10 +
 dependency 47) each map to a feature doc, and so do the two requirement corpora, `shared-model-conformance`, the
 `cube-model` corpus and `explorer-conformance`, whose case lists live in their own READMEs. None are orphaned today. The remaining
 corpora in the totals table gate tooling contracts (registry manifests, provider

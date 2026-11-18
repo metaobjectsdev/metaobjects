@@ -1,0 +1,12 @@
+{
+  "language": "rust",
+  "corpus": "fixtures/yaml-conformance",
+  "notes": "Every YAML-specific behaviour passes: the desugar, the coercion guard, positions, anchors, block scalars. The four fixtures below need passes that belong to the validation and reference-resolution step of this port, and leave the ledger when it lands: error-yaml-coerced-bool-in-int and error-yaml-coerced-num-in-enum expect the attribute-schema pass's ERR_BAD_ATTR_VALUE after the ERR_YAML_COERCION; yaml-ref-root-escape needs ADR-0059 R2 root-level `::` references and package-aware merging; yaml-reporting-via-of-bare needs ADR-0059 R3 (a bare `of` owner resolves in the package of the entity its via reaches). The ledger may only shrink and minPassing may only rise.",
+  "minPassing": 15,
+  "fixtures": [
+    "error-yaml-coerced-bool-in-int",
+    "error-yaml-coerced-num-in-enum",
+    "yaml-ref-root-escape",
+    "yaml-reporting-via-of-bare"
+  ]
+}
