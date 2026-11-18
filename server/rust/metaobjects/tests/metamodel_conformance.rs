@@ -257,9 +257,9 @@ fn navigate(tree: &Tree, root: NodeId, path: &[&str]) -> Option<NodeId> {
     Some(cur)
 }
 
-/// Run the `script.json` operations this port implements. `field.filter-ops` needs
-/// the per-subtype filter-operator table, which the Rust registry does not carry
-/// yet; an operation it does not know fails the fixture rather than passing silently.
+/// Run the `script.json` operations this port implements. `field.filter-ops` reads the
+/// per-subtype filter-operator bands in `validate::util`; an operation this runner does
+/// not know fails the fixture rather than passing silently.
 fn run_script(script: &Value, tree: &Tree, root: NodeId) -> Vec<String> {
     let mut failures = Vec::new();
     let ops = script["operations"].as_array().cloned().unwrap_or_default();
