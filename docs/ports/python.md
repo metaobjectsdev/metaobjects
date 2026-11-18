@@ -282,7 +282,7 @@ targets:
 ```
 
 It emits one `<entity>_names.py` per object and nothing else. Each carries
-`<ENTITY>_SOURCE_PRIMARY_TABLE`, a `<ENTITY>_<FIELD>_COLUMN` per field, a
+`<ENTITY>_SOURCE_PRIMARY_TABLE`, a `<ENTITY>_<FIELD>_COLUMN` per field (not a derived field of a table-read entity, which is no column of that table), a
 `<ENTITY>_COLUMNS_BY_FIELD` map, and `<ENTITY>_SOURCE_PRIMARY_SCHEMA` when the
 source declares a `@schema`. On the 16-entity persistence-conformance model the full
 server-side selection emits 68 files and this emits 19 — so adopting the names tier does
