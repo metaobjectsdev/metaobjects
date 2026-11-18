@@ -141,6 +141,10 @@ export const ORIGIN_DEFINITION: ProviderDefinition = {
     {
       "type": "origin",
       "subType": "function",
+      "implementedIn": [
+        "typescript",
+        "csharp"
+      ],
       "description": "A value computed by a database function the project owns (rc.21): @function names it, @schema its schema (absent: public), and @args the fields passed to it, in order. On an entity an argument is one of its fields; on a projection, one of its own fields (not an aggregate) or a field of its base entity. @params declares each argument's type and @returns the result's: an argument must have its parameter's type (cast it through an origin.computed field otherwise), @returns must be the carrying field's subtype, and the view casts the call to the field's full column type (the one its table column would have: length or @dbColumnType spelling, precision and scale, a local or zoned timestamp), so the call is checked, never free SQL. The signature is a declaration: meta verify --db reads the function from pg_proc and fails on a parameter or return type that differs. MetaObjects never creates the function: it is owned SQL, created before the view. Declared on an entity, it is entity-derived: a projection reaching the entity reads it like any derived field. Postgres only; the SQLite view emitter refuses it.",
       "whenToUse": "A view column is the result of a function the database already holds (a PL/pgSQL state machine, a legacy computation) and cannot be expressed in @expr. Declare the call instead of hand-writing the view's @sql.",
       "children": [

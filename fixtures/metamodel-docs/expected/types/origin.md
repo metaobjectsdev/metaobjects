@@ -98,6 +98,8 @@ A value computed by a database function the project owns (rc.21): @function name
 
 **Owning provider:** metaobjects-core-types
 
+**Implemented in:** csharp, typescript so far — every port loads and type-checks it; the others do not act on it yet.
+
 **When to use:** A view column is the result of a function the database already holds (a PL/pgSQL state machine, a legacy computation) and cannot be expressed in @expr. Declare the call instead of hand-writing the view's @sql.
 
 **Attributes**

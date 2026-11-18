@@ -109,7 +109,7 @@ public static class DbConstants
     public sealed record ParsedDbColumnType(string Kind, int? Length);
 
     private static readonly System.Text.RegularExpressions.Regex SizedDbColumnType =
-        new(@"^(varchar|character varying|character)\(([1-9][0-9]{0,8})\)$", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+        new(@"^(varchar|character varying|character)\(([1-9][0-9]{0,8})\)\z", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
     /// <summary>
     /// rc.21 part B (U2): parse a <c>@dbColumnType</c> value, or null for one that is not legal.
