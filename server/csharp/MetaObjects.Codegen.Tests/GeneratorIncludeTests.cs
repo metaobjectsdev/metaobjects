@@ -187,13 +187,15 @@ public class GeneratorIncludeTests
         var r = new MetaDataLoader().Load([new InMemoryStringSource(BothUse, id: "both.json")]);
         Assert.Empty(r.Errors);
         // One run, one claim registry, as two entries of one generator list share.
+        var orderEntry = new EntityGenerator { Include = o => o.Name is "Order" };
+        var customerEntry = new EntityGenerator { Include = o => o.Name is "Customer" };
         var ctx = new GenContext
         {
-            Entities = r.Root.Objects(), Root = r.Root,
+            Entities = r.Root.Objects(), Root = r.Root, Generators = [orderEntry, customerEntry],
             Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true },
         };
-        var orders = new EntityGenerator { Include = o => o.Name is "Order" }.Generate(ctx).ToList();
-        var customers = new EntityGenerator { Include = o => o.Name is "Customer" }.Generate(ctx).ToList();
+        var orders = orderEntry.Generate(ctx).ToList();
+        var customers = customerEntry.Generate(ctx).ToList();
         // Customer sorts first (acme::Customer < acme::Order), so its entry declares Level.
         Assert.Contains(customers, f => f.Path.EndsWith("Level.g.cs", StringComparison.Ordinal));
         Assert.DoesNotContain(orders, f => f.Path.EndsWith("Level.g.cs", StringComparison.Ordinal));
@@ -203,6 +205,28 @@ public class GeneratorIncludeTests
         Assert.True(errors.Count == 0, "the two entries' output should build together, but got:\n" + string.Join("\n", errors));
         // Un-narrowed, it is declared as before.
         Assert.Single(new EntityGenerator().Generate(ctx), f => f.Path.EndsWith("Level.g.cs", StringComparison.Ordinal));
+    }
+    // B2: a single narrowed entry whose Include does not accept the enum's home (Customer) still declares
+    // the enum, because no other entry of the run will; its output builds on its own.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_single_narrowed_entry_declares_a_shared_enum_whose_home_it_does_not_emit(bool listed)
+    {
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(BothUse, id: "both.json")]);
+        Assert.Empty(r.Errors);
+        var orderEntry = new EntityGenerator { Include = o => o.Name is "Order" };
+        // Another kind of entry accepting the home does not declare entity enums, so it does not count.
+        var routes = new RoutesGenerator { Include = o => o.Name is "Customer" };
+        var ctx = new GenContext
+        {
+            Entities = r.Root.Objects(), Root = r.Root, Generators = listed ? [orderEntry, routes] : [],
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true },
+        };
+        var orders = orderEntry.Generate(ctx).ToList();
+        Assert.Single(orders, f => f.Path.EndsWith("Level.g.cs", StringComparison.Ordinal));
+        var errors = PackageNamespaceTests.CompileErrors(orders);
+        Assert.True(errors.Count == 0, "a single narrowed entry's output should build on its own, but got:\n" + string.Join("\n", errors));
     }
 }
 

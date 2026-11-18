@@ -90,6 +90,42 @@ public static class SerializerKeys
             "Credential stripping reads the serializer's reflection-visible contract; the response is refused rather than sent unstripped.");
 
     /// <summary>
+    /// Strip the credential properties named <paramref name="clrNames"/> from <paramref name="node"/>, the
+    /// serialized form of <paramref name="body"/> under <paramref name="options"/>: from the row, from each row of
+    /// a list, or, with <paramref name="envelope"/>, from each row under the <c>rows</c> key of a
+    /// <c>{ rows, total }</c> envelope. Every credential-omitting response goes through here. The envelope's
+    /// <c>rows</c> key is the serializer's own (a naming policy may write it <c>ROWS</c>), read from the
+    /// envelope's contract, never assumed. Fails closed: a credential key that cannot be read (see
+    /// <see cref="KeysOfType"/>), an envelope whose <c>rows</c> key cannot be read from its contract, or a node
+    /// under that key that is not an array THROWS, so the response is refused rather than sent unstripped.
+    /// </summary>
+    public static void StripBody(JsonNode? node, object? body, bool envelope, JsonSerializerOptions options, IReadOnlyCollection<string> clrNames)
+    {
+        var keys = KeysOf(body, envelope, options, clrNames);
+        Strip(envelope ? EnvelopeRows(node, body, options) : node, keys, clrNames);
+    }
+
+    // The rows array of a serialized { rows, total } envelope, found under the key the serializer's contract
+    // gives the envelope's `rows` member. Throws when the key or the array cannot be found.
+    private static JsonArray EnvelopeRows(JsonNode? node, object? body, JsonSerializerOptions options)
+    {
+        const string Rows = "rows";
+        static InvalidOperationException Refused(string why) =>
+            new($"cannot strip credentials from a {{ rows, total }} response: {why}. The response is refused rather than sent unstripped.");
+        if (body is null || node is not JsonObject env) throw Refused("the body did not serialize to a JSON object");
+        JsonTypeInfo info;
+        try { info = options.GetTypeInfo(body.GetType()); }
+        catch (NotSupportedException e) { throw Refused("the serializer has no contract for the envelope (" + e.GetType().Name + ")"); }
+        var key = info.Kind == JsonTypeInfoKind.Object
+            ? info.Properties.FirstOrDefault(p => p.AttributeProvider is MemberInfo m && m.Name == Rows)?.Name
+            : null;
+        if (key is null) throw Refused("the serializer's contract for the envelope has no rows property");
+        if (!env.TryGetPropertyValue(key, out var rows) || rows is not JsonArray array)
+            throw Refused($"the envelope has no array under its rows key \"{key}\"");
+        return array;
+    }
+
+    /// <summary>
     /// Remove every key in <paramref name="keys"/> from the object, or from each object of the array, and, as a
     /// second line of defence, every key that spells one of <paramref name="names"/> ignoring case, <c>_</c> and
     /// <c>-</c>.

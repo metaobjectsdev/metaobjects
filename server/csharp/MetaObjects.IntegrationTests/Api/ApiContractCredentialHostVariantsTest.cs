@@ -7,7 +7,9 @@
 // (SerializerKeys), so these variants must all hold:
 //   1. a property renamed beyond case, default (camelCase) host;
 //   2. the same rename under JsonNamingPolicy.SnakeCaseLower;
-//   3. no rename under SnakeCaseLower (the leak that predates the resolver: pinHash -> pin_hash).
+//   3. no rename under SnakeCaseLower (the leak that predates the resolver: pinHash -> pin_hash);
+//   4. an upper-case policy (SnakeCaseUpper, KebabCaseUpper) with PropertyNameCaseInsensitive = false, where
+//      even the { rows, total } envelope's own key is written ROWS and must be found from the contract.
 // Plus a credential declared on a TPH SUBTYPE, through the polymorphic list and the per-subtype routes.
 //
 // A response may not carry the credential under any key; a PATCH or PUT body naming it under any
@@ -47,12 +49,29 @@ public sealed class ApiContractCredentialHostVariantsTest
         ["rename", "camel"],
         ["rename", "snake"],
         ["plain", "snake"],
+        ["plain", "snakeUpper"],
+        ["rename", "kebabUpper"],
     ];
+
+    private static JsonNamingPolicy Policy(string policy) => policy switch
+    {
+        "snake" => JsonNamingPolicy.SnakeCaseLower,
+        "snakeUpper" => JsonNamingPolicy.SnakeCaseUpper,
+        "kebabUpper" => JsonNamingPolicy.KebabCaseUpper,
+        _ => JsonNamingPolicy.CamelCase,
+    };
+
+    // The upper-case hosts are strict: JSON keys are matched exactly, so nothing finds "rows" under "ROWS".
+    private static Action<JsonSerializerOptions>? Strictness(string policy) =>
+        policy.EndsWith("Upper", StringComparison.Ordinal) ? o => o.PropertyNameCaseInsensitive = false : null;
+
+    // The key the host writes (and a client echoes) for a property whose camelCase name is given.
+    private static string Wire(string policy, string camelName) => Policy(policy).ConvertName(camelName);
 
     private static SecretFieldsHost AccountHost(string naming, string policy) => new(
         PropertyNaming: naming == "rename" ? AccountSpelling : null,
-        JsonPolicy: policy == "snake" ? JsonNamingPolicy.SnakeCaseLower : JsonNamingPolicy.CamelCase,
-        MetaJson: AccountMeta(), ExtraDdl: AccountDdl);
+        JsonPolicy: Policy(policy),
+        MetaJson: AccountMeta(), ExtraDdl: AccountDdl, ConfigureJson: Strictness(policy));
 
     // A key is a credential key iff it spells the credential (or its resolved name) ignoring case and `_`/`-`.
     private static readonly string[] CredentialKeys = ["pinhash", "pinsecret", "permitsecret"];
@@ -107,14 +126,19 @@ public sealed class ApiContractCredentialHostVariantsTest
     }
 
     // Every spelling a client could send for the denied fields: the field name, the resolved property name
-    // under the camel and the snake host, and their capitalized forms.
-    private static Dictionary<string, object?> ForgedBody(string name) => new()
+    // under the camel and the snake host, their capitalized forms, and the host's own key for each.
+    private static Dictionary<string, object?> ForgedBody(string name, string policy)
     {
-        ["name"] = name,
-        ["pinHash"] = "forged", ["tokenHash"] = "forged", ["role"] = "admin",
-        ["pinSecret"] = "forged", ["PinSecret"] = "forged", ["pin_secret"] = "forged", ["apiToken"] = "forged", ["ApiToken"] = "forged",
-        ["pin_hash"] = "forged", ["token_hash"] = "forged", ["api_token"] = "forged",
-    };
+        var body = new Dictionary<string, object?>
+        {
+            [Wire(policy, "name")] = name,
+            ["pinHash"] = "forged", ["tokenHash"] = "forged", ["role"] = "admin",
+            ["pinSecret"] = "forged", ["PinSecret"] = "forged", ["pin_secret"] = "forged", ["apiToken"] = "forged", ["ApiToken"] = "forged",
+            ["pin_hash"] = "forged", ["token_hash"] = "forged", ["api_token"] = "forged",
+        };
+        foreach (var k in new[] { "pinHash", "tokenHash", "pinSecret", "apiToken" }) body[Wire(policy, k)] = "forged";
+        return body;
+    }
 
     [Theory]
     [MemberData(nameof(Hosts))]
@@ -137,28 +161,24 @@ public sealed class ApiContractCredentialHostVariantsTest
         var counted = await SendAsync(client, "GET", "/api/accounts?withCount=1&sort=id:asc");
         Assert.Equal(200, counted.Status);
         AssertNoCredential(counted.Body, "GET list withCount");
-        Assert.Equal(2, counted.Body!["rows"]!.AsArray().Count);
+        Assert.Equal(2, counted.Body![Wire(policy, "rows")]!.AsArray().Count);
 
         // Writes: PATCH and PUT with the denied fields under every spelling are ignored; the multi-word
         // ordinary field is applied under the host's own key for it.
         // The key a client echoes is the serializer's: the policy over the (possibly renamed) property.
-        var displayKey = (naming, policy) switch
-        {
-            ("rename", "snake") => "shown_as", ("rename", _) => "shownAs",
-            (_, "snake") => "display_name", _ => "displayName",
-        };
+        var displayKey = Wire(policy, naming == "rename" ? "shownAs" : "displayName");
         foreach (var (method, id) in new[] { ("PATCH", 1), ("PUT", 2) })
         {
-            var body = ForgedBody($"{method}-probe");
+            var body = ForgedBody($"{method}-probe", policy);
             body[displayKey] = $"{method}-shown";
             var res = await SendAsync(client, method, $"/api/accounts/{id}", body);
             Assert.Equal(200, res.Status);
             AssertNoCredential(res.Body, method);
-            Assert.Equal($"{method}-probe", res.Body!["name"]!.GetValue<string>());
+            Assert.Equal($"{method}-probe", res.Body![Wire(policy, "name")]!.GetValue<string>());
         }
 
         // Creates: the denied fields are ignored (stored null), the response carries no credential.
-        var created = await SendAsync(client, "POST", "/api/accounts", ForgedBody("Grace Hopper"));
+        var created = await SendAsync(client, "POST", "/api/accounts", ForgedBody("Grace Hopper", policy));
         Assert.Equal(201, created.Status);
         AssertNoCredential(created.Body, "POST");
 
@@ -196,6 +216,8 @@ public sealed class ApiContractCredentialHostVariantsTest
         ["rename", "snake"],
         ["plain", "snake"],
         ["rename", "camel"],
+        ["plain", "snakeUpper"],
+        ["rename", "kebabUpper"],
     ];
 
     [Theory]
@@ -205,8 +227,8 @@ public sealed class ApiContractCredentialHostVariantsTest
         await using var pg = await PostgresContainer.StartAsync();
         var host = new TphHost(
             PropertyNaming: naming == "rename" ? TphSpelling : null,
-            JsonPolicy: policy == "snake" ? JsonNamingPolicy.SnakeCaseLower : JsonNamingPolicy.CamelCase,
-            MetaJson: TphMeta(), ExtraDdl: TphDdl);
+            JsonPolicy: Policy(policy),
+            MetaJson: TphMeta(), ExtraDdl: TphDdl, ConfigureJson: Strictness(policy));
         await using var server = await TphGeneratedServerFactory.StartAsync(pg, host);
         await server.ApplySeedAsync();
         await using (var c = new Npgsql.NpgsqlConnection(pg.ConnectionString))
@@ -226,25 +248,21 @@ public sealed class ApiContractCredentialHostVariantsTest
         }
         Assert.DoesNotContain("permit-secret", (await SendAsync(client, "GET", "/api/auths")).Body!.ToJsonString());
 
-        var noteKey = (naming, policy) switch
-        {
-            ("rename", "snake") => "permit_memo", ("rename", _) => "permitMemo",
-            (_, "snake") => "permit_note", _ => "permitNote",
-        };
+        var noteKey = Wire(policy, naming == "rename" ? "permitMemo" : "permitNote");
         foreach (var method in new[] { "PATCH", "PUT" })
         {
             var res = await SendAsync(client, method, "/api/auths/permit/3", new Dictionary<string, object?>
             {
-                ["approver"] = $"{method}-approver", [noteKey] = $"{method}-note",
+                [Wire(policy, "approver")] = $"{method}-approver", [noteKey] = $"{method}-note",
                 ["pinHash"] = "forged", ["pin_hash"] = "forged", ["permitSecret"] = "forged", ["PermitSecret"] = "forged", ["permit_secret"] = "forged",
             });
             Assert.Equal(200, res.Status);
             AssertNoCredential(res.Body, method + " permit");
-            Assert.Equal($"{method}-approver", res.Body!["approver"]!.GetValue<string>());
+            Assert.Equal($"{method}-approver", res.Body![Wire(policy, "approver")]!.GetValue<string>());
         }
         var created = await SendAsync(client, "POST", "/api/auths/permit", new Dictionary<string, object?>
         {
-            ["reference"] = "REF-NEW", ["approver"] = "Dr. New", ["pinHash"] = "forged", ["pin_hash"] = "forged", ["permitSecret"] = "forged", ["permit_secret"] = "forged",
+            [Wire(policy, "reference")] = "REF-NEW", [Wire(policy, "approver")] = "Dr. New", ["pinHash"] = "forged", ["pin_hash"] = "forged", ["permitSecret"] = "forged", ["permit_secret"] = "forged",
         });
         Assert.Equal(201, created.Status);
         AssertNoCredential(created.Body, "POST permit");

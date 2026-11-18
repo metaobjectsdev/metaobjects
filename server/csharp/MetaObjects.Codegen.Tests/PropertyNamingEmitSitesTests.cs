@@ -260,10 +260,10 @@ public class PropertyNamingEmitSitesTests
         var vehicle = One(files, "VehicleRoutes.g.cs");
 
         // The credential is named by its CLR property; the JSON key is the serializer's, read at run time
-        // (SerializerKeys.KeysOf), never spelled here.
+        // (SerializerKeys.StripBody), never spelled here.
         Assert.Contains("new string[] { \"XPinHash\", \"pinHash\" }", gizmo);
         Assert.Contains("new string[] { \"XVinHash\", \"vinHash\" }", vehicle);
-        Assert.Contains("SerializerKeys.KeysOf(_value, _envelope, opts, _names)", gizmo);
+        Assert.Contains("SerializerKeys.StripBody(node, _value, _envelope, opts, _names);", gizmo);
         Assert.DoesNotContain("OrdinalIgnoreCase))\n                o.Remove", gizmo);
 
         // No response shape bypasses the stripping result: read, list, list-with-count, create, PATCH.
@@ -312,7 +312,13 @@ public class PropertyNamingEmitSitesTests
         Assert.Contains("[\"XTitle\"] = true", gizmo);            // @sortableDefaultOrder keys
         Assert.DoesNotContain("\"Title\"", gizmo);
         Assert.Contains("EF.Property<object>(x!, \"XPlate\")", vehicle);        // TPH base
-        Assert.Contains("\"XSeatCount\",", vehicle);                           // per-subtype sort allowlist
+        Assert.Contains("[\"XSeatCount\"] = \"XSeatCount\",", vehicle);         // per-subtype sort allowlist
+        // A rename beyond case: ?sort= also takes the field name (the key ?filter[...] takes), resolved to the property.
+        Assert.Contains("Dictionary<string, string> SortAllowlist", gizmo);
+        Assert.Contains("[\"title\"] = \"XTitle\",", gizmo);
+        Assert.Contains("[\"XTitle\"] = \"XTitle\",", gizmo);
+        Assert.Contains("[\"seatCount\"] = \"XSeatCount\",", vehicle);
+        Assert.Contains("[\"plate\"] = \"XPlate\",", vehicle);
         Assert.DoesNotContain("\"Plate\"", vehicle);
         // M:N junction: the FK properties and the target key, by their resolved names.
         Assert.Contains("EF.Property<long>(j, \"XVehicleId\")", vehicle);

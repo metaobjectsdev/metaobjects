@@ -169,6 +169,11 @@ canonical (`fixtures/registry-conformance/expected-registry.json`).
   - `view.image`, and its `@accept`, `@aspectRatio`, `@maxBytes`, `@maxEdge`, `@store`
 - *Implemented in Java only* (`implementedIn: ["java"]`): `object.* @object` (ADR-0001), the
   native class an object binds to. Java's runtime acts on it; Java's own behaviour is unchanged.
+- *Implemented in TypeScript and C#* (`implementedIn: ["typescript", "csharp"]`): the rc.21
+  view vocabulary — `origin.function` and the `object.projection` attrs `@union`, `@unionAll`,
+  `@grain`, `@grainOrdinal`. The TypeScript view emitter lowers them; the C# loader validates
+  them (mirroring the TypeScript checks message for message); the other ports load them strictly
+  and do not act on them yet.
 - *Loads strictly in every port.* Each port registers the `metaobjects-ui-web` provider
   (`view.textarea @rows`, the `view.image` attrs) and `@object` / `@objectAdapter` on
   `object.*`, loads all three fixtures strictly, and emits `implementedIn` in its manifest, which

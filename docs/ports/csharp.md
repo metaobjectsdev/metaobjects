@@ -281,8 +281,11 @@ and sits in its package's namespace. An extract-tier private mapper may carry th
 member name (`FromAcmeAlphaNoteExtracted`), because it is private to its class.
 Each package's shared enum is its own `<package>/<Enum>.g.cs` under the package layout, with its
 `@intValueMap` integers as member values and `@description` as its XML doc; the flat layout keeps
-the one `Enums.g.cs`. An entry narrowed with `Include` declares only the shared enums it uses, and
-an enum several narrowed entries use is declared by exactly one of them.
+the one `Enums.g.cs`. An entry narrowed with `Include` leaves a shared enum to another `entity`
+entry of the same run only when that entry accepts the enum's home object (its first consumer by
+resolution key), and declares the enum itself otherwise — so a single narrowed entry declares
+every enum its objects use and its output builds on its own, and an enum several narrowed entries
+use is still declared by exactly one of them.
 
 With that, `dotnet meta gen` writes there, `dotnet meta verify --codegen` diffs against it, and
 a plain `dotnet meta verify` in CI runs the codegen gate with no flags. `--out <dir>` still works
