@@ -21,7 +21,7 @@ CI_SELECT_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CI_LANE_MAP="${MO_CI_LANE_MAP:-$CI_SELECT_HERE/ci-lane-map.txt}"
 
 # The lanes a change can select, in the order they run. The map's `ALL` means exactly this.
-CI_SELECTABLE_LANES="ts-fast ts-unit java-slow python csharp"
+CI_SELECTABLE_LANES="ts-fast ts-unit java-slow python csharp rust"
 
 # The port each lane belongs to, for callers that think in ports (the hosted workflows).
 lane_to_port() {
@@ -30,6 +30,7 @@ lane_to_port() {
     java-slow)       echo java ;;
     python)          echo python ;;
     csharp)          echo csharp ;;
+    rust)            echo rust ;;
   esac
 }
 

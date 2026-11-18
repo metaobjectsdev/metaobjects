@@ -1,0 +1,6 @@
+# Pinned so every machine and the CI lane build with the same compiler, rustfmt
+# and clippy. Raise it deliberately, in its own commit.
+[toolchain]
+channel = "1.94.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

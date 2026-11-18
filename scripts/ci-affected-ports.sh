@@ -2,7 +2,7 @@
 # Map a pushed commit range to the set of language ports local-ci must test.
 #
 # Usage: scripts/ci-affected-ports.sh <base-sha> <head-sha>
-# Prints a space-separated subset of: ts java python csharp
+# Prints a space-separated subset of: ts java python csharp rust
 # (empty output = a push touching only the root prose files: run just the cheap shared gates).
 #
 # Fail-open policy: an unknown base (force-push zeros), an unresolvable
@@ -15,7 +15,7 @@
 # one — read that file before changing selection behaviour here.
 set -uo pipefail
 
-ALL="ts java python csharp"
+ALL="ts java python csharp rust"
 
 # The path -> lane rules are scripts/ci-lane-map.txt, read through ci-select-lanes.sh, so
 # the no-mistakes gate (`ci-local.sh --affected`) and the hosted workflows share ONE table.
