@@ -1,0 +1,8 @@
+## In flight
+
+- [ ] dep-b2 - Blocker
+
+## Queued
+
+- [ ] user-c3 - Waits blocked-by: dep-b2
+  Body text

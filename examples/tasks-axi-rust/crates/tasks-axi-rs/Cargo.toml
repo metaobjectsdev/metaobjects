@@ -1,0 +1,16 @@
+[package]
+name = "tasks-axi-rs"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "Apache-2.0"
+description = "The read path of tasks-axi (show, list, ready) in Rust: the hand-written half, over the generated tasks-axi-gen crate."
+
+[[bin]]
+name = "tasks-axi-rs"
+path = "src/main.rs"
+
+[dependencies]
+tasks-axi-gen = { path = "../tasks-axi-gen" }
+toon-encode = { path = "../toon" }
+jsre = { path = "../jsre" }

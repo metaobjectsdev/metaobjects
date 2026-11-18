@@ -1,0 +1,9 @@
+[package]
+name = "jsre"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "Apache-2.0"
+description = "A tiny std-only backtracking regex engine reproducing JavaScript (non-unicode, no flags) semantics for a fixed pattern subset"
+
+[dependencies]

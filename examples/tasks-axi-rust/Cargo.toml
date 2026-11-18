@@ -1,0 +1,10 @@
+[workspace]
+resolver = "2"
+members = ["crates/tasks-axi-gen", "crates/toon", "crates/jsre", "crates/tasks-axi-rs"]
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
