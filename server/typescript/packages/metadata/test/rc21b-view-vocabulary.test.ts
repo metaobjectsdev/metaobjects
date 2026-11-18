@@ -287,6 +287,38 @@ describe("an extender whose view widened over a TPH base", () => {
   });
 });
 
+// L5: the identity-anchor rule applies to EVERY extender with no identity of its own, not only a TPH
+// one. An extender over plain entities whose base changed from the pre-rc.21 derivation warns too.
+describe("an extender whose base changed, over a non-TPH base", () => {
+  const entities = [
+    { "object.entity": { name: "Customer", children: [
+      { "source.rdb": { "@table": "customers" } }, { "field.long": { name: "id" } },
+      { "identity.primary": { "@fields": "id" } } ] } },
+    { "object.entity": { name: "Invoice", children: [
+      { "source.rdb": { "@table": "invoices" } }, { "field.long": { name: "id" } }, { "field.string": { name: "ref" } },
+      { "identity.primary": { "@fields": "id" } } ] } },
+    { "object.projection": { name: "CustomerBase", abstract: true, children: [
+      { "field.long": { name: "customerId", extends: "Customer.id" } },
+      { "identity.primary": { name: "id", extends: "Customer.primary" } } ] } },
+  ];
+  const row = (children: unknown[]) => ({ "object.projection": { name: "InvoiceRow", extends: "CustomerBase", children: [
+    { "source.rdb": { "@kind": "view", "@view": "v_invoice_rows" } }, ...children ] } });
+  async function warningsOf(...extra: unknown[]): Promise<string[]> {
+    const { errors, warnings } = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify({ "metadata.root": { package: "acme", children: [...entities, ...extra] } }))]);
+    expect(errors).toEqual([]);
+    return warnings.map((w) => (typeof w === "string" ? w : (w as { message: string }).message));
+  }
+  test("warns that the base is now the super's, naming both and the remedy", async () => {
+    const w = (await warningsOf(row([{ "field.string": { name: "ref", extends: "Invoice.ref" } }]))).filter((m) => m.includes("InvoiceRow"));
+    expect(w.length).toBe(1);
+    expect(w[0]).toMatch(/its base entity is now Customer, where before it was Invoice/);
+    expect(w[0]).toMatch(/identity.primary \{ extends: Invoice.<identity> \}/);
+  });
+  test("an extender whose own fields still name the super's base is not warned about", async () => {
+    expect((await warningsOf(row([{ "field.long": { name: "other", extends: "Customer.id" } }]))).filter((m) => m.includes("InvoiceRow"))).toEqual([]);
+  });
+});
+
 // rc.21 part B fix round minors.
 describe("fix round: casts Postgres has, value-mapped grain members, union value maps", () => {
   test("M1: a boolean casts only to and from int; a count parameter takes only an int", async () => {

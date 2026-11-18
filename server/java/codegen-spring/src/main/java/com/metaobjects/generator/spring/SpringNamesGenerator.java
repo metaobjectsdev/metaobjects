@@ -248,6 +248,29 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
         // refusal at all -- see SourceResolution's class doc.
         MetaSource source = SourceResolution.primaryRdbSource(obj);
         if (source == null) return null;
+        // rc.21 (U7): a derived field of an object read from its table is no column of that
+        // table, so it has no names entry. A projection's or write-through entity's derived
+        // field is a column of its view and keeps its entry.
+        boolean columnless = source.isWritable() && !obj.isWriteThrough();
+        // ADR-0039: getMetaFields() is the RESOLVING accessor (includeParentData
+        // defaults to true) -- an inherited @column must resolve here, or the emitted
+        // constant would disagree with the column a hand-written consumer binds to.
+        Map<String, FieldNames> fields = fieldMap(obj.getMetaFields(), strategy, columnless);
+        Map<String, FieldNames> ownFields = fieldMap(obj.getMetaFields(false), strategy, columnless);
+        MetaObject superObj = namesArtifactSuperOf(obj);
+        // rc.21 fix round (M8): an abstract-entity fragment leaves its derived fields out (they are
+        // no column of the tables extending it), so an object whose derived fields ARE columns (a
+        // write-through entity's read view) declares the ones it inherits itself, or COLUMNS_BY_FIELD
+        // would reference a constant no emitted class declares.
+        if (!columnless && superObj != null
+                && MetaObject.SUBTYPE_ENTITY.equals(superObj.getSubType())
+                && GeneratorUtil.isAbstract(superObj)) {
+            for (MetaField field : obj.getMetaFields()) {
+                if (field.isDerived() && !ownFields.containsKey(field.getName())) {
+                    ownFields.put(field.getName(), fieldNamesOf(field, strategy));
+                }
+            }
+        }
 
         return new ObjectNames(
             obj.getType(), obj.getSubType(),
@@ -256,14 +279,11 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
             // stopped meaning a table, a view and a procedure depending on the object.
             obj.getShortName(),
             sourcesOf(obj, true), sourcesOf(obj, false),
-            // ADR-0039: getMetaFields() is the RESOLVING accessor (includeParentData
-            // defaults to true) -- an inherited @column must resolve here, or the emitted
-            // constant would disagree with the column a hand-written consumer binds to.
-            fieldMap(obj.getMetaFields(), strategy), fieldMap(obj.getMetaFields(false), strategy),
+            fields, ownFields,
             keysOf(obj.getIdentities(true)), keysOf(obj.getIdentities(false)),
             keysOf(obj.getChildren(LookupIndex.class, true)),
             keysOf(obj.getChildren(LookupIndex.class, false)),
-            namesArtifactSuperOf(obj));
+            superObj);
     }
 
     /**
@@ -385,9 +405,11 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
         return namesMember(fieldName) + "_" + namesMember(memberName) + "_COLUMN";
     }
 
-    private static Map<String, FieldNames> fieldMap(Collection<MetaField> src, String strategy) {
+    private static Map<String, FieldNames> fieldMap(
+            Collection<MetaField> src, String strategy, boolean skipDerived) {
         Map<String, FieldNames> out = new LinkedHashMap<>();
         for (MetaField field : src) {
+            if (skipDerived && field.isDerived()) continue;
             out.put(field.getName(), fieldNamesOf(field, strategy));
         }
         return out;
@@ -454,10 +476,12 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
     static ObjectNames resolveSuperFragmentNames(MetaObject obj, String strategy) {
         if (!declaresNamesContent(obj)) return null;
         Collection<MetaField> own = obj.getMetaFields(false);
+        // rc.21 (U7): an abstract ENTITY's derived field is no column of the tables extending it.
+        boolean columnless = MetaObject.SUBTYPE_ENTITY.equals(obj.getSubType());
         return new ObjectNames(
             obj.getType(), obj.getSubType(), obj.getShortName(),
             Map.of(), Map.of(),
-            fieldMap(obj.getMetaFields(), strategy), fieldMap(own, strategy),
+            fieldMap(obj.getMetaFields(), strategy, columnless), fieldMap(own, strategy, columnless),
             keysOf(obj.getIdentities(true)), keysOf(obj.getIdentities(false)),
             keysOf(obj.getChildren(LookupIndex.class, true)),
             keysOf(obj.getChildren(LookupIndex.class, false)),

@@ -8,6 +8,11 @@
 // Postgres type name here — json/jsonb, arrays, an enum, a user-defined type — matches any type at
 // that position (only the arity is checked there). A domain is not seen through: `format_type`
 // names the domain, so a domain-typed parameter or result is reported as a mismatch.
+//
+// What it accepts, as Postgres does: implicit numeric widening (an `integer` argument for a
+// `bigint`, `numeric`, `real` or `double precision` parameter, `bigint`/`numeric`/`real` for a
+// wider float), any argument for a polymorphic `any*` parameter, and any arity for the trailing
+// parameter of a `VARIADIC` function.
 
 import type { Kysely } from "kysely";
 import { sql } from "kysely";
@@ -27,7 +32,7 @@ import { fieldSqlType } from "../expected-schema.js";
 import type { SqlType } from "../sql-type.js";
 
 /** One declared function call, with the database type names each position accepts. */
-interface DeclaredFunction {
+export interface DeclaredFunction {
   readonly where: string;
   readonly schema: string;
   readonly name: string;
@@ -37,12 +42,33 @@ interface DeclaredFunction {
 }
 
 /** One overload as `pg_proc` has it, its types spelled by `format_type(oid, NULL)`. */
-interface PgFunction {
+export interface PgFunction {
   readonly args: readonly string[];
   /** How many trailing parameters have a default (`pronargdefaults`): a call may omit them. */
   readonly defaults: number;
   readonly returns: string;
   readonly retset: boolean;
+  /** `provariadic <> 0`: the last parameter is `VARIADIC`, so a call may pass any number of it. */
+  readonly variadic: boolean;
+}
+
+/** Implicit numeric widening Postgres applies to a call argument: a declared type may call a wider parameter. */
+const WIDER_NUMERIC: Readonly<Record<string, readonly string[]>> = {
+  integer: ["bigint", "numeric", "real", "double precision"],
+  bigint: ["numeric", "real", "double precision"],
+  numeric: ["real", "double precision"],
+  real: ["double precision"],
+};
+
+/** Postgres's closed set of polymorphic pseudo-types (`pg_type.typtype = 'p'`): each takes any argument. */
+const POLYMORPHIC_PSEUDOTYPES: readonly string[] = [
+  "any", "anyarray", "anyelement", "anyenum", "anynonarray", "anyrange", "anymultirange",
+  "anycompatible", "anycompatiblearray", "anycompatiblenonarray", "anycompatiblerange", "anycompatiblemultirange",
+];
+
+/** A polymorphic parameter (`anyelement`, `anyarray`, `anycompatible`, the pseudo-type `"any"`, ...) takes any argument. */
+function isPolymorphic(pgType: string): boolean {
+  return POLYMORPHIC_PSEUDOTYPES.includes(pgType.replaceAll('"', ""));
 }
 
 const TEXT_TYPES = ["text", "character varying", "character"] as const;
@@ -127,21 +153,40 @@ export function declaredFunctions(root: MetaData): DeclaredFunction[] {
 }
 
 async function overloads(db: Kysely<any>, schema: string, name: string): Promise<PgFunction[]> {
-  const result = await sql<{ args: string[]; defaults: number; returns: string; retset: boolean }>`
+  const result = await sql<{ args: string[]; defaults: number; returns: string; retset: boolean; variadic: boolean }>`
     SELECT ARRAY(SELECT format_type(a.t, NULL) FROM unnest(p.proargtypes::oid[]) WITH ORDINALITY AS a(t, i) ORDER BY a.i) AS args,
-           p.pronargdefaults::int AS defaults, format_type(p.prorettype, NULL) AS returns, p.proretset AS retset
+           p.pronargdefaults::int AS defaults, format_type(p.prorettype, NULL) AS returns, p.proretset AS retset,
+           (p.provariadic <> 0) AS variadic
       FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
      WHERE n.nspname = ${schema} AND p.proname = ${name} AND p.prokind = 'f'`.execute(db);
-  return result.rows.map((r) => ({ args: r.args, defaults: Number(r.defaults), returns: r.returns, retset: r.retset }));
+  return result.rows.map((r) => ({ args: r.args, defaults: Number(r.defaults), returns: r.returns, retset: r.retset, variadic: r.variadic }));
 }
 
-function matches(declared: DeclaredFunction, fn: PgFunction): boolean {
+/** Whether Postgres accepts an argument of one of the `accepted` type names for a parameter of type `actual`. */
+function parameterAccepts(accepted: readonly string[], actual: string): boolean {
+  if (accepted.length === 0 || isPolymorphic(actual)) return true;
+  return accepted.some((a) => a === actual || (WIDER_NUMERIC[a]?.includes(actual) ?? false));
+}
+
+/** Exported for the unit tests: whether one `pg_proc` overload can serve the declared call. */
+export function signatureMatches(declared: DeclaredFunction, fn: PgFunction): boolean {
+  // A set-returning function is not a scalar call.
+  if (fn.retset) return false;
+  if (declared.returns.length > 0 && !declared.returns.includes(fn.returns)) return false;
+  // A variadic function takes any number of trailing arguments, so its trailing parameter's
+  // count and type are not checked; Postgres still requires every non-defaulted fixed parameter
+  // (a VARIADIC parameter cannot itself carry a default), and the leading fixed parameter types
+  // still are.
+  if (fn.variadic) {
+    if (declared.params.length < fn.args.length - 1 - fn.defaults) return false;
+    const fixed = Math.min(fn.args.length - 1, declared.params.length);
+    return declared.params.slice(0, fixed).every((accepted, i) => parameterAccepts(accepted, fn.args[i]!));
+  }
   // A declared arity between the required count and the full count matches: the omitted
   // trailing parameters take their defaults (fix round 3, M1).
   const declaredCount = declared.params.length;
-  if (fn.retset || declaredCount > fn.args.length || declaredCount < fn.args.length - fn.defaults) return false;
-  if (declared.returns.length > 0 && !declared.returns.includes(fn.returns)) return false;
-  return declared.params.every((accepted, i) => accepted.length === 0 || accepted.includes(fn.args[i]!));
+  if (declaredCount > fn.args.length || declaredCount < fn.args.length - fn.defaults) return false;
+  return declared.params.every((accepted, i) => parameterAccepts(accepted, fn.args[i]!));
 }
 
 /**
@@ -150,14 +195,17 @@ function matches(declared: DeclaredFunction, fn: PgFunction): boolean {
  */
 /** Printed under any finding: what the comparison does not see (fix round 3, M2). */
 export const DECLARED_FUNCTION_CHECK_LIMITS =
-  "origin.function signatures are compared by plain type name: a json, array, enum or user-defined " +
-  "kind is not type-checked (only the arity is), and a domain is compared by its own name, not its base type.";
+  "origin.function signatures are compared by plain type name, allowing Postgres's implicit numeric " +
+  "widening (integer to bigint to numeric, and each onto real or double precision) and treating polymorphic (any*) parameters as wildcards: " +
+  "a json, array, enum or user-defined kind is not type-checked (only the arity is), a variadic " +
+  "function's trailing parameter count and type are not checked (its required fixed arity is), and " +
+  "a domain is compared by its own name, not its base type.";
 
 export async function checkDeclaredFunctions(db: Kysely<any>, root: MetaData): Promise<string[]> {
   const findings: string[] = [];
   for (const declared of declaredFunctions(root)) {
     const found = await overloads(db, declared.schema, declared.name);
-    if (found.some((fn) => matches(declared, fn))) continue;
+    if (found.some((fn) => signatureMatches(declared, fn))) continue;
     const qualified = `${declared.schema}.${declared.name}`;
     const expected = `(${declared.params.map((p) => p.join(" | ") || "any").join(", ")}) → ${declared.returns.join(" | ") || "any"}`;
     findings.push(found.length === 0

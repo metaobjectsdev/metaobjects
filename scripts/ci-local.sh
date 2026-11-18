@@ -72,7 +72,8 @@
 #                                    #   rust   → the Rust port (preview): cargo fmt
 #                                    #            --check, clippy -D warnings, and its
 #                                    #            tests, which run the registry and
-#                                    #            metamodel corpora. No docker half.
+#                                    #            metamodel corpora, then the load_bench
+#                                    #            table (record only). No docker half.
 #                                    #   cube   → the cube-model live check: a real Cube
 #                                    #            (cubejs/cube, pinned) over a private
 #                                    #            Postgres, both in docker (FR-044). Its
@@ -826,7 +827,19 @@ gate_conf_rust() {
   ( cd server/rust \
       && cargo fmt --all --check \
       && cargo clippy --locked --all-targets -q -- -D warnings \
-      && cargo test --locked -q -- --nocapture )
+      && cargo test --locked -q -- --nocapture \
+      && gate_rust_load_bench )
+}
+# Load time per phase and per validation pass on the 20x fitness model. Record only:
+# it prints a table and never fails on a number, so a slowdown is read in the log and
+# named by the feature that caused it. No --baseline here: baselines/load-20x.json was
+# recorded on one host, and a CI delta against it would measure the machine, not the
+# change. Deltas are a same-machine workflow — record your own baseline before a
+# feature lands and compare after it, from server/rust:
+#   cargo run --release --locked --example load_bench -- 20 15 --write-baseline <file>
+#   cargo run --release --locked --example load_bench -- 20 15 --baseline <file>
+gate_rust_load_bench() {
+  cargo run --release --locked -q --example load_bench -- 20 15
 }
 gate_conf_kotlin() {
   ( cd server/java \

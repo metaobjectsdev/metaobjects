@@ -1896,7 +1896,8 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
     /** Java source for a {@code String...} argument list naming {@code hidden}. */
     private static String hiddenArgs(List<String> hidden) {
         StringBuilder b = new StringBuilder();
-        for (String h : hidden) b.append(", \"").append(h).append('"');
+        // The record component's name, which is the member Jackson's contract knows it by.
+        for (String h : hidden) b.append(", \"").append(SpringNaming.recordComponentName(h)).append('"');
         return b.toString();
     }
 
@@ -1919,17 +1920,77 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * #484 — the helpers a controller uses to leave credential fields out of response bodies. The
      * shared DTO keeps the member (the application's own code reads and writes it); only the
      * generated HTTP boundary drops the key, so a credential is ABSENT, not null.
+     *
+     * <p>The DTO carries no wire annotation for the credential, so its key is whatever the host's
+     * {@code ObjectMapper} makes of the member: a property naming strategy ({@code SNAKE_CASE} writes
+     * {@code pinHash} as {@code pin_hash}), a mixin, a {@code @JsonProperty}. The key is therefore
+     * READ from that mapper's own serialization contract, never re-derived from the field name, and
+     * cached per row class. When the contract cannot be read (a custom serializer, a credential the
+     * class declares but the contract has no property for) the response is refused (500), never
+     * sent unstripped. As a second line of defence any key that spells a credential ignoring case,
+     * {@code _} and {@code -} is removed too.
      */
     private static void appendRedactHelpers(StringBuilder src) {
+        src.append("    /** #484: the wire keys of each row class's credentials, read once from objectMapper's contract. */\n");
+        src.append("    private final java.util.Map<List<Object>, java.util.Set<String>> credentialWireKeys = new java.util.concurrent.ConcurrentHashMap<>();\n\n");
         src.append("    private Object redact(Object row, String... hidden) {\n");
         src.append("        com.fasterxml.jackson.databind.node.ObjectNode node = objectMapper.valueToTree(row);\n");
-        src.append("        node.remove(java.util.Arrays.asList(hidden));\n");
+        src.append("        node.remove(credentialWireKeys.computeIfAbsent(\n");
+        src.append("                List.of(row.getClass(), List.of(hidden)), k -> credentialKeysOf(row.getClass(), hidden)));\n");
+        src.append("        java.util.Set<String> spelled = new java.util.HashSet<>();\n");
+        src.append("        for (String h : hidden) spelled.add(normalizedKey(h));\n");
+        src.append("        List<String> stray = new java.util.ArrayList<>();\n");
+        src.append("        node.fieldNames().forEachRemaining(k -> { if (spelled.contains(normalizedKey(k))) stray.add(k); });\n");
+        src.append("        node.remove(stray);\n");
         src.append("        return node;\n");
         src.append("    }\n\n");
         src.append("    private List<Object> redactAll(List<?> rows, String... hidden) {\n");
         src.append("        List<Object> out = new java.util.ArrayList<>(rows.size());\n");
         src.append("        for (Object row : rows) out.add(redact(row, hidden));\n");
         src.append("        return out;\n");
+        src.append("    }\n\n");
+        src.append("    /**\n");
+        src.append("     * The JSON keys objectMapper writes the credential members {@code hidden} of {@code type} under,\n");
+        src.append("     * read from its serialization contract so a naming strategy, mixin or @JsonProperty is honoured.\n");
+        src.append("     * Throws (the response is refused, never sent unstripped) when the contract cannot be read.\n");
+        src.append("     */\n");
+        src.append("    private java.util.Set<String> credentialKeysOf(Class<?> type, String... hidden) {\n");
+        src.append("        com.fasterxml.jackson.databind.SerializationConfig config = objectMapper.getSerializationConfig();\n");
+        src.append("        com.fasterxml.jackson.databind.BeanDescription desc = config.introspect(objectMapper.constructType(type));\n");
+        src.append("        try {\n");
+        src.append("            if (!(objectMapper.getSerializerProviderInstance().findValueSerializer(type)\n");
+        src.append("                    instanceof com.fasterxml.jackson.databind.ser.std.BeanSerializerBase)) {\n");
+        src.append("                throw unstrippable(type, hidden, \"its serializer is not a bean serializer (a custom serializer?)\");\n");
+        src.append("            }\n");
+        src.append("        } catch (com.fasterxml.jackson.databind.JsonMappingException e) {\n");
+        src.append("            throw unstrippable(type, hidden, \"the mapper has no serializer for it\");\n");
+        src.append("        }\n");
+        src.append("        java.util.Set<String> keys = new java.util.HashSet<>();\n");
+        src.append("        for (String name : hidden) {\n");
+        src.append("            boolean matched = false;\n");
+        src.append("            for (com.fasterxml.jackson.databind.introspect.BeanPropertyDefinition p : desc.findProperties()) {\n");
+        src.append("                if (p.getInternalName().equals(name)) { keys.add(p.getName()); matched = true; }\n");
+        src.append("            }\n");
+        src.append("            if (!matched && declaresMember(type, name) && !desc.getIgnoredPropertyNames().contains(name)) {\n");
+        src.append("                throw unstrippable(type, new String[] {name}, \"the credential has no property in the mapper's contract\");\n");
+        src.append("            }\n");
+        src.append("        }\n");
+        src.append("        return keys;\n");
+        src.append("    }\n\n");
+        src.append("    private static boolean declaresMember(Class<?> type, String name) {\n");
+        src.append("        for (Class<?> c = type; c != null && c != Object.class; c = c.getSuperclass()) {\n");
+        src.append("            for (java.lang.reflect.Field f : c.getDeclaredFields()) if (f.getName().equals(name)) return true;\n");
+        src.append("        }\n");
+        src.append("        return false;\n");
+        src.append("    }\n\n");
+        src.append("    private static String normalizedKey(String key) {\n");
+        src.append("        return key.replace(\"_\", \"\").replace(\"-\", \"\").toLowerCase(java.util.Locale.ROOT);\n");
+        src.append("    }\n\n");
+        src.append("    private static IllegalStateException unstrippable(Class<?> type, String[] credentials, String why) {\n");
+        src.append("        return new IllegalStateException(\"cannot strip the credential \" + type.getSimpleName() + \".\"\n");
+        src.append("                + String.join(\", \" + type.getSimpleName() + \".\", credentials) + \" from a response: \" + why\n");
+        src.append("                + \". Credential stripping reads the ObjectMapper's serialization contract; the response is\"\n");
+        src.append("                + \" refused rather than sent unstripped.\");\n");
         src.append("    }\n\n");
     }
 

@@ -24,9 +24,15 @@ here.**
   While the port is in preview, a new fixture that fails in Rust and is not on the ledger prints a
   warning and does not fail the lane; a fixture that passed and regresses still fails it, because
   the ledger records how many fixtures must pass. Nothing is published and there is no codegen
-  or `cargo meta` command yet. A `rust` lane runs `cargo fmt --check`, clippy and the tests in
-  `scripts/ci-local.sh --only rust`, `pr-ci` and `local-ci`, selected by changes under
-  `server/rust/`.
+  or `cargo meta` command yet. Every load records how long each phase and each validation pass
+  took (`LoadResult::timings`; the `validate` module's ordered pass list is empty on purpose
+  until those passes land), and `load_bench` prints the per-phase and per-pass medians, with
+  `--write-baseline` / `--baseline` to record and compare a run — a baseline is a record to
+  read, never a threshold, and the committed 20x baseline is a machine-local reference. A
+  `rust` lane runs `cargo fmt --check`, clippy, the tests and the `load_bench` table (record
+  only, printed without a baseline delta — a cross-machine delta measures the machine, not the
+  change) in `scripts/ci-local.sh --only rust`, `pr-ci` and `local-ci`, selected by changes
+  under `server/rust/`.
 - **Rust port reads a real project, in preview.** The loader now reads YAML authoring files
   (ADR-0006: bare type keys, scalar-body names, the `[]` suffix, sigil-free attributes, anchors and
   aliases, the `ERR_YAML_COERCION` guard, and a line and column on every error from a YAML file),
@@ -46,6 +52,27 @@ here.**
   reads three components), and any move of it still publishes all four registries. Policy text only:
   no version, vocabulary or `metamodelVersion` changes here. See `docs/RELEASING.md`, "The
   vocabulary rule".
+
+### Fixed
+
+- **Fix, Java, Kotlin and Python: `<Entity>Names` has no entry for a derived field with no
+  column.** The TypeScript and C# names generators already left out a derived (`origin.*`) field
+  of an entity read from its table; Java, Kotlin and Python still emitted a column constant
+  naming a column that does not exist. They now match: a projection's or write-through entity's
+  derived field keeps its entry, an entity's does not.
+- **Fix, TypeScript: `meta verify --db` accepts the function calls Postgres accepts.** The
+  declared `origin.function` signature check compared parameter types by exact name, so an
+  `integer` argument for a `bigint` or `numeric` parameter, a polymorphic `any*` parameter and a
+  variadic function were all reported as mismatches. It now allows integer to bigint to numeric
+  widening and the float widenings onto real and double precision, treats `any*` parameters as
+  wildcards and does not check a variadic function's trailing arity (its required fixed
+  parameters still are). A genuine mismatch (a narrowing,
+  an unrelated type, a wrong return type) still fails.
+- **Fix, TypeScript and C#: the widened-extender warning covers every extender whose base
+  changed.** An extender with no identity of its own keeps its super's identity anchor (rc.21).
+  The load warned only for a TPH base read through a subtype column; it now warns whenever the
+  base differs from the pre-rc.21 derivation, naming both entities and the
+  `identity.primary { extends: ... }` that keeps the old one.
 
 ## [1.3.0] — 2026-11-17
 
@@ -218,6 +245,33 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   value-object member is not listed, checked or stripped. Only an entity's top-level fields are
   treated as credentials, and stripping does not recurse into nested objects. Declare credentials
   as top-level entity fields until that is fixed.
+
+- **Fix, Java and Kotlin: a credential was returned in every response under a snake or kebab
+  Jackson naming strategy.** The generated Spring controllers (`codegen-spring` and
+  `codegen-kotlin`) omitted a credential (a `view.password` field) by serializing the row to a
+  JSON tree and removing the key spelled with the field name (`pinHash`). The generated DTO and
+  data class carry no wire annotation for it, so its key is whatever the host's `ObjectMapper`
+  makes of the property: under `PropertyNamingStrategies.SNAKE_CASE` (what
+  `spring.jackson.property-naming-strategy=SNAKE_CASE` sets) the key is `pin_hash`, under
+  `KEBAB_CASE` it is `pin-hash`, the removal found nothing, and a multi-word credential was sent
+  in every list, get, create and update echo, M:N traversal, TPH, projection and report response.
+  **Released Java and Kotlin 8.2.0 to 8.2.3 are affected**; a host on Jackson's default naming
+  with no mixin or `@JsonProperty` rename was safe. 1.3.0 fixes it: the generated `redact` helper
+  reads each credential's key from the mapper's own serialization contract
+  (`SerializationConfig.introspect(...).findProperties()`, matched on the property's internal
+  name), so a naming strategy, a mixin or a `@JsonProperty` cannot escape it, and caches the keys
+  per row class. Stripping **fails closed**, as the C# fix does: when the contract cannot be read
+  (the row's serializer is not a bean serializer, or the class declares the credential but the
+  contract has no property for it and does not ignore it), the request is refused with an
+  exception naming the type and the credential property (never a value) instead of being sent
+  unstripped. A key that spells the credential ignoring case, `_` and `-` is also removed. The
+  report CSV and XML exports were not affected: they write a fixed column list chosen at codegen
+  time, with credential columns left out, and never go through Jackson. Regenerate every Java or
+  Kotlin project whose host sets a naming strategy; adopters with ejected (owned) controller
+  generators need the same change made by hand. Gated by a `none`/`snake`/`kebab` naming
+  parameter on the Java and Kotlin `secret-fields` generated-controller lanes (list, get by id and
+  an inheriting projection), which leak under `snake` and `kebab` without the fix. Request bodies
+  are unchanged and out of scope here: a PATCH or PUT key is still read by the field name.
 
 ### Added
 

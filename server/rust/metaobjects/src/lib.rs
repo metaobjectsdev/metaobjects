@@ -21,6 +21,8 @@ pub mod registry;
 pub mod serializer;
 pub mod source;
 pub mod sources;
+pub mod timing;
+pub mod validate;
 pub mod yaml;
 
 pub use errors::MetaError;

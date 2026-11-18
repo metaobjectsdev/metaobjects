@@ -223,6 +223,41 @@ public class ViewVocabularyRc21LoaderTests
         else Assert.Empty(hit);
     }
 
+    // L5: the identity-anchor rule applies to EVERY extender with no identity of its own, not only a
+    // TPH one — an extender over plain entities whose base changed from the pre-rc.21 derivation warns too.
+    [Theory]
+    [InlineData("{ \"field.string\": { \"name\": \"ref\", \"extends\": \"Invoice.ref\" } }", true)]
+    [InlineData("{ \"field.long\": { \"name\": \"other\", \"extends\": \"Customer.id\" } }", false)]
+    public void An_extender_whose_base_changed_over_a_non_tph_base_warns(string ownField, bool warns)
+    {
+        var json = $$"""
+          { "metadata.root": { "package": "acme", "children": [
+            { "object.entity": { "name": "Customer", "children": [
+              { "source.rdb": { "@table": "customers" } }, { "field.long": { "name": "id" } },
+              { "identity.primary": { "@fields": "id" } } ] } },
+            { "object.entity": { "name": "Invoice", "children": [
+              { "source.rdb": { "@table": "invoices" } }, { "field.long": { "name": "id" } }, { "field.string": { "name": "ref" } },
+              { "identity.primary": { "@fields": "id" } } ] } },
+            { "object.projection": { "name": "CustomerBase", "abstract": true, "children": [
+              { "field.long": { "name": "customerId", "extends": "Customer.id" } },
+              { "identity.primary": { "name": "id", "extends": "Customer.primary" } } ] } },
+            { "object.projection": { "name": "InvoiceRow", "extends": "CustomerBase", "children": [
+              { "source.rdb": { "@kind": "view", "@view": "v_invoice_rows" } },
+              {{ownField}} ] } } ] } }
+        """;
+        var registry = Provider.ComposeRegistry(new[] { CoreTypes.CoreTypesProvider });
+        var result = new MetaDataLoader(registry).Load([new InMemoryStringSource(json, format: MetaDataFormat.Json, id: "n.json")]);
+        Assert.Empty(result.Errors);
+        var hit = result.Warnings.Where(w => w.Contains("InvoiceRow", StringComparison.Ordinal)).ToList();
+        if (warns)
+        {
+            var w = Assert.Single(hit);
+            Assert.Contains("its base entity is now Customer, where before it was Invoice", w);
+            Assert.Contains("identity.primary { extends: Invoice.<identity> }", w);
+        }
+        else Assert.Empty(hit);
+    }
+
     // rc.21 part B fix round (I4): origin.function's declared signature is checked.
     [Theory]
     [InlineData("[\"id\"]", "[\"int\"]", "string", "argument 1 \"id\" is a field.long, but parameter 1 is declared int")]

@@ -499,6 +499,90 @@ class KotlinNamesGeneratorTest {
     }
 
 
+    // rc.21 (U7): a derived field of an entity read from its table is no column of that table,
+    // so it has no names entry; a projection's derived field is a column of its view and keeps it.
+    // Mirrors the Java SpringNamesGeneratorTest U7 test and the TS names-derived-field test.
+    private val derivedModel = """{
+      "metadata.root": { "package": "acme::ledger", "children": [
+        { "object.entity": { "name": "Account", "children": [
+            { "source.rdb": { "@table": "accounts" } },
+            { "field.long": { "name": "id" } },
+            { "field.int":  { "name": "score" } },
+            { "field.boolean": { "name": "isHigh", "children": [
+                { "origin.computed": { "@expr": {
+                    "op": "gte", "left": { "field": "score" }, "right": { "value": 4 } } } } ] } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+        ] } },
+        { "object.projection": { "name": "AccountView", "@filter": { "isHigh": true }, "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_accounts" } },
+            { "field.long": { "name": "id", "extends": "acme::ledger::Account.id" } },
+            { "field.int":  { "name": "doubled", "children": [
+                { "origin.computed": { "@expr": {
+                    "fn": "coalesce", "args": [ { "field": "score" }, { "value": 0 } ] } } } ] } },
+            { "identity.primary": { "name": "pk", "extends": "acme::ledger::Account.pk" } }
+        ] } }
+      ] }
+    }""".trimIndent()
+
+    @Test fun `a table entity's derived field has no names entry but a projection's keeps its column`() {
+        val files = emit(derivedModel)
+        val account = files.getValue("acme/ledger/AccountNames.kt")
+        assertTrue("SCORE_COLUMN" in account, account)
+        assertFalse("IS_HIGH" in account, account)
+        val view = files.getValue("acme/ledger/AccountViewNames.kt")
+        assertTrue("const val DOUBLED_COLUMN: String = \"doubled\"" in view, view)
+    }
+
+    // rc.21 fix round (M8): an abstract-entity fragment drops its derived field (no column of
+    // the tables extending it), so a write-through extender — whose read view HAS that column —
+    // declares the constant itself. Mirrors the Java, TypeScript and C# M8 tests.
+    private val m8Model = """{
+      "metadata.root": { "package": "acme::tracked", "children": [
+        { "object.entity": { "name": "Tracked", "abstract": true, "children": [
+            { "field.int":     { "name": "score" } },
+            { "field.boolean": { "name": "isHigh", "children": [
+                { "origin.computed": { "@expr": {
+                    "op": "gte", "left": { "field": "score" }, "right": { "value": 4 } } } } ] } }
+        ] } },
+        { "object.entity": { "name": "Account", "extends": "Tracked", "children": [
+            { "source.rdb": { "@table": "accounts" } },
+            { "source.rdb": { "name": "read", "@kind": "view", "@view": "v_accounts", "@role": "replica" } },
+            { "field.long":      { "name": "id" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+        ] } },
+        { "object.projection": { "name": "HighAccounts", "@filter": { "isHigh": true }, "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_high_accounts" } },
+            { "field.long":      { "name": "id", "extends": "acme::tracked::Account.id" } },
+            { "identity.primary": { "name": "pk", "extends": "acme::tracked::Account.pk" } }
+        ] } }
+      ] }
+    }""".trimIndent()
+
+    @Test fun `a write-through extender declares the derived column its fragment drops`() {
+        val files = emit(m8Model)
+
+        // The fragment drops the derived field: no table extending Tracked has an is_high column
+        // OF ITS OWN — Account's read view does, which is the other half of the assertion.
+        val tracked = files.getValue("acme/tracked/TrackedNames.kt")
+        assertFalse("IS_HIGH" in tracked, tracked)
+
+        // COLUMNS_BY_FIELD references IS_HIGH_COLUMN; without the re-declaration the inherited
+        // half would re-export TrackedNames.IS_HIGH_COLUMN, which no emitted object declares, and
+        // the generated .kt would not compile — which is what the compilation below proves.
+        val account = files.getValue("acme/tracked/AccountNames.kt")
+        assertTrue("const val IS_HIGH_COLUMN: String = \"is_high\"" in account, account)
+        assertTrue("\"isHigh\" to IS_HIGH_COLUMN" in account, account)
+
+        val sources = files.map { (path, text) -> SourceFile.kotlin(path.substringAfterLast('/'), text) }
+        val result = KotlinCompilation().apply {
+            this.sources = sources
+            inheritClassPath = true
+            messageOutputStream = System.out
+        }.compile()
+        assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode,
+            "generated names objects failed to compile:\n${result.messages}")
+    }
+
     @Test fun `a child field colliding with an INHERITED one is refused, naming the model`() {
         // The guard has to see the WHOLE field set, not just what this object declares. Once
         // a child stopped restating its inherited constants, an own-only check could no

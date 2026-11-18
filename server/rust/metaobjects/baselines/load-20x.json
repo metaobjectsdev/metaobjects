@@ -1,0 +1,17 @@
+{
+  "note": "Record only: a reference to read, never a threshold. Regenerate with load_bench --write-baseline.",
+  "model": "20 copies of the fitness model",
+  "nodes": 7140,
+  "iterations": 41,
+  "phases": {
+    "json parse": 3.136,
+    "tree build": 8.068,
+    "merge": 0.502,
+    "super resolution": 0.138,
+    "validation": 0.0,
+    "reference resolution": 2.132,
+    "freeze": 0.057
+  },
+  "passes": {},
+  "peakRssKiB": 34400
+}

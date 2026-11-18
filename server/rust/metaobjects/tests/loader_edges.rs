@@ -183,3 +183,42 @@ fn string_array_coercion_reports_every_bad_element() {
         assert_eq!(e.source.json_path(), Some("$"), "{i}: {:?}", e.source);
     }
 }
+
+#[test]
+fn a_load_records_the_time_of_every_phase() {
+    use metaobjects::timing::{
+        PHASE_FREEZE, PHASE_JSON, PHASE_MERGE, PHASE_REFS, PHASE_SUPERS, PHASE_TREE, PHASE_VALIDATE,
+    };
+    let r = load(&[(
+        "meta.a.json",
+        r#"{"metadata.root": {"package": "acme", "children": [
+              {"object.entity": {"name": "A"}}]}}"#,
+    )]);
+    let names: Vec<&str> = r.timings.phases.iter().map(|t| t.name).collect();
+    assert_eq!(
+        names,
+        [
+            PHASE_JSON,
+            PHASE_TREE,
+            PHASE_MERGE,
+            PHASE_SUPERS,
+            PHASE_VALIDATE,
+            PHASE_REFS,
+            PHASE_FREEZE
+        ]
+    );
+    assert!(r.timings.total() > std::time::Duration::ZERO);
+}
+
+#[test]
+fn a_yaml_load_times_its_own_parse_phase() {
+    use metaobjects::timing::{PHASE_JSON, PHASE_YAML};
+    let r = load(&[(
+        "meta.a.yaml",
+        "metadata:\n  package: acme\n  children:\n    - object.entity: A\n",
+    )]);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    let names: Vec<&str> = r.timings.phases.iter().map(|t| t.name).collect();
+    assert!(names.contains(&PHASE_YAML), "{names:?}");
+    assert!(!names.contains(&PHASE_JSON), "{names:?}");
+}

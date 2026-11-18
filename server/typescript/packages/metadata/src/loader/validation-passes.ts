@@ -989,6 +989,7 @@ function _deriveBaseEntity(
   fieldName: string,
   originSource: ErrorSource,
   errors: ParseError[],
+  preRc21 = false,
 ): MetaData | undefined {
   if (obj.subType !== OBJECT_SUBTYPE_PROJECTION) return obj;
   // ADR-0042 — a bare extends owner resolves in this projection's package.
@@ -1013,7 +1014,8 @@ function _deriveBaseEntity(
   //     so an extender's own fields (a TPH subtype's columns, say) do not move it.
   const ownIdentity = obj.ownChildren().some((c) => c.type === TYPE_IDENTITY);
   const superProjection = obj.superResolved;
-  if (!ownIdentity && superProjection !== undefined && superProjection.type === TYPE_OBJECT
+  // `preRc21` re-derives the base as it was before 1b existed, so the widening warning can compare.
+  if (!preRc21 && !ownIdentity && superProjection !== undefined && superProjection.type === TYPE_OBJECT
     && superProjection.subType === OBJECT_SUBTYPE_PROJECTION && _anchorsByIdentity(superProjection)) {
     return _deriveBaseEntity(superProjection, root, fieldName, originSource, errors);
   }
@@ -1042,7 +1044,7 @@ function _deriveBaseEntity(
   // base entity its super has (its inherited identity and fields are anchored there).
   const sup = obj.superResolved;
   if (targets.size === 0 && sup !== undefined && sup.type === TYPE_OBJECT && sup.subType === OBJECT_SUBTYPE_PROJECTION) {
-    return _deriveBaseEntity(sup, root, fieldName, originSource, errors);
+    return _deriveBaseEntity(sup, root, fieldName, originSource, errors, preRc21);
   }
   if (targets.size > 1) {
     const names = [...targets].map((t) => `"${t.name}"`).join(", ");
@@ -1067,10 +1069,15 @@ function _deriveBaseEntity(
 }
 
 /**
- * rc.21 part B (I2): warn when an extender's view WIDENED with the identity-anchor rule — a projection
- * with no identity of its own whose base its super anchors on a TPH base, that binds a field to a
- * column only a subtype carries, and that scopes no row by the discriminator. Before rc.21 its base
- * was that subtype and its view held only the subtype's rows; now it is the TPH base's, every row.
+ * rc.21 part B (I2, widened by L5): warn when an extender's base CHANGED with the identity-anchor
+ * rule. A projection with no identity of its own keeps the base its super anchors on; before rc.21
+ * its base came from its own fields' entities. Whenever the two differ, the extender's view is no
+ * longer the one the old rule lowered, and the next `meta migrate` replaces it.
+ *
+ * The TPH case is named precisely: a field bound to a column only a subtype carries, over the TPH
+ * base, with no `@filter` on the discriminator, whose view held only the subtype's rows and now
+ * holds every row of the base. An extender that scopes its rows by the discriminator keeps the
+ * same rows and is not warned about.
  */
 export function validateExtenderSubtypeScope(root: MetaData): string[] {
   const warnings: string[] = [];
@@ -1083,20 +1090,24 @@ export function validateExtenderSubtypeScope(root: MetaData): string[] {
     if (sup === undefined || sup.type !== TYPE_OBJECT || sup.subType !== OBJECT_SUBTYPE_PROJECTION || !_anchorsByIdentity(sup)) continue;
     const base = _deriveBaseEntity(obj, root, "@extends", obj.source, []);
     if (base === undefined) continue;
+    // The base the pre-rc.21 derivation gave. None: no view was lowered before, so none is replaced.
+    const legacyBase = _deriveBaseEntity(obj, root, "@extends", obj.source, [], true);
+    if (legacyBase === undefined || legacyBase === base) continue;
     // ADR-0039: resolving — the discriminator may be declared on an ancestor of the base.
     const discriminator = _tphDiscriminatorOf(base);
-    if (discriminator === undefined) continue;
-    if (filterKeys(effectiveProjectionFilter(obj)).includes(discriminator)) continue;
+    if (discriminator !== undefined && filterKeys(effectiveProjectionFilter(obj)).includes(discriminator)) continue;
     const referrerPkg = obj.package ?? obj.fileDefaultPackage ?? "";
     // ADR-0039: own — only the extender's OWN fields chose its base before rc.21 (an inherited field
     // was anchored by the super's identity then too), so only they can have widened it.
     const subtypeFields: string[] = [];
     let subtype: MetaData | undefined;
-    for (const f of obj.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
-      const owner = _refNamedOwner(f, root, referrerPkg);
-      if (owner === undefined || owner === base || !_isDescendantOf(owner, base)) continue;
-      subtypeFields.push(`"${f.name}" (${owner.name}.${f.superRef?.split(".").pop() ?? f.name})`);
-      subtype ??= owner;
+    if (discriminator !== undefined) {
+      for (const f of obj.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
+        const owner = _refNamedOwner(f, root, referrerPkg);
+        if (owner === undefined || owner === base || !_isDescendantOf(owner, base)) continue;
+        subtypeFields.push(`"${f.name}" (${owner.name}.${f.superRef?.split(".").pop() ?? f.name})`);
+        subtype ??= owner;
+      }
     }
     if (subtype !== undefined) {
       warnings.push(
@@ -1104,6 +1115,13 @@ export function validateExtenderSubtypeScope(root: MetaData): string[] {
           `${base.name} with no @filter on its discriminator "${discriminator}", so the view returns every ${base.name} row ` +
           `(rc.21: an extender keeps its super's identity anchor; before, its base was the subtype). To keep a subtype-scoped ` +
           `view, add @filter { ${discriminator}: <value> } or declare identity.primary { extends: ${subtype.name}.primary }.`,
+      );
+    } else {
+      warnings.push(
+        `object.projection ${obj.name}: its base entity is now ${base.name}, where before it was ${legacyBase.name} ` +
+          `(rc.21: an extender with no identity of its own keeps its super's identity anchor), so its view is lowered ` +
+          `differently and the next meta migrate replaces it. To keep the old base, declare ` +
+          `identity.primary { extends: ${legacyBase.name}.<identity> }.`,
       );
     }
   }

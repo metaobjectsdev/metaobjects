@@ -2,7 +2,8 @@
 //! spell every reference canonically.
 //!
 //! Order of passes, as in every port: parse → merge → super resolution →
-//! (validation, a later step of this port) → reference resolution.
+//! validation (its passes are registered as the validation features land) →
+//! reference resolution.
 //!
 //! Built for speed from the start: each file is read once and parsed straight into
 //! one arena, nothing is written to disk, and the passes walk the tree a fixed
@@ -21,6 +22,11 @@ use crate::node::{Node, NodeId, PACKAGE_SEP, Tree};
 use crate::parser::{SUBTYPE_ROOT, TYPE_METADATA, TYPE_OBJECT, parse_document_with};
 use crate::registry::TypeRegistry;
 use crate::source::ErrorSource;
+use crate::timing::{
+    LoadTimings, PHASE_FREEZE, PHASE_JSON, PHASE_MERGE, PHASE_READ, PHASE_REFS, PHASE_SUPERS,
+    PHASE_TREE, PHASE_YAML,
+};
+use crate::validate::{self, Ctx, Findings};
 use crate::yaml::parse_yaml;
 
 /// The extensions a directory load picks up.
@@ -53,6 +59,8 @@ pub struct LoadResult {
     pub root: NodeId,
     pub errors: Vec<MetaError>,
     pub warnings: Vec<MetaError>,
+    /// How long each phase and each validation pass took.
+    pub timings: LoadTimings,
 }
 
 /// Loads metadata against one registry.
@@ -112,6 +120,8 @@ impl<'r> Loader<'r> {
     /// an `Err`; a file that cannot be read is an error in the result, and the
     /// other files still load.
     pub fn load_dir(&self, dir: &Path) -> std::io::Result<LoadResult> {
+        let mut timings = LoadTimings::default();
+        let read_start = std::time::Instant::now();
         let files = metadata_files(dir, false)?;
         let mut sources = Vec::with_capacity(files.len());
         let mut unreadable = Vec::new();
@@ -126,7 +136,8 @@ impl<'r> Loader<'r> {
                 )),
             }
         }
-        let mut result = self.load_sources(&sources);
+        timings.add_phase(PHASE_READ, read_start.elapsed());
+        let mut result = self.load_timed(&sources, timings);
         unreadable.append(&mut result.errors);
         result.errors = unreadable;
         Ok(result)
@@ -134,6 +145,10 @@ impl<'r> Loader<'r> {
 
     /// Load `(id, text)` pairs, each one JSON document named `id` in errors.
     pub fn load_sources(&self, sources: &[(String, String)]) -> LoadResult {
+        self.load_timed(sources, LoadTimings::default())
+    }
+
+    fn load_timed(&self, sources: &[(String, String)], mut timings: LoadTimings) -> LoadResult {
         let mut tree = Tree::new();
         let mut errors = Vec::new();
         let mut roots = Vec::new();
@@ -147,7 +162,7 @@ impl<'r> Loader<'r> {
                 .rsplit_once('.')
                 .is_some_and(|(_, ext)| YAML_SUFFIXES.iter().any(|s| ext.eq_ignore_ascii_case(s)));
             let (doc, positions) = if is_yaml {
-                match parse_yaml(text, self.registry, id) {
+                match timings.phase(PHASE_YAML, || parse_yaml(text, self.registry, id)) {
                     Ok(d) => {
                         errors.extend(d.errors);
                         (d.canonical, Some(d.positions))
@@ -158,7 +173,7 @@ impl<'r> Loader<'r> {
                     }
                 }
             } else {
-                match serde_json::from_str::<Value>(text) {
+                match timings.phase(PHASE_JSON, || serde_json::from_str::<Value>(text)) {
                     Ok(v) => (v, None),
                     Err(e) => {
                         errors.push(MetaError::at(ERR_MALFORMED_JSON, e.to_string(), envelope));
@@ -166,8 +181,9 @@ impl<'r> Loader<'r> {
                     }
                 }
             };
-            let parsed =
-                parse_document_with(&doc, self.registry, &mut tree, id, positions.as_ref());
+            let parsed = timings.phase(PHASE_TREE, || {
+                parse_document_with(&doc, self.registry, &mut tree, id, positions.as_ref())
+            });
             // An unknown type or subtype drops only that node, so the rest of the
             // document is kept; any other parse error drops the document, as the
             // TypeScript and Python loaders do.
@@ -180,24 +196,38 @@ impl<'r> Loader<'r> {
                 roots.push(root);
             }
         }
+        let mut warnings = Vec::new();
         let root = if roots.is_empty() {
             tree.add(Node::new(TYPE_METADATA, SUBTYPE_ROOT, ""))
         } else {
-            let root = merge_roots(&mut tree, &roots, &mut errors);
+            let root = timings.phase(PHASE_MERGE, || merge_roots(&mut tree, &roots, &mut errors));
             // Neither pass adds, removes or renames a top-level node, so one index serves both.
             let top = TopLevel::build(&tree, root);
-            resolve_supers(&mut tree, root, &top, &mut errors);
-            resolve_references(&mut tree, root, &top);
+            timings.phase(PHASE_SUPERS, || {
+                resolve_supers(&mut tree, root, &top, &mut errors);
+            });
+            let mut findings = Findings::default();
+            let ctx = Ctx {
+                tree: &tree,
+                root,
+                registry: self.registry,
+                strict: false,
+            };
+            validate::run(&ctx, &mut findings, &mut timings);
+            errors.append(&mut findings.errors);
+            warnings.append(&mut findings.warnings);
+            timings.phase(PHASE_REFS, || resolve_references(&mut tree, root, &top));
             root
         };
         // The terminal phase: the tree is complete, so it becomes read-only and its
         // resolving reads memoize from here on (the other ports freeze at REGISTERED).
-        tree.freeze();
+        timings.phase(PHASE_FREEZE, || tree.freeze());
         LoadResult {
             tree,
             root,
             errors,
-            warnings: Vec::new(),
+            warnings,
+            timings,
         }
     }
 }
