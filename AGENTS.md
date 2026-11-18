@@ -99,7 +99,7 @@ git config core.hooksPath .githooks
 git config hooks.denyListPath /path/to/your/private/denylist.txt
 ```
 
-It blocks commits whose added lines match (`git commit --no-verify` bypasses, discouraged); the npm author email is the one allowed exception. Guard a new private name by editing that private denylist (single source of truth) — never add real names to this public repo or the committed hook.
+It blocks commits whose added lines match (`git commit --no-verify` bypasses, discouraged); the maintainer's email is the one allowed exception (it was the npm author field — no manifest has carried it since 1.3.0, whose author is "MetaObjects contributors"). Guard a new private name by editing that private denylist (single source of truth) — never add real names to this public repo or the committed hook.
 
 **Pre-push typecheck gate** (`.githooks/pre-push`, same `core.hooksPath`): `bun test`
 transpiles per-file and does NOT typecheck, so type-broken code can ship green on the
