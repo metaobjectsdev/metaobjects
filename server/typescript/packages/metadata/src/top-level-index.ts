@@ -36,7 +36,7 @@ class TopLevelIndex {
 const indexes = new WeakMap<MetaData, Map<string, TopLevelIndex>>();
 
 /** Observable for tests: how many times an index was (re)built from scratch. */
-export const topLevelIndexStats = { rebuilds: 0, keysComputed: 0 };
+export const topLevelIndexStats = { rebuilds: 0 };
 
 /** The first child of `root` that `view` includes whose key is `key`, in child order. */
 export function findTopLevelByKey(
@@ -67,7 +67,6 @@ export function findTopLevelByKey(
     const child = root.ownChildAt(i) as MetaData;
     if (!view.includes(child)) continue;
     const k = view.keyOf(child);
-    topLevelIndexStats.keysComputed++;
     if (!index.byKey.has(k)) index.byKey.set(k, child);
   }
   index.scanned = count;
