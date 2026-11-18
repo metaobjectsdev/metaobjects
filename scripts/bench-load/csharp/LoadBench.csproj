@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Warm-load driver for the C# loader. Override the library under test with
+       -p:MetaObjectsProject=<path to MetaObjects.csproj> to benchmark another checkout. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <MetaObjectsProject Condition="'$(MetaObjectsProject)' == ''">$(MSBuildThisFileDirectory)../../../server/csharp/MetaObjects/MetaObjects.csproj</MetaObjectsProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="$(MetaObjectsProject)" />
+  </ItemGroup>
+</Project>

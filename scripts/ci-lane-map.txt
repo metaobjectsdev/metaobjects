@@ -43,6 +43,7 @@ server/csharp/*       | csharp          | the C# port
 server/rust/*         | rust            | the Rust port (preview, ADR-0065)
 fixtures/*            | ALL             | shared corpora every port runs
 spec/*                | ALL             | the metamodel spec every port implements
+scripts/bench-load/* | NONE            | load-benchmark drivers: run by hand, read by no test lane (the gates lane still checks them)
 scripts/*             | ALL             | CI scripts and tooling, this map included
 .github/*             | ALL             | the hosted workflows that call the scripts
 agent-context/*       | ALL             | bundled into the TypeScript packages and checked by cross-port gates
