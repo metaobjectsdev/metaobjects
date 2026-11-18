@@ -30,7 +30,7 @@
     "build:binary": "bun build ./bin/meta.ts --compile --outfile dist/meta --external @biomejs/wasm-bundler --external @biomejs/wasm-web --external @electric-sql/pglite"
   },
   "license": "Apache-2.0",
-  "author": "Doug Mealing <doug@dougmealing.com>",
+  "author": "MetaObjects contributors",
   "homepage": "https://metaobjects.dev",
   "bugs": {
     "url": "https://github.com/metaobjectsdev/metaobjects/issues"

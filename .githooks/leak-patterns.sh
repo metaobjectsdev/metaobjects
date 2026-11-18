@@ -8,7 +8,9 @@
 # Generic, non-sensitive structural patterns (safe to commit):
 LEAK_PATTERNS='/home/[A-Za-z0-9._-]+/|/Users/[A-Za-z0-9._-]+/|~/Development'
 
-# Legitimate matches to ignore (the published npm author email).
+# Legitimate matches to ignore. The maintainer's email, allowed so the npm manifests' author
+# line could commit; no manifest has carried it since 1.3.0 (author "MetaObjects contributors"),
+# so the allow is vestigial — a candidate for removal next time the hook changes.
 LEAK_ALLOW='doug@dougmealing\.com'
 
 # Diff filter: Added, Copied, Modified and Renamed (a `git mv` plus an edit is a rename).
