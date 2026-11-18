@@ -28,6 +28,17 @@ here.**
   `scripts/ci-local.sh --only rust`, `pr-ci` and `local-ci`, selected by changes under
   `server/rust/`.
 
+### Changed
+
+- **Release policy: vocabulary is versioned by feature, not by kind (ADR-0035 Amendment 5).** Adding
+  to or augmenting an existing feature (a type, subtype, attribute, enum value or view vocabulary,
+  additive and loading every existing document with the same meaning) is a PATCH; a whole new
+  feature is a MINOR; a break stays a MAJOR. `metamodelVersion` will gain a patch component moved by
+  the same decision (accepted, not yet implemented: it stays `<major>.<minor>` until every port
+  reads three components), and any move of it still publishes all four registries. Policy text only:
+  no version, vocabulary or `metamodelVersion` changes here. See `docs/RELEASING.md`, "The
+  vocabulary rule".
+
 ## [1.3.0] — 2026-11-17
 
 _npm `1.3.0` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._

@@ -88,8 +88,10 @@ const SITES = [
 
 // ---------------------------------------------------------------------------
 // Version arithmetic. `metamodelVersion` is `major.minor` ("0.9", "1.0") — the
-// `Metamodel N.M` form ADR-0035 §2 names. No patch component: a metamodel has no
-// bug-fix axis, only "what is declarable" and "what it means".
+// `Metamodel N.M` form ADR-0035 §2 names. ADR-0035 Amendment 5 (accepted, not yet
+// implemented) adds a patch component for vocabulary that augments an existing feature;
+// that change moves every port's reader and this parser together. Until then an additive
+// difference requires the minor.
 // ---------------------------------------------------------------------------
 
 export function parseVersion(raw, where) {

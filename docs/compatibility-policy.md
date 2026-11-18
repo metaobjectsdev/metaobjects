@@ -100,16 +100,27 @@ The library's own REQUIREMENTS carry the same reading rule as its model: `live` 
 
 ## MINOR vs. PATCH (what a version bump means)
 
-The trigger is **new public surface, not code size**:
+The trigger is **new public surface, not code size**, and for metadata the unit is the
+**feature**, not the kind of vocabulary
+([ADR-0035 Amendment 5](../spec/decisions/ADR-0035-one-zero-stability-commitment-and-version-unification.md)):
 
-- **MINOR** — adds surface a consumer can newly depend on: a new generated artifact,
-  a new CLI flag, or a newly-supported metamodel member. Additive; never breaking **on
-  the software surface**. A release that breaks the *metadata* contract also moves
-  `metamodelVersion` — the package coordinate is not where that fact lives.
-- **PATCH** — a bug fix or internal refactor with no new surface.
+- **MINOR** — adds surface a consumer can newly depend on: a new CLI flag, a new codegen-engine
+  or runtime-library API, or a **whole new metadata feature** (a modeling concept with its own
+  documentation page and tooling, as `requirement.*` and reporting were). Additive; never
+  breaking **on the software surface**. A release that breaks the *metadata* contract also
+  moves `metamodelVersion` — the package coordinate is not where that fact lives.
+- **PATCH** — a bug fix, an internal refactor, a generator change, or **vocabulary that adds to
+  or augments an existing feature**: a new type, subtype, attribute, enum value or view
+  vocabulary within a feature that already exists. It must be additive — nothing existing is
+  removed, narrowed or reinterpreted, and every document that loaded before still loads with
+  the same meaning. You get the new vocabulary only by writing it. A change to what an existing
+  document means or produces by default is not covered by this and keeps its own rules.
 - **Metamodel spec-version bump** — only when the shared vocabulary or wire/canonical
-  contract itself changes. Most releases are per-port package moves that do *not*
-  touch the spec version.
+  contract itself changes, by the same three levels: a patch for an augmentation, a minor for
+  a new feature, a major for a break. (`metamodelVersion` is `<major>.<minor>` today; the
+  `<major>.<minor>.<patch>` form is accepted and not yet implemented, and until it is an
+  augmentation moves the minor.) Any move of it means every port ships together. Most releases
+  are per-port package moves that do *not* touch the spec version.
 
 ## Correcting input we wrongly accepted (the one narrow exception)
 
