@@ -1415,9 +1415,14 @@ public static partial class ValidationPasses
     /// Derive the BASE entity a no-`@via` origin path anchors at (spec §5).
     /// Returns null when no base is derivable (an error has been pushed).
     /// <summary>
-    /// rc.21 part B (I2): warn when an extender's view WIDENED with the identity-anchor rule — no identity
-    /// of its own, a super anchored on a TPH base, a field bound to a column only a subtype carries, and no
-    /// discriminator filter. TS <c>validateExtenderSubtypeScope</c>, message for message.
+    /// rc.21 part B (I2, widened by L5): warn when an extender's base CHANGED with the identity-anchor
+    /// rule. A projection with no identity of its own keeps the base its super anchors on; before rc.21
+    /// its base came from its own fields' entities. Whenever the two differ, the extender's view is no
+    /// longer the one the old rule lowered, and the next `meta migrate` replaces it. The TPH case is named
+    /// precisely: a field bound to a column only a subtype carries, over the TPH base, with no `@filter`
+    /// on the discriminator, whose view held only the subtype's rows and now holds every row of the base.
+    /// An extender that scopes its rows by the discriminator keeps the same rows and is not warned about.
+    /// TS <c>validateExtenderSubtypeScope</c>, message for message.
     /// </summary>
     public static IReadOnlyList<string> ValidateExtenderSubtypeScope(MetaData root)
     {
@@ -1430,26 +1435,33 @@ public static partial class ValidationPasses
             if (obj.OwnChildren().Any(c => c.Type == TYPE_IDENTITY)) continue;
             if (obj.SuperData is not { Type: TYPE_OBJECT, SubType: OBJECT_SUBTYPE_PROJECTION } sup || !AnchorsByIdentity(sup)) continue;
             if (DeriveBaseEntity(obj, root, "@extends", obj.Source, new List<MetaError>()) is not { } baseEntity) continue;
+            // The base the pre-rc.21 derivation gave. None: no view was lowered before, so none is replaced.
+            if (DeriveBaseEntity(obj, root, "@extends", obj.Source, new List<MetaError>(), preRc21: true) is not { } legacyBase
+                || ReferenceEquals(legacyBase, baseEntity)) continue;
             string? discriminator = null;
             for (var cur = baseEntity; cur is { Type: TYPE_OBJECT }; cur = cur.SuperData)
                 if (cur.OwnAttr(OBJECT_ATTR_DISCRIMINATOR) is string d) { discriminator = d; break; }
-            if (discriminator is null) continue;
-            if (ProjectionFilters.Effective(obj) is IReadOnlyDictionary<string, object?> filter && FilterKeys(filter).Contains(discriminator)) continue;
+            if (discriminator is not null
+                && ProjectionFilters.Effective(obj) is IReadOnlyDictionary<string, object?> filter
+                && FilterKeys(filter).Contains(discriminator)) continue;
             var pkg = NamingRefs.EffectivePackage(obj);
             // Only the extender's OWN fields chose its base before rc.21, so only they can have widened it.
             var subtypeFields = new List<string>();
             MetaData? subtype = null;
-            foreach (var f in obj.OwnChildren().Where(c => c.Type == TYPE_FIELD))
+            if (discriminator is not null)
             {
-                var owner = RefNamedOwner(f, root, pkg);
-                if (owner is null || ReferenceEquals(owner, baseEntity)) continue;
-                var descends = false;
-                for (var cur = owner.SuperData; cur is not null; cur = cur.SuperData)
-                    if (ReferenceEquals(cur, baseEntity)) { descends = true; break; }
-                if (!descends) continue;
-                var col = f.SuperRef is { } r ? r.Split('.').Last() : f.Name;
-                subtypeFields.Add($"\"{f.Name}\" ({owner.Name}.{col})");
-                subtype ??= owner;
+                foreach (var f in obj.OwnChildren().Where(c => c.Type == TYPE_FIELD))
+                {
+                    var owner = RefNamedOwner(f, root, pkg);
+                    if (owner is null || ReferenceEquals(owner, baseEntity)) continue;
+                    var descends = false;
+                    for (var cur = owner.SuperData; cur is not null; cur = cur.SuperData)
+                        if (ReferenceEquals(cur, baseEntity)) { descends = true; break; }
+                    if (!descends) continue;
+                    var col = f.SuperRef is { } r ? r.Split('.').Last() : f.Name;
+                    subtypeFields.Add($"\"{f.Name}\" ({owner.Name}.{col})");
+                    subtype ??= owner;
+                }
             }
             if (subtype is not null)
                 warnings.Add(
@@ -1457,6 +1469,12 @@ public static partial class ValidationPasses
                     $"{baseEntity.Name} with no @filter on its discriminator \"{discriminator}\", so the view returns every {baseEntity.Name} row " +
                     "(rc.21: an extender keeps its super's identity anchor; before, its base was the subtype). To keep a subtype-scoped " +
                     $"view, add @filter {{ {discriminator}: <value> }} or declare identity.primary {{ extends: {subtype.Name}.primary }}.");
+            else
+                warnings.Add(
+                    $"object.projection {obj.Name}: its base entity is now {baseEntity.Name}, where before it was {legacyBase.Name} " +
+                    "(rc.21: an extender with no identity of its own keeps its super's identity anchor), so its view is lowered " +
+                    "differently and the next meta migrate replaces it. To keep the old base, declare " +
+                    $"identity.primary {{ extends: {legacyBase.Name}.<identity> }}.");
         }
         return warnings.AsReadOnly();
     }
@@ -1470,7 +1488,8 @@ public static partial class ValidationPasses
     }
 
     private static MetaData? DeriveBaseEntity(
-        MetaData obj, MetaData root, string fieldName, ErrorSource originSource, List<MetaError> errors)
+        MetaData obj, MetaData root, string fieldName, ErrorSource originSource, List<MetaError> errors,
+        bool preRc21 = false)
     {
         if (obj.SubType != OBJECT_SUBTYPE_PROJECTION) return obj;
 
@@ -1492,7 +1511,8 @@ public static partial class ValidationPasses
 
         // 1b) rc.21 part B (G13): an extender with no identity of its own keeps the identity its super
         //     anchors with, so its own fields (a TPH subtype's columns, say) do not move the base.
-        if (!obj.OwnChildren().Any(c => c.Type == TYPE_IDENTITY)
+        //     `preRc21` re-derives the base as it was before 1b existed, so the widening warning can compare.
+        if (!preRc21 && !obj.OwnChildren().Any(c => c.Type == TYPE_IDENTITY)
             && obj.SuperData is { Type: TYPE_OBJECT, SubType: OBJECT_SUBTYPE_PROJECTION } anchoredSuper
             && AnchorsByIdentity(anchoredSuper))
             return DeriveBaseEntity(anchoredSuper, root, fieldName, originSource, errors);
@@ -1516,7 +1536,7 @@ public static partial class ValidationPasses
         // A projection that extends another projection, and anchors nothing of its own, has
         // the base entity its super has.
         if (targets.Count == 0 && obj.SuperData is { Type: TYPE_OBJECT, SubType: OBJECT_SUBTYPE_PROJECTION } superProjection)
-            return DeriveBaseEntity(superProjection, root, fieldName, originSource, errors);
+            return DeriveBaseEntity(superProjection, root, fieldName, originSource, errors, preRc21);
         if (targets.Count > 1)
         {
             string names = string.Join(", ", targets.Select(t => $"\"{t.Name}\""));
