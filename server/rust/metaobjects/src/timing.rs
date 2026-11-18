@@ -81,16 +81,6 @@ impl LoadTimings {
     pub fn total(&self) -> Duration {
         self.phases.iter().map(|t| t.duration).sum()
     }
-
-    /// Fold another load's timings in, by name (the benchmark sums its iterations).
-    pub fn merge(&mut self, other: &LoadTimings) {
-        for t in &other.phases {
-            add(&mut self.phases, t.name, t.duration);
-        }
-        for t in &other.passes {
-            add(&mut self.passes, t.name, t.duration);
-        }
-    }
 }
 
 /// Milliseconds with three decimals: the unit every table prints.
