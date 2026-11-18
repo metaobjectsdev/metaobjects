@@ -12,6 +12,7 @@ publish = false
 [dependencies]
 serde_json.workspace = true
 indexmap.workspace = true
+saphyr = "0.3.4"
 
 [lints]
 workspace = true

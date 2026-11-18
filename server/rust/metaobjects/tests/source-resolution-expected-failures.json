@@ -1,0 +1,5 @@
+{
+  "language": "rust",
+  "notes": "Case names of fixtures/source-resolution-conformance/cases.json that the Rust port does not pass yet. The ledger may only shrink; it is empty.",
+  "cases": []
+}

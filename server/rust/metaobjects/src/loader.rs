@@ -18,12 +18,12 @@ use crate::errors::{
     ERR_UNKNOWN, ERR_UNKNOWN_SUBTYPE, ERR_UNKNOWN_TYPE, ERR_UNRESOLVED_SUPER, MetaError,
 };
 use crate::node::{Node, NodeId, PACKAGE_SEP, Tree};
-use crate::parser::{SUBTYPE_ROOT, TYPE_METADATA, TYPE_OBJECT, parse_document};
+use crate::parser::{SUBTYPE_ROOT, TYPE_METADATA, TYPE_OBJECT, parse_document_with};
 use crate::registry::TypeRegistry;
 use crate::source::ErrorSource;
+use crate::yaml::parse_yaml;
 
-/// The extensions a directory load picks up. YAML is a later step of this port;
-/// a `.yaml` file is reported rather than silently skipped.
+/// The extensions a directory load picks up.
 const JSON_SUFFIX: &str = "json";
 const YAML_SUFFIXES: &[&str] = &["yaml", "yml"];
 /// A directory of drafts that a directory load never descends into.
@@ -143,26 +143,31 @@ impl<'r> Loader<'r> {
             } else {
                 ErrorSource::json(id, "$")
             };
-            let lower = id.to_ascii_lowercase();
-            if YAML_SUFFIXES
-                .iter()
-                .any(|s| lower.ends_with(&format!(".{s}")))
-            {
-                errors.push(MetaError::at(
-                    ERR_UNKNOWN,
-                    format!("{id}: YAML metadata is not supported by the Rust port yet"),
-                    envelope,
-                ));
-                continue;
-            }
-            let doc: Value = match serde_json::from_str(text) {
-                Ok(v) => v,
-                Err(e) => {
-                    errors.push(MetaError::at(ERR_MALFORMED_JSON, e.to_string(), envelope));
-                    continue;
+            let is_yaml = id
+                .rsplit_once('.')
+                .is_some_and(|(_, ext)| YAML_SUFFIXES.iter().any(|s| ext.eq_ignore_ascii_case(s)));
+            let (doc, positions) = if is_yaml {
+                match parse_yaml(text, self.registry, id) {
+                    Ok(d) => {
+                        errors.extend(d.errors);
+                        (d.canonical, Some(d.positions))
+                    }
+                    Err(e) => {
+                        errors.push(e);
+                        continue;
+                    }
+                }
+            } else {
+                match serde_json::from_str::<Value>(text) {
+                    Ok(v) => (v, None),
+                    Err(e) => {
+                        errors.push(MetaError::at(ERR_MALFORMED_JSON, e.to_string(), envelope));
+                        continue;
+                    }
                 }
             };
-            let parsed = parse_document(&doc, self.registry, &mut tree, id);
+            let parsed =
+                parse_document_with(&doc, self.registry, &mut tree, id, positions.as_ref());
             // An unknown type or subtype drops only that node, so the rest of the
             // document is kept; any other parse error drops the document, as the
             // TypeScript and Python loaders do.

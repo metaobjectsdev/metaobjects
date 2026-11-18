@@ -27,6 +27,14 @@ here.**
   or `cargo meta` command yet. A `rust` lane runs `cargo fmt --check`, clippy and the tests in
   `scripts/ci-local.sh --only rust`, `pr-ci` and `local-ci`, selected by changes under
   `server/rust/`.
+- **Rust port reads a real project, in preview.** The loader now reads YAML authoring files
+  (ADR-0006: bare type keys, scalar-body names, the `[]` suffix, sigil-free attributes, anchors and
+  aliases, the `ERR_YAML_COERCION` guard, and a line and column on every error from a YAML file),
+  and the crate resolves a project the way the other ports do: the `.metaobjects/config.json`
+  reader, the four source kinds, directory discovery (symlinks followed, `_pending` skipped), the
+  `iam` and `ai` library sources embedded in the crate, and the naming strategies, pluralizers and
+  collection-name collision check. It passes `yaml-conformance` 15 of 19, and the
+  `source-resolution-conformance` and `naming-conformance` corpora in full. Nothing is published.
 
 ### Changed
 
