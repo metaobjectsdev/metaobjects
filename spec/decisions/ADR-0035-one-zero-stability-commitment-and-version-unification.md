@@ -351,7 +351,7 @@ choose to take:
 | the codegen **ENGINE**'s public surface: the `Generator` interface, `GenContext`/`EmittedFile`, the `render*` primitives, target/config resolution, the three-way-merge and gen-state contract | MINOR (breaking: MAJOR) |
 | CLI command or flag **semantics**; the scaffold-and-own contract itself | MINOR (breaking: MAJOR) |
 | a runtime library's public surface (`runtime-ts`, `render`, OMDB, ObjectManager, the web client) | MINOR (breaking: MAJOR) |
-| registered metamodel vocabulary, the canonical/interchange format, the wire contract | **`metamodelVersion`** (Amendment 2) — package number unaffected |
+| registered metamodel vocabulary, the canonical/interchange format, the wire contract | **`metamodelVersion`** (Amendment 2) — package number unaffected *(narrowed by Amendment 5: vocabulary for a whole new feature takes a package MINOR; an augmentation or a correction keeps PATCH)* |
 
 **This supersedes three rows of `docs/RELEASING.md`'s change-class table** — "Public API
 additive" read as covering a generator factory, "Output change alters shape/default of
