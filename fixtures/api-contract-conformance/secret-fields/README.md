@@ -23,6 +23,12 @@ The model is one `Account`:
 - **A present `null` is a write**, so it does not reach a denied column either.
 - **A credential is never returned**: not by list, not by get, not in the echo of a create or
   an update. The key is absent from the object, not `null`.
+- **Redaction does not depend on the host's JSON naming.** The credential is absent whatever key
+  the host's serializer would give it: a snake or kebab naming strategy or policy (`pin_hash`,
+  `pin-hash`), a rename, a mixin. Each port reads the key from its serializer's own contract
+  rather than spelling the field name, and refuses a response it cannot strip instead of
+  sending it. The Java and Kotlin generated lanes drive the corpus's reads under no naming
+  strategy, `SNAKE_CASE` and `KEBAB_CASE`.
 - **A `readOnly` field is ignored on every write the same way**, and returned like any other
   field: the server owns its value (here, the seeded `role`), so a create leaves it `null`.
 - **`@formExclude` alone does not hide a field.** It says how the field is written, and the

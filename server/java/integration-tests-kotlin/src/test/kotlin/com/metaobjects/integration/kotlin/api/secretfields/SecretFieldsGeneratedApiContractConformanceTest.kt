@@ -1,6 +1,8 @@
 package com.metaobjects.integration.kotlin.api.secretfields
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.PropertyNamingStrategies
+import com.fasterxml.jackson.databind.PropertyNamingStrategy
 import com.metaobjects.integration.kotlin.api.ApiContractAssertions
 import com.metaobjects.integration.kotlin.api.ApiContractScenarioLoader
 import com.metaobjects.integration.kotlin.api.ApiContractScenarios.ApiScenario
@@ -8,6 +10,7 @@ import com.metaobjects.integration.kotlin.api.secretfields.generated.GeneratedSe
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertDoesNotThrow
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
@@ -15,6 +18,9 @@ import org.junit.jupiter.params.provider.MethodSource
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.util.stream.Stream
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 /**
  * #484 secret-fields api-contract conformance, Kotlin GENERATED-controller lane: a `@formExclude` or
@@ -34,6 +40,103 @@ internal class SecretFieldsGeneratedApiContractConformanceTest {
                 ApiContractAssertions.assertResponse(scenario.name, req, res.status, parsed)
             }
             assertDeniedColumnsUntouched(scenario.name)
+        }
+    }
+
+    /**
+     * A credential is never returned whatever the host mapper's property naming strategy: under `SNAKE_CASE` the
+     * key is `pin_hash`, under `KEBAB_CASE` `pin-hash`, and the generated controller reads that key from the
+     * mapper's own contract rather than spelling it `pinHash`. Drives the entity's list and get-by-id and the
+     * inheriting projection's.
+     */
+    @ParameterizedTest(name = "naming={0}")
+    @MethodSource("namingStrategies")
+    fun `a credential is never returned under any naming strategy`(label: String, naming: PropertyNamingStrategy?) {
+        val corpus = ApiContractScenarioLoader.findCorpusRoot()
+        val genDir = Files.createTempDirectory("secret-fields-naming-$label")
+        GeneratedSecretFieldsControllerHarness(corpus, genDir, SEED, naming).use { harness ->
+            harness.reset()
+            for (path in listOf("/api/accounts", "/api/accounts/1", "/api/account_views", "/api/account_views/1")) {
+                val res = harness.exchange("GET", path, null)
+                assertEquals(200, res.status, "$label $path: ${res.body}")
+                assertTrue("Ada Lovelace" in res.body, "$label $path: ${res.body}")
+                for (secret in listOf("pin-hash-1", "pin-hash-2")) {
+                    assertFalse(secret in res.body, "$label $path leaked the credential: ${res.body}")
+                }
+            }
+            // @formExclude alone still returns the field, under the strategy's own key.
+            val tokenKey = (naming as? PropertyNamingStrategies.NamingBase)?.translate("tokenHash") ?: "tokenHash"
+            val one = harness.exchange("GET", "/api/accounts/1", null).body
+            assertTrue("\"$tokenKey\":\"token-hash-1\"" in one, "$label: tokenHash must still be returned as $tokenKey: $one")
+        }
+    }
+
+    /** Renames the credential's JSON key to one that does not spell its property name at all. */
+    abstract class RenameCredentialMixin {
+        @com.fasterxml.jackson.annotation.JsonProperty("secret")
+        abstract fun getPinHash(): String?
+    }
+
+    /**
+     * A credential is never returned when the host mapper renames it with a mixin to a key that does not normalise
+     * to the property name (`secret`): only the mapper's own contract reveals the key. Oracle: the seeded `pinHash`
+     * values from `seed.json`; a helper that removed the key spelled `pinHash` would return them under `secret`.
+     */
+    @Test
+    fun `a credential renamed by a mixin is never returned`() {
+        val genDir = Files.createTempDirectory("secret-fields-mixin")
+        GeneratedSecretFieldsControllerHarness(
+            ApiContractScenarioLoader.findCorpusRoot(), genDir, SEED, null,
+        ) { mapper, data -> mapper.addMixIn(data, RenameCredentialMixin::class.java) }.use { harness ->
+            harness.reset()
+            for (path in listOf("/api/accounts", "/api/accounts/1")) {
+                val res = harness.exchange("GET", path, null)
+                assertEquals(200, res.status, "$path: ${res.body}")
+                assertTrue("Ada Lovelace" in res.body, "$path: ${res.body}")
+                assertFalse("secret" in res.body, "$path kept the renamed credential key: ${res.body}")
+                for (row in SEED) {
+                    assertFalse(row["pinHash"] as String in res.body, "$path leaked the credential: ${res.body}")
+                }
+            }
+        }
+    }
+
+    /**
+     * Fail closed: when the mapper writes the row through a custom serializer, the credential's key cannot be read
+     * from its contract, so the response is refused (500) instead of returning the row. Oracle: the seeded `pinHash`
+     * values from `seed.json`, which this serializer writes out in full, so a helper that sent the row unstripped
+     * would return them.
+     */
+    @Test
+    fun `a custom serializer for the row refuses the response`() {
+        val genDir = Files.createTempDirectory("secret-fields-custom-serializer")
+        GeneratedSecretFieldsControllerHarness(
+            ApiContractScenarioLoader.findCorpusRoot(), genDir, SEED, null,
+        ) { mapper, data ->
+            val module = com.fasterxml.jackson.databind.module.SimpleModule()
+            @Suppress("UNCHECKED_CAST")
+            module.addSerializer(data as Class<Any>, object : com.fasterxml.jackson.databind.JsonSerializer<Any>() {
+                override fun serialize(
+                    value: Any,
+                    gen: com.fasterxml.jackson.core.JsonGenerator,
+                    provider: com.fasterxml.jackson.databind.SerializerProvider,
+                ) {
+                    gen.writeStartObject()
+                    gen.writeStringField("name", data.getMethod("getName").invoke(value) as String)
+                    gen.writeStringField("pinHash", data.getMethod("getPinHash").invoke(value) as String)
+                    gen.writeEndObject()
+                }
+            })
+            mapper.registerModule(module)
+        }.use { harness ->
+            harness.reset()
+            for (path in listOf("/api/accounts", "/api/accounts/1")) {
+                val res = harness.exchange("GET", path, null)
+                assertEquals(500, res.status, "$path: ${res.body}")
+                for (row in SEED) {
+                    assertFalse(row["pinHash"] as String in res.body, "$path leaked the credential: ${res.body}")
+                }
+            }
         }
     }
 
@@ -79,6 +182,13 @@ internal class SecretFieldsGeneratedApiContractConformanceTest {
         fun tearDown() {
             if (::HARNESS.isInitialized) HARNESS.close()
         }
+
+        @JvmStatic
+        fun namingStrategies(): Stream<Arguments> = Stream.of(
+            Arguments.of("none", null),
+            Arguments.of("snake", PropertyNamingStrategies.SNAKE_CASE),
+            Arguments.of("kebab", PropertyNamingStrategies.KEBAB_CASE),
+        )
 
         @JvmStatic
         fun scenarios(): Stream<Arguments> {
