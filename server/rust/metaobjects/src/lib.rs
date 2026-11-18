@@ -14,6 +14,8 @@ pub mod providers;
 pub mod registry;
 pub mod serializer;
 pub mod source;
+pub mod timing;
+pub mod validate;
 
 pub use errors::MetaError;
 pub use loader::{LoadResult, Loader};
