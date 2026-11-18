@@ -110,6 +110,7 @@ from metaobjects.naming import (
 )
 from metaobjects.shared.base_types import TYPE_FIELD, TYPE_IDENTITY, TYPE_INDEX
 from metaobjects.naming_refs import ref_target
+from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_ENTITY
 from metaobjects.source_resolution import primary_rdb_source
 
 #: The nodes whose DATABASE index name this module carries.
@@ -466,7 +467,17 @@ def render_names(
     # `<field>.<member>`, the path the naming corpus uses.
     columns: list[tuple[str, str]] = []
     flattened: list[tuple[MetaData, list[tuple[str, _Const]]]] = []
+    # rc.21 (U7): a derived field of an object read from its table (or of an abstract entity
+    # its tables extend) is no column, so it has no names entry. A projection's or
+    # write-through entity's derived field is a column of its view and keeps its entry.
+    columnless = (
+        entity.sub_type == OBJECT_SUBTYPE_ENTITY
+        if fragment
+        else src is not None and src.is_writable() and not entity.is_write_through()
+    )
     for field in sorted(entity.fields(), key=lambda f: f.name):
+        if columnless and field.is_derived():
+            continue
         members = _flattened_members(field, strategy)
         if members is None:
             column = resolve_column_name(field, strategy)

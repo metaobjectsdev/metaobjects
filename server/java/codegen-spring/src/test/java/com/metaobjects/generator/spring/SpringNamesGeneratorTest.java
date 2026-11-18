@@ -180,6 +180,40 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
         assertTrue(src, src.contains("protected AuthorNames() {}"));
     }
 
+    // rc.21 (U7): a derived field of an entity read from its table is no column of that table.
+    private static final String DERIVED_FIXTURE = """
+        {
+          "metadata.root": { "package": "acme::ledger", "children": [
+            { "object.entity": { "name": "Account", "children": [
+                { "source.rdb": { "@table": "accounts" } },
+                { "field.long": { "name": "id" } },
+                { "field.int":  { "name": "score" } },
+                { "field.boolean": { "name": "isHigh", "children": [
+                    { "origin.computed": { "@expr": {
+                        "op": "gte", "left": { "field": "score" }, "right": { "value": 4 } } } } ] } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+            ] } },
+            { "object.projection": { "name": "AccountView", "@filter": { "isHigh": true }, "children": [
+                { "source.rdb": { "@kind": "view", "@view": "v_accounts" } },
+                { "field.long": { "name": "id", "extends": "acme::ledger::Account.id" } },
+                { "field.int":  { "name": "doubled", "children": [
+                    { "origin.computed": { "@expr": {
+                        "fn": "coalesce", "args": [ { "field": "score" }, { "value": 0 } ] } } } ] } },
+                { "identity.primary": { "name": "pk", "extends": "acme::ledger::Account.pk" } }
+            ] } }
+          ] }
+        }
+        """;
+
+    @Test
+    public void aTableEntitysDerivedFieldHasNoNamesEntryButAProjectionsKeepsItsColumn() throws IOException {
+        String account = emit(DERIVED_FIXTURE, "acme/ledger/AccountNames.java", Map.of());
+        assertTrue(account, account.contains("SCORE_COLUMN"));
+        assertFalse(account, account.contains("IS_HIGH"));
+        String view = emit(DERIVED_FIXTURE, "acme/ledger/AccountViewNames.java", Map.of());
+        assertTrue(view, view.contains("DOUBLED_COLUMN = \"doubled\";"));
+    }
+
     @Test
     public void anImplicitlyNamedSourceStillResolvesItsPhysicalName() throws IOException {
         // The regression that matters: getTableName() returns null when @table is

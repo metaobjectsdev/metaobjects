@@ -39,6 +39,25 @@ here.**
   no version, vocabulary or `metamodelVersion` changes here. See `docs/RELEASING.md`, "The
   vocabulary rule".
 
+### Fixed
+
+- **Fix, Java and Python: `<Entity>Names` has no entry for a derived field with no column.** The
+  TypeScript and C# names generators already left out a derived (`origin.*`) field of an entity
+  read from its table; Java and Python still emitted a column constant naming a column that does
+  not exist. They now match: a projection's or write-through entity's derived field keeps its
+  entry, an entity's does not.
+- **Fix, TypeScript: `meta verify --db` accepts the function calls Postgres accepts.** The
+  declared `origin.function` signature check compared parameter types by exact name, so an
+  `integer` argument for a `bigint` or `numeric` parameter, a polymorphic `any*` parameter and a
+  variadic function were all reported as mismatches. It now allows integer to bigint to numeric
+  widening, treats `any*` parameters as wildcards and does not check a variadic function's arity.
+  A genuine mismatch (a narrowing, an unrelated type, a wrong return type) still fails.
+- **Fix, TypeScript: the widened-extender warning covers every extender whose base changed.** An
+  extender with no identity of its own keeps its super's identity anchor (rc.21). The load warned
+  only for a TPH base read through a subtype column; it now warns whenever the base differs from
+  the pre-rc.21 derivation, naming both entities and the `identity.primary { extends: ... }`
+  that keeps the old one.
+
 ## [1.3.0] — 2026-11-17
 
 

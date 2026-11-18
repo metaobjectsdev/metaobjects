@@ -248,6 +248,10 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
         // refusal at all -- see SourceResolution's class doc.
         MetaSource source = SourceResolution.primaryRdbSource(obj);
         if (source == null) return null;
+        // rc.21 (U7): a derived field of an object read from its table is no column of that
+        // table, so it has no names entry. A projection's or write-through entity's derived
+        // field is a column of its view and keeps its entry.
+        boolean columnless = source.isWritable() && !obj.isWriteThrough();
 
         return new ObjectNames(
             obj.getType(), obj.getSubType(),
@@ -259,7 +263,7 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
             // ADR-0039: getMetaFields() is the RESOLVING accessor (includeParentData
             // defaults to true) -- an inherited @column must resolve here, or the emitted
             // constant would disagree with the column a hand-written consumer binds to.
-            fieldMap(obj.getMetaFields(), strategy), fieldMap(obj.getMetaFields(false), strategy),
+            fieldMap(obj.getMetaFields(), strategy, columnless), fieldMap(obj.getMetaFields(false), strategy, columnless),
             keysOf(obj.getIdentities(true)), keysOf(obj.getIdentities(false)),
             keysOf(obj.getChildren(LookupIndex.class, true)),
             keysOf(obj.getChildren(LookupIndex.class, false)),
@@ -385,9 +389,11 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
         return namesMember(fieldName) + "_" + namesMember(memberName) + "_COLUMN";
     }
 
-    private static Map<String, FieldNames> fieldMap(Collection<MetaField> src, String strategy) {
+    private static Map<String, FieldNames> fieldMap(
+            Collection<MetaField> src, String strategy, boolean skipDerived) {
         Map<String, FieldNames> out = new LinkedHashMap<>();
         for (MetaField field : src) {
+            if (skipDerived && field.isDerived()) continue;
             out.put(field.getName(), fieldNamesOf(field, strategy));
         }
         return out;
@@ -454,10 +460,12 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
     static ObjectNames resolveSuperFragmentNames(MetaObject obj, String strategy) {
         if (!declaresNamesContent(obj)) return null;
         Collection<MetaField> own = obj.getMetaFields(false);
+        // rc.21 (U7): an abstract ENTITY's derived field is no column of the tables extending it.
+        boolean columnless = MetaObject.SUBTYPE_ENTITY.equals(obj.getSubType());
         return new ObjectNames(
             obj.getType(), obj.getSubType(), obj.getShortName(),
             Map.of(), Map.of(),
-            fieldMap(obj.getMetaFields(), strategy), fieldMap(own, strategy),
+            fieldMap(obj.getMetaFields(), strategy, columnless), fieldMap(own, strategy, columnless),
             keysOf(obj.getIdentities(true)), keysOf(obj.getIdentities(false)),
             keysOf(obj.getChildren(LookupIndex.class, true)),
             keysOf(obj.getChildren(LookupIndex.class, false)),
