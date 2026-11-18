@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use metaobjects::errors::MetaError;
-use metaobjects::json::to_js_pretty;
+use metaobjects::json::{safe_whole_i64, to_js_pretty};
 use metaobjects::loader::Loader;
 use metaobjects::providers::{Provider, builtin_provider, compose_registry};
 use metaobjects::registry::{AttrSchema, ChildRule, TypeDefinition, TypeRegistry};
@@ -153,14 +153,10 @@ fn read_json(path: &Path) -> Value {
 /// Whole-number doubles as integers, so `1.0` and `1` compare equal as in JSON.
 fn normalize_numbers(v: &Value) -> Value {
     match v {
-        Value::Number(n) if n.is_f64() => match n.as_f64() {
-            Some(f) if f.fract() == 0.0 && f.abs() < 9.0e15 =>
-            {
-                #[allow(clippy::cast_possible_truncation)]
-                Value::from(f as i64)
-            }
-            _ => v.clone(),
-        },
+        Value::Number(n) if n.is_f64() => n
+            .as_f64()
+            .and_then(safe_whole_i64)
+            .map_or_else(|| v.clone(), Value::from),
         Value::Array(items) => Value::Array(items.iter().map(normalize_numbers).collect()),
         Value::Object(m) => Value::Object(
             m.iter()

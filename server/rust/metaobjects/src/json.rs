@@ -167,6 +167,17 @@ pub fn safe_whole_i64(x: f64) -> Option<i64> {
     (is_js_integer(x) && x.abs() < 9.007_199_254_740_992e15).then_some(x as i64)
 }
 
+/// JavaScript's `String(v)` for a JSON value: a string bare, a number as JS prints it.
+pub fn js_display(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        Value::Number(n) => js_number(n),
+        Value::Bool(b) => b.to_string(),
+        Value::Null => "null".to_string(),
+        other => other.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

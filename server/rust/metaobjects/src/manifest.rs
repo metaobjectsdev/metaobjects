@@ -3,7 +3,7 @@
 
 use serde_json::{Map, Value, json};
 
-use crate::json::{js_number, to_js_pretty};
+use crate::json::{js_display, to_js_pretty};
 use crate::registry::{AttrSchema, ChildRule, ChildSubType, TypeDefinition, TypeRegistry};
 
 /// The metamodel version this build implements.
@@ -26,16 +26,6 @@ fn sorted(list: &[String]) -> Value {
     json!(l)
 }
 
-fn js_string(v: &Value) -> String {
-    match v {
-        Value::String(s) => s.clone(),
-        Value::Number(n) => js_number(n),
-        Value::Bool(b) => b.to_string(),
-        Value::Null => "null".to_string(),
-        other => other.to_string(),
-    }
-}
-
 fn manifest_attr(attr: &AttrSchema) -> Value {
     let legacy = attr.value_type.as_deref() == Some("stringarray");
     let mut m = Map::new();
@@ -54,7 +44,7 @@ fn manifest_attr(attr: &AttrSchema) -> Value {
     if let Some(values) = attr.allowed_values.as_ref().filter(|v| !v.is_empty()) {
         m.insert(
             "allowedValues".into(),
-            Value::Array(values.iter().map(|v| json!(js_string(v))).collect()),
+            Value::Array(values.iter().map(|v| json!(js_display(v))).collect()),
         );
     }
     if let Some(list) = attr.implemented_in.as_ref().filter(|v| !v.is_empty()) {

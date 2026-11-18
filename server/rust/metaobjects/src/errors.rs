@@ -81,6 +81,11 @@ impl MetaError {
     }
 
     /// An error located in a document.
+    /// An `ERR_UNKNOWN` with no source: a registry or provider definition problem.
+    pub fn unknown(message: impl Into<String>) -> Self {
+        Self::code(ERR_UNKNOWN, message)
+    }
+
     pub fn at(code: &'static str, message: impl Into<String>, source: ErrorSource) -> Self {
         Self {
             code,

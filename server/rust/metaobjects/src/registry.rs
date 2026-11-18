@@ -9,7 +9,7 @@ use serde_json::Value;
 
 use crate::errors::{
     ERR_EXTEND_REQUIRED_ATTR, ERR_PROVIDER_ATTR_CONFLICT, ERR_PROVIDER_ATTR_SHADOW,
-    ERR_REGISTRY_SEALED, ERR_UNKNOWN, MetaError,
+    ERR_REGISTRY_SEALED, MetaError,
 };
 
 /// The wildcard in a child rule (`*` matches any type, subtype or name).
@@ -174,10 +174,6 @@ pub struct TypeRegistry {
     sealed: bool,
 }
 
-fn plain(message: String) -> MetaError {
-    MetaError::code(ERR_UNKNOWN, message)
-}
-
 impl TypeRegistry {
     pub fn new() -> Self {
         Self::default()
@@ -292,7 +288,7 @@ impl TypeRegistry {
 
     fn check_value_type(attr: &AttrSchema, context: &str) -> Result<(), MetaError> {
         if attr.value_type.as_deref() == Some(SUBTYPE_BASE) {
-            return Err(plain(format!(
+            return Err(MetaError::unknown(format!(
                 "{context}: attr \"{}\" declares valueType \"{SUBTYPE_BASE}\", which is not valid for attrs. Use no valueType (omit the field) for a polymorphic/untyped attr.",
                 attr.name
             )));
@@ -305,7 +301,7 @@ impl TypeRegistry {
         let key = def.key();
         self.check_not_sealed(&format!("register(\"{key}\")"))?;
         if self.defs.contains_key(&key) {
-            return Err(plain(format!(
+            return Err(MetaError::unknown(format!(
                 "TypeRegistry: duplicate registration for \"{key}\" (type=\"{}\", subType=\"{}\")",
                 def.type_name, def.sub_type
             )));
@@ -441,7 +437,7 @@ impl TypeRegistry {
     ) -> Result<(), MetaError> {
         self.check_not_sealed(&format!("extend(\"{type_name}.{sub_type}\")"))?;
         if !self.has(type_name, sub_type) {
-            return Err(plain(format!(
+            return Err(MetaError::unknown(format!(
                 "TypeRegistry.extend: no registered type \"{type_name}.{sub_type}\" to extend"
             )));
         }

@@ -12,7 +12,7 @@ use serde_json::Value;
 
 use crate::errors::{
     ERR_PROVIDER_DEPENDENCY_CYCLE, ERR_PROVIDER_DUPLICATE_ID, ERR_PROVIDER_MISSING_DEPENDENCY,
-    ERR_UNKNOWN, MetaError,
+    MetaError,
 };
 use crate::registry::{
     AttrSchema, ChildRule, ChildSubType, ReferenceDescriptor, SUBTYPE_BASE, TypeDefinition,
@@ -279,13 +279,9 @@ fn is_universal(t: &TypeDef) -> bool {
     t.type_name == WILDCARD && t.sub_type == WILDCARD
 }
 
-fn bad_definition(message: String) -> MetaError {
-    MetaError::code(ERR_UNKNOWN, message)
-}
-
 fn validate_cardinality(provider: &str, key: &str, child: &ChildDef) -> Result<(), MetaError> {
     if child.min < 0 {
-        return Err(bad_definition(format!(
+        return Err(MetaError::unknown(format!(
             "defineProviderFromData({provider}): child \"{}\" on \"{key}\" has min {} < 0.",
             child.name, child.min
         )));
@@ -293,13 +289,13 @@ fn validate_cardinality(provider: &str, key: &str, child: &ChildDef) -> Result<(
     if let Some(max) = child.max
         && max < child.min
     {
-        return Err(bad_definition(format!(
+        return Err(MetaError::unknown(format!(
             "defineProviderFromData({provider}): child \"{}\" on \"{key}\" has max {max} < min {}.",
             child.name, child.min
         )));
     }
     if child.type_name == ATTR_CHILD_TYPE && child.max != Some(1) && child.is_array != Some(true) {
-        return Err(bad_definition(format!(
+        return Err(MetaError::unknown(format!(
             "defineProviderFromData({provider}): attr \"{}\" on \"{key}\" is single-valued (max must be 1; a list-valued attr sets isArray: true).",
             child.name
         )));
@@ -312,7 +308,7 @@ fn to_attr_schema(provider: &str, key: &str, child: &ChildDef) -> Result<AttrSch
         None => None,
         Some(ChildSubType::One(s)) => Some(s.clone()),
         Some(ChildSubType::Many(_)) => {
-            return Err(bad_definition(format!(
+            return Err(MetaError::unknown(format!(
                 "defineProviderFromData({provider}): attr \"{}\" on \"{key}\" declares a list subType — an attr's value-type is a single subtype.",
                 child.name
             )));
@@ -444,7 +440,7 @@ fn apply_definition(
         let mut common = Vec::new();
         for child in &universal.children {
             if child.type_name != ATTR_CHILD_TYPE {
-                return Err(bad_definition(format!(
+                return Err(MetaError::unknown(format!(
                     "applyProviderDefinition({}): the universal \"{key}\" entry may only carry attr children (common attrs); found a structural child \"{}\".",
                     data.provider, child.type_name
                 )));
@@ -460,7 +456,7 @@ fn apply_definition(
         let mut attributes = Vec::new();
         for child in &ext.children {
             if child.type_name != ATTR_CHILD_TYPE {
-                return Err(bad_definition(format!(
+                return Err(MetaError::unknown(format!(
                     "applyProviderDefinition({}): extends \"{}\" may only carry attr children; found a structural child \"{}\".",
                     data.provider, ext.type_name, child.type_name
                 )));
@@ -587,15 +583,10 @@ pub fn core_providers() -> Vec<Provider> {
 /// Look up a built-in provider by id (`metaobjects-template` is the retired name
 /// of the prompt provider, kept because older fixtures still use it).
 pub fn builtin_provider(id: &str) -> Option<Provider> {
-    match id {
-        CORE_TYPES_ID => Some(core_types_provider()),
-        DB_ID => Some(db_provider()),
-        DOCUMENTATION_ID => Some(documentation_provider()),
-        PROMPT_ID | "metaobjects-template" => Some(prompt_provider()),
-        UI_ID => Some(ui_provider()),
-        UI_WEB_ID => Some(ui_web_provider()),
-        _ => None,
+    if id == "metaobjects-template" {
+        return Some(prompt_provider());
     }
+    core_providers().into_iter().find(|p| p.id == id)
 }
 
 /// Order providers so each follows its dependencies, then run them into a new

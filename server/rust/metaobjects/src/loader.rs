@@ -179,8 +179,10 @@ impl<'r> Loader<'r> {
             tree.add(Node::new(TYPE_METADATA, SUBTYPE_ROOT, ""))
         } else {
             let root = merge_roots(&mut tree, &roots, &mut errors);
-            resolve_supers(&mut tree, root, &mut errors);
-            resolve_references(&mut tree, root);
+            // Neither pass adds, removes or renames a top-level node, so one index serves both.
+            let top = TopLevel::build(&tree, root);
+            resolve_supers(&mut tree, root, &top, &mut errors);
+            resolve_references(&mut tree, root, &top);
             root
         };
         // The terminal phase: the tree is complete, so it becomes read-only and its
@@ -493,7 +495,7 @@ enum Resolved {
 struct SuperResolver<'a> {
     tree: &'a mut Tree,
     root: NodeId,
-    index: HashMap<String, NodeId>,
+    index: &'a HashMap<String, NodeId>,
     attempted: HashSet<NodeId>,
     errors: &'a mut Vec<MetaError>,
 }
@@ -548,6 +550,21 @@ impl SuperResolver<'_> {
         }
     }
 
+    /// Record an extends error on `id`. The node's fqn and source are built only here,
+    /// on the error path, never for an extends that resolves.
+    fn fail(
+        &mut self,
+        id: NodeId,
+        super_ref: &str,
+        code: &'static str,
+        message: impl FnOnce(&str) -> String,
+    ) {
+        let node = self.tree.node(id);
+        let fqn = node.fqn();
+        let source = resolved_source(&node.source, fqn.clone(), super_ref.to_string());
+        self.errors.push(MetaError::at(code, message(&fqn), source));
+    }
+
     fn resolve(&mut self, id: NodeId) {
         let node = self.tree.node(id);
         let Some(super_ref) = node.super_ref.clone() else {
@@ -564,37 +581,30 @@ impl SuperResolver<'_> {
             self.resolve(o);
         }
         let referrer_type = self.tree.node(id).type_name.clone();
-        let fqn = self.tree.node(id).fqn();
-        let source = self.tree.node(id).source.clone();
         match self.lookup(&super_ref, &pkg, Some(&referrer_type)) {
-            Resolved::OverDrop => self.errors.push(MetaError::at(
-                ERR_BAD_ATTR_VALUE,
+            Resolved::OverDrop => self.fail(id, &super_ref, ERR_BAD_ATTR_VALUE, |fqn| {
                 format!(
                     "the extends ref '{super_ref}' on {fqn} climbs above the root package — each '..::' drops one segment of the declaring package"
-                ),
-                resolved_source(&source, fqn.clone(), super_ref.clone()),
-            )),
+                )
+            }),
             Resolved::Missing => {
                 let hint = did_you_mean_super_hint(self.tree, self.root, &super_ref);
-                self.errors.push(MetaError::at(
-                    ERR_UNRESOLVED_SUPER,
-                    format!("the SuperClass '{super_ref}' does not exist (referenced by {fqn}){hint}"),
-                    resolved_source(&source, fqn.clone(), super_ref.clone()),
-                ));
+                self.fail(id, &super_ref, ERR_UNRESOLVED_SUPER, |fqn| {
+                    format!("the SuperClass '{super_ref}' does not exist (referenced by {fqn}){hint}")
+                });
             }
             Resolved::Found(target) => {
                 if is_child_targeting_ref(&super_ref) && !extends_target_compatible(self.tree, id, target) {
-                    let t = self.tree.node(target);
-                    let n = self.tree.node(id);
-                    let message = format!(
-                        "the dotted extends target '{super_ref}' is [{}.{}] but the extending node is [{}.{}] — a dotted extends must target a node of the same type and subtype — the one exception is an identity, which may extend any UNIQUE key (identity.primary or identity.secondary) (referenced by {fqn})",
+                    let (t, n) = (self.tree.node(target), self.tree.node(id));
+                    let kinds = format!(
+                        "[{}.{}] but the extending node is [{}.{}]",
                         t.type_name, t.sub_type, n.type_name, n.sub_type
                     );
-                    self.errors.push(MetaError::at(
-                        ERR_EXTENDS_TARGET_MISMATCH,
-                        message,
-                        resolved_source(&source, fqn.clone(), super_ref.clone()),
-                    ));
+                    self.fail(id, &super_ref, ERR_EXTENDS_TARGET_MISMATCH, |fqn| {
+                        format!(
+                            "the dotted extends target '{super_ref}' is {kinds} — a dotted extends must target a node of the same type and subtype — the one exception is an identity, which may extend any UNIQUE key (identity.primary or identity.secondary) (referenced by {fqn})"
+                        )
+                    });
                 } else {
                     self.tree.node_mut(id).super_node = Some(target);
                     self.resolve(target);
@@ -654,20 +664,13 @@ fn collect_supers(tree: &Tree, id: NodeId, out: &mut Vec<NodeId>) {
 
 /// Resolve every `extends` in the merged tree, independently of load order (#188):
 /// a dotted reference to an owner resolves the owner's own chain first.
-pub fn resolve_supers(tree: &mut Tree, root: NodeId, errors: &mut Vec<MetaError>) {
-    let mut index = HashMap::new();
-    // ADR-0039: own — the root's top-level nodes are its declared children; a root extends nothing.
-    for &c in tree.own_children(root) {
-        if !tree.node(c).name.is_empty() {
-            index.entry(tree.resolution_key(c)).or_insert(c);
-        }
-    }
+fn resolve_supers(tree: &mut Tree, root: NodeId, top: &TopLevel, errors: &mut Vec<MetaError>) {
     let mut pending = Vec::new();
     collect_supers(tree, root, &mut pending);
     let mut r = SuperResolver {
         tree,
         root,
-        index,
+        index: &top.named,
         attempted: HashSet::new(),
         errors,
     };
@@ -711,12 +714,11 @@ impl TopLevel {
 /// ADR-0059 R5: rewrite every resolved `extends` and reference attribute to its
 /// canonical spelling, keeping the authored value beside it. A reference that does
 /// not resolve is left as written.
-pub fn resolve_references(tree: &mut Tree, root: NodeId) {
-    let top = TopLevel::build(tree, root);
+fn resolve_references(tree: &mut Tree, root: NodeId, top: &TopLevel) {
     let mut stack = vec![root];
     while let Some(id) = stack.pop() {
         if id != root {
-            resolve_extends(tree, &top, id);
+            resolve_extends(tree, top, id);
             let decl_pkg = tree.effective_package(tree.top_level_of(id));
             let names: Vec<String> = tree
                 // ADR-0039: own — reference resolution rewrites the value this node declares, not an inherited one.
@@ -725,7 +727,7 @@ pub fn resolve_references(tree: &mut Tree, root: NodeId) {
                 .map(|(k, _)| k.clone())
                 .collect();
             for name in names {
-                resolve_attr(tree, &top, id, &name, &decl_pkg);
+                resolve_attr(tree, top, id, &name, &decl_pkg);
             }
         }
         // ADR-0039: own — a whole-tree walk visits each physical node once; inherited children are visited where they are declared.

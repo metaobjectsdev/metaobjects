@@ -13,7 +13,7 @@ use crate::errors::{
     ERR_MISSING_REQUIRED_ATTR, ERR_MISSING_SUBTYPE, ERR_RESERVED_ATTR, ERR_TOP_LEVEL_NOT_OBJECT,
     ERR_UNKNOWN_SUBTYPE, ERR_UNKNOWN_TYPE, ERR_UNRESOLVED_SUPER, MetaError,
 };
-use crate::json::{js_number, safe_whole_i64};
+use crate::json::{js_display, safe_whole_i64};
 use crate::node::{Attr, Node, NodeId, PACKAGE_SEP, Tree};
 use crate::registry::{SUBTYPE_BASE, TypeRegistry};
 use crate::source::{ErrorSource, JsonPath};
@@ -547,16 +547,6 @@ fn add_or_merge_child(tree: &mut Tree, parent: NodeId, child: NodeId) {
 }
 
 /// `String(v)` for a scalar; compact JSON for anything else.
-fn js_display(v: &Value) -> String {
-    match v {
-        Value::String(s) => s.clone(),
-        Value::Number(n) => js_number(n),
-        Value::Bool(b) => b.to_string(),
-        Value::Null => "null".to_string(),
-        other => other.to_string(),
-    }
-}
-
 /// Build an attribute of `sub_type` from an authored value: coerce, then desugar.
 pub fn make_attr(sub_type: &str, raw: &Value, source: ErrorSource) -> Attr {
     Attr {
