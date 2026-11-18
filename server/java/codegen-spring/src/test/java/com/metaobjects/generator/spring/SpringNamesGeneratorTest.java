@@ -214,6 +214,55 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
         assertTrue(view, view.contains("DOUBLED_COLUMN = \"doubled\";"));
     }
 
+    // rc.21 fix round (M8): an abstract-entity fragment drops its derived field (no column of
+    // the tables extending it), so a write-through extender — whose read view HAS that column —
+    // declares the constant itself. Mirrors the TypeScript names-derived-field and C#
+    // NamesGeneratorTests M8 tests.
+    private static final String M8_FIXTURE = """
+        {
+          "metadata.root": { "package": "acme::tracked", "children": [
+            { "object.entity": { "name": "Tracked", "abstract": true, "children": [
+                { "field.int":     { "name": "score" } },
+                { "field.boolean": { "name": "isHigh", "children": [
+                    { "origin.computed": { "@expr": {
+                        "op": "gte", "left": { "field": "score" }, "right": { "value": 4 } } } } ] } }
+            ] } },
+            { "object.entity": { "name": "Account", "extends": "Tracked", "children": [
+                { "source.rdb": { "@table": "accounts" } },
+                { "source.rdb": { "name": "read", "@kind": "view", "@view": "v_accounts", "@role": "replica" } },
+                { "field.long":      { "name": "id" } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+            ] } },
+            { "object.projection": { "name": "HighAccounts", "@filter": { "isHigh": true }, "children": [
+                { "source.rdb": { "@kind": "view", "@view": "v_high_accounts" } },
+                { "field.long":      { "name": "id", "extends": "acme::tracked::Account.id" } },
+                { "identity.primary": { "name": "pk", "extends": "acme::tracked::Account.pk" } }
+            ] } }
+          ] }
+        }
+        """;
+
+    @Test
+    public void aWriteThroughExtenderDeclaresTheDerivedColumnItsFragmentDrops() throws Exception {
+        Path outDir = tempFolder.newFolder().toPath();
+        Path workspace = tempFolder.newFolder().toPath();
+        SpringNamesGenerator gen = new SpringNamesGenerator();
+        gen.setArgs(Map.of("outputDir", outDir.toString()));
+        gen.execute(SpringTestFixtures.loadFixture(workspace, "names-m8", M8_FIXTURE));
+
+        // The fragment drops the derived field: no table extending Tracked has an is_high column
+        // OF ITS OWN — Account's read view does, which is the other half of the assertion.
+        String tracked = Files.readString(outDir.resolve("acme/tracked/TrackedNames.java"));
+        assertFalse(tracked, tracked.contains("IS_HIGH"));
+
+        // COLUMNS_BY_FIELD references IS_HIGH_COLUMN; without the re-declaration no emitted
+        // class declares it and the generated .java does not compile — which is what
+        // compileAll proves, not just the substring.
+        String account = Files.readString(outDir.resolve("acme/tracked/AccountNames.java"));
+        assertTrue(account, account.contains("public static final String IS_HIGH_COLUMN = \"is_high\";"));
+        compileAll(outDir);
+    }
+
     @Test
     public void anImplicitlyNamedSourceStillResolvesItsPhysicalName() throws IOException {
         // The regression that matters: getTableName() returns null when @table is

@@ -475,18 +475,34 @@ def render_names(
         if fragment
         else src is not None and src.is_writable() and not entity.is_write_through()
     )
+
+    # rc.21 fix round (M8): an abstract-entity fragment leaves its derived fields out (they are
+    # no column of the tables extending it), so an object whose derived fields ARE columns (a
+    # write-through entity's read view) declares the ones it inherits itself, rather than
+    # re-exporting them from a super module that does not define them.
+    def dropped_by_super_fragment(field: MetaData) -> bool:
+        return (
+            not fragment
+            and not columnless
+            and field.is_derived()
+            and super_obj is not None
+            and super_obj.sub_type == OBJECT_SUBTYPE_ENTITY
+            and super_obj.is_abstract
+        )
+
     for field in sorted(entity.fields(), key=lambda f: f.name):
         if columnless and field.is_derived():
             continue
+        inherited = carried_by_super(field) and not dropped_by_super_fragment(field)
         members = _flattened_members(field, strategy)
         if members is None:
             column = resolve_column_name(field, strategy)
             columns.append((field.name, f"{_member(field.name)}_COLUMN"))
-            groups.append(("fields", _field_consts(field, column), carried_by_super(field)))
+            groups.append(("fields", _field_consts(field, column), inherited))
         else:
             # A flattened field has no column of its own: it keeps its `_FIELD` constant and
             # its members carry the columns.
-            groups.append(("fields", _field_consts(field, None), carried_by_super(field)))
+            groups.append(("fields", _field_consts(field, None), inherited))
         if members:
             flattened.append((field, _flattened_member_consts(field, members)))
 
@@ -510,7 +526,7 @@ def render_names(
             kept.append(const)
             columns.append((key, const.member))
         if kept:
-            groups.append(("fields", kept, carried_by_super(field)))
+            groups.append(("fields", kept, carried_by_super(field) and not dropped_by_super_fragment(field)))
 
     for type_name in (TYPE_IDENTITY, TYPE_INDEX):
         keys = sorted(

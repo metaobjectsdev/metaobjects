@@ -164,9 +164,12 @@ export function signatureMatches(declared: DeclaredFunction, fn: PgFunction): bo
   // A set-returning function is not a scalar call.
   if (fn.retset) return false;
   if (declared.returns.length > 0 && !declared.returns.includes(fn.returns)) return false;
-  // A variadic function takes any number of trailing arguments, so its arity and its trailing
-  // parameter types are not checked; the leading fixed parameters still are.
+  // A variadic function takes any number of trailing arguments, so its trailing parameter's
+  // count and type are not checked; Postgres still requires every non-defaulted fixed parameter
+  // (a VARIADIC parameter cannot itself carry a default), and the leading fixed parameter types
+  // still are.
   if (fn.variadic) {
+    if (declared.params.length < fn.args.length - 1 - fn.defaults) return false;
     const fixed = Math.min(fn.args.length - 1, declared.params.length);
     return declared.params.slice(0, fixed).every((accepted, i) => parameterAccepts(accepted, fn.args[i]!));
   }
@@ -186,7 +189,8 @@ export const DECLARED_FUNCTION_CHECK_LIMITS =
   "origin.function signatures are compared by plain type name, allowing Postgres's implicit integer " +
   "widening (integer to bigint to numeric) and treating polymorphic (any*) parameters as wildcards: " +
   "a json, array, enum or user-defined kind is not type-checked (only the arity is), a variadic " +
-  "function's arity is not checked, and a domain is compared by its own name, not its base type.";
+  "function's trailing parameter count and type are not checked (its required fixed arity is), and " +
+  "a domain is compared by its own name, not its base type.";
 
 export async function checkDeclaredFunctions(db: Kysely<any>, root: MetaData): Promise<string[]> {
   const findings: string[] = [];
