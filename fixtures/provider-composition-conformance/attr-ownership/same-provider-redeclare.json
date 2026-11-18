@@ -1,0 +1,20 @@
+{
+  "description": "One provider declaring the same attr name on a type and on the type it inherits from stays legal; the registry records that provider as owner of both.",
+  "providers": [
+    "shadow-self"
+  ],
+  "expectOwners": [
+    {
+      "type": "template",
+      "subType": "base",
+      "attr": "selfAttr",
+      "owner": "shadow-self"
+    },
+    {
+      "type": "template",
+      "subType": "shadowprobe",
+      "attr": "selfAttr",
+      "owner": "shadow-self"
+    }
+  ]
+}

@@ -179,6 +179,7 @@ public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
                 com.metaobjects.validator.RequiredWhenValidator.class,
                 com.metaobjects.validator.PresentIffValidator.class,
                 com.metaobjects.validator.AtLeastOneValidator.class,
+                com.metaobjects.validator.ExactlyOneValidator.class,
                 com.metaobjects.field.EnumField.class)) {
             registry.extendType(c, def -> def
                 .optionalAttributeWithConstraints(com.metaobjects.validator.MetaValidator.ATTR_CONSTRAINT_NAME)

@@ -20,7 +20,6 @@ import pytest
 
 from metaobjects import MetaDataLoader
 from metaobjects.serializer_json import serialize_shared_document
-from metaobjects.shared.base_types import TYPE_OBJECT
 
 _CORPUS_DIR = Path(__file__).resolve().parents[4] / "fixtures" / "shared-model-conformance"
 _CASES = json.loads((_CORPUS_DIR / "cases.json").read_text())["cases"]
@@ -45,11 +44,8 @@ def test_shared_document_bytes(case: dict) -> None:
     assert not result.errors, [f"{e.code}: {e.message}" for e in result.errors]
 
     # ADR-0039 sanctioned own: the root has no super chain, so its own children are its children.
-    selected = [
-        c
-        for c in result.root.own_children()
-        if c.type == TYPE_OBJECT and c.resolution_key() in manifest["nodes"]
-    ]
+    # Every node the manifest lists, whatever its type: an export may carry requirement.* too.
+    selected = [c for c in result.root.own_children() if c.resolution_key() in manifest["nodes"]]
     assert sorted(c.resolution_key() for c in selected) == manifest["nodes"]
 
     document = serialize_shared_document(selected).encode("utf-8")

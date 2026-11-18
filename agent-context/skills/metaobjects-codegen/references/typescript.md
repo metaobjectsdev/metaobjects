@@ -215,7 +215,7 @@ view binding, Zod read schema, row type, descriptor, filter and sort allowlists)
 `<R>.queries.ts` (`list…` only, no by-id), `<R>.routes.ts` (and `<R>.routes.hono.ts` from
 `routesFileHono()`): GET list, `POST` answers 405, no `/:id`; `<R>.names.ts`; and the barrel
 export. Every derived field with filter operators is filterable and sortable. The UI tier
-writes the list hook and nothing else: `<R>.hooks.ts` (`use<R>List`, typed with the report's
+writes the list hook and nothing else: `<R>.hooks.ts` (`use` + the plural of the name (`useMemberUtilizations` for `MemberUtilization`), or `use<R>List` when the name's plural is the name itself (`useSeriesList`), typed with the report's
 filter, no detail or mutation hook) and its `<R>.meta.ts` descriptor, and `agent/ui.md` lists
 the report. The hook generator gates on `servesClientHooks`, which is true for a served
 report; the grid generators gate on `servesClientTier`, which is false, so there is no grid,

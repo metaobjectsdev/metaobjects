@@ -61,12 +61,18 @@
       "expression": "(\"shipped_at\" IS NOT NULL) = (\"shipped\" IS 1)"
     },
     {
-      "name": "gadgets_email_atleastone_chk",
+      "name": "gadgets_email_exactlyone_chk",
       "expression": "((\"email\" IS NOT NULL) + (\"phone\" IS NOT NULL)) = 1"
     },
     {
       "name": "gadgets_phone_atleastone_chk",
       "expression": "(\"level\" <> 2) OR (\"phone\" IS NOT NULL OR \"fax\" IS NOT NULL)"
+    }
+  ],
+  "parcels": [
+    {
+      "name": "parcels_label_length_chk",
+      "expression": "length(\"label\") >= 1 AND length(\"label\") <= 20"
     }
   ],
   "jobs": [

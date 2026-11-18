@@ -85,7 +85,7 @@ public class ReportingInertTests
     public static TheoryData<string> GeneratorNames()
     {
         var data = new TheoryData<string>();
-        foreach (var name in GeneratorRegistry.Entries.Keys) data.Add(name);
+        foreach (var name in GeneratorRegistry.Entries.Keys.Where(n => n != SharedModelTestSupport.Name)) data.Add(name);
         return data;
     }
 
@@ -104,9 +104,9 @@ public class ReportingInertTests
     private const string DbContextGeneratorName = "db-context";
     private const string FilterAllowlistGeneratorName = "filter-allowlist";
     private const string RoutesGeneratorName = "routes";
-    private const string RowFile = "acme/shop/StoreTotals.g.cs";
-    private const string AllowlistFile = "acme/shop/StoreTotalsFilterAllowlist.g.cs";
-    private const string RoutesFile = "acme/shop/StoreTotalsRoutes.g.cs";
+    private const string RowFile = "StoreTotals.g.cs";
+    private const string AllowlistFile = "StoreTotalsFilterAllowlist.g.cs";
+    private const string RoutesFile = "StoreTotalsRoutes.g.cs";
     private const string DbContextFile = "AppDbContext.g.cs";
 
     /// <summary>The file each report-aware generator adds for the view-backed report.</summary>
@@ -125,7 +125,7 @@ public class ReportingInertTests
     ];
 
     private const string ExportWriterFile = "ReportExportWriter.g.cs";
-    private const string ExportModuleFile = "acme/shop/StoreTotalsExport.g.cs";
+    private const string ExportModuleFile = "StoreTotalsExport.g.cs";
 
     private const string ApiDocsGeneratorName = "api-docs";
     private const string ApiDocsReportPage = "api/csharp/acme/shop/StoreTotals.md";
@@ -140,7 +140,7 @@ public class ReportingInertTests
         #nullable enable
         using System.Collections.Generic;
 
-        namespace Acme.Shop;
+        namespace MetaObjects.ReportingInert.Generated;
 
         /// <summary>
         /// GENERATED — per-entity FR-009 filter allowlist for StoreTotals.
@@ -149,18 +149,18 @@ public class ReportingInertTests
         /// </summary>
         public static class StoreTotalsFilterAllowlist
         {
-            public static readonly HashSet<string> Fields = new(global::System.StringComparer.Ordinal)
+            public static readonly HashSet<string> Fields = new(System.StringComparer.Ordinal)
             {
                 "purchases",
                 "buyers",
                 "revenue",
             };
 
-            public static readonly Dictionary<string, HashSet<string>> OpsByField = new(global::System.StringComparer.Ordinal)
+            public static readonly Dictionary<string, HashSet<string>> OpsByField = new(System.StringComparer.Ordinal)
             {
-                ["purchases"] = new(global::System.StringComparer.Ordinal) { "eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull" },
-                ["buyers"] = new(global::System.StringComparer.Ordinal) { "eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull" },
-                ["revenue"] = new(global::System.StringComparer.Ordinal) { "eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull" },
+                ["purchases"] = new(System.StringComparer.Ordinal) { "eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull" },
+                ["buyers"] = new(System.StringComparer.Ordinal) { "eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull" },
+                ["revenue"] = new(System.StringComparer.Ordinal) { "eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull" },
             };
         }
 
@@ -171,7 +171,7 @@ public class ReportingInertTests
     private static void AssertReportRoutes(string routes)
     {
         Assert.Contains("public static class StoreTotalsRoutes", routes);
-        Assert.Contains("        app.MapGet(prefix + \"/store_totals\", async (HttpContext http, global::MetaObjects.ReportingInert.Generated.AppDbContext db) =>", routes);
+        Assert.Contains("        app.MapGet(prefix + \"/store_totals\", async (HttpContext http, AppDbContext db) =>", routes);
         Assert.Contains("        app.MapPost(prefix + \"/store_totals\", () =>", routes);
         Assert.Contains("message = \"POST is not supported on a report (read-only).\" }, statusCode: 405));", routes);
         Assert.Single(routes.Split('\n'), l => l.Contains("app.MapGet(", StringComparison.Ordinal));
@@ -193,7 +193,7 @@ public class ReportingInertTests
         using System.ComponentModel.DataAnnotations;
         using System.ComponentModel.DataAnnotations.Schema;
 
-        namespace Acme.Shop;
+        namespace MetaObjects.ReportingInert.Generated;
 
         public class StoreTotals
         {
@@ -209,8 +209,8 @@ public class ReportingInertTests
 
     private static readonly string[] ExpectedDbContextLines =
     [
-        "    public DbSet<global::Acme.Shop.StoreTotals> StoreTotals { get; set; } = default!;",
-        "        modelBuilder.Entity<global::Acme.Shop.StoreTotals>().HasNoKey().ToView(\"v_store_totals\");",
+        "    public DbSet<StoreTotals> StoreTotals { get; set; } = default!;",
+        "        modelBuilder.Entity<StoreTotals>().HasNoKey().ToView(\"v_store_totals\");",
     ];
 
     /// <summary>The lines of <paramref name="actual"/> that <paramref name="expected"/> lacks,
@@ -290,7 +290,9 @@ public class ReportingInertTests
             .Select(e => e.Key)
             .OrderBy(n => n, StringComparer.Ordinal)
             .ToList();
-        Assert.Equal(new List<string>(), threw);
+        // shared-model publishes the metadata files its options name; a bare model names none, and it writes no
+        // code a report could leak into.
+        Assert.Equal(new List<string> { SharedModelTestSupport.Name }, threw);
     }
 
     [Fact]
@@ -311,7 +313,7 @@ public class ReportingInertTests
     [Fact]
     public void A_report_reaches_no_tier_but_its_row_its_mapping_its_allowlist_and_its_routes()
     {
-        var files = Emit(Load("with"), GeneratorRegistry.Entries.Values.Select(Build).ToList());
+        var files = Emit(Load("with"), GeneratorRegistry.Entries.Values.Where(e => e.Name != SharedModelTestSupport.Name).Select(Build).ToList());
         Assert.False(files.ContainsKey("<threw>"), files.GetValueOrDefault("<threw>"));
 
         // The view-backed report: its row, its allowlist and its routes file; nothing in the

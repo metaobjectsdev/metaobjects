@@ -52,7 +52,7 @@ const EXPECTED: Record<string, Record<string, ExpectedAttr>> = {
     filter: { valueType: "filter", required: false },
     distinct: { valueType: "boolean", required: false },
     orderBy: { valueType: "string", required: false },
-    // rc.19 origin-segment.
+    // Origin @segment.
     segment: { valueType: "string", required: false },
   },
   collection: {
@@ -66,7 +66,7 @@ const EXPECTED: Record<string, Record<string, ExpectedAttr>> = {
     via: { valueType: "string", required: false },
     orderBy: { valueType: "string", required: true },
     filter: { valueType: "filter", required: false },
-    // rc.19 origin-segment.
+    // Origin @segment.
     segment: { valueType: "string", required: false },
   },
   // rc.21 part B (U10).

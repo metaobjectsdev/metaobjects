@@ -67,7 +67,7 @@ test("manifest excludes the metadata.base inheritance anchor (keeps metadata.roo
   expect(metadataSubTypes).toContain("root");
 });
 
-// R40 kind 1 — the generic view.* controls are cross-port vocabulary only TypeScript
+// The generic view.* controls are cross-port vocabulary only TypeScript
 // implements so far: IN the manifest, marked `implementedIn: ["typescript"]`.
 const KIND1_VIEW_SUBTYPES = [
   "checkbox", "date", "dropdown", "hidden", "hotlink", "image", "month",
@@ -120,7 +120,7 @@ test("every carved-out per-type attr name carries a declared ExclusionReason", (
   }
   // The structural/OO-shape keywords are classified StructuralKeyword; the per-type
   // description CommonAttrDup. The JVM's ADR-0001/0005 bindings are NOT carved out
-  // (R40 kind 2): they are in the contract with `ports: ["java", "kotlin"]`.
+  //: they are in the contract with `ports: ["java", "kotlin"]`.
   expect(classifyPerTypeAttr("extends")).toBe(ExclusionReason.StructuralKeyword);
   expect(classifyPerTypeAttr("isArray")).toBe(ExclusionReason.StructuralKeyword);
   expect(classifyPerTypeAttr("object")).toBe("included");

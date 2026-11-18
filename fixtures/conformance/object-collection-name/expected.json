@@ -1,91 +1,47 @@
 {
   "metadata.root": {
-    "package": "acme::consignments",
+    "package": "acme::lab",
     "children": [
       {
         "object.entity": {
-          "name": "Consignment",
+          "name": "Analysis",
+          "@collectionName": "Analysis",
           "children": [
             {
               "source.rdb": {
-                "@table": "consignments"
+                "@table": "analyses"
               }
             },
             {
               "field.long": {
                 "name": "id"
-              }
-            },
-            {
-              "identity.primary": {
-                "name": "id",
-                "@fields": [
-                  "id"
-                ]
-              }
-            }
-          ]
-        }
-      },
-      {
-        "object.entity": {
-          "name": "ConsignmentHistory",
-          "@collectionName": "ConsignmentHistory",
-          "children": [
-            {
-              "source.rdb": {
-                "@table": "consignment_history"
-              }
-            },
-            {
-              "field.long": {
-                "name": "id"
-              }
-            },
-            {
-              "field.long": {
-                "name": "consignmentId"
               }
             },
             {
               "field.string": {
-                "name": "status"
-              }
-            },
-            {
-              "field.timestamp": {
-                "name": "createdDate"
+                "name": "code"
               }
             },
             {
               "identity.primary": {
-                "name": "id",
+                "name": "pk",
                 "@fields": [
                   "id"
                 ]
               }
             },
             {
-              "identity.reference": {
-                "name": "consignmentId",
-                "@fields": [
-                  "consignmentId"
-                ],
-                "@references": "acme::consignments::Consignment"
-              }
-            },
-            {
               "dimension.attribute": {
-                "name": "status",
-                "@of": "acme::consignments::ConsignmentHistory.status"
+                "name": "code",
+                "@of": "acme::lab::Analysis.code"
               }
             },
             {
               "measure.aggregate": {
-                "name": "entries",
+                "name": "analyses",
                 "@agg": "count",
                 "@of": [
-                  "acme::consignments::ConsignmentHistory.id"
+                  "acme::lab::Analysis.id"
                 ]
               }
             }
@@ -94,39 +50,18 @@
       },
       {
         "object.projection": {
-          "name": "ConsignmentActivity",
-          "@collectionName": "ConsignmentActivity",
+          "name": "AnalysisSummary",
+          "@collectionName": "AnalysisSummary",
           "children": [
             {
               "source.rdb": {
                 "@kind": "view",
-                "@view": "v_consignment_activity"
+                "@view": "v_analysis_summary"
               }
             },
             {
-              "field.long": {
-                "name": "id",
-                "extends": "acme::consignments::Consignment.id"
-              }
-            },
-            {
-              "field.int": {
-                "name": "historyCount",
-                "children": [
-                  {
-                    "origin.aggregate": {
-                      "@agg": "count",
-                      "@of": "acme::consignments::ConsignmentHistory.id",
-                      "@via": "acme::consignments::Consignment.consignmentHistory"
-                    }
-                  }
-                ]
-              }
-            },
-            {
-              "identity.primary": {
-                "name": "id",
-                "extends": "acme::consignments::Consignment.id"
+              "field.string": {
+                "name": "code"
               }
             }
           ]
@@ -134,20 +69,20 @@
       },
       {
         "object.report": {
-          "name": "HistoryCounts",
-          "@collectionName": "HistoryCounts",
+          "name": "AnalysisCounts",
+          "@collectionName": "AnalysisCounts",
           "@dimensions": [
-            "status"
+            "code"
           ],
-          "@from": "acme::consignments::ConsignmentHistory",
+          "@from": "acme::lab::Analysis",
           "@measures": [
-            "entries"
+            "analyses"
           ],
           "children": [
             {
               "source.rdb": {
                 "@kind": "view",
-                "@view": "v_history_counts"
+                "@view": "v_analysis_counts"
               }
             }
           ]
@@ -156,3 +91,4 @@
     ]
   }
 }
+

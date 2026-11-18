@@ -1,0 +1,25 @@
+{
+  "errors": [
+    {
+      "code": "ERR_COLUMN_NAME_COLLISION",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.orders.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[1]['object.entity'].children[3]['field.object']"
+      }
+    },
+    {
+      "code": "ERR_COLUMN_NAME_COLLISION",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.orders.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[1]['object.entity'].children[3]['field.object']"
+      }
+    }
+  ],
+  "warnings": []
+}

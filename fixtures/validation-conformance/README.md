@@ -111,6 +111,51 @@ FR-036 pin cases (the two semantic pins + the length-precedence pin):
   absent `note` is still rejected. No port may apply the Pin 1 floor (min 1)
   when an author has explicitly said `@min: 0`.
 
+## Cross-field validators — `meta.cross-field.json` + `cross-field-cases.json`
+
+A second, separate pair of files pins the five entity-scoped cross-field validators
+(`validator.comparison`, `validator.requiredWhen`, `validator.presentIff`,
+`validator.atLeastOne`, `validator.exactlyOne`) and their `@condition` on the generated **full
+record (create) model**. They are separate files so the run-time runners, which read `cases.json`,
+are unaffected. There are two entities, `Event` (the unconditional rules) and `Shift` (`exactlyOne`
+and the conditional rules); every field is optional, so absence is expressible in every port.
+
+The semantics mirror the DB `CHECK` derivation in `migrate-ts/src/expected-schema.ts`, with an absent
+or null value standing for SQL `NULL` (and `""` NOT null). One deliberate difference: a comparison the
+ports skip (two fields of different kinds) still gets its `CHECK`, which the database enforces if it
+can compare the two column types:
+
+- `comparison` (`startsAt lte endsAt`): passes when either side is null. Fields of different kinds
+  have no ordering and the rule is SKIPPED in every port, never an error (`eventDate lte loggedAt`, a
+  date against a timestamp, is declared on `Event` and must accept a body where the date is later). Two temporals of
+  the same subtype are still different kinds when only one carries `@localTime` (`loggedAt lte wallClock`, an
+  instant against a wall clock, is skipped the same way). Ordering applies to numerics with each other and to
+  strings, temporals and durations of the same subtype; `eq` / `ne` also apply to two fields of the same boolean,
+  enum, uuid, uri or inet subtype (`ownerId ne approverId` rejects two equal ids). Two durations order by
+  length, not by their text (`Shift.actual lte planned` accepts `PT45M` against `PT1H`); the duration
+  payloads are ISO-8601, and the corpus pins `wire.durations: iso` in its own `.metaobjects/config.json`,
+  which a runner whose port defaults to another form reads.
+- `requiredWhen`: violated only when the gating field equals `@equals` and the target is null; a null
+  gate is unconstrained. Both a string gate (`kind = BIRTH`) and a boolean gate (`flag = true`).
+- `presentIff`: the target is present exactly when the gate equals `@equals`; a null gate counts as
+  not equal, so the target must be absent.
+- `atLeastOne` (`email`, `phone`): at least one is non-null.
+- `exactlyOne` (`Shift`: `storeId`, `kioskId`): exactly one is non-null; none and both are invalid.
+- `@condition` (`Shift`): the rule is checked only when the condition is TRUE under SQL three-valued
+  logic, since the CHECK is `NOT (condition) OR (rule)`. A false condition and a NULL one (a field it
+  compares is absent) both skip the rule. The cases cover a field-to-field `eq`, `not` over `isNull`,
+  and `and` / `or` / `ne` / `isNull` over a `coalesce` with a literal default. A comparison inside a
+  condition follows the `comparison` rule above: when two fields it reads are of different kinds, the
+  whole rule is left to the database (`lateCallNeedsPhone` compares a date with a timestamp, so a `CALL`
+  without a phone is valid). `eq` / `ne` on two equality-only fields test equality and never order them
+  (`offSiteCallNeedsPhone` compares an IPv4 with an IPv6 address, which have no order, and is enforced).
+- A rule naming a field the create body never carries (`reviewedBy`, `@mutability: readOnly`; likewise a
+  derived field or a store-generated key) is skipped, so `review = DONE` without a reviewer is valid.
+
+Each case violates at most one validator (single-violation design). PATCH and partial-update models
+are NOT covered here by design: they do not enforce cross-field rules, and the DB `CHECK` stays the
+enforcement for them.
+
 ## `field.uri` / `field.inet` strict contract (#234, ADR-0037 — Contract A)
 
 `Account` carries two OPTIONAL fields — `website` (`field.uri`) and `sourceIp`

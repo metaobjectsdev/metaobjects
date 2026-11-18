@@ -39,15 +39,19 @@ function makeKyselyDriver(
   // Neither SQLite nor MySQL has an array type: a scalar array is bound as JSON text.
   const bindable = (values: Row): Row => (dialect === "postgres" ? values : arraysAsJsonText(values));
 
+  // The builder for a relation: qualified by its @schema where the engine has schemas.
+  const on = (schema: string | undefined): RawKysely =>
+    schema !== undefined && dialect !== "sqlite" ? (db as RawKysely).withSchema(schema) : (db as RawKysely);
+
   // MySQL has no RETURNING: insert, then read the row back by its key.
-  async function insertAndReadBack(table: string, values: Row, returning: string[], key: string[] | undefined): Promise<Row> {
-    const result = await (db as RawKysely).insertInto(table).values(bindable(values)).executeTakeFirst() as
+  async function insertAndReadBack(table: string, schema: string | undefined, values: Row, returning: string[], key: string[] | undefined): Promise<Row> {
+    const result = await on(schema).insertInto(table).values(bindable(values)).executeTakeFirst() as
       { insertId?: bigint | number } | undefined;
     const keyValues = key !== undefined && key.length > 0 ? insertedKey(key, values, result?.insertId) : undefined;
     if (keyValues === undefined) {
       throw new Error(`kyselyDriver.insert: cannot read back the row inserted into '${table}' (no primary-key value)`);
     }
-    let q = (db as RawKysely).selectFrom(table).select(returning);
+    let q = on(schema).selectFrom(table).select(returning);
     for (const [col, v] of Object.entries(keyValues)) q = q.where(col, "=", v);
     return (await q.executeTakeFirstOrThrow()) as Row;
   }
@@ -57,7 +61,7 @@ function makeKyselyDriver(
     dialect,
 
     async selectOne(spec: SelectSpec): Promise<Row | null> {
-      let q = (db as RawKysely).selectFrom(spec.table).select(spec.columns);
+      let q = on(spec.schema).selectFrom(spec.table).select(spec.columns);
       q = applyWhere(q, spec.where);
       q = applyOrderLimit(q, spec.orderBy, 1, undefined);
       const rows = await q.execute();
@@ -65,14 +69,14 @@ function makeKyselyDriver(
     },
 
     async selectMany(spec: SelectSpec): Promise<Row[]> {
-      let q = (db as RawKysely).selectFrom(spec.table).select(spec.columns);
+      let q = on(spec.schema).selectFrom(spec.table).select(spec.columns);
       q = applyWhere(q, spec.where);
       q = applyOrderLimit(q, spec.orderBy, spec.limit, spec.offset);
       return (await q.execute()) as Row[];
     },
 
     async count(spec: CountSpec): Promise<number> {
-      let q = (db as RawKysely).selectFrom(spec.table).select((eb: AnyExprBuilder) => eb.fn.countAll().as("c"));
+      let q = on(spec.schema).selectFrom(spec.table).select((eb: AnyExprBuilder) => eb.fn.countAll().as("c"));
       q = applyWhere(q, spec.where);
       const rows = (await q.execute()) as Array<{ c: number | string | bigint }>;
       const v = rows[0]?.c;
@@ -81,8 +85,8 @@ function makeKyselyDriver(
 
     async insert(spec: InsertSpec): Promise<Row> {
       try {
-        if (dialect === "mysql") return await insertAndReadBack(spec.table, spec.values, spec.returning, spec.key);
-        const result = await (db as RawKysely)
+        if (dialect === "mysql") return await insertAndReadBack(spec.table, spec.schema, spec.values, spec.returning, spec.key);
+        const result = await on(spec.schema)
           .insertInto(spec.table)
           .values(bindable(spec.values))
           .returning(spec.returning)
@@ -97,10 +101,10 @@ function makeKyselyDriver(
       try {
         if (dialect === "mysql") {
           const out: Row[] = [];
-          for (const row of spec.rows) out.push(await insertAndReadBack(spec.table, row, spec.returning, spec.key));
+          for (const row of spec.rows) out.push(await insertAndReadBack(spec.table, spec.schema, row, spec.returning, spec.key));
           return out;
         }
-        const rows = await (db as RawKysely)
+        const rows = await on(spec.schema)
           .insertInto(spec.table)
           .values(spec.rows.map(bindable))
           .returning(spec.returning)
@@ -113,11 +117,11 @@ function makeKyselyDriver(
 
     async update(spec: UpdateSpec): Promise<Row | null> {
       try {
-        let q = (db as RawKysely).updateTable(spec.table).set(bindable(spec.values));
+        let q = on(spec.schema).updateTable(spec.table).set(bindable(spec.values));
         q = applyWhere(q, spec.where);
         if (dialect === "mysql") {
           await q.execute();
-          let s = (db as RawKysely).selectFrom(spec.table).select(spec.returning);
+          let s = on(spec.schema).selectFrom(spec.table).select(spec.returning);
           s = applyWhere(s, spec.where);
           return ((await s.executeTakeFirst()) as Row | undefined) ?? null;
         }
@@ -130,7 +134,7 @@ function makeKyselyDriver(
 
     async updateMany(spec: UpdateManySpec): Promise<number> {
       try {
-        let q = (db as RawKysely).updateTable(spec.table).set(bindable(spec.values));
+        let q = on(spec.schema).updateTable(spec.table).set(bindable(spec.values));
         q = applyWhere(q, spec.where);
         const result = await q.executeTakeFirst() as { numUpdatedRows?: bigint | number } | undefined;
         return Number(result?.numUpdatedRows ?? 0);
@@ -141,7 +145,7 @@ function makeKyselyDriver(
 
     async delete(spec: DeleteSpec): Promise<number> {
       try {
-        let q = (db as RawKysely).deleteFrom(spec.table);
+        let q = on(spec.schema).deleteFrom(spec.table);
         q = applyWhere(q, spec.where);
         const result = await q.executeTakeFirst() as { numDeletedRows?: bigint | number } | undefined;
         return Number(result?.numDeletedRows ?? 0);
@@ -152,7 +156,7 @@ function makeKyselyDriver(
 
     async deleteMany(spec: DeleteManySpec): Promise<number> {
       try {
-        let q = (db as RawKysely).deleteFrom(spec.table);
+        let q = on(spec.schema).deleteFrom(spec.table);
         q = applyWhere(q, spec.where);
         const result = await q.executeTakeFirst() as { numDeletedRows?: bigint | number } | undefined;
         return Number(result?.numDeletedRows ?? 0);

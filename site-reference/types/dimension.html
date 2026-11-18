@@ -73,7 +73,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td></td>
 <td></td>
 <td>—</td>
-<td>Dotted Entity.field reference naming the grouped column (e.g. &#39;Purchase.programId&#39;, or &#39;Program.title&#39; with @via).</td>
+<td>Dotted Entity.field reference naming the grouped column (e.g. &#39;Purchase.programId&#39;, or &#39;Program.title&#39; with @via). Entity.field.member names a member of a value object stored with @storage: flattened (e.g. &#39;Payment.amount.currency&#39;), which has a column of its own.</td>
 </tr>
 <tr>
 <td><code>@via</code></td>
@@ -119,7 +119,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td></td>
 <td></td>
 <td>—</td>
-<td>Dotted Entity.field reference naming the date or timestamp column.</td>
+<td>Dotted Entity.field reference naming the date or timestamp column, or Entity.field.member for a member of a flattened value object.</td>
 </tr>
 <tr>
 <td><code>@via</code></td>

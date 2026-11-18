@@ -17,7 +17,10 @@
  */
 package com.metaobjects.conformance;
 
+import com.metaobjects.attr.BooleanAttribute;
 import com.metaobjects.attr.StringAttribute;
+import com.metaobjects.field.StringField;
+import com.metaobjects.layout.MetaLayout;
 import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.registry.MetaDataTypeProvider;
 import com.metaobjects.template.MetaTemplate;
@@ -66,6 +69,41 @@ final class ConformanceTestProviders {
         @Override public String getDescription() { return "Test-only: registers a fictional template.briefing subtype."; }
     };
 
+    /** Test-only `layout.picker` node — a MetaLayout subclass, as a project's own node class would be. */
+    public static final class PickerLayout extends MetaLayout {
+        public PickerLayout(String name) {
+            super("picker", name);
+        }
+    }
+
+    /**
+     * A project's own vocabulary (provider-custom-vocabulary-* fixtures): registers
+     * {@code layout.picker} (+ optional {@code @displayField}) and extends
+     * {@code field.string} with optional {@code @searchable} (boolean) and
+     * {@code @valueLabels} (string array). Mirrors the TypeScript reference
+     * {@code exampleCustomVocabularyProvider}.
+     */
+    public static final MetaDataTypeProvider EXAMPLE_CUSTOM_VOCABULARY = new MetaDataTypeProvider() {
+        @Override public String getProviderId() { return "example-custom-vocabulary"; }
+        @Override public String[] getDependencies() { return new String[]{"field-types", "layout-types"}; }
+        @Override public void registerTypes(MetaDataRegistry registry) {
+            registry.registerType(PickerLayout.class, def -> {
+                def.type("layout").subType("picker")
+                   .description("A picker that chooses one row of the owning object — test-only.")
+                   .inheritsFrom("layout", "base");
+                def.optionalAttributeWithConstraints("displayField")
+                   .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            });
+            registry.extendType(StringField.class, def -> {
+                def.optionalAttributeWithConstraints("searchable")
+                   .ofType(BooleanAttribute.SUBTYPE_BOOLEAN).asSingle();
+                def.optionalAttributeWithConstraints("valueLabels")
+                   .ofType(StringAttribute.SUBTYPE_STRING).asArray();
+            });
+        }
+        @Override public String getDescription() { return "Test-only: a project's own layout.picker + field.string attrs."; }
+    };
+
     public static final MetaDataTypeProvider CYCLE_A = noop("cycle-a", "cycle-b");
     public static final MetaDataTypeProvider CYCLE_B = noop("cycle-b", "cycle-a");
     public static final MetaDataTypeProvider DEPENDS_ON_MISSING = noop("depends-on-missing", "does-not-exist");
@@ -82,6 +120,7 @@ final class ConformanceTestProviders {
      */
     public static final Map<String, MetaDataTypeProvider> TEST_PROVIDERS = Map.of(
         "example-template-briefing", EXAMPLE_TEMPLATE_BRIEFING,
+        "example-custom-vocabulary", EXAMPLE_CUSTOM_VOCABULARY,
         "cycle-a", CYCLE_A,
         "cycle-b", CYCLE_B,
         "depends-on-missing", DEPENDS_ON_MISSING,

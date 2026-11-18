@@ -15,7 +15,8 @@
 // files AGAINST the REAL generated entity modules — NO hand-written payloads.ts.
 // The payload import must RESOLVE (no TS2307) and the payload type must be found.
 
-import { describe, test, expect, afterAll } from "bun:test";
+import { describe, test, expect, afterAll, setDefaultTimeout } from "bun:test";
+import { COMPILE_TEST_TIMEOUT_MS } from "../compile-timeout.js";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -30,6 +31,8 @@ import { buildPkMap } from "../../src/pk-resolver.js";
 import { buildRelationMap } from "../../src/relation-resolver.js";
 import type { GenContext, EmittedFile } from "../../src/generator.js";
 import type { Provider } from "@metaobjectsdev/render";
+
+setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
 // A nested payload graph that exercises the multi-VO import grouping:
 //   Order (root) -> Customer (single nested), Line (array-of-objects),
@@ -225,12 +228,12 @@ describe("extractor/render payload import resolves against the REAL generated VO
     expect(extractorSrc).not.toContain('from "./payloads.js"');
     expect(renderSrc).not.toContain('from "./payloads.js"');
     // The render-helper imports the payload VO interface from its OWN module.
-    expect(renderSrc).toContain('import type { Order } from "./acme/ai/Order.js";');
+    expect(renderSrc).toContain('import type { Order } from "./Order.js";');
     // The extractor imports each VO interface from ITS module; the enum alias
     // rides along on the OWNER VO's module (Order).
-    expect(extractorSrc).toContain('from "./acme/ai/Order.js"');
-    expect(extractorSrc).toContain('from "./acme/ai/Customer.js"');
-    expect(extractorSrc).toContain('from "./acme/ai/Line.js"');
+    expect(extractorSrc).toContain('from "./Order.js"');
+    expect(extractorSrc).toContain('from "./Customer.js"');
+    expect(extractorSrc).toContain('from "./Line.js"');
 
     // 3. Lay the real generated VO modules + the extractor/render files into a
     //    temp dir exactly as `meta gen` would (the default package layout, R63).

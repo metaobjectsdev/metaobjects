@@ -1,0 +1,15 @@
+name: limit-over-max
+description: >
+  An explicit `?limit=` above `api.pagination.maxLimit` answers 400 with the named error
+  `limit_too_large` and the cap, rather than being clamped: a client that asked for more than
+  the server serves is told so instead of silently receiving a short page.
+requests:
+  - id: r1
+    method: GET
+    path: /api/items?limit=5
+    expect:
+      status: 400
+      body:
+        equals:
+          error: "limit_too_large"
+          maxLimit: 4

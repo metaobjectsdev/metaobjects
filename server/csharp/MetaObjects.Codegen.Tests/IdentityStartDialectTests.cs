@@ -1,4 +1,4 @@
-// The identity start is a design-time concern (ruling R50): a start-only change matters only when a
+// The identity start is a design-time concern (never a RESTART): a start-only change matters only when a
 // migration is scaffolded, so a Postgres context with an increment key gets a generated
 // IDesignTimeServices that wraps the context's own model differ, and nothing at runtime. The start
 // itself reaches the model only for a project whose dialect is Postgres (`.metaobjects/config.json`
@@ -28,7 +28,7 @@ public sealed class IdentityStartDialectTests
 
     /// <summary>
     /// The warnings but the one a project with no migrations on disk always gets ("cannot tell whether
-    /// EF reads the DesignTimeServicesReference"), which the I4 tests below pin.
+    /// EF reads the DesignTimeServicesReference"), which the tests below pin.
     /// </summary>
     private static List<string> Others(List<string> warnings) =>
         warnings.Where(w => !w.Contains("cannot tell whether EF reads the DesignTimeServicesReference", StringComparison.Ordinal)).ToList();
@@ -68,7 +68,11 @@ public sealed class IdentityStartDialectTests
         Assert.DoesNotContain("Npgsql.EntityFrameworkCore.PostgreSQL.", services.Replace("\"Npgsql.EntityFrameworkCore.PostgreSQL\"", ""));
         Assert.DoesNotContain(".Internal", services);
         Assert.DoesNotContain("EF1001", services);
-        Assert.DoesNotContain("UseIdentityStartMigrations", services);
+        // The earlier runtime registration survives for one release as an [Obsolete] no-op, so
+        // an adopter's UseIdentityStartMigrations() call still compiles (EfModelGapsTests proves it).
+        Assert.Contains("public static class AppDbContextIdentityStartMigrations", services);
+        Assert.Equal(2, services.Split("[Obsolete(Message)]").Length - 1);
+        Assert.Contains("DbContextOptionsBuilder UseIdentityStartMigrations(this DbContextOptionsBuilder options) => options;", services);
     }
 
     [Fact]
@@ -78,7 +82,7 @@ public sealed class IdentityStartDialectTests
         // OnModelCreating body is chunked.
         var context = Run("postgres").Files.Single(f => f.Path == "AppDbContext.g.cs").Content;
         var line = Assert.Single(context.Split('\n'), l => l.Contains("Npgsql:IdentitySequenceOptions"));
-        Assert.StartsWith("if (Database.ProviderName == \"Npgsql.EntityFrameworkCore.PostgreSQL\") modelBuilder.Entity<global::Acme.Ticket>()", line.Trim());
+        Assert.StartsWith("if (Database.ProviderName == \"Npgsql.EntityFrameworkCore.PostgreSQL\") modelBuilder.Entity<Ticket>()", line.Trim());
     }
 
     [Fact]
@@ -123,7 +127,7 @@ public sealed class IdentityStartDialectTests
         }
     }
 
-    // rc.19 fix round (I4): EF reads [assembly: DesignTimeServicesReference] only from the startup and
+    // EF reads [assembly: DesignTimeServicesReference] only from the startup and
     // migrations assemblies, so the reference generated into the context's assembly is read only when
     // that assembly holds the migrations. The run proves it from the model snapshot EF writes beside
     // the migrations (<Context>ModelSnapshot.cs), and otherwise warns with the exact line to add.
@@ -161,7 +165,7 @@ public sealed class IdentityStartDialectTests
         Run("postgres", assembly: assembly, outDir: Path.Combine(repo, "Acme.Data", "Generated")).Warnings
             .Where(w => w.Contains("DesignTimeServicesReference")).ToList();
 
-    // rc.19 fix round 2 (N1): the check errs toward warning — a false all-clear is a silent RESTART.
+    // The check errs toward warning — a false all-clear is a silent RESTART.
 
     [Fact]
     public void A_stale_snapshot_copy_in_the_contexts_project_does_not_hide_migrations_elsewhere()

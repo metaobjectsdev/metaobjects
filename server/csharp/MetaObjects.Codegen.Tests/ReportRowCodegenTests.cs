@@ -118,7 +118,7 @@ public class ReportRowCodegenTests
     };
 
     private static Dictionary<string, string> Emit(GenContext ctx, params IGenerator[] generators) =>
-        generators.SelectMany(g => g.Generate(ctx)).ToDictionary(f => System.IO.Path.GetFileName(f.Path), f => f.Content, StringComparer.Ordinal);
+        generators.SelectMany(g => g.Generate(ctx)).ToDictionary(f => f.Path, f => f.Content, StringComparer.Ordinal);
 
     private static Dictionary<string, string> EmitAll(GenContext ctx) =>
         Emit(ctx, new EntityGenerator(), new DbContextGenerator(), new NamesGenerator(),
@@ -152,8 +152,8 @@ public class ReportRowCodegenTests
         Assert.DoesNotContain("[Table(", files["SalesTotal.g.cs"]);
 
         var ctx = files["AppDbContext.g.cs"];
-        Assert.Contains("    public DbSet<global::Acme.Shop.SalesTotal> SalesTotals { get; set; } = default!;", ctx);
-        Assert.Contains("        modelBuilder.Entity<global::Acme.Shop.SalesTotal>().HasNoKey().ToView(\"v_sales\");", ctx);
+        Assert.Contains("    public DbSet<SalesTotal> SalesTotals { get; set; } = default!;", ctx);
+        Assert.Contains("        modelBuilder.Entity<SalesTotal>().HasNoKey().ToView(\"v_sales\");", ctx);
 
         // Its read surface (Plan 3): the allowlist and the routes file. No names artifact.
         Assert.Equal(
@@ -275,7 +275,7 @@ public class ReportRowCodegenTests
         // Table C: a count and a sum of a currency take the numeric band.
         foreach (var field in new[] { "purchases", "buyers", "revenue" })
             Assert.Contains(
-                $"        [\"{field}\"] = new(global::System.StringComparer.Ordinal) {{ \"eq\", \"ne\", \"gt\", \"gte\", \"lt\", \"lte\", \"in\", \"isNull\" }},",
+                $"        [\"{field}\"] = new(System.StringComparer.Ordinal) {{ \"eq\", \"ne\", \"gt\", \"gte\", \"lt\", \"lte\", \"in\", \"isNull\" }},",
                 allowlist);
         // The report's own derived fields, never the @from entity's.
         Assert.DoesNotContain("customerEmail", allowlist);
@@ -308,7 +308,7 @@ public class ReportRowCodegenTests
         };
         var files = new RoutesGenerator().Generate(ctx).ToList();
 
-        Assert.Contains(files, f => System.IO.Path.GetFileName(f.Path) == "StoreTotalsRoutes.g.cs");
+        Assert.Contains(files, f => f.Path == "StoreTotalsRoutes.g.cs");
         Assert.DoesNotContain(warnings, w => w.Contains("StoreTotals", StringComparison.Ordinal));
     }
 
@@ -340,8 +340,8 @@ public class ReportRowCodegenTests
         })
             Assert.Contains($"        [\"{field}\"] = ", allowlist);
         // A string dimension takes the string band, a date the ordered band.
-        Assert.Contains("[\"channel\"] = new(global::System.StringComparer.Ordinal) { \"eq\", \"ne\", \"in\", \"like\", \"isNull\" },", allowlist);
-        Assert.Contains("[\"soldAtDay\"] = new(global::System.StringComparer.Ordinal) { \"eq\", \"ne\", \"gt\", \"gte\", \"lt\", \"lte\", \"in\", \"isNull\" },", allowlist);
+        Assert.Contains("[\"channel\"] = new(System.StringComparer.Ordinal) { \"eq\", \"ne\", \"in\", \"like\", \"isNull\" },", allowlist);
+        Assert.Contains("[\"soldAtDay\"] = new(System.StringComparer.Ordinal) { \"eq\", \"ne\", \"gt\", \"gte\", \"lt\", \"lte\", \"in\", \"isNull\" },", allowlist);
     }
 
     [Fact]
@@ -388,7 +388,7 @@ public class ReportRowCodegenTests
                 new FilterAllowlistGenerator(), new RoutesGenerator(),
             }
             .SelectMany(g => g.Generate(ctx)).ToList();
-        Assert.Contains(files, f => System.IO.Path.GetFileName(f.Path) == "SalesCubeRoutes.g.cs");
+        Assert.Contains(files, f => f.Path == "SalesCubeRoutes.g.cs");
 
         var paths = DbContextCompileTests.BuildReferences()
             .OfType<PortableExecutableReference>().Select(r => r.FilePath!)
@@ -509,7 +509,7 @@ public class ReportRowCodegenTests
                 new EntityGenerator(), new DbContextGenerator(), new FilterAllowlistGenerator(), new NamesGenerator(),
             }
             .SelectMany(g => g.Generate(ctx)).ToList();
-        Assert.Contains(files, f => System.IO.Path.GetFileName(f.Path) == "CallTotals.g.cs");
+        Assert.Contains(files, f => f.Path == "CallTotals.g.cs");
         var trees = files
             .Select(f => CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12), path: f.Path))
             .ToList();
@@ -619,7 +619,7 @@ public class ReportRowCodegenTests
                 new EntityGenerator(), new DbContextGenerator(), new FilterAllowlistGenerator(), new NamesGenerator(),
             }
             .SelectMany(g => g.Generate(ctx)).ToList();
-        Assert.Contains(files, f => System.IO.Path.GetFileName(f.Path) == "StoreSales.g.cs");
+        Assert.Contains(files, f => f.Path == "StoreSales.g.cs");
         var trees = files
             .Select(f => CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12), path: f.Path))
             .ToList();
@@ -681,26 +681,8 @@ public class ReportRowCodegenTests
         var files = EmitAll(RunnerContext(Cube()));
         Assert.Contains("    public enum SalesCubeStatus { OPEN, PAID }", files["SalesCube.g.cs"]);
         Assert.Contains(
-            "        modelBuilder.Entity<global::Acme.Shop.SalesCube>().Property(x => x.Status).HasConversion<string>();",
+            "        modelBuilder.Entity<SalesCube>().Property(x => x.Status).HasConversion<string>();",
             files["AppDbContext.g.cs"]);
-    }
-
-    // rc.21 fix round (I3): a dimension over a @stringValueMap enum reads its stored strings — the
-    // row model carries the map from its type source, so the row gets the member <-> stored-string
-    // converter (which throws on an unknown stored value), not the name-based HasConversion<string>().
-    [Fact]
-    public void A_string_value_map_enum_dimension_reads_its_stored_strings()
-    {
-        var model = ModelTemplate.Replace(
-            "{ \"field.enum\": { \"name\": \"status\", \"@required\": true, \"@values\": [\"OPEN\", \"PAID\"] } }",
-            "{ \"field.enum\": { \"name\": \"status\", \"@required\": true, \"@values\": [\"OPEN\", \"PAID\"], \"@stringValueMap\": { \"OPEN\": \"open_v1\", \"PAID\": \"paid_v1\" } } }")
-            .Replace("<<REPORTS>>", Report("SalesCube", "\"@kind\": \"view\", \"@view\": \"v_sales_cube\"", AllDimensions, AllMeasures));
-        var load = new MetaDataLoader().Load([new InMemoryStringSource(model, id: "shop.json")]);
-        Assert.Empty(load.Errors);
-        var context = EmitAll(RunnerContext(load.Root))["AppDbContext.g.cs"];
-        var line = context.Split('\n').Single(l => l.Contains("Entity<global::Acme.Shop.SalesCube>().Property(x => x.Status)"));
-        Assert.Contains("? \"open_v1\" :", line);
-        Assert.Contains("UnmappedEnumStoredValue<", line);
     }
 
     [Theory]
@@ -741,7 +723,8 @@ public class ReportRowCodegenTests
         {
             var ex = Assert.Throws<InvalidOperationException>(() =>
                 CodegenRunner.Run(Config() with { OutDir = outDir }, root, [new DbContextGenerator()]));
-            Assert.Contains("\"Sales\" in the DbSet properties", ex.Message);
+            Assert.Contains("ERR_COLLECTION_NAME_COLLISION", ex.Message);
+            Assert.Contains("both generate \"Sales\" in the DbSet properties", ex.Message);
         }
         finally
         {
@@ -795,7 +778,7 @@ public class ReportRowCodegenTests
         try
         {
             var result = CodegenRunner.Run(Config() with { OutDir = outDir }, root, [new EntityGenerator(), new DbContextGenerator()]);
-            Assert.DoesNotContain(result.Files, f => System.IO.Path.GetFileName(f.Path) == "Sales.g.cs");
+            Assert.DoesNotContain(result.Files, f => f.Path == "Sales.g.cs");
         }
         finally
         {
@@ -860,5 +843,23 @@ public class ReportRowCodegenTests
         var error = Assert.Single(TryLoad(report).Errors);
         Assert.Equal(ErrorCode.ERR_INVALID_REPORT, error.Code);
         Assert.Contains("a report cannot be abstract", error.Message);
+    }
+
+    // rc.21 fix round (I3): a dimension over a @stringValueMap enum reads its stored strings — the
+    // row model carries the map from its type source, so the row gets the member <-> stored-string
+    // converter (which throws on an unknown stored value), not the name-based HasConversion<string>().
+    [Fact]
+    public void A_string_value_map_enum_dimension_reads_its_stored_strings()
+    {
+        var model = ModelTemplate.Replace(
+            "{ \"field.enum\": { \"name\": \"status\", \"@required\": true, \"@values\": [\"OPEN\", \"PAID\"] } }",
+            "{ \"field.enum\": { \"name\": \"status\", \"@required\": true, \"@values\": [\"OPEN\", \"PAID\"], \"@stringValueMap\": { \"OPEN\": \"open_v1\", \"PAID\": \"paid_v1\" } } }")
+            .Replace("<<REPORTS>>", Report("SalesCube", "\"@kind\": \"view\", \"@view\": \"v_sales_cube\"", AllDimensions, AllMeasures));
+        var load = new MetaDataLoader().Load([new InMemoryStringSource(model, id: "shop.json")]);
+        Assert.Empty(load.Errors);
+        var context = EmitAll(RunnerContext(load.Root))["AppDbContext.g.cs"];
+        var line = context.Split('\n').Single(l => l.Contains("Entity<SalesCube>().Property(x => x.Status)"));
+        Assert.Contains("? \"open_v1\" :", line);
+        Assert.Contains("UnmappedEnumStoredValue<", line);
     }
 }

@@ -58,12 +58,24 @@ ORIGIN_ATTR_AGG = "agg"
 AGG_ANY = "any"
 AGG_ALL = "all"
 AGG_COLLECT = "collect"
+# The @agg values that reduce the VALUES of the @of column (count only counts
+# non-null rows). Mirrors the TS COLUMN_VALUE_AGGREGATES.
+COLUMN_VALUE_AGGREGATES = ("sum", "avg", "min", "max")
 ORIGIN_ATTR_OF = "of"
 # @filter (attr.filter object): an optional PORTABLE structured predicate scoping the
 # aggregated rows (same shape as a preset filter). On @agg:any|all it is the QUANTIFIED
 # predicate (required there); on origin.first it scopes the eligible rows. Codegen renders
 # it per target -- the projection view emitter turns it into SQL FILTER (WHERE ...) / CASE WHEN.
 ORIGIN_ATTR_FILTER = "filter"
+# @segment (origin.first / origin.aggregate): names a segment.filter declared on the related
+# entity, scoping the rows the origin spans by that segment's @filter.
+ORIGIN_ATTR_SEGMENT = "segment"
+# Correlated filter operands: an origin @filter value { field: "<name>" } compares a related
+# row's column with the base row's. The null-safe ops take only such an operand.
+FILTER_OP_IS_DISTINCT_FROM = "isDistinctFrom"
+FILTER_OP_IS_NOT_DISTINCT_FROM = "isNotDistinctFrom"
+FILTER_OPERAND_FIELD = "field"
+CORRELATED_FILTER_OPS = ("eq", "ne", "gt", "gte", "lt", "lte", FILTER_OP_IS_DISTINCT_FROM, FILTER_OP_IS_NOT_DISTINCT_FROM)
 # #195 — shared origin attrs. @distinct (collect-only) applies set semantics;
 # @orderBy carries ordering keys ('field[:asc|desc]', nulls-last) used by
 # @agg:collect (element order) and required by origin.first (row selection).

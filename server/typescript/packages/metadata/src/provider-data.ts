@@ -70,7 +70,7 @@ export interface ChildDef {
   isArray?: boolean;
   /** The ports that act on a language-specific attr (`["csharp"]`); absent = every port. */
   ports?: readonly string[];
-  /** R40 kind 1 — the ports that implement this cross-port attr so far (`["java"]`); absent = every port. */
+  /** The ports that implement this cross-port attr so far (`["java"]`); absent = every port. */
   implementedIn?: readonly string[];
 }
 
@@ -88,7 +88,7 @@ export interface TypeDef {
   example?: string;
   whenToUse?: string;
   /**
-   * R40 kind 1 — the ports that IMPLEMENT this type so far (`["typescript"]`), when it
+   * The ports that IMPLEMENT this type so far (`["typescript"]`), when it
    * is cross-port vocabulary the other ports have not implemented yet. Every port
    * registers it and loads it strictly; the rest ignore it. Absent = every port.
    */

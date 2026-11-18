@@ -285,16 +285,12 @@ public class EjectContractTests
                 {
                     Entities = corpus.Root.Objects(),
                     Root = corpus.Root,
-                    // xpkg-collision-json's two Notes are one type per namespace each (ruling R52).
-                    Config = new GenConfig
-                    {
-                        OutDir = "/tmp", Namespace = "Acme.Generated", IncludeNames = true,
-                        PackageNamespaces = new() { ["acme::alpha"] = "Acme.Alpha", ["acme::beta"] = "Acme.Beta" },
-                    },
-                }).OrderBy(f => f.Path, StringComparer.Ordinal).ThenBy(f => f.Content, StringComparer.Ordinal).ToList();
+                    Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", IncludeNames = true, OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true },
+                }).OrderBy(f => f.Path, StringComparer.Ordinal).ToList();
 
-            var packaged = Run(GeneratorRegistry.Get(stableName)!.Factory(new GeneratorBuildContext(corpus.TemplateRoot)));
-            var owned = Run(Instantiate(copy.Assembly, corpus.TemplateRoot));
+            var packaged = Run(SharedModelTestSupport.Configure(
+                GeneratorRegistry.Get(stableName)!.Factory(new GeneratorBuildContext(corpus.TemplateRoot))));
+            var owned = Run(SharedModelTestSupport.Configure(Instantiate(copy.Assembly, corpus.TemplateRoot)));
             emitted += packaged.Count;
             Assert.Equal(packaged.Select(f => System.IO.Path.GetFileName(f.Path)), owned.Select(f => System.IO.Path.GetFileName(f.Path)));
             for (var i = 0; i < packaged.Count; i++)

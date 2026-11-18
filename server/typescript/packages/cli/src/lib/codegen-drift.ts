@@ -3,7 +3,7 @@
 // Renders the configured codegen IN MEMORY (a dry run of the exact `runGen` pipeline
 // `meta gen` uses, against the real project paths) and compares the rendered files with
 // the committed output (the config's outDir / per-target outDirs). Nothing is written:
-// no temp tree, no snapshot, no manifest (ADR-0062).
+// no temp tree, no snapshot, no manifest (ADR-0064).
 //
 // A DIFFERENCE IS NOT AUTOMATICALLY DRIFT. This gate used to treat "metadata
 // changed but `meta gen` wasn't re-run" and "a generated file was hand-edited" as
@@ -176,7 +176,7 @@ export async function computeCodegenDrift(
   projectRoot: string,
   scope?: (fqn: string) => boolean,
   sourceFiles?: readonly string[],
-  run?: Pick<RunGenOpts, "sourceRoots" | "agentSchema" | "schemaSettings">,
+  run?: Pick<RunGenOpts, "sourceRoots" | "agentSchema" | "schemaSettings" | "requirementLedger" | "inLedger">,
 ): Promise<CodegenDriftResult> {
   const root = isAbsolute(projectRoot) ? projectRoot : resolve(projectRoot);
 
@@ -203,7 +203,7 @@ export async function computeCodegenDrift(
     };
   }
 
-  // Render what `meta gen` would write right now, IN MEMORY (ADR-0062, item 9): a dry run
+  // Render what `meta gen` would write right now, IN MEMORY (ADR-0064, item 9): a dry run
   // against the real project renders exactly what a real run renders (same paths, so the
   // same relative imports) and writes nothing — no temp tree, no snapshot, no manifest.
   {
@@ -219,6 +219,8 @@ export async function computeCodegenDrift(
       ...(run?.sourceRoots !== undefined ? { sourceRoots: run.sourceRoots } : {}),
       ...(run?.agentSchema !== undefined ? { agentSchema: run.agentSchema } : {}),
       ...(run?.schemaSettings !== undefined ? { schemaSettings: run.schemaSettings } : {}),
+      ...(run?.requirementLedger !== undefined ? { requirementLedger: run.requirementLedger } : {}),
+      ...(run?.inLedger !== undefined ? { inLedger: run.inLedger } : {}),
     });
     const rendered = regen.rendered ?? new Map<string, string>();
     /** The rendered files under `dir`, by path relative to it. */

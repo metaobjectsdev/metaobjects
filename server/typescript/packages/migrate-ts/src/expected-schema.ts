@@ -10,7 +10,7 @@ import type {
 import {
   VALIDATOR_SUBTYPE_NUMERIC, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
   VALIDATOR_SUBTYPE_COMPARISON, VALIDATOR_SUBTYPE_REQUIRED_WHEN,
-  VALIDATOR_SUBTYPE_PRESENT_IFF, VALIDATOR_SUBTYPE_AT_LEAST_ONE,
+  VALIDATOR_SUBTYPE_PRESENT_IFF, VALIDATOR_SUBTYPE_AT_LEAST_ONE, VALIDATOR_SUBTYPE_EXACTLY_ONE,
   VALIDATOR_ATTR_PATTERN,
   VALIDATOR_ATTR_LEFT, VALIDATOR_ATTR_OP, VALIDATOR_ATTR_RIGHT,
   VALIDATOR_ATTR_FIELD, VALIDATOR_ATTR_WHEN, VALIDATOR_ATTR_EQUALS, VALIDATOR_ATTR_FIELDS,
@@ -69,7 +69,7 @@ import {
   STORAGE_FLATTENED,
   DOC_ATTR_DESCRIPTION,
   applyColumnNamingStrategy, physicalNamingOf,
-  resolveTableName, resolveColumnName, resolveFlattenedColumnPrefix, resolveTableSchema, resolveIndexName,
+  resolveTableName, resolveColumnName, resolveFlattenedColumnName, resolveTableSchema, resolveIndexName,
   resolveFieldPathColumn,
   resolveEnumMaxLength,
   IDENTITY_ATTR_SEQUENCE_NAME,
@@ -89,6 +89,7 @@ import { qualifiedDbName } from "./qualified-name.js";
 import { SQLITE_ISO_NOW } from "./column-default.js";
 import { viewFingerprint } from "./view-fingerprint.js";
 import { createHash } from "node:crypto";
+import { DIALECT_SQLITE, PG_IDENTIFIER_MAX_BYTES, isSqliteFamily, storedIdentifier } from "./types.js";
 import {
   resolveReferentialActions,
   findReferentialActionConflict,
@@ -141,13 +142,22 @@ export interface BuildExpectedSchemaOptions {
    * absent = false, every CHECK emitted.
    */
   skipRedundantChecks?: boolean | undefined;
+  /**
+   * Index every foreign key the conventions left without one: each enforced foreign key whose
+   * columns no primary key, index or earlier foreign-key index already leads with gets a plain
+   * index named `<table>_<column>[_<column>…]_idx`. `migrate.foreignKeyIndexes` in
+   * `.metaobjects/config.json`; absent = false, the schema migrate has always built. Separate
+   * from the conventions, so a project can have the indexes without renamed constraints; under
+   * the `efcore` preset every foreign key is already indexed and this adds nothing.
+   */
+  foreignKeyIndexes?: boolean | undefined;
 }
 
 /**
  * The project settings an expected-schema build takes, which every path that builds one
  * (migrate, drift, the offline plan, a baseline) passes through unchanged so they agree.
  */
-export type SchemaBuildSettings = Pick<BuildExpectedSchemaOptions, "conventions" | "skipRedundantChecks">;
+export type SchemaBuildSettings = Pick<BuildExpectedSchemaOptions, "conventions" | "skipRedundantChecks" | "foreignKeyIndexes">;
 
 /**
  * A view as the caller (codegen-ts `buildProjectionViews`) produces it — structurally
@@ -192,6 +202,18 @@ export interface ExpectedSchemaWithProvenance {
    * {@link buildExpectedSchema} refuses them all. Absent when there are none.
    */
   fkTargetViolations?: FkTargetViolation[];
+  /**
+   * Set on SQLite (not D1) when there are violations: SQLite checks foreign keys only with
+   * `PRAGMA foreign_keys` on, which is off by default, so the `CREATE TABLE` succeeds and only
+   * a write with enforcement on fails. The violations are then reported, never refused.
+   */
+  fkTargetsUnenforced?: true;
+  /**
+   * The indexes the schema carries because a table has foreign keys — added by the conventions
+   * (`efcore`) or by `foreignKeyIndexes` — keyed by the table's qualified name. A generator that
+   * maps the schema (Drizzle) declares these beside the indexes the model names. Absent when none.
+   */
+  foreignKeyIndexes?: ReadonlyMap<string, readonly IndexDescriptor[]>;
 }
 
 /**
@@ -204,7 +226,9 @@ export function buildExpectedSchema(
 ): SchemaSnapshot {
   const built = buildExpectedSchemaWithProvenance(root, opts);
   // No scope here: every FK whose target is not a unique key is refused.
-  if (built.fkTargetViolations !== undefined) throw new FkTargetNotUniqueError(built.fkTargetViolations);
+  if (built.fkTargetViolations !== undefined && built.fkTargetsUnenforced === undefined) {
+    throw new FkTargetNotUniqueError(built.fkTargetViolations);
+  }
   return built.snapshot;
 }
 
@@ -326,7 +350,7 @@ export function buildExpectedSchemaWithProvenance(
   // Checked against the BUILT tables, before the conventions add FK indexes: a key the model
   // declares but never emits (on a TPH subtype) is no key a database can reference.
   const fkTargetViolations = collectFkTargetViolations(tables, fkCtx.origins, provenance);
-  applySchemaConventions(tables, conventions, dialect);
+  const foreignKeyIndexes = applySchemaConventions(tables, conventions, dialect, opts?.foreignKeyIndexes === true);
   checkDeclaredCheckNames(tables, dialect);
 
   // Pass 3: dialect-specific SqlType normalization.
@@ -444,7 +468,7 @@ export function buildExpectedSchemaWithProvenance(
     // Name the DECLARATION an index came from, so a collision says where to rename it.
     for (const node of [...entity.secondaryIdentities(), ...entity.lookupIndexes()]) {
       indexOwnerLabels.set(
-        `${tableName}.${resolveIndexName(node)}`,
+        `${tableName}.${storedIdentifier(resolveIndexName(node), dialect)}`,
         `${node.type}.${node.subType} "${resolveIndexName(node)}" on ${entity.resolutionKey()} (table "${tableName}")`,
       );
     }
@@ -485,7 +509,14 @@ export function buildExpectedSchemaWithProvenance(
     }));
   if (collisions.length > 0) throw new DuplicateSqlNameError(collisions);
 
-  return { snapshot: { tables, views }, provenance, ...(fkTargetViolations.length > 0 ? { fkTargetViolations } : {}) };
+  return {
+    snapshot: { tables, views },
+    provenance,
+    ...(foreignKeyIndexes.size > 0 ? { foreignKeyIndexes } : {}),
+    ...(fkTargetViolations.length > 0 ? { fkTargetViolations } : {}),
+    // D1 always enforces foreign keys; plain SQLite only with the pragma on.
+    ...(fkTargetViolations.length > 0 && opts?.dialect === DIALECT_SQLITE ? { fkTargetsUnenforced: true as const } : {}),
+  };
 }
 
 /**
@@ -684,7 +715,7 @@ function buildTable(
   const descriptor: TableDescriptor = {
     name: tableName,
     columns,
-    indexes: buildSecondaryIndexes(entity, tableName, strategy),
+    indexes: buildSecondaryIndexes(entity, tableName, strategy, dialect),
     foreignKeys: buildForeignKeys(entity, tableName, resolveTargetTable, root, strategy, fkCtx, onConflict),
     checks: buildChecks(entity, tableName, strategy, dialect, skipRedundantChecks, root),
     primaryKey,
@@ -706,7 +737,7 @@ function readDescription(node: { attr: (n: string) => unknown }): string | undef
 }
 
 function buildSecondaryIndexes(
-  entity: MetaObject, tableName: string, strategy: ColumnNamingStrategy,
+  entity: MetaObject, tableName: string, strategy: ColumnNamingStrategy, dialect: Dialect | undefined,
 ): IndexDescriptor[] {
   const indexes: IndexDescriptor[] = [];
 
@@ -719,7 +750,7 @@ function buildSecondaryIndexes(
     if (field.attr(FIELD_ATTR_UNIQUE) !== true) continue;
     const colName = resolveColumnName(field, strategy);
     indexes.push({
-      name: `${tableName}_${colName}_unique`,
+      name: storedIdentifier(`${tableName}_${colName}_unique`, dialect),
       columns: [colName],
       unique: true,
     });
@@ -749,7 +780,7 @@ function buildSecondaryIndexes(
       // function used to spell the same answer independently, which is how
       // `fdb4118f1` happened. One door, so the strip and the empty-name refusal
       // cannot apply to one caller and not the other.
-      name: resolveIndexName(identity),
+      name: storedIdentifier(resolveIndexName(identity), dialect),
       columns: expr ? [] : cols,
       unique: true,
     };
@@ -790,7 +821,7 @@ function buildSecondaryIndexes(
     });
     const index: IndexDescriptor = {
       // See the identity.secondary site above — one resolver for both.
-      name: resolveIndexName(lookup),
+      name: storedIdentifier(resolveIndexName(lookup), dialect),
       columns: expr ? [] : cols,
       unique: false,
     };
@@ -952,7 +983,7 @@ function buildChecks(
     // The VARCHAR(n) the column already is, when the project skips what it enforces. Not on
     // SQLite / D1: they accept a declared length and store longer values anyway.
     const columnType = subtypeToSqlType(field);
-    const enforcesLength = dialect !== "sqlite" && dialect !== "d1";
+    const enforcesLength = !isSqliteFamily(dialect);
     const enforcedMax = skipRedundant && enforcesLength && columnType.kind === "text" ? columnType.maxLength : undefined;
     for (const v of field.validators()) {
       if (checkOptedOut(v)) continue;
@@ -1218,19 +1249,14 @@ function withDeclaredName(check: CheckDescriptor, node: MetaData): CheckDescript
   return named;
 }
 
-/** Postgres's identifier limit, in bytes (NAMEDATALEN - 1). A longer name is truncated. */
-const PG_IDENTIFIER_MAX_BYTES = 63;
-
 /**
- * Refuse, on Postgres, a declared CHECK name another constraint on the same table already has, or
- * one over 63 bytes. Runs after the conventions have named primary keys, foreign keys and unique
- * constraints. SQLite and D1 require neither (rc.21, N1: two CHECKs under one name are accepted and
- * both enforced, and a CHECK name is no schema object), so nothing is refused there.
+ * Refuse a declared CHECK name another constraint on the same table already has, or (on
+ * Postgres) one over 63 bytes. Runs after the conventions have named primary keys, foreign
+ * keys and unique constraints. A collision among derived names is left as it always was.
  */
 function checkDeclaredCheckNames(tables: readonly TableDescriptor[], dialect: Dialect | undefined): void {
   const problems: CheckNameProblem[] = [];
-  const limited = dialect !== "sqlite" && dialect !== "d1";
-  if (!limited) return;
+  const limited = !isSqliteFamily(dialect);
   for (const t of tables) {
     const declared = new Set(t.checks.filter((c) => DECLARED_CHECKS.has(c)).map((c) => c.name));
     if (declared.size === 0) continue;
@@ -1249,6 +1275,7 @@ function checkDeclaredCheckNames(tables: readonly TableDescriptor[], dialect: Di
     for (const fk of t.foreignKeys) claim(fk.name, `the foreign key "${fk.name}"`);
     for (const ix of t.indexes) if (ix.constraint === "unique") claim(ix.name, `the unique constraint "${ix.name}"`);
     for (const c of t.checks) claim(c.name, `another CHECK named "${c.name}"`);
+    if (!limited) continue;
     for (const name of declared) {
       const bytes = Buffer.byteLength(name, "utf8");
       if (bytes > PG_IDENTIFIER_MAX_BYTES) problems.push({ table: t.name, name, bytes });
@@ -1370,6 +1397,20 @@ function crossFieldCheck(
         expression: refs.map((r) => `${r!.qcol} IS NOT NULL`).join(" OR "),
       };
     }
+    case VALIDATOR_SUBTYPE_EXACTLY_ONE: {
+      // ADR-0039: effective attr — @fields may be inherited via the validator's extends.
+      const raw = v.attr(VALIDATOR_ATTR_FIELDS);
+      const names = Array.isArray(raw) ? raw : (typeof raw === "string" ? [raw] : []);
+      const refs = names.map((n) => resolveRef(entity, n, strategy));
+      if (refs.length === 0 || refs.some((r) => r === null)) return null;
+      const firstCol = resolveColumnName(refs[0]!.field, strategy);
+      // Postgres counts the present fields with num_nonnulls; SQLite and D1 add the presence
+      // tests, which they evaluate as 0 / 1.
+      const count = isSqliteFamily(dialect)
+        ? `(${refs.map((r) => `(${r!.qcol} IS NOT NULL)`).join(" + ")})`
+        : `num_nonnulls(${refs.map((r) => r!.qcol).join(", ")})`;
+      return { name: `${tableName}_${firstCol}_exactlyone_chk`, expression: `${count} = 1` };
+    }
     default:
       return null;
   }
@@ -1414,11 +1455,13 @@ function buildForeignKeys(
     const fkFieldJsNames = readIdentityFields(refChild);
     if (fkFieldJsNames.length === 0) continue;
 
+    // An entry may name a member of a flattened value object (`address.countryId`), whose
+    // column is on this table under the embedding's prefix.
     const fkCols = fkFieldJsNames.map((jsName) => {
       const fkField = findField(holder, jsName);
-      if (fkField) return resolveColumnName(fkField, strategy);
-      // G6: a reference over a flattened value-object member (`address.countryId`).
-      return resolveFieldPathColumn(holder, jsName, strategy) ?? applyColumnNamingStrategy(jsName, strategy);
+      return fkField
+        ? resolveColumnName(fkField, strategy)
+        : resolveFieldPathColumn(holder, jsName, strategy) ?? applyColumnNamingStrategy(jsName, strategy);
     });
 
     // Target columns: prefer explicit multi-field dotted form, else delegate
@@ -1539,7 +1582,10 @@ function collectFkTargetViolations(
  * foreign key gets. FK names were decided while the FKs were built, where a declared
  * `@constraintName` is known. The default conventions change nothing here.
  */
-function applySchemaConventions(tables: TableDescriptor[], conventions: SchemaConventions, dialect: Dialect | undefined): void {
+function applySchemaConventions(
+  tables: TableDescriptor[], conventions: SchemaConventions, dialect: Dialect | undefined, indexForeignKeys: boolean,
+): Map<string, IndexDescriptor[]> {
+  const added = new Map<string, IndexDescriptor[]>();
   // An FK references a table in its own schema (the emitter's assumption), so the key is schema-qualified.
   const keyOf = (schema: string | undefined, table: string, columns: readonly string[]) =>
     `${schema ?? ""}.${table}|${[...columns].sort().join(",")}`;
@@ -1555,6 +1601,7 @@ function applySchemaConventions(tables: TableDescriptor[], conventions: SchemaCo
       if (!canBeUniqueConstraint(ix)) continue;
       const kind = conventions.uniqueKeyKind({ table: t.name, columns: ix.columns, dialect, referencedByForeignKey: referenced.has(keyOf(t.schema, t.name, ix.columns)) });
       if (kind === "constraint") ix.constraint = "unique";
+      else if (kind === "index") ix.plainIndex = true;
     }
     const fkIndexes = conventions.foreignKeyIndexes({
       table: t.name,
@@ -1563,28 +1610,78 @@ function applySchemaConventions(tables: TableDescriptor[], conventions: SchemaCo
       indexes: t.indexes,
       foreignKeys: t.foreignKeys.map((fk) => ({ table: t.name, columns: fk.columns, refTable: fk.refTable, refColumns: fk.refColumns, dialect })),
     });
-    for (const index of fkIndexes) {
+    const owner = (index: { columns: readonly string[] }) =>
+      `the ${conventions.id} conventions' foreign-key index on [${index.columns.join(", ")}] of table "${t.name}"`;
+    const tableAdded: IndexDescriptor[] = [];
+    const push = (index: { name: string; columns: readonly string[] }, label: string) => {
       if (t.indexes.some((ix) => ix.name === index.name)) {
         throw new DuplicateSqlNameError([{
           name: index.name,
-          owners: [
-            `the ${conventions.id} conventions' foreign-key index on [${index.columns.join(", ")}] of table "${t.name}"`,
-            `an index already named "${index.name}" on table "${t.name}"`,
-          ],
+          owners: [label, `an index already named "${index.name}" on table "${t.name}"`],
           involvesIndex: true,
         }]);
       }
-      t.indexes.push({ name: index.name, columns: [...index.columns], unique: false });
+      const descriptor: IndexDescriptor = { name: index.name, columns: [...index.columns], unique: false };
+      t.indexes.push(descriptor);
+      tableAdded.push(descriptor);
+    };
+    for (const index of fkIndexes) push(index, owner(index));
+    // `foreignKeyIndexes`: after the conventions, so a preset that indexes foreign keys
+    // (efcore) leaves this nothing to add and its names stand.
+    if (indexForeignKeys) {
+      for (const columns of uncoveredForeignKeyColumns(t)) {
+        push(
+          { name: foreignKeyIndexName(t.name, columns, dialect), columns },
+          `the foreign-key index on [${columns.join(", ")}] of table "${t.name}" (migrate.foreignKeyIndexes)`,
+        );
+      }
     }
+    if (tableAdded.length > 0) added.set(qualifiedDbName(t), tableAdded);
   }
+  return added;
+}
+
+/**
+ * The name `foreignKeyIndexes` gives a foreign key's index: `<table>_<column>[_<column>…]_idx`.
+ * Except on SQLite and D1, a name over 63 bytes is cut to the first 63 bytes, which is the name
+ * Postgres stores, so a converged schema compares equal and nothing is proposed again. Two names
+ * that cut to the same 63 bytes on one table are refused as duplicates.
+ */
+export function foreignKeyIndexName(table: string, columns: readonly string[], dialect?: Dialect): string {
+  const name = `${table}_${columns.join("_")}_idx`;
+  return storedIdentifier(name, dialect);
+}
+
+/** True when `prefix` leads with exactly `columns`, in any order (the advisory's rule, too). */
+function leadsWith(prefix: readonly string[], columns: readonly string[]): boolean {
+  if (columns.length === 0 || prefix.length < columns.length) return false;
+  const want = new Set(columns);
+  return prefix.slice(0, columns.length).every((c) => want.has(c));
+}
+
+/**
+ * The column lists `foreignKeyIndexes` indexes on one table, in foreign-key order: each foreign
+ * key whose columns the primary key or a column index (a partial one counts; an expression one
+ * does not) does not lead with, once per column set, and none that a longer one here leads with.
+ * Every port's mapping generator applies this same rule.
+ */
+export function uncoveredForeignKeyColumns(t: Pick<TableDescriptor, "primaryKey" | "indexes" | "foreignKeys">): string[][] {
+  const existing = [t.primaryKey, ...t.indexes.filter((ix) => ix.expr === undefined).map((ix) => ix.columns)];
+  const candidates: string[][] = [];
+  for (const fk of t.foreignKeys) {
+    if (existing.some((cols) => leadsWith(cols, fk.columns))) continue;
+    if (candidates.some((c) => leadsWith(c, fk.columns) && c.length === fk.columns.length)) continue;
+    candidates.push([...fk.columns]);
+  }
+  return candidates.filter((c) => !candidates.some((o) => o.length > c.length && leadsWith(o, c)));
 }
 
 
 /**
  * Expand a `field.object @storage "flattened"` into one ColumnDescriptor per
  * nested field of the referenced value-object, each named by core naming's
- * `resolveFlattenedColumnPrefix` (the field's `@flattenedColumnPrefix`, else its resolved
- * column and `_`) and the member's own column, so every port spells these
+ * `resolveFlattenedColumnName` (the field's `@flattenedColumnPrefix`, else its resolved
+ * column and `_`, then the member's own column), so every port spells these
  * columns the way this migration creates them.
  *
  * EF OwnsOne pattern: no JSON column for the parent itself.
@@ -1595,13 +1692,10 @@ function flattenObjectField(
   // ADR-0039: resolving — @objectRef may be inherited via extends.
   const targetObject = refTarget(field, FIELD_ATTR_OBJECT_REF);
   if (targetObject === undefined || !isMetaObject(targetObject)) return [];
-  const prefix = resolveFlattenedColumnPrefix(field, strategy);
-  const cols: ColumnDescriptor[] = [];
-  for (const nested of targetObject.fields()) {
-    const inner = buildColumn(nested, /* isPk */ false, /* pkGeneration */ undefined, strategy);
-    cols.push({ ...inner, name: prefix + inner.name });
-  }
-  return cols;
+  return targetObject.fields().map((nested) => ({
+    ...buildColumn(nested, /* isPk */ false, /* pkGeneration */ undefined, strategy),
+    name: resolveFlattenedColumnName(field, nested, strategy),
+  }));
 }
 
 /**
@@ -1765,10 +1859,7 @@ function arrayElementSqlType(field: MetaData): SqlType | undefined {
   }
 }
 
-/**
- * The SQL type `meta migrate` gives a field's column. Exported so a generated view can cast a
- * column to the type the field declares (rc.19 bug `cast`) with the one type rule.
- */
+/** The SQL type `meta migrate` gives a field's column; a generated view casts to it. */
 export function fieldSqlType(field: MetaData): SqlType {
   return subtypeToSqlType(field);
 }
@@ -1857,7 +1948,7 @@ function subtypeToSqlType(field: MetaData): SqlType {
     // stores as text (the native inet column would reject a not-strictly-valid
     // value at INSERT). ADR-0039: resolving — @lenient may be inherited via extends.
     case FIELD_SUBTYPE_INET:      return field.attr(FIELD_ATTR_LENIENT) === true ? { kind: "text" } : { kind: "inet" };
-    case FIELD_SUBTYPE_DURATION:  return { kind: "interval" }; // Postgres native INTERVAL; TEXT on SQLite
+    case FIELD_SUBTYPE_DURATION:  return { kind: "interval" }; // Postgres native INTERVAL; a BIGINT count of microseconds on SQLite
     // A string-backed field.enum is a text column with a membership CHECK; an
     // INT-BACKED one (@intValueMap, design D5) stores the mapped integer instead.
     // The TS/wire type is the member string either way — only the column differs.

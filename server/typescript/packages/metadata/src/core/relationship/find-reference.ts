@@ -70,13 +70,13 @@ export function findReferenceBetween(
 }
 
 /**
- * Phase 5 bug R-walk — the name a `@via` hop takes when it walks the REVERSE of an
+ * The name a `@via` hop takes when it walks the REVERSE of an
  * identity.reference, from the referenced entity back to the one that declares it:
- * the holder's collection name, lowerFirst(<Holder's collection name>) — its @collectionName, else the project's pluralizer — `contracts` for
- * `Contract`, so `Player.contracts` walks Contract.player backwards. One rule for every port.
+ * the holder's collection name (its @collectionName, else the project's pluralizer), lowerFirst — `consents` for
+ * `Consent`, so `Patient.consents` walks Consent.patient backwards. One rule for every port.
  */
 export function reverseHopName(holder: MetaObject): string {
-  // rc.19 (R57): the holder's collection name — its @collectionName, else the project's pluralizer.
+  // the holder's collection name — its @collectionName, else the project's pluralizer.
   const plural = collectionNameOf(holder);
   return plural.charAt(0).toLowerCase() + plural.slice(1);
 }

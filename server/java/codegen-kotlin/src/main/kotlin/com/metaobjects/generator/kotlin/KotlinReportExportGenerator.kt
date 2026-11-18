@@ -85,6 +85,9 @@ open class KotlinReportExportGenerator : MultiFileDirectGeneratorBase<MetaObject
 
         val served = mutableListOf<MetaObject>()
         for (declared in loader.metaObjects) {
+            // The writer is shared by every served report, so it is built from all of them:
+            // <filters> narrow that set, the run's entity selection only the per-report files.
+            if (!passesFilters(declared)) continue
             // A served report is emitted from its read model; any other report has no shape.
             val entity = RestSurfaceGate.restShapeOf(declared) ?: continue
             if (!GeneratorUtil.isReport(entity)) continue
@@ -104,6 +107,7 @@ open class KotlinReportExportGenerator : MultiFileDirectGeneratorBase<MetaObject
         }
         write(outRoot, writerPackage, WRITER_NAME, writerSource(writerPackage, xmlNulls, csvBom, decimalsAsString, duration))
         for (entity in served) {
+            if (!inEntitySelection(entity)) continue
             val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
             write(outRoot, pkg, "${shortName}Export", exportSource(entity, pkg, shortName, writerPackage, maxRows))
         }
@@ -135,7 +139,7 @@ open class KotlinReportExportGenerator : MultiFileDirectGeneratorBase<MetaObject
         // #484: a credential column is never exported.
         val credentials = KotlinGenUtil.reportCredentialNames(entity).toSet()
         val fields = entity.metaFields.filter { it.name !in credentials }
-        val segment = KotlinNaming.controllerPath(shortName).substringAfterLast('/')
+        val segment = KotlinNaming.controllerPath(entity).substringAfterLast('/')
         val w = WRITER_NAME
         return buildString {
             if (pkg.isNotEmpty()) append("package $pkg\n\n")

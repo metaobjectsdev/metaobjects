@@ -1,0 +1,45 @@
+{
+  "description": "Only the LAST non-empty list on the line breaks; earlier lists stay on the opener line.",
+  "dialect": "core",
+  "options": {
+    "indent": "  ",
+    "width": 40,
+    "trailingComma": true
+  },
+  "ops": [
+    [
+      "line",
+      "f",
+      {
+        "list": {
+          "open": "(",
+          "items": [
+            "a",
+            "b"
+          ],
+          "close": ")"
+        }
+      },
+      ".then",
+      {
+        "list": {
+          "open": "(",
+          "items": [
+            "resultOne",
+            "resultTwo",
+            "resultThree"
+          ],
+          "close": ")"
+        }
+      },
+      ";"
+    ]
+  ],
+  "expected": [
+    "f(a, b).then(",
+    "  resultOne,",
+    "  resultTwo,",
+    "  resultThree,",
+    ");"
+  ]
+}

@@ -1,5 +1,5 @@
-// A report dimension's `required` and the joins of its `@via` path (adopter report D5; rc.19 R62).
-// Every generated view join is LEFT OUTER (R62), so `required` can no longer be read off "every
+// A report dimension's `required` and the joins of its `@via` path.
+// Every generated view join is LEFT OUTER, so `required` can no longer be read off "every
 // join is INNER": `reportShape` in `@metaobjectsdev/metadata` derives it from the model. A joined
 // dimension is required only when its @of field is, and every hop on the path is a belongs-to
 // reference over a required foreign key, enforced (not `@enforce: false`), onto a target that
@@ -164,7 +164,7 @@ describe("a report dimension's required comes from the model, over joins that ar
       expect([column.fieldName, path === undefined ? "no join path" : "join path"]).toEqual([column.fieldName, "join path"]);
       const joins = path!.map((a) => keywords.get(a));
       seen[column.fieldName] = { joins, required: required[column.fieldName] };
-      // R62: no generated view join is INNER.
+      // no generated view join is INNER.
       expect([column.fieldName, joins.every((j) => j === "LEFT OUTER")]).toEqual([column.fieldName, true]);
     }
     expect(seen).toEqual(

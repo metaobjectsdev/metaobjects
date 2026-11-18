@@ -1,7 +1,7 @@
 // rc.19 (R57) — @collectionName names an object's collection everywhere a port derives one: the
 // REST segment, the TS list/finder exports and the Drizzle collection variable, and the reverse
 // @via hop other objects walk. Absent, the project's pluralizer (`naming.collections`) derives
-// it. @dbSetName is its deprecated alias for one release.
+// it.
 
 import { describe, test, expect, afterEach } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
@@ -91,18 +91,6 @@ describe("@collectionName", () => {
     expect(files.get("ConsignmentHistory.ts")!).toContain("export const consignmentHistory = ");
     expect([...files.values()].join("\n")).toContain('"/consignment_history"');
     expect(warnings.filter((w) => w.includes("deprecated"))).toEqual([]);
-  });
-
-  test("@dbSetName is its deprecated alias: the same names, and a warning", async () => {
-    const root = await load({ "@dbSetName": "ConsignmentHistory" });
-    const { files, warnings } = await gen(root);
-    expect(files.get("ConsignmentHistory.queries.ts")!).toContain("export async function listConsignmentHistory(");
-    expect(warnings.some((w) => w.includes("@dbSetName is deprecated") && w.includes("@collectionName"))).toBe(true);
-  });
-
-  test("declaring both is refused", async () => {
-    const root = await load({ "@collectionName": "ConsignmentHistory", "@dbSetName": "Histories" });
-    expect(() => collectionNameOf(history(root))).toThrow(/declares both @collectionName and @dbSetName/);
   });
 });
 

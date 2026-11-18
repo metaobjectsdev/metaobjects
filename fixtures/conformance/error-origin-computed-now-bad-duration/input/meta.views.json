@@ -1,0 +1,87 @@
+{
+  "metadata.root": {
+    "package": "acme::views",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Case",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "cases"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.int": {
+                "name": "status"
+              }
+            },
+            {
+              "field.date": {
+                "name": "effectiveFrom"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "BadNow",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_badnow"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "acme::views::Case.id"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "started",
+                "children": [
+                  {
+                    "origin.computed": {
+                      "@expr": {
+                        "op": "gte",
+                        "left": {
+                          "now": "7 days ago"
+                        },
+                        "right": {
+                          "field": "effectiveFrom"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::views::Case.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -11,7 +11,8 @@
 // physical name must be ABSENT from the child's artifact. A positive-only assertion would
 // pass just as well for a generator that emitted both the spread AND the restated literal,
 // which is the outcome this change exists to prevent.
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, setDefaultTimeout } from "bun:test";
+import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
 import { mkdtempSync, rmSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
@@ -20,6 +21,8 @@ import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { runGen, defineConfig } from "../src/index.js";
 import { namesFile } from "../src/generators/index.js";
 import { entityFile } from "../src/generators/entity-file.js";
+
+setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
 const MODEL = {
   "metadata.root": {

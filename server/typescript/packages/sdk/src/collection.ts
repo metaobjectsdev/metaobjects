@@ -23,9 +23,11 @@ import {
   type WireFormat,
   DEFAULT_WIRE_FORMAT,
   type EnumDefaults,
+  type ApiPagination,
+  type UnknownFieldsMode,
   DEFAULT_ENUM_DEFAULTS,
 } from "@metaobjectsdev/metadata";
-import { CONFIG_FILE, enumDefaultsFromConfig, loadConfig, physicalNamingFromConfig, wireFormatFromConfig, type Config } from "./config.js";
+import { apiPaginationFromConfig, apiUnknownFieldsFromConfig, CONFIG_FILE, enumDefaultsFromConfig, loadConfig, physicalNamingFromConfig, wireFormatFromConfig, type Config, type HandEditsPolicy } from "./config.js";
 import { discoverCollectionRoot, exists, isDir } from "./discovery.js";
 import { compileScope, matchesScope, type Scope } from "./scope.js";
 import { DEFAULT_METADATA_DIR, DEFAULT_METAOBJECTS_DIR, isMetadataFile } from "./metadata-files.js";
@@ -90,11 +92,24 @@ export interface Collection {
   /** The `enums` block of the project config (string-stored enum defaults), none when absent.
    *  Optional so a hand-built Collection from before the block existed still type-checks. */
   readonly enumDefaults?: EnumDefaults | undefined;
+  /** The `api.pagination` block of the project config; undefined when the project declares none.
+   *  Optional so a hand-built Collection from before the block existed still type-checks. */
+  readonly apiPagination?: ApiPagination | undefined;
+  /** `api.unknownFields`, undefined when the config declares none (the default, `reject`). */
+  readonly apiUnknownFields?: UnknownFieldsMode | undefined;
   /** `migrate.conventions` of the project config — a schema-conventions preset name — when set. */
   readonly schemaConventions: string | undefined;
   /** `migrate.checks.skipRedundant` of the project config: leave out the validator CHECKs a
    *  column type already enforces. False when absent. */
   readonly skipRedundantChecks: boolean;
+  /** `migrate.foreignKeyIndexes` in `.metaobjects/config.json`: index every foreign key the
+   *  conventions leave without one. Absent = false. Read by every expected-schema build and by
+   *  the mapping generators. */
+  readonly foreignKeyIndexes: boolean;
+  /** `verify.handEdits` in `.metaobjects/config.json`: whether `meta verify --codegen` FAILS on a
+   *  hand-edited generated file (`fail`) or lists it as a notice (`notice`). Undefined when the
+   *  project does not say, which behaves as `notice`. */
+  readonly handEdits: HandEditsPolicy | undefined;
   /** FR-023 — the `FileSource` id each file loads under, for the dependency
    *  ARTIFACTS only (`dep:<name>/<artifact>`); own files are absent and keep the
    *  default `basename(path)`. Threaded to `loadMemory` so every node an artifact
@@ -134,6 +149,13 @@ export interface Collection {
    * codegen output and never the coverage denominator (T18 ruling, all ports).
    */
   readonly inCoverage: (fqn: string) => boolean;
+  /**
+   * FR-023 — is the requirement at `fqn` (its effective package, `::`, its dotted path) part
+   * of this project's ledger? Its own requirements always are; a dependency's are only when
+   * `requirements.inherit` NAMES the dependency's package (the `explicitlyIncludes` rule).
+   * Read by the requirement gate, its summary and lint, and the requirement-tests generator.
+   */
+  readonly inLedger: (fqn: string) => boolean;
   /** Output filter for migrate/verify --db (`migrate.scope`). Undefined => the
    *  command governs everything loaded, and that undefined is load-bearing: it
    *  is what leaves the expected schema untouched (migrate-ts `scope.ts`). */
@@ -278,13 +300,18 @@ export async function resolveCollection(
   let specs: readonly SourceSpec[] = DEFAULT_SOURCES;
   let scopeSpec: Config["scope"];
   let migrateSpec: string[] | undefined;
+  let inheritSpec: string[] | undefined;
   let dependencySpecs: readonly DependencySpec[] = [];
   let libraries: readonly string[] = [];
   let physicalNaming: PhysicalNaming = DEFAULT_PHYSICAL_NAMING;
   let wireFormat: WireFormat = DEFAULT_WIRE_FORMAT;
   let enumDefaults: EnumDefaults = DEFAULT_ENUM_DEFAULTS;
+  let apiPagination: ApiPagination | undefined;
+  let apiUnknownFields: UnknownFieldsMode | undefined;
   let schemaConventions: string | undefined;
   let skipRedundantChecks = false;
+  let foreignKeyIndexes = false;
+  let handEdits: HandEditsPolicy | undefined;
 
   if (hasConfig) {
     // No try/catch here: a config.json that EXISTS but fails to load
@@ -297,13 +324,18 @@ export async function resolveCollection(
     if (cfg.sources.length > 0) specs = cfg.sources;
     scopeSpec = cfg.scope;
     migrateSpec = cfg.migrate?.scope;
+    inheritSpec = cfg.requirements?.inherit;
     dependencySpecs = cfg.dependencies;
     libraries = cfg.libraries;
     physicalNaming = physicalNamingFromConfig(cfg);
     wireFormat = wireFormatFromConfig(cfg);
     enumDefaults = enumDefaultsFromConfig(cfg);
+    apiPagination = apiPaginationFromConfig(cfg);
+    apiUnknownFields = apiUnknownFieldsFromConfig(cfg);
     schemaConventions = cfg.migrate?.conventions;
     skipRedundantChecks = cfg.migrate?.checks?.skipRedundant === true;
+    foreignKeyIndexes = cfg.migrate?.foreignKeyIndexes === true;
+    handEdits = cfg.verify?.handEdits;
     // An unknown token is a hard config error naming the valid ones, while
     // `librarySources` keeps skipping one silently for a programmatic caller. The two
     // are deliberately different: an API caller asking for a library this version does
@@ -419,8 +451,12 @@ export async function resolveCollection(
     physicalNaming,
     wireFormat,
     enumDefaults,
+    apiPagination,
+    apiUnknownFields,
     schemaConventions,
     skipRedundantChecks,
+    foreignKeyIndexes,
+    handEdits,
     fileIds: new Map(dependencies.map((d) => [d.artifactPath, d.sourceId])),
     importedPackages: [...importedPackages].sort(),
     importedNodes,
@@ -439,6 +475,12 @@ export async function resolveCollection(
     // and does not name it — see `explicitlyIncludes`.
     inScope: (fqn: string): boolean => matchesScope(fqn, scope) && inCoverage(fqn),
     inCoverage,
+    // An imported requirement joins the ledger only when `requirements.inherit` names its
+    // package; a wildcard reaches it and does not name it, as for `scope.include`.
+    inLedger: (fqn: string): boolean => {
+      const pkg = packageOfResolutionKey(fqn);
+      return !importedPackages.has(pkg) || explicitlyIncludes(inheritSpec, pkg);
+    },
     // Undefined ONLY when the project declares no `migrate.scope` AND imports
     // nothing — migrate-ts reads that undefined as "govern everything loaded",
     // and it is what leaves the expected schema untouched. With a dependency

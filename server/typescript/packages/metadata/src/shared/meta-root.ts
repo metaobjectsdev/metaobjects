@@ -10,6 +10,7 @@ import type { MetaField } from "../core/field/meta-field.js";
 import { DEFAULT_PHYSICAL_NAMING, type PhysicalNaming } from "../naming.js";
 import { DEFAULT_WIRE_FORMAT, type WireFormat } from "../wire.js";
 import { DEFAULT_ENUM_DEFAULTS, type EnumDefaults } from "../enum-length.js";
+import type { ApiPagination, UnknownFieldsMode } from "../api-pagination.js";
 import { PACKAGE_SEPARATOR } from "./structural.js";
 import { lookupCanonical } from "../naming-refs.js";
 
@@ -32,6 +33,20 @@ export class MetaRoot extends MetaData {
    * project-aware load beside `physicalNaming` and read through `enumDefaultsOf`.
    */
   enumDefaults: EnumDefaults = DEFAULT_ENUM_DEFAULTS;
+
+  /**
+   * The project's list page size (`api.pagination` in `.metaobjects/config.json`), set by the
+   * project-aware load beside `physicalNaming` and read through `apiPaginationOf`. Undefined
+   * when the project declares none.
+   */
+  apiPagination: ApiPagination | undefined = undefined;
+
+  /**
+   * What generated write routes do with an undeclared body key (`api.unknownFields` in
+   * `.metaobjects/config.json`), set by the project-aware load and read through
+   * `apiUnknownFieldsOf`. Undefined when the project declares none (the default, `reject`).
+   */
+  apiUnknownFields: UnknownFieldsMode | undefined = undefined;
 
   /** Object entities defined at this root level. */
   objects(): MetaObject[] {

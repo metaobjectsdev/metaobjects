@@ -56,7 +56,7 @@ import {
 // compares this path set against `walkRequirements()`, the generator's own walk,
 // rather than leaving the two to agree by inspection.)
 import {
-  collectAddressedRequirements, type AddressedRequirement, type Diagnostic,
+  collectAddressedRequirements, diagnosticRequirement, type AddressedRequirement, type Diagnostic,
 } from "./requirement-check.js";
 
 export const WARN_REQUIREMENT_NAME_NOT_ADDRESSABLE = "WARN_REQUIREMENT_NAME_NOT_ADDRESSABLE";
@@ -236,8 +236,10 @@ function excerpt(value: string): string {
   return JSON.stringify(flat.length > LIMIT ? `${flat.slice(0, LIMIT - 1)}…` : flat);
 }
 
-function warn(path: string, code: string, message: string): Diagnostic {
-  return { severity: "warn", code, path, message };
+function warn(at: AddressedRequirement, code: string, message: string): Diagnostic {
+  const d: Diagnostic = { severity: "warn", code, path: at.path, message };
+  diagnosticRequirement.set(d, at.node);
+  return d;
 }
 
 /**
@@ -263,7 +265,8 @@ export function lintRequirements(
 ): Diagnostic[] {
   const out: Diagnostic[] = [];
 
-  for (const { node, path } of addressed) {
+  for (const at of addressed) {
+    const { node, path } = at;
     const name = node.name;
 
     // -- the name is an address, not prose ------------------------------------
@@ -279,7 +282,7 @@ export function lintRequirements(
     if (name.trim() === "") problems.push("is blank");
     else if (name.trim() !== name) problems.push("has leading or trailing whitespace");
     if (problems.length > 0) {
-      out.push(warn(path, WARN_REQUIREMENT_NAME_NOT_ADDRESSABLE,
+      out.push(warn(at, WARN_REQUIREMENT_NAME_NOT_ADDRESSABLE,
         `name ${JSON.stringify(name)} ${problems.join(", and ")}. A requirement's name is its ` +
         `address — it is the segment of the dotted path '${path}' and the filename of its generated ` +
         `test stub — so this either collides with nesting or produces a path the stub cannot be ` +
@@ -293,11 +296,11 @@ export function lintRequirements(
     // the statement, "rename it" is the wrong instruction. The instruction is "you
     // have written the claim twice; @statement is the one that is read".
     if (statementKey !== "" && normalise(toSnakeCase(name)) === statementKey) {
-      out.push(warn(path, WARN_REQUIREMENT_NAME_RESTATES_STATEMENT,
+      out.push(warn(at, WARN_REQUIREMENT_NAME_RESTATES_STATEMENT,
         `name '${name}' says the same thing as @statement. The claim belongs in @statement, which every ` +
         `surface reads; the name is an address and is better as a short identifier.`));
     } else if (name.trim().split(/\s+/).filter((w) => w !== "").length >= PROSE_WORD_COUNT) {
-      out.push(warn(path, WARN_REQUIREMENT_NAME_READS_AS_PROSE,
+      out.push(warn(at, WARN_REQUIREMENT_NAME_READS_AS_PROSE,
         `name '${name}' reads as a sentence. The name is an address — the dotted path other entries and ` +
         `the generated stub filename are built from — so a short identifier keeps both legible. Put the ` +
         `prose in @statement.`));
@@ -310,7 +313,7 @@ export function lintRequirements(
       // OWN-ONLY: the fix is deleting or filling one declaration. See readOwnSlot.
       const value = readOwnSlot(node, slot);
       if (value !== undefined && value.trim() === "") {
-        out.push(warn(path, WARN_REQUIREMENT_PROSE_EMPTY,
+        out.push(warn(at, WARN_REQUIREMENT_PROSE_EMPTY,
           `@${slot} is declared but empty. The loader requires the attribute to be present, not to say ` +
           `anything — an empty one passes every check while recording nothing.`));
       }
@@ -329,12 +332,12 @@ export function lintRequirements(
       const description = readSlot(node, DOC_ATTR_DESCRIPTION);
       if (description !== undefined) {
         if (normalise(description) === statementKey) {
-          out.push(warn(path, WARN_REQUIREMENT_PROSE_DUPLICATED,
+          out.push(warn(at, WARN_REQUIREMENT_PROSE_DUPLICATED,
             `description repeats @statement verbatim. @statement already IS the description of what the ` +
             `requirement is; description holds the SCOPE — what the claim covers, what it deliberately ` +
             `does not, which sibling entry owns the rest. If the scope is obvious, leave it off.`));
         } else if (leadingSentenceMatches(description, statementKey)) {
-          out.push(warn(path, WARN_REQUIREMENT_PROSE_DUPLICATED,
+          out.push(warn(at, WARN_REQUIREMENT_PROSE_DUPLICATED,
             `description opens by repeating @statement verbatim, then continues. Drop the first sentence — ` +
             `it is already read from @statement, and description is only the scope that follows it.`));
         }
@@ -342,7 +345,7 @@ export function lintRequirements(
 
       const counterexample = readSlot(node, REQUIREMENT_ATTR_COUNTEREXAMPLE);
       if (counterexample !== undefined && normalise(counterexample) === statementKey) {
-        out.push(warn(path, WARN_REQUIREMENT_PROSE_DUPLICATED,
+        out.push(warn(at, WARN_REQUIREMENT_PROSE_DUPLICATED,
           `@counterexample repeats @statement verbatim. It must describe what BREAKING the claim looks ` +
           `like — the thing you could point at to falsify it — which is what makes the claim checkable.`));
       }
@@ -353,7 +356,7 @@ export function lintRequirements(
       // OWN-ONLY: the fix is deleting one attribute. See readOwnSlot.
       const value = readOwnSlot(node, slot);
       if (value === undefined || value.trim() === "") continue;
-      out.push(warn(path, WARN_REQUIREMENT_INERT_DOC_SLOT,
+      out.push(warn(at, WARN_REQUIREMENT_INERT_DOC_SLOT,
         `@${slot} says nothing here that @${REQUIREMENT_ATTR_STATEMENT} does not. A requirement's ` +
         `statement is REQUIRED and is already the one-line sentence, so a summary beside it can only ` +
         `repeat it — and no requirement surface reads it. Its content is invisible: ${excerpt(value)}. ` +
@@ -364,7 +367,7 @@ export function lintRequirements(
     // -- an id is not a label -------------------------------------------------
     const title = readOwnSlot(node, DOC_ATTR_TITLE);
     if (title !== undefined && TITLE_ID_ONLY.test(title.trim())) {
-      out.push(warn(path, WARN_REQUIREMENT_TITLE_IS_AN_ID,
+      out.push(warn(at, WARN_REQUIREMENT_TITLE_IS_AN_ID,
         `@title holds only a catalogue or ticket id: ${excerpt(title)}. A title is the entry's ` +
         `LABEL and an id is not a name, so this slot says nothing a reader can use. Put the id in ` +
         `@${REQUIREMENT_ATTR_TRACKED_BY}, which is the free-form reference slot and IS read, and ` +

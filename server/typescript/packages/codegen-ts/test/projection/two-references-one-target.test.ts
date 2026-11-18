@@ -1,4 +1,4 @@
-// rc.19 fix round 2: two references from the base onto the SAME target entity are two joins with
+// Two references from the base onto the SAME target entity are two joins with
 // two aliases, and each origin reads from the join its own @via names. The alias used to be looked
 // up by target entity, so both passthroughs selected from the first join's alias and the second
 // column silently read the wrong row (`u.name AS approver_name` while `approver` joined as `u0`).
@@ -38,8 +38,8 @@ function run(sql: string): Row[] {
 describe("two references onto one target entity", () => {
   test("each reference is its own join with its own alias", async () => {
     const sql = (await view("postgres")).sql;
-    expect(sql).toContain("LEFT OUTER JOIN public.users u ON u.id = a.owner_id");
-    expect(sql).toContain("LEFT OUTER JOIN public.users u0 ON u0.id = a.approver_id");
+    expect(sql).toContain("LEFT OUTER JOIN users u ON u.id = a.owner_id");
+    expect(sql).toContain("LEFT OUTER JOIN users u0 ON u0.id = a.approver_id");
     expect(sql).toContain("u.name AS owner_name");
     expect(sql).toContain("u0.name AS approver_name");
   });
@@ -52,7 +52,7 @@ describe("two references onto one target entity", () => {
   });
 });
 
-// rc.20: the aggregate arms (any, whole-object collect, collect @of, the @of reduces) take the
+// The aggregate arms (any, whole-object collect, collect @of, the @of reduces) take the
 // same alias rule. A Project's accounts each name an owner and an approver (two references onto
 // User), so an aggregate over `Project.accounts.owner` and one over `Project.accounts.approver`
 // reach User through two joins, and each must read its own.
@@ -116,8 +116,8 @@ const COLUMNS = ["count", "max", "is_ann", "names", "briefs"] as const;
 describe("two references onto one target entity — aggregates", () => {
   test("each aggregate reads the join its own @via names", async () => {
     const sql = (await aggregateView("postgres")).sql;
-    const owner = /JOIN public\.users (\w+) ON \1\.id = \w+\.owner_id/.exec(sql)?.[1];
-    const approver = /JOIN public\.users (\w+) ON \1\.id = \w+\.approver_id/.exec(sql)?.[1];
+    const owner = /JOIN users (\w+) ON \1\.id = \w+\.owner_id/.exec(sql)?.[1];
+    const approver = /JOIN users (\w+) ON \1\.id = \w+\.approver_id/.exec(sql)?.[1];
     expect(owner).toBeDefined();
     expect(approver).toBeDefined();
     expect(owner).not.toBe(approver);

@@ -1,14 +1,25 @@
-// GeneratorGoldenTests — the output of DbContextGenerator and EntityGenerator for one model that
-// exercises every kind of field-type configuration, compared byte for byte against files captured
-// from the generators BEFORE the fine-grained hooks existed (5e897fd86). The hooks must not move a
-// single line of default output; a refactor that did would fail here, not in an adopter's diff.
+// GeneratorGoldenTests — the output of DbContextGenerator and EntityGenerator (and NamesGenerator,
+// round 2) for models that exercise every kind of field-type configuration, compared byte for byte
+// against committed files. The fine-grained `protected virtual` hooks must not move a single line
+// of default output; a refactor that did would fail here, not in an adopter's diff.
 //
-// Capture (only ever against a checkout that predates the hooks): GOLDEN_WRITE=1 dotnet test
-// --filter GeneratorGoldenTests. Compare mode is the default.
-// Re-captured once for rc.19 R65 (a package's own namespace; every cross-namespace reference
-// global::-qualified), a deliberate output change rather than a hook's.
+// How the files were established: this test was run with GOLDEN_WRITE=1 against the generators as
+// they were before the hooks existed (no hooks at all), and the hooked generators' output was
+// diffed against that capture. Every line that differs comes from one of these fixes, each its own
+// CHANGELOG entry, and from nothing else:
+//   - a literal @default is HasDefaultValue(v).HasSentinel(v) (Auth.Active, BridgeAuth.Quantity);
+//   - a TPH subtype's own fields get their EF configuration (BridgeAuth's precision, durations,
+//     primitive collection);
+//   - a reference declared on an abstract TPH intermediate is configured on each concrete subtype
+//     (CallJob, MailJob; CaseJob when abstract shapes are emitted);
+//   - a <Entity>Names whose base lives in another namespace imports it (`using Acme.Base;`);
+//   - under EmitAbstractShapes the DbContext configures the key and columns a concrete entity
+//     inherits from its shape (Workflow).
+// The committed files are the hooked output, so they are that capture plus exactly those lines.
+//
+// Recapture only for a deliberate change to default output: GOLDEN_WRITE=1 dotnet test --filter
+// GeneratorGoldenTests, then review the diff line by line. Compare mode is the default.
 
-using System.Runtime.CompilerServices;
 using MetaObjects.Codegen;
 using MetaObjects.Codegen.Generators;
 using MetaObjects.Loader;
@@ -81,8 +92,10 @@ public class GeneratorGoldenTests
     ]}}
     """;
 
-    private static string GoldenDir([CallerFilePath] string here = "") =>
-        Path.Combine(Path.GetDirectoryName(here)!, "Golden", "pre-hooks");
+    // Found from the repo root, not [CallerFilePath]: a CI build (CI=true turns on
+    // ContinuousIntegrationBuild) maps source paths to /_/, where no golden file exists.
+    private static string GoldenDir() =>
+        Path.Combine(CorpusPaths.RepoRoot(), "server", "csharp", "MetaObjects.Codegen.Tests", "Golden", "pre-hooks");
 
     [Fact]
     public void Default_output_matches_the_output_captured_before_the_hooks()
@@ -95,22 +108,22 @@ public class GeneratorGoldenTests
             Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
         };
         var files = new DbContextGenerator().Generate(ctx).Concat(new EntityGenerator().Generate(ctx)).ToList();
-        Assert.Contains(files, f => System.IO.Path.GetFileName(f.Path) == "InvoiceView.g.cs");
+        Assert.Contains(files, f => f.Path == "InvoiceView.g.cs");
 
         var dir = GoldenDir();
         if (Environment.GetEnvironmentVariable("GOLDEN_WRITE") == "1")
         {
             Directory.CreateDirectory(dir);
-            foreach (var f in files) File.WriteAllText(Path.Combine(dir, System.IO.Path.GetFileName(f.Path)), f.Content);
+            foreach (var f in files) File.WriteAllText(Path.Combine(dir, f.Path), f.Content);
             return;
         }
         var expected = Directory.GetFiles(dir).Select(p => Path.GetFileName(p)).Order().ToList();
-        Assert.Equal(expected, files.Select(f => System.IO.Path.GetFileName(f.Path)).Order().ToList());
+        Assert.Equal(expected, files.Select(f => f.Path).Order().ToList());
         foreach (var f in files)
-            Assert.Equal(File.ReadAllText(Path.Combine(dir, System.IO.Path.GetFileName(f.Path))), f.Content);
+            Assert.Equal(File.ReadAllText(Path.Combine(dir, f.Path)), f.Content);
     }
 
-    // The constructs the second round of hooks reaches, captured from 01c571c6f (before them):
+    // The constructs the second round of hooks reaches (captured as described at the top):
     // an abstract base in ANOTHER package's namespace (its <Base>Names lives there too), a TPH
     // base with an abstract intermediate that declares a reference, a concrete subtype with its
     // own reference, a jsonb value object, and the names artifact itself. Run twice: with
@@ -195,18 +208,18 @@ public class GeneratorGoldenTests
     public void Round_2_output_matches_the_output_captured_before_the_second_hooks(bool shapes)
     {
         var files = GenerateRound2(shapes);
-        Assert.Contains(files, f => System.IO.Path.GetFileName(f.Path) == "WorkflowNames.g.cs");
+        Assert.Contains(files, f => f.Path == "WorkflowNames.g.cs");
 
         var dir = Path.Combine(GoldenDir(), "..", "pre-hooks-2", shapes ? "shapes" : "no-shapes");
         if (Environment.GetEnvironmentVariable("GOLDEN_WRITE") == "1")
         {
             Directory.CreateDirectory(dir);
-            foreach (var f in files) File.WriteAllText(Path.Combine(dir, System.IO.Path.GetFileName(f.Path)), f.Content);
+            foreach (var f in files) File.WriteAllText(Path.Combine(dir, f.Path), f.Content);
             return;
         }
         var expected = Directory.GetFiles(dir).Select(p => Path.GetFileName(p)).Order().ToList();
-        Assert.Equal(expected, files.Select(f => System.IO.Path.GetFileName(f.Path)).Order().ToList());
+        Assert.Equal(expected, files.Select(f => f.Path).Order().ToList());
         foreach (var f in files)
-            Assert.Equal(File.ReadAllText(Path.Combine(dir, System.IO.Path.GetFileName(f.Path))), f.Content);
+            Assert.Equal(File.ReadAllText(Path.Combine(dir, f.Path)), f.Content);
     }
 }

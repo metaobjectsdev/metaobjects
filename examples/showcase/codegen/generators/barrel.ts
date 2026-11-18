@@ -62,7 +62,7 @@ export const barrel = function barrel(opts?: BarrelOpts): Generator {
         throw new Error("barrel: renderContext is required (provided by runGen)");
       }
       const rc = ctx.renderContext;
-      // Every name the barrel re-exports lives in its one namespace (ruling R52).
+      // Every name the barrel re-exports lives in its one namespace.
       for (const e of entities) claimBarrelNames(ctx, e);
       return {
         path: "index.ts",

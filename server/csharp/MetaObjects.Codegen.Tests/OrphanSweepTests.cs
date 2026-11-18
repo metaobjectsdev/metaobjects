@@ -307,7 +307,7 @@ public sealed class OrphanSweepTests : IDisposable
         var file = Path.Combine(Out, "Telemetry.g.cs");
         File.AppendAllText(file, "// mine\n");
 
-        // A hand edit makes gen render (ADR-0062 Amendment A); --force keeps the rerun explicit.
+        // A hand edit makes gen render (ADR-0064 Amendment A); --force keeps the rerun explicit.
         var gen = Gen("--force");
         Assert.EndsWith("// mine\n", File.ReadAllText(file));
         Assert.Contains("Refused to overwrite", gen.Out + gen.Err);

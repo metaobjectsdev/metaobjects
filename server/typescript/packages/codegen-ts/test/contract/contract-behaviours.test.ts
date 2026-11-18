@@ -174,8 +174,8 @@ describe("types the JSON Schema formats do not state", () => {
     expect(valid({ ...sampleRow(), startsAt: "9am" })).toBe(false);
   });
 
-  test("a duration is an ISO-8601 duration of weeks, days, hours, minutes and seconds — never a calendar span", async () => {
-    const valid = validatorOf(await contractTree(corpusCase("all-fields")), `${ALL_FIELDS}.schema.json`);
+  test("with wire.durations iso, a duration is an ISO-8601 duration of weeks, days, hours, minutes and seconds — never a calendar span", async () => {
+    const valid = validatorOf(await contractTree(corpusCase("all-fields-wire-string-omit")), `${ALL_FIELDS}.schema.json`);
     for (const ok of ["PT1H30M", "P1DT2H", "-PT1M30S", "PT0.5S", "PT0S", "P2W", "P1W1DT1H", "PT1.1234567890S"]) {
       expect(valid({ ...sampleRow(), holdFor: ok }), ok).toBe(true);
     }
@@ -183,6 +183,12 @@ describe("types the JSON Schema formats do not state", () => {
     for (const bad of ["P1M", "P1Y", "P1D1W", "1:30:00", "PT1.5H", "pt1h", "PT"]) {
       expect(valid({ ...sampleRow(), holdFor: bad }), bad).toBe(false);
     }
+  });
+
+  test("under the default, a duration is the serving language's own form, so any string", async () => {
+    const valid = validatorOf(await contractTree(corpusCase("all-fields")), `${ALL_FIELDS}.schema.json`);
+    for (const ok of ["PT1H30M", "01:30:00", "1.02:00:00"]) expect(valid({ ...sampleRow(), holdFor: ok }), ok).toBe(true);
+    expect(valid({ ...sampleRow(), holdFor: 90 })).toBe(false);
   });
 
   test("a local timestamp has no offset, and a zoned one must", async () => {
@@ -249,7 +255,6 @@ describe("the three shapes", () => {
     const tree = await contractTree(corpusCase("secret-fields"));
     const keysOf = (path: string): string[] => Object.keys(jsonAt(tree, path)["properties"] as JsonDoc);
     const account = "schemas/acme/secrets/Account";
-    // `role` is the corpus's readOnly field (1.2.2): on the read, on neither write shape.
     expect(keysOf(`${account}.schema.json`)).toEqual(["id", "name", "tokenHash", "role"]);
     expect(keysOf(`${account}.create.schema.json`)).toEqual(["name"]);
     expect(keysOf(`${account}.update.schema.json`)).toEqual(["name"]);
@@ -297,6 +302,21 @@ describe("what a project's run changes", () => {
     const narrowed = await emit(c, [openApiFile({ title: "t", version: "1" })], { entityFilter: [first] });
     expect(narrowed.get("openapi.json")).toBe(whole.get("openapi.json")!);
   });
+
+  for (const [label, factory] of [["jsonSchemaFile", jsonSchemaFile], ["the reference jsonSchemaFile", refJsonSchemaFile]] as const) {
+    test(`${label} writes only the named entity's schema on a narrowed run`, async () => {
+      const c = corpusCase("m2m");
+      const whole = await emit(c, [factory()]);
+      const named = (await loadCaseModel(c)).objects()[0]!.name;
+      const narrowed = await emit(c, [factory()], { entityFilter: [named] });
+      const ownFile = [...narrowed.keys()].filter((p) => p.endsWith(`/${named}.schema.json`));
+      expect(ownFile.length).toBe(1);
+      expect(narrowed.size).toBeLessThan(whole.size);
+      for (const [path, content] of narrowed) expect(whole.get(path), path).toBe(content);
+      const others = [...whole.keys()].filter((p) => p.endsWith(".schema.json") && !p.endsWith(`/${named}.schema.json`) && !narrowed.has(p));
+      expect(others.length).toBeGreaterThan(0);
+    });
+  }
 
   test("a generator filter narrows the document, and keeps what a kept object references", async () => {
     const c = corpusCase("all-fields");

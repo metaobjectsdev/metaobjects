@@ -12,13 +12,13 @@ namespace Acme.Shop;
 
 public static class LineTotalsRoutes
 {
-    private static readonly global::System.Collections.Generic.HashSet<string> SortAllowlist = new(global::System.StringComparer.OrdinalIgnoreCase)
+    private static readonly System.Collections.Generic.HashSet<string> SortAllowlist = new(System.StringComparer.OrdinalIgnoreCase)
     {
         "Label",
         "Lines",
     };
 
-    private static readonly global::System.Collections.Generic.Dictionary<string, bool> SortDefaultDesc = new(global::System.StringComparer.OrdinalIgnoreCase)
+    private static readonly System.Collections.Generic.Dictionary<string, bool> SortDefaultDesc = new(System.StringComparer.OrdinalIgnoreCase)
     {
     };
 
@@ -52,7 +52,7 @@ public static class LineTotalsRoutes
                 if (!SortAllowlist.TryGetValue(field, out var resolved))
                     return Results.BadRequest(new { error = "invalid_sort", field });
                 var desc = parts.Length > 1
-                    ? string.Equals(parts[1], "desc", global::System.StringComparison.OrdinalIgnoreCase)
+                    ? string.Equals(parts[1], "desc", System.StringComparison.OrdinalIgnoreCase)
                     : SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;
                 q = ApplySortLineTotals(q, resolved, desc);
             }
@@ -63,16 +63,16 @@ public static class LineTotalsRoutes
             long offset = 0;
             if (qs.TryGetValue("limit", out var limitRaw))
             {
-                if (!long.TryParse(limitRaw, global::System.Globalization.NumberStyles.Integer, global::System.Globalization.CultureInfo.InvariantCulture, out var parsedLimit) || parsedLimit < 1)
+                if (!long.TryParse(limitRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var parsedLimit) || parsedLimit < 1)
                     return Results.BadRequest(new { error = "pagination.invalid_value", param = "limit", value = limitRaw.ToString(), expected = $"an integer from 1 to {maxRows}" });
                 if (parsedLimit > maxRows)
                     return Results.BadRequest(new { error = "report_too_large", maxRows });
                 limit = parsedLimit;
             }
             if (qs.TryGetValue("offset", out var offsetRaw)
-                && (!long.TryParse(offsetRaw, global::System.Globalization.NumberStyles.Integer, global::System.Globalization.CultureInfo.InvariantCulture, out offset) || offset < 0))
+                && (!long.TryParse(offsetRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out offset) || offset < 0))
                 return Results.BadRequest(new { error = "pagination.invalid_value", param = "offset", value = offsetRaw.ToString(), expected = "a non-negative integer (0 or more)" });
-            if (offset > 0) q = q.Skip((int)global::System.Math.Min(offset, int.MaxValue));
+            if (offset > 0) q = q.Skip((int)System.Math.Min(offset, int.MaxValue));
             q = q.Take((int)(limit ?? maxRows + 1L));
 
             var rows = await q.ToListAsync();
@@ -80,7 +80,7 @@ public static class LineTotalsRoutes
                 return Results.BadRequest(new { error = "report_too_large", maxRows });
 
             // withCount=1 → { rows, total } envelope; otherwise bare row array.
-            var withCount = qs.TryGetValue("withCount", out var wc) && (wc == "1" || string.Equals(wc, "true", global::System.StringComparison.OrdinalIgnoreCase));
+            var withCount = qs.TryGetValue("withCount", out var wc) && (wc == "1" || string.Equals(wc, "true", System.StringComparison.OrdinalIgnoreCase));
             if (!withCount) return Results.Ok(rows);
             var totalQ = EfCoreFilterDispatch.ApplyFilter(db.LineTotals.AsNoTracking(), filter.Predicates);
             var total = await totalQ.CountAsync();

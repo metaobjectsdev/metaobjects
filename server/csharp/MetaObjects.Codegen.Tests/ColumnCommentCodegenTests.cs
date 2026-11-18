@@ -1,4 +1,4 @@
-// Item 4 and ruling R59: every column a description reaches carries its comment in the EF model.
+// Every column a description reaches carries its comment in the EF model.
 // A field.map is a converted scalar property and takes SetComment like any column, found with
 // GetProperty (a property the generator configures and cannot find is a bug, said loudly). A
 // field.object stored as JSON (ToJson) cannot carry a comment in EF 8, so the text — the field's
@@ -44,7 +44,7 @@ public sealed class ColumnCommentCodegenTests
     {
         var (files, _) = Run("postgres");
         var context = files.Single(f => f.Path == "AppDbContext.g.cs").Content;
-        Assert.Contains("modelBuilder.Entity<global::Acme.Ticket>().Metadata.GetProperty(\"Labels\").SetComment(\"Labels by key.\");", context);
+        Assert.Contains("modelBuilder.Entity<Ticket>().Metadata.GetProperty(\"Labels\").SetComment(\"Labels by key.\");", context);
         Assert.DoesNotContain("FindProperty(", context);
     }
 
@@ -52,10 +52,10 @@ public sealed class ColumnCommentCodegenTests
     public void A_json_column_takes_its_value_objects_description_as_an_annotation_the_design_time_differ_scaffolds()
     {
         var (files, warnings) = Run("postgres");
-        // Its outDir is no project on disk, so only the I4 "cannot tell" reference warning is expected.
+        // Its outDir is no project on disk, so only the "cannot tell" reference warning is expected.
         Assert.Empty(warnings.Where(w => !w.Contains("cannot tell whether EF reads the DesignTimeServicesReference", StringComparison.Ordinal)));
         var context = files.Single(f => f.Path == "AppDbContext.g.cs").Content;
-        Assert.Contains("modelBuilder.Entity<global::Acme.Ticket>().Metadata.FindNavigation(\"Meta\")!.TargetEntityType" +
+        Assert.Contains("modelBuilder.Entity<Ticket>().Metadata.FindNavigation(\"Meta\")!.TargetEntityType" +
             ".SetAnnotation(\"MetaObjects:JsonColumnComment\", \"Free-form tags.\");", context);
         // No increment key here: the services are emitted for the comment alone.
         var services = Assert.Single(files, f => f.Path.EndsWith("DesignTimeServices.g.cs", StringComparison.Ordinal)).Content;
@@ -70,7 +70,7 @@ public sealed class ColumnCommentCodegenTests
         Assert.Contains(warnings, w => w.Contains("Ticket.meta is not in the EF model", StringComparison.Ordinal));
     }
 
-    // G1, rc.20: an OwnedTypeConfig override decides the mapping, and the comment follows it.
+    // An OwnedTypeConfig override decides the mapping, and the comment follows it.
     private sealed class Hook(string line) : DbContextGenerator
     {
         protected override string? OwnedTypeConfig(string owner, MetaObjects.Meta.MetaObject entity, MetaObjects.Meta.MetaField field, GenContext ctx) =>
@@ -83,7 +83,7 @@ public sealed class ColumnCommentCodegenTests
         var (files, warnings) = Run("postgres", new Hook(
             "        modelBuilder.Entity<__OWNER__>().Property(x => x.Meta).HasColumnName(\"meta\").HasColumnType(\"jsonb\");"));
         var context = files.Single(f => f.Path == "AppDbContext.g.cs").Content;
-        Assert.Contains("modelBuilder.Entity<global::Acme.Ticket>().Metadata.GetProperty(\"Meta\").SetComment(\"Free-form tags.\");", context);
+        Assert.Contains("modelBuilder.Entity<Ticket>().Metadata.GetProperty(\"Meta\").SetComment(\"Free-form tags.\");", context);
         Assert.DoesNotContain("FindNavigation(", context);
         Assert.DoesNotContain("MetaObjects:JsonColumnComment", context);
         // No JSON-column annotation, so no design-time services for it.

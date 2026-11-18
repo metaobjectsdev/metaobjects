@@ -18,6 +18,10 @@ and an `object.report` combines them by name. Four node kinds:
   `field.boolean` `@of`, or no `@of` and a `@filter` or `@segment`: `{ "name": "hasError",
   "@agg": "any", "@filter": { "success": false } }` is "some row has `success` false" (a row
   whose condition is null does not pass);
+- `measure.derived` — `@expr` arithmetic (`add`, `subtract`, `multiply`, `divide`, two operands
+  each) over `{ "field": <measure or numeric dimension> }` and `{ "value": <number> }`:
+  utilization is `billableHours × 100 ÷ (weeklyCapacityHours × 52 ÷ 12)`. A dimension it reads
+  must be in the report's `@dimensions`; it never reads another derived measure;
 - `segment.filter` — a named, reusable `@filter` ("active purchase");
 - `object.report` — a top-level object: `@from` an entity, `@dimensions` (`name` or
   `name:grain`), `@measures`.
@@ -72,6 +76,11 @@ Three rules an author trips on:
    measure (a time dimension at a grain is `<name><Grain>`, so `purchasedAt:day` is
    `purchasedAtDay`). A `field.*` or `identity.*` child on a report is an error.
 
+**Money.** `@of` may name a member of a `@storage: flattened` value object,
+`Payment.amount.amount`. A `sum`, `avg`, `min` or `max` of it loads only when the report also
+lists a dimension over each non-numeric member (`Payment.amount.currency`), so currencies are
+never added together. A jsonb value object's members are refused.
+
 Two questions to answer for every report:
 
 - **Do I want the rows that have no facts?** A report's rows come from the facts, so a
@@ -99,8 +108,8 @@ A report `@from` a TPH subtype is refused when its view is derived (the subtype 
 base's table): declare it `@from` the base with an `@filter` on the discriminator field.
 
 What does not exist: no grid or form for a report (TypeScript generates a list hook; no other port has a client tier), no way to narrow which
-derived fields are filterable, no `measure.derived`
-(arithmetic between measures beyond `measure.ratio`), no query-time choice of dimensions or
+derived fields are filterable, no product measure
+(`sum(hours × rate)`), no member of a jsonb value object, no query-time choice of dimensions or
 measures (a report is a fixed, compiled combination), and no time-zone vocabulary (grains and
 relative dates are UTC). Column types, the null rules, Monday weeks and per-engine differences
 are in `references/reporting.md`.

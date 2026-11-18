@@ -57,3 +57,33 @@ describe("a string-stored enum's column length", () => {
     expect(build).toThrow(/IN_PROGRESS/);
   });
 });
+
+describe("turning a length on for an enum column that already exists", () => {
+  // text → VARCHAR(n) fails on any existing row longer than n, and the member list says
+  // nothing about rows written before the enum was narrowed, so it is a lossy type change:
+  // gated behind --allow type-change like any other narrowing.
+  test("text → VARCHAR(n) is a change-column-type gated as lossy", async () => {
+    const before = (await schema([{ name: "status", "@values": ["OPEN", "CLOSED"] }]))();
+    const after = (await schema([{ name: "status", "@values": ["OPEN", "CLOSED"] }], 32))();
+    const { changes } = await diff(after, before, { dialect: "postgres" });
+    const change = changes.find((c) => c.kind === "change-column-type");
+    expect(change).toMatchObject({ column: "status", from: { kind: "text" }, to: { kind: "text", maxLength: 32 } });
+    expect(change?.status).toMatchObject({ state: "blocked" });
+    const allowed = await diff(after, before, { dialect: "postgres", allow: { typeChange: true } });
+    expect(emit(allowed.changes, { dialect: "postgres" }).up).toContain('ALTER COLUMN "status" TYPE VARCHAR(32)');
+  });
+
+  test("turning it off again (VARCHAR(n) → text) widens, so it is allowed", async () => {
+    const before = (await schema([{ name: "status", "@values": ["OPEN", "CLOSED"] }], 32))();
+    const after = (await schema([{ name: "status", "@values": ["OPEN", "CLOSED"] }]))();
+    const { changes } = await diff(after, before, { dialect: "postgres" });
+    expect(changes.find((c) => c.kind === "change-column-type")?.status).toEqual({ state: "allowed" });
+  });
+
+  test("SQLite does not enforce a VARCHAR length, so there is nothing to change", async () => {
+    const before = (await schema([{ name: "status", "@values": ["OPEN", "CLOSED"] }]))();
+    const after = (await schema([{ name: "status", "@values": ["OPEN", "CLOSED"] }], 32))();
+    const { changes } = await diff(after, before, { dialect: "sqlite" });
+    expect(changes.filter((c) => c.kind === "change-column-type")).toEqual([]);
+  });
+});

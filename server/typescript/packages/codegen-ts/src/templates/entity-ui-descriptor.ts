@@ -53,6 +53,7 @@ import {
   collectionSegment,
 } from "@metaobjectsdev/metadata";
 import { inferViewKind, currencyMetaFor, labelFor, humanize, valueObjectFor, numericInputControl } from "./field-meta.js";
+import { flatSurfaceFields } from "../flattened.js";
 import { VIEW_CONTEXT_FORM } from "../view-context.js";
 import { enumValues } from "../enum-meta.js";
 // `restPath` lives HERE rather than in api-surface.ts, which is where it used to sit and
@@ -121,7 +122,9 @@ export interface EntityUiDescriptor {
  * An object's OWN pluralized resource path — the one derivation of that spelling, and the
  * input {@link restPath} composes an address from. It is NOT `$path` on its own.
  *
- * ONE rule for entities and projections alike: snake_case the name, then pluralize.
+ * ONE rule for entities and projections alike ({@link collectionSegment}): the declared
+ * `@collectionName` or the configured `naming.collections` pluralizer, snake_cased; with neither,
+ * snake_case the name, then pluralize.
  * A projection used to be KEBAB-cased here while an entity was SNAKE-cased, composed in
  * the opposite ORDER, and that split was grandfathered rather than designed — the only
  * reason recorded for it was that the projection const had always emitted it. It is
@@ -335,6 +338,6 @@ export function buildEntityUiDescriptor(obj: MetaObject, root?: MetaRoot): Entit
     path: restPath(obj),
     // ADR-0039: resolving `fields()` so inherited fields appear, exactly as the emitted
     // descriptor has always done.
-    fields: obj.fields().map((f) => buildUiFieldDescriptor(f, root)),
+    fields: flatSurfaceFields(obj).map((f) => buildUiFieldDescriptor(f, root)),
   };
 }

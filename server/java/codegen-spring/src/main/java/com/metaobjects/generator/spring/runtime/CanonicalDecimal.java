@@ -44,8 +44,21 @@ public final class CanonicalDecimal {
     public static final class InvalidDecimalException extends IllegalArgumentException {
         private static final long serialVersionUID = 1L;
 
+        private final String code;
+
         public InvalidDecimalException(String message) {
+            this(message, "invalid_type");
+        }
+
+        /** {@code code} is the Zod-style validation code: {@code too_big} for a value out of range or over its precision/scale. */
+        public InvalidDecimalException(String message, String code) {
             super(message);
+            this.code = code;
+        }
+
+        /** The Zod-style validation code for this failure. */
+        public String code() {
+            return code;
         }
     }
 
@@ -72,7 +85,7 @@ public final class CanonicalDecimal {
             value = new BigDecimal(text);
         } catch (NumberFormatException e) {
             // an exponent beyond int range
-            throw new InvalidDecimalException("decimal out of range: " + text);
+            throw new InvalidDecimalException("decimal out of range: " + text, "too_big");
         }
         return checkRange(value, text);
     }
@@ -126,7 +139,7 @@ public final class CanonicalDecimal {
         long fractionDigits = Math.max(0, stripped.scale());
         if (fractionDigits > scale || integerDigits > (long) precision - scale) {
             throw new InvalidDecimalException("decimal does not fit decimal(" + precision + "," + scale + "): "
-                + format(value));
+                + format(value), "too_big");
         }
         return value;
     }
@@ -136,7 +149,7 @@ public final class CanonicalDecimal {
         BigDecimal stripped = value.stripTrailingZeros();
         long integerDigits = (long) stripped.precision() - stripped.scale();
         if (integerDigits > MAX_INTEGER_DIGITS || stripped.scale() > MAX_FRACTION_DIGITS) {
-            throw new InvalidDecimalException("decimal out of range: " + shown);
+            throw new InvalidDecimalException("decimal out of range: " + shown, "too_big");
         }
         return value;
     }

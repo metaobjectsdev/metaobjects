@@ -121,7 +121,7 @@ A single directory may freely mix `.json` and `.yaml` files — the loader disco
 
 ## Provider-based registration
 
-Java's `MetaDataTypeProvider` (`ServiceLoader`-discovered) is the implementation of the type-provider model adopted across every language port. New types, subtypes, and attributes are contributed by a provider — never by editing central registry files. Type-binding to native classes is resolved through `ObjectClassRegistry` at load time, not via reflection, so the registration stays AOT/native-image friendly (see [ADR-0001](../../spec/decisions/ADR-0001-cross-language-type-binding.md)).
+Java's `MetaDataTypeProvider` is the implementation of the type-provider model adopted across every language port. New types, subtypes, and attributes are contributed by a provider — never by editing central registry files. A project names its providers explicitly (Maven plugin `<providers>`, or Spring beans); see [extending-with-providers](../../docs/features/extending-with-providers.md). Type-binding to native classes is resolved through `ObjectClassRegistry` at load time, not via reflection, so the registration stays AOT/native-image friendly (see [ADR-0001](../../spec/decisions/ADR-0001-cross-language-type-binding.md)).
 
 ## Build + test
 
@@ -148,9 +148,10 @@ Releases to Maven Central: see [docs/RELEASING-java.md](../../docs/RELEASING-jav
 
 ## AI assistant context
 
-To scaffold MetaObjects context files (`.metaobjects/AGENTS.md`, `.metaobjects/CLAUDE.md`, and
-`.claude/skills/metaobjects-*/`) into your project so your AI assistant understands how to
-author metadata and run codegen, use the Node `meta` CLI:
+To scaffold MetaObjects context files (`.metaobjects/AGENTS.md` and the `metaobjects-*` skills)
+into your project so your AI assistant understands how to author metadata and run codegen, use
+the Node `meta` CLI. The skills go to `.claude/skills/` unless you pass `--skills-dir` (for
+example `.agents/skills` for assistants that read that directory):
 
 ```bash
 npx meta agent-docs --server java

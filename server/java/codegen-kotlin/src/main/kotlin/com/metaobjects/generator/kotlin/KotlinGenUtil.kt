@@ -48,6 +48,21 @@ public object KotlinGenUtil {
     const val AUTO_SET_ON_UPDATE = "onUpdate"
 
     /**
+     * Escape [s] for embedding inside a Kotlin double-quoted string literal (the caller adds
+     * the quotes). Handles `\`, `"`, `$` (Kotlin string templates), newline, tab and carriage
+     * return; `\` goes first so its own replacement is not re-escaped. Lives here because this
+     * object is on the eject engine surface: an ejected generator copy must compile without
+     * KotlinExtractSchemaEmitter, which delegates to this single definition.
+     */
+    fun kotlinStringLiteral(s: String): String =
+        s.replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+            .replace("$", "\\$")
+            .replace("\n", "\\n")
+            .replace("\t", "\\t")
+            .replace("\r", "\\r")
+
+    /**
      * Resolve a MetaObject (entity OR value) from a CANONICAL reference value (ADR-0059 R7):
      * an exact resolution-key match (`pkg::Name`, `::Name`, or a root-level `Name`), with any
      * dotted child tail ignored. Never matches on a short name. Returns null when nothing matches.
@@ -218,16 +233,14 @@ public object KotlinGenUtil {
      * §A2/§A3 — physical name + logical field name for one field.
      *
      * [members] is set only on a `@storage: "flattened"` value object, and there it is the
-     * real column information: such a field has no column of its own, and each member of the
-     * value object is a column of the owning table, named by core naming
+     * only column information: such a field has no column of its own ([column] is null), and
+     * each member of the value object is a column of the owning table, named by core naming
      * ([ColumnNaming.resolveFlattened], the rule `meta migrate` names them by), keyed by the
-     * member's field name. [column] is kept as it always was, so an owned copy of the names
-     * generator keeps compiling and emitting what it did; on a flattened field it names no
-     * column of the table.
+     * member's field name.
      */
     data class KotlinFieldNames(
         val name: String,
-        val column: String,
+        val column: String?,
         val members: Map<String, KotlinFieldNames>? = null,
     )
 
@@ -471,12 +484,11 @@ public object KotlinGenUtil {
     private fun fieldNamesOf(f: MetaField<*>, strategy: String): KotlinFieldNames {
         val flattened = f is ObjectField && f.hasMetaAttr(ObjectField.ATTR_STORAGE, true) &&
             ObjectField.STORAGE_FLATTENED == f.getMetaAttr(ObjectField.ATTR_STORAGE, true).valueAsString
-        val column = resolveColumnName(f, strategy)
-        if (!flattened) return KotlinFieldNames(f.name, column)
+        if (!flattened) return KotlinFieldNames(f.name, resolveColumnName(f, strategy))
         val target = (f as ObjectField).objectRef
         val members = target?.metaFields.orEmpty()
             .associate { m -> m.name to KotlinFieldNames(m.name, ColumnNaming.resolveFlattened(f, m, strategy)) }
-        return KotlinFieldNames(f.name, column, members)
+        return KotlinFieldNames(f.name, null, members)
     }
 
     /**
@@ -587,6 +599,17 @@ public object KotlinGenUtil {
      * the read (view) shape (#214). Thin wrapper so the generators read one named predicate.
      */
     fun isDerivedField(field: MetaField<*>): Boolean = field.isDerived
+
+    /**
+     * The fields [obj] reads from its own relation. A derived field on an entity that has no
+     * read view (not [MetaObject.isWriteThrough]) has no column anywhere: its table never stores
+     * it, so it is left out of every column read and write. An entity's primary source is always
+     * writable (the loader refuses a read-only primary), so an entity that is not write-through
+     * reads a table.
+     */
+    fun columnFields(obj: MetaObject): List<MetaField<*>> = obj.metaFields.filterNot {
+        isDerivedField(it) && obj.subType == MetaObject.SUBTYPE_ENTITY && !obj.isWriteThrough
+    }
 
     /**
      * FR-037 R1 — a field's EFFECTIVE `@mutability` mode: who may write it, and when.

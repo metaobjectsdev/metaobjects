@@ -1,4 +1,4 @@
-// ADR-0062 — the key of a whole `gen` run and the skip decision built on it.
+// ADR-0064 — the key of a whole `gen` run and the skip decision built on it.
 //
 // The key has two halves, both computed AFTER the metadata loads and BEFORE any generator renders
 // (this runs in the codegen project's process, where the generator list is built):
@@ -54,6 +54,9 @@ public static class GenFingerprint
         public string? OutDir { get; init; }
         public string? Namespace { get; init; }
         public string? Generators { get; init; }
+        /// <summary>The <c>--entities</c> selection, or <c>null</c> for a whole run. A narrowed run never
+        /// stores or satisfies a key; it is named here so the two identities could never coincide.</summary>
+        public IReadOnlyList<string>? Entities { get; init; }
         public string? TemplateRoot { get; init; }
         public string? TemplateSpec { get; init; }
         public bool EmitAbstractShapes { get; init; }
@@ -164,11 +167,8 @@ public static class GenFingerprint
         Flag("out", o.OutDir is null ? null : Path.GetFullPath(Path.Combine(cwd, o.OutDir)));
         Flag("namespace", o.Namespace);
         Flag("generators", o.Generators);
-        Flag("template-root", o.TemplateRoot is null ? null : Path.GetFullPath(Path.Combine(cwd, o.TemplateRoot)));
-        Flag("template-spec", o.TemplateSpec is null ? null : Path.GetFullPath(Path.Combine(cwd, o.TemplateSpec)));
-        Flag("emit-abstract-shapes", o.EmitAbstractShapes ? "true" : "false");
-        Flag("strict", o.Strict ? "true" : "false");
-        Flag("baseline", o.Baseline);
+        // Present only for a narrowed run, so a whole run's identity is unchanged.
+        if (o.Entities is not null) Flag("entities", string.Join(",", o.Entities.Order(StringComparer.Ordinal)));
 
         // The project the output is compiled into. With no GenConfig.ContextAssemblyName the DbContext
         // generator reads its assembly name from this file (CSharpProjectAssembly), which may lie
@@ -181,6 +181,11 @@ public static class GenFingerprint
             else
                 entries.Add(new Entry("project", Rel(projectRoot, outFull), "missing"));
         }
+        Flag("template-root", o.TemplateRoot is null ? null : Path.GetFullPath(Path.Combine(cwd, o.TemplateRoot)));
+        Flag("template-spec", o.TemplateSpec is null ? null : Path.GetFullPath(Path.Combine(cwd, o.TemplateSpec)));
+        Flag("emit-abstract-shapes", o.EmitAbstractShapes ? "true" : "false");
+        Flag("strict", o.Strict ? "true" : "false");
+        Flag("baseline", o.Baseline);
 
         // The project's own config: the nearest `.metaobjects/` at or above the project.
         for (var dir = new DirectoryInfo(Path.GetFullPath(projectRoot)); dir is not null; dir = dir.Parent)

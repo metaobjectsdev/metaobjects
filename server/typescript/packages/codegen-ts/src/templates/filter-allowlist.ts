@@ -1,4 +1,5 @@
-import { code, type Code } from "ts-poet";
+import { flatSurfaceFields } from "../flattened.js";
+import { code, type Code } from "../poet.js";
 import { MetaField, MetaObject } from "@metaobjectsdev/metadata";
 import {
   FIELD_ATTR_FILTERABLE,
@@ -115,8 +116,7 @@ function valueShape(f: MetaField): string {
 
 function filterableFields(entity: MetaObject, exclude?: string): MetaField[] {
   // fields() returns effective fields, so inherited fields (from extends:/super:) are included in allowlists.
-  return entity
-    .fields()
+  return flatSurfaceFields(entity)
     .filter((c) => c.attr(FIELD_ATTR_FILTERABLE) === true && c.name !== exclude);
 }
 

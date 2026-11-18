@@ -17,6 +17,7 @@ package com.metaobjects.config;
 
 import com.metaobjects.MetaRoot;
 import com.metaobjects.loader.FileSource;
+import com.metaobjects.loader.InMemoryStringSource;
 import com.metaobjects.loader.MetaDataSource;
 
 import java.nio.file.Path;
@@ -43,18 +44,20 @@ public final class DependencySet {
 
     /** The set of a project that declares no dependencies. */
     public static final DependencySet EMPTY =
-            new DependencySet(List.of(), List.of(), null);
+            new DependencySet(List.of(), List.of(), null, List.of());
 
     private final List<Dependencies.ResolvedDependency> dependencies;
     private final List<String> scopeInclude;
     private final List<String> migrateScope;
+    private final List<String> requirementsInherit;
     private final Set<String> importedPackages;
     private final Set<String> importedNodes;
     private final Scope.Compiled declaredMigrateScope;
 
     private DependencySet(List<Dependencies.ResolvedDependency> dependencies, List<String> scopeInclude,
-                          List<String> migrateScope) {
+                          List<String> migrateScope, List<String> requirementsInherit) {
         this.dependencies = List.copyOf(dependencies);
+        this.requirementsInherit = List.copyOf(requirementsInherit);
         this.scopeInclude = List.copyOf(scopeInclude);
         this.migrateScope = migrateScope == null ? null : List.copyOf(migrateScope);
         Set<String> packages = new HashSet<>();
@@ -87,7 +90,35 @@ public final class DependencySet {
         List<Dependencies.ResolvedDependency> resolved = specs.isEmpty() && lock.isEmpty()
                 ? List.of()
                 : Dependencies.verifySnapshot(configDir, specs, lock);
-        return new DependencySet(resolved, include, migrate);
+        return new DependencySet(resolved, include, migrate,
+                config.map(NeutralConfig::getRequirementsInherit).orElse(List.of()));
+    }
+
+    /**
+     * Resolve the dependencies of a runtime that has no project directory — a Spring app whose
+     * {@code .metaobjects/} folder is on the classpath. The lock and the snapshot are read through
+     * {@code reader}; {@code config} is the project's {@code config.json} when that is on the classpath
+     * too. With it, the declared dependencies are checked against the lock exactly as at build time
+     * ({@link Dependencies#verifySnapshot}); without it the lock is the only record of what was declared.
+     *
+     * @param lock the parsed lock, empty when none is on the classpath
+     */
+    public static DependencySet ofSnapshot(Optional<NeutralConfig> config,
+                                           Optional<java.util.Map<String, Dependencies.LockEntry>> lock,
+                                           Dependencies.SnapshotReader reader) {
+        List<String> declared = new ArrayList<>();
+        if (config.isPresent()) {
+            for (java.util.Map<String, String> spec : config.get().getDependencies()) declared.add(spec.get("name"));
+        } else if (lock.isPresent()) {
+            declared.addAll(lock.get().keySet());
+        }
+        List<String> include = config.map(NeutralConfig::getScopeInclude).orElse(List.of());
+        List<String> migrate = config.map(NeutralConfig::getMigrateScope).orElse(null);
+        List<Dependencies.ResolvedDependency> resolved = declared.isEmpty() && lock.isEmpty()
+                ? List.of()
+                : Dependencies.verifySnapshot(declared, lock, reader);
+        return new DependencySet(resolved, include, migrate,
+                config.map(NeutralConfig::getRequirementsInherit).orElse(List.of()));
     }
 
     /** The resolved dependencies, in dependency-NAME order. */
@@ -112,7 +143,11 @@ public final class DependencySet {
     /** The artifacts as load sources, in dependency-NAME order, each under its {@code dep:<name>/<artifact>} id. */
     public List<MetaDataSource> sources() {
         List<MetaDataSource> out = new ArrayList<>(dependencies.size());
-        for (Dependencies.ResolvedDependency d : dependencies) out.add(new FileSource(d.artifactPath(), d.sourceId()));
+        for (Dependencies.ResolvedDependency d : dependencies) {
+            out.add(d.content() != null
+                    ? new InMemoryStringSource(d.content(), d.sourceId())
+                    : new FileSource(d.artifactPath(), d.sourceId()));
+        }
         return out;
     }
 
@@ -129,6 +164,18 @@ public final class DependencySet {
         String pkg = Dependencies.packageOf(fqn);
         if (!importedPackages.contains(pkg)) return true;
         return Dependencies.explicitlyIncludes(scopeInclude, pkg);
+    }
+
+    /**
+     * FR-023 — is the requirement at {@code fqn} ({@code <package>::<dotted path>}) part of this
+     * project's ledger? Its own requirements always are; a dependency's only when
+     * {@code requirements.inherit} NAMES the dependency's package. Read by the requirement gate and
+     * the requirement-tests generators.
+     */
+    public boolean inLedger(String fqn) {
+        String pkg = Dependencies.packageOf(fqn);
+        if (!importedPackages.contains(pkg)) return true;
+        return Dependencies.explicitlyIncludes(requirementsInherit, pkg);
     }
 
     /**

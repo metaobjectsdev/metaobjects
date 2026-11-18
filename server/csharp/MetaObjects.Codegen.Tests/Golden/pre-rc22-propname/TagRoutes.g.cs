@@ -12,14 +12,21 @@ namespace Acme.Shop;
 
 public static class TagRoutes
 {
-    private static readonly global::System.Collections.Generic.HashSet<string> SortAllowlist = new(global::System.StringComparer.OrdinalIgnoreCase)
+    private static readonly System.Collections.Generic.HashSet<string> SortAllowlist = new(System.StringComparer.OrdinalIgnoreCase)
     {
         "Id",
         "Name",
     };
 
-    private static readonly global::System.Collections.Generic.Dictionary<string, bool> SortDefaultDesc = new(global::System.StringComparer.OrdinalIgnoreCase)
+    private static readonly System.Collections.Generic.Dictionary<string, bool> SortDefaultDesc = new(System.StringComparer.OrdinalIgnoreCase)
     {
+    };
+
+    // api.unknownFields: reject — the declared field names (wire spelling); any other body key is a 400.
+    private static readonly System.Collections.Generic.HashSet<string> KnownFields = new(System.StringComparer.Ordinal)
+    {
+        "id",
+        "name",
     };
 
     /// <summary>Maps <c>Tag</c> REST routes. Unauthenticated — see remarks.</summary>
@@ -52,21 +59,21 @@ public static class TagRoutes
                 if (!SortAllowlist.TryGetValue(field, out var resolved))
                     return Results.BadRequest(new { error = "invalid_sort", field });
                 var desc = parts.Length > 1
-                    ? string.Equals(parts[1], "desc", global::System.StringComparison.OrdinalIgnoreCase)
+                    ? string.Equals(parts[1], "desc", System.StringComparison.OrdinalIgnoreCase)
                     : SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;
                 q = ApplySortTag(q, resolved, desc);
             }
 
             // Pagination: ?offset=N first (skip), then ?limit=N (take).
-            if (qs.TryGetValue("offset", out var offsetRaw) && int.TryParse(offsetRaw, global::System.Globalization.NumberStyles.Integer, global::System.Globalization.CultureInfo.InvariantCulture, out var offset) && offset > 0)
+            if (qs.TryGetValue("offset", out var offsetRaw) && int.TryParse(offsetRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var offset) && offset > 0)
                 q = q.Skip(offset);
-            if (qs.TryGetValue("limit", out var limitRaw) && int.TryParse(limitRaw, global::System.Globalization.NumberStyles.Integer, global::System.Globalization.CultureInfo.InvariantCulture, out var limit) && limit > 0)
+            if (qs.TryGetValue("limit", out var limitRaw) && int.TryParse(limitRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var limit) && limit > 0)
                 q = q.Take(limit);
 
             var rows = await q.ToListAsync();
 
             // withCount=1 → { rows, total } envelope; otherwise bare row array.
-            var withCount = qs.TryGetValue("withCount", out var wc) && (wc == "1" || string.Equals(wc, "true", global::System.StringComparison.OrdinalIgnoreCase));
+            var withCount = qs.TryGetValue("withCount", out var wc) && (wc == "1" || string.Equals(wc, "true", System.StringComparison.OrdinalIgnoreCase));
             if (!withCount) return Results.Ok(rows);
             var totalQ = EfCoreFilterDispatch.ApplyFilter(db.Tags.AsNoTracking(), filter.Predicates);
             var total = await totalQ.CountAsync();
@@ -78,17 +85,30 @@ public static class TagRoutes
                 ? Results.Ok(found)
                 : Results.NotFound(new { error = "not_found" }));
 
-        app.MapPost(prefix + "/tags", async (Tag input, global::Acme.Generated.AppDbContext db) =>
+        app.MapPost(prefix + "/tags", async (HttpContext http, global::Acme.Generated.AppDbContext db) =>
         {
+            var jsonOpts = ((Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>)
+                http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)
+                .Value.SerializerOptions;
+            System.Text.Json.JsonDocument __body;
+            try { __body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }
+            catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }
+            using var __bodyScope = __body;
+            if (__body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
+                return ValidationIssues.Unreadable();
+            if (UnknownFieldCheck.Reject(__body.RootElement, KnownFields, http) is { } __unknown) return __unknown;
+            var __issues = new ValidationIssues();
+            Tag? input = null;
+            try { input = System.Text.Json.JsonSerializer.Deserialize<Tag>(__body.RootElement.GetRawText(), jsonOpts); }
+            catch (System.Exception __e) { __issues.AddReadFailure(__e, typeof(Tag)); }
+            if (input is null) return __issues.Any ? __issues.ToResult() : ValidationIssues.Unreadable();
             // Server-owned: a generated key, the TPH discriminator and M:N navigations are not settable by the client; the value is ignored.
             input.Id = default!;
-            var __vr = new global::System.Collections.Generic.List<global::System.ComponentModel.DataAnnotations.ValidationResult>();
-            if (!global::System.ComponentModel.DataAnnotations.Validator.TryValidateObject(
-                    input, new global::System.ComponentModel.DataAnnotations.ValidationContext(input), __vr, true))
-                return Results.BadRequest(new { error = "validation" });
+            __issues.ValidateObject(input, jsonOpts);
+            if (__issues.Any) return __issues.ToResult();
             db.Tags.Add(input);
             try { await db.SaveChangesAsync(); }
-            catch (global::System.Exception __saveError)
+            catch (System.Exception __saveError)
             {
                 if (ConstraintErrors.Classify(__saveError) is { } __constraint)
                     return Results.Json(
@@ -99,51 +119,55 @@ public static class TagRoutes
             return Results.Created(prefix + "/tags", input);
         });
 
-        async global::System.Threading.Tasks.Task<IResult> UpdateTag(long id, HttpContext http, global::Acme.Generated.AppDbContext db)
+        async System.Threading.Tasks.Task<IResult> UpdateTag(long id, HttpContext http, global::Acme.Generated.AppDbContext db)
         {
             var existing = await db.Tags.FindAsync(id);
             if (existing is null) return Results.NotFound(new { error = "not_found" });
-            global::System.Text.Json.JsonDocument body;
-            try { body = await global::System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }
-            catch (global::System.Text.Json.JsonException) { return Results.BadRequest(new { error = "validation" }); }
+            System.Text.Json.JsonDocument body;
+            try { body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }
+            catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }
             using var bodyScope = body;
+            if (body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object) return ValidationIssues.Unreadable();
+            if (UnknownFieldCheck.Reject(body.RootElement, KnownFields, http) is { } __unknown) return __unknown;
             // Deserialize each value with the app's CONFIGURED JSON options, not defaults —
             // a field.timestamp binds to DateTimeOffset via a custom converter registered on
             // ConfigureHttpJsonOptions, and default options cannot read the wire format, throwing 500.
-            var jsonOpts = ((global::Microsoft.Extensions.Options.IOptions<global::Microsoft.AspNetCore.Http.Json.JsonOptions>)
-                http.RequestServices.GetService(typeof(global::Microsoft.Extensions.Options.IOptions<global::Microsoft.AspNetCore.Http.Json.JsonOptions>))!)
+            var jsonOpts = ((Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>)
+                http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)
                 .Value.SerializerOptions;
             var entry = db.Entry(existing);
             var __keys = SerializerKeys.PropertyByKey(existing.GetType(), jsonOpts);
+            var __issues = new ValidationIssues();
             foreach (var prop in body.RootElement.EnumerateObject())
             {
                 var __clr = __keys.TryGetValue(prop.Name, out var __mapped) ? __mapped : null;
                 var target = (__clr is null ? null : entry.Metadata.FindProperty(__clr))
                     ?? entry.Metadata.FindProperty(prop.Name)
-                    ?? entry.Metadata.GetProperties().FirstOrDefault(p => string.Equals(p.Name, prop.Name, global::System.StringComparison.OrdinalIgnoreCase));
+                    ?? entry.Metadata.GetProperties().FirstOrDefault(p => string.Equals(p.Name, prop.Name, System.StringComparison.OrdinalIgnoreCase));
                 if (target is null) continue;
+                var __wire = ValidationIssues.WireName(existing.GetType(), target.Name, jsonOpts);
                 if (target.IsPrimaryKey()) continue;                        // PK is route-authoritative
-                if (prop.Value.ValueKind == global::System.Text.Json.JsonValueKind.Null)
+                if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Null)
                 {
                     // FR-035 PATCH-2: explicit null clears a nullable column; on a
                     // NOT-NULL (@required) column it is a 400 (matching the cross-port contract).
-                    if (!target.IsNullable) return Results.BadRequest(new { error = "validation" });
+                    if (!target.IsNullable) { __issues.AddRequired(__wire); continue; }
                     entry.CurrentValues[target] = null;
                     continue;
                 }
-                var clr = global::System.Nullable.GetUnderlyingType(target.ClrType) ?? target.ClrType;
-                var __val = global::System.Text.Json.JsonSerializer.Deserialize(prop.Value.GetRawText(), clr, jsonOpts);
+                var clr = System.Nullable.GetUnderlyingType(target.ClrType) ?? target.ClrType;
+                object? __val;
+                try { __val = System.Text.Json.JsonSerializer.Deserialize(prop.Value.GetRawText(), clr, jsonOpts); }
+                catch (System.Exception __e) { __issues.AddReadFailure(__e, clr, __wire); continue; }
                 // FR-036 A2 — validate the PRESENT, non-null value with the same per-field
                 // DataAnnotations as create. This validates ONLY the present value (never the
                 // whole row) so an ABSENT @required field is untouched, not a 400.
-                var __pr = new global::System.Collections.Generic.List<global::System.ComponentModel.DataAnnotations.ValidationResult>();
-                if (!global::System.ComponentModel.DataAnnotations.Validator.TryValidateProperty(__val,
-                        new global::System.ComponentModel.DataAnnotations.ValidationContext(existing) { MemberName = target.Name }, __pr))
-                    return Results.BadRequest(new { error = "validation" });
+                if (!__issues.ValidateProperty(existing, target.Name, __val, jsonOpts)) continue;
                 entry.CurrentValues[target] = __val;
             }
+            if (__issues.Any) return __issues.ToResult();
             try { await db.SaveChangesAsync(); }
-            catch (global::System.Exception __saveError)
+            catch (System.Exception __saveError)
             {
                 if (ConstraintErrors.Classify(__saveError) is { } __constraint)
                     return Results.Json(
@@ -162,7 +186,7 @@ public static class TagRoutes
             if (existing is null) return Results.NotFound(new { error = "not_found" });
             db.Tags.Remove(existing);
             try { await db.SaveChangesAsync(); }
-            catch (global::System.Exception __saveError)
+            catch (System.Exception __saveError)
             {
                 if (ConstraintErrors.Classify(__saveError) is { } __constraint)
                     return Results.Json(

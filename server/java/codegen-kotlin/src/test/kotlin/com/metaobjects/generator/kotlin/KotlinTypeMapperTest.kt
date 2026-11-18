@@ -160,7 +160,7 @@ class KotlinTypeMapperTest {
 
     @Test fun `duration field maps to java time Duration and a file-local durationColumn`() {
         // field.duration: native java.time.Duration property; the Exposed column is the file-local
-        // `durationColumn(...)` (Column<Duration> over native INTERVAL, text elsewhere) and, with
+        // `durationColumn(...)` (Column<Duration> over native INTERVAL, a BIGINT count of microseconds elsewhere) and, with
         // isArray, `durationArrayColumn(...)`.
         val f = DurationField("holdFor")
         val tn = KotlinTypeMapper.kotlinTypeName(f) as ClassName
@@ -385,11 +385,14 @@ class KotlinTypeMapperTest {
         assertEquals("long(\"price_cents\")", KotlinTypeMapper.exposedColumnSpec(f))
     }
 
-    @Test fun `enum field maps to String and varchar(64) exposed column`() {
+    @Test fun `enum field maps to String and a text exposed column when no length is configured`() {
         val f = EnumField("status")
-        // v1 enum representation: String + VARCHAR; full enum-class emission deferred.
+        // v1 enum representation: String; full enum-class emission deferred. No @maxLength and
+        // no project enums.maxLength: `text`, as `meta migrate` creates it.
         assertEquals(STRING, KotlinTypeMapper.kotlinTypeName(f))
-        assertEquals("varchar(\"status\", 64)", KotlinTypeMapper.exposedColumnSpec(f))
+        assertEquals("text(\"status\")", KotlinTypeMapper.exposedColumnSpec(f))
+        f.addMetaAttr(IntAttribute.create("maxLength", 32))
+        assertEquals("varchar(\"status\", 32)", KotlinTypeMapper.exposedColumnSpec(f))
     }
 
     @Test fun enumTypeNameComputesClassName() {

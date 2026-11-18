@@ -104,6 +104,31 @@ export async function startJsonbServer(connectionUri: string, root: MetaRoot): P
     throw err;
   });
 
+  // A member a value object does not declare is dropped from the body before the write
+  // (scenario jsonb-nested-undeclared-key-dropped): `api.unknownFields` judges the top level
+  // only, so a nested undeclared key is never refused and never stored. `payload` is the open
+  // bag and keeps every key. Hand-rolled like the Author reference's DECLARED_KEYS.
+  const MARKER = ["label", "score"];
+  const MEASURE = ["ratio", "samples", "amount"];
+  const VO_MEMBERS: Record<string, readonly string[]> = {
+    primaryMarker: MARKER, optionalMarker: MARKER, markers: MARKER,
+    measure: MEASURE, measures: MEASURE,
+    telemetry: ["capturedAt", "latitude", "tempC"],
+  };
+  const keepDeclared = (value: unknown, members: readonly string[]): unknown =>
+    Array.isArray(value)
+      ? value.map((v) => keepDeclared(v, members))
+      : value !== null && typeof value === "object"
+        ? Object.fromEntries(Object.entries(value).filter(([k]) => members.includes(k)))
+        : value;
+  const dropUndeclaredMembers = (body: unknown): Record<string, unknown> =>
+    Object.fromEntries(
+      Object.entries((body ?? {}) as Record<string, unknown>).map(([k, v]) => {
+        const members = VO_MEMBERS[k];
+        return [k, members === undefined ? v : keepDeclared(v, members)];
+      }),
+    );
+
   // GET /api/documents/:id
   fastify.get(`${ROUTE_BASE}/:id`, async (req, reply) => {
     const { id } = req.params as { id: string };
@@ -115,7 +140,7 @@ export async function startJsonbServer(connectionUri: string, root: MetaRoot): P
 
   // POST /api/documents
   fastify.post(ROUTE_BASE, async (req, reply) => {
-    const row = await om.create(ENTITY, req.body as Record<string, unknown>);
+    const row = await om.create(ENTITY, dropUndeclaredMembers(req.body));
     reply.code(201).send(row);
     return reply;
   });
@@ -125,7 +150,7 @@ export async function startJsonbServer(connectionUri: string, root: MetaRoot): P
   // propagates to the shared setErrorHandler → 400.
   const updateHandler: RouteHandlerMethod = async (req, reply) => {
     const { id } = req.params as { id: string };
-    const row = await om.update(ENTITY, Number(id), req.body as Record<string, unknown>, {
+    const row = await om.update(ENTITY, Number(id), dropUndeclaredMembers(req.body), {
       ifMissing: "ignore",
     });
     if (row) return row;

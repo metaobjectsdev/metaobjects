@@ -2,7 +2,7 @@ import type { FastifyInstance, RouteShorthandOptions } from "fastify";
 import { quoteIdent, type SqlDialect } from "../sql-dialect.js";
 import { sql, eq, and, count } from "drizzle-orm";
 import qs from "qs";
-import { parseFilterParams, parsePageBound, parseReportPage, RAW_VIEW_MAX_LIMIT, REPORT_MAX_ROWS, ReportTooLargeError, FilterParseError } from "./filter-parser.js";
+import { parseFilterParams, parsePageBound, pageLimit, parseReportPage, RAW_VIEW_MAX_LIMIT, REPORT_MAX_ROWS, ReportTooLargeError, FilterParseError, type PageSize } from "./filter-parser.js";
 import {
   ReportExportError, assertExportWithinCap, exportContentDisposition, exportWithCountError, isExportCountFlag,
   parseExportPage, readExportFormat, renderExport, EXPORT_CONTENT_TYPES, type ReportExportSpec,
@@ -61,6 +61,13 @@ export interface MountReadOnlyOptions extends WireOptions {
    * refused the same way. Default 10000, the same in every port.
    */
   readonly reportMaxRows?: number;
+  /**
+   * The list page size of a projection (`api.pagination` in `.metaobjects/config.json`; ignored
+   * for a report, which has `reportMaxRows`, and for a raw view, which pages to at most 1000).
+   * A list with no `limit` returns `defaultLimit` rows; a `limit` above `maxLimit` answers
+   * `400 { "error": "limit_too_large", "maxLimit": N }`.
+   */
+  readonly pagination?: PageSize;
   /**
    * Report export (`resource: "report"` only; ignored otherwise). Present when the project wires
    * the `report-export` generator: `?format=csv|json|xml` then answers the list in that shape,
@@ -230,7 +237,7 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
       if (result.orderBy) q = q.orderBy(...result.orderBy);
       // A report fetches one row past the cap when no limit was sent, to tell exactly the
       // cap apart from more than the cap before any body is written.
-      const limit = reportPage?.limit ?? result.limit;
+      const limit = reportPage?.limit ?? pageLimit(result.limit, opts.pagination);
       const offset = reportPage?.offset ?? result.offset;
       if (limit !== undefined) q = q.limit(limit);
       if (offset !== undefined) q = q.offset(offset);

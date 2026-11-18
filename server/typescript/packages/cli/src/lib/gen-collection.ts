@@ -2,7 +2,7 @@
 //
 // Where a TypeScript package's codegen config lives and which collection it generates from.
 // A leaf module, importing node builtins and the sdk's collection resolver only, because the
-// `meta gen` skip check (ADR-0062) answers these two questions before anything heavier loads.
+// `meta gen` skip check (ADR-0064) answers these two questions before anything heavier loads.
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { resolveCollection, type Collection } from "@metaobjectsdev/sdk/collection";

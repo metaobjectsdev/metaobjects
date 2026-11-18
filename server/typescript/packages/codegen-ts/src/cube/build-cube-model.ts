@@ -42,6 +42,8 @@ import {
   stripPackage,
   type MetaData,
   REPORTING_ATTR_VIA,
+  REPORTING_ATTR_OF,
+  resolveDimensionOf,
   OBJECT_REPORT_ATTR_SPINE,
   type MetaDimension,
   type MetaField,
@@ -85,8 +87,10 @@ import {
   docOf,
   grainsOf,
   measureMembers,
+  measuresRead,
   memberKey,
   segmentSpec,
+  valueObjectMemberError,
   type MemberContext,
 } from "./cube-members.js";
 import {
@@ -510,11 +514,18 @@ class CubeModelBuilder {
     return true;
   }
 
+  /** A dimension's `@of` field; refused when it names a value-object member (FR-044 R12). */
+  private memberFreeDimensionField(draft: CubeDraft, dim: MetaDimension, where: string): MetaField {
+    const ref = resolveDimensionOf(dim, draft.entity, this.root);
+    if (ref === undefined) throw new Error(`${where} @of '${dim.of() ?? ""}' does not resolve.`);
+    if (ref.embedding !== undefined) throw valueObjectMemberError(where, authoredText(dim, REPORTING_ATTR_OF) ?? dim.of() ?? "");
+    return ref.field;
+  }
+
   /** A dimension over the owning cube's own column (no `@via`). */
   private ownDimension(draft: CubeDraft, dim: MetaDimension, where: string): CubeDimensionSpec {
     // A dimension without @via is about `from`'s own rows: the field is read from `from`.
-    const of = dimensionOfField(dim, draft.entity, this.root);
-    if (of === undefined) throw new Error(`${where} @of '${dim.of() ?? ""}' does not resolve.`);
+    const of = this.memberFreeDimensionField(draft, dim, where);
     const { sql, type } = this.columnOf(of, where);
     // An attribute and a time dimension over one field have the same Table C SQL, so either
     // serves a @via that reaches the field.
@@ -680,8 +691,7 @@ class CubeModelBuilder {
       }
     }
     // With @via, the field is read from the entity its @of names.
-    const of = dimensionOfField(dim, draft.entity, this.root);
-    if (of === undefined) throw new Error(`${where} @of '${dim.of() ?? ""}' does not resolve.`);
+    const of = this.memberFreeDimensionField(draft, dim, where);
     const { type } = this.columnOf(of, where);
     const member = this.reachedMember(joined, of, label);
     draft.viaMembers.set(dim, member);
@@ -887,10 +897,8 @@ class CubeModelBuilder {
       if (f.role !== "measure" || m === undefined) continue;
       listed.add(m.name);
       need(m);
-      if (m.isRatio()) {
-        need(ratioOperand(from.entity, m, m.numerator(), where));
-        need(ratioOperand(from.entity, m, m.denominator(), where));
-      }
+      // A ratio's operands, and a derived measure's operands and theirs, are members its SQL reads.
+      for (const o of measuresRead(from.entity, m, where)) need(o);
     }
     return from.measures
       .filter((m) => needed.has(m.name))

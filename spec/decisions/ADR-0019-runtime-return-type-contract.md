@@ -194,3 +194,14 @@ spelling (`"12.50"`, not `"12.5"`). A project that wants 1.1.1's output in every
   `JSON.parse` turns a number into a double before any user code sees it (Amendment 1, "Why a
   string"). That is a choice the project makes; it is no longer the default.
 - No vocabulary changes, so `metamodelVersion` does not move. The fix ships in 1.1.2 as a bug fix.
+
+**Addendum (2026-11-04): `wire.durations`.** `field.duration` (1.3) follows this rule rather than
+answering it. `wire.durations` is `"native"` (default) or `"iso"`. `native` writes and reads what
+the port's standard serializer does for its duration type: System.Text.Json's `TimeSpan` form in
+C# (`"01:30:00"`), `Duration.toString()` / `Duration.parse` in Java and Kotlin as Spring Boot
+configures Jackson, Pydantic v2's `timedelta` form in Python (ISO-8601 that folds 24 hours into a
+day), and the canonical string in TypeScript, whose in-process type is a `string`. `iso` is the
+canonical ISO-8601 form of `fixtures/duration-wire/` in every port, and the api-contract and
+persistence corpora pin it, as they pin `decimals: "string"`. A filter operand is an ISO-8601
+duration in both modes, since it is query grammar, not the body serializer. The shared config
+cases are in `fixtures/wire-conformance/config-blocks.json`.

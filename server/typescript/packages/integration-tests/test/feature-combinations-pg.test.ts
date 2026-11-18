@@ -213,9 +213,51 @@ async function m2mFailures(
 
 const CASES = pairwiseCombinations();
 
+/** The one model also booted and exercised in the package layout: an M:N held by a TPH base, so
+ *  the routes, the junction and the discriminator all sit below the `combo/` directory. */
+const PACKAGE_BOOT_CASE = CASES.find((c) => c.holder === "base" && c.target === "plain" && isManyToMany(c)) ?? CASES[0]!;
+
+interface Built { root: MetaRoot; app: GeneratedApp }
+
+/** Every check for one case. The package layout compiles every case and boots PACKAGE_BOOT_CASE. */
+async function runCase(c: Combination, built: Built, uri: string, diagnostics: Map<string, string[]>): Promise<void> {
+  const { root, app } = built;
+  await executeSql(uri, "DROP SCHEMA public CASCADE; CREATE SCHEMA public;");
+
+  judge(c, "compile", diagnostics.get(app.dir) ?? []);
+
+  await app.migrate(uri);
+  const actualFks = (await actualForeignKeys(uri)).map(fkKey);
+  judge(c, "fks", diffLines("fk", expectedForeignKeys(root).map(fkKey), actualFks));
+  judge(c, "columns", missingColumns(expectedColumns(root), await actualColumns(uri)).map((x) => `missing column ${x}`));
+
+  const modules = await Promise.all(
+    root.objects().filter((o) => app.emitted.has(`${o.name}.ts`)).map((o) => app.importEmitted(`${o.name}.ts`)),
+  );
+  const drizzle = drizzleForeignKeys(modules).map(fkKey);
+  judge(c, "drizzle", [
+    ...actualFks.filter((k) => !drizzle.includes(k)).map((k) => `in the database, not in Drizzle: ${k}`),
+    ...drizzle.filter((k) => !actualFks.includes(k)).map((k) => `in Drizzle, not in the database: ${k}`),
+  ]);
+
+  const paths = new Map<MetaObject, string>();
+  for (const obj of servedObjects(root)) paths.set(obj, await generatedPathOf(app, obj));
+  const fastify = await app.bootRoutes();
+  const missingRoutes = expectedRoutes(root, (o) => paths.get(o)!)
+    .filter((r) => !fastify.hasRoute({ method: r.method, url: r.url }))
+    .map((r) => `${r.method} ${r.url} (${r.why})`);
+  await fastify.close();
+  judge(c, "routes", missingRoutes);
+
+  if (isManyToMany(c)) {
+    judge(c, "m2m", await m2mFailures(root, c, app, uri, paths));
+  }
+}
+
 describe("feature combinations, end to end against Postgres", () => {
   let pgServer: RunningPg;
-  const apps = new Map<string, { root: MetaRoot; app: GeneratedApp }>();
+  const apps = new Map<string, Built>();
+  const packageApps = new Map<string, Built>();
   let diagnostics = new Map<string, string[]>();
 
   beforeAll(async () => {
@@ -223,12 +265,14 @@ describe("feature combinations, end to end against Postgres", () => {
     for (const c of CASES) {
       const root = await load(c);
       apps.set(caseName(c), { root, app: await generateApp(root, pgServer.connectionUri, "combination") });
+      packageApps.set(caseName(c), { root, app: await generateApp(root, pgServer.connectionUri, "combination-package", "package") });
     }
-    diagnostics = compileTrees([...apps.values()].map(({ app }) => ({ dir: app.dir, files: app.files })));
-  }, 300_000);
+    // One program for both layouts: Drizzle's and Fastify's declarations load once.
+    diagnostics = compileTrees([...apps.values(), ...packageApps.values()].map(({ app }) => ({ dir: app.dir, files: app.files })));
+  }, 600_000);
 
   afterAll(async () => {
-    for (const { app } of apps.values()) await app.close();
+    for (const { app } of [...apps.values(), ...packageApps.values()]) await app.close();
     await pgServer?.stop();
   });
 
@@ -244,38 +288,23 @@ describe("feature combinations, end to end against Postgres", () => {
 
   for (const c of CASES) {
     test(caseName(c), async () => {
-      const { root, app } = apps.get(caseName(c))!;
-      const uri = pgServer.connectionUri;
-      await executeSql(uri, "DROP SCHEMA public CASCADE; CREATE SCHEMA public;");
-
-      judge(c, "compile", diagnostics.get(app.dir) ?? []);
-
-      await app.migrate(uri);
-      const actualFks = (await actualForeignKeys(uri)).map(fkKey);
-      judge(c, "fks", diffLines("fk", expectedForeignKeys(root).map(fkKey), actualFks));
-      judge(c, "columns", missingColumns(expectedColumns(root), await actualColumns(uri)).map((x) => `missing column ${x}`));
-
-      const modules = await Promise.all(
-        root.objects().filter((o) => app.files.includes(`${o.name}.ts`)).map((o) => app.importModule(`${o.name}.ts`)),
-      );
-      const drizzle = drizzleForeignKeys(modules).map(fkKey);
-      judge(c, "drizzle", [
-        ...actualFks.filter((k) => !drizzle.includes(k)).map((k) => `in the database, not in Drizzle: ${k}`),
-        ...drizzle.filter((k) => !actualFks.includes(k)).map((k) => `in Drizzle, not in the database: ${k}`),
-      ]);
-
-      const paths = new Map<MetaObject, string>();
-      for (const obj of servedObjects(root)) paths.set(obj, await generatedPathOf(app, obj));
-      const fastify = await app.bootRoutes();
-      const missingRoutes = expectedRoutes(root, (o) => paths.get(o)!)
-        .filter((r) => !fastify.hasRoute({ method: r.method, url: r.url }))
-        .map((r) => `${r.method} ${r.url} (${r.why})`);
-      await fastify.close();
-      judge(c, "routes", missingRoutes);
-
-      if (isManyToMany(c)) {
-        judge(c, "m2m", await m2mFailures(root, c, app, uri, paths));
-      }
+      await runCase(c, apps.get(caseName(c))!, pgServer.connectionUri, diagnostics);
     }, 120_000);
   }
+
+  describe("package layout", () => {
+    test("the package layout folds the emitted files into package directories", () => {
+      for (const { app } of packageApps.values()) expect(app.files.some((f) => f.includes("/"))).toBe(true);
+    });
+
+    for (const c of CASES) {
+      test(`${caseName(c)} compiles`, () => {
+        judge(c, "compile", diagnostics.get(packageApps.get(caseName(c))!.app.dir) ?? []);
+      });
+    }
+
+    test(`${caseName(PACKAGE_BOOT_CASE)} migrates, mounts every route and answers M:N reads`, async () => {
+      await runCase(PACKAGE_BOOT_CASE, packageApps.get(caseName(PACKAGE_BOOT_CASE))!, pgServer.connectionUri, diagnostics);
+    }, 120_000);
+  });
 });

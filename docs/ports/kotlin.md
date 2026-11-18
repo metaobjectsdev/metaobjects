@@ -20,6 +20,8 @@ Two modules:
 - **`metaobjects-metadata-ktx`** — thin Kotlin facade over the Java loader + render
   engine for idiomatic Kotlin runtime use.
 
+> **Schema migrations and database checks run in the Node `meta` tool.** The Maven plugin generates and verifies code, but writing and applying migrations (`npx meta migrate`, `npx meta migrate apply-pending`) and checking a live database against the model (`npx meta verify --db`) need Node: `npm i -D @metaobjectsdev/cli`, then `npx meta init --config-only` to point it at your metadata. Node is needed where migrations are written or applied, not in your running service. What else behaves differently in this port is listed in [What differs by language](../features/language-differences.md).
+
 ## Regeneration and hand edits
 
 There is no three-way merge on the JVM (that is TypeScript-only). Kotlin runs through the same
@@ -157,7 +159,7 @@ your own `<groupId>`, `<artifactId>` and `<version>`:
 
 ## Configure
 
-The 17 generators registered in `codegen-kotlin` (`GeneratorRegistry.kt`):
+The 18 generators registered in `codegen-kotlin` (`GeneratorRegistry.kt`):
 
 | Generator | Output | Per |
 |---|---|---|
@@ -177,6 +179,7 @@ The 17 generators registered in `codegen-kotlin` (`GeneratorRegistry.kt`):
 | `KotlinSpringControllerGenerator` | `<Entity>Controller.kt` — Spring `@RestController` (5 CRUD endpoints; cross-port API contract). **Select `KotlinRelationsGenerator` with it** when the model has a M:N relationship: the traversal routes call the `<rel>Query` helpers only that generator emits, and without it the controller does not compile | entities with `source.rdb @kind="table"` |
 | `KotlinRequirementTestsGenerator` | Per metamodel package that holds a tested requirement, two files in `testPackage`: `Requirements_<pkgKey>_Witnesses.kt` (an interface whose default members fail with `unimplemented requirement: ...`) and `Requirements_<pkgKey>_Test.kt` (one JUnit Jupiter `@Test` per requirement, calling a project-owned witness). See "Requirement tests" below | every tested `requirement.*` (functional, level 4 or above by default) |
 | `KotlinReportExportGenerator` | Standalone export of a served report (`?format=csv\|json\|xml`, see [Report export](#report-export)): one `<Report>Export.kt` per served report beside its controller and one shared `ReportExportWriter.kt`. Args: `outputDir` (required), `maxRows` (default `100000`), `xmlNulls` (`empty`, the default, or `nil`), `csvBom` (default `false`) and `writerPackage` (default: the package prefix the served reports share, else `export`). Never implied by a library. Ejectable | every served report |
+| `KotlinSharedModelGenerator` | `<name>.metaobjects.json` and `metaobjects.pkg.json` — the FR-023 shared-model artifact and manifest a consumer's `meta deps sync` reads. See [Publishing a shared model](#publishing-a-shared-model-shared-model) | once per project (`include` selects the nodes) |
 | `KotlinApiDocsGenerator` | The Kotlin SDK api reference, under `<outputDir>/<apiSubDir>`: `<Unit>.md` per entity, value object, projection, served report and template, a `README.md` index and `AGENT-API.md`. A `<generator>` entry like any other, run by `metaobjects:generate` and checked by `metaobjects:verify`. Args: `outputDir` (required, generated files only), `apiSubDir` (default `api/kotlin`), `layout` (`flat` or `package`), `projectName` and `modelBaseUrl`, as for the Java `api-docs` (with no `modelBaseUrl` the pages carry no `Model / metadata` link). The `metaobjects:docs` goal was removed in 8.1.0 ([migration](../features/migrations/docs-are-generators.md#java-and-kotlin)). Ejectable, with the page model, builder, renderer and path math | the whole model, once |
 
 Maven wiring. The plugin bundles `metaobjects-codegen-kotlin`, so it is not a dependency of your
@@ -297,9 +300,19 @@ doc](java.md#consuming-a-shared-model-dependencies): the committed snapshot load
 entities can extend and reference it, and no Kotlin generator emits a file for an imported
 object (a `codegen-kotlin` test pins that) unless `scope.include` names its package.
 
+### Publishing a shared model (`shared-model`)
+
+`com.metaobjects.generator.kotlin.KotlinSharedModelGenerator` writes the same artifact and
+manifest as the [Java generator](java.md#publishing-a-shared-model), under the same args
+(`outputDir`, `name`, `include`, `files`, optional `exclude` and `version`, which defaults to
+the module's `<version>`). Both call the one engine in `metaobjects-metadata`, so the bytes match
+the shared corpus (`fixtures/shared-model-conformance/`), and a `codegen-kotlin` test pins that
+by running a corpus case through this class. `mvn metaobjects:eject -Dnames=shared-model -Dport=kotlin`
+copies `KotlinSharedModelGenerator.kt` into a `codegen/` module under your package.
+
 ### Declarative template-codegen (`TemplateScopeGenerator`)
 
-The 17 generators above are a starting point, not the ceiling. When you need a shape
+The 18 generators above are a starting point, not the ceiling. When you need a shape
 none of them emits, Kotlin has **both** authoring paths — and which to reach for is a
 real decision (tradeoff table: [`codegen-concepts.md` §3](../features/codegen-concepts.md)).
 
@@ -339,15 +352,36 @@ The data dict itself: [`codegen-data-shapes.md`](../features/codegen-data-shapes
 
 ### Custom providers (optional)
 
-Kotlin inherits Java's SPI-based provider discovery directly — write a
-`MetaDataTypeProvider` implementation (or its Kotlin DSL equivalent in
-`metadata-ktx`), drop the FQCN into
-`META-INF/services/com.metaobjects.registry.MetaDataTypeProvider`, and the
-loader picks it up alongside the core providers. See the Java port's
-[Custom providers section](java.md#custom-providers-optional) for the
-mechanism; the
-[`../features/extending-with-providers.md`](../features/extending-with-providers.md)
-reference covers the cross-port contract.
+Kotlin runs on the JVM registry, so a provider is a `MetaDataTypeProvider` written in Kotlin
+and is wired exactly as in Java: the plugin's `<providers><provider>FQCN</provider></providers>`
+list (Kotlin generators run through `metaobjects:generate`, so `generate`, `verify`, `fmt`
+and `editor` all load it), a `MetaDataTypeProvider` bean in a Spring Boot app, or the
+`metadata-ktx` loader's `providers` parameter:
+
+```kotlin
+class PickerLayout(name: String) : MetaLayout("picker", name)
+
+class AcmeVocabulary : MetaDataTypeProvider {
+    override fun getProviderId() = "acme-vocabulary"
+    override fun getDependencies() = arrayOf("field-types", "layout-types")
+    override fun registerTypes(registry: MetaDataRegistry) {
+        registry.registerType(PickerLayout::class.java) { def ->
+            def.type("layout").subType("picker").inheritsFrom("layout", "base")
+            def.optionalAttributeWithConstraints("displayField").ofType("string").asSingle()
+        }
+        registry.extendType(StringField::class.java) { def ->
+            def.optionalAttributeWithConstraints("searchable").ofType("boolean").asSingle()
+            def.optionalAttributeWithConstraints("valueLabels").ofType("string").asArray()
+        }
+    }
+}
+
+val result = loadUris("app", uris, LoaderOptions.create(false, false, true), providers = listOf(AcmeVocabulary()))
+```
+
+`META-INF/services` does not add a provider to the loader. See the Java port's
+[Custom providers section](java.md#custom-providers-optional) for the plugin wiring, and
+[`../features/extending-with-providers.md`](../features/extending-with-providers.md) for the cross-port contract.
 
 ### Exposed 1.x output (`exposedApi`)
 
@@ -473,6 +507,12 @@ mvn metaobjects:generate               # or run the codegen alone
 mvn metaobjects:verify                 # fails, naming the files, when generated code is stale against the model
 ```
 
+`-Dmeta.entities=Program,Week` regenerates only those objects' files, and each generator's
+`<filters>` narrow what it writes; `-Dmeta.loaderTimeoutMs` raises the loader's 30-second
+initialization timeout for a large model. Both are the Maven plugin's, shared with Java: see
+[Select objects](java.md#generate) on the Java page for what narrows, what stays whole-model,
+and the refusals.
+
 Schema migrations are owned by the TypeScript toolchain — see the
 [Migrations section](../features/migrations-and-drift.md#kotlin) for the `meta migrate` commands.
 
@@ -503,6 +543,18 @@ object AuthorTable : Table("authors") {
     override val primaryKey = PrimaryKey(id)
 }
 ```
+
+An increment key that declares `@sequenceStart` or `@sequenceName` gets a named Exposed sequence,
+so a table Exposed creates begins at the declared start (on both the Exposed 0.x and 1.x lines):
+
+```kotlin
+val id = long("id").autoIncrement(Sequence("Ticket_Id_seq", startWith = 1000000000L))
+```
+
+With neither declared the column stays a bare `autoIncrement()`. Generated Exposed code has no
+migration path, so a start changed on an existing database is `meta migrate`'s job, which moves
+the counter forward only. Output paths and REST collection names follow the Java rules
+([java.md, "Output paths and REST collection names"](java.md#output-paths-and-rest-collection-names)).
 
 …and the Spring wiring is also generated, so consumer Kotlin code is purely
 business logic:
@@ -563,7 +615,8 @@ object ProgramMinutesTable : Table("v_program_minutes") {
   or ratio, a dimension over an optional field, and a dimension reached through `@via` when a
   hop can leave a row without a match. Three cases are never null: a measure that declares
   `@default`; a dimension reached through `@via` whose `@of` field is required and whose every
-  hop is a belongs-to reference over a required foreign key, which the view joins `INNER`; and
+  hop is an enforced belongs-to reference over a required foreign key (the join always finds a
+  match, so the view's `LEFT OUTER` join never nulls the column); and
   in a `@spine` report a dimension over a `@required` or primary-key column of the spine
   entity. Each gets a column with no `.nullable()` and a property with no `?` and no `= null`.
   The rule is the report's, not Kotlin's: see
@@ -601,6 +654,18 @@ branch in each report `<Report>Controller` when that list holds a `report-export
 (`EmitsReportExport`, so an ejected copy counts too). The branch reads its cap from
 `<Report>Export.MAX_ROWS`, so the cap is set once, as `maxRows` on `report-export`. Without it the
 controllers are byte-identical to today and `?format=` is ignored like any unknown parameter.
+
+### `api.pagination` and `api.unknownFields`
+
+`KotlinSpringControllerGenerator` reads the project's `api` block from the loaded root
+(`loader.root.apiSettings`, the same `.metaobjects/config.json` reader as `naming` and `wire`).
+What each setting answers, and the default with no block, are in
+[api-contract](../features/api-contract.md) ([page size](../features/api-contract.md#sort--pagination), [unknown fields](../features/api-contract.md#unknown-request-fields-apiunknownfields)).
+Kotlin-specific: under `reject` (the default) create, PUT and PATCH read the raw `JsonNode` body
+and check its keys before binding (for a TPH base, against the union of the base's and every
+subtype's fields). The check is generated into a per-package `MetaUnknownBodyKeys.kt` (no
+MetaObjects import; it ships with the `routes` eject). Because the create handler binds the raw
+body, the controller now always takes the `ObjectMapper`. `drop` emits no helper.
 
 The Kotlin controllers import nothing from MetaObjects, so the request side (format parsing, the three
 400 envelopes, the `Content-Disposition` and `Content-Type` values) is generated into the shared
@@ -699,7 +764,9 @@ names — has a member for each instead of one member between them.
 
 An `identity.secondary` or `index.lookup` also carries `IDENTITY_<NAME>_INDEX` /
 `INDEX_<NAME>_INDEX`, the database index name that the generated
-`init { uniqueIndex(…) }` / `init { index(…) }` block references;
+`init { uniqueIndex(…) }` / `init { index(…) }` block references (on Postgres a
+name over 63 bytes is spelled in the table as the first 63 bytes, the name the
+database stores, while the constant keeps the declared name);
 `identity.primary` deliberately carries none, because migrate names a primary
 key by a dialect-conditional formula this artifact must not restate.
 

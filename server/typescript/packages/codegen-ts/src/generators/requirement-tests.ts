@@ -157,7 +157,8 @@ export function requirementTests(opts: RequirementTestsOpts = {}): Generator {
         );
       }
 
-      for (const walked of walkRequirements(ctx.loadedRoot)) {
+      // FR-023 — a dependency's requirement the project did not inherit is not its ledger.
+      for (const walked of walkRequirements(ctx.loadedRoot, ctx.inLedger)) {
         if (!filter(walked.view)) {
           uncovered.push(walked.view.path);
           continue;

@@ -72,7 +72,7 @@ public class ObjectFieldCodegenTests
     public void Entity_gets_owned_type_navigation_properties()
     {
         var files = new EntityGenerator().Generate(Ctx(Load())).ToList();
-        var customer = files.Single(f => System.IO.Path.GetFileName(f.Path) == "Customer.g.cs").Content;
+        var customer = files.Single(f => f.Path == "Customer.g.cs").Content;
 
         Assert.Contains("public string Name { get; set; } = default!;", customer);
         // Object fields -> nullable owned-type navigations (no [Column] on the nav).
@@ -85,7 +85,7 @@ public class ObjectFieldCodegenTests
     public void Referenced_value_object_is_emitted_as_a_plain_poco()
     {
         var files = new EntityGenerator().Generate(Ctx(Load())).ToList();
-        var address = files.Single(f => System.IO.Path.GetFileName(f.Path) == "Address.g.cs").Content;
+        var address = files.Single(f => f.Path == "Address.g.cs").Content;
 
         Assert.Contains("public class Address", address);
         Assert.Contains("public string Street { get; set; } = default!;", address); // required
@@ -176,7 +176,7 @@ public class ObjectFieldCodegenTests
         // NOT converted: Address (object.value) has no primary source and so no
         // AddressNames artifact, and the prefixed name is a composite no single
         // constant could hold anyway (a genuine lookup miss).
-        Assert.Contains("modelBuilder.Entity<global::Acme.Customer>().OwnsOne(x => x.HomeAddress, b =>", dbContext);
+        Assert.Contains("modelBuilder.Entity<Customer>().OwnsOne(x => x.HomeAddress, b =>", dbContext);
         Assert.Contains("b.Property(p => p.Street).HasColumnName(\"homeAddress_street\");", dbContext);
         Assert.Contains("b.Property(p => p.City).HasColumnName(\"homeAddress_city\");", dbContext);
         // The value object's ENUM members are flattened the same way — migrate-ts's
@@ -187,8 +187,7 @@ public class ObjectFieldCodegenTests
         // migration never created — measured against a real Postgres, not inferred.
         Assert.Contains("b.Property(p => p.Kind).HasColumnName(\"homeAddress_kind\").HasConversion<string>();", dbContext);
         Assert.Contains(
-            "b.Property(p => p.Grade).HasColumnName(\"homeAddress_grade\").HasConversion(new global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<Address.AddressGrade, int>(" +
-            "v => v == Address.AddressGrade.LO ? 1 : v == Address.AddressGrade.HI ? 2 : UnmappedEnumMember(v, \"grade\"), " +
+            "b.Property(p => p.Grade).HasColumnName(\"homeAddress_grade\").HasConversion(new global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<Address.AddressGrade, int>(v => v == Address.AddressGrade.LO ? 1 : v == Address.AddressGrade.HI ? 2 : UnmappedEnumMember(v, \"grade\"), " +
             "v => v == 1 ? Address.AddressGrade.LO : v == 2 ? Address.AddressGrade.HI : UnmappedEnumValue<Address.AddressGrade>(v, \"grade\")));",
             dbContext);
         // ...and the fail-fast helper that converter names is declared, even though the ONLY
@@ -206,9 +205,9 @@ public class ObjectFieldCodegenTests
         // column inside a JSON document (the flattened arm above is where its int pair belongs).
         Assert.Contains(
             """
-                    modelBuilder.Entity<global::Acme.Customer>().OwnsOne(x => x.Config, b =>
+                    modelBuilder.Entity<Customer>().OwnsOne(x => x.Config, b =>
                     {
-                        b.ToJson(global::Acme.CustomerNames.ConfigColumn);
+                        b.ToJson(CustomerNames.ConfigColumn);
                         b.Property(p => p.Kind).HasConversion<string>();
                         b.Property(p => p.Grade).HasConversion<string>();
                     });
@@ -227,7 +226,7 @@ public class ObjectFieldCodegenTests
     public void Routes_array_null_clear_composes_its_identifiers_from_the_names_constants()
     {
         var routes = new RoutesGenerator().Generate(Ctx(Load()))
-            .Single(f => System.IO.Path.GetFileName(f.Path) == "CustomerRoutes.g.cs").Content;
+            .Single(f => f.Path == "CustomerRoutes.g.cs").Content;
         // `tags` is the THIRD value-object field (after homeAddress and config), hence __clearVo2.
         Assert.Contains(
             "if (__clearVo2) await db.Database.ExecuteSqlRawAsync(\"UPDATE \\\"\" + CustomerNames.SourcePrimaryTable + " +
@@ -250,7 +249,7 @@ public class ObjectFieldCodegenTests
             Entities = root.Objects(), Root = root,
             Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", IncludeNames = false },
         };
-        var routes = new RoutesGenerator().Generate(ctx).Single(f => System.IO.Path.GetFileName(f.Path) == "CustomerRoutes.g.cs").Content;
+        var routes = new RoutesGenerator().Generate(ctx).Single(f => f.Path == "CustomerRoutes.g.cs").Content;
         Assert.Contains(
             "if (__clearVo2) await db.Database.ExecuteSqlRawAsync(\"UPDATE \\\"customers\\\" SET \\\"tags\\\" = NULL WHERE \\\"id\\\" = {0}\", id);",
             routes);
@@ -316,8 +315,8 @@ public class ObjectFieldCodegenTests
         // cover entity namespaces only, and a value object is not an entity.
         Assert.Contains(
             "b.Property(p => p.Prefs).HasColumnName(\"profile_prefs\").HasColumnType(\"jsonb\")"
-                + ".HasConversion(MapJsonb.Converter<global::Acme.Badge>()"
-                + ", MapJsonb.Comparer<global::Acme.Badge>());",
+                + ".HasConversion(MapJsonb.Converter<Acme.Generated.Badge>()"
+                + ", MapJsonb.Comparer<Acme.Generated.Badge>());",
             dbContext);
         // EF's own `<Nav>_<Prop>` default would name a column the migration never creates, so
         // the explicit HasColumnName above is the load-bearing half.
@@ -341,9 +340,9 @@ public class ObjectFieldCodegenTests
         // must serialize as the member symbol rather than EF's ordinal.
         Assert.Contains(
             """
-                    modelBuilder.Entity<global::Acme.Customer>().OwnsMany(x => x.Tags, b =>
+                    modelBuilder.Entity<Customer>().OwnsMany(x => x.Tags, b =>
                     {
-                        b.ToJson(global::Acme.CustomerNames.TagsColumn);
+                        b.ToJson(CustomerNames.TagsColumn);
                         b.Property(p => p.Kind).HasConversion<string>();
                         b.Property(p => p.Grade).HasConversion<string>();
                     });

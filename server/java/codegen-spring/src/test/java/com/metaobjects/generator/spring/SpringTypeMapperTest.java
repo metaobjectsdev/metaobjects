@@ -1,5 +1,6 @@
 package com.metaobjects.generator.spring;
 
+import com.metaobjects.config.WireFormat;
 import com.metaobjects.field.BooleanField;
 import com.metaobjects.field.CurrencyField;
 import com.metaobjects.field.DateField;
@@ -162,11 +163,12 @@ public class SpringTypeMapperTest extends SharedRegistryTestBase {
             SpringTypeMapper.javaTypeName(new com.metaobjects.field.DurationField("holdFor")));
         assertEquals("@JsonSerialize(using = CanonicalDurationSerializer.class) "
                 + "@JsonDeserialize(using = CanonicalDurationDeserializer.class)",
-            SpringGeneratorSupport.durationJsonAnnotations("java.time.Duration"));
+            SpringGeneratorSupport.durationJsonAnnotations("java.time.Duration", new WireFormat(WireFormat.Decimals.NATIVE, WireFormat.NullMembers.NATIVE, WireFormat.Durations.ISO)));
         assertEquals("@JsonSerialize(contentUsing = CanonicalDurationSerializer.class) "
                 + "@JsonDeserialize(contentUsing = CanonicalDurationDeserializer.class)",
-            SpringGeneratorSupport.durationJsonAnnotations("java.util.List<java.time.Duration>"));
-        assertEquals("", SpringGeneratorSupport.durationJsonAnnotations("String"));
+            SpringGeneratorSupport.durationJsonAnnotations("java.util.List<java.time.Duration>", new WireFormat(WireFormat.Decimals.NATIVE, WireFormat.NullMembers.NATIVE, WireFormat.Durations.ISO)));
+        assertEquals("", SpringGeneratorSupport.durationJsonAnnotations("String", new WireFormat(WireFormat.Decimals.NATIVE, WireFormat.NullMembers.NATIVE, WireFormat.Durations.ISO)));
+        assertEquals("", SpringGeneratorSupport.durationJsonAnnotations("java.time.Duration", WireFormat.DEFAULT));
     }
 
     @Test

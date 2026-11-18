@@ -57,7 +57,10 @@ const EXPECTED: Record<string, Record<string, { valueType: string; required: boo
   },
   atLeastOne: {
     fields: { valueType: "string", required: true },
-    max: { valueType: "int", required: false },
+    condition: { valueType: "expression", required: false },
+  },
+  exactlyOne: {
+    fields: { valueType: "string", required: true },
     condition: { valueType: "expression", required: false },
   },
 };

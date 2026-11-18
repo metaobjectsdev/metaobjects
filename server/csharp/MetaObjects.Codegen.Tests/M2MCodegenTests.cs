@@ -89,7 +89,7 @@ public class M2MCodegenTests
     }
 
     private static string FileContent(IEnumerable<EmittedFile> files, string path) =>
-        files.Single(f => System.IO.Path.GetFileName(f.Path) == path).Content;
+        files.Single(f => f.Path == path).Content;
 
     [Fact]
     public void Descriptor_derives_all_three_modes()
@@ -141,9 +141,9 @@ public class M2MCodegenTests
         var ctx = Ctx(Load());
         var db = FileContent(new DbContextGenerator().Generate(ctx), "AppDbContext.g.cs");
         // Hetero: HasMany(Tags).WithMany().UsingEntity<PostTag>(...) with explicit FK config.
-        Assert.Contains("Entity<global::Acme.Social.Post>()", db);
+        Assert.Contains("Entity<Post>()", db);
         Assert.Contains("HasMany(x => x.Tags)", db);
-        Assert.Contains("UsingEntity<global::Acme.Social.PostTag>", db);
+        Assert.Contains("UsingEntity<PostTag>", db);
     }
 
     [Fact]

@@ -1,7 +1,7 @@
 """A flattened value object has no column of its own: each member is a column of the
 owning table, named by core naming (``resolve_flattened_column_name``). The names module
 carries one ``<ENTITY>_<FIELD>_<MEMBER>_COLUMN`` constant per member, beside the field's own
-``_FIELD``/``_COLUMN`` pair, which is kept as it was so nothing that imports it changes.
+``_FIELD`` constant. The field has no ``_COLUMN`` constant and no ``COLUMNS_BY_FIELD`` key of its own.
 
 Mirrors the C# ``NamesGenerator``, the Java/Kotlin names generators and the TypeScript
 ``names.ts``; the corpus test runs the shared cross-port naming fixture.
@@ -68,20 +68,12 @@ def test_a_flattened_member_gets_a_column_constant_beside_its_field_constants() 
 
     assert 'SHIPMENT_SHIP_TO_STREET_COLUMN: Final[str] = "ship_to_street"' in src
     assert 'SHIPMENT_SHIP_TO_POSTAL_CODE_COLUMN: Final[str] = "ship_to_ZIP"' in src
-    # The field's own constants are kept as they were, so nothing that imports them changes.
     assert 'SHIPMENT_SHIP_TO_FIELD: Final[str] = "shipTo"' in src
-    assert 'SHIPMENT_SHIP_TO_COLUMN: Final[str] = "ship_to"' in src
     assert 'SHIPMENT_PAYLOAD_COLUMN: Final[str] = "payload"' in src
-    # It names no column of the table, so it is marked deprecated: a comment, no runtime
-    # warning, and only on the flattened field.
-    deprecation = (
-        "#: Deprecated: a flattened field has no column of its own; use the member constants,\n"
-        "#: SHIPMENT_SHIP_TO_<MEMBER>_COLUMN.\n"
-        'SHIPMENT_SHIP_TO_COLUMN: Final[str] = "ship_to"\n'
-    )
-    assert deprecation in src
-    assert src.count("Deprecated") == 1
-    assert '"shipTo": SHIPMENT_SHIP_TO_COLUMN,' in src
+    # It names no column of the table, so the field has no column constant of its own.
+    assert "SHIPMENT_SHIP_TO_COLUMN" not in src
+    assert "Deprecated" not in src
+    assert '"shipTo":' not in src
     assert '"shipTo.street": SHIPMENT_SHIP_TO_STREET_COLUMN,' in src
     assert '"shipTo.postalCode": SHIPMENT_SHIP_TO_POSTAL_CODE_COLUMN,' in src
 

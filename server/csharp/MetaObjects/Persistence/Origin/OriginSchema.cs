@@ -75,7 +75,7 @@ public static class OriginSchema
             IsArray: true,
             Description: "Ordering keys as 'field[:asc|desc]' over the related entity's fields; nulls sort last. On @agg:collect sets element order (non-distinct only)."),
 
-        // rc.19 origin-segment.
+        // Origin @segment.
         new AttrSchema(
             Name: OriginConstants.ORIGIN_ATTR_SEGMENT,
             ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
@@ -121,7 +121,7 @@ public static class OriginSchema
             Required: false,
             Description: "Optional structured predicate scoping which related rows are eligible for selection."),
 
-        // rc.19 origin-segment.
+        // Origin @segment.
         new AttrSchema(
             Name: OriginConstants.ORIGIN_ATTR_SEGMENT,
             ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
@@ -129,7 +129,7 @@ public static class OriginSchema
             Description: "Optional name of a segment.filter declared on the related entity; its predicate scopes the related rows, ANDed with @filter."),
     ];
 
-    // rc.21 part B (U10) — function: a call of a database function the project owns.
+    // function: a call of a database function the project owns.
     private static readonly IReadOnlyList<AttrSchema> FunctionOriginAttrs =
     [
         new AttrSchema(Name: OriginConstants.ORIGIN_FUNCTION_ATTR_FUNCTION, ValueType: AttrConstants.ATTR_SUBTYPE_STRING, Required: true,

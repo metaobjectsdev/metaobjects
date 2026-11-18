@@ -1,0 +1,16 @@
+{
+  "description": "line() refuses text ending in a line break; the break is not trimmed away first.",
+  "dialect": "core",
+  "options": {
+    "indent": "  ",
+    "width": 40,
+    "trailingComma": true
+  },
+  "ops": [
+    [
+      "line",
+      "a;\n"
+    ]
+  ],
+  "error": "ERR_WRITER_NEWLINE_IN_LINE"
+}

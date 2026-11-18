@@ -48,18 +48,33 @@ class ValidationConformanceTest {
     }
 
     @Test fun `generated Account data class enforces the corpus verdicts`() {
+        runCorpus("meta.json", "cases.json", "Account", "acme.auth")
+    }
+
+    /** Entity-scoped cross-field validators (incl. exactlyOne and @condition) enforced by class-level Bean Validation on the data class. */
+    @Test fun `generated Event data class enforces the cross-field verdicts`() {
+        runCorpus("meta.cross-field.json", "cross-field-cases.json", "Event", "acme.events")
+    }
+
+    private fun runCorpus(metaName: String, casesName: String, defaultEntity: String, corpusPkg: String) {
         val corpus = repoRoot().resolve("fixtures/validation-conformance")
-        val metaJson = String(Files.readAllBytes(corpus.resolve("meta.json")), StandardCharsets.UTF_8)
+        val metaJson = String(Files.readAllBytes(corpus.resolve(metaName)), StandardCharsets.UTF_8)
 
         val outDir = Files.createTempDirectory("validation-conf-")
         try {
             // --- generate the Account data class with jakarta.validation annotations ---
             val loader = loadString("validation-conformance", metaJson)
+            // The corpus pins the cross-port duration rule (strict ISO-8601), which is wire.durations: iso.
+            loader.root.wireFormat = com.metaobjects.config.WireFormat(
+                com.metaobjects.config.WireFormat.Decimals.NATIVE,
+                com.metaobjects.config.WireFormat.NullMembers.NATIVE,
+                com.metaobjects.config.WireFormat.Durations.ISO,
+            )
             val gen = KotlinEntityGenerator()
             gen.setArgs(mapOf("outputDir" to outDir.toString()))
             gen.execute(loader)
 
-            val accountKt = outDir.resolve("acme/auth/Account.kt")
+            val accountKt = outDir.resolve(corpusPkg.replace('.', '/') + "/$defaultEntity.kt")
             assertTrue(Files.exists(accountKt),
                 "expected generated $accountKt; files=${Files.walk(outDir).toList()}")
 
@@ -83,10 +98,10 @@ class ValidationConformanceTest {
                 "generated Account.kt failed to compile:\n${compileResult.messages}")
 
             // --- validate each corpus payload through a jakarta Validator ---
-            val mapper = ObjectMapper().registerKotlinModule()
+            val mapper = ObjectMapper().findAndRegisterModules().registerKotlinModule()
             val validator: Validator = Validation.buildDefaultValidatorFactory().validator
 
-            val casesJson = String(Files.readAllBytes(corpus.resolve("cases.json")), StandardCharsets.UTF_8)
+            val casesJson = String(Files.readAllBytes(corpus.resolve(casesName)), StandardCharsets.UTF_8)
             val casesNode = mapper.readTree(casesJson).get("cases")
             assertTrue(casesNode != null && casesNode.size() > 0, "no cases in corpus")
 
@@ -97,8 +112,8 @@ class ValidationConformanceTest {
                 val payloadJson = caseNode.get("payload").toString()
                 // A case may name a corpus entity other than Account (Ledger — an ASSIGNED
                 // primary key, a shape Account's @generation-backed key cannot express).
-                val entity = caseNode.get("entity")?.asText() ?: "Account"
-                val accountClass = compileResult.classLoader.loadClass("acme.auth.$entity")
+                val entity = caseNode.get("entity")?.asText() ?: defaultEntity
+                val accountClass = compileResult.classLoader.loadClass("$corpusPkg.$entity")
 
                 // Two boundary stages, exactly as a real Spring controller sees them:
                 //   1. Jackson deserialization onto the generated data class. A missing

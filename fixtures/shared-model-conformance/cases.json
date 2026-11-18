@@ -91,7 +91,7 @@
       "expectManifest": "expected/address-audited/metaobjects.pkg.json"
     },
     {
-      "name": "requirements-and-templates-are-always-dropped",
+      "name": "requirements-and-templates-are-dropped-by-default",
       "input": {
         "name": "acme-common",
         "files": [
@@ -105,6 +105,95 @@
       },
       "expectArtifact": "expected/with-payloads/acme-common.metaobjects.json",
       "expectManifest": "expected/with-payloads/metaobjects.pkg.json"
+    },
+    {
+      "name": "requirements-are-published-when-asked",
+      "input": {
+        "name": "acme-common",
+        "files": [
+          "source/meta.base.json",
+          "source/meta.customer.json",
+          "source/meta.ledger.json"
+        ],
+        "include": [
+          "acme::common::**"
+        ],
+        "exclude": [
+          "acme::common::KeepSecretsSafe",
+          "acme::common::Secret"
+        ],
+        "version": "1.1.0",
+        "requirements": true
+      },
+      "expectArtifact": "../dependency-conformance/artifacts/acme-common-v1-requirements.json",
+      "expectManifest": "expected/with-requirements/metaobjects.pkg.json"
+    },
+    {
+      "name": "templates-are-dropped-when-requirements-are-published",
+      "input": {
+        "name": "acme-common",
+        "files": [
+          "source/meta.base.json",
+          "source/meta.prompts.json"
+        ],
+        "include": [
+          "acme::common::**"
+        ],
+        "version": "0.4.0",
+        "requirements": true
+      },
+      "expectArtifact": "expected/with-payloads-and-requirements/acme-common.metaobjects.json",
+      "expectManifest": "expected/with-payloads-and-requirements/metaobjects.pkg.json"
+    },
+    {
+      "name": "a-requirement-alone-is-an-empty-selection-by-default",
+      "input": {
+        "name": "acme-common",
+        "files": [
+          "source/meta.base.json",
+          "source/meta.customer.json",
+          "source/meta.ledger.json"
+        ],
+        "include": [
+          "acme::common::Customers",
+          "acme::common::AuditedRows"
+        ],
+        "version": "1.0.0"
+      },
+      "expectRefusal": {
+        "reason": "empty-selection"
+      }
+    },
+    {
+      "name": "a-requirement-claiming-a-node-outside-the-selection-is-refused",
+      "input": {
+        "name": "acme-common",
+        "files": [
+          "source/meta.base.json",
+          "source/meta.customer.json",
+          "source/meta.ledger.json"
+        ],
+        "include": [
+          "acme::common::Address",
+          "acme::common::AuditedRows",
+          "acme::common::Customers"
+        ],
+        "version": "1.0.0",
+        "requirements": true
+      },
+      "expectRefusal": {
+        "reason": "not-closed",
+        "pairs": [
+          {
+            "referrer": "acme::common::AuditedRows",
+            "target": "acme::common::Audited"
+          },
+          {
+            "referrer": "acme::common::Customers",
+            "target": "acme::common::Customer"
+          }
+        ]
+      }
     },
     {
       "name": "a-selection-spanning-two-packages-lists-both-sorted",

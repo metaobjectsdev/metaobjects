@@ -156,6 +156,30 @@ def test_one_file_per_metamodel_package(tmp_path: Path) -> None:
     ]
 
 
+def test_a_requirement_outside_the_ledger_gets_no_test(tmp_path: Path) -> None:
+    """FR-023: a dependency's requirement the project did not inherit is loaded and gets no
+    test. The ledger predicate reads ``<package>::<dotted path>``."""
+    root = _load_yaml(
+        _doc(_requirement("A"), "acme::one"),
+        _doc(_requirement("B"), "acme::two").replace("name: Order", "name: Order2"),
+    )
+    out = tmp_path / "gen"
+    seen: list[str] = []
+
+    def in_ledger(fqn: str) -> bool:
+        seen.append(fqn)
+        return fqn.startswith("acme::one::")
+
+    result = run_gen(
+        GenConfig(out_dir=str(out)), root, generators=[requirement_tests()], in_ledger=in_ledger
+    )
+    written = sorted(
+        str(Path(full).relative_to(out)) for full, _ in result.files if not full.endswith("__init__.py")
+    )
+    assert written == ["requirements/test_acme_one_requirements.py"]
+    assert "acme::two::B" in seen
+
+
 def test_an_unpackaged_ledger_writes_test_root_requirements(tmp_path: Path) -> None:
     files, _ = generate(_load_corpus_case("unpackaged"), tmp_path)
     assert list(files) == ["requirements/test_root_requirements.py"]

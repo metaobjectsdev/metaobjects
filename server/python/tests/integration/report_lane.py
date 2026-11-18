@@ -76,6 +76,12 @@ class ReportLane:
                         f"SELECT setval(pg_get_serial_sequence('{d.quote(table)}', 'id'), "
                         f"COALESCE((SELECT MAX({d.quote('id')}) FROM {d.quote(table)}), 0) + 1, false)"
                     )
+            elif self.engine == "sqlite":
+                # DELETE leaves the AUTOINCREMENT counter where it was: restart an empty-seeded
+                # table at 1 (the table has no sequence row until its first insert).
+                for table, seed_rows in self.base_tables.items():
+                    if not seed_rows:
+                        cur.execute("DELETE FROM sqlite_sequence WHERE name = ?", (table,))
             elif self.engine == "mysql":
                 # DELETE leaves AUTO_INCREMENT where it was: restart an empty-seeded table at 1.
                 for table, seed_rows in self.base_tables.items():
@@ -92,9 +98,10 @@ def _has_id(rows: list[dict[str, Any]]) -> bool:
 
 def load_seed(corpus_root: Path) -> tuple[dict[str, list[dict[str, Any]]], dict[str, list[dict[str, Any]]]]:
     parsed = json.loads((corpus_root / "seed.json").read_text())
-    reports = parsed.get("reports")
+    # A corpus with no view (the duration corpus) carries no expected-`reports` half.
+    reports = parsed.get("reports", {})
     if not isinstance(reports, dict):
-        raise RuntimeError("report seed.json: missing 'reports' object")
+        raise RuntimeError("report seed.json: 'reports' must be an object")
     base = {name: rows for name, rows in parsed.items() if name != "reports"}
     return base, reports
 

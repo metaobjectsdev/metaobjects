@@ -65,12 +65,18 @@
       "expression": "(\"shipped_at\" IS NOT NULL) = (\"shipped\" IS NOT DISTINCT FROM TRUE)"
     },
     {
-      "name": "gadgets_email_atleastone_chk",
+      "name": "gadgets_email_exactlyone_chk",
       "expression": "num_nonnulls(\"email\", \"phone\") = 1"
     },
     {
       "name": "gadgets_phone_atleastone_chk",
       "expression": "(\"level\" <> 2) OR (\"phone\" IS NOT NULL OR \"fax\" IS NOT NULL)"
+    }
+  ],
+  "parcels": [
+    {
+      "name": "parcels_label_length_chk",
+      "expression": "length(\"label\") >= 1"
     }
   ],
   "jobs": [

@@ -38,7 +38,7 @@ public sealed class XpkgValueObjectRefsConformanceTests
         Entities = root.Objects().ToList(),
         Root = root,
         Config = new GenConfig
-        {
+        { OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true,
             OutDir = "/tmp",
             Namespace = "Acme.Generated",
             Dialect = "postgres",
@@ -67,8 +67,8 @@ public sealed class XpkgValueObjectRefsConformanceTests
         // no using is needed and no bare `Note` could be ambiguous (CS0104).
         Assert.DoesNotContain("using Acme.Alpha;", routes);
         Assert.Contains("global::Acme.Alpha.Note", routes);
-        Assert.Contains("global::System.Collections.Generic.List<global::Acme.Beta.Note>", routes);
-        Assert.Contains("global::System.Collections.Generic.Dictionary<string, global::Acme.Beta.Note>", routes);
+        Assert.Contains("System.Collections.Generic.List<global::Acme.Beta.Note>", routes);
+        Assert.Contains("System.Collections.Generic.Dictionary<string, global::Acme.Beta.Note>", routes);
         Assert.DoesNotMatch(@"[<\s(]Note[>\s)]", routes);
     }
 

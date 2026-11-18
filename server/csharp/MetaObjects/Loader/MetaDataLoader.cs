@@ -171,6 +171,7 @@ public class MetaDataLoader
         {
             result.Root.PhysicalNaming = cfg.Naming;
             result.Root.WireFormat = cfg.Wire;
+            result.Root.Api = cfg.Api;
             result.Root.EnumDefaults = cfg.Enums;
         }
         return result;
@@ -545,7 +546,7 @@ public class MetaDataLoader
             errors.AddRange(ValidationPasses.ValidateFieldMap(root));
             errors.AddRange(ValidationPasses.ValidateEnumMaxLength(root));
             errors.AddRange(ValidationPasses.ValidateIdentitySequence(root));
-            errors.AddRange(ValidationPasses.ValidateCrossFieldValidators(root));
+            errors.AddRange(ValidationPasses.ValidateCrossFieldValidators(root, _strict));
             errors.AddRange(ValidationPasses.ValidateDbCheck(root));
 
             // Pass 9: template @payloadRef / @requiredSlots resolution

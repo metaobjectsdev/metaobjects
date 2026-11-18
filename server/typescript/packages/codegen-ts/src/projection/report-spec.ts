@@ -2,7 +2,7 @@
 // `extractReportSpec` produces it; the report DDL emitter renders it per dialect. Column
 // references are already resolved to unquoted `alias.column`, as in `ViewSpec`.
 
-import type { MeasureAgg, RelativeStartOf, TimeGrain } from "@metaobjectsdev/metadata";
+import type { DerivedFn, MeasureAgg, RelativeStartOf, TimeGrain } from "@metaobjectsdev/metadata";
 import type { JoinTree, ViewFilterClause } from "./view-spec.js";
 import type { ReportTemporal } from "./time-sql.js";
 
@@ -36,6 +36,20 @@ export interface ReportAggregate {
   readonly defaultValue?: { readonly value: number; readonly real: boolean; readonly boolean?: true };
 }
 
+/** FR-044 R13: one node of a `measure.derived` expression, its operands resolved. A measure operand
+ *  is its full Table C/D expression; a dimension operand is the grouped column of a listed dimension. */
+export type ReportDerivedTerm =
+  | { readonly kind: "aggregate"; readonly aggregate: ReportAggregate }
+  | {
+      readonly kind: "ratio";
+      readonly numerator: ReportAggregate;
+      readonly denominator: ReportAggregate;
+      readonly defaultValue?: number;
+    }
+  | { readonly kind: "ref"; readonly ref: string }
+  | { readonly kind: "value"; readonly value: number }
+  | { readonly kind: "op"; readonly fn: DerivedFn; readonly left: ReportDerivedTerm; readonly right: ReportDerivedTerm };
+
 export type ReportColumn =
   | { readonly kind: "dimension"; readonly fieldName: string; readonly dbColAlias: string; readonly ref: string }
   | {
@@ -60,7 +74,8 @@ export type ReportColumn =
       readonly denominator: ReportAggregate;
       /** FR-044 Table D: the ratio's own `@default` (a ratio is always real). */
       readonly defaultValue?: number;
-    };
+    }
+  | { readonly kind: "derived"; readonly fieldName: string; readonly dbColAlias: string; readonly term: ReportDerivedTerm };
 
 export interface ReportViewSpec {
   readonly viewName: string;

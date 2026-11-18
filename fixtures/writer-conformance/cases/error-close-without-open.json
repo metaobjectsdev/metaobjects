@@ -1,0 +1,20 @@
+{
+  "description": "close() with no block open is an error.",
+  "dialect": "core",
+  "options": {
+    "indent": "  ",
+    "width": 40,
+    "trailingComma": true
+  },
+  "ops": [
+    [
+      "line",
+      "a;"
+    ],
+    [
+      "close",
+      "}"
+    ]
+  ],
+  "error": "ERR_WRITER_UNBALANCED_CLOSE"
+}

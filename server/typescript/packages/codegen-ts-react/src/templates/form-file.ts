@@ -24,7 +24,7 @@
 // (ERR_UNKNOWN_ATTR); the doc line here used to claim it turned generation ON,
 // while the filter beside it read it as an opt-OUT. Neither is true now.
 
-import { code, imp, type Code } from "ts-poet";
+import { code, imp, type Code } from "@metaobjectsdev/codegen-ts/engine";
 import { MetaField, MetaObject, MetaView } from "@metaobjectsdev/metadata";
 import {
   IDENTITY_SUBTYPE_PRIMARY,
@@ -61,9 +61,11 @@ import {
   VIEW_CONTEXT_FORM,
   effectivePackage,
   isCredentialField,
+  flatSurfaceFields,
 } from "@metaobjectsdev/codegen-ts/engine";
 import { humanize, valueObjectFor, numericInputControl } from "@metaobjectsdev/codegen-ts/templates/field-meta";
 import { tphDiscriminatorPin } from "@metaobjectsdev/codegen-ts/engine";
+import { hasInsertRefinements } from "@metaobjectsdev/codegen-ts/templates/zod-validators";
 
 function primaryFieldNames(entity: MetaObject): Set<string> {
   const set = new Set<string>();
@@ -95,7 +97,7 @@ function visibleFields(entity: MetaObject, discField?: string): MetaField[] {
   const pkNames = primaryFieldNames(entity);
   const out: MetaField[] = [];
   // fields() returns effective fields, so inherited fields (from extends:/super:) are included in forms.
-  for (const child of entity.fields()) {
+  for (const child of flatSurfaceFields(entity)) {
     // ADR-0039: resolving — a field may inherit @formExclude via extends.
     if (child.attr(FIELD_ATTR_FORM_EXCLUDE) === true) continue;
     // A credential is never edited through a generated form: the generated write route
@@ -352,7 +354,11 @@ export function renderFormFile(entity: MetaObject, ctx: RenderContext): string {
   const omitTph = (schema: string) => tphPin !== undefined
     ? `${schema}.omit({ ${tphPin.fieldName}: true })`
     : schema;
-  const insertSchema = omitTph(`${entityName}InsertSchema`);
+  // A refined (cross-field) schema cannot be `.omit()`ed; codegen exports the refined,
+  // discriminator-less `<Name>InsertBodySchema` for exactly this TPH case.
+  const refinedTph = tphPin !== undefined && hasInsertRefinements(entity);
+  const insertSchemaName = refinedTph ? `${entityName}InsertBodySchema` : `${entityName}InsertSchema`;
+  const insertSchema = refinedTph ? insertSchemaName : omitTph(insertSchemaName);
   const updateSchema = omitTph(`${entityName}UpdateSchema`);
   const formSchema = `props.defaultValues !== undefined ? ${updateSchema} : ${insertSchema}`;
 
@@ -549,7 +555,7 @@ ${control}
   const literalImports = code`
 import {
   ${entityName},
-  ${entityName}InsertSchema,
+  ${insertSchemaName},
   ${entityName}UpdateSchema,
 } from ${JSON.stringify(entityFileSpec)};
 import type { ${entityName} as ${entityName}Row } from ${JSON.stringify(entityFileSpec)};

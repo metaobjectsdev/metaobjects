@@ -7,7 +7,7 @@
 // rather than "missing".
 //
 // History: the 13 generic `view.*` controls used to be such a carve-out, and `meta types`
-// once reported them exactly as a genuine typo is. Ruling R40 put them back in the
+// once reported them exactly as a genuine typo is. They are back in the
 // manifest as kind-1 vocabulary: cross-port, every port loads them strictly, and
 // `implementedIn: ["typescript"]` says which ports act on them so far.
 
@@ -34,10 +34,16 @@ export interface VocabularyType {
   example?: string;
   whenToUse?: string;
   attrs: ManifestAttr[];
+  /**
+   * `attr name -> id of the provider that registered it on exactly this (type, subType)`
+   * (ADR-0062). Only attrs a composed provider registered appear; an attr this slot
+   * inherits from `<type>.base` is listed on the base row.
+   */
+  attrProviders: Record<string, string>;
   children: ManifestChild[];
   parents?: string[];
   /**
-   * R40 kind 1 — the ports that implement this type so far (`["typescript"]`); absent =
+   * The ports that implement this type so far (`["typescript"]`); absent =
    * every port. Cross-port vocabulary either way: every port loads it strictly.
    */
   implementedIn?: readonly string[];
@@ -65,10 +71,12 @@ export interface VocabularyCatalog {
   types: VocabularyType[];
   /** Attrs accepted on EVERY node, whatever its type (`@title`, `@description`, …). */
   commonAttrs: ManifestAttr[];
+  /** `common attr name -> id of the provider that registered it` (ADR-0062). */
+  commonAttrProviders: Record<string, string>;
   defaultSubTypes: Record<string, string>;
 }
 
-function toVocabularyType(def: TypeDefinition): VocabularyType {
+function toVocabularyType(def: TypeDefinition, registry: TypeRegistry): VocabularyType {
   const { type, subType } = def.typeId;
   const reason = classifyTypeSubType(type, subType);
   const out: VocabularyType = {
@@ -86,6 +94,7 @@ function toVocabularyType(def: TypeDefinition): VocabularyType {
     // CROSS-PORT value during a reference-first rollout, and this answer is about what
     // THIS registry requires of an author right now.
     attrs: sortedAttrs(def.attributes.filter((a) => classifyPerTypeAttr(a.name) === INCLUDED)),
+    attrProviders: {},
     children: sortedChildren(def.childRules),
     ...(def.implementedIn !== undefined && def.implementedIn.length > 0
       ? { implementedIn: [...def.implementedIn].sort(compareStrings) }
@@ -94,6 +103,10 @@ function toVocabularyType(def: TypeDefinition): VocabularyType {
     ...(reason !== undefined ? { portPrivateReason: reason } : {}),
     sharedRoot: subType === SUBTYPE_BASE,
   };
+  for (const attr of out.attrs) {
+    const owner = registry.attrOwner(type, subType, attr.name);
+    if (owner !== undefined) out.attrProviders[attr.name] = owner;
+  }
   if (def.parents !== undefined && def.parents.length > 0) {
     out.parents = [...def.parents].sort(compareStrings);
   }
@@ -112,7 +125,7 @@ function toVocabularyType(def: TypeDefinition): VocabularyType {
 export function buildVocabularyCatalog(registry: TypeRegistry): VocabularyCatalog {
   const types = registry
     .allTypes()
-    .map((typeId) => toVocabularyType(registry.find(typeId.type, typeId.subType) as TypeDefinition))
+    .map((typeId) => toVocabularyType(registry.find(typeId.type, typeId.subType) as TypeDefinition, registry))
     .sort((a, b) =>
       compareStrings(`${a.type}.${a.subType}`, `${b.type}.${b.subType}`),
     );
@@ -124,10 +137,18 @@ export function buildVocabularyCatalog(registry: TypeRegistry): VocabularyCatalo
     if (defaultSub !== undefined) defaultSubTypes[typeName] = defaultSub;
   }
 
+  const commonAttrs = sortedAttrs(registry.getCommonAttrs());
+  const commonAttrProviders: Record<string, string> = {};
+  for (const attr of commonAttrs) {
+    const owner = registry.commonAttrOwner(attr.name);
+    if (owner !== undefined) commonAttrProviders[attr.name] = owner;
+  }
+
   return {
     metamodelVersion: METAMODEL_VERSION,
     types,
-    commonAttrs: sortedAttrs(registry.getCommonAttrs()),
+    commonAttrs,
+    commonAttrProviders,
     defaultSubTypes,
   };
 }

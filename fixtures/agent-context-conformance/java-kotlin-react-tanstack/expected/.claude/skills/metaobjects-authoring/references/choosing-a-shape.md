@@ -162,6 +162,17 @@ or behavior is a **subtype**, and structural variants *within* such a subtype ar
 (including any `@kind` value-set) carry `allowedValues` in the gate (ADR-0036).
 ADR-0037 is the authority.
 
+**What a provider does.** It names an `id` and the provider ids it depends on, then does one
+or both of two things. It **registers** a new `(type, subType)` with its own attributes, which
+may be required, and a node class (reuse the type's existing one unless the node has new
+behaviour). It **extends** an existing `(type, subType)` with attributes, which must be
+optional: a required one is `ERR_EXTEND_REQUIRED_ATTR` (ADR-0050), because removing your
+provider must never weaken a type someone else owns. A new type allowed at the document root
+also needs `extend` on `metadata.root` to admit it, or it fails with `ERR_CHILD_NOT_ALLOWED`.
+An attribute no provider declares is `ERR_UNKNOWN_ATTR` under a strict load, and a subtype
+nobody registered is `ERR_UNKNOWN_SUBTYPE`; that refusal is what keeps a typo from loading.
+The per-language example and wiring is in the skill's `references/<language>-providers.md`.
+
 **Converge before inventing.** Search the shipped vocabulary first (`meta types
 <term>`) and check the roadmap — if core already models (or plans) the concept, model
 yours in a fold-in-friendly shape. The type names `api`, `operation`, `surface`, and
@@ -174,6 +185,14 @@ and address-free — the subtype names the *concept*; transport/protocol is a cl
 `@kind`), never the subtype axis, and endpoints/addresses never enter metadata.
 Declare config as the *names* of required keys (values stay in env/config) and
 generate a fail-closed check. Reference typed payloads instead of inlining shapes.
+
+**Name your attributes so they cannot collide.** Two providers may not claim one attribute
+name on a node type (ADR-0062): the registry refuses the second at composition with
+`ERR_PROVIDER_ATTR_CONFLICT` (same `(type, subType)`) or `ERR_PROVIDER_ATTR_SHADOW` (the shared
+`<type>.base` root, or a subtype of it), naming both providers. A physical address takes your
+store's own idiomatic word (`@column` relational, `@field` document), unique on that node type;
+`meta types --detail` shows which provider holds each name. A store with no provider of its own
+uses the registered `attr.properties` bag rather than an invented attribute.
 
 **Lifecycle.** Register with explicit provider wiring — never loosen `strict` to
 free-ride ad-hoc attrs. When core later ships the concept your provider shrinks from

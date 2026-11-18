@@ -13,6 +13,7 @@ import { emitStructured, narrate, toonEncode } from "../lib/format.js";
 import { buildKyselyFromUrl, inferDialect, redactUrl } from "../lib/kysely.js";
 import { describeExprCanonPath, shadowSession } from "../lib/shadow.js";
 import { log } from "../lib/log.js";
+import { warnUnenforcedFkTargets } from "../lib/fk-target-warning.js";
 import { loadMemory, resolveCollection, resolveConfigDir, type Collection } from "@metaobjectsdev/sdk";
 import { configNotLoadedWarning, loadMemoryOptionsFrom, loadMetaobjectsConfig, RemovedNamingConfigError, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { collectionLoadOptions } from "../lib/collection-load-options.js";
@@ -130,7 +131,7 @@ MIGRATE FLAGS:
   --slug <name>        Required to WRITE a migration (not for --dry-run) (e.g., --slug add-user-shipping)
   --allow <csv>        Comma-separated destructive-change permissions:
                        drop-column,drop-table,type-change,drop-index,drop-fk,
-                       drop-check,drop-view,drop-view-cascade,
+                       drop-check,drop-view,drop-view-cascade,drop-column-read-by-view,
                        adopt-view,nullable-to-not-null,drop-identity-default,
                        drop-unmanaged,drop-comment
                        drop-column DELETES the column and every value in it. If
@@ -362,12 +363,6 @@ function mapOnAmbiguous(v: "abort" | "rename" | "drop-add"): AmbiguousResolution
 }
 
 /**
- * The report-and-exit for an engine refusal whose message the engine already made
- * actionable — the sibling of `refuseScopeMismatch` above, which is the same decision
- * for scope. The engine's guards (`isPrimaryKeyChangeError` et al.) narrow at the catch
- * site; only the hint varies by refusal, so each hint is written once.
- */
-/**
  * FKs whose target is not a unique key, on tables this run does not govern (imported, or
  * outside migrate.scope). This project never emits them, so they are reported, not refused.
  */
@@ -377,6 +372,12 @@ function warnUngovernedFkTargets(violations: readonly FkTargetViolation[] | unde
   log.warn(`migrate: the table(s) holding ${violations.length === 1 ? "that foreign key are" : "those foreign keys are"} not governed by this run (imported, or outside migrate.scope), so nothing is refused.`);
 }
 
+/**
+ * The report-and-exit for an engine refusal whose message the engine already made
+ * actionable — the sibling of `refuseScopeMismatch` above, which is the same decision
+ * for scope. The engine's guards (`isPrimaryKeyChangeError` et al.) narrow at the catch
+ * site; only the hint varies by refusal, so each hint is written once.
+ */
 function refuseEngineError(err: Error, hint: string, fmt: OutputFormat): number {
   log.error(`migrate: ${err.message}`);
   emitStructuredError(`migrate: ${err.message}`, hint, fmt);
@@ -416,18 +417,19 @@ const FK_TARGET_NOT_UNIQUE_HINT =
 const DECLARED_RENAME_HINT =
   "fix or remove the --rename-table / --rename-column flag; a table's name is its name in the metadata (the new name when it is renamed too)";
 
-/**
- * Warn about changes that apply to an empty table and fail on a populated one. Warn, not
- * refuse: the diff cannot see rows, and a new required column on an empty table is fine.
- * The Postgres migration file carries the same warning, with the preparation step, above
- * the statement.
- */
+/** Print the diff's advice that is not drift (`schemaAdvisoryLines`), one warning each. */
 function warnAdvisories(advisories: DiffResult["advisories"] | undefined): string[] {
   const lines = schemaAdvisoryLines(advisories);
   for (const w of lines) log.warn(`migrate: ${w}`);
   return lines;
 }
 
+/**
+ * Warn about changes that apply to an empty table and fail on a populated one. Warn, not
+ * refuse: the diff cannot see rows, and a new required column on an empty table is fine.
+ * The Postgres migration file carries the same warning, with the preparation step, above
+ * the statement.
+ */
 function warnDataHazards(hazards: readonly DataHazard[]): string[] {
   const warnings = hazards.map((h) => {
     const t = h.schema !== undefined ? `${h.schema}.${h.table}` : h.table;
@@ -881,6 +883,7 @@ export async function migrateCommand(
     const expected = scoped.snapshot;
     logOutOfScope(scoped.outOfScope, scoped.importedOutOfScope ?? [], fmt);
     warnUngovernedFkTargets(scoped.ungovernedFkTargetViolations);
+    warnUnenforcedFkTargets("migrate", scoped.unenforcedFkTargetViolations);
     let actual;
     try {
       actual = await introspect(kysely.db, kysely.dialect);
@@ -1904,6 +1907,7 @@ async function runD1Migrate(
   const expected = scoped.snapshot;
   logOutOfScope(scoped.outOfScope, scoped.importedOutOfScope ?? [], fmt);
   warnUngovernedFkTargets(scoped.ungovernedFkTargetViolations);
+  warnUnenforcedFkTargets("migrate", scoped.unenforcedFkTargetViolations);
   let actual;
   try {
     actual = await introspectD1({

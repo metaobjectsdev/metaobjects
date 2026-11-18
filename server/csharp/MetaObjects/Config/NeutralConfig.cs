@@ -29,7 +29,7 @@
 // generated code lands in; the other ports ignore the block.
 //
 // `wire` (ADR-0019 Amendment 2) is read here too — the output form of a generated REST surface
-// (`decimals`, `nullMembers`), refused exactly as `naming` is.
+// (`decimals`, `nullMembers`, `durations`), refused exactly as `naming` is.
 using System.Text.Json;
 using MetaObjects.Meta;
 
@@ -75,8 +75,32 @@ public sealed class NeutralConfig
     /// <summary>`migrate.dialect`: the SQL dialect the project's schema is built for, or null.</summary>
     public string? MigrateDialect { get; private init; }
 
-    /// <summary>`migrate.checks.skipRedundant`: true leaves out a CHECK the column already enforces. Default false.</summary>
+    /// `csharp.outputLayout`: <c>"flat"</c> (the default, and what an absent key reads as) or
+    /// <c>"package"</c>, where each per-object generator writes under the object's metadata package.
+    public string OutputLayout { get; private init; } = "flat";
+
+    /// `csharp.packageNamespaces`: <c>true</c> binds each packaged type to its metadata package's
+    /// namespace even when `csharp.namespace` is set; an object maps packages to namespaces
+    /// explicitly. Absent or <c>false</c> keeps the earlier rule (a configured namespace turns the
+    /// per-package derivation off).
+    public PackageNamespaceSetting PackageNamespaces { get; private init; } = PackageNamespaceSetting.Off;
+
+    /// <summary><c>migrate.checks.skipRedundant</c>: leave out the CHECKs a column's own type already enforces.</summary>
     public bool MigrateSkipRedundantChecks { get; private init; }
+
+    /// <summary>`migrate.foreignKeyIndexes`: index every foreign key the schema conventions leave
+    /// without one, as `meta migrate` does. False when absent or not a boolean.</summary>
+    public bool MigrateForeignKeyIndexes { get; private init; }
+
+    /// <summary>`migrate.conventions`: the schema-conventions preset `meta migrate` builds with
+    /// (`default`, `efcore`), or null when absent.</summary>
+    public string? MigrateConventions { get; private init; }
+
+    /// <summary>
+    /// FR-023 — <c>requirements.inherit</c>: the dependencies whose requirements this project takes on
+    /// as its own ledger (<see cref="ImportScope.InLedger"/>). Empty when absent.
+    /// </summary>
+    public IReadOnlyList<string> RequirementsInherit { get; private init; } = [];
 
     /// <summary>
     /// The directory holding the <c>.metaobjects/</c> folder this config was read from — where the lock and
@@ -93,6 +117,9 @@ public sealed class NeutralConfig
     /// absent key at its native default. Never null.
     public WireFormat Wire { get; }
 
+    /// The project's `api` block (`api.pagination`, `api.unknownFields`). Never null: absent is the default.
+    public ApiSettings Api { get; private init; } = ApiSettings.Default;
+
     /// The project's enum storage defaults (`enums` in config.json). Never null: an absent
     /// block is no default, same as an empty `enums: {}`.
     public EnumDefaults Enums { get; private init; } = EnumDefaults.Default;
@@ -108,9 +135,14 @@ public sealed class NeutralConfig
     /// emits such a type stops and asks for one.
     public string? Namespace { get; }
 
+    /// `csharp.providers` — the project's own metamodel providers (assembly path resolved against
+    /// the directory holding `.metaobjects/`, plus a type name). Empty when absent. Instantiated by
+    /// <see cref="ProviderLoader"/>, not here, so reading a config never loads code.
+    public IReadOnlyList<ProviderSpec> Providers { get; }
+
     private NeutralConfig(
         IReadOnlyList<IReadOnlyDictionary<string, string>> sources, IReadOnlyList<string> libraries,
-        PhysicalNaming naming, WireFormat wire, (string? OutDir, string? Namespace) csharp,
+        PhysicalNaming naming, WireFormat wire, (string? OutDir, string? Namespace, IReadOnlyList<ProviderSpec> Providers) csharp,
         IReadOnlyList<DependencySpec> dependencies, IReadOnlyList<string> scopeInclude,
         IReadOnlyList<string>? migrateScope, string configDir)
     {
@@ -120,6 +152,7 @@ public sealed class NeutralConfig
         ConfigDir = configDir;
         OutDir = csharp.OutDir;
         Namespace = csharp.Namespace;
+        Providers = csharp.Providers;
         Sources = sources;
         Libraries = libraries;
         Naming = naming;
@@ -142,11 +175,20 @@ public sealed class NeutralConfig
         && checks.TryGetProperty("skipRedundant", out var skip) && skip.ValueKind == JsonValueKind.True;
 
     /// `migrate.dialect`, as the TypeScript `meta migrate` reads it; null when absent or not a string.
-    private static string? ReadMigrateDialect(JsonElement root) =>
+    private static string? ReadMigrateDialect(JsonElement root) => ReadMigrateString(root, "dialect");
+
+    /// One string in the TypeScript-owned `migrate` block; null when absent or not a string.
+    private static string? ReadMigrateString(JsonElement root, string key) =>
         root.TryGetProperty("migrate", out var migrate) && migrate.ValueKind == JsonValueKind.Object
-        && migrate.TryGetProperty("dialect", out var d) && d.ValueKind == JsonValueKind.String
+        && migrate.TryGetProperty(key, out var d) && d.ValueKind == JsonValueKind.String
             ? d.GetString()
             : null;
+
+    /// `migrate.foreignKeyIndexes`; false when absent or not a boolean (the TypeScript reader
+    /// refuses a non-boolean, and `meta migrate` is where the file is validated).
+    private static bool ReadMigrateForeignKeyIndexes(JsonElement root) =>
+        root.TryGetProperty("migrate", out var migrate) && migrate.ValueKind == JsonValueKind.Object
+        && migrate.TryGetProperty("foreignKeyIndexes", out var v) && v.ValueKind == JsonValueKind.True;
 
     /// <summary>
     /// As <see cref="Read(string)"/>; with <paramref name="validateNaming"/> false a
@@ -315,8 +357,8 @@ public sealed class NeutralConfig
                             }
                             tables = table;
                             break;
-                        // rc.19 (R57): the pluralizer an object without @collectionName takes its
-                        // collection name from; refused here when nothing answers it.
+                        // The pluralizer an object without @collectionName takes its collection
+                        // name from; refused here when nothing answers it.
                         case "collections":
                             if (p.Value.ValueKind != JsonValueKind.String)
                                 throw new MetaModelException(
@@ -340,7 +382,18 @@ public sealed class NeutralConfig
             // lists read above, are IGNORED by design — see the file header.
             return new NeutralConfig(specs, libraries, new PhysicalNaming(columns, tables) { Collections = collections }, ReadWire(root, path),
                 ReadCSharp(root, path, configDir), dependencies, scopeInclude, migrateScope,
-                Path.GetFullPath(configDir)) { Enums = ReadEnums(root, path), MigrateDialect = ReadMigrateDialect(root), MigrateSkipRedundantChecks = ReadMigrateSkipRedundant(root) };
+                Path.GetFullPath(configDir))
+            {
+                Enums = ReadEnums(root, path),
+                Api = ReadApi(root, path),
+                RequirementsInherit = ReadRequirementsInherit(root, path),
+                OutputLayout = ReadOutputLayout(root, path),
+                PackageNamespaces = ReadPackageNamespaces(root, path),
+                MigrateDialect = ReadMigrateDialect(root),
+                MigrateSkipRedundantChecks = ReadMigrateSkipRedundant(root),
+                MigrateForeignKeyIndexes = ReadMigrateForeignKeyIndexes(root),
+                MigrateConventions = ReadMigrateString(root, "conventions"),
+            };
         }
     }
 
@@ -356,6 +409,23 @@ public sealed class NeutralConfig
         if (specs.Select(s => s.Name).Distinct(StringComparer.Ordinal).Count() != specs.Count)
             throw new MetaModelException($"{path}: \"dependencies\" names must be unique", ErrorCode.ERR_BAD_ATTR_VALUE);
         return specs;
+    }
+
+    /// FR-023 — <c>requirements.inherit</c>. Refused like <c>naming</c>: an unknown key inside
+    /// <c>requirements</c> would otherwise be a misspelt <c>inherit</c> that silently leaves the ledger out.
+    private static IReadOnlyList<string> ReadRequirementsInherit(JsonElement root, string path)
+    {
+        if (!root.TryGetProperty("requirements", out var block) || block.ValueKind == JsonValueKind.Null) return [];
+        if (block.ValueKind != JsonValueKind.Object)
+            throw new MetaModelException($"{path}: \"requirements\" must be an object", ErrorCode.ERR_BAD_ATTR_VALUE);
+        foreach (var p in block.EnumerateObject())
+        {
+            if (p.Name != "inherit")
+                throw new MetaModelException(
+                    $"{path}: \"requirements\" has an unknown key \"{p.Name}\" (expected \"inherit\")",
+                    ErrorCode.ERR_BAD_ATTR_VALUE);
+        }
+        return ReadPatterns(root, path, "requirements", "inherit") ?? [];
     }
 
     /// One pattern list nested in a TypeScript-owned block: `scope.include` or `migrate.scope`. The
@@ -375,23 +445,66 @@ public sealed class NeutralConfig
         return list.EnumerateArray().Select(v => v.GetString()!).ToList();
     }
 
+    private static string ReadOutputLayout(JsonElement root, string path)
+    {
+        if (!root.TryGetProperty("csharp", out var block) || block.ValueKind != JsonValueKind.Object
+            || !block.TryGetProperty("outputLayout", out var v)) return "flat";
+        if (v.ValueKind != JsonValueKind.String || v.GetString() is not ("flat" or "package"))
+            throw new MetaModelException(
+                $"{path}: \"csharp.outputLayout\" must be \"flat\" or \"package\"", ErrorCode.ERR_BAD_ATTR_VALUE);
+        return v.GetString()!;
+    }
+
+    private static PackageNamespaceSetting ReadPackageNamespaces(JsonElement root, string path)
+    {
+        if (!root.TryGetProperty("csharp", out var block) || block.ValueKind != JsonValueKind.Object
+            || !block.TryGetProperty("packageNamespaces", out var v)) return PackageNamespaceSetting.Off;
+        switch (v.ValueKind)
+        {
+            case JsonValueKind.True: return new PackageNamespaceSetting(true, null);
+            case JsonValueKind.False: return PackageNamespaceSetting.Off;
+            case JsonValueKind.Object:
+                var map = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (var e in v.EnumerateObject())
+                {
+                    if (e.Value.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(e.Value.GetString()))
+                        throw new MetaModelException(
+                            $"{path}: \"csharp.packageNamespaces.{e.Name}\" must be a non-empty namespace string", ErrorCode.ERR_BAD_ATTR_VALUE);
+                    map[e.Name] = e.Value.GetString()!;
+                }
+                return new PackageNamespaceSetting(false, map);
+            default:
+                throw new MetaModelException(
+                    $"{path}: \"csharp.packageNamespaces\" must be true, false or an object mapping packages to namespaces",
+                    ErrorCode.ERR_BAD_ATTR_VALUE);
+        }
+    }
+
     /// The `csharp` block: the C#-scoped settings `outDir`, where `dotnet meta gen` writes and
     /// `dotnet meta verify` diffs, and `namespace`, the namespace both generate under. The other
     /// ports ignore the block, as they ignore any key they do not own. An unknown key, a
     /// non-string or empty value, or a non-object block is refused, the same rule as `naming`.
-    private static (string? OutDir, string? Namespace) ReadCSharp(JsonElement root, string path, string configDir)
+    private static (string? OutDir, string? Namespace, IReadOnlyList<ProviderSpec> Providers) ReadCSharp(
+        JsonElement root, string path, string configDir)
     {
-        if (!root.TryGetProperty("csharp", out var block)) return (null, null);
+        if (!root.TryGetProperty("csharp", out var block)) return (null, null, []);
         if (block.ValueKind != JsonValueKind.Object)
             throw new MetaModelException($"{path}: \"csharp\" must be an object", ErrorCode.ERR_BAD_ATTR_VALUE);
 
         string? outDir = null, ns = null;
+        IReadOnlyList<ProviderSpec> providers = [];
         foreach (var p in block.EnumerateObject())
         {
-            if (p.Name is not ("outDir" or "namespace"))
+            if (p.Name is "outputLayout" or "packageNamespaces") continue; // read by their own readers
+            if (p.Name is not ("outDir" or "namespace" or "providers"))
                 throw new MetaModelException(
-                    $"{path}: \"csharp\" has an unknown key \"{p.Name}\" (expected \"outDir\" and/or \"namespace\")",
+                    $"{path}: \"csharp\" has an unknown key \"{p.Name}\" (expected \"outDir\", \"namespace\", \"providers\", \"outputLayout\" and/or \"packageNamespaces\")",
                     ErrorCode.ERR_BAD_ATTR_VALUE);
+            if (p.Name == "providers")
+            {
+                providers = ReadProviders(p.Value, path, configDir);
+                continue;
+            }
             if (p.Value.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(p.Value.GetString()))
                 throw new MetaModelException(
                     $"{path}: \"csharp.{p.Name}\" must be a non-empty string", ErrorCode.ERR_BAD_ATTR_VALUE);
@@ -400,7 +513,41 @@ public sealed class NeutralConfig
             else
                 ns = p.Value.GetString()!;
         }
-        return (outDir, ns);
+        return (outDir, ns, providers);
+    }
+
+    /// `csharp.providers`: an array of `{ "assembly", "type" }` objects. Both keys are required
+    /// non-empty strings; any other key is refused, like the rest of the `csharp` block.
+    private static IReadOnlyList<ProviderSpec> ReadProviders(JsonElement value, string path, string configDir)
+    {
+        if (value.ValueKind != JsonValueKind.Array)
+            throw new MetaModelException(
+                $"{path}: \"csharp.providers\" must be an array of {{ \"assembly\", \"type\" }} objects", ErrorCode.ERR_BAD_ATTR_VALUE);
+        var specs = new List<ProviderSpec>();
+        var i = 0;
+        foreach (var entry in value.EnumerateArray())
+        {
+            var at = $"csharp.providers[{i++}]";
+            if (entry.ValueKind != JsonValueKind.Object)
+                throw new MetaModelException($"{path}: \"{at}\" must be an object", ErrorCode.ERR_BAD_ATTR_VALUE);
+            string? asm = null, type = null;
+            foreach (var f in entry.EnumerateObject())
+            {
+                if (f.Name is not ("assembly" or "type"))
+                    throw new MetaModelException(
+                        $"{path}: \"{at}\" has an unknown key \"{f.Name}\" (expected \"assembly\" and \"type\")",
+                        ErrorCode.ERR_BAD_ATTR_VALUE);
+                if (f.Value.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(f.Value.GetString()))
+                    throw new MetaModelException(
+                        $"{path}: \"{at}.{f.Name}\" must be a non-empty string", ErrorCode.ERR_BAD_ATTR_VALUE);
+                if (f.Name == "assembly") asm = f.Value.GetString()!; else type = f.Value.GetString()!;
+            }
+            if (asm is null || type is null)
+                throw new MetaModelException(
+                    $"{path}: \"{at}\" needs both \"assembly\" and \"type\"", ErrorCode.ERR_BAD_ATTR_VALUE);
+            specs.Add(new ProviderSpec(Path.GetFullPath(asm, Path.GetFullPath(configDir)), type, path));
+        }
+        return specs;
     }
 
     /// The `enums` block: `maxLength`, a positive integer, is the column length of a string-stored
@@ -445,6 +592,7 @@ public sealed class NeutralConfig
 
         var decimals = DecimalWireForm.Native;
         var nullMembers = NullMemberForm.Native;
+        var durations = DurationWireForm.Native;
         foreach (var p in wire.EnumerateObject())
         {
             var raw = p.Value.ValueKind == JsonValueKind.String ? p.Value.GetString() : null;
@@ -471,12 +619,101 @@ public sealed class NeutralConfig
                             ErrorCode.ERR_BAD_ATTR_VALUE),
                     };
                     break;
+                case "durations":
+                    durations = raw switch
+                    {
+                        "native" => DurationWireForm.Native,
+                        "iso" => DurationWireForm.Iso,
+                        _ => throw new MetaModelException(
+                            $"{path}: \"wire.durations\" must be one of \"native\", \"iso\"",
+                            ErrorCode.ERR_BAD_ATTR_VALUE),
+                    };
+                    break;
                 default:
                     throw new MetaModelException(
-                        $"{path}: \"wire\" has an unknown key \"{p.Name}\" (expected \"decimals\" and/or \"nullMembers\")",
+                        $"{path}: \"wire\" has an unknown key \"{p.Name}\" (expected \"decimals\", \"nullMembers\" and/or \"durations\")",
                         ErrorCode.ERR_BAD_ATTR_VALUE);
             }
         }
-        return new WireFormat(decimals, nullMembers);
+        return new WireFormat(decimals, nullMembers, durations);
     }
+
+    /// The `api` block: `pagination` takes both `defaultLimit` and `maxLimit` as positive integers with
+    /// `defaultLimit <= maxLimit`; `unknownFields` is "reject" (the default) or "drop". Anything else is refused.
+    private static ApiSettings ReadApi(JsonElement root, string path)
+    {
+        if (!root.TryGetProperty("api", out var api)) return ApiSettings.Default;
+        if (api.ValueKind != JsonValueKind.Object)
+            throw new MetaModelException($"{path}: \"api\" must be an object", ErrorCode.ERR_BAD_ATTR_VALUE);
+
+        ApiPagination? pagination = null;
+        var unknown = UnknownFieldsMode.Reject;
+        foreach (var p in api.EnumerateObject())
+        {
+            switch (p.Name)
+            {
+                case "pagination":
+                    pagination = ReadPagination(p.Value, path);
+                    break;
+                case "unknownFields":
+                    unknown = (p.Value.ValueKind == JsonValueKind.String ? p.Value.GetString() : null) switch
+                    {
+                        "reject" => UnknownFieldsMode.Reject,
+                        "drop" => UnknownFieldsMode.Drop,
+                        _ => throw new MetaModelException(
+                            $"{path}: \"api.unknownFields\" must be \"reject\" or \"drop\"", ErrorCode.ERR_BAD_ATTR_VALUE),
+                    };
+                    break;
+                default:
+                    throw new MetaModelException(
+                        $"{path}: \"api\" has an unknown key \"{p.Name}\" (expected \"pagination\" and/or \"unknownFields\")",
+                        ErrorCode.ERR_BAD_ATTR_VALUE);
+            }
+        }
+        return new ApiSettings(pagination, unknown);
+    }
+
+    private static ApiPagination ReadPagination(JsonElement block, string path)
+    {
+        if (block.ValueKind != JsonValueKind.Object)
+            throw new MetaModelException($"{path}: \"api.pagination\" must be an object", ErrorCode.ERR_BAD_ATTR_VALUE);
+        int? defaultLimit = null, maxLimit = null;
+        foreach (var p in block.EnumerateObject())
+        {
+            switch (p.Name)
+            {
+                case "defaultLimit": defaultLimit = PageSizeNumber(p.Value, "defaultLimit", path); break;
+                case "maxLimit": maxLimit = PageSizeNumber(p.Value, "maxLimit", path); break;
+                default:
+                    throw new MetaModelException(
+                        $"{path}: \"api.pagination\" has an unknown key \"{p.Name}\" (expected \"defaultLimit\" and \"maxLimit\")",
+                        ErrorCode.ERR_BAD_ATTR_VALUE);
+            }
+        }
+        if (defaultLimit is null)
+            throw new MetaModelException($"{path}: \"api.pagination.defaultLimit\" must be a positive integer", ErrorCode.ERR_BAD_ATTR_VALUE);
+        if (maxLimit is null)
+            throw new MetaModelException($"{path}: \"api.pagination.maxLimit\" must be a positive integer", ErrorCode.ERR_BAD_ATTR_VALUE);
+        if (defaultLimit > maxLimit)
+            throw new MetaModelException(
+                $"{path}: \"api.pagination.defaultLimit\" must not exceed \"api.pagination.maxLimit\"", ErrorCode.ERR_BAD_ATTR_VALUE);
+        return new ApiPagination(defaultLimit.Value, maxLimit.Value);
+    }
+
+    // A positive whole number however JSON spells it (50 and 50.0 are one number, as every other
+    // port reads them), at most int.MaxValue. The shared corpus
+    // fixtures/api-contract-conformance/api-settings/config-blocks.json holds every port to it.
+    private static int PageSizeNumber(JsonElement v, string key, string path) =>
+        v.ValueKind == JsonValueKind.Number && v.TryGetDecimal(out var d)
+            && d == decimal.Truncate(d) && d >= 1 && d <= int.MaxValue
+            ? (int)d
+            : throw new MetaModelException($"{path}: \"api.pagination.{key}\" must be a positive integer", ErrorCode.ERR_BAD_ATTR_VALUE);
+}
+
+/// <summary>`csharp.packageNamespaces`: <see cref="FromMetadata"/> is the <c>true</c> form (each
+/// packaged type takes its metadata package's namespace); <see cref="Map"/> the object form (an
+/// explicit package-to-namespace mapping). Both off is the earlier rule.</summary>
+public sealed record PackageNamespaceSetting(bool FromMetadata, IReadOnlyDictionary<string, string>? Map)
+{
+    public static readonly PackageNamespaceSetting Off = new(false, null);
 }

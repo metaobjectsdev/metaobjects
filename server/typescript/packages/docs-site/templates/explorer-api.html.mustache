@@ -1,0 +1,5 @@
+<h1>API</h1>
+{{#recorded}}<div class="sub">Every route the generated code mounts, by the object it serves: {{{summary}}}.</div>
+{{#hasGroups}}<div class="grid apis page">{{#groups}}<div class="card"><h3>{{{linkHtml}}} <span class="pill">{{{kind}}}</span>{{#isReadOnly}} <span class="pill">read-only</span>{{/isReadOnly}}</h3>{{#routes}}<div class="route"><span class="method m-{{{methodClass}}}">{{{method}}}</span> <code>{{{path}}}</code></div>{{/routes}}</div>{{/groups}}</div>{{/hasGroups}}
+{{^hasGroups}}<div class="note page">The run generated no routes.</div>{{/hasGroups}}{{/recorded}}
+{{^recorded}}<div class="note page">The run that built this site recorded no routes: it generated none, or ran without the routes generator.</div>{{/recorded}}

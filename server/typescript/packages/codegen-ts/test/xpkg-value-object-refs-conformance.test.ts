@@ -1,7 +1,7 @@
 // fixtures/codegen-conformance/xpkg-value-object-refs/ (TypeScript lane). One generated file meets
 // two same-named types from two packages: `acme::app::Host` holds `acme::alpha::Note` and
 // `acme::beta::Note`, and the callable wrapper for `acme::app::Summary` takes its arguments object
-// `acme::alpha::Summary`. Nothing is renamed (ruling R52): under the package layout each file
+// `acme::alpha::Summary`. Nothing is renamed: under the package layout each file
 // binds the pair under package-qualified local aliases, and the whole output type-checks.
 
 import { describe, test, expect, afterAll } from "bun:test";

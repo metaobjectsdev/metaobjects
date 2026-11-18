@@ -72,11 +72,53 @@ public class SpringDurationWireCompileRunTest {
         }
     }
 
+    /**
+     * {@code wire.durations: native} (the default): no MetaObjects annotation is emitted and the host
+     * mapper's own java.time handling reads and writes the Duration ({@code Duration.toString()}).
+     */
+    @Test
+    public void nativeDurationsUseTheHostMapper() throws Exception {
+        Path srcDir = tmp.newFolder().toPath();
+        Path classesDir = tmp.newFolder().toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(tmp.newFolder().toPath(), "ops", META);
+        loader.getRoot().setWireFormat(new WireFormat(
+            WireFormat.Decimals.NATIVE, WireFormat.NullMembers.OMIT, WireFormat.Durations.NATIVE));
+        runGenerator(new SpringDtoGenerator(), loader, srcDir);
+        runGenerator(new SpringValueObjectGenerator(), loader, srcDir);
+        compile(srcDir, classesDir);
+        String dtoSrc = Files.readString(srcDir.resolve("acme/ops/JobDto.java"));
+        assertFalse(dtoSrc, dtoSrc.contains("CanonicalDuration"));
+
+        // A host mapper's java.time handling of a Duration: Duration.toString() / Duration.parse.
+        com.fasterxml.jackson.databind.module.SimpleModule hostDurations =
+            new com.fasterxml.jackson.databind.module.SimpleModule();
+        hostDurations.addSerializer(Duration.class, com.fasterxml.jackson.databind.ser.std.ToStringSerializer.instance);
+        hostDurations.addDeserializer(Duration.class,
+            new com.fasterxml.jackson.databind.deser.std.StdDeserializer<Duration>(Duration.class) {
+                @Override public Duration deserialize(com.fasterxml.jackson.core.JsonParser p,
+                        com.fasterxml.jackson.databind.DeserializationContext c) throws java.io.IOException {
+                    return Duration.parse(p.getText());
+                }
+            });
+        ObjectMapper mapper = new ObjectMapper().registerModule(hostDurations);
+        try (URLClassLoader cl = new URLClassLoader(
+                new URL[]{ classesDir.toUri().toURL() }, getClass().getClassLoader())) {
+            Class<?> dto = cl.loadClass(PKG + ".JobDto");
+            Object job = mapper.readValue("{\"holdFor\":\"PT1H30M\",\"window\":{\"span\":\"PT5400S\"}}", dto);
+            assertEquals(Duration.ofMinutes(90), dto.getMethod("holdFor").invoke(job));
+            JsonNode out = mapper.valueToTree(job);
+            assertEquals(Duration.ofMinutes(90).toString(), out.get("holdFor").asText());
+            // Jackson's own Duration.parse takes the looser forms the iso rule refuses.
+            Object loose = mapper.readValue("{\"holdFor\":\"pt1h\"}", dto);
+            assertEquals(Duration.ofHours(1), dto.getMethod("holdFor").invoke(loose));
+        }
+    }
+
     private void run(WireFormat.Decimals decimals, ObjectMapper mapper) throws Exception {
         Path srcDir = tmp.newFolder().toPath();
         Path classesDir = tmp.newFolder().toPath();
         MetaDataLoader loader = SpringTestFixtures.loadFixture(tmp.newFolder().toPath(), "ops", META);
-        loader.getRoot().setWireFormat(new WireFormat(decimals, WireFormat.NullMembers.OMIT));
+        loader.getRoot().setWireFormat(new WireFormat(decimals, WireFormat.NullMembers.OMIT, WireFormat.Durations.ISO));
         runGenerator(new SpringDtoGenerator(), loader, srcDir);
         runGenerator(new SpringValueObjectGenerator(), loader, srcDir);
         runGenerator(new SpringFilterAllowlistGenerator(), loader, srcDir);

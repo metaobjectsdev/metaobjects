@@ -1,0 +1,22 @@
+name: sequence-start-change-below-max-id
+description: |
+  An existing table's increment key gains `@sequenceStart: 1000`, but a live row already holds
+  id 5000 (inserted with an explicit id, so the sequence never handed it out). The counter moves
+  forward to `max(id) + 1`, not to the start: the start would hand out ids up to 5000 again.
+  Companion of `sequence-start-change-moves-counter-forward`.
+
+seed-metadata: ./states/program-v1/
+seed-data: |
+  INSERT INTO "programs" ("title") VALUES ('Foundations');
+  INSERT INTO "programs" ("id", "title") VALUES (5000, 'Imported');
+
+target-metadata: ./states/program-seq-v2/
+
+expect:
+  blocked: []
+  up-contains:
+    - 'ALTER SEQUENCE "programs_id_seq" START WITH 1000;'
+  apply-up-then-query:
+    sql: SELECT nextval('"programs_id_seq"') AS "next"
+    rows:
+      - { next: "5001" }

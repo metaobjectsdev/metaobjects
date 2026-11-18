@@ -5,7 +5,7 @@
 import { code, imp, joinCode, type Code } from "@metaobjectsdev/codegen-ts/engine";
 import { MetaObject, MetaField, MetaIndex, isMetaObject } from "@metaobjectsdev/metadata";
 import {
-  IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION,
+  IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION, IDENTITY_ATTR_SEQUENCE_START, IDENTITY_ATTR_SEQUENCE_NAME,
   IDENTITY_ATTR_EXPR, IDENTITY_ATTR_USING, IDENTITY_ATTR_ORDERS, IDENTITY_ATTR_WHERE,
   GENERATION_INCREMENT, GENERATION_UUID,
   FIELD_ATTR_AUTO_SET,
@@ -26,7 +26,7 @@ import { dialectModule } from "@metaobjectsdev/codegen-ts/engine";
 import {
   namesRef, physicalNameExpr, sourceSchemaExpr, indexNameExpr, columnExpr,
 } from "@metaobjectsdev/codegen-ts/engine";
-import { resolveTableSchema, storedEnumValue, VALIDATOR_ATTR_CONSTRAINT_NAME } from "@metaobjectsdev/metadata";
+import { resolveTableSchema, resolveIndexName, storedEnumValue, VALIDATOR_ATTR_CONSTRAINT_NAME } from "@metaobjectsdev/metadata";
 import { fitPgIdentifier } from "@metaobjectsdev/codegen-ts/engine";
 import { intValueMapOf } from "@metaobjectsdev/codegen-ts/engine";
 import { renderEnumIntCustomType } from "./enum-int-codec.js";
@@ -35,7 +35,9 @@ import { renderRelationsBlock } from "./relations-block.js";
 import { renderDocsFor } from "./jsdoc.js";
 import { collectTphSubtypeFields, tphConcreteSubtypes, tphPlan } from "./tph-discriminator.js";
 import { tphStorageObject } from "@metaobjectsdev/codegen-ts/engine";
+import { flattenedMembersOf } from "@metaobjectsdev/codegen-ts/engine";
 import { effectivePackage } from "@metaobjectsdev/codegen-ts/engine";
+import { foreignKeyIndexesOf, storedIndexName } from "@metaobjectsdev/codegen-ts/engine";
 
 /** One table-level CHECK: its name and expression as emitted, and their plain text (rc.21, N1). */
 interface CheckEntry { name: Code; expr: Code; key: string; text: string }
@@ -156,6 +158,14 @@ export function renderDrizzleSchema(
       : [];
   const pkFieldNames = new Set<string>(pkFieldsList);
   const pkGeneration = primary?.attr(IDENTITY_ATTR_GENERATION) as string | undefined;
+  // #544 — the increment key's declared sequence (ADR-0039: resolving reads), carried into
+  // Drizzle's identity options so a schema Drizzle creates begins at `@sequenceStart` too.
+  const seqStart = primary?.attr(IDENTITY_ATTR_SEQUENCE_START);
+  const seqName = primary?.attr(IDENTITY_ATTR_SEQUENCE_NAME);
+  const pkSequence = {
+    ...(typeof seqStart === "number" ? { start: seqStart } : {}),
+    ...(typeof seqName === "string" ? { name: seqName } : {}),
+  };
 
   const fkMap = buildFkMapForEntity(obj, ctx);
 
@@ -237,23 +247,59 @@ export function renderDrizzleSchema(
   const enumIntTypes = new Map<string, EnumIntCustomType>();
   // The field.duration codec: one declaration serves every duration column of the table.
   let usesDurationCodec = false;
+  // One column per member of a flattened value object, keyed `<field><Member>` and named by
+  // core naming (`resolveFlattenedColumnName`), the name `meta migrate` creates; the
+  // `<Entity>Names` constant when the artifact carries it. No CHECK constraint: migrate derives
+  // CHECKs from the entity's own fields only.
+  // Database column → the Drizzle column key, for the foreign-key indexes below (they come off
+  // migrate's schema, in column terms).
+  const keyByColumn = new Map<string, string>();
+  const pushFlattenedColumns = (
+    owner: MetaField,
+    members: NonNullable<ReturnType<typeof flattenedMembersOf>>,
+  ): void => {
+    for (const m of members) {
+      const base = mapColumnType(m.flat, ctx.dialect, ctx.columnNamingStrategy, ctx.timestampMode);
+      const spec: ColumnSpec = { ...base, dbName: m.column };
+      keyByColumn.set(m.column, m.key);
+      if (spec.enumIntCustomType !== undefined) {
+        enumIntTypes.set(spec.enumIntCustomType.fnConstName, spec.enumIntCustomType);
+      }
+      if (spec.durationCustomType !== undefined) usesDurationCodec = true;
+      const named = names?.resolved.fields[owner.name]?.members?.[m.member.name];
+      const dbExpr: Code = names !== undefined && named !== undefined
+        ? code`${names.symbol}.fields.${owner.name}.members.${m.member.name}.column`
+        : code`${JSON.stringify(m.column)}`;
+      columnLines.push(
+        renderColumn(spec, dbExpr, m.member, ctx, false, undefined, undefined, isComposite, pkg, obj.name, false, m.key),
+      );
+    }
+  };
   for (const child of obj.fields()) {
     // #213 — a derived (origin-bearing) field is read-only, materialized on the
     // read (view) side, NOT a column on the entity's write table (FR-024 §7).
     // Emitting it here would declare a Drizzle column for a table column migrate
     // no longer creates.
     if (child.isDerived()) continue;
+    // `field.object @storage: flattened` holds one column per member of its value object and
+    // none of its own - exactly the columns `meta migrate` creates (flattened.ts).
+    const flat = flattenedMembersOf(child, ctx.columnNamingStrategy);
+    if (flat !== undefined) {
+      pushFlattenedColumns(child, flat);
+      continue;
+    }
     const isPk = pkFieldNames.has(child.name);
     const fkInfo = fkMap.get(child.name);
     // Compute the column spec once per field and reuse it for both the column
     // line and the CHECK collection.
     const spec = mapColumnType(child, ctx.dialect, ctx.columnNamingStrategy, ctx.timestampMode);
+    keyByColumn.set(spec.dbName, child.name);
     if (spec.enumIntCustomType !== undefined) {
       enumIntTypes.set(spec.enumIntCustomType.fnConstName, spec.enumIntCustomType);
     }
     if (spec.durationCustomType !== undefined) usesDurationCodec = true;
     const fieldDocs = renderDocsFor(child);
-    const columnLine = renderColumn(spec, columnNameExpr(child, spec.dbName), child, ctx, isPk, pkGeneration, fkInfo, isComposite, pkg, obj.name);
+    const columnLine = renderColumn(spec, columnNameExpr(child, spec.dbName), child, ctx, isPk, pkGeneration, fkInfo, isComposite, pkg, obj.name, false, child.name, pkSequence);
     columnLines.push(fieldDocs ? code`  ${fieldDocs}\n${columnLine}` : columnLine);
     if (spec.checkConstraint !== undefined) checkConstraints.push(checkEntry(child, spec));
   }
@@ -268,6 +314,7 @@ export function renderDrizzleSchema(
     // #213 — a TPH subtype's derived field is read-only too; never a table column.
     if (child.isDerived()) continue;
     const spec = mapColumnType(child, ctx.dialect, ctx.columnNamingStrategy, ctx.timestampMode);
+    keyByColumn.set(spec.dbName, child.name);
     if (spec.enumIntCustomType !== undefined) {
       enumIntTypes.set(spec.enumIntCustomType.fnConstName, spec.enumIntCustomType);
     }
@@ -363,7 +410,16 @@ export function renderDrizzleSchema(
     // `idx_<table>_<col>` against an index the database actually held under
     // `identity.name` (fdb4118f1); and an empty `index.lookup` name — which the loader
     // accepts, unlike an identity — is refused here rather than emitting `index("")`.
-    const indexName = indexNameExpr(names, node);
+    //
+    // Except past Postgres's 63-byte identifier limit: migrate creates and compares such an
+    // index under the name Postgres stores (`storedIdentifier`, its first 63 bytes; SQLite
+    // keeps the whole name), so the mapping spells that cut name as a literal. The names
+    // artifact is dialect-neutral and keeps the declared name.
+    const declaredIndexName = resolveIndexName(node);
+    const storedName = storedIndexName(declaredIndexName, dialect);
+    const indexName = storedName === declaredIndexName
+      ? indexNameExpr(names, node)
+      : code`${JSON.stringify(storedName)}`;
     const head: Code =
       using !== undefined && using !== "btree"
         ? code`${indexSym}(${indexName}).using(${JSON.stringify(using)}, ${target})`
@@ -398,6 +454,17 @@ export function renderDrizzleSchema(
   for (const lookup of obj.lookupIndexes()) {
     const entry = indexEntry(lookup, lookup.fields(), /* unique */ false);
     if (entry !== undefined) callbackEntries.push(entry);
+  }
+
+  // `migrate.foreignKeyIndexes`: the index migrate gives each foreign key nothing else indexes,
+  // under migrate's name, so the mapping declares the indexes the database has. Off (no entry)
+  // for a project without the setting.
+  for (const fkIndex of foreignKeyIndexesOf(obj, ctx.loadedRoot, ctx.schemaSettings, dialect)) {
+    const keys = fkIndex.columns.map((c) => keyByColumn.get(c));
+    if (keys.some((k) => k === undefined)) continue;
+    callbackEntries.push(
+      code`${imp(`index@${importModule}`)}(${JSON.stringify(fkIndex.name)}).on(${keys.map((k) => `table.${k}`).join(", ")})`,
+    );
   }
 
   // Emit table-level CHECK constraints for enum fields. Both halves are composed by
@@ -561,6 +628,11 @@ function renderColumn(
   // FR-017 Tier 2 — TPH subtype-only column: force nullable (drop .notNull())
   // and suppress any DB default (other-subtype rows must stay NULL here).
   forceNullable: boolean = false,
+  // `field.object @storage: flattened`: the Drizzle KEY of a member's column (`shipToStreet`);
+  // absent, the key is the field's own name.
+  keyName: string = field.name,
+  // An increment key's declared `@sequenceStart` / `@sequenceName` (#544); absent, none.
+  pkSequence: { start?: number | undefined; name?: string | undefined } = {},
 ): Code {
   // An int-backed field.enum's column function is a LOCAL generated const (the
   // customType helper emitted into this same file), so it must not be imported
@@ -620,7 +692,7 @@ function renderColumn(
           spec.enumIntCustomType === undefined &&
           PG_IDENTITY_CAPABLE_FNS.has(spec.fnName)
         ) {
-          pkSuffix += ".generatedByDefaultAsIdentity()";
+          pkSuffix += `.generatedByDefaultAsIdentity(${identityOptionsLiteral(pkSequence)})`;
         }
       }
     } else if (pkGeneration === GENERATION_UUID) {
@@ -776,7 +848,7 @@ function renderColumn(
     }
   }
 
-  const columnLine = code`  ${field.name}: ${baseCall}${dollarTypeSegment}${modifiersStr}${autoSetSuffix}${sqlDefaultSegment ?? ""}${fkRefSegment ?? ""}`;
+  const columnLine = code`  ${keyName}: ${baseCall}${dollarTypeSegment}${modifiersStr}${autoSetSuffix}${sqlDefaultSegment ?? ""}${fkRefSegment ?? ""}`;
   return spec.leadingComment !== undefined
     ? code`  // ${spec.leadingComment}\n${columnLine}`
     : columnLine;
@@ -834,4 +906,15 @@ function guardedSiblingEnumChecks(
     out.push({ name: code`${JSON.stringify(name)}`, expr: code`(${unless}) OR (${check})`, key: name, text: `(${unless}) OR (${check})` });
   });
   return out;
+}
+
+/**
+ * Drizzle's identity options for what the model declares, the same two meta migrate writes
+ * (`SEQUENCE NAME … START WITH n`): `{ name: "Old_Id_seq", startWith: 1000 }`, or nothing.
+ */
+function identityOptionsLiteral(seq: { start?: number | undefined; name?: string | undefined }): string {
+  const parts: string[] = [];
+  if (seq.name !== undefined) parts.push(`name: ${JSON.stringify(seq.name)}`);
+  if (seq.start !== undefined) parts.push(`startWith: ${seq.start}`);
+  return parts.length === 0 ? "" : `{ ${parts.join(", ")} }`;
 }

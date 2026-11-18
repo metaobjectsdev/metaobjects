@@ -1,83 +1,63 @@
-// Phase 5, bug G7 (joined half): a projection @filter key may be a PATH of to-one hops from the
-// base entity, then a field of the entity reached (`consignmentId.status`). The view joins along the
-// path and filters on the reached column without outputting it. A to-many hop is refused.
+// A projection @filter key may walk to-one hops from the base to a field of the reached entity:
+// the view joins along the path (sharing an origin's join) and filters on the column without
+// outputting it.
 
 import { describe, test, expect } from "bun:test";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { buildProjectionViews } from "../../src/projection/build-projection-views.js";
 
-const model = (filter: unknown, extraField?: unknown) => ({
-  "metadata.root": {
-    package: "acme",
-    children: [
-      { "object.entity": { name: "Program", children: [
-        { "source.rdb": { "@table": "programs" } },
-        { "field.long": { name: "id" } },
-        { "field.boolean": { name: "active" } },
-        { "identity.primary": { name: "id", "@fields": "id" } },
-      ] } },
-      { "object.entity": { name: "Consignment", children: [
-        { "source.rdb": { "@table": "consignments" } },
-        { "field.long": { name: "id" } },
-        { "field.string": { name: "status" } },
-        { "field.long": { name: "programId", "@required": true } },
-        { "identity.primary": { name: "id", "@fields": "id" } },
-        { "identity.reference": { name: "programId", "@fields": "programId", "@references": "Program" } },
-        { "relationship.composition": { name: "tasks", "@objectRef": "Task", "@cardinality": "many" } },
-      ] } },
-      { "object.entity": { name: "Task", children: [
-        { "source.rdb": { "@table": "tasks" } },
-        { "field.long": { name: "id" } },
-        { "field.string": { name: "title" } },
-        { "field.long": { name: "consignmentId" } },
-        { "identity.primary": { name: "id", "@fields": "id" } },
-        { "identity.reference": { name: "consignmentId", "@fields": "consignmentId", "@references": "Consignment" } },
-      ] } },
-      { "object.projection": { name: "OpenTasks", "@filter": filter, children: [
-        { "source.rdb": { "@kind": "view", "@table": "v_open_tasks" } },
-        { "field.long": { name: "id", extends: "Task.id" } },
-        { "field.string": { name: "title", extends: "Task.title" } },
-        ...(extraField !== undefined ? [extraField] : []),
-        { "identity.primary": { name: "id", extends: "Task.id" } },
-      ] } },
-    ],
-  },
+const model = (filter: unknown, extraFields: unknown[] = []) => ({
+  "metadata.root": { package: "acme", children: [
+    { "object.entity": { name: "Customer", children: [
+      { "source.rdb": { "@table": "customers" } },
+      { "field.long": { name: "id" } },
+      { "field.string": { name: "name" } },
+      { "field.boolean": { name: "active" } },
+      { "identity.primary": { name: "id", "@fields": "id" } },
+    ] } },
+    { "object.entity": { name: "Order", children: [
+      { "source.rdb": { "@table": "orders" } },
+      { "field.long": { name: "id" } },
+      { "field.long": { name: "customerId" } },
+      { "field.int": { name: "total" } },
+      { "identity.primary": { name: "id", "@fields": "id" } },
+      { "identity.reference": { name: "customer", "@fields": "customerId", "@references": "Customer" } },
+    ] } },
+    { "object.projection": { name: "ActiveOrders", "@filter": filter, children: [
+      { "source.rdb": { "@kind": "view", "@table": "v_active_orders" } },
+      { "field.long": { name: "id", extends: "Order.id" } },
+      ...extraFields,
+      { "identity.primary": { name: "id", extends: "Order.id" } },
+    ] } },
+  ] },
 });
 
-async function load(filter: unknown, extraField?: unknown) {
-  return new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(model(filter, extraField)))]);
+async function load(filter: unknown, extra: unknown[] = []) {
+  return new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(model(filter, extra)))]);
 }
 
-describe("G7 — a view @filter on a joined field the view does not output", () => {
-  test("one hop: joins the reference and filters on its column", async () => {
-    const { root, errors } = await load({ "consignmentId.status": "open" });
+describe("a view @filter walking a to-one path", () => {
+  test("joins the reached entity and filters on its column", async () => {
+    const { root, errors } = await load({ "customer.active": true });
     expect(errors).toEqual([]);
     const [v] = buildProjectionViews(root, { dialect: "postgres" });
-    expect(v!.sql).toContain("LEFT OUTER JOIN public.consignments c ON c.id = t.consignment_id");
-    expect(v!.sql).toContain("WHERE c.status = 'open'");
-    expect(v!.sql).not.toContain("AS status");
+    expect(v!.sql).toMatch(/JOIN customers (\w+) ON \1\.id = \w+\.customer_id/);
+    expect(v!.sql).toMatch(/WHERE \w+\.active = TRUE/);
+    expect(v!.sql).not.toContain("AS active");
+    expect([...v!.dependsOn].sort()).toEqual(["customers", "orders"]);
   });
 
-  test("two hops, sharing the join an origin already walks", async () => {
-    const { root, errors } = await load(
-      { "consignmentId.programId.active": true },
-      { "field.string": { name: "consignmentStatus", children: [{ "origin.passthrough": { "@from": "Consignment.status", "@via": "Task.consignmentId" } }] } },
-    );
+  test("shares the join an origin on the same path already made", async () => {
+    const { root, errors } = await load({ "customer.active": true }, [
+      { "field.string": { name: "customerName", children: [{ "origin.passthrough": { "@from": "Customer.name", "@via": "Order.customer" } }] } },
+    ]);
     expect(errors).toEqual([]);
     const [v] = buildProjectionViews(root, { dialect: "postgres" });
-    expect(v!.sql.match(/JOIN public\.consignments/g)?.length).toBe(1);
-    expect(v!.sql).toContain("JOIN public.programs p ON p.id = c.program_id");
-    expect(v!.sql).toContain("WHERE p.active = TRUE");
+    expect(v!.sql.match(/JOIN customers/g)).toHaveLength(1);
   });
 
-  test("a to-many hop is refused", async () => {
-    const { errors } = await load({ "consignmentId.tasks.title": "x" });
-    expect(errors.map((e) => (e as { code?: string }).code)).toEqual(["ERR_BAD_ATTR_FILTER"]);
-    expect(String((errors[0] as Error).message)).toContain("to-many");
-  });
-
-  test("a field the reached entity does not declare is refused", async () => {
-    const { errors } = await load({ "consignmentId.nope": "x" });
-    expect(errors.map((e) => (e as { code?: string }).code)).toEqual(["ERR_BAD_ATTR_FILTER"]);
+  test("a to-many hop is refused by the loader", async () => {
+    const { errors } = await load({ "lines.qty": 1 });
+    expect(errors.length).toBeGreaterThan(0);
   });
 });

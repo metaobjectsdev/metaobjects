@@ -50,6 +50,17 @@ public final class NamingStrategies {
     private static final Map<String, NamingFunction> COLUMNS = new LinkedHashMap<>();
     private static final Map<String, NamingFunction> TABLES = new LinkedHashMap<>();
 
+    /** The cross-port pluralizer (already-plural detection, then the suffix rule). */
+    public static final String PLURALIZER_STANDARD = "standard";
+    /** The name as it is. */
+    public static final String PLURALIZER_NONE = "none";
+    /** The pluralizers every port builds in. */
+    public static final List<String> BUILT_IN_PLURALIZERS = List.of(PLURALIZER_STANDARD, PLURALIZER_NONE);
+    /** The pluralizer an object without {@code @collectionName} gets when {@code naming.collections} is absent. */
+    public static final String DEFAULT_PLURALIZER = PLURALIZER_STANDARD;
+
+    private static final Map<String, NamingFunction> PLURALIZERS = new LinkedHashMap<>();
+
     static {
         COLUMNS.put(ColumnNaming.SNAKE_CASE, ColumnNaming::toSnakeCase);
         COLUMNS.put(ColumnNaming.LITERAL, n -> n);
@@ -57,6 +68,55 @@ public final class NamingStrategies {
         COLUMNS.put(ColumnNaming.PASCAL, ColumnNaming::toPascalColumn);
         TABLES.put(ColumnNaming.SNAKE_CASE, ColumnNaming::toSnakeCase);
         TABLES.put(ColumnNaming.LITERAL, n -> n);
+        PLURALIZERS.put(PLURALIZER_STANDARD, NamingStrategies::standardPluralize);
+        PLURALIZERS.put(PLURALIZER_NONE, n -> n);
+    }
+
+    /**
+     * Registers a pluralizer under {@code name}: an object name in, its collection name out.
+     * {@code "naming": { "collections": "<name>" }} then selects it; an object's own
+     * {@code @collectionName} always wins over it. A built-in cannot be replaced.
+     */
+    public static void registerPluralizer(String name, NamingFunction apply) {
+        register(PLURALIZERS, BUILT_IN_PLURALIZERS, name, apply, "collection-naming (pluralizer)");
+    }
+
+    public static synchronized boolean isPluralizer(String name) {
+        return PLURALIZERS.containsKey(name);
+    }
+
+    /** Every registered pluralizer's name: the built-ins, then the application's. */
+    public static synchronized List<String> registeredPluralizers() {
+        return new ArrayList<>(PLURALIZERS.keySet());
+    }
+
+    /** The pluralizer registered as {@code name}. Throws, naming it, when nothing answers it. */
+    public static synchronized NamingFunction pluralizer(String name) {
+        NamingFunction fn = PLURALIZERS.get(name);
+        if (fn == null) throw new MetaDataException(unknownMessage("collections", name), ErrorCode.ERR_BAD_ATTR_VALUE);
+        return fn;
+    }
+
+    /**
+     * The {@code standard} pluralizer, the rule every port shares
+     * ({@code fixtures/naming-conformance/already-plural-pluralize.json}): a name ending in
+     * {@code s} not preceded by s/u/i/a is already plural and stays; else the suffix rule.
+     * Case-insensitive, and the name keeps its own casing.
+     */
+    public static String standardPluralize(String s) {
+        if (s == null || s.isEmpty()) return s;
+        String lower = s.toLowerCase(java.util.Locale.ROOT);
+        if (lower.length() >= 2 && lower.endsWith("s") && "suia".indexOf(lower.charAt(lower.length() - 2)) < 0) {
+            return s;
+        }
+        if (lower.endsWith("s") || lower.endsWith("x") || lower.endsWith("z")
+                || lower.endsWith("ch") || lower.endsWith("sh")) {
+            return s + "es";
+        }
+        if (lower.length() > 1 && lower.endsWith("y") && "aeiou".indexOf(lower.charAt(lower.length() - 2)) < 0) {
+            return s.substring(0, s.length() - 1) + "ies";
+        }
+        return s + "s";
     }
 
     /**
@@ -95,6 +155,7 @@ public final class NamingStrategies {
     public static synchronized void resetForTesting() {
         COLUMNS.keySet().retainAll(BUILT_IN_COLUMNS);
         TABLES.keySet().retainAll(BUILT_IN_TABLES);
+        PLURALIZERS.keySet().retainAll(BUILT_IN_PLURALIZERS);
     }
 
     /** True when {@code name} is a registered column strategy, built in or the application's. */
@@ -143,13 +204,15 @@ public final class NamingStrategies {
      */
     public static synchronized String unknownMessage(String key, String name) {
         boolean columns = "columns".equals(key);
-        List<String> builtIns = columns ? BUILT_IN_COLUMNS : BUILT_IN_TABLES;
+        boolean collections = "collections".equals(key);
+        List<String> builtIns = columns ? BUILT_IN_COLUMNS : collections ? BUILT_IN_PLURALIZERS : BUILT_IN_TABLES;
         List<String> registered = new ArrayList<>();
-        for (String n : (columns ? COLUMNS : TABLES).keySet()) {
+        for (String n : (columns ? COLUMNS : collections ? PLURALIZERS : TABLES).keySet()) {
             if (!builtIns.contains(n)) registered.add(n);
         }
-        return "\"naming." + key + "\" names \"" + name + "\", which no " + (columns ? "column" : "table")
-            + "-naming strategy registered in the " + PORT + " port answers (built in: "
+        String kind = columns ? "column-naming" : collections ? "collection-naming (pluralizer)" : "table-naming";
+        return "\"naming." + key + "\" names \"" + name + "\", which no " + kind
+            + " strategy registered in the " + PORT + " port answers (built in: "
             + String.join(", ", builtIns) + "; registered by the application: "
             + (registered.isEmpty() ? "none" : String.join(", ", registered)) + "). Register it before "
             + ".metaobjects/config.json is read, or correct the name.";

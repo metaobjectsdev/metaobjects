@@ -22,6 +22,7 @@ public static class ValidatorConstants
     public const string VALIDATOR_SUBTYPE_REQUIRED_WHEN = "requiredWhen";
     public const string VALIDATOR_SUBTYPE_PRESENT_IFF   = "presentIff";
     public const string VALIDATOR_SUBTYPE_AT_LEAST_ONE  = "atLeastOne";
+    public const string VALIDATOR_SUBTYPE_EXACTLY_ONE   = "exactlyOne";
 
     public static readonly string[] VALIDATOR_SUBTYPES =
     [
@@ -35,6 +36,7 @@ public static class ValidatorConstants
         VALIDATOR_SUBTYPE_REQUIRED_WHEN,
         VALIDATOR_SUBTYPE_PRESENT_IFF,
         VALIDATOR_SUBTYPE_AT_LEAST_ONE,
+        VALIDATOR_SUBTYPE_EXACTLY_ONE,
     ];
 
     // Validator attr keys (used by codegen-ts when reading validator children)
@@ -49,7 +51,7 @@ public static class ValidatorConstants
     public const string VALIDATOR_ATTR_WHEN   = "when";
     public const string VALIDATOR_ATTR_EQUALS = "equals";
     public const string VALIDATOR_ATTR_FIELDS = "fields";
-    /// <summary>comparison / requiredWhen / presentIff / atLeastOne: the case the rule applies in (an attr.expression).</summary>
+    /// <summary>comparison / requiredWhen / presentIff / atLeastOne / exactlyOne: the case the rule applies in (an attr.expression).</summary>
     public const string VALIDATOR_ATTR_CONDITION = "condition";
     /// <summary>A CHECK-generating validator (db provider): the database name of that CHECK.</summary>
     public const string VALIDATOR_ATTR_CONSTRAINT_NAME = "constraintName";
@@ -59,7 +61,7 @@ public static class ValidatorConstants
     /// <summary>The cross-field validators: enforced only by their CHECK, so <c>@dbCheck: false</c> is refused on them.</summary>
     public static readonly IReadOnlyList<string> CROSS_FIELD_VALIDATOR_SUBTYPES_FOR_DB_CHECK =
     [
-        VALIDATOR_SUBTYPE_COMPARISON, VALIDATOR_SUBTYPE_REQUIRED_WHEN, VALIDATOR_SUBTYPE_PRESENT_IFF, VALIDATOR_SUBTYPE_AT_LEAST_ONE,
+        VALIDATOR_SUBTYPE_COMPARISON, VALIDATOR_SUBTYPE_REQUIRED_WHEN, VALIDATOR_SUBTYPE_PRESENT_IFF, VALIDATOR_SUBTYPE_AT_LEAST_ONE, VALIDATOR_SUBTYPE_EXACTLY_ONE,
     ];
 
     /// <summary>The validators <c>meta migrate</c> renders as a CHECK (and so may carry @constraintName):
@@ -68,6 +70,6 @@ public static class ValidatorConstants
     [
         VALIDATOR_SUBTYPE_NUMERIC, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
         VALIDATOR_SUBTYPE_COMPARISON, VALIDATOR_SUBTYPE_REQUIRED_WHEN, VALIDATOR_SUBTYPE_PRESENT_IFF,
-        VALIDATOR_SUBTYPE_AT_LEAST_ONE,
+        VALIDATOR_SUBTYPE_AT_LEAST_ONE, VALIDATOR_SUBTYPE_EXACTLY_ONE,
     ];
 }

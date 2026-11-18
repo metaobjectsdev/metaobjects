@@ -25,20 +25,21 @@ command surface splits in two:
 
 | Capability | Tool | Invocation | Notes |
 |---|---|---|---|
-| Project scaffold (`init`) | Node `meta` | `meta init` | TS projects |
+| Project scaffold (`init`) | Node `meta` | `meta init` | TS projects; `--dialect sqlite\|postgres\|mysql\|d1` writes the codegen `dialect` in `metaobjects.config.ts` and, for sqlite, postgres and d1, `migrate.dialect` in `.metaobjects/config.json` (d1 is `--d1`; MySQL schema is not `meta migrate`'s). A new `.metaobjects/config.json` also carries `"api": { "pagination": { "defaultLimit": 50, "maxLimit": 1000 }, "unknownFields": "reject" }`, the generated list routes' page size and the refusal of undeclared write keys ([api-contract.md](api-contract.md)); `--force` over an existing config does not add it |
 | **Agent-context scaffold** (`agent-docs`) | **Node `meta`** | `npx meta agent-docs --server <lang>` | **any backend** — single assembler (ADR-0033); non-Node CLIs redirect here |
 | **Schema migrate** | **Node `meta`** | `meta migrate` | **any backend** — schema is Node-only (ADR-0015) |
 | **Schema drift** (`verify --db`) | **Node `meta`** | `meta verify --db` | **any backend** — live-DB drift, Node-only |
 | **Codegen drift** (`verify --codegen`) | **Node `meta`** | `meta verify --codegen` | TS reference (ADR-0021 D2) — regen-to-temp + diff committed output |
 | **Template/prompt drift** (`verify --templates`) | **Node `meta`** | `meta verify --templates` | TS reference (ADR-0021 D2) — `{{field}}`↔payload; part of the bare-`verify` default |
 | **Vocabulary upgrade** (`upgrade`) | **Node `meta`** | `meta upgrade [--to <version>] [--apply]` | **any backend** — rewrites RETIRED metadata vocabulary (`@violation` → `@counterexample`, `@readOnly` → `@mutability`, dropping `@verifiedBy`) and resolves ATTRIBUTE CONTRADICTIONS (`@fields` beside `@expr` on an index key). Node-only because it edits the metadata documents themselves, which every port shares; a non-TS project runs `npx meta upgrade` against its own `metaobjects/`. **Canonical JSON and YAML alike.** Previews by default. Retirements needing a human decision are refused and the run exits non-zero, so CI cannot record a partial migration as finished |
+| **Model export** (`export`) | **Node `meta`** | `meta export [--effective] [--out <file>]` | the loaded model, overlays merged, as one canonical JSON document. `--effective` also writes every inherited field, child and attribute onto the node that inherits it, which is the input the [explorer builder](explorer-data.md) reads. The output is for reading: loading an effective document back would declare each inherited member twice |
 | **Vocabulary search** (`types`) | **Node `meta`** | `meta types [query]` | **any backend** — apropos/`kubectl explain` over the live metamodel registry (names + descriptions + when-to-use); the vocabulary is cross-port identical (registry-conformance) |
-| **Dependency sync** (`deps`) | **Node `meta`** | `meta deps sync \| check \| list` | **any backend** — resolves a declared metadata dependency (`path`, or an installed `npm` / `python` package) into a committed snapshot + lock (FR-023), so `sync`/`check`/`list` themselves stay Node-only regardless of your server language. TypeScript, Python and Java then LOAD that snapshot at every rung of their own source ladder (Kotlin loads through Java's loader and Maven plugin); C# loads the snapshot through `dotnet meta` (Phase 2 S6). On a project whose own metadata Node `meta` cannot read (a Maven `src/main/resources/metadata` directory, a C# metadata directory, or another port's vocabulary), `sync` and `check` prove the locked dependencies load together and say that the port's own `verify` is the full check. See [`metadata-dependencies.md`](metadata-dependencies.md) |
+| **Dependency sync** (`deps`) | **Node `meta`** | `meta deps sync \| check \| list` | **any backend** — resolves a declared metadata dependency (`path`, an installed `npm` / `python` package, or a `maven` jar / `nuget` package already in the local Maven repository / NuGet cache; it never downloads) into a committed snapshot + lock (FR-023), so `sync`/`check`/`list` themselves stay Node-only regardless of your server language. TypeScript, Python and Java then LOAD that snapshot at every rung of their own source ladder (Kotlin loads through Java's loader and Maven plugin); C# loads the snapshot through `dotnet meta` (Phase 2 S6). On a project whose own metadata Node `meta` cannot read (a Maven `src/main/resources/metadata` directory, a C# metadata directory, or another port's vocabulary), `sync` and `check` prove the locked dependencies load together and say that the port's own `verify` is the full check. See [`metadata-dependencies.md`](metadata-dependencies.md) |
 | **Canonical format** (`fmt`) | every port | `meta fmt` / `dotnet meta fmt` / `mvn metaobjects:fmt` / `metaobjects fmt` | (#304) ships in **every** port — the canonical serializer already exists in all five, so formatting is local, not Node-only. `--check` lists non-canonical files and exits non-zero without changing anything. Formats each file STANDALONE — own-mode, declared-here layer only (ADR-0039); an `extends` onto another file's base is preserved as-is, never resolved or erred on; a file declaring `overlay: true` anywhere — whether or not a same-file base exists — is reported as skipped rather than merged (merging would drop the overlay marker, a structural change fmt never makes). A YAML file is always skipped — no canonical YAML emitter exists (ADR-0006). Before writing, every port reloads the whole project with the candidate swapped in and refuses the write unless the reloaded model's canonical form is byte-identical to the untouched baseline — fmt never changes meaning. See [Fixture corpus](#meta-fmt--canonical-formatting-304) below and `fixtures/fmt-conformance/README.md` |
 | TS codegen | Node `meta` | `meta gen` | TS projects. **No `--template-spec` flag, deliberately** — `metaobjects.config.ts` already takes generator VALUES, so a declarative template generator is declared there (`templateGenerator()`, or `templateSpecToGenerators(parseTemplateSpec(spec))` to reuse a C#/Python spec file). Keeping it in the config is what lets `meta verify --codegen` regenerate WITH it, since that gate re-runs the config's generator list; see [declarative template scopes](codegen-concepts.md#declarative-template-scopes) |
 | C# codegen | `dotnet meta` | `dotnet meta init` / `gen` / `verify --templates` / `verify --codegen` | a .NET tool (`ToolCommandName=dotnet-meta`); invoked `dotnet meta` so it never shadows the Node `meta`; ships the ADR-0021 D2 subverbs (`--db` rejected, exit 2; bare `verify` = `--templates` plus `--codegen` when an output directory (`csharp.outDir` in `.metaobjects/config.json`, or `--out`) and `codegen/Generators.cs` are present). **The generator list is `codegen/Generators.cs`** (ADR-0034 Amendment 9): `dotnet meta init` writes it with `codegen/Program.cs` (two lines that run it) and `codegen/Codegen.csproj`, and `gen` / `verify --codegen` always run it through `dotnet run --project codegen`. With no `codegen/Generators.cs` they exit 2 and write nothing; `--generators` only narrows the list to declared entries. Every entry may set its own output directory (`ApiDocsGenerator { OutDir = ... }`), and `verify --codegen` compares each one. A declarative Mustache template-spec (the cross-port JSON contract shared with Python) is one more entry, `TemplateSpecGenerator { Spec = "<json>", TemplateRoot = "<dir>" }`; `gen` no longer reads `--template-spec` or a project-root `template-spec.json`, and a run that finds either with no such entry fails before writing anything; see [declarative template scopes](codegen-concepts.md#declarative-template-scopes). `dotnet meta docs` was removed in 1.1.0: it prints the line that points at [the migration section](migrations/docs-are-generators.md#c) and exits 2 |
 | Java/Kotlin codegen | Maven plugin | `mvn metaobjects:generate` (`metaobjects:generate`) | Kotlin generators run through the same goal — see below. **No `--template-spec` flag, deliberately** — `<generator>` already loads a consumer class from the project classpath, so the declarative surface is `com.metaobjects.generator.template.TemplateScopeGenerator` wired as an ordinary `<generator>` with `<template>` / `<scope>` / `<outputPattern>` / `<templatesDir>` / `<format>` args (covers BOTH Java and Kotlin); see [declarative template scopes](codegen-concepts.md#declarative-template-scopes). The `generate` and `verify` goals are declared `threadSafe` and support parallel multi-module reactor builds (`mvn -T`) (#233) |
-| Java/Kotlin verify | Maven plugin | `mvn metaobjects:verify -Dmeta.verify.mode=codegen\|templates` (`metaobjects:verify`) | parameter-driven ADR-0021 D2 modes (one goal covers BOTH Java + Kotlin): unset (default — `codegen` and `templates`; the template gate is skipped with a note when `templateRoot` is unset) / `codegen` (regen + fail on drift vs committed output, generator-neutral) / `templates` (`{{field}}`↔payload drift via the render `Verify` engine). `db` rejected ("schema verify is the migrate engine, ADR-0015") |
+| Java/Kotlin verify | Maven plugin | `mvn metaobjects:verify -Dmeta.verify.mode=codegen\|templates\|deps` (`metaobjects:verify`) | parameter-driven ADR-0021 D2 modes (one goal covers BOTH Java + Kotlin): unset (default — `codegen` and `templates`; the template gate is skipped with a note when `templateRoot` is unset) / `codegen` (regen + fail on drift vs committed output, generator-neutral) / `templates` (`{{field}}`↔payload drift via the render `Verify` engine) / `deps` (opt-in dependency drift, the `path` transport only). `db` rejected ("schema verify is the migrate engine, ADR-0015") |
 | Python codegen | console-script | `metaobjects gen` / `verify --codegen` / `verify --templates` | `[project.scripts] metaobjects` — **not** `meta` (that's the Node schema CLI); ships the ADR-0021 D2 subverbs (`--db` rejected, exit 2). **The generator list is `metaobjects.config.yaml`** (ADR-0034 Amendment 9, [below](#declarative-config-metaobjectsconfigyaml--python-codegen)): `gen` and `verify --codegen` run each target's `generators` (and its `templateSpec`, the declarative Mustache template-codegen surface shared with C#) into its `outDir`, and with no config they exit 2 and write nothing. `--generators` only narrows the list to declared entries. `metaobjects docs` was removed in 1.1.0: it prints the line that points at [the migration section](migrations/docs-are-generators.md#python) and exits 2 |
 
 ## `verify` is one verb with explicit subverbs (ADR-0021 D2)
@@ -52,10 +53,10 @@ vocabulary everywhere, each port implementing the modes it supports.
 | Subverb | What it checks | Touches a DB? |
 |---|---|---|
 | `verify --db` | **Schema drift** — does the live database (or snapshot) match the metadata? (migrate engine, ADR-0015) | yes |
-| `verify --codegen` | **Codegen drift** — regenerate from metadata in memory and fail if it differs from the committed generated output. Catches "metadata changed but `meta gen` wasn't re-run". A hand-edited generated file is NOT drift — `meta gen` three-way-merges hand edits by design, so the gate compares the *generated contribution* against the committed `.gen-state/.hashes.json` rather than the file byte-for-byte. It still LISTS every generated file carrying a hand edit (count + paths, and how to see the edit) as a notice that does not change the exit code; `--forbid-hand-edits` makes any hand edit fail the build, for teams that want generated code untouchable (Node `meta` only). | no |
+| `verify --codegen` | **Codegen drift** — regenerate from metadata in memory and fail if it differs from the committed generated output. Catches "metadata changed but `meta gen` wasn't re-run". **A hand-edited generated file** (Node `meta`): `meta gen` three-way-merges hand edits, so the gate compares the *generated contribution* against the committed `.gen-state/.hashes.json` and reports each edited file separately, by path, with how to see the edit and how to drop it. What that report does to the exit code is the `verify.handEdits` key in `.metaobjects/config.json`: `"fail"` exits 1, `"notice"` (and a project without the key, as before 1.3) prints it and exits 0. `meta init` writes `"fail"` for a new project. `--allow-hand-edits` relaxes `fail` to a notice for one run; `--forbid-hand-edits` makes a hand edit fail for one run whatever the key says. The other ports compare the generated files byte for byte, so any edit is drift and fails: `dotnet meta verify --codegen`, `mvn metaobjects:verify` (Java and Kotlin) and `metaobjects verify --codegen` each exit non-zero and name the file. | no |
 | `verify --templates` | **Template/prompt drift** — `Renderer.verify` checks each `template.*` node's `{{field}}` references against its payload VO (FR-004). A Jinja body (Python and TypeScript, ADR-0061) is checked the same way. | no |
 | `verify --docs` | **Removed in 1.1.0** (ADR-0034 Amendment 9). It prints where the check went and exits 2: documentation is written by entries in `generators`, so `verify --codegen` checks it with the rest of the declared output. | — |
-| `verify --deps` | **Dependency drift** (FR-023) — re-resolves each declared dependency (its `path`, or its installed `npm` / `python` package) and compares its installed artifact's hash against `.metaobjects/deps.lock.json`, same comparison as `meta deps check`. Needs the publisher reachable, so it is never part of the bare-`verify` default. A `drifted` or `unresolved` dependency fails with `ERR_DEPENDENCY_UPSTREAM_DRIFT`. **Node `meta` only.** See [`metadata-dependencies.md`](metadata-dependencies.md). | no |
+| `verify --deps` | **Dependency drift** (FR-023) — re-resolves each declared dependency (its `path`, its installed `npm` / `python` package, or its `maven` / `nuget` package in the local cache) and compares its installed artifact's hash against `.metaobjects/deps.lock.json`, same comparison as `meta deps check`. Needs the publisher reachable, so it is never part of the bare-`verify` default. A `drifted` or `unresolved` dependency fails with `ERR_DEPENDENCY_UPSTREAM_DRIFT`. **Node `meta`; Python (`metaobjects verify --deps`, plus `metaobjects deps check`), C# (`dotnet meta verify --deps`), and Java and Kotlin (`-Dmeta.verify.mode=deps`) have the `path`-only counterpart.** See [`metadata-dependencies.md`](metadata-dependencies.md). | no |
 
 Rules of the contract:
 
@@ -228,7 +229,7 @@ output; drift is computed per **unique `outputDir`** over the whole `<generators
 selection, so several generators may share one `outputDir` without cross-flagging each
 other's committed files as stale) and `-Dmeta.verify.mode=templates` (each `template.*` node's `{{field}}`↔payload-VO
 field tree via the render `Verify` engine, resolving refs through a filesystem provider rooted
-at `-Dmeta.verify.templateRoot`). The one goal covers BOTH Java (`codegen-spring`) and Kotlin
+at `-Dmeta.verify.templateRoot`), and `-Dmeta.verify.mode=deps` (opt-in, never in the unset default set: the dependency drift check of `verify --deps`, resolving `path` dependencies only; see the Java port page). The one goal covers BOTH Java (`codegen-spring`) and Kotlin
 (`codegen-kotlin`) since they share it. `mode=db` is **cleanly rejected** ("schema verify is the
 migrate engine, ADR-0015"); an unknown mode fails listing the valid ones. (Schema `--db` remains
 Node-only by the ADR-0015 design — see below.)
@@ -253,7 +254,7 @@ that differs refuses the whole call and removes nothing. It never edits your gen
 edit that points each entry back at the shipped generator. `--strict` exits 1 and writes
 nothing. No port has a `doctor` command: `eject --list` (or the matching goal) is the report.
 
-## `gen` skips a run when nothing changed — and `--force` runs it anyway (ADR-0062)
+## `gen` skips a run when nothing changed — and `--force` runs it anyway (ADR-0064)
 
 Every port's `gen` loads the metadata, then computes a key before it renders anything: the
 loaded model (each node in its canonical effective form, so reformatting or splitting a metadata
@@ -261,8 +262,8 @@ file changes nothing) plus everything the generators are built from (the engine'
 the codegen config and every owned generator, the template roots, declared extra inputs, the
 project config, the output-changing flags). When the key matches the last successful run and
 every generated file still holds the bytes that run left, `gen` says so and renders and writes
-nothing. The key lives in `.metaobjects/.gen-state/.fingerprint-<port>.json`, which is not
-committed.
+nothing. The key lives in `.metaobjects/.gen-state/.fingerprint-<port>.json` (on the JVM,
+one per owner module), which is not committed.
 
 | flag | ports | what it does |
 |---|---|---|
@@ -347,7 +348,7 @@ documentation never lands in the code's output directory by default.
 | `requirements` | `requirementsFile()` | The declared ledger, as `requirements.md` + `requirements.toon`; nothing for a model with no `requirement.*` node. |
 | `agent-docs` | `agentDocsFile()` | Three pages an agent reads BEFORE touching a tier (below), under `agent/`. |
 | `metamodel-docs` | `metamodelDocsFile()` | The reference of the BUILT-IN metamodel (every registered type, subtype and attribute), not your model, under `metamodel/`. Its rendered form is published at <https://metaobjects.dev/reference>. |
-| `docs-site` | `docsSiteFile()` | The HTML site under `site/`; `meta eject docs-site` copies its templates and assets to `codegen/docs-site/` for you to change. |
+| `docs-site` | `docsSiteFile()` | The HTML site under `site/`: the model explorer by default ([explorer-site.md](explorer-site.md)), the earlier site with `site: "classic"`; `meta eject docs-site` copies its templates and assets to `codegen/docs-site/` for you to change. |
 
 ```ts
 targets: { docs: { outDir: "./docs/generated" } },
@@ -491,7 +492,8 @@ targets:
 - **`--config <path>`** picks the config file explicitly on either command; without it both
   look for `./metaobjects.config.yaml` in the current directory. **No config is an error**:
   `gen` and `verify --codegen` print `no metaobjects.config.yaml`, exit 2 and write nothing.
-- **Run options still apply to the list:** `--entities` (narrows each target's entities),
+- **Run options still apply to the list:** `--entities` (narrows the entities each target writes; a
+  target's own `entities` still bounds its model),
   `--provider` (added to `providers`), `--templates` (`--prompts` on `verify`), `--baseline`.
   Column naming is not a run option: it is `naming` in `.metaobjects/config.json`, which every
   port reads, and `--column-naming` is refused
@@ -606,8 +608,12 @@ the construct that replaces it:
 | Hand-rolled pattern | Suggested construct |
 |---|---|
 | an aggregate computed by hand (SQL `AVG`/`SUM`, a summing `.reduce(...)`) | For grouped, served or reported figures: `object.report` (dimensions + measures, read-only list route). For a per-row figure on one entity: `object.projection` with `origin.aggregate` and a generated query. |
-| money as a float / hand-rolled minor units (a money-named field with `* 100`, `/ 100`, `.toFixed(2)`, `parseFloat`) | `field.currency` |
+| money as a float / hand-rolled minor units (`* 100`, `/ 100`, `.toFixed(2)`, `parseFloat` on a money-named operand) | `field.currency` |
 | a fixed value set enforced by a SQL `CHECK (... IN (...))` | `field.enum` |
+
+The scan skips comment lines. A `.reduce` counts only when it accumulates into its first
+parameter with `+`, and `.tsx`/`.jsx` UI files are not scanned for it, so on-screen totals
+are not flagged.
 
 It is **warnings only** — it never changes the exit code (bias to under-flagging;
 a >15% false-positive rate is a project kill criterion). This pass is
@@ -865,8 +871,9 @@ meta migrate --db "$DB_URL" --dialect postgres \
 
 ## Agent-context scaffold is Node-only — by design
 
-The `.metaobjects/AGENTS.md`/`CLAUDE.md` always-on files and the
-`.claude/skills/metaobjects-*/` reference tree are assembled by **one** tool: the
+The always-on `.metaobjects/AGENTS.md` and the `metaobjects-*` skills (under
+`.claude/skills/` by default, or wherever `--skills-dir` puts them, such as `.agents/skills/`
+for assistants that read that) are assembled by **one** tool: the
 Node `meta agent-docs` command. Per [ADR-0033](../../spec/decisions/ADR-0033-single-agent-context-assembler.md)
 the per-port native assemblers (Python/Java/C#) and their byte-identity conformance
 gates were removed — that content is effectively one static artifact, and every port
@@ -880,7 +887,11 @@ The C#, Java/Kotlin, and Python CLIs keep a **non-executing `agent-docs` pointer
 stub** that prints `agent-context scaffolding moved to the meta CLI — run: npx meta
 agent-docs --server <lang>` to stderr and exits non-zero. The **live staleness check**
 in `gen`/`verify` stays per-port (it only *reads* the scaffold to nudge when it drifts);
-its message now points at `npx meta agent-docs --server <lang>`.
+its message now points at `npx meta agent-docs --server <lang>`. In the Node `meta`, `gen`
+and `verify` also advise (exit code unchanged) when the model declares `requirement.*` nodes
+and the scaffolded context has no requirements pages, naming `meta init --docs-only
+--refresh-docs`; `gen` advises separately when no `requirement-tests` generator is wired,
+naming `requirementTests()` and `meta eject requirement-tests`.
 
 ## Running Kotlin codegen via Maven
 

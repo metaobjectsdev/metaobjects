@@ -9,10 +9,14 @@ committed snapshot — that snapshot loads BEFORE your own files, so a foreign
 abstract resolves via `extends` and a foreign node re-opens via `overlay: true`
 exactly like a local one. A dependency names one transport: `path` (a directory
 relative to the directory holding `.metaobjects/`), `npm` (an installed npm
-package, e.g. `{ "name": "acme-model", "npm": "@acme/model", "dir": "metaobjects" }`)
-or `python` (an installed Python package by its import name, e.g.
-`{ "name": "acme-model", "python": "acme_model", "dir": "metaobjects" }`). For
-`npm`/`python`, install the package with the project's package manager first;
+package, e.g. `{ "name": "acme-model", "npm": "@acme/model", "dir": "metaobjects" }`),
+`python` (an installed Python package by its import name, e.g.
+`{ "name": "acme-model", "python": "acme_model", "dir": "metaobjects" }`), `maven`
+(`{ "name": "acme-model", "maven": "com.acme:acme-model", "version": "1.0.0" }`, a JAR in the
+local Maven repository) or `nuget`
+(`{ "name": "acme-model", "nuget": "Acme.Model", "version": "1.0.0" }`, a package in the NuGet
+global packages folder). For
+`npm`/`python`/`maven`/`nuget`, install or restore the package with the project's package manager first;
 `meta deps sync` locates it, copies its shared model into the snapshot, and says
 what to install when it is missing. Prefer the package transport over a `path` into
 someone else's checkout when the publisher releases a package. Two rules are

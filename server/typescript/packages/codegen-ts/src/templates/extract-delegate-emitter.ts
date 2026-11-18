@@ -47,7 +47,7 @@ function isObjectField(field: MetaData): boolean {
 /** The extracted-mirror interface name for a value-object (`<Name>Extracted`). The mirrors are
  *  declarations of ONE module, so `ctx` (optional) names each by its value object's local name:
  *  package-qualified when another object shares the short name (`AcmeAlphaNoteExtracted`), the
- *  value object itself never renamed (ruling R52). Omitted → the bare `vo.name`. */
+ *  value object itself never renamed. Omitted → the bare `vo.name`. */
 export function mirrorName(vo: MetaData, ctx?: RenderContext): string {
   const name = emittedVoName(ctx, vo);
   return `${name}Extracted`;

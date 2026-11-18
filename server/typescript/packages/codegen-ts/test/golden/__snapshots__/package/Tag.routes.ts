@@ -45,5 +45,6 @@ export async function tagRoutes(fastify: FastifyInstance) {
     filterAllowlist: TagFilterAllowlist,
     sortAllowlist: TagSortAllowlist,
     dialect: "sqlite",
+    knownFields: ["id", "label", "customerId"],
   });
 }

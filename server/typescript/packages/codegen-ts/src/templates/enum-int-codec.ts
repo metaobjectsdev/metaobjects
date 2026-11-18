@@ -18,7 +18,7 @@
  * declaration emitted after its use is a TDZ ReferenceError at import: both are worse than
  * the missing-codec bug, because neither lets the module load at all.
  */
-import { code, imp, type Code } from "ts-poet";
+import { code, imp, type Code } from "../poet.js";
 import type { EnumIntCustomType } from "../column-mapper.js";
 
 /**

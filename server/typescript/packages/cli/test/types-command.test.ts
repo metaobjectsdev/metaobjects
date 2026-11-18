@@ -69,7 +69,7 @@ describe("#357 every registered view subtype is findable", () => {
     expect(await run(["view.bogusxyz"])).toContain("No vocabulary matches");
   });
 
-  test("kind-1 vocabulary is marked as pending elsewhere, not as outside the contract (R40)", async () => {
+  test("kind-1 vocabulary is marked as pending elsewhere, not as outside the contract", async () => {
     const out = await run(["--type", "view", "--kind", "subtype", "--limit", "0"]);
     // Both are cross-port; only TypeScript implements `view.text` so far.
     expect(out).toMatch(/view\.text .*\[ts; pending elsewhere\]/);
@@ -233,27 +233,32 @@ describe("meta types --format", () => {
   test("the legend's markers become FIELDS, not text appended to a name", async () => {
     const doc = await json(["--type", "view", "--kind", "subtype", "--limit", "0"]);
     const byName = (n: string) => doc.matches.find((m: any) => m.name === n);
-    // R40 kind 1 — cross-port vocabulary only TypeScript implements so far.
+    // Cross-port vocabulary only TypeScript implements so far.
     expect(byName("view.text").implementedIn).toEqual(["typescript"]);
     expect(byName("view.currency").implementedIn).toBeUndefined();
     expect(byName("view.base").sharedRoot).toBe(true);
-    // The retired "TypeScript-only, not in the contract" field is gone.
-    expect("tsOnly" in byName("view.text")).toBe(false);
+    // `tsOnly` is deprecated: still emitted through 1.3.x, derived from implementedIn.
+    expect(byName("view.text").tsOnly).toBe(true);
+    expect(byName("view.currency").tsOnly).toBe(false);
     // And no row smuggles the text rendering's markers into its name.
     for (const m of doc.matches) expect(m.name).not.toContain("pending elsewhere");
   });
 
-  test("kind-1 and kind-2 vocabulary are marked in text and carried in JSON (R40)", async () => {
+  test("kind-1 and kind-2 vocabulary are marked in text and carried in JSON", async () => {
     const text = await run(["object.entity", "--limit", "0"]);
     expect(text).toContain("[java; pending elsewhere]");
     expect(text).toContain("[java+kotlin]");
     expect(text).not.toContain("[java-only]");
-    expect(text).toContain("[csharp-only]");
+    expect(text).not.toContain("[csharp-only]");
     expect(text).not.toContain("[ts-only]");
     const doc = await json(["object.entity", "--kind", "attr", "--limit", "0"]);
     const attr = (n: string) => doc.matches.find((m: any) => m.name === `object.entity @${n}`);
     expect(attr("object").implementedIn).toEqual(["java"]);
+    // Implemented in Java only, so the deprecated derived `tsOnly` is false.
+    expect(attr("object").tsOnly).toBe(false);
     expect(attr("objectAdapter").ports).toEqual(["java", "kotlin"]);
+    // Implemented in every port, so it carries no implementedIn.
+    expect(attr("collectionName").implementedIn).toBeUndefined();
     // A view's attr inherits its type's kind-1 marking.
     const img = await json(["view.image", "--kind", "attr", "--limit", "0"]);
     expect(img.matches.find((m: any) => m.name === "view.image @accept").implementedIn).toEqual(["typescript"]);
@@ -336,5 +341,28 @@ describe("--detail prints each attr once", () => {
   test("an attr asked for on its own still prints its block", async () => {
     const out = await run(["field.string @maxLength", "--detail"]);
     expect(out).toContain("field.string @maxLength  (attr)");
+  });
+});
+
+describe("ADR-0062 every attribute names the provider that registered it", () => {
+  test("--detail lists the owning provider beside each @attr", async () => {
+    const out = await run(["field.string", "--detail"]);
+    // @column is registered by the db provider onto a type the core provider owns.
+    expect(out).toMatch(/@column .*\[metaobjects-db\]/);
+  });
+
+  test("the JSON answer carries `provider` on each attr", async () => {
+    const calls: string[] = [];
+    const spy = spyOn(console, "log").mockImplementation((...a: unknown[]) => {
+      calls.push(a.map(String).join(" "));
+    });
+    try {
+      expect(await typesCommand(["field.string", "--limit", "0"], "json")).toBe(0);
+    } finally {
+      spy.mockRestore();
+    }
+    const doc = JSON.parse(calls[0] as string) as { matches: { name: string; attrs?: { name: string; provider?: string }[] }[] };
+    const subtype = doc.matches.find((m) => m.name === "field.string");
+    expect(subtype?.attrs?.find((a) => a.name === "column")?.provider).toBe("metaobjects-db");
   });
 });

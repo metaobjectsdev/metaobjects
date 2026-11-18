@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from ..naming import NamingRules
+from ..api_settings import ApiSettings
 from ..wire import WireFormat
 from .meta_data import MetaData
 
@@ -21,3 +22,5 @@ class MetaRoot(MetaData):
         # REST surface), attached by the same project-aware loads as `naming`; read with
         # `wire_of()`. `native` for both keys until a load attaches the project's own.
         self.wire: WireFormat = WireFormat()
+        # The project `api` setting (page size, unknown-field rule), attached the same way; read with `api_of()`.
+        self.api: ApiSettings = ApiSettings()

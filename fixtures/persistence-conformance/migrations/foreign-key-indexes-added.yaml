@@ -1,0 +1,36 @@
+name: foreign-key-indexes-added
+description: |
+  `migrate.foreignKeyIndexes` turned on for a project whose schema has none. The canonical
+  schema is applied as it always is (no foreign key has an index), then migrated to the SAME
+  metadata with the option on: the up migration only adds a `<table>_<columns>_idx` index for
+  each foreign key nothing already leads with. A junction's foreign key that leads its composite
+  primary key (post_tags.postId, follows.followerId, ...) is covered by the key and gets none.
+  No table, column or constraint changes, and nothing is blocked.
+
+seed-metadata: ../canonical/
+target-metadata: ../canonical/
+schema-settings:
+  foreignKeyIndexes: true
+
+expect:
+  blocked: []
+  up-contains:
+    - 'CREATE INDEX "weeks_programId_idx" ON "weeks" ("programId");'
+    - 'CREATE INDEX "nodes_parentId_idx" ON "nodes" ("parentId");'
+    - 'CREATE INDEX "sessions_weekId_idx" ON "sessions" ("weekId");'
+    - 'CREATE INDEX "post_tags_tagId_idx" ON "post_tags" ("tagId");'
+    - 'CREATE INDEX "post_referrals_referralId_idx" ON "post_referrals" ("referralId");'
+  apply-up-then-query:
+    sql: |
+      SELECT tablename, indexname FROM pg_indexes
+       WHERE schemaname = 'public' AND indexname LIKE '%\_idx'
+       ORDER BY indexname
+    rows:
+      - { tablename: "follows", indexname: "follows_followeeId_idx" }
+      - { tablename: "friendships", indexname: "friendships_personBId_idx" }
+      - { tablename: "gadget_events", indexname: "gadget_events_gadgetId_idx" }
+      - { tablename: "nodes", indexname: "nodes_parentId_idx" }
+      - { tablename: "post_referrals", indexname: "post_referrals_referralId_idx" }
+      - { tablename: "post_tags", indexname: "post_tags_tagId_idx" }
+      - { tablename: "sessions", indexname: "sessions_weekId_idx" }
+      - { tablename: "weeks", indexname: "weeks_programId_idx" }

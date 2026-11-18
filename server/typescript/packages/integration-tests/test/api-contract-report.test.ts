@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { API_CONTRACT_REPORT_DIR, API_CONTRACT_REPORT_SCENARIOS_DIR } from "../src/paths.ts";
 import { openApiCheck, type ContractCheck } from "../src/api-contract-openapi-check.ts";
 import { loadScenarios, assertResponseFull, type ApiScenario } from "../src/api-contract-scenario.ts";
-import { startPostgres } from "../src/postgres-container.ts";
+import { OUTPUT_LAYOUTS, postgresFor } from "../src/output-layout.ts";
 import {
   startGeneratedReportServer,
   type GeneratedReportServerHandle,
@@ -37,13 +37,14 @@ const SERVED_PATHS: Array<[string, string]> = [
 
 const contractCheck: ContractCheck = openApiCheck("report");
 
-describe("api contract report (FR-044) — GENERATED routes lane", () => {
+for (const layout of OUTPUT_LAYOUTS) describe(`api contract report (FR-044) — GENERATED routes lane [${layout}]`, () => {
+  const startDb = postgresFor(layout);
   for (const scenario of loadScenarios(API_CONTRACT_REPORT_SCENARIOS_DIR)) {
     test(scenario.name, async () => {
-      const pg = await startPostgres();
+      const pg = await startDb();
       let server: GeneratedReportServerHandle | null = null;
       try {
-        server = await startGeneratedReportServer(pg.connectionUri, META_PATH);
+        server = await startGeneratedReportServer(pg.connectionUri, META_PATH, layout);
         await server.applySeed(SEED);
         await runScenario(scenario, server);
       } finally {
@@ -54,10 +55,10 @@ describe("api contract report (FR-044) — GENERATED routes lane", () => {
   }
 
   test("the seeded report rows are what the views return", async () => {
-    const pg = await startPostgres();
+    const pg = await startDb();
     let server: GeneratedReportServerHandle | null = null;
     try {
-      server = await startGeneratedReportServer(pg.connectionUri, META_PATH);
+      server = await startGeneratedReportServer(pg.connectionUri, META_PATH, layout);
       await server.applySeed(SEED);
       for (const [name, path] of SERVED_PATHS) {
         const res = await fetch(server.baseUrl + path);

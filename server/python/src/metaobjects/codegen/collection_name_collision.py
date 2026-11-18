@@ -16,7 +16,7 @@ entities and the colliding name.
 """
 from __future__ import annotations
 
-from metaobjects.apidocs.naming import pluralize, route_path
+from metaobjects.apidocs.naming import collection_segment, pluralize
 from metaobjects.errors import ErrorCode
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_VALUE
@@ -32,8 +32,8 @@ def assert_no_collection_name_collisions(entities: list[MetaObject]) -> None:
     """Refuse a generation run in which two DISTINCT entities/projections pluralize
     to the same API-surface collection name.
 
-    Scope: this port writes every module into one flat package (``output_layout`` is flat
-    only) served by one app, so its scope is the whole run. Counted over the objects that
+    Scope: this port serves one app regardless of ``output_layout`` (``package`` splits
+    generated module directories, not route surfaces), so its scope is the whole run. Counted over the objects that
     emit a collection (:func:`_emits_collection`). A value object,
     an abstract object and a sourceless one never get a route, router module, or finder
     name, so they cannot collide on any of those — a layered model's abstract
@@ -86,7 +86,7 @@ def _assert_no_route_segment_collisions(entities: list[MetaObject]) -> None:
     for obj in entities:
         if not _emits_collection(obj) or tph_subtype_of(obj) is not None:
             continue
-        segment = route_path(obj.name)
+        segment = collection_segment(obj)
         existing = owner_of_segment.get(segment)
         if existing is None:
             owner_of_segment[segment] = obj

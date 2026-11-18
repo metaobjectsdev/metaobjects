@@ -22,8 +22,17 @@ export interface OrderBy {
 
 export type Row = Record<string, unknown>;
 
-export interface SelectSpec {
+/**
+ * The relation a spec reads or writes: its physical name and, when the source declares one,
+ * its `@schema`. A driver qualifies the relation by the schema on an engine that has schemas,
+ * so two same-named tables in two schemas stay two relations; SQLite has none and ignores it.
+ */
+export interface TableTarget {
   table: string;
+  schema?: string;
+}
+
+export interface SelectSpec extends TableTarget {
   /** PK columns are always included by the caller. */
   columns: string[];
   where?: WhereClause;
@@ -32,13 +41,11 @@ export interface SelectSpec {
   offset?: number;
 }
 
-export interface CountSpec {
-  table: string;
+export interface CountSpec extends TableTarget {
   where?: WhereClause;
 }
 
-export interface InsertSpec {
-  table: string;
+export interface InsertSpec extends TableTarget {
   values: Row;
   /** Columns to return — driver handles RETURNING / lastInsertId per dialect. */
   returning: string[];
@@ -49,34 +56,29 @@ export interface InsertSpec {
   key?: string[];
 }
 
-export interface InsertManySpec {
-  table: string;
+export interface InsertManySpec extends TableTarget {
   rows: Row[];
   returning: string[];
   /** As {@link InsertSpec.key}. */
   key?: string[];
 }
 
-export interface UpdateSpec {
-  table: string;
+export interface UpdateSpec extends TableTarget {
   values: Row;
   where: WhereClause;
   returning: string[];
 }
 
-export interface UpdateManySpec {
-  table: string;
+export interface UpdateManySpec extends TableTarget {
   values: Row;
   where: WhereClause;
 }
 
-export interface DeleteSpec {
-  table: string;
+export interface DeleteSpec extends TableTarget {
   where: WhereClause;
 }
 
-export interface DeleteManySpec {
-  table: string;
+export interface DeleteManySpec extends TableTarget {
   where: WhereClause;
 }
 

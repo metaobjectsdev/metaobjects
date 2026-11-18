@@ -19,7 +19,8 @@ import {
   actualColumns, actualForeignKeys, drizzleForeignKeys, expectedColumns, expectedForeignKeys,
   expectedRoutes, fkKey, missingColumns, servedObjects,
 } from "../src/independent-oracle.ts";
-import { generateApp, generatedPathOf } from "../src/generated-app.ts";
+import { compileTrees, generateApp, generatedPathOf } from "../src/generated-app.ts";
+import { OUTPUT_LAYOUTS } from "../src/output-layout.ts";
 import { loadMetadataFile } from "../src/load-metadata.ts";
 import { CANONICAL_SCHEMA_SQL_PATH } from "../src/canonical-schema.ts";
 
@@ -125,69 +126,81 @@ describe("independent checks against Postgres", () => {
   beforeAll(async () => { pgServer = await startPostgres(); }, 120_000);
   afterAll(async () => { await pgServer?.stop(); });
 
-  test("the schema meta migrate writes carries every declared FK and column, and no others", async () => {
-    const root = await load(TPH_REFERENCE_MODEL);
-    const app = await generateApp(root, pgServer.connectionUri, "oracle-migrate");
-    try {
-      await app.migrate(pgServer.connectionUri);
-      const actual = await actualForeignKeys(pgServer.connectionUri);
-      expect(actual.map(fkKey)).toEqual(expectedForeignKeys(root).map(fkKey));
-      expect(missingColumns(expectedColumns(root), await actualColumns(pgServer.connectionUri))).toEqual([]);
-    } finally {
-      await app.close();
-      await executeSql(pgServer.connectionUri, "DROP SCHEMA public CASCADE; CREATE SCHEMA public;");
-    }
-  }, 120_000);
-
-  test("the generated Drizzle schema declares exactly the FKs the database has", async () => {
-    const root = await load(TPH_REFERENCE_MODEL);
-    const app = await generateApp(root, pgServer.connectionUri, "oracle-drizzle");
-    try {
-      await app.migrate(pgServer.connectionUri);
-      const entityModules = await Promise.all(
-        root.objects().map((o) => app.files.includes(`${o.name}.ts`) ? app.importModule(`${o.name}.ts`) : {}),
-      );
-      expect(drizzleForeignKeys(entityModules).map(fkKey)).toEqual(
-        (await actualForeignKeys(pgServer.connectionUri)).map(fkKey),
-      );
-    } finally {
-      await app.close();
-      await executeSql(pgServer.connectionUri, "DROP SCHEMA public CASCADE; CREATE SCHEMA public;");
-    }
-  }, 120_000);
-
-  test("the generated API mounts every route the metadata says it serves", async () => {
-    const root = await load(TPH_REFERENCE_MODEL);
-    const app = await generateApp(root, pgServer.connectionUri, "oracle-routes");
-    try {
-      const paths = new Map<MetaObject, string>();
-      for (const obj of servedObjects(root)) paths.set(obj, await generatedPathOf(app, obj));
-      const fastify = await app.bootRoutes();
+  for (const layout of OUTPUT_LAYOUTS) {
+    test(`the schema meta migrate writes carries every declared FK and column, and no others [${layout}]`, async () => {
+      const root = await load(TPH_REFERENCE_MODEL);
+      const app = await generateApp(root, pgServer.connectionUri, "oracle-migrate", layout);
       try {
-        const missing = expectedRoutes(root, (o) => paths.get(o) ?? `<no path for ${o.name}>`)
-          .filter((r) => !fastify.hasRoute({ method: r.method, url: r.url }))
-          .map((r) => `${r.method} ${r.url} (${r.why})`);
-        expect(missing).toEqual([]);
-
-        // And the M:N onto the subtype returns only that subtype's rows: its junction
-        // column can hold a Broker's id, which is not a Carrier.
         await app.migrate(pgServer.connectionUri);
-        await executeSql(pgServer.connectionUri, `
-          INSERT INTO shipments (id) VALUES (1);
-          INSERT INTO parties (id, party_type) VALUES (11, 'Carrier'), (12, 'Carrier'), (13, 'Broker');
-          INSERT INTO legs (shipment_id, carrier_id) VALUES (1, 11), (1, 12), (1, 13);
-        `);
-        const res = await fastify.inject({ method: "GET", url: `${paths.get(root.findObject("Shipment")!)}/1/carriers` });
-        expect(res.statusCode).toBe(200);
-        expect((JSON.parse(res.body) as Array<{ id: number }>).map((r) => Number(r.id)).sort()).toEqual([11, 12]);
+        const actual = await actualForeignKeys(pgServer.connectionUri);
+        expect(actual.map(fkKey)).toEqual(expectedForeignKeys(root).map(fkKey));
+        expect(missingColumns(expectedColumns(root), await actualColumns(pgServer.connectionUri))).toEqual([]);
       } finally {
-        await fastify.close();
+        await app.close();
+        await executeSql(pgServer.connectionUri, "DROP SCHEMA public CASCADE; CREATE SCHEMA public;");
       }
-    } finally {
-      await app.close();
-      await executeSql(pgServer.connectionUri, "DROP SCHEMA public CASCADE; CREATE SCHEMA public;");
-    }
-  }, 120_000);
+    }, 120_000);
+
+    test(`the generated Drizzle schema declares exactly the FKs the database has [${layout}]`, async () => {
+      const root = await load(TPH_REFERENCE_MODEL);
+      const app = await generateApp(root, pgServer.connectionUri, "oracle-drizzle", layout);
+      try {
+        await app.migrate(pgServer.connectionUri);
+        const entityModules = await Promise.all(
+          root.objects().map((o) => app.emitted.has(`${o.name}.ts`) ? app.importEmitted(`${o.name}.ts`) : {}),
+        );
+        expect(drizzleForeignKeys(entityModules).map(fkKey)).toEqual(
+          (await actualForeignKeys(pgServer.connectionUri)).map(fkKey),
+        );
+      } finally {
+        await app.close();
+        await executeSql(pgServer.connectionUri, "DROP SCHEMA public CASCADE; CREATE SCHEMA public;");
+      }
+    }, 120_000);
+
+    test(`the generated API mounts every route the metadata says it serves [${layout}]`, async () => {
+      const root = await load(TPH_REFERENCE_MODEL);
+      const app = await generateApp(root, pgServer.connectionUri, "oracle-routes", layout);
+      try {
+        const paths = new Map<MetaObject, string>();
+        for (const obj of servedObjects(root)) paths.set(obj, await generatedPathOf(app, obj));
+        const fastify = await app.bootRoutes();
+        try {
+          const missing = expectedRoutes(root, (o) => paths.get(o) ?? `<no path for ${o.name}>`)
+            .filter((r) => !fastify.hasRoute({ method: r.method, url: r.url }))
+            .map((r) => `${r.method} ${r.url} (${r.why})`);
+          expect(missing).toEqual([]);
+
+          // And the M:N onto the subtype returns only that subtype's rows: its junction
+          // column can hold a Broker's id, which is not a Carrier.
+          await app.migrate(pgServer.connectionUri);
+          await executeSql(pgServer.connectionUri, `
+            INSERT INTO shipments (id) VALUES (1);
+            INSERT INTO parties (id, party_type) VALUES (11, 'Carrier'), (12, 'Carrier'), (13, 'Broker');
+            INSERT INTO legs (shipment_id, carrier_id) VALUES (1, 11), (1, 12), (1, 13);
+          `);
+          const res = await fastify.inject({ method: "GET", url: `${paths.get(root.findObject("Shipment")!)}/1/carriers` });
+          expect(res.statusCode).toBe(200);
+          expect((JSON.parse(res.body) as Array<{ id: number }>).map((r) => Number(r.id)).sort()).toEqual([11, 12]);
+        } finally {
+          await fastify.close();
+        }
+      } finally {
+        await app.close();
+        await executeSql(pgServer.connectionUri, "DROP SCHEMA public CASCADE; CREATE SCHEMA public;");
+      }
+    }, 120_000);
+
+    test(`the generated tree compiles under tsc --strict [${layout}]`, async () => {
+      const root = await load(TPH_REFERENCE_MODEL);
+      const app = await generateApp(root, pgServer.connectionUri, "oracle-compile", layout);
+      try {
+        expect(compileTrees([{ dir: app.dir, files: app.files }]).get(app.dir)).toEqual([]);
+      } finally {
+        await app.close();
+      }
+    }, 120_000);
+  }
 
   test("the committed cross-port schema carries every FK and column the shared model declares", async () => {
     const root = await loadMetadataFile(resolve(CANONICAL_DIR, "meta.fitness.json"));

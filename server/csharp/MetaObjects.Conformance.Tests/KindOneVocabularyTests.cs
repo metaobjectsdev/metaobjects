@@ -1,4 +1,4 @@
-// Ruling R40 kind 1: vocabulary only some ports implement so far is still cross-port
+// Vocabulary only some ports implement so far is still cross-port
 // vocabulary. The generic view.* controls (and view.textarea @rows / the view.image attrs)
 // are implemented in TypeScript only; the JVM's @object in Java only. Both are in the shared
 // registry and the manifest, marked `implementedIn`, and C# loads them strictly and ignores

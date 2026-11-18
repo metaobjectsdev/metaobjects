@@ -55,7 +55,11 @@ gated by `meta verify --codegen`, which is what keeps output from drifting. See
 [write your own generator](docs/recipes/write-your-own-generator.md).
 
 Java, Kotlin, C# and Python start the same way from their own package: see
-[`docs/ports/`](docs/ports/).
+[`docs/ports/`](docs/ports/). **Their schema migrations and database checks still run in the
+Node `meta` tool** (`npx meta migrate`, `npx meta verify --db`), so those teams need Node where
+migrations are written or applied. Where the ports behave differently (list defaults, error
+bodies, field names, data access) is listed in
+[What differs by language](docs/features/language-differences.md).
 
 The metamodel is the **durable spine**; generated code is the **disposable
 artifact**. Substrate is local-first: typed metadata lives in your repo as YAML or
@@ -187,7 +191,7 @@ first-week wedge plan — and `meta init` picks up from there.
 | Capability requirements (`requirement.*`) | `meta verify` gate + authoring lint; `requirementTests()` stubs | `mvn metaobjects:verify` gate; JUnit Jupiter `requirement-tests` | Gate via the Java Maven goal; JUnit Jupiter `requirement-tests` | `dotnet meta verify` gate; xUnit `requirement-tests` | `metaobjects verify` gate; pytest `requirement-tests` |
 | Reporting vocabulary (`dimension` / `measure` / `segment` / `object.report`, FR-044) | Registered; a view-backed report becomes a SQL view in `meta migrate`, is read by `ObjectManager`, and gets generated read-only list routes and a TanStack list hook (no grid or form); the `cube-model` generator writes the vocabulary as Cube data-model files | Registered; OMDB reads a view-backed report; generates a read-only Spring controller, DTO, repository and filter allowlist | Registered (via Java); generates an Exposed table object, a row data class, a filter allowlist and a read-only Spring controller per view-backed report | Registered; generates a keyless EF Core row type, read-only routes and a filter allowlist per view-backed report | Registered; `ObjectManager` reads a view-backed report; generates a Pydantic row model, a read-only FastAPI router and a filter allowlist |
 | Libraries (`libraries: [...]`) | Yes | Yes | Yes (via Java) | Yes | Yes |
-| Metadata dependencies (`dependencies`) | Yes (`meta deps sync`: `path`, `npm` and `python` transports) | Yes (loads the synced snapshot; `meta deps sync` is Node) | Yes (via Java) | Yes (loads the synced snapshot) | Yes (loads the synced snapshot) |
+| Metadata dependencies (`dependencies`) | Yes (`meta deps sync`: `path`, `npm`, `python`, `maven` and `nuget` transports) | Yes (loads the synced snapshot; `-Dmeta.verify.mode=deps` checks drift; `meta deps sync` is Node) | Yes (via Java) | Yes (loads the synced snapshot) | Yes (loads the synced snapshot) |
 | Runtime metadata (ObjectManager-style) | Yes (`runtime-ts`) | Yes (OMDB) | Yes (via Java OMDB + Exposed) | Roadmap | Yes (ObjectManager) |
 | React / Angular UI client (browser) | React: **published** (`@metaobjectsdev/react` + `@metaobjectsdev/tanstack`), codegen + runtime. Angular 18: **source-only by decision** ([ADR-0048](spec/decisions/ADR-0048-angular-tier-source-only.md)) — `@metaobjectsdev/angular` + `@metaobjectsdev/codegen-ts-angular` build in-repo on their own `0.6.x` line but are deliberately not on npm (`npm i @metaobjectsdev/angular` will 404) until they meet the ADR's promotion bar. Consume them from source. | Consumes TS client via REST | Consumes TS client via REST | Consumes TS client via REST | Consumes TS client via REST |
 | Own a generator (`eject`) | Yes (`meta eject`) | Yes (`mvn metaobjects:eject`) | Yes (`mvn metaobjects:eject`) | Yes (`dotnet meta eject`) | Yes (`metaobjects eject`) |
@@ -276,11 +280,11 @@ sixth ships two libraries at their own stability labels:
    into its `/db` layer (`["iam", "iam/db"]`). Copy one into your repo with
    `meta eject <library>`. See [`docs/features/libraries.md`](docs/features/libraries.md).
 
-**Sharing a model across your own projects** *(the TypeScript toolchain publishes;
-TypeScript, Python, Java, Kotlin and C# projects consume, from an installed npm or Python
-package or over a `path` dependency such as a sibling checkout)* — one project publishes
-part of its model (a common `Customer`, an audited base, a set of enums) with
-`sharedModelFile()`, and another declares it in `dependencies`, syncs it into a
+**Sharing a model across your own projects** *(TypeScript, Java, Kotlin and C# projects
+publish; TypeScript, Python, Java, Kotlin and C# projects consume, from an installed npm or
+Python package or over a `path` dependency such as a sibling checkout)* — one project publishes
+part of its model (a common `Customer`, an audited base, a set of enums) with its `shared-model`
+generator (`sharedModelFile()` in TypeScript), and another declares it in `dependencies`, syncs it into a
 committed, hash-locked snapshot and builds on it with `extends` and references. When the
 publisher's model moves, `meta verify --deps` says so, instead of two copies drifting
 apart. See [`docs/features/metadata-dependencies.md`](docs/features/metadata-dependencies.md).
@@ -340,6 +344,11 @@ metaobjects/
 | Kotlin | Add `metaobjects-metadata-ktx` and the Maven plugin (it bundles the Kotlin generators) → [`docs/ports/kotlin.md`](docs/ports/kotlin.md) |
 | C# | `dotnet tool install --global MetaObjects.Cli` → [`docs/ports/csharp.md`](docs/ports/csharp.md) |
 | Python | `pip install metaobjects` → [`docs/ports/python.md`](docs/ports/python.md) |
+
+Every language also needs the Node `meta` CLI for the schema: `npm i -D @metaobjectsdev/cli`,
+then `npx meta init --config-only` in a Maven-, .NET- or pip-rooted project, and
+`npx meta migrate` / `npx meta verify --db` from there. The per-language differences are in
+[What differs by language](docs/features/language-differences.md).
 
 ## Cross-language conformance
 

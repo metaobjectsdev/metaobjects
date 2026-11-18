@@ -7,7 +7,6 @@ import com.metaobjects.registry.MetaDataRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static com.metaobjects.object.MetaObject.ATTR_DESCRIPTION;
 import static com.metaobjects.attr.StringAttribute.SUBTYPE_STRING;
 
 /**
@@ -54,7 +53,6 @@ public class PrimaryIdentity extends MetaIdentity {
             // the dedicated validateIdentityFieldsAndGeneration pass already enforces it).
             def.requiredAttributeWithConstraints(ATTR_FIELDS).ofType(StringAttribute.SUBTYPE_STRING).asArray();
             def.optionalAttributeWithConstraints(ATTR_GENERATION).ofType(StringAttribute.SUBTYPE_STRING).withEnum(GENERATION_INCREMENT, GENERATION_UUID, GENERATION_ASSIGNED);
-            def.optionalAttributeWithConstraints(ATTR_DESCRIPTION).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
             // The sequence an @generation "increment" key draws from: its first value and its
             // physical name (spec/metamodel/db.json). Refused on any other generation, post-load
             // in ValidationPhase.validateIdentitySequence.

@@ -20,6 +20,16 @@
         }
       },
       {
+        "template.output": {
+          "name": "WelcomeEmail",
+          "@kind": "email",
+          "@payloadRef": "Welcome",
+          "@subjectRef": "emails/welcome.subject",
+          "@htmlBodyRef": "emails/welcome.html",
+          "@textBodyRef": "emails/welcome.txt"
+        }
+      },
+      {
         "template.prompt": {
           "name": "WelcomePrompt",
           "@payloadRef": "Welcome",

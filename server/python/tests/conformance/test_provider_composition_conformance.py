@@ -119,8 +119,77 @@ class _ExtendSpecSubtypeProvider(Provider):
         )
 
 
+# ADR-0062 -- attribute-ownership providers (see the corpus README). All register on
+# `template.base` and the fresh subtype `template.shadowprobe`.
+_SHADOW_SUBTYPE = "shadowprobe"
+
+
+def _template_type(sub_type: str, attr_name: str) -> TypeDefinition:
+    return TypeDefinition(
+        type="template",
+        sub_type=sub_type,
+        factory=lambda t, s, n: MetaTemplate(t, s, n),
+        attrs=[AttrSchema(attr_name, "string")],
+        child_rules=[],
+    )
+
+
+def _shadow_provider(provider_id: str, deps: tuple[str, ...], *types: tuple[str, str]) -> Provider:
+    p = Provider(provider_id, dependencies=deps)
+    for sub_type, attr_name in types:
+        p.add(_template_type(sub_type, attr_name))
+    return p
+
+
+class _ShadowSubExtendClashProvider(Provider):
+    """Extends `template.shadowprobe` with the name `shadow-base` owns on the root."""
+
+    def __init__(self) -> None:
+        super().__init__("shadow-sub-extend-clash", dependencies=("shadow-sub-distinct",))
+
+    def register_types(self, registry: TypeRegistry) -> None:  # noqa: D401
+        registry.extend("template", _SHADOW_SUBTYPE, attributes=[AttrSchema("shadowAttr", "string")])
+
+
+class _CommonAttrProvider(Provider):
+    """Registers one optional string common attr; `self_claim` also declares it on
+    `template.shadowprobe` and then registers the common attr again."""
+
+    def __init__(self, provider_id: str, deps: tuple[str, ...], attr_name: str, self_claim: bool = False) -> None:
+        super().__init__(provider_id, dependencies=deps)
+        self._attr_name = attr_name
+        self._self_claim = self_claim
+
+    def register_types(self, registry: TypeRegistry) -> None:  # noqa: D401
+        registry.register_common_attrs([AttrSchema(self._attr_name, "string")])
+        if self._self_claim:
+            registry.register(_template_type(_SHADOW_SUBTYPE, self._attr_name))
+            registry.register_common_attrs([AttrSchema(self._attr_name, "string")])
+
+
 def _providers() -> dict[str, Provider]:
     return {
+        "shadow-sub-extend-clash": _ShadowSubExtendClashProvider(),
+        "common-owner": _CommonAttrProvider("common-owner", (), "commonAttr"),
+        "common-clash": _CommonAttrProvider("common-clash", ("common-owner",), "commonAttr"),
+        "common-self": _CommonAttrProvider("common-self", (), "selfCommonAttr", self_claim=True),
+        "common-sub-clash": _shadow_provider("common-sub-clash", ("common-owner",), (_SHADOW_SUBTYPE, "commonAttr")),
+        "common-sub-owner": _shadow_provider("common-sub-owner", (), (_SHADOW_SUBTYPE, "lateCommonAttr")),
+        "common-late": _CommonAttrProvider("common-late", ("common-sub-owner",), "lateCommonAttr"),
+        "shadow-base": _shadow_provider("shadow-base", (), ("base", "shadowAttr")),
+        "shadow-sub-clash": _shadow_provider(
+            "shadow-sub-clash", ("shadow-base",), (_SHADOW_SUBTYPE, "shadowAttr")
+        ),
+        "shadow-sub-owner": _shadow_provider("shadow-sub-owner", (), (_SHADOW_SUBTYPE, "reverseAttr")),
+        "shadow-base-late": _shadow_provider(
+            "shadow-base-late", ("shadow-sub-owner",), ("base", "reverseAttr")
+        ),
+        "shadow-sub-distinct": _shadow_provider(
+            "shadow-sub-distinct", ("shadow-base",), (_SHADOW_SUBTYPE, "distinctAttr")
+        ),
+        "shadow-self": _shadow_provider(
+            "shadow-self", (), ("base", "selfAttr"), (_SHADOW_SUBTYPE, "selfAttr")
+        ),
         "duplicate-x": _noop_provider("duplicate-x"),
         # Same `.id` as duplicate-x — surfaces ERR_PROVIDER_DUPLICATE_ID at compose time.
         "duplicate-x-clone": _noop_provider("duplicate-x"),
@@ -225,3 +294,29 @@ def test_provider_composition_compose_load(manifest_path: Path) -> None:
         actual_codes = sorted(_error_code(e) for e in result.errors)
         expected_codes = sorted(manifest.get("expectErrors", []))
         assert actual_codes == expected_codes
+
+
+# ---------------------------------------------------------------------------
+# ADR-0062 `attr-ownership/` corpus -- composition succeeds and the registry
+# names the provider that owns each attribute.
+# ---------------------------------------------------------------------------
+
+
+def _ownership_manifest_files() -> list[Path]:
+    return sorted((_corpus_root() / "attr-ownership").glob("*.json"))
+
+
+def test_attr_ownership_corpus_non_empty() -> None:
+    assert len(_ownership_manifest_files()) > 0
+
+
+@pytest.mark.parametrize("manifest_path", _ownership_manifest_files(), ids=lambda p: p.name)
+def test_provider_composition_attr_ownership(manifest_path: Path) -> None:
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    providers = _providers()
+    registry = compose_registry([_resolve(providers, pid) for pid in manifest["providers"]])
+    assert manifest.get("expectOwners") or manifest.get("expectCommonOwners")
+    for owner in manifest.get("expectOwners", []):
+        assert registry.attr_origin(owner["type"], owner["subType"], owner["attr"]) == owner["owner"]
+    for owner in manifest.get("expectCommonOwners", []):
+        assert registry.common_attr_origin(owner["attr"]) == owner["owner"]

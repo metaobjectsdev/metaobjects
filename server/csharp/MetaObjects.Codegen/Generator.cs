@@ -8,7 +8,15 @@ using MetaObjects.Meta;
 namespace MetaObjects.Codegen;
 
 /// <summary>A file a generator produced. <paramref name="Path"/> is relative to the out dir.</summary>
-public sealed record EmittedFile(string Path, string Content);
+public sealed record EmittedFile(string Path, string Content)
+{
+    /// <summary>
+    /// <c>true</c> for a file built from the whole model (a shared enum, a wire helper, the report
+    /// export writer): an <c>--entities</c> selection never drops it, because no selected object owns
+    /// it. <c>false</c>, the default, is a per-object file the selection narrows.
+    /// </summary>
+    public bool WholeModel { get; init; }
+}
 
 /// <summary>Resolved generation config.</summary>
 public sealed record GenConfig
@@ -54,6 +62,13 @@ public sealed record GenConfig
     /// </para>
     /// </summary>
     public string? ProjectRoot { get; init; }
+    /// <summary>
+    /// The directory a generator resolves the input files it reads itself against (the
+    /// <c>shared-model</c> generator's <c>Files</c>). Defaults to <see cref="ProjectRoot"/>; it exists
+    /// because <c>verify --codegen</c> regenerates with no <see cref="ProjectRoot"/> (a throwaway tree
+    /// has no manifest) yet must read the same files <c>gen</c> read.
+    /// </summary>
+    public string? InputRoot { get; init; }
     /// <summary>
     /// First-time-on-existing-file behaviour: <c>"default"</c> refuses a file that cannot
     /// be proved to be generated output; <c>"adopt"</c> records the file's CURRENT content
@@ -181,6 +196,18 @@ public sealed record GenConfig
     public bool SweepOrphans { get; init; } = false;
 
     /// <summary>
+    /// <c>--entities</c>: the short names (<see cref="MetaObjects.Meta.MetaData.Name"/>) of the objects
+    /// this run emits PER-OBJECT files for. <c>null</c>, the default, emits every object.
+    /// <para>
+    /// Only per-object output narrows (see <see cref="CodegenRunner"/>): a file of a generator that
+    /// builds from the whole model, such as <c>AppDbContext</c>, is rendered from the WHOLE model,
+    /// byte-identical to an unfiltered run. A narrowed run never sweeps orphans and never touches the
+    /// manifest entries of files it did not write, so the unselected objects' files stay as they are.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<string>? EntitySelection { get; init; }
+
+    /// <summary>
     /// The C# type name of the EF Core DbContext that callable (stored-proc / table-function)
     /// wrappers take as their first parameter. Defaults to <c>AppDbContext</c> (the name the
     /// upstream DbContextGenerator emits). A downstream consumer that renames its context
@@ -225,6 +252,22 @@ public sealed record GenConfig
         init => _contextAssemblyName = value;
     }
     private readonly string? _contextAssemblyName;
+
+    /// <summary>
+    /// <c>migrate.foreignKeyIndexes</c> in <c>.metaobjects/config.json</c>: the model declares the
+    /// index <c>meta migrate</c> gives each foreign key nothing else indexes
+    /// (<c>&lt;table&gt;_&lt;column&gt;[_&lt;column&gt;…]_idx</c>). False, the default, leaves the
+    /// model as it was.
+    /// </summary>
+    public bool ForeignKeyIndexes { get; init; }
+
+    /// <summary>
+    /// <c>migrate.conventions</c>: the schema-conventions preset <c>meta migrate</c> builds with, or
+    /// <c>null</c> for its default. Under <c>efcore</c> migrate already indexes every foreign key
+    /// with EF Core's own names, which EF's convention reproduces, so <see cref="ForeignKeyIndexes"/>
+    /// adds nothing.
+    /// </summary>
+    public string? SchemaConventions { get; init; }
 
     /// <summary>
     /// The C# property name of a field, for every generator that names one: the entity and
@@ -288,6 +331,59 @@ public sealed record GenConfig
     /// without a corresponding config entry).
     /// </summary>
     public UnmappedPackageStrategy UnmappedStrategy { get; init; } = UnmappedPackageStrategy.Flatten;
+
+    /// <summary>
+    /// Where each per-object generator writes its file: <see cref="OutputLayout.Flat"/> (the
+    /// default) keeps every file at the root of the output directory; <see cref="OutputLayout.Package"/>
+    /// writes it under the object's metadata package, one directory per <c>::</c> segment
+    /// (<c>acme::alpha::Note</c> gives <c>acme/alpha/Note.g.cs</c>). A root-level object, the
+    /// context and the run-wide helpers stay at the root in both.
+    /// </summary>
+    public OutputLayout OutputLayout { get; init; } = OutputLayout.Flat;
+
+    /// <summary>
+    /// When true, a packaged type's namespace is its metadata package (each <c>::</c> segment
+    /// PascalCased, <c>acme::alpha</c> gives <c>Acme.Alpha</c>) even when <see cref="Namespace"/>
+    /// is configured; <see cref="Namespace"/> then places only the package-less objects and the
+    /// artifacts of no single object (the context, callable wrappers, template tier, run-wide
+    /// helpers). A per-object companion (names, filter allowlist, routes, reverse finders, report
+    /// export, shared enum) is declared in its object's namespace, and every reference to a
+    /// generated type in another namespace is <c>global::</c>-qualified. False keeps the earlier
+    /// rule: the package namespace is derived only when no namespace is configured.
+    /// Explicit <see cref="PackageNamespaces"/>, <see cref="TypeOverrides"/> and
+    /// <see cref="Convention"/> entries win in both.
+    /// </summary>
+    public bool PackageNamespacesFromMetadata { get; init; }
+
+    /// <summary>
+    /// This config with the project's <c>csharp.outputLayout</c> and <c>csharp.packageNamespaces</c>
+    /// (from <c>.metaobjects/config.json</c>) applied, for the runs that read that file: <c>gen</c> and
+    /// <c>verify</c> both call it, so they agree by construction. A null config, or one that sets
+    /// neither key, returns this unchanged: the default output.
+    /// </summary>
+    public GenConfig WithCSharpLayout(MetaObjects.Config.NeutralConfig? project)
+    {
+        if (project is null) return this;
+        var layout = project.OutputLayout == "package" ? OutputLayout.Package : OutputLayout;
+        var setting = project.PackageNamespaces;
+        return this with
+        {
+            OutputLayout = layout,
+            PackageNamespacesFromMetadata = PackageNamespacesFromMetadata || setting.FromMetadata,
+            PackageNamespaces = setting.Map is { Count: > 0 } map
+                ? PackageNamespaces.Concat(map).GroupBy(kv => kv.Key).ToDictionary(g => g.Key, g => g.Last().Value)
+                : PackageNamespaces,
+        };
+    }
+}
+
+/// <summary>Where a per-object generator writes its file (see <see cref="GenConfig.OutputLayout"/>).</summary>
+public enum OutputLayout
+{
+    /// <summary>Every file at the root of the output directory.</summary>
+    Flat,
+    /// <summary>Each file under its object's metadata package.</summary>
+    Package,
 }
 
 /// <summary>Package-binding — convention rule that derives a target namespace from a metadata
@@ -370,21 +466,21 @@ public sealed class GenContext
     public Action<string> Warn { get; init; } = _ => { };
 
     /// <summary>
-    /// The run's one claim registry (ruling R52): every name a generator emits into a shared scope
-    /// is claimed here, at the point it is emitted. Shared by every generator of the run and by
-    /// every <see cref="Narrow"/>ed copy of this context.
+    /// The run's one claim registry: every name a generator emits into a shared scope is claimed
+    /// here, at the point it is emitted. Shared by every generator of the run and by every
+    /// <see cref="Narrow"/>ed copy of this context.
     /// </summary>
     public NameClaims Claims { get; init; } = new();
 
     /// <summary>
     /// Claim <paramref name="name"/> in <paramref name="scope"/> for <paramref name="claimant"/>, as
     /// it is emitted. The first claimant owns the name; another claimant of the same name in the
-    /// same scope is refused (<c>ERR_NAME_COLLISION</c>), naming both and <paramref name="remedy"/>.
+    /// same scope is refused (<c>ERR_NAME_COLLISION</c>, or <paramref name="code"/> when given), naming both and <paramref name="remedy"/>.
     /// The same claimant claiming again is not a collision, and the same name in two scopes is two
     /// names. A generator that is not wired claims nothing, so the check follows the wiring.
     /// </summary>
-    public void Claim(string scope, string name, string claimant, string remedy) =>
-        Claims.Claim(scope, name, claimant, remedy);
+    public void Claim(string scope, string name, string claimant, string remedy, string? code = null) =>
+        Claims.Claim(scope, name, claimant, remedy, code);
 
     /// <summary>
     /// A label for <paramref name="generator"/>'s entry in this run, for a scope that is one entry's
@@ -445,23 +541,45 @@ public sealed class GenContext
             Applicability = Applicability,
             Scope = Scope is null ? include : o => Scope(o) && include(o),
         };
+
+    /// <summary>
+    /// <see cref="Narrow"/> for a probe run: the warnings are dropped and the name claims are the
+    /// probe's own, so asking a generator what it would emit for a selection neither repeats its
+    /// warnings nor records claims in the real run's ledger.
+    /// </summary>
+    internal GenContext NarrowForProbe(Func<MetaObject, bool> include) =>
+        new()
+        {
+            Entities = Entities.Where(include).ToList(),
+            Root = Root,
+            Config = Config,
+            Warn = _ => { },
+            Claims = new NameClaims(),
+            Generators = Generators,
+            Applicability = Applicability,
+            Scope = Scope is null ? include : o => Scope(o) && include(o),
+        };
 }
 
 /// <summary>
-/// The names one run's generators have emitted, by scope (ruling R52). The one mechanism that
-/// refuses a real duplicate — a C# type in one namespace, a DbSet property in one context, a route
-/// segment in one routes entry, a finder in one class, an index in one schema — replacing the
-/// per-generator checks. A name is never rewritten to avoid a collision.
+/// The names one run's generators have emitted, by scope. The one mechanism that refuses a real
+/// duplicate (a C# type in one namespace, a file at one output path, a DbSet property in one
+/// context, a route segment in one routes entry, a finder in one class, an index in one schema).
+/// A name is never rewritten to avoid a collision.
 /// </summary>
 public sealed class NameClaims
 {
     /// <summary>The error code a refused claim carries.</summary>
     public const string ERR_NAME_COLLISION = "ERR_NAME_COLLISION";
 
+    /// <summary>The shared-ledger code a clash of collection names carries (a DbSet property, a REST
+    /// collection segment), the same in every port.</summary>
+    public const string ERR_COLLECTION_NAME_COLLISION = "ERR_COLLECTION_NAME_COLLISION";
+
     private readonly Dictionary<(string Scope, string Name), string> _owners = new();
 
     /// <inheritdoc cref="GenContext.Claim"/>
-    public void Claim(string scope, string name, string claimant, string remedy)
+    public void Claim(string scope, string name, string claimant, string remedy, string? code = null)
     {
         lock (_owners)
         {
@@ -469,7 +587,7 @@ public sealed class NameClaims
             var existing = _owners[(scope, name)];
             if (existing == claimant) return;
             throw new InvalidOperationException(
-                $"{ERR_NAME_COLLISION}: \"{existing}\" and \"{claimant}\" both generate \"{name}\" in {scope} — {remedy}.");
+                $"{code ?? ERR_NAME_COLLISION}: \"{existing}\" and \"{claimant}\" both generate \"{name}\" in {scope} — {remedy}.");
         }
     }
 }
@@ -508,7 +626,17 @@ public interface IGenerator
     int? ReportExportMaxRows => null;
 
     /// <summary>
-    /// ADR-0062 — whether a run that includes this entry may be skipped when the model and everything
+    /// <c>true</c> when this entry's files are built from the WHOLE model (the <c>AppDbContext</c>),
+    /// so an <c>--entities</c> selection never narrows them: they render from every object and are
+    /// written even when no selected object contributes to them. <c>false</c>, the default, has the
+    /// runner ask the entry for its output twice, once for the whole model and once for the
+    /// selection, and keep the files the selection also produces (<see cref="CodegenRunner"/>). An
+    /// owned copy of a whole-model generator keeps the override when it is copied.
+    /// </summary>
+    bool WholeModel => false;
+
+    /// <summary>
+    /// ADR-0064 — whether a run that includes this entry may be skipped when the model and everything
     /// that generates are unchanged. <c>true</c>, the default, claims that the output depends only on
     /// the model, the project's config, this entry's own source and the files named by
     /// <see cref="ExtraInputs"/>. An entry that reads anything else (an environment variable, the
@@ -517,7 +645,7 @@ public interface IGenerator
     bool Cacheable => true;
 
     /// <summary>
-    /// ADR-0062 — paths (relative to the run's directory, or absolute) of files or directories this
+    /// ADR-0064 — paths (relative to the run's directory, or absolute) of files or directories this
     /// entry reads besides the metadata and its own source. Their content joins the run's identity, so
     /// editing one renders again. Empty by default.
     /// </summary>
@@ -555,6 +683,8 @@ internal sealed class HandEditsGenerator(IGenerator inner, HandEdits handEdits) 
     public HandEdits HandEdits { get; } = handEdits;
     /// <inheritdoc/>
     public int? ReportExportMaxRows => Inner.ReportExportMaxRows;
+    /// <inheritdoc/>
+    public bool WholeModel => Inner.WholeModel;
     /// <inheritdoc/>
     public bool Cacheable => Inner.Cacheable;
     /// <inheritdoc/>

@@ -7,7 +7,7 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 
-namespace Acme;
+namespace Acme.Generated;
 
 public class Address
 {
@@ -20,7 +20,6 @@ public class Address
     [JsonPropertyName("kind")]
     public AddressKind? Kind { get; set; }
     [JsonPropertyName("window")]
-    [DurationWire.Iso]
     public TimeSpan? Window { get; set; }
     [JsonPropertyName("hints")]
     public Dictionary<string, string>? Hints { get; set; }

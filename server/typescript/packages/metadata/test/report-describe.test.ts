@@ -248,3 +248,28 @@ describe("the attrs a describer reads", () => {
     }
   });
 });
+
+describe("describing a measure.derived (FR-044 R13)", () => {
+  test("the arithmetic in words, parenthesised below the top, and null on a zero divisor", async () => {
+    const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify({
+      "metadata.root": { package: "acme::time", children: [
+        { "object.entity": { name: "Entry", children: [
+          { "source.rdb": { "@table": "entries" } },
+          { "field.long": { name: "id" } },
+          { "field.decimal": { name: "hours" } },
+          { "identity.primary": { name: "id", "@fields": ["id"] } },
+          { "measure.aggregate": { name: "total", "@agg": "sum", "@of": "Entry.hours" } },
+          { "measure.aggregate": { name: "entries", "@agg": "count", "@of": "Entry.id" } },
+          { "measure.derived": { name: "perEntry", "@expr": { fn: "divide", args: [{ field: "total" }, { fn: "add", args: [{ field: "entries" }, { value: 1 }] }] } } },
+          { "measure.derived": { name: "doubled", "@expr": { fn: "multiply", args: [{ field: "total" }, { value: 2 }] } } },
+        ] } },
+      ] },
+    }))]);
+    expect(errors).toEqual([]);
+    const entity = root.objects().find((o) => o.name === "Entry")!;
+    const m = (name: string) => entity.children().find((c) => c.type === "measure" && c.name === name)!;
+    expect(describeMeasure(m("perEntry"))).toBe("`total` ÷ (`entries` + `1`), null when a divisor is 0");
+    expect(describeMeasure(m("doubled"))).toBe("`total` × `2`");
+    expect(reportingDescribedAttrs(m("doubled"))).toEqual(["expr"]);
+  });
+});

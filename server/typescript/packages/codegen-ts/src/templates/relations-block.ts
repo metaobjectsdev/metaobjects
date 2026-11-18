@@ -1,7 +1,7 @@
 // Relations block template — emits the Drizzle relations() block for one entity.
 // Derived from the RelationMap pre-pass (relation-resolver.ts).
 
-import { code, imp, joinCode, type Code } from "ts-poet";
+import { code, imp, joinCode, type Code } from "../poet.js";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { CARDINALITY_ONE, CARDINALITY_MANY } from "@metaobjectsdev/metadata";
 import { type RenderContext } from "../render-context.js";

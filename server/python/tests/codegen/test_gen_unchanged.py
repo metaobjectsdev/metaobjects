@@ -1,4 +1,4 @@
-"""ADR-0062 decisions 1 and 2: the manifest is written once per run and only when an entry
+"""ADR-0064 decisions 1 and 2: the manifest is written once per run and only when an entry
 changed; a file whose bytes already match is never rewritten and reports as unchanged."""
 from __future__ import annotations
 
@@ -58,7 +58,7 @@ def test_unchanged_files_keep_mtime_manifest_untouched_and_report_unchanged(
     assert all(f.stat().st_mtime == 1 for f in files), "an identical file was rewritten"
     assert manifest.stat().st_mtime == 1, "an unchanged manifest was rewritten"
     assert manifest.read_bytes() == before
-    assert "wrote 0 file(s)" in out and f"{len(files)} unchanged" in out
+    assert "wrote 0 file(s)" in out and f"{len(files)} file(s) left as they were" in out
     assert not [ln for ln in out.splitlines() if ln.startswith(str(root / "gen"))]
 
 
@@ -194,7 +194,7 @@ def test_a_refused_orphan_stores_no_skip_key(
     key = root / ".metaobjects" / ".gen-state" / ".fingerprint-python.json"
     assert key.exists()
     # Hand-edit Item's output, then drop Item from the model: it is an orphan the sweep
-    # must refuse to delete (ADR-0062 counts a refusal as a failed run).
+    # must refuse to delete (ADR-0064 counts a refusal as a failed run).
     orphan = next((root / "gen").glob("Item*.py"))
     orphan.write_text(orphan.read_text() + "# mine\n")
     doc = json.loads(json.dumps(_DOC))

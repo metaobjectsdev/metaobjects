@@ -54,7 +54,7 @@ public class MapFieldCodegenTests
     public void Scalar_valued_map_emits_a_string_value_dictionary()
     {
         var files = new EntityGenerator().Generate(Ctx(Load())).ToList();
-        var customer = files.Single(f => System.IO.Path.GetFileName(f.Path) == "Customer.g.cs").Content;
+        var customer = files.Single(f => f.Path == "Customer.g.cs").Content;
 
         // @valueType:string → Dictionary<string, string>, [Column]-mapped. NULLABILITY
         // FOLLOWS THE COLUMN (ObjectNavProperty's rule): the migration creates a map
@@ -73,13 +73,13 @@ public class MapFieldCodegenTests
     public void Object_valued_map_emits_a_value_object_value_dictionary()
     {
         var files = new EntityGenerator().Generate(Ctx(Load())).ToList();
-        var customer = files.Single(f => System.IO.Path.GetFileName(f.Path) == "Customer.g.cs").Content;
+        var customer = files.Single(f => f.Path == "Customer.g.cs").Content;
 
         // @objectRef:Address → Dictionary<string, Address> (nullable — see the scalar test
         // for the column-following rule); the VO is emitted as a POCO.
         Assert.Contains("[Column(CustomerNames.AddressesColumn)]", customer); // §A6 (task 4)
         Assert.Contains("public Dictionary<string, Address>? Addresses { get; set; }", customer);
-        Assert.Contains("public class Address", files.Single(f => System.IO.Path.GetFileName(f.Path) == "Address.g.cs").Content);
+        Assert.Contains("public class Address", files.Single(f => f.Path == "Address.g.cs").Content);
     }
 
     [Fact]
@@ -91,14 +91,14 @@ public class MapFieldCodegenTests
         // (the map loop in DbContextGenerator.EmitFieldTypeConfig): an unmapped Dictionary
         // does not land on the jsonb column the migration creates.
         Assert.Contains(
-            "modelBuilder.Entity<global::Acme.Customer>().Property(x => x.Labels).HasColumnType(\"jsonb\")"
+            "modelBuilder.Entity<Customer>().Property(x => x.Labels).HasColumnType(\"jsonb\")"
                 + ".HasConversion(MapJsonb.Converter<string>(), MapJsonb.Comparer<string>());",
             dbCtx);
         // The @required map's property is non-null, so its converter is the non-null
         // factory — EF Core 8's nullability-aware HasConversion checks the converter's
         // model type against the property's own annotation (a mismatch is CS8620).
         Assert.Contains(
-            "modelBuilder.Entity<global::Acme.Customer>().Property(x => x.Channels).HasColumnType(\"jsonb\")"
+            "modelBuilder.Entity<Customer>().Property(x => x.Channels).HasColumnType(\"jsonb\")"
                 + ".HasConversion(MapJsonb.RequiredConverter<string>(), MapJsonb.Comparer<string>());",
             dbCtx);
     }
@@ -109,9 +109,9 @@ public class MapFieldCodegenTests
         var dbCtx = Assert.Single(new DbContextGenerator().Generate(Ctx(Load()))).Content;
 
         Assert.Contains(
-            "modelBuilder.Entity<global::Acme.Customer>().Property(x => x.Addresses).HasColumnType(\"jsonb\")"
-                + ".HasConversion(MapJsonb.Converter<global::Acme.Address>()"
-                + ", MapJsonb.Comparer<global::Acme.Address>());",
+            "modelBuilder.Entity<Customer>().Property(x => x.Addresses).HasColumnType(\"jsonb\")"
+                + ".HasConversion(MapJsonb.Converter<Acme.Generated.Address>()"
+                + ", MapJsonb.Comparer<Acme.Generated.Address>());",
             dbCtx);
     }
 
@@ -183,7 +183,7 @@ public class MapFieldCodegenTests
         // ...so the storage mapping must be too.
         var dbCtx = Assert.Single(new DbContextGenerator().Generate(ctx)).Content;
         Assert.Contains(
-            "modelBuilder.Entity<global::Acme.CustomerSummary>().Property(x => x.Tallies).HasColumnType(\"jsonb\")"
+            "modelBuilder.Entity<CustomerSummary>().Property(x => x.Tallies).HasColumnType(\"jsonb\")"
                 + ".HasConversion(MapJsonb.Converter<int>(), MapJsonb.Comparer<int>());",
             dbCtx);
         // ...and the helper it names must be declared, or the generated file will not compile.
@@ -260,7 +260,7 @@ public class MapFieldCodegenTests
         var comparerOf = helper.GetMethod("Comparer", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(comparerOf);
         var scalar = comparerOf.MakeGenericMethod(typeof(string)).Invoke(null, null)!;
-        var voType = asm.GetType("Acme.Address");
+        var voType = asm.GetType("Acme.Generated.Address");
         Assert.NotNull(voType);
         var objectValued = comparerOf.MakeGenericMethod(voType).Invoke(null, null)!;
 
@@ -312,18 +312,18 @@ public class MapFieldCodegenTests
         // running the value-object graph validation. So a map of invalid value objects was
         // written on BOTH write surfaces — silently, as a 201/200, never an error.
         var routes = new RoutesGenerator().Generate(Ctx(Load()))
-            .Single(f => System.IO.Path.GetFileName(f.Path) == "CustomerRoutes.g.cs").Content;
+            .Single(f => f.Path == "CustomerRoutes.g.cs").Content;
 
         // Create: the map column joins the field.object columns in the validation preamble.
-        Assert.Contains("ValueObjectValidator.Validate(input.Addresses)", routes);
+        Assert.Contains("ValueObjectValidator.Collect(input.Addresses, __issues, jsonOpts, \"addresses\")", routes);
         // PATCH: a typed arm ahead of the generic path, so a present key is validated
         // before assignment rather than after persistence (or never).
-        Assert.Contains("if (!ValueObjectValidator.Validate(__map0)) return Results.BadRequest", routes);
+        Assert.Contains("if (!ValueObjectValidator.Collect(__map0, __issues, jsonOpts, \"addresses\")) continue;", routes);
 
         // The control: a scalar-valued map has no nested bean and must reach NEITHER path.
         // Without this, an implementation that validated every map would pass the two
         // assertions above while doing something quite different.
-        Assert.DoesNotContain("ValueObjectValidator.Validate(input.Labels)", routes);
-        Assert.DoesNotContain("ValueObjectValidator.Validate(input.Channels)", routes);
+        Assert.DoesNotContain("ValueObjectValidator.Collect(input.Labels", routes);
+        Assert.DoesNotContain("ValueObjectValidator.Collect(input.Channels", routes);
     }
 }

@@ -1,6 +1,7 @@
 package com.metaobjects.mojo;
 
 import com.metaobjects.MetaDataException;
+import com.metaobjects.config.Dependencies;
 import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorBase;
 import com.metaobjects.generator.util.GeneratedFileWriter;
@@ -8,6 +9,7 @@ import com.metaobjects.generator.util.HashManifest;
 import com.metaobjects.generator.util.OrphanSweep;
 import com.metaobjects.generator.util.RouteNaming;
 import com.metaobjects.loader.MetaDataLoader;
+import org.apache.maven.model.Resource;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
@@ -37,7 +39,21 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
     boolean allowUnmetRequires;
 
     /**
-     * Run in full even when no input changed since the last successful run (ADR-0062).
+     * Regenerate only these objects' files: short object names, comma-separated
+     * ({@code -Dmeta.entities=Program,Week}, or {@code <entities>Program,Week</entities>}). The
+     * same selection as {@code meta gen Program Week} in TypeScript and {@code --entities} in
+     * Python and C#. Each generator still applies its own {@code <filters>} on top.
+     *
+     * <p>It narrows per-object output only: a file built from the whole model (a validator
+     * listing every table, a shared support class) still renders from the whole model. A
+     * narrowed run deletes no orphaned file and keeps every other file's manifest entry, since
+     * it did not try to produce them. A name that matches no object fails the goal.</p>
+     */
+    @Parameter(property = "meta.entities")
+    String entities;
+
+    /**
+     * Run in full even when no input changed since the last successful run (ADR-0064).
      * {@code -Dmetaobjects.force=true}, or {@code <force>true</force>} in the configuration.
      */
     @Parameter(property = "metaobjects.force", defaultValue = "false")
@@ -54,6 +70,11 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
     }
 
     @Override
+    protected boolean narrowed() {
+        return entities != null;
+    }
+
+    @Override
     protected void onWholeRunSkipped() {
         getLog().info("MetaData Mojo > " + OWNER + ": nothing changed since the last run, so nothing was "
                 + "generated. Pass -Dmetaobjects.force=true to generate anyway.");
@@ -62,6 +83,20 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
 
     /** How this goal is named in a message telling the adopter what to run. */
     static final String OWNER = "mvn metaobjects:generate";
+
+    /**
+     * The refusals over the whole own object set that no single generator can make: two metadata
+     * packages generating into one output directory (#546, ERR_NAME_COLLISION) and two objects
+     * claiming one REST collection (ERR_COLLECTION_NAME_COLLISION). The generate goal and the
+     * verify goal both run them before any generator, so verify refuses the same model gen does.
+     */
+    static void refuseModelCollisions(MetaDataLoader loader) {
+        // FR-023: an object a dependency owns gets no route here, so it cannot collide with one.
+        List<com.metaobjects.object.MetaObject> own =
+                com.metaobjects.generator.util.GeneratorUtil.ownMetaObjects(loader);
+        com.metaobjects.generator.util.OutputPackageCollisions.assertDistinct(own);
+        RouteNaming.assertNoCollectionNameCollisions(own);
+    }
 
     @Override
     protected void executeGenerators(MetaDataLoader loader, List<Generator> generatorImpls) {
@@ -79,10 +114,20 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
         // `loader` is null in SourceRootRegistrationTest's unit tests, which exercise
         // only the post-loop registerGeneratedSourceRoots() logic below with no real
         // metadata — nothing to collide-check in that case.
-        if (loader != null) {
-            // FR-023: an object a dependency owns gets no route here, so it cannot collide with one.
-            RouteNaming.assertNoCollectionNameCollisions(
-                    com.metaobjects.generator.util.GeneratorUtil.ownMetaObjects(loader));
+        if (loader != null) refuseModelCollisions(loader);
+
+        List<String> selected = selectedEntities(loader);
+        if (selected != null) {
+            getLog().info("MetaData Mojo > Generating only " + String.join(", ", selected)
+                    + " (meta.entities); files built from the whole model still see every object.");
+            for (Generator gen : generatorImpls) {
+                if (gen instanceof GeneratorBase) {
+                    ((GeneratorBase) gen).setEntities(selected);
+                } else {
+                    getLog().warn("MetaData Mojo > " + gen.getClass().getName()
+                            + " cannot narrow to meta.entities; it renders every object.");
+                }
+            }
         }
 
         // Where this EXECUTION's codegen hash manifest lives: anchored on the module
@@ -145,14 +190,18 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
             if (migrating) {
                 getLog().info("MetaData Mojo > Recorded the generator and output dir of every generated "
                         + "file in `.metaobjects/.gen-state/.hashes.json`; this build deletes no orphaned file.");
+            } else if (selected != null) {
+                // A narrowed run did not try to produce the other objects' files, so not
+                // emitting them says nothing about whether they are orphans.
+                getLog().info("MetaData Mojo > Deleted no orphaned file: meta.entities narrowed this build.");
             } else if (genStateDir != null) {
                 sweepRefused = sweepOrphans(genStateDir, projectRoot, handEditsByDir, emittedThisBuild, runOwners);
             }
             reportManifestNotices(run, genStateDir, hadManifestAtStart);
 
-            // ADR-0062: a run that refused a file stores no fingerprint, and a file written
+            // ADR-0064: a run that refused a file stores no fingerprint, and a file written
             // outside the module (no manifest record) is checked by path.
-            runWasClean = run.refusedCount() == 0 && !sweepRefused;
+            runWasClean = run.refusedCount() == 0 && !sweepRefused && selected == null;
             List<String> outside = new ArrayList<>();
             if (projectRoot != null) {
                 Set<String> recorded = genStateDir != null ? HashManifest.load(genStateDir).keySet() : Set.of();
@@ -166,7 +215,43 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
         }
 
         registerGeneratedSourceRoots();
+        if (loader != null) {
+            registerDependencySnapshotResources(resolveProjectConfigDir(getSourceDir())
+                    .orElse(getProjectBaseDir().toPath().toAbsolutePath().normalize()));
+        }
     }
+
+    /**
+     * FR-023 — ship the committed dependency snapshot on the module's classpath. A Spring app loads
+     * its imported nodes at runtime from {@code .metaobjects/deps.lock.json} and
+     * {@code .metaobjects/deps/**}; neither lives under {@code src/main/resources}, so without this the
+     * app would boot with an unresolved {@code extends}. Adds them as a resource directory (target path
+     * {@code .metaobjects}) when the project has a lock and nothing already ships it.
+     *
+     * @param configDir the directory holding the project's {@code .metaobjects/} folder
+     */
+    void registerDependencySnapshotResources(Path configDir) {
+        if (project == null) return;
+        Path metaobjects = configDir.resolve(DEPENDENCY_RESOURCE_TARGET);
+        if (!Files.isRegularFile(metaobjects.resolve(Dependencies.LOCK_FILE))) return;
+        String directory = metaobjects.toAbsolutePath().normalize().toString();
+        List<Resource> existing = project.getResources();
+        if (existing != null) {
+            for (Resource r : existing) {
+                if (directory.equals(r.getDirectory()) && DEPENDENCY_RESOURCE_TARGET.equals(r.getTargetPath())) return;
+            }
+        }
+        Resource snapshot = new Resource();
+        snapshot.setDirectory(directory);
+        snapshot.setTargetPath(DEPENDENCY_RESOURCE_TARGET);
+        snapshot.setIncludes(List.of(Dependencies.LOCK_FILE, Dependencies.DEPS_DIR + "/**"));
+        project.addResource(snapshot);
+        getLog().info("MetaData Mojo > Shipping the dependency lock and snapshot (" + directory
+                + ") on the classpath at " + DEPENDENCY_RESOURCE_TARGET + "/");
+    }
+
+    /** Where the snapshot lands on the classpath, and the folder name it is read from. */
+    static final String DEPENDENCY_RESOURCE_TARGET = ".metaobjects";
 
     /**
      * One advisory line when an owned generator copy under {@code codegen/} is identical to the
@@ -289,6 +374,35 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
                     + "root and are not recorded in `.metaobjects/.gen-state/.hashes.json`, so "
                     + "hand-edit protection does not apply to them beyond the GENERATED marker rule.");
         }
+    }
+
+    /**
+     * The {@link #entities} selection as a list, or {@code null} when none is set. Refuses a
+     * selection that names nothing (a blank value, usually an unset shell variable, would
+     * otherwise regenerate everything) and a name that matches no object.
+     */
+    List<String> selectedEntities(MetaDataLoader loader) {
+        if (entities == null) return null;
+        List<String> names = new ArrayList<>();
+        for (String raw : entities.split(",")) {
+            String name = raw.trim();
+            if (!name.isEmpty() && !names.contains(name)) names.add(name);
+        }
+        if (names.isEmpty()) {
+            throw new MetaDataException(OWNER + ": meta.entities names no object.");
+        }
+        if (loader == null) return names;
+        Set<String> known = new HashSet<>();
+        for (com.metaobjects.object.MetaObject o : loader.getMetaObjects()) known.add(o.getShortName());
+        List<String> unknown = new ArrayList<>();
+        for (String name : names) {
+            if (!known.contains(name)) unknown.add("'" + name + "'");
+        }
+        if (!unknown.isEmpty()) {
+            throw new MetaDataException(OWNER + ": meta.entities names " + String.join(", ", unknown)
+                    + ", which matches no object in the metadata.");
+        }
+        return names;
     }
 
     /** Fail the goal, naming each missing companion, when the list does not declare what its

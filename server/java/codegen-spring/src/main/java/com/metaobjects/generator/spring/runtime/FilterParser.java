@@ -81,6 +81,24 @@ public final class FilterParser {
             Set<String> allowedFields,
             Map<String, Set<String>> opsByField,
             Set<String> decimalFields) {
+        return parse(rawQuery, allowedFields, opsByField, decimalFields, Set.of());
+    }
+
+    /**
+     * {@link #parse(String, Set, Map, Set)} with the allowlist's duration-typed fields (those served
+     * under {@code wire.durations: iso}). An operand on one of them uses the accepted ISO-8601 grammar
+     * ({@link CanonicalDuration}) and becomes a {@link java.time.Duration} the repository compares as
+     * a span; a malformed one (years, months, a clock spelling, lowercase) is {@code invalid_filter_value}.
+     * For {@code in} the predicate value is a {@code List<Duration>}.
+     *
+     * @param durationFields typically {@code <Entity>FilterAllowlist.DURATION_FIELDS}
+     */
+    public static FilterParseResult parse(
+            String rawQuery,
+            Set<String> allowedFields,
+            Map<String, Set<String>> opsByField,
+            Set<String> decimalFields,
+            Set<String> durationFields) {
 
         if (rawQuery == null || rawQuery.isEmpty()) return FilterParseResult.ok(List.of());
 
@@ -112,7 +130,8 @@ public final class FilterParser {
             if (!allowedFields.contains(field)) return FilterParseResult.err("invalid_filter_field", field);
             Set<String> ops = opsByField.get(field);
             if (ops == null || !ops.contains(op)) return FilterParseResult.err("invalid_filter_op", field);
-            Object coerced = decimalFields.contains(field) ? coerceDecimal(value, op) : coerceValue(value, op);
+            Object coerced = decimalFields.contains(field) ? coerceDecimal(value, op)
+                : durationFields.contains(field) ? coerceDuration(value, op) : coerceValue(value, op);
             if (coerced == INVALID_VALUE) return FilterParseResult.err("invalid_filter_value", field);
             if (op.equals("in") && coerced instanceof List<?> list && list.size() > MAX_IN_LIST) {
                 return FilterParseResult.err("filter.in_too_large", field);
@@ -176,6 +195,21 @@ public final class FilterParser {
             }
             return CanonicalDecimal.parseFilterOperand(raw);
         } catch (CanonicalDecimal.InvalidDecimalException e) {
+            return INVALID_VALUE;
+        }
+    }
+
+    private static Object coerceDuration(String raw, String op) {
+        if (op.equals("isNull")) return coerceValue(raw, op);
+        try {
+            if (op.equals("in")) {
+                String[] parts = raw.split(",");
+                List<java.time.Duration> list = new ArrayList<>(parts.length);
+                for (String p : parts) list.add(CanonicalDuration.parse(p.trim()));
+                return list;
+            }
+            return CanonicalDuration.parse(raw);
+        } catch (CanonicalDuration.InvalidDurationException e) {
             return INVALID_VALUE;
         }
     }

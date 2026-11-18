@@ -230,12 +230,14 @@ public static class CodegenCli
         IReadOnlyList<IGenerator> generators, string? projectRoot = null,
         string baseline = "default",
         bool? includeNames = null,
-        bool sweepOrphans = false)
+        bool sweepOrphans = false,
+        IReadOnlyList<string>? entities = null)
     {
         var loadErrors = load.Errors.Select(e => e.Code.ToString()).ToList();
         if (loadErrors.Count > 0) return new GenOutcome(loadErrors, null);
 
         var root = projectRoot ?? Directory.GetCurrentDirectory();
+        var neutralConfig = MetaObjects.Config.NeutralConfig.Read(root, validateNaming: false);
         var config = new GenConfig
         {
             OutDir = outDir,
@@ -257,9 +259,12 @@ public static class CodegenCli
             // type, in a different assembly, once ejected — still satisfies the gate.
             IncludeNames = includeNames ?? generators.Any(g => g.Name == "names"),
             SweepOrphans = sweepOrphans,
-            Dialect = MetaObjects.Config.NeutralConfig.Read(root, validateNaming: false)?.MigrateDialect,
-        SkipRedundantChecks = MetaObjects.Config.NeutralConfig.Read(root, validateNaming: false)?.MigrateSkipRedundantChecks ?? false,
-        };
+            EntitySelection = entities,
+            Dialect = neutralConfig?.MigrateDialect,
+            SkipRedundantChecks = neutralConfig?.MigrateSkipRedundantChecks ?? false,
+            ForeignKeyIndexes = neutralConfig?.MigrateForeignKeyIndexes ?? false,
+            SchemaConventions = neutralConfig?.MigrateConventions,
+        }.WithCSharpLayout(neutralConfig);
 
         CodegenRunner.RunResult result;
         try
@@ -450,10 +455,10 @@ public static class CodegenCli
         if (args.Length == 0)
         {
             Console.Error.WriteLine(
-                "usage: gen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>]\n" +
+                "usage: gen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--entities <A,B>]\n" +
                 "           [--emit-abstract-shapes] [--strict] [--baseline default|adopt] [--template-root <dir>]\n" +
                 "     | verify --codegen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>]\n" +
-                "           [--template-root <dir>] [--lax]\n" +
+                "           [--entities <A,B>] [--template-root <dir>] [--lax]\n" +
                 "   (column/table naming: \"naming\" in .metaobjects/config.json — ADR-0058)");
             return 2;
         }
@@ -525,16 +530,16 @@ public static class CodegenCli
     }
 
     private static readonly string[] GenValueFlags =
-        ["--out", "--namespace", "--generators", "--template-root", "--template-spec", "--column-naming", "--baseline"];
+        ["--out", "--namespace", "--generators", "--template-root", "--template-spec", "--column-naming", "--baseline", "--entities"];
     private static readonly string[] GenBoolFlags = ["--emit-abstract-shapes", "--strict", "--force"];
     private static readonly string[] VerifyValueFlags =
-        ["--out", "--namespace", "--generators", "--template-root", "--column-naming"];
+        ["--out", "--namespace", "--generators", "--template-root", "--column-naming", "--entities"];
     private static readonly string[] VerifyBoolFlags = ["--codegen", "--lax", "--full"];
 
     /// <summary>The flags both commands share, parsed once.</summary>
     private sealed class OwnedArgs
     {
-        public string? MetadataDir, OutDir, TemplateRoot, TemplateSpecPath, ColumnNamingRaw, GeneratorsCsv;
+        public string? MetadataDir, OutDir, TemplateRoot, TemplateSpecPath, ColumnNamingRaw, GeneratorsCsv, EntitiesCsv;
         public string? Namespace;
         public string Baseline = "default";
         public bool EmitAbstractShapes, Codegen, Lax, Strict, Force, Full;
@@ -544,6 +549,11 @@ public static class CodegenCli
         public string? Refusal;
 
         public IReadOnlyList<string>? Selection => GeneratorsCsv
+            ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        /// <summary>The <c>--entities</c> short names, or <c>null</c> when the flag was not given.
+        /// Given but naming nothing is an empty list, which <see cref="RefuseEntities"/> refuses.</summary>
+        public IReadOnlyList<string>? Entities => EntitiesCsv
             ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
         public static OwnedArgs Parse(string[] rest, string command, string[] valueFlags, string[] boolFlags)
@@ -579,6 +589,7 @@ public static class CodegenCli
                         case "--template-root": a.TemplateRoot = value; break;
                         case "--template-spec": a.TemplateSpecPath = value; break;
                         case "--generators": a.GeneratorsCsv = value; break;
+                        case "--entities": a.EntitiesCsv = value; break;
                     }
                 }
                 else if (boolFlags.Contains(flag))
@@ -587,8 +598,8 @@ public static class CodegenCli
                     else if (flag == "--codegen") a.Codegen = true;
                     else if (flag == "--lax") a.Lax = true;
                     else if (flag == "--strict") a.Strict = true;
-                    else if (flag == "--force") a.Force = true; // ADR-0062: render even when nothing changed
-                    else if (flag == "--full") a.Full = true;   // ADR-0062: verify renders even when it could answer from the key
+                    else if (flag == "--force") a.Force = true; // ADR-0064: render even when nothing changed
+                    else if (flag == "--full") a.Full = true;   // ADR-0064: verify renders even when it could answer from the key
                 }
                 else
                 {
@@ -646,7 +657,25 @@ public static class CodegenCli
     private const string GenCommandName = "dotnet meta gen";
     private const string VerifyCommandName = "dotnet meta verify --codegen";
 
-    /// <summary>ADR-0062: the stored key is forgotten by any run that gets as far as the project's
+    /// <summary>
+    /// The refusal an <c>--entities</c> selection earns, or <c>null</c>: nothing named, or a name
+    /// that is no object of the model. Names are short object names (<c>MetaData.Name</c>), as in
+    /// the TypeScript and Python ports. Pass <paramref name="root"/> <c>null</c> for the blank check
+    /// alone, before the metadata is loaded.
+    /// </summary>
+    private static string? RefuseEntities(OwnedArgs a, MetaRoot? root, string command)
+    {
+        if (a.Entities is not { } names) return null;
+        if (names.Count == 0) return $"error: {command}: --entities names no object.";
+        if (root is null) return null;
+        var known = root.Objects().Where(root.InScope).Select(o => o.Name).ToHashSet(StringComparer.Ordinal);
+        var unknown = names.Where(n => !known.Contains(n)).ToList();
+        return unknown.Count == 0 ? null
+            : $"error: {command}: --entities names {string.Join(", ", unknown.Select(n => $"'{n}'"))}, " +
+              "which matches no object in the metadata.";
+    }
+
+    /// <summary>ADR-0064: the stored key is forgotten by any run that gets as far as the project's
     /// metadata and does not skip or store a new key, so a failed run never leaves one that
     /// vouches for the output.</summary>
     private sealed class KeyGate { public string? ProjectRoot; public bool Keep; }
@@ -662,7 +691,7 @@ public static class CodegenCli
     private static GenFingerprint.Options KeyOptions(OwnedArgs a, string outDir, string? ns) => new()
     {
         OutDir = outDir, Namespace = ns, Generators = a.GeneratorsCsv, TemplateRoot = a.TemplateRoot,
-        TemplateSpec = a.TemplateSpecPath, EmitAbstractShapes = a.EmitAbstractShapes, Strict = a.Strict, Baseline = a.Baseline,
+        TemplateSpec = a.TemplateSpecPath, Entities = a.Entities, EmitAbstractShapes = a.EmitAbstractShapes, Strict = a.Strict, Baseline = a.Baseline,
     };
 
     private static int RunGenCore(string[] rest, IReadOnlyList<IGenerator> declared, KeyGate gate)
@@ -678,6 +707,12 @@ public static class CodegenCli
         if (a.LegacyDocs.Count > 0)
         {
             Console.Error.WriteLine(LegacyDocsConfiguration(GenCommandName, a.LegacyDocs));
+            return 2;
+        }
+
+        if (RefuseEntities(a, null, GenCommandName) is { } blank)
+        {
+            Console.Error.WriteLine(blank);
             return 2;
         }
 
@@ -712,7 +747,7 @@ public static class CodegenCli
         }
         if (a.OutDir is null)
         {
-            Console.Error.WriteLine("usage: dotnet meta gen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>] [...]");
+            Console.Error.WriteLine("usage: dotnet meta gen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--entities <A,B>] [...]");
             Console.Error.WriteLine("  (or set \"csharp\": { \"outDir\": \"<dir>\" } in .metaobjects/config.json)");
             return 2;
         }
@@ -720,6 +755,8 @@ public static class CodegenCli
 
         var projectRoot = a.MetadataDir is not null ? ProjectRootFor(a.MetadataDir) : Directory.GetCurrentDirectory();
         gate.ProjectRoot = projectRoot;
+        // A narrowed run leaves the stored full-run key alone on every path, a failed one included.
+        gate.Keep = a.Entities is not null;
         if (LegacyTemplateSpecFound(declared, a.TemplateSpecPath, projectRoot) is { } legacySpec)
         {
             Console.Error.WriteLine(LegacyTemplateSpec(GenCommandName, legacySpec));
@@ -779,25 +816,35 @@ public static class CodegenCli
             foreach (var w in ValidationPasses.ValidateExtenderSubtypeScope(genLoad.Root))
                 Console.Error.WriteLine($"  warning: {w}");
         }
-        // ADR-0062: the key is the LOADED model plus what generates, both read before anything renders.
+        if (RefuseEntities(a, genLoad.Root, GenCommandName) is { } unknownEntity)
+        {
+            Console.Error.WriteLine(unknownEntity);
+            return 2;
+        }
+        // ADR-0064: the key is the LOADED model plus what generates, both read before anything renders.
         // A match, with every file the manifest records still on disk, skips the render and writes nothing.
         var cwd = Directory.GetCurrentDirectory();
         var modelHash = ModelHash.Of(genLoad.Root).Model;
         var identity = GenFingerprint.Key(GenFingerprint.IdentityEntries(
             projectRoot, cwd, KeyOptions(a, a.OutDir, a.Namespace ?? meta.Namespace), suite.SelectMany(g => g.ExtraInputs)));
-        if (!a.Force && suite.All(g => g.Cacheable) && GenFingerprint.CanSkipGen(projectRoot, modelHash, identity))
+        // An --entities run is narrowed and forces exactly those entities: it never skips, never
+        // stores a key, and leaves the stored full-run key alone (it can neither write nor satisfy it).
+        var wholeRun = a.Entities is null;
+        if (wholeRun && !a.Force && suite.All(g => g.Cacheable) && GenFingerprint.CanSkipGen(projectRoot, modelHash, identity))
         {
             gate.Keep = true;
             Console.WriteLine($"{GenCommandName}: nothing changed since the last run; skipped (use --force to regenerate)");
             return 0;
         }
-        GenFingerprint.Delete(projectRoot);
+        if (wholeRun) GenFingerprint.Delete(projectRoot);
+        else gate.Keep = true;
 
         var outcome = RunGen(genLoad, a.OutDir, a.Namespace ?? meta.Namespace, a.EmitAbstractShapes, suite, projectRoot, a.Baseline,
             includeNames: declared.Any(g => g.Name == "names"),
             // Only a run of the whole declared list can tell a stale file from one the
-            // narrowing left out.
-            sweepOrphans: a.Selection is not { Count: > 0 });
+            // narrowing left out; --entities narrows the same way, so it never sweeps either.
+            sweepOrphans: a.Selection is not { Count: > 0 } && a.Entities is null,
+            entities: a.Entities);
         if (!outcome.Ok)
         {
             ReportFailure(outcome, GenCommandName);
@@ -813,7 +860,7 @@ public static class CodegenCli
         // A refusal is a FAILED gate, matching TypeScript's `meta gen` (exit 1): an adopter
         // wiring gen into CI as a drift gate must not be green while codegen refused to write.
         var refusedCount = outcome.Result!.Files.Count(f => f.Status == "refused");
-        if (refusedCount == 0 && outcome.Result!.Complete && suite.All(g => g.Cacheable))
+        if (wholeRun && refusedCount == 0 && outcome.Result!.Complete && suite.All(g => g.Cacheable))
         {
             GenFingerprint.Write(projectRoot, modelHash, identity, outcome.Result!.OutsidePaths);
             gate.Keep = true;
@@ -864,7 +911,7 @@ public static class CodegenCli
         var tables = NamingStrategies.Tables;
         foreach (var t in tables.OrderBy(t => t == used.Tables ? 0 : 1))
             foreach (var c in columns.OrderBy(c => c == used.Columns ? 0 : 1))
-                if (new PhysicalNaming(c, t) is var candidate && candidate != used)
+                if (new PhysicalNaming(c, t) { Collections = used.Collections } is var candidate && candidate != used)
                     yield return candidate;
     }
 
@@ -889,7 +936,7 @@ public static class CodegenCli
 
     /// <summary>
     /// The other wire setting (ADR-0019 Amendment 2) that reproduces the committed output
-    /// exactly, or <c>null</c>. Candidates are every combination of the two keys other than
+    /// exactly, or <c>null</c>. Candidates are every combination of the three keys other than
     /// <paramref name="used"/>, native before string and native before emit before omit;
     /// <c>emit</c> is never offered, because in C# it generates what <c>native</c> does.
     /// </summary>
@@ -899,14 +946,15 @@ public static class CodegenCli
         var generated = used.NullMembers == NullMemberForm.Emit ? used with { NullMembers = NullMemberForm.Native } : used;
         foreach (var decimals in new[] { DecimalWireForm.Native, DecimalWireForm.String })
             foreach (var nulls in new[] { NullMemberForm.Native, NullMemberForm.Omit })
-            {
-                var candidate = new WireFormat(decimals, nulls);
-                if (candidate == generated) continue;
-                var root = load();
-                root.WireFormat = candidate;
-                var probe = CodegenDrift.Compute(config, root, suite, narrowed);
-                if (probe.Error is null && probe.Clean) return candidate;
-            }
+                foreach (var durations in new[] { DurationWireForm.Native, DurationWireForm.Iso })
+                {
+                    var candidate = new WireFormat(decimals, nulls, durations);
+                    if (candidate == generated) continue;
+                    var root = load();
+                    root.WireFormat = candidate;
+                    var probe = CodegenDrift.Compute(config, root, suite, narrowed);
+                    if (probe.Error is null && probe.Clean) return candidate;
+                }
         return null;
     }
 
@@ -916,7 +964,7 @@ public static class CodegenCli
     private static string WireDiffers(WireFormat committed, WireFormat used) =>
         $"The committed output was generated with {committed.Block()}; this run used {used.Block()} " +
         "(.metaobjects/config.json; each key defaults to native). Do not regenerate: that changes the " +
-        "JSON your API writes for decimals or for a value object's null members. Declare " +
+        "JSON your API writes for decimals, durations or a value object's null members. Declare " +
         $"{committed.Block()} in .metaobjects/config.json, and gen and verify --codegen both read it.";
 
     private static int RunVerifyArgs(string[] rest, IReadOnlyList<IGenerator> declared)
@@ -941,6 +989,11 @@ public static class CodegenCli
             Console.Error.WriteLine(ColumnNamingFlagRemoved(a.ColumnNamingRaw));
             return 2;
         }
+        if (RefuseEntities(a, null, VerifyCommandName) is { } blankEntities)
+        {
+            Console.Error.WriteLine(blankEntities);
+            return 2;
+        }
         if (a.OutDir is null)
         {
             if (!TryConfiguredOutDir(a.MetadataDir, out var configuredOut)) return 2;
@@ -961,6 +1014,11 @@ public static class CodegenCli
             foreach (var e in load.Errors) Console.Error.WriteLine($"  load error: {e.Code}: {e.Message}");
             Console.Error.WriteLine($"{VerifyCommandName}: FAILED (metadata did not load cleanly)");
             return 1;
+        }
+        if (RefuseEntities(a, load.Root, VerifyCommandName) is { } unknownEntity)
+        {
+            Console.Error.WriteLine(unknownEntity);
+            return 2;
         }
 
         // The same suite `gen` builds: verify must regenerate what gen wrote, or it convicts
@@ -995,23 +1053,27 @@ public static class CodegenCli
         // same way producing the committed output, so this regen agrees with it by
         // construction instead of needing a flag told to match.
         var columnNaming = load.Root.PhysicalNaming.Columns;
+        var neutralConfig = MetaObjects.Config.NeutralConfig.Read(projectRoot, validateNaming: false);
         var config = new GenConfig
         {
             OutDir = a.OutDir,
             Namespace = a.Namespace ?? meta.Namespace,
             ColumnNamingStrategy = columnNaming,
             IncludeNames = declared.Any(g => g.Name == "names"),
+            EntitySelection = a.Entities,
             // The manifest gen keeps: an extra file is classified by what gen recorded writing.
             GenStateDir = Path.Combine(projectRoot, ".metaobjects", ".gen-state"),
             ProjectRoot = projectRoot,
             // The dialect gen read: without it a Postgres project's identity start and its design-time
             // services read as drift.
-            Dialect = MetaObjects.Config.NeutralConfig.Read(projectRoot, validateNaming: false)?.MigrateDialect,
-        SkipRedundantChecks = MetaObjects.Config.NeutralConfig.Read(projectRoot, validateNaming: false)?.MigrateSkipRedundantChecks ?? false,
-        };
-        // ADR-0062: locally, an unchanged key and output that still hashes to what gen recorded answer
+            Dialect = neutralConfig?.MigrateDialect,
+            SkipRedundantChecks = neutralConfig?.MigrateSkipRedundantChecks ?? false,
+            ForeignKeyIndexes = neutralConfig?.MigrateForeignKeyIndexes ?? false,
+            SchemaConventions = neutralConfig?.MigrateConventions,
+        }.WithCSharpLayout(neutralConfig);
+        // ADR-0064: locally, an unchanged key and output that still hashes to what gen recorded answer
         // "no drift" without rendering. CI and --full always render.
-        if (suite.All(g => g.Cacheable) && GenFingerprint.MayAnswerNoDrift(
+        if (a.Entities is null && suite.All(g => g.Cacheable) && GenFingerprint.MayAnswerNoDrift(
                 projectRoot, ModelHash.Of(load.Root).Model,
                 GenFingerprint.Key(GenFingerprint.IdentityEntries(
                     projectRoot, Directory.GetCurrentDirectory(), KeyOptions(a, a.OutDir, a.Namespace ?? meta.Namespace),
@@ -1021,7 +1083,7 @@ public static class CodegenCli
             Console.WriteLine($"{VerifyCommandName}: OK (nothing changed since the last gen; --full renders and compares)");
             return 0;
         }
-        var result = CodegenDrift.Compute(config, load.Root, suite, narrowed: a.Selection is { Count: > 0 });
+        var result = CodegenDrift.Compute(config, load.Root, suite, narrowed: a.Selection is { Count: > 0 } || a.Entities is not null);
         if (result.Error is not null)
         {
             Console.Error.WriteLine($"  {result.Error}");
@@ -1038,7 +1100,7 @@ public static class CodegenCli
         // every column and table name, so regenerating would commit the wrong names. When
         // another naming reproduces the committed tree exactly, say that instead of "regenerate".
         var naming = load.Root.PhysicalNaming;
-        if (MatchingNaming(config, () => meta.Load(strict: !a.Lax).Root, suite, a.Selection is { Count: > 0 }, naming) is { } committed)
+        if (MatchingNaming(config, () => meta.Load(strict: !a.Lax).Root, suite, a.Selection is { Count: > 0 } || a.Entities is not null, naming) is { } committed)
         {
             Console.Error.WriteLine(NamingDiffers(committed, naming));
             return 1;
@@ -1046,7 +1108,7 @@ public static class CodegenCli
         // The same for the wire setting: it reaches every decimal property's converter and every
         // value object's null handling, so a regen under the wrong one changes the API's JSON.
         var wire = load.Root.WireFormat;
-        if (MatchingWire(config, () => meta.Load(strict: !a.Lax).Root, suite, a.Selection is { Count: > 0 }, wire) is { } committedWire)
+        if (MatchingWire(config, () => meta.Load(strict: !a.Lax).Root, suite, a.Selection is { Count: > 0 } || a.Entities is not null, wire) is { } committedWire)
         {
             Console.Error.WriteLine(WireDiffers(committedWire, wire));
             return 1;

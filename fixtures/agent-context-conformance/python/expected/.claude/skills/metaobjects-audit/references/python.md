@@ -40,7 +40,13 @@ metaobjects gen                       # run every target's generators (metaobjec
 metaobjects gen --generators entity   # narrow to declared entries
 metaobjects verify --codegen    # regenerate in memory, diff vs each committed outDir (bare default)
 metaobjects verify --templates  # {{field}} refs vs payload VO
+metaobjects deps check          # shared-model dependencies vs deps.lock.json (also: verify --deps)
 ```
+
+`deps check` applies when the project declares `dependencies` in `.metaobjects/config.json`: it
+hashes each `path` dependency against the lock and fails with `ERR_DEPENDENCY_UPSTREAM_DRIFT` on
+`drifted` or `unresolved` (a `maven`, `nuget`, `npm` or `python` dependency reports `unresolved`;
+run the Node `meta deps check` for those). Python consumes a shared model but cannot publish one.
 
 With no `metaobjects.config.yaml`, `gen` exits 2 and generates nothing. A target's
 `generators` takes stable generator names: `entity`, `routes`, `filter-allowlist`,
@@ -62,6 +68,8 @@ regardless of server language — see the migration reference.
 | `def get_all_` / `def create_` / `def update_` / `def delete_` in non-generated files | hand-rolled CRUD — compare to the generated router |
 | `# keep in sync with` / `# mirrors the` | second-source-of-truth comment — always a finding |
 | `try: ... except KeyError` / `?? ''` around format strings in prompt code | silent-degradation hack around a prompt payload — flag it |
+| a member of a generated enum typed as a hand string beside its generated `Literal` / enum (`status="error"` in a `dict`, an f-string SQL, a JSON body, an event name) | **signature 13.** Value-first from each enum's `@values`. A value at a position the type checker verifies against the generated `Literal[...]` is resolved and exempt; a `dict`, a `str` parameter or SQL text is compared and scores |
+| a status-like column written with `update(T).values(status=...)` / `UPDATE ... SET status` and no condition on the current value | **axis G3.** Guard it through SQLAlchemy (`update(T).where(T.id == id, T.status == <from>)`) or the `ObjectManager`, with the generated constant, and check `rowcount`. Never raw SQL |
 | a table/column string in the repository implementation (SQLAlchemy Core, asyncpg/psycopg SQL) | second spelling of a declared physical name — reference `<entity>_names.py` (`AUTHOR_SOURCE_PRIMARY_TABLE` / `AUTHOR_<FIELD>_COLUMN`, emitted when a target lists `names`); no typed handle exists on this port, so that is never the reason to waive it |
 
 ---
@@ -73,6 +81,36 @@ copies a reference into `codegen/generators/`, and a generator the project WRITE
 the same way — a `module:symbol` entry in a target's `generators` in `metaobjects.config.yaml`,
 reading the model through `metaobjects.codegen.model_walk`. (`--provider module:symbol`
 registers **metamodel vocabulary**, not a generator — do not read it as one.)
+
+**Audit the owned copies first.** A copy exists to carry a change; one that carries none is
+duplication that falls behind the reference.
+
+```bash
+metaobjects gen --list      # the catalog, each owned copy marked
+```
+
+An owned row ends `[owned — identical]` or `[owned — DIFFERS: N behind, M of your own]`, and
+a generator that reads a `codegen/runtime/` module (`routes`: `filter_parser`,
+`constraint_errors`) prints an indented `runtime <path> [<status>]` line per companion. Only
+`identical`, with every companion identical too, proves a copy unmodified; that row is a
+**finding**: point the `metaobjects.config.yaml` entry back at the stock name and remove the
+copy (`metaobjects eject --undo` removes every identical copy and prints the config edit).
+`DIFFERS` with `0 of your own` rules out added lines, not removed ones: confirm from
+`git log -p` on the copy that nothing changed after the eject, else report it as **possibly
+customized: check its history**.
+
+**`DIFFERS` is printed for BOTH a deliberate customization and a copy gone stale by version**,
+so the listing cannot tell them apart, and a copy with lines of its own is NOT thereby a
+customization: `M of your own` counts every line absent from today's reference, so after the
+reference moved on, a line it removed or rewrote reads as "yours" and is an older upstream
+line. Run the history check on any `DIFFERS` row, `M` above 0 included: lines the copy's later
+commits added are the project's own; lines already in the eject commit are upstream's and
+count as behind. Report two figures, `<n> lines behind the reference` and `<m> lines of the
+project's own (confirmed from history)`. A copy whose own lines history does not confirm is
+**possibly customized or stale: check its history**; one that is stale by version is a finding
+(`owned-generator-stale`): re-eject at the current version or return to the stock entry.
+Count lines for the Phase 0 total: lines in
+copies proven unmodified, over all lines under `codegen/generators/` and `codegen/runtime/`.
 
 **A finding of the form "the built-ins do not emit the shape this project needs", or a
 hand-written layer the model fully describes, resolves to a generator the project writes**

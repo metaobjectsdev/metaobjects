@@ -12,18 +12,30 @@ namespace Acme.Shop;
 
 public static class VehicleRoutes
 {
-    private static readonly global::System.Collections.Generic.HashSet<string> SortAllowlist = new(global::System.StringComparer.OrdinalIgnoreCase)
+    private static readonly System.Collections.Generic.HashSet<string> SortAllowlist = new(System.StringComparer.OrdinalIgnoreCase)
     {
         "Id",
         "Plate",
         "VinHash",
     };
 
-    private static readonly global::System.Collections.Generic.Dictionary<string, bool> SortDefaultDesc = new(global::System.StringComparer.OrdinalIgnoreCase)
+    private static readonly System.Collections.Generic.Dictionary<string, bool> SortDefaultDesc = new(System.StringComparer.OrdinalIgnoreCase)
     {
     };
 
-    private static readonly global::System.Collections.Generic.HashSet<string> CarSortAllowlist = new(global::System.StringComparer.OrdinalIgnoreCase)
+    // api.unknownFields: reject — the declared field names (wire spelling); any other body key is a 400.
+    private static readonly System.Collections.Generic.HashSet<string> KnownFields = new(System.StringComparer.Ordinal)
+    {
+        "id",
+        "kind",
+        "payloadKg",
+        "plate",
+        "regNo",
+        "seatCount",
+        "vinHash",
+    };
+
+    private static readonly System.Collections.Generic.HashSet<string> CarSortAllowlist = new(System.StringComparer.OrdinalIgnoreCase)
     {
         "Id",
         "Plate",
@@ -32,11 +44,11 @@ public static class VehicleRoutes
         "RegNo",
     };
 
-    private static readonly global::System.Collections.Generic.Dictionary<string, bool> CarSortDefaultDesc = new(global::System.StringComparer.OrdinalIgnoreCase)
+    private static readonly System.Collections.Generic.Dictionary<string, bool> CarSortDefaultDesc = new(System.StringComparer.OrdinalIgnoreCase)
     {
     };
 
-    private static readonly global::System.Collections.Generic.HashSet<string> VanSortAllowlist = new(global::System.StringComparer.OrdinalIgnoreCase)
+    private static readonly System.Collections.Generic.HashSet<string> VanSortAllowlist = new(System.StringComparer.OrdinalIgnoreCase)
     {
         "Id",
         "Plate",
@@ -44,7 +56,7 @@ public static class VehicleRoutes
         "PayloadKg",
     };
 
-    private static readonly global::System.Collections.Generic.Dictionary<string, bool> VanSortDefaultDesc = new(global::System.StringComparer.OrdinalIgnoreCase)
+    private static readonly System.Collections.Generic.Dictionary<string, bool> VanSortDefaultDesc = new(System.StringComparer.OrdinalIgnoreCase)
     {
     };
 
@@ -57,7 +69,7 @@ public static class VehicleRoutes
     /// </remarks>
     public static IEndpointRouteBuilder MapVehicleRoutes(this IEndpointRouteBuilder app, string prefix = "/api")
     {
-        SerializerKeys.EnsureContract(app.ServiceProvider, new global::System.Type[] { typeof(Vehicle), typeof(Car), typeof(Van) }, new string[] { "VinHash" });
+        SerializerKeys.EnsureContract(app.ServiceProvider, new System.Type[] { typeof(Vehicle), typeof(Car), typeof(Van) }, new string[] { "VinHash" });
         IEndpointRouteBuilder mount = app;
         app = app.MapGroup(string.Empty).AddEndpointFilter(new DecimalRangeEndpointFilter());
         app.MapGet(prefix + "/vehicles", async (HttpContext http, global::Acme.Generated.AppDbContext db) =>
@@ -72,14 +84,16 @@ public static class VehicleRoutes
                 var parts = sortRaw.ToString().Split(':', 2);
                 if (!SortAllowlist.TryGetValue(parts[0], out var resolved)) return Results.BadRequest(new { error = "invalid_sort", field = parts[0] });
                 var desc = parts.Length > 1
-                    ? string.Equals(parts[1], "desc", global::System.StringComparison.OrdinalIgnoreCase)
+                    ? string.Equals(parts[1], "desc", System.StringComparison.OrdinalIgnoreCase)
                     : SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;
                 q = ApplySort(q, resolved, desc);
             }
-            if (qs.TryGetValue("offset", out var offRaw) && int.TryParse(offRaw, global::System.Globalization.NumberStyles.Integer, global::System.Globalization.CultureInfo.InvariantCulture, out var off) && off > 0) q = q.Skip(off);
-            if (qs.TryGetValue("limit", out var limRaw) && int.TryParse(limRaw, global::System.Globalization.NumberStyles.Integer, global::System.Globalization.CultureInfo.InvariantCulture, out var lim) && lim > 0) q = q.Take(lim);
+            if (qs.TryGetValue("offset", out var offRaw) && int.TryParse(offRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var off) && off > 0)
+                q = q.Skip(off);
+            if (qs.TryGetValue("limit", out var limRaw) && int.TryParse(limRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var lim) && lim > 0)
+                q = q.Take(lim);
             var rows = await q.ToListAsync();
-            var withCount = qs.TryGetValue("withCount", out var wc) && (wc == "1" || string.Equals(wc, "true", global::System.StringComparison.OrdinalIgnoreCase));
+            var withCount = qs.TryGetValue("withCount", out var wc) && (wc == "1" || string.Equals(wc, "true", System.StringComparison.OrdinalIgnoreCase));
             if (!withCount) return (IResult)new CredentialOmittingResult(rows, new string[] { "VinHash" });
             var total = await EfCoreFilterDispatch.ApplyFilter(db.Vehicles.AsNoTracking(), filter.Predicates).CountAsync();
             return (IResult)new CredentialOmittingResult(new { rows, total }, new string[] { "VinHash" }, envelope: true);
@@ -96,7 +110,7 @@ public static class VehicleRoutes
                 .Where(j => EF.Property<long>(j, "VehicleId").Equals(id))
                 .Select(j => EF.Property<long>(j, "TagId"))
                 .ToListAsync()).ToHashSet();
-            if (relatedIds.Count == 0) return Results.Ok(new global::System.Collections.Generic.List<Tag>());
+            if (relatedIds.Count == 0) return Results.Ok(new System.Collections.Generic.List<global::Acme.Shop.Tag>());
             var rows = await db.Tags.AsNoTracking()
                 .Where(t => relatedIds.Contains(EF.Property<long>(t, "Id")))
                 .ToListAsync();
@@ -106,8 +120,8 @@ public static class VehicleRoutes
         app.MapGet(prefix + "/vehicles/car", async (HttpContext http, global::Acme.Generated.AppDbContext db) =>
         {
             var qs = http.Request.Query;
-            IQueryable<Car> q = db.Vehicles.OfType<Car>().AsNoTracking();
-            var filter = EfCoreFilterDispatch.Validate<Car>(FilterParser.Parse(qs, CarFilterAllowlist.Fields, CarFilterAllowlist.OpsByField));
+            IQueryable<global::Acme.Shop.Car> q = db.Vehicles.OfType<global::Acme.Shop.Car>().AsNoTracking();
+            var filter = EfCoreFilterDispatch.Validate<global::Acme.Shop.Car>(FilterParser.Parse(qs, global::Acme.Shop.CarFilterAllowlist.Fields, global::Acme.Shop.CarFilterAllowlist.OpsByField));
             if (filter.ErrorEnvelope is not null) return Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field });
             q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates);
             if (qs.TryGetValue("sort", out var sortRaw) && !string.IsNullOrWhiteSpace(sortRaw))
@@ -115,39 +129,54 @@ public static class VehicleRoutes
                 var parts = sortRaw.ToString().Split(':', 2);
                 if (!CarSortAllowlist.TryGetValue(parts[0], out var resolved)) return Results.BadRequest(new { error = "invalid_sort", field = parts[0] });
                 var desc = parts.Length > 1
-                    ? string.Equals(parts[1], "desc", global::System.StringComparison.OrdinalIgnoreCase)
+                    ? string.Equals(parts[1], "desc", System.StringComparison.OrdinalIgnoreCase)
                     : CarSortDefaultDesc.TryGetValue(resolved, out var dd) && dd;
                 q = desc ? q.OrderByDescending(x => EF.Property<object>(x!, resolved) == null).ThenByDescending(x => EF.Property<object>(x!, resolved)) : q.OrderBy(x => EF.Property<object>(x!, resolved) == null).ThenBy(x => EF.Property<object>(x!, resolved));
             }
-            if (qs.TryGetValue("offset", out var offRaw) && int.TryParse(offRaw, global::System.Globalization.NumberStyles.Integer, global::System.Globalization.CultureInfo.InvariantCulture, out var off) && off > 0) q = q.Skip(off);
-            if (qs.TryGetValue("limit", out var limRaw) && int.TryParse(limRaw, global::System.Globalization.NumberStyles.Integer, global::System.Globalization.CultureInfo.InvariantCulture, out var lim) && lim > 0) q = q.Take(lim);
+            if (qs.TryGetValue("offset", out var offRaw) && int.TryParse(offRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var off) && off > 0)
+                q = q.Skip(off);
+            if (qs.TryGetValue("limit", out var limRaw) && int.TryParse(limRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var lim) && lim > 0)
+                q = q.Take(lim);
             var rows = await q.ToListAsync();
-            var withCount = qs.TryGetValue("withCount", out var wc) && (wc == "1" || string.Equals(wc, "true", global::System.StringComparison.OrdinalIgnoreCase));
+            var withCount = qs.TryGetValue("withCount", out var wc) && (wc == "1" || string.Equals(wc, "true", System.StringComparison.OrdinalIgnoreCase));
             if (!withCount) return (IResult)new CredentialOmittingResult(rows, new string[] { "VinHash" });
-            var total = await EfCoreFilterDispatch.ApplyFilter(db.Vehicles.OfType<Car>().AsNoTracking(), filter.Predicates).CountAsync();
+            var total = await EfCoreFilterDispatch.ApplyFilter(db.Vehicles.OfType<global::Acme.Shop.Car>().AsNoTracking(), filter.Predicates).CountAsync();
             return (IResult)new CredentialOmittingResult(new { rows, total }, new string[] { "VinHash" }, envelope: true);
         });
 
         app.MapGet(prefix + "/vehicles/car/{id}", async (long id, global::Acme.Generated.AppDbContext db) =>
-            await db.Vehicles.OfType<Car>().AsNoTracking().FirstOrDefaultAsync(x => x.Id == id) is { } found
+            await db.Vehicles.OfType<global::Acme.Shop.Car>().AsNoTracking().FirstOrDefaultAsync(x => x.Id == id) is { } found
                 ? (IResult)new CredentialOmittingResult(found, new string[] { "VinHash" })
                 : Results.NotFound(new { error = "not_found" }));
 
-        app.MapPost(prefix + "/vehicles/car", async (Car input, global::Acme.Generated.AppDbContext db) =>
+        app.MapPost(prefix + "/vehicles/car", async (HttpContext http, global::Acme.Generated.AppDbContext db) =>
         {
+            var jsonOpts = ((Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>)
+                http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)
+                .Value.SerializerOptions;
+            System.Text.Json.JsonDocument __body;
+            try { __body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }
+            catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }
+            using var __bodyScope = __body;
+            if (__body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
+                return ValidationIssues.Unreadable();
+            if (UnknownFieldCheck.Reject(__body.RootElement, KnownFields, http) is { } __unknown) return __unknown;
+            var __issues = new ValidationIssues();
+            global::Acme.Shop.Car? input = null;
+            try { input = System.Text.Json.JsonSerializer.Deserialize<global::Acme.Shop.Car>(__body.RootElement.GetRawText(), jsonOpts); }
+            catch (System.Exception __e) { __issues.AddReadFailure(__e, typeof(global::Acme.Shop.Car)); }
+            if (input is null) return __issues.Any ? __issues.ToResult() : ValidationIssues.Unreadable();
             // Server-owned: a generated key, the TPH discriminator and M:N navigations are not settable by the client; the value is ignored.
             input.Id = default!;
             input.Kind = default!;
-            input.Tags = new global::System.Collections.Generic.List<Tag>();
+            input.Tags = new System.Collections.Generic.List<global::Acme.Shop.Tag>();
             // @formExclude / credential: not settable through the generated create; the value is ignored.
             input.VinHash = default!;
-            var __vr = new global::System.Collections.Generic.List<global::System.ComponentModel.DataAnnotations.ValidationResult>();
-            if (!global::System.ComponentModel.DataAnnotations.Validator.TryValidateObject(
-                    input, new global::System.ComponentModel.DataAnnotations.ValidationContext(input), __vr, true))
-                return Results.BadRequest(new { error = "validation" });
+            __issues.ValidateObject(input, jsonOpts);
+            if (__issues.Any) return __issues.ToResult();
             db.Vehicles.Add(input);
             try { await db.SaveChangesAsync(); }
-            catch (global::System.Exception __saveError)
+            catch (System.Exception __saveError)
             {
                 if (ConstraintErrors.Classify(__saveError) is { } __constraint)
                     return Results.Json(
@@ -158,53 +187,58 @@ public static class VehicleRoutes
             return (IResult)new CredentialOmittingResult(input, new string[] { "VinHash" }, status: 201, location: prefix + "/vehicles/car/" + input.Id);
         });
 
-        async global::System.Threading.Tasks.Task<IResult> UpdateCar(long id, HttpContext http, global::Acme.Generated.AppDbContext db)
+        async System.Threading.Tasks.Task<IResult> UpdateCar(long id, HttpContext http, global::Acme.Generated.AppDbContext db)
         {
-            var existing = await db.Vehicles.OfType<Car>().FirstOrDefaultAsync(x => x.Id == id);
+            var existing = await db.Vehicles.OfType<global::Acme.Shop.Car>().FirstOrDefaultAsync(x => x.Id == id);
             if (existing is null) return Results.NotFound(new { error = "not_found" });
-            global::System.Text.Json.JsonDocument body;
-            try { body = await global::System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }
-            catch (global::System.Text.Json.JsonException) { return Results.BadRequest(new { error = "validation" }); }
+            System.Text.Json.JsonDocument body;
+            try { body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }
+            catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }
+            using var bodyScope = body;
+            if (body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object) return ValidationIssues.Unreadable();
+            if (UnknownFieldCheck.Reject(body.RootElement, KnownFields, http) is { } __unknown) return __unknown;
             // Configured JSON options (not defaults) so a custom converter — e.g. the
             // field.timestamp DateTimeOffset converter — is honored; defaults throw 500 on it.
-            var jsonOpts = ((global::Microsoft.Extensions.Options.IOptions<global::Microsoft.AspNetCore.Http.Json.JsonOptions>)
-                http.RequestServices.GetService(typeof(global::Microsoft.Extensions.Options.IOptions<global::Microsoft.AspNetCore.Http.Json.JsonOptions>))!)
+            var jsonOpts = ((Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>)
+                http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)
                 .Value.SerializerOptions;
             var entry = db.Entry(existing);
             var __keys = SerializerKeys.PropertyByKey(existing.GetType(), jsonOpts);
+            var __issues = new ValidationIssues();
             foreach (var prop in body.RootElement.EnumerateObject())
             {
                 var __clr = __keys.TryGetValue(prop.Name, out var __mapped) ? __mapped : null;
                 if (__clr is "VinHash") continue; // @formExclude / credential: not writable
-                if (string.Equals(prop.Name, "vinHash", global::System.StringComparison.OrdinalIgnoreCase)) continue; // @formExclude / credential: not writable
+                if (string.Equals(prop.Name, "vinHash", System.StringComparison.OrdinalIgnoreCase)) continue; // @formExclude / credential: not writable
                 var target = (__clr is null ? null : entry.Metadata.FindProperty(__clr))
                     ?? entry.Metadata.FindProperty(prop.Name)
-                    ?? entry.Metadata.GetProperties().FirstOrDefault(p => string.Equals(p.Name, prop.Name, global::System.StringComparison.OrdinalIgnoreCase));
+                    ?? entry.Metadata.GetProperties().FirstOrDefault(p => string.Equals(p.Name, prop.Name, System.StringComparison.OrdinalIgnoreCase));
                 if (target is null) continue;
+                var __wire = ValidationIssues.WireName(existing.GetType(), target.Name, jsonOpts);
                 if (target.IsPrimaryKey()) continue;                        // PK is route-authoritative
-                if (string.Equals(target.Name, "Kind", global::System.StringComparison.Ordinal)) continue; // discriminator is immutable
-                if (string.Equals(target.Name, "RegNo", global::System.StringComparison.Ordinal)) continue; // @mutability: not patch-settable
-                if (prop.Value.ValueKind == global::System.Text.Json.JsonValueKind.Null)
+                if (string.Equals(target.Name, "Kind", System.StringComparison.Ordinal)) continue; // discriminator is immutable
+                if (string.Equals(target.Name, "RegNo", System.StringComparison.Ordinal)) continue; // @mutability: not patch-settable
+                if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Null)
                 {
                     // FR-035 PATCH-2: explicit null clears a nullable column; on a
                     // NOT-NULL (@required) column it is a 400 (matching the cross-port contract).
-                    if (!target.IsNullable) return Results.BadRequest(new { error = "validation" });
+                    if (!target.IsNullable) { __issues.AddRequired(__wire); continue; }
                     entry.CurrentValues[target] = null;
                     continue;
                 }
-                var clr = global::System.Nullable.GetUnderlyingType(target.ClrType) ?? target.ClrType;
-                var __val = global::System.Text.Json.JsonSerializer.Deserialize(prop.Value.GetRawText(), clr, jsonOpts);
+                var clr = System.Nullable.GetUnderlyingType(target.ClrType) ?? target.ClrType;
+                object? __val;
+                try { __val = System.Text.Json.JsonSerializer.Deserialize(prop.Value.GetRawText(), clr, jsonOpts); }
+                catch (System.Exception __e) { __issues.AddReadFailure(__e, clr, __wire); continue; }
                 // FR-036 A2 — validate the PRESENT, non-null value with the same per-field
                 // DataAnnotations as create. This validates ONLY the present value (never the
                 // whole row) so an ABSENT @required field is untouched, not a 400.
-                var __pr = new global::System.Collections.Generic.List<global::System.ComponentModel.DataAnnotations.ValidationResult>();
-                if (!global::System.ComponentModel.DataAnnotations.Validator.TryValidateProperty(__val,
-                        new global::System.ComponentModel.DataAnnotations.ValidationContext(existing) { MemberName = target.Name }, __pr))
-                    return Results.BadRequest(new { error = "validation" });
+                if (!__issues.ValidateProperty(existing, target.Name, __val, jsonOpts)) continue;
                 entry.CurrentValues[target] = __val;
             }
+            if (__issues.Any) return __issues.ToResult();
             try { await db.SaveChangesAsync(); }
-            catch (global::System.Exception __saveError)
+            catch (System.Exception __saveError)
             {
                 if (ConstraintErrors.Classify(__saveError) is { } __constraint)
                     return Results.Json(
@@ -219,11 +253,11 @@ public static class VehicleRoutes
 
         app.MapDelete(prefix + "/vehicles/car/{id}", async (long id, global::Acme.Generated.AppDbContext db) =>
         {
-            var existing = await db.Vehicles.OfType<Car>().FirstOrDefaultAsync(x => x.Id == id);
+            var existing = await db.Vehicles.OfType<global::Acme.Shop.Car>().FirstOrDefaultAsync(x => x.Id == id);
             if (existing is null) return Results.NotFound(new { error = "not_found" });
             db.Vehicles.Remove(existing);
             try { await db.SaveChangesAsync(); }
-            catch (global::System.Exception __saveError)
+            catch (System.Exception __saveError)
             {
                 if (ConstraintErrors.Classify(__saveError) is { } __constraint)
                     return Results.Json(
@@ -236,13 +270,13 @@ public static class VehicleRoutes
 
         app.MapGet(prefix + "/vehicles/car/{id}/tags", async (long id, global::Acme.Generated.AppDbContext db) =>
         {
-            if (!await db.Vehicles.OfType<Car>().AnyAsync(x => x.Id == id))
-                return Results.Ok(new global::System.Collections.Generic.List<Tag>());
+            if (!await db.Vehicles.OfType<global::Acme.Shop.Car>().AnyAsync(x => x.Id == id))
+                return Results.Ok(new System.Collections.Generic.List<global::Acme.Shop.Tag>());
             var relatedIds = (await db.VehicleTags.AsNoTracking()
                 .Where(j => EF.Property<long>(j, "VehicleId").Equals(id))
                 .Select(j => EF.Property<long>(j, "TagId"))
                 .ToListAsync()).ToHashSet();
-            if (relatedIds.Count == 0) return Results.Ok(new global::System.Collections.Generic.List<Tag>());
+            if (relatedIds.Count == 0) return Results.Ok(new System.Collections.Generic.List<global::Acme.Shop.Tag>());
             var rows = await db.Tags.AsNoTracking()
                 .Where(t => relatedIds.Contains(EF.Property<long>(t, "Id")))
                 .ToListAsync();
@@ -252,8 +286,8 @@ public static class VehicleRoutes
         app.MapGet(prefix + "/vehicles/van", async (HttpContext http, global::Acme.Generated.AppDbContext db) =>
         {
             var qs = http.Request.Query;
-            IQueryable<Van> q = db.Vehicles.OfType<Van>().AsNoTracking();
-            var filter = EfCoreFilterDispatch.Validate<Van>(FilterParser.Parse(qs, VanFilterAllowlist.Fields, VanFilterAllowlist.OpsByField));
+            IQueryable<global::Acme.Shop.Van> q = db.Vehicles.OfType<global::Acme.Shop.Van>().AsNoTracking();
+            var filter = EfCoreFilterDispatch.Validate<global::Acme.Shop.Van>(FilterParser.Parse(qs, global::Acme.Shop.VanFilterAllowlist.Fields, global::Acme.Shop.VanFilterAllowlist.OpsByField));
             if (filter.ErrorEnvelope is not null) return Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field });
             q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates);
             if (qs.TryGetValue("sort", out var sortRaw) && !string.IsNullOrWhiteSpace(sortRaw))
@@ -261,39 +295,54 @@ public static class VehicleRoutes
                 var parts = sortRaw.ToString().Split(':', 2);
                 if (!VanSortAllowlist.TryGetValue(parts[0], out var resolved)) return Results.BadRequest(new { error = "invalid_sort", field = parts[0] });
                 var desc = parts.Length > 1
-                    ? string.Equals(parts[1], "desc", global::System.StringComparison.OrdinalIgnoreCase)
+                    ? string.Equals(parts[1], "desc", System.StringComparison.OrdinalIgnoreCase)
                     : VanSortDefaultDesc.TryGetValue(resolved, out var dd) && dd;
                 q = desc ? q.OrderByDescending(x => EF.Property<object>(x!, resolved) == null).ThenByDescending(x => EF.Property<object>(x!, resolved)) : q.OrderBy(x => EF.Property<object>(x!, resolved) == null).ThenBy(x => EF.Property<object>(x!, resolved));
             }
-            if (qs.TryGetValue("offset", out var offRaw) && int.TryParse(offRaw, global::System.Globalization.NumberStyles.Integer, global::System.Globalization.CultureInfo.InvariantCulture, out var off) && off > 0) q = q.Skip(off);
-            if (qs.TryGetValue("limit", out var limRaw) && int.TryParse(limRaw, global::System.Globalization.NumberStyles.Integer, global::System.Globalization.CultureInfo.InvariantCulture, out var lim) && lim > 0) q = q.Take(lim);
+            if (qs.TryGetValue("offset", out var offRaw) && int.TryParse(offRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var off) && off > 0)
+                q = q.Skip(off);
+            if (qs.TryGetValue("limit", out var limRaw) && int.TryParse(limRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var lim) && lim > 0)
+                q = q.Take(lim);
             var rows = await q.ToListAsync();
-            var withCount = qs.TryGetValue("withCount", out var wc) && (wc == "1" || string.Equals(wc, "true", global::System.StringComparison.OrdinalIgnoreCase));
+            var withCount = qs.TryGetValue("withCount", out var wc) && (wc == "1" || string.Equals(wc, "true", System.StringComparison.OrdinalIgnoreCase));
             if (!withCount) return (IResult)new CredentialOmittingResult(rows, new string[] { "VinHash" });
-            var total = await EfCoreFilterDispatch.ApplyFilter(db.Vehicles.OfType<Van>().AsNoTracking(), filter.Predicates).CountAsync();
+            var total = await EfCoreFilterDispatch.ApplyFilter(db.Vehicles.OfType<global::Acme.Shop.Van>().AsNoTracking(), filter.Predicates).CountAsync();
             return (IResult)new CredentialOmittingResult(new { rows, total }, new string[] { "VinHash" }, envelope: true);
         });
 
         app.MapGet(prefix + "/vehicles/van/{id}", async (long id, global::Acme.Generated.AppDbContext db) =>
-            await db.Vehicles.OfType<Van>().AsNoTracking().FirstOrDefaultAsync(x => x.Id == id) is { } found
+            await db.Vehicles.OfType<global::Acme.Shop.Van>().AsNoTracking().FirstOrDefaultAsync(x => x.Id == id) is { } found
                 ? (IResult)new CredentialOmittingResult(found, new string[] { "VinHash" })
                 : Results.NotFound(new { error = "not_found" }));
 
-        app.MapPost(prefix + "/vehicles/van", async (Van input, global::Acme.Generated.AppDbContext db) =>
+        app.MapPost(prefix + "/vehicles/van", async (HttpContext http, global::Acme.Generated.AppDbContext db) =>
         {
+            var jsonOpts = ((Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>)
+                http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)
+                .Value.SerializerOptions;
+            System.Text.Json.JsonDocument __body;
+            try { __body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }
+            catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }
+            using var __bodyScope = __body;
+            if (__body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
+                return ValidationIssues.Unreadable();
+            if (UnknownFieldCheck.Reject(__body.RootElement, KnownFields, http) is { } __unknown) return __unknown;
+            var __issues = new ValidationIssues();
+            global::Acme.Shop.Van? input = null;
+            try { input = System.Text.Json.JsonSerializer.Deserialize<global::Acme.Shop.Van>(__body.RootElement.GetRawText(), jsonOpts); }
+            catch (System.Exception __e) { __issues.AddReadFailure(__e, typeof(global::Acme.Shop.Van)); }
+            if (input is null) return __issues.Any ? __issues.ToResult() : ValidationIssues.Unreadable();
             // Server-owned: a generated key, the TPH discriminator and M:N navigations are not settable by the client; the value is ignored.
             input.Id = default!;
             input.Kind = default!;
-            input.Tags = new global::System.Collections.Generic.List<Tag>();
+            input.Tags = new System.Collections.Generic.List<global::Acme.Shop.Tag>();
             // @formExclude / credential: not settable through the generated create; the value is ignored.
             input.VinHash = default!;
-            var __vr = new global::System.Collections.Generic.List<global::System.ComponentModel.DataAnnotations.ValidationResult>();
-            if (!global::System.ComponentModel.DataAnnotations.Validator.TryValidateObject(
-                    input, new global::System.ComponentModel.DataAnnotations.ValidationContext(input), __vr, true))
-                return Results.BadRequest(new { error = "validation" });
+            __issues.ValidateObject(input, jsonOpts);
+            if (__issues.Any) return __issues.ToResult();
             db.Vehicles.Add(input);
             try { await db.SaveChangesAsync(); }
-            catch (global::System.Exception __saveError)
+            catch (System.Exception __saveError)
             {
                 if (ConstraintErrors.Classify(__saveError) is { } __constraint)
                     return Results.Json(
@@ -304,52 +353,57 @@ public static class VehicleRoutes
             return (IResult)new CredentialOmittingResult(input, new string[] { "VinHash" }, status: 201, location: prefix + "/vehicles/van/" + input.Id);
         });
 
-        async global::System.Threading.Tasks.Task<IResult> UpdateVan(long id, HttpContext http, global::Acme.Generated.AppDbContext db)
+        async System.Threading.Tasks.Task<IResult> UpdateVan(long id, HttpContext http, global::Acme.Generated.AppDbContext db)
         {
-            var existing = await db.Vehicles.OfType<Van>().FirstOrDefaultAsync(x => x.Id == id);
+            var existing = await db.Vehicles.OfType<global::Acme.Shop.Van>().FirstOrDefaultAsync(x => x.Id == id);
             if (existing is null) return Results.NotFound(new { error = "not_found" });
-            global::System.Text.Json.JsonDocument body;
-            try { body = await global::System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }
-            catch (global::System.Text.Json.JsonException) { return Results.BadRequest(new { error = "validation" }); }
+            System.Text.Json.JsonDocument body;
+            try { body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }
+            catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }
+            using var bodyScope = body;
+            if (body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object) return ValidationIssues.Unreadable();
+            if (UnknownFieldCheck.Reject(body.RootElement, KnownFields, http) is { } __unknown) return __unknown;
             // Configured JSON options (not defaults) so a custom converter — e.g. the
             // field.timestamp DateTimeOffset converter — is honored; defaults throw 500 on it.
-            var jsonOpts = ((global::Microsoft.Extensions.Options.IOptions<global::Microsoft.AspNetCore.Http.Json.JsonOptions>)
-                http.RequestServices.GetService(typeof(global::Microsoft.Extensions.Options.IOptions<global::Microsoft.AspNetCore.Http.Json.JsonOptions>))!)
+            var jsonOpts = ((Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>)
+                http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)
                 .Value.SerializerOptions;
             var entry = db.Entry(existing);
             var __keys = SerializerKeys.PropertyByKey(existing.GetType(), jsonOpts);
+            var __issues = new ValidationIssues();
             foreach (var prop in body.RootElement.EnumerateObject())
             {
                 var __clr = __keys.TryGetValue(prop.Name, out var __mapped) ? __mapped : null;
                 if (__clr is "VinHash") continue; // @formExclude / credential: not writable
-                if (string.Equals(prop.Name, "vinHash", global::System.StringComparison.OrdinalIgnoreCase)) continue; // @formExclude / credential: not writable
+                if (string.Equals(prop.Name, "vinHash", System.StringComparison.OrdinalIgnoreCase)) continue; // @formExclude / credential: not writable
                 var target = (__clr is null ? null : entry.Metadata.FindProperty(__clr))
                     ?? entry.Metadata.FindProperty(prop.Name)
-                    ?? entry.Metadata.GetProperties().FirstOrDefault(p => string.Equals(p.Name, prop.Name, global::System.StringComparison.OrdinalIgnoreCase));
+                    ?? entry.Metadata.GetProperties().FirstOrDefault(p => string.Equals(p.Name, prop.Name, System.StringComparison.OrdinalIgnoreCase));
                 if (target is null) continue;
+                var __wire = ValidationIssues.WireName(existing.GetType(), target.Name, jsonOpts);
                 if (target.IsPrimaryKey()) continue;                        // PK is route-authoritative
-                if (string.Equals(target.Name, "Kind", global::System.StringComparison.Ordinal)) continue; // discriminator is immutable
-                if (prop.Value.ValueKind == global::System.Text.Json.JsonValueKind.Null)
+                if (string.Equals(target.Name, "Kind", System.StringComparison.Ordinal)) continue; // discriminator is immutable
+                if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Null)
                 {
                     // FR-035 PATCH-2: explicit null clears a nullable column; on a
                     // NOT-NULL (@required) column it is a 400 (matching the cross-port contract).
-                    if (!target.IsNullable) return Results.BadRequest(new { error = "validation" });
+                    if (!target.IsNullable) { __issues.AddRequired(__wire); continue; }
                     entry.CurrentValues[target] = null;
                     continue;
                 }
-                var clr = global::System.Nullable.GetUnderlyingType(target.ClrType) ?? target.ClrType;
-                var __val = global::System.Text.Json.JsonSerializer.Deserialize(prop.Value.GetRawText(), clr, jsonOpts);
+                var clr = System.Nullable.GetUnderlyingType(target.ClrType) ?? target.ClrType;
+                object? __val;
+                try { __val = System.Text.Json.JsonSerializer.Deserialize(prop.Value.GetRawText(), clr, jsonOpts); }
+                catch (System.Exception __e) { __issues.AddReadFailure(__e, clr, __wire); continue; }
                 // FR-036 A2 — validate the PRESENT, non-null value with the same per-field
                 // DataAnnotations as create. This validates ONLY the present value (never the
                 // whole row) so an ABSENT @required field is untouched, not a 400.
-                var __pr = new global::System.Collections.Generic.List<global::System.ComponentModel.DataAnnotations.ValidationResult>();
-                if (!global::System.ComponentModel.DataAnnotations.Validator.TryValidateProperty(__val,
-                        new global::System.ComponentModel.DataAnnotations.ValidationContext(existing) { MemberName = target.Name }, __pr))
-                    return Results.BadRequest(new { error = "validation" });
+                if (!__issues.ValidateProperty(existing, target.Name, __val, jsonOpts)) continue;
                 entry.CurrentValues[target] = __val;
             }
+            if (__issues.Any) return __issues.ToResult();
             try { await db.SaveChangesAsync(); }
-            catch (global::System.Exception __saveError)
+            catch (System.Exception __saveError)
             {
                 if (ConstraintErrors.Classify(__saveError) is { } __constraint)
                     return Results.Json(
@@ -364,11 +418,11 @@ public static class VehicleRoutes
 
         app.MapDelete(prefix + "/vehicles/van/{id}", async (long id, global::Acme.Generated.AppDbContext db) =>
         {
-            var existing = await db.Vehicles.OfType<Van>().FirstOrDefaultAsync(x => x.Id == id);
+            var existing = await db.Vehicles.OfType<global::Acme.Shop.Van>().FirstOrDefaultAsync(x => x.Id == id);
             if (existing is null) return Results.NotFound(new { error = "not_found" });
             db.Vehicles.Remove(existing);
             try { await db.SaveChangesAsync(); }
-            catch (global::System.Exception __saveError)
+            catch (System.Exception __saveError)
             {
                 if (ConstraintErrors.Classify(__saveError) is { } __constraint)
                     return Results.Json(
@@ -381,13 +435,13 @@ public static class VehicleRoutes
 
         app.MapGet(prefix + "/vehicles/van/{id}/tags", async (long id, global::Acme.Generated.AppDbContext db) =>
         {
-            if (!await db.Vehicles.OfType<Van>().AnyAsync(x => x.Id == id))
-                return Results.Ok(new global::System.Collections.Generic.List<Tag>());
+            if (!await db.Vehicles.OfType<global::Acme.Shop.Van>().AnyAsync(x => x.Id == id))
+                return Results.Ok(new System.Collections.Generic.List<global::Acme.Shop.Tag>());
             var relatedIds = (await db.VehicleTags.AsNoTracking()
                 .Where(j => EF.Property<long>(j, "VehicleId").Equals(id))
                 .Select(j => EF.Property<long>(j, "TagId"))
                 .ToListAsync()).ToHashSet();
-            if (relatedIds.Count == 0) return Results.Ok(new global::System.Collections.Generic.List<Tag>());
+            if (relatedIds.Count == 0) return Results.Ok(new System.Collections.Generic.List<global::Acme.Shop.Tag>());
             var rows = await db.Tags.AsNoTracking()
                 .Where(t => relatedIds.Contains(EF.Property<long>(t, "Id")))
                 .ToListAsync();
@@ -419,14 +473,14 @@ public static class VehicleRoutes
         private readonly string? _location;
         public CredentialOmittingResult(object value, string[] names, bool envelope = false, int status = 200, string? location = null)
         { _value = value; _names = names; _envelope = envelope; _status = status; _location = location; }
-        public async global::System.Threading.Tasks.Task ExecuteAsync(HttpContext http)
+        public async System.Threading.Tasks.Task ExecuteAsync(HttpContext http)
         {
-            var opts = ((global::Microsoft.Extensions.Options.IOptions<global::Microsoft.AspNetCore.Http.Json.JsonOptions>)
-                http.RequestServices.GetService(typeof(global::Microsoft.Extensions.Options.IOptions<global::Microsoft.AspNetCore.Http.Json.JsonOptions>))!)
+            var opts = ((Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>)
+                http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)
                 .Value.SerializerOptions;
-            var node = global::System.Text.Json.JsonSerializer.SerializeToNode(_value, _value.GetType(), opts);
+            var node = System.Text.Json.JsonSerializer.SerializeToNode(_value, _value.GetType(), opts);
             // The keys are the serializer's own for these properties (naming policy, rename, attribute), never guessed from names.
-            SerializerKeys.Strip(_envelope && node is global::System.Text.Json.Nodes.JsonObject env ? env["rows"] : node,
+            SerializerKeys.Strip(_envelope && node is System.Text.Json.Nodes.JsonObject env ? env["rows"] : node,
                 SerializerKeys.KeysOf(_value, _envelope, opts, _names), _names);
             http.Response.StatusCode = _status;
             if (_location is not null) http.Response.Headers.Location = _location;

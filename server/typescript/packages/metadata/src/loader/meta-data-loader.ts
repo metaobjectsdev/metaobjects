@@ -738,8 +738,8 @@ export class MetaDataLoader {
       // identity.primary @sequenceStart / @sequenceName need @generation "increment".
       errors.push(...validateIdentitySequence(root));
 
-      // Cross-field validators: atLeastOne @max in range; @condition names real fields.
-      errors.push(...validateCrossFieldValidators(root));
+      // Cross-field validators: atLeastOne @max in range, exactlyOne names two or more fields; @condition names real fields.
+      errors.push(...validateCrossFieldValidators(root, this._strict));
 
       // @dbCheck: false with @constraintName names a CHECK that is never created.
       errors.push(...validateDbCheck(root));

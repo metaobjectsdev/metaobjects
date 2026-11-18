@@ -3,6 +3,7 @@
 import type { MetaRoot, MetaData } from "@metaobjectsdev/metadata";
 import { FIELD_ATTR_OBJECT_REF, PACKAGE_SEPARATOR, TYPE_OBJECT, collectionNameOf, declaredCollectionName, physicalNamingOf, refTarget, stripPackage } from "@metaobjectsdev/metadata";
 import type { Dialect } from "./column-mapper.js";
+import type { SchemaBuildSettings } from "@metaobjectsdev/migrate-ts";
 import { normalizeTimestampMode } from "./dialect-module.js";
 import type { PkInfo } from "./pk-resolver.js";
 import type { RelationMap } from "./relation-resolver.js";
@@ -11,19 +12,50 @@ import { DEFAULT_OUTPUT_LAYOUT, type OutputLayout, type ResolvedTarget } from ".
 import { toCamelCase, variableNameFromEntity } from "./naming.js";
 
 /**
- * The local name a file uses for `obj` when it imports it: `obj.name`, or — when another
- * top-level object in the model shares that short name — its package PascalCased and prefixed
- * (`acme::alpha::Note` → `AcmeAlphaNote`), imported `as` that alias. Only the local binding
- * carries the package; the declared type keeps its name (ruling R52).
+ * The local name a file uses for `obj` when it imports it: `obj.name`, or, when another
+ * top-level object in the model shares that short name, its package PascalCased and prefixed
+ * (`acme::alpha::Note` gives `AcmeAlphaNote`), imported `as` that alias. Only the local binding
+ * carries the package; the declared type keeps its name.
  */
 export function localTypeName(obj: MetaData, root: MetaData): string {
-  const shares = root.children().filter((c) => c.type === TYPE_OBJECT && c.name === obj.name).length > 1;
-  // The effective package, read off the resolution key (`docs-paths.ts` effectivePackage).
+  const shares = (shortNameCounts(root).get(obj.name) ?? 0) > 1;
   const key = obj.resolutionKey();
   const suffix = `${PACKAGE_SEPARATOR}${obj.name}`;
   const pkg = key.endsWith(suffix) ? key.slice(0, -suffix.length) : "";
   if (!shares || pkg === "") return obj.name;
   return pkg.split(PACKAGE_SEPARATOR).map((s) => (s.length > 0 ? s[0]!.toUpperCase() + s.slice(1) : s)).join("") + obj.name;
+}
+
+// How many top-level objects carry each short name, counted once per root: localTypeName runs
+// for every value-object import, so a scan per call would make codegen quadratic in model size.
+const SHORT_NAME_COUNTS = new WeakMap<MetaData, ReadonlyMap<string, number>>();
+
+function shortNameCounts(root: MetaData): ReadonlyMap<string, number> {
+  let counts = SHORT_NAME_COUNTS.get(root);
+  if (counts === undefined) {
+    const m = new Map<string, number>();
+    for (const c of root.children()) if (c.type === TYPE_OBJECT) m.set(c.name, (m.get(c.name) ?? 0) + 1);
+    counts = m;
+    SHORT_NAME_COUNTS.set(root, counts);
+  }
+  return counts;
+}
+
+function deprecatedIdentityNames(root: MetaData): ReadonlyMap<string, string> {
+  const names = new Map<string, string>();
+  for (const c of root.children()) if (c.type === TYPE_OBJECT) names.set(c.resolutionKey(), c.name);
+  return names;
+}
+
+function deprecatedPackageOf(root: MetaData): Map<string, string | undefined> {
+  const out = new Map<string, string | undefined>();
+  for (const c of root.children()) {
+    if (c.type !== TYPE_OBJECT) continue;
+    const key = c.resolutionKey();
+    const suffix = `${PACKAGE_SEPARATOR}${c.name}`;
+    out.set(c.name, key.endsWith(suffix) ? key.slice(0, -suffix.length) : undefined);
+  }
+  return out;
 }
 
 /**
@@ -68,6 +100,11 @@ export interface RenderContext {
    * at the `makeRenderContext` / `normalizeConfig` choke points; see the fuller
    * doc comment on `MetaobjectsGenConfig.timestampMode` in metaobjects-config.ts.
    */
+  /**
+   * The project's schema settings (`migrate.conventions` / `checks` / `foreignKeyIndexes`), for
+   * a template that maps the schema `meta migrate` builds. Absent in a bare-context render.
+   */
+  schemaSettings?: SchemaBuildSettings;
   timestampMode: "date" | "string";
   /**
    * Prepend `"use client";` to generated CLIENT artifacts (forms, hooks, grid
@@ -111,9 +148,16 @@ export interface RenderContext {
   /** Pre-pass relation map for FK + relations() block emission. */
   relationMap: RelationMap;
   /** The name a value object is DECLARED under (its interface, Zod schema and module file):
-   *  its own name. A value object is never renamed (ruling R52); a real collision is refused
+   *  its own name. A value object is never renamed; a real collision is refused
    *  by the run's claim registry. */
   valueObjectEmittedName: (obj: MetaData) => string;
+  /** @deprecated A value object is never renamed, so this map is the identity (`resolutionKey()`
+   *  to the object's own name). Kept one release so owned generator copies keep compiling; read
+   *  `obj.name`. */
+  valueObjectNames: ReadonlyMap<string, string>;
+  /** @deprecated Object name to its metadata package. Kept one release so owned generator copies
+   *  keep compiling; module specifiers are resolved from the node (`valueObjectModuleSpecifier`). */
+  packageOf: Map<string, string | undefined>;
   /** The value object a field's `@objectRef` names, as the loader bound it (ADR-0059 R7:
    *  resolved where the attribute was declared). Undefined when it resolves to nothing. */
   resolveValueObject: (field: MetaData) => MetaData | undefined;
@@ -138,10 +182,11 @@ export interface RenderContext {
 }
 
 /** Optional shape — `extStyle`, `omImport`, `columnNamingStrategy`, `apiPrefix` and `outputLayout` default if omitted. `collectionName` is built from `pluralizeCollections` + `collectionNameOverrides` (both default to always-pluralize). */
-export type RenderContextInput = Omit<RenderContext, "extStyle" | "omImport" | "columnNamingStrategy" | "timestampMode" | "clientDirective" | "apiPrefix" | "emitAbstractShapes" | "outputLayout" | "includeNames" | "includeReportExport" | "valueObjectEmittedName" | "resolveValueObject" | "resolveValueObjectName" | "selfTarget" | "entityModuleTarget" | "collectionName"> & {
+export type RenderContextInput = Omit<RenderContext, "extStyle" | "omImport" | "columnNamingStrategy" | "timestampMode" | "clientDirective" | "apiPrefix" | "emitAbstractShapes" | "outputLayout" | "includeNames" | "includeReportExport" | "valueObjectNames" | "packageOf" | "valueObjectEmittedName" | "resolveValueObject" | "resolveValueObjectName" | "selfTarget" | "entityModuleTarget" | "collectionName"> & {
   extStyle?: ExtStyle;
   omImport?: string;
   columnNamingStrategy?: ColumnNamingStrategy;
+  schemaSettings?: SchemaBuildSettings;
   timestampMode?: "date" | "string";
   clientDirective?: boolean;
   apiPrefix?: string;
@@ -189,8 +234,11 @@ export function makeRenderContext(opts: RenderContextInput): RenderContext {
     dbImport: opts.dbImport,
     runtime: true,
   };
-  // rc.19 (R57): an object's collection name (@collectionName, or a configured pluralizer) names
-  // its Drizzle collection variable too, lowerFirst; the TS config's own overrides still win.
+  // An object's collection name (its @collectionName, or the configured naming.collections
+  // pluralizer) names its Drizzle collection variable too, first letter lowered. Only where one
+  // of the two is declared, so a project with neither keeps its variables byte for byte; the
+  // TS config's own collectionNameOverrides still win, and pluralizeCollections: false still
+  // turns pluralizing off.
   const modelCollections: Record<string, string> = {};
   if (opts.pluralizeCollections !== false) {
     const configured = physicalNamingOf(opts.loadedRoot).collections;
@@ -222,6 +270,8 @@ export function makeRenderContext(opts: RenderContextInput): RenderContext {
     outputLayout,
     includeNames: opts.includeNames ?? false,
     includeReportExport: opts.includeReportExport ?? false,
+    valueObjectNames: deprecatedIdentityNames(opts.loadedRoot),
+    packageOf: deprecatedPackageOf(opts.loadedRoot),
     valueObjectEmittedName: (obj: MetaData) => obj.name,
     resolveValueObject,
     resolveValueObjectName: (field: MetaData) => {

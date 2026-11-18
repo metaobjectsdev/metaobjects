@@ -150,7 +150,69 @@ function sha256(content: string | Buffer): string {
   return createHash("sha256").update(content).digest("hex");
 }
 
+/**
+ * The manifest of a run in progress, held in memory and written once at its end.
+ *
+ * Every write updates `.hashes.json`, and the file is the whole project's record, so
+ * rewriting it per written file made bookkeeping quadratic in the project's size: at
+ * a thousand generated files the rewrites were most of a run's wall time, for the same
+ * bytes one write at the end produces. `withManifestBatch` holds the manifest for one
+ * gen-state directory in memory while it runs; every reader and writer in this module
+ * goes through it, so a read inside the batch sees the batch's own writes.
+ *
+ * Synchronous on purpose: nothing can interleave with a batch, so two runs in one
+ * process cannot see each other's half-finished manifest.
+ */
+interface ManifestBatch {
+  raw: Record<string, unknown>;
+  dirty: boolean;
+}
+const manifestBatches = new Map<string, ManifestBatch>();
+
+function manifestBatchOpen(genStateDir: string): boolean {
+  return batchFor(genStateDir) !== undefined;
+}
+
+function batchFor(genStateDir: string): ManifestBatch | undefined {
+  return manifestBatches.size === 0 ? undefined : manifestBatches.get(resolve(genStateDir));
+}
+
+/**
+ * Run `fn` with the manifest under `genStateDir` held in memory, and write it once when
+ * `fn` returns or throws, only if something changed. A throw still writes what was
+ * recorded before it: those files are on disk, and a manifest that forgot them would
+ * read them as unrecorded and refuse them next run. When `fn` threw, a failed manifest
+ * write is swallowed so `fn`'s error stays the one reported. A nested call for the same
+ * directory joins the outer batch.
+ */
+export function withManifestBatch<T>(genStateDir: string, fn: () => T): T {
+  const key = resolve(genStateDir);
+  if (manifestBatches.has(key)) return fn();
+  const batch: ManifestBatch = { raw: readManifestFile(genStateDir), dirty: false };
+  manifestBatches.set(key, batch);
+  let result: T;
+  try {
+    result = fn();
+  } catch (err) {
+    manifestBatches.delete(key);
+    try {
+      if (batch.dirty) writeManifestFile(genStateDir, batch.raw);
+    } catch {
+      // `fn`'s error is the cause to report; a failed manifest write must not replace it.
+    }
+    throw err;
+  }
+  manifestBatches.delete(key);
+  if (batch.dirty) writeManifestFile(genStateDir, batch.raw);
+  return result;
+}
+
 function readRawManifest(genStateDir: string): Record<string, unknown> {
+  const batch = batchFor(genStateDir);
+  return batch !== undefined ? batch.raw : readManifestFile(genStateDir);
+}
+
+function readManifestFile(genStateDir: string): Record<string, unknown> {
   const f = join(genStateDir, HASHES_FILE);
   if (!existsSync(f)) return {};
   try {
@@ -174,96 +236,137 @@ function entryHash(value: unknown): string | undefined {
   return undefined;
 }
 
-function hashesOf(raw: Record<string, unknown>): HashesFile {
+function loadHashes(genStateDir: string): HashesFile {
   const hashes: HashesFile = {};
-  for (const [key, value] of Object.entries(raw)) {
+  for (const [key, value] of Object.entries(readRawManifest(genStateDir))) {
     const hash = entryHash(value);
     if (hash !== undefined) hashes[key] = hash;
   }
   return hashes;
 }
 
-/**
- * The manifest held in memory for one run (ADR-0062 §1). `.hashes.json` is read once when
- * the run opens the batch and written once when it closes it, and only when an entry was
- * added, changed or removed. Without it every recorded file re-read, re-sorted and rewrote
- * the whole manifest: at 1,160 objects that was 136 s of a 165 s run, and a run that changed
- * nothing still moved the file's timestamp.
- */
-interface ManifestBatch {
-  genStateDir: string;
-  /** The manifest as read when the batch opened; its object entries' extra fields are kept. */
-  raw: Record<string, unknown>;
-  hashes: HashesFile;
-  dirty: boolean;
-}
-
-let activeBatch: ManifestBatch | undefined;
-
-function batchFor(genStateDir: string): ManifestBatch | undefined {
-  return activeBatch !== undefined && activeBatch.genStateDir === resolve(genStateDir) ? activeBatch : undefined;
-}
-
-/**
- * Hold `genStateDir`'s manifest in memory until {@link endManifestBatch}. Every read and
- * write of that manifest in between goes to the in-memory copy. The runner opens one batch
- * per run; a direct `decideAndWrite` caller that opens none still gets a correct manifest,
- * written per call and only when it changed.
- */
-export function beginManifestBatch(genStateDir: string): void {
-  const raw = readRawManifest(genStateDir);
-  activeBatch = { genStateDir: resolve(genStateDir), raw, hashes: hashesOf(raw), dirty: false };
-}
-
-/** Write the batched manifest once, if anything in it changed, and close the batch. */
-export function endManifestBatch(): void {
-  const batch = activeBatch;
-  activeBatch = undefined;
-  if (batch?.dirty === true) writeManifest(batch.genStateDir, batch.raw, batch.hashes);
-}
-
-function loadHashes(genStateDir: string): HashesFile {
-  // Inside a batch this is the live in-memory copy, not a clone: a clone per call would
-  // bring back the per-file cost the batch removes. Callers that change it call
-  // `saveHashes` with it, which is what marks the batch dirty.
-  const batch = batchFor(genStateDir);
-  if (batch !== undefined) return batch.hashes;
-  return hashesOf(readRawManifest(genStateDir));
-}
-
-function sameHashes(a: HashesFile, b: HashesFile): boolean {
-  const ak = Object.keys(a);
-  if (ak.length !== Object.keys(b).length) return false;
-  return ak.every((k) => b[k] === a[k]);
-}
-
 function saveHashes(genStateDir: string, hashes: HashesFile): void {
+  const raw = readRawManifest(genStateDir);
+  const next: Record<string, unknown> = {};
+  for (const [key, hash] of Object.entries(hashes)) {
+    const existing = raw[key];
+    next[key] = isRecord(existing) ? { ...existing, hash } : hash;
+  }
+  // A run that changed nothing writes nothing (ADR-0064 §1): the manifest is only written
+  // when an entry was added, changed or removed.
+  if (existsSync(join(genStateDir, HASHES_FILE)) || manifestBatchOpen(genStateDir)) {
+    const same =
+      Object.keys(next).length === Object.keys(raw).length &&
+      Object.keys(next).every((k) => JSON.stringify(next[k]) === JSON.stringify(raw[k]));
+    if (same) return;
+  }
+  writeRawManifest(genStateDir, next);
+}
+
+/** Record one path's hash, keeping any other fields on its entry. */
+function setHash(genStateDir: string, relPath: string, hash: string): void {
+  const raw = readRawManifest(genStateDir);
+  const existing = raw[relPath];
+  if (entryHash(existing) === hash) return;
+  raw[relPath] = isRecord(existing) ? { ...existing, hash } : hash;
+  writeRawManifest(genStateDir, raw);
+}
+
+function writeRawManifest(genStateDir: string, entries: Record<string, unknown>): void {
   const batch = batchFor(genStateDir);
   if (batch !== undefined) {
-    if (hashes === batch.hashes) batch.dirty = true;
-    else if (!sameHashes(batch.hashes, hashes)) {
-      batch.hashes = { ...hashes };
-      batch.dirty = true;
-    }
+    batch.raw = entries;
+    batch.dirty = true;
     return;
   }
-  const raw = readRawManifest(genStateDir);
-  if (existsSync(join(genStateDir, HASHES_FILE)) && sameHashes(hashesOf(raw), hashes)) return;
-  writeManifest(genStateDir, raw, hashes);
+  writeManifestFile(genStateDir, entries);
 }
 
-function writeManifest(genStateDir: string, raw: Record<string, unknown>, hashes: HashesFile): void {
+function writeManifestFile(genStateDir: string, entries: Record<string, unknown>): void {
   mkdirSync(genStateDir, { recursive: true });
   // Keys SORTED, because this file is committed. Insertion order would make the
   // diff — and any merge conflict between two people who both regenerated —
   // depend on which entity happened to generate first, which is noise nobody can
   // review.
   const sorted: Record<string, unknown> = {};
-  for (const key of Object.keys(hashes).sort()) {
-    const existing = raw[key];
-    sorted[key] = isRecord(existing) ? { ...existing, hash: hashes[key] } : hashes[key];
-  }
+  for (const key of Object.keys(entries).sort()) sorted[key] = entries[key];
   writeFileSync(join(genStateDir, HASHES_FILE), JSON.stringify(sorted, null, 2) + "\n");
+}
+
+/** What produced one generated file: the generator, and the metadata node it was rendered
+ *  from when it was rendered from one. */
+export interface GeneratedProvenance {
+  generatedBy: string;
+  /** The resolution key of the node (`acme::shop::Order`). Absent for a file rendered from
+   *  the whole model or a whole package — a barrel, a docs index. */
+  sourceNode?: string;
+}
+
+/** The manifest fields provenance owns. Every other field on an entry — `hash`, and the
+ *  JVM's `generator` / `outputDir` owner (ADR-0060) — is kept as it is. */
+const PROVENANCE_FIELDS = ["generatedBy", "sourceNode"] as const;
+
+/**
+ * Record, on each recorded path's manifest entry, the node it was generated from.
+ *
+ * A path with a source node becomes `{ "hash", "generatedBy", "sourceNode" }`; one without
+ * keeps (or returns to) the plain `"<hash>"` form, so a file rendered from the whole model
+ * adds nothing to the committed manifest. A path with no recorded hash is left alone — this
+ * describes what a write recorded, it never records a write.
+ *
+ * `generatedBy` is deliberately not the JVM's `generator` field: there `generator` is an
+ * OWNERSHIP claim the orphan sweep acts on, and a TypeScript name in it would read as a
+ * generator no Maven execution configures.
+ *
+ * Batched: one read and at most one write for the whole run. Nothing is written when no
+ * entry changes, so a regeneration that changes nothing leaves the file's bytes alone.
+ */
+export function recordGeneratedProvenance(
+  genStateDir: string,
+  provenance: ReadonlyMap<string, GeneratedProvenance>,
+): void {
+  if (!hasHashManifest(genStateDir)) return;
+  const raw = readRawManifest(genStateDir);
+  let changed = false;
+  for (const [key, prov] of provenance) {
+    const existing = raw[key];
+    const hash = entryHash(existing);
+    if (hash === undefined) continue;
+    const rest: Record<string, unknown> = {};
+    if (isRecord(existing)) {
+      for (const [k, v] of Object.entries(existing)) {
+        if (k !== "hash" && !(PROVENANCE_FIELDS as readonly string[]).includes(k)) rest[k] = v;
+      }
+    }
+    const next: unknown = prov.sourceNode !== undefined
+      ? { hash, ...rest, generatedBy: prov.generatedBy, sourceNode: prov.sourceNode }
+      : Object.keys(rest).length > 0 ? { hash, ...rest } : hash;
+    if (JSON.stringify(next) !== JSON.stringify(existing)) {
+      raw[key] = next;
+      changed = true;
+    }
+  }
+  if (changed) writeRawManifest(genStateDir, raw);
+}
+
+/**
+ * Every recorded path that carries provenance, as `recordGeneratedProvenance` wrote it: the
+ * generator, and the source node when there is one. A plain `"<hash>"` entry carries no
+ * generator and is left out. Sorted by path.
+ */
+export function listGeneratedProvenance(
+  genStateDir: string,
+): { path: string; generatedBy: string; sourceNode?: string }[] {
+  const out: { path: string; generatedBy: string; sourceNode?: string }[] = [];
+  for (const [path, entry] of Object.entries(readRawManifest(genStateDir))) {
+    if (!isRecord(entry) || typeof entry.generatedBy !== "string") continue;
+    out.push({
+      path,
+      generatedBy: entry.generatedBy,
+      ...(typeof entry.sourceNode === "string" && { sourceNode: entry.sourceNode }),
+    });
+  }
+  return out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 }
 
 // ---------------------------------------------------------------------------
@@ -313,7 +416,7 @@ export function readGeneratedHash(
   genStateDir: string,
   relPath: string,
 ): string | undefined {
-  return loadHashes(genStateDir)[relPath];
+  return entryHash(readRawManifest(genStateDir)[relPath]);
 }
 
 /**
@@ -406,7 +509,7 @@ export function loadEngineVersion(genStateDir: string): string | undefined {
 
 /** Record the codegen engine version alongside the gen-state hashes (#232). */
 export function saveEngineVersion(genStateDir: string, version: string): void {
-  // A run that changed nothing writes nothing (ADR-0062 §1), tool state included.
+  // A run that changed nothing writes nothing (ADR-0064 §1), tool state included.
   if (loadEngineVersion(genStateDir) === version) return;
   mkdirSync(genStateDir, { recursive: true });
   writeFileSync(
@@ -430,17 +533,13 @@ function advanceSnapshot(
   content: string,
 ): void {
   const dest = snapshotPath(genStateDir, relPath);
-  // The body is a local cache; rewriting one that already holds these bytes only moves
-  // its timestamp.
+  // The body is a local cache; rewriting one that already holds these bytes only moves its
+  // timestamp.
   if (!existsSync(dest) || readFileSync(dest, "utf-8") !== content) {
     mkdirSync(dirname(dest), { recursive: true });
     writeFileSync(dest, content);
   }
-  const hashes = loadHashes(genStateDir);
-  const hash = sha256(content);
-  if (hashes[relPath] === hash) return;
-  hashes[relPath] = hash;
-  saveHashes(genStateDir, hashes);
+  setHash(genStateDir, relPath, sha256(content));
 }
 
 /** Return the snapshot text iff present AND the hash matches; else undefined. */
@@ -451,8 +550,7 @@ function readSnapshotChecked(
   const path = snapshotPath(genStateDir, relPath);
   if (!existsSync(path)) return undefined;
   const text = readFileSync(path, "utf-8");
-  const hashes = loadHashes(genStateDir);
-  const expected = hashes[relPath];
+  const expected = readGeneratedHash(genStateDir, relPath);
   if (expected !== undefined && expected !== sha256(text)) {
     return undefined;
   }
@@ -578,6 +676,7 @@ function resolveGenStateDir(opts: DecideAndWriteOpts): string {
  *  problem rather than N independent hand edits, and it deserves one instruction
  *  instead of a wall of per-file warnings. */
 export function hasHashManifest(genStateDir: string): boolean {
+  if (batchFor(genStateDir)?.dirty === true) return true;
   return existsSync(join(genStateDir, HASHES_FILE));
 }
 
@@ -713,7 +812,7 @@ function classifyWrite(
     return { kind: "snapshot-unchanged" };
   }
   // The file already holds exactly the fresh bytes, so a merge could only rewrite it with
-  // the same content and move its timestamp (ADR-0062 §2). Advance the base instead.
+  // the same content and move its timestamp (ADR-0064 §2). Advance the base instead.
   if (current === content) return { kind: "fresh-equals-disk" };
   // The file is exactly the last generated text: nobody edited it, so there is nothing to
   // merge. Write the fresh bytes directly; `git merge-file` (two temp files and a process)

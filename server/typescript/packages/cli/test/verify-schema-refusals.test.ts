@@ -1,7 +1,7 @@
 /**
  * `meta verify` reports the two metadata/config refusals the expected-schema build can raise
  * as what they are, the way `meta migrate` does: an FK whose target is not a unique key
- * (exit 1, the reference named), and an unknown `migrate.conventions` preset (exit 2, the
+ * (exit 1 on Postgres, the reference named; a warning on SQLite, whose DDL accepts it), and an unknown `migrate.conventions` preset (exit 2, the
  * presets named). Neither is "failed to introspect", and a typo'd preset is refused even
  * on a run with no --db.
  */
@@ -9,6 +9,7 @@ import { describe, test, expect, afterAll } from "bun:test";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import pg from "pg";
 import { verifyCommand } from "../src/commands/verify.js";
 
 const dirs: string[] = [];
@@ -58,13 +59,35 @@ async function capture(fn: () => Promise<number>): Promise<{ code: number; out: 
 }
 
 describe("meta verify — schema refusals", () => {
-  test("--db: an FK to a non-unique target is refused by name, not as an introspection failure", async () => {
+  test("--db on SQLite: an FK to a non-unique target is warned by name, not refused and not an introspection failure", async () => {
     const root = await project("Person.code");
-    const { code, out } = await capture(() => verifyCommand(["--db", `file:${join(root, "t.db")}`], root));
+    const { out } = await capture(() => verifyCommand(["--db", `file:${join(root, "t.db")}`], root));
 
-    expect(code).toBe(1);
     expect(out).toContain('reference "ref_person" targets [code] on "Person"');
+    expect(out).toContain("PRAGMA foreign_keys");
     expect(out).not.toContain("failed to introspect");
+  });
+
+  test("--db on Postgres: an FK to a non-unique target is refused by name (env-gated)", async () => {
+    const pgUrl = process.env.MIGRATE_TS_PG_URL;
+    if (pgUrl === undefined || pgUrl.length === 0) return;
+    const admin = new pg.Client({ connectionString: pgUrl });
+    await admin.connect();
+    const db = `mt_vfk_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
+    await admin.query(`CREATE DATABASE ${db}`);
+    try {
+      const url = new URL(pgUrl);
+      url.pathname = `/${db}`;
+      const root = await project("Person.code", { dialect: "postgres" });
+      const { code, out } = await capture(() => verifyCommand(["--db", url.toString()], root));
+
+      expect(code).toBe(1);
+      expect(out).toContain('reference "ref_person" targets [code] on "Person"');
+      expect(out).not.toContain("failed to introspect");
+    } finally {
+      await admin.query(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`);
+      await admin.end();
+    }
   });
 
   test("an unknown migrate.conventions preset is refused with exit 2, with or without --db", async () => {
@@ -107,10 +130,7 @@ describe("meta verify — schema refusals", () => {
     expect(scoped.out).toContain('field.enum "Ticket.status" has the member "IN_PROGRESS"');
   });
 
-  // rc.21 (N1): SQLite and D1 accept and enforce two CHECKs under one name, so the shared name is
-  // not refused there (Postgres refuses it; migrate-ts check-name-collision.test.ts pins that). The
-  // run reports the ordinary drift, never an introspection failure.
-  test("--db: a CHECK name two validators share is not refused on SQLite, and is no introspection failure", async () => {
+  test("--db: a declared CHECK name two validators share is refused by name, not as an introspection failure", async () => {
     const root = await mkdtemp(join(tmpdir(), "verify-schema-refusals-"));
     dirs.push(root);
     await mkdir(join(root, "metaobjects"), { recursive: true });
@@ -130,8 +150,8 @@ describe("meta verify — schema refusals", () => {
 
     const { code, out } = await capture(() => verifyCommand(["--db", `file:${join(root, "t.db")}`], root));
     expect(code).toBe(1);
-    expect(out).toContain("+ table slots");
-    expect(out).not.toContain("ERR_CHECK_NAME");
+    expect(out).toContain("ERR_CHECK_NAME");
+    expect(out).toContain('CHECK "CK_Slot" on table "slots"');
     expect(out).not.toContain("failed to introspect");
   });
 });

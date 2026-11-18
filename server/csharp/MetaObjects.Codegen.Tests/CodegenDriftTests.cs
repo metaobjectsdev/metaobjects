@@ -48,7 +48,8 @@ public sealed class CodegenDriftTests : IDisposable
     // from a bare fixture rather than because it is uninteresting:
     //   render-helper -- requires --template-root for its build-time drift gate
     //   template      -- a PRIMITIVE; real use supplies name/walk/template via config
-    private static readonly IReadOnlyList<string> ExcludedFromDrift = ["render-helper", "template"];
+    //   shared-model  -- publishes the metadata files its options name; a bare fixture names none
+    private static readonly IReadOnlyList<string> ExcludedFromDrift = ["render-helper", "template", "shared-model"];
 
     private static readonly IReadOnlyList<string> DefaultNames =
         [.. GeneratorRegistry.Entries.Keys.Where(n => !ExcludedFromDrift.Contains(n))];
@@ -89,7 +90,7 @@ public sealed class CodegenDriftTests : IDisposable
         Gen();
 
         // Hand-edit a committed generated file — must surface as content drift.
-        var entity = Path.Combine(OutDir, "acme", "Subscriber.g.cs");
+        var entity = Path.Combine(OutDir, "Subscriber.g.cs");
         File.AppendAllText(entity, "\n// hand edit\n");
 
         var drift = RunDrift();
@@ -102,7 +103,7 @@ public sealed class CodegenDriftTests : IDisposable
     public void Missing_committed_file_is_drift()
     {
         Gen();
-        File.Delete(Path.Combine(OutDir, "acme", "Subscriber.g.cs"));
+        File.Delete(Path.Combine(OutDir, "Subscriber.g.cs"));
 
         var drift = RunDrift();
         Assert.False(drift.Clean);
@@ -140,7 +141,7 @@ public sealed class CodegenDriftTests : IDisposable
         var before = SnapshotDir(OutDir);
 
         // A drift run (with a mutation present) must touch ONLY temp, never OutDir.
-        File.AppendAllText(Path.Combine(OutDir, "acme", "Subscriber.g.cs"), "\n// edit\n");
+        File.AppendAllText(Path.Combine(OutDir, "Subscriber.g.cs"), "\n// edit\n");
         var afterMutation = SnapshotDir(OutDir);
         RunDrift();
         var afterDrift = SnapshotDir(OutDir);
@@ -154,7 +155,7 @@ public sealed class CodegenDriftTests : IDisposable
     [Fact]
     public void Verify_renders_in_memory_and_leaves_no_temp_files_behind()
     {
-        // ADR-0062 / drive wear: the drift gate compares rendered bytes with disk in memory. It must
+        // ADR-0064 / drive wear: the drift gate compares rendered bytes with disk in memory. It must
         // never create a rendered tree (or any meta-verify-codegen-* directory) under the temp dir.
         Gen();
         var tempRoot = Path.GetTempPath();

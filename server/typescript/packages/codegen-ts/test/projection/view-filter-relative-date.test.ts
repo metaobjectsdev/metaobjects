@@ -1,4 +1,4 @@
-// FR-044 + rc.19 `now` — a relative-date filter value ({ now: "<ISO duration>" }) is legal in a
+// FR-044 + `now` — a relative-date filter value ({ now: "<ISO duration>" }) is legal in a
 // projection's @filter and an origin's @filter too (rule F1's hosts grew), and the view lowering
 // renders it as the dialect's shifted "now" of the field's kind — never as a bogus literal.
 
@@ -69,6 +69,18 @@ describe("view lowering renders a relative-date filter value", () => {
 
     const sql = sqlOf(extractViewSpec(proj, result.root, { columnNamingStrategy: "snake_case" }), "orders");
     expect(sql).toContain("WHERE o.placed_at = (now() - INTERVAL 'P7D')");
+  });
+
+  test("a { now } operand inside an `in` array lowers element by element", async () => {
+    const result = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(MODEL))]);
+    expect(result.errors).toEqual([]);
+    const proj = result.root.findObject("OrderView")!;
+    // own, sanctioned (ADR-0039): test-only mutation of this node's stored attr value.
+    const filter = proj.ownAttr("filter") as Record<string, Record<string, unknown>>;
+    filter.placedAt = { in: [{ now: "-P7D" }, "2026-01-01T00:00:00Z"] };
+
+    const sql = sqlOf(extractViewSpec(proj, result.root, { columnNamingStrategy: "snake_case" }), "orders");
+    expect(sql).toContain("WHERE o.placed_at IN ((now() - INTERVAL 'P7D'), '2026-01-01T00:00:00Z')");
   });
 
   test("the unmutated projection still extracts", async () => {

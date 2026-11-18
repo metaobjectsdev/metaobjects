@@ -159,7 +159,7 @@ public final class GeneratedFileWriter {
         private final List<String> overwrittenHandEditedPaths = new ArrayList<>();
         private int untrackedCount = 0;
         private int refusedCount = 0;
-        // Non-null for a capture run (verify, ADR-0062 §4): every write lands here, keyed by the
+        // Non-null for a capture run (verify, ADR-0064 §4): every write lands here, keyed by the
         // normalized absolute path, and nothing is written to disk.
         private Map<Path, byte[]> captured;
 
@@ -251,7 +251,7 @@ public final class GeneratedFileWriter {
         }
 
         /** How many writes this run refused (hand-written files left alone; a kept hand edit is tracked by the stored key and not counted).
-         *  A run that refused anything is not a clean run: ADR-0062 stores no key for it. */
+         *  A run that refused anything is not a clean run: ADR-0064 stores no key for it. */
         public int refusedCount() {
             return refusedCount;
         }
@@ -310,7 +310,7 @@ public final class GeneratedFileWriter {
      * Open a run that writes nothing to disk: every file a generator emits is held in memory
      * ({@link Run#captured()}) instead. {@code verify --codegen} renders through one, so it
      * compares the rendered bytes with the committed tree without writing a rendered tree
-     * (ADR-0062 §4). A capture run has no manifest, so every write takes the marker-only path.
+     * (ADR-0064 §4). A capture run has no manifest, so every write takes the marker-only path.
      */
     public static Run beginCaptureRun() {
         Run run = beginRun();
@@ -443,7 +443,7 @@ public final class GeneratedFileWriter {
         }
         run.record(key, recorded);
         run.note(outFile, content);
-        // Kept, and recorded: the whole-run skip tracks the file's bytes (ADR-0062 Amendment A),
+        // Kept, and recorded: the whole-run skip tracks the file's bytes (ADR-0064 Amendment A),
         // so a kept hand edit is not an unclean run.
         LOG.warn(refusedHandEditedMessage(outFile));
         return Outcome.REFUSED;
@@ -482,7 +482,7 @@ public final class GeneratedFileWriter {
     /**
      * Write {@code content} (UTF-8) to {@code file}, creating parent directories, unless the file
      * already holds exactly these bytes. A rewrite moves the file's timestamp and every build tool
-     * downstream then recompiles it (ADR-0062 §2), so identical bytes are never rewritten.
+     * downstream then recompiles it (ADR-0064 §2), so identical bytes are never rewritten.
      *
      * @return {@code true} when the file was written, {@code false} when it was left alone
      */

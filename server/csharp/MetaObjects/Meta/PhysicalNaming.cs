@@ -160,7 +160,7 @@ public static class NamingStrategies
     private static readonly List<TableNamingRule> TableList = [];
     private static readonly List<(string Name, Func<string, string> Apply)> PluralizerList = [];
 
-    /// <summary>rc.19 (R57) — the pluralizers every port builds in: <c>standard</c> (the cross-port
+    /// <summary>The pluralizers every port builds in: <c>standard</c> (the cross-port
     /// rule: already-plural detection, then the suffix rule) and <c>none</c> (the name as it is).</summary>
     public static IReadOnlyList<string> BuiltInPluralizers { get; } = ["standard", "none"];
 
@@ -185,7 +185,7 @@ public static class NamingStrategies
         [("standard", CollectionNames.StandardPluralize), ("none", n => n)];
 
     /// <summary>
-    /// Registers a pluralizer under <paramref name="name"/> (rc.19, R57): an object name in, its
+    /// Registers a pluralizer under <paramref name="name"/>: an object name in, its
     /// collection name out. <c>"naming": { "collections": "&lt;name&gt;" }</c> then selects it; an
     /// object's own <c>@collectionName</c> always wins. A built-in cannot be replaced; registering
     /// one of your own again replaces it.
@@ -331,7 +331,7 @@ public static class NamingStrategies
 /// </summary>
 public sealed record PhysicalNaming(ColumnNamingStrategy Columns, TableNamingRule Tables)
 {
-    /// <summary>rc.19 (R57) — the pluralizer an object without <c>@collectionName</c> takes its
+    /// <summary>The pluralizer an object without <c>@collectionName</c> takes its
     /// collection name from (<c>naming.collections</c>); null when the project names none, which
     /// means <see cref="NamingStrategies.DefaultPluralizer"/>.</summary>
     public string? Collections { get; init; }

@@ -1,6 +1,6 @@
 # Projections, `origin.*`, and managed views
 
-> Part of the `metaobjects-authoring` skill. The skill covers the entity read-view, which is the right answer for most grids. Read this when you need an independent exposure (`object.projection`), the `origin.*` vocabulary, `@filter` / `@expr` shapes, or an `@sql` / `@unmanaged` view.
+> Part of the `metaobjects-authoring` skill. The skill covers the entity read-view, which is the right answer for most grids. Read this when you need an independent exposure (`object.projection`), the `origin.*` vocabulary, `@filter` / `@expr` shapes, or an `@sql` / `@unmanaged` view. A grouped total or report (per client, per month) is an `object.report`: `declaring-reports.md`.
 
 ## Contents
 - Read-view or projection?
@@ -125,8 +125,9 @@ non-aggregate-derived** projection fields: naming an undeclared field fails the 
 
 **The `CREATE VIEW` body is generated from those `origin.*` children by the Node
 `meta migrate` — never hand-author view SQL for a shape origins can express** (an unmodeled
-view is *unmanaged*, so `meta verify --db` can't even catch the drift). For a genuinely
-irreducible body (recursive CTE, window function, set operation) that origins can't express,
+view is *unmanaged*, so `meta verify --db` can't even catch the drift). **An `@sql` body that
+`GROUP BY`s: check `declaring-reports.md` first** (`object.report`, `@spine`, `@default`).
+For a genuinely irreducible body (recursive CTE, window function, set operation) that origins can't express,
 carry it in the `source.rdb` **`@sql`** escape (#208, ADR-0043) — a hand-written body the
 tool registers, fingerprints, and drift-checks (adopt a pre-existing view with
 `meta migrate --allow adopt-view`) — rather than a hand-edited migration file where it goes
@@ -152,6 +153,13 @@ walls it off (#208).** Author an `@sql` source under these constraints or the lo
   is deliberate.
 - Today `meta migrate` **lowers `@sql` only on `@kind: view`**; on matview / storedProc /
   tableFunction it is registered but not yet migrate-managed (mark those `@unmanaged`).
+
+**Removing a column an `@sql` body reads: edit the body in the same change.** The tool never
+parses an `@sql` body, so it cannot see that the body still names the column. The migration
+is still written: on Postgres it fails at apply (`column "…" does not exist`); on SQLite it
+applies and leaves a view that errors when queried. An `@unmanaged` view is not rewritten
+either: with `--from-db`, `meta migrate` blocks a drop of a column such a view still reads
+and names the view (`--allow drop-column-read-by-view` to proceed); fix the view first.
 
 **A `passthrough` field must match its `@from` source's type.** A passthrough
 forwards the source value unchanged, so the projection field's `field.<subType>`

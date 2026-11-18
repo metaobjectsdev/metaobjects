@@ -26,7 +26,7 @@
 // per-attribute access (placeholder, rules, etc.) by hand — the helper
 // picks them up from this object automatically.
 
-import { code, joinCode, type Code } from "ts-poet";
+import { code, joinCode, type Code } from "../poet.js";
 import { MetaObject } from "@metaobjectsdev/metadata";
 import { resolveTableName } from "@metaobjectsdev/metadata";
 import { physicalNameExpr } from "../names.js";

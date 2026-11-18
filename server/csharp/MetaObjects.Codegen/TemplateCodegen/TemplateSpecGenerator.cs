@@ -23,7 +23,7 @@ public sealed class TemplateSpecGenerator : IGenerator
     /// <inheritdoc />
     public string? OutDir { get; init; }
 
-    /// <summary>ADR-0062: the spec file and the template root are read at generation time, so
+    /// <summary>ADR-0064: the spec file and the template root are read at generation time, so
     /// their content is part of the run's identity.</summary>
     public IReadOnlyList<string> ExtraInputs => [Spec, TemplateRoot ?? CodegenCli.DefaultTemplateRoot()];
 

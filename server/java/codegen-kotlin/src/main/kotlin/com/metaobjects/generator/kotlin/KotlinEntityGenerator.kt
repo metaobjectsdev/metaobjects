@@ -7,6 +7,7 @@ package com.metaobjects.generator.kotlin
 import com.metaobjects.config.WireFormat
 import com.metaobjects.generator.util.GeneratorUtil
 import com.metaobjects.generator.kotlin.Fr019SharedEnum
+import com.metaobjects.generator.kotlin.KotlinCrossFieldRules
 import com.metaobjects.generator.kotlin.KotlinEnumEmitter
 import com.metaobjects.generator.kotlin.KotlinGenUtil
 import com.metaobjects.generator.kotlin.KotlinNaming
@@ -36,7 +37,9 @@ import com.metaobjects.validator.NumericValidator
 import com.metaobjects.validator.RegexValidator
 import com.metaobjects.validator.RequiredValidator
 import com.squareup.kotlinpoet.AnnotationSpec
+import com.squareup.kotlinpoet.BOOLEAN
 import com.squareup.kotlinpoet.ClassName
+import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
@@ -95,6 +98,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         durationWirePackages.clear()
         // ADR-0019 Amendment 2: the project's wire setting, read from the loaded root.
         wire = WireFormat.of(loader.root)
+        requestBodies = RestSurfaceGate.requestBodyShapes(loader)
         fr019Config = Fr019SharedEnum.ProvidedEnumConfig.fromArgs(args)
         // emitAbstractShapes (default OFF): when ON, an abstract entity is emitted as a Kotlin
         // `interface` shape (read-only properties) instead of being suppressed. It is NEVER
@@ -109,6 +113,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // Local-only abstract check (own attribute, not inherited) so concrete subtypes
         // extending an abstract base still emit normally.
         for (declared in loader.metaObjects) {
+            if (!isSelected(declared)) continue
             // FR-044: a served report is emitted from its read model (one field per derived
             // column); any other report maps to null and emits nothing.
             val obj = RestSurfaceGate.restShapeOf(declared) ?: continue
@@ -145,6 +150,9 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
     /** ADR-0019 Amendment 2: the project's wire setting (native unless `.metaobjects/config.json` says otherwise). */
     private var wire: WireFormat = WireFormat.DEFAULT
+
+    /** Names of the classes bound from a write route's request body, for the current run. */
+    private var requestBodies: Set<String> = emptySet()
 
     /**
      * #234: emit the per-package `MetaNetJson.kt` support object (the strict field.uri / field.inet
@@ -237,6 +245,18 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             .addModifiers(KModifier.DATA)
             .addKdoc("GENERATED — do not hand-edit. Regenerated from metadata.\n")
             .apply {
+                // A request body DROPS an undeclared key, never rejects it, whatever
+                // FAIL_ON_UNKNOWN_PROPERTIES the host's ObjectMapper carries. Only a write route's
+                // entity and the value objects nested in it are one; a stored-proc argument class, a
+                // response parser's decode target (ADR-0056), a prompt payload or a projection keeps
+                // the host mapper's strictness.
+                if (obj.name in requestBodies) {
+                    addAnnotation(
+                        AnnotationSpec.builder(ClassName("com.fasterxml.jackson.annotation", "JsonIgnoreProperties"))
+                            .addMember("ignoreUnknown = true")
+                            .build(),
+                    )
+                }
                 // `wire.nullMembers: omit` (ADR-0019 Amendment 2): a value object's null members are left
                 // out. Under native/emit Jackson writes them as null with the key present.
                 if (obj.subType == MetaObject.SUBTYPE_VALUE && wire.omitNullMembers()) {
@@ -260,13 +280,15 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // view-computed value fails jackson-module-kotlin deserialization → HTTP 400). Its validation
         // annotations are suppressed too (no @field:NotNull to reject the omitted value). Mirrors the
         // Java port dropping @NotNull for derived-on-write-through. A projection is read-only
-        // (isWriteThrough=false), so its derived fields keep their origin-aware non-null read type.
-        val writeThrough = obj.isWriteThrough
+        // (not an entity), so its derived fields keep their origin-aware non-null read type. An
+        // entity with no read view never reads a derived field back at all, so it defaults too:
+        // its primary source is always writable (the loader refuses a read-only primary).
+        val entityHost = obj.subType == MetaObject.SUBTYPE_ENTITY
 
         val ctorBuilder = FunSpec.constructorBuilder()
         for (field in obj.metaFields) {
             val baseType = resolvePropertyType(field, obj, loader)
-            val derivedReadOnly = writeThrough && KotlinGenUtil.isDerivedField(field)
+            val derivedReadOnly = entityHost && KotlinGenUtil.isDerivedField(field)
             // #195: a field derived by origin.aggregate @agg:any|all|collect is COALESCE-guaranteed
             // non-null in the synthesized read-model view (any→false, all→true, collect→[]), so its
             // read type is non-null even when the field is NOT @required — matching the Exposed view
@@ -345,6 +367,12 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                     .apply { durationWireAnnotations(field, pkg).forEach { addAnnotation(it) } }
                     .build(),
             )
+        }
+
+        // Entity-scoped cross-field validators: class-level Bean Validation on the full create body.
+        // Not on the TPH union / a report row / a value object, and never on a PATCH body.
+        if (!tphBase && !reportRow && obj.subType == MetaObject.SUBTYPE_ENTITY) {
+            crossFieldProperties(obj).forEach { typeBuilder.addProperty(it) }
         }
 
         val primaryCtor = ctorBuilder.build()
@@ -480,8 +508,9 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         }
         return when ((type as? com.squareup.kotlinpoet.ClassName)?.canonicalName) {
             "kotlin.Boolean" -> text.lowercase().takeIf { it == "true" || it == "false" }
-            "kotlin.String" -> if (text.contains("(") || text.equals("now", true) || text.equals("current_timestamp", true)) null
-                else "\"" + text.replace("\\", "\\\\").replace("\"", "\\\"").replace("$", "\\$") + "\""
+            // A database expression (now(), gen_random_uuid()) is the database's to fill.
+            "kotlin.String" -> if (com.metaobjects.generator.util.GeneratorUtil.isSqlExpressionDefault(text)) null
+                else "\"" + KotlinGenUtil.kotlinStringLiteral(text) + "\""
             "kotlin.Int" -> text.toIntOrNull()?.toString()
             "kotlin.Long" -> text.toLongOrNull()?.let { "${it}L" }
             "kotlin.Double" -> text.toDoubleOrNull()?.toString()
@@ -532,6 +561,45 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         if (!field.hasMetaAttr(ObjectField.ATTR_OBJECTREF, true)) return null
         return runCatching { field.getMetaAttr(ObjectField.ATTR_OBJECTREF, true).valueAsString }
             .getOrNull()
+    }
+
+    // === entity-scoped cross-field validators ==================================
+
+    /**
+     * One `@get:AssertTrue @get:JsonIgnore val isXxxValid: Boolean` per entity-scoped cross-field
+     * validator (comparison / requiredWhen / presentIff / atLeastOne / exactlyOne, with @condition). Null-safe in the DB CHECK
+     * sense (SQL NULL = Kotlin null; "" is not null). A validator naming a missing field is
+     * skipped. Body-declared, so it stays out of the data class's equals / copy / constructor.
+     */
+    protected open fun crossFieldProperties(obj: MetaObject): List<PropertySpec> {
+        val out = mutableListOf<PropertySpec>()
+        val used = mutableSetOf<String>()
+        for ((v, expr) in KotlinCrossFieldRules.rules(obj) { CodeBlock.of("%N", it.name).toString() }) {
+            val base = v.name.map { if (it.isLetterOrDigit() || it == '_') it else '_' }.joinToString("")
+                .ifEmpty { "CrossField" }.replaceFirstChar { it.uppercaseChar() }
+            var name = "is${base}Valid"
+            var n = 2
+            while (!used.add(name)) name = "is${base}${n++}Valid"
+            out.add(
+                PropertySpec.builder(name, BOOLEAN)
+                    .addKdoc("Cross-field validator ${v.name.replace("*/", "* /")} (class-level Bean Validation; the DB CHECK enforces the PATCH path).\n")
+                    .addAnnotation(
+                        AnnotationSpec.builder(ClassName("com.fasterxml.jackson.annotation", "JsonIgnore"))
+                            .useSiteTarget(AnnotationSpec.UseSiteTarget.GET).build(),
+                    )
+                    .addAnnotation(
+                        AnnotationSpec.builder(ClassName(JAKARTA_CONSTRAINTS, "AssertTrue"))
+                            .useSiteTarget(AnnotationSpec.UseSiteTarget.GET)
+                            .addMember("message = %S", "validator ${v.name} violated").build(),
+                    )
+                    .addAnnotation(
+                        AnnotationSpec.builder(ClassName("kotlin", "Suppress")).addMember("%S", "UNCHECKED_CAST").build(),
+                    )
+                    .getter(FunSpec.getterBuilder().addStatement("return·(%L)", expr).build())
+                    .build(),
+            )
+        }
+        return out
     }
 
     // === validation (SP-C validator parity, Unit 5) =========================
@@ -721,13 +789,15 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
     /**
      * `field.duration`: a `java.time.Duration` property is written as the canonical ISO-8601 string
      * and read from the accepted form only, through the generated same-package `MetaDurationWire`
-     * (no MetaObjects import). Both halves in every wire mode: a host ObjectMapper's JavaTimeModule
+     * (no MetaObjects import). Only under `wire.durations: iso`; under native the host
+     * ObjectMapper's own java.time handling applies. Both halves in iso mode: a host ObjectMapper's JavaTimeModule
      * writes a Duration as decimal seconds (or `Duration.toString()`, which differs for a negative
      * span), and `Duration.parse` accepts more than the accepted form. The serializer sits on the
      * getter and the deserializer on the constructor parameter; `contentUsing` for an `isArray`.
      */
     private fun durationWireAnnotations(field: MetaField<*>, pkg: String): List<AnnotationSpec> {
-        if (field !is DurationField) return emptyList()
+        // wire.durations: native (the default) leaves the host ObjectMapper's own java.time handling.
+        if (field !is DurationField || !wire.durationsIso()) return emptyList()
         durationWirePackages.add(pkg)
         val member = if (field.isArrayType) "contentUsing" else "using"
         return listOf(

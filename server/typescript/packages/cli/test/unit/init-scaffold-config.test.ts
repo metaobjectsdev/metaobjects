@@ -93,7 +93,7 @@ describe("meta init scaffolds the owned-codegen tier, empty (ADR-0034 Amendment 
     // The package import appears ONLY as a commented example of how to wire one; an
     // uncommented line would be the default suite Amendment 2 removed.
     expect(body).not.toMatch(/^import .* from "@metaobjectsdev\/codegen-ts\/generators"/m);
-    expect(body).toMatch(/^\s*\/\/\s+import \{ entityFile, queriesFile, barrel \} from "@metaobjectsdev\/codegen-ts\/generators";$/m);
+    expect(body).toMatch(/^\s*\/\/\s+import \{ entityFile, namesFile, barrel \} from "@metaobjectsdev\/codegen-ts\/generators";$/m);
   });
 
   test("an ejected generator is the copyable reference template, and re-init preserves it", async () => {

@@ -14,7 +14,8 @@
 // unresolved `../db` stub or an uninstalled optional `fastify` peer) are ignored;
 // only the extension errors this fix targets are asserted.
 
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, setDefaultTimeout } from "bun:test";
+import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
 import { mkdtempSync, rmSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
@@ -25,6 +26,8 @@ import { entityFile } from "../src/generators/entity-file.js";
 import { queriesFile } from "../src/generators/queries-file.js";
 import { routesFile } from "../src/generators/routes-file.js";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
+
+setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
 const META = JSON.stringify({
   "metadata.root": {

@@ -20,7 +20,7 @@ A named group-by attribute of the entity that declares it (FR-044). Groups repor
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
-| `@of` | string | yes |  |  | — | Dotted Entity.field reference naming the grouped column (e.g. 'Purchase.programId', or 'Program.title' with @via). |
+| `@of` | string | yes |  |  | — | Dotted Entity.field reference naming the grouped column (e.g. 'Purchase.programId', or 'Program.title' with @via). Entity.field.member names a member of a value object stored with @storage: flattened (e.g. 'Payment.amount.currency'), which has a column of its own. |
 | `@via` | string | no |  |  | — | Optional dotted to-one relationship path from the owning entity to the entity @of names (e.g. 'Purchase.program'). Every hop must be @cardinality: one or an identity.reference. |
 
 **Allowed children**
@@ -38,7 +38,7 @@ A named time dimension (FR-044): groups report rows by a date or timestamp colum
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
 | `@grains` | string[] | yes |  | `hour`, `day`, `week`, `month`, `quarter`, `year` | — | The grains this dimension supports. Weeks start Monday (ISO-8601). 'hour' is refused on a field.date. |
-| `@of` | string | yes |  |  | — | Dotted Entity.field reference naming the date or timestamp column. |
+| `@of` | string | yes |  |  | — | Dotted Entity.field reference naming the date or timestamp column, or Entity.field.member for a member of a flattened value object. |
 | `@via` | string | no |  |  | — | Optional dotted to-one relationship path, as on dimension.attribute. |
 
 **Allowed children**

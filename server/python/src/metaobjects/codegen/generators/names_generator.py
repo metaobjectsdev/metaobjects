@@ -83,6 +83,9 @@ from dataclasses import dataclass
 from metaobjects.apidocs.naming import snake_case as _snake_case
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
+from metaobjects.codegen.import_path import ModuleScope
+from metaobjects.codegen.name_claims import claimed_module_path
+from metaobjects.codegen.value_objects import pkg_of
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, per_entity
 from metaobjects.meta.core.identity.identity_constants import IDENTITY_SUBTYPE_SECONDARY
 from metaobjects.meta.core.index.index_constants import INDEX_SUBTYPE_LOOKUP
@@ -231,7 +234,7 @@ def _key_consts(node: MetaData) -> list[_Const]:
     return out
 
 
-def _field_consts(field: MetaData, column: str) -> list[_Const]:
+def _field_consts(field: MetaData, column: str | None) -> list[_Const]:
     """One field. The ONE node kind with no type prefix: a field's sub_type does not
     change what ``COLUMN`` denotes.
 
@@ -239,13 +242,16 @@ def _field_consts(field: MetaData, column: str) -> list[_Const]:
     moment a case boundary or a ``@column`` appears, and a consumer holding one cannot
     recover the other — ``@column`` is free-form, so ``callPurpose`` may map to
     ``purpose_code``, which is neither the logical name nor any transformation of it.
+
+    ``column`` is ``None`` for a flattened field, which has no column of its own: only
+    ``FIELD`` is emitted and its members carry the columns.
     """
     member = _member(field.name)
     path = f"field {field.name!r}"
-    return [
-        _Const(f"{member}_FIELD", _q(field.name), path),
-        _Const(f"{member}_COLUMN", _q(column), path),
-    ]
+    consts = [_Const(f"{member}_FIELD", _q(field.name), path)]
+    if column is not None:
+        consts.append(_Const(f"{member}_COLUMN", _q(column), path))
+    return consts
 
 
 def _flattened_members(field: MetaData, strategy: str) -> list[tuple[str, str]] | None:
@@ -391,6 +397,7 @@ def render_names(
     *,
     fragment: bool = False,
     warn: Callable[[str], None] | None = None,
+    scope: ModuleScope = ModuleScope(),
 ) -> str | None:
     """Render the names module for ``entity``, or ``None`` when it declares (and
     inherits) no primary ``source.rdb`` at all (#248).
@@ -459,16 +466,16 @@ def render_names(
     # `<field>.<member>`, the path the naming corpus uses.
     columns: list[tuple[str, str]] = []
     flattened: list[tuple[MetaData, list[tuple[str, _Const]]]] = []
-    #: The ``_COLUMN`` member of each flattened field: kept, so owned copies and existing
-    #: code still import it, but marked deprecated, because it names no column of the table.
-    deprecated_columns: dict[str, str] = {}
     for field in sorted(entity.fields(), key=lambda f: f.name):
-        column = resolve_column_name(field, strategy)
-        columns.append((field.name, f"{_member(field.name)}_COLUMN"))
-        groups.append(("fields", _field_consts(field, column), carried_by_super(field)))
         members = _flattened_members(field, strategy)
-        if members is not None:
-            deprecated_columns[f"{_member(field.name)}_COLUMN"] = f"{upper}_{_member(field.name)}_<MEMBER>_COLUMN"
+        if members is None:
+            column = resolve_column_name(field, strategy)
+            columns.append((field.name, f"{_member(field.name)}_COLUMN"))
+            groups.append(("fields", _field_consts(field, column), carried_by_super(field)))
+        else:
+            # A flattened field has no column of its own: it keeps its `_FIELD` constant and
+            # its members carry the columns.
+            groups.append(("fields", _field_consts(field, None), carried_by_super(field)))
         if members:
             flattened.append((field, _flattened_member_consts(field, members)))
 
@@ -547,10 +554,6 @@ def render_names(
         section = group_section
         for const in consts:
             name = f"{upper}_{const.member}"
-            if group_section == "fields" and const.member in deprecated_columns:
-                # A comment, not a runtime warning: reading a constant must stay silent.
-                body.append("#: Deprecated: a flattened field has no column of its own; use the member constants,")
-                body.append(f"#: {deprecated_columns[const.member]}.")
             if inherited:
                 assert super_upper is not None  # carried_by_super implies a super module
                 referenced = f"{super_upper}_{const.member}"
@@ -563,7 +566,7 @@ def render_names(
     if imports:
         assert super_obj is not None  # an import can only name the super module
         lines.append(
-            f"from .{_snake_case(super_obj.name)}_names import (\n"
+            f"from {scope.sibling(pkg_of(super_obj), _snake_case(super_obj.name) + '_names')} import (\n"
             + "".join(f"    {m},\n" for m in sorted(imports))
             + ")"
         )
@@ -596,13 +599,19 @@ class NamesGenerator:
         emitted: set[str] = set()
 
         def one(entity: MetaObject, *, fragment: bool) -> list[EmittedFile]:
-            source = render_names(entity, ctx.config.column_naming, fragment=fragment, warn=ctx.warn)
+            scope = ModuleScope(ctx.config.output_layout, pkg_of(entity))
+            source = render_names(
+                entity, ctx.config.column_naming, fragment=fragment, warn=ctx.warn, scope=scope
+            )
             if source is None:
                 return []
             emitted.add(entity.resolution_key())
             return [
                 EmittedFile(
-                    path=f"{_snake_case(entity.name)}_names.py",
+                    path=claimed_module_path(
+                        ctx.claims, ctx.config, pkg_of(entity),
+                        f"{_snake_case(entity.name)}_names", entity.resolution_key(),
+                    ),
                     content=ruff_format(source),
                 )
             ]

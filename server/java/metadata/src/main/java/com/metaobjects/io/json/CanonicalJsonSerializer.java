@@ -152,6 +152,54 @@ public final class CanonicalJsonSerializer {
     }
 
     /**
+     * The FR-023 shared-model artifact form: one canonical-JSON {@code metadata.root} document with
+     * NO root {@code package}, whose top-level nodes each carry their own explicit {@code package}
+     * (so the document re-loads to the same resolution keys in every port).
+     *
+     * <p>Each node is its {@link #canonicalSerialize(MetaData)} form: raw own layer, {@code extends}
+     * preserved, attribute keys alphabetized, the FR-016 physical-name rewrite applied. Top-level
+     * nodes are sorted by resolution key; each node's children keep their authored order. Body key
+     * order: {@code name}, {@code package}, then the canonical rest. Byte-identical to the
+     * TypeScript {@code serializeSharedDocument} and Python {@code serialize_shared_document}.</p>
+     *
+     * @param nodes top-level nodes; each one's resolution key is its {@code getName()}
+     * @throws IllegalArgumentException when a node has no package
+     */
+    public static String serializeSharedDocument(List<? extends MetaData> nodes) {
+        List<MetaData> sorted = new ArrayList<>(nodes);
+        sorted.sort((a, b) -> a.getName().compareTo(b.getName()));
+        JsonArray children = new JsonArray();
+        for (MetaData node : sorted) {
+            String key = node.getName();
+            int sep = key.lastIndexOf(MetaData.PKG_SEPARATOR);
+            String pkg = sep == -1 ? "" : key.substring(0, sep);
+            if (pkg.isEmpty()) {
+                throw new IllegalArgumentException("serializeSharedDocument: " + key
+                    + " has no package; a shared document carries only packaged nodes");
+            }
+            JsonObject parsed = com.google.gson.JsonParser.parseString(canonicalSerialize(node)).getAsJsonObject();
+            Map.Entry<String, JsonElement> only = parsed.entrySet().iterator().next();
+            JsonObject body = only.getValue().getAsJsonObject();
+            // The node's own `package` (if it declared one) is replaced by the RESOLVED one: a
+            // node inheriting its file's root package declares none of its own.
+            JsonObject ordered = new JsonObject();
+            if (body.has(KEY_NAME)) ordered.add(KEY_NAME, body.get(KEY_NAME));
+            ordered.addProperty(KEY_PACKAGE, pkg);
+            for (Map.Entry<String, JsonElement> e : body.entrySet()) {
+                if (!e.getKey().equals(KEY_NAME) && !e.getKey().equals(KEY_PACKAGE)) ordered.add(e.getKey(), e.getValue());
+            }
+            JsonObject wrapper = new JsonObject();
+            wrapper.add(only.getKey(), ordered);
+            children.add(wrapper);
+        }
+        JsonObject rootBody = new JsonObject();
+        rootBody.add(KEY_CHILDREN, children);
+        JsonObject doc = new JsonObject();
+        doc.add(MetaData.TYPE_METADATA + TYPE_SUBTYPE_SEPARATOR + MetaData.SUBTYPE_ROOT, rootBody);
+        return toCanonicalString(doc);
+    }
+
+    /**
      * Serializes the EFFECTIVE (super-chain-merged) structure of {@code node}
      * to canonical JSON. Each node exposes the merged view of its own children
      * and attrs plus those inherited from its super chain.

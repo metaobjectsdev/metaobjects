@@ -9,6 +9,7 @@
 // reading the authored JSON.
 
 import {
+  MEASURE_SUBTYPE_AGGREGATE,
   TIME_GRAINS,
   type MetaMeasure,
   type ReportShape,
@@ -18,7 +19,7 @@ import { ratioOperand, resolveAggregate } from "../projection/report-resolve.js"
 import { isRelativeNow } from "../projection/report-spec.js";
 import { cond, reportScope } from "../projection/report-sql.js";
 import type { ViewFilterClause } from "../projection/view-spec.js";
-import type { MemberContext } from "./cube-members.js";
+import { measuresRead, type MemberContext } from "./cube-members.js";
 import type { CubeRollupSpec, CubeRollupTimeDimension, CubeSegmentSpec } from "./cube-model-spec.js";
 import { CUBE_SELF, cubeSqlRenderer } from "./cube-sql.js";
 
@@ -146,9 +147,7 @@ export function reportContribution(shape: ReportShape, cube: string, mc: MemberC
     if (m === undefined) throw new Error(`${where}: report field '${f.name}' names no measure.`);
     measures.push(m.name);
     // A ratio's condition is its operands' conditions: each is the full aggregate it divides.
-    const aggregates: MetaMeasure[] = m.isRatio()
-      ? [ratioOperand(from, m, m.numerator(), where), ratioOperand(from, m, m.denominator(), where)]
-      : [m];
+    const aggregates: MetaMeasure[] = [m, ...measuresRead(from, m, where)].filter((a) => a.subType === MEASURE_SUBTYPE_AGGREGATE);
     for (const a of aggregates) {
       conditions.push(resolveAggregate(a, from, mc.root, CUBE_SELF, ctx, `${where} measure '${a.name}'`).condition);
     }

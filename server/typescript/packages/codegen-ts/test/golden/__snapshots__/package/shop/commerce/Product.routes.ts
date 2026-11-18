@@ -45,5 +45,6 @@ export async function productRoutes(fastify: FastifyInstance) {
     filterAllowlist: ProductFilterAllowlist,
     sortAllowlist: ProductSortAllowlist,
     dialect: "sqlite",
+    knownFields: ["id", "name", "tagId"],
   });
 }

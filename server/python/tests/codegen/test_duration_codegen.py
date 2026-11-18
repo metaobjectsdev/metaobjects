@@ -1,4 +1,5 @@
-"""field.duration codegen: the native ``datetime.timedelta`` binding, held to the ISO-8601 wire rule.
+"""field.duration codegen: the native ``datetime.timedelta`` binding; ``wire.durations: iso`` holds it
+to the ISO-8601 wire rule, ``native`` (the default) leaves Pydantic's own handling.
 
 The generated model takes only an accepted ISO-8601 duration (Pydantic's own ``timedelta``
 parser would also take a number, clock text and a calendar span) and writes the canonical form
@@ -17,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 import metaobjects.core_types  # noqa: F401  — side effect: registers core types
 from metaobjects import load_string
@@ -33,6 +34,7 @@ from metaobjects.codegen.runtime import duration_wire
 from metaobjects.codegen.runtime.decimal_wire import WireOutput, render_wire
 from metaobjects.codegen.type_map import py_type_for
 from metaobjects.loader.validation_passes import ops_for_subtype
+from metaobjects.wire import WireFormat
 
 _META = {
     "metadata.root": {
@@ -67,9 +69,10 @@ _META = {
 }
 
 
-def _root() -> Any:
+def _root(durations: str = "iso") -> Any:
     result = load_string(json.dumps(_META))
     assert not result.errors, [str(e) for e in result.errors]
+    result.root.wire = WireFormat(durations=durations)
     return result.root
 
 
@@ -169,3 +172,51 @@ def test_a_router_writes_a_duration_through_the_codec(generated: dict[str, Any])
     row = {"id": 1, "holdFor": dt.timedelta(hours=26), "steps": [dt.timedelta(seconds=-90)]}
     assert render_wire(row, wire) == {"id": 1, "holdFor": "PT26H", "steps": ["-PT1M30S"]}
     assert render_wire(row, WireOutput(decimals="string", duration=wire.duration))["holdFor"] == "PT26H"
+
+
+@pytest.fixture(scope="module")
+def generated_native(tmp_path_factory: pytest.TempPathFactory) -> Iterator[dict[str, Any]]:
+    """The same model generated under the default ``wire.durations: native``."""
+    tmp = tmp_path_factory.mktemp("duration_native")
+    out = tmp / "gen_duration_native"
+    run_gen(
+        GenConfig(out_dir=str(out), emit_package_init=True),
+        _root("native"),
+        generators=[entity_model(), filter_allowlist_generator(), router_generator()],
+    )
+    files = {p.relative_to(out).as_posix(): p.read_text(encoding="utf-8") for p in out.rglob("*.py")}
+    sys.path.insert(0, str(tmp))
+    try:
+        hold = importlib.import_module("gen_duration_native.Hold")
+        router = importlib.import_module("gen_duration_native.hold_router")
+    finally:
+        sys.path.remove(str(tmp))
+    yield {"files": files, "hold": hold, "router": router}
+    for name in [m for m in sys.modules if m.split(".")[0] == "gen_duration_native"]:
+        del sys.modules[name]
+
+
+def test_native_emits_no_codec_and_no_override(generated_native: dict[str, Any]) -> None:
+    files = generated_native["files"]
+    assert "_duration_wire.py" not in files
+    assert "_duration_wire" not in files["Hold.py"]
+    assert "BeforeValidator" not in files["Hold.py"]
+    assert "format_duration" not in files["hold_router.py"]
+    assert "duration=to_jsonable_python" in files["hold_router.py"]
+
+
+def test_native_round_trip_is_pydantics_own_timedelta(generated_native: dict[str, Any]) -> None:
+    cls = generated_native["hold"].Hold
+    # Pydantic's own parser takes clock text and numbers, which the ISO rule refuses.
+    m = cls(holdFor="1:30:00", grace=90, steps=["PT5400S"])
+    assert m.holdFor == dt.timedelta(hours=1, minutes=30)
+    assert m.grace == dt.timedelta(seconds=90)
+    assert json.loads(m.model_dump_json())["holdFor"] == TypeAdapter(dt.timedelta).dump_python(m.holdFor, mode="json")
+    assert cls.model_validate_json(m.model_dump_json()).holdFor == m.holdFor
+
+
+def test_native_response_is_pydantics_own_form_and_iso_is_canonical(generated_native: dict[str, Any]) -> None:
+    value = dt.timedelta(hours=1, minutes=30)
+    native = generated_native["router"]._WIRE
+    assert render_wire({"d": value}, native) == {"d": TypeAdapter(dt.timedelta).dump_python(value, mode="json")}
+    assert render_wire({"d": value}, WireOutput(duration=duration_wire.format_duration)) == {"d": "PT1H30M"}

@@ -116,6 +116,97 @@ internal sealed class ExtendSpecSubtypeProvider : IMetaDataTypeProvider
     }
 }
 
+/// <summary>
+/// ADR-0062 attribute-ownership providers (see the corpus README). Each registers one string
+/// attr per listed (subtype, attr) pair on the <c>template</c> type: <c>base</c> is the shared
+/// root, <c>shadowprobe</c> a fresh subtype.
+/// </summary>
+internal sealed class ShadowTestProvider : IMetaDataTypeProvider
+{
+    public const string ShadowSubType = "shadowprobe";
+
+    private readonly (string SubType, string Attr)[] _types;
+
+    public ShadowTestProvider(string id, string[] dependencies, params (string SubType, string Attr)[] types)
+    {
+        Id = id;
+        Dependencies = dependencies;
+        _types = types;
+    }
+
+    public string Id { get; }
+    public IReadOnlyList<string> Dependencies { get; }
+
+    public void RegisterTypes(TypeRegistry registry)
+    {
+        foreach (var (subType, attr) in _types)
+        {
+            registry.Register(new TypeDefinition(
+                typeId: new TypeId("template", subType),
+                description: "Test-only — attribute-ownership probe.",
+                childRules: new List<ChildRule>(),
+                factory: (typeId, name) => new MetaTemplate(typeId, name),
+                attributes: new List<AttrSchema>
+                {
+                    new AttrSchema(attr, "string", Required: false, Description: "Ownership probe attr."),
+                }));
+        }
+    }
+}
+
+/// <summary>ADR-0062 — extends <c>template.shadowprobe</c> with the name <c>shadow-base</c> owns on the root.</summary>
+internal sealed class ShadowSubExtendClashProvider : IMetaDataTypeProvider
+{
+    public string Id => "shadow-sub-extend-clash";
+    public IReadOnlyList<string> Dependencies => new[] { "shadow-sub-distinct" };
+
+    public void RegisterTypes(TypeRegistry registry)
+    {
+        registry.Extend(
+            "template",
+            ShadowTestProvider.ShadowSubType,
+            attributes: new List<AttrSchema>
+            {
+                new AttrSchema("shadowAttr", "string", Required: false, Description: "Ownership probe attr."),
+            });
+    }
+}
+
+/// <summary>ADR-0062 — registers one optional string common attr; <c>selfClaim</c> also declares
+/// it on <c>template.shadowprobe</c> and then registers the common attr again.</summary>
+internal sealed class CommonAttrTestProvider : IMetaDataTypeProvider
+{
+    private readonly string _attr;
+    private readonly bool _selfClaim;
+
+    public CommonAttrTestProvider(string id, string[] dependencies, string attr, bool selfClaim = false)
+    {
+        Id = id;
+        Dependencies = dependencies;
+        _attr = attr;
+        _selfClaim = selfClaim;
+    }
+
+    public string Id { get; }
+    public IReadOnlyList<string> Dependencies { get; }
+
+    public void RegisterTypes(TypeRegistry registry)
+    {
+        RegisterCommon(registry);
+        if (_selfClaim)
+        {
+            new ShadowTestProvider(Id, System.Array.Empty<string>(), (ShadowTestProvider.ShadowSubType, _attr)).RegisterTypes(registry);
+            RegisterCommon(registry);
+        }
+    }
+
+    private void RegisterCommon(TypeRegistry registry) =>
+        registry.RegisterCommonAttrs(new[]
+        {
+            new AttrSchema(_attr, "string", Required: false, Description: "Ownership probe common attr."),
+        });
+}
+
 public sealed class ProviderCompositionConformanceTests
 {
     private static readonly IReadOnlyDictionary<string, IMetaDataTypeProvider> Providers =
@@ -131,6 +222,19 @@ public sealed class ProviderCompositionConformanceTests
             ["attr-conflict-clash"] = new AttrConflictClashProvider(),
             ["seal-probe"]          = new SealProbeProvider(),
             ["extend-spec-subtype"] = new ExtendSpecSubtypeProvider(),
+            ["shadow-base"]         = new ShadowTestProvider("shadow-base", System.Array.Empty<string>(), ("base", "shadowAttr")),
+            ["shadow-sub-clash"]    = new ShadowTestProvider("shadow-sub-clash", new[] { "shadow-base" }, (ShadowTestProvider.ShadowSubType, "shadowAttr")),
+            ["shadow-sub-owner"]    = new ShadowTestProvider("shadow-sub-owner", System.Array.Empty<string>(), (ShadowTestProvider.ShadowSubType, "reverseAttr")),
+            ["shadow-base-late"]    = new ShadowTestProvider("shadow-base-late", new[] { "shadow-sub-owner" }, ("base", "reverseAttr")),
+            ["shadow-sub-distinct"] = new ShadowTestProvider("shadow-sub-distinct", new[] { "shadow-base" }, (ShadowTestProvider.ShadowSubType, "distinctAttr")),
+            ["shadow-self"]         = new ShadowTestProvider("shadow-self", System.Array.Empty<string>(), ("base", "selfAttr"), (ShadowTestProvider.ShadowSubType, "selfAttr")),
+            ["shadow-sub-extend-clash"] = new ShadowSubExtendClashProvider(),
+            ["common-owner"]        = new CommonAttrTestProvider("common-owner", System.Array.Empty<string>(), "commonAttr"),
+            ["common-clash"]        = new CommonAttrTestProvider("common-clash", new[] { "common-owner" }, "commonAttr"),
+            ["common-self"]         = new CommonAttrTestProvider("common-self", System.Array.Empty<string>(), "selfCommonAttr", selfClaim: true),
+            ["common-sub-clash"]    = new ShadowTestProvider("common-sub-clash", new[] { "common-owner" }, (ShadowTestProvider.ShadowSubType, "commonAttr")),
+            ["common-sub-owner"]    = new ShadowTestProvider("common-sub-owner", System.Array.Empty<string>(), (ShadowTestProvider.ShadowSubType, "lateCommonAttr")),
+            ["common-late"]         = new CommonAttrTestProvider("common-late", new[] { "common-sub-owner" }, "lateCommonAttr"),
         };
 
     // Flat-corpus (error-code) manifest shape — unchanged.
@@ -283,6 +387,55 @@ public sealed class ProviderCompositionConformanceTests
                 .OrderBy(c => c, System.StringComparer.Ordinal)
                 .ToList();
             Assert.Equal(expectedCodes, actualCodes);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // ADR-0062 `attr-ownership/` corpus — composition succeeds and the registry names
+    // the provider that owns each attribute.
+    // -----------------------------------------------------------------------
+
+    private sealed record OwnerExpectation(string Type, string SubType, string Attr, string Owner);
+
+    private sealed record CommonOwnerExpectation(string Attr, string Owner);
+
+    private sealed record OwnershipManifest(
+        string[] Providers, OwnerExpectation[]? ExpectOwners, CommonOwnerExpectation[]? ExpectCommonOwners);
+
+    private static string OwnershipCorpusRootPath() =>
+        Path.Combine(CorpusRootPath(), "attr-ownership");
+
+    public static IEnumerable<object[]> OwnershipManifestFiles()
+    {
+        foreach (var file in Directory.GetFiles(OwnershipCorpusRootPath(), "*.json").OrderBy(f => f, System.StringComparer.Ordinal))
+            yield return new object[] { Path.GetFileName(file) };
+    }
+
+    [Fact]
+    public void OwnershipCorpusIsNonEmpty()
+    {
+        Assert.NotEmpty(OwnershipManifestFiles());
+    }
+
+    [Theory]
+    [MemberData(nameof(OwnershipManifestFiles))]
+    public void ProviderCompositionAttrOwnership(string fileName)
+    {
+        var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var manifest = JsonSerializer.Deserialize<OwnershipManifest>(
+            File.ReadAllText(Path.Combine(OwnershipCorpusRootPath(), fileName)), opts)!;
+
+        var registry = Provider.ComposeRegistry(manifest.Providers.Select(Resolve).ToList());
+        OwnerExpectation[] owners = manifest.ExpectOwners ?? [];
+        CommonOwnerExpectation[] commonOwners = manifest.ExpectCommonOwners ?? [];
+        Assert.True(owners.Length + commonOwners.Length > 0);
+        foreach (var expected in owners)
+        {
+            Assert.Equal(expected.Owner, registry.AttrOrigin(expected.Type, expected.SubType, expected.Attr));
+        }
+        foreach (var expected in commonOwners)
+        {
+            Assert.Equal(expected.Owner, registry.CommonAttrOrigin(expected.Attr));
         }
     }
 }

@@ -20,8 +20,8 @@ public sealed class VerifyAppNamingStrategyTests : IDisposable
 
     private const string Model = """
     { "metadata.root": { "package": "acme", "children": [
-      { "object.entity": { "name": "Player", "children": [
-        { "source.rdb": { "@table": "players" } },
+      { "object.entity": { "name": "Patient", "children": [
+        { "source.rdb": { "@table": "patients" } },
         { "field.long":   { "name": "id" } },
         { "field.string": { "name": "firstName" } },
         { "identity.primary": { "@fields": "id" } }
@@ -65,7 +65,7 @@ public sealed class VerifyAppNamingStrategyTests : IDisposable
     {
         WriteStandInRunner();
 
-        var (exit, stdout, stderr) = CliProcess.Run(_tmp, "verify", "--codegen", "--full", "--out", "gen");
+        var (exit, stdout, stderr) = CliProcess.Run(_tmp, "verify", "--codegen", "--out", "gen");
 
         Assert.Contains("stand-in runner: verify --codegen --out", stdout);
         Assert.DoesNotContain("acme-app-columns", stderr);
@@ -92,7 +92,7 @@ public sealed class VerifyAppNamingStrategyTests : IDisposable
     {
         WriteStandInRunner();
 
-        var (exit, stdout, stderr) = CliProcess.Run(_tmp, ["verify", "--codegen", "--full", "--out", "gen", .. gate]);
+        var (exit, stdout, stderr) = CliProcess.Run(_tmp, ["verify", "--codegen", "--out", "gen", .. gate]);
 
         Assert.Contains("stand-in runner: verify --codegen --out", stdout);
         Assert.Equal(2, exit);

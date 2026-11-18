@@ -29,6 +29,9 @@ export interface SharedModelFileOpts {
   include: readonly string[];
   /** Applied after `include`. */
   exclude?: readonly string[];
+  /** Publish the selected `requirement.*` nodes too, so a consumer can inherit them.
+   *  Default false. `template.*` is never published. */
+  requirements?: boolean;
   /** Which of the publisher's own source files may contribute. Default: the run's
    *  own source files (`ctx.sourceFiles` — everything `files?` narrows). */
   files?: readonly string[];
@@ -98,6 +101,7 @@ export function sharedModelFile(opts: SharedModelFileOpts): Generator {
         files,
         include: opts.include,
         ...(opts.exclude !== undefined ? { exclude: opts.exclude } : {}),
+        ...(opts.requirements !== undefined ? { requirements: opts.requirements } : {}),
         ...(ctx.registry !== undefined ? { registry: ctx.registry } : {}),
       });
 

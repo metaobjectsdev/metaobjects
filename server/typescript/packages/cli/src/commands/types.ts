@@ -20,7 +20,8 @@
 // The `--json` flag this once advertised in its own --help, twice, is not coming back: the
 // CLI rejects a bare `--json` before a command ever sees its args (index.ts, `formatAlias`),
 // on purpose — one global spelling for all three formats.
-import { composeRegistry, buildVocabularyCatalog } from "@metaobjectsdev/metadata";
+import { composeRegistry, buildVocabularyCatalog, type MetaDataTypeProvider } from "@metaobjectsdev/metadata";
+import { loadProjectProviders } from "../lib/load-metaobjects-config.js";
 import { defaultLoadMemoryProviders } from "@metaobjectsdev/sdk";
 import { log } from "../lib/log.js";
 import { emitStructured, type OutputFormat } from "../lib/format.js";
@@ -71,9 +72,9 @@ construct.
 --format toon / --format json emit ONE machine-readable document and nothing else. It
 carries every match with its full record, so --limit, --detail and --no-headers — all
 three TEXT display controls — do not change it. The terse line's [base] / [ts; pending
-elsewhere] / [<port>-only] markers are the sharedRoot / implementedIn / ports fields there,
-a closed-enum attr carries its
-allowedValues, and no match is an empty matches list rather than a prose hint.`;
+elsewhere] / [<port>-only] markers are the sharedRoot / implementedIn / ports fields there
+(the 1.2 field tsOnly is still emitted, derived from implementedIn; it is deprecated and goes
+in 1.4), a closed-enum attr carries its allowedValues, and no match is an empty matches list rather than a prose hint.`;
 
 /** The flags `parse` below accepts, for the unknown-flag refusal. */
 const TYPES_FLAGS: readonly string[] = ["--all", "--desc", "--detail", "--no-headers", "--limit", "--type", "--kind"];
@@ -131,13 +132,15 @@ interface Entry {
   /** Accepted on EVERY node, so no `--type` scope excludes it (#357). */
   common: boolean;
   /**
-   * R40 kind 1 — the ports that implement it so far (`["typescript"]`); absent = every
+   * The ports that implement it so far (`["typescript"]`); absent = every
    * port. An attr carries its owning type's. Every port loads it strictly either way.
    */
   implementedIn?: readonly string[];
   /** A type's shared root (`<type>.base`): its attrs apply to every subtype. */
   sharedRoot: boolean;
-  /** R40 — the ports that act on a language-specific attr; absent = every port. */
+  /** An attr entry: the id of the provider that registered it (ADR-0062). */
+  provider: string | undefined;
+  /** The ports that act on a language-specific attr; absent = every port. */
   ports?: readonly string[];
   raw: unknown; // the catalog node
 }
@@ -157,6 +160,11 @@ function portLabel(port: string): string {
 function implementedInMark(implementedIn: readonly string[] | undefined): string {
   if (implementedIn === undefined || implementedIn.length === 0) return "";
   return `[${implementedIn.map(portLabel).join("+")}; pending elsewhere]`;
+}
+
+/** The deprecated JSON `tsOnly`: true when TypeScript is the only port that implements it. */
+function isTsOnly(implementedIn: readonly string[] | undefined): boolean {
+  return implementedIn !== undefined && implementedIn.length === 1 && implementedIn[0] === "typescript";
 }
 
 /** The --detail sentence for the same thing. */
@@ -189,9 +197,10 @@ interface RawAttr {
   whenToUse?: string;
 }
 
-function attrRecord(at: RawAttr): Record<string, unknown> {
+function attrRecord(at: RawAttr, provider?: string): Record<string, unknown> {
   return {
     name: at.name,
+    ...(provider !== undefined ? { provider } : {}),
     valueType: at.valueType,
     isArray: at.isArray,
     required: at.required,
@@ -213,6 +222,9 @@ function payloadMatch(e: Entry): Record<string, unknown> {
     type: e.common || e.type === "" ? null : e.type,
     owner: e.common ? null : e.owner,
     common: e.common,
+    // Deprecated: 1.2 carried `tsOnly`, and 1.3 keeps it, derived from `implementedIn`, so a
+    // consumer reading it keeps working. Read `implementedIn` instead; `tsOnly` goes in 1.4.
+    tsOnly: isTsOnly(e.implementedIn),
     ...(e.implementedIn !== undefined ? { implementedIn: e.implementedIn } : {}),
     sharedRoot: e.sharedRoot,
     ...(e.ports !== undefined ? { ports: e.ports } : {}),
@@ -220,12 +232,14 @@ function payloadMatch(e: Entry): Record<string, unknown> {
     ...(e.whenToUse !== undefined ? { whenToUse: e.whenToUse } : {}),
   };
   if (e.kind === "subtype") {
-    out.attrs = (e.raw as { attrs: RawAttr[] }).attrs.map(attrRecord);
+    const mt = e.raw as { attrs: RawAttr[]; attrProviders: Record<string, string> };
+    out.attrs = mt.attrs.map((at) => attrRecord(at, mt.attrProviders[at.name]));
   } else {
     const at = e.raw as RawAttr;
     out.valueType = at.valueType;
     out.isArray = at.isArray;
     out.required = at.required;
+    if (e.provider !== undefined) out.provider = e.provider;
     if (at.allowedValues !== undefined) out.allowedValues = at.allowedValues;
   }
   return out;
@@ -291,7 +305,18 @@ export async function typesCommand(args: string[], fmt: OutputFormat = "text"): 
   // once in this list, and printing it as registered vocabulary was part of how a TS-only
   // registration read as cross-port: `meta types forge --all` listed 20 attrs no other port
   // has. One composition, one door.
-  const registry = composeRegistry([...defaultLoadMemoryProviders], { validate: true });
+  // Plus the project's own providers when a `metaobjects.config.ts` governs this directory,
+  // so project vocabulary (`layout.picker`, extended attrs) is listed. No config: unchanged.
+  let projectProviders: readonly MetaDataTypeProvider[] = [];
+  try {
+    projectProviders = await loadProjectProviders(process.cwd(), process.cwd());
+  } catch (err) {
+    const msg = `metaobjects.config.ts failed to load: ${describeError(err)}`;
+    log.error(msg);
+    emitStructured({ error: msg, hint: "fix the config, or run outside the project for the built-in vocabulary" }, fmt);
+    return 1;
+  }
+  const registry = composeRegistry([...defaultLoadMemoryProviders, ...projectProviders], { validate: true });
   const catalog = buildVocabularyCatalog(registry);
 
   // Flatten the catalog into searchable entries.
@@ -303,13 +328,13 @@ export async function typesCommand(args: string[], fmt: OutputFormat = "text"): 
       description: mt.description, whenToUse: mt.whenToUse,
       attrNames: mt.attrs.map((a) => `@${a.name}`),
       common: false, sharedRoot: mt.sharedRoot,
-      ...(mt.implementedIn !== undefined ? { implementedIn: mt.implementedIn } : {}), raw: mt,
+      ...(mt.implementedIn !== undefined ? { implementedIn: mt.implementedIn } : {}), provider: undefined, raw: mt,
     });
     for (const at of mt.attrs) {
       entries.push({
         kind: "attr", name: `${tsName} @${at.name}`, owner: tsName, type: mt.type,
         description: at.description, whenToUse: at.whenToUse, attrNames: [],
-        common: false, sharedRoot: false,
+        common: false, sharedRoot: false, provider: mt.attrProviders[at.name],
         // An attr's own kind-1 marking, else its owning type's.
         ...((at.implementedIn ?? mt.implementedIn) !== undefined
           ? { implementedIn: at.implementedIn ?? mt.implementedIn } : {}),
@@ -326,7 +351,7 @@ export async function typesCommand(args: string[], fmt: OutputFormat = "text"): 
     entries.push({
       kind: "attr", name: `@${at.name}`, owner: "(any node)", type: "",
       description: at.description, whenToUse: at.whenToUse, attrNames: [],
-      common: true, sharedRoot: false, raw: at,
+      common: true, sharedRoot: false, provider: catalog.commonAttrProviders[at.name], raw: at,
     });
   }
 
@@ -386,12 +411,19 @@ export async function typesCommand(args: string[], fmt: OutputFormat = "text"): 
         log.info(implementedInSentence(e.implementedIn));
       if (e.whenToUse) log.info(`  → reach for it when: ${e.whenToUse}`);
       if (e.kind === "subtype") {
-        const mt = e.raw as { attrs: { name: string; valueType: string | null; required: boolean; description: string }[] };
+        const mt = e.raw as {
+          attrs: { name: string; valueType: string | null; required: boolean; description: string }[];
+          attrProviders: Record<string, string>;
+        };
         if (mt.attrs.length) {
           log.info("  @attrs:");
-          for (const at of mt.attrs)
-            log.info(`    @${at.name}  ${at.valueType ?? "any"}${at.required ? "  REQUIRED" : ""}  ${at.description}`);
+          for (const at of mt.attrs) {
+            const by = mt.attrProviders[at.name];
+            log.info(`    @${at.name}  ${at.valueType ?? "any"}${at.required ? "  REQUIRED" : ""}${by !== undefined ? `  [${by}]` : ""}  ${at.description}`);
+          }
         }
+      } else if (e.provider !== undefined) {
+        log.info(`  registered by provider: ${e.provider}`);
       }
     }
   } else {

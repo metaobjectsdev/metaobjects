@@ -1,6 +1,6 @@
-// rc.19 Phase 6 Tier 2 view vocabulary (R58), one block per item: computed-over-joined, case,
+// The view vocabulary for derived and scoped values, one block per item: computed-over-joined, case,
 // now (as an expression leaf and in a projection @filter), correlated-filter and origin-segment
-// on an aggregate. entity-derived is pinned end to end in league-gate-entity-derived.test.ts.
+// on an aggregate. The entity-derived item is pinned end to end in entity-derived-filter-gate.test.ts.
 
 import { describe, test, expect } from "bun:test";
 import { Database } from "bun:sqlite";
@@ -15,26 +15,26 @@ const ENTITIES = [
     { "field.string": { name: "displayName" } },
     { "identity.primary": { name: "id", "@fields": "id" } },
   ] } },
-  { "object.entity": { name: "Consignment", children: [
-    { "source.rdb": { "@table": "consignments" } },
+  { "object.entity": { name: "Case", children: [
+    { "source.rdb": { "@table": "cases" } },
     { "field.long": { name: "id" } },
     { "field.long": { name: "statusId" } },
-    { "field.int": { name: "serviceLevel" } },
-    { "field.int": { name: "rollupStatus" } },
+    { "field.int": { name: "priorType" } },
+    { "field.int": { name: "cumulativeStatus" } },
     { "field.int": { name: "status" } },
     { "field.date": { name: "effectiveFrom" } },
     { "identity.primary": { name: "id", "@fields": "id" } },
     { "identity.reference": { name: "statusId", "@fields": "statusId", "@references": "Status" } },
   ] } },
-  { "object.entity": { name: "ConsignmentHistory", "@collectionName": "ConsignmentHistory", children: [
-    { "source.rdb": { "@table": "consignment_history" } },
+  { "object.entity": { name: "CaseHistory", "@collectionName": "CaseHistory", children: [
+    { "source.rdb": { "@table": "case_history" } },
     { "field.long": { name: "id" } },
-    { "field.long": { name: "consignmentId", "@required": true } },
+    { "field.long": { name: "caseId", "@required": true } },
     { "field.long": { name: "statusId" } },
     { "field.timestamp": { name: "createdDate" } },
     { "field.boolean": { name: "active" } },
     { "identity.primary": { name: "id", "@fields": "id" } },
-    { "identity.reference": { name: "consignmentId", "@fields": "consignmentId", "@references": "Consignment" } },
+    { "identity.reference": { name: "caseId", "@fields": "caseId", "@references": "Case" } },
     { "segment.filter": { name: "live", "@filter": { active: true } } },
   ] } },
 ];
@@ -42,9 +42,9 @@ const ENTITIES = [
 const view = (name: string, fields: unknown[], extra: Record<string, unknown> = {}) => ({
   "object.projection": { name, ...extra, children: [
     { "source.rdb": { "@kind": "view", "@table": `v_${name.toLowerCase()}` } },
-    { "field.long": { name: "id", extends: "Consignment.id" } },
+    { "field.long": { name: "id", extends: "Case.id" } },
     ...fields,
-    { "identity.primary": { name: "id", extends: "Consignment.id" } },
+    { "identity.primary": { name: "id", extends: "Case.id" } },
   ] },
 });
 
@@ -61,8 +61,8 @@ async function errorsOf(projection: unknown): Promise<string[]> {
   return errors.map((e) => `${(e as { code?: string }).code}: ${(e as Error).message}`);
 }
 
-const joinedName = { "field.string": { name: "statusName", children: [{ "origin.passthrough": { "@from": "Status.name", "@via": "Consignment.statusId" } }] } };
-const joinedDisplay = { "field.string": { name: "statusDisplay", children: [{ "origin.passthrough": { "@from": "Status.displayName", "@via": "Consignment.statusId" } }] } };
+const joinedName = { "field.string": { name: "statusName", children: [{ "origin.passthrough": { "@from": "Status.name", "@via": "Case.statusId" } }] } };
+const joinedDisplay = { "field.string": { name: "statusDisplay", children: [{ "origin.passthrough": { "@from": "Status.displayName", "@via": "Case.statusId" } }] } };
 
 describe("computed-over-joined — an expression reads other projection fields", () => {
   test("COALESCE over two joined passthroughs", async () => {
@@ -80,15 +80,15 @@ describe("computed-over-joined — an expression reads other projection fields",
     expect(sql).toContain("NOT (s.name IS NOT NULL) AS unnamed");
   });
 
-  // rc.21 part B (U13): a scalar aggregate is readable (on the grouped row); a collect is not.
+  // rc.21 part B (U13, kept from the 1.2.x line): a scalar aggregate is readable (on the grouped row); a collect is not.
   test("a scalar aggregate is readable from an expression; a collect is not", async () => {
     const sql = await sqlOf(view("Agg", [
-      { "field.long": { name: "entries", children: [{ "origin.aggregate": { "@agg": "count", "@of": "ConsignmentHistory.id", "@via": "Consignment.consignmentHistory" } }] } },
+      { "field.long": { name: "entries", children: [{ "origin.aggregate": { "@agg": "count", "@of": "CaseHistory.id", "@via": "Case.caseHistory" } }] } },
       { "field.boolean": { name: "busy", children: [{ "origin.computed": { "@expr": { op: "gt", left: { field: "entries" }, right: { value: 3 } } } }] } },
     ]));
     expect(sql).toContain("COUNT(DISTINCT c0.id) > 3 AS busy");
     const errors = await errorsOf(view("Collect", [
-      { "field.long": { name: "ids", isArray: true, children: [{ "origin.aggregate": { "@agg": "collect", "@of": "ConsignmentHistory.id", "@via": "Consignment.consignmentHistory" } }] } },
+      { "field.long": { name: "ids", isArray: true, children: [{ "origin.aggregate": { "@agg": "collect", "@of": "CaseHistory.id", "@via": "Case.caseHistory" } }] } },
       { "field.boolean": { name: "busy", children: [{ "origin.computed": { "@expr": { op: "isNull", arg: { field: "ids" } } } }] } },
     ]));
     expect(errors.some((e) => e.includes("ids"))).toBe(true);
@@ -96,29 +96,29 @@ describe("computed-over-joined — an expression reads other projection fields",
 });
 
 describe("case — searched and simple CASE in an expression", () => {
-  test("searched: CASE WHEN rollupStatus = 0 THEN status ELSE rollupStatus END", async () => {
+  test("searched: CASE WHEN cumulativeStatus = 0 THEN status ELSE cumulativeStatus END", async () => {
     const sql = await sqlOf(view("Outcome", [
       { "field.int": { name: "outcome", children: [{ "origin.computed": { "@expr": {
-        case: [{ when: { op: "eq", left: { field: "rollupStatus" }, right: { value: 0 } }, then: { field: "status" } }],
-        else: { field: "rollupStatus" },
+        case: [{ when: { op: "eq", left: { field: "cumulativeStatus" }, right: { value: 0 } }, then: { field: "status" } }],
+        else: { field: "cumulativeStatus" },
       } } }] } },
     ]));
-    expect(sql).toContain("(CASE WHEN c.rollup_status = 0 THEN c.status ELSE c.rollup_status END) AS outcome");
+    expect(sql).toContain("(CASE WHEN c.cumulative_status = 0 THEN c.status ELSE c.cumulative_status END) AS outcome");
   });
 
-  test("simple: CASE serviceLevel WHEN 1 THEN 'Standard' WHEN 2 THEN 'Express' END, and it runs", async () => {
-    const projection = view("ServiceLevel", [
-      { "field.string": { name: "serviceLevelName", children: [{ "origin.computed": { "@expr": {
-        operand: { field: "serviceLevel" },
-        case: [{ when: { value: 1 }, then: { value: "Standard" } }, { when: { value: 2 }, then: { value: "Express" } }],
+  test("simple: CASE priorType WHEN 1 THEN 'Medical' WHEN 2 THEN 'Pharmacy' END, and it runs", async () => {
+    const projection = view("Benefit", [
+      { "field.string": { name: "benefitTypeName", children: [{ "origin.computed": { "@expr": {
+        operand: { field: "priorType" },
+        case: [{ when: { value: 1 }, then: { value: "Medical" } }, { when: { value: 2 }, then: { value: "Pharmacy" } }],
       } } }] } },
     ]);
-    expect(await sqlOf(projection)).toContain("(CASE c.service_level WHEN 1 THEN 'Standard' WHEN 2 THEN 'Express' END) AS service_level_name");
+    expect(await sqlOf(projection)).toContain("(CASE c.prior_type WHEN 1 THEN 'Medical' WHEN 2 THEN 'Pharmacy' END) AS benefit_type_name");
     const db = new Database(":memory:");
-    db.exec("CREATE TABLE consignments (id INTEGER PRIMARY KEY, service_level INTEGER); INSERT INTO consignments VALUES (1, 1), (2, 2), (3, 0);");
+    db.exec("CREATE TABLE cases (id INTEGER PRIMARY KEY, prior_type INTEGER); INSERT INTO cases VALUES (1, 1), (2, 2), (3, 0);");
     db.exec(`CREATE VIEW v AS ${await sqlOf(projection, "sqlite")}`);
-    expect(db.query("SELECT id, service_level_name AS t FROM v ORDER BY id").all()).toEqual([
-      { id: 1, t: "Standard" }, { id: 2, t: "Express" }, { id: 3, t: null },
+    expect(db.query("SELECT id, benefit_type_name AS t FROM v ORDER BY id").all()).toEqual([
+      { id: 1, t: "Medical" }, { id: 2, t: "Pharmacy" }, { id: 3, t: null },
     ]);
   });
 
@@ -152,7 +152,7 @@ describe("correlated-filter — an origin @filter compares with the base row", (
   test("MIN(createdDate) of the histories in the case's own status", async () => {
     const sql = await sqlOf(view("Placed", [
       { "field.timestamp": { name: "statusPlaced", children: [{ "origin.aggregate": {
-        "@agg": "min", "@of": "ConsignmentHistory.createdDate", "@via": "Consignment.consignmentHistory",
+        "@agg": "min", "@of": "CaseHistory.createdDate", "@via": "Case.caseHistory",
         "@filter": { statusId: { eq: { field: "statusId" } } },
       } }] } },
     ]));
@@ -162,14 +162,14 @@ describe("correlated-filter — an origin @filter compares with the base row", (
   test("the null-safe comparison, in an origin.first subquery", async () => {
     const sql = await sqlOf(view("Other", [
       { "field.long": { name: "otherStatus", children: [{ "origin.first": {
-        "@of": "ConsignmentHistory.statusId", "@via": "Consignment.consignmentHistory", "@orderBy": ["statusId"],
+        "@of": "CaseHistory.statusId", "@via": "Case.caseHistory", "@orderBy": ["statusId"],
         "@filter": { statusId: { isDistinctFrom: { field: "statusId" } } },
       } }] } },
     ]));
-    expect(sql).toMatch(/WHERE (\w+)\.consignment_id = c\.id AND \1\.status_id IS DISTINCT FROM c\.status_id ORDER BY/);
+    expect(sql).toMatch(/WHERE (\w+)\.case_id = c\.id AND \1\.status_id IS DISTINCT FROM c\.status_id ORDER BY/);
     expect(await sqlOf(view("Other2", [
       { "field.long": { name: "otherStatus", children: [{ "origin.first": {
-        "@of": "ConsignmentHistory.statusId", "@via": "Consignment.consignmentHistory", "@orderBy": ["statusId"],
+        "@of": "CaseHistory.statusId", "@via": "Case.caseHistory", "@orderBy": ["statusId"],
         "@filter": { statusId: { isDistinctFrom: { field: "statusId" } } },
       } }] } },
     ]), "sqlite")).toMatch(/\.status_id IS NOT c\.status_id/);
@@ -178,11 +178,11 @@ describe("correlated-filter — an origin @filter compares with the base row", (
   test("a base field the base row lacks, and a null-safe op without a field, are refused", async () => {
     const bad = await errorsOf(view("Bad", [
       { "field.timestamp": { name: "x", children: [{ "origin.aggregate": {
-        "@agg": "min", "@of": "ConsignmentHistory.createdDate", "@via": "Consignment.consignmentHistory",
+        "@agg": "min", "@of": "CaseHistory.createdDate", "@via": "Case.caseHistory",
         "@filter": { statusId: { eq: { field: "nope" } } },
       } }] } },
       { "field.timestamp": { name: "y", children: [{ "origin.aggregate": {
-        "@agg": "min", "@of": "ConsignmentHistory.createdDate", "@via": "Consignment.consignmentHistory",
+        "@agg": "min", "@of": "CaseHistory.createdDate", "@via": "Case.caseHistory",
         "@filter": { statusId: { isDistinctFrom: 3 } },
       } }] } },
     ]));
@@ -194,7 +194,7 @@ describe("origin-segment — @segment on origin.aggregate and origin.first", () 
   test("the related entity's segment scopes the aggregate, ANDed with @filter", async () => {
     const sql = await sqlOf(view("LiveCount", [
       { "field.long": { name: "live", children: [{ "origin.aggregate": {
-        "@agg": "count", "@of": "ConsignmentHistory.id", "@via": "Consignment.consignmentHistory", "@segment": "live",
+        "@agg": "count", "@of": "CaseHistory.id", "@via": "Case.caseHistory", "@segment": "live",
         "@filter": { statusId: { eq: { field: "statusId" } } },
       } }] } },
     ]));
@@ -204,7 +204,7 @@ describe("origin-segment — @segment on origin.aggregate and origin.first", () 
   test("a segment the related entity does not declare is refused", async () => {
     const errors = await errorsOf(view("NoSeg", [
       { "field.long": { name: "live", children: [{ "origin.aggregate": {
-        "@agg": "count", "@of": "ConsignmentHistory.id", "@via": "Consignment.consignmentHistory", "@segment": "dead",
+        "@agg": "count", "@of": "CaseHistory.id", "@via": "Case.caseHistory", "@segment": "dead",
       } }] } },
     ]));
     expect(errors.some((e) => e.startsWith("ERR_INVALID_ORIGIN") && e.includes('@segment "dead"'))).toBe(true);

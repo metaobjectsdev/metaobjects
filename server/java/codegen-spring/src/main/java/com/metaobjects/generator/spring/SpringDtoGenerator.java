@@ -48,6 +48,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 import com.metaobjects.generator.util.GeneratedFileWriter;
 
 /**
@@ -104,6 +105,9 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
     /** The project's wire setting for the current run (ADR-0019 Amendment 2). */
     private WireFormat wire = WireFormat.DEFAULT;
 
+    /** Names of the classes bound from a write route's request body, for the current run. */
+    private Set<String> requestBodies = Set.of();
+
     @Override
     protected Class<MetaObject> getFilterClass() {
         return MetaObject.class;
@@ -117,6 +121,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         // ADR-0019 Amendment 2: read from the loaded root, not from a shape being emitted - a
         // served report's shape is synthesized from its read model and carries no parent.
         wire = loader.getRoot().getWireFormat();
+        requestBodies = RestSurfaceGate.requestBodyShapes(loader);
         Path outRoot = Paths.get(outDir.getAbsolutePath());
         fr019Config = Fr019SharedEnum.ProvidedEnumConfig.of(
             getArg("providedEnumNamespace"), getArg("providedEnumPackages"));
@@ -126,6 +131,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         Fr019SharedEnum.emitMaterialized(loader, outRoot);
         boolean emitAbstractShapes = Boolean.parseBoolean(getArg("emitAbstractShapes", "false"));
         for (MetaObject declared : loader.getMetaObjects()) {
+            if (!isSelected(declared)) continue;
             // FR-044: a served report's row DTO is emitted from its read model (one
             // component per derived field) and nothing else is: no <R>Patch, no stamping
             // helper, no builder. Any other report has no shape and emits nothing.
@@ -241,11 +247,13 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         // "writable" reading of this flag stays true.
         boolean writableForAutoSet = !GeneratorUtil.isReport(entity)
             && (SpringGeneratorSupport.repositoryAppliesTo(entity) || TphPlan.isTphSubtype(entity));
-        List<String> extraBodyMembers =
+        List<String> extraBodyMembers = new ArrayList<>(
             (writableForAutoSet && SpringGeneratorSupport.hasAutoSetFields(entity))
                 ? autoSetStampHelpers(entity, fields, SpringNaming.dtoName(
                       SpringNaming.splitFqn(entity.getName())[1]))
-                : List.of();
+                : List.<String>of());
+        // Entity-scoped cross-field validators: class-level @AssertTrue rules on the full DTO only.
+        extraBodyMembers.addAll(SpringGeneratorSupport.crossFieldValidationMembers(entity, fields));
         emitRecord(entity, outRoot, fields, annotationsPerField, extraBodyMembers);
     }
 
@@ -374,6 +382,8 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
            .append(" fromJson(JsonNode body, ObjectMapper mapper) {\n");
         src.append("        if (!body.isObject()) throw new PatchValidationException(\"(request body)\");\n");
         src.append("        Map<String, Object> assigned = new LinkedHashMap<>();\n");
+        // Every field is bound even after one fails, so the one exception below lists them all.
+        src.append("        java.util.List<PatchValidationException.Problem> problems = PatchValidationException.newProblems();\n");
         boolean usesDecimalPatch = false;
         boolean usesDecimalListPatch = false;
         boolean usesDurationPatch = false;
@@ -388,35 +398,37 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
                 // ADR-0019 Amendment 1 (W2): a decimal binds through the strict rule, not the
                 // mapper's coercion: "" or "NaN" is a 400, a number is read exactly.
                 int[] bound = SpringGeneratorSupport.declaredDecimalBound(field);
-                src.append("        bindDecimal(body, assigned, \"").append(name).append("\", ")
+                src.append("        PatchValidationException.collect(problems, () -> bindDecimal(body, assigned, \"").append(name).append("\", ")
                    .append(required).append(", ").append(bound == null ? 0 : bound[0])
-                   .append(", ").append(bound == null ? 0 : bound[1]).append(");\n");
+                   .append(", ").append(bound == null ? 0 : bound[1]).append("));\n");
                 usesDecimalPatch = true;
                 continue;
             }
             if ("java.util.List<java.math.BigDecimal>".equals(type)) {
                 // The same strict rule per element of a decimal array.
                 int[] bound = SpringGeneratorSupport.declaredDecimalBound(field);
-                src.append("        bindDecimalList(body, assigned, \"").append(name).append("\", ")
+                src.append("        PatchValidationException.collect(problems, () -> bindDecimalList(body, assigned, \"").append(name).append("\", ")
                    .append(required).append(", ").append(bound == null ? 0 : bound[0])
-                   .append(", ").append(bound == null ? 0 : bound[1]).append(");\n");
+                   .append(", ").append(bound == null ? 0 : bound[1]).append("));\n");
                 usesDecimalPatch = true;
                 usesDecimalListPatch = true;
                 continue;
             }
-            if ("java.time.Duration".equals(type) || "java.util.List<java.time.Duration>".equals(type)) {
-                // field.duration binds through the strict accepted-form rule, not the mapper's
+            if (wire.durationsIso()
+                    && ("java.time.Duration".equals(type) || "java.util.List<java.time.Duration>".equals(type))) {
+                // wire.durations: iso. field.duration binds through the strict accepted-form rule, not the mapper's
                 // Duration.parse (which takes fractional hours, lowercase and numbers of seconds).
                 boolean list = !"java.time.Duration".equals(type);
-                src.append("        bindDuration").append(list ? "List" : "").append("(body, assigned, \"")
-                   .append(name).append("\", ").append(required).append(");\n");
+                src.append("        PatchValidationException.collect(problems, () -> bindDuration").append(list ? "List" : "").append("(body, assigned, \"")
+                   .append(name).append("\", ").append(required).append("));\n");
                 if (list) usesDurationListPatch = true; else usesDurationPatch = true;
                 continue;
             }
-            src.append("        bind(body, mapper, assigned, \"").append(name)
+            src.append("        PatchValidationException.collect(problems, () -> bind(body, mapper, assigned, \"").append(name)
                .append("\", new TypeReference<").append(type).append(">() {}, ")
-               .append(required).append(");\n");
+               .append(required).append("));\n");
         }
+        src.append("        if (!problems.isEmpty()) throw new PatchValidationException(problems, assigned);\n");
         src.append("        return new ").append(patchName).append("(assigned);\n");
         src.append("    }\n\n");
 
@@ -433,7 +445,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         src.append("        try {\n");
         src.append("            assigned.put(field, mapper.treeToValue(node, type));\n");
         src.append("        } catch (JsonProcessingException e) {\n");
-        src.append("            throw new PatchValidationException(field);\n");
+        src.append("            throw new PatchValidationException(field, e);\n");
         src.append("        }\n");
         src.append("    }\n");
         if (usesDecimalPatch) {
@@ -456,7 +468,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             src.append("            assigned.put(field, precision == 0 ? CanonicalDecimalDeserializer.fromNode(node)\n");
             src.append("                : CanonicalDecimalDeserializer.fromNode(node, precision, scale));\n");
             src.append("        } catch (IllegalArgumentException e) {\n");
-            src.append("            throw new PatchValidationException(field);\n");
+            src.append("            throw new PatchValidationException(field, e);\n");
             src.append("        }\n");
             src.append("    }\n");
             if (usesDecimalListPatch) {
@@ -477,7 +489,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
                 src.append("                items.add(precision == 0 ? CanonicalDecimalDeserializer.fromNode(item)\n");
                 src.append("                    : CanonicalDecimalDeserializer.fromNode(item, precision, scale));\n");
                 src.append("            } catch (IllegalArgumentException e) {\n");
-                src.append("                throw new PatchValidationException(field);\n");
+                src.append("                throw new PatchValidationException(field, e);\n");
                 src.append("            }\n");
                 src.append("        }\n");
                 src.append("        assigned.put(field, items);\n");
@@ -502,7 +514,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             src.append("        try {\n");
             src.append("            assigned.put(field, CanonicalDurationDeserializer.fromNode(node));\n");
             src.append("        } catch (IllegalArgumentException e) {\n");
-            src.append("            throw new PatchValidationException(field);\n");
+            src.append("            throw new PatchValidationException(field, e);\n");
             src.append("        }\n");
             src.append("    }\n");
         }
@@ -523,7 +535,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             src.append("            try {\n");
             src.append("                items.add(CanonicalDurationDeserializer.fromNode(item));\n");
             src.append("            } catch (IllegalArgumentException e) {\n");
-            src.append("                throw new PatchValidationException(field);\n");
+            src.append("                throw new PatchValidationException(field, e);\n");
             src.append("            }\n");
             src.append("        }\n");
             src.append("        assigned.put(field, items);\n");
@@ -605,6 +617,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             .anyMatch(a -> !a.replaceAll("@JsonDeserialize\\([^)]*\\)", "").trim().isEmpty());
         // @Valid (jakarta.validation, NOT ...constraints) cascades validation into a
         // value-object jsonb component — emitted on VO fields by emit() (Program D).
+        boolean crossField = extraBodyMembers.stream().anyMatch(m -> m.contains("@AssertTrue"));
         boolean usesValid = annotationsPerField.stream().anyMatch(a -> a.contains("@Valid"));
         // #234: a strict field.uri / field.inet component carries @JsonDeserialize(using = …).
         boolean usesNetDeser = annotationsPerField.stream().anyMatch(a -> a.contains("@JsonDeserialize"));
@@ -618,7 +631,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         boolean usesDecimal = fields.stream()
             .anyMatch(f -> SpringGeneratorSupport.isDecimalComponent(componentTypeFr019(f, entity)));
         // field.duration: a Duration component binds the canonical serializer / strict deserializer.
-        boolean usesDuration = fields.stream()
+        boolean usesDuration = wire.durationsIso() && fields.stream()
             .anyMatch(f -> SpringGeneratorSupport.isDurationComponent(componentTypeFr019(f, entity)));
         if (usesDecimal) {
             src.append(SpringGeneratorSupport.decimalAnnotationImports(runtimePackage, wire));
@@ -634,14 +647,20 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         if (usesValid) {
             src.append("import jakarta.validation.Valid;\n");
         }
-        if (usesValidation) {
+        if (usesValidation || crossField) {
             src.append("import jakarta.validation.constraints.*;\n");
         }
-        if (usesDecimal || usesNetDeser || usesDuration || usesValid || usesValidation) {
+        if (usesDecimal || usesNetDeser || usesDuration || usesValid || usesValidation || crossField) {
             src.append('\n');
         }
         src.append("/** GENERATED — wire DTO for ").append(shortName)
            .append(". Do not hand-edit; regenerated from metadata. */\n");
+        // A request body DROPS an undeclared key, never rejects it, whatever FAIL_ON_UNKNOWN_PROPERTIES
+        // the host's ObjectMapper carries (a plain ObjectMapper has it on). Only a class bound from a
+        // write route's body is one; a projection or report row keeps the host mapper's strictness.
+        if (requestBodies.contains(entity.getName())) {
+            src.append("@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)\n");
+        }
         src.append("public record ").append(recordName).append("(\n");
 
         // Filter ObjectField — see class javadoc. Same reason as the Kotlin port's
@@ -659,7 +678,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             if (!annotations.isEmpty()) src.append(annotations).append(' ');
             String decimalJson = SpringGeneratorSupport.decimalJsonAnnotations(type, runtimePackage, field, wire);
             if (!decimalJson.isEmpty()) src.append(decimalJson).append(' ');
-            String durationJson = SpringGeneratorSupport.durationJsonAnnotations(type);
+            String durationJson = SpringGeneratorSupport.durationJsonAnnotations(type, wire);
             if (!durationJson.isEmpty()) src.append(durationJson).append(' ');
             if (!jsonName.isEmpty()) src.append(jsonName).append(' ');
             src.append(type).append(' ').append(component);

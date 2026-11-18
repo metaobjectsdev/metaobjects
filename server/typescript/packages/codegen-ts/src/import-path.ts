@@ -5,14 +5,15 @@
 
 import { relative as posixRelative } from "node:path/posix";
 import { PACKAGE_SEPARATOR, type MetaData } from "@metaobjectsdev/metadata";
-import { imp, Import } from "ts-poet";
+import { imp, Import } from "./poet.js";
 import { withExt, withExtIfRelative, type ExtStyle, type RenderContext } from "./render-context.js";
 
 export type OutputLayout = "flat" | "package";
 
-/** The layout a target writes in when none is declared: `"package"`, a directory per metadata
- *  package (R39; flipped in rc.19 by R63). Declare `outputLayout: "flat"` for one directory. */
-export const DEFAULT_OUTPUT_LAYOUT: OutputLayout = "package";
+/** The layout a target writes in when none is declared: `"flat"`, one directory. Declare
+ *  `outputLayout: "package"` for a directory per metadata package. (Main's shipped default; the
+ *  rc.19 R63 flip to `"package"` was not carried through the merge.) */
+export const DEFAULT_OUTPUT_LAYOUT: OutputLayout = "flat";
 
 /** "a::b::c" → "a/b/c"; undefined / "" → "". */
 export function packageToPath(pkg: string | undefined): string {
@@ -66,7 +67,7 @@ export function crossEntitySpecifier(
  * distinct symbols; routing all of them through this function makes divergence impossible.
  *
  * Keyed by the NODE the field's `@objectRef` names, never its short name: two same-named value
- * objects in two packages are two modules (ruling R52). An unresolved reference (`vo`
+ * objects in two packages are two modules. An unresolved reference (`vo`
  * undefined) falls back to `voName` in `fromPkg`, a same-dir `./<VO>` specifier.
  */
 export function valueObjectModuleSpecifier(
@@ -81,7 +82,7 @@ export function valueObjectModuleSpecifier(
 }
 
 /**
- * The ts-poet import of `<VO><suffix>` (the interface with `suffix` "", the Zod schema with
+ * The printer import of `<VO><suffix>` (the interface with `suffix` "", the Zod schema with
  * "InsertSchema") for the value object `field`'s `@objectRef` names, from a file in `fromPkg`.
  * Bound under the render context's local name: the value object's own name, or its
  * package-qualified alias when another object shares the short name

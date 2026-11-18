@@ -1,5 +1,6 @@
 package com.metaobjects.generator.spring;
 
+import java.util.regex.Pattern;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.registry.SharedRegistryTestBase;
 import org.junit.Rule;
@@ -125,7 +126,8 @@ public class SpringSecretFieldsCodegenTest extends SharedRegistryTestBase {
             controller.contains("redactAll(rows, \"token\")"));
         assertTrue("every subtype create ignores both marked columns; saw:\n" + controller,
             controller.contains("dto = new ThingDto(null, null, null, null);"));
-        assertFalse("memo (@formExclude only) is still returned", controller.contains("\"memo\")"));
+        assertFalse("memo (@formExclude only) is still returned",
+            Pattern.compile("redact(All)?\\([^)]*\"memo\"").matcher(controller).find());
     }
 
     @Test

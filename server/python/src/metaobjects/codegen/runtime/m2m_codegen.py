@@ -25,11 +25,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from metaobjects.apidocs.naming import route_path
+from metaobjects.apidocs.naming import collection_segment
 from metaobjects.source_resolution import resolve_table_name
 from metaobjects.naming import (
     DEFAULT_COLUMN_NAMING,
     apply_column_naming_strategy,
+    package_of_resolution_key,
     resolve_column_name,
 )
 from metaobjects.meta.core.field.meta_field import MetaField
@@ -41,6 +42,7 @@ from metaobjects.meta.core.identity.identity_constants import (
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.core.object.object_constants import OBJECT_ATTR_DISCRIMINATOR_VALUE
 from metaobjects.codegen.generators.tph_plan import is_tph_subtype
+from metaobjects.codegen.value_objects import local_name
 from metaobjects.meta.core.relationship.derive_m2m_fields import (
     M2MDerivationError,
     derive_m2m_fields,
@@ -79,6 +81,11 @@ class M2mDescriptor:
     #: filter to just that subtype rather than every row of the shared table.
     #: Defaulted so existing positional construction (if any) stays valid.
     target_discriminator: str | None = None
+    #: The name the target is bound under in a generated file (:func:`local_name`) and its
+    #: metadata package, so a generator placing modules by
+    #: package (``output_layout: "package"``) can import it from where it lives.
+    target_local_name: str = ""
+    target_package: str = ""
 
 
 def _physical_table(entity: MetaObject, *, relation_context: str) -> str:
@@ -175,7 +182,7 @@ def resolve_m2m_descriptors(
     descriptors: list[M2mDescriptor] = []
     # The source is *entity* for every relation, so its route segment is
     # loop-invariant; only the target varies per relation.
-    source_plural = route_path(entity.name)
+    source_plural = collection_segment(entity)
     for rel in m2m_relationships(entity):
         # ADR-0059 R7: the BOUND targets, not a name stripped from the ref.
         target = ref_target(rel, RELATIONSHIP_ATTR_OBJECT_REF)
@@ -207,7 +214,7 @@ def resolve_m2m_descriptors(
                 relation_name=rel.name,
                 target_entity=target.name,
                 source_plural=source_plural,
-                target_plural=route_path(target.name),
+                target_plural=collection_segment(target),
                 junction_table=_physical_table(
                     junction,
                     relation_context=(
@@ -229,6 +236,8 @@ def resolve_m2m_descriptors(
                 ),
                 symmetric=rel.symmetric(),
                 target_discriminator=target_discriminator,
+                target_local_name=local_name(target),
+                target_package=package_of_resolution_key(target.resolution_key()),
             )
         )
     return descriptors

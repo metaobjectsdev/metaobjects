@@ -91,7 +91,7 @@ public sealed class ExtractorCodegenTests
         Assert.Contains("public static class OrderOutExtractor", src);
 
         // extract(MetaObject, text) returns the value object's POCO + the opts overload.
-        Assert.Contains("public static global::Acme.Orders.Order Extract(", src);
+        Assert.Contains("public static Order Extract(", src);
         Assert.Contains("global::MetaObjects.Meta.MetaObject mo, string text)", src);
         Assert.Contains("ExtractOptions opts", src);
 
@@ -103,7 +103,7 @@ public sealed class ExtractorCodegenTests
         Assert.Contains("throw new ExtractException(", src);
 
         // re-exposes the lenient extract (returns the mirror result).
-        Assert.Contains("ExtractionResult<global::Acme.Orders.OrderExtracted> ExtractLenient(", src);
+        Assert.Contains("ExtractionResult<OrderExtracted> ExtractLenient(", src);
 
         // recursive mirror->strict mappers: one per type in the graph.
         Assert.Contains("ToStrict_Order(", src);
@@ -365,7 +365,7 @@ public sealed class ExtractorCodegenTests
         var root = Load(Model);
 
         // The POCO (EntityGenerator): enum scalar -> nested enum type; enum array -> a collection of it.
-        var poco = Assert.Single(new EntityGenerator().Generate(Ctx(root)), f => System.IO.Path.GetFileName(f.Path) == "Order.g.cs").Content;
+        var poco = Assert.Single(new EntityGenerator().Generate(Ctx(root)), f => f.Path == "Order.g.cs").Content;
         Assert.Contains("public enum OrderPriority { LOW, HIGH }", poco);
         Assert.Contains("public enum OrderLabels { A, B }", poco);
         Assert.Contains("public OrderPriority Priority { get; set; }", poco);
@@ -373,11 +373,11 @@ public sealed class ExtractorCodegenTests
 
         // The extract mapper coerces the string mirror via System.Enum.Parse<NestedEnum>.
         var extractorSrc = Assert.Single(new ExtractorGenerator().Generate(Ctx(root))).Content;
-        Assert.Contains("global::System.Enum.Parse<global::Acme.Orders.Order.OrderPriority>(m.priority!)", extractorSrc);
-        Assert.Contains("global::System.Enum.Parse<global::Acme.Orders.Order.OrderLabels>(", extractorSrc);
+        Assert.Contains("System.Enum.Parse<Order.OrderPriority>(m.priority!)", extractorSrc);
+        Assert.Contains("System.Enum.Parse<Order.OrderLabels>(", extractorSrc);
 
         // LENIENT mirror: the enum leaf stays string-backed (scalar string?, array string list).
-        var mirror = Assert.Single(new OutputParserGenerator().Generate(Ctx(root)), f => System.IO.Path.GetFileName(f.Path) == "OrderExtracted.g.cs").Content;
+        var mirror = Assert.Single(new OutputParserGenerator().Generate(Ctx(root)), f => f.Path == "OrderExtracted.g.cs").Content;
         Assert.Contains("string? priority { get; init; }", mirror);
         Assert.Contains("IReadOnlyList<string?>? labels { get; init; }", mirror);
         // No nested enum type bleeds into the lenient mirror.
@@ -404,13 +404,13 @@ public sealed class ExtractorCodegenTests
         var root = Load(SharedEnumModel);
         var all = string.Concat(new EntityGenerator().Generate(Ctx(root)).Select(f => f.Content));
 
-        // Exactly ONE enum declaration (FR-019's shared-enum file), named for the super.
+        // Exactly ONE enum declaration (FR-019's shared-enums file), named for the super.
         int enumDeclCount = System.Text.RegularExpressions.Regex.Matches(all, @"public enum Priority \{").Count;
         Assert.True(enumDeclCount == 1, $"expected exactly one enum Priority, got {enumDeclCount}");
 
         // BOTH fields typed by the shared enum.
-        Assert.Contains("public global::Acme.Orders.Priority CurrentPriority { get; set; }", all);
-        Assert.Contains("public global::Acme.Orders.Priority PreviousPriority { get; set; }", all);
+        Assert.Contains("public Priority CurrentPriority { get; set; }", all);
+        Assert.Contains("public Priority PreviousPriority { get; set; }", all);
     }
 
     private static Assembly Compile(MetaRoot root)

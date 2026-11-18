@@ -55,7 +55,42 @@ This ADR extends, rather than introduces, house doctrine: ADR-0041/0042 already 
 - **Stage 1 (this decision):** the TS reference implementation (`codegen-ts/src/payload-codegen.ts`) and the C# port (`MetaObjects.Codegen/PayloadCodegen.cs`, fixing #219's wrong-node resolution as part of the same pass) ship together. **Stage 2/3 (tracked separately, not in this change):** Python, then Java + Kotlin (the heavier lift — per-output-package closure plumbing plus #220's new collision-conformance suite), followed by a coordinated bug-fix release across all four package registries.
 - **Follow-up, explicitly out of scope here:** #219's own note that the C# port's `CSharpNaming.StripPkg` + bare-short-name-match convention recurs in roughly seven other C# generators (routes, entity, M:N navigation, output-parser, DbContext, reverse-finders, package-binding-resolver) — the same disease, a different blast radius (entity/route naming rather than payload naming), deserving its own audit and ruling. **Update (#228):** the *output-parser* member of that list — the extract/output-parser tier's own collision-scoped payload naming, plus the package-blind build-time `@payloadRef`/`@responseRef` resolvers it shares with the render-helper, output-prompt, and (JVM) `meta:verify` template-drift generators — is now fixed, cross-port (all five ports, not scoped to C#). The other six C#-specific generators in that list (routes, entity, M:N navigation, DbContext, reverse-finders, package-binding-resolver) remain open, tracked separately.
 
-## Amendment (2026-11-09) — no rename; one claim registry (ruling R52)
+## Amendment 1 (2026-11-12): no rename; one claim registry
+
+The package-qualified derived name is **removed** in every port. A value object's type is its own
+name and is never rewritten. The rename carried this ADR's admitted instability (decision §6:
+adding an unrelated object renamed an existing type), and ADR-0056's model-wide widening made it
+worse: an **abstract** object that emits nothing could force a concrete value object elsewhere to
+be renamed.
+
+A real collision is refused instead, by one claim registry per run. A generator claims each name
+when it emits it, in the scope the name lives in: a type per C# namespace, a module per
+TypeScript or Python output directory, a file per output path, a finder per class. A second
+claimant of one name in one scope fails with `ERR_NAME_COLLISION`, naming both metadata nodes and
+the remedy. A collection name (a REST segment, a C# DbSet) keeps the shared-ledger code
+`ERR_COLLECTION_NAME_COLLISION` in every port, with `@collectionName` as the remedy. The same claimant claiming again
+is not a collision, and an object that emits nothing claims nothing, so the check follows the
+generator wiring by construction.
+
+The cross-package case this ADR exists for still works, without a rename:
+
+- **TypeScript and Python**: the package output layout (`outputLayout: "package"`) writes each
+  object in the directory of its metadata package. A file that meets two same-named value objects
+  binds them under local import aliases (`import type { Note as AcmeAlphaNote }`); no module
+  declares a renamed type. In the flat layout the clash is refused, and the remedy names the
+  package layout.
+- **C#**: map the packages to distinct namespaces (`csharp.packageNamespaces` in
+  `.metaobjects/config.json`, or `GenConfig.PackageNamespaces` in a self-hosted runner). Every
+  reference to a type in another namespace is written `global::`-qualified.
+- **Java and Kotlin** never renamed: each metadata package maps to its own JVM package and
+  directory. The one clash those ports can meet, two metadata packages mapping to one directory
+  (a case-only difference, or `a.b` beside `a::b`), is refused before any generator runs with the
+  same `ERR_NAME_COLLISION`.
+
+`ERR_PAYLOAD_NAME_COLLISION` is no longer raised by any port. `ERR_NAME_COLLISION` is a
+codegen-time code, like it.
+
+## Amendment (2026-11-09) — release-line text of the same decision, superseded by Amendment 1 above
 
 The package-qualified derived name is **removed** in C# and TypeScript. A value object's type is
 its own name and is never rewritten. The rename had ADR-0044's admitted instability (adding an

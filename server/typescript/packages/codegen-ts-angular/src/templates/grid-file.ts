@@ -3,7 +3,7 @@
 // metadata child. Mirrors the TanStack columns-file.ts shape (column id +
 // header + meta.view) but in Angular-native shape (EntityGridColumn[]).
 
-import { code, imp } from "ts-poet";
+import { code, imp } from "@metaobjectsdev/codegen-ts";
 import type { MetaField, MetaObject } from "@metaobjectsdev/metadata";
 import {
   LAYOUT_SUBTYPE_DATA_GRID,

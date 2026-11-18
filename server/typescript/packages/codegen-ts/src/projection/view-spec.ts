@@ -264,6 +264,8 @@ export interface FirstInnerJoin {
   readonly referenceHolder: "source" | "target"; // which side holds the FK: the previous alias, or this one
   readonly fkColumn: string;
   readonly pkColumn: string;
+  /** The joined entity is a TPH level: keep only its rows of the shared table. */
+  readonly tphScope?: TphScope;
 }
 
 export interface SelectSpec {

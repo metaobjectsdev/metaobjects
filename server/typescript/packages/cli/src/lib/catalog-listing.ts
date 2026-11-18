@@ -199,6 +199,8 @@ export interface CatalogListingOpts {
   probe?: {
     metadata: MetaData;
     scope?: (fqn: string) => boolean;
+    /** The project's requirement ledger (FR-023), as `meta gen` supplies it: `requirement-tests` counts only it. */
+    inLedger?: (fqn: string) => boolean;
     /**
      * The collection's OWN source files — the same list `meta gen` threads onto
      * `ctx.sourceFiles`. `shared-model` loads them standalone to build its artifact, so
@@ -228,7 +230,7 @@ async function probeOne(
   project: CatalogProject,
   probe: NonNullable<CatalogListingOpts["probe"]>,
 ): Promise<{ count: number; needsConfig?: string[] } | { error: string }> {
-  const { metadata, scope, sourceFiles, sourceRoots, agentSchema, schemaSettings } = probe;
+  const { metadata, scope, inLedger, sourceFiles, sourceRoots, agentSchema, schemaSettings } = probe;
   const count = async (config: MetaobjectsGenConfig): Promise<number> => {
     const result = await runGen({
       config: { ...config, generators: [entry.factory()] },
@@ -236,6 +238,7 @@ async function probeOne(
       projectRoot: project.projectRoot,
       dryRun: true,
       ...(scope !== undefined ? { scope } : {}),
+      ...(inLedger !== undefined ? { inLedger } : {}),
       ...(sourceFiles !== undefined ? { sourceFiles } : {}),
       ...(sourceRoots !== undefined ? { sourceRoots } : {}),
       ...(agentSchema !== undefined ? { agentSchema } : {}),

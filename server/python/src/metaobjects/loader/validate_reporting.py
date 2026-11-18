@@ -47,6 +47,7 @@ from ..errors import ErrorCode, MetaError
 from ..meta.core.attr.attr_constants import ATTR_SUBTYPE_FILTER
 from ..meta.core.field.field_constants import (
     FIELD_ATTR_OBJECT_REF,
+    FIELD_ATTR_STORAGE,
     FIELD_SUBTYPE_BOOLEAN,
     FIELD_SUBTYPE_CURRENCY,
     FIELD_SUBTYPE_DATE,
@@ -69,8 +70,10 @@ from ..meta.core.object.object_constants import (
     OBJECT_REPORT_ATTR_SEGMENT,
     OBJECT_REPORT_ATTR_SPINE,
     OBJECT_SUBTYPE_ENTITY,
+    OBJECT_SUBTYPE_PROJECTION,
     OBJECT_SUBTYPE_REPORT,
 )
+from ..meta.persistence.origin.origin_constants import ORIGIN_SUBTYPE_AGGREGATE, ORIGIN_SUBTYPE_FIRST
 from ..meta.core.relationship.relationship_constants import (
     CARDINALITY_ONE,
     RELATIONSHIP_ATTR_CARDINALITY,
@@ -86,7 +89,8 @@ from ..meta.core.reporting.report_accessors import (
     report_measure_names,
     report_spine,
 )
-from ..meta.core.reporting.report_shape import measure_result_sub_type
+from ..meta.core.reporting.derived_expr import derived_expr_fields
+from ..meta.core.reporting.report_shape import is_flattened_field, measure_result_sub_type, resolve_dimension_of
 from ..meta.core.reporting.reporting_constants import (
     AGG_AVG,
     AGG_COUNT,
@@ -100,10 +104,13 @@ from ..meta.core.reporting.reporting_constants import (
     RELATIVE_START_OF_UNITS,
     GRAIN_HOUR,
     ISO_DURATION_RE,
+    DERIVED_FNS,
     MEASURE_SUBTYPE_AGGREGATE,
+    MEASURE_SUBTYPE_DERIVED,
     REPORT_DIMENSION_GRAIN_SEPARATOR,
     REPORTING_ATTR_DEFAULT,
     REPORTING_ATTR_DENOMINATOR,
+    REPORTING_ATTR_EXPR,
     REPORTING_ATTR_NUMERATOR,
     REPORTING_ATTR_VIA,
 )
@@ -118,6 +125,7 @@ from ..shared.base_types import (
     TYPE_IDENTITY,
     TYPE_MEASURE,
     TYPE_OBJECT,
+    TYPE_ORIGIN,
     TYPE_RELATIONSHIP,
     TYPE_SEGMENT,
     TYPE_SOURCE,
@@ -210,7 +218,7 @@ def validate_reporting(root: MetaData, errors: list[MetaError]) -> None:
         _check_report(root, report, sink)
 
     # F1 on every host that is not a reporting host.
-    _check_no_relative_dates(root, sink)
+    _check_no_relative_dates(root, root, sink)
     errors.extend(sink.errors)
 
 
@@ -308,6 +316,44 @@ def _is_document_field(field: MetaData) -> bool:
     document: no port groups or aggregates a report over one. (A ``field.map`` with a
     ``@valueType`` is legal.)"""
     return field.sub_type == FIELD_SUBTYPE_OBJECT or _object_ref_of(field) is not None
+
+
+def _of_column(
+    entity: MetaData, path: list[str], item: str, err: Callable[[str], None], field_missing: Callable[[], str]
+) -> MetaData | None:
+    """R12 -- the column an ``@of`` path names on *entity*: ``field``, or ``field.member`` for a
+    member of a value object stored flattened (one column per member). Reports the first
+    failure through *err* and returns ``None``."""
+    field = _field_of(entity, path[0])
+    if field is None:
+        err(field_missing())
+        return None
+    if len(path) == 1:
+        return field
+    member_name = path[1]
+    value_object = _ref_target_object(field) if field.sub_type == FIELD_SUBTYPE_OBJECT else None
+    if value_object is None:
+        err(f"@of '{item}' names member '{member_name}' of '{path[0]}', a field.{field.sub_type} with no value object.")
+        return None
+    if not is_flattened_field(field):
+        storage = field.get_meta_attr(FIELD_ATTR_STORAGE)
+        shown = storage if isinstance(storage, str) else "jsonb (the default)"
+        err(
+            f"@of '{item}' names a member of '{path[0]}', whose value object is stored as {shown}. "
+            f"A report reads a member only under @storage: flattened, where the member has a column of its own."
+        )
+        return None
+    member = _field_of(value_object, member_name)
+    if member is None:
+        err(f"@of '{item}' names no member '{member_name}' on value object '{value_object.resolution_key()}'.")
+        return None
+    return member
+
+
+def _ref_target_object(field: MetaData) -> MetaData | None:
+    """The object a field's ``@objectRef`` resolves to (ADR-0059 R7), when it is one."""
+    target = ref_target(field, FIELD_ATTR_OBJECT_REF)
+    return target if target is not None and target.type == TYPE_OBJECT else None
 
 
 def _is_relative_value(v: object) -> TypeGuard[dict[str, object]]:
@@ -464,8 +510,8 @@ def _check_dimension(ctx: _MemberCtx, dim: MetaDimension) -> None:
     if of is None:
         return  # missing @of is ERR_MISSING_REQUIRED_ATTR (attr schema pass)
     parts = _split_dotted(of)
-    if parts is None or len(parts.path) != 1:
-        err(f"@of '{of}' must be Entity.field.")
+    if parts is None or len(parts.path) > 2:
+        err(f"@of '{of}' must be Entity.field or Entity.field.member.")
         return
     # D1 — after @via, a bare Owner resolves in the package of the entity @via reaches: the path
     # already fixes the entity, so `Realm.name` after a hop onto `world::Realm` names it. Without
@@ -486,17 +532,20 @@ def _check_dimension(ctx: _MemberCtx, dim: MetaDimension) -> None:
     # @via terminal: a base the terminal extends must itself carry the field, or the dimension
     # names a column the base table lacks. Without @via the host IS the checked entity.
     lookup = of_entity if via is None else named
-    field = _field_of(lookup, field_name) if lookup is not None else None
-    if field is None:
-        assert lookup is not None
-        if lookup is not of_entity and _field_of(of_entity, field_name) is not None:
-            err(
+    assert lookup is not None
+    terminal = of_entity
+
+    def field_missing() -> str:
+        if lookup is not terminal and _field_of(terminal, field_name) is not None:
+            return (
                 f"@of '{of}' names no field '{field_name}' on '{_shown(ctx, lookup)}': only "
-                f"'{_shown(ctx, of_entity)}', the entity @via reaches, declares it. "
-                f"Name it '{of_entity.name}.{field_name}'."
+                f"'{_shown(ctx, terminal)}', the entity @via reaches, declares it. "
+                f"Name it '{terminal.name}.{field_name}'."
             )
-        else:
-            err(f"@of '{of}' names no field '{field_name}' on '{_shown(ctx, lookup)}'.")
+        return f"@of '{of}' names no field '{field_name}' on '{_shown(ctx, lookup)}'."
+
+    field = _of_column(lookup, parts.path, of, err, field_missing)
+    if field is None:
         return
 
     # D5 -- a dimension groups by a scalar.
@@ -652,6 +701,9 @@ def _check_measure(ctx: _MemberCtx, measure: MetaMeasure) -> None:
     if measure.is_ratio():
         _check_ratio_operands(ctx, measure, err)
         return
+    if measure.is_derived():
+        _check_derived_expr(ctx, measure, err)
+        return
     if measure.sub_type != MEASURE_SUBTYPE_AGGREGATE:
         return
 
@@ -732,8 +784,8 @@ def _check_aggregate_columns(
     fields: list[MetaData] = []
     for item in columns:
         parts = _split_dotted(item)
-        if parts is None or len(parts.path) != 1:
-            err(f"@of '{item}' must be Entity.field.")
+        if parts is None or len(parts.path) > 2:
+            err(f"@of '{item}' must be Entity.field or Entity.field.member.")
             return None
         named = resolve_object_ref(ctx.root, parts.owner, _pkg_of(ctx.declaring))
         if not _is_self_or_ancestor(named, ctx.host):
@@ -742,9 +794,9 @@ def _check_aggregate_columns(
                 f"A measure aggregates its own entity's rows; declare it on the entity that owns the column."
             )
             return None
-        field = _field_of(ctx.host, parts.path[0])
+        missing = f"@of '{item}' names no field '{parts.path[0]}' on '{ctx.declaring.resolution_key()}'."
+        field = _of_column(ctx.host, parts.path, item, err, lambda: missing)
         if field is None:
-            err(f"@of '{item}' names no field '{parts.path[0]}' on '{ctx.declaring.resolution_key()}'.")
             return None
         # M10 -- a measure aggregates scalars.
         if _is_document_field(field):
@@ -812,6 +864,52 @@ def _check_ratio_operands(ctx: _MemberCtx, ratio: MetaMeasure, err: Callable[[st
                 )
 
 
+def _check_derived_expr(ctx: _MemberCtx, measure: MetaMeasure, err: Callable[[str], None]) -> None:
+    """M11 — a measure.derived's @expr is FR-037 R5's arithmetic over operands a report can read:
+    each ``{ field }`` names a numeric measure.aggregate or measure.ratio of the same entity, or a
+    numeric attribute dimension of it (R13 then requires the report to list that dimension). A
+    derived measure never reads another derived measure, and a name both a measure and a
+    dimension carry is refused rather than guessed. One error per offending operand."""
+    # ADR-0039: resolving (get_meta_attr — Python attr() is own-only).
+    if measure.get_meta_attr(REPORTING_ATTR_EXPR) is None:
+        return  # missing @expr is ERR_MISSING_REQUIRED_ATTR
+    expr = measure.expr()
+    if expr is None:
+        err(
+            "@expr is not an arithmetic expression. Each node is { field: <measure or dimension> }, "
+            f"{{ value: <number> }} or {{ fn: {' | '.join(DERIVED_FNS)}, args: [<a>, <b>] }}."
+        )
+        return
+    entity_key = ctx.declaring.resolution_key()
+    host_ok = isinstance(ctx.host, MetaObject) and isinstance(ctx.root, MetaRoot)
+    for name in derived_expr_fields(expr):
+        target = _child_of_type(ctx.host, TYPE_MEASURE, name)
+        dim = _child_of_type(ctx.host, TYPE_DIMENSION, name)
+        if target is not None and dim is not None:
+            err(f"@expr names '{name}', which is both a measure and a dimension of '{entity_key}'. Rename one.")
+        elif target is not None:
+            if target.sub_type == MEASURE_SUBTYPE_DERIVED:
+                err(
+                    f"@expr names '{name}', a measure.derived. A derived measure reads aggregates, ratios and "
+                    "dimensions, not another derived measure."
+                )
+            elif isinstance(target, MetaMeasure) and host_ok:
+                result = measure_result_sub_type(target, ctx.host, ctx.root)  # type: ignore[arg-type]
+                if result is not None and result not in _NUMERIC_FIELD_SUBTYPES:
+                    err(f"@expr names measure '{name}', whose result is a {result}, not a number.")
+        elif isinstance(dim, MetaDimension):
+            if dim.is_time():
+                err(f"@expr names '{name}', a dimension.time. Arithmetic reads a numeric attribute dimension.")
+            elif host_ok:
+                resolved = resolve_dimension_of(dim, ctx.host, ctx.root)  # type: ignore[arg-type]
+                if resolved is not None and resolved[1].sub_type not in _NUMERIC_FIELD_SUBTYPES:
+                    err(
+                        f"@expr names dimension '{name}', whose @of is a field.{resolved[1].sub_type}, not a number."
+                    )
+        else:
+            err(f"@expr names '{name}', which is no measure or dimension of '{entity_key}'.")
+
+
 # ---------------------------------------------------------------------------
 # S1 / F2 — a reporting-host @filter over its entity
 # ---------------------------------------------------------------------------
@@ -861,40 +959,40 @@ def _check_filter(
                 )
                 continue
             relative = _relative_operand(operand)
-            if relative is None:
-                continue
-            if not set(relative) <= {FILTER_RELATIVE_NOW, FILTER_RELATIVE_START_OF}:
-                err(
-                    f"@filter on '{key}' has a malformed relative date {_js_json(relative)}; a relative date is "
-                    f'{{ now: "<ISO-8601 duration>" }} with an optional startOf, and no other keys.'
-                )
-                continue
-            if field.sub_type not in _TEMPORAL_FIELD_SUBTYPES:
-                err(
-                    f"@filter on '{key}' uses a relative date ({{ now: ... }}), but '{key}' is field.{field.sub_type}; "
-                    f"relative dates apply only to field.date and field.timestamp."
-                )
-                continue
-            if op not in _RELATIVE_DATE_OPS:
-                err(
-                    f"@filter on '{key}' puts a relative date under op '{op}'; relative dates are legal only under "
-                    f"gt, gte, lt and lte."
-                )
-                continue
-            duration = relative[FILTER_RELATIVE_NOW]
-            if not isinstance(duration, str) or ISO_DURATION_RE.match(duration) is None:
-                err(
-                    f"@filter on '{key}' has relative date '{_quote_value(duration)}', which is not an ISO-8601 "
-                    f"duration (e.g. '-P7D', '-PT12H')."
-                )
-                continue
-            if FILTER_RELATIVE_START_OF in relative:
-                start_of = relative[FILTER_RELATIVE_START_OF]
-                if not isinstance(start_of, str) or start_of not in RELATIVE_START_OF_UNITS:
-                    err(
-                        f"@filter on '{key}' has startOf '{_quote_value(start_of)}'; startOf is one of "
-                        f"{', '.join(RELATIVE_START_OF_UNITS)}."
-                    )
+            problem = None if relative is None else _relative_date_problem(key, op, relative, field.sub_type)
+            if problem is not None:
+                err(problem)
+
+
+def _relative_date_problem(key: str, op: str, relative: dict[str, object], sub_type: str | None) -> str | None:
+    """F2 — why a relative-date operand under ``op`` on ``key`` is refused, or None when it is
+    well-formed: its exact shape, the field's type (when the key resolves), a range op, an
+    ISO-8601 duration and a startOf unit, in that order. One mistake, one message."""
+    if not set(relative) <= {FILTER_RELATIVE_NOW, FILTER_RELATIVE_START_OF}:
+        return (
+            f"@filter on '{key}' has a malformed relative date {_js_json(relative)}; a relative date is "
+            f'{{ now: "<ISO-8601 duration>" }} with an optional startOf, and no other keys.'
+        )
+    if sub_type is not None and sub_type not in _TEMPORAL_FIELD_SUBTYPES:
+        return (
+            f"@filter on '{key}' uses a relative date ({{ now: ... }}), but '{key}' is field.{sub_type}; "
+            f"relative dates apply only to field.date and field.timestamp."
+        )
+    if op not in _RELATIVE_DATE_OPS:
+        return (
+            f"@filter on '{key}' puts a relative date under op '{op}'; relative dates are legal only under "
+            f"gt, gte, lt and lte."
+        )
+    duration = relative[FILTER_RELATIVE_NOW]
+    if not isinstance(duration, str) or ISO_DURATION_RE.match(duration) is None:
+        return (
+            f"@filter on '{key}' has relative date '{_quote_value(duration)}', which is not an ISO-8601 "
+            f"duration (e.g. '-P7D', '-PT12H')."
+        )
+    start_of = relative.get(FILTER_RELATIVE_START_OF)
+    if FILTER_RELATIVE_START_OF in relative and (not isinstance(start_of, str) or start_of not in RELATIVE_START_OF_UNITS):
+        return f"@filter on '{key}' has startOf '{_quote_value(start_of)}'; startOf is one of {', '.join(RELATIVE_START_OF_UNITS)}."
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -1016,6 +1114,11 @@ def _check_report(root: MetaData, report: MetaData, sink: _ErrorSink) -> None:
         if measure_name is not None:
             claim(measure_name, f"measure '{measure_name}'")
 
+    # R12 — amounts in different units are never combined.
+    _check_value_object_units(report, from_, err)
+    # R13 — a derived measure reads only dimensions the report groups by.
+    _check_derived_dimensions(report, from_, err)
+
     # R7 — @segment names a segment of @from.
     # ADR-0039: resolving (get_meta_attr — Python attr() is own-only).
     segment = report.get_meta_attr(OBJECT_REPORT_ATTR_SEGMENT)
@@ -1090,6 +1193,99 @@ def _check_spine_dimensions(
             f"@spine '{spine}'. Hop names are compared as written: if both name the same join, write the same "
             f"hops; otherwise the dimension is not reached through the spine."
         )
+
+
+def _check_value_object_units(report: MetaData, from_: MetaData, err: Callable[[str], None]) -> None:
+    """R12 -- a measure that sums, averages or takes the min or max of a numeric member of a
+    flattened value object (Money's amount) combines rows only when the report groups by each
+    non-numeric member of that value object (Money's currency). Checked for every listed
+    measure.aggregate and every operand of a listed ratio; the grouping is an attribute
+    dimension of @from, with no @via, whose @of names the same ``field.member``. A measure
+    whose @of fails M1 is skipped (M1 reports it)."""
+    grouped: set[str] = set()
+    for item in report_dimension_items(report):
+        dim = _child_of_type(from_, TYPE_DIMENSION, item.name)
+        if not isinstance(dim, MetaDimension) or dim.is_time() or dim.via() is not None:
+            continue
+        parts = _split_dotted(dim.of() or "")
+        if parts is not None and len(parts.path) == 2:
+            grouped.add(CHILD_REF_SEP.join(parts.path))
+    checked: set[int] = set()
+    for measure_item in report_measure_names(report):
+        listed = _child_of_type(from_, TYPE_MEASURE, measure_item.rsplit(CHILD_REF_SEP, 1)[-1])
+        if not isinstance(listed, MetaMeasure):
+            continue
+        for m in _aggregates_read(listed, from_):
+            if not isinstance(m, MetaMeasure) or m.sub_type != MEASURE_SUBTYPE_AGGREGATE or id(m) in checked:
+                continue
+            checked.add(id(m))
+            agg = m.agg()
+            if agg not in (AGG_SUM, AGG_AVG, AGG_MIN, AGG_MAX):
+                continue
+            of = (m.of_columns() or [""])[0]
+            parts = _split_dotted(of)
+            if parts is None or len(parts.path) != 2:
+                continue
+            field_name = parts.path[0]
+            field = _field_of(from_, field_name)
+            value_object = _ref_target_object(field) if field is not None and is_flattened_field(field) else None
+            member = _field_of(value_object, parts.path[1]) if value_object is not None else None
+            if value_object is None or member is None or member.sub_type not in _NUMERIC_FIELD_SUBTYPES:
+                continue
+            # ADR-0039: resolving — a unit member the value object inherits qualifies its amounts too.
+            for unit in value_object.children():
+                if unit.type != TYPE_FIELD or unit.sub_type in _NUMERIC_FIELD_SUBTYPES:
+                    continue
+                if f"{field_name}{CHILD_REF_SEP}{unit.name}" in grouped:
+                    continue
+                err(
+                    f": measure '{m.name}' takes @agg '{agg}' of '{of}', a member of value object "
+                    f"'{value_object.resolution_key()}', but the report does not group by its member '{unit.name}', so "
+                    f"amounts with different '{unit.name}' values would be combined. List an attribute dimension of "
+                    f"@from whose @of is '{parts.owner}.{field_name}.{unit.name}'."
+                )
+
+
+def _aggregates_read(listed: MetaMeasure, from_: MetaData) -> list[MetaData]:
+    """The measures ``listed`` aggregates through: itself for a measure.aggregate, its two
+    operands for a ratio, and for a measure.derived each measure its @expr names (a ratio there
+    read through its operands). Unresolved names are left out; the member rules report them."""
+
+    def measure(n: str | None) -> MetaData | None:
+        return None if n is None else _child_of_type(from_, TYPE_MEASURE, n)
+
+    def operands_of(m: MetaData | None) -> list[MetaData | None]:
+        if isinstance(m, MetaMeasure) and m.is_ratio():
+            return [measure(m.numerator()), measure(m.denominator())]
+        return [m]
+
+    if listed.is_derived():
+        expr = listed.expr()
+        read = [o for n in (derived_expr_fields(expr) if expr is not None else []) for o in operands_of(measure(n))]
+    else:
+        read = operands_of(listed)
+    return [m for m in read if m is not None]
+
+
+def _check_derived_dimensions(report: MetaData, from_: MetaData, err: Callable[[str], None]) -> None:
+    """R13 — a measure.derived that reads an attribute dimension reads that dimension's value for
+    each group, so the report must list the dimension in @dimensions. A name that is also a
+    measure is M11's to report."""
+    listed_dims = {item.name for item in report_dimension_items(report)}
+    for measure_item in report_measure_names(report):
+        m = _child_of_type(from_, TYPE_MEASURE, measure_item.rsplit(CHILD_REF_SEP, 1)[-1])
+        expr = m.expr() if isinstance(m, MetaMeasure) and m.is_derived() else None
+        if m is None or expr is None:
+            continue
+        for name in derived_expr_fields(expr):
+            if name in listed_dims or _child_of_type(from_, TYPE_MEASURE, name) is not None:
+                continue
+            if _child_of_type(from_, TYPE_DIMENSION, name) is None:
+                continue
+            err(
+                f": measure '{m.name}' reads dimension '{name}', which @dimensions does not list. A derived "
+                "measure reads a dimension's value for each group, so the report must group by it."
+            )
 
 
 def _check_report_measure(
@@ -1170,11 +1366,54 @@ def _is_reporting_filter_host(node: MetaData) -> bool:
     )
 
 
-def _check_no_relative_dates(node: MetaData, sink: _ErrorSink) -> None:
+def _is_relative_view_filter_host(node: MetaData) -> bool:
+    """A projection and an origin.first / origin.aggregate lower relative dates into the view."""
+    return (node.type == TYPE_OBJECT and node.sub_type == OBJECT_SUBTYPE_PROJECTION) or (
+        node.type == TYPE_ORIGIN and node.sub_type in (ORIGIN_SUBTYPE_FIRST, ORIGIN_SUBTYPE_AGGREGATE)
+    )
+
+
+def _check_relative_shapes(
+    filter_value: object, host: MetaData, sub_type_of: Callable[[str], str | None], sink: _ErrorSink
+) -> None:
+    """F2 on every relative operand of a projection's or an origin's filter; ``sub_type_of``
+    resolves a key to its field's subtype, None when it does not resolve (reported elsewhere)."""
+    if not isinstance(filter_value, dict):
+        return
+    for key, clause in filter_value.items():
+        if key in (_FILTER_COMPOSE_AND, _FILTER_COMPOSE_OR):
+            if isinstance(clause, list):
+                for sub in clause:
+                    _check_relative_shapes(sub, host, sub_type_of, sink)
+            continue
+        if not isinstance(clause, dict):
+            continue
+        for op, operand in clause.items():
+            relative = _relative_operand(operand)
+            problem = None if relative is None else _relative_date_problem(key, op, relative, sub_type_of(key))
+            if problem is not None:
+                sink.push(host, _ERR_BAD_ATTR_FILTER, _node_label(host), f": {problem}")
+
+
+def _check_no_relative_dates(root: MetaData, node: MetaData, sink: _ErrorSink) -> None:
     """F1 — walk the whole tree and refuse a ``{ now: ... }`` value in any attr.filter
-    outside a reporting host (a projection @filter, a dataGrid preset, an
-    origin.aggregate/first @filter): those hosts have no lowering for it."""
-    if not _is_reporting_filter_host(node):
+    outside a host that lowers it (a dataGrid preset, for one). A projection's and an
+    origin.first / origin.aggregate's @filter lower relative dates into the view: a projection's
+    keys name its own fields, an origin's name fields of the related entity."""
+    if _is_relative_view_filter_host(node):
+        from .validation_passes import origin_filter_entity
+
+        target = origin_filter_entity(node, root) if node.type == TYPE_ORIGIN else node
+
+        def sub_type_of(key: str) -> str | None:
+            field = _field_of(target, key) if target is not None else None
+            return field.sub_type if field is not None else None
+
+        # ADR-0039: own — only locally declared filters are lowered.
+        for attr in node.own_meta_attrs():
+            if attr.sub_type == ATTR_SUBTYPE_FILTER:
+                _check_relative_shapes(getattr(attr, "value", None), node, sub_type_of, sink)
+    elif not _is_reporting_filter_host(node):
         # ADR-0039: own — only locally declared filters are lowered, and the walk
         # visits every declared node exactly once (an inherited filter is checked
         # where it is declared; origin.* never inherits, ADR-0029).
@@ -1187,11 +1426,11 @@ def _check_no_relative_dates(node: MetaData, sink: _ErrorSink) -> None:
                     _ERR_BAD_ATTR_FILTER,
                     _node_label(node),
                     f": @{attr.name} uses a relative date ({{ now: ... }}), which is legal only in the "
-                    f"@filter of a segment, measure.aggregate or object.report.",
+                    f"@filter of a segment, measure.aggregate, object.report, object.projection, origin.aggregate or origin.first.",
                 )
     # ADR-0039: own — a tree walk; each declared node is visited once, at its declaration.
     for child in node.own_children():
-        _check_no_relative_dates(child, sink)
+        _check_no_relative_dates(root, child, sink)
 
 
 def dimension_via_terminal(root: MetaData, declaring: MetaData, via: str) -> MetaData | None:

@@ -356,7 +356,7 @@ describe("renderZodValidators", () => {
     expect(update).toContain("name");
   });
 
-  test("SECURITY 1.2.x: an ASSIGNED primary key is in the Insert schema and OUT of the Update schema", () => {
+  test("an ASSIGNED primary key is in the Insert schema and OUT of the Update schema", () => {
     // The URL names the row on PUT/PATCH. An assigned key (no @generation) is the caller's on
     // create, but leaving it in the update shape let a client-sent `code` re-key the row.
     const coupon = metaObject(OBJECT_SUBTYPE_ENTITY, "Coupon");

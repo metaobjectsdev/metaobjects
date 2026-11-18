@@ -18,6 +18,7 @@
 //     `fieldTsTypeString` mapping the VO interface emitter uses.
 
 import { type MetaData, type MetaObject, type MetaField, isMetaObject, refTarget } from "@metaobjectsdev/metadata";
+import { flatSurfaceFields } from "../flattened.js";
 import { fieldTsTypeString } from "../templates/inferred-types.js";
 import {
   insertSchemaFields,
@@ -49,7 +50,7 @@ export interface FieldShape {
  */
 export function modelFieldShapes(obj: MetaObject): FieldShape[] {
   // A credential is not on the wire, so it is not in the documented model either.
-  return fieldShapesOf(obj, obj.fields().filter((f) => !isCredentialField(f)));
+  return fieldShapesOf(obj, flatSurfaceFields(obj).filter((f) => !isCredentialField(f)));
 }
 
 function fieldShapesOf(obj: MetaObject, fields: readonly MetaField[]): FieldShape[] {
@@ -69,7 +70,7 @@ function fieldShapesOf(obj: MetaObject, fields: readonly MetaField[]): FieldShap
  *  pairing each schema field with its TS type (same `fieldTsTypeString` map). A
  *  TPH-pinned discriminator field documents the literal as its type. */
 function shapesFromSchemaFields(obj: MetaObject, walk: SchemaFieldShape[]): FieldShape[] {
-  const fieldByName = new Map<string, MetaField>(obj.fields().map((f) => [f.name, f]));
+  const fieldByName = new Map<string, MetaField>(flatSurfaceFields(obj).map((f) => [f.name, f]));
   // The generated routes strip a write-denied field from the body, so it is not accepted.
   const accepted = walk.filter((sf) => {
     const f = fieldByName.get(sf.name);

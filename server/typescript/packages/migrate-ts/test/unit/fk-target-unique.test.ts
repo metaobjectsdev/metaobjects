@@ -17,6 +17,9 @@ import { buildExpectedSchema } from "../../src/expected-schema.js";
 import { FkTargetNotUniqueError } from "../../src/errors.js";
 import { buildExpectedSchemaWithProvenance } from "../../src/expected-schema.js";
 import { scopeExpectedSchema } from "../../src/scope.js";
+import { emit } from "../../src/emit/index.js";
+import { diff } from "../../src/diff/index.js";
+import { Database } from "bun:sqlite";
 
 async function loadDoc(doc: unknown) {
   const { root, errors } = await new MetaDataLoader().load([
@@ -219,5 +222,45 @@ describe("buildExpectedSchema — an FK must reference a unique key", () => {
     expect(() => scopeExpectedSchema(built, undefined)).toThrow(FkTargetNotUniqueError);
     const outside = scopeExpectedSchema(built, (fqn) => !fqn.endsWith("Visit"));
     expect(outside.ungovernedFkTargetViolations?.map((v) => v.referenceName)).toEqual(["ref_person"]);
+  });
+});
+
+describe("on SQLite an FK onto a non-unique target is reported, not refused", () => {
+  // SQLite checks foreign keys only with PRAGMA foreign_keys on (off by default), so the
+  // DDL is accepted and only an enforced write fails. D1 always enforces them, and Postgres
+  // refuses the DDL itself, so both keep the refusal.
+  test("buildExpectedSchema on SQLite does not throw; on Postgres and D1 it does", async () => {
+    const root = await loadDoc(makeDoc({ references: "Person.code", holderFields: ["personCode"] }));
+    expect(() => buildExpectedSchema(root, { dialect: "sqlite" })).not.toThrow();
+    expect(() => buildExpectedSchema(root, { dialect: "d1" })).toThrow(FkTargetNotUniqueError);
+    expect(() => buildExpectedSchema(root, { dialect: "postgres" })).toThrow(FkTargetNotUniqueError);
+  });
+
+  test("scopeExpectedSchema returns them as unenforced, governed or not", async () => {
+    const root = await loadDoc(makeDoc({ references: "Person.code", holderFields: ["personCode"] }));
+    const scoped = scopeExpectedSchema(buildExpectedSchemaWithProvenance(root, { dialect: "sqlite" }), undefined);
+    expect(scoped.unenforcedFkTargetViolations?.map((v) => v.referenceName)).toEqual(["ref_person"]);
+    expect(scoped.ungovernedFkTargetViolations).toBeUndefined();
+  });
+
+  test("the SQLite DDL applies; a write fails only once foreign keys are enforced", async () => {
+    const root = await loadDoc(makeDoc({ references: "Person.code", holderFields: ["personCode"] }));
+    const want = buildExpectedSchema(root, { dialect: "sqlite" });
+    const { changes } = await diff(want, { tables: [], views: [] }, { dialect: "sqlite" });
+    const { up } = emit(changes, { dialect: "sqlite" });
+    const db = new Database(":memory:");
+    try {
+      db.exec(up);
+      const person = want.tables.find((t) => t.name !== "visit" && t.columns.some((c) => c.name === "code"))!;
+      const visit = want.tables.find((t) => t !== person)!;
+      const col = (t: typeof person, n: string) => t.columns.find((c) => c.name.replace(/_/g, "").toLowerCase() === n.toLowerCase())!.name;
+      db.exec(`INSERT INTO "${person.name}" ("${col(person, "id")}", "${col(person, "region")}", "${col(person, "code")}") VALUES (1, 1, 'a')`);
+      const insertVisit = `INSERT INTO "${visit.name}" ("${col(visit, "id")}", "${col(visit, "personId")}", "${col(visit, "personRegion")}", "${col(visit, "personCode")}") VALUES (1, 1, 1, 'a')`;
+      db.exec(insertVisit);
+      db.exec("PRAGMA foreign_keys = ON");
+      expect(() => db.exec(insertVisit.replace("VALUES (1,", "VALUES (2,"))).toThrow(/foreign key mismatch/);
+    } finally {
+      db.close();
+    }
   });
 });

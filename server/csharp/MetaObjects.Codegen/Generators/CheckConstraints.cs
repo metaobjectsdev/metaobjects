@@ -368,18 +368,25 @@ public static class CheckConstraints
                 var refs = names.Select(n => Ref(entity, n, strategy)).ToList();
                 if (refs.Count == 0 || refs.Any(r => r is null)) return null;
                 var name = $"{table}_{CSharpNaming.Column(refs[0]!.Value.Field, strategy)}_atleastone_chk";
-                // @max bounds how many may be present (@max 1: exactly one). Postgres counts them
-                // with num_nonnulls; SQLite adds the presence tests, which it evaluates as 0 / 1.
-                if (v.Attr(VALIDATOR_ATTR_MAX) is { } maxRaw && IsNumber(maxRaw))
-                {
-                    var count = IsSqlite(dialect)
-                        ? $"({string.Join(" + ", refs.Select(r => $"({r!.Value.Qcol} IS NOT NULL)"))})"
-                        : $"num_nonnulls({string.Join(", ", refs.Select(r => r!.Value.Qcol))})";
-                    var max = Number(maxRaw);
-                    // Two comparisons, not BETWEEN: Postgres stores a BETWEEN as these two.
-                    return new CheckConstraint(name, max == "1" ? $"{count} = 1" : $"{count} >= 1 AND {count} <= {max}");
-                }
                 return new CheckConstraint(name, string.Join(" OR ", refs.Select(r => $"{r!.Value.Qcol} IS NOT NULL")));
+            }
+            case VALIDATOR_SUBTYPE_EXACTLY_ONE:
+            {
+                var raw = v.Attr(VALIDATOR_ATTR_FIELDS);
+                IReadOnlyList<object?> names = raw switch
+                {
+                    IEnumerable<object?> list when raw is not string => list.ToList(),
+                    string s => [s],
+                    _ => [],
+                };
+                var refs = names.Select(n => Ref(entity, n, strategy)).ToList();
+                if (refs.Count == 0 || refs.Any(r => r is null)) return null;
+                // Postgres counts the present fields with num_nonnulls; SQLite and D1 add the
+                // presence tests, which they evaluate as 0 / 1.
+                var count = IsSqlite(dialect)
+                    ? $"({string.Join(" + ", refs.Select(r => $"({r!.Value.Qcol} IS NOT NULL)"))})"
+                    : $"num_nonnulls({string.Join(", ", refs.Select(r => r!.Value.Qcol))})";
+                return new CheckConstraint($"{table}_{CSharpNaming.Column(refs[0]!.Value.Field, strategy)}_exactlyone_chk", $"{count} = 1");
             }
             default:
                 return null;

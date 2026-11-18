@@ -178,7 +178,7 @@ public static class FmtCommand
             targets = allFiles;
         }
 
-        var registry = new MetaDataLoader().Registry;
+        var registry = resolved.Registry();
 
         List<IMetaDataSource> BuildSources(string? overridePath = null, string? overrideText = null)
         {

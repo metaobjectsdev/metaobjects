@@ -77,6 +77,15 @@
               }
             },
             {
+              "field.enum": {
+                "name": "state",
+                "@values": [
+                  "OPEN",
+                  "CLOSED"
+                ]
+              }
+            },
+            {
               "identity.primary": {
                 "name": "id",
                 "@fields": [
@@ -239,6 +248,64 @@
                         },
                         "right": {
                           "field": "effectiveFrom"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "stateLabel",
+                "children": [
+                  {
+                    "origin.computed": {
+                      "@expr": {
+                        "operand": {
+                          "field": "state"
+                        },
+                        "case": [
+                          {
+                            "when": {
+                              "value": "OPEN"
+                            },
+                            "then": {
+                              "value": "Open"
+                            }
+                          }
+                        ],
+                        "else": {
+                          "value": "Closed"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "statusKind",
+                "children": [
+                  {
+                    "origin.computed": {
+                      "@expr": {
+                        "operand": {
+                          "field": "statusId"
+                        },
+                        "case": [
+                          {
+                            "when": {
+                              "value": 1
+                            },
+                            "then": {
+                              "value": "First"
+                            }
+                          }
+                        ],
+                        "else": {
+                          "value": "Other"
                         }
                       }
                     }

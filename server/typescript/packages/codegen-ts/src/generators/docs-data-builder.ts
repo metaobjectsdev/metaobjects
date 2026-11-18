@@ -86,6 +86,9 @@ export interface BuildDocDataOpts {
    *  `apiSurfaceHref` so each resolves in BOTH layouts. ABSENT for model-only
    *  runs → default output byte-identical. */
   apiRefs?: Array<{ label: string; href: string }>;
+  /** The collection's ledger predicate (`GenContext.inLedger`): a dependency's requirement
+   *  the project did not inherit is not listed under "Required by". */
+  inLedger?: (fqn: string) => boolean;
 }
 
 /** Whether a field is required — `@required` true OR a `validator.required`
@@ -495,7 +498,7 @@ function buildFkMap(
     const targetEntity = ref.targetEntity;
     if (fkField === undefined || targetEntity === undefined) continue;
     const targetField = ref.resolvedTargetPkField(root) ?? "id";
-    // Item 11: the link follows the target page's real placement (its package path), from
+    // The link follows the target page's real placement (its package path), from
     // this page's — the same docPageHref the index and template links use.
     const bound = refTarget(ref, IDENTITY_REFERENCE_ATTR_REFERENCES);
     const href = bound !== undefined && bound.type === TYPE_OBJECT
@@ -549,7 +552,7 @@ function describeIdentity(id: MetaIdentity, entity: MetaObject, layout: OutputLa
     // loaded value is canonical.
     const raw = id.authoredAttr(IDENTITY_REFERENCE_ATTR_REFERENCES);
     if (typeof raw === "string" && raw.length > 0) {
-      // G4 (rc.20): the target links to its page, through the same docPageHref the field table's
+      // The target links to its page, through the same docPageHref the field table's
       // FK links use, whether the reference is bare or package-qualified (ADR-0059 R7: the node
       // the loader bound, never a name match). An unbound target stays plain text.
       const bound = refTarget(id, IDENTITY_REFERENCE_ATTR_REFERENCES);
@@ -763,7 +766,7 @@ export function buildEntityDocData(
   const memberDepth = (path: string): number => (path === "" ? 0 : path.split(".").length);
   const claimedByMatches: UsedByDoc[] = [];
   if (entity.subType === OBJECT_SUBTYPE_ENTITY) {
-    for (const walked of walkRequirements(root)) {
+    for (const walked of walkRequirements(root, opts.inLedger)) {
       // The SHALLOWEST member path among this requirement's targets that lands on this
       // entity: "" for an entity-grain claim, "status" for an L5 member claim. undefined
       // when no target is under this entity.

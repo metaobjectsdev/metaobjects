@@ -191,7 +191,7 @@ public class PropertyNamingCodegenTests
     {
         var files = new EntityGenerator().Generate(Ctx(Load(), contextType: "ShopContext")).ToList();
         var finders = files.Single(f => System.IO.Path.GetFileName(f.Path) == "OrderLineQueries.g.cs").Content;
-        Assert.Contains("(global::Acme.Generated.ShopContext db, long customerId)", finders);
+        Assert.Contains("(ShopContext db, long customerId)", finders);
         Assert.DoesNotContain("AppDbContext", finders);
     }
 
@@ -223,7 +223,7 @@ public class PropertyNamingCodegenTests
         Assert.True(customer.IndexOf("[Table(", StringComparison.Ordinal) < customer.IndexOf("[global::System.Serializable]", StringComparison.Ordinal));
         var vehicle = files.Single(f => System.IO.Path.GetFileName(f.Path) == "Vehicle.g.cs").Content.Replace("\r\n", "\n");
         // After the framework's own class attributes, immediately before the declaration.
-        Assert.Contains("[global::System.Text.Json.Serialization.JsonDerivedType(typeof(Van))]\n[global::System.Serializable]\npublic abstract class Vehicle", vehicle);
+        Assert.Contains("[System.Text.Json.Serialization.JsonDerivedType(typeof(Van))]\n[global::System.Serializable]\npublic abstract class Vehicle", vehicle);
         Assert.Contains("[global::System.Serializable]\npublic class Car : Vehicle", files.Single(f => System.IO.Path.GetFileName(f.Path) == "Car.g.cs").Content.Replace("\r\n", "\n"));
         Assert.DoesNotContain("[global::System.Serializable]", files.Single(f => System.IO.Path.GetFileName(f.Path) == "PostalAddress.g.cs").Content);
     }

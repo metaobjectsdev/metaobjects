@@ -1,0 +1,185 @@
+{
+  "metadata.root": {
+    "package": "acme::billing",
+    "children": [
+      {
+        "object.value": {
+          "name": "Money",
+          "children": [
+            {
+              "field.decimal": {
+                "name": "amount",
+                "@precision": 12,
+                "@required": true,
+                "@scale": 2
+              }
+            },
+            {
+              "field.string": {
+                "name": "currency",
+                "@maxLength": 3,
+                "@required": true
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Payment",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "payments"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "kind"
+              }
+            },
+            {
+              "field.date": {
+                "name": "receivedOn",
+                "@required": true
+              }
+            },
+            {
+              "field.object": {
+                "name": "amount",
+                "@objectRef": "acme::billing::Money",
+                "@required": true,
+                "@storage": "flattened"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "currency",
+                "@of": "acme::billing::Payment.amount.currency"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "kind",
+                "@of": "acme::billing::Payment.kind"
+              }
+            },
+            {
+              "dimension.time": {
+                "name": "receivedOn",
+                "@grains": [
+                  "month"
+                ],
+                "@of": "acme::billing::Payment.receivedOn"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "revenue",
+                "@agg": "sum",
+                "@of": [
+                  "acme::billing::Payment.amount.amount"
+                ]
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "largest",
+                "@agg": "max",
+                "@default": 0,
+                "@of": [
+                  "acme::billing::Payment.amount.amount"
+                ]
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "currencies",
+                "@agg": "count",
+                "@distinct": true,
+                "@of": [
+                  "acme::billing::Payment.amount.currency"
+                ]
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "payments",
+                "@agg": "count",
+                "@of": [
+                  "acme::billing::Payment.id"
+                ]
+              }
+            },
+            {
+              "measure.ratio": {
+                "name": "averagePayment",
+                "@denominator": "payments",
+                "@numerator": "revenue"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "RevenueByMonth",
+          "@dimensions": [
+            "currency",
+            "kind",
+            "receivedOn:month"
+          ],
+          "@from": "acme::billing::Payment",
+          "@measures": [
+            "revenue",
+            "largest",
+            "averagePayment",
+            "payments"
+          ],
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_revenuebymonth"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "CurrencyMix",
+          "@dimensions": [
+            "kind"
+          ],
+          "@from": "acme::billing::Payment",
+          "@measures": [
+            "currencies",
+            "payments"
+          ],
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_currencymix"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

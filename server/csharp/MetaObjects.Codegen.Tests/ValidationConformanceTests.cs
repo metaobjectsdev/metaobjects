@@ -107,8 +107,7 @@ public sealed class ValidationConformanceTests
         private static readonly Assembly Asm = Compile();
 
         internal static Type For(string entityName) =>
-            // rc.19 R65: the corpus's `acme::auth` types land in their package's namespace.
-            Asm.GetType($"Acme.Auth.{entityName}")
+            Asm.GetType($"Acme.Validation.Generated.{entityName}")
             ?? throw new InvalidOperationException($"generated assembly has no type for {entityName}");
 
         private static Assembly Compile()
@@ -118,6 +117,8 @@ public sealed class ValidationConformanceTests
                 new FileSource(Path.Combine(CorpusDir(), "meta.json")),
             ]);
             Assert.Empty(loadResult.Errors);
+            // The corpus cases state durations in ISO-8601, the cross-port wire form.
+            loadResult.Root.WireFormat = WireFormat.Default with { Durations = DurationWireForm.Iso };
 
             var ctx = new GenContext
             {

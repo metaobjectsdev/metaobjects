@@ -63,7 +63,7 @@ public class Fr037MutabilityCodegenTests
     }
 
     private static string FileContent(IEnumerable<EmittedFile> files, string path) =>
-        files.Single(f => System.IO.Path.GetFileName(f.Path) == path).Content;
+        files.Single(f => f.Path == path).Content;
 
     [Fact]
     public void MetaField_Mutability_reflects_attr()
@@ -113,10 +113,10 @@ public class Fr037MutabilityCodegenTests
 
         // BOTH non-readWrite modes leave the UPDATE — they share this half.
         Assert.Contains(
-            "modelBuilder.Entity<global::Acme.Audit.Doc>().Property(x => x.CreatedAt).Metadata.SetAfterSaveBehavior(PropertySaveBehavior.Ignore);",
+            "modelBuilder.Entity<Doc>().Property(x => x.CreatedAt).Metadata.SetAfterSaveBehavior(PropertySaveBehavior.Ignore);",
             db);
         Assert.Contains(
-            "modelBuilder.Entity<global::Acme.Audit.Doc>().Property(x => x.IssuedCurrency).Metadata.SetAfterSaveBehavior(PropertySaveBehavior.Ignore);",
+            "modelBuilder.Entity<Doc>().Property(x => x.IssuedCurrency).Metadata.SetAfterSaveBehavior(PropertySaveBehavior.Ignore);",
             db);
         // The using needed for PropertySaveBehavior.
         Assert.Contains("using Microsoft.EntityFrameworkCore.Metadata;", db);

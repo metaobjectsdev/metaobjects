@@ -24,7 +24,7 @@ import {
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
 import type { MetaRoot } from "@metaobjectsdev/metadata";
 import { isInetResidue, isViewChange } from "../src/drift-residue.ts";
-import { loadMetadataDir } from "../src/load-metadata.ts";
+import { loadMetadataDirWithoutSchemas } from "../src/load-metadata.ts";
 import { CANONICAL_DIR } from "../src/paths.ts";
 
 /** The project setting `"naming": { "columns": "literal" }` (ADR-0058), set where the
@@ -42,7 +42,7 @@ let tmpDir: string;
 let k: Kysely<Record<string, unknown>>;
 let canonical: MetaRoot;
 
-beforeAll(async () => { canonical = await loadMetadataDir(CANONICAL_DIR); });
+beforeAll(async () => { canonical = await loadMetadataDirWithoutSchemas(CANONICAL_DIR); });
 beforeEach(() => {
   tmpDir = mkdtempSync(join(tmpdir(), "view-recreate-drift-"));
   k = new Kysely({ dialect: new LibsqlDialect({ url: `file:${join(tmpDir, "test.db")}` }) });

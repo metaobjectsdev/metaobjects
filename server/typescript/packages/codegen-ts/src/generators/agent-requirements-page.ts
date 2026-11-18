@@ -73,9 +73,12 @@ interface NodeIndexEntry {
 }
 
 /** Invert the walk: claimed node → the requirements that claim it. */
-export function buildNodeIndex(root: MetaData): NodeIndexEntry[] {
+export function buildNodeIndex(
+  root: MetaData,
+  inLedger?: (fqn: string) => boolean,
+): NodeIndexEntry[] {
   const byAddress = new Map<string, NodeIndexEntry>();
-  for (const walked of walkRequirements(root)) {
+  for (const walked of walkRequirements(root, inLedger)) {
     const statement = walked.node.attr(REQUIREMENT_ATTR_STATEMENT);
     for (const target of walked.targets) {
       const address = nodeAddress(target.node);
@@ -110,11 +113,14 @@ function oneLine(text: string): string {
  * `requirementsFile()` keeps, and the only reason a surface that is on by default is a
  * no-op for a project without a ledger.
  */
-export function renderAgentRequirementsPage(root: MetaData): string {
-  const rows = requirementRows(root);
+export function renderAgentRequirementsPage(
+  root: MetaData,
+  inLedger?: (fqn: string) => boolean,
+): string {
+  const rows = requirementRows(root, inLedger);
   if (rows.length === 0) return "";
 
-  const index = buildNodeIndex(root);
+  const index = buildNodeIndex(root, inLedger);
   const out: string[] = [];
   out.push(GENERATED_MARKER);
   out.push("");

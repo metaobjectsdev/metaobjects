@@ -59,8 +59,8 @@ public static class ReverseFinderBuilder
             var fkField = reference.Fields.Count > 0 ? reference.Fields[0] : null;
             var target = reference.TargetEntity;
             if (string.IsNullOrEmpty(fkField) || string.IsNullOrEmpty(target)) continue;
-            // G6: a reference over a flattened value-object member (`address.countryId`) is no
-            // property of the entity class, so it gets no finder (the EF foreign key still holds).
+            // A reference over a flattened value-object member (`address.countryId`) is no property
+            // of the entity class, so it gets no finder (the EF foreign key still holds).
             if (fkField!.Contains('.')) continue;
             var bound = global::MetaObjects.NamingRefs.RefTarget(reference, IDENTITY_REFERENCE_ATTR_REFERENCES) as MetaObject;
             result.Add(new ReverseFk(fkField!, bound?.Name ?? CSharpNaming.StripPkg(target!), bound,
@@ -121,11 +121,14 @@ public static class ReverseFinderBuilder
         if (fks.Count == 0) return null;
 
         var cls = CSharpNaming.Pascal(entity.Name);
-        // rc.19 R65: the finders live in their entity's namespace (a per-object class: two
-        // same-named entities in two packages each get one), and name every generated type
-        // global::-qualified — the row type and the context.
+        // With package namespaces on, the finders live in their entity's namespace (a per-object
+        // class: two same-named entities in two packages each get one) and name every generated
+        // type global::-qualified; otherwise they sit beside the context, with a using.
         var entityNs = PackageBindingResolver.Resolve(ctx.Config, PackageBindingResolver.EffectivePackage(entity), entity.Name, fallbackContext: entity.Name);
-        var rowType = ValueObjectNames.Global(entityNs, rowTypeOverride ?? cls); // #214 write-through → <Entity>View
+        var ns = ValueObjectNames.CompanionNamespace(entity, ctx.Config);
+        var rowName = rowTypeOverride ?? cls;                          // #214 write-through → <Entity>View
+        var rowType = ctx.Config.PackageNamespacesFromMetadata ? ValueObjectNames.Global(entityNs, rowName) : rowName;
+        var sys = ctx.Config.PackageNamespacesFromMetadata ? "global::" : "";
         var queriesCls = CSharpNaming.QueriesClassName(entity);
         var dbSet = readDbSetOverride ?? CSharpNaming.DbSetName(entity); // #214 write-through → <Entity>Views
 
@@ -136,8 +139,9 @@ public static class ReverseFinderBuilder
         sb.AppendLine("using System.Collections.Generic;");
         sb.AppendLine("using System.Linq;");
         sb.AppendLine("using Microsoft.EntityFrameworkCore;");
+        if (!ctx.Config.PackageNamespacesFromMetadata && entityNs != ns) sb.AppendLine($"using {entityNs};");
         sb.AppendLine();
-        sb.AppendLine($"namespace {entityNs};");
+        sb.AppendLine($"namespace {ns};");
         sb.AppendLine();
         sb.AppendLine("/// <summary>Reverse-relationship FK finders for " + cls + " (ADR-0038): explicit,");
         sb.AppendLine("/// single-query reads — no lazy navigation, no N+1.</summary>");
@@ -145,13 +149,13 @@ public static class ReverseFinderBuilder
         sb.AppendLine("{");
 
         // The finders are members of one class: two FKs whose segments fold to one name collide.
-        ctx.Claim($"the C# namespace {entityNs}", queriesCls, entity.ResolutionKey(),
+        ctx.Claim($"the C# namespace {ns}", queriesCls, entity.ResolutionKey(),
             "map the packages to distinct namespaces (GenConfig.PackageNamespaces), or rename one");
         foreach (var fk in fks)
         {
-            ctx.Claim($"the reverse finders of {entityNs}.{queriesCls}", CSharpNaming.ReverseFinderName(entity, fk.FkField),
+            ctx.Claim($"the reverse finders of {ns}.{queriesCls}", CSharpNaming.ReverseFinderName(entity, fk.FkField),
                 $"{entity.ResolutionKey()}.{fk.FkField}", "rename one of the foreign-key fields");
-            ctx.Claim($"the reverse finders of {entityNs}.{queriesCls}", CSharpNaming.ReverseFinderInName(entity, fk.FkField),
+            ctx.Claim($"the reverse finders of {ns}.{queriesCls}", CSharpNaming.ReverseFinderInName(entity, fk.FkField),
                 $"{entity.ResolutionKey()}.{fk.FkField}", "rename one of the foreign-key fields");
         }
 
@@ -169,13 +173,13 @@ public static class ReverseFinderBuilder
 
             // Single: one indexed WHERE <fk> = value → List<E>.
             sb.AppendLine($"    /// <summary>The {cls} rows whose {prop} equals <paramref name=\"{arg}\"/> (one indexed query).</summary>");
-            sb.AppendLine($"    public static async global::System.Threading.Tasks.Task<List<{rowType}>> {single}({contextType} db, {valueType} {arg}) =>");
+            sb.AppendLine($"    public static async {sys}System.Threading.Tasks.Task<List<{rowType}>> {single}({contextType} db, {valueType} {arg}) =>");
             sb.AppendLine($"        await db.{dbSet}.AsNoTracking().Where(e => e.{prop} == {arg}).ToListAsync();");
             sb.AppendLine();
 
             // Batched: one WHERE <fk> IN (values) → List<E> (anti-N+1 "selectin" shape).
             sb.AppendLine($"    /// <summary>The {cls} rows whose {prop} is in <paramref name=\"{arg}s\"/> (one batched IN query; anti-N+1).</summary>");
-            sb.AppendLine($"    public static async global::System.Threading.Tasks.Task<List<{rowType}>> {batched}({contextType} db, IReadOnlyCollection<{valueType}> {arg}s)");
+            sb.AppendLine($"    public static async {sys}System.Threading.Tasks.Task<List<{rowType}>> {batched}({contextType} db, IReadOnlyCollection<{valueType}> {arg}s)");
             sb.AppendLine("    {");
             sb.AppendLine($"        if ({arg}s.Count == 0) return new List<{rowType}>();");
             sb.AppendLine($"        return await db.{dbSet}.AsNoTracking().Where(e => {arg}s.Contains(e.{prop})).ToListAsync();");
@@ -183,6 +187,6 @@ public static class ReverseFinderBuilder
         }
 
         sb.AppendLine("}");
-        return new EmittedFile(OutputPaths.Of(entity, $"{queriesCls}.g.cs"), sb.ToString());
+        return new EmittedFile(OutputPaths.Of(entity, ctx, $"{queriesCls}.g.cs"), sb.ToString());
     }
 }

@@ -77,6 +77,7 @@ export default defineConfig({
   dialect: "sqlite",
   dbImport: "./db",
   extStyle: "js",
+  outputLayout: "package", // what meta init scaffolds
   generators: ["entity", "queries", "routes"],
 });
 `,
@@ -109,7 +110,7 @@ describe("quickstart smoke — the documented TS path, gen -> migrate -> boot ->
 
       // 3. boot the GENERATED routes plugin on Fastify, as the doc shows
       const { default: Fastify } = await import("fastify");
-      // The default layout (R63) puts acme::blog's modules under acme/blog/, as the quickstart says.
+      // outputLayout: "package" (what `meta init` writes) puts acme::blog's modules under acme/blog/, as the quickstart says.
       // The routes module is generated at runtime, so its type isn't knowable at
       // compile time — register through Fastify's own plugin type.
       const { authorRoutes } = (await import(join(outDir, "acme", "blog", "Author.routes.ts"))) as {

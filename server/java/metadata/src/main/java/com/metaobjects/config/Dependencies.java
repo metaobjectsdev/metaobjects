@@ -79,15 +79,57 @@ public final class Dependencies {
     private static final Set<String> LOCK_KEYS = Set.of("schema_version", "dependencies");
     private static final Set<String> LOCK_ENTRY_KEYS = Set.of(
             "version", "metamodelVersion", "artifact", "integrity", "packages", "nodes", "resolvedFrom");
-    private static final List<String> RESOLVED_FROM_TRANSPORTS = List.of("path", "npm", "python");
+    private static final List<String> RESOLVED_FROM_TRANSPORTS =
+            List.of("path", "npm", "python", "maven", "nuget");
 
     /** One lock entry, validated. */
     public record LockEntry(String version, String metamodelVersion, String artifact, String integrity,
                             List<String> packages, List<String> nodes) {}
 
-    /** A resolved dependency, ready to load: its artifact path, the id it loads under, and what it exports. */
+    /**
+     * A resolved dependency, ready to load: where its artifact is, the id it loads under, and what it
+     * exports. A snapshot read from a directory carries {@code artifactPath}; one read from the
+     * classpath (the Spring runtime, no project directory) has no path and carries the verified bytes
+     * as {@code content} instead.
+     */
     public record ResolvedDependency(String name, String version, List<String> packages,
-                                     List<String> nodes, Path artifactPath, String sourceId) {}
+                                     List<String> nodes, Path artifactPath, String sourceId, String content) {}
+
+    /**
+     * Where a committed snapshot artifact is read from: the project directory at build time, the
+     * classpath at runtime. {@link #read} returns the artifact's bytes, or throws {@link IOException}
+     * when there are none; {@link #describe} names the artifact's location for a message.
+     */
+    public interface SnapshotReader {
+        byte[] read(String name, String artifact) throws IOException;
+
+        String describe(String name, String artifact);
+
+        /** The artifact's file, when it is one; {@code null} for a reader with no file (the classpath). */
+        default Path path(String name, String artifact) {
+            return null;
+        }
+    }
+
+    /** The snapshot as {@code <configDir>/.metaobjects/deps/<name>/<artifact>}. */
+    public static SnapshotReader directoryReader(Path configDir) {
+        return new SnapshotReader() {
+            @Override
+            public Path path(String name, String artifact) {
+                return configDir.resolve(METAOBJECTS_DIR).resolve(DEPS_DIR).resolve(name).resolve(artifact);
+            }
+
+            @Override
+            public byte[] read(String name, String artifact) throws IOException {
+                return Files.readAllBytes(path(name, artifact));
+            }
+
+            @Override
+            public String describe(String name, String artifact) {
+                return path(name, artifact).toString();
+            }
+        };
+    }
 
     /** {@code dep:<name>/<artifact>} — a dependency artifact's source id. */
     public static String sourceId(String name, String artifact) {
@@ -130,13 +172,24 @@ public final class Dependencies {
     public static Optional<Map<String, LockEntry>> readLock(Path configDir) {
         Path path = configDir.resolve(METAOBJECTS_DIR).resolve(LOCK_FILE);
         if (!Files.isRegularFile(path)) return Optional.empty();
-        JsonElement raw;
+        String text;
         try {
-            raw = JsonParser.parseString(Files.readString(path, StandardCharsets.UTF_8));
-        } catch (IOException | JsonSyntaxException e) {
+            text = Files.readString(path, StandardCharsets.UTF_8);
+        } catch (IOException e) {
             throw lockInvalid(path + " exists but could not be read as JSON: " + e.getMessage());
         }
-        return Optional.of(validateLock(raw));
+        return Optional.of(parseLock(text, path.toString()));
+    }
+
+    /** Parse and validate a lock's text; {@code origin} names where it came from in the error. */
+    public static Map<String, LockEntry> parseLock(String text, String origin) {
+        JsonElement raw;
+        try {
+            raw = JsonParser.parseString(text);
+        } catch (JsonSyntaxException e) {
+            throw lockInvalid(origin + " exists but could not be read as JSON: " + e.getMessage());
+        }
+        return validateLock(raw);
     }
 
     /** Validate a parsed lock (DESIGN §3.3); returns its entries keyed by dependency name, in key order. */
@@ -245,7 +298,7 @@ public final class Dependencies {
         List<String> transports = new ArrayList<>();
         for (String t : RESOLVED_FROM_TRANSPORTS) if (obj.has(t)) transports.add(t);
         if (transports.size() != 1) {
-            throw lockInvalid(context + ": 'resolvedFrom' must have exactly one of 'path' / 'npm' / 'python'");
+            throw lockInvalid(context + ": 'resolvedFrom' must have exactly one of 'path' / 'npm' / 'python' / 'maven' / 'nuget'");
         }
         String transport = transports.get(0);
         JsonElement value = obj.get(transport);
@@ -254,8 +307,18 @@ public final class Dependencies {
         }
         Set<String> allowed = new HashSet<>(Set.of(transport));
         if (!transport.equals("path")) allowed.add("dir");
+        boolean versioned = transport.equals("maven") || transport.equals("nuget");
+        if (versioned) allowed.add("version");
         for (String key : obj.keySet()) {
             if (!allowed.contains(key)) throw lockInvalid(context + ": 'resolvedFrom' unknown key(s): [" + key + "]");
+        }
+        if (versioned) {
+            JsonElement version = obj.get("version");
+            if (version == null || !version.isJsonPrimitive() || !version.getAsJsonPrimitive().isString()
+                    || version.getAsString().isBlank()) {
+                throw lockInvalid(context + ": 'resolvedFrom.version' is required beside '" + transport
+                        + "' and must be a non-empty string");
+            }
         }
         if (obj.has("dir")) {
             JsonElement dir = obj.get("dir");
@@ -286,6 +349,16 @@ public final class Dependencies {
                                                           Optional<Map<String, LockEntry>> lock) {
         List<String> declared = new ArrayList<>();
         for (Map<String, String> spec : specs) declared.add(spec.get("name"));
+        return verifySnapshot(declared, lock, directoryReader(configDir));
+    }
+
+    /**
+     * {@link #verifySnapshot(Path, List, Optional)} over any {@link SnapshotReader}. {@code declared} is
+     * the dependency names the project's config declares. A reader with no file path (the classpath) has its
+     * verified bytes ride on each {@link ResolvedDependency}, which has nothing to re-read them from.
+     */
+    public static List<ResolvedDependency> verifySnapshot(List<String> declared, Optional<Map<String, LockEntry>> lock,
+                                                          SnapshotReader reader) {
 
         if (lock.isEmpty()) {
             if (declared.isEmpty()) return List.of();
@@ -310,18 +383,17 @@ public final class Dependencies {
                 throw stale("dependency \"" + name + "\" is declared but " + METAOBJECTS_DIR + "/" + LOCK_FILE
                         + " has no entry for it");
             }
-            Path artifactPath = configDir.resolve(METAOBJECTS_DIR).resolve(DEPS_DIR).resolve(name)
-                    .resolve(entry.artifact());
+            String where = reader.describe(name, entry.artifact());
             byte[] data;
             try {
-                data = Files.readAllBytes(artifactPath);
+                data = reader.read(name, entry.artifact());
             } catch (IOException e) {
-                throw stale("the committed snapshot for \"" + name + "\" is missing (expected " + artifactPath + ")");
+                throw stale("the committed snapshot for \"" + name + "\" is missing (expected " + where + ")");
             }
             String actual = sha256Integrity(data);
             if (!actual.equals(entry.integrity())) {
                 throw stale("the committed snapshot for \"" + name + "\" does not match the lock — "
-                        + artifactPath + " hashes to " + actual + ", the lock records " + entry.integrity());
+                        + where + " hashes to " + actual + ", the lock records " + entry.integrity());
             }
             if (!metamodelMajor(entry.metamodelVersion()).equals(metamodelMajor(RegistryManifest.METAMODEL_VERSION))) {
                 throw new MetaDataException("dependency \"" + name + "\" was published against metamodel "
@@ -330,8 +402,10 @@ public final class Dependencies {
                         + "toolchain, or use a release of \"" + name + "\" built against it.",
                         ErrorCode.ERR_DEPENDENCY_METAMODEL_INCOMPATIBLE);
             }
+            Path artifactPath = reader.path(name, entry.artifact());
             resolved.add(new ResolvedDependency(name, entry.version(), entry.packages(), entry.nodes(),
-                    artifactPath, sourceId(name, entry.artifact())));
+                    artifactPath, sourceId(name, entry.artifact()),
+                    artifactPath == null ? new String(data, StandardCharsets.UTF_8) : null));
         }
 
         // Collision is checked across the WHOLE resolved set, so the error names the two
@@ -350,6 +424,186 @@ public final class Dependencies {
             }
         }
         return resolved;
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Upstream check (DESIGN §4.1 as amended by §11) — the `verify` deps mode
+
+    /** The publisher's manifest, {@code metaobjects.pkg.json}, beside its artifact. */
+    public static final String MANIFEST_FILE = "metaobjects.pkg.json";
+
+    /** The one code every non-{@code current} check result is reported under. */
+    public static final ErrorCode UPSTREAM_DRIFT = ErrorCode.ERR_DEPENDENCY_UPSTREAM_DRIFT;
+
+    private static final Set<String> MANIFEST_KEYS = Set.of(
+            "schema_version", "name", "version", "metamodelVersion", "artifact", "integrity", "packages", "nodes");
+
+    /** What a check found for one dependency. */
+    public enum CheckStatus { CURRENT, DRIFTED, UNRESOLVED }
+
+    /**
+     * One declared dependency's check result. {@code lock*} are {@code null} exactly when the lock has no
+     * entry; {@code installed*} exactly when resolution failed. {@code detail} is the reason, for
+     * {@link CheckStatus#UNRESOLVED} only.
+     */
+    public record CheckResult(String name, CheckStatus status, String lockVersion, String lockIntegrity,
+                              String installedVersion, String installedIntegrity, String detail) {
+
+        /** {@code <name>: current|drifted|unresolved — …}, the line {@code meta deps check} prints. */
+        public String line() {
+            String lockDesc = (lockVersion == null ? "(none)" : lockVersion) + " ("
+                    + (lockIntegrity == null ? "n/a" : hash8(lockIntegrity)) + ")";
+            String installedDesc = (installedVersion == null ? "(none)" : installedVersion) + " ("
+                    + (installedIntegrity == null ? "n/a" : hash8(installedIntegrity)) + ")";
+            return switch (status) {
+                case CURRENT -> name + ": current \u2014 " + lockDesc;
+                case DRIFTED -> name + ": drifted \u2014 lock " + lockDesc + ", installed " + installedDesc
+                        + "; run meta deps sync and review the artifact diff";
+                case UNRESOLVED -> name + ": unresolved \u2014 "
+                        + (detail == null ? "could not resolve the dependency" : detail)
+                        + "; run meta deps sync once the dependency is reachable";
+            };
+        }
+    }
+
+    /** The first 8 hex digits of an integrity value, as the Node tool prints it. */
+    public static String hash8(String integrity) {
+        String hex = integrity.startsWith(INTEGRITY_PREFIX) ? integrity.substring(INTEGRITY_PREFIX.length()) : integrity;
+        return hex.substring(0, Math.min(8, hex.length()));
+    }
+
+    /**
+     * Re-resolve each declared dependency and compare its publisher's artifact with the lock. A pure
+     * function of the config, the lock and the publisher's directory: it reads no snapshot and loads no
+     * model, and writes nothing. Reference: {@code cli/src/lib/dependency-sync.ts} {@code checkDependencies}.
+     *
+     * <p>Only the {@code path} transport is resolved here: an {@code npm}, {@code python}, {@code maven} or {@code nuget} dependency
+     * is found by the Node tool, so it reports {@link CheckStatus#UNRESOLVED} and names the command to
+     * run. A check that cannot check must not pass. Results are in dependency-NAME order.
+     *
+     * @param configDir the directory holding the project's {@code .metaobjects/} folder; a {@code path}
+     *                  is resolved against it
+     */
+    public static List<CheckResult> check(Path configDir, List<Map<String, String>> specs,
+                                          Optional<Map<String, LockEntry>> lock) {
+        Map<String, LockEntry> entries = lock.orElse(Map.of());
+        List<Map<String, String>> sorted = new ArrayList<>(specs);
+        sorted.sort((a, b) -> a.get("name").compareTo(b.get("name")));
+        List<CheckResult> results = new ArrayList<>();
+        for (Map<String, String> spec : sorted) {
+            String name = spec.get("name");
+            LockEntry lockEntry = entries.get(name);
+            try {
+                Path dir = resolveDependencyDir(configDir, spec);
+                ManifestRead read = readManifest(dir);
+                JsonObject manifest = read.manifest();
+                String installed = read.installedIntegrity();
+                String version = manifest.get("version").getAsString();
+                if (lockEntry == null) {
+                    results.add(new CheckResult(name, CheckStatus.UNRESOLVED, null, null, version, installed,
+                            "declared, and resolves, but is not in the lock yet"));
+                    continue;
+                }
+                results.add(new CheckResult(name,
+                        installed.equals(lockEntry.integrity()) ? CheckStatus.CURRENT : CheckStatus.DRIFTED,
+                        lockEntry.version(), lockEntry.integrity(), version, installed, null));
+            } catch (CheckUnresolved e) {
+                results.add(new CheckResult(name, CheckStatus.UNRESOLVED,
+                        lockEntry == null ? null : lockEntry.version(),
+                        lockEntry == null ? null : lockEntry.integrity(), null, null, e.getMessage()));
+            }
+        }
+        return results;
+    }
+
+    /** A validated manifest plus the integrity of the artifact bytes read from disk (never the manifest's own claim). */
+    private record ManifestRead(JsonObject manifest, String installedIntegrity) {}
+
+    /** A dependency this check could not read; carries the reason. */
+    private static final class CheckUnresolved extends RuntimeException {
+        CheckUnresolved(String message) {
+            super(message, null, false, false);
+        }
+    }
+
+    private static Path resolveDependencyDir(Path configDir, Map<String, String> spec) {
+        if (!spec.containsKey("path")) {
+            String transport = List.of("npm", "python", "maven", "nuget").stream()
+                    .filter(spec::containsKey).findFirst().orElse("npm");
+            throw new CheckUnresolved("the \"" + transport + "\" transport is resolved by the Node tool, not the Maven "
+                    + "plugin; run `meta deps check`");
+        }
+        Path dir = configDir.resolve(spec.get("path")).normalize();
+        if (!Files.isDirectory(dir)) {
+            throw new CheckUnresolved("the \"path\" transport resolved to " + dir + ", but no directory exists there");
+        }
+        return dir;
+    }
+
+    private static byte[] readArtifact(Path path, String artifact) {
+        try {
+            return Files.readAllBytes(path);
+        } catch (IOException e) {
+            throw new CheckUnresolved("the manifest names artifact \"" + artifact + "\", but it is missing at " + path);
+        }
+    }
+
+    /** Read and validate {@code <dir>/metaobjects.pkg.json} and confirm the artifact beside it hashes to its integrity. */
+    private static ManifestRead readManifest(Path dir) {
+        Path manifestPath = dir.resolve(MANIFEST_FILE);
+        String text;
+        try {
+            text = Files.readString(manifestPath, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new CheckUnresolved("no " + MANIFEST_FILE + " found at " + manifestPath);
+        }
+        JsonElement raw;
+        try {
+            raw = JsonParser.parseString(text);
+        } catch (JsonSyntaxException e) {
+            throw new CheckUnresolved(manifestPath + " is not valid JSON: " + e.getMessage());
+        }
+        JsonObject obj;
+        try {
+            obj = validateManifest(raw);
+        } catch (MetaDataException e) {
+            throw new CheckUnresolved(manifestPath + " failed schema validation \u2014 " + e.getMessage());
+        }
+        String artifact = obj.get("artifact").getAsString();
+        byte[] bytes = readArtifact(dir.resolve(artifact), artifact);
+        String actual = sha256Integrity(bytes);
+        if (!actual.equals(obj.get("integrity").getAsString())) {
+            throw new CheckUnresolved(dir.resolve(artifact) + " hashes to " + actual + ", but the manifest records "
+                    + obj.get("integrity").getAsString());
+        }
+        return new ManifestRead(obj, actual);
+    }
+
+    /** The manifest schema (DESIGN §3.2): the same strict shape the Node tool validates. */
+    private static JsonObject validateManifest(JsonElement raw) {
+        String context = "manifest";
+        if (!raw.isJsonObject()) throw lockInvalid("must be an object");
+        JsonObject obj = raw.getAsJsonObject();
+        for (String key : obj.keySet()) {
+            if (!MANIFEST_KEYS.contains(key)) throw lockInvalid("unknown key(s): [" + key + "]");
+        }
+        JsonElement version = obj.get("schema_version");
+        if (version == null || !version.isJsonPrimitive() || !version.getAsJsonPrimitive().isNumber()
+                || version.getAsDouble() != 1) {
+            throw lockInvalid("'schema_version' must be 1");
+        }
+        JsonElement name = obj.get("name");
+        if (name == null || !name.isJsonPrimitive() || !name.getAsJsonPrimitive().isString()
+                || !NAME.matcher(name.getAsString()).matches()) {
+            throw lockInvalid("'name' must match ^[a-z0-9][a-z0-9._-]*$");
+        }
+        nonEmptyString(obj, "version", context);
+        metamodelVersion(obj, context);
+        artifact(obj, context);
+        integrity(obj, context);
+        sortedStrings(obj, "packages", context);
+        sortedStrings(obj, "nodes", context);
+        return obj;
     }
 
     // ---------------------------------------------------------------------------------------
@@ -382,8 +636,12 @@ public final class Dependencies {
         if (importedPackages == null || importedPackages.isEmpty()) return;
         // ADR-0039 SANCTIONED own-accessor case: a root-level scan. MetaRoot has no super, so own
         // and effective children are the same set, and the question is "what did this tree declare
-        // at the top level", which is the own layer by definition.
-        for (MetaObject node : root.getChildren(MetaObject.class, false)) {
+        // at the top level", which is the own layer by definition. Requirements too: a publisher may
+        // export its ledger, and a new requirement in its package would read as the publisher's to
+        // every gate that keys the ledger by package.
+        List<MetaData> topLevel = new ArrayList<>(root.getChildren(MetaObject.class, false));
+        topLevel.addAll(root.getChildren(com.metaobjects.requirement.MetaRequirement.class, false));
+        for (MetaData node : topLevel) {
             String key = node.getName();
             String pkg = packageOf(key);
             if (!importedPackages.contains(pkg) || importedNodes.contains(key)) continue;

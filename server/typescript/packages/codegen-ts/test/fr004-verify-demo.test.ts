@@ -14,7 +14,8 @@
 // (a) uses the TS compiler API (not `bun test`'s type system, and not a spawned
 // `bun run typecheck`) so it is hermetic + immune to workspace self-link noise.
 
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, setDefaultTimeout } from "bun:test";
+import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -27,6 +28,8 @@ import { makeRenderContext } from "../src/render-context.js";
 import { buildPkMap } from "../src/pk-resolver.js";
 import { buildRelationMap } from "../src/relation-resolver.js";
 import type { GenContext } from "../src/generator.js";
+
+setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
 // The AuthorBrief projection over the trainerWebsite test entities (Plan #3 T3/T4).
 const model = [

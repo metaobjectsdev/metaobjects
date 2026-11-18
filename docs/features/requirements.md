@@ -369,7 +369,7 @@ the summary at `info`, warnings as warnings and errors as errors.
 | `WARN_REQUIREMENT_DISPOSITION_NOT_APPLICABLE` | warn | `@disposition` on a status other than `planned` or `partial`. |
 | `WARN_REQUIREMENT_NOTHING_IMPLEMENTS` | warn | A `live` or `partial` functional requirement where neither it nor anything nested under it names a node. An error under [the strict switch](#requiring-implementers). |
 | `WARN_REQUIREMENT_DEFERRED_UNTRACKED` | warn | `@disposition: deferred` with no `@trackedBy`. |
-| `WARN_REQUIREMENT_OBJECT_UNCLAIMED` | warn | Coverage is measured and no requirement claims a concrete entity. The line has no requirement path, because its subject is the entity. |
+| `WARN_REQUIREMENT_OBJECT_UNCLAIMED` | warn | Coverage is measured and no requirement claims a concrete entity. The line has no requirement path, because its subject is the entity. Its `--format json` row names the entity in `node`. |
 
 A diagnostic prints as `  <code> [<path>]: <message>`.
 
@@ -380,9 +380,16 @@ reaches that base; a functional claim does not spread. What is counted is concre
 `object.entity` nodes: abstract entities, `object.value` and `object.projection` are not.
 
 **When coverage is measured.** Only when the project authored at least one requirement of
-its own. A project whose only requirements came from a shipped library, with or without an
-overlay on one of them, is not measured, and the summary says so instead of printing a
-ratio.
+its own. A project whose only requirements came from a shipped library or a metadata
+dependency, with or without an overlay on one of them, is not measured, and the summary says
+so instead of printing a ratio.
+
+**A dependency's requirements are not yours by default.** A shared model published with
+`requirements: true` carries its requirements; they load, but the gate, the summary and the
+`requirement-tests` generator leave them out unless `requirements.inherit` in
+`.metaobjects/config.json` names the dependency's package. Inherited, they are checked and
+counted like your own, and still never switch coverage on. See
+[metadata-dependencies.md](metadata-dependencies.md#inheriting-a-dependencys-requirements).
 
 **The summary**, one line whenever the model declares a requirement:
 
@@ -397,7 +404,10 @@ A status with no entry is left out. When coverage is not measured the line ends
 counts the recorded gaps with no `@disposition`, when there are any. Then come the
 diagnostics, and when any is an error, `<prefix> <n> error(s).` and a non-zero exit.
 TypeScript caps the warnings it prints at `--limit` (20 by default); the other ports print
-every one. The structured `--format json|toon` payload is TypeScript-only.
+every one. The structured `--format json|toon` payload is TypeScript-only. It carries one
+`requirementLedger` row per requirement: its digest, each `@implementedBy` link with the node
+it resolved to, the findings against it and a `clean` / `warn` / `error` verdict. See
+[explorer-data.md](explorer-data.md#meta-verify---format-json-requirementledger).
 
 **Metadata that does not load** is not a model with no requirement: `verify` fails on it in
 every port. The load errors are printed once. Where the drift gate that ran loaded the model,

@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.SerializerProvider
 import com.fasterxml.jackson.databind.deser.ContextualDeserializer
 import com.fasterxml.jackson.databind.deser.std.StdDeserializer
+import com.fasterxml.jackson.databind.exc.InvalidFormatException
 import com.fasterxml.jackson.databind.ser.std.StdSerializer
 import java.math.BigDecimal
 import java.math.MathContext
@@ -86,18 +87,54 @@ internal object MetaDecimalWire {
         return value
     }
 
-    /** The validation envelope for a request body Jackson could not read: names the field when it knows it. */
+    /**
+     * The Zod-style code for a binding failure: a decimal over its precision/scale or range is too_big, an
+     * unknown enum member invalid_value, a malformed date/time/uuid/uri invalid_format, anything else (a
+     * wrong JSON type, an unparseable value) invalid_type.
+     */
+    fun failureCode(failure: Throwable): String {
+        var t: Throwable? = failure
+        while (t != null) {
+            val message = t.message
+            if (t is InvalidFormatException) {
+                val target = t.targetType
+                if (target != null) {
+                    if (target.isEnum) return "invalid_value"
+                    val n = target.name
+                    if (n.startsWith("java.time.") || n == "java.util.UUID" || n == "java.net.URI" ||
+                        n == "java.net.URL" || n == "java.util.Date") return "invalid_format"
+                }
+                if (message != null && message.contains(": decimal out of range: ")) return "too_big"
+            }
+            if (t is IllegalArgumentException && message != null && message.startsWith("decimal out of range: ")) return "too_big"
+            t = if (t.cause === t) null else t.cause
+        }
+        return "invalid_type"
+    }
+
+    /**
+     * The validation envelope for a request body Jackson could not read: one issue whose path is every property
+     * Jackson was binding (empty when the body as a whole cannot be read), plus the last field name as `field`.
+     */
     fun unreadableBody(failure: Throwable): Map<String, Any> {
-        val out = LinkedHashMap<String, Any>()
-        out["error"] = "validation"
+        val path = ArrayList<Any>()
         var t: Throwable? = failure
         while (t != null) {
             if (t is JsonMappingException && t.path.isNotEmpty()) {
-                val name = t.path[t.path.size - 1].fieldName
-                if (name != null) { out["field"] = name; break }
+                for (ref in t.path) {
+                    if (ref.fieldName != null) path.add(ref.fieldName) else if (ref.index >= 0) path.add(ref.index)
+                }
+                break
             }
             t = if (t.cause === t) null else t.cause
         }
+        val message = if (path.isEmpty()) "request body is not readable" else "field '" + path[path.size - 1] + "' is not a valid value"
+        val issue = linkedMapOf<String, Any>("code" to failureCode(failure), "path" to path, "message" to message)
+        val out = LinkedHashMap<String, Any>()
+        out["error"] = "validation"
+        out["issues"] = listOf(issue)
+        val field = path.lastOrNull { it is String }
+        if (field != null) out["field"] = field
         return out
     }
 

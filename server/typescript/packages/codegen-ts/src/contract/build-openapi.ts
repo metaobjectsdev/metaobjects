@@ -7,6 +7,7 @@
 // are left out, and so are the `405` refusals on a read-only surface, which are not operations a
 // caller can use (the api docs omit them for the same reason).
 
+import { flatSurfaceFields } from "../flattened.js";
 import { type MetaField, type MetaObject, type MetaRoot, opsForField } from "@metaobjectsdev/metadata";
 import { FIELD_ATTR_FILTERABLE, FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_TIMESTAMP, FILTER_OP_IN, FILTER_OP_IS_NULL, FILTER_OP_LIKE } from "@metaobjectsdev/metadata/constants";
 import { hasItemRoute, itemRouteField, servedPath, servesReadApi } from "../api-surface.js";
@@ -119,7 +120,7 @@ function filterValueSchema(field: MetaField, op: string): JsonSchema {
 /** One parameter per filterable field and operator, so removing either is a visible change. */
 function filterParameters(obj: MetaObject, excludeField: string | undefined): JsonSchema[] {
   const params: JsonSchema[] = [];
-  const filterable = obj.fields().filter((f) => f.attr(FIELD_ATTR_FILTERABLE) === true && f.name !== excludeField);
+  const filterable = flatSurfaceFields(obj).filter((f) => f.attr(FIELD_ATTR_FILTERABLE) === true && f.name !== excludeField);
   for (const field of filterable) {
     const ops = opsForField(field);
     if (ops.length === 0) continue;

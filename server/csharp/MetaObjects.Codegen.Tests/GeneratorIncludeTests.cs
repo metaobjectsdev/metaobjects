@@ -36,7 +36,7 @@ public class GeneratorIncludeTests
         return new GenContext
         {
             Entities = r.Root.Objects(), Root = r.Root,
-            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true },
         };
     }
 
@@ -135,7 +135,7 @@ public class GeneratorIncludeTests
         var ctx = new GenContext
         {
             Entities = r.Root.Objects(), Root = r.Root,
-            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true },
         };
         return string.Join("|", g.Generate(ctx).Select(f => f.Path).OrderBy(p => p));
     }
@@ -190,7 +190,7 @@ public class GeneratorIncludeTests
         var ctx = new GenContext
         {
             Entities = r.Root.Objects(), Root = r.Root,
-            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true },
         };
         var orders = new EntityGenerator { Include = o => o.Name is "Order" }.Generate(ctx).ToList();
         var customers = new EntityGenerator { Include = o => o.Name is "Customer" }.Generate(ctx).ToList();

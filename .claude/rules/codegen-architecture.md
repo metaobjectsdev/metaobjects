@@ -168,7 +168,7 @@ origins live on `object.projection` only.
 Gated end-to-end by `fixtures/api-contract-conformance/projection/` (view-only)
 and `.../write-through/` (table + replica view).
 
-**Column and table naming** is `naming` in `.metaobjects/config.json` (ADR-0058), read by every port: `columns` `snake_case` (default) | `literal` | `kebab-case`, `tables` `snake_case` (default) | `literal`. Generators read it as `ctx.columnNamingStrategy` (set from the loaded root); `metaobjects.config.ts` no longer takes it.
+**Column and table naming** is `naming` in `.metaobjects/config.json` (ADR-0058), read by every port: `columns` `snake_case` (default) | `literal` | `kebab-case` | `pascal` (upper-cases the first letter only) | a name the application registered (ADR-0058 Amendment 1), `tables` `snake_case` (default) | `literal`. Generators read it as `ctx.columnNamingStrategy` (set from the loaded root); `metaobjects.config.ts` no longer takes it.
 
 ### Currency (Project F)
 

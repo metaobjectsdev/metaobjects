@@ -16,7 +16,7 @@
 // shows `resolveCollection`, the documented single authority for locating a project.
 
 // Config
-export { ConfigSchema, DEFAULT_CONFIG, loadConfig, setConfigWarningSink, splitUnknownTopLevelKeys, CONFIG_TOP_LEVEL_KEYS, saveConfig, AllowTokenEnum, physicalNamingFromConfig, wireFormatFromConfig, enumDefaultsFromConfig } from "./config.js";
+export { ConfigSchema, DEFAULT_CONFIG, loadConfig, setConfigWarningSink, splitUnknownTopLevelKeys, CONFIG_TOP_LEVEL_KEYS, saveConfig, AllowTokenEnum, physicalNamingFromConfig, wireFormatFromConfig, enumDefaultsFromConfig, apiPaginationFromConfig, apiUnknownFieldsFromConfig, HAND_EDITS_POLICIES, type HandEditsPolicy } from "./config.js";
 export type { Config } from "./config.js";
 
 // Metadata dependencies (FR-023) — the `dependencies` config key's schema,
@@ -99,7 +99,7 @@ export type { ForgeType, ForgeAttr } from "./forge-types.js";
 // Memory loader — read a project's resolved metadata into a MetaData tree.
 // Where those files come from is `resolveCollection`'s decision (below), which
 // `loadMemory` calls when the caller supplies no explicit file set.
-export { loadErrors, loadMemory, unknownAttributeFindings, defaultLoadMemoryProviders } from "./memory.js";
+export { loadErrors, loadMemory, loadMemoryWithFindings, unknownAttributeFindings, defaultLoadMemoryProviders } from "./memory.js";
 export type { LoadMemoryOptions } from "./memory.js";
 
 // Default project layout — the DEFAULT value of `sources` (applied by

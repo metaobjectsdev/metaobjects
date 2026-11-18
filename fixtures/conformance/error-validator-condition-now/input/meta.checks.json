@@ -1,0 +1,100 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Visit",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "visits"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "storeId"
+              }
+            },
+            {
+              "field.long": {
+                "name": "kioskId"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "active"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "startsAt"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "validator.atLeastOne": {
+                "name": "startedByNow",
+                "@fields": [
+                  "storeId",
+                  "kioskId"
+                ],
+                "@condition": {
+                  "op": "lt",
+                  "left": {
+                    "field": "startsAt"
+                  },
+                  "right": {
+                    "now": "P0D"
+                  }
+                }
+              }
+            },
+            {
+              "validator.atLeastOne": {
+                "name": "caseCondition",
+                "@fields": [
+                  "storeId",
+                  "kioskId"
+                ],
+                "@condition": {
+                  "case": [
+                    {
+                      "when": {
+                        "op": "eq",
+                        "left": {
+                          "field": "active"
+                        },
+                        "right": {
+                          "value": true
+                        }
+                      },
+                      "then": {
+                        "value": true
+                      }
+                    }
+                  ],
+                  "else": {
+                    "value": false
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

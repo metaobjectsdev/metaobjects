@@ -2,12 +2,13 @@
 Mirrors server/typescript/packages/codegen-ts/src/generator.ts."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Protocol
 
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.meta_data import MetaData
 from .config import GenConfig
+from .name_claims import NameClaims
 
 
 @dataclass
@@ -31,12 +32,32 @@ class GenContext:
     #: The stable names of every generator in this run, so one generator can tell that a
     #: sibling is wired (the router emits the ``?format=`` branch only beside ``report-export``).
     generators: tuple[str, ...] = ()
+    #: FR-023 — is the requirement at ``<package>::<dotted path>`` this project's ledger
+    #: (``Collection.in_ledger``)? A dependency's requirement the project did not inherit
+    #: gets no generated test. ``None``: every loaded requirement is the project's.
+    in_ledger: Callable[[str], bool] | None = None
+    #: The run's one claim registry : a generator claims each module it emits in
+    #: its generated package directory, and a second claimant is refused with
+    #: ``ERR_NAME_COLLISION``. ``run_gen`` shares one across every generator of the run.
+    claims: NameClaims = field(default_factory=NameClaims)
+    #: ``gen --entities``: whether an entity in ``entities`` was selected. ``entities`` is
+    #: always the WHOLE model in scope, so a whole-model file renders the same on a narrowed
+    #: run; a per-entity file honours this as well (``per_entity`` applies it). ``None``:
+    #: every entity is selected.
+    selected: Callable[[MetaObject], bool] | None = None
+
+    def is_selected(self, entity: MetaObject) -> bool:
+        return self.selected is None or self.selected(entity)
+
+    def claim(self, scope: str, name: str, claimant: str, remedy: str) -> None:
+        """Claim *name* in *scope* for the metadata node *claimant* (its ``resolution_key()``)."""
+        self.claims.claim(scope, name, claimant, remedy)
 
 
 class Generator(Protocol):
     """A generator has a ``name`` and a ``generate`` method.
 
-    It may also carry two optional attributes that ADR-0062's whole-run skip reads (both
+    It may also carry two optional attributes that ADR-0064's whole-run skip reads (both
     default as below when absent, so no existing generator changes):
 
     - ``cacheable: bool`` (default ``True``). ``False`` means the generator reads something
@@ -69,7 +90,7 @@ def per_entity(
     def run(ctx: GenContext) -> list[EmittedFile]:
         out: list[EmittedFile] = []
         for e in ctx.entities:
-            if not ctx.matches(e):
+            if not ctx.matches(e) or not ctx.is_selected(e):
                 continue
             r = fn(e, ctx)
             out.extend(r if isinstance(r, list) else [r])
@@ -81,7 +102,8 @@ def per_entity(
 def once_per_run(
     fn: Callable[[list[MetaObject], GenContext], "EmittedFile | list[EmittedFile]"],
 ) -> Callable[[GenContext], list[EmittedFile]]:
-    """Called once with all matching entities (barrels / cross-entity files)."""
+    """Called once with all matching entities (barrels / cross-entity files) — the whole
+    model, even on a ``gen --entities`` run."""
 
     def run(ctx: GenContext) -> list[EmittedFile]:
         matched = [e for e in ctx.entities if ctx.matches(e)]

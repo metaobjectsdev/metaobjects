@@ -36,7 +36,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Ruling R35: a create body that omits a field with a literal {@code @default} binds {@code @default},
+ * A create body that omits a field with a literal {@code @default} binds {@code @default},
  * as PATCH leaves an absent field untouched and as every other port's create shape does. The DTO is a
  * record, which cannot default a component, so the generated create handler fills the absent defaulted
  * fields into the body before binding it. An explicit value, the first member or null included, is kept.
@@ -63,6 +63,9 @@ public class SpringCreateDefaultsTest {
             { "field.enum": { "name": "optMode", "@values": ["AUTO", "MANUAL"], "@default": "MANUAL" } },
             { "field.boolean": { "name": "enabled", "@required": true, "@default": true } },
             { "field.int": { "name": "retries", "@default": 5 } },
+            { "field.string": { "name": "label", "@default": "N/A (unknown)" } },
+            { "field.string": { "name": "note", "@default": "line one\\nline \\"two\\"" } },
+            { "field.string": { "name": "token", "@default": "gen_random_uuid()" } },
             { "identity.primary": { "@fields": "id", "@generation": "increment" } }
           ] } }
         ] } }
@@ -96,6 +99,18 @@ public class SpringCreateDefaultsTest {
         assertEquals("MANUAL", component("optMode"));
         assertEquals("true", component("enabled"));
         assertEquals("5", component("retries"));
+    }
+
+    @Test
+    public void aStringDefaultIsALiteralUnlessItIsADatabaseExpression() throws Exception {
+        ResponseEntity<?> res = post("{\"title\":\"t\"}");
+        assertEquals(res.getBody() + "", 201, res.getStatusCode().value());
+        // Parentheses alone do not make an expression: the same rule as meta migrate and the other ports.
+        assertEquals("N/A (unknown)", component("label"));
+        // A newline and quotes in a default are escaped into the generated literal, which compiles.
+        assertEquals("line one\nline \"two\"", component("note"));
+        // A database expression is the database's to fill, so the handler leaves it absent.
+        assertNull(component("token"));
     }
 
     @Test

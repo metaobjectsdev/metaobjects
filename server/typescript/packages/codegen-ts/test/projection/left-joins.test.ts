@@ -1,7 +1,7 @@
-// rc.19 R62 (review item 9): every generated view join is LEFT OUTER. An INNER join silently
-// dropped a base row whose reference named no row — possible for an `@enforce: false` reference,
-// and for a TPH-subtype target whose discriminator the join carries. "Require a related row" is
-// written explicitly, as a projection @filter on the related key: `{ "<hop>.id": { isNull: false } }`.
+// Every generated view join is LEFT OUTER. An INNER join silently dropped a base row whose reference
+// named no row - possible for an `@enforce: false` reference, and for a TPH-subtype target whose
+// discriminator the join carries. "Require a related row" is written explicitly, as a projection
+// @filter on the related key: `{ "<hop>.id": { isNull: false } }`.
 
 import { describe, test, expect } from "bun:test";
 import { Database } from "bun:sqlite";
@@ -61,7 +61,7 @@ function run(sql: string): { id: number; ref_name: string | null }[] {
   return db.query("SELECT id, ref_name FROM v_accounts ORDER BY id").all() as { id: number; ref_name: string | null }[];
 }
 
-describe("R62 — generated view joins are LEFT OUTER", () => {
+describe("generated view joins are LEFT OUTER", () => {
   test("a required, enforced hop and an unenforced one are both LEFT OUTER", async () => {
     const [v] = await views(undefined, "postgres");
     expect(v!.sql).not.toContain("INNER JOIN");

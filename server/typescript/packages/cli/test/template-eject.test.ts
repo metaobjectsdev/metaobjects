@@ -122,10 +122,11 @@ const packages = (): PackageSource[] => [
   { name: CORE, srcRoot: join(root, "core/src") },
   { name: UI, srcRoot: join(root, "ui/src") },
 ];
-const ENGINE = new Set(["codegen-ts/src/names.ts"]);
+const ENGINE = new Set(["codegen-ts/src/names.ts", "codegen-ts/src/poet.ts"]);
 
 function fixture(): void {
   write("core/src/names.ts", "export const n = 1;\n");
+  write("core/src/poet.ts", "export const code = 1;\n");
   write(
     "core/src/reference/gen.ts",
     [
@@ -140,7 +141,7 @@ function fixture(): void {
   write(
     "core/src/templates/a.ts",
     [
-      'import { code } from "ts-poet";',
+      'import { code } from "../poet.js";',
       'import { n } from "../names.js";',
       'import { b } from "./b.js";',
       "export const renderA = [code, n, b];",
@@ -214,7 +215,7 @@ describe("templateClosure — what is copied, where, and what each copy imports"
     expect(files["codegen/generators/gen.ts"]).toBe(
       readFileSync(join(root, "core/src/reference/gen.ts"), "utf8").replace("../cube/c.js", "../templates/cube/c.js"),
     );
-    // An engine module → the engine entry; ts-poet → the package's own, never a second copy;
+    // An engine module → the engine entry (the code printer too: never a second copy);
     // a sibling stays a sibling.
     expect(files["codegen/templates/a.ts"]).toBe(
       [

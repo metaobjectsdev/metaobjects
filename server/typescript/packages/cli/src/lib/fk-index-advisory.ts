@@ -1,11 +1,13 @@
 // Foreign keys with no index covering their columns — an advisory authoring lint.
 //
 // `meta migrate` emits a FOREIGN KEY constraint for every enforced `identity.reference`
-// and no index on its columns: neither Postgres nor SQLite indexes the referencing side
-// of a foreign key. Every join from the parent, and every ON DELETE cascade / set-null /
-// restrict check from it, then scans the child table. Generating the index automatically
-// would propose a migration to every existing adopter the release it shipped, so this is
-// advice, never a gate: it names each such key and says how to declare the index.
+// and, unless the project sets `migrate.foreignKeyIndexes`, no index on its columns:
+// neither Postgres nor SQLite indexes the referencing side of a foreign key. Every join
+// from the parent, and every ON DELETE cascade / set-null / restrict check from it, then
+// scans the child table. The option is opt-in (`meta init` writes it for a new project),
+// because turning it on proposes a migration to an existing one, so this stays advice,
+// never a gate: it names each such key and says how to index it. With the option on, the
+// expected schema already carries the index and there is nothing to name.
 //
 // Coverage is read off the EXPECTED SCHEMA migrate itself builds (primary key, every
 // `identity.secondary`, every `index.lookup`, every `@unique` field), not re-derived from
@@ -38,6 +40,10 @@ export interface UnindexedFkFinding {
   /** `<entity FQN>.<reference name>`. */
   construct: string;
   message: string;
+  /** `<Entity>.<reference>` (or `<Entity> (<fk>)`), the key in the author's terms. */
+  label: string;
+  /** The `index.lookup` to declare, as `{ name: …, fields: … }`. */
+  declaration: string;
 }
 
 export interface UnindexedFkOptions {
@@ -108,6 +114,8 @@ export function scanForUnindexedForeignKeys(root: MetaData, opts: UnindexedFkOpt
       out.push({
         file: files[0] ?? "",
         construct: `${fqn}.${ref?.name ?? fk.name}`,
+        label,
+        declaration: `{ name: ${indexName}, fields: ${fieldList} }`,
         message:
           `${label}: foreign key (${fields.join(", ")}) → ${fk.refTable} has no index covering it, ` +
           `so joins from ${fk.refTable} and its ON DELETE checks scan ${table.name}. ` +
@@ -116,4 +124,28 @@ export function scanForUnindexedForeignKeys(root: MetaData, opts: UnindexedFkOpt
     }
   }
   return out;
+}
+
+/**
+ * Every unindexed foreign key as ONE finding. The keys share a cause and a fix, so a model
+ * with 25 of them read as 25 separate problems and buried everything else `meta verify`
+ * said. The summary still names each key and the exact `index.lookup` to declare for it.
+ * `construct` lists every key's `<entity FQN>.<reference>`, comma-separated; `file` is the
+ * one file they share, or "" when they span several.
+ */
+export function summarizeUnindexedFks(
+  findings: readonly UnindexedFkFinding[],
+): { file: string; construct: string; message: string } | undefined {
+  if (findings.length === 0) return undefined;
+  const files = new Set(findings.map((f) => f.file));
+  return {
+    file: files.size === 1 ? findings[0]!.file : "",
+    construct: findings.map((f) => f.construct).join(", "),
+    message:
+      `${findings.length} foreign key(s) have no index covering their columns, so joins from the ` +
+      `referenced table and its ON DELETE checks scan the referencing one. To index every one, set ` +
+      `"migrate": { "foreignKeyIndexes": true } in .metaobjects/config.json and run 'meta migrate'; ` +
+      `to index them one at a time, declare an ${INDEX_LOOKUP} on each: ` +
+      findings.map((f) => `${f.label} ${f.declaration}`).join("; "),
+  };
 }

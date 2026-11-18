@@ -24,6 +24,7 @@ import { variableNameFromEntity } from "./naming.js";
 import { hasWritableRdbSource } from "./source-detect.js";
 import { tphStorageObject } from "./tph.js";
 import { isProjection } from "./projection/projection-detector.js";
+import { flatKeyOfPath } from "./flattened.js";
 
 export interface RelationEntry {
   /** Name of the relationship (e.g., "author") */
@@ -182,8 +183,10 @@ export function buildRelationMap(
       const matching = resolveRelationshipReference(obj, child.name, target, declaredRefField);
       if (!matching) continue;
 
-      const fkField = matching.fields[0];
-      if (!fkField) continue;
+      const fkPath = matching.fields[0];
+      if (!fkPath) continue;
+      // A reference over a flattened value-object member names its flat key on the table.
+      const fkField = flatKeyOfPath(obj, fkPath);
 
       push(obj, {
         name: child.name,
@@ -211,8 +214,9 @@ export function buildRelationMap(
   for (const junction of collectJunctions(root)) {
     for (const ref of junction.referenceIdentities()) {
       const target = refTarget(ref, IDENTITY_REFERENCE_ATTR_REFERENCES);
-      const fkField = ref.fields[0];
-      if (!isMetaObject(target) || !fkField) continue;
+      const fkPath = ref.fields[0];
+      if (!isMetaObject(target) || !fkPath) continue;
+      const fkField = flatKeyOfPath(junction, fkPath);
       // The relation member is named after the target entity (camel singular);
       // multiple references to the same entity (self-join junction) are
       // disambiguated by the FK field name.

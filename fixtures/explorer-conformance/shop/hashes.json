@@ -1,0 +1,18 @@
+{
+  "src/generated/acme/shop/Customer.ts": {
+    "hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "generatedBy": "entity",
+    "sourceNode": "acme::shop::Customer"
+  },
+  "src/generated/acme/shop/Order.queries.ts": {
+    "hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "generatedBy": "queries",
+    "sourceNode": "acme::shop::Order"
+  },
+  "src/generated/acme/shop/Order.ts": {
+    "hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "generatedBy": "entity",
+    "sourceNode": "acme::shop::Order"
+  },
+  "src/generated/index.ts": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+}

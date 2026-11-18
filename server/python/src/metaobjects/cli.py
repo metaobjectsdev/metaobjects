@@ -16,7 +16,7 @@ Two subcommands:
       so ``--generators render-helper`` read a hardcoded ``templates`` whatever
       this flag said.
 
-  metaobjects verify <metadataDir> [--codegen] [--templates] [--db URL] ...
+  metaobjects verify <metadataDir> [--codegen] [--templates] [--deps] [--db URL] ...
       Drift gate with explicit subverbs (ADR-0021 D2 — one verify vocabulary
       across ports):
 
@@ -34,6 +34,11 @@ Two subcommands:
                      node's refs via a filesystem provider rooted at
                      ``templates`` in ``metaobjects.config.yaml`` (else
                      ``--prompts``), over the config's ``metadata``.
+        --deps       dependency drift (FR-023): re-resolve each declared
+                     dependency's ``path`` and compare its artifact's hash with
+                     ``.metaobjects/deps.lock.json`` (``metaobjects deps check``
+                     is the same comparison plus a load of the locked snapshots).
+                     Opt-in: never part of a bare ``verify``.
         --db URL     REJECTED in the Python port (exit 2): schema verify is the
                      migrate engine (ADR-0015), not this CLI.
 
@@ -69,7 +74,24 @@ from metaobjects.config.dependencies import (
     refuse_library_package_misuse,
     refuse_unowned_packages,
 )
-from metaobjects.config.neutral_config import read_neutral_config
+from metaobjects.config.dependencies import read_lock
+from metaobjects.config.dependency_check import (
+    check_dependencies,
+    format_check_line,
+    prove_locked_set_loads,
+    summary_line,
+)
+from metaobjects.config.neutral_config import find_project_dir, read_neutral_config
+from metaobjects.api_settings import (
+    API_KEY_PAGINATION,
+    API_KEY_UNKNOWN_FIELDS,
+    INIT_DEFAULT_LIMIT,
+    INIT_MAX_LIMIT,
+    PAGINATION_KEY_DEFAULT_LIMIT,
+    PAGINATION_KEY_MAX_LIMIT,
+    UNKNOWN_FIELDS_REJECT,
+    ApiSettings,
+)
 from metaobjects.field_lint import lint_duplicate_fields, lint_reference_fields
 from metaobjects.loader.meta_data_loader import LoadResult
 from metaobjects.loader.sources import FileSource
@@ -90,9 +112,12 @@ from metaobjects.requirement_check import (
 )
 from metaobjects.codegen.config import DEFAULT_API_PREFIX, GenConfig
 from metaobjects.codegen.overwrite_policy import (
+    STATUS_SKIPPED,
+    STATUS_UNCHANGED,
     HashManifest,
     has_hash_manifest,
     is_pristine_generated,
+    manifest_batch,
     read_generated_hash,
 )
 from metaobjects.codegen.project_config import (
@@ -510,6 +535,7 @@ def _load_root(
     # invocation) read the same values `gen`/`verify --codegen` would.
     result.root.naming = neutral.naming if neutral is not None else NamingRules()
     result.root.wire = neutral.wire if neutral is not None else WireFormat()
+    result.root.api = neutral.api if neutral is not None else ApiSettings()
     return result.root, []
 
 
@@ -573,6 +599,7 @@ def _load_collection_result(
         # it to the loaded root so codegen, the runtime and `verify` agree.
         result.root.naming = collection.naming
         result.root.wire = collection.wire
+        result.root.api = collection.api
     return result
 
 
@@ -901,9 +928,12 @@ def _run_suite(
     baseline: str = "default",
     refused_out: list[str] | None = None,
     select: Callable[[str], bool] | None = None,
+    in_ledger: Callable[[str], bool] | None = None,
     api_prefix: str = DEFAULT_API_PREFIX,
+    output_layout: str = "flat",
     overwrite_hand_edits: frozenset[str] = frozenset(),
     overwrite_paths_out: set[str] | None = None,
+    entity_scope: list[str] | None = None,
     manifest: HashManifest | None = None,
     sink: dict[str, str] | None = None,
 ) -> list[tuple[str, str]]:
@@ -948,6 +978,7 @@ def _run_suite(
         gen_state_dir=gen_state_dir,
         column_naming=column_naming,
         api_prefix=api_prefix,
+        output_layout=output_layout,
         # Manifest keys are relative to the PROJECT, which is what the manifest is
         # anchored on — not to ``--out``, which varies per run while the manifest does
         # not. Passed alongside gen_state_dir because the two are one decision: state
@@ -966,7 +997,10 @@ def _run_suite(
     if not generators:
         raise NoGeneratorsSelectedError
     suite = generators
-    result = run_gen(config, root, generators=suite, entity_filter=entity_filter, select=select)
+    result = run_gen(
+        config, root, generators=suite, entity_filter=entity_filter, select=select,
+        in_ledger=in_ledger, entity_scope=entity_scope,
+    )
     if overwrite_paths_out is not None:
         overwrite_paths_out.update(
             path for path, by in result.generated_by.items() if by in overwrite_hand_edits
@@ -1185,8 +1219,9 @@ def _cmd_fmt(args: argparse.Namespace) -> int:
 
     Mirrors the TS reference surface exactly: no ``metadata_dir`` positional —
     files come from the neutral ``.metaobjects/config.json`` ladder
-    (:func:`resolve_metadata_location`, rungs 3-4; this command does not read
-    this port's own ``metaobjects.config.yaml`` rung 2, matching the scope the
+    (:func:`resolve_metadata_location`, rungs 3-4; this command reads only the
+    ``providers`` of this port's own ``metaobjects.config.yaml`` (never its rung 2
+    ``metadata`` location), matching the scope the
     C# and Java ports also keep for `fmt`), optionally narrowed by explicit
     file arguments.
     """
@@ -1198,6 +1233,20 @@ def _cmd_fmt(args: argparse.Namespace) -> int:
     providers_extra, providers_ok = _providers_from_args(args)
     if not providers_ok:
         return 1
+    # The project's own `providers:` (metaobjects.config.yaml) reach fmt too, merged with
+    # --provider. Only the providers are read from the config: the metadata location stays
+    # on the neutral ladder (see the docstring).
+    config_path = _find_config(args)
+    if config_path is not None:
+        try:
+            fmt_config = load_project_config(config_path)
+        except ConfigError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        config_providers, config_providers_ok = _config_providers(fmt_config)
+        if not config_providers_ok:
+            return 1
+        providers_extra = [*config_providers, *providers_extra]
     providers = [*core_providers, *providers_extra]
     registry = compose_registry(providers)
 
@@ -1306,6 +1355,9 @@ _INIT_CONFIG = """\
 # What `metaobjects gen` generates: each target names its outDir and its generators.
 # `metaobjects gen --list` shows the catalog.
 metadata: metaobjects
+# A new project places each generated module in a subpackage keyed by its metadata package
+# (acme::alpha -> generated/acme/alpha/). Delete this line for the flat layout.
+outputLayout: package
 targets:
   app:
     outDir: generated
@@ -1319,8 +1371,31 @@ _INIT_DOCS_CONFIG = """\
 """
 
 
+def _init_neutral_config() -> str:
+    """The port-neutral ``.metaobjects/config.json`` a new project starts with: the same
+    new-project settings TypeScript ``meta init`` writes. ``migrate.foreignKeyIndexes`` on (read by
+    the TypeScript ``meta migrate`` that owns the schema), ``verify.handEdits`` "fail" (this port's
+    ``verify --codegen`` already fails on a hand edit), a page size on every generated list route,
+    and ``api.unknownFields`` spelled out at its default so the choice is visible. Never written
+    over an existing file, so an upgraded project gains none of them."""
+    body = {
+        "schema_version": 1,
+        "migrate": {"foreignKeyIndexes": True},
+        "verify": {"handEdits": "fail"},
+        "api": {
+            API_KEY_PAGINATION: {
+                PAGINATION_KEY_DEFAULT_LIMIT: INIT_DEFAULT_LIMIT,
+                PAGINATION_KEY_MAX_LIMIT: INIT_MAX_LIMIT,
+            },
+            API_KEY_UNKNOWN_FIELDS: UNKNOWN_FIELDS_REJECT,
+        },
+    }
+    return json.dumps(body, indent=2) + "\n"
+
+
 def _cmd_init(args: argparse.Namespace) -> int:
-    """Scaffold ``metaobjects.config.yaml`` and the ``metaobjects/`` metadata directory.
+    """Scaffold ``metaobjects.config.yaml``, the port-neutral ``.metaobjects/config.json`` and the
+    ``metaobjects/`` metadata directory.
 
     Never overwrites: a file that exists is reported and left alone. ``--with-docs`` adds a
     ``docs`` target running ``api-docs``; without it no documentation generator is wired.
@@ -1331,6 +1406,7 @@ def _cmd_init(args: argparse.Namespace) -> int:
     kept: list[str] = []
     for rel, text in (
         (_CONFIG_NAME, config),
+        (".metaobjects/config.json", _init_neutral_config()),
         ("metaobjects/meta.app.yaml", _INIT_METADATA),
     ):
         path = root / rel
@@ -1463,13 +1539,15 @@ def _narrow_entities(
     targets: list[TargetConfig], args: argparse.Namespace
 ) -> list[TargetConfig]:
     """Apply ``--entities`` to each target: only the named entities are emitted, and a
-    target that already lists ``entities`` keeps only the names in both."""
+    target that already lists ``entities`` keeps only the names in both. The target's
+    ``entities`` (its model) is left alone: the narrowing is a ``run_selection``."""
     names = _parse_entities(getattr(args, "entities", None))
     if names is None:
         return targets
     return [
         dataclasses.replace(
-            t, entities=names if t.entities is None else [n for n in t.entities if n in names]
+            t,
+            run_selection=names if t.entities is None else [n for n in t.entities if n in names],
         )
         for t in targets
     ]
@@ -1498,6 +1576,7 @@ def _run_gen_targets(
     baseline: str = "default",
     refused_out: list[str] | None = None,
     select: Callable[[str], bool] | None = None,
+    in_ledger: Callable[[str], bool] | None = None,
     build_ctx: GeneratorBuildContext | None = None,
     column_naming: str = DEFAULT_COLUMN_NAMING,
     selection: list[str] | None = None,
@@ -1536,7 +1615,7 @@ def _run_gen_targets(
 
     The returned list holds only the files this run WROTE; ``emitted_out`` collects every
     path the run emitted, unchanged ones included (what the orphan sweep and the duplicate
-    guard need). ``skip_info`` (ADR-0062) learns whether every generator is cacheable and
+    guard need). ``skip_info`` (ADR-0064) learns whether every generator is cacheable and
     the extra inputs they declared, hashed before the first write.
 
     A generator entry written as ``{name: ..., handEdits: overwrite}`` replaces its
@@ -1626,16 +1705,14 @@ def _run_gen_targets(
         skip_info.extra_entries = skip.extras_entries(
             Path(project_root or "."), skip_info.extras)
 
-    from metaobjects.render.renderer import RenderError
-
-    # ONE manifest session for the whole run (ADR-0062 decision 1), saved once at the end
+    # ONE manifest session for the whole run (ADR-0064 decision 1), saved once at the end
     # and only when an entry changed.
     session = HashManifest(gen_state_dir) if gen_state_dir is not None else None
     try:
         return _run_plan(
             config, plan, root, seen, all_written, errors, session, template_root,
             gen_state_dir, project_root, baseline, refused_out, select, column_naming,
-            targeted_out, overwrite_paths_out, emitted_out, sink,
+            targeted_out, overwrite_paths_out, emitted_out, sink, in_ledger,
         )
     finally:
         if session is not None:
@@ -1661,6 +1738,7 @@ def _run_plan(
     overwrite_paths_out: set[str] | None,
     emitted_out: set[str] | None,
     sink: dict[str, str] | None = None,
+    in_ledger: Callable[[str], bool] | None = None,
 ) -> tuple[list[str], list[str]]:
     from metaobjects.render.renderer import RenderError
 
@@ -1675,19 +1753,21 @@ def _run_plan(
         try:
             if gens:
                 results = _run_suite(
-                    root, out_dir, gens, t.entities, gen_state_dir=gen_state_dir,
+                    root, out_dir, gens, t.written_entities, gen_state_dir=gen_state_dir,
                     column_naming=column_naming, project_root=project_root, baseline=baseline,
-                    refused_out=refused_out, select=select, api_prefix=config.api_prefix,
+                    refused_out=refused_out, select=select, in_ledger=in_ledger,
+                    api_prefix=config.api_prefix, output_layout=config.output_layout,
                     overwrite_hand_edits=overwrite, overwrite_paths_out=overwrite_paths_out,
-                    manifest=session, sink=sink,
+                    manifest=session, sink=sink, entity_scope=t.entities,
                 )
             if spec_gens:
                 results = results + _run_suite(
-                    root, out_dir, spec_gens, t.entities, emit_package_init=False,
+                    root, out_dir, spec_gens, t.written_entities, emit_package_init=False,
                     gen_state_dir=gen_state_dir, column_naming=column_naming,
                     project_root=project_root, baseline=baseline, refused_out=refused_out,
-                    select=select, api_prefix=config.api_prefix, manifest=session,
-                    sink=sink,
+                    select=select, in_ledger=in_ledger, api_prefix=config.api_prefix,
+                    output_layout=config.output_layout, manifest=session, sink=sink,
+                    entity_scope=t.entities,
                 )
         except ValueError as exc:  # intra-target run_gen collision → clean error
             errors.append(f"target '{t.name}': {exc}")
@@ -1719,7 +1799,7 @@ def _run_plan(
 
 #: Statuses of an emitted file that was NOT written: the bytes already matched, it was
 #: left alone as an existing file, or its on-disk text was only recorded as the baseline.
-_NOT_WRITTEN = frozenset({"unchanged", "skipped", "adopted"})
+_NOT_WRITTEN = frozenset({STATUS_UNCHANGED, STATUS_SKIPPED, "adopted"})
 
 
 def _skip_identity(
@@ -1730,7 +1810,7 @@ def _skip_identity(
     strict: bool,
     baseline: str,
 ) -> list[skip.InputEntry] | None:
-    """The generator-side entries of the skip key (ADR-0062 section 3), as named entries.
+    """The generator-side entries of the skip key (ADR-0064 section 3), as named entries.
 
     Every input that can change what ``gen`` writes OTHER than the model: the engine's built
     code, the generator config, owned generators, templates, the project config and the flags
@@ -1814,7 +1894,7 @@ class _SkipState:
     """What one ``gen`` run knows about its stored key, so a failed run can never leave one."""
 
     def __init__(self) -> None:
-        self.skipped = False
+        self.kept = False  # the run left the stored key as it found it (a skip, or a narrowed run)
         self.stored = False
 
 
@@ -1846,7 +1926,7 @@ def _verify_may_answer(
     identity: list[skip.InputEntry] | None,
     root: MetaData,
 ) -> bool:
-    """A LOCAL ``verify --codegen`` may answer "no drift" without rendering (ADR-0062 section
+    """A LOCAL ``verify --codegen`` may answer "no drift" without rendering (ADR-0064 section
     4): not in CI, not ``--full``, the stored key matches and every file the manifest records
     still hashes to its recorded entry."""
     if getattr(args, "full", False) or skip.ci_environment():
@@ -1859,14 +1939,14 @@ def _verify_may_answer(
 
 
 def _cmd_gen_config(args: argparse.Namespace) -> int:
-    """``gen`` with the ADR-0062 stored-key guard: unless the run skipped or stored a fresh
+    """``gen`` with the ADR-0064 stored-key guard: unless the run skipped or stored a fresh
     key, whatever key a previous run left is deleted, so a failed or half-written run is never
     mistaken for a current one."""
     state = _SkipState()
     try:
         return _cmd_gen_config_run(args, state)
     finally:
-        if not state.skipped and not state.stored:
+        if not state.kept and not state.stored:
             config_path = _find_config(args)
             try:
                 cfg = load_project_config(config_path) if config_path is not None else None
@@ -1949,62 +2029,75 @@ def _cmd_gen_config_run(args: argparse.Namespace, state: _SkipState) -> int:
     if _refuse_narrowing(args, selection, root, "metaobjects gen"):
         return 2
     for t in targets:
-        imported_refusal = _refuse_imported_entities(t.entities, root, collection)
+        imported_refusal = _refuse_imported_entities(t.written_entities, root, collection)
         if imported_refusal is not None:
             print(imported_refusal, file=sys.stderr)
             return 2
 
     refused: list[str] = []
     targeted: set[str] = set()
-    project_root = str(project_root_for(config.metadata_dir()))
     emitted: set[str] = set()
+    project_root = str(project_root_for(config.metadata_dir()))
 
-    # ADR-0062: the decision comes AFTER the load (the key is made of the loaded model) and
+    # ADR-0064: the decision comes AFTER the load (the key is made of the loaded model) and
     # BEFORE anything renders. A skip renders and writes nothing, the stored key included.
+    #
+    # An ``--entities``-narrowed run forces exactly those entities: it never skips, never stores
+    # a key, and leaves the stored full-run key alone (the flag is also folded into the key's
+    # flag entries), so it can neither write nor satisfy the full-run key.
+    narrowed = _parse_entities(getattr(args, "entities", None)) is not None
+    if narrowed:
+        state.kept = True  # the stored key is neither made nor forgotten by this run
     identity = _skip_identity(args, config, _find_config(args), strict=strict, baseline=baseline)
     if (
-        _skip_matches(config, identity, root)
+        not narrowed
+        and _skip_matches(config, identity, root)
         and not getattr(args, "force", False)
         and baseline != "adopt"
     ):
-        state.skipped = True
+        state.kept = True
         print("metaobjects gen: nothing changed since the last run, so nothing was generated "
               "(pass --force to regenerate).")
         return 0
-    skip.delete_stored(gen_state_dir)
+    if not narrowed:
+        skip.delete_stored(gen_state_dir)
     model_entries = _model_entries(root) if identity is not None else None
     skip_info = skip.SkipRunInfo()
-    written, errors = _run_gen_targets(
-        config, targets, root,
-        gen_state_dir=gen_state_dir,
-        project_root=project_root,
-        baseline=baseline,
-        refused_out=refused,
-        select=collection.in_scope,
-        build_ctx=GeneratorBuildContext(template_root),
-        column_naming=column_naming,
-        selection=selection,
-        targeted_out=targeted,
-        emitted_out=emitted,
-        skip_info=skip_info,
-    )
-    if errors:
-        for msg in errors:
-            print(f"error: {msg}", file=sys.stderr)
-        return 1
-    for path in written:
-        print(path)
     sweep_refused: list[str] = []
-    removed = _sweep_orphans_after_gen(
-        args, config, targets, targeted, selection, baseline, gen_state_dir, project_root,
-        emitted={*emitted, *refused}, refused_out=sweep_refused,
-    )
+    # Every target and the orphan sweep share one in-memory manifest: one write per run. The
+    # batch closes before the stored key is made, which hashes the manifest as written.
+    with manifest_batch(gen_state_dir):
+        written, errors = _run_gen_targets(
+            config, targets, root,
+            gen_state_dir=gen_state_dir,
+            project_root=project_root,
+            baseline=baseline,
+            refused_out=refused,
+            select=collection.in_scope,
+            in_ledger=collection.in_ledger,
+            build_ctx=GeneratorBuildContext(template_root),
+            column_naming=column_naming,
+            selection=selection,
+            targeted_out=targeted,
+            emitted_out=emitted,
+            skip_info=skip_info,
+        )
+        if errors:
+            for msg in errors:
+                print(f"error: {msg}", file=sys.stderr)
+            return 1
+        for path in written:
+            print(path)
+        removed = _sweep_orphans_after_gen(
+            args, config, targets, targeted, selection, baseline, gen_state_dir, project_root,
+            emitted={*emitted, *refused}, refused_out=sweep_refused,
+        )
     for path in removed:
         print(f"removed {path}")
     unchanged = len(emitted) - len(written)
     print(
-        f"metaobjects gen: wrote {len(written)} file(s) across {len(targets)} target(s)"
-        + (f", {unchanged} unchanged." if unchanged > 0 else ".")
+        f"metaobjects gen: wrote {len(written)} file(s) across {len(targets)} target(s)."
+        + (f" {unchanged} file(s) left as they were." if unchanged > 0 else "")
         + (f" Removed {len(removed)} file(s) no generator emits any more." if removed else "")
     )
     if refused:
@@ -2019,8 +2112,8 @@ def _cmd_gen_config_run(args: argparse.Namespace, state: _SkipState) -> int:
         )
         return 1
     if (
-        identity is not None and model_entries is not None and skip_info.cacheable
-        and baseline != "adopt" and emitted and not sweep_refused  # a refusal is a failure (ADR-0062)
+        not narrowed and identity is not None and model_entries is not None
+        and skip_info.cacheable and baseline != "adopt" and emitted and not sweep_refused  # a refusal is a failure (ADR-0064)
     ):
         outputs = skip.output_hashes(
             gen_state_dir, Path(project_root), [config.out_dir_for(t) for t in config.targets])
@@ -2343,7 +2436,7 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
     if _refuse_narrowing(args, selection, root, "metaobjects verify --codegen"):
         return 2
     for t in closure:
-        imported_refusal = _refuse_imported_entities(t.entities, root, collection)
+        imported_refusal = _refuse_imported_entities(t.written_entities, root, collection)
         if imported_refusal is not None:
             print(imported_refusal, file=sys.stderr)
             return 2
@@ -2354,7 +2447,7 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
         print(templates_refusal, file=sys.stderr)
         return 2
 
-    # ADR-0062 section 4: locally, after the load, answer from the stored key and the
+    # ADR-0064 section 4: locally, after the load, answer from the stored key and the
     # manifest when both prove nothing changed. CI and `--full` always render, and that full
     # render is the guard that catches anything the key missed. Neither `strict` nor the load
     # choice changes what is written, so the key is computed as `gen`'s default run.
@@ -2407,6 +2500,7 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
         overwrite_paths: set[str] = set()
         regen = dict(
             select=collection.in_scope,
+            in_ledger=collection.in_ledger,
             build_ctx=GeneratorBuildContext(template_root),
             # R31: the `names` generator's constants are strategy-dependent, so the regen
             # must use the strategy `gen` wrote with, or every constant reads as drift.
@@ -2589,7 +2683,7 @@ def naming_candidates(used: NamingRules) -> list[NamingRules]:
         candidate
         for t in tables
         for c in columns
-        if (candidate := NamingRules(columns=c, tables=t)) != used
+        if (candidate := NamingRules(columns=c, tables=t, collections=used.collections)) != used
     ]
 
 
@@ -2627,7 +2721,7 @@ def wire_differs_message(committed: WireFormat, used: WireFormat) -> str:
         f"The committed output was generated with {wire_block(committed)}; this run used "
         f"{wire_block(used)} (the wire block of .metaobjects/config.json; each key defaults to "
         f"native). Do not regenerate: that changes the JSON the generated routes write "
-        f"(decimals, value-object null members) for clients already reading it. "
+        f"(decimals, durations, value-object null members) for clients already reading it. "
         f"Declare {wire_block(committed)} in .metaobjects/config.json, and gen and verify "
         f"--codegen both read it."
     )
@@ -2892,11 +2986,17 @@ def _load_verify_model(
             config = load_project_config(config_path) if config_path is not None else None
             libraries: "list[str] | None" = None
             if config is not None:
-                providers, provider_errors = _resolve_config_providers(config)
-                if provider_errors:
+                # Merge, never overwrite: the project's providers AND --provider both apply.
+                flag_provider_errors = provider_errors
+                config_providers, config_provider_errors = _resolve_config_providers(config)
+                if config_provider_errors:
                     return unread(
-                        "error: invalid provider in config:", *(f"  {m}" for m in provider_errors)
+                        "error: invalid provider in config:",
+                        *(f"  {m}" for m in config_provider_errors),
                     )
+                if flag_provider_errors:
+                    return unread("error: invalid --provider:", *(f"  {m}" for m in flag_provider_errors))
+                providers = [*config_providers, *providers]
                 libraries = config.libraries
                 start = project_root_for(config.metadata_dir())
             else:
@@ -2989,6 +3089,54 @@ def _run_field_lint_advisory(args: argparse.Namespace, model: "_VerifyModel | No
         print(f"  {finding.code} [{finding.path}]: {finding.message}", file=sys.stderr)
 
 
+#: The registry id of the generator that writes the REST list routes.
+_ROUTES_GENERATOR = "routes"
+
+
+def _routes_generator_wired(args: argparse.Namespace) -> bool:
+    """Whether this run's generator list includes the routes generator: the ``--generators``
+    narrowing when given, else any target of ``metaobjects.config.yaml``. A project with no
+    config, or one whose routes are owned rather than generated, has no generated list route."""
+    selection = _selection_from_args(args)
+    if selection is not None:
+        return _ROUTES_GENERATOR in selection
+    config_path = _find_config(args)
+    if config_path is None:
+        return False
+    try:
+        config = load_project_config(config_path)
+    except ConfigError:
+        return False
+    return any(_ROUTES_GENERATOR in (t.generators or []) for t in config.targets)
+
+
+def _run_pagination_advisory(args: argparse.Namespace, model: "_VerifyModel | None") -> None:
+    """``unbounded-list-pages``: ONE advisory line when the project generates REST list routes
+    (the routes generator is wired and the model has an entity it serves) and sets no
+    ``api.pagination``, so a request with no ``limit`` is served by the 50-row historic default
+    and ``?limit=`` has no cap. Advisory only: stderr, never the exit code."""
+    if model is None or model.root.api.pagination is not None:
+        return
+    if not _routes_generator_wired(args):
+        return
+    try:
+        from metaobjects.codegen.runtime.shared_predicates import emits_router
+
+        serves = any(
+            isinstance(c, MetaObject) and emits_router(c) for c in model.root.children()
+        )
+    except Exception:  # noqa: BLE001 — an advisory scan never breaks verify
+        return
+    if serves:
+        print(
+            "metaobjects verify — unbounded-list-pages (advisory — does not fail the build): "
+            "generated list routes have no page cap, so a request may ask for any ?limit=. "
+            'Set "api": {"pagination": {"defaultLimit": 50, "maxLimit": 1000}} in '
+            ".metaobjects/config.json.",
+            file=sys.stderr,
+        )
+
+
 #: Raises ``WARN_REQUIREMENT_NOTHING_IMPLEMENTS`` to an error, beside ``--require-implementers``
 #: (Node `meta` parity, ADR-0057).
 REQUIRE_IMPLEMENTERS_ENV = "META_REQUIRE_IMPLEMENTERS"
@@ -3015,6 +3163,8 @@ def _verify_requirements(args: argparse.Namespace, model: "_VerifyModel | None")
     scan = scan_requirements(
         model.root,
         coverable=collection.in_scope if collection is not None else None,
+        in_ledger=collection.in_ledger if collection is not None else None,
+        imported=collection.imported if collection is not None else None,
         require_implementers=bool(getattr(args, "require_implementers", False))
         or os.environ.get(REQUIRE_IMPLEMENTERS_ENV) == "1",
     )
@@ -3065,6 +3215,64 @@ def _verify_requirements(args: argparse.Namespace, model: "_VerifyModel | None")
     return 0
 
 
+def _deps_project_root(args: argparse.Namespace) -> Path:
+    """The project whose ``.metaobjects/config.json`` declares the dependencies: the one holding
+    the metadata the run names (``<metadata_dir>``, else the config's ``metadata``), else the
+    nearest project at or above the working directory. The same root ``_load_verify_model``
+    reads the lock from."""
+    metadata_dir = getattr(args, "metadata_dir", None)
+    if metadata_dir:
+        return project_root_for(metadata_dir)
+    config_path = _find_config(args)
+    if config_path is not None:
+        try:
+            return project_root_for(load_project_config(config_path).metadata_dir())
+        except ConfigError:
+            pass
+    return find_project_dir(Path.cwd()) or Path.cwd().resolve()
+
+
+def _run_deps_check(root: Path, command: str, *, prove_load: bool) -> int:
+    """The check both ``deps check`` and ``verify --deps`` run: 0 current, 1 drifted or
+    unresolved (``ERR_DEPENDENCY_UPSTREAM_DRIFT``), 2 when the config or lock cannot be read."""
+    try:
+        neutral = read_neutral_config(root)
+        specs = neutral.dependencies if neutral is not None else []
+        lock = read_lock(root)
+    except ParseError as exc:
+        print(f"{command}: {exc.code}: {exc}", file=sys.stderr)
+        return 2
+    if not specs:
+        print(f"{command}: no dependencies declared — nothing to check.")
+        return 0
+
+    results = check_dependencies(root, specs, lock)
+    failing = [r for r in results if r.status != "current"]
+    for r in results:
+        print(format_check_line(r), file=sys.stderr if r.status != "current" else sys.stdout)
+    if failing:
+        print(summary_line(command, len(failing), len(results)), file=sys.stderr)
+        return 1
+    if prove_load:
+        # Matching hashes only prove the snapshot is the locked one, not that it still loads.
+        failure = prove_locked_set_loads(root, specs)
+        if failure is not None:
+            print(f"{command}: the locked dependency set does not load: {failure}", file=sys.stderr)
+            return 1
+    if command == "metaobjects verify --deps":
+        print("verify --deps: every dependency's installed artifact matches the lock.")
+    return 0
+
+
+def _verify_deps(args: argparse.Namespace) -> int:
+    return _run_deps_check(_deps_project_root(args), "metaobjects verify --deps", prove_load=False)
+
+
+def _cmd_deps(args: argparse.Namespace) -> int:
+    root = find_project_dir(Path.cwd()) or Path.cwd().resolve()
+    return _run_deps_check(root, "metaobjects deps check", prove_load=True)
+
+
 def _cmd_verify(args: argparse.Namespace) -> int:
     """Subverb dispatch (ADR-0021 D2). Run each requested mode; aggregate exit =
     max (non-zero if ANY mode drifts). Bare ``verify`` (no subverb) runs the
@@ -3082,13 +3290,14 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     run_db = args.db is not None
     run_templates = bool(args.templates)
     run_codegen = bool(args.codegen)
-    any_explicit = run_db or run_templates or run_codegen
+    run_deps = bool(args.deps)
+    any_explicit = run_db or run_templates or run_codegen or run_deps
 
     if not any_explicit:
         print(
             "metaobjects verify — running --codegen --templates (default). Explicit "
             "subverbs: --codegen (codegen drift), --templates (template/prompt "
-            "drift), --db (schema drift — not supported in Python).",
+            "drift), --deps (dependency drift), --db (schema drift — not supported in Python).",
             file=sys.stderr,
         )
         run_codegen = True
@@ -3114,6 +3323,8 @@ def _cmd_verify(args: argparse.Namespace) -> int:
             exit_code = max(exit_code, _verify_codegen(args))
         if run_templates:
             exit_code = max(exit_code, _verify_templates(args))
+        if run_deps:
+            exit_code = max(exit_code, _verify_deps(args))
     # One load for both passes that read the model. The requirement gate runs on EVERY verify.
     load_failure: list[str] = []
     model = _load_verify_model(args, load_failure)
@@ -3121,6 +3332,8 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         exit_code = max(exit_code, _report_unloaded_model(load_failure, gates_stderr.lines()))
     exit_code = max(exit_code, _verify_requirements(args, model))
     _run_field_lint_advisory(args, model)
+    if exit_code != 2:  # 2 is a refused invocation: its own message is the whole answer
+        _run_pagination_advisory(args, model)
     return exit_code
 
 
@@ -3195,7 +3408,7 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "regenerate even when the model and every generator identity match the last "
-            "successful run (without it, an unchanged project skips rendering; ADR-0062)."
+            "successful run (without it, an unchanged project skips rendering; ADR-0064)."
         ),
     )
     gen.add_argument(
@@ -3279,7 +3492,7 @@ def _build_parser() -> argparse.ArgumentParser:
     verify = sub.add_parser(
         "verify",
         help=(
-            "drift gate — explicit subverbs --codegen / --templates / --db "
+            "drift gate — explicit subverbs --codegen / --templates / --deps / --db "
             "(ADR-0021 D2); bare verify runs --codegen and --templates"
         ),
     )
@@ -3315,6 +3528,15 @@ def _build_parser() -> argparse.ArgumentParser:
             "template drift: each template.* node's {{field}} ↔ payload-VO "
             "field tree (render verify); reads `metadata` and `templates` from "
             "metaobjects.config.yaml, or takes <metadata_dir> with --prompts"
+        ),
+    )
+    verify.add_argument(
+        "--deps",
+        action="store_true",
+        help=(
+            "dependency drift (FR-023): re-resolve each declared dependency's `path` and "
+            "compare its artifact's hash with .metaobjects/deps.lock.json. Opt-in, never part "
+            "of bare verify: it needs the publisher's directory reachable"
         ),
     )
     verify.add_argument(
@@ -3438,7 +3660,14 @@ def _build_parser() -> argparse.ArgumentParser:
         action="append",
         default=None,
         metavar="MODULE:SYMBOL",
-        help="consumer-registered Provider(s), repeatable (module:symbol)",
+        help="consumer-registered Provider(s), repeatable (module:symbol); merged with the "
+        "`providers:` of metaobjects.config.yaml",
+    )
+    fmt_p.add_argument(
+        "--config",
+        default=None,
+        help="path to the metaobjects.config.yaml whose `providers:` apply "
+        "(default: ./metaobjects.config.yaml in cwd)",
     )
     fmt_p.set_defaults(func=_cmd_fmt)
 
@@ -3467,6 +3696,23 @@ def _build_parser() -> argparse.ArgumentParser:
                         help="also wire the api-docs generator (a `docs` target)")
     init_p.add_argument("--root", default=None, help="project root (default: cwd)")
     init_p.set_defaults(func=_cmd_init)
+
+    deps_p = sub.add_parser(
+        "deps",
+        help=(
+            "metadata dependencies (FR-023): `deps check` compares each declared dependency's "
+            "publisher artifact with the lock. `deps sync` is the Node `meta` CLI's job"
+        ),
+    )
+    deps_sub = deps_p.add_subparsers(dest="deps_command", required=True)
+    deps_check = deps_sub.add_parser(
+        "check",
+        help=(
+            "exit 1 when a declared dependency has drifted from, or cannot be compared with, "
+            "the lock (ERR_DEPENDENCY_UPSTREAM_DRIFT). Read-only"
+        ),
+    )
+    deps_check.set_defaults(func=_cmd_deps)
 
     agent_docs = sub.add_parser(
         "agent-docs",

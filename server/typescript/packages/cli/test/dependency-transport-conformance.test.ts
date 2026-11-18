@@ -1,7 +1,8 @@
 // Runs fixtures/dependency-conformance/transport-cases.json (FR-023 DESIGN §2.1)
 // against `meta deps sync`'s transports: an `npm` package installed under a temp
-// `node_modules`, a `python` package on a temp import path. No network, no
-// package manager — each case lays out what an install would leave on disk.
+// `node_modules`, a `python` package on a temp import path, a `maven` jar in a temp
+// local repository, a `nuget` package in a temp global packages folder. No network,
+// no package manager — each case lays out what an install would leave on disk.
 //
 // Node `meta deps sync` is the only writer of snapshots and the lock, so only
 // this runner executes the transport arm; every port then loads the snapshot
@@ -13,12 +14,22 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, join, relative, resolve } from "node:path";
 import { DEFAULT_METAOBJECTS_DIR, LOCK_FILE, dependencyName, loadConfig } from "@metaobjectsdev/sdk";
 import { applySync, planSync } from "../src/lib/dependency-sync.js";
-import { METAOBJECTS_PYTHON_ENV, resolveTransport } from "../src/lib/dependency-transports.js";
+import {
+  MAVEN_REPO_LOCAL_ENV,
+  METAOBJECTS_PYTHON_ENV,
+  NUGET_PACKAGES_ENV,
+  resolveTransport,
+} from "../src/lib/dependency-transports.js";
+import { writeZip } from "./zip-write.js";
 
 interface Case {
   readonly name: string;
   readonly tree: Record<string, string>;
   readonly treeFiles?: Record<string, string>;
+  /** Archives (a `.jar`, a `.nupkg`): path → entry name → inline `text` or a corpus-relative `file`. */
+  readonly zipFiles?: Record<string, Record<string, { readonly text?: string; readonly file?: string }>>;
+  /** Environment variables that name a directory: variable → project-root-relative directory. */
+  readonly env?: Record<string, string>;
   readonly config: unknown;
   readonly resolveFrom?: string;
   readonly pythonPath?: readonly string[];
@@ -50,27 +61,43 @@ async function materialize(c: Case): Promise<{ root: string; configDir: string }
     await mkdir(dirname(abs), { recursive: true });
     await copyFile(join(CORPUS_DIR, corpusRel), abs);
   }
+  for (const [rel, entries] of Object.entries(c.zipFiles ?? {})) {
+    const abs = join(root, rel);
+    await mkdir(dirname(abs), { recursive: true });
+    const files = await Promise.all(
+      Object.entries(entries).map(async ([name, source]) => ({
+        name,
+        data: source.file !== undefined ? await readFile(join(CORPUS_DIR, source.file)) : Buffer.from(source.text ?? ""),
+      })),
+    );
+    await writeFile(abs, writeZip(files));
+  }
   const configDir = resolve(root, c.resolveFrom ?? ".");
   await mkdir(join(configDir, DEFAULT_METAOBJECTS_DIR), { recursive: true });
   await writeFile(join(configDir, DEFAULT_METAOBJECTS_DIR, "config.json"), JSON.stringify(c.config, null, 2));
   return { root, configDir };
 }
 
-/** The case's import path stands in for an installed site-packages; the host's
- *  own virtualenv and interpreter override are cleared so the result does not
- *  depend on the machine running the corpus. */
+/** The case's import path stands in for an installed site-packages, and its `home` directory for
+ *  the user's home; the host's own virtualenv, interpreter override and Maven / NuGet cache
+ *  overrides are cleared so the result does not depend on the machine running the corpus. */
 function caseEnv(root: string, c: Case): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
-  delete env[METAOBJECTS_PYTHON_ENV];
-  delete env.VIRTUAL_ENV;
+  for (const key of [METAOBJECTS_PYTHON_ENV, "VIRTUAL_ENV", MAVEN_REPO_LOCAL_ENV, NUGET_PACKAGES_ENV, "MAVEN_ARGS", "MAVEN_OPTS"]) {
+    delete env[key];
+  }
+  env.HOME = join(root, "home");
+  delete env.USERPROFILE;
+  for (const [key, rel] of Object.entries(c.env ?? {})) env[key] = join(root, rel);
   env.PYTHONPATH = (c.pythonPath ?? []).map((p) => join(root, p)).join(delimiter);
   return env;
 }
 
 describe("dependency conformance — the transport arm", () => {
-  test("the corpus carries npm and python transport cases (a silent zero-case run is a failed gate)", () => {
-    expect(cases.some((c) => JSON.stringify(c.config).includes('"npm"'))).toBe(true);
-    expect(cases.some((c) => JSON.stringify(c.config).includes('"python"'))).toBe(true);
+  test("the corpus carries every transport (a silent zero-case run is a failed gate)", () => {
+    for (const transport of ["npm", "python", "maven", "nuget"]) {
+      expect(cases.some((c) => JSON.stringify(c.config).includes(`"${transport}"`))).toBe(true);
+    }
   });
 
   for (const c of cases) {

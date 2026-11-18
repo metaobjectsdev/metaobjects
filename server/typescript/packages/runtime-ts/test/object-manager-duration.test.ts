@@ -103,4 +103,32 @@ test("a filter operand on Postgres is the interval spelling, never a signed ISO 
   expect(spec.where).toEqual({ kind: "eq", column: "wait", value: "-00:01:30" });
   const sqlite = buildSelectSpec(root.findObject("Job")!, { wait: "-PT90S" }, {}, undefined, undefined, "sqlite");
   expect(sqlite.where).toEqual({ kind: "eq", column: "wait", value: -90_000_000 });
+  // With no dialect there is no stored form, so the filter is refused rather than bound as text.
+  expect(() => buildSelectSpec(root.findObject("Job")!, { wait: "-PT90S" }, {})).toThrow(/needs the driver's dialect/);
+});
+
+test("SQLite: an isArray duration column is a JSON array of canonical ISO strings, as the generated schema writes it", async () => {
+  const model = { "metadata.root": { package: "p", children: [
+    { "object.entity": { name: "Run", children: [
+      { "source.rdb": { "@table": "runs" } },
+      { "field.long": { name: "id" } },
+      { "field.duration": { name: "laps", isArray: true } },
+      { "identity.primary": { name: "pk", "@fields": ["id"], "@generation": "increment" } },
+    ] } },
+  ] } };
+  const r = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(model))]);
+  expect(r.errors).toEqual([]);
+  const dir = mkdtempSync(join(tmpdir(), "om-duration-array-"));
+  const db = new Kysely<Record<string, Row>>({ dialect: new LibsqlDialect({ url: `file:${join(dir, "t.db")}` }) });
+  try {
+    await sql.raw("CREATE TABLE runs (id INTEGER PRIMARY KEY AUTOINCREMENT, laps TEXT)").execute(db);
+    const om = new ObjectManager({ metadata: r.root, driver: kyselyDriver({ db, dialect: "sqlite" }) });
+    const created = await om.create("Run", { laps: ["PT60S", "-PT90S"] });
+    expect(created.laps).toEqual(["PT1M", "-PT1M30S"]);
+    const stored = (await sql.raw("SELECT laps FROM runs").execute(db)).rows[0] as Record<string, string>;
+    expect(JSON.parse(stored["laps"]!)).toEqual(["PT1M", "-PT1M30S"]);
+  } finally {
+    await db.destroy();
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

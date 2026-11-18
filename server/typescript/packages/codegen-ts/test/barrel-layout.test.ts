@@ -1,4 +1,4 @@
-// rc.19 R63: the default outputLayout is "package", so generated modules move under
+// The default outputLayout is "flat"; "package" is the opt-in that places modules under
 // <outDir>/<package path>/. Imports through the generated barrel (index.ts) are unaffected: the
 // barrel exports the same names in both layouts, and a consumer importing from it type-checks
 // against either. Pinned here because the CHANGELOG's upgrade note says so.
@@ -82,9 +82,16 @@ function compile(files: EmittedFile[]): string[] {
   }
 }
 
-describe("R63 — the package layout is the default, and the barrel hides it", () => {
-  test("with no outputLayout declared, modules sit under their package directory", async () => {
+describe("the flat layout is the default, the package layout is opt-in, and the barrel hides the difference", () => {
+  test("with no outputLayout declared, modules sit flat in the output directory", async () => {
     const paths = (await generate(undefined)).map((f) => f.path).sort();
+    expect(paths).toContain("Post.ts");
+    expect(paths).toContain("index.ts");
+    expect(paths.some((p) => p.startsWith("acme/"))).toBe(false);
+  });
+
+  test("outputLayout: package places modules under their package directory", async () => {
+    const paths = (await generate("package")).map((f) => f.path).sort();
     expect(paths).toContain("acme/blog/Post.ts");
     expect(paths).toContain("index.ts");
     expect(paths.filter((p) => p !== "index.ts").every((p) => p.startsWith("acme/blog/"))).toBe(true);
@@ -93,11 +100,11 @@ describe("R63 — the package layout is the default, and the barrel hides it", (
   test("the barrel exports the same names in both layouts", async () => {
     const names = (files: EmittedFile[]) => [...files.find((f) => f.path === "index.ts")!.content
       .matchAll(/export \* from "([^"]+)"/g)].map((m) => m[1]!.split("/").pop()).sort();
-    expect(names(await generate(undefined))).toEqual(names(await generate("flat")));
+    expect(names(await generate("package"))).toEqual(names(await generate("flat")));
   });
 
   test("a consumer importing through the barrel type-checks against either layout", async () => {
     expect(compile(await generate("flat"))).toEqual([]);
-    expect(compile(await generate(undefined))).toEqual([]);
+    expect(compile(await generate("package"))).toEqual([]);
   }, 60_000);
 });

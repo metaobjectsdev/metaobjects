@@ -31,11 +31,11 @@
 //                           deferred `inheritsFrom` facet; other ports register
 //                           only the concrete `metadata.root`).
 //
-// NOT a carve-out (ruling R40): vocabulary only SOME ports act on is still
+// NOT a carve-out: vocabulary only SOME ports act on is still
 // cross-port vocabulary, and it is IN the manifest, marked rather than removed.
 //   • kind 1 — implemented so far only in some ports (the 13 generic `view.*`
 //     entries and their attrs): the type carries `implementedIn: ["typescript"]`.
-//   • kind 2 — language-specific by nature (`@dbSetName`, the JVM's `@object` /
+//   • kind 2 — language-specific by nature (the JVM's `@object` /
 //     `@objectAdapter`): the attr carries `ports: [...]`.
 // Every port registers both kinds and loads them strictly; a port not named loads
 // them and does nothing with them. An unregistered name still fails.
@@ -118,7 +118,7 @@ export const EXCLUDED_PER_TYPE_ATTRS: ReadonlyMap<string, ExclusionReason> = new
  * `(type, subType)` rows carved OUT of the agreed vocabulary, with reason.
  * `metadata.base` is the per-port inheritance anchor (INHERITANCE_ANCHOR). The
  * generic `view.*` controls are NOT carved out: they are kind-1 vocabulary, IN the
- * manifest with `implementedIn` (ruling R40).
+ * manifest with `implementedIn`.
  * Returns the reason, or `undefined` for an INCLUDED (logical) row.
  */
 export function classifyTypeSubType(

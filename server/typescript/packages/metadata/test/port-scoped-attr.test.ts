@@ -1,6 +1,6 @@
-// Ruling R40: a language-specific attribute is in the shared registry with the ports that act on
-// it (`@dbSetName`, the C# EF DbSet property name: ports ["csharp"]). Every port registers and
-// type-checks it, so a model that carries it loads under the strict loader here, and TypeScript,
+// A language-specific attribute is in the shared registry with the ports that act on
+// it (`@objectAdapter`, the JVM ObjectAdapter class: ports ["java", "kotlin"]). Every port registers
+// and type-checks it, so a model that carries it loads under the strict loader here, and TypeScript,
 // a port not named, does nothing with it. Strictness is unchanged: an attribute the registry does
 // not carry still fails, and a wrong value type fails.
 
@@ -10,8 +10,8 @@ import { buildVocabularyCatalog } from "../src/vocabulary-catalog.js";
 
 function model(attr: string): string {
   return JSON.stringify(JSON.parse(`{ "metadata.root": { "package": "acme", "children": [
-    { "object.entity": { "name": "Analysis", ${attr} "children": [
-      { "source.rdb": { "@table": "analyses" } },
+    { "object.entity": { "name": "Diagnosis", ${attr} "children": [
+      { "source.rdb": { "@table": "diagnoses" } },
       { "field.long": { "name": "id" } },
       { "identity.primary": { "@fields": "id" } }
     ] } }
@@ -23,27 +23,27 @@ async function codes(json: string): Promise<string[]> {
   return res.errors.map((e) => (e as { code?: string }).code ?? "");
 }
 
-describe("a C#-only attribute (R40)", () => {
+describe("a JVM-only attribute", () => {
   test("loads under the strict loader", async () => {
-    expect(await codes(model(`"@dbSetName": "Analysis",`))).toEqual([]);
+    expect(await codes(model(`"@objectAdapter": "com.acme.DiagnosisAdapter",`))).toEqual([]);
   });
 
-  test("is type-checked: a list is not a DbSet name", async () => {
-    expect(await codes(model(`"@dbSetName": ["Analysis"],`))).not.toEqual([]);
+  test("is type-checked: a list is not a class name", async () => {
+    expect(await codes(model(`"@objectAdapter": ["com.acme.DiagnosisAdapter"],`))).not.toEqual([]);
   });
 
   test("an attribute the registry does not carry still fails", async () => {
-    expect(await codes(model(`"@dbSetNameX": "Analysis",`))).toContain("ERR_UNKNOWN_ATTR");
+    expect(await codes(model(`"@objectAdapterX": "com.acme.DiagnosisAdapter",`))).toContain("ERR_UNKNOWN_ATTR");
   });
 
   test("the vocabulary names the ports that act on it", async () => {
     const entity = buildVocabularyCatalog(composeRegistry(coreProviders))
       .types.find((t) => t.type === "object" && t.subType === "entity")!;
-    expect(entity.attrs.find((a) => a.name === "dbSetName")?.ports).toEqual(["csharp"]);
+    expect(entity.attrs.find((a) => a.name === "objectAdapter")?.ports).toEqual(["java", "kotlin"]);
   });
 });
 
-// R40 kind 1 — cross-port vocabulary only some ports implement so far.
+// Cross-port vocabulary only some ports implement so far.
 const KIND1 = `{ "metadata.root": { "package": "acme", "children": [
   { "object.entity": { "name": "Product", "@object": "com.acme.Product", "children": [
     { "field.long": { "name": "id" } },
@@ -56,7 +56,7 @@ const KIND1 = `{ "metadata.root": { "package": "acme", "children": [
   ] } }
 ] } }`;
 
-describe("kind-1 vocabulary (R40)", () => {
+describe("kind-1 vocabulary", () => {
   test("loads under the strict loader", async () => {
     expect(await codes(KIND1)).toEqual([]);
   });

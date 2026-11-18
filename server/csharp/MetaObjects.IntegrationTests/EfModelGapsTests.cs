@@ -45,7 +45,7 @@ public sealed class EfModelGapsTests
     private static IEntityType EntityType(DbContext db, string name) =>
         Assert.Single(db.Model.GetEntityTypes(), t => t.ClrType.Name == name);
 
-    // ── D10: identity.primary @generation: assigned ─────────────────────────────────────────
+    // ── identity.primary @generation: assigned ─────────────────────────────────────────
 
     private const string AssignedModel = """
     { "metadata.root": { "package": "acme", "children": [
@@ -95,7 +95,7 @@ public sealed class EfModelGapsTests
         Assert.Equal(new object?[] { 42L, "answer" }, rows[1]);
     }
 
-    // ── D12 + D16: identity.reference @constraintName, and a reference to a non-PK key ──────
+    // ── identity.reference @constraintName, and a reference to a non-PK key ──────
 
     private const string ReferenceModel = """
     { "metadata.root": { "package": "acme", "children": [
@@ -130,30 +130,30 @@ public sealed class EfModelGapsTests
     private static IForeignKey ForeignKey(IEntityType t, params string[] props) =>
         Assert.Single(t.GetForeignKeys(), fk => fk.Properties.Select(p => p.Name).SequenceEqual(props));
 
-    // ── rc.19 entity-derived: a derived field projections reach, on an entity with no read source ──
+    // ── entity-derived: a derived field projections reach, on an entity with no read source ──
 
     private const string EntityDerivedModel = """
     { "metadata.root": { "package": "acme", "children": [
-      { "object.entity": { "name": "Player", "children": [
-        { "source.rdb": { "@table": "players" } },
+      { "object.entity": { "name": "Patient", "children": [
+        { "source.rdb": { "@table": "patients" } },
         { "field.long": { "name": "id" } },
-        { "field.boolean": { "name": "hasContract", "children": [
-          { "origin.first": { "@via": "Player.contracts", "@of": "Contract.onFile", "@orderBy": ["id:desc"] } }
+        { "field.boolean": { "name": "hasConsent", "children": [
+          { "origin.first": { "@via": "Patient.consents", "@of": "Consent.onFile", "@orderBy": ["id:desc"] } }
         ]}},
         { "identity.primary": { "name": "id", "@fields": "id" } }
       ]}},
-      { "object.entity": { "name": "Contract", "children": [
-        { "source.rdb": { "@table": "contracts" } },
+      { "object.entity": { "name": "Consent", "children": [
+        { "source.rdb": { "@table": "consents" } },
         { "field.long": { "name": "id" } },
-        { "field.long": { "name": "playerId", "@required": true } },
+        { "field.long": { "name": "patientId", "@required": true } },
         { "field.boolean": { "name": "onFile" } },
         { "identity.primary": { "name": "id", "@fields": "id" } },
-        { "identity.reference": { "name": "playerId", "@fields": "playerId", "@references": "Player" } }
+        { "identity.reference": { "name": "patientId", "@fields": "patientId", "@references": "Patient" } }
       ]}},
-      { "object.projection": { "name": "ContractedPlayers", "@filter": { "hasContract": true }, "children": [
-        { "source.rdb": { "@kind": "view", "@view": "v_contracted_players" } },
-        { "field.long": { "name": "id", "extends": "acme::Player.id" } },
-        { "identity.primary": { "name": "id", "extends": "acme::Player.id" } }
+      { "object.projection": { "name": "ConsentedPatients", "@filter": { "hasConsent": true }, "children": [
+        { "source.rdb": { "@kind": "view", "@view": "v_consented_patients" } },
+        { "field.long": { "name": "id", "extends": "acme::Patient.id" } },
+        { "identity.primary": { "name": "id", "extends": "acme::Patient.id" } }
       ]}}
     ]}}
     """;
@@ -164,9 +164,9 @@ public sealed class EfModelGapsTests
         // The field has no column: the view a projection reaching it is built from inlines it.
         var gen = GeneratedEfModel.Compile(EntityDerivedModel, "Acme.EntityDerived");
         using var db = gen.ModelOnlyContext();
-        var player = EntityType(db, "Player");
-        Assert.Null(player.FindProperty("HasContract"));
-        Assert.Null(player.ClrType.GetProperty("HasContract"));
+        var patient = EntityType(db, "Patient");
+        Assert.Null(patient.FindProperty("HasConsent"));
+        Assert.Null(patient.ClrType.GetProperty("HasConsent"));
     }
 
     // ── rc.21: @stringValueMap — a member's stored string ────────────────────────────────────
@@ -200,7 +200,7 @@ public sealed class EfModelGapsTests
         Assert.Equal("draft", converter.ConvertToProvider(status.GetDefaultValue()));
     }
 
-    // ── G6 (reference half): an identity.reference over a flattened value-object member ──────
+    // ── reference half: an identity.reference over a flattened value-object member ──────
 
     private const string FlattenedReferenceModel = """
     { "metadata.root": { "package": "acme", "children": [
@@ -380,7 +380,7 @@ public sealed class EfModelGapsTests
         }
     }
 
-    // ── D21: a TPH discriminator typed by a SHARED enum ─────────────────────────────────────
+    // ── a TPH discriminator typed by a SHARED enum ─────────────────────────────────────
 
     private const string SharedDiscriminatorModel = """
     { "metadata.root": { "package": "acme", "children": [
@@ -426,7 +426,7 @@ public sealed class EfModelGapsTests
         }
     }
 
-    // ── D23: a keyed projection ─────────────────────────────────────────────────────────────
+    // ── a keyed projection ─────────────────────────────────────────────────────────────
 
     private const string KeyedProjectionModel = """
     { "metadata.root": { "package": "acme", "children": [
@@ -550,7 +550,7 @@ public sealed class EfModelGapsTests
         Assert.Single(await Rows(pg.ConnectionString, """SELECT "created_by" FROM "ledgers" WHERE "ledgerCode" = 'L-1' """));
     }
 
-    // ── D06 + D07: a TPH subtype's own fields are configured ────────────────────────────────
+    // ── a TPH subtype's own fields are configured ────────────────────────────────
 
     private const string TphOwnFieldsModel = """
     { "metadata.root": { "package": "acme", "children": [
@@ -584,10 +584,10 @@ public sealed class EfModelGapsTests
         using (var model = gen.ModelOnlyContext())
         {
             var person = EntityType(model, "Person");
-            // D07: without it EF falls back to `timestamp with time zone` only by accident of the
+            // Without it EF falls back to `timestamp with time zone` only by accident of the
             // CLR type; the explicit column type is what the migration creates.
             Assert.Equal("timestamp with time zone", person.FindProperty("BornAt")!.GetColumnType());
-            // D06: the value object is an owned JSON document, not a discovered navigation.
+            // The value object is an owned JSON document, not a discovered navigation.
             var home = person.FindNavigation("Home")!;
             Assert.True(home.ForeignKey.IsOwnership);
             Assert.Equal("home", home.TargetEntityType.GetContainerColumnName());
@@ -622,7 +622,7 @@ public sealed class EfModelGapsTests
         }
     }
 
-    // ── D20(c): a value object nested inside a FLATTENED value object ───────────────────────
+    // ── a value object nested inside a FLATTENED value object ───────────────────────
 
     private const string FlattenedNestedModel = """
     { "metadata.root": { "package": "acme", "children": [
@@ -883,7 +883,7 @@ public sealed class EfModelGapsTests
         Assert.Equal(new object?[] { "AUTO", null, 0, 1, 1, null }, row);
     }
 
-    // ── R33: native vocabulary the EF model must carry ─────────────────────────────────────
+    // ── Native vocabulary the EF model must carry ─────────────────────────────────────
     //
     // identity.primary @sequenceStart, @description and the index vocabulary (identity.secondary,
     // index.lookup, field @unique, with @where / @using / @orders and the resolved index name).
@@ -914,7 +914,7 @@ public sealed class EfModelGapsTests
         Assert.Single(Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions
             .GetService<IDesignTimeModel>(db).Model.GetEntityTypes(), t => t.ClrType.Name == name);
 
-    // R36, R50, R51 — @sequenceStart: a fresh database's identity begins at it, and NO start-only
+    // @sequenceStart: a fresh database's identity begins at it, and NO start-only
     // change ever restarts the sequence. Npgsql writes all three as RESTART: none → n as
     // `RESTART WITH n`, n → none as `RESTART WITH 1`, n → m as `RESTART WITH m`, each handing out
     // ids live rows may hold. The rewrite is a DESIGN-TIME concern: the generated IDesignTimeServices
@@ -1035,7 +1035,7 @@ public sealed class EfModelGapsTests
     [Fact]
     public void Without_the_design_time_services_npgsql_restarts()
     {
-        // The residual risk (R50): a separate migrations assembly that carries no reference to the
+        // The residual risk: a separate migrations assembly that carries no reference to the
         // services. Pinned so the test above can only pass because of them.
         using var a = Stock(StartModel(null));
         using var b = Stock(StartModel(200));
@@ -1088,7 +1088,7 @@ public sealed class EfModelGapsTests
         return System.Reflection.Assembly.Load(ms.ToArray());
     }
 
-    // rc.19 fix round (I4): EF reads [assembly: DesignTimeServicesReference] only from the startup and
+    // EF reads [assembly: DesignTimeServicesReference] only from the startup and
     // migrations assemblies. With the context in a third assembly (a library, as an adopter's core project) the
     // reference generated beside it is never read: the migrations project needs the line itself.
     [Theory]
@@ -1126,7 +1126,7 @@ public sealed class EfModelGapsTests
         }
     }
 
-    // rc.19 fix round (M3): EF applies every DesignTimeServicesReference it reads, so two contexts'
+    // EF applies every DesignTimeServicesReference it reads, so two contexts'
     // services in one assembly both run. They wrap the differ once between them, not once each
     // (each JSON-column COMMENT ON would otherwise be scaffolded twice).
     [Fact]
@@ -1189,6 +1189,34 @@ public sealed class EfModelGapsTests
         Assert.NotNull(db.Model);
     }
 
+    // One release of compatibility: the earlier runtime registration still compiles and does nothing.
+    [Fact]
+    public void A_caller_of_the_earlier_UseIdentityStartMigrations_still_compiles_and_does_nothing()
+    {
+        var gen = GeneratedEfModel.Compile(StartVocabularyModel.Replace("__START__", ", \"@sequenceStart\": 200"), "Acme.StartCompat",
+            c => c with { Dialect = "postgres" }, handWritten: ["""
+                using Microsoft.EntityFrameworkCore;
+                namespace Acme.StartCompat;
+                public static class LegacyRegistration
+                {
+                    #pragma warning disable CS0618
+                    public static DbContextOptionsBuilder Configure(DbContextOptionsBuilder o) => o.UseNpgsql("Host=unused").UseIdentityStartMigrations();
+                    public static DbContextOptionsBuilder<AppDbContext> Typed(DbContextOptionsBuilder<AppDbContext> o) => o.UseNpgsql("Host=unused").UseIdentityStartMigrations();
+                }
+                """]);
+        var shim = gen.Type("AppDbContextIdentityStartMigrations");
+        var method = shim.GetMethod("UseIdentityStartMigrations", [typeof(DbContextOptionsBuilder)])!;
+        var obsolete = (ObsoleteAttribute)Attribute.GetCustomAttribute(method, typeof(ObsoleteAttribute))!;
+        Assert.Contains("AppDbContextDesignTimeServices", obsolete.Message);
+        var builder = new DbContextOptionsBuilder().UseNpgsql("Host=unused");
+        Assert.Same(builder, method.Invoke(null, [builder]));
+        // It registers nothing: the model builds on stock Npgsql either way.
+        using var db = gen.NewContext(o => { method.Invoke(null, [o.UseNpgsql("Host=unused")]); });
+        Assert.NotNull(db.Model);
+        Assert.DoesNotContain("RESTART", Sql(Differ(DesignTime(db, gen.Assembly))
+            .GetDifferences(DesignModel(Stock(StartModel(null))), DesignModel(db))), StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>A database built at <paramref name="from"/>, <paramref name="seed"/> run on it, then the
     /// scaffolded start migration applied: the ids of the rows, and of one more inserted after.</summary>
     private static async Task<List<long>> AfterStartChange(long? from, long? to, string seed)
@@ -1223,6 +1251,20 @@ public sealed class EfModelGapsTests
     public async Task A_populated_table_advances_to_the_start()
     {
         Assert.Equal(new[] { 1L, 2L, 3L, 1000L }, await AfterStartChange(null, 1000, ThreeRows));
+    }
+
+    [Fact]
+    public async Task A_start_below_the_highest_id_continues_after_it()
+    {
+        // Rows 1-3 and a counter at 4: a start of 2 is below max(id) + 1, so the next id is 4, not 2.
+        Assert.Equal(new[] { 1L, 2L, 3L, 4L }, await AfterStartChange(null, 2, ThreeRows));
+    }
+
+    [Fact]
+    public async Task A_start_above_the_highest_id_begins_at_the_start()
+    {
+        // Rows 1-3 and a counter at 4: a start of 50 is above max(id) + 1, so the counter moves up to it.
+        Assert.Equal(new[] { 1L, 2L, 3L, 50L }, await AfterStartChange(null, 50, ThreeRows));
     }
 
     [Fact]
@@ -1268,7 +1310,7 @@ public sealed class EfModelGapsTests
         Assert.Equal(new[] { "Status", "OpenedAt" }, opened.Properties.Select(p => p.Name));
         Assert.Equal(new[] { false, true }, opened.IsDescending);
         Assert.Equal("gin", Microsoft.EntityFrameworkCore.NpgsqlIndexExtensions.GetMethod(indexes["ix_tickets_email_trgm"]));
-        // An expression index is not an EF index: the expression-indexes artifact carries it.
+        // An expression index is not an EF index; meta migrate creates it.
         Assert.False(indexes.ContainsKey("ix_tickets_lower_email"));
     }
 
@@ -1316,7 +1358,7 @@ public sealed class EfModelGapsTests
         Assert.DoesNotContain("ix_tickets_opened", sql);
     }
 
-    // Ruling R59 — a JSON column's comment. EF 8's JsonColumn carries no comment, so the generated
+    // A JSON column's comment. EF 8's JsonColumn carries no comment, so the generated
     // model puts the text (the field's @description, else its value object's) on the owned type as
     // an annotation, and the generated design-time differ scaffolds it as COMMENT ON COLUMN, Up and Down.
 
@@ -1364,6 +1406,22 @@ public sealed class EfModelGapsTests
     }
 
     [Fact]
+    public void A_json_column_comment_change_alone_is_a_pending_model_change()
+    {
+        // `has-pending-model-changes` and `migrations add` ask HasDifferences, not GetDifferences: a
+        // change that only edits a JSON column's comment must count there too, and no change must not.
+        Assert.True(HasDifferences(CommentModel("A"), CommentModel("B")));
+        Assert.False(HasDifferences(CommentModel("A"), CommentModel("A")));
+    }
+
+    private static bool HasDifferences(GeneratedEfModel from, GeneratedEfModel to)
+    {
+        using var a = Stock(from);
+        using var b = Stock(to);
+        return Differ(DesignTime(b, to.Assembly)).HasDifferences(DesignModel(a), DesignModel(b));
+    }
+
+    [Fact]
     public void A_json_column_without_its_own_description_takes_its_value_objects()
     {
         var (up, _) = ScaffoldComment(CommentModel(null), CommentModel(null, voDoc: "Free-form tags."));
@@ -1385,7 +1443,7 @@ public sealed class EfModelGapsTests
         Assert.Contains("\"MetaObjects:JsonColumnComment\", \"Snap.\"", code);
     }
 
-    // G1, rc.20 — an OwnedTypeConfig override decides how an object field is mapped. One that maps
+    // An OwnedTypeConfig override decides how an object field is mapped. One that maps
     // it as a jsonb property (an adopter's hook may, for every non-flattened value object) has no owned navigation,
     // so the owned type's annotation line would throw a NullReferenceException in OnModelCreating
     // and no model would build. The comment goes on the property's column instead; a mapping the
@@ -1450,7 +1508,9 @@ public sealed class EfModelGapsTests
         Assert.Null((await Rows(pg.ConnectionString, read))[0][0]);
     }
 
-    // ---- item 13: the CHECKs meta migrate derives, declared by the EF model ----
+    // ---- the CHECKs meta migrate derives, declared by the EF model ----
+
+    // ---- the CHECKs meta migrate derives, declared by the EF model ----
 
     [Fact]
     public async Task The_checks_the_model_declares_are_the_ones_meta_migrate_creates()
@@ -1464,15 +1524,63 @@ public sealed class EfModelGapsTests
             await db.Database.EnsureCreatedAsync();
 
         using var expected = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(corpus, "expected.postgres.json")));
-        var names = expected.RootElement.GetProperty("gadgets").EnumerateArray().Select(c => c.GetProperty("name").GetString()!).OrderBy(n => n, StringComparer.Ordinal);
-        var live = (await Rows(pg.ConnectionString, """
-                SELECT conname FROM pg_constraint WHERE conrelid = 'gadgets'::regclass AND contype = 'c' ORDER BY conname COLLATE "C"
-                """)).Select(r => (string)r[0]!);
-        Assert.Equal(names, live);
+        // The corpus's expected file covers every input model (checks, stored, tph); this test compiles
+        // meta.checks.json only, so it asserts the tables that model declares.
+        foreach (var table in expected.RootElement.EnumerateObject()
+                     .Where(t => model.Contains($"\"@table\": \"{t.Name}\"", StringComparison.Ordinal)))
+        {
+            var names = table.Value.EnumerateArray().Select(c => c.GetProperty("name").GetString()!).OrderBy(n => n, StringComparer.Ordinal);
+            var live = (await Rows(pg.ConnectionString, $"""
+                    SELECT conname FROM pg_constraint WHERE conrelid = '{table.Name}'::regclass AND contype = 'c' ORDER BY conname COLLATE "C"
+                    """)).Select(r => (string)r[0]!);
+            Assert.Equal(names, live);
+        }
 
         // The database enforces them: a score outside 1..5 is refused by its CHECK.
         var ex = await Assert.ThrowsAsync<PostgresException>(() => Exec(pg.ConnectionString,
             "INSERT INTO gadgets (kind, tags, email, score) VALUES ('plain', '{}', 'a@b.c', 9)"));
         Assert.True(ex.ConstraintName == "gadgets_score_numeric_chk", ex.MessageText);
+    }
+
+    // migrate.foreignKeyIndexes: the model declares the <table>_<columns>_idx index `meta migrate`
+    // gives each foreign key nothing leads with, on the base and on a TPH subtype's own reference,
+    // and EF's convention IX_ index on that key gives way to it.
+    private const string ForeignKeyIndexModel = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Owner", "children": [
+        { "source.rdb": { "@table": "owners" } },
+        { "field.long": { "name": "id" } },
+        { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+      ]}},
+      { "object.entity": { "name": "Vehicle", "@discriminator": "kind", "children": [
+        { "source.rdb": { "@table": "vehicles" } },
+        { "field.long": { "name": "id" } },
+        { "field.string": { "name": "kind", "@maxLength": 10 } },
+        { "field.long": { "name": "ownerId" } },
+        { "field.long": { "name": "keeperId" } },
+        { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+        { "identity.reference": { "name": "owner", "@fields": ["ownerId"], "@references": "Owner" } },
+        { "identity.reference": { "name": "keeper", "@fields": ["keeperId"], "@references": "Owner" } },
+        { "index.lookup": { "name": "ix_vehicles_keeper", "@fields": ["keeperId", "kind"] } }
+      ]}},
+      { "object.entity": { "name": "Car", "extends": "Vehicle", "@discriminatorValue": "Car", "children": [
+        { "field.long": { "name": "dealerId" } },
+        { "identity.reference": { "name": "dealer", "@fields": ["dealerId"], "@references": "Owner" } }
+      ]}}
+    ]}}
+    """;
+
+    [Fact]
+    public void Foreign_key_indexes_reach_the_model_under_migrates_names()
+    {
+        var gen = GeneratedEfModel.Compile(ForeignKeyIndexModel, "Acme.FkIndex", c => c with { ForeignKeyIndexes = true });
+        using var db = gen.NewContext(o => o.UseNpgsql("Host=unused"));
+        var vehicle = DesignEntityType(db, "Vehicle").GetDeclaredIndexes().Select(i => i.GetDatabaseName()).ToList();
+        var car = DesignEntityType(db, "Car").GetDeclaredIndexes().Select(i => i.GetDatabaseName()).ToList();
+        Assert.Contains("vehicles_ownerId_idx", vehicle);
+        Assert.Contains("vehicles_dealerId_idx", car);
+        // keeperId leads a declared lookup index, so it gets no second one.
+        Assert.DoesNotContain("vehicles_keeperId_idx", vehicle);
+        Assert.DoesNotContain(vehicle.Concat(car), n => n!.StartsWith("IX_", StringComparison.Ordinal));
     }
 }

@@ -1,6 +1,6 @@
 # `xpkg-value-object-refs/` — one file meets two same-named types from two packages
 
-One metadata input every port's codegen test loads. Nothing is renamed (ruling R52): each
+One metadata input every port's codegen test loads. Nothing is renamed: each
 object keeps its short name in its own package, so the generated code that meets two of them
 must tell them apart without a rename.
 
@@ -11,8 +11,7 @@ must tell them apart without a rename.
 
 A port that writes every package into one namespace or module directory refuses this model
 with `ERR_NAME_COLLISION` (two `Note`s, two `Summary`s); the corpus is run with the packages
-kept apart — C# by default (each package is its own namespace, rc.19 R65; the runner maps them
-explicitly too), TypeScript `outputLayout: "package"` (the default). With them apart, every
+kept apart — C# by default (each package is its own namespace), TypeScript `outputLayout: "package"` (opt-in; the default is `flat`). With them apart, every
 generated file that names one of the pair must name it unambiguously:
 
 - **C#:** every generated file names a type of another namespace `global::`-qualified (a bare

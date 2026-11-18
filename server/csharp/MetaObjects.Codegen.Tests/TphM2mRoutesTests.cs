@@ -155,7 +155,7 @@ public class TphM2mRoutesTests
     }
 
     private static string FileContent(IEnumerable<EmittedFile> files, string path) =>
-        files.Single(f => System.IO.Path.GetFileName(f.Path) == path).Content;
+        files.Single(f => f.Path == path).Content;
 
     /// <summary>
     /// The full text of one `app.MapGet(prefix + "&lt;urlLiteral&gt;", ...` registration,
@@ -204,7 +204,7 @@ public class TphM2mRoutesTests
         var mount = ExtractMount(routes, "/auths/bridge/{id}/linkedAuths");
         // Rule c — the id in the URL must name a Bridge row before the junction is touched.
         Assert.Contains("if (!await db.Auths.OfType<BridgeAuth>().AnyAsync(x => x.Id == id))", mount);
-        Assert.Contains("return Results.Ok(new global::System.Collections.Generic.List<BridgeAuth>());", mount);
+        Assert.Contains("return Results.Ok(new System.Collections.Generic.List<BridgeAuth>());", mount);
         // Defect B — the self-join TARGET is the same subtype, which has no DbSet of its
         // own: the related rows must be loaded through the BASE DbSet, narrowed.
         Assert.Contains("await db.Auths.OfType<BridgeAuth>().AsNoTracking()", mount);
@@ -258,7 +258,7 @@ public class TphM2mRoutesTests
         //      fixing only the base-class clause would have left behind: the compile error
         //      at least announces itself.
         var files = new EntityGenerator().Generate(Ctx(Load())).ToList();
-        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "ScopedAuth.g.cs");
+        Assert.DoesNotContain(files, f => f.Path == "ScopedAuth.g.cs");
 
         var permit = FileContent(files, "PermitAuth.g.cs");
         Assert.Contains("public class PermitAuth : Auth", permit);
@@ -290,10 +290,10 @@ public class TphM2mRoutesTests
     public void Subtypes_still_emit_no_standalone_routes_file()
     {
         var files = new RoutesGenerator().Generate(Ctx(Load())).ToList();
-        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "BridgeAuthRoutes.g.cs");
-        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "CouponAuthRoutes.g.cs");
-        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "PermitAuthRoutes.g.cs");
-        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "ScopedAuthRoutes.g.cs");
+        Assert.DoesNotContain(files, f => f.Path == "BridgeAuthRoutes.g.cs");
+        Assert.DoesNotContain(files, f => f.Path == "CouponAuthRoutes.g.cs");
+        Assert.DoesNotContain(files, f => f.Path == "PermitAuthRoutes.g.cs");
+        Assert.DoesNotContain(files, f => f.Path == "ScopedAuthRoutes.g.cs");
     }
 
     [Fact]

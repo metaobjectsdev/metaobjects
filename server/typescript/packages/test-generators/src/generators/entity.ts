@@ -178,7 +178,7 @@ export const entityFile = function entityFile(opts?: EntityFileOpts): Generator 
     if (isAbstract(entity) && !ctx.renderContext.emitAbstractShapes) {
       return [];
     }
-    // Claim the module's type and collection names in its directory (ruling R52): two objects
+    // Claim the module's type name in its directory: two objects
     // emitting one name there are refused, naming both.
     claimModuleNames(ctx, entity);
     const renderContext: RenderContext = {

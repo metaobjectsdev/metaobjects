@@ -9,6 +9,7 @@
 // object-array field collapsed to z.array(z.string()) and the JSON Schema sent
 // downstream (e.g. to LLM tool_use input_schema) lost the nested object shape.
 
+import { flatSurfaceFields } from "@metaobjectsdev/codegen-ts/engine";
 import { entityTypeNames } from "./entity-type-names.js";
 import { code, joinCode, imp, type Code } from "@metaobjectsdev/codegen-ts/engine";
 import { MetaObject, MetaField, type MetaRoot, stripPackage } from "@metaobjectsdev/metadata";
@@ -16,8 +17,8 @@ import {
   FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_DECIMAL, FIELD_ATTR_PRECISION, FIELD_ATTR_SCALE, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
   FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIME, FIELD_SUBTYPE_TIMESTAMP,
-  FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_OBJECT, FIELD_SUBTYPE_MAP, FIELD_SUBTYPE_UUID,
-  FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET, FIELD_SUBTYPE_DURATION,
+  FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_OBJECT, FIELD_SUBTYPE_MAP, FIELD_SUBTYPE_UUID, FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET,
+  FIELD_SUBTYPE_DURATION,
   VALIDATOR_SUBTYPE_REQUIRED, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
   VALIDATOR_SUBTYPE_NUMERIC, VALIDATOR_SUBTYPE_ARRAY,
   IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION,
@@ -28,6 +29,12 @@ import {
   FIELD_ATTR_DB_COLUMN_TYPE, DB_COLUMN_TYPE_JSONB,
   AUTO_SET_ON_CREATE, AUTO_SET_ON_UPDATE,
   VALIDATOR_ATTR_MAX, VALIDATOR_ATTR_MIN, VALIDATOR_ATTR_PATTERN,
+  VALIDATOR_SUBTYPE_COMPARISON, VALIDATOR_SUBTYPE_REQUIRED_WHEN,
+  VALIDATOR_SUBTYPE_PRESENT_IFF, VALIDATOR_SUBTYPE_AT_LEAST_ONE, VALIDATOR_SUBTYPE_EXACTLY_ONE,
+  VALIDATOR_ATTR_CONDITION, EXPR_OP_IS_NOT_NULL, EXPR_OP_NOT, EXPR_FN_COALESCE,
+  FILTER_OP_IS_NULL, FILTER_COMPOSE_AND, FILTER_COMPOSE_OR, parseDurationLiteral,
+  VALIDATOR_ATTR_LEFT, VALIDATOR_ATTR_OP, VALIDATOR_ATTR_RIGHT,
+  VALIDATOR_ATTR_FIELD, VALIDATOR_ATTR_WHEN, VALIDATOR_ATTR_EQUALS, VALIDATOR_ATTR_FIELDS,
   GENERATION_INCREMENT, GENERATION_UUID,
   OBJECT_ATTR_DISCRIMINATOR, OBJECT_ATTR_DISCRIMINATOR_VALUE,
   OBJECT_SUBTYPE_VALUE,
@@ -98,7 +105,7 @@ function durationHelperSince(since: number): string {
  *  a plain entity has nothing to preserve, so both are omitted. Resolving
  *  (ADR-0039): honors an @autoSet inherited via extends. */
 export function hasAutoSetFields(obj: MetaObject): boolean {
-  for (const child of obj.fields()) {
+  for (const child of flatSurfaceFields(obj)) {
     const autoSet = child.attr(FIELD_ATTR_AUTO_SET);
     if (autoSet === AUTO_SET_ON_CREATE || autoSet === AUTO_SET_ON_UPDATE) return true;
   }
@@ -115,7 +122,7 @@ export function hasAutoSetFields(obj: MetaObject): boolean {
 function isTphBaseOwnField(obj: MetaObject, field: MetaField): boolean {
   const base = tphDiscriminatorBase(obj);
   if (base === undefined) return false;
-  return base.fields().some((f) => f.name === field.name);
+  return flatSurfaceFields(base).some((f) => f.name === field.name);
 }
 
 /**
@@ -163,7 +170,7 @@ export function renderTphSubtypeReadSchema(obj: MetaObject, ctx?: RenderContext)
   const tphPin = tphDiscriminatorPin(obj);
 
   const fieldLines: Code[] = [];
-  for (const child of obj.fields()) {
+  for (const child of flatSurfaceFields(obj)) {
     if (tphPin !== undefined && child.name === tphPin.fieldName) {
       fieldLines.push(code`  ${child.name}: z.literal(${JSON.stringify(tphPin.value)})`);
       continue;
@@ -264,6 +271,316 @@ function isInsertRequiredPk(field: MetaField, assignedPk: Set<string>): boolean 
   return field.attr(FIELD_ATTR_DEFAULT) === undefined;
 }
 
+// ── Entity-scoped cross-field validators on the full (insert) record ──────────
+// validator.comparison / requiredWhen / presentIff / atLeastOne / exactlyOne are enforced on
+// the INSERT-shaped schemas only, as one `.superRefine`. A PATCH body cannot see the merged
+// row, so the Update schema is deliberately left alone (the DB CHECK stays the guard
+// there). Semantics mirror the migrate-ts CHECK derivation: absent / null / undefined is
+// SQL NULL, "" is NOT null; a comparison with a NULL side passes; requiredWhen is violated
+// only when the gate EQUALS the literal and the target is null; presentIff requires
+// (target != null) === (gate equals literal), a null gate being "not equal"; exactlyOne
+// requires exactly one non-null field. A rule with an @condition is checked only when the
+// condition is TRUE: the CHECK is NOT (condition) OR (rule), so a condition that is false or
+// NULL (three-valued, as SQL evaluates it) lets the row through.
+
+const CROSS_FIELD_OPS: Record<string, string> = {
+  gt: ">", gte: ">=", lt: "<", lte: "<=", ne: "!==", eq: "===",
+};
+
+const NUMERIC_SUBTYPES: ReadonlySet<string> = new Set([
+  FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
+  FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_CURRENCY,
+]);
+
+const ORDERED_SUBTYPES: ReadonlySet<string> = new Set([
+  FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIME, FIELD_SUBTYPE_TIMESTAMP, FIELD_SUBTYPE_DURATION,
+]);
+
+/** Subtypes with equality but no ordering: a pair of the same one may be tested with eq / ne. */
+const EQUALITY_SUBTYPES: ReadonlySet<string> = new Set([
+  FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_UUID, FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET,
+]);
+
+/** Whether a comparison between these two fields has a sound meaning, as in every port:
+ *  numerics compare with each other, strings, temporals and durations only with their own subtype and
+ *  @localTime flag (a date against a timestamp, or an instant against a wall clock, compares
+ *  two differently shaped strings, which is meaningless),
+ *  and boolean, enum, uuid, uri and inet fields only test equality. Anything else is skipped, never rejected. */
+function crossComparable(left: MetaField, right: MetaField, opName: string): boolean {
+  const a = left.subType;
+  const b = right.subType;
+  if (NUMERIC_SUBTYPES.has(a) && NUMERIC_SUBTYPES.has(b)) return true;
+  if (a !== b) return false;
+  if ((left.attr(FIELD_ATTR_LOCAL_TIME) === true) !== (right.attr(FIELD_ATTR_LOCAL_TIME) === true)) return false;
+  if (ORDERED_SUBTYPES.has(a)) return true;
+  return (opName === "eq" || opName === "ne") && EQUALITY_SUBTYPES.has(a);
+}
+
+/** Names of the fields the INSERT-shaped schemas carry (same skip rules as the emitters). */
+function insertSchemaFieldNameSet(obj: MetaObject): Set<string> {
+  const autoGen = autoGenPkFieldNames(obj);
+  const out = new Set<string>();
+  for (const f of flatSurfaceFields(obj)) {
+    if (autoGen.has(f.name)) continue;
+    if (isReadOnlyMutability(f) || f.isDerived()) continue;
+    out.add(f.name);
+  }
+  return out;
+}
+
+/** The @equals literal as a TS expression, typed by the gating field's subtype. */
+function crossFieldLiteral(raw: unknown, when: MetaField): { lit: string; numeric: boolean } {
+  const s = String(raw);
+  if (when.subType === FIELD_SUBTYPE_BOOLEAN) {
+    return { lit: s === "true" || s === "1" || s === "TRUE" ? "true" : "false", numeric: false };
+  }
+  if (NUMERIC_SUBTYPES.has(when.subType) && /^-?\d+(\.\d+)?$/.test(s)) return { lit: s, numeric: true };
+  return { lit: JSON.stringify(s), numeric: false };
+}
+
+/** Does this object declare at least one cross-field validator that will be enforced
+ *  on its insert schema? Exported so the route, query and form emitters can tell a refined
+ *  schema (which Zod will not `.omit()` or `.partial()`) from a plain object; a refined TPH
+ *  subtype also exports `<Name>InsertBaseSchema` (unrefined) and `<Name>InsertBodySchema`
+ *  (refined, pinned discriminator omitted). */
+export function hasInsertRefinements(obj: MetaObject): boolean {
+  return crossFieldRefinement(obj).blocks.length > 0;
+}
+
+/**
+ * How a value is compared, from the field it is or is compared with: numerically, as a
+ * duration's microseconds (the canonical string does not order), or as written (strings,
+ * dates and times in their ISO form, booleans, enum members).
+ */
+type CompareKind = "number" | "duration" | "plain";
+
+function compareKind(f: MetaField | undefined): CompareKind {
+  if (f === undefined) return "plain";
+  if (NUMERIC_SUBTYPES.has(f.subType)) return "number";
+  if (f.subType === FIELD_SUBTYPE_DURATION) return "duration";
+  return "plain";
+}
+
+/** The local helpers a refinement body uses, declared once at its top when needed. */
+const HELPER_CMP = `  const cmp = (a: unknown, b: unknown): number | null => {
+    if (a == null || b == null) return null;
+    if (typeof a === "number" || typeof b === "number") return Number(a) - Number(b);
+    if (a instanceof Date || b instanceof Date) return new Date(a as string).getTime() - new Date(b as string).getTime();
+    return String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
+  };`;
+const HELPER_TRI = `  const all = (...v: Array<boolean | null>): boolean | null => v.includes(false) ? false : v.includes(null) ? null : true;
+  const any = (...v: Array<boolean | null>): boolean | null => v.includes(true) ? true : v.includes(null) ? null : false;
+  const not = (v: boolean | null): boolean | null => v === null ? null : !v;`;
+// An ISO-8601 duration (weeks, days, hours, minutes, seconds) as microseconds, or null when the
+// text is not one (the accepted form: `P`, `PT` and `P1DT` are not durations).
+const HELPER_MICROS = `  const micros = (d: unknown): number | null => {
+    if (d == null) return null;
+    const m = /^([-+])?P(?!$)(?:(\\d+)W)?(?:(\\d+)D)?(?:T(?=\\d)(?:(\\d+)H)?(?:(\\d+)M)?(?:(\\d+)(?:\\.(\\d+))?S)?)?$/.exec(String(d));
+    if (m === null) return null;
+    const hours = (Number(m[2] ?? 0) * 7 + Number(m[3] ?? 0)) * 24 + Number(m[4] ?? 0);
+    const us = ((hours * 60 + Number(m[5] ?? 0)) * 60 + Number(m[6] ?? 0)) * 1e6 + Number((m[7] ?? "").padEnd(6, "0").slice(0, 6));
+    return m[1] === "-" ? -us : us;
+  };`;
+
+interface RefinementBuild { blocks: string[]; helpers: Set<string> }
+
+function crossFieldRefinement(obj: MetaObject): RefinementBuild {
+  const inSchema = insertSchemaFieldNameSet(obj);
+  const byName = new Map(flatSurfaceFields(obj).map((f) => [f.name, f] as const));
+  // A reference must name a field that exists AND is in the insert schema; otherwise skip
+  // the validator (migrate skips on a missing field; a readOnly/derived/auto-PK field is
+  // never in the body, so enforcing on it would reject every create).
+  const ref = (name: unknown): MetaField | undefined => {
+    if (typeof name !== "string" || !inSchema.has(name)) return undefined;
+    return byName.get(name);
+  };
+  // A TPH subtype's discriminator is pinned to one literal, so the rule reads that literal:
+  // the same refinement then holds whether or not the body carries the discriminator.
+  const pin = tphDiscriminatorPin(obj);
+  const acc = (f: MetaField) => pin !== undefined && f.name === pin.fieldName
+    ? JSON.stringify(pin.value)
+    : `row[${JSON.stringify(f.name)}]`;
+  const issue = (path: string, msg: string) =>
+    `ctx.addIssue({ code: "custom", path: [${path}], message: ${JSON.stringify(msg)} });`;
+  // The helpers the rule being built uses; merged into `helpers` only when the rule is kept,
+  // so a rule left to the database declares nothing that nothing reads.
+  const helpers = new Set<string>();
+  let ruleHelpers = new Set<string>();
+  /** A value compared as `kind`. */
+  const asKind = (expr: string, kind: CompareKind): string => {
+    if (kind === "number") return `(${expr} == null ? null : Number(${expr}))`;
+    if (kind === "duration") { ruleHelpers.add(HELPER_MICROS); return `micros(${expr})`; }
+    return expr;
+  };
+
+  /** The field a node compares as: itself, or a coalesce's first field. */
+  const nodeField = (node: unknown): MetaField | undefined => {
+    const n = (node ?? {}) as Record<string, unknown>;
+    if (typeof n["field"] === "string") return byName.get(n["field"]);
+    if (n["fn"] === EXPR_FN_COALESCE && Array.isArray(n["args"])) {
+      for (const a of n["args"] as unknown[]) { const f = nodeField(a); if (f !== undefined) return f; }
+    }
+    return undefined;
+  };
+  /** Every field a value node reads: the field itself, or each field among a coalesce's arguments. */
+  const nodeFields = (node: unknown): MetaField[] => {
+    const n = (node ?? {}) as Record<string, unknown>;
+    if (typeof n["field"] === "string") { const f = byName.get(n["field"]); return f === undefined ? [] : [f]; }
+    if (n["fn"] === EXPR_FN_COALESCE && Array.isArray(n["args"])) return (n["args"] as unknown[]).flatMap(nodeFields);
+    return [];
+  };
+  /** A comparison inside a condition follows the validator rule: every pair of fields it reads
+   *  must be comparable, or the whole rule is left to the database. */
+  const conditionComparable = (left: unknown, right: unknown, opName: string): boolean => {
+    const fields = [...nodeFields(left), ...nodeFields(right)];
+    return fields.every((a, i) => fields.slice(i + 1).every((b) => crossComparable(a, b, opName)));
+  };
+  /** A value node (field, literal, coalesce) as a TS expression compared as `kind`, or undefined. */
+  const valueTs = (node: unknown, kind: CompareKind): string | undefined => {
+    const n = (node ?? {}) as Record<string, unknown>;
+    if (typeof n["field"] === "string") {
+      const f = ref(n["field"]);
+      return f === undefined ? undefined : asKind(acc(f), kind);
+    }
+    if ("value" in n) {
+      const value = n["value"];
+      if (kind === "duration" && typeof value === "string") {
+        const us = parseDurationLiteral(value);
+        return us === undefined ? undefined : String(Number(us));
+      }
+      return JSON.stringify(value);
+    }
+    if (n["fn"] === EXPR_FN_COALESCE && Array.isArray(n["args"])) {
+      const args = (n["args"] as unknown[]).map((a) => valueTs(a, kind));
+      if (args.some((a) => a === undefined)) return undefined;
+      return `([${args.join(", ")}].find((x) => x != null) ?? null)`;
+    }
+    return undefined;
+  };
+  /** A condition node as a TS expression of type `boolean | null`, or undefined when it names
+   *  a field the body does not carry (the rule is then left to the database). */
+  const condTs = (node: unknown): string | undefined => {
+    const n = (node ?? {}) as Record<string, unknown>;
+    const op = n["op"];
+    if (typeof op === "string" && CROSS_FIELD_OPS[op] !== undefined) {
+      if (!conditionComparable(n["left"], n["right"], op)) return undefined;
+      const kind = compareKind(nodeField(n["left"]) ?? nodeField(n["right"]));
+      const l = valueTs(n["left"], kind);
+      const r = valueTs(n["right"], kind);
+      if (l === undefined || r === undefined) return undefined;
+      ruleHelpers.add(HELPER_CMP);
+      return `((c) => c === null ? null : c ${CROSS_FIELD_OPS[op]} 0)(cmp(${l}, ${r}))`;
+    }
+    if (op === FILTER_OP_IS_NULL || op === EXPR_OP_IS_NOT_NULL) {
+      const a = valueTs(n["arg"], "plain");
+      if (a === undefined) return undefined;
+      return op === FILTER_OP_IS_NULL ? `(${a} == null)` : `(${a} != null)`;
+    }
+    if (op === EXPR_OP_NOT) {
+      const a = condTs(n["arg"]);
+      if (a === undefined) return undefined;
+      ruleHelpers.add(HELPER_TRI);
+      return `not(${a})`;
+    }
+    if ((op === FILTER_COMPOSE_AND || op === FILTER_COMPOSE_OR) && Array.isArray(n["args"])) {
+      const args = (n["args"] as unknown[]).map(condTs);
+      if (args.some((a) => a === undefined)) return undefined;
+      ruleHelpers.add(HELPER_TRI);
+      return `${op === FILTER_COMPOSE_AND ? "all" : "any"}(${args.join(", ")})`;
+    }
+    return undefined;
+  };
+
+  const blocks: string[] = [];
+  /** Add a rule's block, guarded by its @condition when it has one. */
+  const push = (v: { attr(name: string): unknown }, block: string): void => {
+    const condition = v.attr(VALIDATOR_ATTR_CONDITION);
+    const guard = condition === undefined ? undefined : condTs(condition);
+    if (condition !== undefined && guard === undefined) return;
+    for (const h of ruleHelpers) helpers.add(h);
+    if (guard === undefined) { blocks.push(block); return; }
+    const inner = block.split("\n").map((l) => (l === "" ? l : `  ${l}`)).join("\n");
+    blocks.push(`  if (${guard} === true) {\n${inner}\n  }`);
+  };
+  /** The @fields of an atLeastOne / exactlyOne, each in the body, or undefined. */
+  const fieldList = (raw: unknown): MetaField[] | undefined => {
+    const names = Array.isArray(raw) ? raw : (typeof raw === "string" ? [raw] : []);
+    const refs = names.map(ref);
+    if (refs.length === 0 || refs.some((r) => r === undefined)) return undefined;
+    return refs as MetaField[];
+  };
+  // ADR-0039: entity.validators() is the resolving accessor (never ownValidators).
+  for (const v of obj.validators()) {
+    ruleHelpers = new Set<string>();
+    switch (v.subType) {
+      case VALIDATOR_SUBTYPE_COMPARISON: {
+        const left = ref(v.attr(VALIDATOR_ATTR_LEFT));
+        const right = ref(v.attr(VALIDATOR_ATTR_RIGHT));
+        const opName = String(v.attr(VALIDATOR_ATTR_OP));
+        const op = CROSS_FIELD_OPS[opName];
+        if (!left || !right || !op || left.resolvedIsArray() || right.resolvedIsArray()) break;
+        if (!crossComparable(left, right, opName)) break;
+        const kind = compareKind(left);
+        const c = kind === "number" || kind === "duration"
+          ? "Number(l) - Number(r)"
+          : "l instanceof Date && r instanceof Date ? l.getTime() - r.getTime() : String(l) < String(r) ? -1 : String(l) > String(r) ? 1 : 0";
+        // A duration side is read as its microseconds; text that is not a duration reads as
+        // null, so the rule is not checked (the field's own schema refuses that text).
+        const readKind: CompareKind = kind === "duration" ? "duration" : "plain";
+        push(v,
+          `  {\n    const l: unknown = ${asKind(acc(left), readKind)};\n    const r: unknown = ${asKind(acc(right), readKind)};\n` +
+          `    if (l != null && r != null) {\n      const c = ${c};\n` +
+          `      if (!(c ${op} 0)) ${issue(JSON.stringify(left.name), `${left.name} must be ${opName} ${right.name}`)}\n    }\n  }`,
+        );
+        break;
+      }
+      case VALIDATOR_SUBTYPE_REQUIRED_WHEN:
+      case VALIDATOR_SUBTYPE_PRESENT_IFF: {
+        const target = ref(v.attr(VALIDATOR_ATTR_FIELD));
+        const when = ref(v.attr(VALIDATOR_ATTR_WHEN));
+        if (!target || !when || when.resolvedIsArray()) break;
+        const { lit, numeric } = crossFieldLiteral(v.attr(VALIDATOR_ATTR_EQUALS), when);
+        const gate = numeric ? `g != null && Number(g) === ${lit}` : `g === ${lit}`;
+        const path = JSON.stringify(target.name);
+        const decl = `    const g: unknown = ${acc(when)};\n    const t: unknown = ${acc(target)};\n    const open = ${gate};\n`;
+        if (v.subType === VALIDATOR_SUBTYPE_REQUIRED_WHEN) {
+          push(v, `  {\n${decl}    if (open && t == null) ${issue(path, `${target.name} is required when ${when.name} is ${String(v.attr(VALIDATOR_ATTR_EQUALS))}`)}\n  }`);
+        } else {
+          push(v, `  {\n${decl}    if ((t != null) !== open) ${issue(path, `${target.name} must be present if and only if ${when.name} is ${String(v.attr(VALIDATOR_ATTR_EQUALS))}`)}\n  }`);
+        }
+        break;
+      }
+      case VALIDATOR_SUBTYPE_AT_LEAST_ONE: {
+        const fields = fieldList(v.attr(VALIDATOR_ATTR_FIELDS));
+        if (fields === undefined) break;
+        const anyPresent = fields.map((f) => `${acc(f)} != null`).join(" || ");
+        push(v, `  if (!(${anyPresent})) ${issue(JSON.stringify(fields[0]!.name), `at least one of ${fields.map((f) => f.name).join(", ")} is required`)}`);
+        break;
+      }
+      case VALIDATOR_SUBTYPE_EXACTLY_ONE: {
+        const fields = fieldList(v.attr(VALIDATOR_ATTR_FIELDS));
+        if (fields === undefined) break;
+        const present = fields.map((f) => `${acc(f)}`).join(", ");
+        push(v, `  if ([${present}].filter((x) => x != null).length !== 1) ${issue(JSON.stringify(fields[0]!.name), `exactly one of ${fields.map((f) => f.name).join(", ")} is required`)}`);
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  return { blocks, helpers };
+}
+
+/** `.superRefine(...)` suffix for an insert-shaped schema, or "" when the object has no
+ *  enforceable cross-field validator (output is then byte-identical to before). */
+function insertRefinementSuffix(obj: MetaObject): string {
+  const { blocks, helpers } = crossFieldRefinement(obj);
+  if (blocks.length === 0) return "";
+  // Declared in a fixed order, so the output does not depend on which rule needed one first.
+  const decls = [HELPER_CMP, HELPER_TRI, HELPER_MICROS].filter((h) => helpers.has(h));
+  return `.superRefine((row, ctx) => {\n${[...decls, ...blocks].join("\n")}\n})`;
+}
+
 /**
  * Emit ONLY the `<Name>InsertSchema`. Used by the value-object file emitter
  * for metaobjects with no writable source.rdb — those have no PATCH/update
@@ -283,7 +600,7 @@ export function renderInsertSchemaOnly(obj: MetaObject, ctx?: RenderContext): Co
   const tphPin = tphDiscriminatorPin(obj);
 
   const insertFieldLines: Code[] = [];
-  for (const child of obj.fields()) {
+  for (const child of flatSurfaceFields(obj)) {
     if (autoGenPkFields.has(child.name)) continue;
     // FR-037 R1: an @mutability:"readOnly" field is populated by DB / replication /
     // external owner; the application has no path to write it. Exclude from the
@@ -331,7 +648,7 @@ export function renderInsertSchemaOnly(obj: MetaObject, ctx?: RenderContext): Co
   return code`
 ${utcTimestampHelperSince(utcUsesBefore)}${decimalHelperSince(decimalUsesBefore)}${durationHelperSince(durationUsesBefore)}${docsPrefix}export const ${insertSchemaName} = ${z}.object({
 ${joinCode(insertFieldLines, { on: ",\n" })}
-});
+})${insertRefinementSuffix(obj)};
 `;
 }
 
@@ -368,7 +685,7 @@ export function insertSchemaFields(obj: MetaObject): SchemaFieldShape[] {
   const assignedPkFields = assignedPkFieldNames(obj);
   const tphPin = tphDiscriminatorPin(obj);
   const out: SchemaFieldShape[] = [];
-  for (const child of obj.fields()) {
+  for (const child of flatSurfaceFields(obj)) {
     if (autoGenPkFields.has(child.name)) continue;
     // #213 — a derived (origin-bearing) field is read-only (FR-024 §7 / ADR-0028):
     // excluded from the Insert/Update/preserving schemas, exactly like readOnly.
@@ -406,7 +723,7 @@ export function updateSchemaFields(obj: MetaObject): SchemaFieldShape[] {
   const pkFields = primaryKeyFieldNames(obj);
   const tphPin = tphDiscriminatorPin(obj);
   const out: SchemaFieldShape[] = [];
-  for (const child of obj.fields()) {
+  for (const child of flatSurfaceFields(obj)) {
     if (autoGenPkFields.has(child.name)) continue;
     // #213 — a derived (origin-bearing) field is read-only (FR-024 §7 / ADR-0028):
     // excluded from the Insert/Update/preserving schemas, exactly like readOnly.
@@ -419,9 +736,9 @@ export function updateSchemaFields(obj: MetaObject): SchemaFieldShape[] {
     // edit form for an entity carrying one. Clearing counts as a write, so the
     // FR-035 present-null arm never reaches it either.
     if (isWriteOnceMutability(child)) continue;
-    // SECURITY (1.2.x): a primary-key field is the row's identity, which the URL names. An
-    // ASSIGNED key leaves the update shape exactly like a generated one, so a client-sent
-    // key is stripped and can never re-key the row.
+    // A primary-key field is the row's identity, which the URL names: an ASSIGNED key is
+    // omitted from the update shape exactly like a generated one, so a client-sent id is
+    // stripped and can never re-key the row.
     if (pkFields.has(child.name)) continue;
     // TPH subtype discriminator: omitted from the update schema entirely.
     if (tphPin !== undefined && child.name === tphPin.fieldName) continue;
@@ -457,7 +774,7 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
   // transform). Only emitted when the entity declares @autoSet fields.
   const preservingFieldLines: Code[] = [];
   const emitPreserving = hasAutoSetFields(obj);
-  for (const child of obj.fields()) {
+  for (const child of flatSurfaceFields(obj)) {
     if (autoGenPkFields.has(child.name)) continue;
     // FR-037 R1: an @mutability:"readOnly" field appears in neither InsertSchema
     // nor UpdateSchema. The DB / trigger / replication owns the write path; the app
@@ -507,9 +824,8 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
     // below; a value presented on PATCH is stripped, not 400'd (see
     // updateSchemaFields for the grounding).
     if (isWriteOnceMutability(child)) continue;
-    // SECURITY (1.2.x): the row's identity is the URL's. An ASSIGNED primary key leaves the
-    // update shape too (a generated one never entered it), so a client-sent key is stripped
-    // on PUT/PATCH and can never re-key the row. Mirrors updateSchemaFields.
+    // The row's identity is the URL's: an ASSIGNED primary key leaves the update shape too
+    // (a generated one never entered it), so a client-sent id is stripped, never a re-key.
     if (pkFields.has(child.name)) continue;
 
     // Update schema: @autoSet onCreate → omit entirely; onUpdate → transform
@@ -535,7 +851,7 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
       // null — a present null CLEARS the column (`.set({field: null})` writes NULL).
       // Keyed on required-ness, NOT fieldWillBeOptional: a required-with-@default
       // field stays non-nullable so an explicit null on it is a 400 (validation),
-      // never a silent clear. PK fields never reach this branch (skipped above).
+      // never a silent clear.
       if (!isRequired(child)) expr = code`${expr}.nullable()`;
       updateFieldLines.push(code`  ${child.name}: ${expr}`);
     }
@@ -553,6 +869,25 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
   const docs = renderDocsFor(obj);
   const docsPrefix = docs ? `${docs}\n` : "";
 
+  // A Zod object carrying refinements cannot be `.omit()`ed or `.partial()`ed, and a TPH
+  // subtype's route and form omit the pinned discriminator while its update query takes a
+  // partial. So when both apply, the unrefined shape is exported as `<Name>InsertBaseSchema`
+  // and refined twice: as `<Name>InsertSchema` and, discriminator omitted, as
+  // `<Name>InsertBodySchema`.
+  const refineSuffix = insertRefinementSuffix(obj);
+  const insertDecl = refineSuffix !== "" && tphPin !== undefined
+    ? code`export const ${objName}InsertBaseSchema = ${z}.object({
+${joinCode(insertFieldLines, { on: ",\n" })}
+});
+
+${docsPrefix}export const ${insertSchemaName} = ${objName}InsertBaseSchema${refineSuffix};
+
+/** ${insertSchemaName} without the pinned \`${tphPin.fieldName}\` — the body a per-subtype route accepts. */
+export const ${objName}InsertBodySchema = ${objName}InsertBaseSchema.omit({ ${tphPin.fieldName}: true })${refineSuffix};`
+    : code`${docsPrefix}export const ${insertSchemaName} = ${z}.object({
+${joinCode(insertFieldLines, { on: ",\n" })}
+})${refineSuffix};`;
+
   // #203 — emit the preserving insert-shape only for @autoSet entities (nothing to
   // preserve otherwise). Backs `insertPreserving<Entity>` (import/restore/replication).
   const preservingBlock = emitPreserving
@@ -563,16 +898,14 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
  * (no create-time now() stamp) so the caller's original values are preserved. */
 export const ${preservingSchemaName} = ${z}.object({
 ${joinCode(preservingFieldLines, { on: ",\n" })}
-});
+})${insertRefinementSuffix(obj)};
 
 /** Typed input of \`insertPreserving${objName}\` — ${preservingSchemaName}'s pre-transform shape. */
 export type ${objName}CreatePreserving = ${z}.input<typeof ${preservingSchemaName}>;`
     : code``;
 
   return code`
-${utcTimestampHelperSince(utcUsesBefore)}${decimalHelperSince(decimalUsesBefore)}${durationHelperSince(durationUsesBefore)}${docsPrefix}export const ${insertSchemaName} = ${z}.object({
-${joinCode(insertFieldLines, { on: ",\n" })}
-});
+${utcTimestampHelperSince(utcUsesBefore)}${decimalHelperSince(decimalUsesBefore)}${durationHelperSince(durationUsesBefore)}${insertDecl}
 
 ${docsPrefix}export const ${updateSchemaName} = ${z}.object({
 ${joinCode(updateFieldLines, { on: ",\n" })}
@@ -599,6 +932,9 @@ export type ${patchName} = ${z}.input<typeof ${updateSchemaName}>;${preservingBl
  */
 const HOSTNAME_REGEX_LITERAL =
   "/^(?=.{1,253}$)([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/";
+
+/** The wire shape of a `field.uuid` value: 8-4-4-4-12 hex, either case. */
+const UUID_REGEX_LITERAL = "/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/";
 
 /** Zod expression for a scalar value subtype (used for a field.map's @valueType). */
 function zodScalarFor(subType: string): string {
@@ -649,7 +985,7 @@ function zodFieldExpr(
     if (typeof ref === "string" && ref.length > 0) {
       // @objectRef may be authored fully-qualified or bare. The referenced
       // <Ref>InsertSchema is the bound value object's, imported under its local name
-      // (aliased when another object shares the short name; ruling R52) through the
+      // (aliased when another object shares the short name) through the
       // shared layout/package/extStyle-aware helper the field's TS type + Drizzle
       // .$type<> use, so all three agree. Without owner/ctx (bare unit-test calls)
       // fall back to the bare name + flat same-dir.
@@ -750,7 +1086,7 @@ function zodFieldExpr(
         const shared = sharedEnumForField(field);
         if (shared !== undefined && !shared.provided) {
           const constName = sharedEnumZodConstName(shared.name);
-          const spec = sharedEnumImportSpecifier(ctx, owner?.package);
+          const spec = sharedEnumImportSpecifier(ctx, owner ? effectivePackage(owner) : undefined);
           const sharedConst = imp(`${constName}@${spec}`);
           let base: Code = code`${sharedConst}`;
           if (field.resolvedIsArray()) base = code`z.array(${base})`;
@@ -818,6 +1154,14 @@ function zodFieldExpr(
       break;
     }
     case FIELD_SUBTYPE_UUID:
+      // The 8-4-4-4-12 hex shape, the same check the filter parser applies to a uuid
+      // operand. Without it a malformed value (`"nope"` in a uuid FK) reached Postgres and
+      // answered 500 ("invalid input syntax for type uuid") instead of a 400. Deliberately
+      // not Zod's `.uuid()`: Zod 4 also demands RFC version bits, which would refuse
+      // well-formed keys such as 00000000-0000-0000-0000-000000000001. The TPH read shape
+      // keeps a bare string, as it does for every other format check.
+      baseStr = readShape ? "z.string()" : `z.string().regex(${UUID_REGEX_LITERAL}, "Invalid uuid")`;
+      break;
     default:
       baseStr = "z.string()";
       break;

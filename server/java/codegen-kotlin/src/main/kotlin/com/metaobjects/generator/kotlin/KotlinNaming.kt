@@ -146,6 +146,9 @@ object KotlinNaming {
     /** [KotlinSpringControllerGenerator]: the controller route base `"/api/" + collectionSegment(shortName)`. */
     fun controllerPath(shortName: String): String = "/api/" + collectionSegment(shortName)
 
+    /** As [controllerPath] for a name, honouring `@collectionName` and `naming.collections`. */
+    fun controllerPath(obj: com.metaobjects.`object`.MetaObject): String = "/api/" + RouteNaming.collectionSegment(obj)
+
     /**
      * Output package for TEMPLATE-keyed artifacts: `"$pkg.prompts"`, or the root package when the
      * template has no package. Shared verbatim by the render-helper / output-prompt / output-parser /

@@ -7,6 +7,7 @@
           "name": "Gadget",
           "children": [
             { "source.rdb": { "@table": "gadgets" } },
+            { "source.rdb": { "@role": "replica", "@kind": "view", "@table": "v_gadgets" } },
             { "field.long": { "name": "id" } },
             { "field.enum": { "name": "status", "@values": ["DRAFT", "LIVE"] } },
             { "field.enum": { "name": "level", "@values": ["LOW", "HIGH"], "@intValueMap": { "LOW": 1, "HIGH": 2 } } },
@@ -49,10 +50,39 @@
             { "validator.requiredWhen": { "name": "customNotes", "@field": "notes", "@when": "kind", "@equals": "custom" } },
             { "validator.requiredWhen": { "name": "slowReason", "@field": "reason", "@when": "timeout", "@equals": "PT1H30M" } },
             { "validator.presentIff": { "name": "shippedAtIff", "@field": "shippedAt", "@when": "shipped", "@equals": true } },
-            { "validator.atLeastOne": { "name": "contact", "@fields": ["email", "phone"], "@max": 1 } },
+            { "validator.exactlyOne": { "name": "contact", "@fields": ["email", "phone"] } },
             { "validator.atLeastOne": { "name": "anyContact", "@fields": ["phone", "fax"],
                 "@condition": { "op": "eq", "left": { "field": "level" }, "right": { "value": "HIGH" } } } },
             { "validator.requiredWhen": { "name": "bandFax", "@field": "fax", "@when": "band", "@equals": "HIGH" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Parcel",
+          "children": [
+            { "source.rdb": { "@table": "parcels" } },
+            { "source.rdb": { "@role": "replica", "@kind": "view", "@table": "v_parcel_with_owner" } },
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "ownerId", "@required": true } },
+            { "field.string": { "name": "label", "@maxLength": 20, "children": [ { "validator.length": { "@min": 1, "@max": 20 } } ] } },
+            { "field.string": { "name": "ownerName", "children": [
+                { "validator.length": { "@max": 30 } },
+                { "origin.passthrough": { "@from": "Owner.name" } } ] } },
+            { "relationship.association": { "name": "owner", "@objectRef": "Owner", "@cardinality": "one" } },
+            { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
+            { "identity.reference": { "name": "ref_owner", "@fields": ["ownerId"], "@references": "Owner" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Owner",
+          "children": [
+            { "source.rdb": { "@table": "owners" } },
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "name" } },
+            { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
           ]
         }
       },

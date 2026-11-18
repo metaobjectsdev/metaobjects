@@ -116,8 +116,8 @@ public final class GeneratedTphControllerHarness implements AutoCloseable {
             .registerModule(new JavaTimeModule())
             .registerModule(utcInstant)
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
-            // Spring Boot's default: an undeclared request key is ignored, not a 400. The generated
-            // controller leaves this to the host's mapper; the corpus pins the Boot behaviour.
+            // Mirrors Spring Boot's default mapper. The generated request handling does not depend on it:
+            // it reads body keys off the raw JSON and the DTOs ignore unknown properties.
             .disable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
         Path srcDir = genDir.resolve("src");
         Path classesDir = genDir.resolve("classes");

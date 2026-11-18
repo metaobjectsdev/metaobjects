@@ -1,4 +1,4 @@
-// ADR-0062 — the shared table of skip cases (fixtures/codegen-skip-conformance/cases.json), run
+// ADR-0064 — the shared table of skip cases (fixtures/codegen-skip-conformance/cases.json), run
 // against this port's project shape: a codegen/ project (the generator list, an owned generator, a
 // project reference to a linked engine checkout), a metadata directory with an abstract parent and
 // a child, a template root and .metaobjects/config.json.
@@ -241,6 +241,25 @@ public sealed class GenSkipConformanceTests : IDisposable
         Assert.Contains(GenSkipped, again.Out);
         Assert.DoesNotContain("unchanged:", again.Out);
         foreach (var f in files) Assert.Equal(stamp, File.GetLastWriteTimeUtc(f));
+    }
+
+    [Fact]
+    public void An_entities_run_renders_never_stores_and_leaves_the_full_run_key_alone()
+    {
+        Assert.Equal(0, RunGen(Declared()).Exit);
+        var key = File.ReadAllBytes(FingerprintPath());
+
+        var narrowed = RunGen(Declared(), "--entities", "Order");
+        Assert.Equal(0, narrowed.Exit);
+        Assert.DoesNotContain(GenSkipped, narrowed.Out);
+        Assert.Contains("Order", narrowed.Out);
+        Assert.Equal(key, File.ReadAllBytes(FingerprintPath()));
+
+        // A narrowed run that fails leaves the key alone too.
+        Assert.Equal(2, RunGen(Declared(), "--entities", "NoSuchEntity").Exit);
+        Assert.Equal(key, File.ReadAllBytes(FingerprintPath()));
+
+        Assert.Contains(GenSkipped, RunGen(Declared()).Out);
     }
 
     [Fact]

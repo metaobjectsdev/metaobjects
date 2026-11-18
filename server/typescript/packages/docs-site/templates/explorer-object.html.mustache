@@ -1,0 +1,56 @@
+<div class="crumbs">{{{crumbsHtml}}}</div>
+<h1>{{{name}}} {{#isAbstract}}<span class="chip">abstract</span>{{/isAbstract}}{{#isReadOnly}}<span class="chip k-badge">read-only view</span>{{/isReadOnly}}{{#isUnclaimed}}<span class="chip v-unclaimed" title="meta verify: WARN_REQUIREMENT_OBJECT_UNCLAIMED">unclaimed</span>{{/isUnclaimed}}</h1>
+<span hidden data-pagefind-filter="kind">{{{kindBadge}}}</span>
+{{#description}}<div class="sub">{{{description}}}</div>{{/description}}
+<div class="sub mono meta-line">{{{kindLabel}}} · {{{storageLine}}}{{#extendsHtml}} · extends {{{extendsHtml}}}{{/extendsHtml}}</div>
+<div class="grid side page">
+<div>
+  <h2>Why it exists</h2>
+  {{#hasWhy}}<div class="tablewrap"><table><tr><th>Capability</th><th>Requirement</th><th>Level</th><th>Status</th><th>On</th></tr>
+  {{#whyRows}}<tr><td>{{{capabilityHtml}}}</td><td>{{{reqHtml}}}<div class="sub small">{{{statement}}}</div></td><td>{{{levelHtml}}}</td><td>{{{statusHtml}}}</td><td>{{{onHtml}}}</td></tr>
+  {{/whyRows}}</table></div>{{/hasWhy}}
+  {{^hasWhy}}<div class="note">{{{whyEmptyHtml}}}</div>{{/hasWhy}}
+  {{#projection}}
+  <h2>Read model</h2>
+  <div class="card">
+    {{#basesHtml}}<div>Surfaces fields of {{{basesHtml}}}.</div>{{/basesHtml}}
+    {{#hasOrigins}}<div class="tablewrap"><table><tr><th>Field</th><th>Origin</th><th>Definition</th></tr>{{#origins}}<tr><td class="mono">{{{field}}}</td><td class="mono">{{{origin}}}</td><td>{{{definitionHtml}}}</td></tr>{{/origins}}</table></div>{{/hasOrigins}}
+  </div>
+  {{/projection}}
+  {{#report}}
+  <h2>Report</h2>
+  <div class="card"><table class="kv">
+    {{#fromHtml}}<tr><th>From</th><td>{{{fromHtml}}}</td></tr>{{/fromHtml}}
+    {{#spineHtml}}<tr><th>Spine</th><td>{{{spineHtml}}}</td></tr>{{/spineHtml}}
+    {{#dimensionsHtml}}<tr><th>Dimensions</th><td>{{{dimensionsHtml}}}</td></tr>{{/dimensionsHtml}}
+    {{#measuresHtml}}<tr><th>Measures</th><td>{{{measuresHtml}}}</td></tr>{{/measuresHtml}}
+    {{#segmentHtml}}<tr><th>Segment</th><td>{{{segmentHtml}}}</td></tr>{{/segmentHtml}}
+    {{#filterHtml}}<tr><th>Filter</th><td>{{{filterHtml}}}</td></tr>{{/filterHtml}}
+  </table></div>
+  {{/report}}
+  {{#hasFields}}<h2>Fields</h2>
+  <div class="tablewrap"><table><tr><th>Field</th><th>Type</th>{{#hasColumn}}<th>Column</th>{{/hasColumn}}<th>Flags</th>{{#showClaims}}<th>Claimed at L5</th>{{/showClaims}}</tr>
+  {{#fields}}<tr id="{{{anchor}}}"><td class="mono">{{{name}}} {{{inheritedHtml}}}</td><td class="mono">{{{type}}}{{{refHtml}}}{{{valuesHtml}}}</td>{{#hasColumn}}<td class="mono">{{{column}}}</td>{{/hasColumn}}<td>{{{flagsHtml}}}</td>{{#showClaims}}<td>{{{claimsHtml}}}</td>{{/showClaims}}</tr>
+  {{/fields}}</table></div>{{/hasFields}}
+  {{#hasKeys}}<h2>Keys and references</h2>
+  <div class="tablewrap"><table>{{#keys}}<tr id="{{{anchor}}}"><td><span class="pill">{{{kind}}}</span> <span class="mono">{{{name}}}</span> {{{inheritedHtml}}}</td><td class="mono">{{{shape}}}</td><td>{{{targetHtml}}}</td></tr>{{/keys}}</table></div>{{/hasKeys}}
+  {{#hasReporting}}<h2>Reporting vocabulary</h2>
+  <div class="tablewrap"><table><tr><th>Name</th><th>Kind</th><th>Definition</th></tr>{{#reporting}}<tr id="{{{anchor}}}"><td class="mono">{{{name}}}</td><td class="mono">{{{kind}}}</td><td>{{{definitionHtml}}}</td></tr>{{/reporting}}</table></div>{{/hasReporting}}
+  {{#hasLayouts}}<h2>Screens declared</h2>{{#layouts}}<div class="layout"><span class="pill">{{{kind}}}</span> <b>{{{name}}}</b>{{#detailHtml}}: {{{detailHtml}}}{{/detailHtml}}</div>{{/layouts}}{{/hasLayouts}}
+</div>
+<aside>
+  <h3>Neighbourhood</h3>
+  <div id="cymini" class="graph" data-node="{{{id}}}" role="img" aria-label="One-hop neighbourhood"></div>
+  <div class="sub small">One hop. <a href="{{{relRoot}}}map.html">Open the model map</a>.</div>
+  <h3>API</h3>
+  {{#hasRoutes}}{{#routes}}<div class="route"><span class="method m-{{{method}}}">{{{method}}}</span> <code>{{{path}}}</code></div>{{/routes}}<div class="sub small">as the run that generated the routes mounts them</div>{{/hasRoutes}}
+  {{^hasRoutes}}<div class="sub">{{{routesNote}}}</div>{{/hasRoutes}}
+  {{#usedByHtml}}<h3>Used by prompts</h3><div>{{{usedByHtml}}}</div>{{/usedByHtml}}
+  {{#referencedByHtml}}<h3>Referenced by</h3><div>{{{referencedByHtml}}}</div>{{/referencedByHtml}}
+  <h3>Generated from this node</h3>
+  {{#hasGenerated}}{{#generated}}<div class="gen"><span class="pill">{{{generator}}}</span>{{#files}}<div class="mono sub">{{{.}}}</div>{{/files}}</div>{{/generated}}{{/hasGenerated}}
+  {{^hasGenerated}}<div class="sub">{{{generatedNote}}}</div>{{/hasGenerated}}
+  <h3>Hand-written code that imports it</h3>
+  <div class="sub">Not scanned: this build reads no import graph.</div>
+</aside>
+</div>

@@ -114,7 +114,9 @@ public final class RequirementTestIdentities {
     public static List<Walked> walk(MetaRoot root) {
         SymbolTable symbols = SymbolTable.build(root);
         List<Walked> out = new ArrayList<>();
-        for (RequirementCheck.Addressed a : RequirementCheck.collectAddressed(root)) {
+        // FR-023: only this project's ledger. A dependency's requirement it did not inherit
+        // (`requirements.inherit`) is loaded and gets no test.
+        for (RequirementCheck.Addressed a : RequirementCheck.collectLedger(root)) {
             MetaRequirement node = a.node();
             // One effective package, shared with the gate: the node's own, else the nearest
             // enclosing node's, else "".

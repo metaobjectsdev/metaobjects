@@ -29,14 +29,16 @@ public final class PhysicalNaming {
     public static final String DEFAULT_TABLES = TABLE_SNAKE_CASE;
 
     /** Both rules at their default. */
-    public static final PhysicalNaming DEFAULT = new PhysicalNaming(DEFAULT_COLUMNS, DEFAULT_TABLES);
+    public static final PhysicalNaming DEFAULT = new PhysicalNaming(DEFAULT_COLUMNS, DEFAULT_TABLES, null);
 
     private final String columns;
     private final String tables;
+    private final String collections;
 
-    private PhysicalNaming(String columns, String tables) {
+    private PhysicalNaming(String columns, String tables, String collections) {
         this.columns = columns;
         this.tables = tables;
+        this.collections = collections;
     }
 
     /**
@@ -58,7 +60,20 @@ public final class PhysicalNaming {
         if (!NamingStrategies.isTable(tables)) {
             throw new MetaDataException(NamingStrategies.unknownMessage("tables", tables), ErrorCode.ERR_BAD_ATTR_VALUE);
         }
-        return new PhysicalNaming(columns, tables);
+        return new PhysicalNaming(columns, tables, null);
+    }
+
+    /**
+     * As {@link #of(String, String)}, with the pluralizer an object without
+     * {@code @collectionName} takes its collection name from ({@code naming.collections});
+     * {@code null} means {@link NamingStrategies#DEFAULT_PLURALIZER}.
+     */
+    public static PhysicalNaming of(String columns, String tables, String collections) {
+        PhysicalNaming base = of(columns, tables);
+        if (collections != null && !NamingStrategies.isPluralizer(collections)) {
+            throw new MetaDataException(NamingStrategies.unknownMessage("collections", collections), ErrorCode.ERR_BAD_ATTR_VALUE);
+        }
+        return new PhysicalNaming(base.columns, base.tables, collections);
     }
 
     /** The {@code naming.columns} strategy's name — a built-in or an application-registered one. */
@@ -69,6 +84,11 @@ public final class PhysicalNaming {
     /** The {@code naming.tables} rule's name — a built-in or an application-registered one. */
     public String tables() {
         return tables;
+    }
+
+    /** The configured pluralizer ({@code naming.collections}), or {@code null} when none is named. */
+    public String collections() {
+        return collections;
     }
 
     /** {@code name} cased by the table rule registered as {@code rule} (never pluralized — that

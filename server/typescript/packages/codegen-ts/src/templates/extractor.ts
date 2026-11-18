@@ -239,7 +239,7 @@ function reachablePayloadGroups(
     seenVo.add(cur.resolutionKey());
     // The VO interface + its OWN enum aliases share the VO's entity module, which declares them
     // under the value object's own name. They are bound under its local name, aliased when
-    // another object shares the short name (`Note as AcmeAlphaNote`; ruling R52).
+    // another object shares the short name (`Note as AcmeAlphaNote`).
     const { name: localName, exported, specifier } = valueObjectImport(ctx, cur, outPath);
     const types: string[] = [importBinding(exported, localName)];
     for (const f of fields(cur)) {
@@ -317,7 +317,7 @@ export function renderExtractor(
   const { vo } = shape;
 
   // The strict payload type, bound under its local name (the declared name, aliased when another
-  // object shares the short name; ruling R52).
+  // object shares the short name).
   const strictType = emittedVoName(ctx, vo);
   // Every template-derived SYMBOL goes through templateSymbolBase(); only prose keeps the
   // authored name. output-parser.ts EXPORTS extractLenient<Base>WithLoader, so interpolating

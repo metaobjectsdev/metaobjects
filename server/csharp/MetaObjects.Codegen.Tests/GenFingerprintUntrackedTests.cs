@@ -1,4 +1,4 @@
-// ADR-0062: a file the manifest does not record (one written outside the project root) is part of
+// ADR-0064: a file the manifest does not record (one written outside the project root) is part of
 // the stored outputs, so a skip needs it to exist.
 
 #nullable enable

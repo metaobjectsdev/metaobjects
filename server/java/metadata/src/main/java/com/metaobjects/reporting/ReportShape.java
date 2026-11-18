@@ -259,7 +259,10 @@ public final class ReportShape {
      * and as the TypeScript {@code resolveReportingFieldRef}:
      *
      * <ol>
-     *   <li>A package qualifier uses {@code ::}, so the member separator is the LAST dot.
+     *   <li>The reference is {@code Entity.field} or, for a member of a value object stored
+     *       flattened, {@code Entity.field.member} (FR-044 R12). A package qualifier uses
+     *       {@code ::} and holds no dot, so the entity half ends at the first dot after the
+     *       last {@code ::}.
      *       The entity half resolves relative to the package of {@code declaring}, the
      *       entity that declares the member ({@link #memberOwner}; ADR-0042).</li>
      *   <li>With {@code host} (a measure, or a dimension without {@code @via}: the reference
@@ -274,12 +277,44 @@ public final class ReportShape {
         MetaObject named = resolveFieldRefEntity(ref, declaring, root);
         if (named == null) return null;
         if (host != null && !isSelfOrAncestor(named, host)) return null;
-        String fieldName = ref.substring(ref.lastIndexOf(SEP) + SEP.length());
-        // ADR-0039: resolving, so a field inherited through extends is found.
-        for (MetaField<?> f : (host != null ? host : named).getMetaFields()) {
-            if (fieldName.equals(f.getName())) return f;
+        String[] path = ref.substring(ownerEnd(ref) + SEP.length()).split(java.util.regex.Pattern.quote(SEP), -1);
+        if (path.length > 2) return null;
+        MetaField<?> field = fieldNamed(host != null ? host : named, path[0]);
+        if (field == null || path.length == 1) return field;
+        return flattenedMemberOf(field, path[1]);
+    }
+
+    /** A field of {@code obj} by name (ADR-0039: resolving, so a field inherited through extends is found). */
+    private static MetaField<?> fieldNamed(MetaObject obj, String name) {
+        for (MetaField<?> f : obj.getMetaFields()) {
+            if (name.equals(f.getName())) return f;
         }
         return null;
+    }
+
+    /**
+     * FR-044 R12: member {@code name} of the value object a flattened {@code field.object}
+     * embeds (resolving, so an inherited member counts). {@code null} when the field is not
+     * flattened, names no value object, or the value object has no such member.
+     */
+    public static MetaField<?> flattenedMemberOf(MetaField<?> embedding, String name) {
+        if (!isFlattenedField(embedding)) return null;
+        MetaObject valueObject = References.refTarget(embedding, MetaObject.ATTR_OBJECT_REF);
+        return valueObject == null ? null : fieldNamed(valueObject, name);
+    }
+
+    /** True for a {@code field.object} whose {@code @storage} is {@code flattened} (ADR-0039: resolving). */
+    public static boolean isFlattenedField(MetaData field) {
+        if (!com.metaobjects.field.ObjectField.SUBTYPE_OBJECT.equals(field.getSubType())
+                || !field.hasMetaAttr(com.metaobjects.field.ObjectField.ATTR_STORAGE)) return false;
+        return com.metaobjects.field.ObjectField.STORAGE_FLATTENED.equals(
+                field.getMetaAttr(com.metaobjects.field.ObjectField.ATTR_STORAGE).getValue());
+    }
+
+    /** Index of the dot that ends a reference's entity half: the first dot after the last {@code ::}. */
+    private static int ownerEnd(String ref) {
+        int lastSep = ref.lastIndexOf(PKG_SEP);
+        return ref.indexOf(SEP, lastSep == -1 ? 0 : lastSep + PKG_SEP.length());
     }
 
     /**
@@ -291,7 +326,7 @@ public final class ReportShape {
      */
     public static MetaObject resolveFieldRefEntity(String ref, MetaData declaring, MetaRoot root) {
         if (ref == null) return null;
-        int dot = ref.lastIndexOf(SEP);
+        int dot = ownerEnd(ref);
         if (dot <= 0) return null;
         return ValidationPhase.resolveRootObject(root, ref.substring(0, dot), packageOf(declaring));
     }
@@ -349,11 +384,11 @@ public final class ReportShape {
 
     /**
      * True when every hop of {@code hops}, walked from {@code from}, is a belongs-to hop over a
-     * required foreign key: the hops the view joins INNER, so every row of the report has a
-     * match. This is the join-type rule of the view lowering (TypeScript {@code walkViaPath},
-     * #209): the reference is held by the entity the hop leaves, its first FK field is required,
-     * and every earlier hop is INNER too. {@code @enforce: false} does not change it. A hop that
-     * does not resolve, an ambiguous reference or a has-many hop is not INNER.
+     * required foreign key: the hops the view's LEFT OUTER join is guaranteed a match on (every
+     * join is LEFT OUTER; an enforced reference means it never nulls the column either). The
+     * reference is held by the entity the hop leaves, is enforced, its first FK field
+     * is required, its target hides no rows ({@link #hidesRows}), and every earlier hop matches
+     * too. A hop that does not resolve, an ambiguous reference or a has-many hop does not.
      */
     private static boolean viaJoinsInner(List<String> hops, MetaObject from, MetaRoot root) {
         MetaObject current = from;
@@ -383,12 +418,31 @@ public final class ReportShape {
                     ? refNode
                     : RelationshipReferences.resolveRelationshipReference(
                             current, rel.getShortName(), target, rel.getSourceRefField());
-            if (reference == null || reference.getFields().isEmpty()) return false;
+            if (reference == null || !reference.isEnforced() || reference.getFields().isEmpty()) return false;
             MetaField<?> fk = current.findMetaField(reference.getFields().get(0)).orElse(null);
             if (fk == null || !isRequiredField(fk)) return false;
+            if (hidesRows(target)) return false;
             current = target;
         }
         return true;
+    }
+
+    /**
+     * True when a join onto {@code obj} carries a row scope of its own: a TPH subtype, or an
+     * abstract level beneath a TPH base (both scoped by the discriminator), whose FK may name a
+     * sibling's row. The model has no soft-delete or query-filter vocabulary, so this is the only
+     * row-hiding scope.
+     */
+    private static boolean hidesRows(MetaObject obj) {
+        // ADR-0039: own — the discriminator is declared on the level that owns it.
+        if (obj.hasMetaAttr(MetaObject.ATTR_DISCRIMINATOR, false)) return false;
+        java.util.Set<MetaData> seen = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        seen.add(obj);
+        for (MetaData s = obj.getSuperData(); s != null && seen.add(s); s = s.getSuperData()) {
+            // ADR-0039: own — the TPH base is the ancestor that declares @discriminator.
+            if (s.hasMetaAttr(MetaObject.ATTR_DISCRIMINATOR, false)) return true;
+        }
+        return false;
     }
 
     /** Effective required-ness, resolving (ADR-0039): the {@code @required} attr OR a validator.required child. */
@@ -400,8 +454,9 @@ public final class ReportShape {
     /**
      * Table C ({@code required} of a dimension). Without {@code @spine}: only a dimension over an
      * {@code @of} field whose effective {@code @required} is true and, when it has a {@code @via},
-     * only when every hop is a required belongs-to reference, the hops the view joins INNER
-     * ({@link #viaJoinsInner}). With
+     * only when every hop is a required, enforced belongs-to reference onto targets that hide no
+     * rows ({@link #viaJoinsInner}) — the hops the view's LEFT OUTER join is guaranteed a match
+     * on, so it never nulls the column. With
      * {@code @spine}: only a dimension whose {@code @via} hops equal the spine's (a column of
      * the spine entity itself, whose rows are the report's rows) over an {@code @of} field that
      * is {@code @required} or a primary-key column of the entity {@code @of} names. A dimension
@@ -470,6 +525,23 @@ public final class ReportShape {
             visited.add(n);
         }
         return false;
+    }
+
+    /**
+     * The field a dimension's {@code @of} names, read after its {@code @via} (rule D1), or
+     * {@code null} when either does not resolve. R13 reads it to check a dimension operand is numeric.
+     */
+    public static MetaField<?> resolveDimensionOf(MetaDimension dim, MetaObject from, MetaRoot root) {
+        if (dim.getOf() == null) return null;
+        MetaData ofDeclaring = memberOwner(dim, from);
+        MetaObject ofHost = from;
+        if (dim.getVia() != null) {
+            MetaObject terminal = reportingViaTerminal(dim.getVia(), ofDeclaring, from, root);
+            if (terminal == null) return null;
+            ofDeclaring = terminal;
+            ofHost = terminal;
+        }
+        return resolveFieldRef(dim.getOf(), ofDeclaring, root, ofHost);
     }
 
     private static Field dimensionField(ReportDimensionItem item, MetaObject from, MetaRoot root, MetaObject report,
@@ -544,7 +616,7 @@ public final class ReportShape {
 
     /** Table B for one measure. {@code null} when its {@code @of} does not resolve. */
     private static MeasureDerivation deriveMeasure(MetaMeasure m, MetaObject from, MetaRoot root) {
-        if (m.isRatio()) return new MeasureDerivation(DecimalField.SUBTYPE_DECIMAL, null);
+        if (m.isRatio() || m.isDerived()) return new MeasureDerivation(DecimalField.SUBTYPE_DECIMAL, null);
         String agg = m.getAgg();
         if (ReportingConstants.AGG_COUNT.equals(agg)) return new MeasureDerivation(LongField.SUBTYPE_LONG, null);
         // any / all are boolean whatever the source (the loader's M4 refuses a non-boolean @of).

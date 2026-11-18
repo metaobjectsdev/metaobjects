@@ -40,6 +40,13 @@ mvn metaobjects:verify -Dmeta.verify.mode=codegen     # regen in memory, diff vs
 mvn metaobjects:verify -Dmeta.verify.mode=templates   # {{field}} refs vs payload VO
 ```
 
+If the project declares `dependencies` in `.metaobjects/config.json` (a model shared from another
+repository), also run `mvn metaobjects:verify -Dmeta.verify.mode=deps`: it hashes each `path`
+dependency against `.metaobjects/deps.lock.json` and fails with `ERR_DEPENDENCY_UPSTREAM_DRIFT` on
+`drifted` or `unresolved` (a `maven`, `nuget`, `npm` or `python` dependency reports `unresolved`;
+run the Node `meta deps check` for those). A project that publishes a model wires the
+`shared-model` generator; `verify --codegen` drift-gates its output.
+
 Schema migration + live-DB drift run through the **Node `meta` CLI** regardless of
 server language — see the migration reference. `mvn metaobjects:verify -Dmeta.verify.mode=db`
 is rejected (exit 2).
@@ -59,17 +66,50 @@ plugin `<configuration>` — that is the source of truth for which generators ru
 | `// keep in sync with` / `// mirrors the` | second-source-of-truth comment — always a finding |
 | `ObjectMapper.readValue(` outside a `*Parser.java` file | check if a responding `template.prompt` (`@responseRef`) exists — output-parser codegen ships in Java |
 | `LIMIT ?` / `OFFSET ?` assembled by hand | generated CRUD routes handle pagination; OMDB `getObjects` accepts `QueryOptions` |
+| a member of a generated enum typed as a hand string (`"ERROR"` in JDBC SQL, a JSON body, a topic or event name, a `switch` over a `String`) beside the generated enum constant | **signature 13.** Value-first from each enum's `@values`. A value typed as the generated enum is resolved and exempt; a `String` position, SQL text or a payload is compared and scores |
+| a status-like column written with a JDBC `UPDATE ... SET status`, a repository `save` of an entity whose status was set freely, or a Spring Data query with no `AND status = :from` | **axis G3.** Guard it through OMDB, the generated repository or a JPA modifying query over entity attributes, with the generated enum constant, and check the updated-row count. Never raw SQL |
 | a table/column string in a repository implementation — JDBC SQL, jOOQ `table("authors")`, a Spring Data query | second spelling of a declared physical name — reference `<Entity>Names` (`AuthorNames.SOURCE_PRIMARY_TABLE` / `_COLUMN`; opt-in `SpringNamesGenerator`): an un-wired generator is the finding first |
 
 ---
 
 ## Owned generators
 
-Java does not scaffold-and-own generators — they are provided by
-`metaobjects-codegen-spring` and wired by FQ class name in `pom.xml`. There is no
-analog to the TS `codegen/generators/*.ts` pattern here.
+Stock generators come from `metaobjects-codegen-spring` and are wired by fully qualified
+class name in `pom.xml`. `mvn metaobjects:eject -Dnames=<a,b> -Dport=java` copies one into
+a separate `codegen/` Maven module under the project's own package, and `pom.xml` then names
+the copy.
 
-Java does, however, have **both** authoring paths, so a project needing a shape the
+**Audit the owned copies first.** A copy exists to carry a change; one that carries none is
+duplication that falls behind the reference.
+
+```bash
+mvn metaobjects:eject -Dlist      # the catalog, each owned copy marked
+```
+
+Each owned row is marked `[owned — identical]` or `[owned — DIFFERS: N behind, M of your
+own]`, and a generator copied with companion classes (emitters, Java `entity` and
+`extractor`) adds `; differing: <files>`. Only `identical` proves a copy unmodified; that
+row is a **finding**: point the `pom.xml` entry back at the stock class and remove the copy
+(`mvn metaobjects:eject -Dundo=true` removes every identical copy and prints the `pom.xml`
+edit). `DIFFERS` with `0 of your own` rules out added lines, not removed ones: confirm from
+`git log -p` on the copy that nothing changed after the eject, else report it as **possibly
+customized: check its history**.
+
+**`DIFFERS` is printed for BOTH a deliberate customization and a copy gone stale by version**,
+so the listing cannot tell them apart, and a copy with lines of its own is NOT thereby a
+customization: `M of your own` counts every line absent from today's reference, so after the
+reference moved on, a line it removed or rewrote reads as "yours" and is an older upstream
+line. Run the history check on any `DIFFERS` row, `M` above 0 included: lines the copy's later
+commits added are the project's own; lines already in the eject commit are upstream's and
+count as behind. Report two figures, `<n> lines behind the reference` and `<m> lines of the
+project's own (confirmed from history)`. A copy whose own lines history does not confirm is
+**possibly customized or stale: check its history**; one that is stale by version is a finding
+(`owned-generator-stale`): re-eject at the current version or return to the stock entry.
+
+Count lines for the Phase 0 total: lines in copies proven
+unmodified, over all lines under `codegen/` that eject wrote or the project wrote.
+
+Java also has **both** authoring paths, so a project needing a shape the
 built-ins do not emit has two legitimate answers and neither is a finding on its own:
 a **programmatic** generator (implement `com.metaobjects.generator.Generator`, name the
 class in a `<generator>` element — the plugin loads it from the project classpath), or a

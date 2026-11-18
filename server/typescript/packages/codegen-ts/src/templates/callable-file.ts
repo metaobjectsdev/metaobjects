@@ -148,7 +148,7 @@ export function renderCallableFile(entity: MetaObject, ctx?: RenderContext): str
   // when applicable.
   // The args type lives in its own value object's module, which may be another package's: with a
   // render context it is imported from there, under its local name (aliased when another object
-  // shares the short name — the result type can be one; ruling R52).
+  // shares the short name — the result type can be one).
   const argsVo = argsObject !== undefined && ctx !== undefined
     ? valueObjectImport(ctx, argsObject, entityOutputPath(ctx.selfTarget.outputLayout, effectivePackage(entity), `${entity.name}.callable.ts`))
     : undefined;

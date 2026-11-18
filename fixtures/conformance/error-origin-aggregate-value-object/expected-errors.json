@@ -1,0 +1,17 @@
+{
+  "errors": [
+    {
+      "code": "ERR_INVALID_ORIGIN",
+      "source": {
+        "format": "resolved",
+        "files": [
+          "meta.billing.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[3]['object.projection'].children[2]['field.decimal'].children[0]['origin.aggregate']",
+        "referrer": "ProjectInvoicing::invoicedTotal",
+        "target": "Invoice.total"
+      }
+    }
+  ],
+  "warnings": []
+}

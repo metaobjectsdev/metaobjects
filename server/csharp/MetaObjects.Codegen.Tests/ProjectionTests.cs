@@ -54,7 +54,7 @@ public class ProjectionTests
     };
 
     private static string EntitySrc(GenContext ctx, string name) =>
-        new EntityGenerator().Generate(ctx).Single(f => System.IO.Path.GetFileName(f.Path) == name + ".g.cs").Content;
+        new EntityGenerator().Generate(ctx).Single(f => f.Path == name + ".g.cs").Content;
 
     [Fact]
     public void Keyed_projection_maps_to_view_not_table()
@@ -83,9 +83,9 @@ public class ProjectionTests
         // keyed projection: ToView, no HasNoKey. §A6 (task 4) — references the
         // projection's own <Name>Names.SourcePrimaryView constant -- the member is named for
         // the source's @kind, so a view name cannot be read out of a table slot.
-        Assert.Contains("modelBuilder.Entity<global::Acme.ProgramSummary>().ToView(global::Acme.ProgramSummaryNames.SourcePrimaryView);", src);
+        Assert.Contains("modelBuilder.Entity<ProgramSummary>().ToView(ProgramSummaryNames.SourcePrimaryView);", src);
         // keyless projection: HasNoKey + ToView
-        Assert.Contains("modelBuilder.Entity<global::Acme.TagCount>().HasNoKey().ToView(global::Acme.TagCountNames.SourcePrimaryView);", src);
+        Assert.Contains("modelBuilder.Entity<TagCount>().HasNoKey().ToView(TagCountNames.SourcePrimaryView);", src);
     }
 
     [Fact]
@@ -93,9 +93,9 @@ public class ProjectionTests
     {
         var ctx = Ctx(Load());
         var src = new RoutesGenerator().Generate(ctx)
-            .Single(f => System.IO.Path.GetFileName(f.Path) == "ProgramSummaryRoutes.g.cs").Content;
+            .Single(f => f.Path == "ProgramSummaryRoutes.g.cs").Content;
         // GET list takes HttpContext (qs handling per api-contract.md).
-        Assert.Contains("app.MapGet(prefix + \"/program_summaries\", async (HttpContext http, global::Acme.Generated.AppDbContext db) =>", src);
+        Assert.Contains("app.MapGet(prefix + \"/program_summaries\", async (HttpContext http, AppDbContext db) =>", src);
         Assert.Contains("app.MapGet(prefix + \"/program_summaries/{id}\"", src); // keyed -> readable by id
         // No write HANDLER anywhere: the verbs are mounted (see the test below), but
         // every one of them is a refusal, so nothing in this file can persist a row.
@@ -113,7 +113,7 @@ public class ProjectionTests
     {
         var ctx = Ctx(Load());
         var src = new RoutesGenerator().Generate(ctx)
-            .Single(f => System.IO.Path.GetFileName(f.Path) == "ProgramSummaryRoutes.g.cs").Content;
+            .Single(f => f.Path == "ProgramSummaryRoutes.g.cs").Content;
         Assert.Contains("app.MapPost(prefix + \"/program_summaries\", () =>", src);
         Assert.Contains("app.MapPatch(prefix + \"/program_summaries/{id}\", (long id) =>", src);
         Assert.Contains("app.MapPut(prefix + \"/program_summaries/{id}\", (long id) =>", src);
@@ -130,7 +130,7 @@ public class ProjectionTests
     {
         var ctx = Ctx(Load());
         var src = new RoutesGenerator().Generate(ctx)
-            .Single(f => System.IO.Path.GetFileName(f.Path) == "TagCountRoutes.g.cs").Content;
+            .Single(f => f.Path == "TagCountRoutes.g.cs").Content;
         Assert.DoesNotContain("app.MapGet(prefix + \"/tag_counts/{id}\"", src);
         Assert.Contains("app.MapPost(prefix + \"/tag_counts\", () =>", src);
         Assert.DoesNotContain("app.MapPatch", src);

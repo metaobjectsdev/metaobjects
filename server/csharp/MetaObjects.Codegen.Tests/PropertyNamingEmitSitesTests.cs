@@ -62,7 +62,7 @@ public class PropertyNamingEmitSitesTests
         return new GenContext
         {
             Entities = r.Root.Objects(), Root = r.Root,
-            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", PropertyNaming = Spelling, Dialect = dialect },
+            Config = new GenConfig { OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true, OutDir = "/tmp", Namespace = "Acme.Generated", PropertyNaming = Spelling, Dialect = dialect },
         };
     }
 
@@ -205,7 +205,7 @@ public class PropertyNamingEmitSitesTests
         {
             Entities = r.Root.Objects(), Root = r.Root,
             Config = new GenConfig
-            {
+            { OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true,
                 OutDir = "/tmp", Namespace = "Acme.Generated", ColumnNamingStrategy = ColumnNamingStrategy.Literal,
                 PropertyNaming = naming,
             },
@@ -282,7 +282,7 @@ public class PropertyNamingEmitSitesTests
         Assert.Contains("if (__clr is \"XPinHash\" or \"XTokenHash\") continue;", gizmo);
         Assert.Contains("SerializerKeys.PropertyByKey(existing.GetType(), jsonOpts)", gizmo);
         foreach (var k in new[] { "pinHash", "XPinHash", "tokenHash", "XTokenHash" })
-            Assert.Contains($"string.Equals(prop.Name, \"{k}\", global::System.StringComparison.OrdinalIgnoreCase)) continue; // @formExclude / credential", gizmo);
+            Assert.Contains($"string.Equals(prop.Name, \"{k}\", System.StringComparison.OrdinalIgnoreCase)) continue; // @formExclude / credential", gizmo);
         // Create resets the resolved property, so the two writes agree.
         Assert.Contains("input.XPinHash = default!;", gizmo);
         Assert.Contains("input.XTokenHash = default!;", gizmo);
@@ -295,8 +295,8 @@ public class PropertyNamingEmitSitesTests
     public void A_renamed_value_object_and_map_patch_arm_matches_both_spellings()
     {
         var gizmo = One(AllSites(AllSitesCtx()), "GizmoRoutes.g.cs");
-        Assert.Contains("string.Equals(prop.Name, \"dims\", global::System.StringComparison.OrdinalIgnoreCase) || string.Equals(prop.Name, \"XDims\", global::System.StringComparison.OrdinalIgnoreCase)", gizmo);
-        Assert.Contains("string.Equals(prop.Name, \"extras\", global::System.StringComparison.OrdinalIgnoreCase) || string.Equals(prop.Name, \"XExtras\", global::System.StringComparison.OrdinalIgnoreCase)", gizmo);
+        Assert.Contains("string.Equals(prop.Name, \"dims\", System.StringComparison.OrdinalIgnoreCase) || string.Equals(prop.Name, \"XDims\", System.StringComparison.OrdinalIgnoreCase)", gizmo);
+        Assert.Contains("string.Equals(prop.Name, \"extras\", System.StringComparison.OrdinalIgnoreCase) || string.Equals(prop.Name, \"XExtras\", System.StringComparison.OrdinalIgnoreCase)", gizmo);
         Assert.Contains("existing.XDims =", gizmo);
         Assert.Contains("existing.XExtras =", gizmo);
     }

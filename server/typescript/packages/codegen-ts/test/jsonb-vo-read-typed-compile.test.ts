@@ -8,7 +8,8 @@
 // on both. Proven the only way that counts: a caller module reading nested members through
 // the generated finder, compiled against the generated tree with the real TS compiler.
 
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, setDefaultTimeout } from "bun:test";
+import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
@@ -20,6 +21,8 @@ import { buildPkMap } from "../src/pk-resolver.js";
 import { buildRelationMap } from "../src/relation-resolver.js";
 import type { EmittedFile, GenContext } from "../src/generator.js";
 import type { Dialect } from "../src/metaobjects-config.js";
+
+setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
 const MODEL = {
   "metadata.root": {

@@ -49,16 +49,21 @@ import com.squareup.kotlinpoet.TypeName
  */
 object KotlinTypeMapper {
 
-    /** Default VARCHAR width for string-backed `field.enum` storage (v1). */
+    /**
+     * The width a string-backed `field.enum` column had when no length was configured. The
+     * packaged generators no longer use it (that case is `text` now, as `meta migrate` creates
+     * it); it stays so a generator ejected earlier, which still names it, keeps compiling.
+     */
     const val ENUM_VARCHAR_LEN = 64
 
     /**
      * The VARCHAR width of a string-backed `field.enum`'s column: core's
      * [com.metaobjects.database.EnumLength.resolveMaxLength] (its `@maxLength`, else the
-     * project's `enums.maxLength`, refusing a member that does not fit), else [ENUM_VARCHAR_LEN].
+     * project's `enums.maxLength`, refusing a member that does not fit). Null when no length
+     * is configured, and then the column is `text`, as `meta migrate` creates it.
      */
-    fun enumVarcharLength(field: EnumField): Long =
-        com.metaobjects.database.EnumLength.resolveMaxLength(field) ?: ENUM_VARCHAR_LEN.toLong()
+    fun enumVarcharLength(field: EnumField): Long? =
+        com.metaobjects.database.EnumLength.resolveMaxLength(field)
 
     /**
      * Threshold beyond which a [StringField]'s `@maxLength` is treated as unbounded text and
@@ -166,14 +171,14 @@ object KotlinTypeMapper {
     /**
      * Name of the generated, file-local Exposed extension function emitted for a
      * [DurationField]. Returns a `Column<java.time.Duration>` whose `sqlType()` is the
-     * Postgres-native `INTERVAL` (text elsewhere, holding the canonical ISO-8601 string), so the
+     * Postgres-native `INTERVAL` (elsewhere a BIGINT count of microseconds), so the
      * column type MATCHES the `java.time.Duration` data-class property.
      * [KotlinExposedTableGenerator] emits the supporting `ColumnType<Duration>` + this extension
      * into the package-shared `MetaDurationColumnType` support file.
      */
     const val EXPOSED_DURATION_FN = "durationColumn"
 
-    /** [EXPOSED_DURATION_FN] for an `isArray` duration: `INTERVAL[]` on Postgres, a JSON text array elsewhere. */
+    /** [EXPOSED_DURATION_FN] for an `isArray` duration: `INTERVAL[]` on Postgres, a JSON text array of microsecond counts elsewhere. */
     const val EXPOSED_DURATION_ARRAY_FN = "durationArrayColumn"
 
     /**
@@ -338,7 +343,7 @@ object KotlinTypeMapper {
         // gives a `Column<InetAddress>`. #234: a @lenient field.inet degrades to a plain String.
         is InetField      -> if (lenientNetField(field)) STRING else ClassName("java.net", "InetAddress")
         // field.duration → native java.time.Duration property. The DB column is the Postgres-native
-        // interval (text elsewhere); the file-local `durationColumn(...)` extension gives a
+        // interval (a BIGINT count of microseconds elsewhere); the file-local `durationColumn(...)` extension gives a
         // `Column<Duration>`, and the wire is the canonical ISO-8601 string (MetaDurationWire).
         is DurationField  -> ClassName("java.time", "Duration")
         // field.map → an open-keyed Map<String, V> stored in a single jsonb column.
@@ -585,7 +590,7 @@ object KotlinTypeMapper {
         // Enum stored as VARCHAR for v1. Proper enum-column handling needs the generated
         // enum class (Exposed's `customEnumeration` / `enumerationByName` takes a KClass<E>)
         // and is intentionally deferred.
-        is EnumField      -> "varchar($colExpr, ${enumVarcharLength(field)})"
+        is EnumField      -> enumVarcharLength(field)?.let { "varchar($colExpr, $it)" } ?: "text($colExpr)"
         // field.uuid → Exposed's first-class `uuid(name)` under 0.x (native Postgres uuid
         // column, java.util.UUID) or `javaUUID(name)` under 1.x (issue #390 — 1.x's `uuid()`
         // binds `kotlin.uuid.Uuid` instead; `javaUUID` is the replacement that keeps
@@ -613,8 +618,8 @@ object KotlinTypeMapper {
         // not-strictly-valid value at INSERT).
         is InetField      -> if (lenientNetField(field)) "text($colExpr)" else "$EXPOSED_INET_FN($colExpr)"
         // field.duration → file-local `durationColumn(...)` (a `Column<java.time.Duration>` over the
-        // Postgres-native INTERVAL, text elsewhere) or, with `isArray`, `durationArrayColumn(...)`
-        // (INTERVAL[] / a JSON text array). The helpers live in the package-shared
+        // Postgres-native INTERVAL, a BIGINT count of microseconds elsewhere) or, with `isArray`,
+        // `durationArrayColumn(...)` (INTERVAL[] / a JSON text array of microsecond counts). The helpers live in the package-shared
         // MetaDurationColumnType.kt support file.
         is DurationField  ->
             if (isArrayResolved(field)) "$EXPOSED_DURATION_ARRAY_FN($colExpr)" else "$EXPOSED_DURATION_FN($colExpr)"
@@ -712,7 +717,7 @@ object KotlinTypeMapper {
 
     /**
      * True iff [field] needs the package-shared `MetaDurationColumnType.kt` support file — a
-     * [DurationField] (custom `Column<Duration>` over the Postgres-native interval, text elsewhere).
+     * [DurationField] (custom `Column<Duration>` over the Postgres-native interval, a BIGINT count of microseconds elsewhere).
      */
     fun usesDurationHelper(field: MetaField<*>): Boolean = field is DurationField
 

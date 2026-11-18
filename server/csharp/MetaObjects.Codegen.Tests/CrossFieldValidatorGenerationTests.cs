@@ -1,0 +1,265 @@
+using System.ComponentModel.DataAnnotations;
+using System.Reflection;
+using System.Text.Json;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using MetaObjects.Codegen;
+using MetaObjects.Codegen.Generators;
+using MetaObjects.Loader;
+using MetaObjects.Meta;
+using Xunit;
+
+namespace MetaObjects.Codegen.Tests;
+
+/// <summary>
+/// Generator-level tests for entity-scoped cross-field validators on the full record model: each
+/// compiles the generated classes with Roslyn and runs <see cref="Validator.TryValidateObject(object, ValidationContext, ICollection{ValidationResult}, bool)"/>.
+/// Oracle: the validators' declared meaning (FR-036's CHECK semantics), e.g. <c>lo lt hi</c>
+/// rejects 2 &gt;= 1. The shared corpus gates the full verdict table; these cover inheritance and
+/// the skipped-validator cases the corpus does not.
+/// </summary>
+public class CrossFieldValidatorGenerationTests
+{
+    private const string Model = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Event", "children": [
+        { "source.rdb": { "@table": "events" } },
+        { "field.long":   { "name": "id" } },
+        { "field.int":    { "name": "lo" } },
+        { "field.int":    { "name": "hi" } },
+        { "field.string": { "name": "email" } },
+        { "field.string": { "name": "phone" } },
+        { "identity.primary": { "@fields": "id" } },
+        { "validator.comparison": { "name": "c", "@left": "lo", "@op": "lt", "@right": "hi" } },
+        { "validator.atLeastOne": { "name": "r", "@fields": ["email", "phone"] } },
+        { "validator.requiredWhen": { "name": "ghost", "@field": "email", "@when": "missing", "@equals": "x" } }
+      ]}}
+    ]}}
+    """;
+
+    private const string EqAcrossClrTypes = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Stamp", "children": [
+        { "source.rdb": { "@table": "stamps" } },
+        { "field.long": { "name": "id" } },
+        { "field.timestamp": { "name": "loggedAt" } },
+        { "field.timestamp": { "name": "wallClock", "@localTime": true } },
+        { "field.enum": { "name": "colour", "@values": ["RED", "BLUE"] } },
+        { "field.enum": { "name": "shade", "@values": ["RED", "BLUE"] } },
+        { "identity.primary": { "@fields": "id" } },
+        { "validator.comparison": { "name": "sameInstant", "@left": "loggedAt", "@op": "eq", "@right": "wallClock" } },
+        { "validator.comparison": { "name": "differentInstant", "@left": "loggedAt", "@op": "ne", "@right": "wallClock" } },
+        { "validator.comparison": { "name": "sameColour", "@left": "colour", "@op": "eq", "@right": "shade" } }
+      ]}}
+    ]}}
+    """;
+
+    private const string Plain = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Widget", "children": [
+        { "source.rdb": { "@table": "widgets" } },
+        { "field.long":   { "name": "id" } },
+        { "field.string": { "name": "name" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}}
+    ]}}
+    """;
+
+    private const string Inherited = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Parent", "children": [
+        { "source.rdb": { "@table": "parents" } },
+        { "field.long": { "name": "id" } },
+        { "field.int": { "name": "a" } },
+        { "field.int": { "name": "b" } },
+        { "identity.primary": { "@fields": "id" } },
+        { "validator.comparison": { "name": "ab", "@left": "a", "@op": "lte", "@right": "b" } }
+      ]}},
+      { "object.entity": { "name": "Child", "extends": "Parent", "children": [
+        { "source.rdb": { "@table": "children" } },
+        { "field.int": { "name": "c" } },
+        { "field.int": { "name": "d" } },
+        { "validator.comparison": { "name": "cd", "@left": "c", "@op": "lte", "@right": "d" } }
+      ]}}
+    ]}}
+    """;
+
+    // The parent's only cross-field validator compares an int with a string, which no port emits,
+    // so the parent class has nothing to evaluate; the child still declares a rule of its own.
+    private const string SkippedParent = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Parent", "children": [
+        { "source.rdb": { "@table": "parents" } },
+        { "field.long": { "name": "id" } },
+        { "field.int": { "name": "a" } },
+        { "field.string": { "name": "b" } },
+        { "identity.primary": { "@fields": "id" } },
+        { "validator.comparison": { "name": "ab", "@left": "a", "@op": "lt", "@right": "b" } }
+      ]}},
+      { "object.entity": { "name": "Child", "extends": "Parent", "children": [
+        { "source.rdb": { "@table": "children" } },
+        { "field.string": { "name": "kind" } },
+        { "field.string": { "name": "note" } },
+        { "validator.requiredWhen": { "name": "kn", "@field": "note", "@when": "kind", "@equals": "X" } }
+      ]}}
+    ]}}
+    """;
+
+    // TPH: the abstract intermediate level is not emitted (EmitAbstractShapes off), so its rule
+    // must still be evaluated by the concrete subtype that extends the emitted base.
+    private const string TphAbstractMid = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Animal", "@discriminator": "type", "children": [
+        { "source.rdb": { "@table": "animals" } },
+        { "field.long": { "name": "id" } },
+        { "field.string": { "name": "type" } },
+        { "field.int": { "name": "lo" } },
+        { "field.int": { "name": "hi" } },
+        { "identity.primary": { "@fields": "id" } },
+        { "validator.comparison": { "name": "lohi", "@left": "lo", "@op": "lte", "@right": "hi" } }
+      ]}},
+      { "object.entity": { "name": "Mammal", "extends": "Animal", "abstract": true, "children": [
+        { "field.string": { "name": "kind" } },
+        { "field.string": { "name": "fur" } },
+        { "validator.requiredWhen": { "name": "furry", "@field": "fur", "@when": "kind", "@equals": "FURRY" } }
+      ]}},
+      { "object.entity": { "name": "Dog", "extends": "Mammal", "@discriminatorValue": "Dog", "children": [
+        { "field.string": { "name": "bark" } }
+      ]}}
+    ]}}
+    """;
+
+    // A concrete entity extending an abstract shape that declares a rule.
+    private const string AbstractParent = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Base", "abstract": true, "children": [
+        { "field.int": { "name": "a" } },
+        { "field.int": { "name": "b" } },
+        { "validator.comparison": { "name": "ab", "@left": "a", "@op": "lte", "@right": "b" } }
+      ]}},
+      { "object.entity": { "name": "Item", "extends": "Base", "children": [
+        { "source.rdb": { "@table": "items" } },
+        { "field.long": { "name": "id" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}}
+    ]}}
+    """;
+
+    // A decimal compared with a double: C# has no implicit conversion between the two.
+    private const string MixedNumeric = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Quote", "children": [
+        { "source.rdb": { "@table": "quotes" } },
+        { "field.long": { "name": "id" } },
+        { "field.decimal": { "name": "price", "@precision": 10, "@scale": 2 } },
+        { "field.double": { "name": "cap" } },
+        { "identity.primary": { "@fields": "id" } },
+        { "validator.comparison": { "name": "underCap", "@left": "price", "@op": "lte", "@right": "cap" } }
+      ]}}
+    ]}}
+    """;
+
+    private static GenContext Ctx(string model, bool abstractShapes = false)
+    {
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(model, id: "xf.json")]);
+        Assert.Empty(r.Errors);
+        return new GenContext
+        {
+            Entities = r.Root.Objects(), Root = r.Root,
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme", EmitAbstractShapes = abstractShapes },
+        };
+    }
+
+    // Built once per run: opening every trusted-platform assembly is the cost of each compile.
+    private static readonly Lazy<List<MetadataReference>> CompileReferences = new(() =>
+        ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
+            .Split(Path.PathSeparator).Where(p => p.Length > 0)
+            .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)).ToList());
+
+    private static Assembly Compile(EntityGenerator generator, string model, bool abstractShapes = false)
+    {
+        var trees = generator.Generate(Ctx(model, abstractShapes)).Select(f => CSharpSyntaxTree.ParseText(f.Content)).ToArray();
+        var comp = CSharpCompilation.Create("xfi_" + Guid.NewGuid().ToString("N"), trees, CompileReferences.Value,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        using var ms = new MemoryStream();
+        var emit = comp.Emit(ms);
+        Assert.True(emit.Success, string.Join("; ", emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
+        return Assembly.Load(ms.ToArray());
+    }
+
+    private static readonly JsonSerializerOptions ValidateJsonOptions = new() { PropertyNameCaseInsensitive = true };
+
+    private static List<ValidationResult> Validate(Assembly asm, string type, string json)
+    {
+        object inst = JsonSerializer.Deserialize(json, asm.GetType($"Acme.{type}")!, ValidateJsonOptions)!;
+        var results = new List<ValidationResult>();
+        Validator.TryValidateObject(inst, new ValidationContext(inst), results, true);
+        return results;
+    }
+
+    [Fact]
+    public void Each_resolvable_rule_is_enforced_and_a_rule_on_a_missing_field_is_skipped()
+    {
+        var asm = Compile(new EntityGenerator(), Model);
+        Assert.Empty(Validate(asm, "Event", "{\"lo\":1,\"hi\":2,\"email\":\"e\"}"));
+        Assert.Single(Validate(asm, "Event", "{\"lo\":2,\"hi\":1,\"email\":\"e\"}"));
+        Assert.Single(Validate(asm, "Event", "{\"lo\":1,\"hi\":2}"));
+    }
+
+    [Fact]
+    public void A_decimal_compared_with_a_double_compiles_and_is_enforced()
+    {
+        var asm = Compile(new EntityGenerator(), MixedNumeric);
+        Assert.Single(Validate(asm, "Quote", "{\"price\":5.5,\"cap\":3}"));
+        Assert.Empty(Validate(asm, "Quote", "{\"price\":2.5,\"cap\":3}"));
+    }
+
+    [Fact]
+    public void Entity_without_cross_field_validators_is_not_validatable()
+    {
+        var asm = Compile(new EntityGenerator(), Plain);
+        Assert.False(typeof(IValidatableObject).IsAssignableFrom(asm.GetType("Acme.Widget")!));
+    }
+
+    [Fact]
+    public void Eq_and_ne_between_fields_of_different_clr_types_are_skipped_not_rejected()
+    {
+        var asm = Compile(new EntityGenerator(), EqAcrossClrTypes);
+        Assert.Empty(Validate(asm, "Stamp", "{\"loggedAt\":\"2030-01-02T00:00:00Z\",\"wallClock\":\"2020-01-01T00:00:00\",\"colour\":0,\"shade\":1}"));
+        Assert.Empty(Validate(asm, "Stamp", "{\"loggedAt\":\"2020-01-01T00:00:00Z\",\"wallClock\":\"2020-01-01T00:00:00\",\"colour\":0,\"shade\":0}"));
+    }
+
+    [Fact]
+    public void A_child_of_a_concrete_parent_runs_the_inherited_rule_and_its_own()
+    {
+        // The child is flattened (it carries the parent's properties itself), so the parent's
+        // rule has members to read and runs beside the child's own, with no special case.
+        var asm = Compile(new EntityGenerator(), Inherited);
+        Assert.Equal(2, Validate(asm, "Child", "{\"a\":3,\"b\":1,\"c\":1,\"d\":0}").Count);
+    }
+
+    [Fact]
+    public void A_child_of_an_emitted_abstract_shape_enforces_the_rule_declared_on_the_shape()
+    {
+        var asm = Compile(new EntityGenerator(), AbstractParent, abstractShapes: true);
+        Assert.Single(Validate(asm, "Item", "{\"a\":3,\"b\":1}"));
+        Assert.Empty(Validate(asm, "Item", "{\"a\":1,\"b\":3}"));
+    }
+
+    [Fact]
+    public void A_child_compiles_when_every_inherited_rule_is_skipped()
+    {
+        var asm = Compile(new EntityGenerator(), SkippedParent);
+        Assert.Single(Validate(asm, "Child", "{\"kind\":\"X\"}"));
+        Assert.Empty(Validate(asm, "Child", "{\"kind\":\"X\",\"note\":\"n\"}"));
+    }
+
+    [Fact]
+    public void Tph_subtype_runs_the_rule_of_an_unemitted_abstract_level()
+    {
+        var asm = Compile(new EntityGenerator(), TphAbstractMid);
+        Assert.Single(Validate(asm, "Dog", "{\"lo\":1,\"hi\":2,\"kind\":\"FURRY\"}"));
+        Assert.Single(Validate(asm, "Dog", "{\"lo\":3,\"hi\":2,\"kind\":\"FURRY\",\"fur\":\"f\"}"));
+        Assert.Empty(Validate(asm, "Dog", "{\"lo\":1,\"hi\":2,\"kind\":\"FURRY\",\"fur\":\"f\"}"));
+    }
+}

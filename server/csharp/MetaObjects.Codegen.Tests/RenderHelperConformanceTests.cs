@@ -66,7 +66,15 @@ public sealed class RenderHelperConformanceTests
     {
         Entities = root.Objects(),
         Root = root,
-        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
+        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated"},
+    };
+
+    // The package layout and package namespaces: two same-named value objects in two packages.
+    private static GenContext PackageCtx(MetaRoot root) => new()
+    {
+        Entities = root.Objects(),
+        Root = root,
+        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true },
     };
 
     // ---------------------------------------------------------------------
@@ -80,7 +88,7 @@ public sealed class RenderHelperConformanceTests
         var root = LoadFromFile(Path.Combine(corpus, "meta.json"));
         var templates = Path.Combine(corpus, "templates");
 
-        var file = Assert.Single(new RenderHelperGenerator(templates).Generate(Ctx(root)), f => System.IO.Path.GetFileName(f.Path) == "WelcomePage.render.cs");
+        var file = Assert.Single(new RenderHelperGenerator(templates).Generate(Ctx(root)), f => f.Path == "WelcomePage.render.cs");
 
         var asm = CompileToAssembly([file.Content, .. GeneratedValueObjects.Sources(root)]);
 
@@ -102,7 +110,7 @@ public sealed class RenderHelperConformanceTests
         var root = LoadFromFile(Path.Combine(corpus, "meta.json"));
         var templates = Path.Combine(corpus, "templates");
 
-        var file = Assert.Single(new RenderHelperGenerator(templates).Generate(Ctx(root)), f => System.IO.Path.GetFileName(f.Path) == "WelcomeEmail.render.cs");
+        var file = Assert.Single(new RenderHelperGenerator(templates).Generate(Ctx(root)), f => f.Path == "WelcomeEmail.render.cs");
 
         var asm = CompileToAssembly([file.Content, .. GeneratedValueObjects.Sources(root)]);
 
@@ -126,7 +134,7 @@ public sealed class RenderHelperConformanceTests
         var root = LoadFromFile(Path.Combine(corpus, "meta.json"));
         var templates = Path.Combine(corpus, "templates");
 
-        var file = Assert.Single(new RenderHelperGenerator(templates).Generate(Ctx(root)), f => System.IO.Path.GetFileName(f.Path) == "WelcomeEmail.render.cs");
+        var file = Assert.Single(new RenderHelperGenerator(templates).Generate(Ctx(root)), f => f.Path == "WelcomeEmail.render.cs");
 
         var asm = CompileToAssembly([file.Content, .. GeneratedValueObjects.Sources(root)]);
 
@@ -157,7 +165,7 @@ public sealed class RenderHelperConformanceTests
         var templates = Path.Combine(corpus, "templates");
 
         // The clean nested template must pass the build-time drift gate (no throw).
-        var file = Assert.Single(new RenderHelperGenerator(templates).Generate(Ctx(root)), f => System.IO.Path.GetFileName(f.Path) == "OrderEmail.render.cs");
+        var file = Assert.Single(new RenderHelperGenerator(templates).Generate(Ctx(root)), f => f.Path == "OrderEmail.render.cs");
 
         // ADR-0056: the payload types are the value objects' own POCOs — Order, Customer and
         // Item — which EntityGenerator emits.
@@ -210,9 +218,9 @@ public sealed class RenderHelperConformanceTests
     // The payload TYPES for this fixture must be GENERATOR-emitted
     // (fixtures/template-output-render-conformance/README.md, xpkg-collision section) — never
     // hand-authored by the port runner. ADR-0056: they are the value objects' own POCOs, which
-    // EntityGenerator emits; two value objects sharing the short name `Note` are each `Note` in
-    // their own package's namespace (PackageNamespaces; ruling R52, never renamed), each with only
-    // its OWN field — not one merged/first-wins shape.
+    // EntityGenerator emits; two value objects sharing the short name `Note` each keep the name
+    // `Note`, in their own package's namespace and directory (package layout + package
+    // namespaces), each with only its OWN field — not one merged/first-wins shape.
     // ---------------------------------------------------------------------
 
     [Fact]
@@ -226,27 +234,18 @@ public sealed class RenderHelperConformanceTests
             Path.Combine(dir, "meta.app.json"));
         var templates = Path.Combine(corpus, "templates");
 
-        var ctx = new GenContext
-        {
-            Entities = root.Objects(), Root = root,
-            Config = new GenConfig
-            {
-                OutDir = "/tmp", Namespace = "Acme.Generated",
-                PackageNamespaces = new() { ["acme::alpha"] = "Acme.Alpha", ["acme::beta"] = "Acme.Beta", ["acme::app"] = "Acme.Generated" },
-            },
-        };
-
         // Must NOT throw: the FQN refs resolve to their own package's Note.
-        var file = Assert.Single(new RenderHelperGenerator(templates).Generate(ctx), f => f.Path.EndsWith("DigestDoc.render.cs"));
+        var file = Assert.Single(new RenderHelperGenerator(templates).Generate(PackageCtx(root)), f => f.Path == "acme/app/DigestDoc.render.cs");
 
         // GENERATOR-emitted payload types (not hand-authored) — the corpus contract.
-        var files = new EntityGenerator().Generate(ctx).ToList();
-        var alpha = Assert.Single(files, f => f.Content.Contains("namespace Acme.Alpha;")).Content;
-        var beta = Assert.Single(files, f => f.Content.Contains("namespace Acme.Beta;")).Content;
-        var digestSrc = Assert.Single(files, f => f.Path.EndsWith("Digest.g.cs")).Content;
+        var files = new EntityGenerator().Generate(PackageCtx(root)).ToList();
+        var alpha = Assert.Single(files, f => f.Path == "acme/alpha/Note.g.cs").Content;
+        var beta = Assert.Single(files, f => f.Path == "acme/beta/Note.g.cs").Content;
+        var digestSrc = Assert.Single(files, f => f.Path == "acme/app/Digest.g.cs").Content;
+        Assert.DoesNotContain(files, f => f.Path == "Note.g.cs"); // a value object is never renamed: the two keep one name in two namespaces
 
         // Proof of fix: two DISTINCT emitted types, each carrying only its OWN VO's field — not
-        // a merged `{ alphaText; betaText }` shape — and neither renamed.
+        // a merged `{ alphaText; betaText }` shape.
         Assert.Contains("public class Note", alpha);
         Assert.Contains("public class Note", beta);
         // #309 — this fixture carries BOTH arms, which is what makes it the payload tier's
@@ -257,15 +256,15 @@ public sealed class RenderHelperConformanceTests
         Assert.Contains("public string AlphaText { get; set; } = default!;", alpha);
         Assert.DoesNotContain("BetaText", alpha);
         Assert.Contains("public string BetaText { get; set; } = default!;", beta);
-        // Digest's own fields point at each package's Note, and are optional.
-        Assert.Contains("global::Acme.Alpha.Note? FromAlpha { get; set; }", digestSrc);
-        Assert.Contains("global::Acme.Beta.Note? FromBeta { get; set; }", digestSrc);
+        // Digest's own fields point at the qualified names, and are optional.
+        Assert.Contains("public global::Acme.Alpha.Note? FromAlpha { get; set; }", digestSrc);
+        Assert.Contains("public global::Acme.Beta.Note? FromBeta { get; set; }", digestSrc);
 
         var asm = CompileToAssembly([file.Content, .. files.Select(f => f.Content)]);
 
         var alphaNoteType = asm.GetType("Acme.Alpha.Note")!;
         var betaNoteType = asm.GetType("Acme.Beta.Note")!;
-        var digestType = asm.GetType("Acme.Generated.Digest")!;
+        var digestType = asm.GetType("Acme.App.Digest")!;
         var fromAlpha = Activator.CreateInstance(alphaNoteType)!;
         alphaNoteType.GetProperty("AlphaText")!.SetValue(fromAlpha, "AA");
         var fromBeta = Activator.CreateInstance(betaNoteType)!;
@@ -304,7 +303,7 @@ public sealed class RenderHelperConformanceTests
     // runtime-drift/ → a variable not on the payload RAISES at render time. The helpers are
     // generated against the clean templates/; runtime-drift/templates/ serves {{nmae}} for
     // name (text edited after codegen, which the build-time gate cannot see). Covers a
-    // template.output and a template.prompt over the same payload.
+    // template.output, a template.prompt and an email template.output over the same payload.
     // ---------------------------------------------------------------------
 
     [Theory]
@@ -317,12 +316,38 @@ public sealed class RenderHelperConformanceTests
         var clean = Path.Combine(corpus, "templates");
         var drifted = Path.Combine(corpus, "runtime-drift", "templates");
 
-        var file = Assert.Single(new RenderHelperGenerator(clean).Generate(Ctx(root)), f => System.IO.Path.GetFileName(f.Path) == template + ".render.cs");
+        var file = Assert.Single(new RenderHelperGenerator(clean).Generate(Ctx(root)), f => f.Path == template + ".render.cs");
         var asm = CompileToAssembly([file.Content, .. GeneratedValueObjects.Sources(root)]);
 
         var render = asm.GetType(helperType)!.GetMethod("Render")!;
         var payload = MakeWelcome(asm, "Ada");
         Assert.Equal("Hello Ada", (string)render.Invoke(null, [payload, new FilesystemProvider(clean)])!);
+
+        var ex = Assert.Throws<System.Reflection.TargetInvocationException>(
+            () => render.Invoke(null, [payload, new FilesystemProvider(drifted)]));
+        Assert.Contains("ERR_VAR_NOT_ON_PAYLOAD (nmae)", ex.InnerException!.Message);
+    }
+
+    // runtime-drift/email-<part>/ drifts one part of the WelcomeEmail helper each, so the
+    // subject, the html body and the text body are each shown to raise.
+    [Theory]
+    [InlineData("subject")]
+    [InlineData("html")]
+    [InlineData("text")]
+    public void Runtime_drift_email_part_raises(string part)
+    {
+        var corpus = Corpus();
+        var root = LoadFromFile(Path.Combine(corpus, "runtime-drift", "meta.json"));
+        var clean = Path.Combine(corpus, "templates");
+        var drifted = Path.Combine(corpus, "runtime-drift", "email-" + part);
+
+        var file = Assert.Single(new RenderHelperGenerator(clean).Generate(Ctx(root)), f => f.Path == "WelcomeEmail.render.cs");
+        var asm = CompileToAssembly([file.Content, .. GeneratedValueObjects.Sources(root)]);
+
+        var render = asm.GetType("Acme.Generated.WelcomeEmailRenderHelper")!.GetMethod("Render")!;
+        var payload = MakeWelcome(asm, "Ada");
+        var doc = (EmailDocument)render.Invoke(null, [payload, new FilesystemProvider(clean)])!;
+        Assert.Equal("Welcome Ada", doc.Subject);
 
         var ex = Assert.Throws<System.Reflection.TargetInvocationException>(
             () => render.Invoke(null, [payload, new FilesystemProvider(drifted)]));
@@ -335,7 +360,7 @@ public sealed class RenderHelperConformanceTests
 
     private static object MakeWelcome(Assembly asm, string name)
     {
-        var payloadType = asm.GetType("Acme.Ai.Welcome")!;
+        var payloadType = asm.GetType("Acme.Generated.Welcome")!;
         var payload = Activator.CreateInstance(payloadType)!;
         payloadType.GetProperty("Name")!.SetValue(payload, name);
         return payload;

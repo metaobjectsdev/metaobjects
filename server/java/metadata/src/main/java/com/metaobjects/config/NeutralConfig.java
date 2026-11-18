@@ -70,6 +70,9 @@ public final class NeutralConfig {
     private final PhysicalNaming physicalNaming;
     private final WireFormat wireFormat;
     private EnumDefaults enumDefaults = EnumDefaults.DEFAULT;
+    private ApiSettings apiSettings = ApiSettings.DEFAULT;
+    private MigrateSettings migrateSettings = MigrateSettings.DEFAULT;
+    private List<String> requirementsInherit = List.of();
 
     private NeutralConfig(List<Map<String, String>> sources, List<Map<String, String>> dependencies,
                           List<String> scopeInclude, List<String> migrateScope,
@@ -93,8 +96,9 @@ public final class NeutralConfig {
 
     /**
      * FR-023 — the declared {@code dependencies}, each already validated (DESIGN §3.1): a
-     * {@code name}, exactly one transport key ({@code path} | {@code npm} | {@code python}),
-     * and {@code dir} only beside {@code npm}/{@code python}. Empty when the key is absent.
+     * {@code name}, exactly one transport key ({@code path} | {@code npm} | {@code python} |
+     * {@code maven} | {@code nuget}), a {@code version} beside {@code maven}/{@code nuget}, and
+     * {@code dir} beside any transport but {@code path}. Empty when the key is absent.
      * Resolving a transport to bytes is the Node {@code meta deps sync}'s job; this port reads
      * the committed snapshot instead.
      */
@@ -120,6 +124,15 @@ public final class NeutralConfig {
     }
 
     /**
+     * FR-023 — the declared {@code requirements.inherit} patterns: the dependencies whose
+     * requirements this project takes on as its own ledger ({@link DependencySet#inLedger}).
+     * Empty when the key is absent.
+     */
+    public List<String> getRequirementsInherit() {
+        return requirementsInherit;
+    }
+
+    /**
      * ADR-0058 — the project's physical-naming rules ({@code naming} in this file), each
      * absent rule at its default. Never {@code null}.
      */
@@ -138,6 +151,19 @@ public final class NeutralConfig {
     /** The project's enum storage defaults ({@code enums} in this file). Never {@code null}. */
     public EnumDefaults getEnumDefaults() {
         return enumDefaults;
+    }
+
+    /**
+     * The project's {@code api} block ({@code api.pagination}, {@code api.unknownFields}), absent
+     * keys at their defaults (no page size, {@code reject}). Never {@code null}.
+     */
+    public ApiSettings getApiSettings() {
+        return apiSettings;
+    }
+
+    /** The schema settings a mapping generator agrees with ({@code migrate.foreignKeyIndexes} and friends). */
+    public MigrateSettings getMigrateSettings() {
+        return migrateSettings;
     }
 
     /**
@@ -292,6 +318,7 @@ public final class NeutralConfig {
         // otherwise bind a whole schema to the wrong names and report success).
         String columns = PhysicalNaming.DEFAULT_COLUMNS;
         String tables = PhysicalNaming.DEFAULT_TABLES;
+        String collections = null;
         JsonElement naming = root.get("naming");
         if (naming != null && !(naming.isJsonObject())) {
             throw new MetaDataException(
@@ -301,10 +328,10 @@ public final class NeutralConfig {
         if (naming != null) {
             JsonObject namingObj = naming.getAsJsonObject();
             for (String key : namingObj.keySet()) {
-                if (!"columns".equals(key) && !"tables".equals(key)) {
+                if (!"columns".equals(key) && !"tables".equals(key) && !"collections".equals(key)) {
                     throw new MetaDataException(
                             origin + ": \"naming\" has unknown key \"" + key
-                                    + "\"; expected \"columns\" and/or \"tables\"",
+                                    + "\"; expected \"columns\", \"tables\" and/or \"collections\"",
                             ErrorCode.ERR_BAD_ATTR_VALUE);
                 }
             }
@@ -326,10 +353,20 @@ public final class NeutralConfig {
                 }
                 tables = tablesEl.getAsString();
             }
+            // The pluralizer an object without @collectionName takes its collection name from.
+            JsonElement collectionsEl = namingObj.get("collections");
+            if (collectionsEl != null) {
+                if (!collectionsEl.isJsonPrimitive() || !collectionsEl.getAsJsonPrimitive().isString()) {
+                    throw new MetaDataException(
+                            origin + ": \"naming.collections\" must be a string naming a pluralizer",
+                            ErrorCode.ERR_BAD_ATTR_VALUE);
+                }
+                collections = collectionsEl.getAsString();
+            }
         }
         // PhysicalNaming.of validates the values against the NamingStrategies registry (a
         // built-in or an application-registered name; ADR-0058 Amendment 1).
-        PhysicalNaming physicalNaming = PhysicalNaming.of(columns, tables);
+        PhysicalNaming physicalNaming = PhysicalNaming.of(columns, tables, collections);
 
         WireFormat wireFormat = parseWire(root.get("wire"), origin);
 
@@ -338,7 +375,69 @@ public final class NeutralConfig {
         NeutralConfig cfg = new NeutralConfig(specs, dependencies, scopeInclude, migrateScope, physicalNaming,
                 wireFormat);
         cfg.enumDefaults = parseEnums(root.get("enums"), origin);
+        cfg.apiSettings = parseApi(root.get("api"), origin);
+        cfg.migrateSettings = parseMigrateSettings(root.get("migrate"));
+        cfg.requirementsInherit = parseRequirementsInherit(root.get("requirements"), origin);
         return cfg;
+    }
+
+    /**
+     * The {@code api} block: {@code pagination} ({@code defaultLimit} and {@code maxLimit}, both
+     * positive integers, {@code defaultLimit <= maxLimit}) and {@code unknownFields}
+     * ({@code "reject"} | {@code "drop"}). Refused like {@code naming}: an unknown key, a
+     * wrong-typed value or a non-object block. The messages match the TypeScript reader's.
+     */
+    private static ApiSettings parseApi(JsonElement api, String origin) {
+        if (api == null) return ApiSettings.DEFAULT;
+        if (!api.isJsonObject()) throw bad(origin + ": \"api\" must be an object");
+        ApiSettings.Pagination pagination = null;
+        ApiSettings.UnknownFields unknownFields = ApiSettings.UnknownFields.REJECT;
+        JsonObject obj = api.getAsJsonObject();
+        for (String key : obj.keySet()) {
+            JsonElement v = obj.get(key);
+            switch (key) {
+                case "pagination" -> pagination = parsePagination(v, origin);
+                case "unknownFields" -> {
+                    unknownFields = v.isJsonPrimitive() && v.getAsJsonPrimitive().isString()
+                            ? ApiSettings.unknownFieldsOf(v.getAsString()) : null;
+                    if (unknownFields == null) {
+                        throw bad(origin + ": \"api.unknownFields\" must be \"reject\" or \"drop\"");
+                    }
+                }
+                default -> throw bad(origin + ": \"api\" has an unknown key \"" + key
+                        + "\" (expected \"pagination\" or \"unknownFields\")");
+            }
+        }
+        return new ApiSettings(pagination, unknownFields);
+    }
+
+    private static ApiSettings.Pagination parsePagination(JsonElement el, String origin) {
+        if (!el.isJsonObject()) throw bad(origin + ": \"api.pagination\" must be an object");
+        JsonObject obj = el.getAsJsonObject();
+        for (String key : obj.keySet()) {
+            if (!"defaultLimit".equals(key) && !"maxLimit".equals(key)) {
+                throw bad(origin + ": \"api.pagination\" has an unknown key \"" + key
+                        + "\" (expected \"defaultLimit\" and \"maxLimit\")");
+            }
+        }
+        if (!obj.has("defaultLimit") || !obj.has("maxLimit")) {
+            throw bad(origin + ": \"api.pagination\" needs both \"defaultLimit\" and \"maxLimit\"");
+        }
+        long defaultLimit = pageSize(obj.get("defaultLimit"), "defaultLimit", origin);
+        long maxLimit = pageSize(obj.get("maxLimit"), "maxLimit", origin);
+        if (defaultLimit > maxLimit) {
+            throw bad(origin + ": \"api.pagination.defaultLimit\" must not exceed \"api.pagination.maxLimit\"");
+        }
+        return new ApiSettings.Pagination(defaultLimit, maxLimit);
+    }
+
+    private static long pageSize(JsonElement v, String key, String origin) {
+        java.math.BigDecimal n = v.isJsonPrimitive() && v.getAsJsonPrimitive().isNumber()
+                ? v.getAsBigDecimal() : null;
+        if (n == null || n.signum() <= 0 || n.stripTrailingZeros().scale() > 0 || n.compareTo(java.math.BigDecimal.valueOf(Integer.MAX_VALUE)) > 0) {
+            throw bad(origin + ": \"api.pagination." + key + "\" must be a positive integer");
+        }
+        return n.longValueExact();
     }
 
     /**
@@ -376,7 +475,12 @@ public final class NeutralConfig {
     private static final java.util.regex.Pattern DEPENDENCY_NAME =
             java.util.regex.Pattern.compile("^[a-z0-9][a-z0-9._-]*$");
 
-    private static final List<String> DEPENDENCY_TRANSPORTS = List.of("path", "npm", "python");
+    private static final List<String> DEPENDENCY_TRANSPORTS = List.of("path", "npm", "python", "maven", "nuget");
+
+    /** The packaged transports name a package in a cache that holds many versions, so they carry a {@code version}. */
+    private static boolean isVersioned(String transport) {
+        return transport.equals("maven") || transport.equals("nuget");
+    }
 
     private static MetaDataException bad(String message) {
         return new MetaDataException(message, ErrorCode.ERR_BAD_ATTR_VALUE);
@@ -405,7 +509,7 @@ public final class NeutralConfig {
             List<String> transports = new ArrayList<>();
             for (String t : DEPENDENCY_TRANSPORTS) if (dep.has(t)) transports.add(t);
             if (transports.size() != 1) {
-                throw bad(ctx + "exactly one of 'path' / 'npm' / 'python' is required)");
+                throw bad(ctx + "exactly one of 'path' / 'npm' / 'python' / 'maven' / 'nuget' is required)");
             }
             String transport = transports.get(0);
             Map<String, String> spec = new LinkedHashMap<>();
@@ -414,11 +518,16 @@ public final class NeutralConfig {
 
             java.util.Set<String> allowed = new java.util.HashSet<>(List.of("name", transport));
             if (!transport.equals("path")) allowed.add("dir");
+            if (isVersioned(transport)) allowed.add("version");
             List<String> extra = new ArrayList<>();
             for (String k : dep.keySet()) if (!allowed.contains(k)) extra.add(k);
             if (!extra.isEmpty()) {
                 java.util.Collections.sort(extra);
                 throw bad(ctx + "unknown key(s): " + extra + ")");
+            }
+            if (isVersioned(transport)) {
+                spec.put("version", nonEmptyString(dep.get("version"),
+                        ctx + "'version' is required beside '" + transport + "' and must be a non-empty string)"));
             }
             if (dep.has("dir")) {
                 spec.put("dir", nonEmptyString(dep.get("dir"), ctx + "'dir' must be a non-empty string)"));
@@ -457,6 +566,42 @@ public final class NeutralConfig {
         return stringArray(include, "scope.include", origin);
     }
 
+    /**
+     * FR-023 — {@code requirements.inherit}. Refused like {@code naming}: an unknown key inside
+     * {@code requirements} would otherwise be a misspelt {@code inherit} that silently leaves the
+     * ledger out.
+     */
+    private static List<String> parseRequirementsInherit(JsonElement requirements, String origin) {
+        if (requirements == null || requirements.isJsonNull()) return List.of();
+        if (!requirements.isJsonObject()) throw bad(origin + ": \"requirements\" must be an object");
+        JsonObject obj = requirements.getAsJsonObject();
+        for (String key : obj.keySet()) {
+            if (!"inherit".equals(key)) {
+                throw bad(origin + ": \"requirements\" has unknown key \"" + key + "\"; expected \"inherit\"");
+            }
+        }
+        JsonElement inherit = obj.get("inherit");
+        if (inherit == null || inherit.isJsonNull()) return List.of();
+        return stringArray(inherit, "requirements.inherit", origin);
+    }
+
+    /**
+     * {@code migrate.foreignKeyIndexes}, {@code migrate.conventions} and {@code migrate.dialect},
+     * read leniently (a wrong type reads as absent): {@code meta migrate} owns and validates them.
+     */
+    private static MigrateSettings parseMigrateSettings(JsonElement migrate) {
+        if (migrate == null || !migrate.isJsonObject()) return MigrateSettings.DEFAULT;
+        JsonObject m = migrate.getAsJsonObject();
+        JsonElement fk = m.get("foreignKeyIndexes");
+        boolean foreignKeyIndexes = fk != null && fk.isJsonPrimitive() && fk.getAsJsonPrimitive().isBoolean()
+            && fk.getAsBoolean();
+        return new MigrateSettings(foreignKeyIndexes, stringOrNull(m.get("conventions")), stringOrNull(m.get("dialect")));
+    }
+
+    private static String stringOrNull(JsonElement e) {
+        return e != null && e.isJsonPrimitive() && e.getAsJsonPrimitive().isString() ? e.getAsString() : null;
+    }
+
     /** {@code migrate.scope}, or {@code null} when absent; every other {@code migrate} key is ignored. */
     private static List<String> parseMigrateScope(JsonElement migrate, String origin) {
         if (migrate == null || migrate.isJsonNull()) return null;
@@ -478,6 +623,7 @@ public final class NeutralConfig {
         JsonObject wireObj = wire.getAsJsonObject();
         WireFormat.Decimals decimals = WireFormat.Decimals.NATIVE;
         WireFormat.NullMembers nullMembers = WireFormat.NullMembers.NATIVE;
+        WireFormat.Durations durations = WireFormat.Durations.NATIVE;
         for (String key : wireObj.keySet()) {
             JsonElement el = wireObj.get(key);
             String raw = el.isJsonPrimitive() && el.getAsJsonPrimitive().isString() ? el.getAsString() : null;
@@ -498,12 +644,20 @@ public final class NeutralConfig {
                                 ErrorCode.ERR_BAD_ATTR_VALUE);
                     }
                 }
+                case "durations" -> {
+                    durations = raw == null ? null : WireFormat.durationsOf(raw);
+                    if (durations == null) {
+                        throw new MetaDataException(
+                                origin + ": \"wire.durations\" must be one of \"native\", \"iso\"",
+                                ErrorCode.ERR_BAD_ATTR_VALUE);
+                    }
+                }
                 default -> throw new MetaDataException(
                         origin + ": \"wire\" has unknown key \"" + key
-                                + "\"; expected \"decimals\" and/or \"nullMembers\"",
+                                + "\"; expected \"decimals\", \"nullMembers\" and/or \"durations\"",
                         ErrorCode.ERR_BAD_ATTR_VALUE);
             }
         }
-        return new WireFormat(decimals, nullMembers);
+        return new WireFormat(decimals, nullMembers, durations);
     }
 }

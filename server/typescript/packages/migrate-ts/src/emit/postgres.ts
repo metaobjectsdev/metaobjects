@@ -253,7 +253,7 @@ function renderUp(c: Change, recreated: ReadonlySet<string> = new Set()): string
         ? `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${quote(c.column)} SET DEFAULT ${renderDefault(c.to)};`
         : `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${quote(c.column)} DROP DEFAULT;`;
     case "change-column-identity": return renderIdentity(c.table, c.schema, c.column, c.to, c.sequence);
-    case "alter-sequence":         return renderAlterSequence(c.sequenceSchema ?? c.schema, c.sequence, c.toStart, c.toName);
+    case "alter-sequence":         return renderAlterSequence(c.sequenceSchema ?? c.schema, c.sequence, c.toStart, c.toName, c.table, c.schema, c.column);
     case "change-comment":         return renderComment(c.table, c.schema, c.column, c.to);
     case "add-index":              return renderCreateIndex(c.table, c.schema, c.index);
     // #285: an index OWNED by a UNIQUE / PRIMARY KEY / EXCLUDE constraint cannot be
@@ -351,13 +351,27 @@ function renderRenameConstraints(c: Extract<Change, { kind: "rename-constraints"
   const up = dir === "up";
   const table = quoteQualified(c.table, c.schema);
   const flip = (r: NameChange): NameChange => (up ? r : { from: r.to, to: r.from });
+  // A promotion's down drops the constraint, which drops its index, then re-creates the
+  // plain index. Postgres refuses that drop while a foreign key relies on the key; the FK
+  // must be dropped first.
+  const promotions = (c.uniquePromotions ?? []).map((ix) => up
+    ? `ALTER TABLE ${table} ADD CONSTRAINT ${quote(ix.name)} UNIQUE USING INDEX ${quote(ix.name)};`
+    : [`ALTER TABLE ${table} DROP CONSTRAINT ${quote(ix.name)};`,
+       renderCreateIndex(c.table, c.schema, withoutConstraint(ix))].join("\n"));
   const lines = [
     ...(c.constraintRenames ?? []).map(flip).map((r) =>
       `ALTER TABLE ${table} RENAME CONSTRAINT ${quote(r.from)} TO ${quote(r.to)};`),
     ...(c.indexRenames ?? []).map(flip).map((r) =>
       `ALTER INDEX ${quoteIndexQualified(r.from, c.schema)} RENAME TO ${quote(r.to)};`),
+    ...promotions,
   ];
   return (up ? lines : [...lines].reverse()).join("\n\n");
+}
+
+/** The index with no owning constraint: what a promotion started from. */
+function withoutConstraint(ix: IndexDescriptor): IndexDescriptor {
+  const { constraint: _owned, ...plain } = ix;
+  return plain;
 }
 
 function renderDown(c: Change, recreated: ReadonlySet<string> = new Set()): string {
@@ -401,7 +415,7 @@ function renderDown(c: Change, recreated: ReadonlySet<string> = new Set()): stri
     // The down addresses the sequence by the name the up gave it, and runs in reverse order:
     // rename back first, then restore the start.
     case "alter-sequence":
-      // The counter is not moved back: values it has handed out stay handed out.
+      // The counter is never moved back: values it has handed out stay handed out.
       return [
         ...(c.toName !== undefined ? [`ALTER SEQUENCE ${quoteQualified(c.toName, c.sequenceSchema ?? c.schema)} RENAME TO ${quote(c.sequence)};`] : []),
         ...(c.fromStart !== undefined ? [`ALTER SEQUENCE ${quoteQualified(c.sequence, c.sequenceSchema ?? c.schema)} START WITH ${c.fromStart};`] : []),
@@ -489,22 +503,42 @@ function renderTableComments(t: TableDescriptor): string[] {
 }
 
 /**
- * Start first, under the live name; then the rename. `START WITH` alone only records the
- * restart point, so the counter is moved up to the new start — never down, which could hand
- * out an id already in use — by `setval(..., false)` when it has not reached it.
+ * Start first, under the live name; then the rename. A changed start records the new
+ * `START WITH` and moves the counter FORWARD only: to `GREATEST(n, max(id) + 1)` when the next
+ * value the sequence would hand out is below that, and never back. It never `RESTART`s, so no
+ * id a live row holds is handed out again, and a database that gains the start later (a
+ * replayed chain) still hands out ids from `n` on, as a fresh one does. A descending sequence
+ * records the start only. The same rule in every port that changes a live sequence.
  */
-function renderAlterSequence(schema: string | undefined, sequence: string, toStart: number | undefined, toName: string | undefined): string {
+function renderAlterSequence(
+  schema: string | undefined,
+  sequence: string,
+  toStart: number | undefined,
+  toName: string | undefined,
+  table: string,
+  tableSchema: string | undefined,
+  column: string,
+): string {
   const seq = quoteQualified(sequence, schema);
-  const regclass = `'${seq.replace(/'/g, "''")}'`;
   return [
     ...(toStart !== undefined
-      ? [
-        `ALTER SEQUENCE ${seq} START WITH ${toStart};`,
-        `SELECT setval(${regclass}, ${toStart}, false) FROM ${seq} WHERE last_value < ${toStart};`,
-      ]
+      ? [`ALTER SEQUENCE ${seq} START WITH ${toStart};`, renderAdvanceSequence(seq, toStart, table, tableSchema, column)]
       : []),
     ...(toName !== undefined ? [`ALTER SEQUENCE ${seq} RENAME TO ${quote(toName)};`] : []),
   ].join("\n");
+}
+
+/**
+ * The forward-only move of a changed start: one statement, a no-op when the counter is already
+ * at or past `GREATEST(n, max(id) + 1)`. `is_called` says whether `last_value` was handed out.
+ */
+function renderAdvanceSequence(seq: string, start: number, table: string, tableSchema: string | undefined, column: string): string {
+  const reg = `'${pgEscape(seq)}'::regclass`;
+  return `SELECT setval(${reg}, t.target, false)`
+    + ` FROM (SELECT GREATEST(${start}, COALESCE(MAX(${quote(column)}), 0) + 1) AS target FROM ${quoteQualified(table, tableSchema)}) t,`
+    + ` ${seq} s, pg_sequence p`
+    + ` WHERE p.seqrelid = ${reg} AND p.seqincrement > 0`
+    + ` AND (CASE WHEN s.is_called THEN s.last_value + p.seqincrement ELSE s.last_value END) < t.target;`;
 }
 
 function renderIdentity(
@@ -515,9 +549,16 @@ function renderIdentity(
   sequence?: { name?: string; start?: number },
 ): string {
   const alter = `ALTER TABLE ${quoteQualified(table, schema)} ALTER COLUMN ${quote(column)}`;
-  return to === "increment"
-    ? `${alter} ADD GENERATED BY DEFAULT AS IDENTITY${identityOptions(sequence !== undefined ? { sequence } : {})};`
-    : `${alter} DROP IDENTITY IF EXISTS;`;
+  if (to !== "increment") return `${alter} DROP IDENTITY IF EXISTS;`;
+  const add = `${alter} ADD GENERATED BY DEFAULT AS IDENTITY${identityOptions(sequence !== undefined ? { sequence } : {})};`;
+  return `${add}\n${renderAdvanceNewIdentity(sequence?.start ?? 1, table, schema, column)}`;
+}
+
+function renderAdvanceNewIdentity(start: number, table: string, schema: string | undefined, column: string): string {
+  const qualified = quoteQualified(table, schema);
+  return `SELECT setval(pg_get_serial_sequence('${pgEscape(qualified)}', '${pgEscape(column)}')::regclass, t.target, false)`
+    + ` FROM (SELECT GREATEST(${start}, COALESCE(MAX(${quote(column)}), 0) + 1) AS target FROM ${qualified}) t`
+    + ` WHERE t.target > ${start};`;
 }
 
 function renderComment(table: string, schema: string | undefined, column: string | undefined, to: string | undefined): string {

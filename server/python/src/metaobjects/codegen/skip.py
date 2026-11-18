@@ -1,4 +1,4 @@
-"""Whole-run codegen skip (ADR-0062).
+"""Whole-run codegen skip (ADR-0064).
 
 ``gen`` computes ONE fingerprint of every input that can change what it writes, before it
 loads any metadata or constructs any generator, and compares it with the one the last

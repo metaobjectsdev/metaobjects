@@ -1,0 +1,13 @@
+<h1>Model map</h1>
+<div class="sub">Entities and the references between them. A slice is the set of model nodes a requirement subtree claims, a package holds, or a prompt reads and returns.</div>
+<div class="toolbar">
+  <label>Slice <select id="slice">{{#sliceGroups}}<optgroup label="{{{label}}}">{{#options}}<option value="{{{value}}}">{{{label}}}</option>{{/options}}</optgroup>{{/sliceGroups}}</select></label>
+  <label>Colour by <select id="colour">{{#hasRequirements}}<option value="cap">feature it serves</option><option value="status">requirement status</option>{{/hasRequirements}}<option value="kind">node kind</option><option value="api">REST exposure</option>{{#hasRequirements}}<option value="claims">claim count</option>{{/hasRequirements}}</select></label>
+  <label><input type="checkbox" id="hideOut"> hide nodes outside the slice</label>
+  <label><input type="checkbox" id="showValues"> include values, read models and prompts</label>
+  <label><input type="checkbox" id="showExt"> show inheritance</label>
+  <button id="relayout" type="button">Re-layout</button>
+</div>
+<div class="grid side"><div id="cy" class="graph" role="img" aria-label="Model map"></div><div class="card panel" id="panel"><div class="sub">Click a node to see why it exists, what it holds and what was generated from it. Double-click to open its page.</div></div></div>
+<div id="maplegend" class="maplegend"></div>
+<noscript><div class="note">The map needs JavaScript. Every node also has its own page under <a href="{{{relRoot}}}model/index.html">Packages</a>.</div></noscript>

@@ -1,0 +1,27 @@
+name: sequence-start-change-moves-counter-forward
+description: |
+  An existing table's increment key gains `@sequenceStart: 1000`. The migration records the
+  new start (`ALTER SEQUENCE … START WITH 1000`) and moves the counter FORWARD to
+  `GREATEST(1000, max(id) + 1)`, because the next value the sequence would hand out (3) is below
+  it. It never RESTARTs and never moves a counter back, so no id a live row holds is handed out
+  again. Every port that changes a live sequence applies `@sequenceStart` with this one meaning,
+  so a database that gains the start later (a replayed chain) hands out ids from the start on,
+  as a fresh one does.
+
+  The seed inserts two rows WITHOUT ids, so the sequence itself hands out 1 and 2. After the
+  up migration the next insert takes 1000.
+
+seed-metadata: ./states/program-v1/
+seed-data: |
+  INSERT INTO "programs" ("title") VALUES ('Foundations'), ('Strength');
+
+target-metadata: ./states/program-seq-v2/
+
+expect:
+  blocked: []
+  up-contains:
+    - 'ALTER SEQUENCE "programs_id_seq" START WITH 1000;'
+  apply-up-then-query:
+    sql: SELECT nextval('"programs_id_seq"') AS "next"
+    rows:
+      - { next: "1000" }

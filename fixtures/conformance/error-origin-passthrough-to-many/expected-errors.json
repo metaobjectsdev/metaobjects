@@ -2,6 +2,9 @@
   "errors": [
     {
       "code": "ERR_ORIGIN_CARDINALITY",
+      "messageIncludes": [
+        "origin.passthrough on UserSummary.orderLabel: @via hop \"orders\" is to-many (@cardinality \"many\") — a row-multiplying passthrough — you meant aggregate (ADR-0029)."
+      ],
       "source": {
         "format": "json",
         "files": [

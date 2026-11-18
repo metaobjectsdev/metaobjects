@@ -750,27 +750,23 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
 
         assertTrue(src, src.contains("public static final String SHIP_TO_STREET_COLUMN = \"ship_to_street\";"));
         assertTrue(src, src.contains("public static final String SHIP_TO_POSTAL_CODE_COLUMN = \"ship_to_ZIP\";"));
-        // The field's own constants are kept as they were, so nothing that reads them changes.
         assertTrue(src, src.contains("public static final String SHIP_TO_FIELD = \"shipTo\";"));
-        assertTrue(src, src.contains("public static final String SHIP_TO_COLUMN = \"ship_to\";"));
         assertTrue(src, src.contains("public static final String PAYLOAD_COLUMN = \"payload\";"));
-        // ...but the flattened field's own column constant names no column: it is deprecated.
-        assertTrue(src, src.contains("    /** @deprecated A flattened field has no column of its own; use the member constants. */\n"
-            + "    @Deprecated\n    public static final String SHIP_TO_COLUMN = \"ship_to\";"));
-        assertFalse(src, src.contains("@Deprecated\n    public static final String PAYLOAD_COLUMN"));
-        assertFalse(src, src.contains("@Deprecated\n    public static final String SHIP_TO_FIELD"));
-        assertTrue(src, src.contains("Map.entry(\"shipTo\", SHIP_TO_COLUMN)"));
+        // A flattened field has no column of its own, so no _COLUMN constant and no map key.
+        assertFalse(src, src.contains("SHIP_TO_COLUMN"));
+        assertFalse(src, src.contains("Deprecated"));
+        assertFalse(src, src.contains("Map.entry(\"shipTo\","));
         assertTrue(src, src.contains("Map.entry(\"shipTo.street\", SHIP_TO_STREET_COLUMN)"));
         assertTrue(src, src.contains("Map.entry(\"shipTo.postalCode\", SHIP_TO_POSTAL_CODE_COLUMN)"));
     }
 
     /**
-     * The deprecation costs a project that never uses the constant nothing: the generated names
-     * classes, a base and the subclass whose map reaches the base's constant, compile under
-     * {@code -Xlint:all -Werror}. A use of the constant is what warns.
+     * A flattened field has no column constant: the generated names classes, a base and its
+     * subclass, compile under {@code -Xlint:all -Werror}, and reading the field's own column
+     * constant is a compile error.
      */
     @Test
-    public void theDeprecatedFlattenedColumnWarnsOnlyWhereItIsUsed() throws Exception {
+    public void aFlattenedFieldHasNoColumnConstantToRead() throws Exception {
         String model = """
             {
               "metadata.root": { "package": "acme::ship", "children": [
@@ -795,7 +791,7 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
         gen.execute(SpringTestFixtures.loadFixture(workspace, "names-deprecation", model));
         String order = Files.readString(outDir.resolve("acme/ship/OrderNames.java"));
         assertTrue(order, order.contains("public abstract class OrderNames extends BaseNames {"));
-        assertTrue(order, order.contains("Map.entry(\"shipTo\", SHIP_TO_COLUMN)"));
+        assertFalse(order, order.contains("SHIP_TO_COLUMN"));
 
         List<String> strict = List.of("-Xlint:all", "-Werror");
         String failure = compile(outDir, strict);
@@ -804,8 +800,8 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
         Files.writeString(outDir.resolve("acme/ship/UsesIt.java"),
             "package acme.ship;\nclass UsesIt { String c = OrderNames.SHIP_TO_COLUMN; }\n");
         failure = compile(outDir, strict);
-        assertTrue("a use of the deprecated constant warns:\n" + failure,
-            failure != null && failure.contains("SHIP_TO_COLUMN") && failure.contains("deprecated"));
+        assertTrue("a use of the absent constant does not compile:\n" + failure,
+            failure != null && failure.contains("SHIP_TO_COLUMN"));
     }
 
     @Test

@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_MERGE_CONFLICT",
+      "source": {
+        "format": "merged",
+        "files": [
+          "meta.a.json",
+          "meta.b.json"
+        ]
+      }
+    }
+  ],
+  "warnings": []
+}

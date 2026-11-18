@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "sources": [{ "path": "metadata" }],
+  "dependencies": [{ "name": "acme-common", "path": "../publisher/acme-common" }]
+}

@@ -81,10 +81,10 @@ class KotlinExposedTableIntBackedEnumTest {
                 "priority must not emit the string-backed column; saw:\n$src")
 
             // The string-backed sibling is unchanged — this feature is additive.
-            assertTrue("enumerationByName(\"status\", ${KotlinTypeMapper.ENUM_VARCHAR_LEN}, OrderStatus::class)" in src,
-                "string-backed status must keep enumerationByName; saw:\n$src")
-            assertTrue("customEnumeration(\"status\"" !in src,
-                "string-backed status must not become customEnumeration; saw:\n$src")
+            assertTrue("customEnumeration(\"status\", \"TEXT\"" in src,
+                "string-backed status (no length configured) is a text column; saw:\n$src")
+            assertTrue("customEnumeration(\"status\", \"INTEGER\"" !in src,
+                "string-backed status must not become the int-backed form; saw:\n$src")
 
             // Compile gate: proves both lambdas type-check against the real Exposed API.
             val result = compile(outDir)

@@ -1,4 +1,4 @@
-// Phase 5 bug G6 — a path into a member of a FLATTENED value object (`address.city`): the
+// A path into a member of a FLATTENED value object (`address.city`): the
 // member's column lives on the owning table under the embedding field's prefix. Ported from
 // typescript/packages/metadata/src/core/field/flattened-member.ts.
 

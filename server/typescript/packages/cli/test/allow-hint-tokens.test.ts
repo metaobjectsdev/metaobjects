@@ -142,3 +142,18 @@ describe("following the hints unblocks the change", () => {
     expect(await blocked(scenario, ["drop-view-cascade", "adopt-view"])).toEqual([]);
   });
 });
+
+describe("a drop-column held by a view the tool does not own", () => {
+  test("the blocked entry names the view that reads the column", async () => {
+    const r = await diff({
+      expected: snap([T({ columns: [T().columns[0]!] })]),
+      actual: snap([T()], [{ name: "v_hand", sql: "SELECT id, label FROM t" }]),
+      dialect: "sqlite",
+      allow: { dropColumn: true },
+    });
+    const entries = blockedEntriesFor(r.blocked, r.changes);
+    const entry = entries.find((e) => e.kind === "drop-column");
+    expect(entry?.description).toBe("t.label (read by view v_hand)");
+    expect(entry?.allowFlag).toBe("drop-column-read-by-view");
+  });
+});

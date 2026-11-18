@@ -616,11 +616,11 @@ public class NamesGeneratorTests
 
         // Projection .ToView — the unconditional [Table]-shaped substitution (keyless:
         // CustomerSummary declares no identity, so .HasNoKey() precedes it).
-        Assert.Contains("modelBuilder.Entity<global::Acme.CustomerSummary>().HasNoKey().ToView(global::Acme.CustomerSummaryNames.SourcePrimaryView);", dbContext);
+        Assert.Contains("modelBuilder.Entity<CustomerSummary>().HasNoKey().ToView(CustomerSummaryNames.SourcePrimaryView);", dbContext);
         Assert.DoesNotContain("ToView(\"v_customer_summary\")", dbContext);
 
         // Object-typed field .ToJson — the owner's own field, always present.
-        Assert.Contains("b.ToJson(global::Acme.CustomerNames.ConfigColumn)", dbContext);
+        Assert.Contains("b.ToJson(CustomerNames.ConfigColumn)", dbContext);
         Assert.DoesNotContain("b.ToJson(\"config\")", dbContext);
     }
 
@@ -885,13 +885,13 @@ public class NamesGeneratorTests
         var dbContext = new DbContextGenerator().Generate(ctx).Single().Content;
 
         // Exactly what these two lines emitted before Program A added the constant.
-        Assert.Contains("modelBuilder.Entity<global::Acme.CustomerSummary>().HasNoKey().ToView(\"v_customer_summary\");", dbContext);
+        Assert.Contains("modelBuilder.Entity<CustomerSummary>().HasNoKey().ToView(\"v_customer_summary\");", dbContext);
         Assert.Contains("b.ToJson(\"config\")", dbContext);
 
         Assert.DoesNotContain("CustomerSummaryNames", dbContext);
         Assert.DoesNotContain("CustomerNames", dbContext);
-        Assert.DoesNotContain("ToView(global::Acme.CustomerSummaryNames.SourcePrimaryView)", dbContext);
-        Assert.DoesNotContain("b.ToJson(global::Acme.CustomerNames.ConfigColumn)", dbContext);
+        Assert.DoesNotContain("ToView(CustomerSummaryNames.SourcePrimaryView)", dbContext);
+        Assert.DoesNotContain("b.ToJson(CustomerNames.ConfigColumn)", dbContext);
     }
 
     [Fact]
@@ -914,7 +914,7 @@ public class NamesGeneratorTests
         var outDir = Path.Combine(tmp, "out");
         Assert.False(File.Exists(Path.Combine(outDir, "SubscriberNames.g.cs")));
 
-        var entitySrc = File.ReadAllText(Path.Combine(outDir, "acme", "Subscriber.g.cs"));
+        var entitySrc = File.ReadAllText(Path.Combine(outDir, "Subscriber.g.cs"));
         Assert.Contains("[Table(\"subscribers\")]", entitySrc);
         Assert.DoesNotContain("SubscriberNames", entitySrc);
     }
@@ -968,43 +968,14 @@ public class NamesGeneratorTests
 
         Assert.Contains("public const string ShipToStreetColumn = \"ship_to_street\";", content);
         Assert.Contains("public const string ShipToPostalCodeColumn = \"ship_to_ZIP\";", content);
-        // The field's own constants are kept as they were, so nothing that reads them changes.
         Assert.Contains("public const string ShipToField = \"shipTo\";", content);
-        Assert.Contains("public const string ShipToColumn = \"ship_to\";", content);
         Assert.Contains("public const string PayloadColumn = \"payload\";", content);
-        Assert.Contains("[\"shipTo\"] = ShipToColumn,", content);
-        // ...but the flattened field's own column constant names no column of the table: deprecated.
-        Assert.Contains(
-            "    [global::System.Obsolete(\"A flattened field has no column of its own; use the member constants.\")]\n" +
-            "    public const string ShipToColumn = \"ship_to\";", content.Replace("\r\n", "\n"));
-        Assert.Single(System.Text.RegularExpressions.Regex.Matches(content, "Obsolete"));
+        // A flattened field has no column of its own: no own constant, no own map key, no Obsolete.
+        Assert.DoesNotContain("ShipToColumn", content);
+        Assert.DoesNotContain("[\"shipTo\"]", content);
+        Assert.DoesNotContain("Obsolete", content);
         Assert.Contains("[\"shipTo.street\"] = ShipToStreetColumn,", content);
         Assert.Contains("[\"shipTo.postalCode\"] = ShipToPostalCodeColumn,", content);
-    }
-
-    // [Obsolete] on a declaration warns nothing; only a use does. A project that never reads the
-    // flattened field's own constant (TreatWarningsAsErrors, say) gets no new warning from the
-    // artifact itself, ColumnsByField included; one that reads it is told to use the members.
-    [Fact]
-    public void The_deprecated_flattened_column_constant_warns_only_where_it_is_used()
-    {
-        var content = new NamesGenerator().Generate(Ctx(Load(FlattenedModel))).Single(f => System.IO.Path.GetFileName(f.Path) == "ShipmentNames.g.cs").Content;
-        IEnumerable<Microsoft.CodeAnalysis.Diagnostic> Warnings(string use)
-        {
-            var trees = new[] { content, "namespace Acme.Generated; public static class Use { public static string Read() => " + use + "; }" }
-                .Select(t => Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(t));
-            var comp = Microsoft.CodeAnalysis.CSharp.CSharpCompilation.Create("names_" + Guid.NewGuid().ToString("N"), trees,
-                DbContextCompileTests.BuildReferences(),
-                new Microsoft.CodeAnalysis.CSharp.CSharpCompilationOptions(Microsoft.CodeAnalysis.OutputKind.DynamicallyLinkedLibrary));
-            var diagnostics = comp.GetDiagnostics();
-            Assert.DoesNotContain(diagnostics, d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error);
-            return diagnostics.Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Warning);
-        }
-
-        Assert.Empty(Warnings("ShipmentNames.ShipToStreetColumn + ShipmentNames.ColumnsByField[\"shipTo\"] + ShipmentNames.PayloadColumn"));
-        var used = Assert.Single(Warnings("ShipmentNames.ShipToColumn"));
-        Assert.Equal("CS0618", used.Id);
-        Assert.Contains("use the member constants", used.GetMessage());
     }
 
     [Fact]

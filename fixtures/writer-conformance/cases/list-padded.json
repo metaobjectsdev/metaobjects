@@ -1,0 +1,44 @@
+{
+  "description": "A padded list prints a space inside its brackets on one line; an empty padded list prints as its brackets.",
+  "dialect": "core",
+  "options": {
+    "indent": "  ",
+    "width": 40,
+    "trailingComma": true
+  },
+  "ops": [
+    [
+      "line",
+      "const a = ",
+      {
+        "list": {
+          "open": "{",
+          "items": [
+            "x",
+            "y"
+          ],
+          "close": "}",
+          "pad": true
+        }
+      },
+      ";"
+    ],
+    [
+      "line",
+      "const b = ",
+      {
+        "list": {
+          "open": "{",
+          "items": [],
+          "close": "}",
+          "pad": true
+        }
+      },
+      ";"
+    ]
+  ],
+  "expected": [
+    "const a = { x, y };",
+    "const b = {};"
+  ]
+}

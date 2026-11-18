@@ -46,7 +46,8 @@ from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
 from metaobjects.codegen.generators.find_inbound import response_format_of
-from metaobjects.codegen.value_objects import bound_payload_vo
+from metaobjects.codegen.name_claims import claimed_module_path
+from metaobjects.codegen.value_objects import bound_payload_vo, pkg_of
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_ENTITY
 from metaobjects.meta.meta_data import MetaData
@@ -366,7 +367,10 @@ class TraceHelperGenerator:
                 continue
             files.append(
                 EmittedFile(
-                    path=f"record_{_snake_case(entity.name)}.py",
+                    path=claimed_module_path(
+                        ctx.claims, ctx.config, pkg_of(entity), f"record_{_snake_case(entity.name)}",
+                        entity.resolution_key(),
+                    ),
                     content=ruff_format(content),
                 )
             )

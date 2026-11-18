@@ -47,24 +47,17 @@ public static class ObjectConstants
     /// </summary>
     public const string OBJECT_ATTR_DISCRIMINATOR_VALUE = "discriminatorValue";
 
-    /// <summary>
-    /// The collection property a per-context ORM mapping gives an object (the EF Core DbSet
-    /// property name), in place of the plural derived from its name. On object.entity and on the
-    /// view-backed object.projection / object.report that get a DbSet.
-    /// </summary>
-    public const string OBJECT_ATTR_DB_SET_NAME = "dbSetName";
-    /// <summary>rc.19 (R57) — the object's collection name (DbSet, REST segment, TS exports, reverse hop);
-    /// <c>@dbSetName</c> is its deprecated alias for one release.</summary>
+    /// <summary>The object's collection name (DbSet, REST segment, TS exports, reverse hop).</summary>
     public const string OBJECT_ATTR_COLLECTION_NAME = "collectionName";
 
     /// <summary>
-    /// R40 kind 1 — the native class an object binds to (ADR-0001). Cross-port vocabulary only
+    /// The native class an object binds to (ADR-0001). Cross-port vocabulary only
     /// Java implements so far: C# loads and type-checks it, and does not act on it yet.
     /// </summary>
     public const string OBJECT_ATTR_OBJECT = "object";
 
     /// <summary>
-    /// R40 kind 2 — Java-only (ADR-0005): the ObjectAdapter that takes over value access. C#
+    /// Java-only (ADR-0005): the ObjectAdapter that takes over value access. C#
     /// loads and type-checks it, and never acts on it.
     /// </summary>
     public const string OBJECT_ATTR_OBJECT_ADAPTER = "objectAdapter";

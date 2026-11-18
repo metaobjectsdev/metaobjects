@@ -38,7 +38,7 @@ public static class ObjectSchema
                 "string) controls codegen + storage coercion. Required on every concrete " +
                 "subtype of a discriminated entity."),
 
-        // R40 — on object.base, so every object subtype carries them. C# loads and
+        // On object.base, so every object subtype carries them. C# loads and
         // type-checks both; neither does anything here. Descriptions are single-sourced
         // from spec/metamodel/object.json.
         new AttrSchema(
@@ -55,23 +55,8 @@ public static class ObjectSchema
     ];
 
     /// <summary>
-    /// @dbSetName — the DbSet property name the generated context gives the object, in place of
-    /// the derived plural. Registered on object.entity, object.projection and object.report
-    /// (see CoreTypes); the description is single-sourced from spec/metamodel/object.json.
-    /// </summary>
-    public static readonly AttrSchema DbSetNameAttr =
-        new AttrSchema(
-            Name: ObjectConstants.OBJECT_ATTR_DB_SET_NAME,
-            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
-            Required: false,
-            Description:
-                "The name of the collection property a per-context ORM mapping gives this object " +
-                "(the C# EF Core DbSet property), in place of the plural derived from its name.");
-
-    /// <summary>
-    /// rc.19 (R57) — @collectionName, the name of the object's collection in its own casing (the DbSet
-    /// property, the REST segment, the reverse @via hop). Registered beside @dbSetName, its
-    /// deprecated alias; the description is single-sourced from spec/metamodel/object.json.
+    /// @collectionName, the name of the object's collection in its own casing (the DbSet
+    /// property, the REST segment, the reverse @via hop). The description is single-sourced from spec/metamodel/object.json.
     /// </summary>
     public static readonly AttrSchema CollectionNameAttr =
         new AttrSchema(

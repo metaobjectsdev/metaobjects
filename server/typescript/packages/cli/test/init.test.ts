@@ -182,6 +182,25 @@ describe("init() — happy path", () => {
     expect(config.pending_in_git).toBe(true);
   });
 
+  test("a new project starts with a page size and refuses undeclared body keys", async () => {
+    await init({ cwd });
+    const config = JSON.parse(readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8"));
+    expect(config.api).toEqual({ pagination: { defaultLimit: 50, maxLimit: 1000 }, unknownFields: "reject" });
+  });
+
+  test("writes the new-project defaults as visible settings: FK indexes on, hand edits fail verify", async () => {
+    await init({ cwd });
+    const config = JSON.parse(readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8"));
+    expect(config.migrate).toEqual({ foreignKeyIndexes: true });
+    expect(config.verify).toEqual({ handEdits: "fail" });
+  });
+
+  test("a dialect flag keeps the new-project defaults beside migrate.dialect", async () => {
+    await init({ cwd, dialect: "postgres" });
+    const config = JSON.parse(readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8"));
+    expect(config.migrate).toEqual({ dialect: "postgres", foreignKeyIndexes: true });
+  });
+
   test("writes a .gitignore under .metaobjects/ that includes .gen-state", async () => {
     await init({ cwd });
     const ignore = readFileSync(join(cwd, ".metaobjects", ".gitignore"), "utf8");
@@ -409,6 +428,8 @@ describe("init() --force config preservation", () => {
     expect(reloaded.pending_in_git).toBe(false);
     expect(reloaded.confidence_thresholds.pending_promote).toBe(0.95);
     expect(reloaded.sources).toEqual([{ package: "@acme/entities" }]);
+    // An existing project keeps its unbounded lists: --force must not add a page size.
+    expect(reloaded.api).toBeUndefined();
   });
 
   test("writes fresh defaults when existing config is invalid (and warns)", async () => {
@@ -508,6 +529,9 @@ describe("init() --config-only", () => {
     expect(result.preserved).toContain(".metaobjects/config.json");
     const cfg = JSON.parse(readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8"));
     expect(cfg.sources).toEqual([{ path: "model" }]);
+    // An existing project keeps the behaviour it had: no new-project default is added to it.
+    expect(cfg.migrate).toBeUndefined();
+    expect(cfg.verify).toBeUndefined();
   });
 
   test("refuses to overwrite an existing config it cannot parse, without --force", async () => {
@@ -565,6 +589,33 @@ describe("initCommand --config-only", () => {
     expect(await initCommand(["--config-only"], cwd)).toBe(0);
     expect(existsSync(join(cwd, ".metaobjects", "config.json"))).toBe(true);
     expect(existsSync(join(cwd, "metaobjects.config.ts"))).toBe(false);
+  });
+});
+
+describe("init --dialect", () => {
+  const read = (rel: string): string => readFileSync(join(cwd, rel), "utf8");
+  test("postgres: codegen dialect, migrate.dialect and a postgres next step", async () => {
+    expect(await initCommand(["--dialect", "postgres"], cwd)).toBe(0);
+    expect(read("metaobjects.config.ts")).toContain('dialect: "postgres"');
+    expect(JSON.parse(read(".metaobjects/config.json")).migrate.dialect).toBe("postgres");
+    expect(nextStepsBlock("postgres")).toContain("--dialect postgres");
+    expect(nextStepsBlock("postgres")).not.toContain("file:dev.sqlite");
+  });
+  test("d1: codegen sqlite (D1 is SQLite), migrate.dialect d1 — the same as --d1", async () => {
+    expect(await initCommand(["--dialect", "d1"], cwd)).toBe(0);
+    expect(read("metaobjects.config.ts")).toContain('dialect: "sqlite"');
+    expect(JSON.parse(read(".metaobjects/config.json")).migrate.dialect).toBe("d1");
+  });
+  test("mysql: codegen only — no migrate block, and the next step says migrate does not own it", async () => {
+    expect(await initCommand(["--dialect", "mysql"], cwd)).toBe(0);
+    expect(read("metaobjects.config.ts")).toContain('dialect: "mysql"');
+    expect(JSON.parse(read(".metaobjects/config.json")).migrate).toBeUndefined();
+    expect(nextStepsBlock("mysql")).toContain("does not own MySQL schema");
+  });
+  test("an unknown dialect, or --d1 with another dialect, is a usage error and writes nothing", async () => {
+    expect(await initCommand(["--dialect", "oracle"], cwd)).toBe(2);
+    expect(await initCommand(["--d1", "--dialect", "postgres"], cwd)).toBe(2);
+    expect(existsSync(join(cwd, ".metaobjects"))).toBe(false);
   });
 });
 
@@ -648,6 +699,13 @@ describe("init --d1", () => {
     expect(code).toBe(0);
     const configTs = readFileSync(join(cwd, "metaobjects.config.ts"), "utf8");
     expect(configTs).toContain('dialect: "sqlite"');
+  });
+
+  test("scaffolds metaobjects.config.ts with outputLayout = 'package' (the engine default stays flat)", async () => {
+    const code = await initCommand([], cwd);
+    expect(code).toBe(0);
+    const configTs = readFileSync(join(cwd, "metaobjects.config.ts"), "utf8");
+    expect(configTs).toContain('outputLayout: "package"');
   });
 
   test("scaffolds metaobjects.config.ts with outDir = 'src/generated'", async () => {

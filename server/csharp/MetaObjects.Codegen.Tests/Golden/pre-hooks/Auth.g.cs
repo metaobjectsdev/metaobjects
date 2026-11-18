@@ -8,10 +8,10 @@ using System.ComponentModel.DataAnnotations.Schema;
 using System.Net;
 using System.Text.Json.Serialization;
 
-namespace Acme;
+namespace Acme.Generated;
 
 [Table("auths")]
-[global::System.Text.Json.Serialization.JsonDerivedType(typeof(BridgeAuth))]
+[System.Text.Json.Serialization.JsonDerivedType(typeof(BridgeAuth))]
 public abstract class Auth
 {
     public enum AuthType { Bridge, Plain }
@@ -22,10 +22,8 @@ public abstract class Auth
     [Column("type")]
     public AuthType? Type { get; set; }
     [Column("ttl")]
-    [DurationWire.Iso]
     public TimeSpan? Ttl { get; set; }
     [Column("slots")]
-    [DurationWire.Iso]
     public IList<TimeSpan> Slots { get; set; } = new List<TimeSpan>();
     [Column("amount")]
     [DecimalWire.Number(10, 2)]

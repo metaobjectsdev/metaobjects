@@ -27,7 +27,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Acme;
+namespace Acme.Generated;
 
 /// <summary>The canonical wire form of a decimal: format, parse, and the System.Text.Json converters.</summary>
 public static class DecimalWire

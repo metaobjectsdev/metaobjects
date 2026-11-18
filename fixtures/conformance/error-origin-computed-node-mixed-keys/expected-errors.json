@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_UNKNOWN_EXPR_NODE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.views.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[2]['object.projection'].children[2]['field.int'].children[0]['origin.computed']"
+      }
+    }
+  ],
+  "warnings": []
+}

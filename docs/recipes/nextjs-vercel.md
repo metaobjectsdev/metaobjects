@@ -36,7 +36,7 @@ import { entityFile, queriesFile, routesFileHono, barrel } from "@metaobjectsdev
 
 export default defineConfig({
   outDir: "src/generated",
-  outputLayout: "flat", // the paths below; the default puts each metadata package in a directory of its own
+  outputLayout: "flat", // the paths below; "package" puts each metadata package in a directory of its own
   dialect: "postgres",
   apiPrefix: "/api",
 

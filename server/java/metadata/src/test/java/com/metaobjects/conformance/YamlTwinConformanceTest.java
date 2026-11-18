@@ -45,6 +45,7 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -129,6 +130,12 @@ public class YamlTwinConformanceTest {
         String loaderName = ConformanceTest.detectLoaderName(List.of(expectedFile));
         Outcome o = load(fix, List.of(expectedFile), List.of(expected), loaderName,
             MetaDataSource.MetaDataFormat.JSON);
+        if (ConformanceTest.LEDGER.fixtures.contains(fix.name)) {
+            // Known gap (conformance-expected-failures.json): must still fail to load; a clean load means the list is stale.
+            assertFalse(fix.name + " is listed as a known gap but now loads cleanly: remove it from the ledger",
+                o.errorCodes.isEmpty());
+            return;
+        }
         assertTrue(fix.name + ": expected.json did not load cleanly: " + o.errorCodes,
             o.errorCodes.isEmpty());
         assertEquals(fix.name + ": expected.json does not round-trip",
@@ -158,6 +165,9 @@ public class YamlTwinConformanceTest {
     private static Outcome load(FixtureDiscovery.Fixture f, List<Path> files, List<String> texts,
                                 String loaderName, MetaDataSource.MetaDataFormat format) {
         LoaderOptions opts = LoaderOptions.create(false, false, true);
+        if (f.hasProvidersJson && f.requiredProviders.contains("example-custom-vocabulary")) {
+            opts.setProviders(List.of(ConformanceTestProviders.EXAMPLE_CUSTOM_VOCABULARY));
+        }
         MetaDataLoader loader = new MetaDataLoader(opts, MetaDataLoader.SUBTYPE_MANUAL, loaderName);
         if (f.hasProvidersJson && f.requiredProviders.contains("example-template-briefing")) {
             com.metaobjects.registry.MetaDataRegistry reg =

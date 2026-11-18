@@ -48,7 +48,7 @@ export const requirementsFile = function requirementsFile(
     name: "requirements-file",
     target: opts?.target ?? DOCS_TARGET_NAME,
     generate: oncePerRun((_entities, ctx) => {
-      const rows = requirementRows(ctx.loadedRoot);
+      const rows = requirementRows(ctx.loadedRoot, ctx.inLedger);
       // The one early return that matters. Both renderers also return "" for an empty
       // ledger, so this is belt-and-braces — but the guarantee callers depend on is
       // "zero FILES", which only this line can provide.

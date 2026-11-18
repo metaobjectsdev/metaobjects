@@ -4,6 +4,8 @@ package com.metaobjects.generator.kotlin
 // com.metaobjects.generator.kotlin when this generator is copied out via
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.identity.PrimaryIdentity
+import com.metaobjects.config.MigrateSettings
 import com.metaobjects.config.WireFormat
 import com.metaobjects.generator.util.GeneratorUtil
 import com.metaobjects.generator.kotlin.ExposedApi
@@ -182,6 +184,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // a view-kind entity was pre-FR-024 (read-only by construction; projections
         // carry no relationships/references, so passes 1+3 stay entity-only).
         for (entity in GeneratorUtil.ownMetaObjects(loader)) {
+            if (!isSelected(entity)) continue
             // FR-044: a report declares no fields, so it is emitted from its derived shape
             // rather than through the entity/projection path below.
             if (entity.subType == MetaObject.SUBTYPE_REPORT) {
@@ -252,7 +255,12 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             val fkColumns = if (isViewKind(sourceRdb)) emptyList() else fkMap[entity.name].orEmpty()
             val refDecorations =
                 if (isViewKind(sourceRdb)) emptyMap() else refDecorationMap[entity.name].orEmpty()
-            val usedInstantTzHelper = emit(entity, sourceRdb, outRoot, loader, fkColumns, refDecorations)
+            // An entity's primary source is always writable (the loader refuses a read-only
+            // primary), so an entity reaching here emits a table, which stores no derived field.
+            val usedInstantTzHelper = emit(
+                entity, sourceRdb, outRoot, loader, fkColumns, refDecorations,
+                excludeDerivedFields = entity.subType == MetaObject.SUBTYPE_ENTITY,
+            )
             if (usedInstantTzHelper) {
                 packagesNeedingInstantTzHelper += PackageMapping.splitFqn(entity.name).first
             }
@@ -774,9 +782,8 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // write `<Short>Table` and the read `<Short>View` — so the caller passes an explicit
         // object name (default: `tableObjectName(shortName)`, byte-identical for a vanilla entity).
         objectNameOverride: String? = null,
-        // #214: on the write table, DERIVED fields (`origin.*` children) are excluded — they are
-        // not stored on the writable table, only computed by the read view. Vanilla entities carry
-        // no derived fields, so the default `false` keeps their output byte-identical.
+        // #214: on an entity's table, DERIVED fields (`origin.*` children) are excluded — they are
+        // not stored on the writable table, only computed by a read view (when there is one).
         excludeDerivedFields: Boolean = false,
     ): Boolean {
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
@@ -886,6 +893,19 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // view column, even when @generation=increment is declared on the primary
         // identity (a relic of the parent entity's declaration).
         val incrementPk = primary?.isIncrement == true && !isView && singlePrimaryFieldName != null
+        // #544: identity.primary @sequenceStart / @sequenceName. FORWARD-ONLY ruling: a database
+        // created through Exposed begins its key at the declared start; a changed start is a
+        // migration concern and Exposed output has no migration path, so there is nothing else to
+        // emit. ADR-0039: RESOLVING read, so an identity inherited through extends carries it.
+        val sequenceStart: Long? = if (incrementPk) primary?.let { id ->
+            if (id.hasMetaAttr(PrimaryIdentity.ATTR_SEQUENCE_START))
+                (id.getMetaAttr(PrimaryIdentity.ATTR_SEQUENCE_START).value as? Number)?.toLong() else null
+        } else null
+        val sequenceName: String? = if (incrementPk) primary?.let { id ->
+            if (id.hasMetaAttr(PrimaryIdentity.ATTR_SEQUENCE_NAME))
+                id.getMetaAttr(PrimaryIdentity.ATTR_SEQUENCE_NAME).valueAsString?.takeIf { it.isNotEmpty() } else null
+        } else null
+        val declaresSequence = sequenceStart != null || sequenceName != null
         // R6 Plan 2a: a single-field uuid PK with @generation:uuid gets a server-side
         // gen_random_uuid() DEFAULT (the Postgres-side mint). Routed through the SAME
         // generation signal as increment — distinct only in the emitted column suffix.
@@ -1028,6 +1048,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 append("package $pkg\n\n")
             }
             append("import ${ExposedImports.core(api, "Table")}\n")
+            if (declaresSequence) append("import ${ExposedImports.core(api, "Sequence")}\n")
             if (fkColumns.any { it.hasReferenceOption } || needsRefOptForDecor) {
                 append("import ${ExposedImports.core(api, "ReferenceOption")}\n")
             }
@@ -1085,7 +1106,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 if (field is ObjectField || field is MapField) continue
                 // #214: on the WRITE table of a write-through entity, a DERIVED (origin.*) field
                 // has no physical column — it is computed by the read view — so it is excluded.
-                // No-op for a vanilla entity or the read view (excludeDerivedFields = false).
+                // No-op for a projection or the read view (excludeDerivedFields = false).
                 if (excludeDerivedFields && KotlinGenUtil.isDerivedField(field)) continue
                 val isPk = field.name in primaryFieldSet
                 // #195: an origin.aggregate @agg:any|all|collect view column is COALESCE-guaranteed
@@ -1118,6 +1139,15 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                     scalarColumnSpec(entity, field, columnExprFor(field), api)
                 }
                 val withAuto = when {
+                    // #544: a declared start / name draws the key from an explicit Sequence, which
+                    // `SchemaUtils.create` creates `START WITH n`. The default name is Postgres's own
+                    // `<table>_<column>_seq`, which is also the sequence behind an identity column
+                    // the TypeScript migrate engine created, so the same code runs on both schemas.
+                    isPk && incrementPk && declaresSequence -> {
+                        val seq = sequenceName ?: "${tableName}_${KotlinGenUtil.resolveColumnName(field)}_seq"
+                        val start = if (sequenceStart != null) ", startWith = ${sequenceStart}L" else ""
+                        "$baseSpec.autoIncrement(Sequence(\"$seq\"$start))"
+                    }
                     isPk && incrementPk -> "$baseSpec.autoIncrement()"
                     // uuid PK + @generation:uuid → server-side gen_random_uuid() default.
                     isPk && uuidGeneratedPk -> "$baseSpec$GEN_RANDOM_UUID_DEFAULT_SUFFIX"
@@ -1179,17 +1209,22 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             val lookupIndexes = if (isView) emptyList()
                 else entity.getChildren(LookupIndex::class.java, true)
                     .filter { it.fields.isNotEmpty() }
-            if (emittableSecondaries.isNotEmpty() || lookupIndexes.isNotEmpty()) {
+            val foreignKeyIndexes = if (isView) emptyList() else foreignKeyIndexes(entity, loader, tableName)
+            if (emittableSecondaries.isNotEmpty() || lookupIndexes.isNotEmpty() || foreignKeyIndexes.isNotEmpty()) {
                 append("\n    init {\n")
                 for (sec in emittableSecondaries) {
                     val cols = sec.fields.joinToString(", ") { KotlinNaming.safeColumnProperty(it, exposedApi()) }
                     val options = indexOptions(sec)
-                    if (options.isEmpty()) append("        uniqueIndex(${indexNameExpr(sec, shortName)}, $cols)\n")
-                    else append("        index(${indexNameExpr(sec, shortName)}, true, $cols$options)\n")
+                    if (options.isEmpty()) append("        uniqueIndex(${indexNameExpr(sec, shortName, MigrateSettings.of(entity).dialect)}, $cols)\n")
+                    else append("        index(${indexNameExpr(sec, shortName, MigrateSettings.of(entity).dialect)}, true, $cols$options)\n")
                 }
                 for (idx in lookupIndexes) {
                     val cols = idx.fields.joinToString(", ") { KotlinNaming.safeColumnProperty(it, exposedApi()) }
-                    append("        index(${indexNameExpr(idx, shortName)}, false, $cols${indexOptions(idx)})\n")
+                    append("        index(${indexNameExpr(idx, shortName, MigrateSettings.of(entity).dialect)}, false, $cols${indexOptions(idx)})\n")
+                }
+                for (ix in foreignKeyIndexes) {
+                    val cols = ix.fields.joinToString(", ") { KotlinNaming.safeColumnProperty(it, exposedApi()) }
+                    append("        index(\"${KotlinGenUtil.kotlinStringLiteral(ix.name)}\", false, $cols)\n")
                 }
                 append("    }\n")
             }
@@ -1276,7 +1311,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * the TPH fold folds a subtype's COLUMNS into the base's table, never its indexes.
      */
     /**
-     * R33 — the Exposed index arguments for the vocabulary Exposed can express: `@using` as
+     * The Exposed index arguments for the vocabulary Exposed can express: `@using` as
      * `indexType` (the access method; `btree` is the default and is left out, as migrate does)
      * and `@where` as `filterCondition`, the predicate exactly as written. Empty when the index
      * declares neither, so its call is unchanged. `@orders` and `@expr` have no Exposed form;
@@ -1288,22 +1323,81 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             (if (node.hasMetaAttr(name)) node.getMetaAttr(name).value as? String else null)?.trim()?.takeIf { it.isNotEmpty() }
         val out = StringBuilder()
         str(com.metaobjects.identity.SecondaryIdentity.ATTR_USING)?.takeIf { it != "btree" }?.let {
-            out.append(", indexType = ").append(kotlinString(it))
+            out.append(", indexType = ").append("\"").append(KotlinGenUtil.kotlinStringLiteral(it)).append("\"")
         }
         str(com.metaobjects.identity.SecondaryIdentity.ATTR_WHERE)?.let {
             val op = ExposedImports.core(exposedApi(), "Op")
             val qb = ExposedImports.core(exposedApi(), "QueryBuilder")
             out.append(", filterCondition = { object : $op<Boolean>() { override fun toQueryBuilder(queryBuilder: $qb) { ")
-                .append("queryBuilder.append(").append(kotlinString(it)).append(") } } }")
+                .append("queryBuilder.append(").append("\"").append(KotlinGenUtil.kotlinStringLiteral(it)).append("\"").append(") } } }")
         }
         return out.toString()
     }
 
-    private fun kotlinString(text: String): String =
-        "\"" + text.replace("\\", "\\\\").replace("\"", "\\\"").replace("$", "\\$") + "\""
+    /**
+     * `migrate.foreignKeyIndexes` — the index `meta migrate` gives each enforced foreign key that
+     * nothing already leads with, so the table declares the index the database has under
+     * migrate's name (`<table>_<column>[_<column>…]_idx`, cut by [foreignKeyIndexName]). The rule is
+     * migrate's own (`uncoveredForeignKeyColumns` in migrate-ts): the primary key, a field's
+     * `@unique`, an `identity.secondary` and an `index.lookup` without `@expr` cover a foreign
+     * key whose columns they lead with, in any order; two foreign keys over one column set get one
+     * index; and one that leads a longer one shares the longer one's index. Empty unless the
+     * project sets the option, and under the `efcore` conventions or on MySQL
+     * ([MigrateSettings.indexesForeignKeys]). A TPH table is read whole: base and subtypes. The
+     * shared corpus fixtures/foreign-key-index-conformance/ pins this to migrate's answer.
+     */
+    protected fun foreignKeyIndexes(entity: MetaObject, loader: MetaDataLoader, tableName: String): List<ForeignKeyIndex> {
+        val settings = MigrateSettings.of(entity)
+        if (!settings.indexesForeignKeys()) return emptyList()
+        val members = listOf(entity) + KotlinTphPlan.planFor(entity, loader)?.subtypes.orEmpty().map { it.entity }
+        // ADR-0039: resolving — fields, identities, index nodes and @unique may be inherited.
+        fun field(owner: MetaObject, name: String): MetaField<*>? = owner.metaFields.firstOrNull { it.name == name }
+        fun columns(owner: MetaObject, names: List<String>): List<String>? =
+            names.map { n -> field(owner, n)?.let { KotlinGenUtil.resolveColumnName(it) } ?: return null }
+        fun attr(node: MetaData, name: String): String? =
+            (if (node.hasMetaAttr(name)) node.getMetaAttr(name).value?.toString() else null)?.trim()?.takeIf { it.isNotEmpty() }
+        fun leadsWith(prefix: List<String>, cols: List<String>): Boolean =
+            cols.isNotEmpty() && prefix.size >= cols.size && prefix.take(cols.size).all { it in cols.toSet() }
 
-    protected fun indexNameExpr(node: MetaData, shortName: String): String {
+        val existing = mutableListOf<List<String>>()
+        entity.getIdentities(true).firstOrNull { it.isPrimary }
+            ?.let { pk -> columns(entity, KotlinGenUtil.keyFields(entity, pk)) }
+            ?.takeIf { it.isNotEmpty() }?.let(existing::add)
+        for (m in members) {
+            for (f in m.metaFields) {
+                if (attr(f, MetaField.ATTR_UNIQUE)?.toBoolean() == true) existing.add(listOf(KotlinGenUtil.resolveColumnName(f)))
+            }
+            val nodes: List<Pair<MetaData, List<String>>> =
+                m.getIdentities(true).filter { it.isSecondary }.map { it to it.fields } +
+                    m.getChildren(LookupIndex::class.java, true).map { it to it.fields }
+            for ((node, names) in nodes) {
+                if (attr(node, com.metaobjects.identity.SecondaryIdentity.ATTR_EXPR) != null || names.isEmpty()) continue
+                columns(m, names)?.let(existing::add)
+            }
+        }
+
+        val seen = hashSetOf<String>()
+        val candidates = mutableListOf<Pair<List<String>, List<String>>>() // (columns, field names)
+        for (m in members) {
+            for (ref in m.getIdentities(true).filterIsInstance<ReferenceIdentity>().filter { it.isEnforced }) {
+                if (!seen.add(ref.fields.joinToString(","))) continue
+                val cols = columns(m, ref.fields)?.takeIf { it.isNotEmpty() } ?: continue
+                if (existing.any { leadsWith(it, cols) }) continue
+                if (candidates.any { it.first.size == cols.size && leadsWith(it.first, cols) }) continue
+                candidates.add(cols to ref.fields)
+            }
+        }
+        return candidates
+            .filter { (cols, _) -> candidates.none { (o, _) -> o.size > cols.size && leadsWith(o, cols) } }
+            .map { (cols, fields) -> ForeignKeyIndex(foreignKeyIndexName(tableName, cols, settings.dialect), cols, fields) }
+    }
+
+    protected fun indexNameExpr(node: MetaData, shortName: String, dialect: String?): String {
         val name = IndexNaming.resolve(node)
+        // Past Postgres's 63-byte limit migrate creates the index under the name Postgres stores,
+        // so the table spells that cut name; the names artifact keeps the declared one.
+        val stored = declaredIndexName(node, dialect)
+        if (stored != name) return "\"${KotlinGenUtil.kotlinStringLiteral(stored)}\""
         if (!useNames()) return "\"$name\""
         val member = "${KotlinNaming.namesMember(node.type)}_${KotlinNaming.namesMember(name)}_INDEX"
         return "${KotlinNaming.namesObjectName(shortName)}.$member"
@@ -2622,7 +2716,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * Exposed column spec for a `field.enum`.
      *
      * String-backed (the default) → `enumerationByName`: a VARCHAR column holding the
-     * member symbol. Int-backed (`@intValueMap`) → `customEnumeration` over an INTEGER
+     * member symbol when a length is configured, else `customEnumeration` over a TEXT column. Int-backed (`@intValueMap`) → `customEnumeration` over an INTEGER
      * column, with the declared symbol↔int mapping inlined as `when` expressions.
      *
      * The mapping is emitted INLINE rather than through a generated lookup-map support
@@ -2648,11 +2742,16 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         if (intMap == null) {
             // rc.21: a @stringValueMap enum holds each member's stored string — a VARCHAR
             // customEnumeration with the member <-> stored-string mapping inlined, as below.
+            val length = KotlinTypeMapper.enumVarcharLength(field)
             val stored = readStringValueMap(field)
-                ?: return "enumerationByName($colExpr, ${KotlinTypeMapper.enumVarcharLength(field)}, $simple::class)"
+                ?: return length?.let { "enumerationByName($colExpr, $it, $simple::class)" }
+                    // No length configured: `meta migrate` creates `text`, and `enumerationByName`
+                    // needs a length, so store the member name over a TEXT column instead.
+                    ?: "customEnumeration($colExpr, \"TEXT\", { v -> $simple.valueOf(v as String) }, { e -> e.name })"
             val fromDb = stored.entries.joinToString("; ") { (sym, s) -> "${kotlinString(s)} -> $simple.$sym" }
             val toDb = stored.entries.joinToString("; ") { (sym, s) -> "$simple.$sym -> ${kotlinString(s)}" }
-            return "customEnumeration($colExpr, \"VARCHAR(${KotlinTypeMapper.enumVarcharLength(field)})\", " +
+            val sqlType = if (length == null) "TEXT" else "VARCHAR($length)"
+            return "customEnumeration($colExpr, \"$sqlType\", " +
                 "{ v -> when (v as String) { $fromDb; " +
                 "else -> error(\"unmapped stored value \$v for $simple\") } }, " +
                 "{ e -> when (e) { $toDb } })"
@@ -2671,6 +2770,9 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             "else -> error(\"unmapped stored value \$v for $simple\") } }, " +
             "{ e -> when (e) { $toDb } })"
     }
+
+    private fun kotlinString(text: String): String =
+        "\"" + KotlinGenUtil.kotlinStringLiteral(text) + "\""
 
     /** rc.21 — the declared member→stored-string map (`@stringValueMap`, resolving), or null. */
     private fun readStringValueMap(field: EnumField): Map<String, String>? {
@@ -2715,4 +2817,47 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         PackageMapping.splitFqn(md.name).first.replace('.', '/')
     override fun getSingleOutputFilename(md: MetaObject): String =
         PackageMapping.splitFqn(md.name).second + "Table.kt"
+}
+
+/** One foreign-key index `migrate.foreignKeyIndexes` adds: its name, its columns and their fields. */
+data class ForeignKeyIndex(val name: String, val columns: List<String>, val fields: List<String>)
+
+/** Postgres's identifier limit in bytes; a longer name is stored cut to it. */
+private const val PG_IDENTIFIER_MAX_BYTES = 63
+
+/**
+ * `<table>_<column>[_<column>…]_idx`, migrate's name for a foreign key's index, cut by
+ * [storedIdentifier].
+ */
+fun foreignKeyIndexName(table: String, columns: List<String>, dialect: String?): String =
+    storedIdentifier("${table}_${columns.joinToString("_")}_idx", dialect)
+
+/**
+ * The database name of an `identity.secondary` or `index.lookup`: its declared name
+ * ([IndexNaming.resolve]), cut by [storedIdentifier]. The shared corpus
+ * fixtures/foreign-key-index-conformance/ (`declared.<dialect>.json`) pins it.
+ */
+fun declaredIndexName(node: MetaData, dialect: String?): String = storedIdentifier(IndexNaming.resolve(node), dialect)
+
+/**
+ * The name the database stores for [name], which is the name `meta migrate` creates and compares
+ * (migrate-ts `storedIdentifier`): on Postgres a name over 63 bytes is cut to its first 63 bytes on
+ * a character boundary. SQLite and D1 keep the whole name, and so does MySQL, where migrate writes
+ * no DDL and an over-long name is refused rather than cut.
+ */
+fun storedIdentifier(name: String, dialect: String?): String {
+    if (dialect == "sqlite" || dialect == "d1" || dialect == "mysql" || name.toByteArray(Charsets.UTF_8).size <= PG_IDENTIFIER_MAX_BYTES) return name
+    val out = StringBuilder()
+    var bytes = 0
+    var i = 0
+    while (i < name.length) {
+        val cp = name.codePointAt(i)
+        val ch = String(Character.toChars(cp))
+        val n = ch.toByteArray(Charsets.UTF_8).size
+        if (bytes + n > PG_IDENTIFIER_MAX_BYTES) break
+        out.append(ch)
+        bytes += n
+        i += Character.charCount(cp)
+    }
+    return out.toString()
 }

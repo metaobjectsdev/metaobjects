@@ -14,12 +14,22 @@ import {
   type EnumDefaults,
   WIRE_DECIMALS,
   WIRE_NULL_MEMBERS,
+  WIRE_DURATIONS,
   WIRE_KEY_DECIMALS,
   WIRE_KEY_NULL_MEMBERS,
+  WIRE_KEY_DURATIONS,
+  type WireDurations,
   type WireDecimals,
   type WireFormat,
   type WireNullMembers,
   type PhysicalNaming,
+  API_KEY_PAGINATION,
+  PAGINATION_KEY_DEFAULT_LIMIT,
+  PAGINATION_KEY_MAX_LIMIT,
+  API_KEY_UNKNOWN_FIELDS,
+  UNKNOWN_FIELDS_MODES,
+  type ApiPagination,
+  type UnknownFieldsMode,
 } from "@metaobjectsdev/metadata";
 
 const DialectEnum = z.enum(["sqlite", "postgres", "d1"]);
@@ -47,6 +57,7 @@ export const AllowTokenEnum = z.enum([
   "drop-check",
   "drop-view",
   "drop-view-cascade",
+  "drop-column-read-by-view",
   "adopt-view",
   "nullable-to-not-null",
   "drop-identity-default",
@@ -63,6 +74,10 @@ const D1Block = z.object({
   autoApply: z.boolean(),
   wranglerConfigPath: z.string(),
 }).partial().strict();
+
+/** `verify.handEdits`: what `meta verify --codegen` does with a hand-edited generated file. */
+export const HAND_EDITS_POLICIES = ["fail", "notice"] as const;
+export type HandEditsPolicy = (typeof HAND_EDITS_POLICIES)[number];
 
 /** #192 — migration output-format adapters; orthogonal to dialect. */
 const MigrateFormatEnum = z.enum(["default", "flyway"]);
@@ -90,6 +105,13 @@ const MigrateBlock = z.object({
    *  out a CHECK the column type already enforces, for a database whose CHECKs were written by
    *  hand only where the type does not; a CHECK with a declared `@constraintName` is kept. */
   checks: z.object({ skipRedundant: z.boolean() }).partial().strict(),
+  /** Index every foreign key the conventions leave without one, named
+   *  `<table>_<column>[_<column>…]_idx`. Separate from `conventions`, so a project can have the
+   *  indexes without the `efcore` preset's constraint names. Absent = false: the schema migrate
+   *  has always built, and `meta verify` names each unindexed foreign key instead. Read by
+   *  `meta migrate` and by every generator that maps indexes (Drizzle, Prisma, EF Core,
+   *  Exposed); `meta init` writes it on for a new project. */
+  foreignKeyIndexes: z.boolean(),
 // .strict() for the same reason as the top level and the source arms below, and
 // with sharper teeth here: `{ migrate: { scopee: [...], dialect: "postgres" } }`
 // used to parse to `{ dialect: "postgres" }`, so a typo'd `scope` key meant
@@ -159,6 +181,16 @@ const ScopeSchema = z
 // "scope") is silently stripped by zod and the collection resolves as
 // "everything in scope" — the exact silent fail-open .strict() on the
 // nested arms exists to prevent, one level up.
+/** One `api.pagination` size: a positive integer no larger than 2147483647 (so every port's
+ *  integer type holds it), every failure (missing, wrong type, a fraction, zero, too large) named
+ *  by its key rather than Zod's generic "expected number". The shared corpus
+ *  fixtures/api-contract-conformance/api-settings/config-blocks.json holds every port to it. */
+const PAGE_SIZE_MAX = 2147483647;
+function pageSizeNumber(key: string) {
+  const error = `"api.pagination.${key}" must be a positive integer`;
+  return z.number({ error }).int({ error }).positive({ error }).max(PAGE_SIZE_MAX, { error });
+}
+
 export const ConfigSchema = z.object({
   schema_version: z.literal(1),
   pending_in_git: z.boolean().default(true),
@@ -204,12 +236,47 @@ export const ConfigSchema = z.object({
     .default({}),
   migrate: MigrateBlock.optional(),
   /**
+   * `meta verify` settings. `handEdits`: `fail` makes `meta verify --codegen` exit 1 when a
+   * generated file carries a hand edit (`--allow-hand-edits` relaxes that for one run);
+   * `notice` lists the file and exits 0 (`--forbid-hand-edits` tightens that for one run).
+   * Absent means `notice`, what verify has always done; `meta init` writes `fail` for a new
+   * project. Only the TypeScript `meta verify` reads it: the other ports' verify already fails
+   * on any edit to a generated file.
+   */
+  verify: z
+    .strictObject({
+      handEdits: z.enum(HAND_EDITS_POLICIES, {
+        message: `"verify.handEdits" must be one of ${HAND_EDITS_POLICIES.map((v) => `"${v}"`).join(", ")}`,
+      }).optional(),
+    }, {
+      error: (iss) => iss.code === "unrecognized_keys"
+        ? `"verify" has an unknown key "${iss.keys[0]}" (expected "handEdits")`
+        : iss.code === "invalid_type" ? `"verify" must be an object` : undefined,
+    })
+    .optional(),
+  /**
+   * FR-023 — which dependencies' requirements this project takes on as its own ledger.
+   * `inherit` lists scope patterns, and a pattern counts only when it NAMES a dependency's
+   * package literally (`acme::common::**` names `acme::common`; `**` names nothing), the rule
+   * `scope.include` follows. An imported requirement not named here is loaded, so an overlay
+   * of it resolves, and is otherwise left alone: not listed, checked, summarised or given a
+   * generated test. A separate key from `scope.include` on purpose: that one also selects a
+   * package for code generation. Read by every port's config reader.
+   */
+  requirements: z
+    .strictObject({
+      inherit: z.array(z.string().min(1)).optional(),
+    })
+    .optional(),
+  /**
    * How a metadata name becomes a physical database name when the metadata gives none
    * (ADR-0058). `columns` applies to a field with no `@column`; `tables` to an object whose
    * source names no table, view or procedure, through the frozen pluralizer. One setting for
    * the PROJECT, read here by every port, because every port reads and writes the one database
    * `meta migrate` created: codegen, migrate, the runtime and verify all resolve through it.
    * Absent means `snake_case` for both, which is what `meta migrate` has always created.
+   * `collections` names the pluralizer (`standard`, `none` or one registered with
+   * `registerPluralizer`) an object without `@collectionName` takes its collection name from.
    *
    * Each value is the NAME of a registered strategy (ADR-0058 Amendment 1): a built-in
    * (`columns`: `snake_case`, `literal`, `kebab-case`, `pascal`; `tables`: `snake_case`,
@@ -230,8 +297,6 @@ export const ConfigSchema = z.object({
           if (!isRegisteredTableNamingRule(n)) ctx.addIssue({ code: "custom", message: unknownNamingStrategyMessage("tables", n) });
         })
         .optional(),
-      // rc.19 (R57): the pluralizer an object without @collectionName takes its collection name
-      // from (built in: standard, none; or one `namingStrategies.collections` registers).
       collections: z.string()
         .superRefine((n, ctx) => {
           if (!isRegisteredPluralizer(n)) ctx.addIssue({ code: "custom", message: unknownNamingStrategyMessage("collections", n) });
@@ -245,7 +310,9 @@ export const ConfigSchema = z.object({
    * (default; the string the in-process type holds) or `string` (canonical W1 string).
    * `nullMembers`: `native` (default; as stored), `emit` (every declared member, `null` when
    * unset) or `omit` (drop null members) for a value object's members. Input rules do not
-   * follow it. Absent means the default for both.
+   * follow those two. `durations`: `native` (default; the language's own serializer for its
+   * duration type, both ways) or `iso` (canonical ISO-8601 in every port, both ways). Absent
+   * means the default for each.
    */
   wire: z
     .strictObject({
@@ -255,10 +322,52 @@ export const ConfigSchema = z.object({
       nullMembers: z.enum(WIRE_NULL_MEMBERS as unknown as [WireNullMembers, ...WireNullMembers[]], {
         message: `"wire.nullMembers" must be one of ${WIRE_NULL_MEMBERS.map((v) => `"${v}"`).join(", ")}`,
       }).optional(),
+      durations: z.enum(WIRE_DURATIONS as unknown as [WireDurations, ...WireDurations[]], {
+        message: `"wire.durations" must be one of ${WIRE_DURATIONS.map((v) => `"${v}"`).join(", ")}`,
+      }).optional(),
     }, {
       error: (iss) => iss.code === "unrecognized_keys"
-        ? `"wire" has an unknown key "${iss.keys[0]}" (expected "${WIRE_KEY_DECIMALS}" and/or "${WIRE_KEY_NULL_MEMBERS}")`
+        ? `"wire" has an unknown key "${iss.keys[0]}" (expected "${WIRE_KEY_DECIMALS}", "${WIRE_KEY_NULL_MEMBERS}" and/or "${WIRE_KEY_DURATIONS}")`
         : iss.code === "invalid_type" ? `"wire" must be an object` : undefined,
+    })
+    .optional(),
+  /**
+   * The page size of the generated list routes. `pagination.defaultLimit` is how many rows a list
+   * with no `limit` returns; an explicit `limit` above `pagination.maxLimit` is refused with
+   * `400 { "error": "limit_too_large", "maxLimit": N }`. Absent means no default and no ceiling,
+   * as before. `meta init` writes 50 and 1000.
+   *
+   * `unknownFields` is what a generated create, PUT or PATCH route does with a body key the
+   * entity does not declare: `reject` (the default, also when absent) answers
+   * `400 { "error": "unknown_fields", "fields": [...] }`; `drop` ignores the key and writes the
+   * rest. A declared key the client may not set is dropped under either value.
+   */
+  api: z
+    .strictObject({
+      pagination: z
+        .strictObject({
+          defaultLimit: pageSizeNumber(PAGINATION_KEY_DEFAULT_LIMIT),
+          maxLimit: pageSizeNumber(PAGINATION_KEY_MAX_LIMIT),
+        }, {
+          error: (iss) => iss.code === "unrecognized_keys"
+            ? `"api.pagination" has an unknown key "${iss.keys[0]}" (expected "${PAGINATION_KEY_DEFAULT_LIMIT}" and "${PAGINATION_KEY_MAX_LIMIT}")`
+            : iss.code === "invalid_type" && iss.input === undefined
+              ? `"api.pagination" needs both "${PAGINATION_KEY_DEFAULT_LIMIT}" and "${PAGINATION_KEY_MAX_LIMIT}"`
+              : iss.code === "invalid_type" ? `"api.pagination" must be an object` : undefined,
+        })
+        .refine((p) => p.defaultLimit <= p.maxLimit, {
+          message: `"api.pagination.defaultLimit" must not exceed "api.pagination.maxLimit"`,
+        })
+        .optional(),
+      unknownFields: z
+        .enum(UNKNOWN_FIELDS_MODES, {
+          error: `"api.${API_KEY_UNKNOWN_FIELDS}" must be ${UNKNOWN_FIELDS_MODES.map((m) => `"${m}"`).join(" or ")}`,
+        })
+        .optional(),
+    }, {
+      error: (iss) => iss.code === "unrecognized_keys"
+        ? `"api" has an unknown key "${iss.keys[0]}" (expected "${API_KEY_PAGINATION}" or "${API_KEY_UNKNOWN_FIELDS}")`
+        : iss.code === "invalid_type" ? `"api" must be an object` : undefined,
     })
     .optional(),
   /**
@@ -281,6 +390,16 @@ export const ConfigSchema = z.object({
   csharp: z.strictObject({
     outDir: z.string().min(1).optional(),
     namespace: z.string().min(1).optional(),
+    /**
+     * The project's own metadata providers: each names a BUILT .NET assembly (a path relative
+     * to the directory holding `.metaobjects/`) and the provider's full type name. Only the C#
+     * port reads this; the TypeScript port validates it so the shared file loads, and takes
+     * its providers from `defineConfig({ providers })` in `metaobjects.config.ts` instead.
+     */
+    providers: z.array(z.strictObject({
+      assembly: z.string().min(1),
+      type: z.string().min(1),
+    })).optional(),
   }).optional(),
 }).strict();
 
@@ -295,6 +414,17 @@ export function physicalNamingFromConfig(cfg: Pick<Config, "naming">): PhysicalN
   };
 }
 
+/** The list page size a config declares (`api.pagination`); undefined when absent. */
+export function apiPaginationFromConfig(cfg: Pick<Config, "api">): ApiPagination | undefined {
+  const p = cfg.api?.pagination;
+  return p === undefined ? undefined : { defaultLimit: p.defaultLimit, maxLimit: p.maxLimit };
+}
+
+/** The unknown-field rule a config declares (`api.unknownFields`); undefined when absent. */
+export function apiUnknownFieldsFromConfig(cfg: Pick<Config, "api">): UnknownFieldsMode | undefined {
+  return cfg.api?.unknownFields;
+}
+
 /** The enum storage defaults a config declares (`enums`); none when absent. */
 export function enumDefaultsFromConfig(cfg: Pick<Config, "enums">): EnumDefaults {
   return cfg.enums?.maxLength === undefined ? DEFAULT_ENUM_DEFAULTS : { maxLength: cfg.enums.maxLength };
@@ -305,6 +435,7 @@ export function wireFormatFromConfig(cfg: Pick<Config, "wire">): WireFormat {
   return {
     decimals: cfg.wire?.decimals ?? DEFAULT_WIRE_FORMAT.decimals,
     nullMembers: cfg.wire?.nullMembers ?? DEFAULT_WIRE_FORMAT.nullMembers,
+    durations: cfg.wire?.durations ?? DEFAULT_WIRE_FORMAT.durations,
   };
 }
 

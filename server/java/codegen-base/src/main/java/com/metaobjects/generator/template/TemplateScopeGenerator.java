@@ -15,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Maven-wirable declarative Mustache template generator (SP-1b). Reads the
@@ -46,7 +47,7 @@ public class TemplateScopeGenerator extends GeneratorBase {
     public static final String ARG_FORMAT = "format";
     public static final String ARG_TEMPLATES_DIR = "templatesDir";
 
-    /** The template root is an input (ADR-0062): editing a template regenerates. */
+    /** The template root is an input (ADR-0064): editing a template regenerates. */
     @Override
     public java.util.List<String> extraInputs() {
         return hasArg(ARG_TEMPLATES_DIR) ? java.util.List.of(getArg(ARG_TEMPLATES_DIR)) : java.util.List.of();
@@ -64,10 +65,13 @@ public class TemplateScopeGenerator extends GeneratorBase {
         File outDir = getOutputDir();
 
         List<MetaObject> objects = com.metaobjects.generator.util.GeneratorUtil.ownMetaObjects(loader);
+        List<MetaObject> walked = ScopeWalk.PER_ENTITY.equals(scope)
+            ? objects.stream().filter(this::inEntitySelection).collect(Collectors.toList())
+            : objects;
         List<EmittedFile> files = TemplateGenerator.generate(
             scope,
             template,
-            root -> ScopeWalk.forScope(scope, outputPattern).apply(objects),
+            root -> ScopeWalk.forScope(scope, outputPattern).apply(walked),
             provider,
             format,
             objects);

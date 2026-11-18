@@ -141,7 +141,7 @@ export function buildProjectionViews(
   return out;
 }
 
-/** Every object's declared `@schema`, keyed like `joinTables` (FQN): Postgres qualifies each relation a view reads with it (ruling R54). */
+/** Every object's declared `@schema`, keyed like `joinTables` (FQN); Postgres qualifies a relation with it when declared. */
 function tableSchemasOf(root: MetaRoot): Record<string, string | undefined> {
   const out: Record<string, string | undefined> = {};
   for (const obj of root.objects()) out[obj.resolutionKey()] = resolveTableSchema(obj);
@@ -493,5 +493,6 @@ function collectDependsOn(
     const t = joinTables[m.joinTree.baseEntity];
     for (const mt of collectDependsOn(m, t ?? baseTableName, joinTables)) tables.add(mt);
   }
+  if (spec.where !== undefined) clause(spec.where);
   return [...tables];
 }

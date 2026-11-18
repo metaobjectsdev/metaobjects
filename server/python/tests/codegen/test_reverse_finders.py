@@ -100,13 +100,19 @@ def test_fk_segment_drops_single_trailing_id() -> None:
     assert reverse_finder_fk_segment("id") == "id"
 
 
+def _named(name: str) -> MetaObject:
+    from metaobjects.shared.base_types import TYPE_OBJECT
+
+    return MetaObject(TYPE_OBJECT, "entity", name)
+
+
 def test_finder_name_shape() -> None:
     assert (
-        reverse_finder_fn("GameSession", "currentSceneId")
+        reverse_finder_fn(_named("GameSession"), "currentSceneId")
         == "find_game_sessions_by_current_scene"
     )
     assert (
-        reverse_finder_in_fn("GameSession", "currentSceneId")
+        reverse_finder_in_fn(_named("GameSession"), "currentSceneId")
         == "find_game_sessions_by_current_scene_in"
     )
 
@@ -140,7 +146,7 @@ def test_scene_has_no_reverse_fks() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _load_dotted_reference_entities() -> dict[str, MetaObject]:
+def _load_dotted_reference_entities(match_attrs: dict | None = None) -> dict[str, MetaObject]:
     data = {
         "metadata.root": {
             "package": "acme::sport",
@@ -158,6 +164,7 @@ def _load_dotted_reference_entities() -> dict[str, MetaObject]:
                 {
                     "object.entity": {
                         "name": "Match",
+                        **(match_attrs or {}),
                         "children": [
                             {"source.rdb": {"@table": "matches"}},
                             {"field.long": {"name": "id"}},
@@ -291,3 +298,21 @@ def test_no_lazy_reverse_collection_navigation() -> None:
     assert scene_src is not None
     assert "game_sessions" not in scene_src
     assert "relationship(" not in scene_src  # SQLAlchemy lazy relationship() — never emitted
+
+
+def test_declared_collection_name_names_the_reverse_finders() -> None:
+    """``@collectionName`` is the ``<e_plural>`` of the finder pair, snake-cased the way the
+    REST segment is; an unconfigured entity keeps today's name."""
+    plain = _load_dotted_reference_entities()["Match"]
+    declared_entities = _load_dotted_reference_entities({"@collectionName": "CaseHistory"})
+    declared = declared_entities["Match"]
+    index = build_object_index(list(declared_entities.values()))
+    src = render_router(declared, index)
+    assert src is not None
+    assert "def find_case_history_by_team_fk(self, team_fk: Any) -> _list[Any]: ..." in src
+    assert (
+        "def find_case_history_by_team_fk_in(self, team_fk_values: _list[Any]) -> _list[Any]: ..."
+        in src
+    )
+    assert reverse_finder_fn(plain, "teamFk") == "find_matches_by_team_fk"
+    assert reverse_finder_in_fn(plain, "teamFk") == "find_matches_by_team_fk_in"

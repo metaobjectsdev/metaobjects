@@ -397,4 +397,45 @@ describe("build output is not authored source", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  // Found building a 19-entity app: of the advisories `meta verify` printed, most fired on
+  // comments, on hours formatted to two places, and on a timesheet's on-screen totals.
+  describe("does not fire on lines that are not money or aggregate code", () => {
+    const quiet: Record<string, string> = {
+      "src/server/services.ts": [
+        "/** R3: subtotal = Σ lineTotal; tax = round(subtotal × rate / 100, 2); total = subtotal + tax. */",
+        " * round(subtotal × ratePercent / 100, 2)",
+        "// SUM(hours) per project is projected elsewhere",
+        "const max = rows.reduce((m, r) => Math.max(m, Number(r.code.slice(prefix.length + 1)) || 0), 0);",
+      ].join("\n"),
+      "web/src/screens.tsx": [
+        "<h2>Time logged ({totalHours.toFixed(2)} h)</h2>",
+        "<td><b>{total.toFixed(2)}</b></td>",
+        "const dayTotal = (d: string) => (entries.data ?? []).filter((e) => e.workDate === d).reduce((s, e) => s + Number(e.hours), 0);",
+      ].join("\n"),
+      "db/report.sql": "-- SUM(amount) lives in the projection now",
+    };
+    test("comments, hour totals and on-screen sums are silent", () => {
+      const root = scaffold(quiet);
+      try {
+        expect(scanSourceForAntiPatterns(root)).toEqual([]);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    test("money-named operands still fire, including one in parentheses", () => {
+      const root = scaffold({
+        "src/a.ts": "const outstanding = (Number(i.totalAmount) - Number(i.amountPaidAmount)).toFixed(2);",
+        "src/b.ts": "const fee = parseFloat(req.body.feeAmount);",
+        "src/c.ts": "const hours = Math.round(e.hours * 100) / 100;",
+      });
+      try {
+        const files = scanSourceForAntiPatterns(root).filter((f) => f.rule === "money-float").map((f) => f.file);
+        expect(files).toEqual(["src/a.ts", "src/b.ts"]);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+  });
 });

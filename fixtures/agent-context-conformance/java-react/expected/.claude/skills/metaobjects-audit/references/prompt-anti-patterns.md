@@ -3,7 +3,7 @@
 ## Contents
 - Census scope
 - Keeping the result in place
-- Anti-pattern list
+- Anti-pattern list (includes the unlinked-payload ratio)
 - Template-text duplication
 
 **The census covers EVERY module**, not only the application: test harnesses, simulators,
@@ -26,6 +26,24 @@ format-built argument at the project's own LLM request call sites.
   **sourceless `object.projection`** carrying those origins (#210 — assembly origins on an
   `object.value` fail load with `ERR_SUBTYPE_RULE_VIOLATION`; `@payloadRef` accepts the sourceless
   projection).
+- **Unlinked payload.** A declared payload shape is necessary, not sufficient: the check above
+  asks whether the payload IS a shape, this one asks where its fields COME FROM. For each object
+  a `@payloadRef` names, class every field:
+  - **LINKED** — a dotted `extends: Entity.field` (for example `"extends": "Customer.email"`),
+    or an origin that resolves to an entity field (`origin.passthrough` with
+    `@from: Customer.email`, or an `aggregate` / `first` origin whose `@of` names one).
+  - **CALLER-SUPPLIED** — no entity owns the value (the user's question, a run-time setting, a
+    date the caller computes). Say why for each; "the caller fills it" is not a reason when the
+    caller reads it off an entity.
+  - **UNLINKED COPY** — declared as a free-standing field, while the call site fills it from an
+    entity property (`payload.email = customer.email`, `email=customer.email`).
+  Report `linked / (linked + unlinked copies)` per payload and in total. Each unlinked copy is a
+  finding (`unlinked-payload-field`): renaming or re-typing the entity field will not fail
+  `verify --templates`, because the payload declares its own copy and the template still
+  matches that copy. Remedy: replace the field with `extends: Entity.field` (or a passthrough
+  origin on a sourceless projection). The `parity_gate` is a scratch-copy proof: rename the
+  entity field in a throwaway copy of the metadata and confirm the project's verify now fails,
+  where before the change it passed.
 - Silent-degradation hack (`try/except KeyError` or `?? ''` around formatting) — flag every instance.
 - Hand-rolled output parsing (regex / XML / ad-hoc JSON) vs a declared **responding
   `template.prompt`** (one carrying `@responseRef`) + generated `parse*` / `safeParse*` /
@@ -41,4 +59,4 @@ format-built argument at the project's own LLM request call sites.
   `voRequest` / `voResponse` jsonb columns must be authored `field.object` — the loader
   must not mutate the tree; vendor SDK client + pricing are BYO (ADR-0024).
 - No `meta verify --templates` gate; no declared `@maxChars` / `@maxTokens` budget.
-- **Template-text duplication.** Hash every external template file (`md5sum` the template dir) and diff within groups sharing a `payloadRef`. A byte-identical cluster, or N≥3 templates sharing an identical skeleton with only slot lines differing, is ONE prompt maintained N times — a wording fix must be applied N times and WILL be missed. Recommend a shared `{{> group/partial }}` include (the render engine inlines partials recursively) or one template + payload-carried variant fields. Do NOT flag: the per-node `payloadRef` / `@format` repetition across `template.prompt` nodes (loader-forced, not a copy); templates meant to diverge independently — require N≥3 and structural identity before flagging.
+- **Template-text duplication.** Hash every external template file (`md5sum` the template dir; skip include-only files, below) and diff within groups sharing a `payloadRef`. A byte-identical cluster, or N≥3 templates sharing an identical skeleton with only slot lines differing, is ONE prompt maintained N times — a wording fix must be applied N times and WILL be missed. Recommend a shared `{{> group/partial }}` include (the render engine inlines partials recursively) or one template + payload-carried variant fields. Do NOT flag: the per-node `payloadRef` / `@format` repetition across `template.prompt` nodes (loader-forced, not a copy); templates meant to diverge independently — require N≥3 and structural identity before flagging; **an include-only template**. A template whose body is nothing but partial includes (every non-blank line is a `{{> group/partial }}` and there is no prose of its own) is already the fix this section recommends: the wording lives once in the partial, and the stub is the per-prompt entry point the loader requires. Several such stubs being byte-identical, or sharing the same include list, is the recommended shape, not a cluster. Drop include-only files from the hash groups BEFORE comparing, and apply the cluster test to what remains. A template that mixes includes with a skeleton of its own prose still counts, and its prose is what is compared. When every member of a cluster is include-only, report it as the gold standard, the way a repository that imports `<Entity>Names` is called out as good.

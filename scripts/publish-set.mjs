@@ -65,6 +65,7 @@ export function enumerateWorkspacePackages(root = ROOT) {
   return found;
 }
 
+/** @param {{ dependencies?: Record<string, string> }} pkg */
 const siblingDeps = (pkg) =>
   Object.keys(pkg.dependencies || {}).filter((k) => k.startsWith("@metaobjectsdev/"));
 
@@ -122,7 +123,7 @@ export function publishSet({ root = ROOT, tierOrder = TIER_ORDER } = {}) {
   //    edit, which is otherwise invisible until a mid-publish registry window.
   const position = new Map(ordered.map((p, i) => [p.pkg.name, i]));
   const inverted = ordered.flatMap((p, i) =>
-    siblingDeps(p.pkg).filter((d) => position.get(d) > i).map((d) => `${p.pkg.name} (#${i}) depends on ${d} (#${position.get(d)})`),
+    siblingDeps(p.pkg).filter((d) => (position.get(d) ?? -1) > i).map((d) => `${p.pkg.name} (#${i}) depends on ${d} (#${position.get(d)})`),
   );
   if (inverted.length) {
     throw new Error(
@@ -140,7 +141,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   try {
     result = publishSet();
   } catch (e) {
-    console.error(`\x1b[31m✖ publish-set: ${e.message}\x1b[0m`);
+    console.error(`\x1b[31m✖ publish-set: ${e instanceof Error ? e.message : String(e)}\x1b[0m`);
     process.exit(1);
   }
   const { lockstep, set } = result;

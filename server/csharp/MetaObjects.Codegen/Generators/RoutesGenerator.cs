@@ -8,10 +8,16 @@
 //
 // Cross-port API contract conformed by the generated handlers
 // (see docs/features/api-contract.md):
-//   - GET list honours ?limit=N&offset=N pagination.
+//   - GET list honours ?limit=N&offset=N pagination. With `api.pagination` set, no limit
+//     takes `defaultLimit` and a limit above `maxLimit` is 400 { "error": "limit_too_large",
+//     "maxLimit": N }; without it, no limit returns every row.
 //   - GET list honours ?sort=<field>:asc|desc against a static SortAllowlist
 //     derived from the entity's scalar fields (case-insensitive lookup).
-//     Unknown field → 400 { "error": "validation", "message": ... }.
+//     Unknown field → 400 { "error": "invalid_sort", "field": ... }.
+//   - Create, PATCH and PUT: under `api.unknownFields: reject` (the default) a body key no
+//     field declares is 400 { "error": "unknown_fields", "fields": [...] } (UnknownFieldCheck);
+//     under `drop` it is ignored. A failed validation is 400 { "error": "validation",
+//     "issues": [{ code, path, message }, ...] } listing every issue (ValidationIssues).
 //   - GET list honours ?withCount=1 → switches the envelope from a bare row
 //     array to { rows, total }. The grid hook always sends withCount=1.
 //   - Update accepts BOTH PATCH and PUT (TS reference exposes both; we match).
@@ -89,13 +95,14 @@ public class RoutesGenerator : PerEntityGenerator
         // Each entry of the run is its own scope: two entries mount under two prefixes.
         var entry = ctx.EntryLabel(this);
         foreach (var e in served.Where(e => e.OwnAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) is not string { Length: > 0 }))
-        {
             ctx.Claim($"the REST collection segments of routes entry {entry}", CSharpNaming.RoutePath(e), e.ResolutionKey(),
-                "rename one, or generate them with two routes entries mounted under different prefixes");
-            // rc.19 R65: a routes class is declared in its object's namespace (a per-object class).
-            ctx.Claim($"the C# namespace {ValueObjectNames.Namespace(e, ctx.Config)}", $"{CSharpNaming.Pascal(e.Name)}Routes", e.ResolutionKey(),
-                "map the packages to distinct namespaces (GenConfig.PackageNamespaces), or rename one");
-        }
+                "rename one, set @collectionName on one of them, or generate them with two routes entries mounted under different prefixes",
+                NameClaims.ERR_COLLECTION_NAME_COLLISION);
+        foreach (var e in served.Where(e => e.OwnAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) is not string { Length: > 0 }))
+            ctx.Claim($"the C# namespace {ValueObjectNames.CompanionNamespace(e, ctx.Config)}", $"{CSharpNaming.Pascal(e.Name)}Routes", e.ResolutionKey(),
+                ctx.Config.PackageNamespacesFromMetadata
+                    ? "map the packages to distinct namespaces (csharp.packageNamespaces, or GenConfig.PackageNamespaces), or rename one"
+                    : "rename one");
         return served.Select(e => GenerateOne(e, ctx));
     }
 
@@ -169,16 +176,16 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("            long offset = 0;");
         sb.AppendLine("            if (qs.TryGetValue(\"limit\", out var limitRaw))");
         sb.AppendLine("            {");
-        sb.AppendLine("                if (!long.TryParse(limitRaw, global::System.Globalization.NumberStyles.Integer, global::System.Globalization.CultureInfo.InvariantCulture, out var parsedLimit) || parsedLimit < 1)");
+        sb.AppendLine("                if (!long.TryParse(limitRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var parsedLimit) || parsedLimit < 1)");
         sb.AppendLine("                    return Results.BadRequest(new { error = \"pagination.invalid_value\", param = \"limit\", value = limitRaw.ToString(), expected = $\"an integer from 1 to {maxRows}\" });");
         sb.AppendLine("                if (parsedLimit > maxRows)");
         sb.AppendLine($"                    return {tooLarge};");
         sb.AppendLine("                limit = parsedLimit;");
         sb.AppendLine("            }");
         sb.AppendLine("            if (qs.TryGetValue(\"offset\", out var offsetRaw)");
-        sb.AppendLine("                && (!long.TryParse(offsetRaw, global::System.Globalization.NumberStyles.Integer, global::System.Globalization.CultureInfo.InvariantCulture, out offset) || offset < 0))");
+        sb.AppendLine("                && (!long.TryParse(offsetRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out offset) || offset < 0))");
         sb.AppendLine("                return Results.BadRequest(new { error = \"pagination.invalid_value\", param = \"offset\", value = offsetRaw.ToString(), expected = \"a non-negative integer (0 or more)\" });");
-        sb.AppendLine("            if (offset > 0) q = q.Skip((int)global::System.Math.Min(offset, int.MaxValue));");
+        sb.AppendLine("            if (offset > 0) q = q.Skip((int)System.Math.Min(offset, int.MaxValue));");
         sb.AppendLine("            q = q.Take((int)(limit ?? maxRows + 1L));");
         sb.AppendLine();
         sb.AppendLine("            var rows = await q.ToListAsync();");
@@ -197,6 +204,26 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine($"                return ReportExportHttp.Csv(http, \"{route}\", w => {cls}Export.WriteCsv(w, rows));");
         sb.AppendLine("            if (format == \"xml\")");
         sb.AppendLine($"                return ReportExportHttp.Xml(http, \"{route}\", w => {cls}Export.WriteXml(w, rows));");
+    }
+
+    // Every type the route file names bare — the entity itself, its value objects (owned and map
+    // values) and the targets and junctions of its M:N traversals — so a split-namespace model gets
+    // a `using` for each package namespace the home-namespace file reaches into.
+    private static IEnumerable<MetaData> ReferencedTypes(IEnumerable<MetaObject> entities, MetaRoot root)
+    {
+        foreach (var entity in entities)
+        {
+            yield return entity;
+            foreach (var f in entity.Fields())
+                if ((f.SubType == FIELD_SUBTYPE_OBJECT || f.SubType == FIELD_SUBTYPE_MAP)
+                    && ValueObjectNames.ResolveFieldRef(f, root) is { } target && target.IsValue())
+                    yield return target;
+            foreach (var nav in M2MNavigationBuilder.For(entity, root, _ => { }))
+            {
+                yield return nav.Target;
+                yield return nav.Junction;
+            }
+        }
     }
 
     protected virtual EmittedFile GenerateStandardRoutes(MetaObject entity, GenContext ctx)
@@ -233,7 +260,7 @@ public class RoutesGenerator : PerEntityGenerator
         // the generic PATCH merge loop's FindProperty misses them; the create handler's
         // top-level TryValidateObject also does NOT recurse into them. The generator emits
         // typed per-field merge arms + per-field POST validation for each.
-        var voFields = ValueObjectFields(entity, ctx.Root, ctx.Config);
+        var voFields = ValueObjectFields(entity, ctx.Root, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, ctx.Config);
         // #362 — the map analog. Separate from voFields (see MapValueObjectFields): a map is a
         // plain jsonb-converted property, but its VALUES are value objects and need the same
         // graph validation on create and on a present PATCH key.
@@ -252,9 +279,9 @@ public class RoutesGenerator : PerEntityGenerator
         // writes [] for a null nav, so a nullable array column is NULLed via raw SQL). Both
         // are C# EXPRESSIONS — the <Entity>Names constant when the names artifact is in this
         // run, the quoted literal otherwise — spliced into that SQL by AppendArrayNullClears.
-        var tableRef = CSharpNaming.NameRef(entity, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, CSharpNaming.Table(entity));
+        var tableRef = CSharpNaming.NameRef(entity, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, CSharpNaming.Table(entity), qualify: ctx.Config);
         var pkColumnRef = pkFields.Count == 1 && entity.Fields().FirstOrDefault(f => f.Name == pkFields[0]) is { } pkf
-            ? CSharpNaming.ColumnRef(entity, pkf, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames)
+            ? CSharpNaming.ColumnRef(entity, pkf, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, ctx.Config)
             : "\"id\"";
         // A report has no identity by definition, so "no primary key" is not a finding on one.
         bool isReport = entity.IsReport();
@@ -302,26 +329,29 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("using Microsoft.AspNetCore.Routing;");
         sb.AppendLine("using Microsoft.EntityFrameworkCore;");
         sb.AppendLine($"using {HelperRuntimeNamespace};");
+        if (!ctx.Config.PackageNamespacesFromMetadata)
+            foreach (var u in PackageBindingResolver.HomeUsings(ctx.Config, ReferencedTypes([entity], ctx.Root))) sb.AppendLine(u);
         sb.AppendLine();
-        sb.AppendLine($"namespace {ValueObjectNames.Namespace(entity, ctx.Config)};");
+        sb.AppendLine($"namespace {ValueObjectNames.CompanionNamespace(entity, ctx.Config)};");
         sb.AppendLine();
         sb.AppendLine($"public static class {cls}Routes");
         sb.AppendLine("{");
         // Static sort allowlist (case-insensitive) so the qs ?sort=field:dir
         // is gated against the entity's scalar fields.
-        sb.Append("    private static readonly global::System.Collections.Generic.HashSet<string> SortAllowlist =");
-        sb.AppendLine(" new(global::System.StringComparer.OrdinalIgnoreCase)");
+        sb.Append("    private static readonly System.Collections.Generic.HashSet<string> SortAllowlist =");
+        sb.AppendLine(" new(System.StringComparer.OrdinalIgnoreCase)");
         sb.AppendLine("    {");
         foreach (var name in sortFields) sb.AppendLine($"        \"{name}\",");
         sb.AppendLine("    };");
         sb.AppendLine();
         AppendSortDefaultOrder(sb, entity, "SortDefaultDesc", ctx.Config);
+        if (writable) AppendKnownFields(sb, [entity], ctx.Root);
         AppendUnauthenticatedRoutesDoc(sb, cls, isProjection);
         sb.AppendLine($"    public static IEndpointRouteBuilder Map{cls}Routes(this IEndpointRouteBuilder app, string prefix = \"/api\")");
         sb.AppendLine("    {");
         // Refuse to start when the host's serializer contract cannot be read to strip a credential.
         if (credentials.Count > 0)
-            sb.AppendLine($"        SerializerKeys.EnsureContract(app.ServiceProvider, new global::System.Type[] {{ typeof({readCls}) }}, {NamesLiteral(credentials)});");
+            sb.AppendLine($"        SerializerKeys.EnsureContract(app.ServiceProvider, new System.Type[] {{ typeof({readCls}) }}, {NamesLiteral(credentials)});");
         AppendDecimalRangeGroup(sb);
 
         // List — honours ?limit / ?offset / ?sort / ?withCount per api-contract.md.
@@ -357,10 +387,10 @@ public class RoutesGenerator : PerEntityGenerator
         // case-insensitive wire name still finds its declaration. Ascending stays the
         // fallback HERE, one place per port.
         sb.AppendLine("                var desc = parts.Length > 1");
-        sb.AppendLine("                    ? string.Equals(parts[1], \"desc\", global::System.StringComparison.OrdinalIgnoreCase)");
+        sb.AppendLine("                    ? string.Equals(parts[1], \"desc\", System.StringComparison.OrdinalIgnoreCase)");
         sb.AppendLine("                    : SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;");
         sb.AppendLine(sqliteSort
-            ? $"                q = ApplySort{cls}(q, resolved, desc, db.Database.ProviderName?.Contains(\"Sqlite\", global::System.StringComparison.OrdinalIgnoreCase) == true);"
+            ? $"                q = ApplySort{cls}(q, resolved, desc, db.Database.ProviderName?.Contains(\"Sqlite\", System.StringComparison.OrdinalIgnoreCase) == true);"
             : $"                q = ApplySort{cls}(q, resolved, desc);");
         sb.AppendLine("            }");
         sb.AppendLine();
@@ -372,16 +402,13 @@ public class RoutesGenerator : PerEntityGenerator
         else
         {
             sb.AppendLine("            // Pagination: ?offset=N first (skip), then ?limit=N (take).");
-            sb.AppendLine("            if (qs.TryGetValue(\"offset\", out var offsetRaw) && int.TryParse(offsetRaw, global::System.Globalization.NumberStyles.Integer, global::System.Globalization.CultureInfo.InvariantCulture, out var offset) && offset > 0)");
-            sb.AppendLine("                q = q.Skip(offset);");
-            sb.AppendLine("            if (qs.TryGetValue(\"limit\", out var limitRaw) && int.TryParse(limitRaw, global::System.Globalization.NumberStyles.Integer, global::System.Globalization.CultureInfo.InvariantCulture, out var limit) && limit > 0)");
-            sb.AppendLine("                q = q.Take(limit);");
+            AppendOffsetLimit(sb, ctx.Root.Api.Pagination, "            ", "offsetRaw", "offset", "limitRaw", "limit");
             sb.AppendLine();
             sb.AppendLine("            var rows = await q.ToListAsync();");
         }
         sb.AppendLine();
         sb.AppendLine("            // withCount=1 → { rows, total } envelope; otherwise bare row array.");
-        sb.AppendLine("            var withCount = qs.TryGetValue(\"withCount\", out var wc) && (wc == \"1\" || string.Equals(wc, \"true\", global::System.StringComparison.OrdinalIgnoreCase));");
+        sb.AppendLine("            var withCount = qs.TryGetValue(\"withCount\", out var wc) && (wc == \"1\" || string.Equals(wc, \"true\", System.StringComparison.OrdinalIgnoreCase));");
         if (export is null)
             sb.AppendLine($"            if (!withCount) return {OkResult("rows", credentials)};");
         else
@@ -416,10 +443,9 @@ public class RoutesGenerator : PerEntityGenerator
             // body carries the derived (view-computed) fields (read-your-writes).
             AppendCreateHandler(sb, "/" + route, cls, ValueObjectNames.ContextTypeRef(ctx.Config), dbSet, requiredKeys,
                 CreatedResult("prefix + \"/" + route + "\"", "input", credentials), voFields, mapVoFields, autoSetFields,
-                writeThrough ? (readDbSet, pkProp!, route) : null, parseBody: HasDecimalField(entity) || HasDurationField(entity),
+                writeThrough ? (readDbSet, pkProp!, route) : null,
                 deniedFields.Select(f => CSharpNaming.PropertyName(f, ctx.Config)).ToList(), credentials,
-                ServerOwnedCreateResets(entity, ctx.Root, ctx.Config, ValueObjectNames.Namespace(entity, ctx.Config)),
-                RequiredReadOnlyProps(entity, ctx.Config));
+                ServerOwnedCreateResets(entity, ctx.Root, ctx.Config), ctx.Root, RequiredReadOnlyProps(entity, ctx.Config));
 
             // PATCH + PUT share the same handler — TS reference exposes both verbs, and both
             // return the updated row (HTTP 200), matching the cross-port api-contract.
@@ -438,24 +464,26 @@ public class RoutesGenerator : PerEntityGenerator
             // is a 400. The per-key merge (shared with the TPH per-subtype handler) is
             // emitted by AppendPartialMergeLoop.
             sb.AppendLine();
-            sb.AppendLine("        async global::System.Threading.Tasks.Task<IResult> Update" + cls + "(" + pkType + " id, HttpContext http, " + ValueObjectNames.ContextTypeRef(ctx.Config) + " db)");
+            sb.AppendLine("        async System.Threading.Tasks.Task<IResult> Update" + cls + "(" + pkType + " id, HttpContext http, " + ValueObjectNames.ContextTypeRef(ctx.Config) + " db)");
             sb.AppendLine("        {");
             sb.AppendLine("            var existing = await db." + dbSet + ".FindAsync(id);");
             sb.AppendLine("            if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
-            sb.AppendLine("            global::System.Text.Json.JsonDocument body;");
-            sb.AppendLine("            try { body = await global::System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }");
-            sb.AppendLine("            catch (global::System.Text.Json.JsonException) { return Results.BadRequest(new { error = \"validation\" }); }");
+            sb.AppendLine("            System.Text.Json.JsonDocument body;");
+            sb.AppendLine("            try { body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }");
+            sb.AppendLine("            catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }");
             sb.AppendLine("            using var bodyScope = body;");
+            sb.AppendLine("            if (body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object) return ValidationIssues.Unreadable();");
+            AppendUnknownFieldsCheck(sb, ctx.Root, "body");
             sb.AppendLine("            // Deserialize each value with the app's CONFIGURED JSON options, not defaults —");
             sb.AppendLine("            // a field.timestamp binds to DateTimeOffset via a custom converter registered on");
             sb.AppendLine("            // ConfigureHttpJsonOptions, and default options cannot read the wire format, throwing 500.");
-            sb.AppendLine("            var jsonOpts = ((global::Microsoft.Extensions.Options.IOptions<global::Microsoft.AspNetCore.Http.Json.JsonOptions>)");
-            sb.AppendLine("                http.RequestServices.GetService(typeof(global::Microsoft.Extensions.Options.IOptions<global::Microsoft.AspNetCore.Http.Json.JsonOptions>))!)");
+            sb.AppendLine("            var jsonOpts = ((Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>)");
+            sb.AppendLine("                http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)");
             sb.AppendLine("                .Value.SerializerOptions;");
             sb.AppendLine("            var entry = db.Entry(existing);");
             AppendUpdateAutoSet(sb, autoSetFields);
             AppendPartialMergeLoop(sb, null, voFields, mapVoFields, autoSetNavs, frozenNavs, HasDecimalField(entity),
-                deniedFields.SelectMany(f => WireKeys(f, ctx.Config)).ToList(), deniedFields.Select(f => CSharpNaming.PropertyName(f, ctx.Config)).ToList(), HasDurationField(entity));
+                deniedFields.SelectMany(f => WireKeys(f, ctx.Config)).ToList(), deniedFields.Select(f => CSharpNaming.PropertyName(f, ctx.Config)).ToList(), HasIsoDurationField(entity, ctx.Root));
             AppendSaveChanges(sb);
             AppendArrayNullClears(sb, voFields, tableRef, pkColumnRef);
             // #214 — writes target the table; for a write-through entity re-read the row
@@ -496,7 +524,7 @@ public class RoutesGenerator : PerEntityGenerator
         // segment = relationship name.
         if (hasItem)
             foreach (var nav in M2MNavigationBuilder.For(entity, ctx.Root, ctx.Warn))
-                AppendM2mRoute(sb, nav, route, pkType!, ctx.Root, ctx.Config, ValueObjectNames.Namespace(entity, ctx.Config));
+                AppendM2mRoute(sb, nav, route, pkType!, ctx.Root, ctx.Config);
 
         sb.AppendLine();
         sb.AppendLine("        return mount;");
@@ -526,7 +554,7 @@ public class RoutesGenerator : PerEntityGenerator
         AppendOmitResultClass(sb);
         sb.AppendLine("}");
 
-        return new EmittedFile(OutputPaths.Of(entity, $"{cls}Routes.g.cs"), sb.ToString());
+        return new EmittedFile(OutputPaths.Of(entity, ctx, $"{cls}Routes.g.cs"), sb.ToString());
     }
 
     // F22 — the write verbs on a read-only projection, each answering the cross-port
@@ -619,20 +647,24 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("using Microsoft.AspNetCore.Routing;");
         sb.AppendLine("using Microsoft.EntityFrameworkCore;");
         sb.AppendLine($"using {HelperRuntimeNamespace};");
+        if (!ctx.Config.PackageNamespacesFromMetadata)
+            foreach (var u in PackageBindingResolver.HomeUsings(ctx.Config, ReferencedTypes(tph.Subtypes.Select(st => st.Entity).Prepend(baseEntity), ctx.Root))) sb.AppendLine(u);
         sb.AppendLine();
-        sb.AppendLine($"namespace {ValueObjectNames.Namespace(baseEntity, ctx.Config)};");
+        sb.AppendLine($"namespace {ValueObjectNames.CompanionNamespace(baseEntity, ctx.Config)};");
         sb.AppendLine();
         sb.AppendLine($"public static class {baseCls}Routes");
         sb.AppendLine("{");
 
         // Polymorphic sort allowlist over the base scalar columns.
-        sb.Append("    private static readonly global::System.Collections.Generic.HashSet<string> SortAllowlist =");
-        sb.AppendLine(" new(global::System.StringComparer.OrdinalIgnoreCase)");
+        sb.Append("    private static readonly System.Collections.Generic.HashSet<string> SortAllowlist =");
+        sb.AppendLine(" new(System.StringComparer.OrdinalIgnoreCase)");
         sb.AppendLine("    {");
         foreach (var name in sortFields) sb.AppendLine($"        \"{name}\",");
         sb.AppendLine("    };");
         sb.AppendLine();
         AppendSortDefaultOrder(sb, baseEntity, "SortDefaultDesc", ctx.Config);
+        // One known set for the whole hierarchy: a sibling subtype's column is declared, so it is not unknown.
+        AppendKnownFields(sb, tph.Subtypes.Select(st => st.Entity).Prepend(baseEntity), ctx.Root);
 
         // Per-subtype sort allowlists (case-insensitive) over each subtype's EFFECTIVE
         // scalar fields (inherited base + own). The per-subtype list resolves the qs
@@ -646,8 +678,8 @@ public class RoutesGenerator : PerEntityGenerator
                 .Where(f => CSharpNaming.ScalarFor(f.SubType) is not null && !f.ResolvedIsArray())
                 .Select(f => CSharpNaming.PropertyName(f, ctx.Config))
                 .ToList();
-            sb.Append($"    private static readonly global::System.Collections.Generic.HashSet<string> {subClsName}SortAllowlist =");
-            sb.AppendLine(" new(global::System.StringComparer.OrdinalIgnoreCase)");
+            sb.Append($"    private static readonly System.Collections.Generic.HashSet<string> {subClsName}SortAllowlist =");
+            sb.AppendLine(" new(System.StringComparer.OrdinalIgnoreCase)");
             sb.AppendLine("    {");
             foreach (var name in subSortFields) sb.AppendLine($"        \"{name}\",");
             sb.AppendLine("    };");
@@ -661,7 +693,7 @@ public class RoutesGenerator : PerEntityGenerator
         if (baseCredentials.Count > 0)
         {
             var credTypes = new[] { baseCls }.Concat(tph.Subtypes.Select(st => ValueObjectNames.TypeRef(st.Entity, ctx.Root, ctx.Config, ValueObjectNames.Namespace(baseEntity, ctx.Config))));
-            sb.AppendLine($"        SerializerKeys.EnsureContract(app.ServiceProvider, new global::System.Type[] {{ {string.Join(", ", credTypes.Select(t => $"typeof({t})"))} }}, {NamesLiteral(baseCredentials)});");
+            sb.AppendLine($"        SerializerKeys.EnsureContract(app.ServiceProvider, new System.Type[] {{ {string.Join(", ", credTypes.Select(t => $"typeof({t})"))} }}, {NamesLiteral(baseCredentials)});");
         }
         AppendDecimalRangeGroup(sb);
 
@@ -679,14 +711,13 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("                var parts = sortRaw.ToString().Split(':', 2);");
         sb.AppendLine("                if (!SortAllowlist.TryGetValue(parts[0], out var resolved)) return Results.BadRequest(new { error = \"invalid_sort\", field = parts[0] });");
         sb.AppendLine("                var desc = parts.Length > 1");
-        sb.AppendLine("                    ? string.Equals(parts[1], \"desc\", global::System.StringComparison.OrdinalIgnoreCase)");
+        sb.AppendLine("                    ? string.Equals(parts[1], \"desc\", System.StringComparison.OrdinalIgnoreCase)");
         sb.AppendLine("                    : SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;");
         sb.AppendLine("                q = ApplySort(q, resolved, desc);");
         sb.AppendLine("            }");
-        sb.AppendLine("            if (qs.TryGetValue(\"offset\", out var offRaw) && int.TryParse(offRaw, global::System.Globalization.NumberStyles.Integer, global::System.Globalization.CultureInfo.InvariantCulture, out var off) && off > 0) q = q.Skip(off);");
-        sb.AppendLine("            if (qs.TryGetValue(\"limit\", out var limRaw) && int.TryParse(limRaw, global::System.Globalization.NumberStyles.Integer, global::System.Globalization.CultureInfo.InvariantCulture, out var lim) && lim > 0) q = q.Take(lim);");
+        AppendOffsetLimit(sb, ctx.Root.Api.Pagination, "            ", "offRaw", "off", "limRaw", "lim");
         sb.AppendLine("            var rows = await q.ToListAsync();");
-        sb.AppendLine("            var withCount = qs.TryGetValue(\"withCount\", out var wc) && (wc == \"1\" || string.Equals(wc, \"true\", global::System.StringComparison.OrdinalIgnoreCase));");
+        sb.AppendLine("            var withCount = qs.TryGetValue(\"withCount\", out var wc) && (wc == \"1\" || string.Equals(wc, \"true\", System.StringComparison.OrdinalIgnoreCase));");
         sb.AppendLine($"            if (!withCount) return {OkResult("rows", baseCredentials)};");
         sb.AppendLine($"            var total = await EfCoreFilterDispatch.ApplyFilter(db.{dbSet}.AsNoTracking(), filter.Predicates{fmB}).CountAsync();");
         sb.AppendLine($"            return {OkResult("new { rows, total }", baseCredentials, envelope: true)};");
@@ -708,12 +739,12 @@ public class RoutesGenerator : PerEntityGenerator
             // a vanilla entity's traversal at the base route. Mirrors TS
             // renderTphRoutesFile's baseM2mMounts.
             foreach (var nav in M2MNavigationBuilder.For(baseEntity, ctx.Root, ctx.Warn))
-                AppendM2mRoute(sb, nav, baseRoute, pkType!, ctx.Root, ctx.Config, ValueObjectNames.Namespace(baseEntity, ctx.Config));
+                AppendM2mRoute(sb, nav, baseRoute, pkType!, ctx.Root, ctx.Config);
 
             // --- Per-subtype CRUD sets ---
             var hierarchy = tph.Subtypes.Select(s => s.Entity).Prepend(baseEntity).ToList();
             foreach (var st in tph.Subtypes)
-                AppendTphSubtypeRoutes(sb, st, hierarchy, ctx.Root, ctx.Config, baseRoute, baseCls, dbSet, pkType!, pkProp!, discProp, discField, ctx.Warn, ValueObjectNames.Namespace(baseEntity, ctx.Config));
+                AppendTphSubtypeRoutes(sb, st, hierarchy, ctx.Root, ctx.Config, baseRoute, baseCls, dbSet, pkType!, pkProp!, discProp, discField, ctx.Warn);
         }
 
         sb.AppendLine();
@@ -741,7 +772,7 @@ public class RoutesGenerator : PerEntityGenerator
         AppendOmitResultClass(sb);
         sb.AppendLine("}");
 
-        return new EmittedFile(OutputPaths.Of(baseEntity, $"{baseCls}Routes.g.cs"), sb.ToString());
+        return new EmittedFile(OutputPaths.Of(baseEntity, ctx, $"{baseCls}Routes.g.cs"), sb.ToString());
     }
 
     // FR-036 #4 — the wire keys of the @required fields whose keys must be PRESENT (and
@@ -866,7 +897,7 @@ public class RoutesGenerator : PerEntityGenerator
 
     // `string.Equals(prop.Name, "a", ...) || string.Equals(prop.Name, "b", ...)` over the keys.
     private static string KeyMatch(IEnumerable<string> keys) =>
-        string.Join(" || ", keys.Select(k => $"string.Equals(prop.Name, \"{k}\", global::System.StringComparison.OrdinalIgnoreCase)"));
+        string.Join(" || ", keys.Select(k => $"string.Equals(prop.Name, \"{k}\", System.StringComparison.OrdinalIgnoreCase)"));
 
     // The extra argument that hands the filter dispatch the allowlist's field-to-property map: only
     // when a resolver renamed a property beyond case (the allowlist emits the map on the same test).
@@ -909,14 +940,14 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("        private readonly string? _location;");
         sb.AppendLine("        public CredentialOmittingResult(object value, string[] names, bool envelope = false, int status = 200, string? location = null)");
         sb.AppendLine("        { _value = value; _names = names; _envelope = envelope; _status = status; _location = location; }");
-        sb.AppendLine("        public async global::System.Threading.Tasks.Task ExecuteAsync(HttpContext http)");
+        sb.AppendLine("        public async System.Threading.Tasks.Task ExecuteAsync(HttpContext http)");
         sb.AppendLine("        {");
-        sb.AppendLine("            var opts = ((global::Microsoft.Extensions.Options.IOptions<global::Microsoft.AspNetCore.Http.Json.JsonOptions>)");
-        sb.AppendLine("                http.RequestServices.GetService(typeof(global::Microsoft.Extensions.Options.IOptions<global::Microsoft.AspNetCore.Http.Json.JsonOptions>))!)");
+        sb.AppendLine("            var opts = ((Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>)");
+        sb.AppendLine("                http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)");
         sb.AppendLine("                .Value.SerializerOptions;");
-        sb.AppendLine("            var node = global::System.Text.Json.JsonSerializer.SerializeToNode(_value, _value.GetType(), opts);");
+        sb.AppendLine("            var node = System.Text.Json.JsonSerializer.SerializeToNode(_value, _value.GetType(), opts);");
         sb.AppendLine("            // The keys are the serializer's own for these properties (naming policy, rename, attribute), never guessed from names.");
-        sb.AppendLine($"            SerializerKeys.Strip(_envelope && node is global::System.Text.Json.Nodes.JsonObject env ? env[\"rows\"] : node,");
+        sb.AppendLine($"            SerializerKeys.Strip(_envelope && node is System.Text.Json.Nodes.JsonObject env ? env[\"rows\"] : node,");
         sb.AppendLine($"                SerializerKeys.KeysOf(_value, _envelope, opts, _names), _names);");
         sb.AppendLine("            http.Response.StatusCode = _status;");
         sb.AppendLine("            if (_location is not null) http.Response.Headers.Location = _location;");
@@ -947,10 +978,10 @@ public class RoutesGenerator : PerEntityGenerator
     private static string? NowExprFor(MetaField field) =>
         CSharpNaming.ScalarForField(field) switch
         {
-            "DateTimeOffset" => "global::System.DateTimeOffset.UtcNow",
-            "DateTime"       => "global::System.DateTime.Now",           // @localTime: naive wall-clock
-            "DateOnly"       => "global::System.DateOnly.FromDateTime(global::System.DateTime.UtcNow)",
-            "TimeOnly"       => "global::System.TimeOnly.FromDateTime(global::System.DateTime.UtcNow)",
+            "DateTimeOffset" => "System.DateTimeOffset.UtcNow",
+            "DateTime"       => "System.DateTime.Now",           // @localTime: naive wall-clock
+            "DateOnly"       => "System.DateOnly.FromDateTime(System.DateTime.UtcNow)",
+            "TimeOnly"       => "System.TimeOnly.FromDateTime(System.DateTime.UtcNow)",
             _                => null,
         };
 
@@ -964,7 +995,7 @@ public class RoutesGenerator : PerEntityGenerator
     // splicing into the post-save null-clear SQL; IsArray / Required drive the merge semantics
     // (present-null: a nullable single/array clears, a @required column 400s).
     private sealed record VoField(
-        IReadOnlyList<string> WireKeys, string Nav, string DeserType, string JsonColumnRef, bool IsArray, bool Required);
+        IReadOnlyList<string> WireKeys, string WireName, string Nav, string DeserType, string JsonColumnRef, bool IsArray, bool Required);
 
     // #362 — the `field.map @objectRef` columns, deliberately NOT folded into VoField.
     // A VoField drives the owned-nav machinery (EF OwnsMany/.ToJson, deserialization as an
@@ -972,10 +1003,13 @@ public class RoutesGenerator : PerEntityGenerator
     // with a jsonb converter and none of that applies. What it DOES share is the nested
     // value-object graph, which the create and PATCH paths must validate — before this the
     // map reached neither, so its values were written unchecked on every write path.
-    private sealed record MapVoField(IReadOnlyList<string> WireKeys, string Nav, string DeserType);
+    private sealed record MapVoField(IReadOnlyList<string> WireKeys, string WireName, string Nav, string DeserType);
 
-    // A value object is named global::-qualified (rc.19 R65): it may live in any package's
-    // namespace, and a same-named type in the routes file's own namespace would otherwise win.
+    // A value object named from the routes file: bare in the earlier layout, global::-qualified
+    // when package namespaces are on.
+    private static string VoTypeRef(MetaData target, MetaRoot root, GenConfig config) =>
+        config.PackageNamespacesFromMetadata ? ValueObjectNames.GlobalRef(target, config) : ValueObjectNames.TypeName(target, root);
+
     private static List<MapVoField> MapValueObjectFields(MetaObject entity, MetaRoot root, GenConfig config)
     {
         var list = new List<MapVoField>();
@@ -986,14 +1020,14 @@ public class RoutesGenerator : PerEntityGenerator
             var target = ValueObjectNames.ResolveFieldRef(f, root);
             if (target is null || !target.IsValue()) continue;   // scalar-valued maps have no bean
             list.Add(new MapVoField(
-                WireKeys: WireKeys(f, config),
+                WireKeys: WireKeys(f, config), WireName: f.Name,
                 Nav: CSharpNaming.PropertyName(f, config),
-                DeserType: $"global::System.Collections.Generic.Dictionary<string, {ValueObjectNames.GlobalRef(target, config)}>"));
+                DeserType: $"System.Collections.Generic.Dictionary<string, {VoTypeRef(target, root, config)}>"));
         }
         return list;
     }
 
-    private static List<VoField> ValueObjectFields(MetaObject entity, MetaRoot root, GenConfig config)
+    private static List<VoField> ValueObjectFields(MetaObject entity, MetaRoot root, ColumnNamingStrategy strategy, bool includeNames, GenConfig config)
     {
         var list = new List<VoField>();
         foreach (var f in entity.Fields())
@@ -1002,13 +1036,13 @@ public class RoutesGenerator : PerEntityGenerator
             if (f.IsDerived()) continue;   // #214 — derived VO fields are view-only, not writable
             var target = ValueObjectNames.ResolveFieldRef(f, root);
             if (target is null || !target.IsValue()) continue;   // value objects only (jsonb-stored)
-            var voType = ValueObjectNames.GlobalRef(target, config);
+            var voType = VoTypeRef(target, root, config);
             var isArray = f.ResolvedIsArray();                    // ADR-0039: resolving array-ness
             list.Add(new VoField(
-                WireKeys: WireKeys(f, config),
+                WireKeys: WireKeys(f, config), WireName: f.Name,
                 Nav: CSharpNaming.PropertyName(f, config),
-                DeserType: isArray ? $"global::System.Collections.Generic.List<{voType}>" : voType,
-                JsonColumnRef: CSharpNaming.ColumnRef(entity, f, config.ColumnNamingStrategy, config.IncludeNames),
+                DeserType: isArray ? $"System.Collections.Generic.List<{voType}>" : voType,
+                JsonColumnRef: CSharpNaming.ColumnRef(entity, f, strategy, includeNames, config),
                 IsArray: isArray,
                 Required: f.IsRequired));
         }
@@ -1023,66 +1057,114 @@ public class RoutesGenerator : PerEntityGenerator
     // (minimal-API binding + DataAnnotations) — byte-identical to the pre-FR-036 output.
     // A missing key, an explicit null on a @required key, or a DataAnnotations violation all
     // return the cross-port {error:"validation"} envelope BEFORE the row is persisted.
+    // `api.unknownFields` — the declared wire names a body key is checked against, as a static set in the
+    // routes class. Null under `drop` (nothing is emitted and no handler checks): the constant's name otherwise.
+    private const string KnownFieldsConst = "KnownFields";
+
+    private static void AppendKnownFields(StringBuilder sb, IEnumerable<MetaObject> objects, MetaRoot root)
+    {
+        if (root.Api.UnknownFields != UnknownFieldsMode.Reject) return;
+        var names = objects.SelectMany(o => o.Fields()).Select(f => f.Name)
+            .Distinct(StringComparer.Ordinal).OrderBy(n => n, StringComparer.Ordinal).ToList();
+        sb.AppendLine("    // api.unknownFields: reject — the declared field names (wire spelling); any other body key is a 400.");
+        sb.AppendLine("    private static readonly System.Collections.Generic.HashSet<string> " + KnownFieldsConst + " = new(System.StringComparer.Ordinal)");
+        sb.AppendLine("    {");
+        foreach (var n in names) sb.AppendLine($"        \"{n}\",");
+        sb.AppendLine("    };");
+        sb.AppendLine();
+    }
+
+    // The unknown-field refusal, before any validation of the body. `bodyVar` is the parsed JsonDocument.
+    private static void AppendUnknownFieldsCheck(StringBuilder sb, MetaRoot root, string bodyVar)
+    {
+        if (root.Api.UnknownFields != UnknownFieldsMode.Reject) return;
+        // `http` carries the app's JSON options: a key the binder matches case-insensitively is declared.
+        sb.AppendLine($"            if (UnknownFieldCheck.Reject({bodyVar}.RootElement, {KnownFieldsConst}, http) is {{ }} __unknown) return __unknown;");
+    }
+
+    // The offset + limit lines of a list route. Without `api.pagination` they are exactly what they always
+    // were; with it, no limit takes defaultLimit and one above maxLimit is 400 limit_too_large.
+    private static void AppendOffsetLimit(StringBuilder sb, ApiPagination? page, string indent, string offRaw, string off, string limRaw, string lim)
+    {
+        if (page is not null)
+        {
+            // An offset that is present but not a non-negative int is refused, as the TypeScript routes answer,
+            // never read as "absent" and answered with a page the client did not ask for.
+            sb.AppendLine($"{indent}if (qs.TryGetValue(\"offset\", out var {offRaw}Bad) && !(int.TryParse({offRaw}Bad, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {off}Bad) && {off}Bad >= 0))");
+            sb.AppendLine($"{indent}    return Results.BadRequest(new {{ error = \"pagination.invalid_value\", param = \"offset\", value = {offRaw}Bad.ToString(), expected = \"a non-negative integer (0 or more)\" }});");
+        }
+        sb.AppendLine($"{indent}if (qs.TryGetValue(\"offset\", out var {offRaw}) && int.TryParse({offRaw}, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {off}) && {off} > 0)");
+        sb.AppendLine($"{indent}    q = q.Skip({off});");
+        if (page is null)
+        {
+            sb.AppendLine($"{indent}if (qs.TryGetValue(\"limit\", out var {limRaw}) && int.TryParse({limRaw}, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {lim}) && {lim} > 0)");
+            sb.AppendLine($"{indent}    q = q.Take({lim});");
+            return;
+        }
+        sb.AppendLine($"{indent}// api.pagination: no limit takes defaultLimit; a limit above maxLimit is refused.");
+        // A negative or non-numeric limit is refused with the malformed-bound envelope, as the TypeScript routes answer.
+        sb.AppendLine($"{indent}if (qs.TryGetValue(\"limit\", out var {limRaw}Neg) && !(long.TryParse({limRaw}Neg, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {lim}Neg) && {lim}Neg >= 0))");
+        sb.AppendLine($"{indent}    return Results.BadRequest(new {{ error = \"pagination.invalid_value\", param = \"limit\", value = {limRaw}Neg.ToString(), expected = \"a non-negative integer (0 or more)\" }});");
+        sb.AppendLine($"{indent}var __take = {page.DefaultLimit};");
+        // `limit=0` is a page of zero rows, as every other port serves it, not "no limit".
+        sb.AppendLine($"{indent}if (qs.TryGetValue(\"limit\", out var {limRaw}) && long.TryParse({limRaw}, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {lim}) && {lim} >= 0)");
+        sb.AppendLine($"{indent}{{");
+        sb.AppendLine($"{indent}    if ({lim} > {page.MaxLimit}) return Results.BadRequest(new {{ error = \"limit_too_large\", maxLimit = {page.MaxLimit} }});");
+        sb.AppendLine($"{indent}    __take = (int){lim};");
+        sb.AppendLine($"{indent}}}");
+        sb.AppendLine($"{indent}q = q.Take(__take);");
+    }
+
     private static void AppendCreateHandler(
         StringBuilder sb, string mapPath, string cls, string ctxType, string dbSet,
         IReadOnlyList<string> requiredKeys, string createdExpr, IReadOnlyList<VoField> voFields,
         IReadOnlyList<MapVoField> mapVoFields,
         IReadOnlyList<AutoSetField> autoSetFields,
         (string ReadDbSet, string PkProp, string Route)? reRead = null,
-        bool parseBody = false,
         IReadOnlyList<string>? deniedNavs = null,
         IReadOnlyList<string>? credentials = null,
         IReadOnlyList<string>? serverOwned = null,
+        MetaRoot? root = null,
         IReadOnlyList<string>? readOnlyRequired = null)
     {
-        // A decimal field can refuse its value while the body is bound (out of declared range, not a
-        // number). The framework's own binding answers that with a bare 400 and no body, so an entity
-        // carrying one parses the body itself and returns the cross-port {error:"validation"} envelope.
-        if (requiredKeys.Count == 0 && !parseBody)
-        {
-            sb.AppendLine($"        app.MapPost(prefix + \"{mapPath}\", async ({cls} input, {ctxType} db) =>");
-            sb.AppendLine("        {");
-            AppendCreateServerOwned(sb, serverOwned);
-            AppendCreateIgnoreDenied(sb, deniedNavs);
-            AppendCreateValidation(sb, readOnlyRequired);
-            AppendCreateVoValidation(sb, voFields, mapVoFields);
-            AppendCreateAutoSet(sb, autoSetFields);
-            AppendCreatePersist(sb, dbSet, createdExpr, reRead, credentials ?? []);
-            sb.AppendLine("        });");
-            return;
-        }
-
+        // The body is always read here, not model-bound: the framework answers a body it cannot bind with a
+        // bare 400 and no body, while every validation failure must list its issues (the cross-port
+        // {error:"validation", issues:[...]} envelope), so the handler reads the body itself and collects them.
         sb.AppendLine($"        app.MapPost(prefix + \"{mapPath}\", async (HttpContext http, {ctxType} db) =>");
         sb.AppendLine("        {");
         AppendJsonOptsLocal(sb);
-        sb.AppendLine("            global::System.Text.Json.JsonDocument __body;");
-        sb.AppendLine("            try { __body = await global::System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }");
-        sb.AppendLine("            catch (global::System.Text.Json.JsonException) { return Results.BadRequest(new { error = \"validation\" }); }");
+        sb.AppendLine("            System.Text.Json.JsonDocument __body;");
+        sb.AppendLine("            try { __body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }");
+        sb.AppendLine("            catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }");
         sb.AppendLine("            using var __bodyScope = __body;");
-        sb.AppendLine("            if (__body.RootElement.ValueKind != global::System.Text.Json.JsonValueKind.Object)");
-        sb.AppendLine("                return Results.BadRequest(new { error = \"validation\" });");
+        sb.AppendLine("            if (__body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)");
+        sb.AppendLine("                return ValidationIssues.Unreadable();");
+        if (root is not null) AppendUnknownFieldsCheck(sb, root, "__body");
+        sb.AppendLine("            var __issues = new ValidationIssues();");
         // FR-036 #4 — @required-key presence: an omitted key OR an explicit null on a @required
         // field → 400, matching the JVM/Python "missing @required → 400" contract. Case-insensitive
         // so a camelCase wire key ("createdAt") matches its PascalCase property ("CreatedAt").
-        sb.AppendLine("            var __present = new global::System.Collections.Generic.HashSet<string>(global::System.StringComparer.OrdinalIgnoreCase);");
-        sb.AppendLine("            foreach (var __p in __body.RootElement.EnumerateObject())");
-        sb.AppendLine("                if (__p.Value.ValueKind != global::System.Text.Json.JsonValueKind.Null) __present.Add(__p.Name);");
-        sb.Append(requiredKeys.Count == 0 ? "            foreach (var __req in new string[] { " : "            foreach (var __req in new[] { ");
-        sb.Append(string.Join(", ", requiredKeys.Select(k => "\"" + k + "\"")));
-        sb.AppendLine(" })");
-        sb.AppendLine("                if (!__present.Contains(__req)) return Results.BadRequest(new { error = \"validation\" });");
-        // A malformed body (e.g. a JSON array for a single-VO / scalar for an object column)
-        // throws JsonException — return the cross-port 400 {error:"validation"} rather than an
-        // unhandled 500 (matches the no-required-keys path's automatic model-binding 400, and
-        // every other port). Program D — the VO columns make wrong-shaped bodies reachable.
-        sb.AppendLine($"            {cls}? input;");
-        sb.AppendLine("            try { input = global::System.Text.Json.JsonSerializer.Deserialize<" + cls + ">(__body.RootElement.GetRawText(), jsonOpts); }");
-        sb.AppendLine("            catch (global::System.Text.Json.JsonException) { return Results.BadRequest(new { error = \"validation\" }); }");
-        sb.AppendLine("            if (input is null) return Results.BadRequest(new { error = \"validation\" });");
+        if (requiredKeys.Count > 0)
+        {
+            sb.AppendLine("            var __present = new System.Collections.Generic.HashSet<string>(System.StringComparer.OrdinalIgnoreCase);");
+            sb.AppendLine("            foreach (var __p in __body.RootElement.EnumerateObject())");
+            sb.AppendLine("                if (__p.Value.ValueKind != System.Text.Json.JsonValueKind.Null) __present.Add(__p.Name);");
+            sb.Append("            foreach (var __req in new[] { ");
+            sb.Append(string.Join(", ", requiredKeys.Select(k => "\"" + k + "\"")));
+            sb.AppendLine(" })");
+            sb.AppendLine("                if (!__present.Contains(__req)) __issues.AddRequired(__req);");
+        }
+        // A value that cannot be read (a wrong-shaped VO, a decimal out of range, a malformed date) throws
+        // JsonException: it is listed at its path, and the body cannot be checked further.
+        sb.AppendLine($"            {cls}? input = null;");
+        sb.AppendLine("            try { input = System.Text.Json.JsonSerializer.Deserialize<" + cls + ">(__body.RootElement.GetRawText(), jsonOpts); }");
+        sb.AppendLine("            catch (System.Exception __e) { __issues.AddReadFailure(__e, typeof(" + cls + ")); }");
+        sb.AppendLine("            if (input is null) return __issues.Any ? __issues.ToResult() : ValidationIssues.Unreadable();");
         AppendCreateServerOwned(sb, serverOwned);
         AppendCreateIgnoreDenied(sb, deniedNavs);
         AppendCreateValidation(sb, readOnlyRequired);
         AppendCreateVoValidation(sb, voFields, mapVoFields);
+        sb.AppendLine("            if (__issues.Any) return __issues.ToResult();");
         AppendCreateAutoSet(sb, autoSetFields);
         AppendCreatePersist(sb, dbSet, createdExpr, reRead, credentials ?? []);
         sb.AppendLine("        });");
@@ -1141,7 +1223,7 @@ public class RoutesGenerator : PerEntityGenerator
     // namespace (a generated type's namespace is its metadata package), and the List is
     // global::-qualified, as every other emitted System reference here is.
     private static List<string> ServerOwnedCreateResets(
-        MetaObject entity, MetaRoot root, GenConfig config, string routesNs, MetaField? discField = null, MetaObject? navOwner = null)
+        MetaObject entity, MetaRoot root, GenConfig config, MetaField? discField = null, MetaObject? navOwner = null)
     {
         var list = new List<string>();
         if (entity.PrimaryIdentity() is MetaPrimaryIdentity pk
@@ -1155,8 +1237,8 @@ public class RoutesGenerator : PerEntityGenerator
             list.Add($"input.{CSharpNaming.PropertyName(discField, config)} = default!;");
         foreach (var nav in M2MNavigationBuilder.For(navOwner ?? entity, root, _ => { }))
         {
-            var target = ValueObjectNames.TypeRef(nav.Target, root, config, routesNs);
-            list.Add($"input.{CSharpNaming.Pascal(nav.Name)} = new global::System.Collections.Generic.List<{target}>();");
+            var target = ValueObjectNames.Ref(nav.Target, config);
+            list.Add($"input.{CSharpNaming.Pascal(nav.Name)} = new System.Collections.Generic.List<{target}>();");
         }
         return list;
     }
@@ -1203,7 +1285,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine();
         sb.AppendLine("    /// <summary>Escape hatch: insert without @autoSet stamping (created-at/updated-at");
         sb.AppendLine("    /// written verbatim from <paramref name=\"input\"/>) for import / restore / replication.</summary>");
-        sb.AppendLine($"    public static async global::System.Threading.Tasks.Task<{cls}> InsertPreserving({ctxType} db, {cls} input)");
+        sb.AppendLine($"    public static async System.Threading.Tasks.Task<{cls}> InsertPreserving({ctxType} db, {cls} input)");
         sb.AppendLine("    {");
         sb.AppendLine($"        db.{dbSet}.Add(input);");
         sb.AppendLine("        await db.SaveChangesAsync();");
@@ -1253,14 +1335,14 @@ public class RoutesGenerator : PerEntityGenerator
     {
         foreach (var vf in voFields)
             sb.AppendLine(
-                $"            if (!ValueObjectValidator.Validate(input.{vf.Nav})) return Results.BadRequest(new {{ error = \"validation\" }});");
+                $"            ValueObjectValidator.Collect(input.{vf.Nav}, __issues, jsonOpts, \"{vf.WireName}\");");
         // #362 — a field.map @objectRef's values are value objects and get the same graph
         // validation. ValueObjectValidator unwraps an IDictionary to its Values; before that
         // arm existed a Dictionary hit the IEnumerable arm, yielded KeyValuePair structs, and
         // validated vacuously — so this line and that arm are one fix, not two.
         foreach (var mf in mapVoFields)
             sb.AppendLine(
-                $"            if (!ValueObjectValidator.Validate(input.{mf.Nav})) return Results.BadRequest(new {{ error = \"validation\" }});");
+                $"            ValueObjectValidator.Collect(input.{mf.Nav}, __issues, jsonOpts, \"{mf.WireName}\");");
     }
 
     // The configured System.Text.Json options local (`jsonOpts`) — the app's
@@ -1293,8 +1375,10 @@ public class RoutesGenerator : PerEntityGenerator
     // DurationWire copy is emitted into its namespace). Its converter refuses a bad value while the
     // body is bound, so, like a decimal, the create route parses the body itself to answer with the
     // {error:"validation"} envelope, and the PATCH merge reads the wire form explicitly.
-    private static bool HasDurationField(MetaObject entity) =>
-        entity.Fields().Any(f => f.SubType == FIELD_SUBTYPE_DURATION && CSharpNaming.DbColumnTypeClrOverride(f) is null);
+    // Only under `wire.durations: iso`: the native form is System.Text.Json's own, so the default
+    // binder and PATCH deserialization already read it and no duration arm is emitted.
+    private static bool HasIsoDurationField(MetaObject entity, MetaRoot root) =>
+        WireFormat.Of(root).Durations == DurationWireForm.Iso && entity.Fields().Any(f => f.SubType == FIELD_SUBTYPE_DURATION && CSharpNaming.DbColumnTypeClrOverride(f) is null);
 
     private static void AppendDecimalRangeGroup(StringBuilder sb)
         {
@@ -1304,8 +1388,8 @@ public class RoutesGenerator : PerEntityGenerator
 
     private static void AppendJsonOptsLocal(StringBuilder sb)
     {
-        sb.AppendLine("            var jsonOpts = ((global::Microsoft.Extensions.Options.IOptions<global::Microsoft.AspNetCore.Http.Json.JsonOptions>)");
-        sb.AppendLine("                http.RequestServices.GetService(typeof(global::Microsoft.Extensions.Options.IOptions<global::Microsoft.AspNetCore.Http.Json.JsonOptions>))!)");
+        sb.AppendLine("            var jsonOpts = ((Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>)");
+        sb.AppendLine("                http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)");
         sb.AppendLine("                .Value.SerializerOptions;");
     }
 
@@ -1319,20 +1403,13 @@ public class RoutesGenerator : PerEntityGenerator
     // is ignored: the client cannot set that member, so it cannot satisfy the rule.
     private static void AppendCreateValidation(StringBuilder sb, IReadOnlyList<string>? readOnlyRequired = null)
     {
-        sb.AppendLine("            var __vr = new global::System.Collections.Generic.List<global::System.ComponentModel.DataAnnotations.ValidationResult>();");
-        sb.AppendLine("            if (!global::System.ComponentModel.DataAnnotations.Validator.TryValidateObject(");
         if (readOnlyRequired is null || readOnlyRequired.Count == 0)
         {
-            sb.AppendLine("                    input, new global::System.ComponentModel.DataAnnotations.ValidationContext(input), __vr, true))");
+            sb.AppendLine("            __issues.ValidateObject(input, jsonOpts);");
+            return;
         }
-        else
-        {
-            var names = string.Join(", ", readOnlyRequired.Select(n => "\"" + n + "\""));
-            sb.AppendLine("                    input, new global::System.ComponentModel.DataAnnotations.ValidationContext(input), __vr, true)");
-            sb.AppendLine($"                && __vr.Exists(r => !global::System.Linq.Enumerable.Any(r.MemberNames)");
-            sb.AppendLine($"                    || global::System.Linq.Enumerable.Any(r.MemberNames, m => global::System.Array.IndexOf(new[] {{ {names} }}, m) < 0)))");
-        }
-        sb.AppendLine("                return Results.BadRequest(new { error = \"validation\" });");
+        var names = string.Join(", ", readOnlyRequired.Select(n => "\"" + n + "\""));
+        sb.AppendLine($"            __issues.ValidateObjectExcept(input, jsonOpts, new[] {{ {names} }});");
     }
 
     // FR-035 PATCH-2 — the shared present-key merge loop for the generated update
@@ -1360,6 +1437,8 @@ public class RoutesGenerator : PerEntityGenerator
         // such as SnakeCaseLower, a rename, an attribute), never from a guess at the name: the keys a
         // client echoes from a response are the keys this resolves.
         sb.AppendLine($"            var __keys = SerializerKeys.PropertyByKey(existing.GetType(), jsonOpts);");
+        // Every violation is collected (never the first alone) and answered together after the loop.
+        sb.AppendLine("            var __issues = new ValidationIssues();");
         sb.AppendLine("            foreach (var prop in body.RootElement.EnumerateObject())");
         sb.AppendLine("            {");
         sb.AppendLine("                var __clr = __keys.TryGetValue(prop.Name, out var __mapped) ? __mapped : null;");
@@ -1368,7 +1447,7 @@ public class RoutesGenerator : PerEntityGenerator
         if (deniedClr.Count > 0)
             sb.AppendLine($"                if (__clr is {string.Join(" or ", deniedClr.Select(n => "\"" + n + "\""))}) continue; // @formExclude / credential: not writable");
         foreach (var key in deniedKeys)
-            sb.AppendLine($"                if (string.Equals(prop.Name, \"{key}\", global::System.StringComparison.OrdinalIgnoreCase)) continue; // @formExclude / credential: not writable");
+            sb.AppendLine($"                if (string.Equals(prop.Name, \"{key}\", System.StringComparison.OrdinalIgnoreCase)) continue; // @formExclude / credential: not writable");
         // Program D — typed value-object arms FIRST (owned-nav columns are invisible to
         // EF's FindProperty below, so the generic scalar path would silently drop them).
         // Present value → deserialize + recursive VO validation + assign the CLR nav
@@ -1381,10 +1460,13 @@ public class RoutesGenerator : PerEntityGenerator
             var v = "__vo" + i;
             sb.AppendLine($"                if ({KeyMatch(vf.WireKeys)} || __clr == \"{vf.Nav}\")");
             sb.AppendLine("                {");
-            sb.AppendLine("                    if (prop.Value.ValueKind == global::System.Text.Json.JsonValueKind.Null)");
+            sb.AppendLine("                    if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Null)");
             sb.AppendLine("                    {");
             if (vf.Required)
-                sb.AppendLine("                        return Results.BadRequest(new { error = \"validation\" }); // @required VO column: present-null is a 400");
+            {
+                sb.AppendLine($"                        __issues.AddRequired(\"{vf.WireName}\"); // @required VO column: present-null is a 400");
+                sb.AppendLine("                        continue;");
+            }
             else
             {
                 sb.AppendLine($"                        existing.{vf.Nav} = null;");
@@ -1397,9 +1479,9 @@ public class RoutesGenerator : PerEntityGenerator
             // array column) throws JsonException — return the cross-port 400 rather than an
             // unhandled 500 (matches every other port + this port's own reference lane).
             sb.AppendLine($"                    {vf.DeserType} {v};");
-            sb.AppendLine($"                    try {{ {v} = global::System.Text.Json.JsonSerializer.Deserialize<{vf.DeserType}>(prop.Value.GetRawText(), jsonOpts); }}");
-            sb.AppendLine("                    catch (global::System.Text.Json.JsonException) { return Results.BadRequest(new { error = \"validation\" }); }");
-            sb.AppendLine($"                    if (!ValueObjectValidator.Validate({v})) return Results.BadRequest(new {{ error = \"validation\" }});");
+            sb.AppendLine($"                    try {{ {v} = System.Text.Json.JsonSerializer.Deserialize<{vf.DeserType}>(prop.Value.GetRawText(), jsonOpts); }}");
+            sb.AppendLine($"                    catch (System.Text.Json.JsonException __e) {{ __issues.AddJson(__e, null, \"{vf.WireName}\"); continue; }}");
+            sb.AppendLine($"                    if (!ValueObjectValidator.Collect({v}, __issues, jsonOpts, \"{vf.WireName}\")) continue;");
             sb.AppendLine($"                    existing.{vf.Nav} = {v}{(vf.Required ? "!" : "")};");
             sb.AppendLine("                    continue;");
             sb.AppendLine("                }");
@@ -1415,45 +1497,46 @@ public class RoutesGenerator : PerEntityGenerator
             var mv = "__map" + i;
             sb.AppendLine($"                if ({KeyMatch(mf.WireKeys)} || __clr == \"{mf.Nav}\")");
             sb.AppendLine("                {");
-            sb.AppendLine("                    if (prop.Value.ValueKind == global::System.Text.Json.JsonValueKind.Null)");
+            sb.AppendLine("                    if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Null)");
             sb.AppendLine($"                    {{ existing.{mf.Nav} = null; continue; }}");
             sb.AppendLine($"                    {mf.DeserType}? {mv};");
-            sb.AppendLine($"                    try {{ {mv} = global::System.Text.Json.JsonSerializer.Deserialize<{mf.DeserType}>(prop.Value.GetRawText(), jsonOpts); }}");
-            sb.AppendLine("                    catch (global::System.Text.Json.JsonException) { return Results.BadRequest(new { error = \"validation\" }); }");
-            sb.AppendLine($"                    if (!ValueObjectValidator.Validate({mv})) return Results.BadRequest(new {{ error = \"validation\" }});");
+            sb.AppendLine($"                    try {{ {mv} = System.Text.Json.JsonSerializer.Deserialize<{mf.DeserType}>(prop.Value.GetRawText(), jsonOpts); }}");
+            sb.AppendLine($"                    catch (System.Text.Json.JsonException __e) {{ __issues.AddJson(__e, null, \"{mf.WireName}\"); continue; }}");
+            sb.AppendLine($"                    if (!ValueObjectValidator.Collect({mv}, __issues, jsonOpts, \"{mf.WireName}\")) continue;");
             sb.AppendLine($"                    existing.{mf.Nav} = {mv};");
             sb.AppendLine("                    continue;");
             sb.AppendLine("                }");
         }
         sb.AppendLine("                var target = (__clr is null ? null : entry.Metadata.FindProperty(__clr))");
         sb.AppendLine("                    ?? entry.Metadata.FindProperty(prop.Name)");
-        sb.AppendLine("                    ?? entry.Metadata.GetProperties().FirstOrDefault(p => string.Equals(p.Name, prop.Name, global::System.StringComparison.OrdinalIgnoreCase));");
+        sb.AppendLine("                    ?? entry.Metadata.GetProperties().FirstOrDefault(p => string.Equals(p.Name, prop.Name, System.StringComparison.OrdinalIgnoreCase));");
         sb.AppendLine("                if (target is null) continue;");
+        sb.AppendLine("                var __wire = ValidationIssues.WireName(existing.GetType(), target.Name, jsonOpts);");
         sb.AppendLine("                if (target.IsPrimaryKey()) continue;                        // PK is route-authoritative");
         if (discProp is not null)
         {
-            sb.AppendLine($"                if (string.Equals(target.Name, \"{discProp}\", global::System.StringComparison.Ordinal)) continue; // discriminator is immutable");
+            sb.AppendLine($"                if (string.Equals(target.Name, \"{discProp}\", System.StringComparison.Ordinal)) continue; // discriminator is immutable");
         }
         // Issue #203 — @autoSet columns are server-owned: an onUpdate column is stamped to
         // now() (below), an onCreate column is never rewritten. Either way the caller can
         // never set them via the PATCH/PUT body, so skip any present key.
         foreach (var nav in autoSetNavs)
-            sb.AppendLine($"                if (string.Equals(target.Name, \"{nav}\", global::System.StringComparison.Ordinal)) continue; // @autoSet: server-owned");
+            sb.AppendLine($"                if (string.Equals(target.Name, \"{nav}\", System.StringComparison.Ordinal)) continue; // @autoSet: server-owned");
         // FR-037 R1 — @mutability readOnly / writeOnce are not PATCH-settable. STRIPPED,
         // never 400'd: the uniform behaviour of every excluded key on this path. Skipping
         // BEFORE the null branch also covers the FR-035 present-null arm, since clearing a
         // column is itself a write.
         foreach (var nav in frozenNavs)
-            sb.AppendLine($"                if (string.Equals(target.Name, \"{nav}\", global::System.StringComparison.Ordinal)) continue; // @mutability: not patch-settable");
-        sb.AppendLine("                if (prop.Value.ValueKind == global::System.Text.Json.JsonValueKind.Null)");
+            sb.AppendLine($"                if (string.Equals(target.Name, \"{nav}\", System.StringComparison.Ordinal)) continue; // @mutability: not patch-settable");
+        sb.AppendLine("                if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Null)");
         sb.AppendLine("                {");
         sb.AppendLine("                    // FR-035 PATCH-2: explicit null clears a nullable column; on a");
         sb.AppendLine("                    // NOT-NULL (@required) column it is a 400 (matching the cross-port contract).");
-        sb.AppendLine("                    if (!target.IsNullable) return Results.BadRequest(new { error = \"validation\" });");
+        sb.AppendLine("                    if (!target.IsNullable) { __issues.AddRequired(__wire); continue; }");
         sb.AppendLine("                    entry.CurrentValues[target] = null;");
         sb.AppendLine("                    continue;");
         sb.AppendLine("                }");
-        sb.AppendLine("                var clr = global::System.Nullable.GetUnderlyingType(target.ClrType) ?? target.ClrType;");
+        sb.AppendLine("                var clr = System.Nullable.GetUnderlyingType(target.ClrType) ?? target.ClrType;");
         // ADR-0019 Amendment 1 (W2): a decimal is read from a JSON-number string or a JSON number,
         // exactly; anything else, or a value decimal cannot hold, is the 400 validation envelope.
         // `DecimalWire` resolves to the copy the entity generator emits into this namespace (the
@@ -1467,15 +1550,22 @@ public class RoutesGenerator : PerEntityGenerator
             {
                 sb.AppendLine("                if (clr == typeof(decimal))");
                 sb.AppendLine("                {");
-                sb.AppendLine("                    if (!DecimalWire.TryParseElement(prop.Value, out var __dec) || !DecimalWire.FitsDeclared(existing.GetType(), target.Name, __dec)) return Results.BadRequest(new { error = \"validation\" });");
+                sb.AppendLine("                    if (!DecimalWire.TryParseElement(prop.Value, out var __dec)) { __issues.Add(\"invalid_type\", __wire + \" is not a decimal\", __wire); continue; }");
+                sb.AppendLine("                    if (!DecimalWire.FitsDeclared(existing.GetType(), target.Name, __dec)) { __issues.Add(\"too_big\", __wire + \" exceeds its declared precision and scale\", __wire); continue; }");
                 sb.AppendLine("                    __val = __dec;");
                 sb.AppendLine("                }");
-                sb.AppendLine("                else if (clr == typeof(global::System.Collections.Generic.IList<decimal>))");
+                sb.AppendLine("                else if (clr == typeof(System.Collections.Generic.IList<decimal>))");
                 sb.AppendLine("                {");
-                sb.AppendLine("                    if (prop.Value.ValueKind != global::System.Text.Json.JsonValueKind.Array) return Results.BadRequest(new { error = \"validation\" });");
-                sb.AppendLine("                    var __decs = new global::System.Collections.Generic.List<decimal>();");
+                sb.AppendLine("                    if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.Array) { __issues.Add(\"invalid_type\", __wire + \" is not an array\", __wire); continue; }");
+                sb.AppendLine("                    var __decs = new System.Collections.Generic.List<decimal>();");
+                sb.AppendLine("                    var __decBad = false;");
                 sb.AppendLine("                    foreach (var __el in prop.Value.EnumerateArray())");
-                sb.AppendLine("                        if (DecimalWire.TryParseElement(__el, out var __d1) && DecimalWire.FitsDeclared(existing.GetType(), target.Name, __d1)) __decs.Add(__d1); else return Results.BadRequest(new { error = \"validation\" });");
+                sb.AppendLine("                    {");
+                sb.AppendLine("                        if (!DecimalWire.TryParseElement(__el, out var __d1)) { __issues.Add(\"invalid_type\", __wire + \" holds a value that is not a decimal\", __wire, __decs.Count); __decBad = true; break; }");
+                sb.AppendLine("                        if (!DecimalWire.FitsDeclared(existing.GetType(), target.Name, __d1)) { __issues.Add(\"too_big\", __wire + \" holds a value over its declared precision and scale\", __wire, __decs.Count); __decBad = true; break; }");
+                sb.AppendLine("                        __decs.Add(__d1);");
+                sb.AppendLine("                    }");
+                sb.AppendLine("                    if (__decBad) continue;");
                 sb.AppendLine("                    __val = __decs;");
                 sb.AppendLine("                }");
                 arm = "else if";
@@ -1486,34 +1576,44 @@ public class RoutesGenerator : PerEntityGenerator
             // namespace) and refuse anything else with the validation envelope.
             if (hasDuration)
             {
-                sb.AppendLine($"                {arm} (clr == typeof(global::System.TimeSpan))");
+                sb.AppendLine($"                {arm} (clr == typeof(System.TimeSpan))");
                 sb.AppendLine("                {");
-                sb.AppendLine("                    if (!DurationWire.TryParseElement(prop.Value, out var __dur)) return Results.BadRequest(new { error = \"validation\" });");
+                sb.AppendLine("                    if (!DurationWire.TryParseElement(prop.Value, out var __dur)) { __issues.Add(\"invalid_type\", __wire + \" is not an ISO-8601 duration\", __wire); continue; }");
                 sb.AppendLine("                    __val = __dur;");
                 sb.AppendLine("                }");
-                sb.AppendLine("                else if (clr == typeof(global::System.Collections.Generic.IList<global::System.TimeSpan>))");
+                sb.AppendLine("                else if (clr == typeof(System.Collections.Generic.IList<System.TimeSpan>))");
                 sb.AppendLine("                {");
-                sb.AppendLine("                    if (prop.Value.ValueKind != global::System.Text.Json.JsonValueKind.Array) return Results.BadRequest(new { error = \"validation\" });");
-                sb.AppendLine("                    var __durs = new global::System.Collections.Generic.List<global::System.TimeSpan>();");
+                sb.AppendLine("                    if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.Array) { __issues.Add(\"invalid_type\", __wire + \" is not an array\", __wire); continue; }");
+                sb.AppendLine("                    var __durs = new System.Collections.Generic.List<System.TimeSpan>();");
+                sb.AppendLine("                    var __durBad = false;");
                 sb.AppendLine("                    foreach (var __el in prop.Value.EnumerateArray())");
-                sb.AppendLine("                        if (DurationWire.TryParseElement(__el, out var __u1)) __durs.Add(__u1); else return Results.BadRequest(new { error = \"validation\" });");
+                sb.AppendLine("                    {");
+                sb.AppendLine("                        if (!DurationWire.TryParseElement(__el, out var __u1)) { __issues.Add(\"invalid_type\", __wire + \" holds a value that is not an ISO-8601 duration\", __wire, __durs.Count); __durBad = true; break; }");
+                sb.AppendLine("                        __durs.Add(__u1);");
+                sb.AppendLine("                    }");
+                sb.AppendLine("                    if (__durBad) continue;");
                 sb.AppendLine("                    __val = __durs;");
                 sb.AppendLine("                }");
             }
             sb.AppendLine("                else");
-            sb.AppendLine("                    __val = global::System.Text.Json.JsonSerializer.Deserialize(prop.Value.GetRawText(), clr, jsonOpts);");
+            sb.AppendLine("                {");
+            sb.AppendLine("                    try { __val = System.Text.Json.JsonSerializer.Deserialize(prop.Value.GetRawText(), clr, jsonOpts); }");
+            sb.AppendLine("                    catch (System.Exception __e) { __issues.AddReadFailure(__e, clr, __wire); continue; }");
+            sb.AppendLine("                }");
         }
         else
-            sb.AppendLine("                var __val = global::System.Text.Json.JsonSerializer.Deserialize(prop.Value.GetRawText(), clr, jsonOpts);");
+        {
+            sb.AppendLine("                object? __val;");
+            sb.AppendLine("                try { __val = System.Text.Json.JsonSerializer.Deserialize(prop.Value.GetRawText(), clr, jsonOpts); }");
+            sb.AppendLine("                catch (System.Exception __e) { __issues.AddReadFailure(__e, clr, __wire); continue; }");
+        }
         sb.AppendLine("                // FR-036 A2 — validate the PRESENT, non-null value with the same per-field");
         sb.AppendLine("                // DataAnnotations as create. This validates ONLY the present value (never the");
         sb.AppendLine("                // whole row) so an ABSENT @required field is untouched, not a 400.");
-        sb.AppendLine("                var __pr = new global::System.Collections.Generic.List<global::System.ComponentModel.DataAnnotations.ValidationResult>();");
-        sb.AppendLine("                if (!global::System.ComponentModel.DataAnnotations.Validator.TryValidateProperty(__val,");
-        sb.AppendLine("                        new global::System.ComponentModel.DataAnnotations.ValidationContext(existing) { MemberName = target.Name }, __pr))");
-        sb.AppendLine("                    return Results.BadRequest(new { error = \"validation\" });");
+        sb.AppendLine("                if (!__issues.ValidateProperty(existing, target.Name, __val, jsonOpts)) continue;");
         sb.AppendLine("                entry.CurrentValues[target] = __val;");
         sb.AppendLine("            }");
+        sb.AppendLine("            if (__issues.Any) return __issues.ToResult();");
     }
 
     // Emit the per-subtype CRUD route set under /<base>/<segment>. Scoped to the subtype
@@ -1522,18 +1622,15 @@ public class RoutesGenerator : PerEntityGenerator
     // that never touches the PK or the discriminator.
     private static void AppendTphSubtypeRoutes(
         StringBuilder sb, TphSubtypePlan st, IReadOnlyList<MetaObject> hierarchy, MetaRoot root, GenConfig config, string baseRoute, string baseCls, string dbSet,
-        string pkType, string pkProp, string discProp, MetaField? discField, Action<string> onWarn, string routesNs)
+        string pkType, string pkProp, string discProp, MetaField? discField, Action<string> onWarn)
     {
         // #362 — field.object columns on a TPH subtype stay out of scope (Program D §6), but a
         // field.map @objectRef is NOT: it reaches the settable set, so its value objects reach
         // both write paths and must be validated on each.
         var mapVoFields = MapValueObjectFields(st.Entity, root, config);
         var subCls = CSharpNaming.Pascal(st.Entity.Name);
-        // rc.19 R65: the routes file lives in the BASE's namespace; a subtype (and its filter
-        // allowlist) may live in another package's, so it is named as that file sees it.
-        var subType = ValueObjectNames.TypeRef(st.Entity, root, config, routesNs);
-        var subNs = ValueObjectNames.Namespace(st.Entity, config);
-        var subAllowlist = subNs == routesNs ? $"{subCls}FilterAllowlist" : $"global::{subNs}.{subCls}FilterAllowlist";
+        var subType = ValueObjectNames.Ref(st.Entity, config);
+        var subAllowlist = ValueObjectNames.CompanionRef(st.Entity, config, subCls + "FilterAllowlist");
         var seg = st.RouteSegment;
         var subRoute = baseRoute + "/" + seg;
 
@@ -1565,14 +1662,13 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("                var parts = sortRaw.ToString().Split(':', 2);");
         sb.AppendLine($"                if (!{subCls}SortAllowlist.TryGetValue(parts[0], out var resolved)) return Results.BadRequest(new {{ error = \"invalid_sort\", field = parts[0] }});");
         sb.AppendLine("                var desc = parts.Length > 1");
-        sb.AppendLine("                    ? string.Equals(parts[1], \"desc\", global::System.StringComparison.OrdinalIgnoreCase)");
+        sb.AppendLine("                    ? string.Equals(parts[1], \"desc\", System.StringComparison.OrdinalIgnoreCase)");
         sb.AppendLine($"                    : {subCls}SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;");
         sb.AppendLine("                q = " + NullsLargestSort("q", "EF.Property<object>(x!, resolved)") + ";");
         sb.AppendLine("            }");
-        sb.AppendLine("            if (qs.TryGetValue(\"offset\", out var offRaw) && int.TryParse(offRaw, global::System.Globalization.NumberStyles.Integer, global::System.Globalization.CultureInfo.InvariantCulture, out var off) && off > 0) q = q.Skip(off);");
-        sb.AppendLine("            if (qs.TryGetValue(\"limit\", out var limRaw) && int.TryParse(limRaw, global::System.Globalization.NumberStyles.Integer, global::System.Globalization.CultureInfo.InvariantCulture, out var lim) && lim > 0) q = q.Take(lim);");
+        AppendOffsetLimit(sb, root.Api.Pagination, "            ", "offRaw", "off", "limRaw", "lim");
         sb.AppendLine("            var rows = await q.ToListAsync();");
-        sb.AppendLine("            var withCount = qs.TryGetValue(\"withCount\", out var wc) && (wc == \"1\" || string.Equals(wc, \"true\", global::System.StringComparison.OrdinalIgnoreCase));");
+        sb.AppendLine("            var withCount = qs.TryGetValue(\"withCount\", out var wc) && (wc == \"1\" || string.Equals(wc, \"true\", System.StringComparison.OrdinalIgnoreCase));");
         sb.AppendLine($"            if (!withCount) return {OkResult("rows", credentials)};");
         sb.AppendLine($"            var total = await EfCoreFilterDispatch.ApplyFilter(db.{dbSet}.OfType<{subType}>().AsNoTracking(), filter.Predicates{fmS}).CountAsync();");
         sb.AppendLine($"            return {OkResult("new { rows, total }", credentials, envelope: true)};");
@@ -1599,32 +1695,34 @@ public class RoutesGenerator : PerEntityGenerator
         // VO columns on a TPH subtype are out of scope (Program D §6) — no typed arms.
         AppendCreateHandler(sb, "/" + subRoute, subType, ValueObjectNames.ContextTypeRef(config), dbSet, requiredKeys,
             CreatedResult("prefix + \"/" + subRoute + "/\" + input." + pkProp, "input", credentials), [], mapVoFields, autoSetFields,
-            parseBody: HasDecimalField(st.Entity) || HasDurationField(st.Entity),
             deniedNavs: deniedFields.Select(f => CSharpNaming.PropertyName(f, config)).ToList(), credentials: credentials,
-            serverOwned: ServerOwnedCreateResets(st.Entity, root, config, routesNs, discField, hierarchy[0]),
+            serverOwned: ServerOwnedCreateResets(st.Entity, root, config, discField, hierarchy[0]), root: root,
             readOnlyRequired: RequiredReadOnlyProps(st.Entity, config));
 
         // Per-subtype update (PATCH + PUT): partial merge of the JSON body onto the scoped
         // entity, NEVER touching the PK or the discriminator. Cross-subtype id → 404.
         sb.AppendLine();
-        sb.AppendLine("        async global::System.Threading.Tasks.Task<IResult> Update" + subCls + "(" + pkType + " id, HttpContext http, " + ValueObjectNames.ContextTypeRef(config) + " db)");
+        sb.AppendLine("        async System.Threading.Tasks.Task<IResult> Update" + subCls + "(" + pkType + " id, HttpContext http, " + ValueObjectNames.ContextTypeRef(config) + " db)");
         sb.AppendLine("        {");
         sb.AppendLine($"            var existing = await db.{dbSet}.OfType<{subType}>().FirstOrDefaultAsync(x => x.{pkProp} == id);");
         sb.AppendLine("            if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
-        sb.AppendLine("            global::System.Text.Json.JsonDocument body;");
-        sb.AppendLine("            try { body = await global::System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }");
-        sb.AppendLine("            catch (global::System.Text.Json.JsonException) { return Results.BadRequest(new { error = \"validation\" }); }");
+        sb.AppendLine("            System.Text.Json.JsonDocument body;");
+        sb.AppendLine("            try { body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }");
+        sb.AppendLine("            catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }");
+        sb.AppendLine("            using var bodyScope = body;");
+        sb.AppendLine("            if (body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object) return ValidationIssues.Unreadable();");
+        AppendUnknownFieldsCheck(sb, root, "body");
         sb.AppendLine("            // Configured JSON options (not defaults) so a custom converter — e.g. the");
         sb.AppendLine("            // field.timestamp DateTimeOffset converter — is honored; defaults throw 500 on it.");
-        sb.AppendLine("            var jsonOpts = ((global::Microsoft.Extensions.Options.IOptions<global::Microsoft.AspNetCore.Http.Json.JsonOptions>)");
-        sb.AppendLine("                http.RequestServices.GetService(typeof(global::Microsoft.Extensions.Options.IOptions<global::Microsoft.AspNetCore.Http.Json.JsonOptions>))!)");
+        sb.AppendLine("            var jsonOpts = ((Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>)");
+        sb.AppendLine("                http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)");
         sb.AppendLine("                .Value.SerializerOptions;");
         sb.AppendLine("            var entry = db.Entry(existing);");
         AppendUpdateAutoSet(sb, autoSetFields);
         // ADR-0045 + the 0.19.4 lesson: TPH is a SEPARATE code path per port, so the
         // per-subtype merge states the same exclusion rather than inheriting it.
         AppendPartialMergeLoop(sb, discProp, [], mapVoFields, autoSetNavs, frozenNavs, HasDecimalField(st.Entity),
-            deniedFields.SelectMany(f => WireKeys(f, config)).ToList(), deniedFields.Select(f => CSharpNaming.PropertyName(f, config)).ToList(), HasDurationField(st.Entity));
+            deniedFields.SelectMany(f => WireKeys(f, config)).ToList(), deniedFields.Select(f => CSharpNaming.PropertyName(f, config)).ToList(), HasIsoDurationField(st.Entity, root));
         AppendSaveChanges(sb);
         sb.AppendLine($"            return {OkResult("existing", credentials)};");
         sb.AppendLine("        }");
@@ -1652,7 +1750,7 @@ public class RoutesGenerator : PerEntityGenerator
         // segment in the URL would be decorative (rule c).
         var sourceScope = new TphM2mSourceScope(dbSet, subType, pkProp);
         foreach (var nav in M2MNavigationBuilder.For(st.Entity, root, onWarn))
-            AppendM2mRoute(sb, nav, subRoute, pkType, root, config, routesNs, sourceScope);
+            AppendM2mRoute(sb, nav, subRoute, pkType, root, config, sourceScope);
     }
 
     /// <summary>
@@ -1676,7 +1774,7 @@ public class RoutesGenerator : PerEntityGenerator
     private static void AppendSaveChanges(StringBuilder sb, string indent = "            ")
     {
         sb.AppendLine(indent + "try { await db.SaveChangesAsync(); }");
-        sb.AppendLine(indent + "catch (global::System.Exception __saveError)");
+        sb.AppendLine(indent + "catch (System.Exception __saveError)");
         sb.AppendLine(indent + "{");
         sb.AppendLine(indent + "    if (ConstraintErrors.Classify(__saveError) is { } __constraint)");
         sb.AppendLine(indent + "        return Results.Json(");
@@ -1712,10 +1810,10 @@ public class RoutesGenerator : PerEntityGenerator
     // cross-port contract; mirrors TS mount-m2m.ts's `sourceDiscriminator` Stage 0).
     private static void AppendM2mRoute(
         System.Text.StringBuilder sb, M2MNavigation nav, string sourceRoute, string pkType, MetaRoot root,
-        GenConfig config, string routesNs, TphM2mSourceScope? sourceScope = null)
+        GenConfig config, TphM2mSourceScope? sourceScope = null)
     {
         var relSeg = nav.Name;                                    // relationship name segment
-        var targetCls = ValueObjectNames.TypeRef(nav.Target, root, config, routesNs);
+        var targetCls = ValueObjectNames.Ref(nav.Target, config);
         // Defect B — a TPH subtype target is folded into its discriminator base's single
         // table (no DbSet of its own). Bind to the BASE's DbSet and narrow with
         // OfType<Sub>() so the emitted db.<DbSet> always names a real property; every
@@ -1743,7 +1841,7 @@ public class RoutesGenerator : PerEntityGenerator
             // (it just has no relations under this segment): 200 with an empty list,
             // never 404 and never the sibling's rows.
             sb.AppendLine($"            if (!await db.{sourceScope.DbSet}.OfType<{sourceScope.SubtypeClass}>().AnyAsync(x => x.{sourceScope.PkProp} == id))");
-            sb.AppendLine($"                return Results.Ok(new global::System.Collections.Generic.List<{targetCls}>());");
+            sb.AppendLine($"                return Results.Ok(new System.Collections.Generic.List<{targetCls}>());");
         }
         if (nav.Symmetric)
         {
@@ -1752,7 +1850,7 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine($"                .Where(j => EF.Property<{fkType}>(j, \"{srcFkProp}\").Equals(id) || EF.Property<{fkType}>(j, \"{tgtFkProp}\").Equals(id))");
             sb.AppendLine($"                .Select(j => new {{ S = EF.Property<{fkType}>(j, \"{srcFkProp}\"), T = EF.Property<{fkType}>(j, \"{tgtFkProp}\") }})");
             sb.AppendLine("                .ToListAsync();");
-            sb.AppendLine($"            var relatedIds = new global::System.Collections.Generic.HashSet<{fkType}>();");
+            sb.AppendLine($"            var relatedIds = new System.Collections.Generic.HashSet<{fkType}>();");
             sb.AppendLine("            foreach (var p in pairs)");
             sb.AppendLine("                relatedIds.Add(p.S.Equals(id) ? p.T : p.S);");
         }
@@ -1763,7 +1861,7 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine($"                .Select(j => EF.Property<{fkType}>(j, \"{tgtFkProp}\"))");
             sb.AppendLine("                .ToListAsync()).ToHashSet();");
         }
-        sb.AppendLine($"            if (relatedIds.Count == 0) return Results.Ok(new global::System.Collections.Generic.List<{targetCls}>());");
+        sb.AppendLine($"            if (relatedIds.Count == 0) return Results.Ok(new System.Collections.Generic.List<{targetCls}>());");
         sb.AppendLine($"            var rows = await {targetFrom}.AsNoTracking()");
         sb.AppendLine($"                .Where(t => relatedIds.Contains(EF.Property<{fkType}>(t, \"{targetPk}\")))");
         sb.AppendLine("                .ToListAsync();");
@@ -1803,8 +1901,8 @@ public class RoutesGenerator : PerEntityGenerator
     /// </remarks>
     private static void AppendSortDefaultOrder(StringBuilder sb, MetaObject owner, string constName, GenConfig config)
     {
-        sb.Append($"    private static readonly global::System.Collections.Generic.Dictionary<string, bool> {constName} =");
-        sb.AppendLine(" new(global::System.StringComparer.OrdinalIgnoreCase)");
+        sb.Append($"    private static readonly System.Collections.Generic.Dictionary<string, bool> {constName} =");
+        sb.AppendLine(" new(System.StringComparer.OrdinalIgnoreCase)");
         sb.AppendLine("    {");
         foreach (var f in owner.Fields())
         {

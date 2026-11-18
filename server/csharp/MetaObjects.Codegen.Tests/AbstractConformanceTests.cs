@@ -60,9 +60,9 @@ public class AbstractConformanceTests
         var files = new DbContextGenerator().Generate(Context(root)).ToList();
         var ctx = Assert.Single(files);
 
-        Assert.DoesNotContain("DbSet<global::Acme.Shop.AbstractRecord>", ctx.Content);
-        Assert.DoesNotContain("DbSet<global::Acme.Shop.BaseShape>", ctx.Content);
-        Assert.Contains("DbSet<global::Acme.Shop.Widget>", ctx.Content);
+        Assert.DoesNotContain("DbSet<AbstractRecord>", ctx.Content);
+        Assert.DoesNotContain("DbSet<BaseShape>", ctx.Content);
+        Assert.Contains("DbSet<Widget>", ctx.Content);
     }
 
     // ---- Routes: no route file for abstract entities, file for the concrete one ----
@@ -71,7 +71,7 @@ public class AbstractConformanceTests
     public void Routes_omits_abstract_entities_and_includes_the_concrete_one()
     {
         var root = LoadFixture();
-        var paths = new RoutesGenerator().Generate(Context(root)).Select(f => System.IO.Path.GetFileName(f.Path)).ToList();
+        var paths = new RoutesGenerator().Generate(Context(root)).Select(f => f.Path).ToList();
 
         Assert.DoesNotContain("AbstractRecordRoutes.g.cs", paths);
         Assert.DoesNotContain("BaseShapeRoutes.g.cs", paths);
@@ -84,7 +84,7 @@ public class AbstractConformanceTests
     public void FilterAllowlist_omits_abstract_entities_and_includes_the_concrete_one()
     {
         var root = LoadFixture();
-        var paths = new FilterAllowlistGenerator().Generate(Context(root)).Select(f => System.IO.Path.GetFileName(f.Path)).ToList();
+        var paths = new FilterAllowlistGenerator().Generate(Context(root)).Select(f => f.Path).ToList();
 
         Assert.DoesNotContain("AbstractRecordFilterAllowlist.g.cs", paths);
         Assert.DoesNotContain("BaseShapeFilterAllowlist.g.cs", paths);
@@ -101,7 +101,7 @@ public class AbstractConformanceTests
     {
         var root = LoadFixture();
         var paths = new EntityGenerator().Generate(Context(root, emitAbstractShapes: false))
-            .Select(f => System.IO.Path.GetFileName(f.Path)).ToList();
+            .Select(f => f.Path).ToList();
 
         Assert.DoesNotContain("AbstractRecord.g.cs", paths);
         Assert.DoesNotContain("BaseShape.g.cs", paths);
@@ -114,13 +114,13 @@ public class AbstractConformanceTests
         var root = LoadFixture();
         var files = new EntityGenerator().Generate(Context(root, emitAbstractShapes: true)).ToList();
 
-        var abstractFile = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "AbstractRecord.g.cs");
+        var abstractFile = Assert.Single(files, f => f.Path == "AbstractRecord.g.cs");
         Assert.Contains("public abstract class AbstractRecord", abstractFile.Content);
         Assert.DoesNotContain("[Table(", abstractFile.Content);
         Assert.DoesNotContain("[Key]", abstractFile.Content);
         Assert.DoesNotContain("[Column(", abstractFile.Content);
 
-        Assert.Contains(files, f => System.IO.Path.GetFileName(f.Path) == "BaseShape.g.cs");
-        Assert.Contains(files, f => System.IO.Path.GetFileName(f.Path) == "Widget.g.cs");
+        Assert.Contains(files, f => f.Path == "BaseShape.g.cs");
+        Assert.Contains(files, f => f.Path == "Widget.g.cs");
     }
 }

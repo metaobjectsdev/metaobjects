@@ -8,15 +8,18 @@ import { formatGenResult, formatGenResultToon, type GenFileEntry, type GenFileSt
 import { formatGenResultJson } from "../lib/output-json.js";
 import type { OutputFormat } from "../lib/format.js";
 import { log } from "../lib/log.js";
-import { warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
+import { warnIfAgentContextMissesRequirements, warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
+import { requirementTestsAdvice } from "../lib/requirement-tests-advice.js";
 import { warnIfManifestIgnored } from "../lib/manifest-ignored-check.js";
 import { scanSourceForAntiPatterns } from "../lib/anti-patterns.js";
 import {
-  antiPatternRows, ranSection, skippedSection, warnCapped,
+  antiPatternRows, ranSection, skippedSection, warnAdvisory,
   type AdvisoryFindingRow, type AdvisorySection,
 } from "../lib/advisory.js";
-import { loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
-import { declaredGeneratorNames, modelHashTree, resolveGenerators, runGen, undeclaredGeneratorsMessage } from "@metaobjectsdev/codegen-ts";
+import { loadMemory, loadMemoryWithFindings, resolveCollection } from "@metaobjectsdev/sdk";
+import {
+  declaredGeneratorNames, modelHashTree, resolveGenerators, runGen, undeclaredGeneratorsMessage, walkRequirements,
+} from "@metaobjectsdev/codegen-ts";
 import type { Generator } from "@metaobjectsdev/codegen-ts";
 import type { WriteStatus } from "@metaobjectsdev/codegen-ts";
 import { packageOfResolutionKey } from "@metaobjectsdev/metadata";
@@ -37,7 +40,8 @@ import { findRuntimeBoundaryCrossings, runtimeBoundaryWarnings } from "../lib/ru
 import { hasLegacyDocsBlock, legacyDocsConfigMessage, NO_CONFIG_MESSAGE } from "../lib/docs-removed.js";
 import { buildAgentSchemaInput } from "../lib/agent-schema.js";
 import { schemaBuildOptions, schemaBuildOptionsOrWarn, type SchemaBuildOptions } from "../lib/schema-build-options.js";
-import { isUnknownSchemaConventionsError } from "@metaobjectsdev/migrate-ts";
+import { isUnknownSchemaConventionsError } from "@metaobjectsdev/migrate-ts/offline";
+import { requirementPayload } from "../lib/requirement-payload.js";
 import { existsSync } from "node:fs";
 import { genMaySkip, reportGenSkip } from "../lib/gen-skip.js";
 import {
@@ -134,10 +138,13 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   // metadata from unrelated trees. Identical object when the two configs sit together.
   const genCollection = await resolveGenCollection(collection, projectRoot);
 
-  // ADR-0062 — the generator half of the skip key (engine, codegen config and owned
+  // ADR-0064 — the generator half of the skip key (engine, codegen config and owned
   // generators, templates, project config, output-changing flags), read now, before the run
   // can write anything. The model half is added once the metadata has loaded.
-  const skipBase: GenInputs | undefined = !cliConfig.dryRun && existsSync(join(projectRoot, GEN_CONFIG_FILE))
+  // A run that names entities is narrowed and forces exactly those: it never skips, never
+  // stores a key and leaves the stored full-run key alone, so it can neither write nor satisfy it.
+  const skipBase: GenInputs | undefined = !cliConfig.dryRun && flags.entities.length === 0
+    && existsSync(join(projectRoot, GEN_CONFIG_FILE))
     ? computeGenInputs(projectRoot, collection, genCollection, {
       entities: flags.entities,
       generators: flags.generators,
@@ -146,7 +153,7 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     })
     : undefined;
 
-  // Advisory: nudge to refresh the .claude/skills docs if they predate this CLI.
+  // Advisory: nudge to refresh the agent context and skills if they predate this CLI.
   // Rooted at `projectRoot`, not ambient cwd — the scaffolded agent context sits
   // with the project that declares the metadata, so a run from a subdirectory
   // would find no manifest there and silently skip the nudge. `meta verify` makes
@@ -206,7 +213,7 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     }
   }
 
-  let metadata;
+  let loaded;
   const loadOptions = {
     ...collectionLoadOptions(genCollection),
     ...loadMemoryOptionsFrom(forgeConfig),
@@ -214,7 +221,7 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   try {
     // `--strict` is the load `meta verify` makes (ADR-0023): an unknown attribute stops the
     // run before anything is written, instead of being warned about and generated anyway.
-    metadata = await loadMemory(genCollection.configDir, flags.strict ? { ...loadOptions, strict: true } : loadOptions);
+    loaded = await loadMemoryWithFindings(genCollection.configDir, flags.strict ? { ...loadOptions, strict: true } : loadOptions);
   } catch (err) {
     reportLoadError(log, "failed to load metadata", err);
     // The hint explains the strict-only rejection (an undeclared attribute); any other load
@@ -225,16 +232,31 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     return 1;
   }
 
-  // ADR-0062 — skip rendering when the loaded model and every generator input match the last
-  // successful run and every file it recorded exists. Nothing renders and nothing is written,
-  // the manifest and the stored key included. `--force` (and every mode that does not write)
-  // never skips.
-  //
+  // ADR-0064 — the skip key's model half, from the same load the warnings below come from.
+  // The skip decision itself runs below, after those warnings have been printed.
+  const skipInputs = skipBase !== undefined ? withModel(skipBase, modelHashTree(loaded.root)) : undefined;
+
+  // ADR-0023: gen loads leniently, so an unknown attribute (`isAbstrakt: true`, a
+  // misspelt `@required`) used to pass without a word while `meta verify` rejected the
+  // same file — and the typo changed what was generated. Say so, naming attribute, node
+  // and file. Advisory: the exit code is unchanged.
+  // The findings come from the same load: the model is loaded once.
+  const metadata = loaded.root;
+  const unknownAttrFindings = unknownAttrWarnings(loaded.unknownAttributes, projectRoot);
+  const unknownAttrs = unknownAttrFindings.length > 0
+    ? [...unknownAttrFindings, UNKNOWN_ATTR_GEN_ADVICE]
+    : [];
+  for (const w of unknownAttrs) { log.warn(`warning: ${w}`); warnings.push(w); }
+
   // rc.21 part B (I2): an extender whose view now returns every row of a TPH base. Said before
   // the skip, so a skipped run still says it (as `dotnet meta gen` does): the finding is about the
   // model, and a warning that stops appearing once nothing changes is one the user never fixes.
   warnings.push(...warnWidenedExtenders(metadata, (line) => log.warn(line)));
-  const skipInputs = skipBase !== undefined ? withModel(skipBase, modelHashTree(metadata)) : undefined;
+
+  // ADR-0064 — skip rendering when the loaded model and every generator input match the last
+  // successful run and every file it recorded exists. Nothing renders and nothing is written,
+  // the manifest and the stored key included. `--force` (and every mode that does not write)
+  // never skips.
   if (skipInputs !== undefined && genMaySkip(flags)) {
     const verdict = decideGenSkip(skipInputs);
     if (verdict.skip) {
@@ -242,16 +264,6 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
       return 0;
     }
   }
-
-  // ADR-0023: gen loads leniently, so an unknown attribute (`isAbstrakt: true`, a
-  // misspelt `@required`) used to pass without a word while `meta verify` rejected the
-  // same file — and the typo changed what was generated. Say so, naming attribute, node
-  // and file. Advisory: the exit code is unchanged.
-  const unknownAttrFindings = await unknownAttrWarnings(genCollection.configDir, loadOptions, projectRoot);
-  const unknownAttrs = unknownAttrFindings.length > 0
-    ? [...unknownAttrFindings, UNKNOWN_ATTR_GEN_ADVICE]
-    : [];
-  for (const w of unknownAttrs) { log.warn(`warning: ${w}`); warnings.push(w); }
 
   // The schema settings `meta migrate` builds with, for the Prisma schema, the schema page and
   // the migrate advice. A conventions preset that does not resolve is a config error here as in
@@ -266,20 +278,27 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     return 2;
   }
 
+  // A positional that matches no loaded object is refused, exit 2, even beside names that
+  // do match: the selection would silently generate less than was asked for. Every port
+  // refuses it in the same words (Python and C# `--entities`, Maven `-Dmeta.entities`).
+  const unknownRefusal = refuseUnknownPositional(cliConfig.entities, metadata);
+  if (unknownRefusal !== undefined) {
+    log.error(unknownRefusal);
+    return 2;
+  }
+
   // FR-023 §11.1 item 2 — refuse a positional that names ONLY objects imported
   // from a dependency and excluded from output by the default exclusion rule.
-  // Distinct from the runner's existing "no entities matched" WARNING
-  // (runner.ts): that path covers a name matching nothing loaded at all; this
+  // The refusal above covers a name matching nothing loaded at all; this
   // one covers a name that matches something real, just not something this
-  // project generates. A name matching nothing falls through untouched — the
-  // runner's own warning still covers it.
+  // project generates.
   const importedRefusal = refuseImportedPositional(cliConfig.entities, metadata, genCollection);
   if (importedRefusal !== undefined) {
     log.error(importedRefusal);
     return 2;
   }
 
-  // ADR-0062 — the key this run will store, from the inputs as read before it, plus the
+  // ADR-0064 — the key this run will store, from the inputs as read before it, plus the
   // extra inputs its generators declare (hashed now, before they run). A run that
   // includes a generator that cannot declare its inputs stores none and never skips. The
   // old fingerprint goes first: a run that fails half-way must not leave one that claims
@@ -315,6 +334,8 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
       // passed: an unconfigured project's predicate admits everything, so this
       // is a no-op for the common case, not a behavior change.
       scope: genCollection.inScope,
+      // FR-023 — a dependency's requirement this project did not inherit gets no test.
+      inLedger: genCollection.inLedger,
       // FR-023 §4.3 — the collection's own source files (never a dependency's
       // snapshot artifact), so sharedModelFile() defaults its `files` selection
       // to exactly what this project itself declares.
@@ -330,11 +351,13 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
         schemaOptions,
       ),
       // The Prisma schema names its keys by the same conventions migrate uses.
-      ...(schemaOptions !== undefined && { schemaSettings: schemaOptions }),
+      schemaSettings: schemaOptions,
       // FR-043 §6 — the shipped-library selection. Always passed, including as `[]`:
       // that is what tells the post-selection audit "this project opted into none",
       // which is a different statement from a programmatic caller that never said.
       libraries: genCollection.libraries,
+      // The requirement ledger the docs site's model explorer shows, built only if it asks.
+      requirementLedger: () => requirementPayload(metadata, genCollection),
       ...(cliConfig.entities.length > 0 ? { entityFilter: cliConfig.entities } : {}),
     });
   } catch (err) {
@@ -343,6 +366,17 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   }
 
   for (const w of result.warnings) { log.warn(w); warnings.push(w); }
+
+  // Requirements the project declares (its own and the inherited ones it keeps, as the
+  // requirement-tests generator itself walks them) and nothing that tests them: say which line
+  // to wire. And when the scaffolded agent context predates the requirements pages, say how to
+  // install them. Both advisory; neither reaches the exit code.
+  const requirementCount = walkRequirements(metadata, genCollection.inLedger).length;
+  let declaredNames: string[] = [];
+  try { declaredNames = declaredGeneratorNames(forgeConfig, catalog); } catch { /* reported by runGen */ }
+  const testsAdvice = requirementTestsAdvice(declaredNames, requirementCount);
+  if (testsAdvice !== undefined) { log.warn(testsAdvice); warnings.push(testsAdvice); }
+  advise(warnIfAgentContextMissesRequirements(projectRoot, requirementCount > 0));
 
   // A first-run POINTER, not a warning: an empty selection is the designed state of a
   // fresh `meta init`, so calling it a problem would make every new project start with
@@ -394,7 +428,7 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     projectRoot, cliConfig.dryRun, flags.noAntipatterns, forgeConfig.verify?.antiPatternIgnore);
 
   const migrateDefaults = await resolveMigrateDefaults(projectRoot);
-  const migrateAdvice = schemaOptions === undefined ? undefined : await genMigrateAdvice({
+  const migrateAdvice = await genMigrateAdvice({
     schema: schemaOptions,
     metadata,
     dialect: forgeConfig.dialect,
@@ -437,13 +471,13 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
 
   // The human-readable half of the advisory pass, printed after the file listing
   // where a reader expects it. Capped for a terminal; the structured payload above
-  // already carried every finding, and the tail line says so.
+  // already carried every finding, so a structured run prints only a pointer here.
   if (antiPatterns.total > 0) {
     log.warn(
       `\nmeta gen — ${antiPatterns.total} place(s) hand-roll what MetaObjects can model ` +
         `(advisory — declaring the construct lets codegen own it):`,
     );
-    warnCapped(antiPatterns.rows.map((r) => `  ${r.message}`), flags.limit, { structured: fmt !== "text" });
+    warnAdvisory(antiPatterns.rows.map((r) => `  ${r.message}`), flags.limit, { structured: fmt !== "text" });
   }
 
   const hasFailure = files.some((f) => f.status === "conflict" || f.status === "refused");
@@ -475,7 +509,7 @@ function refuseImportedPositional(
   const allObjects = metadata.objects();
   for (const name of entityNames) {
     const matches = allObjects.filter((o) => o.name === name);
-    if (matches.length === 0) continue; // nothing loaded by this name — the runner's own warning covers it
+    if (matches.length === 0) continue; // nothing loaded by this name — refuseUnknownPositional has already refused it
     const allExcludedImports = matches.every((o) => {
       const fqn = o.resolutionKey();
       return collection.imported(fqn) && !collection.inScope(fqn);
@@ -490,6 +524,19 @@ function refuseImportedPositional(
     );
   }
   return undefined;
+}
+
+/**
+ * The refusal for positionals that match no loaded object by short name, or `undefined`
+ * when every name matches (or none is given). Names are matched as `refuseImportedPositional`
+ * matches them: against `entity.name`, never a qualified name.
+ */
+function refuseUnknownPositional(entityNames: readonly string[], metadata: MetaRoot): string | undefined {
+  if (entityNames.length === 0) return undefined;
+  const known = new Set(metadata.objects().map((o) => o.name));
+  const unknown = entityNames.filter((n) => !known.has(n));
+  if (unknown.length === 0) return undefined;
+  return `meta gen: names ${unknown.map((n) => `'${n}'`).join(", ")}, which matches no object in the metadata.`;
 }
 
 /**
@@ -598,6 +645,7 @@ async function listCatalogCommand(
       probe: {
         metadata,
         scope: genCollection.inScope,
+        inLedger: genCollection.inLedger,
         sourceFiles: genCollection.ownFiles,
         sourceRoots: sourceRootsOf(genCollection),
         agentSchema: () => schemaOptions === undefined ? undefined : buildAgentSchemaInput(

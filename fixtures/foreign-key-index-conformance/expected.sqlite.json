@@ -1,0 +1,53 @@
+{
+  "customer_order_line_item_allocations_by_region": [
+    {
+      "name": "customer_order_line_item_allocations_by_region_fulfilment_warehouse_reference_id_idx",
+      "columns": [
+        "fulfilment_warehouse_reference_id"
+      ]
+    },
+    {
+      "name": "customer_order_line_item_allocations_by_region_order_id_idx",
+      "columns": [
+        "order_id"
+      ]
+    }
+  ],
+  "order_tags": [
+    {
+      "name": "order_tags_tag_id_idx",
+      "columns": [
+        "tag_id"
+      ]
+    }
+  ],
+  "orders": [
+    {
+      "name": "orders_customer_id_idx",
+      "columns": [
+        "customer_id"
+      ]
+    },
+    {
+      "name": "orders_customer_code_idx",
+      "columns": [
+        "customer_code"
+      ]
+    }
+  ],
+  "shipments": [
+    {
+      "name": "shipments_carrier_id_idx",
+      "columns": [
+        "carrier_id"
+      ]
+    },
+    {
+      "name": "shipments_country_region_code_idx",
+      "columns": [
+        "country",
+        "region_code"
+      ]
+    }
+  ]
+}

@@ -9,7 +9,9 @@
 //     route an entity is served on, which requirements a model holds),
 //   - the naming tables and the type-mapping tables (`names.ts`, `naming.ts`,
 //     `column-mapper.ts`) — the ruling in Amendment 8 that an adopter keeps importing them,
-//   - the projection/report lowering `meta migrate` and `meta verify` also run.
+//   - the projection/report lowering `meta migrate` and `meta verify` also run,
+//   - the code writer (`CodeWriter`, `TsWriter`, ADR-0063): it lays a file out and decides
+//     nothing about what the file contains, so an owned generator keeps importing it.
 //
 // An owned copy imports these from the package, by its public entry. Every other module
 // the owned generator reaches is copied into the project, under `codegen/templates/`.
@@ -35,6 +37,8 @@ export const ENGINE_MODULES: readonly string[] = [
   "codegen-ts/src/enum-import.ts",
   "codegen-ts/src/enum-meta.ts",
   "codegen-ts/src/enum-shared.ts",
+  "codegen-ts/src/flattened.ts",
+  "codegen-ts/src/foreign-key-indexes.ts",
   "codegen-ts/src/format.ts",
   "codegen-ts/src/generator.ts",
   "codegen-ts/src/generators/agent-schema-input.ts",
@@ -44,10 +48,11 @@ export const ENGINE_MODULES: readonly string[] = [
   "codegen-ts/src/metaobjects-config.ts",
   "codegen-ts/src/names.ts",
   "codegen-ts/src/naming.ts",
-"codegen-ts/src/naming/name-claims.ts",
+  "codegen-ts/src/naming/name-claims.ts",
   "codegen-ts/src/owned-runtime.ts",
   "codegen-ts/src/pg-identifier.ts",
   "codegen-ts/src/pk-resolver.ts",
+  "codegen-ts/src/poet.ts",
   "codegen-ts/src/projection/build-projection-views.ts",
   "codegen-ts/src/projection/extract-view-spec.ts",
   "codegen-ts/src/projection/projection-detector.ts",
@@ -67,4 +72,6 @@ export const ENGINE_MODULES: readonly string[] = [
   "codegen-ts/src/templates/find-templates.ts",
   "codegen-ts/src/tph.ts",
   "codegen-ts/src/view-context.ts",
+  "codegen-ts/src/writer/code-writer.ts",
+  "codegen-ts/src/writer/ts-writer.ts",
 ];

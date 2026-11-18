@@ -18,9 +18,9 @@ const MODEL = JSON.stringify({
     children: [
       {
         "object.entity": {
-          name: "Player",
+          name: "Patient",
           children: [
-            { "source.rdb": { "@table": "players" } },
+            { "source.rdb": { "@table": "patients" } },
             { "field.long": { name: "id" } },
             { "field.string": { name: "firstName", "@maxLength": 40 } },
             { "field.string": { name: "npi", "@column": "NPI", "@maxLength": 10 } },
@@ -38,7 +38,7 @@ const MODEL = JSON.stringify({
   },
 });
 
-async function page(strategy: ColumnNamingStrategy, name = "Player"): Promise<string> {
+async function page(strategy: ColumnNamingStrategy, name = "Patient"): Promise<string> {
   const res = await new MetaDataLoader().load([new InMemoryStringSource(MODEL, { id: "m.json", format: "json" })]);
   expect(res.errors).toEqual([]);
   const root = res.root;

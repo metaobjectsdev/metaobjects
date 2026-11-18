@@ -1,5 +1,5 @@
 {
-  "$comment": "ADR-0062. Every port runs every case against its own project shape: run gen once (it must write and store a key), apply the change, then ask the port's skip decision. 'gen' is what the next gen must do ('skip' = render nothing and write nothing); 'verify' is what a LOCAL verify --codegen (CI unset, no --full) may do. A port that meets an id it does not know fails, so a new case reaches every port.",
+  "$comment": "ADR-0064. Every port runs every case against its own project shape: run gen once (it must write and store a key), apply the change, then ask the port's skip decision. 'gen' is what the next gen must do ('skip' = render nothing and write nothing); 'verify' is what a LOCAL verify --codegen (CI unset, no --full) may do. A port that meets an id it does not know fails, so a new case reaches every port.",
   "version": 1,
   "cases": [
     {

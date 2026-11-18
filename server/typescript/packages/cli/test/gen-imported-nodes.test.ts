@@ -188,6 +188,19 @@ describe("meta gen — imported nodes are excluded by default (FR-023)", () => {
     }
   });
 
+  test("(c2) a name matching no object is refused with exit 2, even beside a known one", async () => {
+    const root = setupRepo();
+    try {
+      const exit = await run(["gen", "Order", "Ordr", "--cwd", root]);
+      expect(exit).toBe(2);
+      expect(err.join("\n")).toContain("meta gen: names 'Ordr', which matches no object in the metadata.");
+      // Refused before anything is written.
+      expect(() => readdirSync(genOutDir(root))).toThrow();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("(d) verify --codegen is green afterward and reports no drift for the absent import", async () => {
     const root = setupRepo();
     try {

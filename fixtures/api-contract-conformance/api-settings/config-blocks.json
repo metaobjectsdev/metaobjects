@@ -1,0 +1,30 @@
+{
+  "_comment": "Cross-port `api` setting of .metaobjects/config.json. Each case is the `api` block (null = the key is absent). A port parses it with the reader it uses for that file and must resolve `pagination` (null = no page size) and `unknownFields` to the values below. A page size is a positive whole number however JSON spells it (50 and 50.0 are the same number; JavaScript cannot tell them apart), at most 2147483647 so every port's integer type holds it. `invalid` blocks must be refused when the config is read; the message wording is each port's own.",
+  "cases": [
+    { "name": "absent", "api": null, "pagination": null, "unknownFields": "reject" },
+    { "name": "empty block", "api": {}, "pagination": null, "unknownFields": "reject" },
+    { "name": "what init writes", "api": { "pagination": { "defaultLimit": 50, "maxLimit": 1000 }, "unknownFields": "reject" }, "pagination": { "defaultLimit": 50, "maxLimit": 1000 }, "unknownFields": "reject" },
+    { "name": "drop alone", "api": { "unknownFields": "drop" }, "pagination": null, "unknownFields": "drop" },
+    { "name": "equal limits", "api": { "pagination": { "defaultLimit": 1, "maxLimit": 1 } }, "pagination": { "defaultLimit": 1, "maxLimit": 1 }, "unknownFields": "reject" },
+    { "name": "a whole number spelled with a fraction part", "api": { "pagination": { "defaultLimit": 50.0, "maxLimit": 1000.0 } }, "pagination": { "defaultLimit": 50, "maxLimit": 1000 }, "unknownFields": "reject" },
+    { "name": "the largest page size", "api": { "pagination": { "defaultLimit": 2147483647, "maxLimit": 2147483647 } }, "pagination": { "defaultLimit": 2147483647, "maxLimit": 2147483647 }, "unknownFields": "reject" }
+  ],
+  "invalid": [
+    { "name": "api not an object", "api": "reject" },
+    { "name": "unknown api key", "api": { "pageSize": 50 } },
+    { "name": "unknownFields not a mode", "api": { "unknownFields": "ignore" } },
+    { "name": "unknownFields not a string", "api": { "unknownFields": true } },
+    { "name": "pagination not an object", "api": { "pagination": 50 } },
+    { "name": "pagination missing maxLimit", "api": { "pagination": { "defaultLimit": 50 } } },
+    { "name": "pagination missing defaultLimit", "api": { "pagination": { "maxLimit": 1000 } } },
+    { "name": "unknown pagination key", "api": { "pagination": { "defaultLimit": 50, "maxLimit": 1000, "minLimit": 1 } } },
+    { "name": "zero", "api": { "pagination": { "defaultLimit": 0, "maxLimit": 1000 } } },
+    { "name": "negative", "api": { "pagination": { "defaultLimit": 50, "maxLimit": -1 } } },
+    { "name": "a fraction", "api": { "pagination": { "defaultLimit": 50.5, "maxLimit": 1000 } } },
+    { "name": "a numeric string", "api": { "pagination": { "defaultLimit": "50", "maxLimit": 1000 } } },
+    { "name": "a boolean", "api": { "pagination": { "defaultLimit": true, "maxLimit": 1000 } } },
+    { "name": "null", "api": { "pagination": { "defaultLimit": null, "maxLimit": 1000 } } },
+    { "name": "above 2147483647", "api": { "pagination": { "defaultLimit": 50, "maxLimit": 2147483648 } } },
+    { "name": "defaultLimit above maxLimit", "api": { "pagination": { "defaultLimit": 1001, "maxLimit": 1000 } } }
+  ]
+}

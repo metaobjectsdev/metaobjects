@@ -17,6 +17,7 @@ public class PackageBindingResolverTests
     {
         OutDir = "/tmp",
         Namespace = "Acme.Generated",
+        PackageNamespacesFromMetadata = true,
     };
 
     // rc.19 R65: with no binding, a package's namespace is the package itself, PascalCased per

@@ -11,7 +11,7 @@ import java.util.Map;
 import java.util.TreeMap;
 
 /**
- * The model half of the ADR-0062 skip key, taken from the LOADED root and never from the
+ * The model half of the ADR-0064 skip key, taken from the LOADED root and never from the
  * metadata source files.
  *
  * <p>Each root-level node is hashed in its canonical effective form

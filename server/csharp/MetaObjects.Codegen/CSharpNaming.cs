@@ -25,11 +25,9 @@ namespace MetaObjects.Codegen;
 /// each member of the value object is a column of the owning table, named by core naming
 /// (<see cref="PhysicalNaming.ResolveFlattenedColumnName(MetaField, MetaField, ColumnNamingStrategy)"/>,
 /// the function <c>meta migrate</c> names them with), keyed by the member's field name.
-/// <paramref name="Column"/> is kept unchanged from before <paramref name="Members"/> existed,
-/// so an owned copy of the names generator keeps compiling and emitting what it did; on a
-/// flattened field it names no column of the table.</para>
+/// <paramref name="Column"/> is null on a flattened field: it names no column of the table.</para>
 /// </summary>
-public sealed record FieldNames(string Name, string Column, IReadOnlyDictionary<string, FieldNames>? Members = null);
+public sealed record FieldNames(string Name, string? Column, IReadOnlyDictionary<string, FieldNames>? Members = null);
 
 /// <summary>
 /// One <c>source.rdb</c> child, under the ROLE it plays.
@@ -214,7 +212,7 @@ public static class CSharpNaming
             [FIELD_SUBTYPE_URI]       = "Uri",
             [FIELD_SUBTYPE_INET]      = "IPAddress",
             // field.duration binds to the native System.TimeSpan value type (DB column is the
-            // Postgres-native interval, text elsewhere); string-backed (ISO-8601) on the wire.
+            // Postgres-native interval, a BIGINT count of microseconds elsewhere); string-backed (ISO-8601) on the wire.
             [FIELD_SUBTYPE_DURATION]  = "TimeSpan",
         };
 
@@ -396,10 +394,14 @@ public static class CSharpNaming
     public static string RoutesClassName(MetaObject entity) => Pascal(entity.Name) + "Routes";
 
     /// <summary>
-    /// The REST collection URL segment for an entity: the ENTITY NAME
+    /// The REST collection URL segment for an entity: its declared <c>@collectionName</c>, or the
+    /// configured <c>naming.collections</c> pluralizer's output, snake_cased
+    /// (<see cref="CollectionNames.Segment"/>); with neither, the ENTITY NAME
     /// <c>ToSnakeCase</c>d and then <c>Pluralize</c>d (<c>Author</c> →
     /// <c>authors</c>, <c>PostCategory</c> → <c>post_categories</c>). Never the
-    /// physical <c>@table</c>. One rule, identical in all five ports.
+    /// physical <c>@table</c>. The unconfigured rule is identical in all five ports; the
+    /// collection-name rule is shared with TypeScript
+    /// (<c>fixtures/naming-conformance/collection-segments.json</c>).
     /// <para>
     /// It was <c>Pluralize(name).ToLowerInvariant()</c>, which served
     /// <c>PostCategory</c> at <c>/postcategories</c> — the capitals carried the
@@ -426,7 +428,7 @@ public static class CSharpNaming
     {
         // ADR-0039: own — the name is THIS object's; an abstract base's value inherited by every
         // subtype would hand them all one name.
-        if (CollectionNames.Declared(entity)?.Name is not { } declared)
+        if (CollectionNames.Declared(entity) is not { } declared)
             return CollectionNames.ConfiguredPluralizer(entity) is { } configured
                 ? NamingStrategies.Pluralizer(configured)(Pascal(entity.Name))
                 : Pluralize(Pascal(entity.Name));
@@ -457,11 +459,13 @@ public static class CSharpNaming
     /// <summary>The per-object physical database names class name: <c>&lt;EntityPascal&gt;Names</c>.</summary>
     public static string NamesClassName(MetaObject entity) => NamesClassName(entity.Name);
 
-    /// <summary>rc.19 R65: <paramref name="obj"/>'s names class as a file elsewhere names it —
-    /// bare when <paramref name="qualify"/> is null (the caller is in the object's own namespace),
-    /// else <c>global::</c>-qualified in the object's namespace under that config.</summary>
+    /// <summary><paramref name="obj"/>'s names class as another file names it: bare unless
+    /// <paramref name="qualify"/> has package namespaces on, then <c>global::</c>-qualified in the
+    /// object's namespace.</summary>
     public static string NamesRef(MetaObject obj, GenConfig? qualify) =>
-        qualify is null ? NamesClassName(obj) : ValueObjectNames.Global(ValueObjectNames.Namespace(obj, qualify), NamesClassName(obj));
+        qualify is { PackageNamespacesFromMetadata: true }
+            ? ValueObjectNames.CompanionRef(obj, qualify, NamesClassName(obj))
+            : NamesClassName(obj);
 
     /// <summary>Overload taking a bare object name — used when only a super's NAME is in hand.</summary>
     public static string NamesClassName(string objectName) => Pascal(objectName) + "Names";
@@ -928,16 +932,15 @@ public static class CSharpNaming
     /// </summary>
     public static FieldNames FieldNamesOf(MetaField f, ColumnNamingStrategy strategy)
     {
-        var column = Column(f, strategy);
         if (f.SubType != FIELD_SUBTYPE_OBJECT || f.Storage != STORAGE_FLATTENED)
-            return new FieldNames(f.Name, column);
+            return new FieldNames(f.Name, Column(f, strategy));
         var members = new Dictionary<string, FieldNames>(StringComparer.Ordinal);
         if (NamingRefs.RefTarget(f, FIELD_ATTR_OBJECT_REF) is MetaObject vo)
         {
             foreach (var m in vo.Fields())
                 members[m.Name] = new FieldNames(m.Name, PhysicalNaming.ResolveFlattenedColumnName(f, m, strategy));
         }
-        return new FieldNames(f.Name, column, members);
+        return new FieldNames(f.Name, null, members);
     }
 
     /// <summary>One field member: <c>EmailField</c> / <c>EmailColumn</c>. See <see cref="PascalToken"/>
@@ -1098,11 +1101,11 @@ public static class CSharpNaming
     /// </remarks>
     public static string TableSchemaArg(
         MetaObject obj, ColumnNamingStrategy strategy, bool includeNames,
-        string role = SOURCE_ROLE_PRIMARY)
+        string role = SOURCE_ROLE_PRIMARY, GenConfig? qualify = null)
     {
         var src = ResolveObjectNames(obj, strategy)?.Sources.GetValueOrDefault(role);
         if (string.IsNullOrEmpty(src?.Schema)) return "";
-        return SourceSchemaMember(obj, strategy, includeNames, role) is { } member
+        return SourceSchemaMember(obj, strategy, includeNames, role, qualify) is { } member
             ? $", Schema = {member}"
             : $", Schema = \"{src.Schema}\"";
     }
@@ -1210,9 +1213,9 @@ public static class CSharpNaming
     /// detection (<see cref="IsAlreadyPlural"/>) on top of the historical suffix rule
     /// (<see cref="PluralizeLegacySuffixOnly"/>).</para>
     ///
-    /// <para>A Greek <c>-sis</c> noun takes <c>-ses</c> (<c>Analysis</c> -&gt; <c>Analyses</c>,
-    /// <c>Basis</c> -&gt; <c>Bases</c>) instead of the sibilant <c>+es</c> rule's
-    /// <c>Analysises</c>. Every name this spells is a C# identifier (DbSet properties, reverse
+    /// <para>A Greek <c>-sis</c> noun takes <c>-ses</c> (<c>Diagnosis</c> -&gt; <c>Diagnoses</c>,
+    /// <c>Analysis</c> -&gt; <c>Analyses</c>) instead of the sibilant <c>+es</c> rule's
+    /// <c>Diagnosises</c>. Every name this spells is a C# identifier (DbSet properties, reverse
     /// finders); the REST collection segment, which IS a cross-port wire contract, keeps
     /// <see cref="PluralizeCrossPort"/> until every port adopts the rule together.</para>
     /// </summary>
@@ -1305,8 +1308,9 @@ public static class CSharpNaming
     /// forbid.</para>
     /// </summary>
     public static string QualifiedOwnerTypeRef(string owner, MetaObject ownerObject, GenConfig config) =>
-        owner.StartsWith("global::", StringComparison.Ordinal) ? owner
-        : Pluralize(owner) == owner ? $"global::{ValueObjectNames.Namespace(ownerObject, config)}.{owner}" : owner;
+        Pluralize(owner) == owner
+            ? ValueObjectNames.Global(ValueObjectNames.Namespace(ownerObject, config), owner)
+            : owner;
 
     private static readonly char[] CSharpEscapeChars = { '\\', '"', '\t', '\n', '\r' };
 

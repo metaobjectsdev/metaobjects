@@ -1,0 +1,12 @@
+name: limit-at-max
+description: >
+  An explicit `?limit=` equal to `api.pagination.maxLimit` (4) is served in full: the cap is
+  inclusive.
+requests:
+  - id: r1
+    method: GET
+    path: /api/items?limit=4&sort=id:asc
+    expect:
+      status: 200
+      body:
+        ids: [1, 2, 3, 4]

@@ -1,5 +1,5 @@
 import { relative, isAbsolute } from "node:path";
-import { unknownAttributeFindings, type LoadMemoryOptions } from "@metaobjectsdev/sdk";
+import type { LoaderError } from "@metaobjectsdev/metadata";
 
 /**
  * The trailing advice on every unknown-attribute warning `meta gen` prints. `meta verify`
@@ -18,26 +18,18 @@ export const STRICT_GEN_HINT =
 
 /**
  * `meta gen`'s unknown-attribute warnings: one line per ADR-0023 finding a STRICT load of
- * the same collection raises, naming the attribute, the node and the file. Empty when the
- * model is clean; the caller prints {@link UNKNOWN_ATTR_GEN_ADVICE} once after them.
+ * the same collection raises (`loadMemoryWithFindings`), naming the attribute, the node and
+ * the file. Empty when the model is clean; the caller prints {@link UNKNOWN_ATTR_GEN_ADVICE}
+ * once after them.
  *
  * `gen` itself keeps loading leniently and keeps its exit code; this only ends the silence
  * between it and `meta verify`, which fails on the very same file. Files are printed
  * relative to `projectRoot` when the loader recorded an absolute path.
  */
-export async function unknownAttrWarnings(
-  configDir: string,
-  options: LoadMemoryOptions,
+export function unknownAttrWarnings(
+  findings: readonly (Error & LoaderError)[],
   projectRoot: string,
-): Promise<string[]> {
-  let findings;
-  try {
-    findings = await unknownAttributeFindings(configDir, options);
-  } catch {
-    // The lenient load already succeeded; a strict re-load that cannot even complete has
-    // nothing more precise to say, and must never turn an advisory into a failure.
-    return [];
-  }
+): string[] {
   return findings.map((f) => {
     const source = f.source as { files?: readonly string[]; jsonPath?: string };
     const files = (source.files ?? [])

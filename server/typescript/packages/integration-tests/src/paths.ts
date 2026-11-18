@@ -46,6 +46,14 @@ export const API_CONTRACT_WRITE_THROUGH_SCENARIOS_DIR = resolve(API_CONTRACT_WRI
 export const API_CONTRACT_SECRET_FIELDS_DIR = resolve(API_CONTRACT_DIR, "secret-fields");
 export const API_CONTRACT_SECRET_FIELDS_SCENARIOS_DIR = resolve(API_CONTRACT_SECRET_FIELDS_DIR, "scenarios");
 
+// Enum @default applied on create subcorpus (GENERATED lane only, every port).
+export const API_CONTRACT_ENUM_DEFAULT_DIR = resolve(API_CONTRACT_DIR, "enum-default");
+export const API_CONTRACT_ENUM_DEFAULT_SCENARIOS_DIR = resolve(API_CONTRACT_ENUM_DEFAULT_DIR, "scenarios");
+
+// `api` settings subcorpus (GENERATED lane only): `api.pagination` and `api.unknownFields: drop`.
+export const API_CONTRACT_API_SETTINGS_DIR = resolve(API_CONTRACT_DIR, "api-settings");
+export const API_CONTRACT_API_SETTINGS_SCENARIOS_DIR = resolve(API_CONTRACT_API_SETTINGS_DIR, "scenarios");
+
 export const API_CONTRACT_PROJECTION_DIR = resolve(API_CONTRACT_DIR, "projection");
 export const API_CONTRACT_PROJECTION_SCENARIOS_DIR = resolve(API_CONTRACT_PROJECTION_DIR, "scenarios");
 // FR-044 view-backed report subcorpus (GENERATED lane only, every port).
@@ -65,3 +73,11 @@ export const API_CONTRACT_DECIMAL_SCENARIOS_DIR = resolve(API_CONTRACT_DECIMAL_D
 export const API_CONTRACT_DECIMAL_SCHEMA_SQL_PATH = resolve(API_CONTRACT_DECIMAL_DIR, "schema.postgres.sql");
 export const API_CONTRACT_DECIMAL_SQLITE_SCHEMA_SQL_PATH = resolve(API_CONTRACT_DECIMAL_DIR, "schema.sqlite.sql");
 export const API_CONTRACT_DECIMAL_MYSQL_SCHEMA_SQL_PATH = resolve(API_CONTRACT_DECIMAL_DIR, "schema.mysql.sql");
+
+// fixtures/api-contract-conformance/duration/ — a field.duration is an ISO-8601 span on the wire and
+// filters and sorts as a span (read, write, filter, sort) over HTTP, generated lane only.
+export const API_CONTRACT_DURATION_DIR = resolve(API_CONTRACT_DIR, "duration");
+export const API_CONTRACT_DURATION_SCENARIOS_DIR = resolve(API_CONTRACT_DURATION_DIR, "scenarios");
+export const API_CONTRACT_DURATION_SCHEMA_SQL_PATH = resolve(API_CONTRACT_DURATION_DIR, "schema.postgres.sql");
+export const API_CONTRACT_DURATION_SQLITE_SCHEMA_SQL_PATH = resolve(API_CONTRACT_DURATION_DIR, "schema.sqlite.sql");
+export const API_CONTRACT_DURATION_MYSQL_SCHEMA_SQL_PATH = resolve(API_CONTRACT_DURATION_DIR, "schema.mysql.sql");

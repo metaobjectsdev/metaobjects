@@ -74,7 +74,7 @@ public static class CoreTypes
         // a required attr must never live in a provider that can be composed out. Mirrors
         // the TS ui/prompt provider split (and Java/Python).
         MetaObjects.Presentation.Ui.UiMetaDataProvider.Instance,
-        // R40 kind 1 — view.textarea @rows and the view.image attrs (ui-web.json): cross-port
+        // View.textarea @rows and the view.image attrs (ui-web.json): cross-port
         // vocabulary only TypeScript implements so far. C# loads them strictly and ignores them.
         MetaObjects.Presentation.Ui.UiWebMetaDataProvider.Instance,
         MetaObjects.Template.PromptMetaDataProvider.Instance,
@@ -319,9 +319,9 @@ public static class CoreTypes
             // declare; its structural child graph also comes from the spec.
             List<AttrSchema> objectAttrs = subType switch
             {
-                OBJECT_SUBTYPE_PROJECTION => [.. ObjectSchema.ObjectAttrs, ObjectSchema.ProjectionFilterAttr, .. ObjectSchema.ProjectionShapeAttrs, ObjectSchema.CollectionNameAttr, ObjectSchema.DbSetNameAttr],
-                OBJECT_SUBTYPE_REPORT     => [.. ObjectSchema.ObjectAttrs, .. ReportingSchema.ReportAttrs, ObjectSchema.CollectionNameAttr, ObjectSchema.DbSetNameAttr],
-                OBJECT_SUBTYPE_ENTITY     => [.. ObjectSchema.ObjectAttrs, ObjectSchema.CollectionNameAttr, ObjectSchema.DbSetNameAttr],
+                OBJECT_SUBTYPE_PROJECTION => [.. ObjectSchema.ObjectAttrs, ObjectSchema.ProjectionFilterAttr, .. ObjectSchema.ProjectionShapeAttrs, ObjectSchema.CollectionNameAttr],
+                OBJECT_SUBTYPE_REPORT     => [.. ObjectSchema.ObjectAttrs, .. ReportingSchema.ReportAttrs, ObjectSchema.CollectionNameAttr],
+                OBJECT_SUBTYPE_ENTITY     => [.. ObjectSchema.ObjectAttrs, ObjectSchema.CollectionNameAttr],
                 _                         => ObjectSchema.ObjectAttrs.ToList(),
             };
 
@@ -647,8 +647,8 @@ public static class CoreTypes
         // of `object.entity` (spec/metamodel/object.json), never root-level, so no root
         // wildcard is added above. Three types in one provider file (reporting.json)
         // because they are one vocabulary: a report names dimensions and measures, and
-        // both may reference a segment. `measure.derived` is NOT registered (waits for
-        // FR-037 R5). Descriptions + whenToUse come from the embedded reporting.json via
+        // both may reference a segment. `measure.derived` is FR-037 R5's first arithmetic
+        // wave (R13). Descriptions + whenToUse come from the embedded reporting.json via
         // ApplySpecDescriptions; the placeholder descriptions below are overwritten there.
         foreach (string subType in DIMENSION_SUBTYPES)
         {

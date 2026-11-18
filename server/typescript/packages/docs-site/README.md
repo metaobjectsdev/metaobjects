@@ -1,8 +1,14 @@
 # @metaobjectsdev/docs-site
 
-HTML documentation-site generator for metaobjects models — a browsable multi-page
-site (package nav, Cmd+K search, per-object / package / prompt / output pages, and
-kind-aware ER diagrams that encode object kind by shape and domain by color).
+HTML documentation-site generator for metaobjects models. It builds two sites:
+
+- **The model explorer** (the default): what the software does, the model map with slices
+  and colour-by, a page per object, prompt and requirement, the traceability matrix, the
+  trace, the API index and the gaps, all drawn from one `explorer.json`. See
+  [`docs/features/explorer-site.md`](../../../../docs/features/explorer-site.md).
+- **The classic site** (`site: "classic"`): package nav, Cmd+K search, per-object / package /
+  prompt / output pages, and kind-aware ER diagrams that encode object kind by shape and
+  domain by color.
 
 It is the engine behind the `docs-site` generator, `docsSiteFile()` from
 `@metaobjectsdev/codegen-ts/generators` (it was `meta docs --site` until 1.1.0). Output
@@ -23,14 +29,20 @@ export default defineConfig({
 ```
 
 `meta gen` writes the site to `site/` under the target (`./docs/generated/site/`), beside
-whatever other documentation the config lists. Options: `subDir` (default `site`),
+whatever other documentation the config lists. Options: `site` (`"explorer"`, the
+default, or `"classic"`), `subDir` (default `site`),
 `prompts` (an extra directory of prompt `.mustache` sources), `title`, `stamp` (footer
 text; default none, so the pages depend on the model alone and `meta verify --codegen`
 can check them), `assetBase` (see below) and `target`.
 
 ## Offline use: `assetBase`
 
-The page chrome loads five third-party files from jsDelivr (`https://cdn.jsdelivr.net/npm`):
+The explorer loads one third-party file, Cytoscape.js, from
+`${assetBase}/cytoscape@3.30.2/dist/cytoscape.min.js`, and only on the pages that draw a graph
+(the map, the object mini-maps, the trace). Without it every page still renders and the graphs
+show a notice. The rest of this section is about the classic site.
+
+The classic page chrome loads five third-party files from jsDelivr (`https://cdn.jsdelivr.net/npm`):
 daisyUI's two stylesheets, Tailwind's browser build, Mermaid and svg-pan-zoom. A site opened
 without network access therefore renders unstyled, and the Mermaid diagrams and pan/zoom do
 not work. `assetBase` replaces that base in all five tags; the default is unchanged.
@@ -60,6 +72,17 @@ packaged copy is what the option fills.
 
 ## Usage (as a library)
 
+The explorer:
+
+```ts
+import { buildExplorer, generateExplorerSite, readPromptTexts } from "@metaobjectsdev/docs-site";
+
+const explorer = buildExplorer({ model, verify, manifest, routes });
+generateExplorerSite({ explorer, outDir: "docs/site", title: "My Model", texts: readPromptTexts(explorer, ["prompts"]) });
+```
+
+The classic site:
+
 ```ts
 import { generateSite } from "@metaobjectsdev/docs-site";
 
@@ -72,7 +95,7 @@ await generateSite({
 });
 ```
 
-`generateSite` throws if the generated site contains any dangling link.
+Both throw if the generated site contains any dangling link.
 
 ## Own your docs-site theme
 
@@ -83,8 +106,8 @@ repo:
 meta eject docs-site
 ```
 
-This writes the 9 mustache templates to `codegen/docs-site/templates/` and the CSS/JS
-to `codegen/docs-site/assets/` — only files that don't already exist, so your edits are
+This writes both sites' mustache templates to `codegen/docs-site/templates/` (the
+explorer's are `explorer-*.mustache`) and their CSS/JS to `codegen/docs-site/assets/` — only files that don't already exist, so your edits are
 never clobbered (`--force` overwrites). Edit them, then regenerate:
 
 ```
@@ -95,7 +118,7 @@ meta gen
 file you didn't override falls back to the bundled default. The engine
 (`@metaobjectsdev/docs-site`) stays a versioned dependency — you own only the theme.
 
-When calling `generateSite` directly, pass `templatesDir` / `assetsDir` to point at your
+When calling `generateSite` or `generateExplorerSite` directly, pass `templatesDir` / `assetsDir` to point at your
 owned copies (a file of the same basename there wins over the bundled one).
 
 ## License

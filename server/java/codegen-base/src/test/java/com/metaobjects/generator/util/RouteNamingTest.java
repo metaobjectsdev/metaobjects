@@ -83,7 +83,7 @@ public class RouteNamingTest {
     @Test
     public void emptyAndNullAreReturnedUnchanged() {
         assertEquals("", RouteNaming.collectionSegment(""));
-        assertEquals(null, RouteNaming.collectionSegment(null));
+        assertEquals(null, RouteNaming.collectionSegment((String) null));
         assertEquals("", RouteNaming.pluralize(""));
         assertEquals(null, RouteNaming.pluralize(null));
     }
@@ -291,6 +291,54 @@ public class RouteNamingTest {
             GeneratorException ex = assertThrows(GeneratorException.class,
                 () -> RouteNaming.assertNoCollectionNameCollisions(objects));
             assertTrue(ex.getMessage(), ex.getMessage().contains(c.get("collidesOn").getAsString().toLowerCase()));
+            assertTrue(ex.getMessage(), ex.getMessage().startsWith(RouteNaming.ERR_COLLECTION_NAME_COLLISION + ":"));
         }
+    }
+
+    // ---- @collectionName / naming.collections: fixtures/naming-conformance/collection-segments.json ----
+
+    /** One object named {@code name}, with the given {@code @collectionName} and the project pluralizer. */
+    private static MetaObject segmentObject(String name, String declared, String pluralizer) {
+        String json = "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [\n"
+            + "  { \"object.entity\": { \"name\": \"" + name + "\", "
+            + (declared != null ? "\"@collectionName\": \"" + declared + "\", " : "")
+            + "\"children\": [\n"
+            + "    { \"source.rdb\": { \"@table\": \"t\" } },\n"
+            + "    { \"field.long\": { \"name\": \"id\" } },\n"
+            + "    { \"identity.primary\": { \"@fields\": \"id\" } }\n"
+            + "  ] } }\n] } }";
+        MetaDataLoader loader = new MetaDataLoader(
+                LoaderOptions.create(false, false, true), MetaDataLoader.SUBTYPE_MANUAL, "segments");
+        loader.init();
+        loader.load(List.of(new InMemoryStringSource(json, "segments/meta.json")));
+        loader.getRoot().setPhysicalNaming(
+            com.metaobjects.database.PhysicalNaming.of("snake_case", "snake_case", pluralizer));
+        return loader.getMetaObjects().get(0);
+    }
+
+    @Test
+    public void collectionSegmentsMatchTheSharedNamingConformanceCorpus() throws IOException {
+        Path repoRoot = Path.of(System.getProperty("user.dir")).resolve("../../..").normalize();
+        JsonArray cases = JsonParser.parseString(
+            Files.readString(repoRoot.resolve("fixtures/naming-conformance/collection-segments.json")))
+            .getAsJsonObject().getAsJsonArray("cases");
+        assertTrue(cases.size() > 0);
+        for (int i = 0; i < cases.size(); i++) {
+            JsonObject c = cases.get(i).getAsJsonObject();
+            String name = c.get("name").getAsString();
+            String declared = c.has("collectionName") ? c.get("collectionName").getAsString() : null;
+            String pluralizer = c.has("pluralizer") ? c.get("pluralizer").getAsString() : null;
+            assertEquals(name + " / " + declared + " / " + pluralizer, c.get("segment").getAsString(),
+                RouteNaming.collectionSegment(segmentObject(name, declared, pluralizer)));
+        }
+    }
+
+    @Test
+    public void aDeclaredCollectionNameCollidesLikeAnyOtherSegment() {
+        List<MetaObject> both = new ArrayList<>(List.of(
+            segmentObject("Author", "Persons", null), segmentObject("Person", null, null)));
+        GeneratorException e = assertThrows(GeneratorException.class,
+            () -> RouteNaming.assertNoCollectionNameCollisions(both));
+        assertTrue(e.getMessage(), e.getMessage().contains("\"persons\""));
     }
 }

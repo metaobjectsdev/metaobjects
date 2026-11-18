@@ -16,6 +16,7 @@
 package com.metaobjects.loader;
 
 import com.metaobjects.MetaData;
+import com.metaobjects.ErrorCode;
 import com.metaobjects.MetaDataException;
 import com.metaobjects.MetaDataNotFoundException;
 import com.metaobjects.MetaRoot;
@@ -88,7 +89,6 @@ public class MetaDataLoader implements LoaderConfigurable {
 
     // Concurrent loading protection
     private static final ConcurrentHashMap<String, CompletableFuture<MetaDataLoader>> activeLoaders = new ConcurrentHashMap<>();
-    private static final long DEFAULT_LOADING_TIMEOUT_MS = 30000; // 30 seconds
 
     public final static String TYPE_LOADER = "loader";
     public final static String SUBTYPE_MANUAL = "manual";
@@ -175,6 +175,7 @@ public class MetaDataLoader implements LoaderConfigurable {
     // this list AFTER catching the load's (final) thrown MetaDataException and
     // merges the two into a single per-fixture error set.
     private final List<MetaDataException> errors = new ArrayList<>();
+    private final List<MetaDataException> deferredAttrErrors = new ArrayList<>();
 
     // FR5c — envelope-shaped warnings accumulator (cross-port parallel channel).
     //
@@ -717,7 +718,21 @@ public class MetaDataLoader implements LoaderConfigurable {
      */
     public static MetaDataLoader fromDirectory(String name, Path directory,
                                                DirectorySource.Options opts, List<String> libraries) {
-        MetaDataLoader loader = createManual(false, name);
+        return fromDirectory(name, directory, opts, libraries, List.of());
+    }
+
+    /**
+     * {@link #fromDirectory(String, Path, DirectorySource.Options, List)} with a project's own
+     * vocabulary: {@code providers} are composed after the metamodel set (see
+     * {@link LoaderOptions#setProviders}). Empty is byte-identical to the overload without it.
+     *
+     * @param providers extra {@link com.metaobjects.registry.MetaDataTypeProvider}s; null or empty adds none
+     */
+    public static MetaDataLoader fromDirectory(String name, Path directory,
+                                               DirectorySource.Options opts, List<String> libraries,
+                                               List<com.metaobjects.registry.MetaDataTypeProvider> providers) {
+        MetaDataLoader loader = new MetaDataLoader(
+            LoaderOptions.create(false, false, false).setProviders(providers), SUBTYPE_MANUAL, name);
         try {
             loader.init();
             List<MetaDataSource> sources = new ArrayList<>(
@@ -735,6 +750,12 @@ public class MetaDataLoader implements LoaderConfigurable {
             loader.getRoot().setEnumDefaults(com.metaobjects.config.SourceResolver
                 .discoverEnumDefaults(List.of(directory.toAbsolutePath().toUri()))
                 .orElse(com.metaobjects.config.EnumDefaults.DEFAULT));
+            loader.getRoot().setApiSettings(com.metaobjects.config.SourceResolver
+                .discoverApiSettings(List.of(directory.toAbsolutePath().toUri()))
+                .orElse(com.metaobjects.config.ApiSettings.DEFAULT));
+            loader.getRoot().setMigrateSettings(com.metaobjects.config.SourceResolver
+                .discoverMigrateSettings(List.of(directory.toAbsolutePath().toUri()))
+                .orElse(com.metaobjects.config.MigrateSettings.DEFAULT));
         } catch (MetaDataLoadingException e) {
             throw e;
         } catch (Exception e) {
@@ -807,14 +828,32 @@ public class MetaDataLoader implements LoaderConfigurable {
      */
     public static MetaDataLoader fromUris(String name, List<URI> uris, LoaderOptions opts,
                                           com.metaobjects.database.PhysicalNaming physicalNaming) {
+        return fromUris(name, uris, opts, physicalNaming, com.metaobjects.config.DependencySet.EMPTY);
+    }
+
+    /**
+     * Like {@link #fromUris(String, List, LoaderOptions, com.metaobjects.database.PhysicalNaming)}, for a
+     * project that imports a shared model (FR-023): the {@code dependencies}' snapshot artifacts load
+     * FIRST, ahead of {@code uris}, in the same batch the build-time path uses; the set is attached to the
+     * root, and a new top-level node declared into a package a dependency owns is refused
+     * ({@code ERR_DEPENDENCY_PACKAGE_NOT_OWNED}) after the loader's own errors.
+     */
+    public static MetaDataLoader fromUris(String name, List<URI> uris, LoaderOptions opts,
+                                          com.metaobjects.database.PhysicalNaming physicalNaming,
+                                          com.metaobjects.config.DependencySet dependencies) {
         MetaDataLoader loader = (opts == null)
             ? createManual(false, name)
             : new MetaDataLoader(opts, SUBTYPE_MANUAL, name);
         try {
             loader.init();
-            List<MetaDataSource> sources = new ArrayList<>(uris.size());
+            // Not setDependencies(): that is read by init(), which has already run. The snapshot
+            // sources join this batch instead, and the root carries the set for codegen and runtime.
+            loader.getRoot().setDependencySet(dependencies);
+            List<MetaDataSource> sources = new ArrayList<>(dependencies.sources());
             for (URI uri : uris) sources.add(new UriSource(uri));
             loader.load(sources);
+            // After the loader's own errors, never before: a strict load records them rather than throwing.
+            if (loader.getErrors().isEmpty()) dependencies.refuseUnownedPackages(loader.getRoot());
             loader.register();
             com.metaobjects.database.PhysicalNaming naming = physicalNaming != null
                 ? physicalNaming : discoverNamingOrWarn(name, uris);
@@ -824,8 +863,18 @@ public class MetaDataLoader implements LoaderConfigurable {
                 .discoverWireFormat(uris).orElse(com.metaobjects.config.WireFormat.DEFAULT));
             loader.getRoot().setEnumDefaults(com.metaobjects.config.SourceResolver
                 .discoverEnumDefaults(uris).orElse(com.metaobjects.config.EnumDefaults.DEFAULT));
+            loader.getRoot().setApiSettings(com.metaobjects.config.SourceResolver
+                .discoverApiSettings(uris).orElse(com.metaobjects.config.ApiSettings.DEFAULT));
+            loader.getRoot().setMigrateSettings(com.metaobjects.config.SourceResolver
+                .discoverMigrateSettings(uris).orElse(com.metaobjects.config.MigrateSettings.DEFAULT));
         } catch (MetaDataLoadingException e) {
             throw e;
+        } catch (MetaDataException e) {
+            // The ownership refusal keeps its own coded error, as it does on the build-time path.
+            if (e.getCode().filter(ErrorCode.ERR_DEPENDENCY_PACKAGE_NOT_OWNED::equals).isPresent()) throw e;
+            throw new MetaDataLoadingException(
+                "Failed to load from URIs", name,
+                loader.getLoadingState().getCurrentPhase(), 0, e);
         } catch (Exception e) {
             throw new MetaDataLoadingException(
                 "Failed to load from URIs", name,
@@ -1042,12 +1091,30 @@ public class MetaDataLoader implements LoaderConfigurable {
     }
 
     /**
+     * Record an {@code ERR_UNKNOWN_ATTR} found while parsing, to be appended to {@link #getErrors()}
+     * once every source of this batch has been parsed. The cross-port contract orders structural
+     * errors (unknown type / subtype, ...) ahead of attribute-schema errors, because the TypeScript
+     * reference checks attributes in a pass after the tree is built; recording this one inline would
+     * interleave it in document order (see {@code provider-custom-vocabulary-missing-provider-fails}).
+     */
+    public void addDeferredAttrError(MetaDataException error) {
+        if (error == null) return;
+        deferredAttrErrors.add(error);
+    }
+
+    private void flushDeferredAttrErrors() {
+        errors.addAll(deferredAttrErrors);
+        deferredAttrErrors.clear();
+    }
+
+    /**
      * Clear accumulated errors. Called at the start of {@link #load(List)} so
      * a fresh batch does not see stale errors from a prior load on the same
      * loader instance.
      */
     void clearErrors() {
         errors.clear();
+        deferredAttrErrors.clear();
     }
 
     /**
@@ -1163,9 +1230,22 @@ public class MetaDataLoader implements LoaderConfigurable {
             // ai*/json*/object.managed tooling vocabulary). Downstream apps that
             // need extra vocabulary use setTypeRegistry(compose(...)) — their own
             // unsealed registry.
-            typeRegistry = com.metaobjects.registry.RegistryManifest.defaultLoaderRegistry();
+            typeRegistry = resolveDefaultTypeRegistry();
         }
         return typeRegistry;
+    }
+
+    /**
+     * The registry this loader uses when none was set explicitly: the shared sealed default, or —
+     * when {@link LoaderOptions#getProviders()} is non-empty — a sealed registry composed from the
+     * metamodel set plus those providers (the sanctioned project-vocabulary path).
+     */
+    private com.metaobjects.registry.MetaDataRegistry resolveDefaultTypeRegistry() {
+        List<com.metaobjects.registry.MetaDataTypeProvider> extra =
+            loaderOptions == null ? List.of() : loaderOptions.getProviders();
+        return extra.isEmpty()
+            ? com.metaobjects.registry.RegistryManifest.defaultLoaderRegistry()
+            : com.metaobjects.registry.RegistryManifest.composeLoaderRegistry(extra);
     }
 
     public MetaDataLoader setTypeRegistry(MetaDataRegistry typeRegistry) {
@@ -1437,6 +1517,15 @@ public class MetaDataLoader implements LoaderConfigurable {
         if (args.get(LoaderConfigurationConstants.ARG_STRICT) != null) {
             getLoaderOptions().setStrict(Boolean.parseBoolean(args.get(LoaderConfigurationConstants.ARG_STRICT)));
         }
+        String timeout = args.get(LoaderConfigurationConstants.ARG_INIT_TIMEOUT_MS);
+        if (timeout != null) {
+            try {
+                getLoaderOptions().setInitTimeoutMs(Long.parseLong(timeout.trim()));
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("Loader argument '" + LoaderConfigurationConstants.ARG_INIT_TIMEOUT_MS
+                    + "' must be a positive number of milliseconds, got \"" + timeout + "\"", e);
+            }
+        }
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////
@@ -1446,7 +1535,7 @@ public class MetaDataLoader implements LoaderConfigurable {
         if (typeRegistry == null) {
             // ADR-0023 Decision 2 — default to the sealed defined-provider-set
             // registry (see getTypeRegistry()), not the polluted SPI singleton.
-            typeRegistry = com.metaobjects.registry.RegistryManifest.defaultLoaderRegistry();
+            typeRegistry = resolveDefaultTypeRegistry();
             log.debug("Initialized default (sealed metamodel) MetaDataRegistry for loader: {}", getName());
         }
 
@@ -1458,11 +1547,12 @@ public class MetaDataLoader implements LoaderConfigurable {
 
     /**
      * Initialize the MetaDataLoader with enhanced thread-safe state management and concurrent protection.
+     * Waits up to {@link LoaderOptions#getInitTimeoutMs()} for the load.
      * @return This MetaDataLoader
-     * @throws MetaDataLoadingException if initialization fails
+     * @throws MetaDataLoadingException if initialization fails or times out
      */
     public MetaDataLoader init() {
-        return initWithConcurrencyProtection(DEFAULT_LOADING_TIMEOUT_MS);
+        return initWithConcurrencyProtection(loaderOptions.getInitTimeoutMs());
     }
 
     /**
@@ -1495,7 +1585,10 @@ public class MetaDataLoader implements LoaderConfigurable {
         } catch (TimeoutException e) {
             activeLoaders.remove(loaderKey);
             throw new MetaDataLoadingException(
-                "Loader initialization timeout after " + timeoutMs + "ms: " + loaderKey,
+                "Loader initialization timeout after " + timeoutMs + "ms: " + loaderKey
+                    + ". A large model can need longer: raise LoaderOptions.setInitTimeoutMs, the loader"
+                    + " argument '" + LoaderConfigurationConstants.ARG_INIT_TIMEOUT_MS + "' (Maven: -Dmeta.loaderTimeoutMs),"
+                    + " or -D" + LoaderOptions.INIT_TIMEOUT_PROPERTY + ".",
                 getName(), LoadingState.Phase.INITIALIZING, timeoutMs, e);
         } catch (InterruptedException | ExecutionException e) {
             activeLoaders.remove(loaderKey);
@@ -1801,6 +1894,7 @@ public class MetaDataLoader implements LoaderConfigurable {
             }
         } finally {
             deferringOverlays = false;
+            flushDeferredAttrErrors();
         }
 
         // ADR-0055 — apply every queued overlay now, before super resolution.

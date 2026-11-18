@@ -18,6 +18,7 @@ import { API_CONTRACT_JSONB_DIR, API_CONTRACT_JSONB_SCENARIOS_DIR } from "../src
 import { openApiCheck, type ContractCheck } from "../src/api-contract-openapi-check.ts";
 import { loadScenarios, assertResponse, type ApiScenario, parseBodyExact } from "../src/api-contract-scenario.ts";
 import { startPostgres } from "../src/postgres-container.ts";
+import { OUTPUT_LAYOUTS, postgresFor } from "../src/output-layout.ts";
 import { loadMetadataFile } from "../src/load-metadata.ts";
 import { startJsonbServer, type JsonbServerHandle, type DocumentRow } from "../src/api-contract-jsonb-server.ts";
 import {
@@ -48,13 +49,14 @@ describe("api contract jsonb open-bag — hand-rolled reference lane", () => {
   }
 });
 
-describe("api contract jsonb open-bag — GENERATED routes lane", () => {
+for (const layout of OUTPUT_LAYOUTS) describe(`api contract jsonb open-bag — GENERATED routes lane [${layout}]`, () => {
+  const startDb = postgresFor(layout);
   for (const scenario of loadScenarios(API_CONTRACT_JSONB_SCENARIOS_DIR)) {
     test(scenario.name, async () => {
-      const pg = await startPostgres();
+      const pg = await startDb();
       let server: GeneratedJsonbServerHandle | null = null;
       try {
-        server = await startGeneratedJsonbServer(pg.connectionUri, META_PATH);
+        server = await startGeneratedJsonbServer(pg.connectionUri, META_PATH, layout);
         await server.applySeed(SEED.rows);
         await runScenario(scenario, server, openApiCheck("jsonb"));
       } finally {

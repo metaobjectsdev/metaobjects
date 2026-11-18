@@ -15,7 +15,8 @@
 // base-declared and a subtype-declared field — the defect is not specific to the level
 // the field is declared at — and by compiling the tree, which is the symptom adopters saw.
 
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, setDefaultTimeout } from "bun:test";
+import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
 import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -31,6 +32,8 @@ import { buildPkMap } from "../src/pk-resolver.js";
 import { buildRelationMap } from "../src/relation-resolver.js";
 import type { EmittedFile, GenContext } from "../src/generator.js";
 import type { Dialect } from "../src/metaobjects-config.js";
+
+setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
 const MODEL = {
   "metadata.root": {

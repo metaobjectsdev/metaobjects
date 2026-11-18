@@ -1,5 +1,6 @@
 package acme.catalog
 
+import com.fasterxml.jackson.`annotation`.JsonIgnoreProperties
 import com.fasterxml.jackson.databind.`annotation`.JsonDeserialize
 import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Size
@@ -12,6 +13,7 @@ import kotlin.jvm.JvmStatic
 /**
  * GENERATED — do not hand-edit. Regenerated from metadata.
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public data class Product(
   public val id: Long? = null,
   @field:NotNull

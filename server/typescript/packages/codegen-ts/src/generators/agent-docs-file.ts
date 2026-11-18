@@ -333,7 +333,7 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
       }
 
       // ---- requirements.md
-      const requirements = renderAgentRequirementsPage(ctx.loadedRoot);
+      const requirements = renderAgentRequirementsPage(ctx.loadedRoot, ctx.inLedger);
       if (requirements !== "") files.push({ path: `${dir}/requirements.md`, content: requirements });
 
       return files;

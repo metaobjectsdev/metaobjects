@@ -51,7 +51,7 @@ public class ValidationConformanceTest extends SharedRegistryTestBase {
     @Rule
     public TemporaryFolder tmp = new TemporaryFolder();
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
 
     private static Path repoRoot() {
         return Path.of(System.getProperty("user.dir")).resolve("../../..").normalize();
@@ -66,17 +66,34 @@ public class ValidationConformanceTest extends SharedRegistryTestBase {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     public void generatedDtoEnforcesCorpusVerdicts() throws Exception {
+        runCorpus("meta.json", "cases.json", "Account", "acme.auth");
+    }
+
+    /** Entity-scoped cross-field validators (comparison / requiredWhen / presentIff / atLeastOne / exactlyOne, with @condition)
+     *  enforced by the class-level Bean Validation on the generated full DTO. */
+    @Test
+    public void generatedDtoEnforcesCrossFieldVerdicts() throws Exception {
+        runCorpus("meta.cross-field.json", "cross-field-cases.json", "Event", "acme.events");
+    }
+
+    @SuppressWarnings("unchecked")
+    private void runCorpus(String metaName, String casesName, String defaultEntity, String corpusPkg)
+            throws Exception {
         Path corpus = repoRoot().resolve("fixtures/validation-conformance");
-        Path metaFile = corpus.resolve("meta.json");
-        Path casesFile = corpus.resolve("cases.json");
-        assertTrue("corpus meta.json must exist at " + metaFile, Files.exists(metaFile));
-        assertTrue("corpus cases.json must exist at " + casesFile, Files.exists(casesFile));
+        Path metaFile = corpus.resolve(metaName);
+        Path casesFile = corpus.resolve(casesName);
+        assertTrue("corpus meta must exist at " + metaFile, Files.exists(metaFile));
+        assertTrue("corpus cases must exist at " + casesFile, Files.exists(casesFile));
 
         // 1. Load the corpus metadata.
         MetaDataLoader loader = SpringTestFixtures.loadFixture(
-                tmp.newFolder().toPath(), "validationMeta", Files.readString(metaFile));
+                tmp.newFolder().toPath(), metaName.replace('.', '_'), Files.readString(metaFile));
+
+        // The corpus pins the cross-port duration rule (strict ISO-8601): wire.durations: iso.
+        loader.getRoot().setWireFormat(new com.metaobjects.config.WireFormat(
+            com.metaobjects.config.WireFormat.Decimals.NATIVE, com.metaobjects.config.WireFormat.NullMembers.NATIVE,
+            com.metaobjects.config.WireFormat.Durations.ISO));
 
         // 2. Generate the Account DTO.
         Path gen = tmp.newFolder("gen-dto").toPath();
@@ -84,8 +101,8 @@ public class ValidationConformanceTest extends SharedRegistryTestBase {
         generator.setArgs(Map.of("outputDir", gen.toString()));
         generator.execute(loader);
 
-        File dtoSrc = gen.resolve("acme/auth/AccountDto.java").toFile();
-        assertTrue("AccountDto.java must be generated at " + dtoSrc, dtoSrc.isFile());
+        File dtoSrc = gen.resolve(corpusPkg.replace('.', '/') + "/" + defaultEntity + "Dto.java").toFile();
+        assertTrue(defaultEntity + "Dto.java must be generated at " + dtoSrc, dtoSrc.isFile());
 
         // 3. Compile the generated source in-memory. -parameters so Jackson can bind
         //    record components by name from the corpus payload JSON.
@@ -112,7 +129,7 @@ public class ValidationConformanceTest extends SharedRegistryTestBase {
             for (var d : diags.getDiagnostics()) {
                 sb.append("  ").append(d.getKind()).append(": ").append(d.getMessage(null)).append('\n');
             }
-            sb.append("\n=== AccountDto.java ===\n").append(Files.readString(dtoSrc.toPath()));
+            sb.append("\n=== " + defaultEntity + "Dto.java ===\n").append(Files.readString(dtoSrc.toPath()));
             fail(sb.toString());
         }
 
@@ -137,8 +154,8 @@ public class ValidationConformanceTest extends SharedRegistryTestBase {
                 // A case may name a corpus entity other than Account (Ledger — an
                 // ASSIGNED primary key, a shape Account's @generation-backed key
                 // cannot express).
-                String entity = c.get("entity") == null ? "Account" : String.valueOf(c.get("entity"));
-                Class<?> dtoCls = cl.loadClass("acme.auth." + entity + "Dto");
+                String entity = c.get("entity") == null ? defaultEntity : String.valueOf(c.get("entity"));
+                Class<?> dtoCls = cl.loadClass(corpusPkg + "." + entity + "Dto");
 
                 boolean actualValid;
                 String detail;
@@ -168,7 +185,7 @@ public class ValidationConformanceTest extends SharedRegistryTestBase {
             if (failures.length() > 0) {
                 fail("validation-conformance verdict mismatches (" + passed + "/" + cases.size()
                         + " passed):\n" + failures
-                        + "\n=== AccountDto.java ===\n" + Files.readString(dtoSrc.toPath()));
+                        + "\n=== " + defaultEntity + "Dto.java ===\n" + Files.readString(dtoSrc.toPath()));
             }
             assertEquals("all corpus cases must match the single-source verdict",
                     cases.size(), passed);

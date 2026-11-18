@@ -14,7 +14,7 @@
 // Stable names mirror the canonical manifest exactly for the kotlin slice:
 //   entity, routes, output-parser, output-prompt, render-helper, extractor,
 //   filter-allowlist, names, exposed-table, relations, spring-config,
-//   stored-proc, validator, requirement-tests, report-export. (Kotlin has NO `template` generator — the manifest
+//   stored-proc, validator, requirement-tests, report-export, shared-model. (Kotlin has NO `template` generator — the manifest
 //   deliberately omits kotlin from it.)
 
 package com.metaobjects.generator.kotlin
@@ -128,8 +128,16 @@ private val ENUM_EMIT: List<String> = listOf(KotlinEnumEmitter::class.java.name)
 /** The decimal wire file `entity`, `routes` and `exposed-table` each write beside their own output. */
 private val DECIMAL_WIRE_EMIT: List<String> = listOf(KotlinDecimalWireEmitter::class.java.name)
 
+/** The cross-field validator rules `entity` renders as `@AssertTrue` properties and `routes` checks on a
+ *  TPH per-subtype create. */
+private val CROSS_FIELD_EMIT: List<String> = listOf(KotlinCrossFieldRules::class.java.name)
+
 /** The duration wire file `entity`, `routes` and `exposed-table` each write beside their own output. */
 private val DURATION_WIRE_EMIT: List<String> = listOf(KotlinDurationWireEmitter::class.java.name)
+
+/** The validation envelope file `routes` writes beside its controllers. */
+private val VALIDATION_ISSUES_EMIT: List<String> =
+    listOf(KotlinValidationIssuesEmitter::class.java.name, KotlinUnknownBodyKeysEmitter::class.java.name)
 
 /** The rest of `api-docs`: the page IR (one file, `KotlinApiModel.kt`, which also holds the unit, symbol, field
  *  and kind types), the builder that fills it, the renderer and the page paths. */
@@ -161,7 +169,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         layer = GeneratorLayer.MODEL,
         factory = ::KotlinEntityGenerator,
         ejectResourcePath = ejectPath("KotlinEntityGenerator"),
-        ejectWith = ENUM_EMIT + DECIMAL_WIRE_EMIT + DURATION_WIRE_EMIT,
+        ejectWith = ENUM_EMIT + DECIMAL_WIRE_EMIT + CROSS_FIELD_EMIT + DURATION_WIRE_EMIT,
     ),
     "routes" to GeneratorInfo(
         name = "routes",
@@ -170,7 +178,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         layer = GeneratorLayer.API,
         factory = ::KotlinSpringControllerGenerator,
         ejectResourcePath = ejectPath("KotlinSpringControllerGenerator"),
-        ejectWith = DECIMAL_WIRE_EMIT + DURATION_WIRE_EMIT,
+        ejectWith = DECIMAL_WIRE_EMIT + CROSS_FIELD_EMIT + DURATION_WIRE_EMIT + VALIDATION_ISSUES_EMIT,
         requires = listOf("entity", "exposed-table", "filter-allowlist", "relations"),
     ),
     "repository" to GeneratorInfo(
@@ -306,6 +314,16 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         factory = ::KotlinReportExportGenerator,
         ejectResourcePath = ejectPath("KotlinReportExportGenerator"),
         requires = listOf("entity"),
+    ),
+    "shared-model" to GeneratorInfo(
+        name = "shared-model",
+        description = "FR-023: a publisher's flattened shared-model artifact + manifest for a consumer's `meta deps sync`. " +
+            "[Args: outputDir, name, include, files; optional exclude and version, which defaults to the " +
+            "project's version.]",
+        tier = GeneratorTier.NATIVE,
+        layer = GeneratorLayer.CAPABILITY,
+        factory = ::KotlinSharedModelGenerator,
+        ejectResourcePath = ejectPath("KotlinSharedModelGenerator"),
     ),
     "requirement-tests" to GeneratorInfo(
         name = "requirement-tests",

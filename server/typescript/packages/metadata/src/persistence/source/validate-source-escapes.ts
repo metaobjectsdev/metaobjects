@@ -139,7 +139,7 @@ export function validateSourceEscapes(root: MetaData): SourceEscapeValidationRes
     // of a TOOL-SYNTHESIZED body; with @sql the author owns the body (and its
     // WHERE), so wrapping it is deferred cleverness (design doc D5) — reject.
     if (hasSqlHost && obj.subType === OBJECT_SUBTYPE_PROJECTION) {
-      // C1: the effective @filter (mirrors validateProjectionFilter) — an inherited row scope
+      // The effective @filter (mirrors validateProjectionFilter) — an inherited row scope
       // cannot be applied to an author-owned body either, so it is refused, never dropped.
       const filter = effectiveProjectionFilter(obj);
       if (filter !== undefined) {

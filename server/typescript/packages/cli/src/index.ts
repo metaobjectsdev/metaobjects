@@ -5,6 +5,7 @@ import { resolveFormat, isValidFormat, VALID_FORMATS, type OutputFormat } from "
 import { resolveCollection } from "@metaobjectsdev/sdk";
 import { GENERATOR_HELP } from "./commands/generator-help.js";
 import { describeError } from "./lib/error-text.js";
+import { PACKAGED_MODEL_DIR } from "./lib/dependency-transports.js";
 import { registerProjectNamingStrategies } from "./lib/naming-preload.js";
 export { defineConfig } from "@metaobjectsdev/codegen-ts";
 export type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
@@ -29,10 +30,10 @@ USAGE:
 
 COMMANDS:
   init                  Scaffold a MetaObjects project in the current repo
-  init --refresh-docs   Refresh .metaobjects/AGENTS.md + CLAUDE.md after CLI upgrades
+  init --refresh-docs   Refresh .metaobjects/AGENTS.md and the skills after CLI upgrades
   init --with-docs      Scaffold with documentation wired (docsFile(), apiDocsFile()) so the first \`meta gen\` writes it
   init --config-only    Write only .metaobjects/config.json — for a Maven- or pip-rooted project
-  agent-docs            Scaffold only the agent-context (.metaobjects/ + .claude/skills/) — canonical redirect target for all language ports
+  agent-docs            Scaffold only the agent-context (.metaobjects/AGENTS.md + skills) — canonical redirect target for all language ports
   gen [<entity>...]     Codegen TS targets from your declared metadata
   generator new <name>  Write a generator of your own into codegen/generators/ and wire it — the
                         way to get any output MetaObjects does not ship (Zod, a client, …)
@@ -177,7 +178,7 @@ MIGRATE FLAGS:
   --slug <name>         Required when changes are present (e.g., add-user-shipping)
   --allow <csv>         Comma-separated destructive-change permissions:
                         drop-column,drop-table,type-change,drop-index,drop-fk,
-                        drop-check,drop-view,drop-view-cascade,
+                        drop-check,drop-view,drop-view-cascade,drop-column-read-by-view,
                         adopt-view,nullable-to-not-null,drop-identity-default,
                         drop-comment,drop-unmanaged
                         drop-column DELETES the column's data; for a renamed
@@ -231,7 +232,7 @@ FLAGS:
                         templates/, codegen/, the engine version, these flags) all match
                         the last successful run's, and whose generated files all still
                         match what that run left, renders nothing and writes nothing
-                        (ADR-0062; the metadata is still loaded, since the key is made of it).
+                        (ADR-0064; the metadata is still loaded, since the key is made of it).
   --format <toon|json|text>   Output format (global flag; default toon off-TTY)
   <entity> [<entity>]   Positional filter on entity names
   --help, -h            Print this help
@@ -291,8 +292,8 @@ emit for your model.
   deps: `meta deps — sync a declared metadata dependency's committed snapshot
 
 USAGE:
-  meta deps sync [<name>...]   Resolve each declared dependency (path, npm or python
-                                transport), validate its manifest + artifact, copy it into .metaobjects/deps/<name>/,
+  meta deps sync [<name>...]   Resolve each declared dependency (path, npm, python, maven
+                                or nuget transport), validate its manifest + artifact, copy it into .metaobjects/deps/<name>/,
                                 and pin it in .metaobjects/deps.lock.json. Naming one or more
                                 <name>s syncs only those; bare 'sync' syncs everything
                                 declared. A dependency removed from config is PRUNED from
@@ -314,8 +315,14 @@ Transports: "path" is a directory relative to the config's directory; "npm" is a
 npm package, resolved from the config's directory the way Node resolves it; "python" is an
 installed Python package, found with importlib.util.find_spec by the project's interpreter
 ($METAOBJECTS_PYTHON, else $VIRTUAL_ENV, else ./.venv, else python3 — the interpreter used is
-printed). "dir" names the shared-model directory inside an npm or python package (default:
-the package root). Install the package with your package manager first; sync copies its
+printed); "maven" is a "groupId:artifactId" jar read from the local Maven repository
+($MAVEN_REPO_LOCAL, else -Dmaven.repo.local in $MAVEN_ARGS / $MAVEN_OPTS, else
+<localRepository> in ~/.m2/settings.xml, else ~/.m2/repository); "nuget" is a package id
+read from the NuGet global packages folder ($NUGET_PACKAGES, else ~/.nuget/packages).
+"maven" and "nuget" REQUIRE "version" (illegal beside the other transports) and are never
+downloaded: fetch first (mvn dependency:get, dotnet restore). "dir" names the shared-model
+directory inside the package (default: the package root for npm and python, "${PACKAGED_MODEL_DIR}"
+for maven and nuget). Install the package with your package manager first; sync copies its
 shared model into the committed snapshot, so nothing else needs it installed.
 
 The lock is the ONLY thing 'meta deps sync' writes to besides the snapshot directory —
@@ -335,14 +342,19 @@ FLAGS:
                         An <Entity>.names.ts artifact is the exception: it must match a
                         fresh regen exactly — a hand edit in it is itself the defect.
                         Needs metaobjects.config.ts; exit 2 if absent.
-                        Every generated file that carries a hand edit is still LISTED
-                        (a notice, exit code unchanged), so an edit is never invisible.
+                        Every generated file that carries a hand edit is LISTED, so an
+                        edit is never invisible. Whether that fails the run is the
+                        project's verify.handEdits in .metaobjects/config.json: "fail"
+                        exits 1 ('meta init' writes it for a new project); "notice", or
+                        no key, lists them and leaves the exit code alone.
   --forbid-hand-edits   With --codegen: fail (exit 1) on ANY hand edit inside generated
-                        code, for teams that want generated files untouchable.
+                        code for this run, whatever verify.handEdits says.
+  --allow-hand-edits    With --codegen: list hand edits as a notice and exit 0 for this
+                        run, relaxing verify.handEdits: "fail".
   --full                With --codegen: render and compare everything. Without it, a LOCAL
                         run whose inputs match the last successful 'meta gen' and whose
                         generated files all still match their recorded hashes answers "no
-                        drift" without rendering. CI (CI set) always renders (ADR-0062).
+                        drift" without rendering. CI (CI set) always renders (ADR-0064).
   --docs                Removed in 1.1.0: says so and exits 2. --codegen checks documentation
                         with everything else \`generators\` declares.
   --deps                Dependency drift — re-resolve each declared dependency exactly as
@@ -416,7 +428,8 @@ A bare 'meta verify' also runs an ADVISORY anti-pattern pass: it scans your auth
 source for hand-rolled aggregates, money-as-float, and CHECK-IN enums and points you
 at the construct that models them (origin.aggregate / field.currency / field.enum).
 The same pass names every foreign key with no index on its referencing column(s)
-and the index.lookup that would cover it (migrate never adds one on its own).
+and the index.lookup that would cover it (migrate adds one only when
+.metaobjects/config.json sets "migrate": { "foreignKeyIndexes": true }).
 Warnings only — it never fails the build. Opt out with --no-antipatterns or
 META_NO_ANTIPATTERNS=1.
 
@@ -464,6 +477,9 @@ USAGE:
 
 FLAGS:
   --out <file>          Write output to a file (default: stdout)
+  --effective           Write the effective tree: every inherited field, child and
+                        attribute materialized on the node that inherits it (overlays
+                        are merged either way). The input the explorer builder reads.
   --help, -h            Print this help
 `,
   fmt: `meta fmt — rewrite metadata files into canonical form
@@ -505,7 +521,7 @@ USAGE:
   meta init [flags]
 
 FLAGS:
-  --refresh-docs        Refresh .metaobjects/AGENTS.md + CLAUDE.md after CLI upgrades
+  --refresh-docs        Refresh .metaobjects/AGENTS.md and the skills after CLI upgrades
   --docs-only           Write only the agent-context files — no metadata sources, no
                         codegen scaffold, no config. Pair with --refresh-docs to update
                         an existing project after upgrading.
@@ -515,19 +531,27 @@ FLAGS:
                         value is refused, never dropped)
   --client <fw>         Declare a client framework for the agent context (repeatable):
                         react | tanstack | angular
-  --no-skills           Skip the .claude/skills/ scaffold
+  --no-skills           Skip the skills scaffold
+  --skills-dir <dir>    Where the skills install (default .claude/skills, which Claude Code
+                        reads; .agents/skills for assistants that read that). Remembered
+                        for later refreshes
   --force               Overwrite existing files
   --quiet               Suppress output
   --print-only          Print what would be written, don't write
-  --d1                  Include D1 (Cloudflare) migration config
-  --no-wire-root        Skip wiring root metaobjects.config.ts
+  --dialect <d>         sqlite (default) | postgres | mysql | d1. Sets codegen's \`dialect\` in
+                        metaobjects.config.ts and, for sqlite/postgres/d1, \`migrate.dialect\`
+                        in .metaobjects/config.json, so neither is edited by hand. d1 is
+                        --d1; mysql is codegen only (meta migrate does not own MySQL schema)
+  --d1                  Include D1 (Cloudflare) migration config (same as --dialect d1)
+  --no-wire-root        Skip wiring the .metaobjects/AGENTS.md import into the root
+                        AGENTS.md / CLAUDE.md
   --config-only         Write only .metaobjects/config.json (no TS scaffold) — declares
                         metadata sources for the Node CLI from a Maven- or pip-rooted project
   --with-docs           Wire docsFile() and apiDocsFile() and a docs target in the scaffolded
                         config, so the first \`meta gen\` writes documentation
   --help, -h            Print this help
 `,
-  "agent-docs": `meta agent-docs — scaffold the agent-context (.metaobjects/ always-on files + .claude/skills/)
+  "agent-docs": `meta agent-docs — scaffold the agent-context (.metaobjects/AGENTS.md + the metaobjects-* skills)
 
 USAGE:
   meta agent-docs [--server <lang>]... [--client <fw>]... [--out <dir>] [flags]
@@ -536,8 +560,10 @@ FLAGS:
   --server <lang>       Server language (repeatable): typescript|java|kotlin|csharp|python
   --client <fw>         Client framework (repeatable): react|tanstack|angular
   --out <dir>           Output directory (default: current directory)
-  --no-skills           Skip .claude/skills/ scaffold
-  --no-wire-root        Skip wiring root CLAUDE.md @import
+  --no-skills           Skip the skills scaffold
+  --skills-dir <dir>    Where the skills install (default .claude/skills; .agents/skills for
+                        assistants that read that). Remembered for later refreshes
+  --no-wire-root        Skip wiring the import into the root AGENTS.md / CLAUDE.md
   --help, -h            Print this help
 
 NOTE: This is the canonical scaffolder for all language ports. Non-Node CLIs redirect here.
@@ -719,12 +745,13 @@ export async function run(argv: string[]): Promise<number> {
           servers: flags.servers,
           clients: flags.clients,
           noSkills: flags.noSkills,
+          ...(flags.skillsDir !== undefined && { skillsDir: flags.skillsDir }),
           wireRoot: flags.wireRoot,
           docsOnly: true,
         });
-        log.info(`Scaffolded the MetaObjects agent context (${result.created.length} files): .metaobjects/AGENTS.md + .claude/skills/metaobjects-*.`);
+        log.info(`Scaffolded the MetaObjects agent context (${result.created.length} files): .metaobjects/AGENTS.md + the metaobjects-* skills.`);
         for (const w of result.warnings) log.info(`  ${w}`);
-        log.info("Re-run agent-docs to update; --no-wire-root to skip the root CLAUDE.md @import.");
+        log.info("Re-run agent-docs to update; --no-wire-root to skip the root AGENTS.md/CLAUDE.md @import.");
         return 0;
       } catch (err) {
         log.error(describeError(err));

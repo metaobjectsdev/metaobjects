@@ -5,11 +5,10 @@ The view's subType IS the UI control type.
 Every port REGISTERS the full view vocabulary, so one metadata document loads
 in every port. The generic web-presentation control kinds (text/textarea/date/
 month/hotlink/dropdown/radio/checkbox/number/password/hidden/web/image) are
-still TS-web-PRESENTATION-ONLY: they have no backend / codegen / render consumer
-in Python, and the registry manifest excludes them (``registry_manifest``,
-PRESENTATION_ONLY). Registration here is for LOADING only. ``base`` +
-``currency`` (the cross-port currency ``@locale`` wire contract) are the two
-rows in the cross-port manifest.
+cross-port vocabulary only TypeScript implements so far: they have no backend /
+codegen / render consumer in Python, and the registry manifest carries them marked
+``implementedIn: ["typescript"]``. Registration here is for LOADING only; their
+attrs (``view.textarea @rows``, the ``view.image`` attrs) come from ``ui_web_provider``.
 
 Mirrors typescript/packages/metadata/src/presentation/view/view-constants.ts.
 """

@@ -47,6 +47,7 @@ public class Fr019SharedEnumCodegenTests
         {
             OutDir = "/tmp",
             Namespace = "Acme.Generated",
+            OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true,
             ProvidedEnumNamespace = providedNs,
             PackageNamespaces = packageNamespaces ?? new(),
         },

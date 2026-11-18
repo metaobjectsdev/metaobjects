@@ -72,7 +72,7 @@ concrete view subtypes while the non-TS ports registered only `view.base` and `v
 a backend port rejected `view.text` with `ERR_UNKNOWN_SUBTYPE`. That asymmetry is since gone: every
 port now registers the generic `view.*` controls (`view.text`, `view.textarea`, `view.checkbox`,
 `view.radio`, `view.image`, …), which are cross-port vocabulary only TypeScript implements so far
-(ruling R40 kind 1; `fixtures/registry-conformance/README.md`). The removal stands unchanged: `view.base`
+(`fixtures/registry-conformance/README.md`). The removal stands unchanged: `view.base`
 itself is refused in every port.
 
 Nothing is lost that carried information — a `view.base` node declared no kind and no attrs, and

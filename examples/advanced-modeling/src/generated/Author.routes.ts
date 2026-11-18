@@ -47,6 +47,7 @@ export async function authorRoutes(fastify: FastifyInstance) {
         filterAllowlist: AuthorFilterAllowlist,
         sortAllowlist: AuthorSortAllowlist,
         dialect: "postgres",
+        knownFields: ["id", "name", "email", "bio"],
       });
     },
     { prefix: "/api" },

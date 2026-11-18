@@ -1,11 +1,11 @@
-// ADR-0062 §1 and §2: within a run the hash manifest is written once, and only when an
+// ADR-0064 §1 and §2: within a run the hash manifest is written once, and only when an
 // entry changed; a file whose new bytes equal what is on disk is never rewritten.
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import * as fs from "node:fs";
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { beginManifestBatch, decideAndWrite, endManifestBatch, mergeTempDir } from "../../src/overwrite-policy.js";
+import { decideAndWrite, mergeTempDir, withManifestBatch } from "../../src/overwrite-policy.js";
 
 let out: string;
 let state: string;
@@ -21,14 +21,11 @@ afterEach(() => {
 const MANIFEST = () => join(state, ".hashes.json");
 
 function run(files: Record<string, string>): void {
-  beginManifestBatch(state);
-  try {
+  withManifestBatch(state, () => {
     for (const [name, content] of Object.entries(files)) {
       decideAndWrite(join(out, name), content, { genStateDir: state, outputRelPath: name });
     }
-  } finally {
-    endManifestBatch();
-  }
+  });
 }
 
 const manifestWrites = (spy: { mock: { calls: unknown[][] } }) =>

@@ -87,8 +87,8 @@ public class MetaDataVerifyWireTest {
         } catch (MojoFailureException e) {
             String msg = e.getMessage();
             assertTrue(msg, msg.contains("The committed output was generated with "
-                    + "\"wire\": { \"decimals\": \"string\", \"nullMembers\": \"omit\" }; this run used "
-                    + "\"wire\": { \"decimals\": \"native\", \"nullMembers\": \"native\" }"));
+                    + "\"wire\": { \"decimals\": \"string\", \"nullMembers\": \"omit\", \"durations\": \"native\" }; this run used "
+                    + "\"wire\": { \"decimals\": \"native\", \"nullMembers\": \"native\", \"durations\": \"native\" }"));
             assertTrue(msg, msg.contains("Do not regenerate"));
             assertFalse(msg, msg.contains("generated code is stale"));
         }

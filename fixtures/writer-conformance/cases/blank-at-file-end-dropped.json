@@ -1,0 +1,21 @@
+{
+  "description": "A blank-line request after the last line writes nothing.",
+  "dialect": "core",
+  "options": {
+    "indent": "  ",
+    "width": 40,
+    "trailingComma": true
+  },
+  "ops": [
+    [
+      "line",
+      "a;"
+    ],
+    [
+      "blank"
+    ]
+  ],
+  "expected": [
+    "a;"
+  ]
+}

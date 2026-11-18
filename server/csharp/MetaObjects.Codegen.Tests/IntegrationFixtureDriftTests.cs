@@ -39,10 +39,6 @@ public class IntegrationFixtureDriftTests
     {
         OutDir = "/unused", // the generators key off Path; OutDir is not embedded in content
         Namespace = IntegrationNamespace,
-        // rc.19 R65: the corpus's `fitness` package would take its own namespace (`Fitness`); the
-        // Docker suite's hand-written code names these types in IntegrationNamespace, so the package
-        // is pinned there — the upgrade note's remedy, applied to our own consumer.
-        PackageNamespaces = new() { ["fitness"] = IntegrationNamespace },
         ColumnNamingStrategy = CorpusPaths.Naming.Columns,
         IncludeNames = true,
         EmitAbstractShapes = false,
@@ -102,10 +98,9 @@ public class IntegrationFixtureDriftTests
     {
         var generated = Regenerate();
 
-        // Paths are package-keyed (R39): compare the relative paths, subdirectories included.
         var generatedPaths = generated.Select(f => f.Path).OrderBy(p => p, StringComparer.Ordinal).ToList();
-        var committedPaths = Directory.EnumerateFiles(CommittedGeneratedDir, "*.g.cs", SearchOption.AllDirectories)
-            .Select(p => Path.GetRelativePath(CommittedGeneratedDir, p).Replace(Path.DirectorySeparatorChar, '/'))
+        var committedPaths = Directory.EnumerateFiles(CommittedGeneratedDir, "*.g.cs")
+            .Select(Path.GetFileName)
             .OrderBy(p => p, StringComparer.Ordinal)
             .ToList();
 
@@ -140,10 +135,6 @@ public class IntegrationFixtureDriftTests
     public void Regenerate_committed_fixtures()
     {
         foreach (var file in Regenerate())
-        {
-            var path = Path.Combine(CommittedGeneratedDir, file.Path);
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, file.Content);
-        }
+            File.WriteAllText(Path.Combine(CommittedGeneratedDir, file.Path), file.Content);
     }
 }

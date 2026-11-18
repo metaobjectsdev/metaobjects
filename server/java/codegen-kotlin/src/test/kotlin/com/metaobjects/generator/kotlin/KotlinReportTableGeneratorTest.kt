@@ -155,7 +155,7 @@ class KotlinReportTableGeneratorTest {
         assertTrue("    val createdAtMonth = date(\"createdAtMonth\")\n" in src, src)
         // Program.status's own generated class — no generator emits a ProgramsByMonthStatus.
         assertTrue(
-            "    val status = enumerationByName(\"status\", ${KotlinTypeMapper.ENUM_VARCHAR_LEN}, ProgramStatus::class)\n" in src,
+            "    val status = customEnumeration(\"status\", \"TEXT\", { v -> ProgramStatus.valueOf(v as String) }, { e -> e.name })\n" in src,
             src,
         )
         assertFalse("ProgramsByMonthStatus" in src, src)
@@ -557,7 +557,7 @@ class KotlinReportTableGeneratorTest {
         // Store's class, and not nullable: Store.tier is required and the only hop is a required
         // reference, an INNER join (D5).
         assertTrue(
-            "    val storeTier = enumerationByName(\"store_tier\", ${KotlinTypeMapper.ENUM_VARCHAR_LEN}, StoreTier::class)\n" in src,
+            "    val storeTier = customEnumeration(\"store_tier\", \"TEXT\", { v -> StoreTier.valueOf(v as String) }, { e -> e.name })\n" in src,
             src,
         )
         // An int-backed enum keeps its mapping, typed by Sale's class.
@@ -630,7 +630,7 @@ class KotlinReportTableGeneratorTest {
         val src = files.getValue("b/RTable.kt")
         assertTrue("    val kind = varchar(\"kind\", 12).nullable()\n" in src, src)
         // The enum class of the @from entity, which is the class the entity generator emits.
-        assertTrue("EvTier::class).nullable()\n" in src, src)
+        assertTrue("EvTier.valueOf(v as String) }, { e -> e.name }).nullable()\n" in src, src)
         assertTrue("    val events = long(\"events\")\n" in src, src)
         assertCompiles(files.filterKeys { !it.startsWith("b/Base") })
     }

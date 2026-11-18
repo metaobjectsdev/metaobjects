@@ -5,6 +5,8 @@ A first-class full-stack target on .NET 8. Loader + conformance + EF Core codege
 Postgres + Npgsql. The baseline is **.NET 8** (`net8.0`); the tool and the packages are not
 built for earlier runtimes.
 
+> **Schema migrations and database checks run in the Node `meta` tool.** `dotnet meta` generates and verifies code, but writing and applying migrations (`npx meta migrate`, `npx meta migrate apply-pending`) and checking a live database against the model (`npx meta verify --db`) need Node: `npm i -D @metaobjectsdev/cli`, then `npx meta init --config-only` to point it at your metadata. Node is needed where migrations are written or applied, not in your running service. What else behaves differently in this port is listed in [What differs by language](../features/language-differences.md).
+
 ## Regeneration and hand edits
 
 `dotnet meta gen` has no three-way merge (that is TypeScript-only). It decides per file from a
@@ -114,33 +116,57 @@ A model published from another repository is declared under `dependencies` in
 reads both, at every rung of the source ladder, and never writes them: a snapshot that no longer
 matches the lock fails with `ERR_DEPENDENCY_SNAPSHOT_STALE`. The snapshot loads first, so your
 own metadata can `extends`, overlay or reference its nodes, but an imported node is not generated
-(and is not counted by the requirement gate) unless `scope.include` names its package. What C#
+unless `scope.include` names its package, and an imported requirement is not counted by the
+requirement gate unless `requirements.inherit` names it. What C#
 does and does not do is in
 [Metadata dependencies](../features/metadata-dependencies.md).
 
+`dotnet meta verify --deps` asks whether the publisher has moved since you synced: it re-resolves
+each dependency's `path`, reads the publisher's `metaobjects.pkg.json`, hashes the artifact beside
+it and compares with the lock. `current`, `drifted` and `unresolved` (no directory, a bad
+manifest, a hash that does not match, or no lock entry yet) are the same states and the same
+`ERR_DEPENDENCY_UPSTREAM_DRIFT` exit as `meta deps check`. The check runs before the metadata
+loads, so a dependency not yet synced is reported `unresolved` first; the load that follows still
+refuses the missing or stale snapshot with `ERR_DEPENDENCY_SNAPSHOT_STALE` and exit 2. It never writes anything, it is never
+part of a bare `verify`, and an `npm`, `python`, `maven` or `nuget` dependency is reported `unresolved` (run the Node
+`meta deps check` for those).
+
 ### Custom providers (optional)
 
-If your app needs a metamodel subtype the core doesn't ship, declare an
-`IMetaDataTypeProvider` and compose it into the registry before loading:
+When the project needs a subtype or an attribute the core does not ship, write a public class
+implementing `IMetaDataTypeProvider` (with a public parameterless constructor) in its own
+class library, and list the built assembly in `.metaobjects/config.json`:
 
-```csharp
-using MetaObjects;
-using MetaObjects.Loader;
-
-var registry = Provider.ComposeRegistry(new IMetaDataTypeProvider[] {
-    CoreTypes.CoreTypesProvider,
-    yourProvider,            // adds your custom subtype/attrs
-});
-
-var loader = MetaDataLoader.FromDirectory("./metaobjects", registry);
+```json
+{
+  "schema_version": 1,
+  "csharp": {
+    "providers": [
+      { "assembly": "vocabulary/bin/Debug/net8.0/Acme.Vocabulary.dll", "type": "Acme.Vocabulary.AcmeVocabularyProvider" }
+    ]
+  }
+}
 ```
 
-The provider object has the same four-member contract (`Id`, `Dependencies`,
-`Description`, `RegisterTypes(registry)`) as TS / Python. Composition errors
-surface `ERR_PROVIDER_DUPLICATE_ID`, `ERR_PROVIDER_MISSING_DEPENDENCY`,
-`ERR_PROVIDER_DEPENDENCY_CYCLE` — codes match the cross-port contract. See
-[`../features/extending-with-providers.md`](../features/extending-with-providers.md)
-for the full reference and
+`assembly` is relative to the directory holding `.metaobjects/`. Build the vocabulary first;
+a missing dll, a missing type or a type that is not a provider is refused with an error
+naming `csharp.providers`. `dotnet meta gen` and `verify --codegen` (through the `codegen/`
+runner), `dotnet meta verify` and `dotnet meta fmt` then all compose the core providers plus
+these. An application that loads the model itself composes the registry, and
+`ComposeRegistry` takes exactly the set it is given:
+
+```csharp
+var registry = Provider.ComposeRegistry([.. CoreTypes.LibraryProviders, new AcmeVocabularyProvider()]);
+var load = MetaDataLoader.FromDirectory("./metaobjects", registry, strict: true);
+```
+
+The provider object has the same contract (`Id`, `Dependencies`, `RegisterTypes(registry)`
+calling `Register` and `Extend`) as the other ports. Composition errors surface
+`ERR_PROVIDER_DUPLICATE_ID`, `ERR_PROVIDER_MISSING_DEPENDENCY` and
+`ERR_PROVIDER_DEPENDENCY_CYCLE`. If another port's tools load the same metadata, that port needs its own copy of the
+provider (same id, same vocabulary); a provider registered in one language is invisible to
+the others. See [`../features/extending-with-providers.md`](../features/extending-with-providers.md) for the full reference with a worked
+`AcmeVocabularyProvider`, and
 [`../recipes/extending-metaobjects-with-providers.md`](../recipes/extending-metaobjects-with-providers.md)
 for a worked example.
 
@@ -207,25 +233,56 @@ directory holding `.metaobjects/`:
 Each generated type's namespace comes from the package bindings, keyed by that type's own
 metadata package: a type-level override (`GenConfig.TypeOverrides`), then a package-level one
 (`PackageNamespaces`), then the `Convention` rule (strip a package prefix, prepend a root, case
-each `::` segment), then `UnmappedStrategy`. With none of those configured, the namespace IS the
-package, each `::` segment PascalCased and joined with `.` (`acme::billing` is `Acme.Billing`), the
-way the Java and Kotlin ports map packages. That holds whether or not a namespace is configured:
-`--namespace` / `csharp.namespace` is the home of the objects that have no package and of the
-artifacts that belong to no single object (`AppDbContext`, its design-time services, the callable
-wrappers, the template tier, the shared runtime helpers). With no namespace configured, that home
-is the namespace all the packages share; when they share no root, generation stops and asks for
-one. A per-object companion class follows its object: `<X>Names`, `<X>FilterAllowlist`,
-`<X>Routes`, `<X>Queries` (reverse finders), `<X>Export` and a shared enum are declared in the
-object's (or the enum's) package namespace, so an app mounting routes adds a `using` for that
-namespace. Generated code names every generated type it reaches in another namespace
-`global::`-qualified, so no namespace can capture another and no two `using`s can make a name
-ambiguous; two same-named objects in two packages are two types. Two objects bound to ONE
-namespace that share a name are refused (`ERR_NAME_COLLISION`, naming both). An explicit
-`UnmappedStrategy.Error` or `Derive` under a configured namespace keeps its meaning (the default
-mapping is switched off). The namespace must be a dotted path of C# identifiers. `dotnet meta gen`
-and `verify` set only the home namespace; the per-package bindings are `GenConfig` properties, set
-when you run codegen from your own code with `CodegenRunner`. To keep a package where an earlier
-release put it, map it: `PackageNamespaces = { ["acme::billing"] = "Acme.Blog" }`.
+each `::` segment), then `UnmappedStrategy`. With none of those configured, the default
+convention applies: each `::` segment PascalCased and joined with `.` (`acme::billing` is
+`Acme.Billing`), and the artifacts that belong to no single package (`AppDbContext`, routes) land in
+the namespace all the packages share. When they share no root, generation stops and asks for a
+namespace. Setting `--namespace` or `csharp.namespace` switches the default off and puts every type
+no binding places in that one flat namespace. The namespace must be a dotted path of C#
+identifiers. `dotnet meta gen` and `verify` read that flat namespace and, through
+`csharp.packageNamespaces`, the package bindings (below). The finer per-package bindings
+(`TypeOverrides`, `Convention`, `UnmappedStrategy`) are `GenConfig` properties, set when you run
+codegen from your own code with `CodegenRunner`.
+
+**Package-keyed output (opt-in).** Two more `csharp` keys change where files land and which
+namespace a packaged type takes; a project that sets neither keeps the flat layout and the
+namespace rule above, byte for byte.
+
+```json
+{ "schema_version": 1, "csharp": { "outDir": "Generated", "namespace": "Acme.Blog",
+  "outputLayout": "package", "packageNamespaces": true } }
+```
+
+- `outputLayout`: `"flat"` (the default) writes every file at the root of the output directory;
+  `"package"` writes each per-object file under its metadata package, one directory per `::`
+  segment (`acme::blog::Author` is `acme/blog/Author.g.cs`). That covers the entity, value object,
+  shared enum, names, filter allowlist, routes, reverse finders, callable, report export, the extract
+  mirrors and the template tier. A root-level object, `AppDbContext` and the run-wide helpers stay
+  at the root.
+- `packageNamespaces`: `true` puts each packaged type in its metadata package's namespace
+  (PascalCased `::` segments) even when `csharp.namespace` is set; that namespace then places only
+  package-less objects and the run-wide artifacts. An object (`{ "acme::blog": "Acme.Blog" }`) maps
+  packages to namespaces explicitly, the same as `GenConfig.PackageNamespaces`. Absent or `false`
+  keeps the earlier rule, where a configured namespace turns the per-package derivation off. With
+  `true`, every generated reference to a type in another namespace is written `global::`-qualified,
+  so two same-named types never bind to each other.
+
+`dotnet meta init` writes `.metaobjects/config.json` with both opt-ins for a new project, and never
+edits one that exists. `gen` and `verify` read the same keys, so the drift gate agrees with `gen`.
+
+**A type is never renamed to make room.** Two nodes that would generate the same name in the same
+scope fail, naming both nodes and the remedy. A DbSet property in one context and a REST
+collection segment in one routes entry raise `ERR_COLLECTION_NAME_COLLISION` (the shared-ledger
+code, the same in every port); a type in one C# namespace, a file in one output path, a finder
+in one class and the other scopes raise `ERR_NAME_COLLISION`. The remedy is: map the packages to distinct namespaces, write them apart with
+`outputLayout`, or rename one (`@collectionName` for a DbSet and its route). The earlier
+package-qualified rename of a value object (`AcmeAlphaNote`) is gone; a value object keeps its name
+and sits in its package's namespace. An extract-tier private mapper may carry the package in a
+member name (`FromAcmeAlphaNoteExtracted`), because it is private to its class.
+Each package's shared enum is its own `<package>/<Enum>.g.cs` under the package layout, with its
+`@intValueMap` integers as member values and `@description` as its XML doc; the flat layout keeps
+the one `Enums.g.cs`. An entry narrowed with `Include` declares only the shared enums it uses, and
+an enum several narrowed entries use is declared by exactly one of them.
 
 With that, `dotnet meta gen` writes there, `dotnet meta verify --codegen` diffs against it, and
 a plain `dotnet meta verify` in CI runs the codegen gate with no flags. `--out <dir>` still works
@@ -237,6 +294,21 @@ requires `entity`, `db-context` and `filter-allowlist`, because the handlers it 
 reference their output; `gen` warns when one is missing from the list, since the result
 would not compile. `--generators <names>` narrows a run to the declared entries named; it
 never adds one, and naming an entry the list does not declare is refused.
+
+**Select objects.** `dotnet meta gen --entities Product,Supplier` (comma-separated short object
+names, the `name` of the object without its package, as TypeScript's positional names and
+Python's `--entities` match) regenerates only those objects' files; `dotnet meta verify --codegen
+--entities ...` checks only the same files. Only per-object output narrows. A file built from
+the whole model, such as `AppDbContext.g.cs`, still renders from the whole model and is
+byte-identical to an unfiltered run, and a shared file (a shared enum, a helper) is the
+whole-model rendering too. A generator that reads the model root rather than the object list
+(`api-docs`, `requirement-tests`, template entries) is not narrowed. A narrowed run never
+deletes a stale file and never drops the manifest entry of a file it did not write, so the
+unselected objects' files are left as they are; run `gen` without the flag to sweep. Two
+refusals, both exit 2: `--entities` naming nothing (`error: dotnet meta gen: --entities names no
+object.`) and a name that matches no object (`error: dotnet meta gen: --entities names 'X',
+which matches no object in the metadata.`). An owned generator whose output is a single
+whole-model file declares `public bool WholeModel => true;`.
 
 **Own a generator.** `dotnet meta eject <name>...` copies a reference generator into
 `codegen/generators/`. Every generator `dotnet meta gen --list` shows is ejectable except
@@ -270,6 +342,34 @@ or identical copies show.
 the attribute, node and file, and gen generates anyway. `dotnet meta gen --strict` loads as
 `verify` does (ADR-0023): the same `ERR_UNKNOWN_ATTR` lines with a gen-specific hint (drop `--strict`), exit 1, before any file is
 written. `verify` itself stays strict unless you pass `--lax`.
+
+## Publishing a shared model (`shared-model`)
+
+A C# project can publish part of its model for another repository to consume (FR-023). The
+`shared-model` generator writes `<ModelName>.metaobjects.json` and the manifest
+`metaobjects.pkg.json` that pins it by `sha256`, byte-identical to what the TypeScript generator
+writes (`fixtures/shared-model-conformance/`). Declare it in `codegen/Generators.cs`:
+
+```csharp
+new SharedModelGenerator
+{
+    ModelName = "acme-common",
+    Include = ["acme::common::**"],
+    Files = ["metaobjects/meta.common.json"],
+    OutDir = "shared",
+}
+```
+
+`ModelName`, `Include` and `Files` are required; `Exclude` removes patterns from `Include`, and
+`Version` overrides the version recorded in the manifest, which otherwise is the project's
+`<Version>` (from the project file, else the nearest `Directory.Build.props`). It writes nothing and
+names the option to change when the selection is empty, is not closed over `extends` and reference
+attributes, or needs vocabulary outside the library's. Give `OutDir` a directory that holds nothing
+else. `requirement.*` nodes are published only when `Requirements` is set (`requirements: true`, default
+off); `template.*` nodes are never published. `dotnet meta eject shared-model`
+copies the generator into your project; the artifact bytes stay in the package, because a copy that
+changed them would publish a model a consumer's sync refuses. The consumer runs the Node `meta deps
+sync`, which stays the only writer of the lock and the snapshot.
 
 ## Write your own generator
 
@@ -315,7 +415,7 @@ the gate like any packaged generator's. The example above is compiled and run by
 
 `dotnet meta init --with-docs` writes the list with the api reference already in it
 (`new MetaObjects.Codegen.Generators.ApiDocsGenerator { OutDir = "docs/csharp", ProjectName = "<dir>" }`),
-so `gen` writes it. It does not write `.metaobjects/config.json`: set `"csharp": { "outDir": "<dir>" }`
+so `gen` writes it. Init writes `.metaobjects/config.json` (the `api`, `migrate` and `verify` settings, described below) but no `outDir`: set `"csharp": { "outDir": "<dir>" }`
 there and a plain `dotnet meta verify` drift-checks the docs with the rest of the codegen output
 (`verify --codegen` compares the whole tree of each entry's `OutDir`, so keep it generated files
 only). Against an existing list, init prints the entry to add and edits nothing. Without the flag
@@ -365,7 +465,7 @@ differently (an acronym, say), set one resolver on the config, `GenConfig.Proper
 `[PrimaryKey(nameof(...))]`, every `AppDbContext` model line and the reverse finders all read it,
 so the declaration and every reference agree. The hooks `EntityGenerator.PropertyName` and
 `DbContextGenerator.PropertyName` default to it; a subclass that overrides one must override the
-other the same way. The routes generator and the filter runtime still use the PascalCased name.
+other the same way. The routes generator, the filter map and the credential stripping read the same resolver, and a hook that disagrees with it is refused.
 
 **Class attributes.** `EntityGenerator.EmitClassAttributes(sb, entity, className, kind, ctx)` is
 called for every class it emits (mapped entity, TPH subtype, abstract shape, value object), after
@@ -417,63 +517,33 @@ so a new entity carries the CLR default and EF sends it.
 `identity.primary @sequenceStart` on a single-field `increment` key is the identity's START on
 Npgsql (a fresh database begins there). No start-only change ever restarts the sequence: Npgsql
 alone writes a start added as `RESTART WITH n`, a changed one as `RESTART WITH m`, and a removed one
-as `RESTART WITH 1`, each handing out ids live rows may hold.
+as `RESTART WITH 1`, each handing out ids live rows may hold. A Postgres context gets
+`<Context>DesignTimeServices.g.cs`, an `IDesignTimeServices` that wraps the model differ, so
+`dotnet ef migrations add` scaffolds every start-only change as SQL, Up and Down: `ALTER TABLE …
+ALTER COLUMN … SET START WITH n` (a removed start goes back to the identity default) and, for a
+declared start, a move of the counter FORWARD to `GREATEST(n, max(id) + 1)` when it sits below that,
+never back. A database rebuilt by replaying migrations begins at `n` as a fresh one does, and no
+migration hands out an id a live row holds. The same services scaffold a JSON column's comment.
 
-The fix is at design time, where the change is scaffolded (rulings R50, R51). A Postgres context
-with an increment key gets `AppDbContextDesignTimeServices.g.cs` (named after the
-context class; ruling R60: the one class for every design-time concern, which also scaffolds a
-JSON column's comment): an `IDesignTimeServices` that wraps the model differ the context already has, so
-`dotnet ef migrations add` writes every start-only change as SQL, in `Up` and in `Down`:
+It is design time only: nothing is registered at runtime, and `Migrate()` runs what the migration
+already holds. EF finds the services through `[assembly: DesignTimeServicesReference(...)]`, which
+is generated beside the class when the context's assembly name is known (the single `.csproj` in
+the output directory or above it, or `GenConfig.ContextAssemblyName`). That covers EF's default
+layout, where the migrations live in the context's project. When the migrations or startup project
+is another one, `dotnet meta gen` warns and prints the one line to add to that project; without it
+a changed start scaffolds as `RESTART`. `dotnet ef migrations add --verbose` prints "Using
+design-time services from assembly …" when they are found.
 
-- `ALTER TABLE … ALTER COLUMN … SET START WITH n` records the start (a removed start goes back to
-  the identity default);
-- for a declared start, the counter then moves forward to `GREATEST(n, max(id) + 1)` when it is
-  below that, and never back. A database rebuilt by replaying migrations therefore begins at `n`,
-  as a fresh one does (`SET START WITH` alone would leave its first id at 1), and an explicit id
-  above the counter is never handed out again.
+The start in the model, and the services, are emitted only for a project whose
+`.metaobjects/config.json` names `"migrate": { "dialect": "postgres" }` (a self-hosted runner sets
+`GenConfig.Dialect`). Any other project gets neither, with a warning, and never needs the Npgsql
+package. `UseIdentityStartMigrations()`, the registration of an earlier runtime SQL rewrite, is
+kept as an `[Obsolete]` no-op so a call to it still compiles; remove the call.
 
-Nothing is registered at runtime: `Migrate()` runs what the migration says, and the file uses
-public EF types only (no Npgsql reference). An adopter's own differ, registered with
-`ReplaceService`, is kept: the services wrap it.
 
-EF finds the services in two ways. It scans the **startup** project for `IDesignTimeServices`
-implementations, and it reads `[assembly: DesignTimeServicesReference]` from the startup and
-**migrations** assemblies, and from no other. The generated file carries that reference in the
-context's own assembly when it knows that assembly's name (`GenConfig.ContextAssemblyName`, else
-the one `.csproj` in the output directory or above it), so it is read only when the context's
-assembly is the startup or the migrations assembly. EF's default layout, migrations in the
-context's assembly, needs no adopter code.
-
-**Whenever the context's assembly is neither the startup nor the migrations assembly, add the
-line to the migrations project** (any `.cs` file in it). That includes the common layout of a
-context in a class library (`MyApp.Data`) with its migrations in a project of their own
-(`MyApp.Migrations`), which is also the startup project for `dotnet ef`: the reference generated
-into `MyApp.Data` is never read there.
-
-```csharp
-[assembly: Microsoft.EntityFrameworkCore.Design.DesignTimeServicesReference(
-    "MyApp.Data.AppDbContextDesignTimeServices, MyApp.Data", "Npgsql.EntityFrameworkCore.PostgreSQL")]
-```
-
-`dotnet meta gen` warns, with that exact line, whenever it cannot show the line is unnecessary. It
-looks for the model snapshot EF writes beside the migrations (`<Context>ModelSnapshot.cs`) in the
-repository (the nearest directory above the project holding `.git`, else the farthest holding a
-`.sln`): in the context's own project, nothing is needed; in another project, that project must
-carry the line, and the run is quiet once it does; found nowhere (a project with no migrations
-yet, or an output directory that is no project on disk), it cannot tell, and says so.
-
-That is the accepted residual risk: without the line, a changed start still scaffolds as RESTART,
-and a JSON column's comment is not scaffolded.
-`dotnet ef migrations add --verbose` prints "Using design-time services from assembly …" when
-the services are found; review a start change's migration before applying it.
-
-The start, and the services, are emitted only for a project whose `.metaobjects/config.json`
-names `"migrate": { "dialect": "postgres" }` (a self-hosted runner sets `GenConfig.Dialect`). Any
-other project gets neither, with a warning, and never needs the Npgsql package.
-
-**CHECK constraints** are the ones `meta migrate` creates (ruling R55): each scalar `field.enum`
+**CHECK constraints** are the ones `meta migrate` creates: each scalar `field.enum`
 and each validator that can carry one (`numeric`, `length`, `regex`, `comparison`,
-`requiredWhen`, `presentIff`, `atLeastOne`, with `@condition`) is a
+`requiredWhen`, `presentIff`, `atLeastOne`, `exactlyOne`, with `@condition`) is a
 `modelBuilder.Entity<T>().ToTable(t => t.HasCheckConstraint(name, sql))` line, with migrate's name
 (`<table>_<column>_numeric_chk`, … or the validator's `@constraintName`) and its expression text,
 so a table built by an EF migration and one built by `meta migrate` carry the same constraints.
@@ -481,7 +551,6 @@ They are declared for `migrate.dialect` `postgres`, `sqlite` or `d1` only, becau
 dialect-specific (`~`, `IS DISTINCT FROM`, `num_nonnulls` on Postgres); `migrate.checks.skipRedundant`
 (`GenConfig.SkipRedundantChecks`) leaves out the ones the column already enforces, as migrate does.
 The shared corpus `fixtures/check-constraint-conformance/` pins the names and text in both ports.
-
 ### Decimals and null members on the wire
 
 What the generated API writes is the project setting `wire` in `.metaobjects/config.json`
@@ -585,8 +654,10 @@ one.
 > `Names.Name` before regenerating. `ReadOnly` is not relocated but REMOVED: it was never
 > metadata, only a derivation over `@kind` — ask `SourcePrimaryKind` instead.
 
-An identity or index carries an `Index` member — its DATABASE name — only where one
-exists: `identity.secondary` and `index.lookup`. An `identity.primary` gets none, because
+An identity or index carries an `Index` member — the declared index name; on Postgres
+`meta migrate` creates a name over 63 bytes as its first 63 bytes, and the EF context
+declares that cut name ([stored names](../features/migrations-and-drift.md#schema-conventions-names-for-objects-no-code-addresses)) —
+only where one exists: `identity.secondary` and `index.lookup`. An `identity.primary` gets none, because
 no port's codegen names a primary key (Postgres migrations hardcode `<table>_pkey`, SQLite
 emits an unnamed PK), and carrying that would restate a migrate-only formula in the
 artifact built to stop exactly that.
@@ -1037,6 +1108,18 @@ feeds `FilterParser.Parse` + `EfCoreFilterDispatch.ApplyFilter`, both wired
 directly into the generated list handler. A read-only projection
 (`source.rdb @kind: view`) and a view-backed report get the same filter and sort
 on their list route, against an allowlist of their own fields.
+
+The `api` block of `.metaobjects/config.json` reaches the generated routes through the loaded root
+(`MetaRoot.Api`): `api.pagination` pages every entity, TPH and projection list route, and
+`api.unknownFields` is checked by `UnknownFieldCheck` in the helper runtime, matching a key the way
+the route binds the body (the app's System.Text.Json options). What each setting answers is in
+[api-contract](../features/api-contract.md) ([page size](../features/api-contract.md#sort--pagination), [unknown fields](../features/api-contract.md#unknown-request-fields-apiunknownfields)).
+`dotnet meta init` writes `.metaobjects/config.json` with the same new-project settings as `meta init`:
+`api.pagination` 50/1000, `api.unknownFields: reject`, `verify.handEdits: fail` and
+`migrate.foreignKeyIndexes: true`; an existing config is left alone. `dotnet meta verify --codegen` prints a
+non-failing advisory (`unbounded-list-pages`, stderr, exit code unchanged) when the run includes the routes
+generator and the project sets no `api.pagination`; plain `verify` says nothing, because only `--codegen`
+runs the generator list.
 
 **Known gaps** (full list with workarounds in
 [KNOWN_GAPS.md](https://github.com/metaobjectsdev/metaobjects/blob/main/server/csharp/MetaObjects.Codegen/Generators/KNOWN_GAPS.md)):

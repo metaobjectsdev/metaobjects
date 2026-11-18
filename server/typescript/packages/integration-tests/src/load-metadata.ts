@@ -2,14 +2,14 @@
 // Errors are aggregated and re-thrown with the directory + error codes so a
 // scenario failure points at the right fixture immediately.
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { DEFAULT_WIRE_FORMAT, loadDirectory, loadUris, type MetaRoot, type WireFormat } from "@metaobjectsdev/metadata";
-import { ConfigSchema, physicalNamingFromConfig, wireFormatFromConfig, type Config } from "@metaobjectsdev/sdk";
+import { DEFAULT_WIRE_FORMAT, loadDirectory, loadString, loadUris, type MetaRoot, type WireFormat } from "@metaobjectsdev/metadata";
+import { ConfigSchema, apiPaginationFromConfig, apiUnknownFieldsFromConfig, enumDefaultsFromConfig, physicalNamingFromConfig, wireFormatFromConfig, type Config } from "@metaobjectsdev/sdk";
 
 /**
- * ADR-0058 — set `root`'s physical naming and wire format from the nearest `.metaobjects/config.json` at or
+ * ADR-0058 — set `root`'s physical naming, wire format and enum defaults from the nearest `.metaobjects/config.json` at or
  * above `startDir`, as a project-aware load does. A corpus that pins a committed schema
  * declares the naming that schema uses there, and every port's runner reads that one file.
  * No file up to the repository root leaves the default.
@@ -21,6 +21,14 @@ export function applyNearestNaming(root: MetaRoot, startDir: string): MetaRoot {
   // ADR-0019 Amendment 2: the corpus pins its wire form in the same file, so generated
   // routes are emitted with it and no lane carries a literal.
   root.wireFormat = wireFormatFromConfig(config);
+  // `enums.maxLength` sizes an enum column, so a corpus that sets it gets the schema it pins.
+  root.enumDefaults = enumDefaultsFromConfig(config);
+  // `api.pagination` gives generated list routes a page size; a corpus without it keeps the
+  // unbounded lists every other corpus is written against.
+  const page = apiPaginationFromConfig(config);
+  if (page !== undefined) root.apiPagination = page;
+  const unknownFields = apiUnknownFieldsFromConfig(config);
+  if (unknownFields !== undefined) root.apiUnknownFields = unknownFields;
   return root;
 }
 
@@ -46,6 +54,30 @@ export async function loadMetadataDir(dir: string): Promise<MetaRoot> {
     const summary = result.errors
       .map((e) => `${(e as { code?: string }).code ?? "ERROR"}: ${e.message}`)
       .join("; ");
+    throw new Error(`${dir}: metadata did not load cleanly: ${summary}`);
+  }
+  return applyNearestNaming(result.root, dir);
+}
+
+/**
+ * The directory's model as an engine without schemas sees it: every object whose `source.rdb`
+ * declares `@schema` is left out. SQLite and D1 have no schemas, and `meta migrate` refuses a
+ * declared one there, so the SQLite and D1 artifacts and lanes build from this; the Postgres
+ * ones keep the whole model. Expects the directory's one `meta.*.json` file.
+ */
+export async function loadMetadataDirWithoutSchemas(dir: string): Promise<MetaRoot> {
+  const files = readdirSync(dir).filter((f) => f.startsWith("meta.") && f.endsWith(".json"));
+  if (files.length !== 1) throw new Error(`${dir}: expected one meta.*.json file, found ${files.length}`);
+  const doc = JSON.parse(readFileSync(join(dir, files[0]!), "utf8")) as {
+    "metadata.root": { children: Array<Record<string, { children?: Array<Record<string, Record<string, unknown>>> }>> };
+  };
+  const declaresSchema = (node: Record<string, { children?: Array<Record<string, Record<string, unknown>>> }>): boolean =>
+    Object.values(node).some((body) =>
+      (body.children ?? []).some((c) => typeof c["source.rdb"]?.["@schema"] === "string"));
+  doc["metadata.root"].children = doc["metadata.root"].children.filter((c) => !declaresSchema(c));
+  const result = await loadString(JSON.stringify(doc), "json");
+  if (result.errors.length > 0) {
+    const summary = result.errors.map((e) => `${(e as { code?: string }).code ?? "ERROR"}: ${e.message}`).join("; ");
     throw new Error(`${dir}: metadata did not load cleanly: ${summary}`);
   }
   return applyNearestNaming(result.root, dir);

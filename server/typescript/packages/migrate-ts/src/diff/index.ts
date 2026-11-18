@@ -6,6 +6,7 @@ import type {
   CheckDescriptor, ColumnDefault, NameChange, DeclaredRename, ExprCanonPath,
   SchemaAdvisory,
 } from "../types.js";
+import { PG_IDENTIFIER_MAX_BYTES, pgStoredIdentifier } from "../types.js";
 import type { SqlType } from "../sql-type.js";
 import { sqlTypeEquals } from "../sql-type.js";
 import { applyStatus } from "./status.js";
@@ -14,6 +15,7 @@ import { detectColumnRenames, detectTableRenames } from "./rename-heuristic.js";
 import { firstViewSqlDifference, viewSqlEquals } from "../view-sql-compare.js";
 import { viewReplaceIsLegal, type ViewReplaceProbe } from "../view-replace.js";
 import { liveViewReadsTable, sqlNamesIdentifier } from "../view-reads.js";
+import { viewsNamingRenamedColumns } from "../view-change-reason.js";
 import { expectedFromShadow, shadowIdentityProbe, type ShadowSchemaSource } from "../shadow-expected.js";
 import { checkExprEquals, checkExprRespelledNullSafe, renameExprIdentifiers } from "../check-expr-compare.js";
 import { checkMatchesLive, columnDefaultMatchesLive, indexExprMatchesLive, NO_EXPR_CANON, type ExprCanon, type ExprCanonProbe, type IndexExprCanon } from "../expr-canon.js";
@@ -282,6 +284,8 @@ export async function diff(
   const { renamed, predecessors } = diffRenamedTables(changes, expectedTables, actualTables, args.dialect, canon);
 
   // Pass 2: tables in both → compare columns/indexes/FKs
+  const demotedKeys: { table: TableDescriptor; columns: readonly string[] }[] = [];
+  const renamedConstraints = new Map<string, ReadonlyMap<string, string>>();
   for (const [id, expectedTable] of expectedTables) {
     const actualTable = actualTables.get(id);
     if (!actualTable) continue;
@@ -290,20 +294,40 @@ export async function diff(
       diffTablePair(expectedTable, withRenamedRefTables(actualTable, renamed), changes, args.dialect, canon);
       continue;
     }
-    // Postgres: a constraint or index whose only change is its name is renamed in place.
+    // Postgres: a constraint or index whose only change is its name is renamed in place, and so
+    // is a primary key. A unique key that changed only between index and constraint is promoted
+    // in place, or demoted by drop and re-create.
     const tableChanges: Change[] = [];
     diffTablePair(expectedTable, withRenamedRefTables(actualTable, renamed), tableChanges, args.dialect, canon);
     const { constraintRenames, indexRenames, rest } = pairNameOnlyChanges(tableChanges, textColumnsOf(actualTable), canon);
-    if (constraintRenames.length > 0 || indexRenames.length > 0) {
+    const pk = primaryKeyRename(expectedTable, actualTable, actualTable.name);
+    if (pk !== undefined) constraintRenames.push(pk);
+    // A renamed key is compared for its kind under the name it is renamed to: a live UNIQUE
+    // constraint renamed onto a key the conventions want as a plain index is renamed AND
+    // demoted, in one migration. The rename runs first, so the demotion uses the new name.
+    const { promotions, demotions } = uniqueKindChanges(
+      expectedTable, withRenamedIndexes(actualTable, [...constraintRenames, ...indexRenames]), canon);
+    if (constraintRenames.length > 0) renamedConstraints.set(id, new Map(constraintRenames.map((r) => [r.from, r.to])));
+    if (constraintRenames.length > 0 || indexRenames.length > 0 || promotions.length > 0) {
       changes.push({
         kind: "rename-constraints", table: expectedTable.name, ...schemaSpread(expectedTable.schema),
         ...(constraintRenames.length > 0 ? { constraintRenames } : {}),
         ...(indexRenames.length > 0 ? { indexRenames } : {}),
+        ...(promotions.length > 0 ? { uniquePromotions: promotions } : {}),
         status: ALLOWED,
       });
     }
     changes.push(...rest);
+    for (const d of demotions) {
+      const sx = schemaSpread(expectedTable.schema);
+      changes.push({ kind: "drop-index", table: expectedTable.name, ...sx, index: d.live.name, restore: d.live, status: ALLOWED });
+      changes.push({ kind: "add-index", table: expectedTable.name, ...sx, index: d.want, status: ALLOWED });
+      demotedKeys.push({ table: expectedTable, columns: d.live.columns });
+    }
   }
+  // A demoted UNIQUE constraint is dropped, and Postgres refuses that while a foreign key
+  // relies on it, so each such FK is dropped first and added back once the index exists.
+  if (demotedKeys.length > 0) refitForeignKeysOnto(demotedKeys, actualTables, expectedTables, renamedConstraints, changes);
 
   // Pass 2b: views. Identity is (schema, name). How "changed" is decided is
   // DIALECT-DEPENDENT — see diffViews.
@@ -333,6 +357,12 @@ export async function diff(
   // schema the model never declares, and therefore the one scoping filters out — and
   // that is exactly the object a cascade must not destroy silently.
   annotateViewDropDependents(args.actual.views, changes);
+
+  // A live view this tool neither rewrites nor drops stays in place and blocks a column drop
+  // at apply. Whether a planned drop-view/replace-view is itself blocked is decided by the
+  // statuses, so assign them first; applyStatus below assigns them again over the final list.
+  applyStatus(changes, args.allow ?? {});
+  annotateUnownedColumnReaders(args.actual.views, changes);
 
   // Pass 3: column renames (table renames were resolved in Pass 1c).
   await detectColumnRenames(changes, args.onAmbiguous, args.renames);
@@ -378,6 +408,7 @@ export async function diff(
     advisories: [
       ...intervalAsStringAdvisories(expectedTables, (id) => actualTables.get(id) ?? predecessors.get(id)),
       ...(args.dialect === "sqlite" || args.dialect === "d1" ? sequenceNotAppliedAdvisories(changes) : []),
+      ...viewsNamingRenamedColumns(changes),
     ],
     ...(args.dialect === "postgres" ? { exprCanonPath } : {}),
     ...(shadowAnswer !== undefined && "unavailable" in shadowAnswer ? { shadowUnavailable: shadowAnswer.unavailable } : {}),
@@ -437,7 +468,11 @@ function diffRenamedTables(
     const carried = withRenamedRefTables({ ...actual, name: r.to }, renamed);
     const tableChanges: Change[] = [];
     diffTablePair(expected, carried, tableChanges, dialect, canon);
-    changes.push(...(dialect === "postgres" ? foldNameOnlyChanges(r, tableChanges, textColumnsOf(actual), canon) : tableChanges));
+    if (dialect !== "postgres") { changes.push(...tableChanges); continue; }
+    changes.push(...foldNameOnlyChanges(r, tableChanges, textColumnsOf(actual), canon));
+    // `ALTER TABLE … RENAME` keeps the old primary-key name.
+    const pk = primaryKeyRename(expected, actual, r.from);
+    if (pk !== undefined) (r.constraintRenames ??= []).push(pk);
   }
   return { renamed, predecessors };
 }
@@ -732,6 +767,84 @@ async function carryThroughColumnRenames(
   }
 }
 
+
+/**
+ * The rename a live primary key needs to carry the name the schema conventions give it, or
+ * undefined when the names agree or either side has no key (pg-mem reports none). An absent
+ * name is `<table>_pkey`; `liveTable` is the table's name as the database knows it.
+ */
+function primaryKeyRename(expected: TableDescriptor, actual: TableDescriptor, liveTable: string): NameChange | undefined {
+  if (expected.primaryKey.length === 0 || actual.primaryKey.length === 0) return undefined;
+  const from = pgStoredIdentifier(actual.primaryKeyName ?? `${liveTable}_pkey`);
+  const to = pgStoredIdentifier(expected.primaryKeyName ?? `${expected.name}_pkey`);
+  return from === to ? undefined : { from, to };
+}
+
+/** The live table with each renamed index (or the index backing a renamed constraint) under its new name. */
+function withRenamedIndexes(actual: TableDescriptor, renames: readonly NameChange[]): TableDescriptor {
+  if (renames.length === 0) return actual;
+  const to = new Map(renames.map((r) => [r.from, r.to]));
+  return { ...actual, indexes: actual.indexes.map((i) => (to.has(i.name) ? { ...i, name: to.get(i.name)! } : i)) };
+}
+
+/**
+ * Unique keys whose definition and name match but which differ only in being a plain index or
+ * a UNIQUE constraint. `promotions` are the expected constraints a live index becomes;
+ * `demotions` pair a live constraint with the plain index the conventions ask for (`plainIndex`);
+ * under conventions with no preference a live constraint stays.
+ */
+function uniqueKindChanges(
+  expected: TableDescriptor,
+  actual: TableDescriptor,
+  canon: ExprCanon,
+): { promotions: IndexDescriptor[]; demotions: { live: IndexDescriptor; want: IndexDescriptor }[] } {
+  const promotions: IndexDescriptor[] = [];
+  const demotions: { live: IndexDescriptor; want: IndexDescriptor }[] = [];
+  const live = new Map(actual.indexes.map((i) => [i.name, i]));
+  for (const want of expected.indexes) {
+    const a = live.get(want.name);
+    if (a === undefined || !want.unique || !a.unique || !indexEquals(want, a, canon)) continue;
+    // Only a plain index and a UNIQUE constraint trade places; a PK or EXCLUDE index is not a unique key.
+    if ((want.constraint ?? "unique") !== "unique" || (a.constraint ?? "unique") !== "unique") continue;
+    if (want.constraint === "unique" && a.constraint === undefined) promotions.push(want);
+    else if (want.plainIndex === true && a.constraint === "unique") demotions.push({ live: a, want });
+  }
+  return { promotions, demotions };
+}
+
+/**
+ * Drop and re-add every live foreign key that targets a demoted key's columns, unless the
+ * diff already drops it. An FK the same migration renames is dropped under its new name, since
+ * the rename runs first. The re-added FK is the expected one when the model still declares
+ * it, else the live one.
+ */
+function refitForeignKeysOnto(
+  keys: readonly { table: TableDescriptor; columns: readonly string[] }[],
+  actualTables: ReadonlyMap<string, TableDescriptor>,
+  expectedTables: ReadonlyMap<string, TableDescriptor>,
+  renamedConstraints: ReadonlyMap<string, ReadonlyMap<string, string>>,
+  changes: Change[],
+): void {
+  const dropped = new Set(changes.flatMap((c) =>
+    c.kind === "drop-fk" ? [`${tableIdentity({ name: c.table, ...schemaSpread(c.schema) })}\u0000${c.fk}`] : []));
+  for (const [id, t] of actualTables) {
+    for (const fk of t.foreignKeys) {
+      // An FK names its target table in the referencing table's schema.
+      const target = keys.find((k) => fk.refTable === k.table.name && t.schema === k.table.schema
+        && fk.refColumns.length === k.columns.length && fk.refColumns.every((c, i) => c === k.columns[i]));
+      if (target === undefined || dropped.has(`${id}\u0000${fk.name}`)) continue;
+      const sx = schemaSpread(t.schema);
+      const name = renamedConstraints.get(id)?.get(fk.name) ?? fk.name;
+      const live = name === fk.name ? fk : { ...fk, name };
+      const want = expectedTables.get(id)?.foreignKeys.find((f) => f.name === name) ?? live;
+      changes.push({ kind: "drop-fk", table: t.name, ...sx, fk: name, restore: live, status: ALLOWED });
+      if (!changes.some((c) => c.kind === "add-fk" && idOfChange(c) === id && c.fk.name === want.name)) {
+        changes.push({ kind: "add-fk", table: t.name, ...sx, fk: want, status: ALLOWED });
+      }
+    }
+  }
+}
+
 /**
  * #258 — throw {@link PrimaryKeyChangeError} when a table's live PRIMARY KEY differs from
  * the metadata identity. Live PK column names are first mapped through any detected
@@ -849,7 +962,7 @@ function sqlTypeEqualsForDialect(a: SqlType, b: SqlType, dialect: Dialect | unde
  */
 function defaultSequenceName(table: string, column: string): string | undefined {
   const name = `${table}_${column}_seq`;
-  return Buffer.byteLength(name, "utf8") <= 63 ? name : undefined;
+  return Buffer.byteLength(name, "utf8") <= PG_IDENTIFIER_MAX_BYTES ? name : undefined;
 }
 
 function diffTableColumns(
@@ -1059,11 +1172,18 @@ function fkKeyingIsStructural(
   return distinct(expected) && distinct(actual);
 }
 
+/**
+ * Keyed by column set when `structural`, else by name. On Postgres the name is the one Postgres
+ * stores (its first 63 bytes), so a derived name over the limit matches its live, cut form
+ * instead of being proposed as a rename on every run.
+ */
 function fkMapFor(
   fks: readonly FkDescriptor[],
   structural: boolean,
+  dialect: Dialect | undefined,
 ): Map<string, FkDescriptor> {
-  return new Map(fks.map((f) => [structural ? fkColsKey(f) : f.name, f] as const));
+  const nameKey = (name: string): string => (dialect === "sqlite" || dialect === "d1" ? name : pgStoredIdentifier(name));
+  return new Map(fks.map((f) => [structural ? fkColsKey(f) : nameKey(f.name), f] as const));
 }
 
 function diffTableForeignKeys(
@@ -1075,8 +1195,8 @@ function diffTableForeignKeys(
   const table = expected.name;
   const sx = schemaSpread(expected.schema);
   const structuralFk = fkKeyingIsStructural(expected.foreignKeys, actual.foreignKeys, dialect);
-  const expectedFk = fkMapFor(expected.foreignKeys, structuralFk);
-  const actualFk = fkMapFor(actual.foreignKeys, structuralFk);
+  const expectedFk = fkMapFor(expected.foreignKeys, structuralFk, dialect);
+  const actualFk = fkMapFor(actual.foreignKeys, structuralFk, dialect);
   // NOTE: the map key is the FK's identity (name on postgres; column set on
   // sqlite/d1 — see fkMapFor). Change records always carry the DESCRIPTOR's
   // constraint name, never the key.
@@ -1372,6 +1492,38 @@ function annotateViewDropDependents(actual: readonly ViewDescriptor[], changes: 
       }
     }
     if (external.length > 0) c.dependents = external;
+  }
+}
+
+/**
+ * Mark each `drop-column` that a live view this migration leaves in place still reads.
+ *
+ * A view with a drop-view or replace-view in `changes` that is not blocked is dropped or
+ * rewritten around the change, so it does not strand the drop. Every other live view
+ * does: a declared-`@unmanaged` one, one in a schema the model does not scope, a hand-made
+ * one whose drop-view is blocked. A view with no recorded body cannot be matched, so it is
+ * not blocked on.
+ */
+function annotateUnownedColumnReaders(
+  actual: readonly ViewDescriptor[],
+  changes: Change[],
+): void {
+  const handled = new Set<string>();
+  for (const c of changes) {
+    if (c.status.state === "blocked") continue;
+    if (c.kind === "drop-view") handled.add(viewIdentity({ name: c.view, ...schemaSpread(c.schema) }));
+    else if (c.kind === "replace-view") handled.add(viewIdentity({ name: c.view.name, ...schemaSpread(c.schema) }));
+  }
+  const unowned = actual.filter((v) => v.sql !== undefined && !handled.has(viewIdentity(v)));
+  if (unowned.length === 0) return;
+  const liveName = liveTableNames(changes);
+  for (const c of changes) {
+    if (c.kind !== "drop-column") continue;
+    const table = liveName(c.table);
+    const readBy = unowned
+      .filter((v) => sqlNamesIdentifier(v.sql!, table) && sqlNamesIdentifier(v.sql!, c.column))
+      .map((v) => (v.schema !== undefined ? `${v.schema}.${v.name}` : v.name));
+    if (readBy.length > 0) c.readBy = readBy;
   }
 }
 

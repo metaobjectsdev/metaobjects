@@ -20,7 +20,7 @@
 // consumer having wired an extra generator, since the entity generator is
 // scaffold-and-own (ADR-0034) and cannot be changed from the package.
 
-import { code, type Code } from "ts-poet";
+import { code, type Code } from "../poet.js";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "../constants.js";
 import { renderEntityConstants } from "./entity-constants.js";

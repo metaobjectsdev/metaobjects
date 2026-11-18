@@ -1,5 +1,5 @@
 import type { SchemaBuildSettings } from "@metaobjectsdev/migrate-ts";
-import { join, relative, resolve, isAbsolute, dirname } from "node:path";
+import { join, relative, resolve, isAbsolute, dirname, sep } from "node:path";
 import { warnMissingPromptGenerators } from "./prompt-generator-gate.js";
 import { runEmitsEntityModule, runEmitsHonoRoutes, runEmitsQueries, runEmitsRestRoutes, runEmitsUiTier, runRoutesExpose, warnUnmarkedRoutesGenerators, warnUnmarkedUiGenerators } from "./ui-tier-gate.js";
 import { warnRetiredCodegenAttrs } from "./retired-codegen-attrs.js";
@@ -12,10 +12,11 @@ import {
   isMetaRoot, FIELD_SUBTYPE_TIMESTAMP, FIELD_ATTR_FILTERABLE,
   composeRegistry, coreProviders, physicalNamingOf,
 } from "@metaobjectsdev/metadata";
+import { assertNoCollectionNameCollisions } from "./naming/collection-name-collision.js";
 import { NameClaims } from "./naming/name-claims.js";
 import { dbEmittingObjects, missingDialectMessage } from "./db-emitting.js";
 import { generatableObjects, hasAnyRdbSource } from "./source-detect.js";
-import type { Generator, GenContext, EmittedFile } from "./generator.js";
+import type { Generator, GenContext, EmittedFile, RunOutputFile } from "./generator.js";
 import type { MetaobjectsGenConfig } from "./metaobjects-config.js";
 import { normalizeConfig, assertCodegenDialect, DEFAULT_TARGET_NAME } from "./metaobjects-config.js";
 import type { ResolvedTarget } from "./import-path.js";
@@ -26,14 +27,16 @@ import { sweepOrphans, type OrphanJob } from "./orphan-sweep.js";
 import { refusedOrphanMessage } from "./reconcile-orphans.js";
 import { effectivePackage } from "./docs-paths.js";
 import {
-  beginManifestBatch,
   decideAndWrite,
-  endManifestBatch,
   previewWriteStatus,
   hasHashManifest,
   listGeneratedPaths,
   loadEngineVersion,
   saveEngineVersion,
+  recordGeneratedProvenance,
+  withManifestBatch,
+  listGeneratedProvenance,
+  type GeneratedProvenance,
   type WriteResult,
   type MergeStrategy,
   type BaselineMode,
@@ -135,6 +138,12 @@ export interface RunGenOpts {
    */
   scope?: (fqn: string) => boolean;
   /**
+   * FR-023 — which requirements are this project's ledger, read with `<package>::<path>`
+   * (`Collection.inLedger`, passed straight through like `scope`). Threaded onto
+   * `GenContext.inLedger`. Undefined ⇒ every loaded requirement.
+   */
+  inLedger?: (fqn: string) => boolean;
+  /**
    * FR-023 §4.3 — the collection's own source files (`Collection.ownFiles`; never
    * a dependency's snapshot artifact), threaded onto `GenContext.sourceFiles` for
    * `sharedModelFile()`'s default `files` selection. The CLI's `gen` command
@@ -191,6 +200,21 @@ export interface RunGenOpts {
    * `GenContext.libraries`.
    */
   libraries?: readonly string[];
+  /**
+   * The requirement ledger as `meta verify --format json` states it, threaded onto
+   * `GenContext.requirementLedger` for the docs site's model explorer. codegen-ts cannot
+   * compute it (the requirement gate is the CLI's), so the caller that can supplies it; the
+   * runner calls it at most once, and only when a generator asks. Absent: the explorer
+   * shows no ledger.
+   */
+  requirementLedger?: () => unknown;
+  /**
+   * Directories inside `projectRoot` that stand in for output directories OUTSIDE the real
+   * project. `meta verify --codegen` regenerates into a temp tree and moves an out-of-tree
+   * target into a slot under it; a file written there is treated as outside the project, as
+   * `meta gen` treats the real one: written, never recorded, and absent from `ctx.runOutput`.
+   */
+  untrackedOutDirs?: readonly string[];
 }
 
 export interface RunGenResult {
@@ -209,13 +233,13 @@ export interface RunGenResult {
    *  classify an orphan by `orphanVerdict` exactly as the sweep does. */
   orphanSweepJobs?: readonly OrphanJob[];
   /** On a dry run only: every rendered file's absolute path and content, so a caller can
-   *  compare the output with disk in memory (`verify --codegen`, ADR-0062) with no temp tree. */
+   *  compare the output with disk in memory (`verify --codegen`, ADR-0064) with no temp tree. */
   rendered?: ReadonlyMap<string, string>;
   /** The absolute paths this run wrote outside the project root. The manifest records none of
-   *  them, so the stored skip key lists them and a later skip needs each to exist (ADR-0062). */
+   *  them, so the stored skip key lists them and a later skip needs each to exist (ADR-0064). */
   outsidePaths?: readonly string[];
   /** True when the orphan sweep kept an edited orphan. Such a run is incomplete: it stores no
-   *  skip key, so the next run repeats the warning (ADR-0062). */
+   *  skip key, so the next run repeats the warning (ADR-0064). */
   sweepRefused?: boolean;
 }
 
@@ -368,10 +392,12 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // a watch loop, a test) would otherwise find the first run's snapshot and three-way merge,
   // which is exactly the record-keeping an untracked file does not have.
   const untrackedGenStateDir = join(tmpdir(), `meta-gen-untracked-${process.pid}-${randomUUID()}`);
+  const untrackedOutDirs = opts.untrackedOutDirs ?? [];
   const outsideProject = (fullPath: string): boolean => {
     if (projectRoot === undefined) return false;
     const rel = relative(projectRoot, fullPath);
-    return rel.startsWith("..") || isAbsolute(rel);
+    if (rel.startsWith("..") || isAbsolute(rel)) return true;
+    return untrackedOutDirs.some((dir) => isNestedIn(fullPath, dir));
   };
   let untrackedCount = 0;
   const outsidePaths: string[] = [];
@@ -442,6 +468,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // packages may declare the same short name).
   const allObjects = root.objects();
   const entityFilter = opts.entityFilter;
+  const entityNarrowed = entityFilter !== undefined && entityFilter.length > 0;
   const afterEntityFilter = entityFilter
     ? allObjects.filter((o) => entityFilter.includes(o.name))
     : allObjects;
@@ -484,6 +511,15 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // generates nothing. A selection made only of unserved reports gets the same
   // "nothing to generate" warning as an empty one.
   const generatable = generatableObjects(filtered, root);
+  // `meta gen <Entity>` narrows what is WRITTEN per entity, never what a whole-model file
+  // sees: a barrel, an index or a shared schema rendered from the named entities alone
+  // dropped every other entity's export. So every generator gets the whole (scoped) model
+  // in `ctx.entities`, and the entity filter reaches it only as `ctx.selected`.
+  // Keyed by the generated object (a served report generates as its read model) and by
+  // the declared one, so either names the selection.
+  const selectedKeys = new Set([...filtered, ...generatable].map((o) => o.resolutionKey()));
+  const isSelected = (o: MetaObject): boolean => selectedKeys.has(o.resolutionKey());
+  const wholeModel = scope ? allObjects.filter((o) => scope(o.resolutionKey())) : allObjects;
   if (generatable.length === 0) {
     warnings.push(
       "No entities to generate — every selected object is an object.report that is not " +
@@ -494,16 +530,20 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   }
 
   const safeEntities: MetaObject[] = [];
-  for (const entity of generatable) {
+  for (const entity of entityNarrowed ? generatableObjects(wholeModel, root) : generatable) {
     if (!VALID_ENTITY_NAME.test(entity.name)) {
-      warnings.push(
-        `Skipping entity with unsafe name "${entity.name}" — must match /^[A-Za-z_][A-Za-z0-9_]*$/.`,
-      );
+      if (isSelected(entity)) {
+        warnings.push(
+          `Skipping entity with unsafe name "${entity.name}" — must match /^[A-Za-z_][A-Za-z0-9_]*$/.`,
+        );
+      }
       continue;
     }
     safeEntities.push(entity);
   }
-  if (safeEntities.length === 0) {
+  // The entities this run writes per-entity output for: all of them, or the ones named.
+  const selectedEntities = entityNarrowed ? safeEntities.filter(isSelected) : safeEntities;
+  if (selectedEntities.length === 0) {
     return { files: [], warnings, conflicts: [] };
   }
 
@@ -614,6 +654,16 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   const entityGen = config.generators.find((g) => g.emitsEntityModule);
   const entityModuleTarget = entityGen ? targetOf(entityGen) : targets[DEFAULT_TARGET_NAME]!;
 
+  // Refuse before any generator runs: a name two objects claim in the scope it lives in
+  // (the entity modules' directory, by the layout they are written in; the one app's routes),
+  // and only for the names this run emits. A docs-only run emits neither set, so it refuses
+  // neither: a run-wide rule over names nothing writes would refuse for no reason.
+  assertNoCollectionNameCollisions(safeEntities, {
+    layout: entityModuleTarget.outputLayout,
+    modules: runEmitsEntityModule(config.generators) || runEmitsQueries(config.generators) || runEmitsUiTier(config.generators),
+    routes: runEmitsRestRoutes(config.generators) || runEmitsHonoRoutes(config.generators),
+  });
+
   // NO eager importBase check here, deliberately.
   //
   // There used to be one: "any generator on a non-entity target ⇒ the entity
@@ -637,8 +687,8 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // 3. Build shared render state once.
   const pkMap = buildPkMap(root);
   const relationMap = buildRelationMap(root, (m) => warnings.push(m));
-  // The run's one claim registry (ruling R52): every generator claims each name it emits into a
-  // shared scope, so a real collision is refused naming both claimants, and only for what is wired.
+  // The run's one claim registry: every generator claims each name it emits into a shared
+  // scope, so a real collision is refused naming both claimants, and only for what is wired.
   const claims = new NameClaims();
 
   // Auto-detect: is the OPT-IN Hono routes generator in the active suite? If so,
@@ -746,7 +796,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // the run's own entity set (the same set every generator sees), so `meta gen <entity>`
   // reports on what it just generated rather than on objects it was told to skip.
   // See retired-codegen-attrs.ts. Self-extinguishing; warning only.
-  warnRetiredCodegenAttrs(safeEntities, (m) => warnings.push(m));
+  warnRetiredCodegenAttrs(selectedEntities, (m) => warnings.push(m));
 
   // What the documentation generators in one target must agree on (docs-run.ts), built from
   // the generators the run declares for that target. The schema builder is shared by all
@@ -771,9 +821,19 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     if (unknown.length > 0) throw new Error(undeclaredGeneratorsMessage(unknown, declared));
     selected = config.generators.filter((_, i) => wanted.has(declared[i]!));
   }
+  // A generator that reads the run's output runs after every one that writes it, each group in
+  // declared order, so the list it reads is complete.
+  selected = [...selected.filter((g) => g.readsRunOutput !== true), ...selected.filter((g) => g.readsRunOutput === true)];
+  const requirementLedger = opts.requirementLedger !== undefined ? once(opts.requirementLedger) : undefined;
 
   // 4. Run each generator with a per-target render context; collect with full path.
-  const emitted: { fullPath: string; content: string; generatedBy: string; handEdits?: HandEdits }[] = [];
+  const emitted: {
+    fullPath: string;
+    content: string;
+    generatedBy: string;
+    handEdits?: HandEdits;
+    sourceNode?: string;
+  }[] = [];
   // FR-038 §8 — generators that opted into orphan reconciliation, paired with the
   // directory their policy's relative paths are measured from. Collected here
   // because `writeOutDir` is resolved per generator inside this loop.
@@ -794,7 +854,44 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // Generators that ran and produced no file. See the note at the `files.length === 0`
   // check below. A Set because a generator may run once per target.
   const emptyGenerators = new Set<string>();
+  // `ctx.runOutput`: what this run has generated so far, keyed as the manifest keys it. A run
+  // narrowed with `--generators` or to some entities adds what the committed manifest records
+  // for the rest — the declared generators it did not run, and the objects it did not render —
+  // so a narrowed run reads what a full run reads. A record for a generator no longer declared,
+  // or for a file no longer on disk, is stale and stays out.
+  const runOutputFiles = (): RunOutputFile[] => {
+    const out = new Map<string, RunOutputFile>();
+    const keyOf = (fullPath: string): string | undefined => {
+      if (projectRoot === undefined) return fullPath.split(sep).join("/");
+      if (outsideProject(fullPath)) return undefined;
+      return relative(projectRoot, fullPath).split(sep).join("/");
+    };
+    if (opts.generatorNames !== undefined || entityNarrowed) {
+      const ranNames = new Set(selected.map((g) => g.name));
+      const declaredNames = new Set(config.generators.map((g) => g.name));
+      const renderedNodes = new Set(selectedEntities.map((e) => e.resolutionKey()));
+      for (const rec of listGeneratedProvenance(genStateDir)) {
+        if (!declaredNames.has(rec.generatedBy)) continue;
+        // A generator that ran states its own output, except for the objects an entity
+        // filter kept it from.
+        if (ranNames.has(rec.generatedBy) && (!entityNarrowed || rec.sourceNode === undefined || renderedNodes.has(rec.sourceNode))) continue;
+        if (projectRoot !== undefined && !existsSync(join(projectRoot, rec.path))) continue;
+        out.set(rec.path, rec);
+      }
+    }
+    for (const file of emitted) {
+      const path = keyOf(file.fullPath);
+      if (path === undefined) continue;
+      out.set(path, {
+        path,
+        generatedBy: file.generatedBy,
+        ...(file.sourceNode !== undefined && { sourceNode: file.sourceNode }),
+      });
+    }
+    return [...out.values()].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  };
 
+  const wholeKeys = new Set(safeEntities.map((e) => e.resolutionKey()));
   for (const generator of selected) {
     const selfTarget = targetOf(generator);
     // Resolve the WRITE-time location against projectRoot when outDir is
@@ -844,9 +941,11 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       selfTarget,
       entityModuleTarget,
       ...(config.providedEnumModule !== undefined && { providedEnumModule: config.providedEnumModule }),
+      ...(opts.schemaSettings !== undefined && { schemaSettings: opts.schemaSettings }),
     });
     const ctx: GenContext = {
       entities: safeEntities,
+      ...(entityNarrowed && { selected: isSelected }),
       loadedRoot: root,
       matches: (e) => generator.filter?.(e) ?? true,
       // FR-023 §11.1 item 2 — the SAME `scope` predicate that already narrowed
@@ -855,6 +954,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       // than per matched entity, where `matches` never runs. Absent scope ⇒ no
       // `select` at all, byte-identical to a project with no `scope` declared.
       ...(scope !== undefined && { select: scope }),
+      ...(opts.inLedger !== undefined && { inLedger: opts.inLedger }),
       config: {
         outDir: selfTarget.outDir,
         extStyle: config.extStyle,
@@ -882,6 +982,8 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       docs: docsFactsFor(selfTarget.name),
       ...(opts.schemaSettings !== undefined && { schemaSettings: opts.schemaSettings }),
       ...(selectedManifests !== undefined && { libraries: selectedManifests }),
+      ...(generator.readsRunOutput === true && { runOutput: runOutputFiles }),
+      ...(requirementLedger !== undefined && { requirementLedger }),
       claim: (scope, name, claimant, remedy) => claims.claim(scope, name, claimant, remedy),
       entryLabel: `#${config.generators.indexOf(generator) + 1}`,
       warn: (msg) => warnings.push(`[${generator.name}] ${msg}`),
@@ -932,6 +1034,10 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     }
 
     for (const file of files) {
+      // A file rendered from one object the entity filter did not name is not this run's
+      // to write: `perEntity` already skips those, and this holds a generator that renders
+      // per object by other means to the same rule.
+      if (entityNarrowed && file.sourceNode !== undefined && wholeKeys.has(file.sourceNode) && !selectedKeys.has(file.sourceNode)) continue;
       const fullPath = join(writeOutDir, file.path);
       const collision = emitted.find((prev) => prev.fullPath === fullPath);
       if (collision) {
@@ -955,6 +1061,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
         content: file.content,
         generatedBy: generator.name,
         ...(generator.handEdits !== undefined && { handEdits: generator.handEdits }),
+        ...(file.sourceNode !== undefined && { sourceNode: file.sourceNode }),
       });
     }
   }
@@ -1241,11 +1348,9 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     };
   }
 
-  // ADR-0062 §1 — the manifest is read once here and written once below, only if an entry
-  // changed. The `finally` keeps a throwing write from leaving the batch open for the next
-  // run in this process; what it recorded before the throw is still saved.
-  beginManifestBatch(genStateDir);
-  try {
+  // The whole write phase shares one in-memory manifest, written once at its end — the
+  // writes, the provenance and the sweep all record into it. See `withManifestBatch`.
+  withManifestBatch(genStateDir, () => {
     for (const file of emitted) {
       // Key the snapshot by project-relative path so multi-target projects keep
       // distinct entries (e.g. `database/Post.ts` vs `web/Post.queries.ts`).
@@ -1274,13 +1379,26 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     noteUntracked();
     reportAdoptions();
 
+    // G3 — which node each recorded file came from, beside its hash. Only with a real
+    // projectRoot: without one the manifest is keyed by path hashes, not paths.
+    if (projectRoot !== undefined) {
+      const provenance = new Map<string, GeneratedProvenance>();
+      for (const file of emitted) {
+        if (outsideProject(file.fullPath)) continue;
+        // The same key policyFor gives the write, so the two always name one entry.
+        provenance.set(relative(projectRoot, file.fullPath), {
+          generatedBy: file.generatedBy,
+          ...(file.sourceNode !== undefined && { sourceNode: file.sourceNode }),
+        });
+      }
+      recordGeneratedProvenance(genStateDir, provenance);
+    }
+
     // Sweep AFTER the writes: writing is the primary job, and a deletion that runs
     // first would be unrecoverable if a later write threw. Ordering cannot change
     // the decision — a path this run emitted is never an orphan either way.
     sweep(false);
-  } finally {
-    endManifestBatch();
-  }
+  });
 
   // #232 — stamp the engine version that produced this snapshot, so the NEXT gen can
   // detect an engine change. Written after a successful run only, and only by a run that
@@ -1327,4 +1445,17 @@ export function undeclaredGeneratorsMessage(unknown: readonly string[], declared
     (declared.length > 0 ? declared.join(", ") : "none") +
     "."
   );
+}
+
+/** Memoize a zero-argument callback: called at most once, and only when first asked. */
+function once<T>(fn: () => T): () => T {
+  let done = false;
+  let value: T | undefined;
+  return () => {
+    if (!done) {
+      value = fn();
+      done = true;
+    }
+    return value as T;
+  };
 }

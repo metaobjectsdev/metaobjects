@@ -10,7 +10,8 @@ from __future__ import annotations
 import json
 import math
 import re
-from typing import Callable, NamedTuple
+from collections.abc import Mapping
+from typing import Any, Callable, NamedTuple
 
 from ..errors import ErrorCode, MetaError
 from ..source.error_source import LoaderWarning
@@ -24,6 +25,13 @@ from .validate_discriminator import validate_discriminator
 from .validate_source_parameter_ref import validate_source_parameter_ref
 from .validate_source_escapes import validate_source_escapes
 from .validate_reporting import validate_reporting
+from ..codegen.runtime.duration_wire import DURATION_RE
+from ..meta.core.reporting.reporting_constants import (
+    FILTER_RELATIVE_NOW,
+    FILTER_RELATIVE_START_OF,
+    ISO_DURATION_RE,
+    RELATIVE_START_OF_UNITS,
+)
 from ..meta.core.field.field_constants import (
     ENUM_MEMBER_PATTERN,
     FIELD_ATTR_COERCE_DEFAULT,
@@ -67,11 +75,13 @@ from ..meta.persistence.db.db_constants import (
     DB_COLUMN_TYPE_SIZED_SPELLINGS,
     parse_db_column_type,
 )
+from ..meta.core.object.collection_names import collection_name_of
 from ..meta.core.object.meta_object import MetaObject
 from ..meta.core.relationship.meta_relationship import MetaRelationship
 from ..meta.meta_data import MetaData
 from ..meta.persistence.source.meta_source import MetaSource
 from ..meta.persistence.source.source_constants import (
+    SOURCE_KIND_VIEW,
     SOURCE_READ_ONLY_KINDS,
     SOURCE_ROLE_PRIMARY,
 )
@@ -89,6 +99,7 @@ from ..shared.base_types import (
     TYPE_OBJECT,
     TYPE_ORIGIN,
     TYPE_RELATIONSHIP,
+    TYPE_SEGMENT,
     TYPE_REQUIREMENT,
     TYPE_SOURCE,
     TYPE_TEMPLATE,
@@ -105,12 +116,18 @@ from ..meta.persistence.origin.origin_constants import (
     AGG_ANY,
     AGG_COLLECT,
     ASSEMBLY_ORIGIN_SUBTYPES,
+    COLUMN_VALUE_AGGREGATES,
     ORIGIN_ATTR_AGG,
     ORIGIN_ATTR_CONVERT,
     ORIGIN_ATTR_DISTINCT,
     ORIGIN_ATTR_EXPR,
     ORIGIN_ATTR_FILTER,
     ORIGIN_ATTR_FROM,
+    ORIGIN_ATTR_SEGMENT,
+    CORRELATED_FILTER_OPS,
+    FILTER_OP_IS_DISTINCT_FROM,
+    FILTER_OP_IS_NOT_DISTINCT_FROM,
+    FILTER_OPERAND_FIELD,
     ORIGIN_ATTR_OF,
     ORIGIN_ATTR_ORDER_BY,
     ORIGIN_ATTR_VIA,
@@ -135,7 +152,6 @@ from ..meta.core.identity.identity_constants import (
 )
 from ..shared.separators import PACKAGE_SEP
 from ..meta.core.object.object_constants import (
-    OBJECT_PROJECTION_ATTR_FILTER,
     OBJECT_SUBTYPE_ENTITY,
     OBJECT_SUBTYPE_PROJECTION,
     OBJECT_SUBTYPE_VALUE,
@@ -151,6 +167,9 @@ from ..meta.persistence.db.db_constants import (
 from ..source import resolved_source
 from ..naming_refs import did_you_mean_hint, resolve_object_ref, referrer_package_of
 from ..naming_refs import ref_target as bound_ref_target
+from ..meta.core.field.flattened_member import resolve_flattened_member
+from ..meta.core.object.effective_projection_filter import effective_projection_filter
+from ..meta.core.relationship.filter_path import resolve_filter_path
 from ..meta.core.relationship.relationship_references import (
     reference_candidates_for,
     reference_fields,
@@ -211,6 +230,9 @@ def run_validations(
     _validate_datagrid_filter_values(root, errors)
     # #207 — object.projection view-level @filter reference validation.
     _validate_projection_filter(root, errors)
+    # Origin @segment names a segment of the related entity; a correlated @filter operand names
+    # a base-row field.
+    _validate_origin_segments_and_correlation(root, errors)
     # FR-044 — the reporting vocabulary (dimension / measure / segment /
     # object.report) and relative-date filter values (rules D1-F2).
     validate_reporting(root, errors)
@@ -259,8 +281,9 @@ def run_validations(
     _validate_enum_max_length(root, errors)
     # identity.primary @sequenceStart / @sequenceName need @generation "increment".
     _validate_identity_sequence(root, errors)
-    # cross-field validators — atLeastOne @max in range; @condition names entity fields.
-    _validate_cross_field_validators(root, errors)
+    # cross-field validators — exactlyOne names two or more fields;
+    # @condition names entity fields.
+    _validate_cross_field_validators(root, errors, strict)
     # @dbCheck: false with @constraintName names a CHECK that is never created.
     _validate_db_check(root, errors)
     # field.map — exactly one of @valueType (scalar) or @objectRef (VO), and
@@ -1211,6 +1234,15 @@ SORT_ORDER_VALUES: tuple[str, ...] = ("asc", "desc")
 EXPR_OP_IS_NOT_NULL = "isNotNull"
 EXPR_OP_NOT = "not"
 EXPR_FN_COALESCE = "coalesce"
+# { case: [{ when, then }, …], else?, operand? } — searched, or simple with operand; and
+# { now: "<ISO-8601 duration>", startOf? } — the relative-date value, as a leaf.
+EXPR_CASE = "case"
+EXPR_CASE_WHEN = "when"
+EXPR_CASE_THEN = "then"
+EXPR_CASE_ELSE = "else"
+EXPR_CASE_OPERAND = "operand"
+EXPR_NOW = FILTER_RELATIVE_NOW
+EXPR_NOW_START_OF = FILTER_RELATIVE_START_OF
 
 # Filter-op / compose names shared with the filter vocabulary (see query-constants.ts).
 _FILTER_OP_EQ = "eq"
@@ -1229,6 +1261,20 @@ _COMPARISON_OPS: frozenset[str] = frozenset(
 _NULL_OPS: frozenset[str] = frozenset({_FILTER_OP_IS_NULL, EXPR_OP_IS_NOT_NULL})
 _VARIADIC_LOGIC_OPS: frozenset[str] = frozenset({_FILTER_COMPOSE_AND, _FILTER_COMPOSE_OR})
 
+# Each node kind (keyed by the key that names it) and the only keys it may carry.
+_NODE_KEYS: dict[str, tuple[str, ...]] = {
+    "field": ("field",),
+    "value": ("value",),
+    EXPR_NOW: (EXPR_NOW, EXPR_NOW_START_OF),
+    EXPR_CASE: (EXPR_CASE, EXPR_CASE_ELSE, EXPR_CASE_OPERAND),
+    "fn": ("fn", "args"),
+    "op": ("op", "left", "right", "arg", "args"),
+}
+_EXPR_NUMERIC_SUBTYPES: frozenset[str] = frozenset({
+    FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
+    FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_CURRENCY,
+})
+
 
 def validate_expr_node(node: object) -> list[str]:
     """Structural well-formedness of an expression tree (known node kinds, ops,
@@ -1241,6 +1287,11 @@ def validate_expr_node(node: object) -> list[str]:
             else type(node).__name__
         )
         return [f"expression node must be an object, got {kind}"]
+    node_kind = next((k for k in _NODE_KEYS if k in node), None)
+    if node_kind is not None:
+        extra = [k for k in node if k not in _NODE_KEYS[node_kind]]
+        if extra:
+            return [f"expression '{node_kind}' node takes only {', '.join(_NODE_KEYS[node_kind])}, not {', '.join(extra)}"]
     if "field" in node:
         f = node["field"]
         return [] if isinstance(f, str) and len(f) > 0 else ["expression 'field' must be a non-empty string"]
@@ -1251,6 +1302,33 @@ def validate_expr_node(node: object) -> list[str]:
             if (v is None or isinstance(v, (str, int, float, bool)))
             else ["expression 'value' must be a scalar literal (string/number/boolean/null)"]
         )
+    if EXPR_NOW in node:
+        duration = node[EXPR_NOW]
+        if not isinstance(duration, str) or ISO_DURATION_RE.match(duration) is None:
+            return [f"expression '{EXPR_NOW}' must be an ISO-8601 duration string (e.g. '-P7D'), got {duration!r}"]
+        start_of = node.get(EXPR_NOW_START_OF)
+        if EXPR_NOW_START_OF in node and not (isinstance(start_of, str) and start_of in RELATIVE_START_OF_UNITS):
+            return [
+                f"expression '{EXPR_NOW_START_OF}' must be one of "
+                f"{', '.join(RELATIVE_START_OF_UNITS)}, got {start_of!r}"
+            ]
+        return []
+    if EXPR_CASE in node:
+        arms = node[EXPR_CASE]
+        if not isinstance(arms, list) or not arms:
+            return [f"'{EXPR_CASE}' requires a non-empty array of {{ {EXPR_CASE_WHEN}, {EXPR_CASE_THEN} }} arms"]
+        errs: list[str] = []
+        for arm in arms:
+            if not isinstance(arm, dict) or set(arm) != {EXPR_CASE_WHEN, EXPR_CASE_THEN}:
+                errs.append(f"every '{EXPR_CASE}' arm must be {{ {EXPR_CASE_WHEN}, {EXPR_CASE_THEN} }}")
+                continue
+            errs.extend(validate_expr_node(arm[EXPR_CASE_WHEN]))
+            errs.extend(validate_expr_node(arm[EXPR_CASE_THEN]))
+        if EXPR_CASE_ELSE in node:
+            errs.extend(validate_expr_node(node[EXPR_CASE_ELSE]))
+        if EXPR_CASE_OPERAND in node:
+            errs.extend(validate_expr_node(node[EXPR_CASE_OPERAND]))
+        return errs
     if "fn" in node:
         if node["fn"] != EXPR_FN_COALESCE:
             return [f"unknown expression fn '{node['fn']}'"]
@@ -1276,7 +1354,7 @@ def validate_expr_node(node: object) -> list[str]:
                 return [m for a in args for m in validate_expr_node(a)]
             return [f"op '{op}' requires a non-empty args array"]
         return [f"unknown expression op '{op}'"]
-    return ["expression node must be one of {field}, {value}, {op,…}, {fn,…}"]
+    return ["expression node must be one of {field}, {value}, {op,…}, {fn,…}, {case,…}, {now}"]
 
 
 def _literal_type(v: object) -> str | None:
@@ -1289,6 +1367,36 @@ def _literal_type(v: object) -> str | None:
     if isinstance(v, (int, float)):
         return FIELD_SUBTYPE_INT if float(v).is_integer() else FIELD_SUBTYPE_DOUBLE
     return None  # null literal
+
+
+def _is_adaptable(node: object) -> bool:
+    """A numeric literal or a ``now`` node: it takes the type of the result it sits beside."""
+    assert isinstance(node, dict)
+    value = node.get("value")
+    return ("value" in node and isinstance(value, (int, float)) and not isinstance(value, bool)) or EXPR_NOW in node
+
+
+def _adapts_to(node: object, to: str) -> bool:
+    """Whether an adaptable node takes ``to``: a whole number any numeric type, a fractional number only
+    double, float or decimal, ``now`` a date or timestamp."""
+    assert isinstance(node, dict)
+    if EXPR_NOW in node:
+        return to in (FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIMESTAMP)
+    if _literal_type(node["value"]) == FIELD_SUBTYPE_INT:
+        return to in _EXPR_NUMERIC_SUBTYPES
+    return to in (FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT, FIELD_SUBTYPE_DECIMAL)
+
+
+def _unify_types(nodes: list[object], types: list[str | None]) -> tuple[str | None, list[str] | None]:
+    """The one type of a case's results or a coalesce's args, and every type when they do not unify."""
+    typed = [(node, t) for node, t in zip(nodes, types) if t is not None]
+    anchor = next((t for node, t in typed if not _is_adaptable(node)), None)
+    unified = anchor if anchor is not None else (typed[0][1] if typed else None)
+    fits = all(
+        t == unified or (anchor is not None and _is_adaptable(node) and _adapts_to(node, anchor))
+        for node, t in typed
+    )
+    return (unified, None) if fits else (unified, list(dict.fromkeys(t for _, t in typed)))
 
 
 class InferResult(NamedTuple):
@@ -1316,21 +1424,55 @@ def infer_expr_type(
     if "field" in n:
         t = resolve_field(n["field"])
         return (
-            InferResult(None, [f"expression field '{n['field']}' does not resolve to a base entity field"])
+            InferResult(None, [f"expression field '{n['field']}' does not resolve to a projection field (not an aggregate) or a base entity field"])
             if t is None
             else InferResult(t, [])
         )
     if "value" in n:
         return InferResult(_literal_type(n["value"]), [])
+    # now: an instant; compared with a date or local timestamp it takes that kind at lowering.
+    if EXPR_NOW in n:
+        return InferResult(FIELD_SUBTYPE_TIMESTAMP, [])
+    if EXPR_CASE in n:
+        errors: list[str] = []
+        operand = infer_expr_type(n[EXPR_CASE_OPERAND], resolve_field) if EXPR_CASE_OPERAND in n else None
+        if operand is not None:
+            errors.extend(operand.errors)
+        results: list[str | None] = []
+        result_nodes: list[object] = []
+        for arm in n[EXPR_CASE]:
+            w = infer_expr_type(arm[EXPR_CASE_WHEN], resolve_field)
+            errors.extend(w.errors)
+            if operand is None and w.type is not None and w.type != FIELD_SUBTYPE_BOOLEAN:
+                errors.append(f"a searched '{EXPR_CASE}' needs a boolean '{EXPR_CASE_WHEN}', got {w.type}")
+            if (
+                operand is not None and operand.type is not None and w.type is not None
+                and "value" not in arm[EXPR_CASE_WHEN] and w.type != operand.type
+            ):
+                errors.append(
+                    f"a simple '{EXPR_CASE}' compares its {operand.type} '{EXPR_CASE_OPERAND}' "
+                    f"with a {w.type} '{EXPR_CASE_WHEN}'"
+                )
+            t = infer_expr_type(arm[EXPR_CASE_THEN], resolve_field)
+            errors.extend(t.errors)
+            results.append(t.type)
+            result_nodes.append(arm[EXPR_CASE_THEN])
+        if EXPR_CASE_ELSE in n:
+            e = infer_expr_type(n[EXPR_CASE_ELSE], resolve_field)
+            errors.extend(e.errors)
+            results.append(e.type)
+            result_nodes.append(n[EXPR_CASE_ELSE])
+        unified, differing = _unify_types(result_nodes, results)
+        if differing is not None:
+            errors.append(f"'{EXPR_CASE}' results have differing types ({', '.join(differing)})")
+        return InferResult(unified, errors)
 
     if "fn" in n:  # coalesce
         arg_results = [infer_expr_type(a, resolve_field) for a in n["args"]]
         errors = [e for r in arg_results for e in r.errors]
-        arg_types = [r.type for r in arg_results if r.type is not None]
-        unified = arg_types[0] if arg_types else None
-        if unified is not None and any(t != unified for t in arg_types):
-            distinct = ", ".join(dict.fromkeys(arg_types))
-            errors.append(f"'{EXPR_FN_COALESCE}' arguments have differing types ({distinct})")
+        unified, differing = _unify_types(n["args"], [r.type for r in arg_results])
+        if differing is not None:
+            errors.append(f"'{EXPR_FN_COALESCE}' arguments have differing types ({', '.join(differing)})")
         return InferResult(unified, errors)
 
     op = n["op"]
@@ -1469,6 +1611,124 @@ def _check_datagrid_filter_clauses(
 # origin.* never inherits (ADR-0029/0039), mirroring the TS ownAttr/ownChildren.
 
 
+def _validate_origin_segments_and_correlation(root: MetaData, errors: list[MetaError]) -> None:
+    """Origin segments and correlated filters, on every origin.first / origin.aggregate:
+
+    * ``@segment`` names a segment.filter declared on the related entity (the ``@of`` entity,
+      else the ``@via`` terminal) — ERR_INVALID_ORIGIN otherwise;
+    * an ``@filter`` operand ``{ field: "<name>" }`` names a field of the base row (the
+      projection's base entity, or the entity hosting the field), with an op that compares two
+      columns; the null-safe ops take only such an operand — ERR_BAD_ATTR_FILTER otherwise.
+
+    Mirrors the TS ``validateOriginSegmentsAndCorrelation``.
+    """
+    for obj in root.own_children():
+        if obj.type != TYPE_OBJECT or obj.sub_type not in (OBJECT_SUBTYPE_PROJECTION, OBJECT_SUBTYPE_ENTITY):
+            continue
+        pkg = obj.package or ""
+        # ADR-0039 sanctioned own: origin.* never inherits; each is judged where declared.
+        for field in (c for c in obj.own_children() if c.type == TYPE_FIELD):
+            for origin in field.own_children():
+                if origin.type != TYPE_ORIGIN or origin.sub_type not in (
+                    ORIGIN_SUBTYPE_FIRST, ORIGIN_SUBTYPE_AGGREGATE
+                ):
+                    continue
+                where = f"origin.{origin.sub_type} on {obj.name}.{field.name}"
+                segment = origin.attr(ORIGIN_ATTR_SEGMENT)
+                if isinstance(segment, str):
+                    related = _origin_related_entity(origin, root, pkg)
+                    if related is not None and not any(
+                        # ADR-0039: resolving — a segment may be inherited through extends.
+                        c.type == TYPE_SEGMENT and c.name == segment for c in related.children()
+                    ):
+                        errors.append(MetaError(
+                            f'{where}: @segment "{segment}" is not a segment declared on '
+                            f'"{related.name}", the entity whose rows it scopes.',
+                            ErrorCode.ERR_INVALID_ORIGIN, envelope=origin.source))
+                filter_value = origin.attr(ORIGIN_ATTR_FILTER)
+                if filter_value is None:
+                    continue
+                base = _derive_base_entity(obj, root, pkg, field.name, origin.source, [])
+                if base is not None:
+                    _check_correlated_operands(filter_value, base, where, origin.source, errors)
+
+
+def _origin_related_entity(origin: MetaData, root: MetaData, pkg: str) -> MetaData | None:
+    """The entity an origin.first / origin.aggregate spans: its ``@of`` entity, else its ``@via``
+    terminal. ``None`` when neither resolves (the origin pass reports why)."""
+    of_ref = origin.attr(ORIGIN_ATTR_OF)
+    if isinstance(of_ref, str):
+        target = _validate_entity_field_ref(of_ref, ORIGIN_ATTR_OF, "", root, pkg, [], origin, "")
+        if target is not None:
+            return target[0]
+    via = origin.attr(ORIGIN_ATTR_VIA)
+    if isinstance(via, str):
+        walked = _validate_via_path(via, "", root, pkg, [], origin, "")
+        if walked is not None:
+            return walked.terminal
+    return None
+
+
+def _check_correlated_operands(
+    filter_value: object, base: MetaData, where: str, source: object, errors: list[MetaError]
+) -> None:
+    if not isinstance(filter_value, dict):
+        return
+    for key, clause in filter_value.items():
+        if key in (_FILTER_COMPOSE_AND, _FILTER_COMPOSE_OR):
+            if isinstance(clause, list):
+                for sub in clause:
+                    _check_correlated_operands(sub, base, where, source, errors)
+            continue
+        if not isinstance(clause, dict):
+            continue
+        for op, value in clause.items():
+            is_operand = isinstance(value, dict) and FILTER_OPERAND_FIELD in value
+            null_safe = op in (FILTER_OP_IS_DISTINCT_FROM, FILTER_OP_IS_NOT_DISTINCT_FROM)
+            if not is_operand:
+                if null_safe:
+                    errors.append(MetaError(
+                        f'{where}: @filter on "{key}" uses "{op}", which compares with a base-row field: '
+                        f'write {{ {op}: {{ {FILTER_OPERAND_FIELD}: "<base field>" }} }}.',
+                        ErrorCode.ERR_BAD_ATTR_FILTER, envelope=source))
+                continue
+            name = value[FILTER_OPERAND_FIELD]
+            if op not in CORRELATED_FILTER_OPS:
+                errors.append(MetaError(
+                    f'{where}: @filter on "{key}" compares with a base-row field using "{op}"; a '
+                    f"correlated operand takes {', '.join(CORRELATED_FILTER_OPS)}.",
+                    ErrorCode.ERR_BAD_ATTR_FILTER, envelope=source))
+                continue
+            # ADR-0039: resolving — a base field may be inherited.
+            if not (isinstance(name, str) and any(
+                c.type == TYPE_FIELD and c.name == name for c in base.children()
+            )):
+                errors.append(MetaError(
+                    f'{where}: @filter on "{key}" names base-row field "{name}", which "{base.name}" '
+                    f"does not declare.",
+                    ErrorCode.ERR_BAD_ATTR_FILTER, envelope=source))
+
+
+def _entity_field_aggregates(f: MetaData) -> bool:
+    # ADR-0039: own — origin.* never inherits (ADR-0029).
+    return any(c.type == TYPE_ORIGIN and c.sub_type == ORIGIN_SUBTYPE_AGGREGATE for c in f.own_children())
+
+
+def _filter_keys(filter_value: object, out: list[str] | None = None) -> list[str]:
+    """Every field key of a (desugared) filter, through and/or."""
+    out = [] if out is None else out
+    if not isinstance(filter_value, dict):
+        return out
+    for key, val in filter_value.items():
+        if key in (_FILTER_COMPOSE_AND, _FILTER_COMPOSE_OR):
+            if isinstance(val, list):
+                for sub in val:
+                    _filter_keys(sub, out)
+        else:
+            out.append(key)
+    return out
+
+
 def _validate_projection_filter(
     root: MetaData,
     errors: list[MetaError],
@@ -1478,44 +1738,64 @@ def _validate_projection_filter(
     for obj in root.own_children():
         if obj.type != TYPE_OBJECT or obj.sub_type != OBJECT_SUBTYPE_PROJECTION:
             continue
-        # ADR-0039 sanctioned own: the @filter is declared locally on this projection.
-        filter_value = obj.attr(OBJECT_PROJECTION_ATTR_FILTER)
+        # The EFFECTIVE @filter — every level of an extends chain, supers first, ANDed — is
+        # what the view applies, so it is what is checked.
+        filter_value = effective_projection_filter(obj)
         # Non-object shapes are rejected by the attr-schema pass (ERR_BAD_ATTR_VALUE).
         if not isinstance(filter_value, dict):
             continue
 
-        # Classify the projection's OWN fields (the declared set IS the exposure —
-        # FR-024/ADR-0028): the declared-field name set + the aggregate-derived
-        # subset. origin.* never inherits (ADR-0029), so the origin reads are own.
-        declared: set[str] = set()
-        aggregate_derived: set[str] = set()
-        for f in obj.own_children():
+        # The projection's EFFECTIVE fields (the declared set IS the exposure — FR-024 /
+        # ADR-0028), each marked aggregate-derived or not. ADR-0039: resolving — a field
+        # inherited from a super projection is a column of this view; its origin is read own.
+        fields: dict[str, bool] = {}
+        for f in obj.children():
             if f.type != TYPE_FIELD:
                 continue
-            declared.add(f.name)
-            origin = next(
-                (c for c in f.own_children() if c.type == TYPE_ORIGIN), None
-            )
-            if (
+            origin = next((c for c in f.own_children() if c.type == TYPE_ORIGIN), None)
+            fields[f.name] = (
                 origin is not None
                 and origin.sub_type != ORIGIN_SUBTYPE_PASSTHROUGH
                 and origin.sub_type != ORIGIN_SUBTYPE_COMPUTED
-            ):
-                aggregate_derived.add(f.name)
+            )
+        reported: set[str] = set()
+        # A field of the BASE entity the view does not output is filterable too (a WHERE reads
+        # the base row); a projection field of the same name wins. No base, no fallback: the
+        # origin passes report why one cannot be derived.
+        base = _derive_base_entity(obj, root, obj.package or "", "@filter", obj.source, [])
+        if base is not None and base is not obj:
+            for f in base.children():
+                if f.type == TYPE_FIELD and f.name not in fields:
+                    fields[f.name] = _entity_field_aggregates(f)
+            # A key that is a PATH of to-one hops from the base, then a field of the entity
+            # reached (``caseId.status``). Not output; the view joins what it walks.
+            for key in _filter_keys(filter_value):
+                if key in fields:
+                    continue
+                path = resolve_filter_path(base, key)
+                if path is None:
+                    continue
+                if isinstance(path, str):
+                    errors.append(MetaError(
+                        f'projection "{obj.name}" @filter path "{key}" does not resolve: {path}.',
+                        ErrorCode.ERR_BAD_ATTR_FILTER, envelope=obj.source))
+                    fields[key] = False
+                    reported.add(key)
+                    continue
+                fields[key] = _entity_field_aggregates(path.field)
 
-        _check_projection_filter_refs(
-            filter_value, declared, aggregate_derived, obj, errors
-        )
+        _check_projection_filter_refs(filter_value, fields, reported, obj, errors)
 
 
 def _check_projection_filter_refs(
     filter_obj: dict,
-    declared: set[str],
-    aggregate_derived: set[str],
+    fields: dict[str, bool],
+    reported: set[str],
     obj: MetaData,
     errors: list[MetaError],
 ) -> None:
-    """Recursively check each field-ref key of a (possibly composed) @filter."""
+    """Recursively check each field-ref key of a (possibly composed) @filter. *fields* maps each
+    referable name to whether it is aggregate-derived; *reported* names keys already refused."""
     for key, clause in filter_obj.items():
         if key == _FILTER_COMPOSE_AND or key == _FILTER_COMPOSE_OR:
             # Recurse into each OBJECT sub-clause. A non-array clause / non-object
@@ -1525,24 +1805,24 @@ def _check_projection_filter_refs(
                 continue
             for sub in clause:
                 if isinstance(sub, dict):
-                    _check_projection_filter_refs(
-                        sub, declared, aggregate_derived, obj, errors
-                    )
+                    _check_projection_filter_refs(sub, fields, reported, obj, errors)
             continue
 
         # A field-ref key.
-        if key not in declared:
+        if key in reported:
+            continue
+        if key not in fields:
             errors.append(
                 MetaError(
                     f"projection '{obj.name}' @filter references '{key}', which is not "
-                    f"a declared field of the projection. A view-level @filter may only "
-                    f"reference the projection's own declared fields.",
+                    f"a declared field of the projection or of its base entity. A view-level "
+                    f"@filter may only reference those fields.",
                     ErrorCode.ERR_BAD_ATTR_FILTER,
                     envelope=obj.source,
                 )
             )
             continue
-        if key in aggregate_derived:
+        if fields[key]:
             errors.append(
                 MetaError(
                     f"projection '{obj.name}' @filter references '{key}', an "
@@ -1593,6 +1873,37 @@ def _find_reference(obj: MetaObject, name: str) -> MetaData | None:
         ):
             return child
     return None
+
+
+def _reverse_hop_name(holder: MetaData) -> str:
+    """The name a ``@via`` hop takes when it walks an identity.reference BACKWARDS, from the
+    referenced entity to the one that declares it: lowerFirst of the holder's collection name
+    (``consents`` for ``Consent``, so ``Patient.consents`` walks Consent.patient backwards)."""
+    plural = collection_name_of(holder)
+    return plural[:1].lower() + plural[1:]
+
+
+def _find_reverse_reference_hops(
+    target: MetaData, hop_name: str, root: MetaData
+) -> list[tuple[MetaData, MetaData]]:
+    """Every (holder, identity.reference) where a concrete root object whose reverse hop name is
+    *hop_name* declares a reference onto *target*. One is the hop; none means the hop is not a
+    reverse; more than one is ambiguous. A declared relationship or reference of the same name on
+    *target* always wins; callers look those up first. Mirrors TS ``findReverseReferenceHops``."""
+    found: list[tuple[MetaData, MetaData]] = []
+    for holder in root.children():
+        if holder.type != TYPE_OBJECT or holder.is_abstract or _reverse_hop_name(holder) != hop_name:
+            continue
+        # ADR-0039: resolving — an inherited reference counts.
+        for ref in holder.children():
+            if (
+                ref.type == TYPE_IDENTITY
+                and ref.sub_type == IDENTITY_SUBTYPE_REFERENCE
+                # Compare the bound target, never a short name.
+                and bound_ref_target(ref, IDENTITY_REFERENCE_ATTR_REFERENCES) is target
+            ):
+                found.append((holder, ref))
+    return found
 
 
 def _is_reference_hop(hop: MetaData) -> bool:
@@ -1658,6 +1969,11 @@ def _validate_entity_field_ref(
         return None
     field_node = next((f for f in entity.fields() if f.name == field_name), None)
     if field_node is None:
+        # A member of a flattened value object, through the field that embeds it.
+        flattened = resolve_flattened_member(entity, field_name)
+        if flattened is not None:
+            field_node = flattened.member
+    if field_node is None:
         # FR5d — entity resolved, field on it did not. target = full ref.
         known = sorted(f.name for f in entity.fields())
         errors.append(
@@ -1672,6 +1988,25 @@ def _validate_entity_field_ref(
     return (entity, field_node)
 
 
+def origin_filter_entity(origin: MetaData, root: MetaData) -> MetaData | None:
+    """The entity an origin.aggregate's or origin.first's ``@filter`` keys name: the ``@of``
+    entity, else the ``@via`` terminal. None when neither resolves (the origin pass reports why)."""
+    field = origin.parent
+    projection = field.parent if field is not None else None
+    if field is None or projection is None:
+        return None
+    pkg = referrer_package_of(projection)
+    referrer = f"{projection.fqn()}::{field.name}"
+    # ADR-0039 sanctioned own: origin.* never inherits (ADR-0029).
+    of_ref = origin.attr(ORIGIN_ATTR_OF)
+    if isinstance(of_ref, str) and of_ref:
+        target = _validate_entity_field_ref(of_ref, ORIGIN_ATTR_OF, "", root, pkg, [], origin, referrer)
+        return target[0] if target is not None else None
+    via = origin.attr(ORIGIN_ATTR_VIA)
+    walked = _validate_via_path(via, "", root, pkg, [], origin, referrer) if isinstance(via, str) and via else None
+    return walked.terminal if walked is not None else None
+
+
 class WalkedViaPath(NamedTuple):
     """A fully-walked ``@via`` path: the relationship hop nodes in path order,
     plus the entity they terminate at. Returned as a pair (rather than re-walking
@@ -1680,6 +2015,9 @@ class WalkedViaPath(NamedTuple):
 
     hops: list[MetaData]
     terminal: MetaData
+    #: ids of the hops that walk an identity.reference backwards (to-many by construction),
+    #: each mapped to the hop name the path wrote.
+    reverse: Mapping[int, str] | None = None
 
 
 def _validate_via_path(
@@ -1739,12 +2077,37 @@ def _validate_via_path(
     # resolve so authors can fix multi-hop typos quickly.
     valid_segments: list[str] = [current_name]
     hops: list[MetaData] = []
+    reverse: dict[int, str] = {}
     for rel_name in segments[1:]:
         rels = _relationships_by_name(current_entity)
         # FR-024: a hop may name a relationship OR a reference-only FK
         # (identity.reference) — the reference IS a navigable many-to-one edge.
         rel_node = rels.get(rel_name) or _find_reference(current_entity, rel_name)
         if rel_node is None:
+            # A hop may walk an identity.reference BACKWARDS, from the entity it targets to the
+            # entity that declares it, named by that entity's collection name
+            # (``Patient.consents`` for Consent.patient). A declared relationship or reference of
+            # the same name wins (above).
+            reversed_hops = _find_reverse_reference_hops(current_entity, rel_name, root)
+            if len(reversed_hops) == 1:
+                holder, ref = reversed_hops[0]
+                valid_segments.append(rel_name)
+                hops.append(ref)
+                reverse[id(ref)] = rel_name
+                current_entity = holder
+                continue
+            if len(reversed_hops) > 1:
+                names = ", ".join(f'"{r.name}"' for _, r in reversed_hops)
+                errors.append(
+                    MetaError(
+                        f'{context} @via=\'{via}\' — the reverse hop "{rel_name}" from {current_entity.name} '
+                        f"matches {len(reversed_hops)} identity.reference nodes onto it ({names}) — ambiguous. "
+                        f"Declare a relationship on {current_entity.name} for this hop, or keep one reference.",
+                        ErrorCode.ERR_AMBIGUOUS_PATH,
+                        envelope=resolved_source(origin_node.source, referrer, via),
+                    )
+                )
+                return None
             prefix = ".".join(valid_segments)
             errors.append(
                 MetaError(
@@ -1799,7 +2162,7 @@ def _validate_via_path(
         current_entity = next_entity
 
     # current_entity is the terminal: every earlier exit returned None.
-    return WalkedViaPath(hops, current_entity)
+    return WalkedViaPath(hops, current_entity, reverse)
 
 
 # ---------------------------------------------------------------------------
@@ -1809,9 +2172,12 @@ def _validate_via_path(
 # ---------------------------------------------------------------------------
 
 
-def _hop_cardinality(rel: MetaData) -> str | None:
+def _hop_cardinality(rel: MetaData, reverse: Mapping[int, str] | None = None) -> str | None:
     """A hop's effective @cardinality, or None when not declared. A reference hop
-    (a forward FK) is inherently to-one — a child names the parent it points at."""
+    (a forward FK) is inherently to-one — a child names the parent it points at; walked
+    backwards (in *reverse*) it is to-many."""
+    if reverse and id(rel) in reverse:
+        return CARDINALITY_MANY
     if _is_reference_hop(rel):
         return CARDINALITY_ONE
     # ADR-0039: resolving (@cardinality may be inherited via extends) — mirrors the
@@ -1908,6 +2274,11 @@ def _derive_base_entity(
             targets.append(owner)
     if len(targets) == 1:
         return targets[0]
+    # 3) A projection extending another projection, declaring no anchor of its own, has the
+    # base entity its super has (its inherited identity and fields are anchored there).
+    sup = obj.super_data
+    if not targets and sup is not None and sup.type == TYPE_OBJECT and sup.sub_type == OBJECT_SUBTYPE_PROJECTION:
+        return _derive_base_entity(sup, root, sup.package or referrer_pkg, field_name, origin_source, errors)
     if len(targets) > 1:
         names = ", ".join(f'"{t.name}"' for t in targets)
         errors.append(
@@ -1986,17 +2357,27 @@ def _infer_via_single_hop(
 
 
 def _check_passthrough_cardinality(
-    hops: list[MetaData], field_name: str, origin_source: object, errors: list[MetaError]
+    hops: list[MetaData],
+    obj: MetaData,
+    field_name: str,
+    origin_source: object,
+    errors: list[MetaError],
+    reverse: Mapping[int, str] | None = None,
 ) -> None:
     """ADR-0029 decision 6 — a passthrough via-path must be effectively to-one at
     EVERY hop. A hop is to-many only when it DECLARES @cardinality "many"."""
     for rel in hops:
-        if _hop_cardinality(rel) == CARDINALITY_MANY:
+        if _hop_cardinality(rel, reverse) == CARDINALITY_MANY:
             errors.append(
                 MetaError(
-                    f"origin.passthrough on {field_name}: @via hop '{rel.name}' is to-many "
-                    f'(@cardinality "{CARDINALITY_MANY}") — a row-multiplying passthrough — '
-                    f"you meant aggregate (ADR-0029).",
+                    f'origin.passthrough on {obj.name}.{field_name}: @via hop '
+                    f'"{reverse[id(rel)] if reverse and id(rel) in reverse else rel.name}" is to-many '
+                    + (
+                        f'(reverse hop over identity.reference "{rel.name}")'
+                        if reverse and id(rel) in reverse
+                        else f'(@cardinality "{CARDINALITY_MANY}")'
+                    )
+                    + " — a row-multiplying passthrough — you meant aggregate (ADR-0029).",
                     ErrorCode.ERR_ORIGIN_CARDINALITY,
                     envelope=origin_source,
                 )
@@ -2005,14 +2386,18 @@ def _check_passthrough_cardinality(
 
 
 def _check_aggregate_cardinality(
-    hops: list[MetaData], field_name: str, origin_source: object, errors: list[MetaError]
+    hops: list[MetaData],
+    field_name: str,
+    origin_source: object,
+    errors: list[MetaError],
+    reverse: Mapping[int, str] | None = None,
 ) -> None:
     """ADR-0029 decision 6 — an aggregate via-path must contain at least one
     to-many hop. Conservative: fires only when PROVABLY to-one (every hop
     declares @cardinality "one")."""
     if not hops:
         return
-    if all(_hop_cardinality(rel) == CARDINALITY_ONE for rel in hops):
+    if all(_hop_cardinality(rel, reverse) == CARDINALITY_ONE for rel in hops):
         errors.append(
             MetaError(
                 f"origin.aggregate on {field_name}: every @via hop is to-one "
@@ -2304,9 +2689,10 @@ def _validate_origin_paths(
                 via = origin.attr(ORIGIN_ATTR_VIA)
                 if isinstance(via, str) and via:
                     walked = _validate_via_path(via, ctx, root, host_pkg, errors, origin, referrer)
-                    hops = walked.hops if walked is not None else None
-                    if hops is not None:
-                        _check_passthrough_cardinality(hops, node.name, origin.source, errors)
+                    if walked is not None:
+                        _check_passthrough_cardinality(
+                            walked.hops, obj, node.name, origin.source, errors, walked.reverse
+                        )
                 elif from_target is not None and not is_value_host:
                     # FR-024 §6 — no @via: derive the base entity; a @from on the
                     # base relation itself is a plain base column (no checks);
@@ -2323,7 +2709,7 @@ def _validate_origin_paths(
                         )
                         if hops is not None:
                             _check_passthrough_cardinality(
-                                hops, node.name, origin.source, errors
+                                hops, obj, node.name, origin.source, errors
                             )
 
             elif origin.sub_type == ORIGIN_SUBTYPE_AGGREGATE:
@@ -2401,9 +2787,8 @@ def _validate_origin_paths(
                             ErrorCode.ERR_INVALID_ORIGIN, envelope=src))
                     else:
                         walked = _validate_via_path(via, ctx, root, host_pkg, errors, origin, referrer)
-                        hops = walked.hops if walked is not None else None
-                        if hops is not None:
-                            _check_aggregate_cardinality(hops, node.name, src, errors)
+                        if walked is not None:
+                            _check_aggregate_cardinality(walked.hops, node.name, src, errors, walked.reverse)
                     continue
 
                 # --- @of: REQUIRED for count/sum/avg/min/max; OPTIONAL for collect ---
@@ -2479,7 +2864,7 @@ def _validate_origin_paths(
                     walked = _validate_via_path(
                         via_attr, ctx, root, host_pkg, errors, origin, referrer)
                     if walked is not None:
-                        _check_aggregate_cardinality(walked.hops, node.name, src, errors)
+                        _check_aggregate_cardinality(walked.hops, node.name, src, errors, walked.reverse)
                         # @orderBy keys resolve against the @via TERMINAL entity, not @of.
                         _validate_order_by_keys(
                             order_by, walked.terminal, obj, node.name,
@@ -2494,6 +2879,23 @@ def _validate_origin_paths(
                 of_target = _validate_entity_field_ref(
                     of_ref, ORIGIN_ATTR_OF, ctx, root, host_pkg, errors, origin, referrer
                 )
+                # A sum/avg/min/max reduces ONE column. A value-object field is several
+                # columns (flattened) or a document (jsonb), so there is no column to reduce,
+                # and summing a Money-shaped value would add amounts in different currencies.
+                # Resolving read: @objectRef may be inherited via extends (ADR-0039).
+                if (
+                    of_target is not None
+                    and agg in COLUMN_VALUE_AGGREGATES
+                    and (of_target[1].sub_type == FIELD_SUBTYPE_OBJECT
+                         or of_target[1].get_meta_attr(FIELD_ATTR_OBJECT_REF) is not None)
+                ):
+                    errors.append(MetaError(
+                        f"origin.aggregate @agg:{agg} on {obj.name}.{node.name}: @of \"{of_ref}\" is a "
+                        f"value-object field (field.{of_target[1].sub_type}), which has no single column "
+                        f"to aggregate. Aggregate a scalar field instead: model the amount as its own "
+                        f"field (and group by its currency).",
+                        ErrorCode.ERR_INVALID_ORIGIN,
+                        envelope=resolved_source(origin.source, referrer, of_ref)))
                 # #195 — collect preserves the element type: the array field's own subType
                 # must equal the @of column's subType (the #185 doctrine on the element).
                 if is_collect and of_target is not None and node.sub_type != of_target[1].sub_type:
@@ -2510,9 +2912,8 @@ def _validate_origin_paths(
                 via = origin.attr(ORIGIN_ATTR_VIA)
                 if isinstance(via, str) and via:
                     walked = _validate_via_path(via, ctx, root, host_pkg, errors, origin, referrer)
-                    hops = walked.hops if walked is not None else None
-                    if hops is not None:
-                        _check_aggregate_cardinality(hops, node.name, src, errors)
+                    if walked is not None:
+                        _check_aggregate_cardinality(walked.hops, node.name, src, errors, walked.reverse)
                     continue
                 # FR-024 §6 — no @via on an aggregate: inference applies only
                 # when @of targets a non-base entity. (A value host never
@@ -2564,11 +2965,39 @@ def _validate_origin_paths(
                 if base is None:
                     continue
 
-                def _resolve_field(name: str, _base: MetaData = base) -> str | None:
+                # A ref names one of the projection's own fields first (a passthrough — joined
+                # or not —, an origin.first or another origin.computed), else a base field.
+                # Never itself, never an aggregate (it would need the grouped row).
+                def _resolve_field(
+                    name: str, _base: MetaData = base, _obj: MetaData = obj, _self: str = node.name
+                ) -> str | None:
+                    if _obj is not _base and name != _self:
+                        for own in _obj.children():
+                            if own.type != TYPE_FIELD or own.name != name:
+                                continue
+                            own_origin = _own_origin_of(own)
+                            if own_origin is not None and own_origin.sub_type == ORIGIN_SUBTYPE_AGGREGATE:
+                                return None
+                            return own.sub_type
                     for f in _base.children():
                         if f.type == TYPE_FIELD and f.name == name:
                             return f.sub_type
                     return None
+
+                reached = _computed_reach(obj, node.name) if obj is not base else set()
+                if node.name in reached:
+                    # One error per cycle, on its first-declared member.
+                    first = next(
+                        f for f in obj.children()
+                        if f.type == TYPE_FIELD and f.name in reached
+                        and node.name in _computed_reach(obj, f.name)
+                    )
+                    if first.name == node.name:
+                        errors.append(MetaError(
+                            f"origin.computed on {obj.name}.{node.name}: @expr refers back to this "
+                            f"field through other computed fields; a view cannot inline a cycle.",
+                            ErrorCode.ERR_INVALID_ORIGIN, envelope=src))
+                    continue
 
                 inferred = infer_expr_type(expr, _resolve_field)
                 if inferred.errors:
@@ -2576,6 +3005,31 @@ def _validate_origin_paths(
                         errors.append(MetaError(
                             f"origin.computed on {obj.name}.{node.name}: {m}",
                             ErrorCode.ERR_INVALID_ORIGIN, envelope=src))
+                    continue
+                # A literal compared with a field must be able to equal it: of its kind, and for
+                # an enum one of its @values (the rule a validator's @condition follows). Resolved
+                # as the inference resolved the ref: a projection field first, else a base field.
+                def _field_of(
+                    name: str, _base: MetaData = base, _obj: MetaData = obj, _self: str = node.name
+                ) -> MetaData | None:
+                    if _obj is not _base and name != _self:
+                        for own in _obj.children():
+                            if own.type != TYPE_FIELD or own.name != name:
+                                continue
+                            own_origin = _own_origin_of(own)
+                            if own_origin is not None and own_origin.sub_type == ORIGIN_SUBTYPE_AGGREGATE:
+                                return None
+                            return own
+                    for f in _base.children():
+                        if f.type == TYPE_FIELD and f.name == name:
+                            return f
+                    return None
+
+                literal_problem = literal_comparison_problem(expr, _field_of)
+                if literal_problem is not None:
+                    errors.append(MetaError(
+                        f"origin.computed on {obj.name}.{node.name}: @expr {literal_problem}",
+                        ErrorCode.ERR_INVALID_ORIGIN, envelope=src))
                     continue
                 if inferred.type is not None and inferred.type != node.sub_type:
                     errors.append(MetaError(
@@ -2622,9 +3076,8 @@ def _validate_origin_paths(
                 via = origin.attr(ORIGIN_ATTR_VIA)
                 if isinstance(via, str) and via:
                     walked = _validate_via_path(via, ctx, root, host_pkg, errors, origin, referrer)
-                    hops = walked.hops if walked is not None else None
-                    if hops is not None:
-                        _check_aggregate_cardinality(hops, node.name, src, errors)
+                    if walked is not None:
+                        _check_aggregate_cardinality(walked.hops, node.name, src, errors, walked.reverse)
                 elif of_target is not None:
                     # (A value host never reaches here — the #210 assembly-origin
                     # check above already rejected origin.first on a value.)
@@ -3362,9 +3815,50 @@ def _validate_identity_passthrough(root: MetaData, errors: list[MetaError]) -> N
 # Mirrors TS validateDerivedFieldProvidability.
 
 
+def _projection_reached_entity_fields(root: MetaData) -> set[int]:
+    """ids of the entity fields projections REACH without outputting them: a projection
+    ``@filter`` key naming a base field or a to-one path, and a passthrough ``@from``. A derived
+    field reached this way is lowered inline where it is reached. Mirrors the TS
+    ``projectionReachedEntityFields``."""
+    reached: set[int] = set()
+    for obj in root.own_children():
+        if obj.type != TYPE_OBJECT or obj.sub_type != OBJECT_SUBTYPE_PROJECTION:
+            continue
+        pkg = obj.package or ""
+        base = _derive_base_entity(obj, root, pkg, "@filter", obj.source, [])
+        # The effective filter: an extender reaches what its supers' filters name, too.
+        filter_value = effective_projection_filter(obj)
+        if base is not None and base is not obj:
+            for key in _filter_keys(filter_value):
+                path = resolve_filter_path(base, key)
+                if path is not None:
+                    if not isinstance(path, str):
+                        reached.add(id(path.field))
+                    continue
+                f = next((c for c in base.children() if c.type == TYPE_FIELD and c.name == key), None)
+                if f is not None:
+                    reached.add(id(f))
+        # ADR-0039: resolving — inherited fields carry their own origins (read own).
+        for field in (c for c in obj.children() if c.type == TYPE_FIELD):
+            for origin in field.own_children():
+                if origin.type != TYPE_ORIGIN or origin.sub_type != ORIGIN_SUBTYPE_PASSTHROUGH:
+                    continue
+                from_ref = origin.attr(ORIGIN_ATTR_FROM)
+                if not isinstance(from_ref, str):
+                    continue
+                # Silent: the origin pass reports an unresolved @from.
+                target = _validate_entity_field_ref(
+                    from_ref, ORIGIN_ATTR_FROM, "", root, pkg, [], origin, ""
+                )
+                if target is not None:
+                    reached.add(id(target[1]))
+    return reached
+
+
 def _validate_derived_field_providability(
     root: MetaData, errors: list[MetaError]
 ) -> None:
+    reached = _projection_reached_entity_fields(root)
     # ADR-0039: root scan (sanctioned own — never extended); the read-capable-source
     # check uses the resolving obj.children() (inherited sources count); the derived-
     # field check inspects OWN fields with OWN origins (sanctioned own — origin.*
@@ -3385,15 +3879,22 @@ def _validate_derived_field_providability(
         # ADR-0039 sanctioned own: derived-field providability inspects the object's
         # OWN fields carrying an OWN origin.* child (origin.* never inherits, ADR-0029).
         for field in (c for c in obj.own_children() if c.type == TYPE_FIELD):
-            if not any(c.type == TYPE_ORIGIN for c in field.own_children()):
+            origin = next((c for c in field.own_children() if c.type == TYPE_ORIGIN), None)
+            if origin is None:
+                continue
+            # A derived field a projection reaches (its @filter or a passthrough @from) is
+            # lowered inline there, so it needs no read source. Only the inlinable origins.
+            if origin.sub_type in (ORIGIN_SUBTYPE_FIRST, ORIGIN_SUBTYPE_COMPUTED) and id(field) in reached:
                 continue
             errors.append(
                 MetaError(
                     f'derived field "{obj.name}.{field.name}" carries an origin.* but '
                     f'entity "{obj.name}" declares no read-capable source — derived fields '
                     f"do not exist on the writable table. Declare a read-only source "
-                    f'(e.g. source.rdb @kind "view" @role "replica") to provide it, or move '
-                    f"the field to an object.projection (FR-024 §7).",
+                    f'(e.g. source.rdb @kind "view" @role "replica") to provide it, move '
+                    f"the field to an object.projection (FR-024 §7), or reach it from a "
+                    f"projection's @filter or @from (an origin.first or origin.computed is then "
+                    f"inlined there).",
                     ErrorCode.ERR_DERIVED_FIELD_NO_READ_SOURCE,
                     envelope=field.source,
                 )
@@ -3887,23 +4388,69 @@ def _validate_db_check(root: MetaData, errors: list[MetaError]) -> None:
         visit(child, None)
 
 
-# Cross-field validators (comparison / requiredWhen / presentIff / atLeastOne), which the
-# database enforces as CHECKs: atLeastOne @max between 1 and the number of its @fields,
-# every field a @condition names a field of the owning entity, and a @condition that can
+# Cross-field validators (comparison / requiredWhen / presentIff / atLeastOne / exactlyOne), which
+# the database enforces as CHECKs: exactlyOne @fields names two or more fields,
+# every field a @condition names a field of the owning entity, a requiredWhen / presentIff
+# @equals gating a field.duration an ISO-8601 duration, and a @condition that can
 # become a CHECK guard (see _condition_problem) — all ERR_BAD_ATTR_VALUE. Read RESOLVING
 # (ADR-0039). Mirrors TS validateCrossFieldValidators.
 def _expr_field_refs(node: object, out: set[str]) -> None:
+    for n in _expr_nodes(node):
+        if isinstance(n.get("field"), str):
+            out.add(n["field"])
+
+
+def _expr_nodes(node: object, out: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+    """Every node of an attr.expression tree, root first."""
+    out = [] if out is None else out
     if not isinstance(node, dict):
-        return
-    if isinstance(node.get("field"), str):
-        out.add(node["field"])
-    for key in ("left", "right", "arg"):
-        _expr_field_refs(node.get(key), out)
+        return out
+    out.append(node)
+    for key in ("left", "right", "arg", EXPR_CASE_OPERAND, EXPR_CASE_ELSE):
+        _expr_nodes(node.get(key), out)
     args = node.get("args")
     if isinstance(args, list):
         for a in args:
-            _expr_field_refs(a, out)
+            _expr_nodes(a, out)
+    arms = node.get(EXPR_CASE)
+    if isinstance(arms, list):
+        for arm in arms:
+            if isinstance(arm, dict):
+                _expr_nodes(arm.get(EXPR_CASE_WHEN), out)
+                _expr_nodes(arm.get(EXPR_CASE_THEN), out)
+    return out
 
+
+def _own_origin_of(field: MetaData) -> MetaData | None:
+    # ADR-0039: own — origin.* never inherits (ADR-0029), so a field's origin is declared on it.
+    return next((c for c in field.own_children() if c.type == TYPE_ORIGIN), None)
+
+
+def _computed_reach(obj: MetaData, start: str) -> set[str]:
+    """The projection's computed fields reachable from ``start``'s @expr through sibling
+    computed refs (a view inlines each one, so the walk must not return to its start)."""
+
+    def refs(name: str) -> set[str]:
+        out: set[str] = set()
+        field = next((f for f in obj.children() if f.type == TYPE_FIELD and f.name == name), None)
+        origin = _own_origin_of(field) if field is not None else None
+        if origin is not None and origin.sub_type == ORIGIN_SUBTYPE_COMPUTED:
+            _expr_field_refs(origin.attr(ORIGIN_ATTR_EXPR), out)
+        out.discard(name)
+        return out
+
+    seen: set[str] = set()
+    pending = list(refs(start))
+    while pending:
+        r = pending.pop()
+        if r not in seen:
+            seen.add(r)
+            pending.extend(refs(r))
+    return seen
+
+
+# What a literal compared with a field.duration must be.
+_DURATION_LITERAL_FORM = "an ISO-8601 duration (such as PT1H30M; no years or months)"
 
 # Field subtypes whose values a condition compares with a number literal.
 _CONDITION_NUMBER_SUBTYPES = frozenset({
@@ -3935,9 +4482,16 @@ def _condition_problem(condition: object, obj: MetaData) -> str | None:
         CHECK negates it;
       - a literal compared with a field is of that field's kind (a boolean for field.boolean,
         a number for a numeric field, a string otherwise) and, for field.enum, one of its
-        @values;
+        @values, for field.duration, an ISO-8601 duration;
       - no comparison has a null literal: ``x = NULL`` is never true, so use isNull / isNotNull.
     Mirrors TS conditionProblem."""
+    for n in _expr_nodes(condition):
+        if EXPR_CASE in n or EXPR_NOW in n:
+            kind = EXPR_CASE if EXPR_CASE in n else EXPR_NOW
+            return (
+                f"is not a valid expression: a condition takes no '{kind}' node, "
+                f"since a CHECK can hold neither a CASE nor the current time."
+            )
     fields = {f.name: f for f in obj.fields()}
     inferred = infer_expr_type(
         condition, lambda name: fields[name].sub_type if name in fields else None
@@ -3950,53 +4504,74 @@ def _condition_problem(condition: object, obj: MetaData) -> str | None:
             f"them), not a field.{inferred.type}."
         )
 
-    def visit(node: object) -> str | None:
-        if not isinstance(node, dict):
+    for n in _expr_nodes(condition):
+        if n.get("left") is None or n.get("right") is None:
+            continue
+        for side in (n["left"], n["right"]):
+            if isinstance(side, dict) and "value" in side and side["value"] is None:
+                return "compares with null, which is never true: use isNull or isNotNull."
+    return literal_comparison_problem(condition, fields.get)
+
+
+def literal_comparison_problem(expr: object, field_of: Any) -> str | None:
+    """The first literal in *expr* that cannot equal the field it is compared with, or None. A
+    literal is compared with a field by a comparison (either side) or as a simple case's ``when``
+    against a ``{field}`` operand. The rule, the same in every port and shared by a validator's
+    @condition and an origin.computed @expr: the literal is of the field's kind (a boolean for
+    field.boolean, a number for a numeric field, a string otherwise), one of its @values for
+    field.enum, and an ISO-8601 duration for field.duration. A null literal, and a literal facing
+    anything but a field ref, are not checked here. *field_of* maps a name to its field, or None.
+    Mirrors TS literalComparisonProblem."""
+
+    def check(lit: object, ref: object) -> str | None:
+        if not isinstance(lit, dict) or "value" not in lit or lit["value"] is None:
             return None
-        if node.get("left") is not None and node.get("right") is not None:
-            for lit, ref in ((node["left"], node["right"]), (node["right"], node["left"])):
-                if not isinstance(lit, dict) or "value" not in lit:
-                    continue
-                value = lit["value"]
-                if value is None:
-                    return "compares with null, which is never true: use isNull or isNotNull."
-                name = ref.get("field") if isinstance(ref, dict) else None
-                field = fields.get(name) if isinstance(name, str) else None
-                if field is None:
-                    continue
-                sub = field.sub_type
-                kind = (
-                    "boolean" if sub == FIELD_SUBTYPE_BOOLEAN
-                    else "number" if sub in _CONDITION_NUMBER_SUBTYPES
-                    else "string"
-                )
-                if not _literal_is_kind(value, kind):
-                    return (
-                        f'compares "{field.name}" (field.{sub}) with {_json_literal(value)}; '
-                        f"it needs a {kind}."
-                    )
-                members = field.get_meta_attr(FIELD_ATTR_VALUES) if sub == FIELD_SUBTYPE_ENUM else None
-                if isinstance(members, list) and str(value) not in [str(m) for m in members]:
-                    return (
-                        f'compares "{field.name}" with {_json_literal(value)}, which is not one '
-                        f"of its @values ({', '.join(str(m) for m in members)})."
-                    )
-        for key in ("left", "right", "arg"):
-            found = visit(node.get(key))
-            if found is not None:
-                return found
-        args = node.get("args")
-        if isinstance(args, list):
-            for a in args:
-                found = visit(a)
-                if found is not None:
-                    return found
+        name = ref.get("field") if isinstance(ref, dict) else None
+        field = field_of(name) if isinstance(name, str) else None
+        if field is None:
+            return None
+        value = lit["value"]
+        sub = field.sub_type
+        kind = (
+            "boolean" if sub == FIELD_SUBTYPE_BOOLEAN
+            else "number" if sub in _CONDITION_NUMBER_SUBTYPES
+            else "string"
+        )
+        if not _literal_is_kind(value, kind):
+            return (
+                f'compares "{field.name}" (field.{sub}) with {_json_literal(value)}; '
+                f"it needs a {kind}."
+            )
+        members = field.get_meta_attr(FIELD_ATTR_VALUES) if sub == FIELD_SUBTYPE_ENUM else None
+        if isinstance(members, list) and str(value) not in [str(m) for m in members]:
+            return (
+                f'compares "{field.name}" with {_json_literal(value)}, which is not one '
+                f"of its @values ({', '.join(str(m) for m in members)})."
+            )
+        if sub == FIELD_SUBTYPE_DURATION and DURATION_RE.fullmatch(value) is None:
+            return (
+                f'compares "{field.name}" with {_json_literal(value)}, which is not '
+                f"{_DURATION_LITERAL_FORM}."
+            )
         return None
 
-    return visit(condition)
+    for n in _expr_nodes(expr):
+        if n.get("left") is not None and n.get("right") is not None:
+            found = check(n["left"], n["right"]) or check(n["right"], n["left"])
+            if found is not None:
+                return found
+        arms = n.get(EXPR_CASE)
+        if n.get(EXPR_CASE_OPERAND) is not None and isinstance(arms, list):
+            for arm in arms:
+                found = check(arm.get(EXPR_CASE_WHEN), n[EXPR_CASE_OPERAND]) if isinstance(arm, dict) else None
+                if found is not None:
+                    return found
+    return None
 
 
-def _validate_cross_field_validators(root: MetaData, errors: list[MetaError]) -> None:
+def _validate_cross_field_validators(root: MetaData, errors: list[MetaError], strict: bool = False) -> None:
+    """Cross-field validator rules. *strict*: a strict load already refuses an atLeastOne ``@max``
+    as an unregistered attr, so that check runs only on the default load (one error per node)."""
     from ..meta.core.validator import validator_constants as vc
 
     for obj in root.children():
@@ -4006,21 +4581,55 @@ def _validate_cross_field_validators(root: MetaData, errors: list[MetaError]) ->
         for v in obj.own_children():
             if v.type != TYPE_VALIDATOR or v.sub_type not in vc.CROSS_FIELD_VALIDATOR_SUBTYPES:
                 continue
-            if v.sub_type == vc.VALIDATOR_SUBTYPE_AT_LEAST_ONE:
-                maximum = v.get_meta_attr(vc.VALIDATOR_ATTR_MAX)
-                if isinstance(maximum, int) and not isinstance(maximum, bool):
-                    fields = v.get_meta_attr(vc.VALIDATOR_ATTR_FIELDS)
-                    count = len(fields) if isinstance(fields, list) else (0 if fields is None else 1)
-                    if maximum < 1 or maximum > count:
-                        errors.append(MetaError(
-                            code=ErrorCode.ERR_BAD_ATTR_VALUE,
-                            message=(
-                                f'validator.atLeastOne "{obj.name}.{v.name}" @max {maximum} must be '
-                                f"between 1 and the number of its @fields ({count})."
-                            ),
-                            envelope=v.source,
-                        ))
-                        continue
+            # validator.atLeastOne takes no @max: "exactly one of these fields" is
+            # validator.exactlyOne. A strict load already refuses the unregistered attr; this
+            # refuses it under the default load too, where it would be kept and ignored.
+            # ADR-0039: own — checked on the validator that declares it.
+            if (
+                not strict
+                and v.sub_type == vc.VALIDATOR_SUBTYPE_AT_LEAST_ONE
+                and vc.VALIDATOR_ATTR_MAX in v.own_attrs()
+            ):
+                errors.append(MetaError(
+                    code=ErrorCode.ERR_UNKNOWN_ATTR,
+                    message=(
+                        f'validator.atLeastOne "{obj.name}.{v.name}" carries @max, which atLeastOne does '
+                        'not take. For "exactly one of these fields", declare validator.exactlyOne instead; '
+                        'for "at least one", remove @max.'
+                    ),
+                    envelope=v.source,
+                ))
+                continue
+            if v.sub_type == vc.VALIDATOR_SUBTYPE_EXACTLY_ONE:
+                fields = v.get_meta_attr(vc.VALIDATOR_ATTR_FIELDS)
+                count = len(fields) if isinstance(fields, list) else (0 if fields is None else 1)
+                if count < 2:
+                    plural = "" if count == 1 else "s"
+                    errors.append(MetaError(
+                        code=ErrorCode.ERR_BAD_ATTR_VALUE,
+                        message=(
+                            f'validator.exactlyOne "{obj.name}.{v.name}" @fields names {count} '
+                            f"field{plural}; it needs two or more. For one field, make that field required."
+                        ),
+                        envelope=v.source,
+                    ))
+                    continue
+            if v.sub_type in (vc.VALIDATOR_SUBTYPE_REQUIRED_WHEN, vc.VALIDATOR_SUBTYPE_PRESENT_IFF):
+                when_name = v.get_meta_attr(vc.VALIDATOR_ATTR_WHEN)
+                when = next((f for f in obj.fields() if f.name == when_name), None)
+                equals = v.get_meta_attr(vc.VALIDATOR_ATTR_EQUALS)
+                if when is not None and when.sub_type == FIELD_SUBTYPE_DURATION and not (
+                    isinstance(equals, str) and DURATION_RE.fullmatch(equals)
+                ):
+                    errors.append(MetaError(
+                        code=ErrorCode.ERR_BAD_ATTR_VALUE,
+                        message=(
+                            f'validator.{v.sub_type} "{obj.name}.{v.name}" @equals {_json_literal(equals)} '
+                            f'gates field.duration "{when.name}"; it needs {_DURATION_LITERAL_FORM}.'
+                        ),
+                        envelope=v.source,
+                    ))
+                    continue
             condition = v.get_meta_attr(vc.VALIDATOR_ATTR_CONDITION)
             if condition is None:
                 continue
@@ -4604,6 +5213,52 @@ def _validate_index_lookup_fields(root: MetaData, errors: list[MetaError]) -> No
 # ---------------------------------------------------------------------------
 
 
+def _has_explicit_column(field: MetaData) -> bool:
+    from ..meta.core.field import field_constants as fc
+    col = field.get_meta_attr(fc.FIELD_ATTR_COLUMN)
+    return isinstance(col, str) and col != ""
+
+
+class _PhysicalColumn(NamedTuple):
+    """One physical column a field contributes to its object's table."""
+
+    column: str
+    #: ``street``, or ``shipTo.street`` for a member of a flattened value object.
+    label: str
+    #: The field that names it: the field itself, or the flattened value object's member.
+    named: MetaData
+    #: Set for a flattened member: the embedding field.object.
+    embedding: MetaData | None = None
+
+
+def _physical_columns_of(field: MetaData) -> list[_PhysicalColumn]:
+    from ..naming import resolve_column_name, resolve_flattened_column_name
+    # ADR-0039: resolving -- @storage and @objectRef may be inherited via extends.
+    if field.sub_type == FIELD_SUBTYPE_OBJECT and field.get_meta_attr(FIELD_ATTR_STORAGE) == STORAGE_FLATTENED:
+        target = bound_ref_target(field, FIELD_ATTR_OBJECT_REF)
+        if not isinstance(target, MetaObject):
+            return []
+        # Every member, as migrate's flattenObjectField expands it.
+        return [
+            _PhysicalColumn(
+                resolve_flattened_column_name(field, member),
+                f"{field.name}.{member.name}",
+                member,
+                field,
+            )
+            for member in target.fields()
+        ]
+    return [_PhysicalColumn(resolve_column_name(field), field.name, field)]
+
+
+def _collision_hint(a: _PhysicalColumn, b: _PhysicalColumn) -> str:
+    if a.embedding is not None or b.embedding is not None:
+        return "Give one flattened field a different @flattenedColumnPrefix, or rename one field."
+    if _has_explicit_column(a.named) and _has_explicit_column(b.named):
+        return "Rename one field, or point one @column at a different column."
+    return "Rename one field, or give one an explicit @column so the two columns differ."
+
+
 def _validate_column_name_collisions(root: MetaData, errors: list[MetaError]) -> None:
     """ERR_COLUMN_NAME_COLLISION: two fields of one stored object resolving to the SAME
     physical column (``userId`` + ``userID`` both snake_case to ``user_id``, or two
@@ -4612,35 +5267,48 @@ def _validate_column_name_collisions(root: MetaData, errors: list[MetaError]) ->
     Only the RESOLVED name is compared, through :func:`resolve_column_name`, so an
     explicit ``@column``, an inherited field and the project's column strategy are
     honoured. Scope: a concrete object declaring at least one source (a source-less
-    object generates nothing); derived fields and ``field.object`` (may flatten to
-    several columns) are skipped. ADR-0039: effective children (inherited fields count).
+    object generates nothing); derived fields are skipped. A ``field.object @storage
+    "flattened"`` has no column of its own: each member of its value object is a column,
+    named by :func:`resolve_flattened_column_name` exactly as migrate creates it. Any
+    other ``field.object`` is one column under its own resolved name.
+    ADR-0039: effective children (inherited fields count).
+
+    Exempt: an object whose every source is read-only and at least one is a
+    ``source.rdb @kind: view`` with an ``@sql`` body. The author's SQL defines that view's
+    columns and the fields only READ them, so two fields on one column create no duplicate
+    column and nothing can be written. A derived view (no ``@sql``) emits a select list
+    from its fields, and an object with a writable source has a real table whose columns
+    MetaObjects creates; both stay checked.
     """
-    from ..naming import resolve_column_name
     from ..meta.core.field.meta_field import MetaField
     for obj in (c for c in root.children() if c.type == TYPE_OBJECT):
         if obj.is_abstract:
             continue
         if not any(c.type == TYPE_SOURCE for c in obj.children()):
             continue
-        seen: dict[str, MetaData] = {}
+        sources = [c for c in obj.children() if isinstance(c, MetaSource)]
+        if all(s.is_read_only() for s in sources) and any(
+            s.effective_kind() == SOURCE_KIND_VIEW and s.sql_body() is not None
+            for s in sources
+        ):
+            continue
+        seen: dict[str, _PhysicalColumn] = {}
         for field in obj.children():
-            if not isinstance(field, MetaField) or field.sub_type == FIELD_SUBTYPE_OBJECT \
-                    or field.is_derived():
+            if not isinstance(field, MetaField) or field.is_derived():
                 continue
-            column = resolve_column_name(field)
-            first = seen.get(column)
-            if first is None:
-                seen[column] = field
-                continue
-            errors.append(MetaError(
-                code=ErrorCode.ERR_COLUMN_NAME_COLLISION,
-                message=(
-                    f'fields "{first.name}" and "{field.name}" on "{obj.name}" both resolve '
-                    f'to physical column "{column}". Rename one field, or give one an '
-                    f"explicit @column so the two columns differ."
-                ),
-                envelope=field.source,
-            ))
+            for col in _physical_columns_of(field):
+                first = seen.get(col.column)
+                if first is None:
+                    seen[col.column] = col
+                    continue
+                errors.append(MetaError(
+                    code=ErrorCode.ERR_COLUMN_NAME_COLLISION,
+                    message=(
+                        f'fields "{first.label}" and "{col.label}" on "{obj.name}" both resolve '
+                        f'to physical column "{col.column}". ' + _collision_hint(first, col)
+                    ),
+                    envelope=field.source,
+                ))
 
 
 def _validate_retired_requirement_links(root: MetaData, errors: list[MetaError]) -> None:

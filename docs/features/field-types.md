@@ -51,11 +51,18 @@ Five rows need a footnote:
   `text`.
 - **`field.duration`** is a fixed-length span: days, hours, minutes and seconds. A calendar
   span ("every 3 months") is not one, because a month has no fixed length: model it as an int
-  and a unit. On the wire it is an ISO-8601 duration. Every port writes one canonical form,
-  `[-]PT[nH][nM][n[.f]S]`: hours are never folded into days (`PT26H`), and zero is `PT0S`. A
-  port writes as many fractional digits as its own type holds (6 in TypeScript and Python, 7 in
-  C#, 9 in Java and Kotlin) and truncates a longer fraction toward zero; a Postgres `interval` and
-  the integer column below both hold microseconds. Every port reads that form and also leading
+  and a unit. On the wire each port writes its own language's standard form by default (a C#
+  `TimeSpan` is `"01:30:00"`), and `"wire": { "durations": "iso" }` in `.metaobjects/config.json`
+  makes every port write one ISO-8601 form ([the wire setting](api-contract.md#the-wire-setting)).
+  That form is `[-]PT[nH][nM][n[.f]S]`: hours are never folded into days (`PT26H`), and zero is `PT0S`.
+  It is one form at each port's own precision: a port writes as many fractional digits as its
+  own type holds (6 in TypeScript and Python, 7 in C#, 9 in Java and Kotlin) and truncates a
+  longer fraction toward zero. A Postgres `interval` and the integer column below both hold
+  microseconds, so a C#, Java or Kotlin server can answer a POST with more digits than the
+  database kept: `PT0.1234567S` is answered as sent and read back as `PT0.123456S`. Read the row
+  back when the stored value matters. The Java types above are generated code's: Java's
+  metadata-driven runtime (OMDB) holds a duration as its canonical ISO-8601 `String`, and
+  `java.time.Duration` appears only inside its JDBC codec. Every port reads that form and also leading
   week and day counts (`P1W` is 7 days, `P1DT2H` is 26 hours). Years and months are refused, and
   so are lowercase designators and fractional hours. The column is a Postgres `interval`; SQLite, D1 and MySQL store a 64-bit
   integer count of microseconds, the way Django stores a `DurationField` outside Postgres. Both
@@ -77,7 +84,7 @@ Five rows need a footnote:
 
   **Nested map values are validated on every write path, on every port.** A posted map value
   that violates the referenced `object.value`'s own constraints is rejected with the cross-port
-  `{"error":"validation"}` envelope before the row is written. Scalar-valued maps
+  `{"error":"validation", "issues": [...]}` envelope before the row is written. Scalar-valued maps
   (`@valueType`) carry no nested bean, so nothing extra runs for them.
 
   > This was a real hole until 1.0.1, and it is worth knowing what it was, because the failure
@@ -216,13 +223,17 @@ member or `ERR_MISSING_REQUIRED_ATTR` on missing `@values`.
 { "field.enum": { "name": "status", "@values": ["DRAFT", "PUBLISHED", "ARCHIVED"], "@maxLength": 16 } }
 ```
 
-The column is then `VARCHAR(n)`: `meta migrate` creates it, and the Drizzle, Prisma, EF Core
-(`HasMaxLength(n)`) and Exposed bindings name the same length. Every member must fit. A member
+The column is then `VARCHAR(n)`: `meta migrate` creates it, and the generated column bindings
+that carry a length name the same one: TypeScript's Drizzle and Prisma, C#'s EF Core
+(`HasMaxLength(n)`) and Kotlin's Exposed. Java and Python generate no such binding; their loaders
+apply the same member-length refusals, and the database column holds the length. Every member must fit. A member
 longer than `@maxLength` is refused at load, and one longer than the project default is refused
 when the column is sized, both as `ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH`, with the member named.
 `@maxLength` beside `@intValueMap` is refused (`ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP`): an
-int-backed enum's column is an integer. An array of enums stays a `text[]` column. Kotlin's
-Exposed binding keeps its 64-character width when the enum has no length.
+int-backed enum's column is an integer. An array of enums stays a `text[]` column.
+Turning a length on for a column that already exists (text to `VARCHAR(n)`) fails on any longer
+row, so `meta migrate` gates it behind `--allow type-change`; turning it off widens the column and
+is allowed. SQLite does not enforce the length, so there is nothing to change there.
 
 **Int-backed storage:** `@intValueMap` switches the DB column from string to integer while
 preserving the string wire format and generated enum type. Keys must match `@values` exactly;
@@ -310,6 +321,16 @@ Two rules the loader/codegen enforce:
   abstract enum is inline as well. Declaring the vocabulary at package level is how
   you ask for one type.
 
+**Two package-level shared enums with one name are refused.** TypeScript and Python
+generate every shared enum into one shared module under its own name, so a second
+`Tier` in another package would keep the first and silently type its fields with the
+first's members; the pair is a codegen error, `ERR_NAME_COLLISION`, naming both
+declarations. Place them apart: the package output layout does not split the shared
+module (rename one). C# puts each in its package's own namespace when
+`csharp.packageNamespaces` is on; without it both would declare one type in one
+namespace, and the pair is refused the same way. Java and Kotlin write each in its
+package's own directory, so the pair never meets.
+
 ## Embedded value objects — `field.object` + `@storage`
 
 `field.object` declares an embedded structured value backed by another `object`
@@ -353,16 +374,16 @@ columns through the same core function (`resolveFlattenedColumnName` and its per
 equivalents), so `meta migrate`, the Prisma schema, the C# EF mapping and the Kotlin Exposed
 tables agree, and the owning object's names artifact carries each one as a constant
 (`ShipmentNames.ShipToStreetColumn` in C#; see the codegen skill's physical-names reference
-for every port). The field's own column constant is still emitted but names no column of the
-table, so use the member constants. On a
-field whose `@storage` is not `flattened` the attribute is refused at load
+for every port). The field itself has no column constant, because the table has no column of
+that name. On a field whose `@storage` is not `flattened` the attribute is refused at load
 (`ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE`): no other storage gives the members
 columns of their own.
 
-Declare a field's prefix in one file. When two files both declare the same field (a merge, not
-an `overlay`), the loader reports `ERR_MERGE_CONFLICT` for two different non-empty values, but
-it treats `""` as unset when it compares them: one file's `"home_"` and another's `""` merge
-without an error, and the last one loaded wins.
+Two member columns that come out the same are refused at load (`ERR_COLUMN_NAME_COLLISION`):
+two embeddings that share a prefix (two `""` embeddings of one `Address` both give `street`), or
+a `""` member beside a field of the same name. When two files both declare the same field (a
+merge, not an `overlay`) with different prefixes, `""` included, the loader reports
+`ERR_MERGE_CONFLICT`.
 
 ## What each port generates
 
@@ -372,6 +393,16 @@ The physical names the strategy above resolved are emitted **once**, into
 `Author.names.ts` (`AuthorNames.fields.createdAt.column === "created_at"`); every other
 generated file references that constant rather than respelling it. So the table binding
 below names no column directly — to read the resolved spelling, open the names artifact.
+
+A `@storage: flattened` field binds one Drizzle column per member, keyed `<field><Member>` (for
+the `address` example above, `addressStreet`, `addressCity`, …) and named by the same core
+function `meta migrate` uses. The Row and Insert types, the Zod schemas, the filter and sort
+allowlists, the OpenAPI parameters and the form and grid generators all expose those flat keys;
+a client reads and writes `addressStreet`, not a nested `address` object. A flattened field
+declared on a TPH subtype keeps one column named for the field, as `meta migrate` creates it.
+A flattened field that carries an `origin.*` is derived: it owns no columns, so it exposes no flat
+keys in any of those surfaces, and a write cannot set them. A flattened field on a write-through
+entity is refused at `meta gen` ([source-kinds.md](source-kinds.md)).
 
 ```ts
 // generated/acme/blog/Author.ts

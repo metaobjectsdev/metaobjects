@@ -114,17 +114,16 @@ pair is REFUSED when the port puts both in one scope, naming the colliding name.
 Physical names are not this corpus's concern: `(schema, name)` uniqueness belongs to
 the schema layer (`meta migrate`'s `ERR_DUPLICATE_SQL_NAME`).
 
-## REST collection segments (rc.19)
+## Collection segments
 
-[`collection-segments.json`](./collection-segments.json) pins the REST collection segment
-an object is served under, given its name, the `@collectionName` it declares and the
-project's `naming.collections`. With neither configured the segment is the historical
-rule, byte-identical to rc.18: snake_case the name, then pluralize (`FAQ` → `faqs`,
-`TaxID` → `tax_ids`). A declared name, or a configured pluralizer's output over the name,
-is snake_cased keeping a trailing plural `s` / `es` on a preceding capital (`FAQs` →
-`faqs`, never `fa_qs`). Run by TypeScript (`metadata/test/naming.test.ts`,
-`collectionSegmentOf`) and C# (`CSharpNamingTests.The_REST_segment_is_the_cross_port_one`,
-through `CSharpNaming.RoutePath`); Java, Kotlin and Python until #544–#549.
+[`collection-segments.json`](./collection-segments.json) is the REST collection segment an
+object is served under, given its name, the `@collectionName` it declares and the project's
+`naming.collections` pluralizer. With neither, the segment is the rule above (snake_case, then
+the API pluralizer), unchanged. A declared name, or a configured pluralizer's output, is
+snake_cased with an acronym-aware split (`FAQs` -> `faqs`). Every port runs it: TypeScript
+(`metadata/test/naming.test.ts`), C# (`MetaObjects.Codegen.Tests/CollectionSegmentTests.cs`),
+Java and Kotlin (`codegen-base` `RouteNamingTest.java`, the one rule both JVM generators read) and
+Python (`tests/codegen/test_collection_segments.py`).
 
 ## Per-port runner
 
@@ -137,7 +136,7 @@ checks, and asserts each `shapeOnlyCases` pair is ACCEPTED:
 |---|---|
 | TypeScript | `server/typescript/packages/metadata/test/naming.test.ts` (pluralizers); `server/typescript/packages/codegen-ts/test/naming/collection-name-collision.test.ts` (refusal — `assertNoCollectionNameCollisions`, wired into `runGen` in `runner.ts`) |
 | C# | `server/csharp/MetaObjects.Codegen.Tests/CSharpNamingTests.cs` (pluralizers + refusal — `CSharpNaming.AssertNoCollectionNameCollisions`, wired into `CodegenRunner.Run`); `server/csharp/MetaObjects.Codegen.Tests/DbContextForeignKeyConfigTests.cs` (the historical Address/Addresses fixture, now an expected-error test at both the unit and `CodegenRunner.Run` integration level) |
-| Java / Kotlin | `server/java/codegen-base/src/test/java/com/metaobjects/generator/util/RouteNamingTest.java` (pluralizers + refusal — `RouteNaming.assertNoCollectionNameCollisions`, wired into `MetaDataGeneratorMojo#executeGenerators`; Kotlin inherits both — it runs through the same Maven goal) |
+| Java / Kotlin | `server/java/codegen-base/src/test/java/com/metaobjects/generator/util/RouteNamingTest.java` (pluralizers + refusal — `RouteNaming.assertNoCollectionNameCollisions`, wired into `MetaDataGeneratorMojo#executeGenerators` and the codegen mode of `MetaDataVerifyMojo`; Kotlin inherits both — it runs through the same Maven goals — and `server/java/codegen-kotlin/src/test/kotlin/com/metaobjects/generator/kotlin/KotlinRouteNamingTest.kt` checks the refusal on models the Kotlin facade loads) |
 | Python | `server/python/tests/codegen/test_route_path_naming.py` (pluralizers); `server/python/tests/codegen/test_collection_name_collision.py` (refusal — `assert_no_collection_name_collisions`, wired into `run_gen` in `runner.py`) |
 
 No HTTP server, no database — this corpus is intentionally a pure function

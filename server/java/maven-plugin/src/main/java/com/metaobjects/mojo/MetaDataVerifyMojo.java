@@ -1,5 +1,8 @@
 package com.metaobjects.mojo;
 
+import com.metaobjects.MetaDataException;
+import com.metaobjects.config.Dependencies;
+import com.metaobjects.config.NeutralConfig;
 import com.metaobjects.config.WireFormat;
 import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorBase;
@@ -37,6 +40,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -73,6 +77,12 @@ import java.util.TreeSet;
  *       shared {@link TemplateVerify} helper (which reuses the render
  *       {@link com.metaobjects.render.Verify} engine). Covers BOTH Java and Kotlin
  *       generation, since they share this one goal.</li>
+ *   <li>{@code deps} — FR-023 dependency drift: re-resolve each declared dependency's {@code path} and
+ *       compare the publisher's artifact with {@code .metaobjects/deps.lock.json}
+ *       ({@code current} / {@code drifted} / {@code unresolved}; the last two fail with
+ *       {@code ERR_DEPENDENCY_UPSTREAM_DRIFT}). Opt-in, never part of the default set: it needs the
+ *       publisher reachable, which CI may not have. It loads no model and writes nothing. Covers Java and
+ *       Kotlin alike, and is the counterpart of {@code meta deps check} / {@code verify --deps}.</li>
  *   <li>{@code db} — NOT supported by the Maven port; schema drift is the migrate engine
  *       (Node-owned, ADR-0015). A {@code db} value fails clearly.</li>
  * </ul>
@@ -113,6 +123,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
     static final String MODE_CODEGEN = "codegen";
     static final String MODE_TEMPLATES = "templates";
     static final String MODE_DB = "db";
+    static final String MODE_DEPS = "deps";
 
     /**
      * Which verify mode to run (ADR-0021 D2). Unset (the default) runs the cross-port default
@@ -168,7 +179,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
 
     /**
      * Force a full render and byte comparison even when the fingerprint says nothing changed
-     * (ADR-0062). {@code -Dmetaobjects.verify.full=true}.
+     * (ADR-0064). {@code -Dmetaobjects.verify.full=true}.
      */
     @Parameter(property = "metaobjects.verify.full", defaultValue = "false")
     private boolean full = false;
@@ -200,6 +211,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
         warnIfAgentContextStale();
 
         advisoriesDone = false;
+        unboundedListAdvisoryDone = false;
         String m = mode == null ? "" : mode.trim();
         if (m.isEmpty()) {
             verifyDefaultSet();
@@ -209,22 +221,70 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
             verifyTemplates();
             return;
         }
+        if (MODE_DEPS.equalsIgnoreCase(m)) {
+            verifyDeps();
+            return;
+        }
         if (MODE_DB.equalsIgnoreCase(m)) {
             throw new MojoFailureException(
                     "meta:verify mode 'db' is not supported by the Maven port; schema verify is the "
-                            + "migrate engine (Node-owned, ADR-0015). Use mode 'codegen' or 'templates'.");
+                            + "migrate engine (Node-owned, ADR-0015). Use mode 'codegen', 'templates' or 'deps'.");
         }
         if (!MODE_CODEGEN.equalsIgnoreCase(m)) {
             throw new MojoFailureException(
-                    "meta:verify: unknown mode '" + mode + "'. Valid modes: 'codegen', 'templates' (or unset for both).");
+                    "meta:verify: unknown mode '" + mode + "'. Valid modes: 'codegen', 'templates' (or unset for both), "
+                            + "and 'deps' (dependency drift, opt-in).");
         }
 
         refuseSharedGeneratorDirs();
         verifyCodegen();
     }
 
+    /**
+     * FR-023 — the {@code deps} mode. Re-resolves each dependency the project's
+     * {@code .metaobjects/config.json} declares and compares the publisher's artifact with the lock,
+     * reporting one line per dependency. A pure function of the config, the lock and the publisher's
+     * directory (see {@link Dependencies#check}): no snapshot is read and no model is loaded.
+     */
+    private void verifyDeps() throws MojoFailureException {
+        Path configDir = resolveProjectConfigDir(getSourceDir())
+                .orElse(getProjectBaseDir().toPath().toAbsolutePath().normalize());
+        List<Map<String, String>> specs;
+        Optional<Map<String, Dependencies.LockEntry>> lock;
+        try {
+            specs = NeutralConfig.read(configDir).map(NeutralConfig::getDependencies).orElse(List.of());
+            if (specs.isEmpty()) {
+                getLog().info(PREFIX + "deps: no dependencies declared \u2014 nothing to check.");
+                return;
+            }
+            lock = Dependencies.readLock(configDir);
+        } catch (MetaDataException e) {
+            throw new MojoFailureException(PREFIX + "deps: " + e.getMessage(), e);
+        }
+
+        List<Dependencies.CheckResult> results = Dependencies.check(configDir, specs, lock);
+        int failing = 0;
+        for (Dependencies.CheckResult r : results) {
+            if (r.status() == Dependencies.CheckStatus.CURRENT) {
+                getLog().info(PREFIX + "deps: " + r.line());
+            } else {
+                failing++;
+                getLog().error(PREFIX + "deps: " + r.line());
+            }
+        }
+        if (failing > 0) {
+            throw new MojoFailureException(PREFIX + "deps: " + failing + " of " + results.size() + " dependenc"
+                    + (results.size() == 1 ? "y" : "ies") + " drifted or unresolved ("
+                    + Dependencies.UPSTREAM_DRIFT + ").");
+        }
+        getLog().info(PREFIX + "deps: every dependency's installed artifact matches the lock.");
+    }
+
     /** Set once the field lint and requirement gate have run, so a two-gate run reports them once. */
     private boolean advisoriesDone;
+
+    /** Set once the pagination advisory has run, so a two-gate run reports it once. */
+    private boolean unboundedListAdvisoryDone;
 
     /**
      * Mode unset: the cross-port default gate set. Codegen drift always; template drift when
@@ -268,6 +328,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
      * Warnings ONLY: this never throws and never changes the build result.
      */
     private void runFieldLintAdvisory(MetaDataLoader loader) {
+        runUnboundedListAdvisory(loader);
         if (advisoriesDone || noFieldLint || "1".equals(System.getenv(FieldLint.ENV_OPT_OUT))) return;
         List<FieldLint.Finding> findings = new ArrayList<>();
         try {
@@ -281,6 +342,30 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
                 + " authoring warning(s) (advisory — does not fail the build):");
         for (FieldLint.Finding f : findings) {
             getLog().warn("  " + f.code() + " [" + f.path() + "]: " + f.message());
+        }
+    }
+
+    /**
+     * Advisory {@code unbounded-list-pages}: a project that generates REST controllers and sets no
+     * {@code api.pagination} has list routes that answer 50 rows when {@code limit} is omitted and
+     * accept any {@code limit}. Never fails the build.
+     */
+    private void runUnboundedListAdvisory(MetaDataLoader loader) {
+        if (unboundedListAdvisoryDone) return;
+        unboundedListAdvisoryDone = true;
+        try {
+            if (loader.getRoot().getApiSettings().hasPagination()) return;
+            boolean generatesRoutes = false;
+            for (GeneratorParam g : getGenerators() != null ? getGenerators() : List.<GeneratorParam>of()) {
+                String name = g.getClassname();
+                if (name != null && name.endsWith("ControllerGenerator")) generatesRoutes = true;
+            }
+            if (!generatesRoutes) return;
+            getLog().warn("metaobjects:verify — unbounded-list-pages (advisory — does not fail the build): "
+                    + "generated list routes take any limit and have no project-wide page size; "
+                    + "set api.pagination ({\"defaultLimit\": 50, \"maxLimit\": 1000}) in .metaobjects/config.json.");
+        } catch (RuntimeException e) {
+            // an advisory never breaks verify
         }
     }
 
@@ -362,6 +447,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
         }
 
         ClassLoader projectClassLoader = createProjectClassLoader();
+        resolveProviders(projectClassLoader);
         MetaDataLoader loader = createLoader(projectClassLoader);
         runFieldLintAdvisory(loader);
         int requirementErrors = runRequirementGate(loader);
@@ -397,11 +483,15 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
 
     private void verifyCodegen() throws MojoExecutionException, MojoFailureException {
         ClassLoader projectClassLoader = createProjectClassLoader();
+        resolveProviders(projectClassLoader);
         MetaDataLoader loader = createLoader(projectClassLoader);
+        // The same model refusals the generate goal makes before any generator runs: a model
+        // gen refuses must not verify clean.
+        MetaDataGeneratorMojo.refuseModelCollisions(loader);
         runFieldLintAdvisory(loader);
         int requirementErrors = runRequirementGate(loader);
 
-        // ADR-0062 §4: locally, the stored fingerprint and the manifest may answer "no drift"
+        // ADR-0064 §4: locally, the stored fingerprint and the manifest may answer "no drift"
         // without rendering. CI always renders; `full` forces a render.
         if (mayAnswerFromFingerprint() && fingerprintAnswersNoDrift(loader)) {
             getLog().info(PREFIX + "codegen: no drift (no input changed since the last generate and "
@@ -566,7 +656,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
     /**
      * ADR-0019 Amendment 2: the other {@code wire} setting under which the generators reproduce the
      * committed output exactly, or {@code null} when none does. Probes decimals {native, string} x
-     * nullMembers {native, omit} ({@code emit} writes what {@code native} writes on the JVM), skipping
+     * nullMembers {native, omit} x durations {native, iso} ({@code emit} writes what {@code native} writes on the JVM), skipping
      * the setting this run used, then puts that setting back on the root. Each probe runs fresh
      * generator instances, since a generator need not support a second {@code execute}. A probe that
      * fails answers "no match", so the ordinary drift report still prints.
@@ -580,8 +670,9 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
         try {
             for (WireFormat.Decimals d : WireFormat.Decimals.values()) {
                 for (WireFormat.NullMembers n : List.of(WireFormat.NullMembers.NATIVE, WireFormat.NullMembers.OMIT)) {
-                    if (d == used.decimals() && n == usedNulls) continue;
-                    loader.getRoot().setWireFormat(new WireFormat(d, n));
+                  for (WireFormat.Durations u : WireFormat.Durations.values()) {
+                    if (d == used.decimals() && n == usedNulls && u == used.durations()) continue;
+                    loader.getRoot().setWireFormat(new WireFormat(d, n, u));
                     try (GeneratedFileWriter.Run capture = GeneratedFileWriter.beginCaptureRun()) {
                         for (Generator gen : buildGenerators(projectClassLoader, overrides)) gen.execute(loader);
                         rendered = new HashMap<>(capture.captured());
@@ -594,7 +685,8 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
                     if (ownHashes != null) {
                         drift.addAll(strandedOutsideTargets(ownHashes, targets, projectRoot, new ArrayList<>()));
                     }
-                    if (drift.isEmpty()) return new WireFormat(d, n);
+                    if (drift.isEmpty()) return new WireFormat(d, n, u);
+                  }
                 }
             }
             return null;
@@ -606,14 +698,15 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
     /** The {@code wire} block that declares {@code wire}. */
     static String wireBlock(WireFormat wire) {
         return "\"wire\": { \"decimals\": \"" + wire.decimals().wireName()
-                + "\", \"nullMembers\": \"" + wire.nullMembers().wireName() + "\" }";
+                + "\", \"nullMembers\": \"" + wire.nullMembers().wireName()
+                + "\", \"durations\": \"" + wire.durations().wireName() + "\" }";
     }
 
     /** The verify failure for committed output that another {@code wire} setting reproduces. */
     static String wireDiffers(WireFormat committed, WireFormat used) {
         return "The committed output was generated with " + wireBlock(committed) + "; this run used "
                 + wireBlock(used) + " (.metaobjects/config.json; each key defaults to native). Do not "
-                + "regenerate: that changes the JSON your API writes for decimals or for a value object's "
+                + "regenerate: that changes the JSON your API writes for decimals, durations or for a value object's "
                 + "null members. Declare " + wireBlock(committed) + " in .metaobjects/config.json, and "
                 + "generate and verify both read it.";
     }

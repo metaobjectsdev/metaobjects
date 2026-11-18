@@ -26,6 +26,8 @@ from collections.abc import Callable
 from metaobjects.apidocs.naming import snake_case as _snake_case
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
+from metaobjects.codegen.name_claims import claimed_module_path
+from metaobjects.codegen.value_objects import pkg_of
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
 from metaobjects.codegen.generators.find_inbound import (
     inbound_templates,
@@ -158,7 +160,10 @@ class OutputPromptGenerator:
                 continue
             files.append(
                 EmittedFile(
-                    path=f"{_snake_case(tmpl.name)}_response_format.py",
+                    path=claimed_module_path(
+                        ctx.claims, ctx.config, pkg_of(tmpl),
+                        f"{_snake_case(tmpl.name)}_response_format", tmpl.resolution_key(),
+                    ),
                     content=ruff_format(content),
                 )
             )

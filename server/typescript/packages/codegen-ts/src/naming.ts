@@ -127,18 +127,20 @@ export function findByIdFnName(entityName: string): string {
   return `find${entityName}ById`;
 }
 
-/** Generated list helper name: `list<Plural>` (PascalCase plural). */
+/** Generated list helper name: `list<Plural>` (PascalCase plural, {@link collectionPascal}). */
 export function listFnName(entity: string | MetaData): string {
   return `list${collectionPascal(entity)}`;
 }
 
 /**
- * rc.19 (R57) — the `<Plural>` of a generated symbol: an object's collection name (its
- * `@collectionName`, else the project's pluralizer), or, given only a bare name (no model at
- * hand), the standard pluralization of it.
+ * The `<Plural>` of a generated symbol: an object's collection name (its own `@collectionName`,
+ * else the project's `naming.collections` pluralizer over its name), first letter upper-cased.
+ * Given only a bare name, with no model at hand, the standard pluralization of it. For an
+ * object that declares neither, the two agree.
  */
 export function collectionPascal(entity: string | MetaData): string {
-  return typeof entity === "string" ? pluralize(entity) : collectionNameOf(entity);
+  const plural = typeof entity === "string" ? pluralize(entity) : collectionNameOf(entity);
+  return plural.charAt(0).toUpperCase() + plural.slice(1);
 }
 
 /**

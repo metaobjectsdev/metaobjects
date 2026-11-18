@@ -7,17 +7,23 @@ import {
   DEFAULT_COLUMN_NAMING_STRATEGY,
   FIELD_SUBTYPE_DURATION, FIELD_SUBTYPE_ENUM,
   storedEnumValue, stringValueMapOf,
-  resolveTableName, resolveColumnName,
-  durationToStoredMicros, formatDuration, formatPostgresInterval, parseDurationLiteral,
+  resolveTableName, resolveTableSchema, resolveColumnName,
+  durationToStoredMicros, formatPostgresInterval, parseDurationLiteral,
 } from "@metaobjectsdev/metadata";
 import { MetadataError } from "./errors.js";
 import { intValueMapOf } from "./type-coercer.js";
 import type {
   Dialect, WhereClause, OrderBy, PrimitiveValue, Row,
-  SelectSpec, InsertSpec, UpdateSpec, DeleteSpec, CountSpec,
+  SelectSpec, InsertSpec, UpdateSpec, DeleteSpec, CountSpec, TableTarget,
 } from "./persistence-driver.js";
 
 export { resolveTableName } from "@metaobjectsdev/metadata";
+
+/** The relation an entity reads and writes: its table and, when its source declares one, its @schema. */
+export function tableTarget(entity: MetaData): TableTarget {
+  const schema = resolveTableSchema(entity);
+  return schema === undefined ? { table: resolveTableName(entity) } : { table: resolveTableName(entity), schema };
+}
 
 export type Filter = Record<string, FilterValue> | { $and: Filter[] };
 
@@ -183,7 +189,9 @@ function encodeFilterValue<T>(field: MetaData, value: T, dialect?: Dialect): T {
     if (dialect === "postgres") return formatPostgresInterval(micros) as T;
     if (dialect === "sqlite" || dialect === "mysql") return durationToStoredMicros(micros) as T;
     if (dialect === "memory") return micros as T;
-    return formatDuration(micros) as T;
+    // With no dialect there is no stored form to compare against: an ISO string would match
+    // nothing on a microsecond column and fail on an interval one.
+    throw new MetadataError(`filter on field.duration '${field.name}' needs the driver's dialect to encode ${JSON.stringify(value)}`);
   }
   // rc.21: a @stringValueMap enum is compared as the member's stored string. Unlike an
   // @intValueMap symbol (which cannot equal an integer), an unmapped member passed through could
@@ -246,7 +254,7 @@ export function buildSelectSpec(
   const orderBy = normalizeOrderBy(opts.orderBy, entity, strategy);
 
   const spec: SelectSpec = {
-    table: resolveTableName(entity),
+    ...tableTarget(entity),
     columns,
   };
   const where = filter !== undefined ? compileFilter(entity, filter, strategy, dialect) : null;
@@ -262,7 +270,7 @@ export function buildCountSpec(
   strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
   dialect?: Dialect,
 ): CountSpec {
-  const spec: CountSpec = { table: resolveTableName(entity) };
+  const spec: CountSpec = tableTarget(entity);
   const where = filter !== undefined ? compileFilter(entity, filter, strategy, dialect) : null;
   if (where !== null) spec.where = where;
   return spec;
@@ -275,7 +283,7 @@ export function buildInsertSpec(
   const values = rowToColumns(entity, data, strategy);
   const allFields = listFieldNames(entity);
   return {
-    table: resolveTableName(entity),
+    ...tableTarget(entity),
     values,
     returning: allFields.map((f) => resolveColumnName(getField(entity, f), strategy)),
     key: primaryKeyColumns(entity, strategy),
@@ -326,7 +334,7 @@ export function buildUpdateSpec(
     );
   }
   return {
-    table: resolveTableName(entity),
+    ...tableTarget(entity),
     values,
     where: byIdWhere(entity, id, scope, strategy),
     returning: listFieldNames(entity).map((f) => resolveColumnName(getField(entity, f), strategy)),
@@ -346,7 +354,7 @@ export function buildDeleteSpec(
     );
   }
   return {
-    table: resolveTableName(entity),
+    ...tableTarget(entity),
     where: byIdWhere(entity, id, scope, strategy),
   };
 }

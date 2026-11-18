@@ -16,13 +16,12 @@
 // nothing else in the file is touched, so "what did upstream change?" is a diff of two files
 // that differ in their import lines only.
 //
-//   ./names.js, ../column-mapper.js        an ENGINE module        -> "@metaobjectsdev/codegen-ts/engine"
+//   ./names.js, ../poet.js                 an ENGINE module        -> "@metaobjectsdev/codegen-ts/engine"
 //   ./zod-validators.js, ../cube/x.js      an EMIT module          -> the copy beside it
 //   @metaobjectsdev/codegen-ts/templates/x another package's emit  -> the copy beside it
-//   ts-poet                                the package's own Code  -> "@metaobjectsdev/codegen-ts/engine"
 //
-// The last row is the 0.21.6 split-tree defect: `Code` objects are recognised by `instanceof`,
-// so a copy must build them with the same ts-poet the engine uses.
+// `poet.ts` is the code printer, and it is engine for the 0.21.6 split-tree defect: `Code`
+// objects are recognised by `instanceof`, so a copy must build them with the engine's printer.
 //
 // Imports are found by scanning the leading import block of each module — the only place these
 // files declare a module specifier. A scanner and not a regex over the whole file because the
@@ -53,7 +52,7 @@ export const OWNED_TEMPLATES_DIR = "codegen/templates";
 const OWNED_GENERATORS_DIR = "codegen/generators";
 /** The package that holds the engine. */
 const CORE_PACKAGE = `${SCOPE}codegen-ts`;
-/** The entry an owned copy imports the core engine from, and the ts-poet it shares. */
+/** The entry an owned copy imports the core engine (code printer included) from. */
 const ENGINE_ENTRY = `${CORE_PACKAGE}/engine`;
 
 /** `@metaobjectsdev/codegen-ts-react` → `codegen-ts-react`, the directory spelling `ENGINE_MODULES` uses. */
@@ -311,8 +310,6 @@ export function templateClosure(
         next = engine.has(keyOf(target))
           ? engineEntryOf(target.pkg.name)
           : relativeSpecifier(here, destination(target));
-      } else if (spec === "ts-poet") {
-        next = ENGINE_ENTRY;
       }
       if (!next.startsWith(".") && !next.startsWith("node:")) imported.add(packageOfSpecifier(next));
       return next;

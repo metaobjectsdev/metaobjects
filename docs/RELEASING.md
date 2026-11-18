@@ -49,6 +49,21 @@ Decide explicitly for every branch the scan returns: merge it into this cut, or 
 Note that `no-mistakes/*` branches are usually gate replays of work already on `main` — confirm
 rather than assume. Do not skip past the list.
 
+**The previous maintenance branch is on `main` (minor and major cuts).** Before a minor or
+major is cut, every commit on the previous `release/<major>.<minor>` maintenance branch must be
+an ancestor of `main`. Otherwise a fix shipped as a patch from that branch is missing from the
+new line. Check it by hand while writing the CHANGELOG:
+
+```bash
+git fetch origin -q
+git merge-base --is-ancestor origin/release/<M>.<m> origin/main && echo merged || git log --oneline origin/main..origin/release/<M>.<m>
+```
+
+`scripts/release.mjs` enforces it in its preflight: cutting `X.Y.0` (or an RC of it) is refused
+while the highest `release/<M>.<m>` below `X.Y` on origin holds a commit `HEAD` does not. A patch
+is not gated. To clear it, merge the maintenance branch into `main` by PR (see "Then bring the
+branch to `main`" in the maintenance-branch section).
+
 **The eject pending list (1.1.0).** 1.1.0 does not ship while
 `fixtures/generator-registry-conformance/registry.json` has an entry in `eject.pending`
 (ADR-0034 Amendment 8). The scripted paths enforce it: `scripts/release.mjs` (first check of
@@ -268,7 +283,7 @@ what they render is generator output and does not.)
 | Codegen **ENGINE** public surface **additive** (new `render*` primitive, new `GenContext` field, optional param) | new `render*` primitive | PATCH (MINOR if it headlines a feature release) | MINOR |
 | Codegen **ENGINE** public surface **breaking**, or changed **CLI semantics** | `relativeModuleSpecifier` +required param | **MINOR** | MAJOR |
 | A **runtime library**'s public surface (`runtime-ts`, `render`, OMDB, ObjectManager, web client) — additive / breaking | a new mount option / a removed export | PATCH / **MINOR** | MINOR / MAJOR |
-| New **attribute** on an existing type/subtype | `@intValueMap`, `@lenient`, `@maxTokens` | **PATCH** | MINOR |
+| New **attribute** on an existing type/subtype | `@intValueMap`, `@lenient`, `@maxTokens` | **PATCH** | **PATCH** |
 | New **subtype** of an existing type | `field.uri`, `index.lookup`, `attr.intMap` | **PATCH** when inert (see the vocabulary rule below); **MINOR** when it changes existing metadata's meaning/output, narrows something previously permitted, or headlines a feature | MINOR |
 | New top-level metadata **type** | `requirement.*`, `index.*`, `api.*` | **MINOR** | MINOR |
 | **Breaking** metamodel-vocabulary change (retire an attr/subtype/type; narrow what is permitted) | FR-037 `@readOnly`, FR-038 `@verifiedBy`, ADR-0052 `@promptStyle` re-homing | **MINOR** (pre-1.0 MINOR *is* the breaking slot) | **`metamodelVersion` MAJOR**, package MINOR (ADR-0035 Am. 2) |
@@ -653,9 +668,12 @@ published, any version older than the newest release tag, and any release candid
 version that has already shipped (npm sorts it below the full release; resolved the same
 way the site deploy resolves its tag). It offers no non-`latest` dist-tag path.
 
-**Then bring the fix to `main`.** A maintenance branch is never merged back wholesale (its
-version bumps and CHANGELOG would collide with `main`'s). Cherry-pick or re-land each fix on
-`main` by PR.
+**Then bring the branch to `main`.** Re-land each fix on `main` by PR as soon as it ships.
+Before the next minor or major is cut, also merge the maintenance branch itself into `main` by
+PR, resolving its version bumps, site payload and CHANGELOG in `main`'s favour, so that every
+commit on it is an ancestor of `main`. Step 0 checks this and `release.mjs` refuses the cut
+until it holds; a fix that exists only on the maintenance branch would otherwise be missing
+from the new line.
 
 ## Isolated patch (one package)
 

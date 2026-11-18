@@ -90,8 +90,17 @@ public final class References {
         return pkg.isEmpty() ? List.of(owner) : List.of(pkg + SEP + owner, owner);
     }
 
-    /** Bind an owner among {@code candidates} by exact resolution key. */
-    private static Resolution bind(Iterable<MetaData> candidates, String owner, String referrerPkg) {
+    /**
+     * Bind an owner among the root's top-level nodes of {@code type} ({@code null} = any type
+     * but an attribute) by exact resolution key: the first key that names a node wins, and
+     * within one key the node declared first.
+     *
+     * <p>A typed lookup goes through the root's per-type name index, so resolving every
+     * reference in a model is linear in its size rather than quadratic. An untyped lookup also
+     * uses the index, and walks the root in declaration order only when one key names nodes of
+     * more than one type.</p>
+     */
+    private static Resolution bind(MetaData root, String type, String owner, String referrerPkg) {
         List<String> keys;
         try {
             keys = ownerCandidateKeys(owner, referrerPkg);
@@ -99,31 +108,40 @@ public final class References {
             return new Resolution(null, e.getMessage());
         }
         for (String key : keys) {
-            for (MetaData c : candidates) {
-                if (key.equals(c.getName())) return new Resolution(c, null);
-            }
+            MetaData found = type != null
+                ? root.findChildByNameAndType(key, type).orElse(null)
+                : firstTopLevelNamed(root, key);
+            if (found != null) return new Resolution(found, null);
         }
         return Resolution.NONE;
     }
 
-    /** The root's direct children of {@code type} ({@code null} = any). ADR-0039: the root has no super. */
-    private static List<MetaData> topLevelOfType(MetaData root, String type) {
-        List<MetaData> out = new ArrayList<>();
-        for (MetaData c : root.getChildren(MetaData.class, false)) {
-            if (c instanceof MetaAttribute) continue;
-            if (type == null || type.equals(c.getType())) out.add(c);
+    /** The first-declared top-level node named {@code key} of any type but an attribute. */
+    private static MetaData firstTopLevelNamed(MetaData root, String key) {
+        MetaData only = null;
+        for (String type : root.getChildTypes()) {
+            if (MetaAttribute.TYPE_ATTR.equals(type)) continue;
+            MetaData hit = root.findChildByNameAndType(key, type).orElse(null);
+            if (hit == null) continue;
+            if (only != null) {
+                // Two types share the name: declaration order decides, as it always has.
+                for (MetaData c : root.getChildren(MetaData.class, false)) {
+                    if (!(c instanceof MetaAttribute) && key.equals(c.getName())) return c;
+                }
+            }
+            only = hit;
         }
-        return out;
+        return only;
     }
 
     /** Resolve an OBJECT reference (no child tail) under R2. */
     public static Resolution resolveObjectRef(MetaData root, String ref, String referrerPkg) {
-        return bind(topLevelOfType(root, MetaObject.TYPE_OBJECT), ref, referrerPkg);
+        return bind(root, MetaObject.TYPE_OBJECT, ref, referrerPkg);
     }
 
     /** Resolve an owner among the root's top-level nodes of {@code type} (any type when null). */
     public static Resolution resolveOwner(MetaData root, String owner, String referrerPkg, String type) {
-        return bind(topLevelOfType(root, type), owner, referrerPkg);
+        return bind(root, type, owner, referrerPkg);
     }
 
     /**

@@ -41,9 +41,9 @@ export function warnMissingDataGridLayout(
   passesOtherGates: (entity: MetaObject) => boolean,
   artifact: string,
 ): void {
-  const candidates = ctx.entities.filter(passesOtherGates);
+  const candidates = ctx.entities.filter((e) => (ctx.selected?.(e) ?? true) && passesOtherGates(e));
   if (candidates.length === 0) return;
-  if (candidates.some(hasDataGridLayout)) return;   // the model uses grids — say nothing
+  if (ctx.entities.some((e) => passesOtherGates(e) && hasDataGridLayout(e))) return;   // the model uses grids — say nothing
   ctx.warn(
     `no ${artifact} emitted for ${candidates.map((e) => e.name).join(", ")} — grid ` +
       `artifacts are opt-in per entity via a \`layout.dataGrid\` child, and no object in ` +

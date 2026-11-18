@@ -49,7 +49,7 @@ async function loadRootFromFiles(...metaJsonPaths: string[]) {
 }
 
 /** The generator context a real run hands entityFile(), in the package output layout: two value
- *  objects named Note are two modules, one per package directory (ruling R52 — nothing is
+ *  objects named Note are two modules, one per package directory(nothing is
  *  renamed; under the flat layout the claim registry refuses them). */
 function genContext(root: Awaited<ReturnType<typeof loadRootFromFiles>>): GenContext {
   return {
@@ -182,7 +182,7 @@ describe("render-helper conformance — shared cross-port corpus", () => {
   // The payload type for this fixture must be GENERATOR-emitted
   // (fixtures/template-output-render-conformance/README.md, xpkg-collision section) — never
   // hand-authored by the port runner. ADR-0056: it is the value objects' OWN interfaces, which
-  // entityFile() emits. Ruling R52: each keeps its name `Note`, in its own package's module; the
+  // entityFile() emits. each keeps its name `Note`, in its own package's module; the
   // Digest module that meets both binds them under package-qualified local aliases.
   test("document DigestDoc resolves FQN nested @objectRef across a cross-package short-name collision", async () => {
     const dirRoot = join(CORPUS, "xpkg-collision");

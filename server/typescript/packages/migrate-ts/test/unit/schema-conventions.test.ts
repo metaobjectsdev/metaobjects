@@ -80,11 +80,11 @@ describe("efcore conventions", () => {
 });
 
 describe("default conventions (what migrate has always emitted)", () => {
-  test("{table}_pkey, {table}_{firstColumn}_fk, no FK index, unique keys are indexes", () => {
+  test("{table}_pkey, {table}_{firstColumn}_fk, no FK index, a unique key of either kind", () => {
     expect(defaultConventions.primaryKeyName({ table: "orders", columns: ["id"] })).toBe("orders_pkey");
     expect(defaultConventions.foreignKeyName({ ...fk, table: "order_lines", columns: ["order_id", "region"] })).toBe("order_lines_order_id_fk");
     expect(defaultConventions.foreignKeyIndexes({ table: "OrderLines", primaryKey: ["Id"], indexes: [], foreignKeys: [fk] })).toEqual([]);
-    expect(defaultConventions.uniqueKeyKind({ table: "orders", columns: ["code"], referencedByForeignKey: true })).toBe("index");
+    expect(defaultConventions.uniqueKeyKind({ table: "orders", columns: ["code"], referencedByForeignKey: true })).toBe("either");
   });
 });
 

@@ -94,9 +94,9 @@ class KotlinProjectionExtendsInheritanceTest {
                 "publishedAt must inherit the instant/TZ-aware timestamp (instantWithTimeZone); saw:\n$table")
 
             // --- enum gets the projection's OWN self-contained type, not root Status ---
-            assertTrue("enumerationByName(\"status\", " in table && "ProgramViewStatus::class" in table,
+            assertTrue("customEnumeration(\"status\", " in table && "ProgramViewStatus.valueOf" in table,
                 "status must reference the projection's own ProgramViewStatus enum; saw:\n$table")
-            assertFalse(", Status::class)" in table,
+            assertFalse("{ v -> Status.valueOf" in table,
                 "status must NOT collapse to a root-package `Status` enum; saw:\n$table")
 
             // The projection's own enum class is materialized in the projection's package,

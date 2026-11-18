@@ -118,14 +118,19 @@ public static class OriginConstants
     public const string AGG_ALL     = "all";
     public const string AGG_COLLECT = "collect";
 
+    /// <summary>The @agg values that reduce the VALUES of the @of column (count only counts
+    /// non-null rows). Mirrors the TS COLUMN_VALUE_AGGREGATES.</summary>
+    public static readonly string[] COLUMN_VALUE_AGGREGATES =
+        [AGGREGATE_FN_SUM, AGGREGATE_FN_AVG, AGGREGATE_FN_MIN, AGGREGATE_FN_MAX];
+
     /// <summary>The full @agg attribute vocabulary (matches origin.json allowedValues).</summary>
     public static readonly string[] ORIGIN_AGG_VALUES =
         [AGGREGATE_FN_COUNT, AGGREGATE_FN_SUM, AGGREGATE_FN_AVG, AGGREGATE_FN_MIN, AGGREGATE_FN_MAX,
          AGG_ANY, AGG_ALL, AGG_COLLECT];
 
-    /// <summary>rc.19 origin-segment: a segment.filter of the related entity scoping the related rows.</summary>
+    /// <summary>A segment.filter of the related entity scoping the related rows.</summary>
     public const string ORIGIN_ATTR_SEGMENT = "segment";
-    /// <summary>rc.19 correlated-filter: the null-safe comparisons with a base-row field operand.</summary>
+    /// <summary>The null-safe comparisons with a base-row field operand.</summary>
     public const string FILTER_OP_IS_DISTINCT_FROM = "isDistinctFrom";
     public const string FILTER_OP_IS_NOT_DISTINCT_FROM = "isNotDistinctFrom";
     /// <summary>The key of a correlated operand: <c>{ field: "&lt;base field&gt;" }</c>.</summary>

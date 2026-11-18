@@ -223,7 +223,8 @@ public class ApiDocsEjectBothPortsTest {
             s.filter(Files::isRegularFile).forEach(p -> written.add(out.relativize(p).toString()
                     .replace(File.separatorChar, '/')));
         }
-        assertEquals(classname, Set.of("api/" + language + "/AGENT-API.md", "api/" + language + "/Money.md",
+        // The default layout files a type's page under its package directory.
+        assertEquals(classname, Set.of("api/" + language + "/AGENT-API.md", "api/" + language + "/acme/shop/Money.md",
                 "api/" + language + "/README.md"), written);
     }
 

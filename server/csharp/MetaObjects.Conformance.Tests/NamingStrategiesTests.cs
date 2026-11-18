@@ -141,7 +141,7 @@ public class NamingStrategiesTests
         }
     }
 
-    // rc.19 (R57): naming.collections selects a pluralizer by name; an unknown one is refused at read.
+    // naming.collections selects a pluralizer by name; an unknown one is refused at read.
     [Fact]
     public void The_config_reader_selects_a_pluralizer_and_refuses_an_unknown_one()
     {

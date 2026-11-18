@@ -55,6 +55,35 @@ internal sealed class ExampleTemplateBriefingProvider : IMetaDataTypeProvider
     }
 }
 
+// Test-only — a project's own vocabulary: layout.picker + field.string attrs. Mirrors the TS
+// reference (`exampleCustomVocabularyProvider`) and the shape a `csharp.providers` entry supplies.
+internal sealed class ExampleCustomVocabularyProvider : IMetaDataTypeProvider
+{
+    public string Id => "example-custom-vocabulary";
+    public IReadOnlyList<string> Dependencies => new[] { "metaobjects-core-types" };
+
+    public void RegisterTypes(TypeRegistry registry)
+    {
+        registry.Register(new TypeDefinition(
+            typeId: new TypeId("layout", "picker"),
+            description: "A picker that chooses one row of the owning object — test-only.",
+            childRules: new List<ChildRule>
+            {
+                new ChildRule(BaseTypes.TYPE_ATTR, Structural.CHILD_RULE_WILDCARD, Structural.CHILD_RULE_WILDCARD),
+            },
+            factory: (typeId, name) => new MetaLayout(typeId, name),
+            attributes: new List<AttrSchema>
+            {
+                new AttrSchema("displayField", "string", Required: false, Description: "Field shown for each choice."),
+            }));
+        registry.Extend("field", "string", attributes: new List<AttrSchema>
+        {
+            new AttrSchema("searchable", "boolean", Required: false, Description: "Offer this field in search."),
+            new AttrSchema("valueLabels", "string", Required: false, Description: "Display labels for the field's values.", IsArray: true),
+        });
+    }
+}
+
 internal sealed class NoopTestProvider(string id, params string[] deps) : IMetaDataTypeProvider
 {
     public string Id { get; } = id;
@@ -133,7 +162,7 @@ public static class ConformanceAdapter
             // among them — they register with the template type itself in core-types
             // (TemplateSchema), never in a provider that can be composed out.
             ["metaobjects-ui"]            = MetaObjects.Presentation.Ui.UiMetaDataProvider.Instance,
-            // R40 kind 1 — view.textarea @rows and the view.image attrs (ui-web.json).
+            // View.textarea @rows and the view.image attrs (ui-web.json).
             ["metaobjects-ui-web"]        = MetaObjects.Presentation.Ui.UiWebMetaDataProvider.Instance,
             ["metaobjects-prompt"]        = MetaObjects.Template.PromptMetaDataProvider.Instance,
             // Back-compat alias: pre-rename fixtures (and other ports' fixtures) still name the
@@ -142,6 +171,7 @@ public static class ConformanceAdapter
             ["metaobjects-template"]      = MetaObjects.Template.PromptMetaDataProvider.Instance,
             // Test-only — provider-extension-* fixtures.
             ["example-template-briefing"] = new ExampleTemplateBriefingProvider(),
+            ["example-custom-vocabulary"] = new ExampleCustomVocabularyProvider(),
             ["cycle-a"]                   = new NoopTestProvider("cycle-a", "cycle-b"),
             ["cycle-b"]                   = new NoopTestProvider("cycle-b", "cycle-a"),
             ["depends-on-missing"]        = new NoopTestProvider("depends-on-missing", "does-not-exist"),

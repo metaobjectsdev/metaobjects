@@ -64,7 +64,7 @@ public static class DbSchema
         Name: DbConstants.FIELD_ATTR_FLATTENED_COLUMN_PREFIX,
         ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
         Required: false,
-        Description: "On a field.object with @storage \"flattened\": the text put before each member's column, verbatim (\"\" allowed, so the members keep their own column names). Absent: this field's resolved column name and \"_\" (with @column \"bill\", the members are bill_<member column>). A fact about the owning table, so it lives on the embedding field, never on the value object. Refused on any other storage (ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE).");
+        Description: "On a field.object with @storage \"flattened\": the text put before each member's column, verbatim (\"\" allowed, so the members keep their own column names). Absent: this field's resolved column name and \"_\" (with @column \"bill\", the members are bill_<member column>). A fact about the owning table, so it lives on the embedding field, never on the value object. Refused on any other storage (ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE). Justified in ADR-0023 Amendment 1.");
 
     // --- Physical RDB index/constraint attrs the db provider adds to identity.* ---
 
@@ -82,70 +82,70 @@ public static class DbSchema
         Name: DbConstants.IDENTITY_ATTR_WHERE,
         ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
         Required: false,
-        Description: "Partial-index predicate (raw SQL, e.g. \"delivered_at IS NULL\"). When set, the index covers only rows matching the predicate — smaller and cheaper for queries that always filter on it. Absent = a full index over every row. RDB-physical — contributed by the db provider.");
+        Description: "Partial-index predicate (raw SQL, e.g. \"delivered_at IS NULL\"). When set, the index covers only rows matching the predicate — smaller and cheaper for queries that always filter on it. Absent = a full index over every row. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1.");
 
     /// <summary><c>@expr</c> — raw key expression for a functional/expression index; on identity.secondary.</summary>
     public static readonly AttrSchema ExprSchema = new AttrSchema(
         Name: DbConstants.IDENTITY_ATTR_EXPR,
         ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
         Required: false,
-        Description: "Raw key EXPRESSION for a functional/expression index (e.g. \"lower(email)\"). Used INSTEAD of @fields — the index key is the expression rather than plain columns. RDB-physical — contributed by the db provider.");
+        Description: "Raw key EXPRESSION for a functional/expression index (e.g. \"lower(email)\"). Used INSTEAD of @fields — the index key is the expression rather than plain columns. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1.");
 
     /// <summary><c>@using</c> — index access method (e.g. "gin"); default "btree"; on identity.secondary.</summary>
     public static readonly AttrSchema UsingSchema = new AttrSchema(
         Name: DbConstants.IDENTITY_ATTR_USING,
         ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
         Required: false,
-        Description: "Index access method (e.g. \"gin\", \"gist\", \"hash\"); default \"btree\" (not rendered). Pair with @expr for e.g. a GIN index over an array/jsonb expression. RDB-physical — contributed by the db provider.");
+        Description: "Index access method (e.g. \"gin\", \"gist\", \"hash\"); default \"btree\" (not rendered). Pair with @expr for e.g. a GIN index over an array/jsonb expression. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1.");
 
     /// <summary><c>@constraintName</c> on a validator — the database name of the CHECK it generates.</summary>
     public static readonly AttrSchema ValidatorConstraintNameSchema = new AttrSchema(
         Name: Core.Validator.ValidatorConstants.VALIDATOR_ATTR_CONSTRAINT_NAME,
         ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
         Required: false,
-        Description: "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider.");
+        Description: "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1.");
 
     /// <summary><c>@dbCheck</c> on a validator — <c>false</c> generates no database CHECK for it.</summary>
     public static readonly AttrSchema ValidatorDbCheckSchema = new AttrSchema(
         Name: Core.Validator.ValidatorConstants.VALIDATOR_ATTR_DB_CHECK,
         ValueType: AttrConstants.ATTR_SUBTYPE_BOOLEAN,
         Required: false,
-        Description: "On a numeric, length or regex validator, false generates no database CHECK (meta migrate and a generated EF model leave it out); the generated app-level validators still enforce it on every write. On a cross-field validator (comparison, requiredWhen, presentIff, atLeastOne), which only its CHECK enforces, false is refused (ERR_CROSS_FIELD_WITHOUT_CHECK). Absent: true. For a column whose legacy rows break the rule, which a CHECK would refuse on their next UPDATE even NOT VALID. Refused with @constraintName (ERR_CONSTRAINT_NAME_WITHOUT_CHECK). RDB-physical — contributed by the db provider.");
+        Description: "On a numeric, length or regex validator, false generates no database CHECK (meta migrate and a generated EF model leave it out); the generated app-level validators still enforce it on every write. On a cross-field validator (comparison, requiredWhen, presentIff, atLeastOne), which only its CHECK enforces, false is refused (ERR_CROSS_FIELD_WITHOUT_CHECK). Absent: true. For a column whose legacy rows break the rule, which a CHECK would refuse on their next UPDATE even NOT VALID. Refused with @constraintName (ERR_CONSTRAINT_NAME_WITHOUT_CHECK). RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1.");
 
     /// <summary><c>@dbCheck</c> on a field.enum — <c>false</c> generates no membership CHECK.</summary>
     public static readonly AttrSchema EnumDbCheckSchema = new AttrSchema(
         Name: Core.Validator.ValidatorConstants.VALIDATOR_ATTR_DB_CHECK,
         ValueType: AttrConstants.ATTR_SUBTYPE_BOOLEAN,
         Required: false,
-        Description: "false: this enum's member list generates no database CHECK (meta migrate and a generated EF model leave it out); the generated app-level validation still holds every write to the members. Absent: true. For a column whose legacy rows hold values outside the members, which a CHECK would refuse on their next UPDATE even NOT VALID. Refused with @constraintName (ERR_CONSTRAINT_NAME_WITHOUT_CHECK). RDB-physical — contributed by the db provider.");
+        Description: "false: this enum's member list generates no database CHECK (meta migrate and a generated EF model leave it out); the generated app-level validation still holds every write to the members. Absent: true. For a column whose legacy rows hold values outside the members, which a CHECK would refuse on their next UPDATE even NOT VALID. Refused with @constraintName (ERR_CONSTRAINT_NAME_WITHOUT_CHECK). RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1.");
 
     /// <summary><c>@constraintName</c> on a field.enum — the database name of its membership CHECK.</summary>
     public static readonly AttrSchema EnumConstraintNameSchema = new AttrSchema(
         Name: Core.Validator.ValidatorConstants.VALIDATOR_ATTR_CONSTRAINT_NAME,
         ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
         Required: false,
-        Description: "The database name of the CHECK constraint this enum's member list generates. Absent: <table>_<column>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider.");
+        Description: "The database name of the CHECK constraint this enum's member list generates. Absent: <table>_<column>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1.");
 
     /// <summary><c>@sequenceStart</c> — the first value of an increment key's sequence; on identity.primary.</summary>
     public static readonly AttrSchema SequenceStartSchema = new AttrSchema(
         Name: DbConstants.IDENTITY_ATTR_SEQUENCE_START,
         ValueType: AttrConstants.ATTR_SUBTYPE_LONG,
         Required: false,
-        Description: "The first value an @generation \"increment\" key's sequence hands out (Postgres: GENERATED BY DEFAULT AS IDENTITY (START WITH n)). Absent: 1. Lets a model reproduce a table that keeps a low id range for seeded rows. Refused without @generation \"increment\" (ERR_SEQUENCE_WITHOUT_INCREMENT). RDB-physical — contributed by the db provider.");
+        Description: "The first value an @generation \"increment\" key's sequence hands out (Postgres: GENERATED BY DEFAULT AS IDENTITY (START WITH n)). Absent: 1. Lets a model reproduce a table that keeps a low id range for seeded rows. Refused without @generation \"increment\" (ERR_SEQUENCE_WITHOUT_INCREMENT). RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1.");
 
     /// <summary><c>@sequenceName</c> — the physical name of an increment key's sequence; on identity.primary.</summary>
     public static readonly AttrSchema SequenceNameSchema = new AttrSchema(
         Name: DbConstants.IDENTITY_ATTR_SEQUENCE_NAME,
         ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
         Required: false,
-        Description: "The physical name of an @generation \"increment\" key's sequence (Postgres: GENERATED BY DEFAULT AS IDENTITY (SEQUENCE NAME ...)). Absent: the database's own default, <table>_<column>_seq on Postgres. Lets a model adopt a sequence that kept its name across a table rename. Refused without @generation \"increment\" (ERR_SEQUENCE_WITHOUT_INCREMENT). RDB-physical — contributed by the db provider.");
+        Description: "The physical name of an @generation \"increment\" key's sequence (Postgres: GENERATED BY DEFAULT AS IDENTITY (SEQUENCE NAME ...)). Absent: the database's own default, <table>_<column>_seq on Postgres. Lets a model adopt a sequence that kept its name across a table rename. Refused without @generation \"increment\" (ERR_SEQUENCE_WITHOUT_INCREMENT). RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1.");
 
     /// <summary><c>@constraintName</c> — physical FK constraint-name override; on identity.reference.</summary>
     public static readonly AttrSchema ConstraintNameSchema = new AttrSchema(
         Name: DbConstants.IDENTITY_ATTR_CONSTRAINT_NAME,
         ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
         Required: false,
-        Description: "Physical foreign-key constraint name override. Absent → the backend's auto-derived default (e.g. `<table>_<firstFkColumn>_fk`). Lets a model adopt an existing database whose FK constraints follow a different naming convention without a destructive rename. RDB-physical — contributed by the db provider.");
+        Description: "Physical foreign-key constraint name override. Absent → the backend's auto-derived default (e.g. `<table>_<firstFkColumn>_fk`). Lets a model adopt an existing database whose FK constraints follow a different naming convention without a destructive rename. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1.");
 
     /// <summary><c>@onDelete</c> — referential action on parent delete, the explicit per-FK override; on identity.reference (ADR-0047).</summary>
     public static readonly AttrSchema ReferenceOnDeleteSchema = new AttrSchema(
@@ -153,7 +153,7 @@ public static class DbSchema
         ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
         Required: false,
         AllowedValues: ["cascade", "set-null", "restrict", "no-action"],
-        Description: "Referential action on parent delete, declared directly on the FK-defining reference — the explicit per-FK override (ADR-0047). Precedence: this attr → a correlated relationship's @onDelete (declared on either side of the FK) → the relationship's subtype default. Use for a reference-only FK (no relationship), an M:N junction's FK sides, or a per-FK override; prefer declaring the action on the relationship otherwise. RDB-physical — contributed by the db provider.");
+        Description: "Referential action on parent delete, declared directly on the FK-defining reference — the explicit per-FK override (ADR-0047). Precedence: this attr → a correlated relationship's @onDelete (declared on either side of the FK) → the relationship's subtype default. Use for a reference-only FK (no relationship), an M:N junction's FK sides, or a per-FK override; prefer declaring the action on the relationship otherwise. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1.");
 
     /// <summary><c>@onUpdate</c> — referential action on key update, the explicit per-FK override; on identity.reference (ADR-0047).</summary>
     public static readonly AttrSchema ReferenceOnUpdateSchema = new AttrSchema(
@@ -161,5 +161,5 @@ public static class DbSchema
         ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
         Required: false,
         AllowedValues: ["cascade", "set-null", "restrict", "no-action"],
-        Description: "Referential action on key update, declared directly on the FK-defining reference — the explicit per-FK override (ADR-0047). Same precedence as @onDelete; when only a correlated relationship is present, @onUpdate defaults to cascade. RDB-physical — contributed by the db provider.");
+        Description: "Referential action on key update, declared directly on the FK-defining reference — the explicit per-FK override (ADR-0047). Same precedence as @onDelete; when only a correlated relationship is present, @onUpdate defaults to cascade. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1.");
 }

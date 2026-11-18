@@ -22,6 +22,8 @@ the Java diff-and-converge migration engine and its `meta:migrate` / live-DB-dri
 path was also removed — OMDB is pure data-access (CRUD/query/codec/transactions).
 Prompt / template drift is still checked via the `metaobjects-render` `Verify` API.
 
+> **Schema migrations and database checks run in the Node `meta` tool.** The Maven plugin generates and verifies code, but writing and applying migrations (`npx meta migrate`, `npx meta migrate apply-pending`) and checking a live database against the model (`npx meta verify --db`) need Node: `npm i -D @metaobjectsdev/cli`, then `npx meta init --config-only` to point it at your metadata. Node is needed where migrations are written or applied, not in your running service. What else behaves differently in this port is listed in [What differs by language](../features/language-differences.md).
+
 ## Regeneration and hand edits
 
 There is no three-way merge on the JVM (that is TypeScript-only). `mvn metaobjects:generate`
@@ -202,57 +204,86 @@ directory). `meta deps sync` (Node) is the only writer of the snapshot and `deps
 the Maven build reads them offline and refuses a stale or hand-edited snapshot with
 `ERR_DEPENDENCY_SNAPSHOT_STALE`. Your own entities can `extends` and reference the imported
 ones; the generators emit nothing for an imported object unless `scope.include` names its
-package, and a new top-level node declared into a package a dependency owns fails with
+package, an imported requirement counts toward the gate only when `requirements.inherit` names
+its package, and a new top-level node declared into a package a dependency owns fails with
 `ERR_DEPENDENCY_PACKAGE_NOT_OWNED`. Kotlin builds inherit all of this. See
-[`metadata-dependencies.md`](../features/metadata-dependencies.md). Spring runtime
-auto-load of the snapshot and `verify` drift for dependencies are separate, later slices.
+[`metadata-dependencies.md`](../features/metadata-dependencies.md).
+
+**Spring runtime.** `metaobjects:generate` ships `.metaobjects/deps.lock.json` and
+`.metaobjects/deps/**` as resources (target path `.metaobjects`) when the project has a lock, and
+the Spring application loader reads them off the classpath: when `classpath:.metaobjects/deps.lock.json`
+exists, each snapshot loads before `metaobjects.metadata-sources`, so an entity that `extends` an
+imported node boots with no extra configuration. It is verified exactly as at build time (hash,
+`ERR_DEPENDENCY_SNAPSHOT_STALE`, `ERR_DEPENDENCY_PACKAGE_NOT_OWNED`) and an imported node stays
+load-only. When the project's `config.json` is on the classpath too (the file
+`metaobjects.physical-naming-config` names, else `classpath:.metaobjects/config.json`), the lock is
+also checked against its declared dependencies, and a config that declares dependencies with no lock
+fails boot. If the lock is absent and nothing is declared, nothing changes.
+
+**Dependency drift.** `mvn metaobjects:verify -Dmeta.verify.mode=deps` is `meta deps check`: it
+re-resolves each declared dependency's `path`, reads the publisher's `metaobjects.pkg.json`, hashes the
+artifact and reports `current`, `drifted` or `unresolved` per dependency; the last two fail the build
+with `ERR_DEPENDENCY_UPSTREAM_DRIFT`. It loads no model, writes nothing, and is not part of the default
+gate set because it needs the publisher reachable. An `npm`, `python`, `maven` or `nuget` dependency is found by the Node
+tool, so it reports `unresolved` here: run `meta deps check` for it.
 
 ### Custom providers (optional)
 
-Java uses **SPI auto-discovery** for type providers — drop your provider
-class on the classpath, list its FQCN in
-`META-INF/services/com.metaobjects.registry.MetaDataTypeProvider`, and
-`MetaDataRegistry.getInstance()` will compose it in dependency order
-alongside the core providers:
+When the project needs a subtype or an attribute the core does not ship, write a class
+implementing `com.metaobjects.registry.MetaDataTypeProvider` (public, with a public no-arg
+constructor) and name it explicitly. The loader composes the full metamodel provider set plus
+exactly the providers you name; **listing a class in `META-INF/services` does not add it to
+the loader**, so a jar on the classpath cannot change the vocabulary by accident.
 
 ```java
-// src/main/java/com/example/providers/ExampleToolcallProvider.java
-package com.example.providers;
+package com.acme.vocab;
 
-import com.metaobjects.registry.MetaDataTypeProvider;
-import com.metaobjects.registry.MetaDataRegistry;
-
-public class ExampleToolcallProvider implements MetaDataTypeProvider {
-    @Override public String getProviderId()   { return "example-template-toolcall"; }
-    @Override public String[] getDependencies() { return new String[] { "core-types" }; }
+public final class AcmeVocabulary implements MetaDataTypeProvider {
+    public static final class PickerLayout extends MetaLayout {
+        public PickerLayout(String name) { super("picker", name); }
+    }
+    @Override public String getProviderId() { return "acme-vocabulary"; }
+    // JVM provider ids: field-types and layout-types register those types.
+    @Override public String[] getDependencies() { return new String[] {"field-types", "layout-types"}; }
     @Override public void registerTypes(MetaDataRegistry registry) {
-        // registry.register(...) — see the cross-port contract
+        registry.registerType(PickerLayout.class, def -> {       // a new subtype: layout.picker
+            def.type("layout").subType("picker").inheritsFrom("layout", "base");
+            def.optionalAttributeWithConstraints("displayField").ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+        });
+        registry.extendType(StringField.class, def -> {          // optional attrs on field.string
+            def.optionalAttributeWithConstraints("searchable").ofType(BooleanAttribute.SUBTYPE_BOOLEAN).asSingle();
+            def.optionalAttributeWithConstraints("valueLabels").ofType(StringAttribute.SUBTYPE_STRING).asArray();
+        });
     }
 }
 ```
 
-```
-# src/main/resources/META-INF/services/com.metaobjects.registry.MetaDataTypeProvider
-com.example.providers.ExampleToolcallProvider
+Wire it in the plugin configuration, with the provider's module on the plugin's classpath (a
+project dependency or the plugin's `<dependencies>`; a provider in the same module is not yet
+compiled at `generate-sources`):
+
+```xml
+<configuration>
+  <providers>
+    <provider>com.acme.vocab.AcmeVocabulary</provider>
+  </providers>
+</configuration>
 ```
 
-The provider contract is structurally identical to TS / C# / Python (id +
-dependencies + description + `registerTypes` body); the loader composes
-all providers via Kahn's algorithm and emits the same stable error codes
-on failure (`ERR_PROVIDER_DUPLICATE_ID`, `_MISSING_DEPENDENCY`,
-`_DEPENDENCY_CYCLE`).
+`metaobjects:generate` (with its docs generators), `metaobjects:verify`, `metaobjects:fmt` and
+`metaobjects:editor` all load it. A Spring Boot app declares the provider as a
+`MetaDataTypeProvider` bean and the auto-configured loader composes it. Code that loads the
+model itself passes it on the options:
+`LoaderOptions.create(false, false, true).setProviders(List.of(new AcmeVocabulary()))`, which
+composes through `RegistryManifest.composeLoaderRegistry(extras)`. Raw
+`MetaDataRegistry.compose(...)` composes only the explicit list, skips spec scoping, and is
+for internal and test partial sets.
 
-For callers who want to bypass SPI auto-discovery — or compose extra
-consumer vocabulary on top of the full metamodel provider set so it still
-strict-loads against the spec contract (no `--lax` fallback) — the
-sanctioned seam is
-`RegistryManifest.composeMetamodelRegistry(extraProviders)`, which composes
-the core metamodel providers plus `extraProviders` and runs the full
-spec-description + provenance-safe attr-scoping pipeline (hand the result
-to `loader.setTypeRegistry(...)`). Raw `MetaDataRegistry.compose(...)`
-composes only the explicit list, skips spec scoping, and is for
-internal/test partial sets. The cross-port contract lives in
-[`../features/extending-with-providers.md`](../features/extending-with-providers.md).
+Composition fails with the same stable codes as every other port (`ERR_PROVIDER_DUPLICATE_ID`,
+`ERR_PROVIDER_MISSING_DEPENDENCY`, `ERR_PROVIDER_DEPENDENCY_CYCLE`). If another port's tools load the same metadata, that port needs its own copy of the
+provider (same id, same vocabulary); a provider registered in one language is invisible to
+the others. Full contract and
+the other languages' versions: [`../features/extending-with-providers.md`](../features/extending-with-providers.md).
 
 ## Generate
 
@@ -263,6 +294,27 @@ mvn metaobjects:generate     # or run it alone
 
 The generators write the DTO records, the Spring controller, the repository and the filter
 allowlist under `target/generated-sources/java`, which Maven compiles with your code.
+
+**Select objects.** `mvn metaobjects:generate -Dmeta.entities=Program,Week` (or
+`<entities>Program,Week</entities>` in the plugin `<configuration>`) regenerates only those
+objects' files: comma-separated short object names, the selection TypeScript's
+`meta gen Program Week` and the `--entities` flag in Python and C# make. Only per-object output
+narrows. A file built from the whole model (a validator registry, the report export writer,
+the class-binding provider, a package's wire support classes) still renders from the whole model
+and is byte-identical to an unnarrowed run. A narrowed run deletes no orphaned file and keeps
+the manifest entry of every file it did not write; run without the property to sweep. Two
+refusals fail the goal: a blank selection (`mvn metaobjects:generate: meta.entities names no
+object.`) and a name that matches no object (`... meta.entities names 'X', which matches no
+object in the metadata.`). Each generator's `<filters>` apply on top. Unlike the selection, a
+generator's `<filters>` narrow its whole-model files too, since they configure that generator.
+Through 8.2.x the `codegen-spring` and `codegen-kotlin` generators ignored `<filters>`; from
+8.3.0 they honour them, so a pom whose filters were inert now generates less.
+
+**Large models.** The loader gives initialization 30 seconds by default. A model large enough
+to need longer sets `-Dmeta.loaderTimeoutMs=120000` (or `<loaderTimeoutMs>` in the plugin
+`<configuration>`). Outside Maven, the same setting is `LoaderOptions.setInitTimeoutMs`, the
+loader argument `initTimeoutMs`, or the system property `metaobjects.loader.initTimeoutMs`.
+The timeout error names all three.
 
 ## Verify
 
@@ -395,6 +447,7 @@ name in every port.
 | `value-object` | `SpringValueObjectGenerator` | `metaobjects-codegen-spring` | One Java 21 `record` per concrete `object.value` and per sourceless `object.projection`, in the value object's own package. It carries jakarta bean-validation constraints plus `@Valid` on nested members, so a VO jsonb column POSTs and PATCHes with validation cascading to depth ≥ 2. It is THE Java type for the value object (ADR-0056): `<Entity>Dto` / `<Entity>Patch` bind to it, a render helper takes it, and a response parser returns it. The template tier declares no copy, so it needs this generator in the same run. |
 | `names` | `SpringNamesGenerator` | `metaobjects-codegen-spring` | One `<Entity>Names.java` per object with a declared/inherited primary `source.rdb` — `public static final` physical database name constants (table/view name, schema, per-field columns). See "`<Entity>Names`" below. |
 | `requirement-tests` | `JUnitRequirementTestsGenerator` | `metaobjects-codegen-spring` | Per metamodel package that holds a tested requirement, two files in `testPackage`: `Requirements_<pkgKey>_Witnesses.java` (an interface with one default member per non-skipped test, failing with `unimplemented requirement: ...`) and `Requirements_<pkgKey>_Test.java` (one JUnit Jupiter `@Test` per requirement, calling that member on your `witnessClass`; a planned or retired requirement is `@Disabled`). Args: `testPackage` and `witnessClass` (required), `grain` (`concern` or `member`), `filter` and `renderer` (class names on your project classpath), `warnUncovered`. Your test classpath needs `org.junit.jupiter:junit-jupiter-api`. A model with no requirement writes nothing. See "Requirement tests" below. |
+| `shared-model` | `SharedModelGenerator` | `metaobjects-codegen-base` | FR-023 publishing: writes `<name>.metaobjects.json` (the shared model artifact) and `metaobjects.pkg.json` (its manifest) into `outputDir`, from the top-level nodes your `include` (and optional `exclude`) scope selects out of `files`. Args: `outputDir`, `name`, `include` and `files` (comma-separated paths, resolved against the module basedir) are required; `version` is optional and defaults to the Maven project's `<version>`. A selection that is empty, not closed over `extends` and reference attributes, or that uses vocabulary outside the core set is refused with the reason, and nothing is written. See "Publishing a shared model" below. |
 | `entity` | `JavaObjectCodeGenerator` | `metaobjects-codegen-base` | Flavor-selected via the `flavor` generator arg (`com.metaobjects.generator.direct.object.javacode`). `flavor=pojoAware` emits `class <Name> extends PojoObject` — a concrete `MetaObjectAware` class whose inherited `getMetaData()` back-reference breaks a default Jackson/Gson mapper (see [Serializing generated objects](#serializing-generated-objects) below). `flavor=valueObject` emits a map-backed `class <Name> extends ValueObject` instead. Either flavor also emits a self-registering `ObjectClassBindingProvider`. It writes no `<Name>Extractor`: list `extractor` for those (8.0 wrote them from `entity` when no `extractor` was listed; see [the migration](../features/migrations/docs-are-generators.md#java-and-kotlin)). For a plain default-Jackson-friendly type, use the `codegen-spring` record surface instead — never `pojoAware`. |
 | `output-parser` | `SpringOutputParserGenerator` | `metaobjects-codegen-spring` | One `<Template>Parser` per **responding** `template.prompt` (ADR-0052: one carrying `@responseRef`) — a Jackson-backed throw-only parser returning the `@responseRef` value object's own record (ADR-0056). FR-006 / ADR-0010; the Java sibling of TS's `outputParser()`. See [FR-006 — response parsing](#fr-006--response-parsing) below. |
 | `output-prompt` | `SpringOutputPromptGenerator` | `metaobjects-codegen-spring` | One `<Template>ResponseFormat` per responding `template.prompt` — a static `renderFormat()` / `renderFormat(PromptOverrides)` pair emitting the output-format prompt fragment (FR-010). The reply's syntax comes from `@responseFormat`, never `@format` (which is the syntax of the rendered prompt BODY). |
@@ -433,6 +486,24 @@ the pattern and its `**` replacement, so output cannot vanish silently. Upgrade:
 `acme::*` becomes `acme::**` wherever it must reach nested packages. `acme::*Store` keeps
 matching direct children as `acme::*Store`; nested children need `acme::**::*Store` as a
 second entry. `@` becomes `*`.
+
+### Output paths and REST collection names
+
+Every per-object file lands in the directory of its metadata package: `acme::blog::Author` is the
+Java package `acme.blog` and the file `acme/blog/Author.java`, so two objects named `Note` in two
+packages are two files. Two different metadata packages that would land in one directory (names
+that differ only in letter case, or `a.b` beside `a::b`) are refused before any generator runs,
+with `ERR_NAME_COLLISION` naming both objects. Nothing is renamed to avoid a clash. So is a REST
+collection claimed twice (`ERR_COLLECTION_NAME_COLLISION`), and `mvn metaobjects:verify` runs both
+refusals before it compares, so a model `metaobjects:generate` refuses cannot verify clean.
+
+A controller's REST collection segment is the object's `@collectionName` when it declares one
+(snake_cased: `CaseHistory` is `/case_history`), else the pluralizer `naming.collections` names in
+`.metaobjects/config.json`, else the rule every port has always served (`/authors`). A pluralizer
+applies only when the project configures one, so an unconfigured project's routes do not move.
+The api-docs, report export and collision check read the same segment. Reverse finders are named
+by the foreign-key field (`findByAuthorId`), so a collection name does not change them. The Kotlin
+generators share this rule.
 
 ### Shared and `@provided` enums
 
@@ -499,8 +570,9 @@ like a keyless read-only projection. Four generators write one file each for a r
 `@GetMapping`, a `@PostMapping` answering 405, no `/{id}` mapping). Every derived field with
 filter operators is filterable and sortable. A DTO component that can never be null carries
 `@NotNull`, as any required field does: a `count`, a measure with `@default`, a dimension
-reached through `@via` whose `@of` field is required and whose every hop is a belongs-to
-reference over a required foreign key (the view joins it `INNER`), and in a `@spine` report a
+reached through `@via` whose `@of` field is required and whose every hop is an enforced belongs-to
+reference over a required foreign key (the join always finds a match, so the view's `LEFT OUTER`
+join never nulls the column), and in a `@spine` report a
 key or `@required` column of the spine entity (`@NotNull Long programKey`).
 No other generator emits for a report: no names
 class, no entity class. `gen` fails, naming the report and the dimension or measure, when a
@@ -539,6 +611,23 @@ Jackson's JSR-310 serializers write it, and an array or map dimension is its com
 the list route's body through the application's `ObjectMapper`, so a `wire` setting applies to it as
 it does to the list. CSV and XML are written as `byte[]`, which every Spring MVC setup has a converter
 for.
+
+### Page size and unknown body keys (`api` in `.metaobjects/config.json`)
+
+The generated controllers read two project settings from the `api` block, the same file that
+carries `naming` and `wire` (`NeutralConfig.getApiSettings()`, carried on the loaded root as
+`ApiSettings`):
+
+```json
+{ "api": { "pagination": { "defaultLimit": 50, "maxLimit": 1000 }, "unknownFields": "reject" } }
+```
+
+What each setting answers, and the default with no block, are in
+[api-contract](../features/api-contract.md) ([page size](../features/api-contract.md#sort--pagination), [unknown fields](../features/api-contract.md#unknown-request-fields-apiunknownfields)).
+Java-specific: with no `api.pagination`, `mvn metaobjects:verify` warns (`unbounded-list-pages`,
+advisory, never fails the build). The body keys are read off the raw `JsonNode`
+(`UnknownBodyKeys`, shipped with the generated runtime) before the body is bound, so under
+`reject` the generated create handler takes `@RequestBody JsonNode body` rather than the DTO.
 
 ### Decimals and null members on the wire
 
@@ -620,8 +709,10 @@ names — has a member for each instead of one member between them.
 deliberate: a field's subType does not change what its column denotes, while an
 object's decides table-vs-view and an identity's decides unique-vs-not
 (ADR-0040 put uniqueness in the type). An `identity.secondary` or `index.lookup`
-also carries `IDENTITY_<NAME>_INDEX` / `INDEX_<NAME>_INDEX`, the database index
-name; `identity.primary` deliberately carries none, because migrate names a
+also carries `IDENTITY_<NAME>_INDEX` / `INDEX_<NAME>_INDEX`, the index name —
+the declared name; on Postgres `meta migrate` creates a name over 63 bytes as
+its first 63 bytes ([stored names](../features/migrations-and-drift.md#schema-conventions-names-for-objects-no-code-addresses)).
+`identity.primary` deliberately carries none, because migrate names a
 primary key by a dialect-conditional formula this artifact must not restate.
 
 There is no `READ_ONLY`. It was never metadata — it is a derivation over
@@ -753,6 +844,34 @@ project declares a dependency on exactly one of `metaobjects-codegen-spring` and
 The identity function, the digest and the hook types stay in the package, and the owned
 copy imports them. The model and the other ports' spelling are in
 [Generated requirement tests and witnesses](../features/requirements.md#generated-requirement-tests-and-witnesses).
+
+### Publishing a shared model
+
+`shared-model` (FR-023) publishes a slice of your model so another repository can depend on it.
+Wire it like any generator:
+
+```xml
+<generator>
+  <classname>com.metaobjects.generator.SharedModelGenerator</classname>
+  <args>
+    <outputDir>${project.basedir}/shared</outputDir>
+    <name>acme-common</name>
+    <include>acme::common::**</include>
+    <files>src/main/metaobjects/meta.common.json</files>
+  </args>
+</generator>
+```
+
+It writes the artifact and the manifest with the same bytes as the TypeScript `sharedModelFile()`:
+the shared corpus (`fixtures/shared-model-conformance/`) is the gate. The version comes from the
+module's `<version>` unless you pass `version`. `requirement.*` nodes are published only when you pass
+`<requirements>true</requirements>` (default off); `template.*` nodes are never published.
+Moving the artifact into a registry, and recording a consumer's snapshot and lock, is the Node
+`meta deps sync`'s job; this generator only produces the files.
+
+To own it, `mvn metaobjects:eject -Dnames=shared-model -Dport=java` copies `SharedModelGenerator.java`
+into a `codegen/` module (`-Dport` because the name is ejectable on both JVM ports). The artifact
+engine, `com.metaobjects.config.SharedModel`, stays in the package, so the owned copy is thin.
 
 ### Authoring your own — two paths
 

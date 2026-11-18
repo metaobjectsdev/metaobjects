@@ -1,28 +1,28 @@
 name: tph-input-server-owned-dropped
 description: >
   The per-subtype write routes hand storage only what the client may set, the same rule as
-  `input-server-owned-dropped` in the core corpus (the 1.2.x security fix). A client-sent `id`
-  on the generated key, a key the hierarchy does not declare (`isAdmin`), a column only a
-  SIBLING subtype declares (`couponAmount` sent to the Bridge route) and, on update, a
-  `writeOnce` field are all DROPPED SILENTLY (201/200, never 400): the row keeps its
-  server-assigned id and nothing it may not set is echoed back. A body discriminator is
-  `tph-input-foreign-discriminator-dropped`.
+  `input-server-owned-dropped` in the core corpus. A client-sent `id` on the generated key, the
+  discriminator (`type`), a column only a SIBLING subtype declares (`couponAmount` sent to the
+  Bridge route) and, on update, a `writeOnce` field are declared somewhere in the hierarchy but
+  not settable on this route, so they are DROPPED SILENTLY (201/200, never 400): the row keeps
+  its server-assigned id, its subtype comes from the URL, and the sibling's column is neither
+  echoed nor stored. An undeclared key is `tph-unknown-fields-rejected`.
 requests:
   - id: r1
     method: POST
     path: /api/auths/bridge
     body:
       id: 999
+      type: "Coupon"
       reference: "REF-INPUT"
       quantity: 3
       couponAmount: "7.77"
-      isAdmin: true
     expect:
       status: 201
       body:
         row: { type: "Bridge", reference: "REF-INPUT", quantity: 3 }
         hasId: true
-        unset: [isAdmin, couponAmount]
+        unset: [couponAmount]
   - id: r2
     method: GET
     path: /api/auths/999
@@ -40,26 +40,23 @@ requests:
     path: /api/auths/bridge/1
     body:
       id: 998
+      type: "Coupon"
       reference: "REF-1-INPUT"
       issuedCurrency: "JPY"
-      isAdmin: true
     expect:
       status: 200
       body:
         row: { id: 1, type: "Bridge", reference: "REF-1-INPUT", issuedCurrency: "USD" }
-        unset: [isAdmin]
   - id: r5
     method: PUT
     path: /api/auths/coupon/2
     body:
       id: 997
       reference: "REF-2-INPUT"
-      isAdmin: true
     expect:
       status: 200
       body:
         row: { id: 2, type: "Coupon", reference: "REF-2-INPUT" }
-        unset: [isAdmin]
   - id: r6
     method: GET
     path: /api/auths/998

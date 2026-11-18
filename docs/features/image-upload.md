@@ -10,11 +10,11 @@ generated Zod schema, and the REST payload all carry a plain string.
 This is a **TS-web-only** feature — the upload widget, crop UI and adapter
 contract exist only in the TypeScript web client, and no other port ships one.
 `view.image` and its five attrs (`@aspectRatio` … `@maxBytes`) are cross-port
-vocabulary that only TypeScript implements so far (ruling R40 kind 1,
-`implementedIn: ["typescript"]` in the registry manifest —
-`fixtures/registry-conformance/README.md`). TypeScript and C# register the attrs
-and load them strictly; the other ports are tracked as parity gaps in
-`docs/CONFORMANCE.md`. A backend port reads the field as the plain string it is.
+vocabulary that only TypeScript implements so far
+(`implementedIn: ["typescript"]` in the registry manifest —
+`fixtures/registry-conformance/README.md`). Every port registers the attrs and
+loads them strictly, and none but TypeScript acts on them. A backend port reads
+the field as the plain string it is.
 
 ## Authoring: `field.string` + `view.image`
 

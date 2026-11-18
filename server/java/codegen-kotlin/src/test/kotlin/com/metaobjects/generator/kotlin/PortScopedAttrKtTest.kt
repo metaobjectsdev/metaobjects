@@ -9,15 +9,15 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Ruling R40, the Kotlin half: `@dbSetName` (C#-only, `ports: ["csharp"]`) loads under the strict
- * loader the Kotlin generators read, and Kotlin does nothing with it; a wrong value type and an attribute the
- * registry does not carry still fail.
+ * `@collectionName`, shared vocabulary every port implements (the Kotlin REST segment reads it),
+ * loads under the strict loader the Kotlin generators read; a wrong value type, the
+ * never-released `@dbSetName` and an attribute the registry does not carry still fail.
  */
 class PortScopedAttrKtTest {
     private fun model(attr: String) = """
         { "metadata.root": { "package": "acme", "children": [
-          { "object.entity": { "name": "Analysis", $attr "children": [
-            { "source.rdb": { "@table": "analyses" } },
+          { "object.entity": { "name": "Diagnosis", $attr "children": [
+            { "source.rdb": { "@table": "diagnoses" } },
             { "field.long": { "name": "id" } },
             { "identity.primary": { "@fields": "id" } }
           ] } }
@@ -35,9 +35,11 @@ class PortScopedAttrKtTest {
         ObjectClassRegistry.resetGlobal()
     }
 
-    @Test fun `a csharp-only attribute loads`() = assertEquals(emptyList(), errors("\"@dbSetName\": \"Analysis\","))
+    @Test fun `a collection name loads`() = assertEquals(emptyList(), errors("\"@collectionName\": \"Diagnoses\","))
 
-    @Test fun `it is type-checked`() = assertTrue(errors("\"@dbSetName\": [\"Analysis\"],").isNotEmpty())
+    @Test fun `it is type-checked`() = assertTrue(errors("\"@collectionName\": [\"Diagnoses\"],").isNotEmpty())
 
-    @Test fun `an unregistered attribute still fails`() = assertTrue(errors("\"@dbSetNameX\": \"Analysis\",").isNotEmpty())
+    @Test fun `the never-released dbSetName is not vocabulary`() = assertTrue(errors("\"@dbSetName\": \"Diagnoses\",").isNotEmpty())
+
+    @Test fun `an unregistered attribute still fails`() = assertTrue(errors("\"@collectionNameX\": \"Diagnoses\",").isNotEmpty())
 }

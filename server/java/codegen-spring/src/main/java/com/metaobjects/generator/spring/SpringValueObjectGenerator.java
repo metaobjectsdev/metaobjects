@@ -16,6 +16,7 @@ import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.GeneratorIOWriter;
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
 import com.metaobjects.generator.util.GeneratorUtil;
+import com.metaobjects.generator.util.RestSurfaceGate;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
 
@@ -91,6 +92,9 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
     /** The project's wire setting for the current run (ADR-0019 Amendment 2). */
     private WireFormat wire = WireFormat.DEFAULT;
 
+    /** Names of the classes bound from a write route's request body, for the current run. */
+    private Set<String> requestBodies = Set.of();
+
     @Override
     public void execute(MetaDataLoader loader) {
         parseArgs();
@@ -102,7 +106,9 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
         if (Boolean.parseBoolean(getArg(Fr019SharedEnum.ARG_EMIT_SHARED_ENUMS, "false"))) {
             Fr019SharedEnum.emitMaterialized(loader, outRoot);
         }
+        requestBodies = RestSurfaceGate.requestBodyShapes(loader);
         for (MetaObject vo : valueShapes(loader)) {
+            if (!isSelected(vo)) continue;
             emit(vo, outRoot);
         }
     }
@@ -161,7 +167,7 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
             src.append(SpringGeneratorSupport.decimalAnnotationImports(runtimePackage, wire));
         }
         // field.duration: a Duration component binds the canonical serializer / strict deserializer.
-        boolean usesDuration = fields.stream()
+        boolean usesDuration = wire.durationsIso() && fields.stream()
             .anyMatch(f -> SpringGeneratorSupport.isDurationComponent(componentTypeFr019(f, vo)));
         if (usesDuration) {
             if (!usesDecimal) src.append("import com.fasterxml.jackson.databind.annotation.JsonDeserialize;\n");
@@ -182,6 +188,13 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
         src.append("/** GENERATED — value object ").append(recordName)
            .append(". Do not hand-edit; regenerated from metadata. */\n");
         if (omitNulls) src.append("@JsonInclude(JsonInclude.Include.NON_NULL)\n");
+        // A member the value object does not declare is DROPPED, never rejected, whatever
+        // FAIL_ON_UNKNOWN_PROPERTIES the host's ObjectMapper carries: api.unknownFields judges a
+        // request body's top level only, so a nested undeclared key binds like the DTO's own. Only a
+        // value object nested in a write route's body is one; a payload or parser target is not.
+        if (requestBodies.contains(vo.getName())) {
+            src.append("@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)\n");
+        }
         src.append("public record ").append(recordName).append("(\n");
         List<String[]> components = new ArrayList<>(fields.size());
         for (int i = 0; i < fields.size(); i++) {
@@ -196,7 +209,7 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
             if (!a.isEmpty()) src.append(a).append(' ');
             String decimalJson = SpringGeneratorSupport.decimalJsonAnnotations(type, runtimePackage, field, wire);
             if (!decimalJson.isEmpty()) src.append(decimalJson).append(' ');
-            String durationJson = SpringGeneratorSupport.durationJsonAnnotations(type);
+            String durationJson = SpringGeneratorSupport.durationJsonAnnotations(type, wire);
             if (!durationJson.isEmpty()) src.append(durationJson).append(' ');
             if (!jsonName.isEmpty()) src.append(jsonName).append(' ');
             src.append(type).append(' ').append(component);

@@ -1,72 +1,90 @@
-// rc.19 (R57; fix round M4) — `naming.collections` in `.metaobjects/config.json` selects the
-// pluralizer, through the same reader every project load goes through: an unknown name is
-// refused when the file is read, a built-in or an application's own is carried onto the
-// loaded root, and the collection names and REST segments follow it. Nothing configured, the
-// segment is rc.18's.
+// `naming.collections` names the pluralizer an object without `@collectionName` takes its
+// collection name from. The config reader accepts a registered pluralizer, refuses an unknown
+// one when the file is read, and the loaded root carries the selection to `collectionNameOf`.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import {
-  collectionNameOf, collectionSegment, registerPluralizer, resetNamingStrategiesForTesting, type MetaRoot,
+  InMemoryStringSource,
+  MetaDataLoader,
+  collectionNameOf,
+  isMetaRoot,
+  pluralizer,
+  registerPluralizer,
+  resetNamingStrategiesForTesting,
+  type MetaRoot,
 } from "@metaobjectsdev/metadata";
-import { loadMemory } from "../src/memory.js";
-import { DEFAULT_METADATA_DIR } from "../src/metadata-files.js";
+import { loadConfig, physicalNamingFromConfig } from "../src/config.js";
 
-let project: string;
-beforeEach(() => {
-  project = mkdtempSync(join(tmpdir(), "mo-collections-"));
-});
-afterEach(() => {
-  rmSync(project, { recursive: true, force: true });
-  resetNamingStrategiesForTesting();
-});
+const PLURALS = resolve(import.meta.dir, "../../../../../fixtures/naming-conformance/already-plural-pluralize.json");
 
-function write(naming: Record<string, unknown> | undefined): void {
-  mkdirSync(join(project, ".metaobjects"), { recursive: true });
-  writeFileSync(join(project, ".metaobjects", "config.json"),
-    JSON.stringify({ schema_version: 1, ...(naming !== undefined ? { naming } : {}) }));
-  mkdirSync(join(project, DEFAULT_METADATA_DIR), { recursive: true });
-  writeFileSync(join(project, DEFAULT_METADATA_DIR, "meta.acme.json"), JSON.stringify({ "metadata.root": { package: "acme", children: [
-    { "object.entity": { name: "FAQ", children: [
-      { "source.rdb": { "@table": "faqs" } },
-      { "field.long": { name: "id" } },
-      { "identity.primary": { "@fields": "id" } },
-    ] } },
-  ] } }));
+afterEach(resetNamingStrategiesForTesting);
+
+async function readConfigWith(naming: unknown) {
+  const dir = mkdtempSync(join(tmpdir(), "mo-collection-naming-"));
+  try {
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ schema_version: 1, naming }));
+    return await loadConfig(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
-const faq = (root: MetaRoot) => root.objects().find((o) => o.name === "FAQ")!;
+async function loadModel(): Promise<MetaRoot> {
+  const json = JSON.stringify({
+    "metadata.root": {
+      package: "acme",
+      children: [
+        { "object.entity": { name: "CaseHistory", children: [{ "field.long": { name: "id" } }] } },
+        { "object.entity": { name: "Diagnosis", "@collectionName": "DiagnosisRows", children: [{ "field.long": { name: "id" } }] } },
+      ],
+    },
+  });
+  const result = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
+  expect(result.errors).toEqual([]);
+  if (!isMetaRoot(result.root)) throw new Error("not a root");
+  return result.root;
+}
 
-describe("naming.collections, read from .metaobjects/config.json", () => {
-  test("nothing configured: the standard collection name, and rc.18's segment", async () => {
-    write(undefined);
-    const root = await loadMemory(project);
-    expect(collectionNameOf(faq(root))).toBe("FAQs");
-    expect(collectionSegment(faq(root))).toBe("faqs");
+describe("naming.collections", () => {
+  test("the standard pluralizer matches the shared naming-conformance corpus", () => {
+    const corpus = JSON.parse(readFileSync(PLURALS, "utf8")) as { cases: { name: string; apiPlural: string }[] };
+    expect(corpus.cases.length).toBeGreaterThan(0);
+    for (const c of corpus.cases) expect([c.name, pluralizer("standard")(c.name)]).toEqual([c.name, c.apiPlural]);
   });
 
-  test("a built-in is carried onto the loaded root", async () => {
-    write({ collections: "none" });
-    const root = await loadMemory(project);
-    expect(root.physicalNaming.collections).toBe("none");
-    expect(collectionNameOf(faq(root))).toBe("FAQ");
-    expect(collectionSegment(faq(root))).toBe("faq");
+  test("the config reads a built-in and the root carries it to collectionNameOf", async () => {
+    const config = await readConfigWith({ collections: "none" });
+    expect(config.naming?.collections).toBe("none");
+    const root = await loadModel();
+    root.physicalNaming = physicalNamingFromConfig(config);
+    expect(collectionNameOf(root.findObject("CaseHistory")!)).toBe("CaseHistory");
+    expect(collectionNameOf(root.findObject("Diagnosis")!)).toBe("DiagnosisRows");
   });
 
-  test("an application's own pluralizer, registered before the load", async () => {
-    registerPluralizer("listing", (n) => n + "List");
-    write({ collections: "listing" });
-    const root = await loadMemory(project);
-    expect(collectionNameOf(faq(root))).toBe("FAQList");
-    expect(collectionSegment(faq(root))).toBe("faq_list");
+  test("absent, an object takes the standard pluralizer", async () => {
+    const config = await readConfigWith({ columns: "snake_case" });
+    expect(physicalNamingFromConfig(config).collections).toBeUndefined();
+    const root = await loadModel();
+    root.physicalNaming = physicalNamingFromConfig(config);
+    expect(collectionNameOf(root.findObject("CaseHistory")!)).toBe("CaseHistories");
   });
 
-  test("an unknown name is refused when the file is read, naming the built-ins", async () => {
-    write({ collections: "klingon" });
-    const err = await loadMemory(project).then(() => undefined, (e: unknown) => e as Error);
-    expect(err).toBeInstanceOf(Error);
-    expect(err!.message).toMatch(/"naming.collections" names "klingon".*built in: standard, none/);
+  test("an unknown pluralizer is refused when the config is read", async () => {
+    await expect(readConfigWith({ collections: "latin" })).rejects.toThrow(/"naming\.collections" names "latin"/);
+  });
+
+  test("an application pluralizer is selectable by name", async () => {
+    registerPluralizer("ts-test-shout", (n) => n.toUpperCase() + "S");
+    const config = await readConfigWith({ collections: "ts-test-shout" });
+    const root = await loadModel();
+    root.physicalNaming = physicalNamingFromConfig(config);
+    expect(collectionNameOf(root.findObject("CaseHistory")!)).toBe("CASEHISTORYS");
+  });
+
+  test("a built-in pluralizer cannot be replaced", () => {
+    expect(() => registerPluralizer("none", (n) => n)).toThrow();
   });
 });

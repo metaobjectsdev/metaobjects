@@ -76,7 +76,7 @@ export interface AdvisoryFindingRow {
 export interface AdvisoryDiagnosticRow {
   code: string;
   /** The dotted child-name path, or "" for a diagnostic whose subject is not a
-   *  requirement (object coverage names the entity in its message instead). */
+   *  requirement (a requirement row names an unclaimed entity in `node` instead). */
   path: string;
   severity: string;
   /** "gate" — can fail the build; "lint" — advisory authoring warning, never can. */
@@ -115,18 +115,24 @@ export const RULE_REMOVED_PROP_PREFIX = "removed-prop:";
 export const RULE_LIBRARY_PREFIX = "library-prefix-unprovenanced";
 export const RULE_UNINDEXED_FK = "unindexed-foreign-key";
 export const RULE_REFERENTIAL_ACTION_CONFLICT = "overridden-referential-action";
+export const RULE_UNBOUNDED_LIST = "unbounded-list-pages";
 
 /** The next-step line for `n` rows of one advisory kind, each naming what the rows are. */
 const ADVISORY_HELP: ReadonlyArray<{ matches: (rule: string) => boolean; line: (n: number) => string }> = [
   {
     matches: (r) => r === RULE_UNINDEXED_FK,
-    line: (n) =>
-      `${n} foreign key(s) with no covering index — see antiPatterns.rows[] (rule "${RULE_UNINDEXED_FK}"); each names the index.lookup to declare`,
+    line: () =>
+      `foreign key(s) with no covering index — see antiPatterns.rows[] (rule "${RULE_UNINDEXED_FK}"), one row naming each key and the index.lookup to declare`,
   },
   {
     matches: (r) => r === RULE_REFERENTIAL_ACTION_CONFLICT,
     line: (n) =>
       `${n} foreign key(s) whose two sides disagree on the referential action — see antiPatterns.rows[] (rule "${RULE_REFERENTIAL_ACTION_CONFLICT}")`,
+  },
+  {
+    matches: (r) => r === RULE_UNBOUNDED_LIST,
+    line: () =>
+      `generated list routes with no page size — see antiPatterns.rows[] (rule "${RULE_UNBOUNDED_LIST}"), which names the api.pagination block to add`,
   },
   {
     matches: (r) => r === RULE_MISSING_BASE_URL,
@@ -262,6 +268,22 @@ export function referentialActionConflictRows(
   }));
 }
 
+/**
+ * Generated list routes with no page size, in the same row shape. `construct` is the wired
+ * route generator; the fix goes in the config file the row names.
+ */
+export function unboundedListRows(
+  findings: readonly { file: string; generator: string; message: string }[],
+): AdvisoryFindingRow[] {
+  return findings.map((f) => ({
+    file: f.file,
+    line: 0,
+    rule: RULE_UNBOUNDED_LIST,
+    construct: f.generator,
+    message: f.message,
+  }));
+}
+
 // ---------------------------------------------------------------------------
 // text output
 // ---------------------------------------------------------------------------
@@ -290,4 +312,19 @@ export function warnCapped(
       ? `  …and ${withheld} more — every finding is in the --format payload on stdout.`
       : `  …and ${withheld} more. Raise the cap with --limit <n>, or --limit ${ADVISORY_LIMIT_ALL}.`,
   );
+}
+
+/**
+ * Print an advisory section's findings: `warnCapped` in text mode, and in structured mode
+ * only a pointer. Every advisory row is already in the payload on stdout, and printing each
+ * again on stderr doubled a large run's output (one adopter's `meta verify` ran to ~350
+ * lines). The section's header line, printed by the caller, still says how many.
+ */
+export function warnAdvisory(
+  lines: readonly string[],
+  limit: number,
+  opts: { structured: boolean },
+): void {
+  if (!opts.structured) return warnCapped(lines, limit, opts);
+  if (lines.length > 0) log.warn("  (listed in the --format payload on stdout)");
 }

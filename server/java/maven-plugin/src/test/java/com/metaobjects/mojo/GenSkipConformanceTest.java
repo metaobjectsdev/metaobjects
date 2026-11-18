@@ -26,7 +26,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /**
- * Runs the shared table of ADR-0062 cases ({@code fixtures/codegen-skip-conformance/cases.json})
+ * Runs the shared table of ADR-0064 cases ({@code fixtures/codegen-skip-conformance/cases.json})
  * against the JVM project shape: a Maven module whose pom configures one generator (a stand-in
  * for any stock Java or Kotlin generator, which all run through this same goal and the same
  * {@code Generator} SPI), a template root, a declared extra input and an owned generator
@@ -119,6 +119,10 @@ public class GenSkipConformanceTest {
     }
 
     private void gen(boolean force) throws Exception {
+        gen(force, null);
+    }
+
+    private void gen(boolean force, String entities) throws Exception {
         MetaDataGeneratorMojo m = new MetaDataGeneratorMojo() {
             @Override
             protected List<Path> engineClasspath() {
@@ -130,6 +134,7 @@ public class GenSkipConformanceTest {
         m.setGenerators(generators());
         m.setLax(lax);
         m.force = force;
+        m.entities = entities;
         m.execute();
     }
 
@@ -159,6 +164,43 @@ public class GenSkipConformanceTest {
             // a render that found drift still rendered
         }
         return FixtureGenerator.runs - before;
+    }
+
+    /**
+     * A run naming entities forces exactly those: it never skips, never stores a key, and leaves
+     * the stored full-run fingerprint alone, so the next full run still skips.
+     */
+    @Test
+    public void narrowedRunNeverSkipsNorTouchesTheFullRunKey() throws Exception {
+        gen(false);
+        Path stateDir = project.resolve(".metaobjects/.gen-state");
+        Path fp;
+        try (var s = Files.list(stateDir)) {
+            fp = s.filter(p -> p.getFileName().toString().startsWith(".fingerprint-java-")).findFirst().orElseThrow();
+        }
+        byte[] stored = Files.readAllBytes(fp);
+
+        int before = FixtureGenerator.runs;
+        gen(false, "Gizmo");
+        assertEquals("a narrowed run executes over unchanged inputs", before + 1, FixtureGenerator.runs);
+        assertTrue("the full-run fingerprint is still there", Files.isRegularFile(fp));
+        assertTrue("the full-run fingerprint is byte-for-byte unchanged", java.util.Arrays.equals(stored, Files.readAllBytes(fp)));
+
+        // A failed narrowed run leaves it alone too.
+        FixtureGenerator.fail = true;
+        try {
+            gen(false, "Gizmo");
+            fail("the failing run must fail");
+        } catch (RuntimeException expected) {
+            // simulated failure
+        }
+        FixtureGenerator.fail = false;
+        assertTrue("a failed narrowed run keeps the fingerprint bytes",
+                java.util.Arrays.equals(stored, Files.readAllBytes(fp)));
+
+        before = FixtureGenerator.runs;
+        gen(false);
+        assertEquals("the next full run still skips", before, FixtureGenerator.runs);
     }
 
     /** Item 9: a rendering verify leaves no temp tree behind, with DEV_SCRATCH set or not, clean or drifted. */

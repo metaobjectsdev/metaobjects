@@ -389,9 +389,8 @@ describe("fixtures/naming-conformance/already-plural-pluralize.json", () => {
   );
 });
 
-// rc.19 fix round (I3): the REST collection segment, shared with C# — an unconfigured project
-// keeps rc.18's segment byte for byte (snake_case, then pluralize), and an acronym-ending name
-// never splits its plural suffix off as a word.
+// The REST collection segment, shared with C#: an unconfigured project keeps the segment every
+// port has always served, and an acronym-ending name never splits its plural suffix off as a word.
 describe("fixtures/naming-conformance/collection-segments.json", () => {
   const fixturePath = resolve(
     dirname(fileURLToPath(import.meta.url)),

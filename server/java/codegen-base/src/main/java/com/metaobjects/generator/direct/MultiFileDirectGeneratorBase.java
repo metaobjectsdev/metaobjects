@@ -52,6 +52,10 @@ public abstract class MultiFileDirectGeneratorBase<M extends MetaData> extends D
             // Write each File
             for( M md : metadata ) {
 
+                // <filters> already narrowed `metadata`; the run's entity selection narrows
+                // only these per-object files. The final file below still sees the whole set.
+                if ( !inEntitySelection( md )) continue;
+
                 filename = md.getName();
 
                 String path = getSingleOutputFilePath( md );

@@ -44,10 +44,18 @@ class KotlinDurationWireTest {
       ] }
     }""".trimIndent()
 
-    private fun emit(generators: List<Generator>): Map<String, String> {
+    private fun emit(
+        generators: List<Generator>,
+        durations: com.metaobjects.config.WireFormat.Durations = com.metaobjects.config.WireFormat.Durations.ISO,
+    ): Map<String, String> {
         val outDir = Files.createTempDirectory("kt-duration-wire-")
         try {
             val loader = loadString("duration-wire", model)
+            loader.root.wireFormat = com.metaobjects.config.WireFormat(
+                com.metaobjects.config.WireFormat.Decimals.NATIVE,
+                com.metaobjects.config.WireFormat.NullMembers.NATIVE,
+                durations,
+            )
             for (gen in generators) {
                 gen.setArgs(mapOf("outputDir" to outDir.toString()))
                 gen.execute(loader)
@@ -187,6 +195,29 @@ class KotlinDurationWireTest {
     }
 
     @Test
+    fun `native durations carry no MetaObjects annotation and round-trip through the host mapper`() {
+        val files = emit(listOf(KotlinEntityGenerator()), com.metaobjects.config.WireFormat.Durations.NATIVE)
+        val entity = files.getValue("acme/ops/Job.kt")
+        assertFalse("MetaDurationWire" in entity, entity)
+        val cl = compile(files)
+        val job = cl.loadClass("acme.ops.Job")
+        // The host mapper as Spring Boot configures it: java.time Duration as Duration.toString() / Duration.parse.
+        val module = com.fasterxml.jackson.databind.module.SimpleModule()
+            .addSerializer(Duration::class.java, com.fasterxml.jackson.databind.ser.std.ToStringSerializer.instance)
+            .addDeserializer(Duration::class.java, object : com.fasterxml.jackson.databind.deser.std.StdDeserializer<Duration>(Duration::class.java) {
+                override fun deserialize(p: com.fasterxml.jackson.core.JsonParser, ctxt: com.fasterxml.jackson.databind.DeserializationContext): Duration =
+                    Duration.parse(p.text)
+            })
+        val mapper = ObjectMapper().registerModule(com.fasterxml.jackson.module.kotlin.KotlinModule.Builder().build()).registerModule(module)
+        val read = mapper.readValue(
+            """{"id":1,"holdFor":"PT1H30M","retries":["PT1S"],"window":{"span":"PT5400S"}}""", job)
+        val out = mapper.valueToTree<JsonNode>(read)
+        assertEquals("PT1H30M", out.get("holdFor").asText())
+        // Duration.parse takes the looser form the iso rule refuses.
+        mapper.readValue("""{"id":1,"holdFor":"pt1h","window":{"span":"PT1S"}}""", job)
+    }
+
+    @Test
     fun `a duration property writes the canonical string and reads the accepted form only`() {
         val cl = compile(emit(listOf(KotlinEntityGenerator())))
         val job = cl.loadClass("acme.ops.Job")
@@ -201,7 +232,7 @@ class KotlinDurationWireTest {
             assertEquals("PT24H", out.get("retries").get(0).asText())
             assertEquals("PT0.5S", out.get("retries").get(1).asText())
             assertEquals("PT1H30M", out.get("window").get("span").asText())
-            for (bad in listOf("\"P1M\"", "\"1:30:00\"", "5400", "\"pt1h\"", "\"PT1.5H\"", "\"PT-1H\"", "\"P1.5W\"")) {
+            for (bad in listOf("\"P1M\"", "\"1:30:00\"", "5400", "\"pt1h\"", "\"pt1h\"", "\"PT-1H\"", "\"P1.5W\"")) {
                 assertFailsWith<com.fasterxml.jackson.core.JacksonException>("must refuse $bad") {
                     mapper.readValue("""{"id":1,"holdFor":$bad}""", job)
                 }

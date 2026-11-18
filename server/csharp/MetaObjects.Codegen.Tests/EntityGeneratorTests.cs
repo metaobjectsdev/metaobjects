@@ -43,10 +43,10 @@ public class EntityGeneratorTests
     {
         var ctx = Ctx(Load());
         var file = Assert.Single(new EntityGenerator().Generate(ctx));
-        Assert.Equal("Subscriber.g.cs", System.IO.Path.GetFileName(file.Path));
+        Assert.Equal("Subscriber.g.cs", file.Path);
         var src = file.Content;
 
-        Assert.Contains("namespace Acme;", src);
+        Assert.Contains("namespace Acme.Generated;", src);
         // §A6 (task 4) — [Table]/[Column] reference the <Entity>Names constants, not
         // the physical-name literal.
         Assert.Contains("[Table(SubscriberNames.SourcePrimaryTable)]", src);
@@ -94,9 +94,9 @@ public class EntityGeneratorTests
     {
         var ctx = Ctx(Load());
         var file = Assert.Single(new DbContextGenerator().Generate(ctx));
-        Assert.Equal("AppDbContext.g.cs", System.IO.Path.GetFileName(file.Path));
+        Assert.Equal("AppDbContext.g.cs", file.Path);
         Assert.Contains("public class AppDbContext : DbContext", file.Content);
-        Assert.Contains("public DbSet<global::Acme.Subscriber> Subscribers { get; set; } = default!;", file.Content);
+        Assert.Contains("public DbSet<Subscriber> Subscribers { get; set; } = default!;", file.Content);
     }
 
     [Fact]
@@ -104,7 +104,7 @@ public class EntityGeneratorTests
     {
         var ctx = Ctx(Load());
         var file = Assert.Single(new RoutesGenerator().Generate(ctx));
-        Assert.Equal("SubscriberRoutes.g.cs", System.IO.Path.GetFileName(file.Path));
+        Assert.Equal("SubscriberRoutes.g.cs", file.Path);
         var src = file.Content;
 
         Assert.Contains("public static class SubscriberRoutes", src);
@@ -114,8 +114,8 @@ public class EntityGeneratorTests
         Assert.Contains("app = app.MapGroup(string.Empty).AddEndpointFilter(new DecimalRangeEndpointFilter());", src);
         Assert.Contains("return mount;", src);
         // GET list now takes HttpContext (for qs parsing: limit/offset/sort/withCount).
-        Assert.Contains("app.MapGet(prefix + \"/subscribers\", async (HttpContext http, global::Acme.Generated.AppDbContext db) =>", src);
-        Assert.Contains("app.MapGet(prefix + \"/subscribers/{id}\", async (long id, global::Acme.Generated.AppDbContext db) =>", src);
+        Assert.Contains("app.MapGet(prefix + \"/subscribers\", async (HttpContext http, AppDbContext db) =>", src);
+        Assert.Contains("app.MapGet(prefix + \"/subscribers/{id}\", async (long id, AppDbContext db) =>", src);
         Assert.Contains("db.Subscribers.FindAsync(id)", src);
         // FR-036 #4 — an entity with a @required field (Subscriber.email) gets the
         // presence-checking create handler: it reads the raw JSON body (HttpContext),
@@ -123,20 +123,20 @@ public class EntityGeneratorTests
         // BEFORE binding (a value-type default can't be seen as "missing" by [Required]),
         // then deserializes (Program D: inside a try/catch so a malformed body is a 400,
         // not an unhandled 500) + DataAnnotations-validates.
-        Assert.Contains("app.MapPost(prefix + \"/subscribers\", async (HttpContext http, global::Acme.Generated.AppDbContext db) =>", src);
+        Assert.Contains("app.MapPost(prefix + \"/subscribers\", async (HttpContext http, AppDbContext db) =>", src);
         Assert.Contains("foreach (var __req in new[] { \"email\" })", src);
-        Assert.Contains("if (!__present.Contains(__req)) return Results.BadRequest(new { error = \"validation\" });", src);
-        Assert.Contains("Subscriber? input;", src);
-        Assert.Contains("try { input = global::System.Text.Json.JsonSerializer.Deserialize<Subscriber>(__body.RootElement.GetRawText(), jsonOpts); }", src);
-        Assert.Contains("catch (global::System.Text.Json.JsonException) { return Results.BadRequest(new { error = \"validation\" }); }", src);
+        Assert.Contains("if (!__present.Contains(__req)) __issues.AddRequired(__req);", src);
+        Assert.Contains("Subscriber? input = null;", src);
+        Assert.Contains("try { input = System.Text.Json.JsonSerializer.Deserialize<Subscriber>(__body.RootElement.GetRawText(), jsonOpts); }", src);
+        Assert.Contains("catch (System.Exception __e) { __issues.AddReadFailure(__e, typeof(Subscriber)); }", src);
         // PATCH + PUT share the same update handler (matches TS reference). It takes the raw
         // HttpContext (not a bound DTO) and PARTIAL-merges only the properties present in the
         // JSON body — a bound DTO would fill omitted fields with CLR defaults and clobber them.
-        Assert.Contains("async global::System.Threading.Tasks.Task<IResult> UpdateSubscriber(long id, HttpContext http, global::Acme.Generated.AppDbContext db)", src);
+        Assert.Contains("async System.Threading.Tasks.Task<IResult> UpdateSubscriber(long id, HttpContext http, AppDbContext db)", src);
         Assert.Contains("foreach (var prop in body.RootElement.EnumerateObject())", src);
         Assert.Contains("app.MapPatch(prefix + \"/subscribers/{id}\", UpdateSubscriber);", src);
         Assert.Contains("app.MapPut(prefix + \"/subscribers/{id}\", UpdateSubscriber);", src);
-        Assert.Contains("app.MapDelete(prefix + \"/subscribers/{id}\", async (long id, global::Acme.Generated.AppDbContext db) =>", src);
+        Assert.Contains("app.MapDelete(prefix + \"/subscribers/{id}\", async (long id, AppDbContext db) =>", src);
     }
 
     [Fact]
@@ -171,9 +171,9 @@ public class EntityGeneratorTests
         // can unconditionally reference them).
         var ctx = Ctx(Load());
         var file = Assert.Single(new FilterAllowlistGenerator().Generate(ctx));
-        Assert.Equal("SubscriberFilterAllowlist.g.cs", System.IO.Path.GetFileName(file.Path));
+        Assert.Equal("SubscriberFilterAllowlist.g.cs", file.Path);
         var src = file.Content;
-        Assert.Contains("namespace Acme;", src);
+        Assert.Contains("namespace Acme.Generated;", src);
         Assert.Contains("public static class SubscriberFilterAllowlist", src);
         Assert.Contains("public static readonly HashSet<string> Fields", src);
         Assert.Contains("public static readonly Dictionary<string, HashSet<string>> OpsByField", src);
@@ -284,7 +284,7 @@ public class EntityGeneratorTests
     public void Enum_abstract_extends_uses_super_name_as_enum_type_name()
     {
         // FR-019: a ROOT-level abstract field.enum is a SHARED enum — materialized ONCE
-        // in its own <Enum>.g.cs (namespace-level), and the entity REFERENCES it (no
+        // in a dedicated Enums.g.cs (namespace-level), and the entity REFERENCES it (no
         // nested redeclaration). The type name is the super's name ("Status").
         const string model = """
         { "metadata.root": { "package": "acme", "children": [
@@ -302,14 +302,14 @@ public class EntityGeneratorTests
         var ctx = EnumCtx(r.Root);
         var files = new EntityGenerator().Generate(ctx).ToList();
 
-        // Shared enum materialized once in Status.g.cs (type name is the super's "Status").
-        var enums = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Status.g.cs");
+        // Shared enum materialized once in Enums.g.cs (type name is the super's "Status").
+        var enums = Assert.Single(files, f => f.Path == "Enums.g.cs");
         Assert.Contains("public enum Status { DRAFT, PUBLISHED }", enums.Content);
 
         // The entity references the shared type — no nested redeclaration.
-        var order = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Order.g.cs");
+        var order = Assert.Single(files, f => f.Path == "Order.g.cs");
         Assert.DoesNotContain("public enum Status", order.Content);
-        Assert.Contains("public global::Acme.Status? Status { get; set; }", order.Content);
+        Assert.Contains("public Status? Status { get; set; }", order.Content);
     }
 
     [Fact]
@@ -339,7 +339,7 @@ public class EntityGeneratorTests
         var ctx = EnumCtx(LoadEnum());
         var file = Assert.Single(new DbContextGenerator().Generate(ctx));
         Assert.Contains(
-            "modelBuilder.Entity<global::Acme.Order>().Property(x => x.Status).HasConversion<string>();",
+            "modelBuilder.Entity<Order>().Property(x => x.Status).HasConversion<string>();",
             file.Content);
     }
 
@@ -351,7 +351,7 @@ public class EntityGeneratorTests
     public void Two_fields_extending_same_abstract_enum_emit_declaration_exactly_once()
     {
         // FR-019: two fields both resolving to the ROOT-level abstract "OrderStatus" share
-        // ONE materialized type in OrderStatus.g.cs (the entity references it from both props, no
+        // ONE materialized type in Enums.g.cs (the entity references it from both props, no
         // nested redeclaration). Regression guard against a duplicate-type (CS0102) emit.
         const string model = """
         { "metadata.root": { "package": "acme", "children": [
@@ -375,13 +375,13 @@ public class EntityGeneratorTests
             System.Text.RegularExpressions.Regex.Matches(f.Content, @"public enum OrderStatus\b").Count);
         Assert.Equal(1, occurrences);
         Assert.Contains("public enum OrderStatus { DRAFT, PUBLISHED }",
-            Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "OrderStatus.g.cs").Content);
+            Assert.Single(files, f => f.Path == "Enums.g.cs").Content);
 
         // Both properties exist on the entity, typed by the shared enum (no nested decl).
-        var order = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Order.g.cs");
+        var order = Assert.Single(files, f => f.Path == "Order.g.cs");
         Assert.DoesNotContain("public enum OrderStatus", order.Content);
-        Assert.Contains("public global::Acme.OrderStatus? CurrentStatus { get; set; }", order.Content);
-        Assert.Contains("public global::Acme.OrderStatus? PreviousStatus { get; set; }", order.Content);
+        Assert.Contains("public OrderStatus? CurrentStatus { get; set; }", order.Content);
+        Assert.Contains("public OrderStatus? PreviousStatus { get; set; }", order.Content);
 
         // The whole set must compile cleanly (no CS0102 / unresolved type). §A6 (task 4)
         // — includes the names artifact the entity now references.
@@ -406,18 +406,18 @@ public class EntityGeneratorTests
         {
             var config = new GenConfig { OutDir = dir, Namespace = "Acme.Generated" };
             var r1 = CodegenRunner.Run(config, Load(), [new EntityGenerator()]);
-            Assert.Contains(r1.Files, f => System.IO.Path.GetFileName(f.Path) == "Subscriber.g.cs" && f.Status == "written");
-            Assert.True(File.Exists(Path.Combine(dir, "acme", "Subscriber.g.cs")));
+            Assert.Contains(r1.Files, f => f.Path == "Subscriber.g.cs" && f.Status == "written");
+            Assert.True(File.Exists(Path.Combine(dir, "Subscriber.g.cs")));
 
             // Re-run overwrites the @generated file.
             var r2 = CodegenRunner.Run(config, Load(), [new EntityGenerator()]);
-            Assert.Contains(r2.Files, f => System.IO.Path.GetFileName(f.Path) == "Subscriber.g.cs" && f.Status == "written");
+            Assert.Contains(r2.Files, f => f.Path == "Subscriber.g.cs" && f.Status == "written");
 
             // A hand-written file (no marker) is refused.
-            File.WriteAllText(Path.Combine(dir, "acme", "Subscriber.g.cs"), "// my hand-written file\n");
+            File.WriteAllText(Path.Combine(dir, "Subscriber.g.cs"), "// my hand-written file\n");
             var r3 = CodegenRunner.Run(config, Load(), [new EntityGenerator()]);
-            Assert.Contains(r3.Files, f => System.IO.Path.GetFileName(f.Path) == "Subscriber.g.cs" && f.Status == "skipped-handwritten");
-            Assert.Equal("// my hand-written file\n", File.ReadAllText(Path.Combine(dir, "acme", "Subscriber.g.cs")));
+            Assert.Contains(r3.Files, f => f.Path == "Subscriber.g.cs" && f.Status == "skipped-handwritten");
+            Assert.Equal("// my hand-written file\n", File.ReadAllText(Path.Combine(dir, "Subscriber.g.cs")));
         }
         finally { try { Directory.Delete(dir, true); } catch { } }
     }

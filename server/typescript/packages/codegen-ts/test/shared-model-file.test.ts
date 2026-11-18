@@ -263,7 +263,7 @@ describe("sharedModelFile()", () => {
     await expect(
       gen(sharedModelFile({ name: "acme-common", include: ["acme::common::Secret"] }), tmp),
     ).rejects.toThrow(
-      /include it or exclude the referrer:[\s\S]*acme::common::Secret → acme::common::Address/,
+      /not closed[\s\S]*acme::common::Secret → acme::common::Address: include it or exclude the referrer/,
     );
   });
 
@@ -297,6 +297,50 @@ describe("sharedModelFile()", () => {
     ).rejects.toThrow(
       /needs a provider this toolchain does not ship; Phase 1 exports must load with core vocabulary/,
     );
+  });
+
+  test("requirements: true publishes the selected requirement, and the default leaves it out", async () => {
+    const opts = { name: "acme-common", include: ["acme::common::**"], exclude: ["acme::common::Secret"], version: "1.0.0" };
+    await gen(sharedModelFile(opts), tmp);
+    expect(JSON.parse(readFileSync(join(tmp, "metaobjects.pkg.json"), "utf-8")).nodes)
+      .not.toContain("acme::common::KeepSecretsSafe");
+    await gen(sharedModelFile({ ...opts, requirements: true }), tmp);
+    expect(JSON.parse(readFileSync(join(tmp, "metaobjects.pkg.json"), "utf-8")).nodes)
+      .toContain("acme::common::KeepSecretsSafe");
+    expect(readFileSync(join(tmp, "acme-common.metaobjects.json"), "utf-8")).toContain('"requirement.functional"');
+  });
+
+  test("a selected requirement claiming a template is refused: templates are never exported", async () => {
+    const fileC = join(tmp, "metaobjects", "meta.common-prompts.json");
+    writeFileSync(
+      fileC,
+      JSON.stringify({
+        "metadata.root": {
+          package: "acme::common",
+          children: [
+            { "template.prompt": { name: "Greeting", "@payloadRef": "Address", "@textRef": "x/y" } },
+            {
+              "requirement.functional": {
+                name: "GreetsCustomers",
+                "@level": 4,
+                "@status": "live",
+                "@statement": "A customer is greeted at their address.",
+                "@counterexample": "A customer never greeted.",
+                "@implementedBy": ["Greeting"],
+              },
+            },
+          ],
+        },
+      }),
+    );
+    const refusal = gen(
+      sharedModelFile({ name: "acme-common", include: ["acme::common::**"], files: [fileA, fileC], requirements: true }),
+      tmp,
+    );
+    await expect(refusal).rejects.toThrow(
+      /acme::common::GreetsCustomers → acme::common::Greeting: templates are never exported; exclude the referrer/,
+    );
+    await expect(refusal).rejects.not.toThrow(/Greeting: include it/);
   });
 
   test("empty selection fails with a clear error", async () => {

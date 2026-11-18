@@ -13,12 +13,12 @@ import type {
 } from "./persistence-driver.js";
 import {
   buildSelectSpec, buildCountSpec, buildInsertSpec, buildUpdateSpec, buildDeleteSpec,
-  resolvePkFields, compileFilter, primaryKeyColumns,
+  resolvePkFields, compileFilter, primaryKeyColumns, tableTarget,
   type Filter, type QueryOpts, type DiscriminatorScope,
 } from "./query-builder.js";
 import { tphSubtypeOf, type TphSubtype } from "./tph.js";
 import {
-  buildNameMap, resolveTableName, physicalNamingOf, physicalNamingRemovedMessage,
+  buildNameMap, physicalNamingOf, physicalNamingRemovedMessage,
   type ColumnNamingStrategy, type EntityNameMap,
 } from "@metaobjectsdev/metadata";
 import { coerceRowOnRead, coerceRowOnWrite } from "./type-coercer.js";
@@ -265,7 +265,7 @@ export class ObjectManager {
     }
 
     const spec: InsertManySpec = {
-      table: resolveTableName(entity),
+      ...tableTarget(entity),
       rows: validatedRows.map((r) => this.toDbRow(entity, coerceRowOnWrite(entity, r, driver.dialect))),
       returning: this.allDbColumns(entity),
       key: primaryKeyColumns(entity, this.columnNamingStrategy),
@@ -289,7 +289,7 @@ export class ObjectManager {
 
     const coerced = coerceRowOnWrite(entity, restricted, driver.dialect);
     const spec: UpdateManySpec = {
-      table: resolveTableName(entity),
+      ...tableTarget(entity),
       values: this.toDbRow(entity, coerced),
       where: requireNonEmptyFilter(entity, filter, "updateMany", this.columnNamingStrategy, driver.dialect),
     };
@@ -300,7 +300,7 @@ export class ObjectManager {
     const entity = this.requireIdentified(entityName, "deleteMany");
     const driver = opts.tx ?? this.driver;
     const spec: DeleteManySpec = {
-      table: resolveTableName(entity),
+      ...tableTarget(entity),
       where: requireNonEmptyFilter(entity, filter, "deleteMany", this.columnNamingStrategy, driver.dialect),
     };
     return driver.deleteMany(spec);
@@ -323,7 +323,7 @@ export class ObjectManager {
     const n2m = resolveN2mDescriptor(entity, relationName, this.metadata);
     if (n2m !== null) {
       const target = this.requireEntity(n2m.targetEntityName);
-      const { joinSpec, makeTargetSpec } = buildN2mLazySpecs(n2m, record, this.metadata, this.columnNamingStrategy);
+      const { joinSpec, makeTargetSpec } = buildN2mLazySpecs(n2m, record, this.metadata, this.columnNamingStrategy, driver.dialect);
       const joinRows = await driver.selectMany(joinSpec);
       const targetSpec = makeTargetSpec(joinRows);
       if (targetSpec === null) return [];
@@ -333,7 +333,7 @@ export class ObjectManager {
 
     const desc = resolveRelationDescriptor(entity, relationName, this.metadata);
     const target = this.requireEntity(desc.targetEntityName);
-    const spec = buildLazyRelateSpec(desc, record, this.metadata, this.columnNamingStrategy);
+    const spec = buildLazyRelateSpec(desc, record, this.metadata, this.columnNamingStrategy, driver.dialect);
     if (spec === null) return desc.cardinality === "one" ? null : [];
     if (desc.cardinality === "one") {
       const row = await driver.selectOne(spec);
@@ -376,7 +376,7 @@ export class ObjectManager {
       const n2m = resolveN2mDescriptor(entity, inc, this.metadata);
       if (n2m !== null) {
         const target = this.requireEntity(n2m.targetEntityName);
-        const { joinSpec, makeTargetSpec } = buildN2mBatchSpecs(n2m, records, this.metadata, this.columnNamingStrategy);
+        const { joinSpec, makeTargetSpec } = buildN2mBatchSpecs(n2m, records, this.metadata, this.columnNamingStrategy, driver.dialect);
         const joinRows = await driver.selectMany(joinSpec);
         const targetSpec = makeTargetSpec(joinRows);
         const targetRows = targetSpec === null ? [] : (await driver.selectMany(targetSpec)).map((r) => this.toJsRow(target, r));
@@ -418,7 +418,7 @@ export class ObjectManager {
 
       const desc = resolveRelationDescriptor(entity, inc, this.metadata);
       const target = this.requireEntity(desc.targetEntityName);
-      const spec = buildIncludeBatchSpec(desc, records, this.metadata, this.columnNamingStrategy);
+      const spec = buildIncludeBatchSpec(desc, records, this.metadata, this.columnNamingStrategy, driver.dialect);
       const targetRows = spec === null ? [] : (await driver.selectMany(spec)).map((r) => this.toJsRow(target, r));
 
       if (desc.cardinality === "one") {

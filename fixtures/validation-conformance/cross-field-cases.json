@@ -1,0 +1,561 @@
+{
+  "cases": [
+    {
+      "name": "cross-valid-baseline",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "email": "a@b.c"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "comparison-violated",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 5,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "email": "a@b.c"
+      },
+      "expectValid": false
+    },
+    {
+      "name": "comparison-equal-boundary",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 2,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "email": "a@b.c"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "comparison-null-right-passes",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "email": "a@b.c"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "comparison-null-left-passes",
+      "entity": "Event",
+      "payload": {
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "email": "a@b.c"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "required-when-violated",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "state": "OPEN",
+        "email": "a@b.c"
+      },
+      "expectValid": false
+    },
+    {
+      "name": "required-when-other-value-unconstrained",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "DEATH",
+        "state": "OPEN",
+        "email": "a@b.c"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "required-when-gate-null-unconstrained",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "state": "OPEN",
+        "email": "a@b.c"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "required-when-boolean-violated",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "email": "a@b.c",
+        "flag": true
+      },
+      "expectValid": false
+    },
+    {
+      "name": "required-when-boolean-satisfied",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "email": "a@b.c",
+        "flag": true,
+        "flagNote": "why"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "required-when-boolean-false-unconstrained",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "email": "a@b.c",
+        "flag": false
+      },
+      "expectValid": true
+    },
+    {
+      "name": "present-iff-missing-target",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "CLOSED",
+        "email": "a@b.c"
+      },
+      "expectValid": false
+    },
+    {
+      "name": "present-iff-forbidden-target",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "email": "a@b.c",
+        "closedNote": "stray"
+      },
+      "expectValid": false
+    },
+    {
+      "name": "present-iff-satisfied",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "CLOSED",
+        "email": "a@b.c",
+        "closedNote": "done"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "present-iff-gate-null-forbids-target",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "email": "a@b.c",
+        "closedNote": "stray"
+      },
+      "expectValid": false
+    },
+    {
+      "name": "present-iff-both-absent",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "email": "a@b.c"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "at-least-one-violated",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN"
+      },
+      "expectValid": false
+    },
+    {
+      "name": "at-least-one-second-field",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "phone": "555"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "at-least-one-both",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "email": "a@b.c",
+        "phone": "555"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "rule-on-read-only-field-skipped",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "OTHER",
+        "state": "OPEN",
+        "email": "a@b.c",
+        "review": "DONE"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "comparison-across-kinds-is-skipped",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "email": "a@b.c",
+        "eventDate": "2030-01-02",
+        "loggedAt": "2020-01-01T00:00:00Z"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "comparison-instant-vs-local-timestamp-is-skipped",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "email": "a@b.c",
+        "loggedAt": "2030-01-02T00:00:00Z",
+        "wallClock": "2020-01-01T00:00:00"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "uuid-ne-rejects-equal-ids",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "email": "a@b.c",
+        "ownerId": "3f2b1c1e-8a64-4d0e-9a52-1f6c0d2b7a10",
+        "approverId": "3f2b1c1e-8a64-4d0e-9a52-1f6c0d2b7a10"
+      },
+      "expectValid": false
+    },
+    {
+      "name": "uuid-ne-accepts-different-ids",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "email": "a@b.c",
+        "ownerId": "3f2b1c1e-8a64-4d0e-9a52-1f6c0d2b7a10",
+        "approverId": "9b7d4e22-0c1a-4f3b-8d65-2a7e9c5f1b34"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "shift-valid-baseline",
+      "entity": "Shift",
+      "payload": {
+        "startDay": 1,
+        "endDay": 1,
+        "startMin": 60,
+        "endMin": 120,
+        "storeId": 7,
+        "kind": "DESK"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "condition-true-rule-violated",
+      "entity": "Shift",
+      "payload": {
+        "startDay": 1,
+        "endDay": 1,
+        "startMin": 120,
+        "endMin": 60,
+        "storeId": 7,
+        "kind": "DESK"
+      },
+      "expectValid": false
+    },
+    {
+      "name": "condition-false-rule-skipped",
+      "entity": "Shift",
+      "payload": {
+        "startDay": 1,
+        "endDay": 2,
+        "startMin": 120,
+        "endMin": 60,
+        "storeId": 7,
+        "kind": "DESK"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "condition-null-rule-skipped",
+      "entity": "Shift",
+      "payload": {
+        "endDay": 1,
+        "startMin": 120,
+        "endMin": 60,
+        "storeId": 7,
+        "kind": "DESK"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "exactly-one-none",
+      "entity": "Shift",
+      "payload": {
+        "startDay": 1,
+        "endDay": 1,
+        "startMin": 60,
+        "endMin": 120,
+        "kind": "DESK"
+      },
+      "expectValid": false
+    },
+    {
+      "name": "exactly-one-both",
+      "entity": "Shift",
+      "payload": {
+        "startDay": 1,
+        "endDay": 1,
+        "startMin": 60,
+        "endMin": 120,
+        "storeId": 7,
+        "kind": "DESK",
+        "kioskId": 3
+      },
+      "expectValid": false
+    },
+    {
+      "name": "exactly-one-other",
+      "entity": "Shift",
+      "payload": {
+        "startDay": 1,
+        "endDay": 1,
+        "startMin": 60,
+        "endMin": 120,
+        "kind": "DESK",
+        "kioskId": 3
+      },
+      "expectValid": true
+    },
+    {
+      "name": "condition-not-is-null-true-violated",
+      "entity": "Shift",
+      "payload": {
+        "startDay": 1,
+        "endDay": 1,
+        "startMin": 60,
+        "endMin": 120,
+        "storeId": 7,
+        "kind": "PHONE"
+      },
+      "expectValid": false
+    },
+    {
+      "name": "condition-not-is-null-false-skipped",
+      "entity": "Shift",
+      "payload": {
+        "startDay": 1,
+        "endDay": 1,
+        "startMin": 60,
+        "endMin": 120,
+        "kind": "PHONE",
+        "kioskId": 3
+      },
+      "expectValid": true
+    },
+    {
+      "name": "condition-and-true-violated",
+      "entity": "Shift",
+      "payload": {
+        "startDay": 1,
+        "endDay": 1,
+        "startMin": 60,
+        "endMin": 120,
+        "storeId": 7,
+        "kind": "DESK",
+        "priority": 3
+      },
+      "expectValid": false
+    },
+    {
+      "name": "condition-and-satisfied",
+      "entity": "Shift",
+      "payload": {
+        "startDay": 1,
+        "endDay": 1,
+        "startMin": 60,
+        "endMin": 120,
+        "storeId": 7,
+        "kind": "DESK",
+        "priority": 3,
+        "phone": "555"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "condition-coalesce-default-skipped",
+      "entity": "Shift",
+      "payload": {
+        "startDay": 1,
+        "endDay": 1,
+        "startMin": 60,
+        "endMin": 120,
+        "storeId": 7,
+        "kind": "DESK"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "condition-and-false-by-or-skipped",
+      "entity": "Shift",
+      "payload": {
+        "startDay": 1,
+        "endDay": 1,
+        "startMin": 60,
+        "endMin": 120,
+        "storeId": 7,
+        "kind": "BATCH",
+        "priority": 3
+      },
+      "expectValid": true
+    },
+    {
+      "name": "condition-or-null-branch-violated",
+      "entity": "Shift",
+      "payload": {
+        "startDay": 1,
+        "endDay": 1,
+        "startMin": 60,
+        "endMin": 120,
+        "storeId": 7,
+        "priority": 3
+      },
+      "expectValid": false
+    },
+    {
+      "name": "condition-comparing-across-kinds-leaves-rule-to-database",
+      "entity": "Shift",
+      "payload": {
+        "storeId": 7,
+        "kind": "CALL",
+        "shiftDate": "2030-01-02",
+        "loggedAt": "2020-01-01T00:00:00Z"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "condition-ne-on-ipv4-and-ipv6-addresses-enforces-the-rule",
+      "entity": "Shift",
+      "payload": {
+        "storeId": 7,
+        "kind": "CALL",
+        "clientIp": "10.0.0.1",
+        "siteIp": "::1"
+      },
+      "expectValid": false
+    },
+    {
+      "name": "condition-ne-on-equal-addresses-lets-the-record-through",
+      "entity": "Shift",
+      "payload": {
+        "storeId": 7,
+        "kind": "CALL",
+        "clientIp": "10.0.0.1",
+        "siteIp": "10.0.0.1"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "duration-comparison-rejects-a-longer-span",
+      "entity": "Shift",
+      "payload": {
+        "storeId": 7,
+        "planned": "PT1H",
+        "actual": "PT1H30M"
+      },
+      "expectValid": false
+    },
+    {
+      "name": "duration-comparison-orders-by-length-not-text",
+      "entity": "Shift",
+      "payload": {
+        "storeId": 7,
+        "planned": "PT1H",
+        "actual": "PT45M"
+      },
+      "expectValid": true
+    }
+  ]
+}

@@ -76,9 +76,9 @@ public class CheckConstraintConformanceTests
     {
         var ctx = Ctx(Load(), "postgres");
         var context = new DbContextGenerator().Generate(ctx).Single(f => f.Path.EndsWith("AppDbContext.g.cs", StringComparison.Ordinal)).Content;
-        Assert.Contains("modelBuilder.Entity<global::Acme.Checks.Gadget>().ToTable(t => t.HasCheckConstraint(\"gadgets_status_chk\", \"\\\"status\\\" IN ('DRAFT', 'LIVE')\"));", context);
+        Assert.Contains("modelBuilder.Entity<Gadget>().ToTable(t => t.HasCheckConstraint(\"gadgets_status_chk\", \"\\\"status\\\" IN ('DRAFT', 'LIVE')\"));", context);
         Assert.Contains("t.HasCheckConstraint(\"gadgets_sku_shape\", ", context);
-        Assert.Contains("t.HasCheckConstraint(\"gadgets_email_atleastone_chk\", \"num_nonnulls(\\\"email\\\", \\\"phone\\\") = 1\")", context);
+        Assert.Contains("t.HasCheckConstraint(\"gadgets_email_exactlyone_chk\", \"num_nonnulls(\\\"email\\\", \\\"phone\\\") = 1\")", context);
         // rc.20 @dbCheck: false — the opted-out validators and enum declare no CHECK; a sibling
         // validator on the same field keeps its own.
         Assert.DoesNotContain("gadgets_npi_", context);
@@ -86,11 +86,14 @@ public class CheckConstraintConformanceTests
         Assert.DoesNotContain("\\\"rank\\\" >= 1", context);
         Assert.Contains("t.HasCheckConstraint(\"gadgets_rank_numeric_chk\", \"\\\"rank\\\" <= 99\")", context);
         // FR-017 TPH: a subtype's columns are on its base's table, and so are their CHECKs.
-        Assert.Contains("modelBuilder.Entity<global::Acme.Checks.Device>().ToTable(t => t.HasCheckConstraint(\"devices_mode_chk\", \"\\\"mode\\\" IN ('AUTO', 'MANUAL')\"));", context);
+        Assert.Contains("modelBuilder.Entity<Device>().ToTable(t => t.HasCheckConstraint(\"devices_mode_chk\", \"\\\"mode\\\" IN ('AUTO', 'MANUAL')\"));", context);
         Assert.Contains("t.HasCheckConstraint(\"devices_sensor_unit_reqwhen_chk\", ", context);
         // rc.21 fix round (I1): siblings that disagree on a shared column each guard their own CHECK.
         Assert.Contains("t.HasCheckConstraint(\"devices_switch_grade_chk\", \"(\\\"kind\\\" <> 'SWITCH') OR (\\\"grade\\\" IN ('X', 'Y'))\")", context);
         Assert.DoesNotContain("devices_legacy_position_chk", context);
+        // A derived field is no column of the table: no CHECK names it, nor a cross-field CHECK over it.
+        Assert.DoesNotContain("band", context);
+        Assert.DoesNotContain("owner_name", context);
     }
 
     [Fact]

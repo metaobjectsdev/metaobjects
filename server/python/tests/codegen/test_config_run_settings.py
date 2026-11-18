@@ -318,12 +318,12 @@ def test_verify_with_another_wire_says_the_wire_block_differs_not_regenerate(
     err = capsys.readouterr().err
     assert (
         'The committed output was generated with "wire": { "decimals": "string", '
-        '"nullMembers": "omit" }; this run used "wire": { "decimals": "native", '
-        '"nullMembers": "native" } (the wire block of .metaobjects/config.json; each key '
+        '"nullMembers": "omit", "durations": "native" }; this run used "wire": { "decimals": "native", '
+        '"nullMembers": "native", "durations": "native" } (the wire block of .metaobjects/config.json; each key '
         "defaults to native). Do not regenerate" in err
     )
     assert (
-        'Declare "wire": { "decimals": "string", "nullMembers": "omit" } in '
+        'Declare "wire": { "decimals": "string", "nullMembers": "omit", "durations": "native" } in '
         ".metaobjects/config.json" in err
     )
     assert "regenerate (metaobjects gen)" not in err
