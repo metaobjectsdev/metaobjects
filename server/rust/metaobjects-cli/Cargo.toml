@@ -1,0 +1,27 @@
+[package]
+name = "metaobjects-cli"
+description = "The `cargo meta` command for MetaObjects on Rust (preview)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+# Not published yet. The crates.io name `cargo-meta` belongs to an unrelated crate, so this
+# package is `metaobjects-cli` and only its binary is called `cargo-meta`; that binary name
+# is what makes cargo's external-subcommand rule run it for `cargo meta ...`.
+publish = false
+
+[lib]
+name = "metaobjects_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "cargo-meta"
+path = "src/main.rs"
+
+[dependencies]
+metaobjects = { path = "../metaobjects" }
+metaobjects-codegen = { path = "../metaobjects-codegen" }
+
+[lints]
+workspace = true

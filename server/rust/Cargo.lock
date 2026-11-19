@@ -102,6 +102,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "metaobjects-cli"
+version = "0.1.0"
+dependencies = [
+ "metaobjects",
+ "metaobjects-codegen",
+]
+
+[[package]]
+name = "metaobjects-codegen"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "metaobjects",
+ "serde_json",
+]
+
+[[package]]
 name = "multiversion_no_op"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

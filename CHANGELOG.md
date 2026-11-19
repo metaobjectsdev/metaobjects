@@ -41,6 +41,35 @@ here.**
   `iam` and `ai` library sources embedded in the crate, and the naming strategies, pluralizers and
   collection-name collision check. It passes `yaml-conformance` 18 of 19, and the
   `source-resolution-conformance` and `naming-conformance` corpora in full. Nothing is published.
+- **Rust port generates code, in preview: `cargo meta gen` and the `entity` generator.** Two new
+  workspace crates. `metaobjects-codegen` holds the run engine and the generator;
+  `metaobjects-cli` builds the binary `cargo-meta`, so cargo's external-subcommand rule makes
+  `cargo meta gen` work (`cargo-meta gen` too). The run engine follows ADR-0064 and keeps the
+  other ports' manifest format: it writes a generated file only when its bytes changed, saves
+  `.metaobjects/.gen-state/.hashes.json` once per run and only when a record changed, and skips
+  the whole run (nothing rendered, nothing written, not even the manifest) when the model hash
+  tree, the project config, the engine's built code, each generator's identity and the flags match
+  the stored key in `.fingerprint-rust.json` and every recorded output is still as the last run
+  left it. The shared `fixtures/codegen-skip-conformance` corpus runs against it: every case the port can meet runs,
+  and the ones it cannot (templates, ejected generators, `verify`, a kept hand edit) are named
+  with the reason. The `entity` generator writes one crate per metadata package: serde structs
+  for `object.entity` and `object.value` (inherited fields included, optional fields as `Option`,
+  arrays as `Vec`, a map as `BTreeMap`), enums for `field.enum` (shared enums once, in their
+  declaration's package) with the member symbols as the wire form, `Box` only where a by-value
+  cycle needs it, and a path dependency for each cross-package reference. The output is already
+  rustfmt-clean under the `rustfmt.toml` written beside it, so no formatter runs in the hot path.
+  Tests: a golden test of a two-package model's text, a test that generates that model and the
+  fitness model and runs `cargo check`, `rustfmt --check` and a serde round trip on the crates,
+  and the run-engine, skip-corpus and CLI suites. `gen_bench` prints time per stage (load, plan,
+  skip, render, write) for a first run, an unchanged run, a one-file change and a forced run on
+  the 20x fitness project, record only, and the `rust` lane prints it. Where Rust differs from the
+  other ports, on purpose: there is no three-way merge, so a generated file edited by hand (or an
+  existing file nobody recorded) is refused and the run exits 1 after finishing the other files,
+  as Python does; the output directory must be inside the project, so every manifest key is
+  project-relative; a named run (`cargo meta gen Order`) regenerates the whole files of the named
+  objects and their crate's manifest files rather than merging; and there is no `verify`,
+  `eject`, template or client generator yet. Relationships, projections and reports are not
+  emitted. Nothing is published.
 
 - **Cross-port stage benchmark and Rust port documentation.** `scripts/bench-load/stages.py` runs
   every port (TypeScript, Python, C#, Java, Kotlin, Rust) over the same model, stage by stage: load
