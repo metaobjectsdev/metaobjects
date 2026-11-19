@@ -33,7 +33,7 @@ crates/jsre/           hand-written: a std-only JavaScript regex engine
 |---|---|
 | `enums.rs` | `TaskState`, `HoldKind`, `DepType`, `LinkKind`, `ListState`, with their wire strings |
 | `model.rs` | `Hold`, `Dep`, `Link`, `Task` |
-| `rows.rs` | `TaskRow` (18 columns), `Column`, the cell accessor, `LIST_EXTRA_COLUMNS` |
+| `rows.rs` | `TaskRow` (18 columns), `Column`, the cell accessor, `TASK_LIST_ROW_EXTRA_COLUMNS` |
 | `errors.rs` | `ErrorCode`, its exit codes, `AxiError` |
 | `cli.rs` | the help and usage text, hint tables, the flag parser and its validation, in the real tool's order |
 | `dispatch.rs` | `Handlers` (the trait a tool implements), `Outcome`, `run()`, the refusal of unimplemented commands |

@@ -5,7 +5,7 @@
 
 use crate::enums::ListState;
 use crate::errors::AxiError;
-use crate::rows::{Column, LIST_EXTRA_COLUMNS};
+use crate::rows::{Column, TASK_LIST_ROW_EXTRA_COLUMNS};
 
 pub const BIN: &str = "tasks-axi";
 pub const VERSION: &str = "0.2.6";
@@ -241,7 +241,7 @@ pub fn parse_list(raw: &[String]) -> Result<ListArgs, AxiError> {
     let fields = parse_columns(
         "--fields",
         take_flag(&mut args, "--fields")?,
-        &LIST_EXTRA_COLUMNS,
+        &TASK_LIST_ROW_EXTRA_COLUMNS,
     )?;
     let state = match take_flag(&mut args, "--state")? {
         None => None,

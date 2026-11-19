@@ -40,14 +40,24 @@ function cellExpr(c: ColumnIr): string {
   }
 }
 
+const constName = (n: string): string => n.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toUpperCase();
+export const extraConstName = (base: string): string => `${constName(base)}_EXTRA_COLUMNS`;
+
 export function emitRows(ir: Ir): string {
   const cols = ir.row.columns;
   const enumsUsed = [...new Set(cols.flatMap((c) => (c.scalar.kind === "enum" ? [c.scalar.enum] : [])))];
   const set = (name: string): string[] => ir.row.sets.find((s) => s.name === name)!.columns;
   const variant = (n: string): string => `Column::${cols.find((c) => c.name === n)!.variant}`;
-  const listBase = set("TaskListRow");
-  const extra = cols.map((c) => c.name).filter((n) => !listBase.includes(n));
-  const constName = (n: string): string => n.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toUpperCase();
+  const flagBases = [
+    ...new Set(ir.cli.commands.flatMap((c) => c.flags.flatMap((f) => (f.flag.kind === "columns" ? [f.flag.base] : [])))),
+  ];
+  const extraConsts = flagBases
+    .map((b) => {
+      const base = set(b);
+      const extra = cols.map((c) => c.name).filter((n) => !base.includes(n));
+      return `/// Columns a caller may add with \`--fields\` to a view printing \`${b}\`: every column that set lacks.\npub const ${extraConstName(b)}: [Column; ${extra.length}] = [${extra.map(variant).join(", ")}];`;
+    })
+    .join("\n\n");
 
   const setConsts = ir.row.sets
     .map(
@@ -118,7 +128,6 @@ ${cols.map((c) => `Column::${c.variant} => ${cellExpr(c)},`).join("\n")}
 
 ${setConsts}
 
-/// Columns a caller may add to \`list\` with \`--fields\`: every column the default set lacks.
-pub const LIST_EXTRA_COLUMNS: [Column; ${extra.length}] = [${extra.map(variant).join(", ")}];
+${extraConsts}
 `;
 }

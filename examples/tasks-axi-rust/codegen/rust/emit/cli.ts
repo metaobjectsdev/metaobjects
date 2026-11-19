@@ -1,4 +1,5 @@
 import type { CommandIr, FlagIr, Ir } from "../ir.js";
+import { extraConstName } from "./rows.js";
 import { GENERATED_BANNER, ident, lit, pascal, snake } from "../names.js";
 
 const upper = (s: string): string => snake(s).toUpperCase();
@@ -218,7 +219,7 @@ function takeExpr(ir: Ir, f: FlagIr): string {
         }`;
     }
     case "columns":
-      return `parse_columns(${flag}, take_flag(&mut args, ${flag})?, &LIST_EXTRA_COLUMNS)?`;
+      return `parse_columns(${flag}, take_flag(&mut args, ${flag})?, &${extraConstName(f.flag.base)})?`;
   }
 }
 
@@ -274,6 +275,9 @@ ${c.flags.map((f) => `    let ${ident(f.name)} = ${takeExpr(ir, f)};`).join("\n"
 export function emitCli(ir: Ir): string {
   const cli = ir.cli;
   const enumsUsed = [...new Set(cli.commands.flatMap((c) => c.flags.flatMap((f) => (f.flag.kind === "enum" ? [f.flag.enum] : []))))];
+  const extraConsts = [
+    ...new Set(cli.commands.flatMap((c) => c.flags.flatMap((f) => (f.flag.kind === "columns" ? [extraConstName(f.flag.base)] : [])))),
+  ];
   const names = cli.commands.map((c) => pascal(c.name));
   const words = cli.commands.flatMap((c) => [c.name, ...c.aliases].map((w) => [w, pascal(c.name)] as const));
 
@@ -282,7 +286,7 @@ export function emitCli(ir: Ir): string {
 
 use crate::enums::{${enumsUsed.join(", ")}};
 use crate::errors::AxiError;
-use crate::rows::{Column, LIST_EXTRA_COLUMNS};
+use crate::rows::{${["Column", ...extraConsts].join(", ")}};
 
 pub const BIN: &str = ${lit(cli.bin)};
 pub const VERSION: &str = ${lit(cli.version)};

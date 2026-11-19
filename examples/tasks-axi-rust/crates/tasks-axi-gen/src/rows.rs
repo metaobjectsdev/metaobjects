@@ -222,8 +222,8 @@ pub const TASK_DETAIL_ROW_COLUMNS: [Column; 17] = [
     Column::Body,
 ];
 
-/// Columns a caller may add to `list` with `--fields`: every column the default set lacks.
-pub const LIST_EXTRA_COLUMNS: [Column; 13] = [
+/// Columns a caller may add with `--fields` to a view printing `TaskListRow`: every column that set lacks.
+pub const TASK_LIST_ROW_EXTRA_COLUMNS: [Column; 13] = [
     Column::Blocked,
     Column::BlockedBy,
     Column::Held,

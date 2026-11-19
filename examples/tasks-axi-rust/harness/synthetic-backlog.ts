@@ -22,7 +22,7 @@ const WORDS = [
   "adopt", "lease", "widget", "rewrite", "service", "cache", "index", "parser", "gateway", "queue",
   "migrate", "audit", "retry", "backoff", "schema", "router", "metrics", "flaky", "test", "cleanup",
   "café", "naïve", "日本語", "Ünïcode", "ß", "Ω", "résumé", "tab\there", "quote\"s", "comma,s", "colon: here",
-  "100%", "a#b", "[bracket]", "{brace}", "-dash", "true", "null", "42", "3.14", "  spaced  ",
+  "\u001b[0m", "100%", "a#b", "[bracket]", "{brace}", "-dash", "true", "null", "42", "3.14", "  spaced  ",
 ];
 const REPOS = ["widgets", "svc", "docs-site", "infra", "a/b", "repo with space", "x:y", "é-repo", "7", "true"];
 const KINDS = ["task", "scout", "ship", "docs", "secondmate", "chore", "kind with space", "a,b"];
@@ -117,7 +117,7 @@ function tags(r: Rng, state: string, ids: string[]): string {
 const STRANGE_BODY = [
   "## Heading", "#hash", "+1", "05", "1e5", "-3", "1.5E+3", "0", "1.", ".5", "0x10", "true", "null", "NaN",
   "\u00a0nbsp-lead", "nbsp-trail\u00a0", "\ufeffbom-lead", "\u2003em-space", "\u0085next-line", "- dash", "key: value",
-  "a,b", "x\ty", "\"quoted\"", "back\\slash", "[1]", "{x}", "trail ", " lead",
+  "\u001b[0m", "\u0001ctl", "ctl\u001f", "a,b", "x\ty", "\"quoted\"", "back\\slash", "[1]", "{x}", "trail ", " lead",
 ];
 
 function body(r: Rng): string[] {
