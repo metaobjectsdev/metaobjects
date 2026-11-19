@@ -170,11 +170,17 @@ export function readModel(root: MetaRoot): Ir {
     return [...base, ...more];
   };
 
+  const checkFlag = (f: FlagIr): void => {
+    if (f.flag.kind === "enum" && !enumNames.has(f.flag.enum)) fail(`--${f.name}: unknown enum ${f.flag.enum}`);
+    if (f.flag.kind === "columns") {
+      if (f.flag.row !== rowObj.name) fail(`--${f.name}: row ${f.flag.row} is not ${rowObj.name}`);
+      if (!setByName.has(f.flag.base)) fail(`--${f.name}: unknown column set ${f.flag.base}`);
+    }
+  };
+
   const commands: CommandIr[] = Object.entries(raw.commands as Record<string, any>).map(([name, c]) => {
     const flags: FlagIr[] = (c.flags as Record<string, unknown>[]).map(flagOf);
-    for (const f of flags) {
-      if (f.flag.kind === "enum" && !enumNames.has(f.flag.enum)) fail(`--${f.name}: unknown enum ${f.flag.enum}`);
-    }
+    flags.forEach(checkFlag);
     const help = String(c.help).replace("{extraColumns}", [...extraColumns].sort().join(", "));
     const outputs: OutputIr[] = (c.outputs as any[]).map((o) => ({
       label: String(o.label),
@@ -202,11 +208,14 @@ export function readModel(root: MetaRoot): Ir {
     };
   });
 
+  const globalFlags = (raw.globalFlags as Record<string, unknown>[]).map(flagOf);
+  globalFlags.forEach(checkFlag);
+
   const cli: CliIr = {
     bin: String(raw.bin),
     version: String(raw.version),
     noun: String(raw.noun),
-    globalFlags: (raw.globalFlags as Record<string, unknown>[]).map(flagOf),
+    globalFlags,
     topHelp: String(raw.topHelp),
     refused: strArr(raw.refused, "refused"),
     refusal: { message: raw.refusal.message, suggestion: raw.refusal.suggestion, home: raw.refusal.home },
