@@ -70,19 +70,18 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/explorer-conformance/`](../fixtures/explorer-conformance/) (the `explorer.json` data spine: `meta export --effective` + `meta verify --format json` + the generated-file manifest in, one explorer document out) | 1 case (`shop`) | ✓ (the builder is TypeScript, and reads only port-neutral inputs) | — | — | — | — |
 
 **Rust (preview, ADR-0065) is not a column yet.** The sixth port runs five corpora
-today: `registry-conformance` (byte-identical manifest); the metamodel corpus, 261
-of 526 green, 254 of the rest on `server/rust/metaobjects/tests/conformance-expected-failures.json`
-(validation passes, merge warnings, the reporting short-name rule and the `script.json`
-fixtures, none of them built yet) and 11 fixtures from the newer corpus failing unlisted
-until those same validation passes land; `yaml-conformance`, 15 of 19 (the four on
-`yaml-conformance-expected-failures.json` wait for the attribute-schema pass and the
-ADR-0059 reference rules); `source-resolution-conformance` (all 28 cases); and
-`naming-conformance` (all of it). Those ledgers may only shrink. While the port is in
-preview, a new fixture that fails in Rust and is not on the ledger prints a warning and does
-not fail the lane; it becomes a hard failure when the port leaves preview. A regression still
-fails: the ledger's `minPassing` (261) is the number of fixtures known to pass, and the run
-fails when fewer do. The column joins this table when the port leaves
-preview.
+today: `registry-conformance` (byte-identical manifest); the metamodel corpus, all 526
+green, with every validation pass the TypeScript loader runs, in the same order, so
+`server/rust/metaobjects/tests/conformance-expected-failures.json` is empty;
+`yaml-conformance`, 18 of 19 (the one on `yaml-conformance-expected-failures.json`,
+`yaml-ref-root-escape`, waits for the ADR-0059 root-level `::` reference rules, which are
+reference resolution, not a validation pass); `source-resolution-conformance` (all 28
+cases); and `naming-conformance` (all of it). Those ledgers may only shrink. While the
+port is in preview, a new fixture that fails in Rust and is not on the ledger prints a
+warning and does not fail the lane; it becomes a hard failure when the port leaves
+preview. A regression still fails: the ledger's `minPassing` (526) is the number of
+fixtures known to pass, and the run fails when fewer do. The column joins this table when
+the port leaves preview.
 
 A ✓ means the port runs the corpus green; an explicit `n / m` is used where a port
 carries a ledgered divergence. The two ledgered YAML fixtures are documented
