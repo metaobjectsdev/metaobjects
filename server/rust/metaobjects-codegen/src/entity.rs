@@ -596,12 +596,17 @@ impl Plan {
         } else {
             let mut picked = HashSet::new();
             for name in entities {
+                let exact = name.strip_prefix(PACKAGE_SEP);
                 let hits: Vec<usize> = self
                     .structs
                     .iter()
                     .enumerate()
-                    .filter(|(_, s)| {
-                        s.key == *name || s.key.rsplit(PACKAGE_SEP).next() == Some(name.as_str())
+                    .filter(|(_, s)| match exact {
+                        Some(key) => s.key == key,
+                        None => {
+                            s.key == *name
+                                || s.key.rsplit(PACKAGE_SEP).next() == Some(name.as_str())
+                        }
                     })
                     .map(|(i, _)| i)
                     .collect();
@@ -621,7 +626,7 @@ impl Plan {
                         return Err(GenError::new(
                             ERR_NAME_COLLISION,
                             format!(
-                                "{name} names more than one entity or value object ({}); name one by its full package-qualified key",
+                                "{name} names more than one entity or value object ({}); name one by its full key, `::Name` for a package-less object or `pkg::Name`",
                                 keys.join(", ")
                             ),
                         ));

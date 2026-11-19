@@ -216,6 +216,15 @@ fn a_bare_entity_name_that_matches_two_objects_is_an_error_not_a_guess() {
     assert_eq!(e.code, "ERR_NAME_COLLISION");
     assert!(e.message.contains("app::Foo"), "{}", e.message);
     assert!(e.message.contains("more than one"), "{}", e.message);
+    assert!(e.message.contains("::Name"), "{}", e.message);
+
+    let package_less =
+        generate_named(files, &["::Foo"]).expect("::Foo selects the package-less Foo");
+    let packaged = generate_named(files, &["app::Foo"]).expect("app::Foo selects the packaged Foo");
+    assert!(package_less.values().any(|c| c.contains("pub cents:")));
+    assert!(!package_less.values().any(|c| c.contains("pub label:")));
+    assert!(packaged.values().any(|c| c.contains("pub label:")));
+    assert!(!packaged.values().any(|c| c.contains("pub cents:")));
 }
 
 #[test]
