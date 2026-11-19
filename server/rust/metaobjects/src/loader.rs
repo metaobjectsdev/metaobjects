@@ -15,17 +15,24 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use crate::errors::{
-    ERR_BAD_ATTR_VALUE, ERR_EXTENDS_TARGET_MISMATCH, ERR_MALFORMED_JSON, ERR_OVERLAY_NO_TARGET,
-    ERR_UNKNOWN, ERR_UNKNOWN_SUBTYPE, ERR_UNKNOWN_TYPE, ERR_UNRESOLVED_SUPER, MetaError,
+    ERR_BAD_ATTR_VALUE, ERR_EXTENDS_TARGET_MISMATCH, ERR_MALFORMED_JSON, ERR_MERGE_CONFLICT,
+    ERR_OVERLAY_NO_TARGET, ERR_UNKNOWN, ERR_UNKNOWN_SUBTYPE, ERR_UNKNOWN_TYPE,
+    ERR_UNRESOLVED_SUPER, MetaError, WARN_DUPLICATE_DECLARATION,
 };
+use crate::naming::{NamingCtx, NamingRegistry, PhysicalNaming};
 use crate::node::{Node, NodeId, PACKAGE_SEP, Tree};
 use crate::parser::{SUBTYPE_ROOT, TYPE_METADATA, TYPE_OBJECT, parse_document_with};
 use crate::registry::TypeRegistry;
+use crate::serializer::{normalize, to_canonical_value};
+
+const TYPE_SOURCE: &str = "source";
+const SOURCE_SUBTYPE_RDB: &str = "rdb";
 use crate::source::ErrorSource;
 use crate::timing::{
     LoadTimings, PHASE_FREEZE, PHASE_JSON, PHASE_MERGE, PHASE_READ, PHASE_REFS, PHASE_SUPERS,
     PHASE_TREE, PHASE_YAML,
 };
+use crate::validate::util::{ObjectIndex, find_hop};
 use crate::validate::{self, Ctx, Findings};
 use crate::yaml::parse_yaml;
 
@@ -66,6 +73,9 @@ pub struct LoadResult {
 /// Loads metadata against one registry.
 pub struct Loader<'r> {
     registry: &'r TypeRegistry,
+    strict: bool,
+    naming_registry: NamingRegistry,
+    naming: PhysicalNaming,
 }
 
 /// Every metadata file under `dir`, recursively, sorted by file name as every
@@ -113,7 +123,33 @@ pub fn metadata_files(dir: &Path, exclude_pending: bool) -> std::io::Result<Vec<
 
 impl<'r> Loader<'r> {
     pub fn new(registry: &'r TypeRegistry) -> Self {
-        Self { registry }
+        Self {
+            registry,
+            strict: false,
+            naming_registry: NamingRegistry::builtin(),
+            naming: PhysicalNaming::default(),
+        }
+    }
+
+    /// The project's physical naming (`naming` in `.metaobjects/config.json`) and the
+    /// registry its strategy names resolve in; column-collision and `@via` reverse-hop
+    /// validation resolve names through both. Defaults to the built-in registry and
+    /// [`PhysicalNaming::default`]. A name the registry does not answer is one load
+    /// error, and validation then runs under the defaults.
+    #[must_use]
+    pub fn naming(mut self, registry: NamingRegistry, naming: PhysicalNaming) -> Self {
+        self.naming_registry = registry;
+        self.naming = naming;
+        self
+    }
+
+    /// Load strictly (ADR-0023): an authored attribute the registry does not declare
+    /// is `ERR_UNKNOWN_ATTR`, and a child no child rule admits is `ERR_CHILD_NOT_ALLOWED`.
+    /// Off by default, as in the TypeScript reference.
+    #[must_use]
+    pub fn strict(mut self, strict: bool) -> Self {
+        self.strict = strict;
+        self
     }
 
     /// Load every metadata file under `dir`. A directory that cannot be walked is
@@ -197,10 +233,32 @@ impl<'r> Loader<'r> {
             }
         }
         let mut warnings = Vec::new();
+        let mut merged = MergeOut::default();
+        let naming_errors: Vec<MetaError> = [
+            self.naming_registry
+                .column_strategy(&self.naming.columns)
+                .err(),
+            self.naming
+                .collections
+                .as_deref()
+                .and_then(|p| self.naming_registry.pluralizer(p).err()),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        let default_naming = (NamingRegistry::builtin(), PhysicalNaming::default());
+        let (naming_registry, naming) = if naming_errors.is_empty() {
+            (&self.naming_registry, &self.naming)
+        } else {
+            (&default_naming.0, &default_naming.1)
+        };
+        errors.extend(naming_errors);
         let root = if roots.is_empty() {
             tree.add(Node::new(TYPE_METADATA, SUBTYPE_ROOT, ""))
         } else {
-            let root = timings.phase(PHASE_MERGE, || merge_roots(&mut tree, &roots, &mut errors));
+            let root = timings.phase(PHASE_MERGE, || merge_roots(&mut tree, &roots, &mut merged));
+            errors.append(&mut merged.errors);
+            warnings.append(&mut merged.warnings);
             // Neither pass adds, removes or renames a top-level node, so one index serves both.
             let top = TopLevel::build(&tree, root);
             timings.phase(PHASE_SUPERS, || {
@@ -211,7 +269,9 @@ impl<'r> Loader<'r> {
                 tree: &tree,
                 root,
                 registry: self.registry,
-                strict: false,
+                strict: self.strict,
+                objects: &top.objects,
+                naming: NamingCtx::new(naming_registry, naming),
             };
             validate::run(&ctx, &mut findings, &mut timings);
             errors.append(&mut findings.errors);
@@ -230,6 +290,13 @@ impl<'r> Loader<'r> {
             timings,
         }
     }
+}
+
+/// What the merge stage reports.
+#[derive(Debug, Default)]
+struct MergeOut {
+    errors: Vec<MetaError>,
+    warnings: Vec<MetaError>,
 }
 
 // ---- merge -----------------------------------------------------------------
@@ -270,7 +337,7 @@ fn find_merge_match(tree: &Tree, target: NodeId, sc: NodeId) -> Option<NodeId> {
 /// Fold every root into the first (ADR-0055's two-pass fold): plain declarations
 /// merge by type and name, last writer wins; `overlay: true` nodes are applied once
 /// every plain declaration is present.
-fn merge_roots(tree: &mut Tree, roots: &[NodeId], errors: &mut Vec<MetaError>) -> NodeId {
+fn merge_roots(tree: &mut Tree, roots: &[NodeId], out: &mut MergeOut) -> NodeId {
     let target = roots[0];
     let contributions: Vec<Vec<NodeId>> = roots
         .iter()
@@ -301,22 +368,24 @@ fn merge_roots(tree: &mut Tree, roots: &[NodeId], errors: &mut Vec<MetaError>) -
             if tree.node(sc).name.is_empty() {
                 // Unnamed nodes are always distinct.
                 tree.add_child(target, sc);
-                defer_nested_overlays(tree, sc, errors, Some(&mut pending));
+                defer_nested_overlays(tree, sc, out, Some(&mut pending));
                 continue;
             }
             let key = (tree.node(sc).type_name.clone(), root_child_key(tree, sc));
             match index.get(&key) {
-                Some(&tc) => merge_into(tree, tc, sc, errors, Some(&mut pending)),
+                Some(&tc) => {
+                    merge_into(tree, tc, sc, out, Some(&mut pending));
+                }
                 None => {
                     index.insert(key, sc);
                     tree.add_child(target, sc);
-                    defer_nested_overlays(tree, sc, errors, Some(&mut pending));
+                    defer_nested_overlays(tree, sc, out, Some(&mut pending));
                 }
             }
         }
     }
     for (parent, node) in pending {
-        apply_overlay(tree, parent, node, errors);
+        apply_overlay(tree, parent, node, out);
     }
     target
 }
@@ -325,21 +394,24 @@ fn merge_child_into(
     tree: &mut Tree,
     target: NodeId,
     sc: NodeId,
-    errors: &mut Vec<MetaError>,
+    out: &mut MergeOut,
     pending: Option<&mut Vec<(NodeId, NodeId)>>,
-) {
+) -> bool {
     if tree.node(sc).is_overlay {
-        match pending {
-            Some(p) => p.push((target, sc)),
-            None => apply_overlay(tree, target, sc, errors),
-        }
-        return;
+        return match pending {
+            Some(p) => {
+                p.push((target, sc));
+                false
+            }
+            None => apply_overlay(tree, target, sc, out),
+        };
     }
     match find_merge_match(tree, target, sc) {
-        Some(tc) => merge_into(tree, tc, sc, errors, pending),
+        Some(tc) => merge_into(tree, tc, sc, out, pending),
         None => {
             tree.add_child(target, sc);
-            defer_nested_overlays(tree, sc, errors, pending);
+            defer_nested_overlays(tree, sc, out, pending);
+            true
         }
     }
 }
@@ -347,7 +419,7 @@ fn merge_child_into(
 fn defer_nested_overlays(
     tree: &mut Tree,
     node: NodeId,
-    errors: &mut Vec<MetaError>,
+    out: &mut MergeOut,
     mut pending: Option<&mut Vec<(NodeId, NodeId)>>,
 ) {
     // ADR-0039: own — the merge works on the authored layer, before super resolution.
@@ -368,10 +440,12 @@ fn defer_nested_overlays(
         if tree.node(c).is_overlay {
             match pending.as_deref_mut() {
                 Some(p) => p.push((node, c)),
-                None => apply_overlay(tree, node, c, errors),
+                None => {
+                    apply_overlay(tree, node, c, out);
+                }
             }
         } else {
-            defer_nested_overlays(tree, c, errors, pending.as_deref_mut());
+            defer_nested_overlays(tree, c, out, pending.as_deref_mut());
         }
     }
 }
@@ -385,9 +459,9 @@ fn subtree_has_overlay(tree: &Tree, id: NodeId) -> bool {
             .any(|&c| subtree_has_overlay(tree, c))
 }
 
-fn apply_overlay(tree: &mut Tree, parent: NodeId, node: NodeId, errors: &mut Vec<MetaError>) {
+fn apply_overlay(tree: &mut Tree, parent: NodeId, node: NodeId, out: &mut MergeOut) -> bool {
     match find_merge_match(tree, parent, node) {
-        Some(tc) => merge_into(tree, tc, node, errors, None),
+        Some(tc) => merge_into(tree, tc, node, out, None),
         None => {
             let n = tree.node(node);
             let p = tree.node(parent);
@@ -397,11 +471,12 @@ fn apply_overlay(tree: &mut Tree, parent: NodeId, node: NodeId, errors: &mut Vec
                 format!("{}.{}", p.name, n.name)
             };
             let target = format!("{}:{}", n.type_name, n.name);
-            errors.push(MetaError::at(
+            out.errors.push(MetaError::at(
                 ERR_OVERLAY_NO_TARGET,
                 format!("overlay node '{}' has no merge target", n.fqn()),
                 resolved_source(&n.source, referrer, target),
             ));
+            false
         }
     }
 }
@@ -410,25 +485,143 @@ fn merge_into(
     tree: &mut Tree,
     target: NodeId,
     src: NodeId,
-    errors: &mut Vec<MetaError>,
+    out: &mut MergeOut,
     mut pending: Option<&mut Vec<(NodeId, NodeId)>>,
-) {
+) -> bool {
+    // The root is a synthetic accumulator, not an authored node: no merge
+    // attribution applies to it (this fold only reaches named nodes anyway).
+    let tracked = !tree.node(target).name.is_empty();
+    // Change is tracked as the merge goes (an attr value that differs once normalized as
+    // the serializer does, or a child added or changed). The one shape the serializer
+    // rewrites across attr names, a `source.rdb`, is still compared canonically.
+    let canonical_check = tracked
+        && tree.node(target).type_name == TYPE_SOURCE
+        && tree.node(target).sub_type == SOURCE_SUBTYPE_RDB;
+    let pre_shape = canonical_check.then(|| to_canonical_value(tree, target, false));
+    let mut changed = false;
+    let contributor = tree.node(src).source.files().first().cloned();
+    if tracked && !tree.node(src).is_overlay {
+        detect_attr_conflicts(tree, target, src, contributor.as_deref(), out);
+    }
     let attrs: Vec<_> = tree
         // ADR-0039: own — the merge works on the authored layer, before super resolution.
         .own_attrs(src)
         .map(|(k, a)| (k.clone(), a.clone()))
         .collect();
     for (k, a) in attrs {
+        changed |= tree
+            .own_attr(target, &k)
+            .is_none_or(|old| attr_value_differs(&old.value, &a.value));
         tree.set_attr(target, &k, a);
     }
     // ADR-0039: own — the merge works on the authored layer, before super resolution.
     for sc in tree.own_children(src).to_vec() {
-        merge_child_into(tree, target, sc, errors, pending.as_deref_mut());
+        changed |= merge_child_into(tree, target, sc, out, pending.as_deref_mut());
+    }
+    if let Some(pre) = pre_shape {
+        changed = to_canonical_value(tree, target, false) != pre;
+    }
+    let (true, Some(contributor)) = (tracked, contributor) else {
+        return changed;
+    };
+    // A real overlay upgrades the node's source to `merged`; an identical
+    // re-declaration from another file only warns (FR5c, ADR-0009).
+    let existing = tree.node(target).source.clone();
+    let mut files: Vec<String> = existing.files().to_vec();
+    if !changed && (files.is_empty() || files.contains(&contributor)) {
+        return changed;
+    }
+    if !files.contains(&contributor) {
+        files.push(contributor);
+    }
+    files.sort();
+    let merged = ErrorSource::Merged {
+        files,
+        json_path: existing.json_path().unwrap_or("$").to_string(),
+    };
+    if changed {
+        tree.node_mut(target).source = merged;
+    } else {
+        out.warnings.push(MetaError::at(
+            WARN_DUPLICATE_DECLARATION,
+            format!(
+                "duplicate declaration of {} with no semantic change",
+                tree.node(target).fqn()
+            ),
+            merged,
+        ));
+    }
+    changed
+}
+
+/// Whether two attr values serialize differently (the serializer normalizes numbers).
+fn attr_value_differs(old: &Value, new: &Value) -> bool {
+    old != new && normalize(old.clone()) != normalize(new.clone())
+}
+
+/// Attrs whose empty string is a value rather than "not set" (FR5c).
+const EMPTY_STRING_IS_A_VALUE: &[&str] = &["flattenedColumnPrefix"];
+
+fn is_empty_attr_value(v: &Value, name: &str) -> bool {
+    match v {
+        Value::Null => true,
+        Value::String(s) => s.is_empty() && !EMPTY_STRING_IS_A_VALUE.contains(&name),
+        Value::Array(a) => a.is_empty(),
+        _ => false,
+    }
+}
+
+/// FR5c: an attr `src` sets to a different non-empty value than `target` already
+/// declares is a conflict; the merge itself still proceeds last-writer-wins.
+fn detect_attr_conflicts(
+    tree: &Tree,
+    target: NodeId,
+    src: NodeId,
+    contributor: Option<&str>,
+    out: &mut MergeOut,
+) {
+    let existing = &tree.node(target).source;
+    let mut files: Vec<String> = existing.files().to_vec();
+    // ADR-0039: own — merge machinery on the authored declaration layer.
+    for (name, new) in tree.own_attrs(src) {
+        let Some(old) = tree.own_attr(target, name) else {
+            continue;
+        };
+        if is_empty_attr_value(&new.value, name)
+            || is_empty_attr_value(&old.value, name)
+            || new.value == old.value
+        {
+            continue;
+        }
+        if let Some(c) = contributor
+            && !files.iter().any(|f| f == c)
+        {
+            files.push(c.to_string());
+        }
+        files.sort();
+        let base = tree.node(src).source.json_path().unwrap_or("$");
+        out.errors.push(MetaError::at(
+            ERR_MERGE_CONFLICT,
+            format!(
+                "attr '@{name}' conflicts: existing value {} differs from new value {} on {}",
+                old.value,
+                new.value,
+                tree.node(target).fqn()
+            ),
+            ErrorSource::Merged {
+                files: files.clone(),
+                json_path: format!("{base}.@{name}"),
+            },
+        ));
     }
 }
 
 /// A `resolved` envelope at `source`'s location.
-fn resolved_source(source: &ErrorSource, referrer: String, target: String) -> ErrorSource {
+pub(crate) fn resolved_source(
+    source: &ErrorSource,
+    referrer: String,
+    target: String,
+) -> ErrorSource {
     ErrorSource::Resolved {
         files: source.files().to_vec(),
         json_path: source.json_path().unwrap_or("$").to_string(),
@@ -718,24 +911,23 @@ fn resolve_supers(tree: &mut Tree, root: NodeId, top: &TopLevel, errors: &mut Ve
 /// once per pass so each reference is one hash lookup.
 struct TopLevel {
     named: HashMap<String, NodeId>,
-    objects: HashMap<String, NodeId>,
+    objects: ObjectIndex,
 }
 
 impl TopLevel {
     fn build(tree: &Tree, root: NodeId) -> Self {
         let mut named = HashMap::new();
-        let mut objects = HashMap::new();
         // ADR-0039: own — the root's top-level nodes are its declared children; a root extends nothing.
         for &c in tree.own_children(root) {
             let key = tree.resolution_key(c);
-            if tree.node(c).type_name == TYPE_OBJECT {
-                objects.entry(key.clone()).or_insert(c);
-            }
             if !tree.node(c).name.is_empty() {
                 named.entry(key).or_insert(c);
             }
         }
-        Self { named, objects }
+        Self {
+            named,
+            objects: ObjectIndex::build(tree, root),
+        }
     }
 
     fn bind(map: &HashMap<String, NodeId>, owner: &str, pkg: &str) -> Option<NodeId> {
@@ -762,7 +954,8 @@ fn resolve_references(tree: &mut Tree, root: NodeId, top: &TopLevel) {
                 .map(|(k, _)| k.clone())
                 .collect();
             for name in names {
-                resolve_attr(tree, top, id, &name, &decl_pkg);
+                let ref_pkg = referrer_package(tree, top, id, &name, &decl_pkg);
+                resolve_attr(tree, top, id, &name, &ref_pkg, &decl_pkg);
             }
         }
         // ADR-0039: own — a whole-tree walk visits each physical node once; inherited children are visited where they are declared.
@@ -770,19 +963,86 @@ fn resolve_references(tree: &mut Tree, root: NodeId, top: &TopLevel) {
     }
 }
 
-fn resolve_one(tree: &Tree, top: &TopLevel, value: &str, pkg: &str) -> Option<String> {
+fn resolve_one(
+    tree: &Tree,
+    top: &TopLevel,
+    value: &str,
+    pkg: &str,
+    decl_pkg: &str,
+) -> Option<String> {
     let (owner, tail) = split_child_tail(value);
-    let target = TopLevel::bind(&top.objects, owner, pkg)?;
-    Some(spell_ref(tree, target, pkg, tail))
+    let target = top.objects.resolve(owner, pkg)?;
+    // Root-level targets are spelled `::Name` unless both packages are root-level.
+    let spell_from = if pkg.is_empty() { decl_pkg } else { pkg };
+    Some(spell_ref(tree, target, spell_from, tail))
 }
 
-fn resolve_attr(tree: &mut Tree, top: &TopLevel, id: NodeId, name: &str, pkg: &str) {
+/// ADR-0059 R3: the package an own reference attribute of `id` resolves in. A
+/// dimension's `@of` resolves in the package of the entity its `@via` walk reaches;
+/// a report's `@spine` in the package of its `@from`; everything else in the package
+/// of the top-level node that declares it.
+fn referrer_package(tree: &Tree, top: &TopLevel, id: NodeId, attr: &str, decl_pkg: &str) -> String {
+    let node = tree.node(id);
+    if node.type_name == "dimension" && attr == "of" {
+        // ADR-0039: resolving: the @via that governs this @of may be inherited.
+        if let (Some(Value::String(via)), Some(declaring)) = (tree.attr(id, "via"), node.parent)
+            && !via.is_empty()
+        {
+            return match dimension_via_terminal(tree, top, declaring, via) {
+                Some(t) => tree.effective_package(t),
+                None => decl_pkg.to_string(),
+            };
+        }
+    }
+    if node.type_name == TYPE_OBJECT && node.sub_type == "report" && attr == "spine" {
+        // ADR-0039: resolving: @from may be inherited.
+        if let Some(Value::String(from)) = tree.attr(id, "from")
+            && !from.is_empty()
+            && let Some(from_node) = top.objects.resolve(from, decl_pkg)
+        {
+            return tree.effective_package(from_node);
+        }
+    }
+    decl_pkg.to_string()
+}
+
+/// The entity a dimension's `@via` (`Owner.hop[.hop...]`) reaches, walked from its
+/// declaring entity over to-one hops (`relationship` or `identity.reference`), or `None`
+/// when the walk fails (the reporting pass reports why).
+fn dimension_via_terminal(
+    tree: &Tree,
+    top: &TopLevel,
+    declaring: NodeId,
+    via: &str,
+) -> Option<NodeId> {
+    let mut parts = via.split(CHILD_REF_SEP);
+    parts.next().filter(|o| !o.is_empty())?;
+    let mut current = declaring;
+    let mut any = false;
+    for hop_name in parts {
+        any = true;
+        let (hop, is_ref) = find_hop(tree, current, hop_name)?;
+        current = top.objects.hop_target(tree, hop, is_ref)?;
+    }
+    any.then_some(current)
+}
+
+fn resolve_attr(
+    tree: &mut Tree,
+    top: &TopLevel,
+    id: NodeId,
+    name: &str,
+    pkg: &str,
+    decl_pkg: &str,
+) {
     // ADR-0039: own — reference resolution rewrites the value this node declares, not an inherited one.
     let Some(attr) = tree.own_attr(id, name) else {
         return;
     };
     let new_value = match &attr.value {
-        Value::String(s) if !s.is_empty() => resolve_one(tree, top, s, pkg).map(Value::String),
+        Value::String(s) if !s.is_empty() => {
+            resolve_one(tree, top, s, pkg, decl_pkg).map(Value::String)
+        }
         Value::Array(items) if items.iter().all(Value::is_string) => {
             let mut any = false;
             let out: Vec<Value> = items
@@ -790,7 +1050,7 @@ fn resolve_attr(tree: &mut Tree, top: &TopLevel, id: NodeId, name: &str, pkg: &s
                 .map(|v| {
                     let s = v.as_str().unwrap_or_default();
                     match (!s.is_empty())
-                        .then(|| resolve_one(tree, top, s, pkg))
+                        .then(|| resolve_one(tree, top, s, pkg, decl_pkg))
                         .flatten()
                     {
                         Some(c) => {

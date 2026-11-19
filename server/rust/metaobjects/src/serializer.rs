@@ -212,7 +212,7 @@ fn rewrite_physical_name(attrs: &mut BTreeMap<String, Value>) {
 
 /// Whole-number doubles print as integers; a map of scalars sorts its keys (the
 /// `properties` shape); any other map keeps its order (a filter's clauses do).
-fn normalize(v: Value) -> Value {
+pub(crate) fn normalize(v: Value) -> Value {
     match v {
         Value::Number(n) => {
             if n.is_f64()

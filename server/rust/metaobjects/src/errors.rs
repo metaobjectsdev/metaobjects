@@ -29,6 +29,11 @@ pub const ERR_PROVIDER_DUPLICATE_ID: &str = "ERR_PROVIDER_DUPLICATE_ID";
 pub const ERR_PROVIDER_MISSING_DEPENDENCY: &str = "ERR_PROVIDER_MISSING_DEPENDENCY";
 pub const ERR_PROVIDER_DEPENDENCY_CYCLE: &str = "ERR_PROVIDER_DEPENDENCY_CYCLE";
 pub const ERR_OVERLAY_NO_TARGET: &str = "ERR_OVERLAY_NO_TARGET";
+pub const ERR_MERGE_CONFLICT: &str = "ERR_MERGE_CONFLICT";
+pub const WARN_DUPLICATE_DECLARATION: &str = "WARN_DUPLICATE_DECLARATION";
+/// The code of a warning that carries only a message: the string-list channel every
+/// port's loader wraps at its boundary.
+pub const WARN_LEGACY: &str = "WARN_LEGACY";
 
 pub const ERR_MALFORMED_YAML: &str = "ERR_MALFORMED_YAML";
 pub const ERR_YAML_COERCION: &str = "ERR_YAML_COERCION";
