@@ -1,0 +1,18 @@
+{ "metadata.root": { "package": "acme::views", "children": [
+  { "object.entity": { "name": "Customer", "children": [
+    { "source.rdb": { "@table": "customers" } },
+    { "field.long": { "name": "id" } },
+    { "field.string": { "name": "zip" } },
+    { "identity.primary": { "name": "id", "@fields": "id" } }
+  ] } },
+  { "object.projection": { "name": "A", "abstract": true, "children": [
+    { "field.long": { "name": "personId", "extends": "Customer.id" } },
+    { "field.string": { "name": "label", "extends": "Customer.zip" } }
+  ] } },
+  { "object.projection": { "name": "B", "abstract": true, "children": [
+    { "field.long": { "name": "personId", "extends": "Customer.id" } }
+  ] } },
+  { "object.projection": { "name": "U", "extends": "A", "@union": ["B"], "children": [
+    { "source.rdb": { "@kind": "view", "@view": "u" } }
+  ] } }
+] } }

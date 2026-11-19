@@ -42,7 +42,7 @@ import {
   TYPE_MEASURE,
   derivedExprFields,
 } from "@metaobjectsdev/metadata";
-import { intValueMapOf } from "../enum-meta.js";
+import { enumStorageMapOf } from "../enum-meta.js";
 import { sourceColumnNameFor, type ExtractContext } from "../projection/extract-view-spec.js";
 import { ratioOperand, resolveAggregate } from "../projection/report-resolve.js";
 import { cond, declared, mysqlTupleCount, resolveReportFilter, type SqlRenderer } from "../projection/report-sql.js";
@@ -147,11 +147,12 @@ export function dimensionColumn(
   const d = mc.dialect;
   const col = cubeColumn(sourceColumnNameFor(field, mc.extract), d, renderer);
   if (field.subType === FIELD_SUBTYPE_ENUM) {
-    const intMap = intValueMapOf(field);
+    const intMap = enumStorageMapOf(field);
     if (intMap !== undefined) {
-      // An int-backed enum stores the integer; the wire carries the member symbol, as every
-      // port's read does.
-      const arms = Object.entries(intMap).map(([symbol, n]) => `WHEN ${String(n)} THEN ${renderer.literal(symbol, d)}`);
+      // An int-backed enum stores the integer (a @stringValueMap one its stored string, rc.21);
+      // the wire carries the member symbol, as every port's read does.
+      const arms = Object.entries(intMap).map(([symbol, n]) =>
+        `WHEN ${typeof n === "number" ? String(n) : renderer.literal(n, d)} THEN ${renderer.literal(symbol, d)}`);
       return { sql: `CASE ${col} ${arms.join(" ")} END`, type: "string" };
     }
   }

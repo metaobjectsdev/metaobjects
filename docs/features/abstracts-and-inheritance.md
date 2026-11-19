@@ -190,7 +190,7 @@ metadata:
           - field.long: { name: id }
           - field.enum:
               name: type
-              "@values": ["Bridge", "Copay", "PriorAuth"]
+              "@values": ["Bridge", "Coupon", "Permit"]
           - field.string: { name: reference, "@required": true }
           - identity.primary: { "@fields": id }
 
@@ -202,16 +202,16 @@ metadata:
           - field.int: { name: quantity, "@required": true }
 
     - object.entity:
-        name: CopayAuth
+        name: CouponAuth
         extends: Auth
-        "@discriminatorValue": Copay
+        "@discriminatorValue": Coupon
         children:
-          - field.decimal: { name: copayAmount, "@precision": 10, "@scale": 2 }
+          - field.decimal: { name: couponAmount, "@precision": 10, "@scale": 2 }
 
     - object.entity:
-        name: PriorAuthAuth
+        name: PermitAuth
         extends: Auth
-        "@discriminatorValue": PriorAuth
+        "@discriminatorValue": Permit
         children:
           - field.string: { name: approver }
 ```
@@ -219,7 +219,7 @@ metadata:
 ### Single-table persistence
 
 Every subtype persists to the base's one table (`auths`). Subtype-only columns
-(`quantity`, `copay_amount`, `approver`) are folded into that table **nullable** —
+(`quantity`, `coupon_amount`, `approver`) are folded into that table **nullable** —
 a row of any other subtype stores `NULL` there, **even when the field is
 `@required`** on its subtype (a required rule can't hold across the shared table, so
 it is dropped on the folded column; an enum `CHECK` still passes because `NULL IN
@@ -265,13 +265,13 @@ The generated polymorphic surface enforces a consistent subtype contract across
 every port:
 
 - **Per-subtype route segment** = the `@discriminatorValue` **lowercased**:
-  `/auths/bridge`, `/auths/copay`, `/auths/priorauth` (not the subtype entity
+  `/auths/bridge`, `/auths/coupon`, `/auths/permit` (not the subtype entity
   name). There is intentionally **no polymorphic `POST /auths`** — you can't create
   the abstract base.
 - **Create injects the discriminator** from the URL — `POST /auths/bridge` stamps
   `type = "Bridge"`; the request body omits it.
 - **Reads/updates/deletes are scoped to the subtype** — `GET|PATCH|DELETE
-  /auths/bridge/{id}` on a `Copay` row → **404** (a different-subtype row is
+  /auths/bridge/{id}` on a `Coupon` row → **404** (a different-subtype row is
   invisible to a subtype-scoped operation).
 - **M:N traversal is served inside the hierarchy** — a relationship declared on
   the base mounts at the base path (`GET /auths/{id}/tags`: every row of the

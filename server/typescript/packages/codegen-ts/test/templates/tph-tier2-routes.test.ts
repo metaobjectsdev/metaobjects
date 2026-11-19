@@ -33,7 +33,7 @@ async function loadTph(): Promise<{ root: MetaRoot; base: MetaObject; bridge: Me
                 "@discriminator": "type",
                 children: [
                   { "source.rdb": { "@table": "auths" } },
-                  { "field.enum": { name: "type", "@values": ["Bridge", "Copay"] } },
+                  { "field.enum": { name: "type", "@values": ["Bridge", "Coupon"] } },
                   { "field.long": { name: "id" } },
                   { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
                 ],
@@ -49,11 +49,11 @@ async function loadTph(): Promise<{ root: MetaRoot; base: MetaObject; bridge: Me
             },
             {
               "object.entity": {
-                name: "CopayAuth",
+                name: "CouponAuth",
                 extends: "Auth",
-                "@discriminatorValue": "Copay",
+                "@discriminatorValue": "Coupon",
                 children: [
-                  { "field.decimal": { name: "copayAmount", "@precision": 10, "@scale": 2 } },
+                  { "field.decimal": { name: "couponAmount", "@precision": 10, "@scale": 2 } },
                 ],
               },
             },
@@ -94,7 +94,7 @@ describe("FR-017 Tier 2 — TPH routes file", () => {
     const out = renderRoutesFile(base, ctxFor(root));
     // Segment is the lowercased discriminator value.
     expect(out).toContain('Auth.$path + "/bridge"');
-    expect(out).toContain('Auth.$path + "/copay"');
+    expect(out).toContain('Auth.$path + "/coupon"');
     // Scoped via the runtime discriminator option.
     expect(out).toContain('discriminator: { column: "type", value: "Bridge" }');
     // Create body OMITS the discriminator.
@@ -104,10 +104,10 @@ describe("FR-017 Tier 2 — TPH routes file", () => {
   test("the polymorphic mount sends a decimal only a subtype declares as its canonical string", async () => {
     const { root, base } = await loadTph();
     const out = renderRoutesFile(base, ctxFor(root));
-    // The base declares no decimal, but its list/get serve CopayAuth rows, so the polymorphic
-    // mount must rewrite `copayAmount` too (ADR-0019 Amendment 1; Postgres returns "12.50").
+    // The base declares no decimal, but its list/get serve CouponAuth rows, so the polymorphic
+    // mount must rewrite `couponAmount` too (ADR-0019 Amendment 1; Postgres returns "12.50").
     const polymorphic = out.slice(out.indexOf("path: Auth.$path,"), out.indexOf('Auth.$path + "/'));
-    expect(polymorphic).toContain('decimalColumns: ["copayAmount"]');
+    expect(polymorphic).toContain('decimalColumns: ["couponAmount"]');
   });
 
   test("routesFile generator skips TPH subtypes", async () => {

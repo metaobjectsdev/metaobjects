@@ -169,13 +169,13 @@ internal class UnknownFieldsHostMapperIndependenceTest {
               ] } },
               { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
                 { "source.rdb": { "@table": "auths" } },
-                { "field.enum": { "name": "type", "@values": ["Bridge", "Copay"] } },
+                { "field.enum": { "name": "type", "@values": ["Bridge", "Coupon"] } },
                 { "field.long": { "name": "id" } },
                 { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
               ] } },
               { "object.entity": { "name": "BridgeAuth", "extends": "Auth", "@discriminatorValue": "Bridge",
                 "children": [ { "field.int": { "name": "quantity" } } ] } },
-              { "object.entity": { "name": "CopayAuth", "extends": "Auth", "@discriminatorValue": "Copay",
+              { "object.entity": { "name": "CouponAuth", "extends": "Auth", "@discriminatorValue": "Coupon",
                 "children": [ { "field.string": { "name": "approver" } } ] } }
             ] } }
         """.trimIndent()

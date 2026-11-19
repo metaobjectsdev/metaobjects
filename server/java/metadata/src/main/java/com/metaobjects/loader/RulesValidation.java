@@ -41,7 +41,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * ADR-0063 — cross-node rules for operations (slice A) and lifecycles (slice B). Every port
+ * ADR-0066 — cross-node rules for operations (slice A) and lifecycles (slice B). Every port
  * implements the same rules WITH THE SAME MESSAGE TEXT; the TypeScript
  * {@code rules-validation.ts} is the reference and {@code fixtures/conformance/error-rules-*}
  * (with the positive {@code rules-*} cases) are the contract.
@@ -401,7 +401,7 @@ final class RulesValidation {
         }
     }
 
-    /** ADR-0063 — the rules pass. Runs after reference-bearing validation. */
+    /** ADR-0066 — the rules pass. Runs after reference-bearing validation. */
     static List<MetaDataException> validate(MetaRoot root) {
         Sink sink = new Sink();
         for (MetaData field : declaredFields(root)) checkDeclaredTransitions(field, sink);
@@ -452,7 +452,7 @@ final class RulesValidation {
 
     /**
      * Whether two operations of one package in different APIs are one operation exposed twice (a
-     * versioned API beside its successor, ADR-0064 section 2): same name and subtype and the same
+     * versioned API beside its successor, ADR-0067 section 2): same name and subtype and the same
      * contract. Bindings are per API and are not compared.
      */
     private static boolean sameOperation(MetaData a, MetaData b) {
@@ -482,7 +482,7 @@ final class RulesValidation {
                 if (!ApiConstants.TYPE_BINDING.equals(b.getType()) || !ApiConstants.BINDING_SUBTYPE_REST.equals(b.getSubType())) continue;
                 String path = Lifecycles.stringValue(b, ApiConstants.ATTR_PATH);
                 if (path == null) continue;
-                // The effective method: the declared one, else the derived (ADR-0063 section 1).
+                // The effective method: the declared one, else the derived (ADR-0066 section 1).
                 String declared = Lifecycles.stringValue(b, ApiConstants.ATTR_METHOD);
                 String method = declared != null ? declared
                     : ApiConstants.OPERATION_SUBTYPE_COMMAND.equals(op.getSubType()) ? "POST" : "GET";

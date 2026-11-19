@@ -1,0 +1,24 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Article",
+          "children": [
+            { "field.long": { "name": "id" } },
+            {
+              "field.enum": {
+                "name": "tags",
+                "isArray": true,
+                "@values": ["Hot", "Cold"],
+                "@stringValueMap": { "Hot": "hot", "Cold": "cold" }
+              }
+            },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

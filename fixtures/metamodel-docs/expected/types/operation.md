@@ -30,7 +30,7 @@ Registry anchor for the attributes every operation shares (ADR-0054): not author
 
 ### operation.command
 
-A named operation that changes state. Takes an `object.value` (ADR-0030). Its body is hand-written; the generated shell around it loads the row, checks the permission and the current state, runs the body, and makes the guarded update in one transaction (ADR-0063). Experimental since 1.3.0: the shape may change in a MINOR, including removals and renames (docs/compatibility-policy.md).
+A named operation that changes state. Takes an `object.value` (ADR-0030). Its body is hand-written; the generated shell around it loads the row, checks the permission and the current state, runs the body, and makes the guarded update in one transaction (ADR-0066). Experimental since 1.3.0: the shape may change in a MINOR, including removals and renames (docs/compatibility-policy.md).
 
 **When to use:** A business action with its own name, input and rules: approve, cancel, transfer. A command that moves a lifecycle names the transitions it may make in @transitions; its body decides which one applies.
 

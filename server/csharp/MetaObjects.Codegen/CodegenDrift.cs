@@ -81,75 +81,79 @@ public static class CodegenDrift
 
         // A directory is created only when gen writes a file into it, and git keeps no empty
         // one, so a missing directory, --out included, is an empty committed tree.
-        var tempRoot = Path.Combine(Path.GetTempPath(), "meta-verify-codegen-" + Guid.NewGuid().ToString("N"));
+        //
+        // Regenerate the SAME suite IN MEMORY, each directory under a virtual root of its own that is
+        // never created: nothing is written to disk to render, so the gate costs no drive wear and
+        // leaves no temp tree behind. The rendered bytes are what gen would produce right now.
+        var virtualRoot = Path.Combine(Path.GetTempPath(), "meta-verify-codegen-" + Guid.NewGuid().ToString("N"));
+        var temps = roots.Select((_, i) => Path.Combine(virtualRoot, i.ToString())).ToList();
+        // No manifest and no sweep for the throwaway regen: it records nothing and deletes nothing.
+        // The context's assembly name is pinned before --out moves: unset, it is read from the
+        // .csproj in or above --out, and the virtual root has none, so the render would leave the
+        // DesignTimeServicesReference line gen wrote out and report the file as drift.
+        var tempConfig = config with
+        {
+            OutDir = temps[0], ContextAssemblyName = config.ContextAssemblyName,
+            GenStateDir = null, ProjectRoot = null, InputRoot = config.InputRoot ?? config.ProjectRoot, SweepOrphans = false,
+        };
+        var rendered = new Dictionary<string, string>(StringComparer.Ordinal);
+        CodegenRunner.RunResult regen;
         try
         {
-            // Regenerate the SAME suite into the temp tree, each directory into a temp
-            // directory of its own. A fresh temp dir means every file is written (no
-            // @generated-marker skip), so the temp tree is the canonical "what gen would
-            // produce right now".
-            var temps = roots.Select((_, i) => Path.Combine(tempRoot, i.ToString())).ToList();
-            // No manifest and no sweep for the throwaway regen: it records nothing and deletes
-            // nothing, and a fresh temp tree writes every file either way.
-            var tempConfig = config with { OutDir = temps[0], GenStateDir = null, ProjectRoot = null, InputRoot = config.InputRoot ?? config.ProjectRoot, SweepOrphans = false };
-            CodegenRunner.RunResult regen;
-            try
-            {
-                regen = CodegenRunner.Run(tempConfig, root, generators,
-                    g => temps[roots.FindIndex(r => r.Committed == Path.GetFullPath(realRootFor(g)))]);
-            }
-            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or MetaModelException)
-            {
-                return new Result { Clean = false, Error = $"verify --codegen: {ex.Message}" };
-            }
-            var overwriteDirs = CodegenRunner.OverwriteDirs(generators, realRootFor, config.OutDir);
-
-            var drifted = new SortedSet<string>(StringComparer.Ordinal);
-            var lines = new List<string>();
-            var editedOrphans = new SortedSet<string>(StringComparer.Ordinal);
-            // The manifest gen wrote, when the caller names the project. With write records, an
-            // extra file is convicted only when gen recorded writing it, the jurisdiction gen's
-            // orphan sweep deletes in; with none, a stale file cannot be told from a stranger's,
-            // and every extra file is reported as before.
-            var manifest = config.GenStateDir is { } gs && config.ProjectRoot is not null
-                ? HashManifest.Load(gs) : null;
-            var orphans = manifest is { Count: > 0 } ? new OrphanContext(manifest, config.ProjectRoot!) : null;
-            var handEdits = new HandEditsContext(regen.OverwritePaths, overwriteDirs);
-            for (var i = 0; i < roots.Count; i++)
-            {
-                // A directory nested in this one is another entry's, and is compared as its own.
-                var nested = roots.Where((r, j) => j != i && IsUnder(r.Committed, roots[i].Committed))
-                    .Select(r => r.Committed).ToList();
-                Diff(roots[i].Committed, nested, temps[i], roots[i].Label, !narrowed, orphans, handEdits,
-                    drifted, lines, editedOrphans);
-            }
-
-            return new Result
-            {
-                Clean = drifted.Count == 0,
-                DriftedFiles = drifted.ToList(),
-                Lines = lines,
-                EditedOrphans = editedOrphans.ToList(),
-            };
+            regen = CodegenRunner.Run(tempConfig, root, generators,
+                g => temps[roots.FindIndex(r => r.Committed == Path.GetFullPath(realRootFor(g)))], rendered);
         }
-        finally
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or MetaModelException)
         {
-            try { if (Directory.Exists(tempRoot)) Directory.Delete(tempRoot, recursive: true); }
-            catch { /* best effort */ }
+            return new Result { Clean = false, Error = $"verify --codegen: {ex.Message}" };
         }
+        var overwriteDirs = CodegenRunner.OverwriteDirs(generators, realRootFor, config.OutDir);
+
+        var drifted = new SortedSet<string>(StringComparer.Ordinal);
+        var lines = new List<string>();
+        var editedOrphans = new SortedSet<string>(StringComparer.Ordinal);
+        // The manifest gen wrote, when the caller names the project. With write records, an
+        // extra file is convicted only when gen recorded writing it, the jurisdiction gen's
+        // orphan sweep deletes in; with none, a stale file cannot be told from a stranger's,
+        // and every extra file is reported as before.
+        var manifest = config.GenStateDir is { } gs && config.ProjectRoot is not null
+            ? HashManifest.Load(gs) : null;
+        var orphans = manifest is { Count: > 0 } ? new OrphanContext(manifest, config.ProjectRoot!) : null;
+        var handEdits = new HandEditsContext(regen.OverwritePaths, overwriteDirs);
+        for (var i = 0; i < roots.Count; i++)
+        {
+            // A directory nested in this one is another entry's, and is compared as its own.
+            var nested = roots.Where((r, j) => j != i && IsUnder(r.Committed, roots[i].Committed))
+                .Select(r => r.Committed).ToList();
+            var fresh = rendered
+                .Where(kv => IsUnder(kv.Key, temps[i]))
+                .ToDictionary(kv => Path.GetRelativePath(temps[i], kv.Key).Replace(Path.DirectorySeparatorChar, '/'),
+                    kv => kv.Value, StringComparer.Ordinal);
+            Diff(roots[i].Committed, nested, temps[i], fresh, roots[i].Label, !narrowed, orphans, handEdits,
+                drifted, lines, editedOrphans);
+        }
+
+        return new Result
+        {
+            Clean = drifted.Count == 0,
+            DriftedFiles = drifted.ToList(),
+            Lines = lines,
+            EditedOrphans = editedOrphans.ToList(),
+        };
     }
 
     /// <summary>Compare one committed directory, less the <paramref name="nested"/> directories, with its
     /// fresh regen, adding each difference. A committed file the regen does not emit is reported only when
     /// <paramref name="reportExtra"/>.</summary>
     private static void Diff(
-        string committed, IReadOnlyList<string> nested, string fresh, string label, bool reportExtra,
+        string committed, IReadOnlyList<string> nested, string fresh, IReadOnlyDictionary<string, string> freshContent,
+        string label, bool reportExtra,
         OrphanContext? orphans, HandEditsContext handEdits,
         SortedSet<string> drifted, List<string> lines, SortedSet<string> editedOrphans)
     {
         var committedFiles = ListFiles(committed);
         committedFiles.RemoveWhere(rel => nested.Any(n => IsUnder(Path.Combine(committed, rel), n)));
-        var freshFiles = ListFiles(fresh);
+        var freshFiles = freshContent.Keys.ToHashSet(StringComparer.Ordinal);
         foreach (var rel in committedFiles.Union(freshFiles).OrderBy(s => s, StringComparer.Ordinal))
         {
             var shown = label + rel;
@@ -197,7 +201,7 @@ public static class CodegenDrift
             else
             {
                 var a = File.ReadAllText(Path.Combine(committed, rel));
-                var b = File.ReadAllText(Path.Combine(fresh, rel));
+                var b = freshContent[rel];
                 if (!string.Equals(a, b, StringComparison.Ordinal))
                 {
                     drifted.Add(shown);

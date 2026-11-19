@@ -1,4 +1,4 @@
-// Concrete node class for transition.* nodes (ADR-0063). Mirrors
+// Concrete node class for transition.* nodes (ADR-0066). Mirrors
 // server/typescript/packages/metadata/src/core/transition/meta-transition.ts.
 
 namespace MetaObjects.Meta;

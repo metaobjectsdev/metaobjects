@@ -32,6 +32,7 @@
 // same functionality.
 import {
   crossEntitySpecifier,
+  DEFAULT_OUTPUT_LAYOUT,
   entityOutputPath,
   namesArtifactSuperOf,
   resolveObjectNames,
@@ -66,7 +67,7 @@ export function namesFile(opts?: NamesFileOpts): Generator {
     // routesFileHono already uses via emitsHonoRoutes/includeHonoRoutes.
     emitsNames: true,
     generate: (ctx: GenContext): EmittedFile[] => {
-      const layout = ctx.config.outputLayout ?? "flat";
+      const layout = ctx.config.outputLayout ?? DEFAULT_OUTPUT_LAYOUT;
       const extStyle = ctx.config.extStyle ?? "js";
       // The strategy lives on the RENDER CONTEXT, not on ResolvedGenConfig — `ctx.config`
       // carries outDir/extStyle/dbImport/dialect and nothing about naming.
@@ -97,7 +98,8 @@ export function namesFile(opts?: NamesFileOpts): Generator {
       // abstract base emits nothing here, and seeding it as already-emitted is what would
       // make pass 2 skip the very object it exists to produce.
       const emitted = new Set<string>();
-      const participants = ctx.entities.filter(ctx.matches);
+      // The objects `meta gen <Entity>` named (all of them on a full run): one file each.
+      const participants = ctx.entities.filter((e) => ctx.matches(e) && (ctx.selected?.(e) ?? true));
       for (const entity of participants) {
         const content = renderNamesDecl(entity, {
           strategy, superSpecifier: superSpecifierFor(entity),

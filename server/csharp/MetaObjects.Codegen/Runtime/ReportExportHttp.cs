@@ -66,7 +66,7 @@ public static class ReportExportHttp
 
     /// <summary>
     /// The JSON export with credential columns (a derived field over a <c>view.password</c> field) OMITTED from
-    /// every row; <paramref name="envelope"/> says the body is <c>{ rows, total }</c> rather than the rows.
+    /// every row (<paramref name="omit"/> names their CLR properties); <paramref name="envelope"/> says the body is <c>{ rows, total }</c> rather than the rows.
     /// </summary>
     public static IResult Json<T>(HttpContext http, string segment, T body, string[] omit, bool envelope = false)
     {
@@ -78,16 +78,9 @@ public static class ReportExportHttp
             : null;
         if (omit.Length == 0) return Results.Json(body, options, "application/json");
         var node = System.Text.Json.JsonSerializer.SerializeToNode(body, body!.GetType(), options);
-        Strip(envelope && node is System.Text.Json.Nodes.JsonObject env ? env["rows"] : node, omit);
+        // The keys the serializer itself writes for the credential properties (and the envelope's rows key), never guessed from names.
+        SerializerKeys.StripBody(node, body, envelope, options ?? System.Text.Json.JsonSerializerOptions.Default, omit);
         return Results.Json(node, options, "application/json");
-    }
-
-    private static void Strip(System.Text.Json.Nodes.JsonNode? n, string[] omit)
-    {
-        if (n is System.Text.Json.Nodes.JsonArray a) { foreach (var e in a) Strip(e, omit); return; }
-        if (n is not System.Text.Json.Nodes.JsonObject o) return;
-        foreach (var key in o.Select(p => p.Key).Where(k => omit.Any(x => string.Equals(x, k, StringComparison.OrdinalIgnoreCase))).ToList())
-            o.Remove(key);
     }
 
     /// <summary>The CSV export: <paramref name="write"/> fills a UTF-8 (no BOM of the encoder's own) body.</summary>

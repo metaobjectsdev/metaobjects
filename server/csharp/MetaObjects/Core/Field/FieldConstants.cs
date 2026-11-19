@@ -242,6 +242,14 @@ public static class FieldConstants
     public const string FIELD_ATTR_INT_VALUE_MAP = "intValueMap";
 
     /// <summary>
+    /// field.enum (rc.21) — optional per-member stored strings (<c>{ member: string }</c>), the string
+    /// twin of <see cref="FIELD_ATTR_INT_VALUE_MAP"/>, for a string-stored enum whose database spelling
+    /// differs from its member symbols. Keys must exactly match @values; values are unique non-empty
+    /// strings. Refused with @intValueMap and on an array enum.
+    /// </summary>
+    public const string FIELD_ATTR_STRING_VALUE_MAP = "stringValueMap";
+
+    /// <summary>
     /// Regex pattern each enum member symbol must satisfy: must start with
     /// a letter or underscore, followed by letters, digits, or underscores.
     /// Keeps symbol == stored value with no name/value divergence.

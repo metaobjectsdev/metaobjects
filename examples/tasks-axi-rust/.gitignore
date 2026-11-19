@@ -1,0 +1,2 @@
+# Cargo build output (the harness and CI put it under $CARGO_TARGET_DIR, a RAM disk).
+/target/

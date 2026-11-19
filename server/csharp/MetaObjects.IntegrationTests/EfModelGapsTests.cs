@@ -169,6 +169,37 @@ public sealed class EfModelGapsTests
         Assert.Null(patient.ClrType.GetProperty("HasConsent"));
     }
 
+    // ── rc.21: @stringValueMap — a member's stored string ────────────────────────────────────
+
+    private const string StoredStringModel = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Article", "children": [
+        { "source.rdb": { "@table": "articles" } },
+        { "field.long": { "name": "id" } },
+        { "field.enum": { "name": "status", "@values": ["Draft", "Published"], "@default": "Draft", "@maxLength": 12,
+            "@stringValueMap": { "Draft": "draft", "Published": "published" } } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}}
+    ]}}
+    """;
+
+    [Fact]
+    public void A_string_value_map_enum_converts_member_and_stored_string_both_ways()
+    {
+        var gen = GeneratedEfModel.Compile(StoredStringModel, "Acme.Stored");
+        using var db = gen.ModelOnlyContext();
+        var status = EntityType(db, "Article").FindProperty("Status")!;
+        var converter = status.GetValueConverter()!;
+        var enumType = Nullable.GetUnderlyingType(status.ClrType) ?? status.ClrType;
+        var delivered = Enum.Parse(enumType, "Published");
+        Assert.Equal("published", converter.ConvertToProvider(delivered));
+        Assert.Equal(delivered, converter.ConvertFromProvider("published"));
+        Assert.Throws<InvalidOperationException>(() => converter.ConvertFromProvider("lost"));
+        Assert.Equal(12, status.GetMaxLength());
+        // The column default is the member; EF writes it through the converter, as 'draft'.
+        Assert.Equal("draft", converter.ConvertToProvider(status.GetDefaultValue()));
+    }
+
     // ── reference half: an identity.reference over a flattened value-object member ──────
 
     private const string FlattenedReferenceModel = """
@@ -204,6 +235,102 @@ public sealed class EfModelGapsTests
         var fk = Assert.Single(address.GetForeignKeys(), f => f.PrincipalEntityType.ClrType.Name == "Country");
         Assert.Equal(new[] { "CountryId" }, fk.Properties.Select(p => p.Name));
         Assert.Equal(DeleteBehavior.Restrict, fk.DeleteBehavior);
+    }
+
+    // rc.21 (U6): the owned type carries a navigation to the target (an adopter's hand-written
+    // member here, as a partial class would add). EF's convention builds the relationship from it,
+    // so the reference is configured through that navigation: ONE foreign key over CountryId, no
+    // shadow `CountryId1`, and the declared delete behaviour on it.
+    private sealed class AddressWithCountry : MetaObjects.Codegen.Generators.EntityGenerator
+    {
+        protected override void EmitClassBodyTrailer(System.Text.StringBuilder sb, MetaObjects.Meta.MetaObject entity, MetaObjects.Codegen.GenContext ctx)
+        {
+            if (entity.Name == "Address")
+                sb.AppendLine($"    public {MetaObjects.Codegen.ValueObjectNames.GlobalRef(ctx.Root.FindObject("Country")!, ctx.Config)}? Country {{ get; set; }}");
+        }
+    }
+
+    [Fact]
+    public void A_reference_over_a_flattened_member_uses_the_owned_types_navigation()
+    {
+        var gen = GeneratedEfModel.Compile(FlattenedReferenceModel, "Acme.FlatNav", entities: new AddressWithCountry());
+        using var db = gen.ModelOnlyContext();
+        var address = EntityType(db, "Plan").FindNavigation("Address")!.TargetEntityType;
+        var fk = Assert.Single(address.GetForeignKeys(), f => f.PrincipalEntityType.ClrType.Name == "Country");
+        Assert.Equal(new[] { "CountryId" }, fk.Properties.Select(p => p.Name));
+        Assert.Equal("Country", fk.DependentToPrincipal?.Name);
+        Assert.Equal(DeleteBehavior.Restrict, fk.DeleteBehavior);
+        Assert.DoesNotContain(address.GetProperties(), p => p.Name.StartsWith("CountryId", StringComparison.Ordinal) && p.Name != "CountryId");
+    }
+
+    // rc.21 fix round (M6): the owned type's only navigation to the target is used whatever its name.
+    private sealed class AddressWithHomeCountry : MetaObjects.Codegen.Generators.EntityGenerator
+    {
+        protected override void EmitClassBodyTrailer(System.Text.StringBuilder sb, MetaObjects.Meta.MetaObject entity, MetaObjects.Codegen.GenContext ctx)
+        {
+            if (entity.Name == "Address")
+                sb.AppendLine($"    public {MetaObjects.Codegen.ValueObjectNames.GlobalRef(ctx.Root.FindObject("Country")!, ctx.Config)}? HomeCountry {{ get; set; }}");
+        }
+    }
+
+    [Fact]
+    public void A_reference_over_a_flattened_member_uses_the_owned_types_only_navigation_whatever_its_name()
+    {
+        var gen = GeneratedEfModel.Compile(FlattenedReferenceModel, "Acme.FlatHome", entities: new AddressWithHomeCountry());
+        using var db = gen.ModelOnlyContext();
+        var address = EntityType(db, "Plan").FindNavigation("Address")!.TargetEntityType;
+        var fk = Assert.Single(address.GetForeignKeys(), f => f.PrincipalEntityType.ClrType.Name == "Country");
+        Assert.Equal(new[] { "CountryId" }, fk.Properties.Select(p => p.Name));
+        Assert.Equal("HomeCountry", fk.DependentToPrincipal?.Name);
+        Assert.DoesNotContain(address.GetProperties(), p => p.Name is "HomeCountryId" or "CountryId1");
+    }
+
+    // rc.21 part B (N3): two references from one owned member to one target. The owned type has a
+    // navigation for one of them only; the other must not take it as "the sole navigation".
+    private const string TwoFlattenedReferencesModel = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Country", "children": [
+        { "source.rdb": { "@table": "countries" } },
+        { "field.long":   { "name": "id" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}},
+      { "object.value": { "name": "Address", "children": [
+        { "field.long":   { "name": "homeCountryId" } },
+        { "field.long":   { "name": "billingCountryId" } }
+      ]}},
+      { "object.entity": { "name": "Plan", "children": [
+        { "source.rdb": { "@table": "plans" } },
+        { "field.long":   { "name": "id" } },
+        { "field.object": { "name": "address", "@objectRef": "Address", "@storage": "flattened" } },
+        { "identity.primary": { "@fields": "id" } },
+        { "identity.reference": { "name": "homeCountryId", "@fields": "address.homeCountryId", "@references": "Country" } },
+        { "identity.reference": { "name": "billingCountryId", "@fields": "address.billingCountryId", "@references": "Country" } }
+      ]}}
+    ]}}
+    """;
+
+    private sealed class AddressWithBillingCountry : MetaObjects.Codegen.Generators.EntityGenerator
+    {
+        protected override void EmitClassBodyTrailer(System.Text.StringBuilder sb, MetaObjects.Meta.MetaObject entity, MetaObjects.Codegen.GenContext ctx)
+        {
+            if (entity.Name == "Address")
+                sb.AppendLine($"    public {MetaObjects.Codegen.ValueObjectNames.GlobalRef(ctx.Root.FindObject("Country")!, ctx.Config)}? BillingCountry {{ get; set; }}");
+        }
+    }
+
+    [Fact]
+    public void A_sole_navigation_of_another_reference_is_not_taken()
+    {
+        var gen = GeneratedEfModel.Compile(TwoFlattenedReferencesModel, "Acme.FlatTwo", entities: new AddressWithBillingCountry());
+        using var db = gen.ModelOnlyContext();
+        var address = EntityType(db, "Plan").FindNavigation("Address")!.TargetEntityType;
+        var fks = address.GetForeignKeys().Where(f => f.PrincipalEntityType.ClrType.Name == "Country").ToList();
+        Assert.Equal(2, fks.Count);
+        var billing = Assert.Single(fks, f => f.Properties.Select(p => p.Name).SequenceEqual(new[] { "BillingCountryId" }));
+        Assert.Equal("BillingCountry", billing.DependentToPrincipal?.Name);
+        var home = Assert.Single(fks, f => f.Properties.Select(p => p.Name).SequenceEqual(new[] { "HomeCountryId" }));
+        Assert.Null(home.DependentToPrincipal);
+        Assert.DoesNotContain(address.GetProperties(), p => p.IsShadowProperty() && !p.IsPrimaryKey());
     }
 
     [Fact]
@@ -1220,6 +1347,17 @@ public sealed class EfModelGapsTests
         Assert.Equal("The vehicle id number.", car.FindProperty("Vin")!.GetComment());
     }
 
+    [Fact]
+    public void An_expression_index_is_an_sql_artifact()
+    {
+        // EF's HasIndex takes properties only, so an @expr index is written as SQL, applied after
+        // the schema EF builds (IF NOT EXISTS, so the file re-applies).
+        var sql = Assert.Single(new MetaObjects.Codegen.Generators.ExpressionIndexesGenerator()
+            .Generate(GeneratedEfModel.Context(NativeVocabularyModel, "Acme.Native"))).Content;
+        Assert.Contains("CREATE INDEX IF NOT EXISTS \"ix_tickets_lower_email\" ON \"tickets\" (lower(email));", sql);
+        Assert.DoesNotContain("ix_tickets_opened", sql);
+    }
+
     // A JSON column's comment. EF 8's JsonColumn carries no comment, so the generated
     // model puts the text (the field's @description, else its value object's) on the owned type as
     // an annotation, and the generated design-time differ scaffolds it as COMMENT ON COLUMN, Up and Down.
@@ -1386,7 +1524,10 @@ public sealed class EfModelGapsTests
             await db.Database.EnsureCreatedAsync();
 
         using var expected = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(corpus, "expected.postgres.json")));
-        foreach (var table in expected.RootElement.EnumerateObject())
+        // The corpus's expected file covers every input model (checks, stored, tph); this test compiles
+        // meta.checks.json only, so it asserts the tables that model declares.
+        foreach (var table in expected.RootElement.EnumerateObject()
+                     .Where(t => model.Contains($"\"@table\": \"{t.Name}\"", StringComparison.Ordinal)))
         {
             var names = table.Value.EnumerateArray().Select(c => c.GetProperty("name").GetString()!).OrderBy(n => n, StringComparer.Ordinal);
             var live = (await Rows(pg.ConnectionString, $"""

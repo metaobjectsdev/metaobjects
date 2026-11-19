@@ -22,6 +22,7 @@
 // loader pass rewrites every reference to it, so consumers read canonical values.
 
 import type { MetaData } from "./shared/meta-data.js";
+import { findTopLevelByKey, type TopLevelView } from "./top-level-index.js";
 import { PACKAGE_SEPARATOR, PACKAGE_PARENT, CHILD_REF_SEPARATOR } from "./shared/structural.js";
 import { TYPE_OBJECT } from "./shared/base-types.js";
 import { RELATIONSHIP_ATTR_OBJECT_REF, RELATIONSHIP_ATTR_THROUGH } from "./core/relationship/relationship-constants.js";
@@ -49,7 +50,7 @@ const PARENT_PREFIX = PACKAGE_PARENT + PACKAGE_SEPARATOR; // "..::"
  * relationship/field tail; `@parameterRef`/`@payloadRef`/`@responseRef` name
  * value-objects. The same set is used in every port. `@sourceRefField` (a FK FIELD
  * name) and `@implementedBy` (which may name a template as well as an object) are
- * NOT in the set. An operation's `@inputRef`/`@outputRef`/`@objectRef` are (ADR-0063).
+ * NOT in the set. An operation's `@inputRef`/`@outputRef`/`@objectRef` are (ADR-0066).
  * The set is keyed by NAME, so a node type that reuses one of these names for something
  * else is excluded by `isRefBearingAttr`: a `transition.action @from` lists enum members.
  */
@@ -72,7 +73,7 @@ export const REF_BEARING_ATTR_NAMES: ReadonlySet<string> = new Set<string>([
 ]);
 
 /** True when `attrName` on `node` holds an object reference: in REF_BEARING_ATTR_NAMES,
- *  and not on a `transition.*`, whose `@from` names members of its enum (ADR-0063). */
+ *  and not on a `transition.*`, whose `@from` names members of its enum (ADR-0066). */
 export function isRefBearingAttr(node: MetaData, attrName: string): boolean {
   return REF_BEARING_ATTR_NAMES.has(attrName) && node.type !== TYPE_TRANSITION;
 }
@@ -192,9 +193,33 @@ function topLevelOfType(root: MetaData, type: string | undefined): readonly Meta
   return type === undefined ? all : all.filter((c) => c.type === type);
 }
 
-/** Bind an owner reference among `candidates` by exact resolution key (R2). */
+/** The per-root lookup view for top-level nodes of `type` (any type when undefined), by resolution key. */
+const refViews = new Map<string, TopLevelView>();
+function refView(type: string | undefined): TopLevelView {
+  const id = `ref:${type ?? "*"}`;
+  let view = refViews.get(id);
+  if (view === undefined) {
+    view = {
+      id,
+      includes: (c) => type === undefined || c.type === type,
+      keyOf: (c) => c.resolutionKey(),
+    };
+    refViews.set(id, view);
+  }
+  return view;
+}
+
+/** The first top-level node of `type` whose resolution key is exactly `key`. */
+function findByKey(root: MetaData, type: string | undefined, key: string): MetaData | undefined {
+  return findTopLevelByKey(root, refView(type), key, () =>
+    topLevelOfType(root, type).find((c) => c.resolutionKey() === key),
+  );
+}
+
+/** Bind an owner reference among the root's top-level nodes of `type` by exact resolution key (R2). */
 function bindOwner(
-  candidates: readonly MetaData[],
+  root: MetaData,
+  type: string | undefined,
   owner: string,
   referrerPkg: string,
 ): { node?: MetaData | undefined; error?: string | undefined } {
@@ -205,7 +230,7 @@ function bindOwner(
     return { error: (err as Error).message };
   }
   for (const key of keys) {
-    const node = candidates.find((c) => c.resolutionKey() === key);
+    const node = findByKey(root, type, key);
     if (node !== undefined) return { node };
   }
   return {};
@@ -222,7 +247,7 @@ export function resolveObjectRef(
   ref: string,
   referrerPkg: string,
 ): { node?: MetaData | undefined; error?: string | undefined } {
-  return bindOwner(topLevelOfType(root, TYPE_OBJECT), ref, referrerPkg);
+  return bindOwner(root, TYPE_OBJECT, ref, referrerPkg);
 }
 
 /**
@@ -239,7 +264,7 @@ export function resolveRef(
   opts?: { ownerType?: string; lastType?: string },
 ): { node?: MetaData | undefined; owner?: MetaData | undefined; error?: string | undefined } {
   const { owner, tail } = splitChildTail(ref);
-  const bound = bindOwner(topLevelOfType(root, opts?.ownerType), owner, referrerPkg);
+  const bound = bindOwner(root, opts?.ownerType, owner, referrerPkg);
   if (bound.node === undefined) return bound;
   if (tail === "") return { node: bound.node, owner: bound.node };
   const path = tail.slice(CHILD_REF_SEPARATOR.length).split(CHILD_REF_SEPARATOR);

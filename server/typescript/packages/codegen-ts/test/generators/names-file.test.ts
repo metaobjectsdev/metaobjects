@@ -71,6 +71,7 @@ function genConfig(outDir: string) {
     outDir,
     extStyle: "none",
     dbImport: "~/server/db",
+    outputLayout: "flat",
     dialect: "postgres",
     generators: [namesFile()],
   });

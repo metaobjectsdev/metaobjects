@@ -48,7 +48,7 @@ async function gen(
   extra: { generators?: Generator[]; entityFilter?: string[]; generatorNames?: string[]; dryRun?: boolean } = {},
 ) {
   return runGen({
-    config: { outDir: OUT, extStyle: "js", generators: extra.generators ?? [entityFile()] },
+    config: { outDir: OUT, extStyle: "js", outputLayout: "flat", generators: extra.generators ?? [entityFile()] },
     metadata: await model(...names),
     projectRoot,
     ...(extra.entityFilter !== undefined && { entityFilter: extra.entityFilter }),
@@ -58,6 +58,19 @@ async function gen(
 }
 
 describe("run-wide orphan sweep", () => {
+  // A project that opted into the package layout and then drops the opt-in gets the default flat
+  // layout on its next `meta gen`: the modules move to the output root and the package copies are swept.
+  test("a package layout's modules are swept when the default flat layout takes over", async () => {
+    const root = await model("Telemetry");
+    await runGen({ config: { outDir: OUT, extStyle: "js", outputLayout: "package", generators: [entityFile()] }, metadata: root, projectRoot });
+    expect(existsSync(abs(`${OUT}/acme/Telemetry.ts`))).toBe(true);
+
+    const result = await runGen({ config: { outDir: OUT, extStyle: "js", generators: [entityFile()] }, metadata: root, projectRoot });
+    expect(existsSync(abs(`${OUT}/Telemetry.ts`))).toBe(true);
+    expect(existsSync(abs(`${OUT}/acme/Telemetry.ts`))).toBe(false);
+    expect(result.files).toContainEqual({ path: abs(`${OUT}/acme/Telemetry.ts`), status: "removed" });
+  });
+
   test("a renamed value object's old module is deleted and forgotten", async () => {
     await gen(["Telemetry"]);
     expect(existsSync(abs(`${OUT}/Telemetry.ts`))).toBe(true);
@@ -177,7 +190,7 @@ describe("nested output directories", () => {
   async function nested(generators: Generator[]) {
     return runGen({
       config: {
-        outDir: OUT,
+        outDir: OUT, outputLayout: "flat",
         extStyle: "js",
         targets: { inner: { outDir: `${OUT}/inner` } },
         generators,

@@ -1,0 +1,172 @@
+// rc.19 (R57) — @collectionName names an object's collection everywhere a port derives one: the
+// REST segment, the TS list/finder exports and the Drizzle collection variable, and the reverse
+// @via hop other objects walk. Absent, the project's pluralizer (`naming.collections`) derives
+// it.
+
+import { describe, test, expect, afterEach } from "bun:test";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, relative } from "node:path";
+import {
+  MetaDataLoader, InMemoryStringSource, collectionNameOf, pluralizer, registerPluralizer,
+  resetNamingStrategiesForTesting, reverseHopName, type MetaRoot,
+} from "@metaobjectsdev/metadata";
+import { runGen } from "../../src/runner.js";
+import { defineConfig } from "../../src/metaobjects-config.js";
+import { entityFile } from "../../src/generators/entity-file.js";
+import { queriesFile } from "../../src/generators/queries-file.js";
+import { routesFile } from "../../src/generators/routes-file.js";
+import { resourcePath } from "../../src/templates/entity-ui-descriptor.js";
+
+type Json = Record<string, unknown>;
+
+const model = (historyAttrs: Json): Json => ({
+  "metadata.root": {
+    package: "acme",
+    children: [
+      { "object.entity": { name: "Consignment", children: [
+        { "source.rdb": { "@table": "consignments" } },
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+      ] } },
+      { "object.entity": { name: "ConsignmentHistory", ...historyAttrs, children: [
+        { "source.rdb": { "@table": "consignment_history" } },
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "consignmentId" } },
+        { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+        { "identity.reference": { name: "consignmentId", "@fields": "consignmentId", "@references": "Consignment" } },
+      ] } },
+    ],
+  },
+});
+
+async function load(historyAttrs: Json = {}): Promise<MetaRoot> {
+  const res = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(model(historyAttrs)), { id: "m.json", format: "json" })]);
+  expect(res.errors).toEqual([]);
+  return res.root;
+}
+
+async function gen(root: MetaRoot): Promise<{ files: Map<string, string>; warnings: string[] }> {
+  const tmp = mkdtempSync(join(tmpdir(), "mo-collection-"));
+  try {
+    const { warnings } = await runGen({
+      config: defineConfig({
+        outDir: join(tmp, "src"), extStyle: "js", dbImport: "../db", dialect: "sqlite", outputLayout: "flat",
+        generators: [entityFile(), queriesFile(), routesFile()],
+      }),
+      metadata: root, projectRoot: tmp,
+    });
+    const files = new Map<string, string>();
+    const src = join(tmp, "src");
+    if (existsSync(src)) {
+      for (const e of readdirSync(src, { recursive: true, withFileTypes: true })) {
+        if (e.isFile()) files.set(relative(src, join(e.parentPath, e.name)), readFileSync(join(e.parentPath, e.name), "utf8"));
+      }
+    }
+    return { files, warnings };
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+const history = (root: MetaRoot) => root.objects().find((o) => o.name === "ConsignmentHistory")!;
+
+afterEach(() => resetNamingStrategiesForTesting());
+
+describe("@collectionName", () => {
+  test("absent, the standard pluralizer derives it", async () => {
+    const root = await load();
+    expect(collectionNameOf(history(root))).toBe("ConsignmentHistories");
+    expect(reverseHopName(history(root))).toBe("consignmentHistories");
+  });
+
+  test("names the REST segment, the list and finder exports, the collection variable and the reverse hop", async () => {
+    const root = await load({ "@collectionName": "ConsignmentHistory" });
+    expect(reverseHopName(history(root))).toBe("consignmentHistory");
+    const { files, warnings } = await gen(root);
+    const queries = files.get("ConsignmentHistory.queries.ts")!;
+    expect(queries).toContain("export async function listConsignmentHistory(");
+    expect(queries).toContain("export async function findConsignmentHistoryByConsignment(");
+    expect(queries).toContain(".from(consignmentHistory)");
+    expect(files.get("ConsignmentHistory.ts")!).toContain("export const consignmentHistory = ");
+    expect([...files.values()].join("\n")).toContain('"/consignment_history"');
+    expect(warnings.filter((w) => w.includes("deprecated"))).toEqual([]);
+  });
+});
+
+// rc.19 fix round (I3): a project that configures nothing serves every object at its rc.18
+// segment — snake_case, then pluralize — so an acronym-ending name keeps `faqs`, never `fa_qs`.
+const acronyms = (attrs: Record<string, Json> = {}): Json => ({
+  "metadata.root": {
+    package: "acme",
+    children: ["FAQ", "TaxID", "PDF"].map((name) => ({ "object.entity": { name, ...(attrs[name] ?? {}), children: [
+      { "source.rdb": { "@table": name.toLowerCase() } },
+      { "field.long": { name: "id" } },
+      { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+    ] } })),
+  },
+});
+
+async function loadAcronyms(attrs: Record<string, Json> = {}): Promise<MetaRoot> {
+  const res = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(acronyms(attrs)), { id: "a.json", format: "json" })]);
+  expect(res.errors).toEqual([]);
+  return res.root;
+}
+
+describe("REST segments of a project that configures nothing (byte-identical to rc.18)", () => {
+  test("an acronym-ending name is snake_cased before it is pluralized", async () => {
+    const root = await loadAcronyms();
+    expect(root.objects().map((o) => resourcePath(o))).toEqual(["/faqs", "/tax_ids", "/pdfs"]);
+    const { files } = await gen(root);
+    const out = [...files.values()].join("\n");
+    for (const segment of ["faqs", "tax_ids", "pdfs"]) expect(out).toContain(`"/${segment}"`);
+    for (const broken of ["fa_qs", "tax_i_ds", "pd_fs"]) expect(out).not.toContain(broken);
+  });
+
+  test("a declared @collectionName is snake_cased with its plural suffix kept on the acronym", async () => {
+    const root = await loadAcronyms({ FAQ: { "@collectionName": "FAQs" }, TaxID: { "@collectionName": "TaxIDs" } });
+    expect(root.objects().map((o) => resourcePath(o))).toEqual(["/faqs", "/tax_ids", "/pdfs"]);
+  });
+
+  test("a configured pluralizer applies, and is snake_cased the same way", async () => {
+    const root = await loadAcronyms();
+    Object.assign(root, { physicalNaming: { ...root.physicalNaming, collections: "none" } });
+    expect(root.objects().map((o) => resourcePath(o))).toEqual(["/faq", "/tax_id", "/pdf"]);
+  });
+});
+
+describe("the pluggable pluralizer (naming.collections)", () => {
+  test("the built-ins: standard and none", () => {
+    expect(pluralizer("standard")("Category")).toBe("Categories");
+    expect(pluralizer("none")("Category")).toBe("Category");
+  });
+
+  test("the project's pluralizer names every object without @collectionName", async () => {
+    const root = await load();
+    Object.assign(root, { physicalNaming: { ...root.physicalNaming, collections: "none" } });
+    expect(collectionNameOf(history(root))).toBe("ConsignmentHistory");
+    const { files } = await gen(root);
+    expect(files.get("Consignment.queries.ts")!).toContain("export async function listConsignment(");
+  });
+
+  test("an application registers its own, and every artifact follows it", async () => {
+    // Distinguishable from `standard` (ConsignmentHistories) on purpose: a test whose pluralizer agrees
+    // with the default cannot tell the two apart.
+    registerPluralizer("latin", (n) => (n.endsWith("History") ? n.slice(0, -1) + "ae" : n + "a"));
+    const root = await load();
+    Object.assign(root, { physicalNaming: { ...root.physicalNaming, collections: "latin" } });
+    expect(collectionNameOf(history(root))).toBe("ConsignmentHistorae");
+    expect(reverseHopName(history(root))).toBe("consignmentHistorae");
+    const { files } = await gen(root);
+    expect(files.get("ConsignmentHistory.queries.ts")!).toContain("export async function listConsignmentHistorae(");
+    expect([...files.values()].join("\n")).toContain('"/consignment_historae"');
+  });
+
+  test("an unknown name fails loudly, naming the built-ins", () => {
+    expect(() => pluralizer("klingon")).toThrow(/"naming.collections" names "klingon".*built in: standard, none/);
+  });
+
+  test("a built-in cannot be replaced", () => {
+    expect(() => registerPluralizer("standard", (n) => n)).toThrow(/built in/);
+  });
+});

@@ -46,7 +46,7 @@ docs/
 │   ├── metadata-dependencies.md     # building on a metadata model published elsewhere (FR-023)
 │   ├── libraries.md                 # reusable declared design you opt into, a layer at a time (FR-043)
 │   ├── reporting.md                 # dimensions, measures, segments, reports: vocabulary and load rules (FR-044)
-│   ├── business-rules.md            # operations, permission names and lifecycles: vocabulary, load rules, verify checks (ADR-0063)
+│   ├── business-rules.md            # operations, permission names and lifecycles: vocabulary, load rules, verify checks (ADR-0066)
 │   ├── contract-emitters.md         # the contract-schema and openapi generators: JSON Schema and OpenAPI for the REST contract (FR-022)
 │   ├── cube-export.md               # the cube-model generator: reporting vocabulary as Cube data-model files (FR-044)
 │   ├── explorer-data.md             # explorer.json and its inputs: export --effective, the verify ledger rows, manifest provenance
@@ -58,7 +58,8 @@ docs/
     ├── java.md
     ├── kotlin.md
     ├── csharp.md
-    └── python.md
+    ├── python.md
+    └── rust.md                  # the Rust port, in preview: loader, validation and the entity generator (cargo meta gen)
 ```
 
 If this list and `ls docs/features/` ever disagree, trust the directory listing —

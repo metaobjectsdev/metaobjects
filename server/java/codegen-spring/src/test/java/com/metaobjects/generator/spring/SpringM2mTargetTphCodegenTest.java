@@ -21,9 +21,9 @@ import static org.junit.Assert.assertTrue;
  * non-TPH entity) declares a hetero M:N {@code bridgeAuths -> BridgeAuth}, where
  * {@code BridgeAuth} is a CONCRETE TPH subtype of {@code Auth}
  * ({@code @discriminatorValue: "Bridge"}). {@code BridgeAuth}'s rows physically
- * live in the shared {@code auths} table alongside {@code CopayAuth} rows, so an
+ * live in the shared {@code auths} table alongside {@code CouponAuth} rows, so an
  * unscoped junction traversal cannot itself tell a genuine Bridge row from a
- * same-table Copay row. Java's repository interface is consumer-implemented — it
+ * same-table Coupon row. Java's repository interface is consumer-implemented — it
  * cannot AND a discriminator into a join it does not write — so the fix widens the
  * finder seam with a build-time-literal {@code targetSubtype} argument, exactly as
  * for the self-join case in {@link SpringTphM2mCodegenTest}, but here proving the
@@ -41,15 +41,15 @@ public class SpringM2mTargetTphCodegenTest extends SharedRegistryTestBase {
             { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
                 { "source.rdb":   { "@table": "auths" } },
                 { "field.long":   { "name": "id" } },
-                { "field.enum":   { "name": "type", "@values": ["Bridge", "Copay"] } },
+                { "field.enum":   { "name": "type", "@values": ["Bridge", "Coupon"] } },
                 { "field.string": { "name": "reference", "@required": true, "@maxLength": 80 } },
                 { "identity.primary": { "@fields": "id", "@generation": "increment" } }
             ] } },
             { "object.entity": { "name": "BridgeAuth", "extends": "Auth", "@discriminatorValue": "Bridge", "children": [
                 { "field.int": { "name": "quantity", "@required": true } }
             ] } },
-            { "object.entity": { "name": "CopayAuth", "extends": "Auth", "@discriminatorValue": "Copay", "children": [
-                { "field.decimal": { "name": "copayAmount", "@precision": 10, "@scale": 2 } }
+            { "object.entity": { "name": "CouponAuth", "extends": "Auth", "@discriminatorValue": "Coupon", "children": [
+                { "field.decimal": { "name": "couponAmount", "@precision": 10, "@scale": 2 } }
             ] } },
             { "object.entity": { "name": "Sponsor", "children": [
                 { "source.rdb":   { "@table": "sponsors" } },

@@ -115,15 +115,15 @@ public class PropertyNamingCodegenTests
         var files = Generate(ctx, new EntityGenerator(), new DbContextGenerator());
 
         Assert.Empty(CompileErrors(files));
-        var line = files.Single(f => f.Path == "OrderLine.g.cs").Content;
+        var line = files.Single(f => System.IO.Path.GetFileName(f.Path) == "OrderLine.g.cs").Content;
         Assert.Contains("[PrimaryKey(nameof(OrderNo), nameof(LineNO))]", line);
         Assert.Contains("public long CustomerID { get; set; }", line);
-        var context = files.Single(f => f.Path == "AppDbContext.g.cs").Content;
+        var context = files.Single(f => System.IO.Path.GetFileName(f.Path) == "AppDbContext.g.cs").Content;
         Assert.Contains("HasForeignKey(e => e.CustomerID)", context);
         Assert.Contains("Property(x => x.STATUS)", context);
         Assert.Contains("HasDiscriminator(e => e.KIND)", context);
         Assert.Contains("b.Property(p => p.ZIPCode)", context);
-        var finders = files.Single(f => f.Path == "OrderLineQueries.g.cs").Content;
+        var finders = files.Single(f => System.IO.Path.GetFileName(f.Path) == "OrderLineQueries.g.cs").Content;
         Assert.Contains("e.CustomerID ==", finders);
     }
 
@@ -141,11 +141,40 @@ public class PropertyNamingCodegenTests
     [Fact]
     public void The_overridable_hooks_agree_across_both_generators()
     {
-        var ctx = Ctx(Load());
+        // The hooks agree with the resolver: the run is accepted and compiles.
+        var ctx = Ctx(Load(), Acronyms);
         var files = Generate(ctx, new AcronymEntities(), new AcronymContext());
 
         Assert.Empty(CompileErrors(files));
-        Assert.Contains("e.CustomerID ==", files.Single(f => f.Path == "OrderLineQueries.g.cs").Content);
+        Assert.Contains("e.CustomerID ==", files.Single(f => System.IO.Path.GetFileName(f.Path) == "OrderLineQueries.g.cs").Content);
+    }
+
+    [Fact]
+    public void A_hook_override_that_differs_from_the_resolver_is_refused()
+    {
+        // No resolver set: the override alone would rename the entity's property and nothing else.
+        var ex = Assert.Throws<InvalidOperationException>(() => new AcronymEntities().Generate(Ctx(Load())).ToList());
+        Assert.Contains("set GenConfig.PropertyNaming", ex.Message);
+        Assert.Contains("hook names field \"", ex.Message);
+        var ex2 = Assert.Throws<InvalidOperationException>(() => new AcronymContext().Generate(Ctx(Load())).ToList());
+        Assert.Contains("set GenConfig.PropertyNaming", ex2.Message);
+    }
+
+    // A context hook that differs from the resolver only on a value-object member, or only on a TPH
+    // subtype's own field, would reference a name the class does not declare: refused up front.
+    private sealed class DivergesOn(string field) : DbContextGenerator
+    {
+        protected override string PropertyName(MetaField f) => f.Name == field ? "Diverged" : base.PropertyName(f);
+    }
+
+    [Theory]
+    [InlineData("zipCode")]    // PostalAddress, a value object
+    [InlineData("seatCount")]  // Car, a TPH subtype
+    public void The_context_hook_guard_covers_value_object_members_and_subtype_fields(string field)
+    {
+        var ex = Assert.Throws<InvalidOperationException>(() => new DivergesOn(field).Generate(Ctx(Load())).ToList());
+        Assert.Contains($".{field}\"", ex.Message);
+        Assert.Contains("set GenConfig.PropertyNaming", ex.Message);
     }
 
     [Fact]
@@ -161,7 +190,7 @@ public class PropertyNamingCodegenTests
     public void Reverse_finders_take_the_configured_context_type()
     {
         var files = new EntityGenerator().Generate(Ctx(Load(), contextType: "ShopContext")).ToList();
-        var finders = files.Single(f => f.Path == "OrderLineQueries.g.cs").Content;
+        var finders = files.Single(f => System.IO.Path.GetFileName(f.Path) == "OrderLineQueries.g.cs").Content;
         Assert.Contains("(ShopContext db, long customerId)", finders);
         Assert.DoesNotContain("AppDbContext", finders);
     }
@@ -171,7 +200,7 @@ public class PropertyNamingCodegenTests
     {
         var files = new EntityGenerator { EmitsReverseFinders = false }.Generate(Ctx(Load())).ToList();
         Assert.DoesNotContain(files, f => f.Path.EndsWith("Queries.g.cs", StringComparison.Ordinal));
-        Assert.Contains(files, f => f.Path == "OrderLine.g.cs");
+        Assert.Contains(files, f => System.IO.Path.GetFileName(f.Path) == "OrderLine.g.cs");
     }
 
     // E17: a class-level attribute added through the seam, without re-implementing the header.
@@ -181,7 +210,7 @@ public class PropertyNamingCodegenTests
             StringBuilder sb, MetaObject entity, string className, ClassDeclarationKind kind, GenContext ctx)
         {
             if (kind is ClassDeclarationKind.MappedEntity or ClassDeclarationKind.TphSubtype)
-                sb.AppendLine("[System.Serializable]");
+                sb.AppendLine("[global::System.Serializable]");
         }
     }
 
@@ -189,13 +218,13 @@ public class PropertyNamingCodegenTests
     public void A_subclass_adds_a_class_attribute_through_the_seam()
     {
         var files = new MarkedEntities().Generate(Ctx(Load())).ToList();
-        var customer = files.Single(f => f.Path == "Customer.g.cs").Content.Replace("\r\n", "\n");
-        Assert.Contains("[System.Serializable]\npublic class Customer", customer);
-        Assert.True(customer.IndexOf("[Table(", StringComparison.Ordinal) < customer.IndexOf("[System.Serializable]", StringComparison.Ordinal));
-        var vehicle = files.Single(f => f.Path == "Vehicle.g.cs").Content.Replace("\r\n", "\n");
+        var customer = files.Single(f => System.IO.Path.GetFileName(f.Path) == "Customer.g.cs").Content.Replace("\r\n", "\n");
+        Assert.Contains("[global::System.Serializable]\npublic class Customer", customer);
+        Assert.True(customer.IndexOf("[Table(", StringComparison.Ordinal) < customer.IndexOf("[global::System.Serializable]", StringComparison.Ordinal));
+        var vehicle = files.Single(f => System.IO.Path.GetFileName(f.Path) == "Vehicle.g.cs").Content.Replace("\r\n", "\n");
         // After the framework's own class attributes, immediately before the declaration.
-        Assert.Contains("[System.Text.Json.Serialization.JsonDerivedType(typeof(Van))]\n[System.Serializable]\npublic abstract class Vehicle", vehicle);
-        Assert.Contains("[System.Serializable]\npublic class Car : Vehicle", files.Single(f => f.Path == "Car.g.cs").Content.Replace("\r\n", "\n"));
-        Assert.DoesNotContain("[System.Serializable]", files.Single(f => f.Path == "PostalAddress.g.cs").Content);
+        Assert.Contains("[System.Text.Json.Serialization.JsonDerivedType(typeof(Van))]\n[global::System.Serializable]\npublic abstract class Vehicle", vehicle);
+        Assert.Contains("[global::System.Serializable]\npublic class Car : Vehicle", files.Single(f => System.IO.Path.GetFileName(f.Path) == "Car.g.cs").Content.Replace("\r\n", "\n"));
+        Assert.DoesNotContain("[global::System.Serializable]", files.Single(f => System.IO.Path.GetFileName(f.Path) == "PostalAddress.g.cs").Content);
     }
 }

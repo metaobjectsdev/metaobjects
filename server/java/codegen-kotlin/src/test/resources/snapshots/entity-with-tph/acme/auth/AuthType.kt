@@ -8,6 +8,6 @@ import kotlinx.serialization.Serializable
 @Serializable
 public enum class AuthType {
   Bridge,
-  Copay,
-  PriorAuth,
+  Coupon,
+  Permit,
 }

@@ -1,4 +1,4 @@
-// Declared API surface constants (ADR-0030, ADR-0063) — subtypes and attribute keys for
+// Declared API surface constants (ADR-0030, ADR-0066) — subtypes and attribute keys for
 // `api.*`, `operation.*` and `binding.*`.
 //
 // Colocated per ADR-0003. Mirrors
@@ -56,7 +56,7 @@ public static partial class ApiConstants
         new(@"^[a-z][a-z0-9]*(_[a-z0-9]+)*\z", RegexOptions.CultureInvariant);
 
     /// <summary>Wire error codes an operation's route answers on its own, so a body may not declare them
-    /// in @errors (O5): the enforcing shell's codes (ADR-0063) and the API contract's generic ones.</summary>
+    /// in @errors (O5): the enforcing shell's codes (ADR-0066) and the API contract's generic ones.</summary>
     public static readonly string[] RESERVED_ERROR_CODES =
     [
         "not_found", "forbidden", "invalid_transition", "transition_condition_failed", "state_managed",

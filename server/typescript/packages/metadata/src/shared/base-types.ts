@@ -28,12 +28,12 @@ export const TYPE_REQUIREMENT = "requirement";
 export const TYPE_DIMENSION = "dimension";
 export const TYPE_MEASURE = "measure";
 export const TYPE_SEGMENT = "segment";
-/** ADR-0030 / ADR-0063 — the declared API surface: `api.operational` holds
+/** ADR-0030 / ADR-0066 — the declared API surface: `api.operational` holds
  *  `operation.command` / `operation.query`, each optionally carrying a `binding.rest`. */
 export const TYPE_API = "api";
 export const TYPE_OPERATION = "operation";
 export const TYPE_BINDING = "binding";
-/** ADR-0063 — an allowed move between two members of a `field.enum` (`transition.action`). */
+/** ADR-0066 — an allowed move between two members of a `field.enum` (`transition.action`). */
 export const TYPE_TRANSITION = "transition";
 
 export const BASE_TYPES = [

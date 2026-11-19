@@ -1,0 +1,242 @@
+//! Source resolution: a declared `sources` set in `.metaobjects/config.json`
+//! becomes a canonically ordered, de-duplicated list of metadata files.
+//!
+//! Ported from the TypeScript SDK (`sources.ts`, `metadata-files.ts`). The whole
+//! result is a pure function of the source SET, never of declaration order:
+//! specs are processed in the order of their canonical JSON text. Within one
+//! directory the order is files first (sorted by name), then subdirectories,
+//! depth first, which is the order generated output has always followed.
+
+use std::collections::HashSet;
+use std::path::{Component, Path, PathBuf};
+
+use crate::errors::{ERR_SOURCE_KIND_UNSUPPORTED, ERR_SOURCE_UNRESOLVED, ERR_UNKNOWN, MetaError};
+
+/// The default value of `sources`: the directory scanned when a config declares none.
+/// A default, never a requirement.
+pub const DEFAULT_METADATA_DIR: &str = "metaobjects";
+/// Where a project keeps its own tool state, `config.json` included.
+pub const DEFAULT_METAOBJECTS_DIR: &str = ".metaobjects";
+/// `config.json`'s basename.
+pub const CONFIG_FILE: &str = "config.json";
+/// A directory of drafts, skipped at every level of a source walk.
+pub const PENDING_DIR: &str = "_pending";
+/// The metadata file extensions, matched case-insensitively, with the dot.
+pub const METADATA_EXTENSIONS: &[&str] = &[".json", ".yaml", ".yml"];
+
+/// One declared source. `Resource` and `Package` are declared so the config shape
+/// is stable, but resolve nowhere yet.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SourceSpec {
+    Path(String),
+    Resource(String),
+    Package(String),
+}
+
+impl SourceSpec {
+    /// The spec as the canonical JSON text TypeScript orders by: `{"path":"a"}`.
+    pub fn canonical_json(&self) -> String {
+        let (key, value) = match self {
+            SourceSpec::Path(v) => ("path", v),
+            SourceSpec::Resource(v) => ("resource", v),
+            SourceSpec::Package(v) => ("package", v),
+        };
+        format!(
+            "{{\"{key}\":{}}}",
+            serde_json::to_string(value).unwrap_or_default()
+        )
+    }
+}
+
+/// The default `sources`: exactly one `path` source, the default directory.
+pub fn default_sources() -> Vec<SourceSpec> {
+    vec![SourceSpec::Path(DEFAULT_METADATA_DIR.to_string())]
+}
+
+/// One resolved metadata file and the spec that contributed it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedSource {
+    /// Absolute path of one metadata file.
+    pub file: PathBuf,
+    /// The spec that contributed it (provenance for diagnostics).
+    pub spec: SourceSpec,
+}
+
+/// True when `name` ends in a metadata extension, matched case-insensitively.
+/// A dotfile such as `.json` has no extension, as in Node's `extname`.
+pub fn is_metadata_file(name: &str) -> bool {
+    match name.rfind('.') {
+        Some(i) if i > 0 => {
+            let ext = name[i..].to_ascii_lowercase();
+            METADATA_EXTENSIONS.contains(&ext.as_str())
+        }
+        _ => false,
+    }
+}
+
+/// `path.resolve`: make `p` absolute against `base` and collapse `.` and `..`
+/// lexically. Symlinks are NOT resolved, so a reported path keeps a link's own name.
+pub fn resolve_path(base: &Path, p: &Path) -> PathBuf {
+    let joined = if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        base.join(p)
+    };
+    let mut out = PathBuf::new();
+    for c in joined.components() {
+        match c {
+            Component::ParentDir => {
+                if !out.pop() {
+                    out.push("..");
+                }
+            }
+            Component::CurDir => {}
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
+/// `path.resolve(p)` against the process working directory.
+pub fn absolutize(p: &Path) -> PathBuf {
+    let cwd = std::env::current_dir().unwrap_or_default();
+    resolve_path(&cwd, p)
+}
+
+/// UTF-16 code-unit order, the order JavaScript's default string sort uses.
+fn utf16_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    a.encode_utf16().cmp(b.encode_utf16())
+}
+
+/// The declared set in canonical order, kind-validated across the WHOLE list
+/// first: `resource` and `package` raise `ERR_SOURCE_KIND_UNSUPPORTED` before any
+/// path is touched, in either declaration order. Returns the `path` values paired
+/// with their spec.
+pub fn ordered_path_specs(specs: &[SourceSpec]) -> Result<Vec<(String, SourceSpec)>, MetaError> {
+    let mut out = Vec::with_capacity(specs.len());
+    for spec in specs {
+        match spec {
+            SourceSpec::Path(p) => out.push((p.clone(), spec.clone())),
+            SourceSpec::Resource(_) | SourceSpec::Package(_) => {
+                let kind = if matches!(spec, SourceSpec::Resource(_)) {
+                    "resource"
+                } else {
+                    "package"
+                };
+                return Err(MetaError::code(
+                    ERR_SOURCE_KIND_UNSUPPORTED,
+                    format!(
+                        "source kind \"{kind}\" is not supported by this toolchain yet; use a \"path\" source"
+                    ),
+                ));
+            }
+        }
+    }
+    out.sort_by(|a, b| utf16_cmp(&a.1.canonical_json(), &b.1.canonical_json()));
+    Ok(out)
+}
+
+/// Where a declared `path` source lives: absolute as written, otherwise relative
+/// to the DECLARING config's directory, never to the working directory.
+pub fn resolve_spec_path(config_dir: &Path, path: &str) -> PathBuf {
+    resolve_path(config_dir, Path::new(path))
+}
+
+fn io_error(message: String) -> MetaError {
+    MetaError::code(ERR_UNKNOWN, message)
+}
+
+/// Recursively list metadata files under `dir`, excluding `_pending/` at any level.
+/// Entries at a level are sorted by name; files come first, then subdirectories
+/// depth first. Symlinked directories are followed; an entry that cannot be
+/// stat'ed is skipped; a symlink that revisits a directory on the CURRENT walk
+/// branch is an error (a diamond, reachable by two routes, is not).
+pub fn list_metadata_files(dir: &Path) -> Result<Vec<PathBuf>, MetaError> {
+    let mut branch = Vec::new();
+    let mut out = Vec::new();
+    walk(dir, &mut branch, &mut out)?;
+    Ok(out)
+}
+
+fn walk(dir: &Path, branch: &mut Vec<PathBuf>, out: &mut Vec<PathBuf>) -> Result<(), MetaError> {
+    let real = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+    if branch.contains(&real) {
+        return Err(io_error(format!(
+            "symlink loop detected while expanding metadata directory: {} revisits {}",
+            dir.display(),
+            real.display()
+        )));
+    }
+    branch.push(real);
+    let read = std::fs::read_dir(dir).map_err(|e| {
+        io_error(format!(
+            "cannot read metadata directory {}: {e}",
+            dir.display()
+        ))
+    })?;
+    let mut names: Vec<String> = read
+        .filter_map(Result::ok)
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort_by(|a, b| utf16_cmp(a, b));
+    let mut subdirs = Vec::new();
+    for name in names {
+        if name == PENDING_DIR {
+            continue;
+        }
+        let full = dir.join(&name);
+        // `metadata` follows symlinks, so a linked directory is walked.
+        let Ok(meta) = std::fs::metadata(&full) else {
+            continue;
+        };
+        if meta.is_dir() {
+            subdirs.push(full);
+        } else if meta.is_file() && is_metadata_file(&name) {
+            out.push(full);
+        }
+    }
+    for sub in subdirs {
+        walk(&sub, branch, out)?;
+    }
+    branch.pop();
+    Ok(())
+}
+
+/// Resolve a declared source SET to canonically ordered metadata files. A missing
+/// `path` raises `ERR_SOURCE_UNRESOLVED`; a directory is walked, a file is taken
+/// as is; the first contributor of a shared file wins.
+pub fn resolve_sources(
+    config_dir: &Path,
+    specs: &[SourceSpec],
+) -> Result<Vec<ResolvedSource>, MetaError> {
+    let ordered = ordered_path_specs(specs)?;
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    for (path, spec) in ordered {
+        let target = resolve_spec_path(config_dir, &path);
+        let Ok(meta) = std::fs::metadata(&target) else {
+            return Err(MetaError::code(
+                ERR_SOURCE_UNRESOLVED,
+                format!(
+                    "source path \"{path}\" does not exist (resolved to {}, relative to {})",
+                    target.display(),
+                    config_dir.display()
+                ),
+            ));
+        };
+        let found = if meta.is_dir() {
+            list_metadata_files(&target)?
+        } else {
+            vec![target]
+        };
+        for file in found {
+            if seen.insert(file.clone()) {
+                out.push(ResolvedSource {
+                    file,
+                    spec: spec.clone(),
+                });
+            }
+        }
+    }
+    Ok(out)
+}

@@ -19,6 +19,18 @@ using MetaObjects.Loader;
 
 namespace MetaObjects.IntegrationTests.Api;
 
+/// <summary>
+/// A host variant for the secret-fields lane: how the generated property names are spelled
+/// (<see cref="GenConfig.PropertyNaming"/>), the host's JSON naming policy, and an optional change
+/// to the corpus model (extra fields) with the DDL its table needs.
+/// </summary>
+internal sealed record SecretFieldsHost(
+    Func<MetaField, string>? PropertyNaming = null,
+    System.Text.Json.JsonNamingPolicy? JsonPolicy = null,
+    string? MetaJson = null,
+    string? ExtraDdl = null,
+    Action<System.Text.Json.JsonSerializerOptions>? ConfigureJson = null);
+
 internal sealed class SecretFieldsGeneratedServerFactory : IAsyncDisposable
 {
     private const string GeneratedNamespace = "MetaObjects.ApiContract.SecretFieldsGenerated";
@@ -35,17 +47,23 @@ internal sealed class SecretFieldsGeneratedServerFactory : IAsyncDisposable
         BaseUrl = baseUrl;
     }
 
-    public static async Task<SecretFieldsGeneratedServerFactory> StartAsync(PostgresContainer pg)
+    public static async Task<SecretFieldsGeneratedServerFactory> StartAsync(PostgresContainer pg, SecretFieldsHost? host = null)
     {
-        await SecretFieldsFixture.ProvisionSchemaAsync(pg.ConnectionString);
+        await SecretFieldsFixture.ProvisionSchemaAsync(pg.ConnectionString, host?.ExtraDdl);
 
-        var (assembly, entityNames) = CompileGeneratedServer();
-        var dbContextType = assembly.GetType($"{GeneratedNamespace}.AppDbContext")
+        var (assembly, entityNames) = CompileGeneratedServer(host);
+        var dbContextType = MetaObjects.IntegrationTests.GeneratedTypes.Find(assembly, $"{GeneratedNamespace}.AppDbContext")
             ?? throw new InvalidOperationException("generated AppDbContext type not found");
 
         var builder = WebApplication.CreateBuilder();
         LoopbackKestrel.BindAnyPort(builder);
         builder.Logging.ClearProviders();
+        if (host is not null)
+            builder.Services.ConfigureHttpJsonOptions(o =>
+            {
+                if (host.JsonPolicy is { } policy) o.SerializerOptions.PropertyNamingPolicy = policy;
+                host.ConfigureJson?.Invoke(o.SerializerOptions);
+            });
         RegisterGeneratedDbContext(builder.Services, dbContextType, pg.ConnectionString);
 
         var app = builder.Build();
@@ -54,7 +72,7 @@ internal sealed class SecretFieldsGeneratedServerFactory : IAsyncDisposable
         // emit a routes class; only Order's secret-fields routes are exercised.
         foreach (var entity in entityNames)
         {
-            var routesType = assembly.GetType($"{GeneratedNamespace}.{entity}Routes");
+            var routesType = MetaObjects.IntegrationTests.GeneratedTypes.Find(assembly, $"{GeneratedNamespace}.{entity}Routes");
             if (routesType is null) continue;
             var mapMethod = routesType.GetMethod($"Map{entity}Routes", BindingFlags.Public | BindingFlags.Static);
             mapMethod?.Invoke(null, new object[] { app, "/api" });
@@ -73,12 +91,19 @@ internal sealed class SecretFieldsGeneratedServerFactory : IAsyncDisposable
         try { await _app.DisposeAsync(); } catch { /* ignored */ }
     }
 
-    private static (Assembly Assembly, IReadOnlyList<string> EntityNames) CompileGeneratedServer()
+    private static (Assembly Assembly, IReadOnlyList<string> EntityNames) CompileGeneratedServer(SecretFieldsHost? host)
     {
-        var loadResult = new MetaDataLoader().Load([new FileSource(ApiContractCorpusPaths.SecretFieldsMetaJson)]);
+        var loadResult = new MetaDataLoader().Load([host?.MetaJson is { } json
+            ? new InMemoryStringSource(json, id: "secret-fields-variant.json")
+            : new FileSource(ApiContractCorpusPaths.SecretFieldsMetaJson)]);
         // ADR-0058 — the corpus's committed naming rule, not a hardcoded default.
         loadResult.Root.PhysicalNaming = ApiContractCorpusPaths.Naming;
         loadResult.Root.WireFormat = ApiContractCorpusPaths.Wire;
+        // The host-variant credential tests post every spelling a client could forge for a denied field,
+        // most of which are no declared field at all. They pin credential stripping, not unknown-field
+        // handling (the default `api.unknownFields: reject` answers those with a 400, covered by the
+        // api-contract corpus), so those servers run under `drop`.
+        if (host is not null) loadResult.Root.Api = loadResult.Root.Api with { UnknownFields = UnknownFieldsMode.Drop };
         if (loadResult.Errors.Count != 0)
             throw new InvalidOperationException(
                 "secret-fields corpus metadata failed to load: " +
@@ -106,6 +131,7 @@ internal sealed class SecretFieldsGeneratedServerFactory : IAsyncDisposable
                 // is the only lane that proves an <Entity>Names.NAME reference
                 // actually RESOLVES against a real EF Core compile.
                 IncludeNames = true,
+                PropertyNaming = host?.PropertyNaming,
             },
         };
 

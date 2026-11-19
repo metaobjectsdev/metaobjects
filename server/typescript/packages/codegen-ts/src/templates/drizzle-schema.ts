@@ -26,16 +26,21 @@ import { dialectModule } from "../dialect-module.js";
 import {
   namesRef, physicalNameExpr, sourceSchemaExpr, indexNameExpr, columnExpr,
 } from "../names.js";
-import { resolveTableSchema, resolveIndexName } from "@metaobjectsdev/metadata";
+import { resolveTableSchema, resolveIndexName, storedEnumValue, VALIDATOR_ATTR_CONSTRAINT_NAME } from "@metaobjectsdev/metadata";
+import { fitPgIdentifier } from "../pg-identifier.js";
+import { intValueMapOf } from "../enum-meta.js";
 import { renderEnumIntCustomType } from "./enum-int-codec.js";
 import { renderDurationCustomType } from "./duration-wire-helper.js";
 import { renderRelationsBlock } from "./relations-block.js";
 import { renderDocsFor } from "./jsdoc.js";
-import { collectTphSubtypeFields, tphConcreteSubtypes } from "./tph-discriminator.js";
+import { collectTphSubtypeFields, tphConcreteSubtypes, tphPlan } from "./tph-discriminator.js";
 import { tphStorageObject } from "../tph.js";
 import { flattenedMembersOf } from "../flattened.js";
 import { effectivePackage } from "../docs-paths.js";
 import { foreignKeyIndexesOf, storedIndexName } from "../foreign-key-indexes.js";
+
+/** One table-level CHECK: its name and expression as emitted, and their plain text (rc.21, N1). */
+interface CheckEntry { name: Code; expr: Code; key: string; text: string }
 
 /**
  * Render the Drizzle table definition for one entity, including:
@@ -186,7 +191,7 @@ export function renderDrizzleSchema(
 
   const columnLines: Code[] = [];
   // Collect CHECK constraints for enum columns; emitted as table-level check() callbacks.
-  const checkConstraints: Array<{ name: Code; expr: Code }> = [];
+  const checkConstraints: CheckEntry[] = [];
   /**
    * One CHECK entry, composed against `<Entity>Names` when the artifact is in the run.
    *
@@ -200,16 +205,31 @@ export function renderDrizzleSchema(
    * The expression's column goes through `sql.raw`, not `sql.identifier`: the latter QUOTES
    * the name, which changes the constraint text migrate compares against.
    */
-  const checkEntry = (field: MetaField, spec: ColumnSpec): { name: Code; expr: Code } => {
+  const checkEntry = (field: MetaField, spec: ColumnSpec): CheckEntry => {
     const colExpr = columnNameExpr(field, spec.dbName);
     const values = spec.checkConstraintValues;
     const sqlSym = imp("sql@drizzle-orm");
+    // A declared @constraintName (ADR-0039 resolving) names the CHECK, as migrate-ts's
+    // withDeclaredName does: the literal name, the expression as either arm below spells it.
+    const declared = field.attr(VALIDATOR_ATTR_CONSTRAINT_NAME);
+    if (typeof declared === "string" && declared.length > 0) {
+      return {
+        name: code`${JSON.stringify(declared)}`,
+        expr: names === undefined || values === undefined
+          ? code`${spec.checkConstraint ?? ""}`
+          : code`\${${sqlSym}.raw(${colExpr})} IN (${values})`,
+        key: declared,
+        text: spec.checkConstraint ?? "",
+      };
+    }
     // No artifact in this run (the documented ADR-0034 opt-out) — spell both halves, which
     // is what this file did unconditionally before.
     if (names === undefined || values === undefined) {
       return {
         name: code`${JSON.stringify(`${tableName}_${spec.dbName}_chk`)}`,
         expr: code`${spec.checkConstraint ?? ""}`,
+        key: `${tableName}_${spec.dbName}_chk`,
+        text: spec.checkConstraint ?? "",
       };
     }
     // `\${` emits a literal `${` into the generated source: the name becomes a template
@@ -218,6 +238,8 @@ export function renderDrizzleSchema(
     return {
       name: code`\`\${${tableNameExpr}}_\${${colExpr}}_chk\``,
       expr: code`\${${sqlSym}.raw(${colExpr})} IN (${values})`,
+      key: `${tableName}_${spec.dbName}_chk`,
+      text: spec.checkConstraint ?? "",
     };
   };
   // Int-backed field.enum customType helpers, emitted ahead of the table. Keyed by
@@ -303,8 +325,12 @@ export function renderDrizzleSchema(
     );
     columnLines.push(fieldDocs ? code`  ${fieldDocs}\n${columnLine}` : columnLine);
     // Enum CHECK constraints stay valid under TPH: `NULL IN (...)` is NULL
-    // (not false), so other-subtype rows with NULL pass the check.
-    if (spec.checkConstraint !== undefined) checkConstraints.push(checkEntry(child, spec));
+    // (not false), so other-subtype rows with NULL pass the check. Sibling subtypes that
+    // declare this column with DIFFERENT checks (rc.21 fix round, I1) each get their own,
+    // guarded by their discriminator values — exactly as `meta migrate` derives them.
+    const guarded = guardedSiblingEnumChecks(obj, child.name, tableName, ctx);
+    if (guarded !== undefined) checkConstraints.push(...guarded);
+    else if (spec.checkConstraint !== undefined) checkConstraints.push(checkEntry(child, spec));
   }
 
   // Build all table callback entries
@@ -443,6 +469,22 @@ export function renderDrizzleSchema(
 
   // Emit table-level CHECK constraints for enum fields. Both halves are composed by
   // `checkEntry` above, which owns the constant-vs-literal decision for the pair.
+  // rc.21 (N1): Postgres requires each constraint on a table to have its own name, so two
+  // different CHECKs under one name are refused there, as `meta migrate` refuses them. SQLite
+  // and D1 accept and enforce both, so both are kept there.
+  if (dialect === "postgres") {
+    const byName = new Map<string, string>();
+    for (const c of checkConstraints) {
+      const seen = byName.get(c.key);
+      if (seen !== undefined && seen !== c.text) {
+        throw new Error(
+          `object.entity '${obj.name}': two CHECK constraints are both named '${c.key}' (${seen} | ${c.text}); ` +
+            "Postgres requires each constraint on a table to have its own name. Give one a @constraintName.",
+        );
+      }
+      byName.set(c.key, c.text);
+    }
+  }
   for (const { name, expr } of checkConstraints) {
     const checkSym = imp(`check@${importModule}`);
     const sqlSym = imp("sql@drizzle-orm");
@@ -810,6 +852,60 @@ function renderColumn(
   return spec.leadingComment !== undefined
     ? code`  // ${spec.leadingComment}\n${columnLine}`
     : columnLine;
+}
+
+/**
+ * rc.21 fix round (I1) — the enum CHECKs of a TPH column several sibling subtypes declare with
+ * different checks (each owner a distinct field node), one per owner, guarded by the discriminator
+ * values of the subtypes carrying that node and named `<table>_<declarer>_<col>_chk` (a declared
+ * `@constraintName` kept): the text `meta migrate` derives (expected-schema.ts buildChecks), up to
+ * the quoting its comparator ignores. Undefined when one node owns the column, or every owner's
+ * CHECK is the same: the caller emits the plain one.
+ */
+function guardedSiblingEnumChecks(
+  obj: MetaObject, fieldName: string, tableName: string, ctx: RenderContext,
+): CheckEntry[] | undefined {
+  const plan = tphPlan(obj, ctx.loadedRoot);
+  if (plan === null) return undefined;
+  const subs = [...plan.subtypes].sort((a, b) => (a.entity.name < b.entity.name ? -1 : a.entity.name > b.entity.name ? 1 : 0));
+  const owners: { node: MetaField; values: string[] }[] = [];
+  for (const st of subs) {
+    // ADR-0039: resolving — a field on an abstract level or a parent subtype is a column too.
+    const node = st.entity.fields().find((f) => f.name === fieldName);
+    if (node === undefined) continue;
+    const owner = owners.find((o) => o.node === node);
+    if (owner === undefined) owners.push({ node, values: [st.value] });
+    else owner.values.push(st.value);
+  }
+  if (owners.length < 2) return undefined;
+  const specs = owners.map((o) => mapColumnType(o.node, ctx.dialect, ctx.columnNamingStrategy, ctx.timestampMode));
+  if (specs.every((sp) => sp.checkConstraint === specs[0]!.checkConstraint)) return undefined;
+  const disc = obj.fields().find((f) => f.name === plan.discriminatorField);
+  const discCol = disc === undefined ? plan.discriminatorField
+    : mapColumnType(disc, ctx.dialect, ctx.columnNamingStrategy, ctx.timestampMode).dbName;
+  const literal = (value: string): string => {
+    const ints = disc === undefined ? undefined : intValueMapOf(disc);
+    const n = ints?.[value];
+    if (typeof n === "number") return String(n);
+    const stored = disc === undefined ? value : storedEnumValue(disc, value);
+    return `'${stored.replace(/'/g, "''")}'`;
+  };
+  const out: CheckEntry[] = [];
+  owners.forEach((o, i) => {
+    const check = specs[i]!.checkConstraint;
+    if (check === undefined) return;
+    const unless = o.values.length === 1
+      ? `"${discCol}" <> ${literal(o.values[0]!)}`
+      : o.values.map((v) => `("${discCol}" <> ${literal(v)})`).join(" AND ");
+    const declared = o.node.attr(VALIDATOR_ATTR_CONSTRAINT_NAME);
+    // rc.21 (N2): a qualified default name is fitted to Postgres's 63-byte limit, as migrate fits it.
+    const qualified = `${tableName}_${(o.node.parent?.name ?? "subtype").toLowerCase()}_${specs[i]!.dbName}_chk`;
+    const name = typeof declared === "string" && declared.length > 0
+      ? declared
+      : ctx.dialect === "postgres" ? fitPgIdentifier(qualified) : qualified;
+    out.push({ name: code`${JSON.stringify(name)}`, expr: code`(${unless}) OR (${check})`, key: name, text: `(${unless}) OR (${check})` });
+  });
+  return out;
 }
 
 /**

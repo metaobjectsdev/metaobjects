@@ -51,7 +51,7 @@ private val AuthSortDefaultOrder: Map<String, String> = mapOf(
 )
 
 /** GENERATED — every field Auth declares, as named on the wire: a body key outside it is refused. */
-private val AuthKnownFields: Set<String> = setOf("id", "type", "reference", "quantity", "copayAmount", "priorAuthNumber")
+private val AuthKnownFields: Set<String> = setOf("id", "type", "reference", "quantity", "couponAmount", "permitNumber")
 
 private fun parseAuthSort(raw: String): Pair<String, SortOrder>? {
     val parts = raw.split(":", limit = 2)
@@ -159,8 +159,8 @@ private fun coerceAuthValue(field: String, op: String, raw: String): AuthCoerced
         "type" -> if (op == "in") AuthCoercedValue(raw.split(",").map { it.trim() }) else AuthCoercedValue(raw)
         "reference" -> if (op == "in") AuthCoercedValue(raw.split(",").map { it.trim() }) else AuthCoercedValue(raw)
         "quantity" -> coerceAuthInt(op, raw)
-        "copayAmount" -> coerceAuthDecimal(op, raw)
-        "priorAuthNumber" -> if (op == "in") AuthCoercedValue(raw.split(",").map { it.trim() }) else AuthCoercedValue(raw)
+        "couponAmount" -> coerceAuthDecimal(op, raw)
+        "permitNumber" -> if (op == "in") AuthCoercedValue(raw.split(",").map { it.trim() }) else AuthCoercedValue(raw)
         else -> null
     }
 }
@@ -298,24 +298,24 @@ private fun AuthWhereOp(predicates: List<AuthFilterPredicate>): Op<Boolean>? {
                     "isNull" -> if (p.value as Boolean) AuthTable.quantity.isNull() else AuthTable.quantity.isNotNull()
                     else -> throw IllegalStateException("unsupported op for quantity: " + p.op)
                 }
-                "copayAmount" -> when (p.op) {
-                    "eq" -> AuthTable.copayAmount eq (p.value as BigDecimal)
-                    "ne" -> AuthTable.copayAmount neq (p.value as BigDecimal)
-                    "gt" -> AuthTable.copayAmount greater (p.value as BigDecimal)
-                    "gte" -> AuthTable.copayAmount greaterEq (p.value as BigDecimal)
-                    "lt" -> AuthTable.copayAmount less (p.value as BigDecimal)
-                    "lte" -> AuthTable.copayAmount lessEq (p.value as BigDecimal)
-                    "in" -> AuthTable.copayAmount inList (p.value as List<BigDecimal>)
-                    "isNull" -> if (p.value as Boolean) AuthTable.copayAmount.isNull() else AuthTable.copayAmount.isNotNull()
-                    else -> throw IllegalStateException("unsupported op for copayAmount: " + p.op)
+                "couponAmount" -> when (p.op) {
+                    "eq" -> AuthTable.couponAmount eq (p.value as BigDecimal)
+                    "ne" -> AuthTable.couponAmount neq (p.value as BigDecimal)
+                    "gt" -> AuthTable.couponAmount greater (p.value as BigDecimal)
+                    "gte" -> AuthTable.couponAmount greaterEq (p.value as BigDecimal)
+                    "lt" -> AuthTable.couponAmount less (p.value as BigDecimal)
+                    "lte" -> AuthTable.couponAmount lessEq (p.value as BigDecimal)
+                    "in" -> AuthTable.couponAmount inList (p.value as List<BigDecimal>)
+                    "isNull" -> if (p.value as Boolean) AuthTable.couponAmount.isNull() else AuthTable.couponAmount.isNotNull()
+                    else -> throw IllegalStateException("unsupported op for couponAmount: " + p.op)
                 }
-                "priorAuthNumber" -> when (p.op) {
-                    "eq" -> AuthTable.priorAuthNumber eq (p.value as String)
-                    "ne" -> AuthTable.priorAuthNumber neq (p.value as String)
-                    "in" -> AuthTable.priorAuthNumber inList (p.value as List<String>)
-                    "like" -> AuthTable.priorAuthNumber like (p.value as String)
-                    "isNull" -> if (p.value as Boolean) AuthTable.priorAuthNumber.isNull() else AuthTable.priorAuthNumber.isNotNull()
-                    else -> throw IllegalStateException("unsupported op for priorAuthNumber: " + p.op)
+                "permitNumber" -> when (p.op) {
+                    "eq" -> AuthTable.permitNumber eq (p.value as String)
+                    "ne" -> AuthTable.permitNumber neq (p.value as String)
+                    "in" -> AuthTable.permitNumber inList (p.value as List<String>)
+                    "like" -> AuthTable.permitNumber like (p.value as String)
+                    "isNull" -> if (p.value as Boolean) AuthTable.permitNumber.isNull() else AuthTable.permitNumber.isNotNull()
+                    else -> throw IllegalStateException("unsupported op for permitNumber: " + p.op)
                 }
                 else -> continue
             }
@@ -331,8 +331,8 @@ private fun rowToAuth(row: ResultRow): Auth = Auth(
     type = row[AuthTable.type],
     reference = row[AuthTable.reference],
     quantity = row[AuthTable.quantity],
-    copayAmount = row[AuthTable.copayAmount],
-    priorAuthNumber = row[AuthTable.priorAuthNumber],
+    couponAmount = row[AuthTable.couponAmount],
+    permitNumber = row[AuthTable.permitNumber],
 )
 
 /**
@@ -480,9 +480,9 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
         else ResponseEntity.noContent().build<Any>()
     }
 
-    // --- subtype Copay (segment /copay) ---
-    @GetMapping("/copay")
-    fun listCopay(
+    // --- subtype Coupon (segment /coupon) ---
+    @GetMapping("/coupon")
+    fun listCoupon(
         @RequestParam(required = false) limit: Int?,
         @RequestParam(required = false) offset: Int?,
         @RequestParam(required = false) sort: String?,
@@ -492,7 +492,7 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
         if (filterResult.error != null) return@transaction ResponseEntity.badRequest().body(mapOf("error" to filterResult.error, "field" to filterResult.field) as Any)
         val whereOp = AuthWhereOp(filterResult.predicates)
         var q = AuthTable.selectAll().where {
-            val d = AuthTable.type eq AuthType.Copay
+            val d = AuthTable.type eq AuthType.Coupon
             if (whereOp != null) d and whereOp else d
         }
         if (sort != null) {
@@ -510,15 +510,15 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
         ResponseEntity.ok(rows as Any)
     }
 
-    @GetMapping("/copay/{id}")
-    fun getCopay(@PathVariable id: Long): ResponseEntity<Any> = transaction {
-        val row = AuthTable.selectAll().where { (AuthTable.id eq id) and (AuthTable.type eq AuthType.Copay) }.singleOrNull()
+    @GetMapping("/coupon/{id}")
+    fun getCoupon(@PathVariable id: Long): ResponseEntity<Any> = transaction {
+        val row = AuthTable.selectAll().where { (AuthTable.id eq id) and (AuthTable.type eq AuthType.Coupon) }.singleOrNull()
             ?: return@transaction ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf("error" to "not_found") as Any)
         ResponseEntity.ok(rowToAuth(row) as Any)
     }
 
-    @PostMapping("/copay")
-    fun createCopay(@RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
+    @PostMapping("/coupon")
+    fun createCoupon(@RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
         if (!body.isObject) return@transaction ResponseEntity.badRequest().body(MetaValidationIssues.Collector().add("invalid_type", emptyList(), "request body must be a JSON object").body() as Any)
         val unknownKeys = MetaUnknownBodyKeys.refusal(body, AuthKnownFields)
         if (unknownKeys != null) return@transaction ResponseEntity.badRequest().body(unknownKeys as Any)
@@ -528,59 +528,59 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
             return@transaction ResponseEntity.badRequest().body(MetaDecimalWire.unreadableBody(e) as Any)
         }
         val issues = MetaValidationIssues.Collector()
-        issues.addAt(validator.validateValue(CopayAuthValidation::class.java, "copayAmount", dto.copayAmount), "copayAmount")
-        if (!MetaDecimalWire.fits(dto.copayAmount, 10, 2)) issues.add("too_big", listOf("copayAmount"), "decimal does not fit the declared precision and scale")
-        issues.addAt(validator.validateValue(CopayAuthValidation::class.java, "reference", dto.reference), "reference")
+        issues.addAt(validator.validateValue(CouponAuthValidation::class.java, "couponAmount", dto.couponAmount), "couponAmount")
+        if (!MetaDecimalWire.fits(dto.couponAmount, 10, 2)) issues.add("too_big", listOf("couponAmount"), "decimal does not fit the declared precision and scale")
+        issues.addAt(validator.validateValue(CouponAuthValidation::class.java, "reference", dto.reference), "reference")
         if (!issues.isEmpty()) return@transaction ResponseEntity.badRequest().body(issues.body() as Any)
         val newId = AuthTable.insert {
-            it[AuthTable.type] = AuthType.Copay
+            it[AuthTable.type] = AuthType.Coupon
             it[AuthTable.reference] = dto.reference!!
-            it[AuthTable.copayAmount] = dto.copayAmount
+            it[AuthTable.couponAmount] = dto.couponAmount
         }[AuthTable.id]
         val saved = AuthTable.selectAll().where { AuthTable.id eq newId }.single()
         ResponseEntity.status(HttpStatus.CREATED).body(rowToAuth(saved) as Any)
     }
 
-    @RequestMapping(value = ["/copay/{id}"], method = [RequestMethod.PATCH, RequestMethod.PUT])
-    fun updateCopay(@PathVariable id: Long, @RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
+    @RequestMapping(value = ["/coupon/{id}"], method = [RequestMethod.PATCH, RequestMethod.PUT])
+    fun updateCoupon(@PathVariable id: Long, @RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
         val issues = MetaValidationIssues.Collector()
         if (!body.isObject) return@transaction ResponseEntity.badRequest().body(issues.add("invalid_type", emptyList(), "request body must be a JSON object").body() as Any)
         val unknownKeys = MetaUnknownBodyKeys.refusal(body, AuthKnownFields)
         if (unknownKeys != null) return@transaction ResponseEntity.badRequest().body(unknownKeys as Any)
         if (body.has("reference") && body.get("reference").isNull) issues.add("invalid_type", listOf("reference"), "field 'reference' cannot be null")
-        if (listOf("copayAmount", "reference").any { body.has(it) }) {
+        if (listOf("couponAmount", "reference").any { body.has(it) }) {
             run {
-                val hasCopayAmount = body.has("copayAmount")
-                val nullCopayAmount = hasCopayAmount && body.get("copayAmount").isNull
-                val vCopayAmount: java.math.BigDecimal? = if (hasCopayAmount && !nullCopayAmount) issues.bind<java.math.BigDecimal>("copayAmount") { MetaDecimalWire.fromNode(body.get("copayAmount")) } else null
-                if (vCopayAmount != null) issues.addAt(validator.validateValue(CopayAuthValidation::class.java, "copayAmount", vCopayAmount), "copayAmount")
-                if (!MetaDecimalWire.fits(vCopayAmount, 10, 2)) issues.add("too_big", listOf("copayAmount"), "decimal does not fit the declared precision and scale")
+                val hasCouponAmount = body.has("couponAmount")
+                val nullCouponAmount = hasCouponAmount && body.get("couponAmount").isNull
+                val vCouponAmount: java.math.BigDecimal? = if (hasCouponAmount && !nullCouponAmount) issues.bind<java.math.BigDecimal>("couponAmount") { MetaDecimalWire.fromNode(body.get("couponAmount")) } else null
+                if (vCouponAmount != null) issues.addAt(validator.validateValue(CouponAuthValidation::class.java, "couponAmount", vCouponAmount), "couponAmount")
+                if (!MetaDecimalWire.fits(vCouponAmount, 10, 2)) issues.add("too_big", listOf("couponAmount"), "decimal does not fit the declared precision and scale")
                 val hasReference = body.has("reference")
                 val nullReference = hasReference && body.get("reference").isNull
                 val vReference: kotlin.String? = if (hasReference && !nullReference) issues.bind<kotlin.String>("reference") { objectMapper.treeToValue(body.get("reference"), object : TypeReference<kotlin.String>() {}) } else null
-                if (vReference != null) issues.addAt(validator.validateValue(CopayAuthValidation::class.java, "reference", vReference), "reference")
+                if (vReference != null) issues.addAt(validator.validateValue(CouponAuthValidation::class.java, "reference", vReference), "reference")
                 if (!issues.isEmpty()) return@transaction ResponseEntity.badRequest().body(issues.body() as Any)
-                AuthTable.update({ (AuthTable.id eq id) and (AuthTable.type eq AuthType.Copay) }) {
-                    if (hasCopayAmount) { if (nullCopayAmount) it[AuthTable.copayAmount] = null else it[AuthTable.copayAmount] = vCopayAmount }
+                AuthTable.update({ (AuthTable.id eq id) and (AuthTable.type eq AuthType.Coupon) }) {
+                    if (hasCouponAmount) { if (nullCouponAmount) it[AuthTable.couponAmount] = null else it[AuthTable.couponAmount] = vCouponAmount }
                     if (hasReference) it[AuthTable.reference] = vReference!!
                 }
             }
         }
-        val row = AuthTable.selectAll().where { (AuthTable.id eq id) and (AuthTable.type eq AuthType.Copay) }.singleOrNull()
+        val row = AuthTable.selectAll().where { (AuthTable.id eq id) and (AuthTable.type eq AuthType.Coupon) }.singleOrNull()
         if (row == null) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf("error" to "not_found") as Any)
         else ResponseEntity.ok(rowToAuth(row) as Any)
     }
 
-    @DeleteMapping("/copay/{id}")
-    fun deleteCopay(@PathVariable id: Long): ResponseEntity<Any> = transaction {
-        val deleted = AuthTable.deleteWhere { with(SqlExpressionBuilder) { (AuthTable.id eq id) and (AuthTable.type eq AuthType.Copay) } }
+    @DeleteMapping("/coupon/{id}")
+    fun deleteCoupon(@PathVariable id: Long): ResponseEntity<Any> = transaction {
+        val deleted = AuthTable.deleteWhere { with(SqlExpressionBuilder) { (AuthTable.id eq id) and (AuthTable.type eq AuthType.Coupon) } }
         if (deleted == 0) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf("error" to "not_found") as Any)
         else ResponseEntity.noContent().build<Any>()
     }
 
-    // --- subtype PriorAuth (segment /priorauth) ---
-    @GetMapping("/priorauth")
-    fun listPriorAuth(
+    // --- subtype Permit (segment /permit) ---
+    @GetMapping("/permit")
+    fun listPermit(
         @RequestParam(required = false) limit: Int?,
         @RequestParam(required = false) offset: Int?,
         @RequestParam(required = false) sort: String?,
@@ -590,7 +590,7 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
         if (filterResult.error != null) return@transaction ResponseEntity.badRequest().body(mapOf("error" to filterResult.error, "field" to filterResult.field) as Any)
         val whereOp = AuthWhereOp(filterResult.predicates)
         var q = AuthTable.selectAll().where {
-            val d = AuthTable.type eq AuthType.PriorAuth
+            val d = AuthTable.type eq AuthType.Permit
             if (whereOp != null) d and whereOp else d
         }
         if (sort != null) {
@@ -608,15 +608,15 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
         ResponseEntity.ok(rows as Any)
     }
 
-    @GetMapping("/priorauth/{id}")
-    fun getPriorAuth(@PathVariable id: Long): ResponseEntity<Any> = transaction {
-        val row = AuthTable.selectAll().where { (AuthTable.id eq id) and (AuthTable.type eq AuthType.PriorAuth) }.singleOrNull()
+    @GetMapping("/permit/{id}")
+    fun getPermit(@PathVariable id: Long): ResponseEntity<Any> = transaction {
+        val row = AuthTable.selectAll().where { (AuthTable.id eq id) and (AuthTable.type eq AuthType.Permit) }.singleOrNull()
             ?: return@transaction ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf("error" to "not_found") as Any)
         ResponseEntity.ok(rowToAuth(row) as Any)
     }
 
-    @PostMapping("/priorauth")
-    fun createPriorAuth(@RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
+    @PostMapping("/permit")
+    fun createPermit(@RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
         if (!body.isObject) return@transaction ResponseEntity.badRequest().body(MetaValidationIssues.Collector().add("invalid_type", emptyList(), "request body must be a JSON object").body() as Any)
         val unknownKeys = MetaUnknownBodyKeys.refusal(body, AuthKnownFields)
         if (unknownKeys != null) return@transaction ResponseEntity.badRequest().body(unknownKeys as Any)
@@ -626,50 +626,50 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
             return@transaction ResponseEntity.badRequest().body(MetaDecimalWire.unreadableBody(e) as Any)
         }
         val issues = MetaValidationIssues.Collector()
-        issues.addAt(validator.validateValue(PriorAuthAuthValidation::class.java, "priorAuthNumber", dto.priorAuthNumber), "priorAuthNumber")
-        issues.addAt(validator.validateValue(PriorAuthAuthValidation::class.java, "reference", dto.reference), "reference")
+        issues.addAt(validator.validateValue(PermitAuthValidation::class.java, "permitNumber", dto.permitNumber), "permitNumber")
+        issues.addAt(validator.validateValue(PermitAuthValidation::class.java, "reference", dto.reference), "reference")
         if (!issues.isEmpty()) return@transaction ResponseEntity.badRequest().body(issues.body() as Any)
         val newId = AuthTable.insert {
-            it[AuthTable.type] = AuthType.PriorAuth
+            it[AuthTable.type] = AuthType.Permit
             it[AuthTable.reference] = dto.reference!!
-            it[AuthTable.priorAuthNumber] = dto.priorAuthNumber
+            it[AuthTable.permitNumber] = dto.permitNumber
         }[AuthTable.id]
         val saved = AuthTable.selectAll().where { AuthTable.id eq newId }.single()
         ResponseEntity.status(HttpStatus.CREATED).body(rowToAuth(saved) as Any)
     }
 
-    @RequestMapping(value = ["/priorauth/{id}"], method = [RequestMethod.PATCH, RequestMethod.PUT])
-    fun updatePriorAuth(@PathVariable id: Long, @RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
+    @RequestMapping(value = ["/permit/{id}"], method = [RequestMethod.PATCH, RequestMethod.PUT])
+    fun updatePermit(@PathVariable id: Long, @RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
         val issues = MetaValidationIssues.Collector()
         if (!body.isObject) return@transaction ResponseEntity.badRequest().body(issues.add("invalid_type", emptyList(), "request body must be a JSON object").body() as Any)
         val unknownKeys = MetaUnknownBodyKeys.refusal(body, AuthKnownFields)
         if (unknownKeys != null) return@transaction ResponseEntity.badRequest().body(unknownKeys as Any)
         if (body.has("reference") && body.get("reference").isNull) issues.add("invalid_type", listOf("reference"), "field 'reference' cannot be null")
-        if (listOf("priorAuthNumber", "reference").any { body.has(it) }) {
+        if (listOf("permitNumber", "reference").any { body.has(it) }) {
             run {
-                val hasPriorAuthNumber = body.has("priorAuthNumber")
-                val nullPriorAuthNumber = hasPriorAuthNumber && body.get("priorAuthNumber").isNull
-                val vPriorAuthNumber: kotlin.String? = if (hasPriorAuthNumber && !nullPriorAuthNumber) issues.bind<kotlin.String>("priorAuthNumber") { objectMapper.treeToValue(body.get("priorAuthNumber"), object : TypeReference<kotlin.String>() {}) } else null
-                if (vPriorAuthNumber != null) issues.addAt(validator.validateValue(PriorAuthAuthValidation::class.java, "priorAuthNumber", vPriorAuthNumber), "priorAuthNumber")
+                val hasPermitNumber = body.has("permitNumber")
+                val nullPermitNumber = hasPermitNumber && body.get("permitNumber").isNull
+                val vPermitNumber: kotlin.String? = if (hasPermitNumber && !nullPermitNumber) issues.bind<kotlin.String>("permitNumber") { objectMapper.treeToValue(body.get("permitNumber"), object : TypeReference<kotlin.String>() {}) } else null
+                if (vPermitNumber != null) issues.addAt(validator.validateValue(PermitAuthValidation::class.java, "permitNumber", vPermitNumber), "permitNumber")
                 val hasReference = body.has("reference")
                 val nullReference = hasReference && body.get("reference").isNull
                 val vReference: kotlin.String? = if (hasReference && !nullReference) issues.bind<kotlin.String>("reference") { objectMapper.treeToValue(body.get("reference"), object : TypeReference<kotlin.String>() {}) } else null
-                if (vReference != null) issues.addAt(validator.validateValue(PriorAuthAuthValidation::class.java, "reference", vReference), "reference")
+                if (vReference != null) issues.addAt(validator.validateValue(PermitAuthValidation::class.java, "reference", vReference), "reference")
                 if (!issues.isEmpty()) return@transaction ResponseEntity.badRequest().body(issues.body() as Any)
-                AuthTable.update({ (AuthTable.id eq id) and (AuthTable.type eq AuthType.PriorAuth) }) {
-                    if (hasPriorAuthNumber) { if (nullPriorAuthNumber) it[AuthTable.priorAuthNumber] = null else it[AuthTable.priorAuthNumber] = vPriorAuthNumber }
+                AuthTable.update({ (AuthTable.id eq id) and (AuthTable.type eq AuthType.Permit) }) {
+                    if (hasPermitNumber) { if (nullPermitNumber) it[AuthTable.permitNumber] = null else it[AuthTable.permitNumber] = vPermitNumber }
                     if (hasReference) it[AuthTable.reference] = vReference!!
                 }
             }
         }
-        val row = AuthTable.selectAll().where { (AuthTable.id eq id) and (AuthTable.type eq AuthType.PriorAuth) }.singleOrNull()
+        val row = AuthTable.selectAll().where { (AuthTable.id eq id) and (AuthTable.type eq AuthType.Permit) }.singleOrNull()
         if (row == null) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf("error" to "not_found") as Any)
         else ResponseEntity.ok(rowToAuth(row) as Any)
     }
 
-    @DeleteMapping("/priorauth/{id}")
-    fun deletePriorAuth(@PathVariable id: Long): ResponseEntity<Any> = transaction {
-        val deleted = AuthTable.deleteWhere { with(SqlExpressionBuilder) { (AuthTable.id eq id) and (AuthTable.type eq AuthType.PriorAuth) } }
+    @DeleteMapping("/permit/{id}")
+    fun deletePermit(@PathVariable id: Long): ResponseEntity<Any> = transaction {
+        val deleted = AuthTable.deleteWhere { with(SqlExpressionBuilder) { (AuthTable.id eq id) and (AuthTable.type eq AuthType.Permit) } }
         if (deleted == 0) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf("error" to "not_found") as Any)
         else ResponseEntity.noContent().build<Any>()
     }

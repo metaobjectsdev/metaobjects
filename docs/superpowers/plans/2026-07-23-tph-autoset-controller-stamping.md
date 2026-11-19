@@ -475,9 +475,9 @@ Edit `fixtures/api-contract-conformance/tph/seed.json` — add both columns set 
 
 ```json
 "auths": [
-  { "id": 1, "type": "Bridge",    "reference": "REF-1", "quantity": 5,    "copayAmount": null,    "approver": null,       "autoCreatedAt": "2000-01-01T00:00:00", "autoUpdatedAt": "2000-01-01T00:00:00" },
-  { "id": 2, "type": "Copay",     "reference": "REF-2", "quantity": null, "copayAmount": "12.50", "approver": null,       "autoCreatedAt": "2000-01-01T00:00:00", "autoUpdatedAt": "2000-01-01T00:00:00" },
-  { "id": 3, "type": "PriorAuth", "reference": "REF-3", "quantity": null, "copayAmount": null,    "approver": "Dr. Smith","autoCreatedAt": "2000-01-01T00:00:00", "autoUpdatedAt": "2000-01-01T00:00:00" }
+  { "id": 1, "type": "Bridge",    "reference": "REF-1", "quantity": 5,    "couponAmount": null,    "approver": null,       "autoCreatedAt": "2000-01-01T00:00:00", "autoUpdatedAt": "2000-01-01T00:00:00" },
+  { "id": 2, "type": "Coupon",     "reference": "REF-2", "quantity": null, "couponAmount": "12.50", "approver": null,       "autoCreatedAt": "2000-01-01T00:00:00", "autoUpdatedAt": "2000-01-01T00:00:00" },
+  { "id": 3, "type": "Permit", "reference": "REF-3", "quantity": null, "couponAmount": null,    "approver": "Dr. Smith","autoCreatedAt": "2000-01-01T00:00:00", "autoUpdatedAt": "2000-01-01T00:00:00" }
 ]
 ```
 

@@ -1,0 +1,23 @@
+{
+  "description": "Trailing spaces and tabs are never written.",
+  "dialect": "core",
+  "options": {
+    "indent": "  ",
+    "width": 40,
+    "trailingComma": true
+  },
+  "ops": [
+    [
+      "line",
+      "a;   "
+    ],
+    [
+      "line",
+      "b;\t"
+    ]
+  ],
+  "expected": [
+    "a;",
+    "b;"
+  ]
+}

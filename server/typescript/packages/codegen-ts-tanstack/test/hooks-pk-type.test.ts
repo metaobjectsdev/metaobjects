@@ -29,7 +29,7 @@ async function generate(): Promise<Map<string, string>> {
   const { root } = await loader.load([
     new FileSource(resolve(import.meta.dir, "fixtures", "pk-types.json")),
   ]);
-  const renderContext = makeRenderContext({
+  const renderContext = makeRenderContext({ outputLayout: "flat",
     dialect: "sqlite", loadedRoot: root, outDir: "/tmp",
     dbImport: "../db", extStyle: "none",
     pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
@@ -37,7 +37,7 @@ async function generate(): Promise<Map<string, string>> {
   const ctx: GenContext = {
     entities: root.objects(), loadedRoot: root,
     matches: () => true,
-    config: { outDir: "/tmp", extStyle: "none", dbImport: "../db", dialect: "sqlite" },
+    config: { outputLayout: "flat", outDir: "/tmp", extStyle: "none", dbImport: "../db", dialect: "sqlite" },
     renderContext,
     warn: () => {},
   };

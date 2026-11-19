@@ -68,7 +68,7 @@ public sealed class DependencyCliTests : IDisposable
         Assert.False(Directory.EnumerateFiles(Path.Combine(_root, "generated"), "*Customer*", SearchOption.AllDirectories).Any(),
             "an imported entity must not be generated");
 
-        var verify = OwnedRunner.Run(_root, ["entity"], "verify", "--codegen", "--out", "generated", "--namespace", "Acme.Generated");
+        var verify = OwnedRunner.Run(_root, ["entity"], "verify", "--codegen", "--full", "--out", "generated", "--namespace", "Acme.Generated");
         Assert.True(verify.ExitCode == 0, verify.Stdout + verify.Stderr);
     }
 

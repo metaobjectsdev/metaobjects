@@ -57,14 +57,14 @@ describe("package-aware output placement — tanstackQuery + tanstackGrid", () =
     expect(colsContent).toContain('from "./Product"');
   });
 
-  test("flat layout (default): hooks and columns land at outDir root", async () => {
+  test("flat layout (opt-in): hooks and columns land at outDir root", async () => {
     const { root, errors } = await new MetaDataLoader().load([new FileSource(PACKAGED_GRID)]);
     expect(errors).toEqual([]);
 
     const out = await runGen({
       config: defineConfig({
         outDir: tmp,
-        // outputLayout omitted → defaults to "flat"
+        outputLayout: "flat",
         extStyle: "none",
         dbImport: "../db",
         dialect: "sqlite",
@@ -87,6 +87,7 @@ describe("package-aware output placement — tanstackQuery + tanstackGrid", () =
     const out = await runGen({
       config: defineConfig({
         outDir: tmp,
+        outputLayout: "flat",
         extStyle: "js",
         dbImport: "../db",
         dialect: "sqlite",

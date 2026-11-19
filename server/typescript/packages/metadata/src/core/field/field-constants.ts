@@ -203,6 +203,15 @@ export const FIELD_ATTR_VALUES = "values";
 export const FIELD_ATTR_INT_VALUE_MAP = "intValueMap";
 
 /**
+ * field.enum (rc.21) — optional per-member stored strings: `{ member: string }`, the string twin of
+ * {@link FIELD_ATTR_INT_VALUE_MAP}, for a string-stored enum whose database spelling differs from its
+ * member symbols. Keys must exactly match @values; values must be unique non-empty strings. Refused
+ * with @intValueMap and on an array enum. The column, its CHECK, its length, a @default and a
+ * @condition literal hold the stored strings; the native type and the wire keep the members.
+ */
+export const FIELD_ATTR_STRING_VALUE_MAP = "stringValueMap";
+
+/**
  * Pattern every enum member must satisfy: a legal identifier in all target
  * languages (TS union member, Java/C#/Python enum member). Ensures symbol ==
  * stored string with no name↔value divergence.

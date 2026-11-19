@@ -1,0 +1,30 @@
+{
+  "description": "Two blank-line requests in a row give one blank line.",
+  "dialect": "core",
+  "options": {
+    "indent": "  ",
+    "width": 40,
+    "trailingComma": true
+  },
+  "ops": [
+    [
+      "line",
+      "a;"
+    ],
+    [
+      "blank"
+    ],
+    [
+      "blank"
+    ],
+    [
+      "line",
+      "b;"
+    ]
+  ],
+  "expected": [
+    "a;",
+    "",
+    "b;"
+  ]
+}

@@ -34,6 +34,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 
 from .constants import GENERATED_MARKER
 
@@ -71,10 +73,64 @@ def has_hash_manifest(gen_state_dir: str) -> bool:
     manifest predates the manifest being committed, so all its refusals share one
     cause and deserve one instruction rather than one warning per file.
     """
-    return os.path.exists(_manifest_path(gen_state_dir))
+    batch = _batches.get(os.path.abspath(gen_state_dir))
+    return os.path.exists(_manifest_path(gen_state_dir)) or bool(batch and batch.dirty)
+
+
+class _ManifestBatch:
+    __slots__ = ("raw", "dirty")
+
+    def __init__(self, raw: dict[str, object]) -> None:
+        self.raw = raw
+        self.dirty = False
+
+
+# One in-memory manifest per gen-state dir while a run is in progress. Without it every
+# recorded file re-read and re-wrote the whole manifest, so a run of N files wrote it N
+# times. Mirrors codegen-ts's ``withManifestBatch`` and C#'s and Java's per-run save.
+_batches: dict[str, _ManifestBatch] = {}
+
+
+@contextmanager
+def manifest_batch(gen_state_dir: str | None) -> Iterator[None]:
+    """Hold the manifest in memory for the block and write it at most once, at the end.
+
+    A nested batch for the same directory joins the outer one, so a CLI run over several
+    targets plus the orphan sweep writes the manifest once. The write happens even when
+    the block raises: every file recorded so far IS on disk, and dropping its record
+    would make the next run refuse output it wrote itself.
+    """
+    if gen_state_dir is None:
+        yield
+        return
+    key = os.path.abspath(gen_state_dir)
+    if key in _batches:
+        yield
+        return
+    batch = _ManifestBatch(_read_manifest_file(gen_state_dir))
+    _batches[key] = batch
+    try:
+        yield
+    except BaseException:
+        del _batches[key]
+        if batch.dirty:
+            # The block's exception is the cause to report; a failed write must not replace it.
+            with suppress(Exception):
+                _write_manifest_file(gen_state_dir, batch.raw)
+        raise
+    del _batches[key]
+    if batch.dirty:
+        _write_manifest_file(gen_state_dir, batch.raw)
 
 
 def _read_raw(gen_state_dir: str) -> dict[str, object]:
+    batch = _batches.get(os.path.abspath(gen_state_dir))
+    if batch is not None:
+        return batch.raw
+    return _read_manifest_file(gen_state_dir)
+
+
+def _read_manifest_file(gen_state_dir: str) -> dict[str, object]:
     path = _manifest_path(gen_state_dir)
     if not os.path.exists(path):
         return {}
@@ -108,7 +164,6 @@ def _load_hashes(gen_state_dir: str) -> dict[str, str]:
 
 
 def _save_hashes(gen_state_dir: str, hashes: dict[str, str]) -> None:
-    os.makedirs(gen_state_dir, exist_ok=True)
     raw = _read_raw(gen_state_dir)
     # Keys SORTED, because this file is committed. Insertion order would make the
     # diff — and any merge conflict between two people who both regenerated — depend
@@ -120,9 +175,65 @@ def _save_hashes(gen_state_dir: str, hashes: dict[str, str]) -> None:
             ordered[k] = {**existing, "hash": hashes[k]}
         else:
             ordered[k] = hashes[k]
+    batch = _batches.get(os.path.abspath(gen_state_dir))
+    if batch is not None:
+        batch.raw = ordered
+        batch.dirty = True
+        return
+    _write_manifest_file(gen_state_dir, ordered)
+
+
+def _write_manifest_file(gen_state_dir: str, ordered: dict[str, object]) -> None:
+    os.makedirs(gen_state_dir, exist_ok=True)
     with open(_manifest_path(gen_state_dir), "w", encoding="utf-8") as fh:
         json.dump(ordered, fh, indent=2)
         fh.write("\n")
+
+
+class HashManifest:
+    """The manifest as ONE in-memory session (ADR-0064 decision 1).
+
+    Loaded once, updated in memory by :func:`decide_and_write`, and saved once by
+    :meth:`save`, and only when an entry was added, changed or removed. The bytes it writes
+    are exactly what :func:`_save_hashes` has always written (sorted keys, two-space indent,
+    trailing newline, extra fields of object entries kept), so a run that changes nothing
+    leaves the committed file, and its timestamp, alone.
+    """
+
+    def __init__(self, gen_state_dir: str) -> None:
+        self.gen_state_dir = gen_state_dir
+        self.hashes: dict[str, str] = _load_hashes(gen_state_dir)
+        self.dirty = False
+
+    def get(self, rel_path: str, legacy_rel_path: str | None = None) -> str | None:
+        recorded = self.hashes.get(rel_path)
+        if recorded is None and legacy_rel_path is not None:
+            return self.hashes.get(legacy_rel_path)
+        return recorded
+
+    def is_pristine(self, rel_path: str, current: str, legacy_rel_path: str | None = None) -> bool:
+        recorded = self.get(rel_path, legacy_rel_path)
+        return recorded is not None and recorded == content_hash(current)
+
+    def record(
+        self, rel_path: str, content: str, legacy_rel_path: str | None = None
+    ) -> None:
+        new = content_hash(content)
+        if self.hashes.get(rel_path) != new:
+            self.hashes[rel_path] = new
+            self.dirty = True
+        # Drop the pre-re-keying spelling in the same save (see `_record`).
+        if legacy_rel_path is not None and legacy_rel_path != rel_path:
+            if self.hashes.pop(legacy_rel_path, None) is not None:
+                self.dirty = True
+
+    def save(self) -> bool:
+        """Write the manifest if anything changed. Returns whether it wrote."""
+        if not self.dirty:
+            return False
+        _save_hashes(self.gen_state_dir, self.hashes)
+        self.dirty = False
+        return True
 
 
 def read_generated_hash(
@@ -160,7 +271,13 @@ def _record(
     gen_state_dir: str, rel_path: str, content: str, legacy_rel_path: str | None = None
 ) -> None:
     hashes = _load_hashes(gen_state_dir)
-    hashes[rel_path] = content_hash(content)
+    digest = content_hash(content)
+    stale_legacy = (
+        legacy_rel_path is not None and legacy_rel_path != rel_path and legacy_rel_path in hashes
+    )
+    if hashes.get(rel_path) == digest and not stale_legacy:
+        return  # already recorded exactly so: an unchanged file does not rewrite the manifest
+    hashes[rel_path] = digest
     # Drop the pre-re-keying spelling in the same write. Leaving it would keep a key
     # that means "this name, relative to whichever out dir ran last" alive forever —
     # which is the ambiguity being removed.
@@ -177,6 +294,10 @@ def _write(path: str, content: str) -> None:
 
 #: The status of a hand-edited file replaced under ``handEdits: overwrite``.
 STATUS_OVERWROTE_EDIT = "overwrote-edit"
+#: The file already held this output, so nothing was written.
+STATUS_UNCHANGED = "unchanged"
+#: skip-existing kept the file as it was.
+STATUS_SKIPPED = "skipped"
 
 
 def decide_and_write(
@@ -189,8 +310,13 @@ def decide_and_write(
     legacy_rel_path: str | None = None,
     baseline: str = "default",
     hand_edits: str = "keep",
+    manifest: HashManifest | None = None,
 ) -> str:
     """Decide and perform the write for one generated file.
+
+    ``manifest`` is the run's shared :class:`HashManifest` session; the caller saves it
+    once at the end of the run. Without one, a session is opened for this single call and
+    saved before returning (what every caller did before ADR-0064).
 
     ``hand_edits="overwrite"`` (the generator's ``handEdits`` setting) replaces a file we
     recorded writing that was edited since with fresh output, re-records it, and returns
@@ -211,57 +337,81 @@ def decide_and_write(
     next run regenerates over it. What it guarantees is that establishing the baseline
     writes nothing, which is what lets the regeneration land as its own reviewable diff.
     """
+    session = manifest
+    if session is None and gen_state_dir is not None:
+        session = HashManifest(gen_state_dir)
+    try:
+        return _decide(
+            path, content, strategy, session, gen_state_dir, rel_path, legacy_rel_path,
+            baseline, hand_edits,
+        )
+    finally:
+        if manifest is None and session is not None:
+            session.save()
+
+
+def _decide(
+    path: str,
+    content: str,
+    strategy: str,
+    session: HashManifest | None,
+    gen_state_dir: str | None,
+    rel_path: str | None,
+    legacy_rel_path: str | None,
+    baseline: str,
+    hand_edits: str,
+) -> str:
     if not os.path.exists(path):
         _write(path, content)
-        if gen_state_dir is not None:
-            _record(
-                gen_state_dir, rel_path or os.path.basename(path), content, legacy_rel_path
-            )
+        if session is not None:
+            session.record(rel_path or os.path.basename(path), content, legacy_rel_path)
         return "new"
 
     if strategy == "skip-existing":
-        return "skipped"
+        return STATUS_SKIPPED
 
     with open(path, encoding="utf-8") as fh:
         current = fh.read()
 
     # No state to reason from: keep the legacy marker rule rather than refuse
     # everything, and let the CLI (which always supplies state) carry the guarantee.
-    if gen_state_dir is None:
+    if session is None or gen_state_dir is None:
         if GENERATED_MARKER not in current:
             return "refused"
-        _write(path, content)
-        return "overwrite"
+        if current != content:
+            _write(path, content)
+        return "overwrite" if current != content else STATUS_UNCHANGED
 
     key = rel_path or os.path.basename(path)
 
     if current == content:
-        # Nothing to do, but record it: a first run over already-correct output should
-        # leave the file recognisable as ours next time.
-        _record(gen_state_dir, key, content, legacy_rel_path)
-        return "unchanged"
+        # Nothing to write, and never a rewrite: it would move the timestamp every build
+        # tool downstream watches (ADR-0064 decision 2). Record it in memory: a first run
+        # over already-correct output should leave the file recognisable as ours next time.
+        session.record(key, content, legacy_rel_path)
+        return STATUS_UNCHANGED
 
-    if is_pristine_generated(gen_state_dir, key, current, legacy_rel_path):
+    if session.is_pristine(key, current, legacy_rel_path):
         _write(path, content)
-        _record(gen_state_dir, key, content, legacy_rel_path)
+        session.record(key, content, legacy_rel_path)
         return "overwrite"
 
     # Edited since we wrote it, and the generator says to discard hand edits.
-    if hand_edits == "overwrite" and read_generated_hash(gen_state_dir, key, legacy_rel_path) is not None:
+    if hand_edits == "overwrite" and session.get(key, legacy_rel_path) is not None:
         _write(path, content)
-        _record(gen_state_dir, key, content, legacy_rel_path)
+        session.record(key, content, legacy_rel_path)
         return STATUS_OVERWROTE_EDIT
 
     # Edited, or never recorded. Deliberately does NOT record the current content:
     # doing so would make the file look pristine next run and turn this into a silent
     # overwrite one run later.
     #
-    # …unless the caller explicitly adopted what is on disk. Placed HERE, at the refusal,
+    # ...unless the caller explicitly adopted what is on disk. Placed HERE, at the refusal,
     # rather than earlier in the function: adopting can then only ever convert a refusal
     # into a recorded baseline, leaving "unchanged" and the pristine overwrite exactly as
     # they are, so passing it cannot freeze a project's regeneration.
     if baseline == "adopt":
-        _record(gen_state_dir, key, current, legacy_rel_path)
+        session.record(key, current, legacy_rel_path)
         return "adopted"
 
     return "refused"

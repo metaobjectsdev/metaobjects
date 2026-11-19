@@ -40,7 +40,7 @@ describe("runGen — single entity, SQLite", () => {
         outDir: tmp,
         extStyle: "none",
         dbImport: "~/server/db",
-        dialect: "sqlite",
+        outputLayout: "flat" as const, dialect: "sqlite",
         generators: [entityFile(), queriesFile(), routesFile(), barrel()],
       }),
       metadata: result.root,
@@ -87,7 +87,7 @@ describe("runGen — two entities with FK, Postgres", () => {
         outDir: tmp,
         extStyle: "none",
         dbImport: "~/server/db",
-        dialect: "postgres",
+        outputLayout: "flat" as const, dialect: "postgres",
         generators: [entityFile(), queriesFile(), routesFile(), barrel()],
       }),
       metadata: result.root,
@@ -130,7 +130,7 @@ describe("runGen — first-time regen on a pre-existing file", () => {
         outDir: tmp,
         extStyle: "none",
         dbImport: "~/server/db",
-        dialect: "sqlite",
+        outputLayout: "flat" as const, dialect: "sqlite",
         generators: [entityFile(), queriesFile(), routesFile(), barrel()],
       }),
       metadata: result.root,
@@ -187,7 +187,7 @@ describe("runGen — path-traversal guard (security)", () => {
         outDir: tmp,
         extStyle: "none",
         dbImport: "~/server/db",
-        dialect: "sqlite",
+        outputLayout: "flat" as const, dialect: "sqlite",
         generators: [entityFile(), barrel()],
       }),
       metadata: root,
@@ -223,7 +223,7 @@ describe("runGen — mergeStrategy: 'skip-existing'", () => {
       outDir: tmp,
       extStyle: "none",
       dbImport: "~/server/db",
-      dialect: "sqlite",
+      outputLayout: "flat" as const, dialect: "sqlite",
       generators: [entityFile(), queriesFile(), barrel()],
     });
 
@@ -284,36 +284,40 @@ describe("runGen — mergeStrategy: 'skip-existing'", () => {
 // Item 5: entityFilter test
 // ---------------------------------------------------------------------------
 describe("runGen — entityFilter", () => {
-  test("entityFilter: ['Post'] produces only Post files; barrel reflects filter", async () => {
+  // A whole-model file sees the whole model whatever `meta gen <Entity>` names: the barrel
+  // re-exports every entity, while the per-entity files are written for the named one only.
+  // It used to be rendered from the named entities alone, so `meta gen Post` dropped every
+  // other entity's export from `index.ts`.
+  test("entityFilter: ['Post'] writes only Post's per-entity files; the barrel keeps every entity", async () => {
     const loader = new MetaDataLoader();
     const result = await loader.load([new FileSource(join(FIXTURE_DIR, "two-entities-fk.json"))]);
     expect(result.errors).toEqual([]);
-
-    const out = await runGen({
-      config: defineConfig({
-        outDir: tmp,
-        extStyle: "none",
-        dbImport: "~/server/db",
-        dialect: "postgres",
-        generators: [entityFile(), queriesFile(), barrel()],
-      }),
-      metadata: result.root,
-      entityFilter: ["Post"],
+    const config = defineConfig({
+      outDir: tmp,
+      extStyle: "none",
+      dbImport: "~/server/db",
+      dialect: "postgres",
+      generators: [entityFile(), queriesFile(), barrel()],
     });
 
+    const full = await runGen({ config, metadata: result.root });
+    expect(full.warnings).toEqual([]);
+    const fullBarrel = readFileSync(join(tmp, "index.ts"), "utf-8");
+    expect(fullBarrel).toContain('export * from "./Post"');
+    expect(fullBarrel).toContain('export * from "./User"');
+    for (const f of readdirSync(tmp)) rmSync(join(tmp, f), { recursive: true, force: true });
+
+    const out = await runGen({ config, metadata: result.root, entityFilter: ["Post"] });
     expect(out.warnings).toEqual([]);
 
-    // Only Post files should exist — no User files
+    // Only Post's per-entity files are written — no User files.
     expect(existsSync(join(tmp, "Post.ts"))).toBe(true);
     expect(existsSync(join(tmp, "Post.queries.ts"))).toBe(true);
-    expect(existsSync(join(tmp, "index.ts"))).toBe(true);
     expect(existsSync(join(tmp, "User.ts"))).toBe(false);
     expect(existsSync(join(tmp, "User.queries.ts"))).toBe(false);
 
-    // Barrel only re-exports Post
-    const barrelContent = readFileSync(join(tmp, "index.ts"), "utf-8");
-    expect(barrelContent).toContain('export * from "./Post"');
-    expect(barrelContent).not.toContain("User");
+    // The barrel is the full run's barrel, byte for byte.
+    expect(readFileSync(join(tmp, "index.ts"), "utf-8")).toBe(fullBarrel);
   });
 
   test("entityFilter: ['NonExistent'] produces 0 entity files and a warning", async () => {
@@ -326,7 +330,7 @@ describe("runGen — entityFilter", () => {
         outDir: tmp,
         extStyle: "none",
         dbImport: "~/server/db",
-        dialect: "postgres",
+        outputLayout: "flat" as const, dialect: "postgres",
         generators: [entityFile(), queriesFile(), barrel()],
       }),
       metadata: result.root,
@@ -353,7 +357,7 @@ describe("runGen — scope", () => {
         outDir: tmp,
         extStyle: "none",
         dbImport: "~/server/db",
-        dialect: "postgres",
+        outputLayout: "flat" as const, dialect: "postgres",
         generators: [entityFile(), queriesFile(), barrel()],
       }),
       metadata: result.root,
@@ -391,7 +395,7 @@ describe("runGen — scope", () => {
     const baseConfig = {
       extStyle: "none" as const,
       dbImport: "~/server/db",
-      dialect: "postgres" as const,
+      outputLayout: "flat" as const, dialect: "postgres" as const,
       generators: [entityFile(), queriesFile(), routesFile(), barrel()],
     };
 
@@ -436,7 +440,7 @@ describe("runGen — scope", () => {
         outDir: tmp,
         extStyle: "none",
         dbImport: "~/server/db",
-        dialect: "postgres",
+        outputLayout: "flat" as const, dialect: "postgres",
         generators: [entityFile(), queriesFile(), barrel()],
       }),
       metadata: result.root,
@@ -462,7 +466,7 @@ describe("runGen — scope", () => {
         outDir: tmp,
         extStyle: "none",
         dbImport: "~/server/db",
-        dialect: "postgres",
+        outputLayout: "flat" as const, dialect: "postgres",
         generators: [entityFile(), queriesFile(), barrel()],
       }),
       metadata: result.root,

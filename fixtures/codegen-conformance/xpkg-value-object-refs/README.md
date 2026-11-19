@@ -11,7 +11,7 @@ must tell them apart without a rename.
 
 A port that writes every package into one namespace or module directory refuses this model
 with `ERR_NAME_COLLISION` (two `Note`s, two `Summary`s); the corpus is run with the packages
-kept apart — C# by default (each package is its own namespace), TypeScript `outputLayout: "package"` (the default). With them apart, every
+kept apart — C# by default (each package is its own namespace), TypeScript `outputLayout: "package"` (opt-in; the default is `flat`). With them apart, every
 generated file that names one of the pair must name it unambiguously:
 
 - **C#:** every generated file names a type of another namespace `global::`-qualified (a bare

@@ -17,6 +17,17 @@ public class LoaderOptions {
     private boolean shouldRegister = false;
     private boolean verbose = true;
     private boolean strict = true;
+    private long initTimeoutMs = defaultInitTimeoutMs();
+
+    /** How long {@code init()} waits for the load when nothing sets it: 30 seconds. */
+    public static final long DEFAULT_INIT_TIMEOUT_MS = 30_000L;
+
+    /**
+     * The JVM system property that changes the default for every loader in the process, for an
+     * embedder that builds its loaders where no option reaches (a Spring context, a test runner):
+     * {@code -Dmetaobjects.loader.initTimeoutMs=120000}.
+     */
+    public static final String INIT_TIMEOUT_PROPERTY = "metaobjects.loader.initTimeoutMs";
 
     /** Extra vocabulary providers composed into the loader's registry; empty = the shared default. */
     private List<MetaDataTypeProvider> providers = List.of();
@@ -62,6 +73,39 @@ public class LoaderOptions {
     }
 
     /**
+     * How long {@link MetaDataLoader#init()} waits for the load to finish, in milliseconds,
+     * before it fails with a timeout. The default is {@link #DEFAULT_INIT_TIMEOUT_MS} unless the
+     * {@link #INIT_TIMEOUT_PROPERTY} system property says otherwise. The load time grows with
+     * the model, and a busy build machine stretches it, so a very large model may need more.
+     *
+     * @param initTimeoutMs a positive number of milliseconds
+     */
+    public <T extends LoaderOptions> T setInitTimeoutMs(long initTimeoutMs) {
+        if (initTimeoutMs <= 0) {
+            throw new IllegalArgumentException("initTimeoutMs must be a positive number of milliseconds, got " + initTimeoutMs);
+        }
+        this.initTimeoutMs = initTimeoutMs;
+        return (T) this;
+    }
+
+    public long getInitTimeoutMs() {
+        return initTimeoutMs;
+    }
+
+    /** {@link #DEFAULT_INIT_TIMEOUT_MS}, or the {@link #INIT_TIMEOUT_PROPERTY} system property when set. */
+    static long defaultInitTimeoutMs() {
+        String raw = System.getProperty(INIT_TIMEOUT_PROPERTY);
+        if (raw == null || raw.isBlank()) return DEFAULT_INIT_TIMEOUT_MS;
+        try {
+            long value = Long.parseLong(raw.trim());
+            if (value > 0) return value;
+        } catch (NumberFormatException ignored) {
+            // fall through to the refusal below
+        }
+        throw new IllegalArgumentException("-D" + INIT_TIMEOUT_PROPERTY + " must be a positive number of milliseconds, got \"" + raw + "\"");
+    }
+
+    /**
      * A project's own vocabulary: the loader composes
      * {@link com.metaobjects.registry.RegistryManifest#composeLoaderRegistry(Collection)} with these
      * providers appended after the metamodel set, instead of using the shared default registry.
@@ -88,6 +132,7 @@ public class LoaderOptions {
         return shouldRegister == that.shouldRegister &&
                 verbose == that.verbose &&
                 strict == that.strict &&
+                initTimeoutMs == that.initTimeoutMs &&
                 providers.equals(that.providers);
     }
 
@@ -99,7 +144,8 @@ public class LoaderOptions {
     protected String getToStringOptions() {
         return "shouldRegister=" + shouldRegister +
                 ", verbose=" + verbose +
-                ", strict=" + strict;
+                ", strict=" + strict +
+                ", initTimeoutMs=" + initTimeoutMs;
     }
 
     @Override

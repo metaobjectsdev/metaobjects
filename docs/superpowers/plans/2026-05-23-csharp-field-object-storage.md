@@ -306,9 +306,9 @@ public class FieldObjectStorageValidationTests
               ]}},
               {
                 "object.entity": {
-                  "name": "Patient",
+                  "name": "Player",
                   "children": [
-                    { "source.dbTable": { "@name": "patients" } },
+                    { "source.dbTable": { "@name": "players" } },
                     { "field.object": { "name": "contactInfos", "isArray": true, "@objectRef": "ContactInfo", "@storage": "jsonb" } },
                     { "field.long":   { "name": "id" } },
                     { "identity.primary": { "@fields": "id" } }

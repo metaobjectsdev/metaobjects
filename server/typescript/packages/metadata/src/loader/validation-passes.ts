@@ -17,15 +17,22 @@ import {
   VALIDATOR_ATTR_EQUALS,
   VALIDATOR_ATTR_FIELDS,
   VALIDATOR_ATTR_WHEN,
+  VALIDATOR_ATTR_MAX,
   VALIDATOR_SUBTYPE_EXACTLY_ONE,
   VALIDATOR_SUBTYPE_AT_LEAST_ONE,
-  VALIDATOR_ATTR_MAX,
   VALIDATOR_SUBTYPE_PRESENT_IFF,
   VALIDATOR_SUBTYPE_REQUIRED_WHEN,
+  VALIDATOR_ATTR_CONSTRAINT_NAME,
+  VALIDATOR_ATTR_DB_CHECK,
+  VALIDATOR_SUBTYPE_LENGTH,
+  VALIDATOR_SUBTYPE_NUMERIC,
+  VALIDATOR_SUBTYPE_REGEX,
 } from "../core/validator/validator-constants.js";
 import { parseDurationLiteral } from "../core/field/duration-wire.js";
 import type { MetaData } from "../shared/meta-data.js";
 import type { MetaObject } from "../core/object/meta-object.js";
+import { findReverseReferenceHops, reverseHopHint } from "../core/relationship/find-reference.js";
+import { storedEnumValues, stringValueMapOf } from "../core/field/enum-storage.js";
 import { resolveFlattenedMember } from "../core/field/flattened-member.js";
 import { resolveFilterPath } from "../core/relationship/filter-path.js";
 import { effectiveProjectionFilter } from "../core/object/effective-projection-filter.js";
@@ -69,6 +76,11 @@ import {
   OBJECT_SUBTYPE_ENTITY,
   OBJECT_SUBTYPE_VALUE,
   OBJECT_SUBTYPE_PROJECTION,
+  OBJECT_PROJECTION_ATTR_UNION,
+  OBJECT_PROJECTION_ATTR_UNION_ALL,
+  OBJECT_PROJECTION_ATTR_GRAIN,
+  OBJECT_PROJECTION_ATTR_GRAIN_ORDINAL,
+  OBJECT_ATTR_DISCRIMINATOR,
 } from "../core/object/object-constants.js";
 import { MetaSource } from "../persistence/source/meta-source.js";
 import { resolveColumnName, resolveFlattenedColumnName } from "../naming.js";
@@ -84,6 +96,7 @@ import {
   FIELD_ATTR_OBJECT_REF,
   FIELD_ATTR_STORAGE,
   STORAGE_FLATTENED,
+  STORAGE_JSONB,
   FIELD_ATTR_DEFAULT,
   FIELD_SUBTYPE_INT,
   FIELD_SUBTYPE_LONG,
@@ -94,6 +107,7 @@ import {
   FIELD_SUBTYPE_BOOLEAN,
   FIELD_SUBTYPE_ENUM,
   FIELD_ATTR_INT_VALUE_MAP,
+  FIELD_ATTR_STRING_VALUE_MAP,
   FIELD_ATTR_MAX_LENGTH,
   FIELD_ATTR_VALUES,
   FIELD_SUBTYPE_OBJECT,
@@ -107,7 +121,7 @@ import {
   FIELD_SUBTYPE_UUID,
   FIELD_SUBTYPE_DURATION,
 } from "../core/field/field-constants.js";
-import { FIELD_ATTR_COLUMN, FIELD_ATTR_FLATTENED_COLUMN_PREFIX, FIELD_ATTR_DB_INDEXED, IDENTITY_ATTR_EXPR, IDENTITY_ATTR_SEQUENCE_NAME, IDENTITY_ATTR_SEQUENCE_START } from "../persistence/db/db-constants.js";
+import { FIELD_ATTR_COLUMN, FIELD_ATTR_FLATTENED_COLUMN_PREFIX, FIELD_ATTR_DB_INDEXED, IDENTITY_ATTR_EXPR, IDENTITY_ATTR_WHERE, IDENTITY_ATTR_SEQUENCE_NAME, IDENTITY_ATTR_SEQUENCE_START } from "../persistence/db/db-constants.js";
 import { SOURCE_KIND_VIEW } from "../persistence/source/source-constants.js";
 import {
   IDENTITY_ATTR_FIELDS,
@@ -119,6 +133,13 @@ import {
   ORIGIN_SUBTYPE_AGGREGATE,
   ORIGIN_SUBTYPE_COMPUTED,
   ORIGIN_SUBTYPE_FIRST,
+  ORIGIN_SUBTYPE_FUNCTION,
+  ORIGIN_FUNCTION_ATTR_FUNCTION,
+  ORIGIN_FUNCTION_ATTR_SCHEMA,
+  ORIGIN_FUNCTION_ATTR_ARGS,
+  ORIGIN_FUNCTION_ATTR_PARAMS,
+  ORIGIN_FUNCTION_ATTR_RETURNS,
+  ORIGIN_FUNCTION_IDENTIFIER,
   ORIGIN_PASSTHROUGH_ATTR_FROM,
   ORIGIN_PASSTHROUGH_ATTR_VIA,
   ORIGIN_PASSTHROUGH_ATTR_CONVERT,
@@ -152,6 +173,8 @@ import {
   EXPR_NOW,
   inferExprType,
   validateExprNode,
+  exprViewOnlyNode,
+  EXPR_CAST_TARGETS,
   type ExprNode,
 } from "../core/attr/meta-attr-expression.js";
 import { SORT_ORDER_VALUES } from "../core/query/query-constants.js";
@@ -186,7 +209,6 @@ import {
   REQUIREMENT_ATTR_SUPERSEDED_BY,
   REQUIREMENT_STATUS_RETIRED,
 } from "../core/requirement/requirement-constants.js";
-import { findReverseReferenceHops } from "../core/relationship/find-reference.js";
 
 // ---------------------------------------------------------------------------
 // Layout dataGrid @defaultSortField validation
@@ -824,7 +846,8 @@ function _validateViaPath(
       errors.push(
         new ParseError(
           `origin.@via "${viaAttr}" on ${projectionName}.${fieldName}: no such relationship or reference "${relName}" on ${currentObj.name}. ` +
-          `Deepest valid prefix was "${prefix}".`,
+          `Deepest valid prefix was "${prefix}".` +
+          (isMetaRoot(root) ? reverseHopHint(currentObj as MetaObject, root.objects()) : ""),
           {
             code: "ERR_INVALID_ORIGIN",
             source: resolvedSource(originSource, referrer, viaAttr),
@@ -888,12 +911,41 @@ function _validateViaPath(
 
 /** A hop's effective @cardinality, or undefined when not declared. A reference
  *  hop (a forward FK) is inherently to-one — a child names the parent it points at. */
-function _hopCardinality(rel: MetaData, reverse?: ReadonlyMap<MetaData, string>): string | undefined {
-  // A reference walked backwards reaches every row that references the walked-from one.
-  if (reverse?.has(rel) === true) return CARDINALITY_MANY;
+function _hopCardinality(rel: MetaData, reverse?: ReadonlyMap<MetaData, string>, uniqueReverseIsOne = false): string | undefined {
+  // R-walk: a reference walked backwards reaches every row that references the walked-from one —
+  // unless (rc.21 part B) its holder declares a unique identity over exactly the reference's fields,
+  // so at most one row references it: then a passthrough may walk it (the aggregate rule keeps calling
+  // it to-many: an aggregate over it stays legal, as it was).
+  if (reverse?.has(rel) === true) return uniqueReverseIsOne && _reverseHopIsUnique(rel) ? CARDINALITY_ONE : CARDINALITY_MANY;
   if (_isReferenceHop(rel)) return CARDINALITY_ONE;
   const v = rel.attr(RELATIONSHIP_ATTR_CARDINALITY);
   return typeof v === "string" ? v : undefined;
+}
+
+/** The field names an identity or reference declares (`@fields`, a string or a list). */
+function _identityFieldSet(node: MetaData): string[] {
+  const raw = node.attr(IDENTITY_ATTR_FIELDS);
+  const list = Array.isArray(raw) ? raw : typeof raw === "string" ? raw.split(",") : [];
+  return list.map((f) => String(f).trim()).filter((f) => f.length > 0).sort();
+}
+
+/**
+ * rc.21 part B: whether a reference walked backwards reaches at most one row — its holder (or an
+ * ancestor it inherits identities from) declares an identity.primary or identity.secondary whose
+ * fields are exactly the reference's fields. Derived from the model; no new vocabulary.
+ */
+function _reverseHopIsUnique(rel: MetaData): boolean {
+  const holder = rel.parent;
+  if (holder === undefined) return false;
+  const fields = _identityFieldSet(rel).join(",");
+  if (fields === "") return false;
+  // ADR-0039: resolving — a unique identity may be inherited.
+  // A partial (@where) or expression (@expr) unique index is unique over a subset or a value, not
+  // over the reference's rows, so it never makes the hop to-one.
+  return holder.children().some((c) => c.type === TYPE_IDENTITY
+    && (c.subType === IDENTITY_SUBTYPE_PRIMARY || c.subType === IDENTITY_SUBTYPE_SECONDARY)
+    && c.attr(IDENTITY_ATTR_WHERE) === undefined && c.attr(IDENTITY_ATTR_EXPR) === undefined
+    && _identityFieldSet(c).join(",") === fields);
 }
 
 /**
@@ -937,6 +989,7 @@ function _deriveBaseEntity(
   fieldName: string,
   originSource: ErrorSource,
   errors: ParseError[],
+  preRc21 = false,
 ): MetaData | undefined {
   if (obj.subType !== OBJECT_SUBTYPE_PROJECTION) return obj;
   // ADR-0042 — a bare extends owner resolves in this projection's package.
@@ -954,6 +1007,17 @@ function _deriveBaseEntity(
       const owner = extended.parent;
       if (owner !== undefined && owner.type === TYPE_OBJECT) return owner;
     }
+  }
+
+  // 1b) rc.21 part B (G13): a projection that extends another projection and declares no identity of
+  //     its own keeps the identity its super anchors with: the inherited identity still names the base,
+  //     so an extender's own fields (a TPH subtype's columns, say) do not move it.
+  const ownIdentity = obj.ownChildren().some((c) => c.type === TYPE_IDENTITY);
+  const superProjection = obj.superResolved;
+  // `preRc21` re-derives the base as it was before 1b existed, so the widening warning can compare.
+  if (!preRc21 && !ownIdentity && superProjection !== undefined && superProjection.type === TYPE_OBJECT
+    && superProjection.subType === OBJECT_SUBTYPE_PROJECTION && _anchorsByIdentity(superProjection)) {
+    return _deriveBaseEntity(superProjection, root, fieldName, originSource, errors);
   }
 
   // 2) Fallback: the single distinct entity targeted by plain field-extends —
@@ -980,7 +1044,7 @@ function _deriveBaseEntity(
   // base entity its super has (its inherited identity and fields are anchored there).
   const sup = obj.superResolved;
   if (targets.size === 0 && sup !== undefined && sup.type === TYPE_OBJECT && sup.subType === OBJECT_SUBTYPE_PROJECTION) {
-    return _deriveBaseEntity(sup, root, fieldName, originSource, errors);
+    return _deriveBaseEntity(sup, root, fieldName, originSource, errors, preRc21);
   }
   if (targets.size > 1) {
     const names = [...targets].map((t) => `"${t.name}"`).join(", ");
@@ -1002,6 +1066,90 @@ function _deriveBaseEntity(
     );
   }
   return undefined;
+}
+
+/**
+ * rc.21 part B (I2, widened by L5): warn when an extender's base CHANGED with the identity-anchor
+ * rule. A projection with no identity of its own keeps the base its super anchors on; before rc.21
+ * its base came from its own fields' entities. Whenever the two differ, the extender's view is no
+ * longer the one the old rule lowered, and the next `meta migrate` replaces it.
+ *
+ * The TPH case is named precisely: a field bound to a column only a subtype carries, over the TPH
+ * base, with no `@filter` on the discriminator, whose view held only the subtype's rows and now
+ * holds every row of the base. An extender that scopes its rows by the discriminator keeps the
+ * same rows and is not warned about.
+ */
+export function validateExtenderSubtypeScope(root: MetaData): string[] {
+  const warnings: string[] = [];
+  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT && c.subType === OBJECT_SUBTYPE_PROJECTION)) {
+    // An abstract extender emits no view, so nothing it declares widened one (fix round 2, N4).
+    if (obj.isAbstract) continue;
+    // ADR-0039: own — the identity anchor rule applies to an extender that declares none of its own.
+    if (obj.ownChildren().some((c) => c.type === TYPE_IDENTITY)) continue;
+    const sup = obj.superResolved;
+    if (sup === undefined || sup.type !== TYPE_OBJECT || sup.subType !== OBJECT_SUBTYPE_PROJECTION || !_anchorsByIdentity(sup)) continue;
+    const base = _deriveBaseEntity(obj, root, "@extends", obj.source, []);
+    if (base === undefined) continue;
+    // The base the pre-rc.21 derivation gave. None: no view was lowered before, so none is replaced.
+    const legacyBase = _deriveBaseEntity(obj, root, "@extends", obj.source, [], true);
+    if (legacyBase === undefined || legacyBase === base) continue;
+    // ADR-0039: resolving — the discriminator may be declared on an ancestor of the base.
+    const discriminator = _tphDiscriminatorOf(base);
+    if (discriminator !== undefined && filterKeys(effectiveProjectionFilter(obj)).includes(discriminator)) continue;
+    const referrerPkg = obj.package ?? obj.fileDefaultPackage ?? "";
+    // ADR-0039: own — only the extender's OWN fields chose its base before rc.21 (an inherited field
+    // was anchored by the super's identity then too), so only they can have widened it.
+    const subtypeFields: string[] = [];
+    let subtype: MetaData | undefined;
+    if (discriminator !== undefined) {
+      for (const f of obj.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
+        const owner = _refNamedOwner(f, root, referrerPkg);
+        if (owner === undefined || owner === base || !_isDescendantOf(owner, base)) continue;
+        subtypeFields.push(`"${f.name}" (${owner.name}.${f.superRef?.split(".").pop() ?? f.name})`);
+        subtype ??= owner;
+      }
+    }
+    if (subtype !== undefined) {
+      warnings.push(
+        `object.projection ${obj.name}: ${subtypeFields.join(", ")} read columns only a subtype carries, over the TPH base ` +
+          `${base.name} with no @filter on its discriminator "${discriminator}", so the view returns every ${base.name} row ` +
+          `(rc.21: an extender keeps its super's identity anchor; before, its base was the subtype). To keep a subtype-scoped ` +
+          `view, add @filter { ${discriminator}: <value> } or declare identity.primary { extends: ${subtype.name}.primary }.`,
+      );
+    } else {
+      warnings.push(
+        `object.projection ${obj.name}: its base entity is now ${base.name}, where before it was ${legacyBase.name} ` +
+          `(rc.21: an extender with no identity of its own keeps its super's identity anchor), so its view is lowered ` +
+          `differently and the next meta migrate replaces it. To keep the old base, declare ` +
+          `identity.primary { extends: ${legacyBase.name}.<identity> }.`,
+      );
+    }
+  }
+  return warnings;
+}
+
+/** The discriminator field of the TPH level `obj` belongs to (its own, or an ancestor's), if any. */
+function _tphDiscriminatorOf(obj: MetaData): string | undefined {
+  for (let cur: MetaData | undefined = obj; cur !== undefined && cur.type === TYPE_OBJECT; cur = cur.superResolved) {
+    // ADR-0039: own — the level that declares the discriminator.
+    const d = cur.ownAttr(OBJECT_ATTR_DISCRIMINATOR);
+    if (typeof d === "string") return d;
+  }
+  return undefined;
+}
+
+/** Whether `obj` extends `ancestor`, directly or through levels. */
+function _isDescendantOf(obj: MetaData, ancestor: MetaData): boolean {
+  for (let cur = obj.superResolved; cur !== undefined; cur = cur.superResolved) if (cur === ancestor) return true;
+  return false;
+}
+
+/** rc.21 part B: whether a projection (or a projection it extends) anchors its base with an extended identity. */
+function _anchorsByIdentity(obj: MetaData): boolean {
+  // ADR-0039: own — an anchor is a locally declared extends-bound identity, at some level of the chain.
+  if (obj.ownChildren().some((c) => c.type === TYPE_IDENTITY && c.superResolved?.type === TYPE_IDENTITY)) return true;
+  const sup = obj.superResolved;
+  return sup !== undefined && sup.type === TYPE_OBJECT && sup.subType === OBJECT_SUBTYPE_PROJECTION && _anchorsByIdentity(sup);
 }
 
 /**
@@ -1098,7 +1246,7 @@ function _checkPassthroughCardinality(
   reverse?: ReadonlyMap<MetaData, string>,
 ): void {
   for (const rel of hops) {
-    if (_hopCardinality(rel, reverse) === CARDINALITY_MANY) {
+    if (_hopCardinality(rel, reverse, true) === CARDINALITY_MANY) {
       errors.push(
         new ParseError(
           `origin.passthrough on ${obj.name}.${fieldName}: @via hop "${reverse?.get(rel) ?? rel.name}" is to-many ` +
@@ -1394,6 +1542,33 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
             continue;
           }
           const fromTarget = _validateFromPath(from, root, obj, field.name, origin.source, errors);
+          // rc.21 part B (U14): on a @grain projection, a @from on the grain field's value object
+          // reads a member of the array element; there is no path to walk.
+          if (fromTarget !== undefined && fromTarget.entity === _grainValueObject(obj, root)) {
+            const convert = origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_CONVERT) === true;
+            _checkPassthroughType(field, fromTarget.field, from, convert, obj, origin.source, errors);
+            const member = fromTarget.field as { resolvedIsArray?: () => boolean };
+            if (member.resolvedIsArray?.() === true || fromTarget.field.subType === FIELD_SUBTYPE_OBJECT || fromTarget.field.subType === FIELD_SUBTYPE_MAP) {
+              errors.push(new ParseError(
+                `origin.passthrough on ${obj.name}.${field.name}: @from "${from}" is not a scalar member of the @grain element.`,
+                { code: "ERR_INVALID_ORIGIN", source: origin.source }));
+            }
+            if (origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_VIA) !== undefined) {
+              errors.push(new ParseError(
+                `origin.passthrough on ${obj.name}.${field.name}: @from "${from}" reads the @grain element, which takes no @via.`,
+                { code: "ERR_INVALID_ORIGIN", source: origin.source }));
+            }
+            // fix round M2: a value object's enum member is held in the document as its symbol; a value
+            // map (@intValueMap / @stringValueMap) describes a column the element does not have.
+            if (fromTarget.field.subType === FIELD_SUBTYPE_ENUM
+              && (fromTarget.field.attr(FIELD_ATTR_INT_VALUE_MAP) !== undefined || fromTarget.field.attr(FIELD_ATTR_STRING_VALUE_MAP) !== undefined)) {
+              errors.push(new ParseError(
+                `origin.passthrough on ${obj.name}.${field.name}: @from "${from}" is an enum with a value map, but a @grain element holds the member's symbol; ` +
+                  `read it as a field.string, or drop the map on the value object's member.`,
+                { code: "ERR_INVALID_ORIGIN", source: origin.source }));
+            }
+            continue;
+          }
           // FR-024 B6 — extends/origin agreement (host-agnostic; runs whether
           // @via is explicit, inferred, or a base-relation column).
           if (fromTarget !== undefined) {
@@ -1661,50 +1836,34 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
           // Type inference against the base entity's EFFECTIVE fields (ADR-0039).
           const base = _deriveBaseEntity(obj, root, field.name, src, errors);
           if (base === undefined) continue;
-          // A ref names one of the projection's own fields first (a
-          // passthrough — joined or not —, an origin.first or another origin.computed), else a base
-          // field. Never itself, never an aggregate (it would need the grouped row).
-          const ownOriginOf = (name: string): MetaData | undefined =>
-            // ADR-0039: own — origin.* never inherits (ADR-0029), so a field's origin is declared on it.
-            obj.children().find((f) => f.type === TYPE_FIELD && f.name === name)?.ownChildren().find((c) => c.type === TYPE_ORIGIN);
-          const resolveField = (name: string): string | undefined => {
+          // rc.19 computed-over-joined: a ref names one of the projection's own fields first (a
+          // passthrough — joined or not —, an origin.first, another origin.computed or, rc.21 U13, a
+          // scalar origin.aggregate, read on the grouped row), else a base field, else (rc.21 U3, a
+          // projection only) a PATH of to-one hops from the base and a field of the entity reached,
+          // joined but not output. Never itself; never a collect (an array).
+          const fieldNode = (name: string): MetaData | undefined => {
             if (obj !== base && name !== field.name) {
               const own = obj.children().find((f) => f.type === TYPE_FIELD && f.name === name);
-              const ownOrigin = ownOriginOf(name);
-              if (own !== undefined && ownOrigin?.subType !== ORIGIN_SUBTYPE_AGGREGATE) return own.subType;
-              if (own !== undefined) return undefined;
+              if (own !== undefined) return own;
             }
-            return base.children().find((f) => f.type === TYPE_FIELD && f.name === name)?.subType;
+            const baseField = base.children().find((f) => f.type === TYPE_FIELD && f.name === name);
+            if (baseField !== undefined || obj === base || !name.includes(".")) return baseField;
+            const path = resolveFilterPath(base as MetaObject, name);
+            return path !== undefined && typeof path !== "string" ? path.field : undefined;
           };
-          // A sibling computed ref is inlined by the view, so the refs must not lead back here.
-          const computedRefs = (name: string): string[] => {
-            const o = ownOriginOf(name);
-            // ADR-0039: own — origin.* never inherits (ADR-0029), so @expr is declared on the origin.
-            return o?.subType === ORIGIN_SUBTYPE_COMPUTED
-              ? expressionFieldRefs(o.ownAttr(ORIGIN_COMPUTED_ATTR_EXPR)).filter((r) => r !== name)
-              : [];
+          const resolveField = (name: string): string | undefined => {
+            const node = fieldNode(name);
+            if (node === undefined) return undefined;
+            const nodeOrigin = node.ownChildren().find((c) => c.type === TYPE_ORIGIN);
+            if (node !== field && nodeOrigin?.subType === ORIGIN_SUBTYPE_AGGREGATE
+              && nodeOrigin.ownAttr(ORIGIN_AGGREGATE_ATTR_AGG) === AGG_COLLECT) return undefined;
+            return node.subType;
           };
-          const reach = (start: string): Set<string> => {
-            const seen = new Set<string>();
-            const pending = computedRefs(start);
-            for (let r = pending.pop(); r !== undefined; r = pending.pop()) {
-              if (!seen.has(r)) pending.push(...computedRefs(r));
-              seen.add(r);
-            }
-            return seen;
+          const isIntStoredEnum = (name: string): boolean => {
+            const node = fieldNode(name);
+            return node?.subType === FIELD_SUBTYPE_ENUM && node.attr(FIELD_ATTR_INT_VALUE_MAP) !== undefined;
           };
-          const reached = obj !== base ? reach(field.name) : new Set<string>();
-          if (reached.has(field.name)) {
-            // One error per cycle, on its first-declared member.
-            const first = obj.children().find((f) => f.type === TYPE_FIELD && reached.has(f.name) && reach(f.name).has(field.name));
-            if (first?.name === field.name) {
-              errors.push(new ParseError(
-                `origin.computed on ${obj.name}.${field.name}: @expr refers back to this field through other computed fields; a view cannot inline a cycle.`,
-                { code: "ERR_INVALID_ORIGIN", source: src }));
-            }
-            continue;
-          }
-          const inferred = inferExprType(expr as ExprNode, resolveField);
+          const inferred = inferExprType(expr as ExprNode, resolveField, isIntStoredEnum);
           if (inferred.errors.length > 0) {
             for (const m of inferred.errors) {
               errors.push(new ParseError(
@@ -1716,13 +1875,7 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
           // A literal compared with a field must be able to equal it: of its kind, and for an enum
           // one of its @values (the same rule a validator's @condition follows). Resolved as the
           // inference resolved the ref: a projection field first, else a base field.
-          const literalProblem = literalComparisonProblem(expr, (name) => {
-            if (obj !== base && name !== field.name) {
-              const own = obj.children().find((f) => f.type === TYPE_FIELD && f.name === name);
-              if (own !== undefined) return ownOriginOf(name)?.subType === ORIGIN_SUBTYPE_AGGREGATE ? undefined : own;
-            }
-            return base.children().find((f) => f.type === TYPE_FIELD && f.name === name);
-          });
+          const literalProblem = literalComparisonProblem(expr, (name) => fieldNode(name));
           if (literalProblem !== undefined) {
             errors.push(new ParseError(
               `origin.computed on ${obj.name}.${field.name}: @expr ${literalProblem}`,
@@ -1780,11 +1933,83 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
           _validateOrderByKeys(
             origin.ownAttr(ORIGIN_ATTR_ORDER_BY), ofTarget?.entity,
             obj, field.name, "origin.first", src, errors);
+        } else if (origin.subType === ORIGIN_SUBTYPE_FUNCTION) {
+          _validateFunctionOrigin(origin, obj, field, root, errors);
         }
       }
     }
   }
   return errors;
+}
+
+/**
+ * rc.21 part B (U10) — origin.function: a call of a database function the project owns. Its name
+ * and schema are plain identifiers (never free SQL); each argument names a scalar field of the
+ * host (an entity), or of the projection (not an aggregate, not the field itself) or its base.
+ */
+function _validateFunctionOrigin(origin: MetaData, obj: MetaData, field: MetaData, root: MetaData, errors: ParseError[]): void {
+  const src = origin.source;
+  const where = `origin.function on ${obj.name}.${field.name}`;
+  // ADR-0039: own — origin.* never inherits (ADR-0029).
+  for (const attr of [ORIGIN_FUNCTION_ATTR_FUNCTION, ORIGIN_FUNCTION_ATTR_SCHEMA]) {
+    const v = origin.ownAttr(attr);
+    if (v !== undefined && (typeof v !== "string" || !ORIGIN_FUNCTION_IDENTIFIER.test(v))) {
+      errors.push(new ParseError(
+        `${where}: @${attr} ${JSON.stringify(v)} is not a plain identifier ([A-Za-z_][A-Za-z0-9_]*); a function is named, never written as SQL.`,
+        { code: "ERR_INVALID_ORIGIN", source: src }));
+    }
+  }
+  const raw = origin.ownAttr(ORIGIN_FUNCTION_ATTR_ARGS);
+  const args = raw === undefined ? [] : Array.isArray(raw) ? raw : [raw];
+  // rc.21 part B fix round (I4): the declared signature. Each parameter and the result is a field
+  // subtype (the cast targets); the result is the carrying field's, each argument its parameter's.
+  const rawParams = origin.ownAttr(ORIGIN_FUNCTION_ATTR_PARAMS);
+  const params = rawParams === undefined ? [] : Array.isArray(rawParams) ? rawParams : [rawParams];
+  const returns = origin.ownAttr(ORIGIN_FUNCTION_ATTR_RETURNS);
+  for (const t of [...params, ...(returns === undefined ? [] : [returns])]) {
+    if (typeof t !== "string" || !EXPR_CAST_TARGETS.includes(t)) {
+      errors.push(new ParseError(
+        `${where}: ${JSON.stringify(t)} is not a parameter or return type; use one of ${EXPR_CAST_TARGETS.join(", ")}.`,
+        { code: "ERR_INVALID_ORIGIN", source: src }));
+    }
+  }
+  if (typeof returns === "string" && returns !== field.subType) {
+    errors.push(new ParseError(
+      `${where}: @returns ${returns}, but the field is field.${field.subType}; the declared return type must be the field's type.`,
+      { code: "ERR_INVALID_ORIGIN", source: src }));
+  }
+  if (params.length !== args.length) {
+    errors.push(new ParseError(
+      `${where}: @params declares ${params.length} parameter type(s) for ${args.length} argument(s); declare one per @args entry.`,
+      { code: "ERR_INVALID_ORIGIN", source: src }));
+  }
+  const isProjection = obj.subType === OBJECT_SUBTYPE_PROJECTION;
+  const base = isProjection ? _deriveBaseEntity(obj, root, field.name, src, []) : obj;
+  for (const [index, name] of args.entries()) {
+    const own = typeof name === "string" && name !== field.name
+      ? obj.children().find((c) => c.type === TYPE_FIELD && c.name === name) : undefined;
+    const ownOrigin = own?.ownChildren().find((c) => c.type === TYPE_ORIGIN);
+    const arg = own ?? (typeof name === "string" && base !== undefined
+      ? base.children().find((c) => c.type === TYPE_FIELD && c.name === name) : undefined);
+    if (arg === undefined || name === field.name) {
+      errors.push(new ParseError(
+        `${where}: @args names "${String(name)}", which is not a field of ${isProjection ? `the projection or its base entity` : `"${obj.name}"`}.`,
+        { code: "ERR_INVALID_ORIGIN", source: src }));
+    } else if (ownOrigin?.subType === ORIGIN_SUBTYPE_AGGREGATE) {
+      errors.push(new ParseError(
+        `${where}: @args names "${String(name)}", an origin.aggregate; a function takes values of the row, not of the group.`,
+        { code: "ERR_INVALID_ORIGIN", source: src }));
+    } else if (arg.subType === FIELD_SUBTYPE_OBJECT || arg.subType === FIELD_SUBTYPE_MAP || (arg as { resolvedIsArray?: () => boolean }).resolvedIsArray?.()) {
+      errors.push(new ParseError(
+        `${where}: @args names "${String(name)}", a field.${arg.subType}${(arg as { resolvedIsArray?: () => boolean }).resolvedIsArray?.() ? " array" : ""}; a function argument is a scalar.`,
+        { code: "ERR_INVALID_ORIGIN", source: src }));
+    } else if (typeof params[index] === "string" && arg.subType !== params[index]) {
+      errors.push(new ParseError(
+        `${where}: argument ${index + 1} "${String(name)}" is a field.${arg.subType}, but parameter ${index + 1} is declared ${String(params[index])}; ` +
+          `pass an origin.computed field that casts it ({ cast: { field: ${String(name)} }, as: ${String(params[index])} }).`,
+        { code: "ERR_INVALID_ORIGIN", source: src }));
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1831,10 +2056,10 @@ export function validateDerivedFieldProvidability(root: MetaData): ParseError[] 
     for (const field of obj.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
       const origin = field.ownChildren().find((c) => c.type === TYPE_ORIGIN);
       if (origin === undefined) continue;
-      // A derived field a projection reaches (its @filter or a passthrough
+      // rc.19 entity-derived: a derived field a projection reaches (its @filter or a passthrough
       // @from) is lowered inline there, so it needs no read source. Only the inlinable origins.
-      if ((origin.subType === ORIGIN_SUBTYPE_FIRST || origin.subType === ORIGIN_SUBTYPE_COMPUTED)
-        && reached.has(field)) continue;
+      if ((origin.subType === ORIGIN_SUBTYPE_FIRST || origin.subType === ORIGIN_SUBTYPE_COMPUTED
+        || origin.subType === ORIGIN_SUBTYPE_FUNCTION) && reached.has(field)) continue;
       errors.push(
         new ParseError(
           `derived field "${obj.name}.${field.name}" carries an origin.* but entity "${obj.name}" declares no ` +
@@ -1882,9 +2107,91 @@ export function projectionReachedEntityFields(root: MetaData): Set<MetaData> {
         const target = _validateFromPath(from, root, obj, field.name, origin.source, silent);
         if (target !== undefined) reached.add(target.field);
       }
+      // rc.21 part B (U3): a computed expression's path ref reaches the field at its end.
+      for (const origin of field.ownChildren().filter((c) => c.type === TYPE_ORIGIN && c.subType === ORIGIN_SUBTYPE_COMPUTED)) {
+        if (base === undefined || base === obj) continue;
+        for (const name of expressionFieldRefs(origin.ownAttr(ORIGIN_COMPUTED_ATTR_EXPR))) {
+          if (!name.includes(".")) continue;
+          const path = resolveFilterPath(base as MetaObject, name);
+          if (path !== undefined && typeof path !== "string") reached.add(path.field);
+        }
+      }
     }
   }
+  // rc.21 part B fix round (I4): a reached origin.function inlines its arguments on the same row, so a
+  // derived argument (an origin.computed cast, say) is reached too.
+  for (const f of [...reached]) _reachFunctionArgs(f, reached);
   return reached;
+}
+
+function _reachFunctionArgs(f: MetaData, reached: Set<MetaData>): void {
+  // ADR-0039: own — origin.* never inherits (ADR-0029).
+  const origin = f.ownChildren().find((c) => c.type === TYPE_ORIGIN && c.subType === ORIGIN_SUBTYPE_FUNCTION);
+  const host = f.parent;
+  if (origin === undefined || host === undefined) return;
+  const raw = origin.ownAttr(ORIGIN_FUNCTION_ATTR_ARGS);
+  for (const name of raw === undefined ? [] : Array.isArray(raw) ? raw : [raw]) {
+    const arg = host.children().find((c) => c.type === TYPE_FIELD && c.name === name);
+    if (arg !== undefined && !reached.has(arg)) {
+      reached.add(arg);
+      _reachFunctionArgs(arg, reached);
+    }
+  }
+}
+
+/**
+ * rc.21 part B fix round 2 (N3): no derived field depends on itself. A view inlines a derived
+ * field's dependencies on the same row — an origin.function's @args, an origin.computed
+ * expression's field refs — so a cycle among them (a's argument is b, b's is a) has no SQL and
+ * would recurse forever. Refused at load, once per cycle, naming the path (ERR_INVALID_ORIGIN).
+ */
+export function validateDerivedCycles(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
+    // ADR-0039: effective — an inherited field's origin is inlined on the extender's row too.
+    const fields = obj.children().filter((c) => c.type === TYPE_FIELD);
+    const byName = new Map(fields.map((f) => [f.name, f]));
+    // ADR-0039: own — origin.* never inherits (ADR-0029); it is the field's own child.
+    const originOf = (f: MetaData) => f.ownChildren().find((c) => c.type === TYPE_ORIGIN);
+    const deps = (f: MetaData): MetaData[] => {
+      const origin = originOf(f);
+      const names: string[] = [];
+      // A function naming itself in @args is refused by _validateFunctionOrigin already. On an entity,
+      // a computed expression reading its own name reads itself: a one-node cycle, reported here (fix
+      // round 3, M3). On a projection that name is the base entity's field, so it is no cycle.
+      let selfAllowed = false;
+      if (origin?.subType === ORIGIN_SUBTYPE_FUNCTION) {
+        const raw = origin.ownAttr(ORIGIN_FUNCTION_ATTR_ARGS);
+        for (const n of raw === undefined ? [] : Array.isArray(raw) ? raw : [raw]) if (typeof n === "string") names.push(n);
+      } else if (origin?.subType === ORIGIN_SUBTYPE_COMPUTED) {
+        selfAllowed = obj.subType !== OBJECT_SUBTYPE_PROJECTION;
+        for (const n of expressionFieldRefs(origin.ownAttr(ORIGIN_COMPUTED_ATTR_EXPR))) names.push(n.split(".")[0]!);
+      }
+      return names.map((n) => byName.get(n))
+        .filter((d): d is MetaData => d !== undefined && (selfAllowed || d !== f) && originOf(d) !== undefined);
+    };
+    const done = new Set<MetaData>();
+    const reported = new Set<string>();
+    const visit = (f: MetaData, path: MetaData[]): void => {
+      const at = path.indexOf(f);
+      if (at >= 0) {
+        const cycle = [...path.slice(at), f].map((x) => x.name);
+        const key = [...cycle.slice(0, -1)].sort().join(",");
+        if (!reported.has(key)) {
+          reported.add(key);
+          errors.push(new ParseError(
+            `${obj.name}.${f.name}: a derived field depends on itself through ${cycle.join(" → ")}; a view inlines each dependency on the same row, so the cycle has no SQL. Break it.`,
+            { code: "ERR_INVALID_ORIGIN", source: originOf(f)?.source ?? f.source }));
+        }
+        return;
+      }
+      if (done.has(f)) return;
+      for (const d of deps(f)) visit(d, [...path, f]);
+      done.add(f);
+    };
+    for (const f of fields) if (originOf(f) !== undefined) visit(f, []);
+  }
+  return errors;
 }
 
 /**
@@ -1918,7 +2225,7 @@ export function validateOriginSegmentsAndCorrelation(root: MetaData): ParseError
         const silent: ParseError[] = [];
         const base = _deriveBaseEntity(obj, root, field.name, origin.source, silent);
         if (base === undefined) continue;
-        checkCorrelatedOperands(filter, base, where, origin.source, errors);
+        checkCorrelatedOperands(filter, base, where, origin.source, errors, obj.subType === OBJECT_SUBTYPE_PROJECTION);
       }
     }
   }
@@ -1946,11 +2253,13 @@ function originRelatedEntity(origin: MetaData, obj: MetaData, root: MetaData): M
   return current;
 }
 
-function checkCorrelatedOperands(filter: unknown, base: MetaData, where: string, source: ErrorSource, errors: ParseError[]): void {
+function checkCorrelatedOperands(
+  filter: unknown, base: MetaData, where: string, source: ErrorSource, errors: ParseError[], onProjection: boolean,
+): void {
   if (typeof filter !== "object" || filter === null || Array.isArray(filter)) return;
   for (const [key, clause] of Object.entries(filter as Record<string, unknown>)) {
     if (key === FILTER_COMPOSE_AND || key === FILTER_COMPOSE_OR) {
-      if (Array.isArray(clause)) for (const sub of clause) checkCorrelatedOperands(sub, base, where, source, errors);
+      if (Array.isArray(clause)) for (const sub of clause) checkCorrelatedOperands(sub, base, where, source, errors, onProjection);
       continue;
     }
     if (typeof clause !== "object" || clause === null || Array.isArray(clause)) continue;
@@ -1973,8 +2282,17 @@ function checkCorrelatedOperands(filter: unknown, base: MetaData, where: string,
           { code: "ERR_BAD_ATTR_FILTER", source },
         ));
       } else if (typeof name !== "string" || !base.children().some((c) => c.type === TYPE_FIELD && c.name === name)) {
+        // rc.21 part B (U4): on a projection, the operand may be a PATH of to-one hops from the base
+        // row and a field of the entity reached ("orderId.customerId"), joined on the outer row.
+        const path = typeof name === "string" && name.includes(".") && onProjection
+          ? resolveFilterPath(base as MetaObject, name) : undefined;
+        if (path !== undefined && typeof path !== "string") continue;
         errors.push(new ParseError(
-          `${where}: @filter on "${key}" names base-row field "${String(name)}", which "${base.name}" does not declare.`,
+          typeof path === "string"
+            ? `${where}: @filter on "${key}" compares with the base-row path "${name}": ${path}.`
+            : typeof name === "string" && name.includes(".") && !onProjection
+              ? `${where}: @filter on "${key}" compares with the path "${name}"; a path operand is legal only on a projection, whose view joins it.`
+              : `${where}: @filter on "${key}" names base-row field "${String(name)}", which "${base.name}" does not declare.`,
           { code: "ERR_BAD_ATTR_FILTER", source },
         ));
       }
@@ -1998,7 +2316,7 @@ function expressionNodes(node: unknown, out: Record<string, unknown>[] = []): Re
   if (typeof node !== "object" || node === null) return out;
   const n = node as Record<string, unknown>;
   out.push(n);
-  for (const key of ["left", "right", "arg", EXPR_CASE_OPERAND, EXPR_CASE_ELSE]) expressionNodes(n[key], out);
+  for (const key of ["left", "right", "arg", "cast", EXPR_CASE_OPERAND, EXPR_CASE_ELSE]) expressionNodes(n[key], out);
   if (Array.isArray(n["args"])) for (const a of n["args"] as unknown[]) expressionNodes(a, out);
   if (Array.isArray(n[EXPR_CASE])) {
     for (const arm of n[EXPR_CASE] as unknown[]) {
@@ -2043,6 +2361,13 @@ function conditionProblem(condition: unknown, obj: MetaObject): string | undefin
   const unrenderable = expressionNodes(condition).find((n) => EXPR_CASE in n || EXPR_NOW in n);
   if (unrenderable !== undefined) {
     return `is not a valid expression: a condition takes no '${EXPR_CASE in unrenderable ? EXPR_CASE : EXPR_NOW}' node, since a CHECK can hold neither a CASE nor the current time.`;
+  }
+  // rc.21 part B: a CHECK holds the condition's SQL, rendered by every port's CHECK emitter, which
+  // takes fields, literals, comparisons, null tests, and / or / not and coalesce. The rest of the
+  // expression grammar (case, now, cast, the other functions, paths) is for views only.
+  const viewOnly = exprViewOnlyNode(condition);
+  if (viewOnly !== undefined) {
+    return `uses ${viewOnly}, which a CHECK condition cannot hold: it takes fields, literals, comparisons, null tests, and / or / not, and coalesce.`;
   }
   const fields = new Map(obj.fields().map((f) => [f.name, f] as const));
   const inferred = inferExprType(condition as ExprNode, (name) => fields.get(name)?.subType);
@@ -2108,7 +2433,7 @@ export function literalComparisonProblem(
 /**
  * Why a `@condition` (the attr.expression grammar) over `obj`'s own fields is refused, or
  * undefined when it is legal. `label` opens the message. One rule for a cross-field
- * validator's condition and a transition's guard (ADR-0063): every named field is a field of
+ * validator's condition and a transition's guard (ADR-0066): every named field is a field of
  * `obj`, and the expression passes `conditionProblem`.
  */
 export function conditionMessage(condition: unknown, obj: MetaObject, label: string): string | undefined {
@@ -2237,6 +2562,49 @@ export function validateIdentitySequence(root: MetaData): ParseError[] {
 }
 
 // ---------------------------------------------------------------------------
+// @dbCheck: false (db provider) asks a CHECK-generating validator or a field.enum for no
+// database CHECK; @constraintName names that CHECK. Together there is nothing to name, so the
+// node is refused (ERR_CONSTRAINT_NAME_WITHOUT_CHECK) rather than one of them silently ignored.
+// A cross-field validator is enforced only by its CHECK, so @dbCheck: false on one is refused
+// (ERR_CROSS_FIELD_WITHOUT_CHECK), and that is the one error such a node gets.
+// Read RESOLVING (ADR-0039), reported on each node that declares either of the two itself.
+// ---------------------------------------------------------------------------
+
+const DB_CHECK_VALIDATOR_SUBTYPES: readonly string[] = [
+  VALIDATOR_SUBTYPE_NUMERIC, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX, ...CROSS_FIELD_VALIDATOR_SUBTYPES,
+];
+
+export function validateDbCheck(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+  const visit = (node: MetaData, owner: string | undefined): void => {
+    const checked = (node.type === TYPE_VALIDATOR && DB_CHECK_VALIDATOR_SUBTYPES.includes(node.subType))
+      || (node.type === TYPE_FIELD && node.subType === FIELD_SUBTYPE_ENUM);
+    if (checked && (node.ownAttr(VALIDATOR_ATTR_DB_CHECK) !== undefined || node.ownAttr(VALIDATOR_ATTR_CONSTRAINT_NAME) !== undefined)) {
+      const name = node.attr(VALIDATOR_ATTR_CONSTRAINT_NAME);
+      const label = `${node.type}.${node.subType} "${owner !== undefined ? `${owner}.` : ""}${node.name}"`;
+      if (node.attr(VALIDATOR_ATTR_DB_CHECK) === false && CROSS_FIELD_VALIDATOR_SUBTYPES.includes(node.subType)) {
+        // A cross-field validator has no app-level enforcement: its CHECK is the rule.
+        errors.push(new ParseError(
+          `${label} sets @dbCheck: false, but this validator is enforced only by its CHECK, so the rule would be ` +
+          `enforced nowhere. Remove the validator, or remove @dbCheck: false.`,
+          { code: "ERR_CROSS_FIELD_WITHOUT_CHECK", source: node.source },
+        ));
+      } else if (node.attr(VALIDATOR_ATTR_DB_CHECK) === false && typeof name === "string" && name.length > 0) {
+        errors.push(new ParseError(
+          `${label} sets @dbCheck: false and @constraintName "${name}"; with no CHECK there is nothing for the name to name. ` +
+          `Remove @constraintName, or remove @dbCheck: false.`,
+          { code: "ERR_CONSTRAINT_NAME_WITHOUT_CHECK", source: node.source },
+        ));
+      }
+    }
+    const next = node.type === TYPE_OBJECT || node.type === TYPE_FIELD ? node.name : owner;
+    for (const child of node.ownChildren()) visit(child, next);
+  };
+  for (const child of root.ownChildren()) visit(child, undefined);
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
 // field.enum @maxLength — the column length of a string-stored enum:
 //   1. every member of @values fits in it (ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH), the
 //      longest offender named;
@@ -2259,7 +2627,7 @@ export function validateEnumMaxLength(root: MetaData): ParseError[] {
     }
   };
   const checkEnum = (field: MetaData): void => {
-    const declares = [FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_VALUES, FIELD_ATTR_INT_VALUE_MAP]
+    const declares = [FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_VALUES, FIELD_ATTR_INT_VALUE_MAP, FIELD_ATTR_STRING_VALUE_MAP]
       .some((a) => field.ownAttr(a) !== undefined);
     const maxLength = field.attr(FIELD_ATTR_MAX_LENGTH);
     if (!declares || typeof maxLength !== "number") return;
@@ -2272,13 +2640,13 @@ export function validateEnumMaxLength(root: MetaData): ParseError[] {
       ));
       return;
     }
-    const values = field.attr(FIELD_ATTR_VALUES);
-    const tooLong = (Array.isArray(values) ? values : [])
-      .filter((v): v is string => typeof v === "string" && v.length > maxLength)
+    // rc.21: the column holds each member's STORED string (@stringValueMap), so that is what must fit.
+    const tooLong = storedEnumValues(field)
+      .filter((v) => v.length > maxLength)
       .sort((a, b) => b.length - a.length);
     if (tooLong.length > 0) {
       errors.push(new ParseError(
-        `field.enum "${label}" @maxLength ${maxLength} is shorter than its member "${tooLong[0]}" (${tooLong[0]!.length} characters). Raise @maxLength to at least ${tooLong[0]!.length}, or shorten the member.`,
+        `field.enum "${label}" @maxLength ${maxLength} is shorter than its ${stringValueMapOf(field) === undefined ? "member" : "stored value"} "${tooLong[0]}" (${tooLong[0]!.length} characters). Raise @maxLength to at least ${tooLong[0]!.length}, or shorten the member.`,
         { code: "ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH", source: field.source },
       ));
     }
@@ -2286,7 +2654,6 @@ export function validateEnumMaxLength(root: MetaData): ParseError[] {
   visit(root);
   return errors;
 }
-
 // ---------------------------------------------------------------------------
 // field.object + @storage cross-attribute validation
 //
@@ -3224,6 +3591,119 @@ function entityFieldAggregates(f: MetaData): boolean {
   return origin !== undefined && origin.subType === ORIGIN_SUBTYPE_AGGREGATE;
 }
 
+/** rc.21 part B (U14): the value object a `@grain` projection's rows are elements of, if it has one. */
+function _grainValueObject(obj: MetaData, root: MetaData): MetaData | undefined {
+  if (obj.subType !== OBJECT_SUBTYPE_PROJECTION) return undefined;
+  const grain = obj.attr(OBJECT_PROJECTION_ATTR_GRAIN);
+  if (typeof grain !== "string") return undefined;
+  const base = _deriveBaseEntity(obj, root, "@grain", obj.source, []);
+  const field = base?.children().find((c) => c.type === TYPE_FIELD && c.name === grain);
+  return field === undefined ? undefined : refTarget(field, FIELD_ATTR_OBJECT_REF);
+}
+
+/**
+ * rc.21 part B — the projection shapes beside a plain view:
+ *   - `@union` names projections whose rows join this one's: each must be an object.projection
+ *     other than this one, with the same effective fields in order (name, subtype, array-ness and
+ *     @column) — ERR_BAD_ATTR_VALUE otherwise; `@unionAll` needs `@union`;
+ *   - `@grain` names a base-entity field.object array stored as jsonb; such a projection holds no
+ *     origin.aggregate, and `@grainOrdinal` names one of its own field.int / field.long fields with
+ *     no origin.
+ */
+export function validateProjectionUnionAndGrain(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT && c.subType === OBJECT_SUBTYPE_PROJECTION)) {
+    const bad = (message: string): void => {
+      errors.push(new ParseError(`object.projection ${obj.name}: ${message}`, { code: "ERR_BAD_ATTR_VALUE", source: obj.source }));
+    };
+    // ADR-0039: own — a projection's @union, @grain names ITS view's shape; an extender declares its own.
+    const union = obj.ownAttr(OBJECT_PROJECTION_ATTR_UNION);
+    if (obj.ownAttr(OBJECT_PROJECTION_ATTR_UNION_ALL) !== undefined && union === undefined) {
+      bad(`@${OBJECT_PROJECTION_ATTR_UNION_ALL} needs @${OBJECT_PROJECTION_ATTR_UNION}.`);
+    }
+    if (union !== undefined) {
+      const referrerPkg = obj.package ?? obj.fileDefaultPackage ?? "";
+      const mine = obj.children().filter((c) => c.type === TYPE_FIELD);
+      for (const name of Array.isArray(union) ? union : [union]) {
+        const member = typeof name === "string" ? resolveObjectRef(root, name, referrerPkg).node : undefined;
+        if (member === undefined || member.type !== TYPE_OBJECT || member.subType !== OBJECT_SUBTYPE_PROJECTION) {
+          bad(`@${OBJECT_PROJECTION_ATTR_UNION} names "${String(name)}", which is not an object.projection.`);
+          continue;
+        }
+        if (member === obj) {
+          bad(`@${OBJECT_PROJECTION_ATTR_UNION} names the projection itself.`);
+          continue;
+        }
+        const theirs = member.children().filter((c) => c.type === TYPE_FIELD);
+        // fix round M4: an enum's members and value maps are part of the column's meaning.
+        const describe = (f: MetaData): string => {
+          const arr = (f as { resolvedIsArray?: () => boolean }).resolvedIsArray?.() === true ? "[]" : "";
+          const col = f.attr(FIELD_ATTR_COLUMN);
+          const enumShape = f.subType !== FIELD_SUBTYPE_ENUM ? ""
+            : ` ${JSON.stringify([f.attr(FIELD_ATTR_VALUES) ?? null, f.attr(FIELD_ATTR_INT_VALUE_MAP) ?? null, f.attr(FIELD_ATTR_STRING_VALUE_MAP) ?? null])}`;
+          return `${f.name}: field.${f.subType}${arr}${typeof col === "string" ? ` @column ${col}` : ""}${enumShape}`;
+        };
+        // fix round M4: a member's own @union would be flattened away, silently.
+        if (member.ownAttr(OBJECT_PROJECTION_ATTR_UNION) !== undefined) {
+          bad(`@${OBJECT_PROJECTION_ATTR_UNION} member "${member.name}" declares its own @${OBJECT_PROJECTION_ATTR_UNION}; name its members here instead.`);
+        }
+        const a = mine.map(describe);
+        const b = theirs.map(describe);
+        if (a.length !== b.length || a.some((x, i) => x !== b[i])) {
+          bad(`@${OBJECT_PROJECTION_ATTR_UNION} member "${member.name}" has a different shape: ` +
+            `(${b.join(", ")}) where this view is (${a.join(", ")}). A union's members have the same fields, in order.`);
+        }
+      }
+    }
+    const grain = obj.ownAttr(OBJECT_PROJECTION_ATTR_GRAIN);
+    const ordinal = obj.ownAttr(OBJECT_PROJECTION_ATTR_GRAIN_ORDINAL);
+    if (ordinal !== undefined && grain === undefined) bad(`@${OBJECT_PROJECTION_ATTR_GRAIN_ORDINAL} needs @${OBJECT_PROJECTION_ATTR_GRAIN}.`);
+    if (typeof grain === "string") {
+      const base = _deriveBaseEntity(obj, root, "@grain", obj.source, []);
+      const field = base?.children().find((c) => c.type === TYPE_FIELD && c.name === grain);
+      const isArray = (field as { resolvedIsArray?: () => boolean } | undefined)?.resolvedIsArray?.() === true;
+      const storage = field?.attr(FIELD_ATTR_STORAGE);
+      if (field === undefined || field.subType !== FIELD_SUBTYPE_OBJECT || !isArray || (storage !== undefined && storage !== STORAGE_JSONB)
+        || refTarget(field, FIELD_ATTR_OBJECT_REF) === undefined) {
+        bad(`@${OBJECT_PROJECTION_ATTR_GRAIN} "${grain}" must name a field.object array (isArray, jsonb storage, with @objectRef) of the base entity${base === undefined ? "" : ` "${base.name}"`}.`);
+      }
+      for (const f of obj.children().filter((c) => c.type === TYPE_FIELD)) {
+        if (f.ownChildren().some((c) => c.type === TYPE_ORIGIN && c.subType === ORIGIN_SUBTYPE_AGGREGATE)) {
+          bad(`"${f.name}" is an origin.aggregate; a @grain view has one row per element and groups nothing.`);
+        }
+      }
+      if (ordinal !== undefined) {
+        const f = obj.children().find((c) => c.type === TYPE_FIELD && c.name === ordinal);
+        if (f === undefined || (f.subType !== FIELD_SUBTYPE_INT && f.subType !== FIELD_SUBTYPE_LONG)
+          || f.ownChildren().some((c) => c.type === TYPE_ORIGIN) || f.superRef !== undefined) {
+          bad(`@${OBJECT_PROJECTION_ATTR_GRAIN_ORDINAL} "${String(ordinal)}" must name a field.int or field.long of the projection, with no origin and no extends.`);
+        }
+      }
+    }
+  }
+  return errors;
+}
+
+/**
+ * rc.21 part B (U13): whether an origin.computed reads an origin.aggregate of its projection,
+ * directly or through another computed. Such a value exists only on the grouped row, so a WHERE
+ * (the view @filter) cannot hold it.
+ */
+function computedReadsAggregate(f: MetaData, obj: MetaData, seen: Set<string> = new Set()): boolean {
+  if (seen.has(f.name)) return false;
+  seen.add(f.name);
+  // ADR-0039: own — origin.* never inherits (ADR-0029).
+  const origin = f.ownChildren().find((c) => c.type === TYPE_ORIGIN);
+  if (origin?.subType !== ORIGIN_SUBTYPE_COMPUTED) return false;
+  for (const name of expressionFieldRefs(origin.ownAttr(ORIGIN_COMPUTED_ATTR_EXPR))) {
+    if (name === f.name) continue;
+    const other = obj.children().find((c) => c.type === TYPE_FIELD && c.name === name);
+    if (other === undefined) continue;
+    if (entityFieldAggregates(other) || computedReadsAggregate(other, obj, seen)) return true;
+  }
+  return false;
+}
+
 /** Every field key of a (desugared) filter, through and/or. */
 function filterKeys(filter: unknown, out: string[] = []): string[] {
   if (typeof filter !== "object" || filter === null || Array.isArray(filter)) return out;
@@ -3258,7 +3738,7 @@ export function validateProjectionFilter(root: MetaData): ParseError[] {
       const derived =
         origin !== undefined &&
         origin.subType !== ORIGIN_SUBTYPE_PASSTHROUGH &&
-        origin.subType !== ORIGIN_SUBTYPE_COMPUTED;
+        (origin.subType !== ORIGIN_SUBTYPE_COMPUTED || computedReadsAggregate(f, obj));
       // opsForField, not opsForSubType — an int-backed field.enum (@intValueMap)
       // stores as an integer, so `like` is not in its band.
       fields.set(f.name, { derived, ops: opsForField(f) });

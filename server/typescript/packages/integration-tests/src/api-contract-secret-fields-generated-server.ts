@@ -44,14 +44,14 @@ const READ_PATHS = {
       { "object.entity": { name: "Auth", "@discriminator": "type", children: [
         { "source.rdb": { "@table": "auths" } },
         { "field.long": { name: "id" } },
-        { "field.enum": { name: "type", "@values": ["Bridge", "Copay"] } },
+        { "field.enum": { name: "type", "@values": ["Bridge", "Coupon"] } },
         { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
       ] } },
       { "object.entity": { name: "BridgeAuth", extends: "Auth", "@discriminatorValue": "Bridge", children: [
         { "field.string": { name: "pinHash", "@maxLength": 100, children: [{ "view.password": {} }] } },
       ] } },
-      { "object.entity": { name: "CopayAuth", extends: "Auth", "@discriminatorValue": "Copay", children: [
-        { "field.int": { name: "copayCents" } },
+      { "object.entity": { name: "CouponAuth", extends: "Auth", "@discriminatorValue": "Coupon", children: [
+        { "field.int": { name: "couponCents" } },
       ] } },
       { "object.entity": { name: "PayerAuth", children: [
         { "source.rdb": { "@table": "payer_auths" } },
@@ -93,7 +93,7 @@ export async function startGeneratedSecretFieldsServer(
   // The lane provisions its table below in the generated Drizzle table's default spelling.
   root.physicalNaming = DEFAULT_PHYSICAL_NAMING;
   const lr = await runGen({
-    config: defineConfig({
+    config: defineConfig({ outputLayout: "flat", 
       outDir: tmp,
       extStyle: "none",
       outputLayout,
@@ -137,7 +137,7 @@ export const db = drizzle(pool);
        "id" bigserial PRIMARY KEY,
        "type" varchar(16) NOT NULL,
        "pin_hash" varchar(100),
-       "copay_cents" integer
+       "coupon_cents" integer
      );
      CREATE TABLE IF NOT EXISTS "payer_auths" (
        "payer_id" bigint NOT NULL,
@@ -145,7 +145,7 @@ export const db = drizzle(pool);
        PRIMARY KEY ("payer_id", "auth_id")
      );
      INSERT INTO "payers" ("id") VALUES (1);
-     INSERT INTO "auths" ("id", "type", "pin_hash", "copay_cents") VALUES (1, 'Bridge', 'auth-pin-1', NULL), (2, 'Copay', NULL, 500);
+     INSERT INTO "auths" ("id", "type", "pin_hash", "coupon_cents") VALUES (1, 'Bridge', 'auth-pin-1', NULL), (2, 'Coupon', NULL, 500);
      INSERT INTO "payer_auths" ("payer_id", "auth_id") VALUES (1, 1), (1, 2);`,
   );
 

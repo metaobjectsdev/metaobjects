@@ -38,12 +38,13 @@ public static class EfCoreFilterDispatch
 {
     public static IQueryable<T> ApplyFilter<T>(
         IQueryable<T> source,
-        IReadOnlyList<FilterPredicate> predicates) where T : class
+        IReadOnlyList<FilterPredicate> predicates,
+        IReadOnlyDictionary<string, string>? propertyByField = null) where T : class
     {
         if (predicates is null || predicates.Count == 0) return source;
         foreach (var p in predicates)
         {
-            var lambda = BuildLambda<T>(p);
+            var lambda = BuildLambda<T>(p, propertyByField);
             source = source.Where(lambda);
         }
         return source;
@@ -59,13 +60,13 @@ public static class EfCoreFilterDispatch
     /// duration operand with the duration wire grammar (<see cref="DurationWire.TryParse"/>).
     /// A failed parse result is returned unchanged.
     /// </summary>
-    public static FilterParseResult Validate<T>(FilterParseResult parsed)
+    public static FilterParseResult Validate<T>(FilterParseResult parsed, IReadOnlyDictionary<string, string>? propertyByField = null)
     {
         if (parsed.ErrorEnvelope is not null) return parsed;
         foreach (var p in parsed.Predicates)
         {
             if (p.Op is "isNull" or "like") continue;
-            var prop = ResolveProperty(typeof(T), p.Field);
+            var prop = ResolveProperty(typeof(T), p.Field, propertyByField);
             if (prop is null) continue; // the allowlist gate upstream guarantees a match; BuildLambda reports a miss
             var memberType = prop.PropertyType;
             var underlying = Nullable.GetUnderlyingType(memberType) ?? memberType;
@@ -88,10 +89,10 @@ public static class EfCoreFilterDispatch
     /// Build an <c>Expression&lt;Func&lt;T, bool&gt;&gt;</c> for a single predicate
     /// against the resolved CLR property of <typeparamref name="T"/>.
     /// </summary>
-    private static Expression<Func<T, bool>> BuildLambda<T>(FilterPredicate p)
+    private static Expression<Func<T, bool>> BuildLambda<T>(FilterPredicate p, IReadOnlyDictionary<string, string>? propertyByField)
     {
         var x = Expression.Parameter(typeof(T), "x");
-        var prop = ResolveProperty(typeof(T), p.Field);
+        var prop = ResolveProperty(typeof(T), p.Field, propertyByField);
         // The metadata field name must map to a CLR property — the allowlist gate
         // upstream guarantees the field exists on the entity, so a miss here is a
         // generator/runtime contract violation, not user input.
@@ -175,10 +176,12 @@ public static class EfCoreFilterDispatch
     /// <summary>
     /// Resolve the CLR property on <paramref name="entityType"/> matching the
     /// metadata field name. The metadata name is camelCase (e.g. "createdAt") and
-    /// the property is PascalCase ("CreatedAt"); match case-insensitively.
+    /// the property is PascalCase ("CreatedAt"); match case-insensitively. When the generated
+    /// allowlist carries a field-to-property map (a property-naming resolver renamed a property
+    /// beyond case), the mapped property name is the one looked up.
     /// </summary>
-    private static PropertyInfo? ResolveProperty(Type entityType, string fieldName) =>
-        entityType.GetProperty(fieldName,
+    private static PropertyInfo? ResolveProperty(Type entityType, string fieldName, IReadOnlyDictionary<string, string>? propertyByField = null) =>
+        entityType.GetProperty(propertyByField is not null && propertyByField.TryGetValue(fieldName, out var mapped) ? mapped : fieldName,
             BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
 
     /// <summary>

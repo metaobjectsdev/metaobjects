@@ -186,6 +186,17 @@ config is refused. Column naming is not a Python setting at all: it is `naming` 
 ([physical-naming.md](../features/migrations/physical-naming.md)). See [the migration section](../features/migrations/docs-are-generators.md#python)
 and the [config reference](../features/cli.md).
 
+**Select objects.** `metaobjects gen --entities Program,Week` (comma-separated short object
+names) regenerates only those objects' files; a target that lists `entities` keeps only the
+names in both. `metaobjects verify --codegen --entities ...` checks the same files. A narrowed
+run deletes no orphaned file; run without the flag to sweep. Two refusals, both exit 2:
+`--entities` naming nothing (`error: metaobjects gen: --entities names no object.`) and a
+name that matches no object (`error: metaobjects gen: --entities names 'X', which matches no
+object in the metadata.`). The same selection is a positional name list in TypeScript
+(`meta gen Program Week`), `--entities` in C#, and `-Dmeta.entities` on the Maven plugin.
+`gen` lists the files it changed and counts the rest separately
+(`metaobjects gen: wrote 2 file(s) across 1 target(s). 40 file(s) left as they were.`).
+
 **Start a project.** `metaobjects init` writes `metaobjects.config.yaml` (one `app` target
 with no generators) and an empty, loadable `metaobjects/meta.app.yaml`, and reports what it
 wrote. It never overwrites a file it finds; it says it kept it. `metaobjects init --with-docs`
@@ -271,7 +282,7 @@ targets:
 ```
 
 It emits one `<entity>_names.py` per object and nothing else. Each carries
-`<ENTITY>_SOURCE_PRIMARY_TABLE`, a `<ENTITY>_<FIELD>_COLUMN` per field, a
+`<ENTITY>_SOURCE_PRIMARY_TABLE`, a `<ENTITY>_<FIELD>_COLUMN` per field (not a derived field of a table-read entity, which is no column of that table), a
 `<ENTITY>_COLUMNS_BY_FIELD` map, and `<ENTITY>_SOURCE_PRIMARY_SCHEMA` when the
 source declares a `@schema`. On the 16-entity persistence-conformance model the full
 server-side selection emits 68 files and this emits 19 — so adopting the names tier does
@@ -542,16 +553,16 @@ from its parent's.** Python has no static inheritance, so an artifact whose
 object extends another re-exports the inherited constants by REFERENCE:
 
 ```python
-# generated/copay_auth_names.py (excerpt)
+# generated/coupon_auth_names.py (excerpt)
 from .auth_names import (
     AUTH_ID_COLUMN, AUTH_ID_FIELD, AUTH_IDENTITY_PK_NAME,
     AUTH_SOURCE_PRIMARY_KIND, AUTH_SOURCE_PRIMARY_TABLE,
 )
 
-COPAYAUTH_NAME: Final[str] = "CopayAuth"            # its own name, always
-COPAYAUTH_SOURCE_PRIMARY_TABLE: Final[str] = AUTH_SOURCE_PRIMARY_TABLE  # SHARED, spelled once
-COPAYAUTH_ID_COLUMN: Final[str] = AUTH_ID_COLUMN
-COPAYAUTH_COPAY_AMOUNT_COLUMN: Final[str] = "copay_cents"
+COUPONAUTH_NAME: Final[str] = "CouponAuth"            # its own name, always
+COUPONAUTH_SOURCE_PRIMARY_TABLE: Final[str] = AUTH_SOURCE_PRIMARY_TABLE  # SHARED, spelled once
+COUPONAUTH_ID_COLUMN: Final[str] = AUTH_ID_COLUMN
+COUPONAUTH_COUPON_AMOUNT_COLUMN: Final[str] = "coupon_cents"
 ```
 
 Two forms, and which one you get is structural. An object with its OWN source

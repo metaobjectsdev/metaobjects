@@ -45,7 +45,7 @@ import java.util.stream.Stream;
 
 /**
  * FR-017 Tier 4/5 — host the GENERATED Java Spring {@code @RestController} for the TPH corpus
- * ({@code Auth} base + {@code Bridge}/{@code Copay}/{@code PriorAuth} subtypes) over HTTP
+ * ({@code Auth} base + {@code Bridge}/{@code Coupon}/{@code Permit} subtypes) over HTTP
  * (a real embedded Tomcat, {@link TomcatHost}) and drive the polymorphic-CRUD scenarios against it.
  *
  * <p>Mechanism (the SP-F generate→compile→load pattern, mirroring
@@ -82,7 +82,7 @@ public final class GeneratedTphControllerHarness implements AutoCloseable {
     private final ObjectMapper mapper;
     private final URLClassLoader classLoader;
     // (Long id, AuthType type, String reference, Instant autoCreatedAt, Instant autoUpdatedAt,
-    //  Integer quantity, BigDecimal copayAmount, String approver)
+    //  Integer quantity, BigDecimal couponAmount, String approver)
     private final Constructor<?> dtoCtor;
     private final Class<?> authTypeClass;        // the generated value-constrained enum discriminator (AuthDto.AuthType)
     private final Constructor<?> controllerCtor; // (AuthRepository, ObjectMapper, Validator)
@@ -227,15 +227,15 @@ public final class GeneratedTphControllerHarness implements AutoCloseable {
         Object autoUpdatedRaw = row.get("autoUpdatedAt");
         Instant autoUpdatedAt = autoUpdatedRaw == null ? null : parseInstant(String.valueOf(autoUpdatedRaw));
         Integer quantity = row.get("quantity") == null ? null : ((Number) row.get("quantity")).intValue();
-        Object copayRaw = row.get("copayAmount");
-        BigDecimal copayAmount = copayRaw == null ? null : new BigDecimal(String.valueOf(copayRaw));
+        Object couponRaw = row.get("couponAmount");
+        BigDecimal couponAmount = couponRaw == null ? null : new BigDecimal(String.valueOf(couponRaw));
         String approver = (String) row.get("approver");
         // Coerce the seed's String discriminator into the generated AuthType enum value.
         @SuppressWarnings({ "unchecked", "rawtypes" })
         Object typeEnum = type == null ? null : Enum.valueOf((Class) authTypeClass, type);
         return dtoCtor.newInstance(
             id, typeEnum, reference, issuedCurrency, autoCreatedAt, autoUpdatedAt,
-            quantity, copayAmount, approver);
+            quantity, couponAmount, approver);
     }
 
     /**

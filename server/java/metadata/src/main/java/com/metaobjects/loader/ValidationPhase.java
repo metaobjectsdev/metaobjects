@@ -199,7 +199,7 @@ public final class ValidationPhase {
         pass(collected, () -> validateDiscriminator(root));
         // FR-015 — source.rdb @parameterRef typed-input rules.
         pass(collected, () -> validateSourceParameterRef(root));
-        // ADR-0063 — business rules: operations and lifecycles (L1-L7, P1, P2, O0-O6, B1). Run
+        // ADR-0066 — business rules: operations and lifecycles (L1-L7, P1, P2, O0-O6, B1). Run
         // before the primary-source pass, as the TypeScript loader orders them: a lifecycle on an
         // entity whose only source is read-only yields L2 first, then the source error.
         pass(collected, () -> collected.addAll(RulesValidation.validate(root)));
@@ -272,6 +272,7 @@ public final class ValidationPhase {
         validateIdentitySequence(root, collected);
         validateCrossFieldValidators(root, collected,
             loader != null && loader.getLoaderOptions() != null && loader.getLoaderOptions().isStrict());
+        validateDbCheck(root, collected);
         pass(collected, () -> validateFieldMap(root));
         pass(collected, () -> validateIdentityFieldsAndGeneration(root));
         // FR-024 B3/B4a — subtype rules (identity-name, value purity, projection licensing).
@@ -838,6 +839,7 @@ public final class ValidationPhase {
         // owned by this node is validated here against the node's EFFECTIVE @values
         // (own or inherited via extends), mirroring the TS/C# port structure exactly.
         validateEnumIntValueMap(node);
+        validateEnumStringValueMap(node);
 
         // --- Own @values content check ---
         if (node.hasMetaAttr(EnumField.ATTR_VALUES, false)) {
@@ -984,6 +986,72 @@ public final class ValidationPhase {
                         + "' members '" + owner + "' and '" + entry.getKey()
                         + "' share the same value " + value + "; every member must have a unique int.",
                     ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
+            }
+        }
+    }
+
+    /**
+     * rc.21 — {@code @stringValueMap} content rules: the string twin of
+     * {@link #validateEnumIntValueMap}, with its policies (own-only; a shared enum's backing owned by
+     * the shared declaration). Keys must exactly match the effective {@code @values}; values are
+     * unique non-empty strings. Refused beside {@code @intValueMap} and on an array enum. Mirrors
+     * TypeScript {@code attr-schema-validate} Check 5c.
+     */
+    private static void validateEnumStringValueMap(MetaData node) {
+        if (!node.hasMetaAttr(EnumField.ATTR_STRING_VALUE_MAP, false)) {
+            return;
+        }
+        String prefix = ": field.enum '" + node.getName() + "' attribute '@" + EnumField.ATTR_STRING_VALUE_MAP + "' ";
+        MetaData sharedSuper = sharedEnumSuper(node);
+        if (sharedSuper != null) {
+            throw new MetaDataException(ErrorMessageConstants.ERR_ENUM_EXTENDS_VALUES_CONFLICT + prefix
+                + "is declared on a field extending shared abstract enum '" + sharedSuper.getName()
+                + "' - a shared enum's stored strings are owned by the shared declaration; move it onto '"
+                + sharedSuper.getName() + "' to inherit it.",
+                ErrorCode.ERR_ENUM_EXTENDS_VALUES_CONFLICT, node.getSource());
+        }
+        if (node.hasMetaAttr(EnumField.ATTR_INT_VALUE_MAP)) {
+            throw new MetaDataException(ErrorMessageConstants.ERR_BAD_ATTR_VALUE + prefix
+                + "is refused beside '@" + EnumField.ATTR_INT_VALUE_MAP
+                + "': an @intValueMap enum is stored as integers, not strings. Keep one.",
+                ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
+        }
+        if (node instanceof MetaField<?> field && field.isArrayType()) {
+            throw new MetaDataException(ErrorMessageConstants.ERR_BAD_ATTR_VALUE + prefix
+                + "is refused on an array enum: its column holds the members as text[] elements, which no port maps through @"
+                + EnumField.ATTR_STRING_VALUE_MAP + ".",
+                ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
+        }
+        Object raw = node.getMetaAttr(EnumField.ATTR_STRING_VALUE_MAP, false).getValue();
+        if (!(raw instanceof Map<?, ?> map)) {
+            throw new MetaDataException(ErrorMessageConstants.ERR_BAD_ATTR_VALUE + prefix
+                + "must be an object of { member: storedString }.", ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
+        }
+        List<String> effective = effectiveEnumValues(node);
+        Set<String> memberSet = new HashSet<>(effective);
+        Set<String> keySet = new HashSet<>();
+        for (Object k : map.keySet()) keySet.add(String.valueOf(k));
+        List<String> missing = effective.stream().filter(m -> !keySet.contains(m)).toList();
+        List<String> extra = keySet.stream().filter(k -> !memberSet.contains(k)).sorted().toList();
+        if (!missing.isEmpty() || !extra.isEmpty()) {
+            throw new MetaDataException(ErrorMessageConstants.ERR_BAD_ATTR_VALUE + prefix
+                + "keys must exactly match '@" + EnumField.ATTR_VALUES + "' members"
+                + (missing.isEmpty() ? "" : " (missing: " + String.join(", ", missing) + ")")
+                + (extra.isEmpty() ? "" : " (unknown: " + String.join(", ", extra) + ")") + ".",
+                ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
+        }
+        Map<String, String> seen = new HashMap<>();
+        for (String member : effective) {
+            Object value = map.get(member);
+            if (!(value instanceof String stored) || stored.isEmpty()) {
+                throw new MetaDataException(ErrorMessageConstants.ERR_BAD_ATTR_VALUE + prefix
+                    + "member '" + member + "' must map to a non-empty string.", ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
+            }
+            String owner = seen.putIfAbsent(stored, member);
+            if (owner != null) {
+                throw new MetaDataException(ErrorMessageConstants.ERR_BAD_ATTR_VALUE + prefix
+                    + "members '" + owner + "' and '" + member + "' share the stored string '" + stored
+                    + "'; every member must have a unique one.", ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
             }
         }
     }
@@ -1191,24 +1259,35 @@ public final class ValidationPhase {
         String value = node.getMetaAttr(CoreDBMetaDataProvider.DB_COLUMN_TYPE, false)
                            .getValueAsString();
 
-        // Rule 1: recognized value.
-        if (value == null || !CoreDBMetaDataProvider.VALID_DB_COLUMN_TYPES.contains(value)) {
+        // Rule 1: recognized value (rc.21: the text spellings, sized ones included).
+        int length = CoreDBMetaDataProvider.dbColumnTypeLength(value);
+        if (length < 0) {
             throw new MetaDataException(
                 ErrorMessageConstants.ERR_BAD_ATTR_VALUE
                     + ": field '" + node.getName()
                     + "' @" + CoreDBMetaDataProvider.DB_COLUMN_TYPE + " '" + value
                     + "' is not a valid value; allowed: "
-                    + CoreDBMetaDataProvider.VALID_DB_COLUMN_TYPES,
+                    + CoreDBMetaDataProvider.VALID_DB_COLUMN_TYPES + " and "
+                    + CoreDBMetaDataProvider.DB_COLUMN_TYPE_SIZED_SPELLINGS,
                 ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
         }
+        // Rule 3 (rc.21): a sized spelling holds n characters; a longer @maxLength would let the
+        // app accept a value the column refuses. ADR-0039: resolving.
+        if (length > 0 && node.hasMetaAttr("maxLength")) {
+            Object max = node.getMetaAttr("maxLength").getValue();
+            if (max instanceof Number n && n.longValue() > length) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                        + ": field.string '" + node.getName() + "' declares @maxLength: " + n
+                        + " over '@" + CoreDBMetaDataProvider.DB_COLUMN_TYPE + ": " + value + "', which holds "
+                        + length + "; a value the field accepts would not fit the column.",
+                    ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
+            }
+        }
 
-        // Rule 2: legal (subtype × value) pairing.
+        // Rule 2: legal (subtype × value) pairing — every value is field.string's.
         String subType = node.getSubType();
-        String requiredSubType = switch (value) {
-            case CoreDBMetaDataProvider.DB_COLUMN_TYPE_UUID,
-                 CoreDBMetaDataProvider.DB_COLUMN_TYPE_JSONB -> StringField.SUBTYPE_STRING;
-            default -> null; // unreachable — Rule 1 already rejected unknown values
-        };
+        String requiredSubType = StringField.SUBTYPE_STRING;
         if (requiredSubType != null && !requiredSubType.equals(subType)) {
             throw new MetaDataException(
                 ErrorMessageConstants.ERR_BAD_ATTR_VALUE
@@ -2453,7 +2532,7 @@ public final class ValidationPhase {
     /**
      * Why a {@code @condition} (the attr.expression grammar) over {@code obj}'s own fields is
      * refused, or {@code null} when it is legal. {@code label} opens the message. One rule for a
-     * cross-field validator's condition and a transition's guard (ADR-0063): every named field
+     * cross-field validator's condition and a transition's guard (ADR-0066): every named field
      * is a field of {@code obj}, and the expression passes {@link #conditionProblem}. Mirrors TS
      * {@code conditionMessage}.
      */
@@ -2771,6 +2850,58 @@ public final class ValidationPhase {
                 ErrorCode.ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH, field.getSource());
         }
     }
+
+
+    // =========================================================================
+    // @dbCheck: false (db provider) asks a CHECK-generating validator or a field.enum for no
+    // database CHECK; @constraintName names that CHECK. Together there is nothing to name, so the
+    // node is refused (ERR_CONSTRAINT_NAME_WITHOUT_CHECK). A cross-field validator is enforced only
+    // by its CHECK, so @dbCheck: false on one is refused (ERR_CROSS_FIELD_WITHOUT_CHECK), the one
+    // error such a node gets. Read RESOLVING (ADR-0039), reported on each node that declares either
+    // of the two itself. Mirrors TS validateDbCheck.
+    // =========================================================================
+
+    private static final java.util.Set<String> CROSS_FIELD_DB_CHECK_SUBTYPES = java.util.Set.of(
+        "comparison", "requiredWhen", "presentIff", "atLeastOne", "exactlyOne");
+
+    private static final java.util.Set<String> DB_CHECK_VALIDATOR_SUBTYPES = java.util.Set.of(
+        "numeric", "length", "regex", "comparison", "requiredWhen", "presentIff", "atLeastOne", "exactlyOne");
+
+    static void validateDbCheck(MetaRoot root, List<MetaDataException> out) {
+        for (MetaData child : root.getChildren(MetaData.class, false)) visitDbCheck(child, null, out);
+    }
+
+    private static void visitDbCheck(MetaData node, String owner, List<MetaDataException> out) {
+        if (node instanceof com.metaobjects.attr.MetaAttribute) return;
+        String dbCheck = com.metaobjects.validator.MetaValidator.ATTR_DB_CHECK;
+        String constraintName = com.metaobjects.validator.MetaValidator.ATTR_CONSTRAINT_NAME;
+        boolean checked = ("validator".equals(node.getType()) && DB_CHECK_VALIDATOR_SUBTYPES.contains(node.getSubType()))
+            || ("field".equals(node.getType()) && "enum".equals(node.getSubType()));
+        if (checked && (node.hasMetaAttr(dbCheck, false) || node.hasMetaAttr(constraintName, false))
+                && node.hasMetaAttr(dbCheck)) {
+            boolean off = "false".equalsIgnoreCase(String.valueOf(node.getMetaAttr(dbCheck).getValue()));
+            String name = node.hasMetaAttr(constraintName) ? node.getMetaAttr(constraintName).getValueAsString() : null;
+            String label = node.getType() + "." + node.getSubType() + " \"" + (owner == null ? "" : owner + ".")
+                + node.getShortName() + "\"";
+            if (off && "validator".equals(node.getType()) && CROSS_FIELD_DB_CHECK_SUBTYPES.contains(node.getSubType())) {
+                // A cross-field validator has no app-level enforcement: its CHECK is the rule.
+                out.add(new MetaDataException(
+                    ErrorMessageConstants.ERR_CROSS_FIELD_WITHOUT_CHECK
+                        + ": " + label + " sets @dbCheck: false, but this validator is enforced only by its CHECK,"
+                        + " so the rule would be enforced nowhere. Remove the validator, or remove @dbCheck: false.",
+                    ErrorCode.ERR_CROSS_FIELD_WITHOUT_CHECK, node.getSource()));
+            } else if (off && name != null && !name.isEmpty()) {
+                out.add(new MetaDataException(
+                    ErrorMessageConstants.ERR_CONSTRAINT_NAME_WITHOUT_CHECK
+                        + ": " + label + " sets @dbCheck: false and @constraintName \"" + name + "\"; with no CHECK"
+                        + " there is nothing for the name to name. Remove @constraintName, or remove @dbCheck: false.",
+                    ErrorCode.ERR_CONSTRAINT_NAME_WITHOUT_CHECK, node.getSource()));
+            }
+        }
+        String next = ("object".equals(node.getType()) || "field".equals(node.getType())) ? node.getShortName() : owner;
+        for (MetaData child : node.getChildren(MetaData.class, false)) visitDbCheck(child, next, out);
+    }
+
 
     static void validateObjectFieldStorage(MetaRoot root) {
         walkObjectFieldStorage(root);

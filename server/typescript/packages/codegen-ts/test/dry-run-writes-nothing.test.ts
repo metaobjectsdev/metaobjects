@@ -54,7 +54,7 @@ async function gen(root: string, dryRun: boolean) {
   return runGen({
     config: defineConfig({
       outDir: join(root, "generated"),
-      dialect: "postgres",
+      outputLayout: "flat" as const, dialect: "postgres",
       dbImport: "../db",
       extStyle: "js",
       generators: [entityFile()],

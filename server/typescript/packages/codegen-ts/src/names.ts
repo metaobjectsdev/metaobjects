@@ -15,6 +15,8 @@ import {
   resolveTableSchema,
   isMetaObject,
   isMetaSource,
+  isWritableSource,
+  OBJECT_SUBTYPE_ENTITY,
   FIELD_ATTR_OBJECT_REF,
   FIELD_ATTR_STORAGE,
   FIELD_SUBTYPE_OBJECT,
@@ -34,6 +36,7 @@ import { code, imp, type Code } from "./poet.js";
 import { crossEntitySpecifier } from "./import-path.js";
 import type { RenderContext } from "./render-context.js";
 import { effectivePackage } from "./docs-paths.js";
+import { isWriteThrough } from "./projection/projection-detector.js";
 
 /**
  * One field's names.
@@ -363,12 +366,15 @@ export function resolveObjectNames(
   // level down from the one this file exists to prevent (a NAME resolved twice).
   const source = primaryRdbSource(obj);
   if (source === undefined) return undefined;
-  const ownFieldList = obj.ownFields();
+  // rc.21 (U7): a derived field of an object read from its table has no column, so it has no
+  // names entry — no `column` naming a column that does not exist.
+  const columnless = (f: MetaField): boolean => isWritableSource(source) && !isWriteThrough(obj) && f.isDerived();
+  const ownFieldList = obj.ownFields().filter((f) => !columnless(f));
 
   const fields: Record<string, FieldNames> = {};
   // ADR-0039: fields() is the RESOLVING accessor — inherited fields must appear, and an
   // inherited @column must resolve, or the constant disagrees with the DDL.
-  for (const f of obj.fields()) {
+  for (const f of obj.fields().filter((x) => !columnless(x))) {
     fields[f.name] = fieldNamesOf(f, strategy);
   }
   // ADR-0039's sanctioned own-accessor use: what this artifact DECLARES. See ObjectNames.
@@ -378,6 +384,14 @@ export function resolveObjectNames(
   }
 
   const superObj = namesArtifactSuperOf(obj);
+  // rc.21 fix round (M8): an abstract-entity fragment leaves its derived fields out (no column of
+  // the tables extending it), so an object whose derived fields ARE columns (a write-through
+  // entity's read view) declares the ones it inherits itself.
+  if (superObj !== undefined && superObj.subType === OBJECT_SUBTYPE_ENTITY && superObj.isAbstract) {
+    for (const f of obj.fields()) {
+      if (f.isDerived() && !columnless(f) && ownFields[f.name] === undefined) ownFields[f.name] = fieldNamesOf(f, strategy);
+    }
+  }
   const superNames: SuperNames | undefined = superObj === undefined
     ? undefined
     : { name: superObj.name, package: effectivePackage(superObj) };
@@ -455,10 +469,12 @@ export function resolveSuperFragmentNames(
   strategy?: ColumnNamingStrategy,
 ): ObjectNames | undefined {
   if (!declaresNamesContent(obj)) return undefined;
-  const ownFieldList = obj.ownFields();
+  // rc.21 (U7): an abstract ENTITY's derived field is no column of the tables extending it.
+  const columnless = (f: MetaField): boolean => obj.subType === OBJECT_SUBTYPE_ENTITY && f.isDerived();
+  const ownFieldList = obj.ownFields().filter((f) => !columnless(f));
 
   const fields: Record<string, FieldNames> = {};
-  for (const f of obj.fields()) {
+  for (const f of obj.fields().filter((x) => !columnless(x))) {
     fields[f.name] = fieldNamesOf(f, strategy);
   }
   const ownFields: Record<string, FieldNames> = {};

@@ -50,7 +50,7 @@ internal sealed class M2mGeneratedServerFactory : IAsyncDisposable
         await M2mFixture.ProvisionSchemaAsync(pg.ConnectionString);
 
         var (assembly, entityNames) = CompileGeneratedServer();
-        var dbContextType = assembly.GetType($"{GeneratedNamespace}.AppDbContext")
+        var dbContextType = MetaObjects.IntegrationTests.GeneratedTypes.Find(assembly, $"{GeneratedNamespace}.AppDbContext")
             ?? throw new InvalidOperationException("generated AppDbContext type not found");
 
         var builder = WebApplication.CreateBuilder();
@@ -64,7 +64,7 @@ internal sealed class M2mGeneratedServerFactory : IAsyncDisposable
         // traversal routes are mounted by the SOURCE entity's route class (Post, Person).
         foreach (var entity in entityNames)
         {
-            var routesType = assembly.GetType($"{GeneratedNamespace}.{entity}Routes");
+            var routesType = MetaObjects.IntegrationTests.GeneratedTypes.Find(assembly, $"{GeneratedNamespace}.{entity}Routes");
             if (routesType is null) continue;   // composite-/no-PK-only entities still emit a routes class
             var mapMethod = routesType.GetMethod($"Map{entity}Routes", BindingFlags.Public | BindingFlags.Static);
             mapMethod?.Invoke(null, new object[] { app, "/api" });

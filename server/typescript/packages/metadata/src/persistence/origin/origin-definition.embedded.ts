@@ -93,7 +93,7 @@ export const ORIGIN_DEFINITION: ProviderDefinition = {
           "name": "filter",
           "min": 0,
           "max": 1,
-          "description": "Optional structured predicate scoping which related rows the aggregate spans (required for any/all, where it is the quantified predicate). A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time; codegen renders it per target (e.g. SQL FILTER (WHERE ...) or SQLite CASE WHEN for a relational view). A clause value may also be a relative date ({ now: \"<ISO-8601 duration>\", startOf? }) on a date or timestamp field, or { field: \"<base field>\" }, a field of the base row, compared with eq/ne/gt/gte/lt/lte or the null-safe isDistinctFrom / isNotDistinctFrom."
+          "description": "Optional structured predicate scoping which related rows the aggregate spans (required for any/all, where it is the quantified predicate). A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time; codegen renders it per target (e.g. SQL FILTER (WHERE ...) or SQLite CASE WHEN for a relational view). A clause value may also be a relative date ({ now: \"<ISO-8601 duration>\", startOf? }) on a date or timestamp field, or — correlated-filter — { field: \"<base field>\" }, the base row's field, compared with eq/ne/gt/gte/lt/lte or the null-safe isDistinctFrom / isNotDistinctFrom (rc.19)."
         },
         {
           "type": "attr",
@@ -101,7 +101,7 @@ export const ORIGIN_DEFINITION: ProviderDefinition = {
           "name": "segment",
           "min": 0,
           "max": 1,
-          "description": "Optional name of a segment.filter declared on the related entity (the @of entity, else the @via terminal). Its predicate scopes the related rows, ANDed with @filter, exactly as measure.aggregate @segment does; it may use relative dates."
+          "description": "Optional name of a segment.filter declared on the related entity (the @of entity, else the @via terminal) — rc.19 origin-segment. Its predicate scopes the related rows, ANDed with @filter, exactly as measure.aggregate @segment does; it may use relative dates."
         },
         {
           "type": "attr",
@@ -135,6 +135,60 @@ export const ORIGIN_DEFINITION: ProviderDefinition = {
           "min": 1,
           "max": 1,
           "description": "The structured expression tree computing this field's value from the base entity's own fields (closed node grammar; shares the filter op vocabulary). Its inferred root type must equal the field's declared subType (ERR_COMPUTED_TYPE_MISMATCH)."
+        }
+      ]
+    },
+    {
+      "type": "origin",
+      "subType": "function",
+      "implementedIn": [
+        "typescript",
+        "csharp"
+      ],
+      "description": "A value computed by a database function the project owns (rc.21): @function names it, @schema its schema (absent: public), and @args the fields passed to it, in order. On an entity an argument is one of its fields; on a projection, one of its own fields (not an aggregate) or a field of its base entity. @params declares each argument's type and @returns the result's: an argument must have its parameter's type (cast it through an origin.computed field otherwise), @returns must be the carrying field's subtype, and the view casts the call to the field's full column type (the one its table column would have: length or @dbColumnType spelling, precision and scale, a local or zoned timestamp), so the call is checked, never free SQL. The signature is a declaration: meta verify --db reads the function from pg_proc and fails on a parameter or return type that differs. MetaObjects never creates the function: it is owned SQL, created before the view. Declared on an entity, it is entity-derived: a projection reaching the entity reads it like any derived field. Postgres only; the SQLite view emitter refuses it.",
+      "whenToUse": "A view column is the result of a function the database already holds (a PL/pgSQL state machine, a legacy computation) and cannot be expressed in @expr. Declare the call instead of hand-writing the view's @sql.",
+      "children": [
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "function",
+          "min": 1,
+          "max": 1,
+          "description": "The function's name as the database names it: a plain identifier ([A-Za-z_][A-Za-z0-9_]*), quoted when it is not lowercase."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "schema",
+          "min": 0,
+          "max": 1,
+          "description": "The schema the function lives in, a plain identifier. Absent: public."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "args",
+          "isArray": true,
+          "min": 0,
+          "max": 1,
+          "description": "The fields passed to the function, in parameter order: field names of the host entity, or (on a projection) of the projection or its base entity. Each must be a scalar field whose subtype is the declared parameter type in @params; to pass another type, pass an origin.computed field that casts it ({ cast: { field: x }, as: <param> }). Absent or empty: a function of no arguments."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "params",
+          "isArray": true,
+          "min": 0,
+          "max": 1,
+          "description": "The function's declared parameter types, one field subtype per @args entry, in order (string, int, long, double, float, decimal, boolean, date, timestamp, uuid). Required when @args is not empty; an argument of another type is refused (ERR_INVALID_ORIGIN)."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "returns",
+          "min": 1,
+          "max": 1,
+          "description": "The function's declared return type, a field subtype; it must be the carrying field's subtype (ERR_INVALID_ORIGIN). The view casts the call to the field's full column type, which would hide a wrong declaration, so meta verify --db checks it against the function's real return type (pg_proc)."
         }
       ]
     },
@@ -176,7 +230,7 @@ export const ORIGIN_DEFINITION: ProviderDefinition = {
           "name": "filter",
           "min": 0,
           "max": 1,
-          "description": "Optional structured predicate scoping which related rows are eligible for selection. A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time. A clause value may also be a relative date ({ now: \"<ISO-8601 duration>\", startOf? }) on a date or timestamp field, or { field: \"<base field>\" }, a field of the base row, compared with eq/ne/gt/gte/lt/lte or the null-safe isDistinctFrom / isNotDistinctFrom."
+          "description": "Optional structured predicate scoping which related rows are eligible for selection. A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time. A clause value may also be a relative date ({ now: \"<ISO-8601 duration>\", startOf? }) on a date or timestamp field, or — correlated-filter — { field: \"<base field>\" }, the base row's field, compared with eq/ne/gt/gte/lt/lte or the null-safe isDistinctFrom / isNotDistinctFrom (rc.19)."
         },
         {
           "type": "attr",
@@ -184,7 +238,7 @@ export const ORIGIN_DEFINITION: ProviderDefinition = {
           "name": "segment",
           "min": 0,
           "max": 1,
-          "description": "Optional name of a segment.filter declared on the related entity (the @of entity). Its predicate scopes the related rows, ANDed with @filter, exactly as measure.aggregate @segment does; it may use relative dates."
+          "description": "Optional name of a segment.filter declared on the related entity (the @of entity) — rc.19 origin-segment. Its predicate scopes the related rows, ANDed with @filter, exactly as measure.aggregate @segment does; it may use relative dates."
         }
       ]
     }

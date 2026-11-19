@@ -66,7 +66,7 @@ _META = {
                 "children": [
                     {"source.rdb": {"@table": "auths"}},
                     {"field.long": {"name": "id"}},
-                    {"field.enum": {"name": "type", "@values": ["Bridge", "Copay"]}},
+                    {"field.enum": {"name": "type", "@values": ["Bridge", "Coupon"]}},
                     {"field.string": {"name": "reference", "@required": True, "@maxLength": 80}},
                     {"identity.primary": {"name": "pk", "@fields": "id", "@generation": "increment"}},
                 ],
@@ -80,9 +80,9 @@ _META = {
                 ],
             }},
             {"object.entity": {
-                "name": "CopayAuth",
+                "name": "CouponAuth",
                 "extends": "Auth",
-                "@discriminatorValue": "Copay",
+                "@discriminatorValue": "Coupon",
                 "children": [
                     {"field.string": {"name": "payer", "@maxLength": 80}},
                 ],

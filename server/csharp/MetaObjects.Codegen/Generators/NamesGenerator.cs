@@ -94,7 +94,14 @@ public class NamesGenerator : PerEntityGenerator
 
     /// <summary>One emitted constant: its member name, its declaration body, and the metadata
     /// node it came from (named in the collision refusal, so a failure points at the model).</summary>
-    private readonly record struct Member(string Name, string Decl, string NodePath);
+    private readonly record struct Member(string Name, string Decl, string NodePath, string? Attribute = null);
+
+    // A @storage: flattened field's own column constant names no column of the table: its members
+    // are the columns. It is still emitted (owned copies and existing code that read it must keep
+    // compiling) but deprecated. [Obsolete] on a declaration warns nothing; only a use does, so a
+    // project that never reads it gets no new warning.
+    private const string FlattenedColumnObsolete =
+        "[System.Obsolete(\"A flattened field has no column of its own; use the member constants.\")]";
 
     /// <summary>
     /// One string constant. The VALUE is author-controlled — an object name, a key name, a
@@ -374,7 +381,7 @@ public class NamesGenerator : PerEntityGenerator
         // `abstract class`, not `static class`: a static class can neither inherit nor be
         // inherited, and this artifact now extends its parent's rather than restating it.
         // Abstract keeps the "never instantiate this" guarantee a static class gave, and a
-        // `const` is inherited — `CopayAuthNames.IdColumn` resolves through the base — so
+        // `const` is inherited — `CouponAuthNames.IdColumn` resolves through the base — so
         // every consumption site is unchanged.
         var extends = superCls is null ? "" : $" : {superCls}";
         sb.AppendLine($"public abstract class {cls}{extends}");
@@ -383,6 +390,7 @@ public class NamesGenerator : PerEntityGenerator
         {
             foreach (var m in group)
             {
+                if (m.Attribute is { } attribute) sb.AppendLine($"    {attribute}");
                 sb.AppendLine($"    public {(inherited.Contains(m.Name) ? "new " : "")}{m.Decl}");
             }
             sb.AppendLine();

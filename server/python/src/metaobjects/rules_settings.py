@@ -1,4 +1,4 @@
-"""ADR-0063 — the project settings the business-rules vocabulary reads, from the ``rules`` and
+"""ADR-0066 — the project settings the business-rules vocabulary reads, from the ``rules`` and
 ``verify`` blocks of ``.metaobjects/config.json``. Every port reads the same keys with the same
 defaults. A key that is absent takes its default, which is always the behaviour a project had
 before the setting existed: no project declared an operation or a transition before 1.3.0, so

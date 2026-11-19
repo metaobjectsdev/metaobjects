@@ -1,0 +1,56 @@
+# Path -> ci-local lane map. THE one table that says which lanes a change must run.
+#
+# Read by scripts/ci-select-lanes.sh, which two callers share:
+#   - `scripts/ci-local.sh --affected` (the no-mistakes gate's Test step, .no-mistakes.yaml)
+#   - scripts/ci-affected-ports.sh     (pr-ci.yml and local-ci.yml's `detect` job)
+# so the gate and the hosted workflows cannot disagree about what a path affects.
+#
+# FORMAT: `<glob> | <lanes> | <why>`, one rule per line. `#` starts a comment.
+#   <glob>   a shell glob matched against the repo-relative path; `*` also crosses `/`.
+#   <lanes>  space-separated lane names, or one of two words:
+#              ALL   every lane below
+#              NONE  no test lane (the `gates` lane still runs; see below)
+#   Lanes: ts-fast ts-unit java-slow python csharp rust. These are the ci-local sections a
+#   change can select. ts-slow, cube and mutation are not selectable here:
+#   the first two need docker, and mutation is diff-scoped
+#   inside ts-fast already (gate_completeness_diff in ci-local.sh), which this map neither
+#   widens nor narrows.
+#
+# RULES, in order. For each changed path the FIRST rule that matches decides it, and a
+# change selects the union over its paths. So a rule is a specific-before-general list:
+# put a new rule above any broader one that would swallow it.
+#
+# UNKNOWN MEANS FULL. The last rule matches every path no earlier rule claims and selects
+# ALL, so a new top-level directory runs everything until someone decides what it affects.
+# The selector also runs ALL on its own when this file is unreadable, a lane name here is
+# not a known lane, no base ref resolves, or git cannot list the change.
+#
+# DOCS ARE NOT PROSE-ONLY here: tests in several ports read files under docs/, so only the
+# named root files below are NONE, and any other markdown is unmapped, hence ALL.
+#
+# THE `gates` LANE IS NOT A ROW. It runs on every change, by its own command: the gate's
+# Lint step is `scripts/ci-local.sh --only gates`, and pr-ci.yml's `gates` job is the same.
+# It must run AFTER the build the Test step does, which is why it is not folded in there.
+#
+# Editing this file edits the rule above (`scripts/*` -> ALL), so a change to the map
+# runs everything, and scripts/test-ci-lane-selection.sh asserts the map still says so.
+#
+server/typescript/*   | ts-fast ts-unit | the TypeScript server port
+client/web/*          | ts-fast ts-unit | the universal web client, built and tested by the TypeScript lanes
+server/java/*         | java-slow       | the Java and Kotlin ports (the reactor holds both conformance suites)
+server/python/*       | python          | the Python port
+server/csharp/*       | csharp          | the C# port
+server/rust/*         | rust            | the Rust port (preview, ADR-0065)
+fixtures/*            | ALL             | shared corpora every port runs
+spec/*                | ALL             | the metamodel spec every port implements
+scripts/bench-load/* | NONE            | load-benchmark drivers: run by hand, read by no test lane (the gates lane still checks them)
+scripts/*             | ALL             | CI scripts and tooling, this map included
+.github/*             | ALL             | the hosted workflows that call the scripts
+agent-context/*       | ALL             | bundled into the TypeScript packages and checked by cross-port gates
+docs/*                | ALL             | port tests read it: Java walks every page for <generators> blocks and reads docs/ports, TypeScript and Python read the recipes and docs/features pages, so a page edit is not prose-only
+README.md             | NONE            | root prose; the gates lane checks its claims, examples and test references
+CHANGELOG.md          | NONE            | root prose, same gates
+CONTRIBUTING.md       | NONE            | root prose, same gates
+AGENTS.md             | NONE            | root prose, same gates
+CLAUDE.md             | NONE            | root prose, same gates
+*                     | ALL             | unmapped: unknown means a full run

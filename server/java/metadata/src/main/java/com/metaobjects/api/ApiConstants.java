@@ -18,7 +18,7 @@ package com.metaobjects.api;
 import java.util.List;
 import java.util.regex.Pattern;
 
-/** Names of the declared API surface vocabulary: {@code api.*}, {@code operation.*}, {@code binding.*} (ADR-0030, ADR-0063). */
+/** Names of the declared API surface vocabulary: {@code api.*}, {@code operation.*}, {@code binding.*} (ADR-0030, ADR-0066). */
 public final class ApiConstants {
 
     private ApiConstants() {

@@ -1,6 +1,6 @@
 # `verify` business-rules conformance corpus
 
-Every port's `verify` runs the **rules gate** (ADR-0063): it reads the declared operations
+Every port's `verify` runs the **rules gate** (ADR-0066): it reads the declared operations
 (`api.operational` / `operation.*`) and lifecycles (`transition.action` under a `field.enum`)
 of a loaded model and reports what loads clean but is almost certainly not what the author
 meant. The loader already refuses a malformed operation or lifecycle; those errors are pinned

@@ -57,6 +57,7 @@ public class EjectedGeneratorsAloneTests
         ["MetaObjects.Codegen.CSharpNaming"] = "the naming and type-mapping tables",
         ["MetaObjects.Codegen.Generators.CheckConstraints"] = "the CHECKs meta migrate derives: a schema contract both delivery paths must agree on, not emitted code an owned copy should change",
         ["MetaObjects.Codegen.Generators.CheckConstraint"] = "one of those CHECKs, a name and an expression",
+        ["MetaObjects.Codegen.DesignTimeServicesReferences"] = "whether EF reads the generated design-time services reference: a question about the adopter's project layout, not emitted code",
         ["MetaObjects.Codegen.Generators.ForeignKeyIndexes"] = "the indexes and index names meta migrate creates (foreign-key indexes, and a declared name cut to what Postgres stores): a schema contract both delivery paths must agree on, held by fixtures/foreign-key-index-conformance",
         ["MetaObjects.Codegen.Generators.ForeignKeyIndex"] = "one of those indexes, a name and its columns",
         ["MetaObjects.Codegen.ValueObjectNames"] = "the one answer to what a value object's type is called and where it lives",
@@ -273,6 +274,9 @@ public class EjectedGeneratorsAloneTests
         // it also runs over the model its own codegen tests use.
         if (generator is "callable")
             yield return ("callable", LoadInline(Fr015CodegenTests.Model, "fr015.json"));
+        // `expression-indexes` emits only for an @expr index, which neither shared corpus has.
+        if (generator is "expression-indexes")
+            yield return ("expression-indexes", LoadInline(ExpressionIndexesGeneratorTests.Model, "expr.json"));
         yield return ("fitness", EjectedGeneratorCompileTests.LoadCorpus());
         var worked = MetaDataLoader.FromDirectory(
             Path.Combine(CorpusPaths.RepoRoot(), "fixtures", "requirement-test-identity-conformance", "worked-example", "input"), strict: true);

@@ -264,9 +264,9 @@ export const FIELD_DEFINITION: ProviderDefinition = {
       "subType": "enum",
       "dataType": "string",
       "extendsBase": true,
-      "description": "String-backed enumeration constrained to a closed set of member symbols (@values). Each member is its own stored string with no name/value divergence.",
+      "description": "String-backed enumeration constrained to a closed set of member symbols (@values). Each member is its own stored string, unless @stringValueMap gives it another (or @intValueMap an integer).",
       "whenToUse": "A field is a fixed, closed set of string values. Set @values so the union type, DB CHECK, and validation are generated — don't hand-roll constants + checks.",
-      "rules": "Required @values is a non-empty, duplicate-free set; each member must match ^[A-Za-z_][A-Za-z0-9_]*$ so symbol == stored string in every target language. Optional FR-010/FR-011 overlays add tolerant-extract aliasing (@enumAlias), per-member docs (@enumDoc), an uncoercible-value fallback (@coerceDefault, must be one of @values), and ASCII normalization mode (@normalize).",
+      "rules": "Required @values is a non-empty, duplicate-free set; each member must match ^[A-Za-z_][A-Za-z0-9_]*$ so it is a legal identifier in every target language, and is its own stored string unless @stringValueMap (string) or @intValueMap (integer) maps it. Optional FR-010/FR-011 overlays add tolerant-extract aliasing (@enumAlias), per-member docs (@enumDoc), an uncoercible-value fallback (@coerceDefault, must be one of @values), and ASCII normalization mode (@normalize).",
       "children": [
         {
           "type": "transition",
@@ -274,7 +274,7 @@ export const FIELD_DEFINITION: ProviderDefinition = {
           "name": "*",
           "min": 0,
           "max": null,
-          "description": "Lifecycle moves between this enum's members (ADR-0063). An enum with at least one transition.action is a lifecycle: its states are @values, its initial state @default, its terminal states the members no transition leaves."
+          "description": "Lifecycle moves between this enum's members (ADR-0066). An enum with at least one transition.action is a lifecycle: its states are @values, its initial state @default, its terminal states the members no transition leaves."
         },
         {
           "type": "attr",
@@ -283,7 +283,7 @@ export const FIELD_DEFINITION: ProviderDefinition = {
           "isArray": true,
           "min": 1,
           "max": 1,
-          "description": "Member symbols of an enum-subtype field. Declaration order is significant; each is a legal identifier and its own stored string."
+          "description": "Member symbols of an enum-subtype field. Declaration order is significant; each is a legal identifier and its own stored string unless @stringValueMap or @intValueMap maps it."
         },
         {
           "type": "attr",
@@ -308,6 +308,14 @@ export const FIELD_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "Optional per-member int values ({member: int}) switching this enum field's DB persistence from string+CHECK to integer+CHECK. Keys must exactly match @values; values must be unique integers. The generated native type and wire format are unchanged in every language."
+        },
+        {
+          "type": "attr",
+          "subType": "properties",
+          "name": "stringValueMap",
+          "min": 0,
+          "max": 1,
+          "description": "Optional per-member stored strings ({member: string}) for a string-stored enum whose database spelling differs from its member symbols (a legacy column holding lowercase 'draft', or 'LEGACY_A'). The column, its CHECK, its length, a @default and a @condition literal hold the stored strings; the generated native type and wire format keep the members. Keys must exactly match @values; values must be unique non-empty strings. The string twin of @intValueMap, refused with it and on an array enum (ERR_BAD_ATTR_VALUE)."
         }
       ]
     },

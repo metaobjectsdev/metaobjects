@@ -108,6 +108,7 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
         }
         requestBodies = RestSurfaceGate.requestBodyShapes(loader);
         for (MetaObject vo : valueShapes(loader)) {
+            if (!isSelected(vo)) continue;
             emit(vo, outRoot);
         }
     }
@@ -276,7 +277,7 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
             if (values.isEmpty()) continue;
             String typeName = SpringTypeMapper.enumTypeName(owner, ef);
             if (!seen.add(typeName)) continue;
-            decls.add(SpringTypeMapper.enumDeclaration(typeName, values, SpringTypeMapper.intValueMap(ef)));
+            decls.add(SpringTypeMapper.enumDeclaration(typeName, values, SpringTypeMapper.intValueMap(ef), SpringTypeMapper.stringValueMap(ef)));
         }
         return decls;
     }

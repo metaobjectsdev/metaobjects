@@ -525,6 +525,11 @@ public class MetaData implements Cloneable, Serializable {
         return children.findByNameAndType(name, metaDataType);
     }
 
+    /** The types of this node's own children (not inherited), each named once. */
+    public Set<String> getChildTypes() {
+        return children.getSupportedTypes();
+    }
+
     /**
      * Require child by name (throws if not found)
      */
@@ -1452,7 +1457,7 @@ public class MetaData implements Cloneable, Serializable {
     /** Retrieve the first matching child metadata */
     /*private <T extends MetaData> T firstChild( String type, Class<T> c, boolean includeParentData ) {
 
-        List<String> keys = new ArrayList<>();
+        Set<String> keys = new HashSet<>();
         List<T> items = new ArrayList<>();
         addChildren( keys, items, type, c, includeParentData, false, true );
         return items.iterator().next();
@@ -1461,7 +1466,9 @@ public class MetaData implements Cloneable, Serializable {
     /** Retrieve all matching child metadata */
     private <T extends MetaData> List<T> addChildren( String type, Class<T> c, boolean includeParentData ) {
 
-        List<String> keys = new ArrayList<>();
+        // A hash set, not a list: the dedup check runs once per child, and a list made
+        // every walk over a large root quadratic (1,160 objects took longer than 30 s).
+        Set<String> keys = new HashSet<>();
         List<T> items = new ArrayList<>();
         addChildren( keys, items, type, c, includeParentData, false, false );
         return items;
@@ -1469,7 +1476,7 @@ public class MetaData implements Cloneable, Serializable {
 
     /** Add all the matching children to the map - refactored for better maintainability */
     @SuppressWarnings("unchecked")
-    private <T extends MetaData> void addChildren( List<String> keys, List<T> items, String type, Class<T> c, boolean includeParentData, boolean isParent, boolean firstOnly ) {
+    private <T extends MetaData> void addChildren( Set<String> keys, List<T> items, String type, Class<T> c, boolean includeParentData, boolean isParent, boolean firstOnly ) {
         addLocalChildren(keys, items, type, c, isParent, firstOnly);
         addParentChildren(keys, items, type, c, includeParentData, firstOnly);
     }
@@ -1478,7 +1485,7 @@ public class MetaData implements Cloneable, Serializable {
      * Adds matching local children to the results
      */
     @SuppressWarnings("unchecked")
-    private <T extends MetaData> void addLocalChildren(List<String> keys, List<T> items, String type, Class<T> c, boolean isParent, boolean firstOnly) {
+    private <T extends MetaData> void addLocalChildren(Set<String> keys, List<T> items, String type, Class<T> c, boolean isParent, boolean firstOnly) {
         children.stream()
             .filter(child -> !shouldStopEarly(firstOnly, items))
             .filter(child -> matchesSearchCriteria(child, type, c))
@@ -1489,7 +1496,7 @@ public class MetaData implements Cloneable, Serializable {
     /**
      * Recursively adds children from parent metadata
      */
-    private <T extends MetaData> void addParentChildren(List<String> keys, List<T> items, String type, Class<T> c, boolean includeParentData, boolean firstOnly) {
+    private <T extends MetaData> void addParentChildren(Set<String> keys, List<T> items, String type, Class<T> c, boolean includeParentData, boolean firstOnly) {
         if (getSuperData() != null && includeParentData) {
             getSuperData().addChildren(keys, items, type, c, true, true, firstOnly);
         }
@@ -1523,7 +1530,7 @@ public class MetaData implements Cloneable, Serializable {
     /**
      * Determines if a child should be included based on parent filtering and uniqueness
      */
-    private boolean shouldIncludeChild(MetaData child, boolean isParent, List<String> keys) {
+    private boolean shouldIncludeChild(MetaData child, boolean isParent, Set<String> keys) {
         if (isParent && filterWhenParentData(child)) {
             return false;
         }
@@ -1536,16 +1543,15 @@ public class MetaData implements Cloneable, Serializable {
      * Creates a unique key for a child MetaData object
      */
     private String createChildKey(MetaData child) {
-        return String.format("%s-%s", child.getType(), child.getName());
+        return child.getType() + "-" + child.getName();
     }
     
     /**
      * Adds a child to the results collections
      */
     @SuppressWarnings("unchecked")
-    private <T extends MetaData> void addChildToResults(MetaData child, List<String> keys, List<T> items) {
-        String key = createChildKey(child);
-        keys.add(key);
+    private <T extends MetaData> void addChildToResults(MetaData child, Set<String> keys, List<T> items) {
+        keys.add(createChildKey(child));
         items.add((T) child);
     }
 

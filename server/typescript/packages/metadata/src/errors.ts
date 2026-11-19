@@ -161,6 +161,10 @@ export const ERROR_CODES = [
   "ERR_SEQUENCE_WITHOUT_INCREMENT",
   // identity.primary @sequenceStart below 1, or past what its key field can hold.
   "ERR_SEQUENCE_START_OUT_OF_RANGE",
+  // A CHECK-generating validator or field.enum sets @dbCheck: false and @constraintName.
+  "ERR_CONSTRAINT_NAME_WITHOUT_CHECK",
+  // A cross-field validator (enforced only by its CHECK) sets @dbCheck: false.
+  "ERR_CROSS_FIELD_WITHOUT_CHECK",
   "ERR_STORAGE_WITHOUT_OBJECT_REF",
   // ADR-0013 — a field.object REQUIRES @objectRef (open/untyped JSON uses
   // the physical @dbColumnType: jsonb escape hatch on field.string instead).
@@ -247,7 +251,7 @@ export const ERROR_CODES = [
   // An object.report lists a measure that belongs to an entity other than @from;
   // v1 refuses multi-fact reports (R3).
   "ERR_REPORT_FOREIGN_MEASURE",
-  // ADR-0063 — business rules. A transition.action @from/@to value that is not a
+  // ADR-0066 — business rules. A transition.action @from/@to value that is not a
   // member of its enum (L4).
   "ERR_TRANSITION_UNKNOWN_STATE",
   // A transition.action on a field of anything but an object.entity, or a concrete

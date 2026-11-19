@@ -31,7 +31,8 @@ import static org.junit.Assert.fail;
  * Tests for {@link ValidationPhase#validateDbColumnType} (R6 Plan 2b). The
  * {@code @dbColumnType} physical attribute is validated own-only against:
  * <ol>
- *   <li>a closed value set ({@code uuid|jsonb} — {@code timestamp_with_tz} was retired
+ *   <li>a closed value set ({@code uuid|jsonb}, and since rc.21 the text spellings on a
+ *       {@code field.string} — {@code timestamp_with_tz} was retired
  *       in ADR-0036 Wave 2); and</li>
  *   <li>the legal (logical-subtype × value) pairing.</li>
  * </ol>
@@ -174,17 +175,20 @@ public class DbColumnTypeValidationTest extends SharedRegistryTestBase {
     }
 
     @Test
-    public void textValueIsRejected() {
-        // The vestigial dbColumnType:text value is REMOVED (Phase 1): a no-maxLength
-        // field.string already defaults to a text column — `text` is not an opt-in.
-        String canonical = "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
-            "  { \"object.entity\": { \"name\": \"Asset\", \"children\": [" +
-            "    { \"field.long\": { \"name\": \"id\" } }," +
-            "    { \"field.string\": { \"name\": \"body\", \"@dbColumnType\": \"text\" } }," +
-            "    { \"identity.primary\": { \"@fields\": \"id\" } }" +
-            "  ] } }" +
-            "] } }";
-        assertBadAttrValue(canonical, "text-value-removed.json");
+    public void textSpellingsOnStringAreLegal() {
+        // rc.21: the text spellings (text, varchar, varchar(n), character varying(n),
+        // character(n)) are legal on a field.string again, so a view column can carry
+        // the database's own type name.
+        for (String spelling : List.of("text", "varchar", "varchar(40)", "character varying(40)", "character(2)")) {
+            String canonical = "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
+                "  { \"object.entity\": { \"name\": \"Asset\", \"children\": [" +
+                "    { \"field.long\": { \"name\": \"id\" } }," +
+                "    { \"field.string\": { \"name\": \"body\", \"@dbColumnType\": \"" + spelling + "\" } }," +
+                "    { \"identity.primary\": { \"@fields\": \"id\" } }" +
+                "  ] } }" +
+                "] } }";
+            loadThrough(canonical, "text-spelling-" + spelling + ".json");
+        }
     }
 
     @Test

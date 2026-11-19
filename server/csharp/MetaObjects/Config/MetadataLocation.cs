@@ -58,7 +58,7 @@ public sealed record ResolvedMetadata(
     /// constructor and <c>Deconstruct</c> keep the signatures they had.</summary>
     public EnumDefaults? Enums { get; init; }
 
-    /// <summary>ADR-0063 — the project's business-rules settings (<c>rules</c> and <c>verify</c> in config.json); null when no config was read.</summary>
+    /// <summary>ADR-0066 — the project's business-rules settings (<c>rules</c> and <c>verify</c> in config.json); null when no config was read.</summary>
     public RulesSettings? Rules { get; init; }
 
     /// <summary>The project's <c>api</c> block, set on the loaded root by <see cref="Load"/>.</summary>

@@ -20,17 +20,17 @@ async function loadTph() {
             { "object.entity": { name: "Auth", "@discriminator": "type", children: [
               { "source.rdb": { "@table": "auths" } },
               { "field.long": { name: "id" } },
-              { "field.enum": { name: "type", "@values": ["Bridge", "Copay", "PriorAuth"] } },
+              { "field.enum": { name: "type", "@values": ["Bridge", "Coupon", "Permit"] } },
               { "field.string": { name: "reference", "@required": true, "@maxLength": 80 } },
               { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
             ]}},
             { "object.entity": { name: "BridgeAuth", extends: "Auth", "@discriminatorValue": "Bridge", children: [
               { "field.int": { name: "quantity", "@required": true } },
             ]}},
-            { "object.entity": { name: "CopayAuth", extends: "Auth", "@discriminatorValue": "Copay", children: [
-              { "field.decimal": { name: "copayAmount", "@precision": 10, "@scale": 2 } },
+            { "object.entity": { name: "CouponAuth", extends: "Auth", "@discriminatorValue": "Coupon", children: [
+              { "field.decimal": { name: "couponAmount", "@precision": 10, "@scale": 2 } },
             ]}},
-            { "object.entity": { name: "PriorAuthAuth", extends: "Auth", "@discriminatorValue": "PriorAuth", children: [
+            { "object.entity": { name: "PermitAuth", extends: "Auth", "@discriminatorValue": "Permit", children: [
               { "field.string": { name: "approver", "@maxLength": 80 } },
             ]}},
           ],
@@ -48,8 +48,8 @@ describe("buildExpectedSchema — TPH single table", () => {
     const names = snap.tables.map((t) => t.name).sort();
     expect(names).toContain("auths");
     expect(names).not.toContain("bridge_auths");
-    expect(names).not.toContain("copay_auths");
-    expect(names).not.toContain("prior_auth_auths");
+    expect(names).not.toContain("coupon_auths");
+    expect(names).not.toContain("permit_auths");
     // exactly one table
     expect(snap.tables.length).toBe(1);
   });
@@ -58,7 +58,7 @@ describe("buildExpectedSchema — TPH single table", () => {
     const snap = buildExpectedSchema(await loadTph(), { dialect: "postgres" });
     const auths = snap.tables.find((t) => t.name === "auths")!;
     const cols = auths.columns.map((c) => c.name).sort();
-    expect(cols).toEqual(["approver", "copay_amount", "id", "quantity", "reference", "type"]);
+    expect(cols).toEqual(["approver", "coupon_amount", "id", "quantity", "reference", "type"]);
   });
 
   test("subtype-only columns are NULLABLE even when the field is @required", async () => {
@@ -67,8 +67,8 @@ describe("buildExpectedSchema — TPH single table", () => {
     const quantity = auths.columns.find((c) => c.name === "quantity")!;
     // quantity is @required on BridgeAuth, but must be nullable in the single table.
     expect(quantity.nullable).toBe(true);
-    const copay = auths.columns.find((c) => c.name === "copay_amount")!;
-    expect(copay.nullable).toBe(true);
+    const coupon = auths.columns.find((c) => c.name === "coupon_amount")!;
+    expect(coupon.nullable).toBe(true);
   });
 
   // A TPH subtype-only column must carry NO DB default, for the same reason it is

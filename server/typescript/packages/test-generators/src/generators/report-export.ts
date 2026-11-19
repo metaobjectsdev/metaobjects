@@ -27,6 +27,7 @@ import {
   GENERATED_EDIT_NOTE,
   GENERATED_HEADER,
   effectivePackage,
+  DEFAULT_OUTPUT_LAYOUT,
   entityOutputPath,
   formatTs,
   isCredentialField,
@@ -239,7 +240,7 @@ export function reportExport(opts?: ReportExportOpts): Generator {
     name: "report-export",
     emitsReportExport: true,
     generate: async (ctx: GenContext): Promise<EmittedFile[]> => {
-      const layout = ctx.config.outputLayout ?? "flat";
+      const layout = ctx.config.outputLayout ?? DEFAULT_OUTPUT_LAYOUT;
       const extStyle = ctx.config.extStyle ?? "js";
       const selfTarget = ctx.renderContext?.selfTarget;
       if (selfTarget === undefined) throw new Error("report-export: no render context (run it through runGen).");
@@ -248,7 +249,8 @@ export function reportExport(opts?: ReportExportOpts): Generator {
       const out: EmittedFile[] = [
         { path: `${EXPORT_WRITERS_BASENAME}.ts`, content: await formatTs(renderExportWriters(emit)) },
       ];
-      for (const report of reports) {
+      // One module per report `meta gen <Entity>` named; the writers above serve them all.
+      for (const report of reports.filter((r) => ctx.selected?.(r) ?? true)) {
         const pkg = effectivePackage(report);
         out.push({
           path: entityOutputPath(layout, pkg, `${report.name}.export.ts`),

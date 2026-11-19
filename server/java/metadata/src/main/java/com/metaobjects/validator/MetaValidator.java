@@ -48,6 +48,8 @@ public abstract class MetaValidator extends MetaData {
 
     /** The database name of the CHECK a CHECK-generating validator (or a field.enum's membership) generates. */
     public final static String ATTR_CONSTRAINT_NAME = "constraintName";
+    /** A CHECK-generating validator or field.enum (db provider): {@code false} generates no database CHECK. Absent: true. */
+    public final static String ATTR_DB_CHECK = "dbCheck";
 
     /**
      * Register this type with the MetaDataRegistry (called by provider)

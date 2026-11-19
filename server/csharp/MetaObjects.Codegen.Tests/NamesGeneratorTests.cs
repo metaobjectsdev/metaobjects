@@ -51,7 +51,7 @@ public class NamesGeneratorTests
     private static MetaRoot Load(string model)
     {
         var r = new MetaDataLoader().Load([new InMemoryStringSource(model, id: "gen.json")]);
-        Assert.Empty(r.Errors);
+        Assert.Empty(r.Errors.Select(e => $"{e.Code}: {e.Message}"));
         return r.Root;
     }
 
@@ -125,6 +125,64 @@ public class NamesGeneratorTests
         // collision that makes the pair non-optional.
         Assert.Contains("public const string CreatedAtField = \"createdAt\";", src);
         Assert.Contains("public const string CreatedAtColumn = \"created_at\";", src);
+    }
+
+    // rc.21 (U7): a derived field of a table-backed entity has no column, so the artifact names no
+    // column for it (no `…Field`/`…Column` pair, no ColumnsByField entry). A projection's derived
+    // field IS a column of its view and keeps its pair.
+    [Fact]
+    public void A_derived_field_of_a_table_entity_has_no_column_constant()
+    {
+        const string model = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.entity": { "name": "Account", "children": [
+            { "source.rdb": { "@table": "accounts" } },
+            { "field.long": { "name": "id" } },
+            { "field.int": { "name": "score" } },
+            { "field.boolean": { "name": "isHigh", "children": [ { "origin.computed": { "@expr": {
+                "op": "gte", "left": { "field": "score" }, "right": { "value": 4 } } } } ] } },
+            { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+          { "object.projection": { "name": "AccountView", "@filter": { "isHigh": true }, "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_accounts" } },
+            { "field.long": { "name": "id", "extends": "Account.id" } },
+            { "field.int": { "name": "doubled", "children": [ { "origin.computed": { "@expr": {
+                "fn": "coalesce", "args": [ { "field": "score" }, { "value": 0 } ] } } } ] } },
+            { "identity.primary": { "name": "id", "extends": "Account.id" } } ] } } ] } }
+        """;
+        var files = new NamesGenerator().Generate(Ctx(Load(model))).ToList();
+        var account = files.Single(f => f.Path.EndsWith("AccountNames.g.cs", StringComparison.Ordinal)).Content;
+        Assert.Contains("public const string ScoreColumn = \"score\";", account);
+        Assert.DoesNotContain("IsHigh", account);
+        var view = files.Single(f => f.Path.EndsWith("AccountViewNames.g.cs", StringComparison.Ordinal)).Content;
+        Assert.Contains("public const string DoubledColumn = \"doubled\";", view);
+    }
+
+    // rc.21 fix round (M8): an abstract-entity fragment drops its derived field, so a write-through
+    // extender (whose read view HAS that column) declares the constant itself.
+    [Fact]
+    public void A_write_through_extender_declares_the_derived_column_its_fragment_drops()
+    {
+        const string model = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.entity": { "name": "Tracked", "abstract": true, "children": [
+            { "field.int": { "name": "score" } },
+            { "field.boolean": { "name": "isHigh", "children": [ { "origin.computed": { "@expr": {
+                "op": "gte", "left": { "field": "score" }, "right": { "value": 4 } } } } ] } } ] } },
+          { "object.entity": { "name": "Account", "extends": "Tracked", "children": [
+            { "source.rdb": { "@table": "accounts" } },
+            { "source.rdb": { "name": "read", "@kind": "view", "@view": "v_accounts", "@role": "replica" } },
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+          { "object.projection": { "name": "HighAccounts", "@filter": { "isHigh": true }, "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_high_accounts" } },
+            { "field.long": { "name": "id", "extends": "Account.id" } },
+            { "identity.primary": { "name": "id", "extends": "Account.id" } } ] } } ] } }
+        """;
+        var files = new NamesGenerator().Generate(Ctx(Load(model))).ToList();
+        var tracked = files.Single(f => f.Path.EndsWith("TrackedNames.g.cs", StringComparison.Ordinal)).Content;
+        Assert.DoesNotContain("IsHigh", tracked);
+        var account = files.Single(f => f.Path.EndsWith("AccountNames.g.cs", StringComparison.Ordinal)).Content;
+        Assert.Contains("public const string IsHighColumn = \"is_high\";", account);
     }
 
     [Fact]
@@ -207,7 +265,7 @@ public class NamesGeneratorTests
         // all and must not appear in the output.
         var files = new NamesGenerator().Generate(Ctx(Load(SubscriberModel))).ToList();
         var file = Assert.Single(files);
-        Assert.Equal("SubscriberNames.g.cs", file.Path);
+        Assert.Equal("SubscriberNames.g.cs", System.IO.Path.GetFileName(file.Path));
     }
 
     [Fact]
@@ -476,7 +534,7 @@ public class NamesGeneratorTests
         // artifact compares the resolved SourceNames instead — the same DISAGREEMENT rule
         // SourceResolution already enforces, not a stricter one invented here.
         var src = new NamesGenerator().Generate(Ctx(root))
-            .Single(f => f.Path == "ChildSameNames.g.cs").Content;
+            .Single(f => System.IO.Path.GetFileName(f.Path) == "ChildSameNames.g.cs").Content;
         Assert.Contains("public new const string SourcePrimaryTable = \"same_table\";", src);
     }
 
@@ -489,7 +547,7 @@ public class NamesGeneratorTests
     public void Entity_Table_and_Column_attributes_reference_the_name_constants()
     {
         var ctx = Ctx(Load(SubscriberModel));
-        var src = new EntityGenerator().Generate(ctx).Single(f => f.Path == "Subscriber.g.cs").Content;
+        var src = new EntityGenerator().Generate(ctx).Single(f => System.IO.Path.GetFileName(f.Path) == "Subscriber.g.cs").Content;
 
         Assert.Contains("[Table(SubscriberNames.SourcePrimaryTable)]", src);
         Assert.Contains("[Column(SubscriberNames.CreatedAtColumn)]", src);
@@ -525,7 +583,7 @@ public class NamesGeneratorTests
         ]}}
         """;
         var ctx = Ctx(Load(model), ColumnNamingStrategy.Literal);
-        var src = new EntityGenerator().Generate(ctx).Single(f => f.Path == "BridgeAuth.g.cs").Content;
+        var src = new EntityGenerator().Generate(ctx).Single(f => System.IO.Path.GetFileName(f.Path) == "BridgeAuth.g.cs").Content;
 
         Assert.Contains("[Column(BridgeAuthNames.QuantityColumn)]", src);
         Assert.DoesNotContain("[Column(\"quantity\")]", src);
@@ -761,7 +819,7 @@ public class NamesGeneratorTests
     public void C1_with_names_absent_Entity_Table_and_Column_fall_back_to_the_pre_ProgramA_literal()
     {
         var ctx = CtxWithoutNames(Load(SubscriberModel));
-        var src = new EntityGenerator().Generate(ctx).Single(f => f.Path == "Subscriber.g.cs").Content;
+        var src = new EntityGenerator().Generate(ctx).Single(f => System.IO.Path.GetFileName(f.Path) == "Subscriber.g.cs").Content;
 
         // The exact literal spellings EntityGenerator emitted before Program A referenced
         // the constant (git 488143e21) -- present.
@@ -796,7 +854,7 @@ public class NamesGeneratorTests
         ]}}
         """;
         var ctx = CtxWithoutNames(Load(model), ColumnNamingStrategy.Literal);
-        var src = new EntityGenerator().Generate(ctx).Single(f => f.Path == "BridgeAuth.g.cs").Content;
+        var src = new EntityGenerator().Generate(ctx).Single(f => System.IO.Path.GetFileName(f.Path) == "BridgeAuth.g.cs").Content;
 
         Assert.Contains("[Column(\"quantity\")]", src);
         Assert.DoesNotContain("BridgeAuthNames", src);
@@ -878,7 +936,7 @@ public class NamesGeneratorTests
             Entities = root.Objects(), Root = root,
             Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" }, // IncludeNames unset
         };
-        var src = new EntityGenerator().Generate(ctx).Single(f => f.Path == "Subscriber.g.cs").Content;
+        var src = new EntityGenerator().Generate(ctx).Single(f => System.IO.Path.GetFileName(f.Path) == "Subscriber.g.cs").Content;
 
         // Positive: the literal spelling is present.
         Assert.Contains("[Table(\"subscribers\")]", src);
@@ -906,7 +964,7 @@ public class NamesGeneratorTests
     [Fact]
     public void A_flattened_member_gets_a_column_constant_beside_its_field_constants()
     {
-        var content = new NamesGenerator().Generate(Ctx(Load(FlattenedModel))).Single(f => f.Path == "ShipmentNames.g.cs").Content;
+        var content = new NamesGenerator().Generate(Ctx(Load(FlattenedModel))).Single(f => System.IO.Path.GetFileName(f.Path) == "ShipmentNames.g.cs").Content;
 
         Assert.Contains("public const string ShipToStreetColumn = \"ship_to_street\";", content);
         Assert.Contains("public const string ShipToPostalCodeColumn = \"ship_to_ZIP\";", content);
@@ -933,7 +991,7 @@ public class NamesGeneratorTests
             Entities = root.Objects(), Root = root, Warn = warnings.Add,
             Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", ColumnNamingStrategy = ColumnNamingStrategy.SnakeCase, IncludeNames = true },
         };
-        var content = new NamesGenerator().Generate(ctx).Single(f => f.Path == "ShipmentNames.g.cs").Content;
+        var content = new NamesGenerator().Generate(ctx).Single(f => System.IO.Path.GetFileName(f.Path) == "ShipmentNames.g.cs").Content;
 
         // The field's constant wins; the model generates, as it did before member constants.
         Assert.Contains("public const string ShipToStreetColumn = \"ship_to_street\";", content);
@@ -971,7 +1029,7 @@ public class NamesGeneratorTests
         ]}}
         """;
         var files = new NamesGenerator().Generate(Ctx(Load(model))).ToList();
-        var order = files.Single(f => f.Path == "OrderNames.g.cs").Content;
+        var order = files.Single(f => System.IO.Path.GetFileName(f.Path) == "OrderNames.g.cs").Content;
 
         // Extending BaseNames would make BaseNames.ShipToStreetColumn a member of OrderNames,
         // naming a column `orders` does not have; the artifact is emitted complete instead.

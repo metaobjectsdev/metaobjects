@@ -107,7 +107,26 @@ public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
      * with the Kotlin port via this JVM provider.</p>
      */
     public static final java.util.List<String> VALID_DB_COLUMN_TYPES = java.util.List.of(
-        DB_COLUMN_TYPE_UUID, DB_COLUMN_TYPE_JSONB);
+        DB_COLUMN_TYPE_UUID, DB_COLUMN_TYPE_JSONB, "text", "varchar", "character varying");
+
+    /** rc.21 part B (U2): the sized text spellings, as written in a message. */
+    public static final java.util.List<String> DB_COLUMN_TYPE_SIZED_SPELLINGS =
+        java.util.List.of("varchar(n)", "character varying(n)", "character(n)");
+
+    private static final java.util.regex.Pattern SIZED_DB_COLUMN_TYPE =
+        java.util.regex.Pattern.compile("^(varchar|character varying|character)\\(([1-9][0-9]{0,8})\\)$");
+
+    /**
+     * rc.21 part B (U2): the declared length of a sized {@code @dbColumnType} spelling
+     * ({@code varchar(n)}, {@code character varying(n)}, {@code character(n)}), 0 for a legal bare
+     * value, or -1 when the value is not legal. Postgres's own spellings, as every port parses them.
+     */
+    public static int dbColumnTypeLength(String value) {
+        if (value == null) return -1;
+        if (VALID_DB_COLUMN_TYPES.contains(value)) return 0;
+        java.util.regex.Matcher m = SIZED_DB_COLUMN_TYPE.matcher(value);
+        return m.matches() ? Integer.parseInt(m.group(2)) : -1;
+    }
 
     @Override
     public String getProviderId() {
@@ -165,6 +184,10 @@ public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
             registry.extendType(c, def -> def
                 .optionalAttributeWithConstraints(com.metaobjects.validator.MetaValidator.ATTR_CONSTRAINT_NAME)
                 .ofType(StringAttribute.SUBTYPE_STRING).asSingle());
+            // @dbCheck: false asks the same node for no CHECK at all (rc.20).
+            registry.extendType(c, def -> def
+                .optionalAttributeWithConstraints(com.metaobjects.validator.MetaValidator.ATTR_DB_CHECK)
+                .ofType(com.metaobjects.attr.BooleanAttribute.SUBTYPE_BOOLEAN).asSingle());
         }
 
         // --- index.lookup RDB-physical attrs ---

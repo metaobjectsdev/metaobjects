@@ -100,6 +100,20 @@ public class EnumField extends PrimitiveField<String> {
     public static final String ATTR_INT_VALUE_MAP = "intValueMap";
 
     /**
+     * rc.21 — optional per-member stored strings ({member: string}) of a string-stored enum, the
+     * string twin of {@link #ATTR_INT_VALUE_MAP}. Keys must match {@code @values}; values are unique
+     * non-empty strings; refused with {@code @intValueMap} and on an array enum (ValidationPhase).
+     */
+    public static final String ATTR_STRING_VALUE_MAP = "stringValueMap";
+
+    /** rc.21 — the string {@code member} is stored as: its {@code @stringValueMap} entry (resolving), else the member. */
+    public static String storedValue(MetaField<?> field, String member) {
+        if (!field.hasMetaAttr(ATTR_STRING_VALUE_MAP)) return member;
+        Object raw = field.getMetaAttr(ATTR_STRING_VALUE_MAP).getValue();
+        return raw instanceof java.util.Map<?, ?> map && map.get(member) instanceof String s && !s.isEmpty() ? s : member;
+    }
+
+    /**
      * Name of the optional per-member description map (properties).
      * Each key is an enum member symbol from {@code @values}; the value is a
      * human-readable (or LLM-facing) description of that member.
@@ -224,6 +238,12 @@ public class EnumField extends PrimitiveField<String> {
                 // validated post-load in ValidationPhase (own-only, same as @values).
                 def.optionalAttributeWithConstraints(ATTR_INT_VALUE_MAP)
                    .ofType(com.metaobjects.attr.IntMapAttribute.SUBTYPE_INT_MAP)
+                   .asSingle();
+
+                // rc.21 — optional @stringValueMap ({member: string}); content rules in
+                // ValidationPhase.validateEnumStringValueMap.
+                def.optionalAttributeWithConstraints(ATTR_STRING_VALUE_MAP)
+                   .ofType(com.metaobjects.attr.PropertiesAttribute.SUBTYPE_PROPERTIES)
                    .asSingle();
 
                 // Optional @maxLength — the column length of a string-stored enum (VARCHAR(n)).

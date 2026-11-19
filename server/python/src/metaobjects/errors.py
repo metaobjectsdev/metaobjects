@@ -132,7 +132,7 @@ class ErrorCode(str, Enum):
     ERR_INVALID_MEASURE = "ERR_INVALID_MEASURE"
     ERR_INVALID_REPORT = "ERR_INVALID_REPORT"
     ERR_REPORT_FOREIGN_MEASURE = "ERR_REPORT_FOREIGN_MEASURE"
-    # ADR-0063 business rules (loader/validate_rules.py; rule ids L1-L7, P1, O0-O5, B1):
+    # ADR-0066 business rules (loader/validate_rules.py; rule ids L1-L7, P1, O0-O5, B1):
     # lifecycle transitions on a field.enum and the declared operations of an api.operational.
     ERR_TRANSITION_UNKNOWN_STATE = "ERR_TRANSITION_UNKNOWN_STATE"
     ERR_TRANSITION_NOT_ON_ENTITY = "ERR_TRANSITION_NOT_ON_ENTITY"
@@ -225,6 +225,10 @@ class ErrorCode(str, Enum):
     ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP = "ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP"
     ERR_SEQUENCE_WITHOUT_INCREMENT = "ERR_SEQUENCE_WITHOUT_INCREMENT"
     ERR_SEQUENCE_START_OUT_OF_RANGE = "ERR_SEQUENCE_START_OUT_OF_RANGE"
+    # A CHECK-generating validator or field.enum sets @dbCheck: false and @constraintName.
+    ERR_CONSTRAINT_NAME_WITHOUT_CHECK = "ERR_CONSTRAINT_NAME_WITHOUT_CHECK"
+    # A cross-field validator (enforced only by its CHECK) sets @dbCheck: false.
+    ERR_CROSS_FIELD_WITHOUT_CHECK = "ERR_CROSS_FIELD_WITHOUT_CHECK"
     ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE = (
         "ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE"
     )

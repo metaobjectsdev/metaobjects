@@ -1,0 +1,108 @@
+# tasks-axi (read path) — the command surface.
+#
+# There is no registered vocabulary for a command line, so the surface lives in ONE
+# `attr.properties` bag (the registered escape hatch, exempt from the strict-attr check)
+# that the owned `rust-cli` generator reads. The README records what the bag had to carry,
+# as evidence for or against a future `api.operational` + `binding.cli` proposal (ADR-0030).
+#
+# Conventions the generator enforces, so a typo here fails `meta gen` instead of shipping:
+#   - every `columns` / `extra` name must be a TaskRow column;
+#   - flags are parsed in the order listed (the real tool validates in that order, so the
+#     first error a caller sees depends on it);
+#   - every command text is printed byte-for-byte, with no trailing newline.
+metadata:
+  package: tasksaxi::cli
+  children:
+    - object.value:
+        name: Cli
+        children:
+          - attr.properties:
+              name: cli
+              value:
+                bin: tasks-axi
+                # The tasks-axi release whose behaviour this tool reproduces.
+                version: "0.2.6"
+                # `tasks-axi task show x` is `tasks-axi show x`.
+                noun: task
+                # Flags that may appear anywhere after the command, are removed before the
+                # command's own flags are read, and are resolved into the backlog context.
+                globalFlags:
+                  - { name: backend, type: line }
+                  - { name: file, type: line }
+                # The Rust tool's own top-level help: it lists what it implements.
+                topHelp: |-
+                  usage: tasks-axi-rs <command> [args] [flags]
+                  Read path of tasks-axi 0.2.6: show, list and ready.
+                  commands[3]:
+                    show (alias view), list, ready
+                  flags[4]:
+                    --backend <name> (after command), --file <path> (after command), --help, -v/-V/--version
+                  Every other tasks-axi command is refused with exit code 1; use tasks-axi for those.
+                refused:
+                  [add, create, start, done, close, reopen, update, edit, rm, delete, block, unblock,
+                   hold, unhold, public-followup, mv, prune, render, setup]
+                # What the tool answers for a command it does not implement (exit code 1).
+                refusal:
+                  message: "`{command}` is not implemented by tasks-axi-rs, which ships the read path only (show, list, ready)"
+                  suggestion: "Run the same command with the Node tasks-axi"
+                  home: "the dashboard (tasks-axi with no command)"
+                commands:
+                  show:
+                    aliases: [view]
+                    help: |-
+                      usage: tasks-axi show <id> [--full]
+                      aliases: view
+                      examples:
+                        tasks-axi show homemux-h7
+                        tasks-axi show homemux-h7 --full
+                    flags:
+                      - { name: full, type: bool }
+                    positionals: { names: [id], min: 1, max: 1, type: taskId }
+                    outputs:
+                      - { label: task, columns: TaskDetailRow }
+                    hints:
+                      - { when: blocked, line: "Run `tasks-axi unblock {id} --by <other>` to clear a blocker" }
+                      - { when: blocked, line: "Run `tasks-axi start {id}` to move it to in flight" }
+                  list:
+                    help: |-
+                      usage: tasks-axi list [flags]
+                      flags:
+                        --state <queued|in_flight|done|held>, --repo <name>, --kind <name>, --blocked
+                        --limit <n>, --fields <a,b,c>  (extra: {extraColumns})
+                      examples:
+                        tasks-axi list --state queued
+                        tasks-axi list --repo no-mistakes --fields blocked_by,created
+                        tasks-axi list --blocked
+                    flags:
+                      - { name: fields, type: columns, row: TaskRow, base: TaskListRow }
+                      - { name: state, type: enum, enum: ListState }
+                      - { name: repo, type: line }
+                      - { name: kind, type: line }
+                      - { name: blocked, type: bool }
+                      - { name: limit, type: uint }
+                    positionals: { names: [], min: 0, max: 0 }
+                    outputs:
+                      - { label: tasks, columns: TaskListRow }
+                    hints:
+                      - { when: nonEmpty, line: "Run `tasks-axi show <id>` for full notes on a task" }
+                      - { when: nonEmpty, line: "Run `tasks-axi ready` to see unblocked queued work", filters: [repo] }
+                      - { when: empty, line: "Run `tasks-axi add <id> \"<title>\"` to add a task", filters: [repo, kind] }
+                      - { when: empty, line: "Run `tasks-axi list --state done` to see completed work", filters: [repo, kind] }
+                  ready:
+                    help: |-
+                      usage: tasks-axi ready [--repo <name>] [--include-held]
+                      List unblocked, unheld queued work dispatchable right now.
+                      Public-followup obligations are never dispatchable and appear only in the separate
+                      ready_public_followups group; use tasks-axi public-followup ready for their full payloads.
+                      Held work is excluded by default; --include-held shows it in a separate held group.
+                    flags:
+                      - { name: repo, type: line }
+                      - { name: include-held, type: bool }
+                    positionals: { names: [], min: 0, max: 0 }
+                    outputs:
+                      - { label: ready, columns: TaskListRow }
+                      - { label: ready_public_followups, columns: TaskListRow, extra: [delivery_state] }
+                      - { label: held, columns: TaskListRow, extra: [hold_reason, hold_kind, hold_until] }
+                    hints:
+                      - { when: nonEmpty, line: "Run `tasks-axi start <id>` to dispatch one of these" }
+                      - { when: empty, line: "Run `tasks-axi list --state queued` to see all queued work (incl. blocked)", filters: [repo] }

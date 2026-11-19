@@ -32,6 +32,7 @@ from metaobjects.serializer_json import canonical_serialize, canonical_serialize
 
 from .conformance_adapter import _resolve_providers
 from .corpus import corpus_root
+from .expected_failures import _ledger
 from .fixture_discovery import Fixture, discover_fixtures
 
 _CORPUS = corpus_root()
@@ -111,7 +112,17 @@ def test_yaml_twin(fix: Fixture) -> None:
 _ROUND_TRIP = [f for f in _FIXTURES if f.has_expected and f.name not in _ROUND_TRIP_EXCLUSIONS]
 
 
-@pytest.mark.parametrize("fix", _ROUND_TRIP, ids=[f.name for f in _ROUND_TRIP])
+# A fixture on the port's expected-failures ledger is a known gap: strict xfail, so one that
+# starts passing fails the build (the ledger's staleness rule).
+_LEDGER = _ledger()
+_ROUND_TRIP_PARAMS = [
+    pytest.param(f, id=f.name, marks=pytest.mark.xfail(strict=True, reason="expected-failures ledger"))
+    if f.name in _LEDGER else pytest.param(f, id=f.name)
+    for f in _ROUND_TRIP
+]
+
+
+@pytest.mark.parametrize("fix", _ROUND_TRIP_PARAMS)
 def test_round_trip(fix: Fixture) -> None:
     text = (fix.dir / "expected.json").read_text(encoding="utf-8")
     loaded = _load([InMemoryStringSource(text, id="expected.json")], fix)

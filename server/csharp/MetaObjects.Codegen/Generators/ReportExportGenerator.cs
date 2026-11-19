@@ -80,7 +80,7 @@ public class ReportExportGenerator : IGenerator
             .ToList();
         if (served.Count == 0) yield break;
 
-        yield return new EmittedFile("ReportExportWriter.g.cs", SharedWriter(ctx, HasDurationColumn(served)));
+        yield return new EmittedFile("ReportExportWriter.g.cs", SharedWriter(ctx, HasDurationColumn(served))) { WholeModel = true };
         foreach (var report in served)
             yield return new EmittedFile(OutputPaths.Of(report, ctx, CSharpNaming.Pascal(report.Name) + "Export.g.cs"), ReportModule(report, ctx));
     }
@@ -127,7 +127,7 @@ public class ReportExportGenerator : IGenerator
         sb.AppendLine($"    public static {cell}[] Cells({cls} row) =>");
         sb.AppendLine("    [");
         foreach (var f in fields)
-            sb.AppendLine($"        {writer}.Cell(row.{CSharpNaming.Pascal(f.Name)}),");
+            sb.AppendLine($"        {writer}.Cell(row.{CSharpNaming.PropertyName(f, ctx.Config)}),");
         sb.AppendLine("    ];");
         sb.AppendLine();
         sb.AppendLine("    /// <summary>Writes the rows as RFC 4180 CSV.</summary>");

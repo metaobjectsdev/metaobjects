@@ -88,7 +88,7 @@ internal sealed class GeneratedEfModel
     }
 
     public Type Type(string name) =>
-        Assembly.GetType($"{Namespace}.{name}") ?? throw new InvalidOperationException($"no generated type {name}");
+        MetaObjects.IntegrationTests.GeneratedTypes.Find(Assembly, $"{Namespace}.{name}") ?? throw new InvalidOperationException($"no generated type {name}");
 
     public DbContext NewContext(Action<DbContextOptionsBuilder> configure)
     {

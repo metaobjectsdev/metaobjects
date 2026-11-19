@@ -52,9 +52,9 @@ public class ExtendsAbstractFieldInheritanceCodegenTests
         var files = new EntityGenerator().Generate(Context(root)).ToList();
 
         // Abstract field bases + the abstract BaseEntity produce no entity file.
-        Assert.DoesNotContain(files, f => f.Path == "BaseEntity.g.cs");
+        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "BaseEntity.g.cs");
 
-        var contact = Assert.Single(files, f => f.Path == "Contact.g.cs").Content;
+        var contact = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Contact.g.cs").Content;
 
         // BaseEntity PK (uuid id) inherited via extends -> [Key] on the Id property.
         Assert.Contains("[Key]", contact);

@@ -196,7 +196,7 @@ public class NeutralConfigTest {
         assertBadAttr("[{\"name\":\"a\",\"npm\":\"@x/y\",\"version\":\"1.0.0\"}]");
     }
 
-    // ADR-0063 — the `rules` and `verify` blocks. An absent key takes its default; a mistake is
+    // ADR-0066 — the `rules` and `verify` blocks. An absent key takes its default; a mistake is
     // refused rather than silently defaulted, because a defaulted typo would change what verify reports.
 
     @Test

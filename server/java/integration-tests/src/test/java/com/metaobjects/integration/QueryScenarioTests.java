@@ -109,8 +109,8 @@ final class QueryScenarioTests {
         // FR-017 TPH corpus entities — the discriminator base + its three subtypes (single table).
         bindings.put("fitness::Auth",         ValueObject.class);
         bindings.put("fitness::BridgeAuth",   ValueObject.class);
-        bindings.put("fitness::CopayAuth",    ValueObject.class);
-        bindings.put("fitness::PriorAuthAuth", ValueObject.class);
+        bindings.put("fitness::CouponAuth",    ValueObject.class);
+        bindings.put("fitness::PermitAuth", ValueObject.class);
         // ADR-0019 Amendment 1 decimal corpus + the redeclared-field report's tables.
         bindings.put("fitness::Entry",       ValueObject.class);
         bindings.put("fitness::Gadget",      ValueObject.class);

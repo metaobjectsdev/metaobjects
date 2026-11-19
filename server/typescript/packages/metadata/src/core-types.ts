@@ -210,7 +210,7 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
       wildcard(TYPE_TEMPLATE),
       // Capability requirements are declared beside the entities they describe.
       wildcard(TYPE_REQUIREMENT),
-      // ADR-0030 / ADR-0063 — a declared API surface is a top-level, packaged node.
+      // ADR-0030 / ADR-0066 — a declared API surface is a top-level, packaged node.
       wildcard(TYPE_API),
     ], MetaRoot),
   );
@@ -560,7 +560,7 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     registry.register(reportingDef);
   }
 
-  // ADR-0030 / ADR-0063 — the declared API surface (api / operation / binding) and
+  // ADR-0030 / ADR-0066 — the declared API surface (api / operation / binding) and
   // lifecycle moves (transition, a child of field.enum). One class per type; the
   // subtype carries no behaviour of its own. The cross-node rules live in
   // loader/rules-validation.ts.

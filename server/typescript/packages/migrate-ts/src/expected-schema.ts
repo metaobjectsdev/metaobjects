@@ -2,6 +2,7 @@ import {
   DuplicateSqlNameError, FkTargetNotUniqueError, InvalidCheckNameError, type CheckNameProblem, type FkTargetViolation,
 } from "./errors.js";
 import { negateExpression, renderExpressionSql } from "./check-expression.js";
+import { storedEnumValue, stringValueMapOf } from "@metaobjectsdev/metadata";
 import { canBeUniqueConstraint, resolveSchemaConventions, type SchemaConventions } from "./schema-conventions.js";
 import type {
   ColumnNamingStrategy, MetaData, MetaField, MetaObject, MetaReferenceIdentity, MetaRoot, MetaValidator,
@@ -62,17 +63,21 @@ import {
   FIELD_ATTR_DB_COLUMN_TYPE,
   DB_COLUMN_TYPE_UUID,
   DB_COLUMN_TYPE_JSONB,
+  parseDbColumnType,
   FIELD_ATTR_LOCAL_TIME,
   FIELD_ATTR_LENIENT,
   STORAGE_FLATTENED,
   DOC_ATTR_DESCRIPTION,
   applyColumnNamingStrategy, physicalNamingOf,
-  resolveTableName, resolveColumnName, resolveFlattenedColumnName, resolveFieldPathColumn, resolveTableSchema, resolveIndexName,
+  resolveTableName, resolveColumnName, resolveFlattenedColumnName, resolveTableSchema, resolveIndexName,
+  resolveFieldPathColumn,
   resolveEnumMaxLength,
   IDENTITY_ATTR_SEQUENCE_NAME,
   IDENTITY_ATTR_SEQUENCE_START,
   VALIDATOR_ATTR_CONDITION,
+  VALIDATOR_ATTR_MAX,
   VALIDATOR_ATTR_CONSTRAINT_NAME,
+  VALIDATOR_ATTR_DB_CHECK,
   type ExprNode,
 } from "@metaobjectsdev/metadata";
 import type { SqlType } from "./sql-type.js";
@@ -83,6 +88,7 @@ import type {
 import { qualifiedDbName } from "./qualified-name.js";
 import { SQLITE_ISO_NOW } from "./column-default.js";
 import { viewFingerprint } from "./view-fingerprint.js";
+import { createHash } from "node:crypto";
 import { DIALECT_SQLITE, PG_IDENTIFIER_MAX_BYTES, isSqliteFamily, storedIdentifier } from "./types.js";
 import {
   resolveReferentialActions,
@@ -711,7 +717,7 @@ function buildTable(
     columns,
     indexes: buildSecondaryIndexes(entity, tableName, strategy, dialect),
     foreignKeys: buildForeignKeys(entity, tableName, resolveTargetTable, root, strategy, fkCtx, onConflict),
-    checks: buildChecks(entity, tableName, strategy, dialect, skipRedundantChecks),
+    checks: buildChecks(entity, tableName, strategy, dialect, skipRedundantChecks, root),
     primaryKey,
   };
   const entityDesc = readDescription(entity);
@@ -919,9 +925,11 @@ function buildChecks(
   strategy: ColumnNamingStrategy,
   dialect: Dialect | undefined,
   skipRedundant: boolean,
+  root?: MetaData,
 ): CheckDescriptor[] {
   const checks: CheckDescriptor[] = [];
-  for (const field of entity.fields()) {
+  const fieldChecks = (field: MetaField): CheckDescriptor[] => {
+    const out: CheckDescriptor[] = [];
     // No field-level CHECKs on array columns: the derived expressions assume a
     // SCALAR column. `"labels" IN ('A','B')` against a text[] is a type error at
     // CREATE TABLE; `length(col)`/range checks are equally scalar-shaped. Array
@@ -929,10 +937,10 @@ function buildChecks(
     // per-port validators), matching codegen-ts's column-mapper which also skips
     // the enum literal-union for isArray columns.
     // ADR-0039: resolving — array-ness may be inherited via extends.
-    if (field.resolvedIsArray()) continue;
+    if (field.resolvedIsArray()) return out;
     // A derived (origin-bearing) field is no column of the table (the column builder skips it
     // too): a CHECK on it fails CREATE TABLE. Its validators apply where it is read.
-    if (field.isDerived()) continue;
+    if (field.isDerived()) return out;
     const col = resolveColumnName(field, strategy);
     const qcol = quoteCheckCol(col);
     // Enum membership check. An INT-BACKED enum (@intValueMap, design D5) stores
@@ -940,7 +948,9 @@ function buildChecks(
     // the member strings — `IN (0, 5, 9)`, not `IN ('DRAFT', …)`. The members are
     // still the SSOT: the integers are read THROUGH the map, keyed by member, so a
     // member with no mapping cannot silently vanish from the constraint.
-    if (field.subType === FIELD_SUBTYPE_ENUM) {
+    // @dbCheck: false (ADR-0039 resolving) asks for no CHECK; the enum's membership and each
+    // validator's rule are enforced app-side only.
+    if (field.subType === FIELD_SUBTYPE_ENUM && !checkOptedOut(field)) {
       const raw = field.attr(FIELD_ATTR_VALUES);
       if (Array.isArray(raw) && raw.length > 0) {
         const values = raw.map((v) => String(v));
@@ -962,10 +972,11 @@ function buildChecks(
           });
           expression = `${qcol} IN (${ints.join(", ")})`;
         } else {
-          expression = `${qcol} IN (${values.map((v) => `'${v.replace(/'/g, "''")}'`).join(", ")})`;
+          // rc.21: a member is stored as its @stringValueMap string, else as itself.
+          expression = `${qcol} IN (${values.map((v) => `'${storedEnumValue(field, v).replace(/'/g, "''")}'`).join(", ")})`;
         }
         const enumCheck = { name: `${tableName}_${col}_chk`, expression };
-        checks.push(withDeclaredName(enumCheck, field));
+        out.push(withDeclaredName(enumCheck, field));
       }
     }
     // Validator-derived checks.
@@ -975,21 +986,169 @@ function buildChecks(
     const enforcesLength = !isSqliteFamily(dialect);
     const enforcedMax = skipRedundant && enforcesLength && columnType.kind === "text" ? columnType.maxLength : undefined;
     for (const v of field.validators()) {
+      if (checkOptedOut(v)) continue;
       // A declared @constraintName asks for the CHECK by name, so it is kept even where the
       // project's `migrate.checks.skipRedundant` would leave it out: a declaration beats a default.
       const keep = declaredCheckName(v) !== undefined;
       const check = keep
         ? validatorCheck(v, qcol, tableName, col, dialect)
         : validatorCheck(v, qcol, tableName, col, dialect, skipRedundant, enforcedMax);
-      if (check) checks.push(withDeclaredName(check, v));
+      if (check) out.push(withDeclaredName(check, v));
+    }
+    return out;
+  };
+  for (const field of entity.fields()) checks.push(...fieldChecks(field));
+  // FR-017 TPH: a discriminator base's table also holds every concrete subtype's folded columns,
+  // so it carries their CHECKs too — subtypes in name order, so every port lists them alike. A
+  // concrete subtype is one that declares its own @discriminatorValue (the loader requires one on
+  // every concrete subtype, ERR_DISCRIMINATOR_VALUE_MISSING), the set the C# port takes.
+  const discriminator = entity.attr(OBJECT_ATTR_DISCRIMINATOR);
+  const subtypes = root === undefined ? [] : [...tphConcreteSubtypes(entity, root)]
+    // ADR-0039: own — a concrete subtype declares its OWN value.
+    .filter((c) => c.ownAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) !== undefined)
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  const valueOf = (sub: MetaObject): string => String(sub.ownAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE));
+  const discriminatorIn = (values: readonly string[]): ExprNode => {
+    const eq = (value: string): ExprNode =>
+      ({ op: "eq", left: { field: discriminator }, right: { value } }) as unknown as ExprNode;
+    return values.length === 1 ? eq(values[0]!) : ({ op: "or", args: values.map(eq) } as unknown as ExprNode);
+  };
+  if (typeof discriminator === "string" && subtypes.length > 0) {
+    // A column ONE field node owns (declared once, on a subtype or on an abstract level its
+    // subtypes share) gets the text a base column gets, with no guard: a CHECK refuses only FALSE,
+    // and a sibling's row holds NULL there, for which every field-level expression is NULL. So does
+    // a column several sibling nodes declare with identical CHECKs. Sibling nodes that disagree
+    // (different @values, a different pattern) each get their own CHECKs, guarded by the
+    // discriminator values of the subtypes carrying that node and named after the declaring object
+    // (`<table>_<declarer>_<col>_…`), so neither refuses the other's rows.
+    const baseFieldNames = new Set(entity.fields().map((f) => f.name));
+    const groups = new Map<string, { node: MetaField; values: string[] }[]>();
+    for (const sub of subtypes) {
+      // ADR-0039: effective fields — a field on an abstract level or a parent subtype is a column too.
+      for (const field of sub.fields()) {
+        if (baseFieldNames.has(field.name)) continue;
+        const owners = groups.get(field.name) ?? [];
+        if (!groups.has(field.name)) groups.set(field.name, owners);
+        const owner = owners.find((o) => o.node === field);
+        if (owner === undefined) owners.push({ node: field, values: [valueOf(sub)] });
+        else owner.values.push(valueOf(sub));
+      }
+    }
+    const same = (a: CheckDescriptor[], b: CheckDescriptor[]): boolean =>
+      a.length === b.length && a.every((c, i) => c.name === b[i]!.name && c.expression === b[i]!.expression);
+    for (const owners of groups.values()) {
+      const per = owners.map((o) => ({ ...o, checks: fieldChecks(o.node) }));
+      if (per.every((p) => same(p.checks, per[0]!.checks))) {
+        checks.push(...per[0]!.checks);
+        continue;
+      }
+      for (const { node, values, checks: nodeChecks } of per) {
+        for (const check of nodeChecks) {
+          const guarded = wrapCondition(check, discriminatorIn(values), entity, strategy, dialect);
+          if (DECLARED_CHECKS.has(check)) {
+            DECLARED_CHECKS.add(guarded);
+            checks.push(guarded);
+          } else {
+            checks.push({ ...guarded, name: qualifiedCheckName(check.name, tableName, node.parent, dialect) });
+          }
+        }
+      }
     }
   }
   // Entity-scoped cross-field validators (comparison / requiredWhen / presentIff / atLeastOne).
+  // A cross-field validator always keeps its CHECK: it is enforced nowhere else, and the loader
+  // refuses @dbCheck: false on one (ERR_CROSS_FIELD_WITHOUT_CHECK).
   for (const v of entity.validators()) {
     const check = crossFieldCheck(v, entity, tableName, strategy, dialect);
     if (check) checks.push(withDeclaredName(withCondition(check, v, entity, strategy, dialect), v));
   }
-  return checks;
+  // FR-017 TPH: a cross-field validator a subtype adds holds for that subtype's rows only —
+  // the discriminator guards it, because unlike a field-level CHECK most cross-field rules are
+  // FALSE (not NULL) over a sibling's NULL columns (atLeastOne, requiredWhen). The guard lists
+  // every concrete subtype the validator reaches (an abstract level's, or a parent subtype's,
+  // reaches each of its concrete descendants), as an @condition ANDed with the validator's own.
+  // Its default name carries the declaring object, so the same rule on two siblings, or on a
+  // sibling and the base, does not collide.
+  if (typeof discriminator === "string" && subtypes.length > 0) {
+    const baseValidators = new Set<MetaData>(entity.validators());
+    const reached = new Map<MetaValidator, { holder: MetaObject; values: string[] }>();
+    for (const sub of subtypes) {
+      // ADR-0039: effective validators — one declared on an abstract level or a parent subtype applies here too.
+      for (const v of sub.validators()) {
+        if (baseValidators.has(v)) continue;
+        const entry = reached.get(v);
+        if (entry === undefined) reached.set(v, { holder: sub, values: [valueOf(sub)] });
+        else entry.values.push(valueOf(sub));
+      }
+    }
+    for (const [v, { holder, values }] of reached) {
+      const check = crossFieldCheck(v, holder, tableName, strategy, dialect);
+      if (!check) continue;
+      const guarded = withCondition(check, v, holder, strategy, dialect, discriminatorIn(values));
+      checks.push(declaredCheckName(v) !== undefined
+        ? withDeclaredName(guarded, v)
+        : { ...guarded, name: qualifiedCheckName(check.name, tableName, v.parent, dialect) });
+    }
+  }
+  return distinctChecks(entity, checks, dialect);
+}
+
+/** A default CHECK name made unique to the object that declares the rule: `<table>_<declarer>_…`.
+ *  On Postgres it is fitted to the 63-byte identifier limit ({@link fitPgIdentifier}). */
+function qualifiedCheckName(name: string, tableName: string, declarer: MetaData | undefined, dialect: Dialect | undefined): string {
+  const tag = (declarer?.name ?? "subtype").toLowerCase();
+  const qualified = name.startsWith(`${tableName}_`) ? `${tableName}_${tag}_${name.slice(tableName.length + 1)}` : `${tag}_${name}`;
+  return dialect === "sqlite" || dialect === "d1" ? qualified : fitPgIdentifier(qualified);
+}
+
+/**
+ * rc.21 (N2): a generated name fitted to Postgres's 63-byte identifier limit. A longer name keeps
+ * its first 54 bytes (whole characters) and gains `_` and the first 8 hex digits of the SHA-256
+ * of the whole name, so two long names that share a prefix stay apart, and every port spells it
+ * the same. A name that fits is unchanged. Postgres would otherwise truncate it at CREATE, so the
+ * name the schema expects would never match the database.
+ */
+export function fitPgIdentifier(name: string): string {
+  if (Buffer.byteLength(name, "utf8") <= PG_IDENTIFIER_MAX_BYTES) return name;
+  const hash = createHash("sha256").update(name, "utf8").digest("hex").slice(0, 8);
+  let head = "";
+  for (const ch of name) {
+    if (Buffer.byteLength(head + ch, "utf8") > PG_IDENTIFIER_MAX_BYTES - 9) break;
+    head += ch;
+  }
+  return `${head}_${hash}`;
+}
+
+/**
+ * One table's CHECKs, an exact repeat (same name, same expression) kept once, and two different
+ * CHECKs under one name refused where the database requires unique names: Postgres would refuse
+ * the second at CREATE TABLE. SQLite and D1 accept both under one name and enforce both (rc.21,
+ * N1: probed on SQLite 3.51 and on Miniflare's D1), so both are kept there; the CHECK diff matches
+ * a name to a list. A name shortened to fit the 63-byte limit that still collides is refused too.
+ */
+function distinctChecks(entity: MetaObject, checks: CheckDescriptor[], dialect: Dialect | undefined): CheckDescriptor[] {
+  const unique = dialect !== "sqlite" && dialect !== "d1";
+  const byName = new Map<string, CheckDescriptor>();
+  const out: CheckDescriptor[] = [];
+  for (const c of checks) {
+    const seen = byName.get(c.name);
+    if (seen !== undefined) {
+      if (seen.expression === c.expression) continue;
+      // A DECLARED name's collision is checkDeclaredCheckNames' to report, with its own error.
+      if (!unique || DECLARED_CHECKS.has(c) || DECLARED_CHECKS.has(seen)) {
+        out.push(c);
+        continue;
+      }
+      throw new Error(
+        `object.entity '${entity.name}': two CHECK constraints are both named '${c.name}' ` +
+          `(${seen.expression} | ${c.expression}); Postgres requires each constraint on a table to have its own name. ` +
+          `Give one of the validators (or enums) a @constraintName.`,
+      );
+    }
+    byName.set(c.name, c);
+    out.push(c);
+  }
+  return out;
 }
 
 /**
@@ -1061,7 +1220,15 @@ function renderEquals(
     || whenField.subType === FIELD_SUBTYPE_DOUBLE || whenField.subType === FIELD_SUBTYPE_FLOAT
     || whenField.subType === FIELD_SUBTYPE_DECIMAL || whenField.subType === FIELD_SUBTYPE_CURRENCY;
   if (numeric && /^-?\d+(\.\d+)?$/.test(s)) return s;
-  return `'${s.replace(/'/g, "''")}'`;
+  // rc.21: a member of a @stringValueMap enum is compared as its stored string.
+  const stored = whenField.subType === FIELD_SUBTYPE_ENUM ? storedEnumValue(whenField, s) : s;
+  return `'${stored.replace(/'/g, "''")}'`;
+}
+
+/** Whether a validator or field.enum opts out of its CHECK (`@dbCheck: false`; ADR-0039 resolving).
+ *  `migrate.checks.skipRedundant` is independent of it: it only ever leaves more out. */
+function checkOptedOut(node: MetaData): boolean {
+  return node.attr(VALIDATOR_ATTR_DB_CHECK) === false;
 }
 
 /** A validator's or field.enum's declared CHECK name (`@constraintName`; ADR-0039 resolving), if any. */
@@ -1124,9 +1291,21 @@ function checkDeclaredCheckNames(tables: readonly TableDescriptor[], dialect: Di
  */
 function withCondition(
   check: CheckDescriptor, v: MetaValidator, entity: MetaObject, strategy: ColumnNamingStrategy, dialect: Dialect | undefined,
+  guard?: ExprNode,
 ): CheckDescriptor {
-  const condition = v.attr(VALIDATOR_ATTR_CONDITION);
-  if (condition === undefined || condition === null || typeof condition !== "object") return check;
+  const declared = v.attr(VALIDATOR_ATTR_CONDITION);
+  const own = declared === undefined || declared === null || typeof declared !== "object" ? undefined : (declared as ExprNode);
+  // A TPH subtype's validator holds only where its discriminator guard does (buildChecks).
+  const condition: ExprNode | undefined = guard === undefined
+    ? own
+    : own === undefined ? guard : ({ op: "and", args: [guard, own] } as unknown as ExprNode);
+  return condition === undefined ? check : wrapCondition(check, condition, entity, strategy, dialect);
+}
+
+/** The CHECK holds only where `condition` does: the negated condition OR the rule. */
+function wrapCondition(
+  check: CheckDescriptor, condition: ExprNode, entity: MetaObject, strategy: ColumnNamingStrategy, dialect: Dialect | undefined,
+): CheckDescriptor {
   const column = (name: string): string | undefined => {
     const field = entity.fields().find((f) => f.name === name);
     return field === undefined ? undefined : quoteCheckCol(resolveColumnName(field, strategy));
@@ -1138,9 +1317,14 @@ function withCondition(
     if (field?.subType === FIELD_SUBTYPE_DURATION) return durationLiteralSql(field, value, dialect, "@condition");
     const intMap = field === undefined ? undefined : intValueMapOf(field);
     const n = intMap === undefined || typeof value !== "string" ? undefined : intMap[value];
-    return typeof n === "number" ? String(n) : undefined;
+    if (typeof n === "number") return String(n);
+    // rc.21: a member compared with a @stringValueMap enum is its stored string.
+    if (field !== undefined && typeof value === "string" && stringValueMapOf(field) !== undefined) {
+      return `'${storedEnumValue(field, value).replace(/'/g, "''")}'`;
+    }
+    return undefined;
   };
-  const unless = renderExpressionSql(negateExpression(condition as ExprNode), column, dialect, stored);
+  const unless = renderExpressionSql(negateExpression(condition), column, dialect, stored);
   return { ...check, expression: `(${unless}) OR (${check.expression})` };
 }
 
@@ -1194,6 +1378,20 @@ function crossFieldCheck(
       const refs = names.map((n) => resolveRef(entity, n, strategy));
       if (refs.length === 0 || refs.some((r) => r === null)) return null;
       const firstCol = resolveColumnName(refs[0]!.field, strategy);
+      // @max bounds how many may be present (@max 1: exactly one). Postgres counts them with
+      // num_nonnulls; SQLite adds the presence tests, which it evaluates as 0 / 1.
+      const max = v.attr(VALIDATOR_ATTR_MAX);
+      if (typeof max === "number") {
+        const count = dialect === "sqlite" || dialect === "d1"
+          ? `(${refs.map((r) => `(${r!.qcol} IS NOT NULL)`).join(" + ")})`
+          : `num_nonnulls(${refs.map((r) => r!.qcol).join(", ")})`;
+        return {
+          name: `${tableName}_${firstCol}_atleastone_chk`,
+          // Two comparisons, not BETWEEN: Postgres stores a BETWEEN as these two comparisons, and
+          // writing it the way Postgres reads it back keeps the CHECK free of drift.
+          expression: max === 1 ? `${count} = 1` : `${count} >= 1 AND ${count} <= ${max}`,
+        };
+      }
       return {
         name: `${tableName}_${firstCol}_atleastone_chk`,
         expression: refs.map((r) => `${r!.qcol} IS NOT NULL`).join(" OR "),
@@ -1574,6 +1772,9 @@ function buildColumn(
         );
       }
       col.default = { kind: "literal", value: String(mapped) };
+    } else if (field.subType === FIELD_SUBTYPE_ENUM && stringValueMapOf(field) !== undefined) {
+      // rc.21: a string-stored enum's @default names a member; the column holds its stored string.
+      col.default = { kind: "literal", value: storedEnumValue(field, defaultRaw) };
     } else {
       // #235: an EMPTY-string default (`@default: ""`) is a real literal default —
       // codegen emits `.default("")` and the DB gets `DEFAULT ''`, so dropping it here
@@ -1681,6 +1882,11 @@ function subtypeToSqlType(field: MetaData): SqlType {
       case DB_COLUMN_TYPE_UUID:  return { kind: "uuid" };
       case DB_COLUMN_TYPE_JSONB: return { kind: "json" };
     }
+    // rc.21 part B (U2): the text spellings. A sized one is the declared length.
+    const parsed = parseDbColumnType(dbColumnType);
+    if (parsed?.kind === "text") return { kind: "text" };
+    if (parsed?.kind === "varchar") return parsed.length !== undefined ? { kind: "text", maxLength: parsed.length } : { kind: "text", variant: "varchar" };
+    if (parsed?.kind === "char") return { kind: "text", maxLength: parsed.length, variant: "char" };
   }
 
   // Native array columns are DERIVED from `isArray` (dbColumnType slim-and-derive

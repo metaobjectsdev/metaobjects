@@ -209,7 +209,7 @@ in `.metaobjects/config.json`, below).
 # Run the list: EF Core entities + AppDbContext + CRUD minimal-API routes
 dotnet meta gen ./metaobjects --out ./Generated
 
-# The drift gate: regenerate into a temp tree and fail (exit 1, naming the files) if the
+# The drift gate: regenerate in memory and fail (exit 1, naming the files) if the
 # committed ./Generated differs. Run it in CI.
 dotnet meta verify ./metaobjects --codegen --out ./Generated
 ```
@@ -281,8 +281,11 @@ and sits in its package's namespace. An extract-tier private mapper may carry th
 member name (`FromAcmeAlphaNoteExtracted`), because it is private to its class.
 Each package's shared enum is its own `<package>/<Enum>.g.cs` under the package layout, with its
 `@intValueMap` integers as member values and `@description` as its XML doc; the flat layout keeps
-the one `Enums.g.cs`. An entry narrowed with `Include` declares only the shared enums it uses, and
-an enum several narrowed entries use is declared by exactly one of them.
+the one `Enums.g.cs`. An entry narrowed with `Include` leaves a shared enum to another `entity`
+entry of the same run only when that entry accepts the enum's home object (its first consumer by
+resolution key), and declares the enum itself otherwise — so a single narrowed entry declares
+every enum its objects use and its output builds on its own, and an enum several narrowed entries
+use is still declared by exactly one of them.
 
 With that, `dotnet meta gen` writes there, `dotnet meta verify --codegen` diffs against it, and
 a plain `dotnet meta verify` in CI runs the codegen gate with no flags. `--out <dir>` still works
@@ -294,6 +297,21 @@ requires `entity`, `db-context` and `filter-allowlist`, because the handlers it 
 reference their output; `gen` warns when one is missing from the list, since the result
 would not compile. `--generators <names>` narrows a run to the declared entries named; it
 never adds one, and naming an entry the list does not declare is refused.
+
+**Select objects.** `dotnet meta gen --entities Product,Supplier` (comma-separated short object
+names, the `name` of the object without its package, as TypeScript's positional names and
+Python's `--entities` match) regenerates only those objects' files; `dotnet meta verify --codegen
+--entities ...` checks only the same files. Only per-object output narrows. A file built from
+the whole model, such as `AppDbContext.g.cs`, still renders from the whole model and is
+byte-identical to an unfiltered run, and a shared file (a shared enum, a helper) is the
+whole-model rendering too. A generator that reads the model root rather than the object list
+(`api-docs`, `requirement-tests`, template entries) is not narrowed. A narrowed run never
+deletes a stale file and never drops the manifest entry of a file it did not write, so the
+unselected objects' files are left as they are; run `gen` without the flag to sweep. Two
+refusals, both exit 2: `--entities` naming nothing (`error: dotnet meta gen: --entities names no
+object.`) and a name that matches no object (`error: dotnet meta gen: --entities names 'X',
+which matches no object in the metadata.`). An owned generator whose output is a single
+whole-model file declares `public bool WholeModel => true;`.
 
 **Own a generator.** `dotnet meta eject <name>...` copies a reference generator into
 `codegen/generators/`. Every generator `dotnet meta gen --list` shows is ejectable except
@@ -450,7 +468,7 @@ differently (an acronym, say), set one resolver on the config, `GenConfig.Proper
 `[PrimaryKey(nameof(...))]`, every `AppDbContext` model line and the reverse finders all read it,
 so the declaration and every reference agree. The hooks `EntityGenerator.PropertyName` and
 `DbContextGenerator.PropertyName` default to it; a subclass that overrides one must override the
-other the same way. The routes generator and the filter runtime still use the PascalCased name.
+other the same way. The routes generator, the filter map and the credential stripping read the same resolver, and a hook that disagrees with it is refused.
 
 **Class attributes.** `EntityGenerator.EmitClassAttributes(sb, entity, className, kind, ctx)` is
 called for every class it emits (mapped entity, TPH subtype, abstract shape, value object), after
@@ -525,6 +543,17 @@ The start in the model, and the services, are emitted only for a project whose
 package. `UseIdentityStartMigrations()`, the registration of an earlier runtime SQL rewrite, is
 kept as an `[Obsolete]` no-op so a call to it still compiles; remove the call.
 
+
+**CHECK constraints** are the ones `meta migrate` creates: each scalar `field.enum`
+and each validator that can carry one (`numeric`, `length`, `regex`, `comparison`,
+`requiredWhen`, `presentIff`, `atLeastOne`, `exactlyOne`, with `@condition`) is a
+`modelBuilder.Entity<T>().ToTable(t => t.HasCheckConstraint(name, sql))` line, with migrate's name
+(`<table>_<column>_numeric_chk`, … or the validator's `@constraintName`) and its expression text,
+so a table built by an EF migration and one built by `meta migrate` carry the same constraints.
+They are declared for `migrate.dialect` `postgres`, `sqlite` or `d1` only, because the text is
+dialect-specific (`~`, `IS DISTINCT FROM`, `num_nonnulls` on Postgres); `migrate.checks.skipRedundant`
+(`GenConfig.SkipRedundantChecks`) leaves out the ones the column already enforces, as migrate does.
+The shared corpus `fixtures/check-constraint-conformance/` pins the names and text in both ports.
 ### Decimals and null members on the wire
 
 What the generated API writes is the project setting `wire` in `.metaobjects/config.json`
@@ -668,15 +697,15 @@ can be inherited — and an object that extends another produces a class that ex
 other's:
 
 ```csharp
-public abstract class CopayAuthNames : AuthNames
+public abstract class CouponAuthNames : AuthNames
 {
-    public const string CopayAmountField = "copayAmount";
-    public const string CopayAmountColumn = "copay_cents";
+    public const string CouponAmountField = "couponAmount";
+    public const string CouponAmountColumn = "coupon_cents";
     public new const string Type = "object";
     public new const string SubType = "entity";
-    public new const string Name = "CopayAuth";
+    public new const string Name = "CouponAuth";
     // SourcePrimaryTable / IdColumn / … are the base's. A C# const is inherited, so
-    // CopayAuthNames.SourcePrimaryTable and CopayAuthNames.IdColumn both resolve.
+    // CouponAuthNames.SourcePrimaryTable and CouponAuthNames.IdColumn both resolve.
 }
 ```
 

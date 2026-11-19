@@ -28,7 +28,7 @@
             },
             {
               "field.boolean": {
-                "name": "consented"
+                "name": "contracted"
               }
             },
             {
@@ -52,7 +52,7 @@
           "name": "GatedPlans",
           "abstract": true,
           "@filter": {
-            "consented": {
+            "contracted": {
               "eq": true
             }
           },

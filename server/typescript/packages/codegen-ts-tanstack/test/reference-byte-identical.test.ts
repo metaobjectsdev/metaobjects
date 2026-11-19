@@ -53,7 +53,7 @@ async function gen(generators: Generator[], root: Parameters<typeof runGen>[0]["
   try {
     await runGen({
       config: defineConfig({
-        outDir: dir, extStyle: "none", dbImport: "../db", dialect: "sqlite", generators,
+        outDir: dir, extStyle: "none", dbImport: "../db", outputLayout: "flat" as const, dialect: "sqlite", generators,
       }),
       metadata: root,
     });

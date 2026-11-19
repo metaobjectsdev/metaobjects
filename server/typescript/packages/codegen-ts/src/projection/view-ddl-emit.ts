@@ -1,6 +1,7 @@
+import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
 import { pgType, type SqlType } from "@metaobjectsdev/migrate-ts/expected";
 import type {
-  JoinNode, ViewSpec, ViewFilterClause, ViewExprNode, ViewOrderKey, SelectColumn, ColRef,
+  JoinNode, ViewSpec, ViewFilterClause, ViewExprNode, ViewOrderKey, SelectColumn, ColRef, CastTarget, AggregateColumn, GrainColumn,
 } from "./view-spec.js";
 import { isRelativeNow } from "./report-spec.js";
 import { relativeNowSql } from "./time-sql.js";
@@ -54,7 +55,6 @@ export function viewRelation(entity: string, table: string, options: EmitOptions
 /** SQL literal for a filter value, dialect-aware for booleans. */
 function sqlLiteral(value: unknown, dialect: EmitOptions["dialect"]): string {
   if (value === null || value === undefined) return "NULL";
-  // A relative date is the dialect's shifted "now"; a base-row operand is its column.
   if (isRelativeNow(value)) return relativeNowSql(value.duration, value.temporal, dialect, value.startOf);
   if (isColRef(value)) return quoteRef(value.ref);
   if (typeof value === "number") return String(value);
@@ -68,7 +68,7 @@ const FILTER_OP_SQL: Readonly<Record<string, string>> = {
   eq: "=", ne: "<>", gt: ">", gte: ">=", lt: "<", lte: "<=", like: "LIKE",
 };
 
-/** The null-safe comparisons of a correlated origin `@filter`, per dialect (SQLite's IS / IS NOT are null-safe). */
+/** rc.19 correlated-filter's null-safe comparisons, per dialect (SQLite's IS / IS NOT are null-safe). */
 function nullSafeOpSql(op: string, dialect: EmitOptions["dialect"]): string | undefined {
   if (op === "isDistinctFrom") return dialect === "sqlite" ? "IS NOT" : "IS DISTINCT FROM";
   if (op === "isNotDistinctFrom") return dialect === "sqlite" ? "IS" : "IS NOT DISTINCT FROM";
@@ -116,7 +116,18 @@ function renderOrderKeys(keys: readonly ViewOrderKey[], alias: string): string {
 }
 
 /** Lower a resolved computed expression tree (#195 origin.computed) to a SQL scalar expression. */
+/** An inlined `first` correlates with the row it sits in; without that alias the subquery
+ *  would compare against `.fk` and the view would fail only when it is applied. */
+function requireOuterAlias(column: Extract<SelectColumn, { kind: "first" }>): string {
+  const outer = column.outerAlias;
+  if (outer === undefined || outer.length === 0) {
+    throw new Error(`view-ddl-emit: an inlined origin.first for "${column.fieldName}" has no outer alias to correlate with.`);
+  }
+  return outer;
+}
+
 function renderExpr(node: ViewExprNode, options: EmitOptions): string {
+  const dialect = options.dialect;
   switch (node.kind) {
     case "col":
       return quoteRef(node.ref);
@@ -137,24 +148,118 @@ function renderExpr(node: ViewExprNode, options: EmitOptions): string {
     }
     case "coalesce":
       return `COALESCE(${node.args.map((a) => renderExpr(a, options)).join(", ")})`;
-    case "first": {
-      // An inlined `first` correlates with the row it sits in; without that alias the subquery
-      // would compare against `.fk` and the view would fail only when it is applied.
-      const outer = node.column.outerAlias;
-      if (outer === undefined || outer.length === 0) {
-        throw new Error(`view-ddl-emit: an inlined origin.first for "${node.column.fieldName}" has no outer alias to correlate with.`);
-      }
-      return firstSubquery(node.column, options, outer);
-    }
+    case "first":
+      return firstSubquery(node.column, options, requireOuterAlias(node.column));
     case "now":
-      return relativeNowSql(node.value.duration, node.value.temporal, options.dialect, node.value.startOf);
+      return relativeNowSql(node.value.duration, node.value.temporal, dialect, node.value.startOf);
     case "case": {
       const arms = node.whens.map((w) => ` WHEN ${renderExpr(w.when, options)} THEN ${renderExpr(w.then, options)}`).join("");
       const head = node.operand !== undefined ? `CASE ${renderExpr(node.operand, options)}` : "CASE";
       const otherwise = node.else !== undefined ? ` ELSE ${renderExpr(node.else, options)}` : "";
       return `(${head}${arms}${otherwise} END)`;
     }
+    case "fn":
+      return renderFn(node.name, node.args.map((a) => renderExpr(a, options)), node.args, dialect);
+    case "cast":
+      return `CAST(${renderExpr(node.arg, options)} AS ${castTypeSql(node.to, dialect)})`;
+    case "agg":
+      return aggregateSql(node.column, options);
+    case "call": {
+      if (dialect !== "postgres") {
+        throw new Error(`view-ddl-emit: origin.function "${node.name}" calls a database function, which SQLite does not have.`);
+      }
+      const fn = `${quoteIfNeeded(node.schema ?? DEFAULT_DB_SCHEMA_POSTGRES)}.${quoteIfNeeded(node.name)}`;
+      return `${fn}(${node.args.map((a) => renderExpr(a, options)).join(", ")})`;
+    }
   }
+}
+
+/**
+ * rc.21 part B (U11, U13): one function of the closed set, in the dialect's spelling. Where SQLite
+ * has no function of the same meaning it is spelled from ones it has; where it cannot be, the
+ * emitter refuses rather than write SQL that means something else.
+ */
+function renderFn(name: string, args: readonly string[], nodes: readonly ViewExprNode[], dialect: EmitOptions["dialect"]): string {
+  const pg = dialect === "postgres";
+  const list = args.join(", ");
+  switch (name) {
+    case "lower": return `LOWER(${list})`;
+    case "upper": return `UPPER(${list})`;
+    case "btrim": return pg ? `BTRIM(${list})` : `TRIM(${list})`;
+    case "replace": return `REPLACE(${list})`;
+    case "nullif": return `NULLIF(${list})`;
+    case "length": return pg ? `CHAR_LENGTH(${list})` : `LENGTH(${list})`;
+    // fix round M9: SQLite's substr counts a non-positive start from the end, and has no left/right;
+    // these spellings give Postgres's meaning for every count (a negative one included).
+    case "substring": {
+      if (pg) return `SUBSTR(${list})`;
+      const [str, start, len] = args;
+      const from1 = len === undefined ? `SUBSTR(${str}, 1)` : `SUBSTR(${str}, 1, MAX((${len}) + (${start}) - 1, 0))`;
+      return `(CASE WHEN ${start} >= 1 THEN SUBSTR(${list}) ELSE ${from1} END)`;
+    }
+    case "left":
+      return pg ? `LEFT(${list})`
+        : `(CASE WHEN ${args[1]} >= 0 THEN SUBSTR(${args[0]}, 1, ${args[1]}) ELSE SUBSTR(${args[0]}, 1, MAX(LENGTH(${args[0]}) + (${args[1]}), 0)) END)`;
+    case "right":
+      return pg ? `RIGHT(${list})`
+        : `(CASE WHEN ${args[1]} > 0 THEN SUBSTR(${args[0]}, -(${args[1]})) WHEN ${args[1]} = 0 THEN '' ELSE SUBSTR(${args[0]}, 1 - (${args[1]})) END)`;
+    case "concat":
+      return pg ? `CONCAT(${list})` : `(${args.map((a) => `COALESCE(CAST(${a} AS TEXT), '')`).join(" || ")})`;
+    case "concatWs": {
+      if (pg) return `CONCAT_WS(${list})`;
+      // Each non-null value is prefixed with the separator, and the first separator dropped.
+      const [sep, ...rest] = args;
+      const joined = rest.map((a) => `COALESCE(${sep} || CAST(${a} AS TEXT), '')`).join(" || ");
+      return `(CASE WHEN ${sep} IS NULL THEN NULL ELSE SUBSTR(${joined}, LENGTH(${sep}) + 1) END)`;
+    }
+    case "splitPart": {
+      if (pg) return `SPLIT_PART(${list})`;
+      // SQLite has no split_part. The first part is spelled with instr/substr; any other is refused.
+      const n = nodes[2];
+      if (n?.kind !== "lit" || n.value !== 1) {
+        throw new Error("view-ddl-emit: splitPart on SQLite is lowered only for the first part (a literal 1); SQLite has no split_part.");
+      }
+      const [str, delim] = args;
+      return `(CASE WHEN INSTR(${str}, ${delim}) = 0 THEN ${str} ELSE SUBSTR(${str}, 1, INSTR(${str}, ${delim}) - 1) END)`;
+    }
+    case "greatest":
+    case "least": {
+      if (pg) return `${name.toUpperCase()}(${list})`;
+      if (args.length === 1) return args[0]!;
+      // SQLite's scalar max/min return NULL if any argument is; Postgres's skip NULLs. Each slot
+      // falls back to the others, so the result is the max (min) of the non-null values, NULL
+      // only when every one is.
+      const slots = args.map((a, i) => `COALESCE(${[a, ...args.filter((_, j) => j !== i)].join(", ")})`);
+      return `${name === "greatest" ? "MAX" : "MIN"}(${slots.join(", ")})`;
+    }
+  }
+  throw new Error(`view-ddl-emit: unknown expression function "${name}".`);
+}
+
+/** rc.21 part B (U12): the column type a cast names, in the dialect's spelling. */
+function castTypeSql(to: CastTarget, dialect: EmitOptions["dialect"]): string {
+  const pg = dialect === "postgres";
+  // N1: a field's own column type is spelled by the table DDL's own function.
+  if (pg && to.column !== undefined) return pgType(to.column);
+  switch (to.subType) {
+    case "string": {
+      if (!pg) return "TEXT";
+      const sp = to.spelling;
+      if (sp?.kind === "char") return `CHARACTER(${sp.length ?? 1})`;
+      if (sp?.kind === "varchar") return sp.length !== undefined ? `VARCHAR(${sp.length})` : "VARCHAR";
+      return "TEXT";
+    }
+    case "int": return pg ? "INTEGER" : "INTEGER";
+    case "long": return pg ? "BIGINT" : "INTEGER";
+    case "double": return pg ? "DOUBLE PRECISION" : "REAL";
+    case "float": return pg ? "REAL" : "REAL";
+    case "decimal": return "NUMERIC";
+    case "boolean": return pg ? "BOOLEAN" : "INTEGER";
+    case "date": return pg ? "DATE" : "TEXT";
+    case "timestamp": return pg ? "TIMESTAMPTZ" : "TEXT";
+    case "uuid": return pg ? "UUID" : "TEXT";
+  }
+  throw new Error(`view-ddl-emit: a cast to "${to.subType}" has no column type.`);
 }
 
 /**
@@ -168,10 +273,11 @@ function renderFirst(
   options: EmitOptions,
   baseAlias: string,
 ): string {
-  return `${firstSubquery(c, options, baseAlias)} AS ${quoteIfNeeded(c.dbColAlias)}`;
+  return `${firstSubquery(c, options, c.outerAlias ?? baseAlias)} AS ${quoteIfNeeded(c.dbColAlias)}`;
 }
 
-/** The correlated scalar subquery of an `origin.first`, keyed on the row at `baseAlias`. */
+/** origin.first's correlated scalar subquery, keyed on `baseAlias` (the view's base, or the
+ *  alias an entity-derived field is reached on). */
 function firstSubquery(
   c: Extract<SelectColumn, { kind: "first" }>,
   options: EmitOptions,
@@ -309,7 +415,7 @@ function sqliteCollectOuter(c: CollectColumn): string {
 const isCollect = (c: SelectColumn): c is CollectColumn =>
   c.kind === "collectAgg" || c.kind === "collectObjectAgg";
 
-/** A column the declared type must win over, cast to it on Postgres (SQLite views are untyped). */
+/** bug `cast`: a column the declared type must win over, cast to it on Postgres (SQLite views are untyped). */
 function cast(sql: string, to: SqlType | undefined, dialect: EmitOptions["dialect"]): string {
   return to === undefined || dialect !== "postgres" ? sql : `CAST(${sql} AS ${pgType(to)})`;
 }
@@ -322,39 +428,12 @@ function renderColumn(c: SelectColumn, options: EmitOptions, baseAlias: string):
     return `${cast(`${c.sourceAlias}.${quoteIfNeeded(c.sourceColumn)}`, c.castTo, dialect)} AS ${alias}`;
   }
 
-  if (c.kind === "aggregate") {
-    const src = `${c.sourceAlias}.${quoteIfNeeded(c.sourceColumn)}`;
-    // aggregate — use DISTINCT for count() over joined PKs to avoid join inflation.
-    // A scoping @filter renders as postgres `FILTER (WHERE …)`; sqlite (no aggregate
-    // FILTER pre-3.30) uses the portable `CASE WHEN … END` argument form.
-    const cond = c.filter ? renderFilterCond(c.filter, options) : undefined;
-    if (c.agg === "count") {
-      if (cond && dialect === "sqlite") return `COUNT(DISTINCT CASE WHEN ${cond} THEN ${src} END) AS ${alias}`;
-      if (cond) return `COUNT(DISTINCT ${src}) FILTER (WHERE ${cond}) AS ${alias}`;
-      return `COUNT(DISTINCT ${src}) AS ${alias}`;
-    }
-    const fn = c.agg.toUpperCase();
-    if (cond && dialect === "sqlite") return `${fn}(CASE WHEN ${cond} THEN ${src} END) AS ${alias}`;
-    if (cond) return `${fn}(${src}) FILTER (WHERE ${cond}) AS ${alias}`;
-    return `${fn}(${src}) AS ${alias}`;
+  if (c.kind === "aggregate" || c.kind === "predicateAgg") {
+    return `${aggregateSql(c, options)} AS ${alias}`;
   }
 
-  if (c.kind === "predicateAgg") {
-    // #195 any/all. The phantom-row guard (joined.pk IS NOT NULL) EXCLUDES null-extended
-    // LEFT-JOIN non-matches, so the empty-related-set pins hold: any=false / all=true.
-    const pred = renderFilterCond(c.pred, options);
-    const guard = `${c.sourceAlias}.${quoteIfNeeded(c.joinedPkColumn)} IS NOT NULL`;
-    if (dialect === "sqlite") {
-      // No boolean aggregates: MAX≡bool_or, MIN≡bool_and over 1/0. The outer CASE yields
-      // NULL (not 0) for phantom rows so MIN/MAX ignore them — the COALESCE default then
-      // supplies the empty-set pin (0 for any, 1 for all).
-      const fn = c.quant === "any" ? "MAX" : "MIN";
-      const empty = c.quant === "any" ? "0" : "1";
-      return `COALESCE(${fn}(CASE WHEN ${guard} THEN (CASE WHEN ${pred} THEN 1 ELSE 0 END) END), ${empty}) AS ${alias}`;
-    }
-    const fn = c.quant === "any" ? "bool_or" : "bool_and";
-    const empty = c.quant === "any" ? "FALSE" : "TRUE";
-    return `COALESCE(${fn}(${pred}) FILTER (WHERE ${guard}), ${empty}) AS ${alias}`;
+  if (c.kind === "element") {
+    return `${grainElementSql(c, options)} AS ${alias}`;
   }
 
   if (c.kind === "collectAgg") {
@@ -411,6 +490,60 @@ function renderColumn(c: SelectColumn, options: EmitOptions, baseAlias: string):
   return renderFirst(c, options, baseAlias);
 }
 
+/** A scalar aggregate or an any/all column's expression (no alias): a column, or (U13) read by a computed. */
+function aggregateSql(c: AggregateColumn, options: EmitOptions): string {
+  const dialect = options.dialect;
+  if (c.kind === "aggregate") {
+    const src = `${c.sourceAlias}.${quoteIfNeeded(c.sourceColumn)}`;
+    // aggregate — use DISTINCT for count() over joined PKs to avoid join inflation.
+    // A scoping @filter renders as postgres `FILTER (WHERE …)`; sqlite (no aggregate
+    // FILTER pre-3.30) uses the portable `CASE WHEN … END` argument form.
+    const cond = c.filter ? renderFilterCond(c.filter, options) : undefined;
+    if (c.agg === "count") {
+      if (cond && dialect === "sqlite") return `COUNT(DISTINCT CASE WHEN ${cond} THEN ${src} END)`;
+      if (cond) return `COUNT(DISTINCT ${src}) FILTER (WHERE ${cond})`;
+      return `COUNT(DISTINCT ${src})`;
+    }
+    const fn = c.agg.toUpperCase();
+    if (cond && dialect === "sqlite") return `${fn}(CASE WHEN ${cond} THEN ${src} END)`;
+    if (cond) return `${fn}(${src}) FILTER (WHERE ${cond})`;
+    return `${fn}(${src})`;
+  }
+  // #195 any/all. The phantom-row guard (joined.pk IS NOT NULL) EXCLUDES null-extended
+  // LEFT-JOIN non-matches, so the empty-related-set pins hold: any=false / all=true.
+  const pred = renderFilterCond(c.pred, options);
+  const guard = `${c.sourceAlias}.${quoteIfNeeded(c.joinedPkColumn)} IS NOT NULL`;
+  if (dialect === "sqlite") {
+    // No boolean aggregates: MAX≡bool_or, MIN≡bool_and over 1/0. The outer CASE yields
+    // NULL (not 0) for phantom rows so MIN/MAX ignore them — the COALESCE default then
+    // supplies the empty-set pin (0 for any, 1 for all).
+    const fn = c.quant === "any" ? "MAX" : "MIN";
+    const empty = c.quant === "any" ? "0" : "1";
+    return `COALESCE(${fn}(CASE WHEN ${guard} THEN (CASE WHEN ${pred} THEN 1 ELSE 0 END) END), ${empty})`;
+  }
+  const fn = c.quant === "any" ? "bool_or" : "bool_and";
+  const empty = c.quant === "any" ? "FALSE" : "TRUE";
+  return `COALESCE(${fn}(${pred}) FILTER (WHERE ${guard}), ${empty})`;
+}
+
+/** The alias of a `@grain` view's element relation (its `value` and position). */
+const GRAIN_ALIAS = "mo_el";
+
+/** rc.21 part B (U14): a grain element member, or the element's 1-based position. */
+function grainElementSql(c: GrainColumn, options: EmitOptions): string {
+  const pg = options.dialect === "postgres";
+  if (c.member === undefined) {
+    // WITH ORDINALITY is a bigint; a field.int position is cast to it.
+    if (!pg) return `(${GRAIN_ALIAS}.key + 1)`;
+    return c.castTo.kind === "integer" && c.castTo.bits === 64 ? `${GRAIN_ALIAS}.ordinality` : `CAST(${GRAIN_ALIAS}.ordinality AS ${pgType(c.castTo)})`;
+  }
+  const key = c.member.replace(/'/g, "''");
+  if (!pg) return `json_extract(${GRAIN_ALIAS}.value, '$.${key.replace(/"/g, '""')}')`;
+  const text = `(${GRAIN_ALIAS}.value ->> '${key}')`;
+  return c.castTo.kind === "text" && c.castTo.maxLength === undefined && c.castTo.variant === undefined
+    ? text : `CAST(${text} AS ${pgType(c.castTo)})`;
+}
+
 /** A TPH scope's comparison after its column: ` = v` for one value, ` IN (a, b)` for several. */
 export function tphScopeSql(values: readonly (string | number)[], literal: (v: string | number) => string): string {
   return values.length === 1 ? ` = ${literal(values[0]!)}` : ` IN (${values.map(literal).join(", ")})`;
@@ -452,10 +585,37 @@ function renderJoin(
 }
 
 export function emitViewDdl(spec: ViewSpec, options: EmitOptions): string {
+  // rc.21 part B (U15): the member bodies follow this one, UNIONed. Each reads its own base.
+  const members = (spec.union?.members ?? []).map((m) => {
+    const table = options.joinTables[m.joinTree.baseEntity];
+    if (table === undefined) throw new Error(`view-ddl-emit: no table name registered for union member base "${m.joinTree.baseEntity}".`);
+    return emitViewBody(m, { ...options, baseTableName: table });
+  });
+  const joiner = spec.union?.all === true ? "\n  UNION ALL\n" : "\n  UNION\n";
+  const body = [emitViewBody(spec, options), ...members].join(joiner);
+  if (options.bodyOnly) return body;
+  return `CREATE VIEW ${quoteIfNeeded(spec.viewName)} AS
+${body};`;
+}
+
+/** A @grain view's array column on its base row. */
+function grainCol(spec: ViewSpec): string {
+  return `${spec.joinTree.baseAlias}.${quoteIfNeeded(spec.grain!.column)}`;
+}
+
+/** One SELECT of a view: its columns, base, grain, joins, WHERE and GROUP BY. */
+function emitViewBody(spec: ViewSpec, options: EmitOptions): string {
   const cols = spec.selectSpec.columns
     .map((c) => "    " + renderColumn(c, options, spec.joinTree.baseAlias))
     .join(",\n");
-  const fromClause = `  FROM ${viewRelation(spec.joinTree.baseEntity, options.baseTableName, options)} ${spec.joinTree.baseAlias}`;
+  // rc.21 part B (U14): a @grain view reads one row per element of the base row's jsonb array.
+  const grain = spec.grain === undefined ? ""
+    : options.dialect === "postgres"
+      // fix round M3: a row whose value is JSON null, an object or a scalar has no element (rather than
+      // failing the whole query on Postgres, or iterating an object's keys on SQLite).
+      ? ` CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(${grainCol(spec)}) = 'array' THEN ${grainCol(spec)} END) WITH ORDINALITY AS ${GRAIN_ALIAS}(value, ordinality)`
+      : ` CROSS JOIN json_each(CASE WHEN json_type(${grainCol(spec)}) = 'array' THEN ${grainCol(spec)} END) ${GRAIN_ALIAS}`;
+  const fromClause = `  FROM ${viewRelation(spec.joinTree.baseEntity, options.baseTableName, options)} ${spec.joinTree.baseAlias}${grain}`;
   const joinsClause = spec.joinTree.joins
     .map((j) => renderJoin(j, spec.joinTree.baseAlias, options))
     .join("\n");
@@ -487,8 +647,5 @@ ${spec.selectSpec.columns
   FROM (
 ${grouped}
   ) ${GROUPED_ALIAS}`;
-
-  if (options.bodyOnly) return body;
-  return `CREATE VIEW ${quoteIfNeeded(spec.viewName)} AS
-${body};`;
+  return body;
 }

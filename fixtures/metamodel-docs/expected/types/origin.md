@@ -26,10 +26,10 @@ A value reduced from the related row-set reached along a relationship path (@via
 | --- | --- | --- | --- | --- | --- | --- |
 | `@agg` | string | yes |  | `count`, `sum`, `avg`, `min`, `max`, `any`, `all`, `collect` | metaobjects-core-types | The reducing function applied over the related row-set: count/sum/avg/min/max (numeric/ordinal reduces over @of); any/all (predicate quantifiers over @filter — @of forbidden; empty set → any=false, all=true); collect (array rollup — of the @of column, or of the carrying field.object's declared @objectRef value object when @of is omitted; the field must be isArray). |
 | `@distinct` | boolean | no |  |  | metaobjects-core-types | Set (collect-only) to dedupe collected values (set semantics). Not supported on a whole-object collect (@of omitted): it is a guaranteed no-op whenever the value object carries the primary key, and a silent no-op is worse than a refusal. |
-| `@filter` | filter | no |  |  | metaobjects-core-types | Optional structured predicate scoping which related rows the aggregate spans (required for any/all, where it is the quantified predicate). A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time; codegen renders it per target (e.g. SQL FILTER (WHERE ...) or SQLite CASE WHEN for a relational view). A clause value may also be a relative date ({ now: "<ISO-8601 duration>", startOf? }) on a date or timestamp field, or { field: "<base field>" }, a field of the base row, compared with eq/ne/gt/gte/lt/lte or the null-safe isDistinctFrom / isNotDistinctFrom. |
+| `@filter` | filter | no |  |  | metaobjects-core-types | Optional structured predicate scoping which related rows the aggregate spans (required for any/all, where it is the quantified predicate). A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time; codegen renders it per target (e.g. SQL FILTER (WHERE ...) or SQLite CASE WHEN for a relational view). A clause value may also be a relative date ({ now: "<ISO-8601 duration>", startOf? }) on a date or timestamp field, or — correlated-filter — { field: "<base field>" }, the base row's field, compared with eq/ne/gt/gte/lt/lte or the null-safe isDistinctFrom / isNotDistinctFrom (rc.19). |
 | `@of` | string | no |  |  | metaobjects-core-types | Dotted Entity.field reference identifying the column being aggregated (e.g. 'Week.durationMinutes'). Required for count/sum/avg/min/max; OPTIONAL for collect, where absent means a whole-object rollup of the field's declared @objectRef value object; forbidden for any/all (which quantify over rows via @filter, not a column). |
 | `@orderBy` | string[] | no |  |  | metaobjects-core-types | Ordering keys as 'field[:asc\|desc]' (default asc) over the related entity's fields; nulls sort last. On @agg:collect sets element order (non-distinct only); on origin.first (required) selects the row. Semantic — carries no SQL syntax. |
-| `@segment` | string | no |  |  | metaobjects-core-types | Optional name of a segment.filter declared on the related entity (the @of entity, else the @via terminal). Its predicate scopes the related rows, ANDed with @filter, exactly as measure.aggregate @segment does; it may use relative dates. |
+| `@segment` | string | no |  |  | metaobjects-core-types | Optional name of a segment.filter declared on the related entity (the @of entity, else the @via terminal) — rc.19 origin-segment. Its predicate scopes the related rows, ANDed with @filter, exactly as measure.aggregate @segment does; it may use relative dates. |
 | `@via` | string | no |  |  | metaobjects-core-types | Dotted relationship path from the base entity to the aggregated rows (e.g. 'Program.weeks' or 'Program.weeks.workouts'). May be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (FR-024, ADR-0029). |
 
 **Allowed children**
@@ -82,11 +82,35 @@ The single related row selected by @orderBy along @via, projecting its @of colum
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
-| `@filter` | filter | no |  |  | metaobjects-core-types | Optional structured predicate scoping which related rows are eligible for selection. A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time. A clause value may also be a relative date ({ now: "<ISO-8601 duration>", startOf? }) on a date or timestamp field, or { field: "<base field>" }, a field of the base row, compared with eq/ne/gt/gte/lt/lte or the null-safe isDistinctFrom / isNotDistinctFrom. |
+| `@filter` | filter | no |  |  | metaobjects-core-types | Optional structured predicate scoping which related rows are eligible for selection. A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time. A clause value may also be a relative date ({ now: "<ISO-8601 duration>", startOf? }) on a date or timestamp field, or — correlated-filter — { field: "<base field>" }, the base row's field, compared with eq/ne/gt/gte/lt/lte or the null-safe isDistinctFrom / isNotDistinctFrom (rc.19). |
 | `@of` | string | yes |  |  | metaobjects-core-types | Dotted Entity.field reference identifying the column projected from the selected row (e.g. 'ChildA.label'). Type-preserving: the field's declared subType must equal this column's subType (#185 doctrine). |
 | `@orderBy` | string[] | yes |  |  | metaobjects-core-types | Ordering keys as 'field[:asc\|desc]' (default asc) over the related entity's fields; nulls sort last. Selects the single row (the first after ordering). The related PK ascending is appended as the deterministic tie-breaker. Semantic — carries no SQL syntax. |
-| `@segment` | string | no |  |  | metaobjects-core-types | Optional name of a segment.filter declared on the related entity (the @of entity). Its predicate scopes the related rows, ANDed with @filter, exactly as measure.aggregate @segment does; it may use relative dates. |
+| `@segment` | string | no |  |  | metaobjects-core-types | Optional name of a segment.filter declared on the related entity (the @of entity) — rc.19 origin-segment. Its predicate scopes the related rows, ANDed with @filter, exactly as measure.aggregate @segment does; it may use relative dates. |
 | `@via` | string | no |  |  | metaobjects-core-types | Dotted relationship path from the base entity to the related rows (e.g. 'Parent.childAs'). May be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (FR-024, ADR-0029). |
+
+**Allowed children**
+
+_No structural children._
+
+### origin.function
+
+A value computed by a database function the project owns (rc.21): @function names it, @schema its schema (absent: public), and @args the fields passed to it, in order. On an entity an argument is one of its fields; on a projection, one of its own fields (not an aggregate) or a field of its base entity. @params declares each argument's type and @returns the result's: an argument must have its parameter's type (cast it through an origin.computed field otherwise), @returns must be the carrying field's subtype, and the view casts the call to the field's full column type (the one its table column would have: length or @dbColumnType spelling, precision and scale, a local or zoned timestamp), so the call is checked, never free SQL. The signature is a declaration: meta verify --db reads the function from pg_proc and fails on a parameter or return type that differs. MetaObjects never creates the function: it is owned SQL, created before the view. Declared on an entity, it is entity-derived: a projection reaching the entity reads it like any derived field. Postgres only; the SQLite view emitter refuses it.
+
+**Owning provider:** metaobjects-core-types
+
+**Implemented in:** csharp, typescript so far — every port loads and type-checks it; the others do not act on it yet.
+
+**When to use:** A view column is the result of a function the database already holds (a PL/pgSQL state machine, a legacy computation) and cannot be expressed in @expr. Declare the call instead of hand-writing the view's @sql.
+
+**Attributes**
+
+| Attribute | Type | Required | Default | Allowed values | Provider | Description |
+| --- | --- | --- | --- | --- | --- | --- |
+| `@args` | string[] | no |  |  | metaobjects-core-types | The fields passed to the function, in parameter order: field names of the host entity, or (on a projection) of the projection or its base entity. Each must be a scalar field whose subtype is the declared parameter type in @params; to pass another type, pass an origin.computed field that casts it ({ cast: { field: x }, as: <param> }). Absent or empty: a function of no arguments. |
+| `@function` | string | yes |  |  | metaobjects-core-types | The function's name as the database names it: a plain identifier ([A-Za-z_][A-Za-z0-9_]*), quoted when it is not lowercase. |
+| `@params` | string[] | no |  |  | metaobjects-core-types | The function's declared parameter types, one field subtype per @args entry, in order (string, int, long, double, float, decimal, boolean, date, timestamp, uuid). Required when @args is not empty; an argument of another type is refused (ERR_INVALID_ORIGIN). |
+| `@returns` | string | yes |  |  | metaobjects-core-types | The function's declared return type, a field subtype; it must be the carrying field's subtype (ERR_INVALID_ORIGIN). The view casts the call to the field's full column type, which would hide a wrong declaration, so meta verify --db checks it against the function's real return type (pg_proc). |
+| `@schema` | string | no |  |  | metaobjects-core-types | The schema the function lives in, a plain identifier. Absent: public. |
 
 **Allowed children**
 

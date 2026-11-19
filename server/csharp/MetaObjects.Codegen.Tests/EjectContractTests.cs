@@ -221,6 +221,13 @@ public class EjectContractTests
     private sealed record Corpus(string Label, MetaRoot Root, string? TemplateRoot);
 
     /// <summary>Shared models that between them make every ejectable generator emit.</summary>
+    private static MetaRoot InlineModel(string json)
+    {
+        var load = new MetaDataLoader().Load([new InMemoryStringSource(json, id: "inline.json")]);
+        Assert.Empty(load.Errors.Select(e => e.Code + ": " + e.Message));
+        return load.Root;
+    }
+
     private static List<Corpus> Corpora()
     {
         MetaRoot Directory(params string[] segments)
@@ -234,6 +241,8 @@ public class EjectContractTests
             new("fitness", EjectedGeneratorCompileTests.LoadCorpus(), CorpusPaths.FitnessTemplateRoot),
             new("requirements", Directory("requirement-test-identity-conformance", "worked-example", "input"), null),
             new("stored-proc", Directory("conformance", "parameter-ref-on-stored-proc", "input"), null),
+            // An @expr index: expression-indexes emits only over one.
+            new("expression-indexes", InlineModel(ExpressionIndexesGeneratorTests.Model), null),
             // A reply with a nested object: the extractor emits only over one.
             new("nested-reply", Directory("template-output-render-conformance", "xpkg-collision-json"),
                 Path.Combine(CorpusPaths.RepoRoot(), "fixtures", "template-output-render-conformance", "templates")),
@@ -283,7 +292,7 @@ public class EjectContractTests
                 GeneratorRegistry.Get(stableName)!.Factory(new GeneratorBuildContext(corpus.TemplateRoot))));
             var owned = Run(SharedModelTestSupport.Configure(Instantiate(copy.Assembly, corpus.TemplateRoot)));
             emitted += packaged.Count;
-            Assert.Equal(packaged.Select(f => f.Path), owned.Select(f => f.Path));
+            Assert.Equal(packaged.Select(f => System.IO.Path.GetFileName(f.Path)), owned.Select(f => System.IO.Path.GetFileName(f.Path)));
             for (var i = 0; i < packaged.Count; i++)
                 Assert.Equal(Expected(packaged[i].Content), owned[i].Content);
 

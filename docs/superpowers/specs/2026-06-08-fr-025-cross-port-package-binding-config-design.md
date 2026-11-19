@@ -7,7 +7,7 @@
 
 ## Why this doc exists
 
-FR-019 introduced the C# `GenConfig.PackageNamespaces: Dictionary<string,string>` map and a single `ProvidedEnumNamespace` fallback **scoped to `@provided` enums only**. That map is exactly the right primitive — bind a metadata package (`acme::cases`, `acme::domain::dataEnums::authorizations`) to a per-port output identity (a C# namespace, a TS module specifier, a Java package, …). Three gaps in the current shape:
+FR-019 introduced the C# `GenConfig.PackageNamespaces: Dictionary<string,string>` map and a single `ProvidedEnumNamespace` fallback **scoped to `@provided` enums only**. That map is exactly the right primitive — bind a metadata package (`acme::orders`, `acme::domain::dataEnums::authorizations`) to a per-port output identity (a C# namespace, a TS module specifier, a Java package, …). Three gaps in the current shape:
 
 1. **It's only wired for `@provided` enums.** The same primitive should govern where entities and value-objects land in each port's emitted output. The pattern is identical; only the consumer differs.
 2. **Only the C# port has it.** TS has a single `providedEnumModule` string with no map; Java and Python have nothing. Cross-port symmetry is missing.
@@ -30,11 +30,11 @@ Each language has its own term for "where this lands." The cross-port config use
 
 | Port | Section | Field | Example value |
 |---|---|---|---|
-| **C#** | `csharp:` | `namespace` | `Acme.Domain.Entities.Cases` |
-| **Java** | `java:` | `package` | `com.acme.app.cases` |
-| **Kotlin** | `kotlin:` | `package` | `com.acme.app.cases` |
-| **TS** | `typescript:` | `module` | `@acme/app/cases` |
-| **Python** | `python:` | `module` | `acme.app.cases` |
+| **C#** | `csharp:` | `namespace` | `Acme.Domain.Entities.Orders` |
+| **Java** | `java:` | `package` | `com.acme.app.orders` |
+| **Kotlin** | `kotlin:` | `package` | `com.acme.app.orders` |
+| **TS** | `typescript:` | `module` | `@acme/app/orders` |
+| **Python** | `python:` | `module` | `acme.app.orders` |
 
 Rationale: a Java developer reading `java: { package: ... }` sees their language's term, not `javaPackage`. The port section already carries the language identity; doubling it as a key prefix is redundant. The retired `@csEnumType` attr was wrong for the *opposite* reason — it carried language vocabulary into metadata where it didn't belong.
 
@@ -93,14 +93,14 @@ Resolution is **per named type**, not per package. The resolver receives `(metad
 | 5 | Join segments by `convention.separator` (`.`) | `UsersAccess` |
 | 6 | Prepend `convention.prepend` + `convention.separator` | `Acme.Domain.Entities.UsersAccess` |
 
-Multi-segment example, `acme::cases::custom-properties`:
+Multi-segment example, `acme::orders::custom-properties`:
 | Step | Result |
 |---|---|
-| Strip `acme::` | `cases::custom-properties` |
-| Split by `::` | `["cases", "custom-properties"]` |
-| PascalCase each | `["Cases", "CustomProperties"]` |
-| Join by `.` | `Cases.CustomProperties` |
-| Prepend base | `Acme.Domain.Entities.Cases.CustomProperties` |
+| Strip `acme::` | `orders::custom-properties` |
+| Split by `::` | `["orders", "custom-properties"]` |
+| PascalCase each | `["Orders", "CustomProperties"]` |
+| Join by `.` | `Orders.CustomProperties` |
+| Prepend base | `Acme.Domain.Entities.Orders.CustomProperties` |
 
 The metadata separator (`::`) is **never** configurable — it's part of the metaobjects spec. The convention rule's `separator` is the per-port output joiner: `.` for C#, `/` for TS module paths, `.` for Java packages, etc.
 
@@ -118,7 +118,7 @@ csharp:
       # Most acme::lookups types land in .Entities.Lookups via the convention,
       # but Currency is a top-level concept owned elsewhere in the codebase.
       "acme::lookups::Currency": "Acme.Domain.Shared"
-      # Authorization's value-objects live in the Dto namespace by P3 convention,
+      # Authorization's value-objects live in the Dto namespace by the adopter's convention,
       # while the entities live in the Entities namespace.
       "acme::authorizations::InsuranceParameters": "Acme.Domain.Dto"
 ```
@@ -155,7 +155,7 @@ Resolution order on either path:
 4. (port-level legacy fallback, e.g. FR-019's `providedEnumNamespace` single-string)
 5. `unmappedStrategy`
 
-Adopters whose `@provided` enums are FLAT in a single namespace (no per-package sub-tree) skip `providedEnumPrepend` entirely and use the FR-019 single-string `providedEnumNamespace` fallback + `typeOverrides` for sub-namespace exceptions. This is exactly what the P3 C# adopter does (see worked example below).
+Adopters whose `@provided` enums are FLAT in a single namespace (no per-package sub-tree) skip `providedEnumPrepend` entirely and use the FR-019 single-string `providedEnumNamespace` fallback + `typeOverrides` for sub-namespace exceptions. This is exactly what the the adopter C# adopter does (see worked example below).
 
 **Why not a general rule/predicate engine.** We explicitly chose NOT to add `perKindOverrides`, `rules: when {}`, or a `NamedKind` enum. Reasons:
 - `NamedKind` would be a closed set of values the framework knows about today; metadata kinds grow over time and the enum would need amendments + a new release every time a new kind appears.
@@ -177,7 +177,7 @@ Adopters whose `@provided` enums are FLAT in a single namespace (no per-package 
 
 ### Worked examples
 
-**P3 C# adopter** (the driving case — `@provided` enums live FLAT in `DataEnums`, with 12 sub-namespace exceptions):
+**The driving C# adopter** (the driving case — `@provided` enums live FLAT in `DataEnums`, with 12 sub-namespace exceptions):
 ```yaml
 csharp:
   namespace:
@@ -198,19 +198,19 @@ csharp:
       # The 12 @provided enums that live in DataEnums sub-namespaces
       "acme::authorizations::AuthorizationType":      "Acme.Domain.DataEnums.Authorizations"
       "acme::authorizations::AuthorizationStatus":    "Acme.Domain.DataEnums.Authorizations"
-      "acme::authorizations::CopayCardStatus":        "Acme.Domain.DataEnums.CopayCards"
-      # ... 6 more Copay* enums in acme::authorizations
-      "acme::integrations::DataExportRunStatusEnum":  "Acme.Domain.DataEnums.DataExportIntegration"
-      "acme::integrations::SPFileType":               "Acme.Domain.DataEnums.SPIntegration"
-      "acme::integrations::SPProcessLogStatus":       "Acme.Domain.DataEnums.SPIntegration"
+      "acme::authorizations::CouponCardStatus":        "Acme.Domain.DataEnums.CouponCards"
+      # ... 6 more Coupon* enums in acme::authorizations
+      "acme::integrations::WarehouseFeedRunStatusEnum":  "Acme.Domain.DataEnums.WarehouseFeed"
+      "acme::integrations::EDIFileType":               "Acme.Domain.DataEnums.EDIIntegration"
+      "acme::integrations::EDIProcessLogStatus":       "Acme.Domain.DataEnums.EDIIntegration"
     unmappedStrategy: error
 ```
 
 Resolves:
-- `acme::cases` → convention → `Acme.Domain.Entities.Cases`
+- `acme::orders` → convention → `Acme.Domain.Entities.Orders`
 - `acme::users-access` → convention → `Acme.Domain.Entities.UsersAccess`
 - `acme::reporting` → override → `Acme.Domain.Entities.ReportEntities`
-- `acme::patients::Gender` (provided enum) → `providedEnumNamespace` → `Acme.Domain.DataEnums.Gender`
+- `acme::players::Gender` (provided enum) → `providedEnumNamespace` → `Acme.Domain.DataEnums.Gender`
 - `acme::authorizations::AuthorizationType` (provided enum) → `typeOverrides` → `Acme.Domain.DataEnums.Authorizations.AuthorizationType`
 
 ~18 entries instead of ~80 — convention covers 13 entity packages, 3 entity overrides, the `providedEnumNamespace` single-string fallback covers ~51 flat enums, and 12 `typeOverrides` pin the sub-namespace exceptions.
@@ -247,7 +247,7 @@ typescript:
 ```
 
 Resolves:
-- `acme::cases` → `@acme/app/cases`
+- `acme::orders` → `@acme/app/orders`
 - `acme::users-access` → `@acme/app/users-access`
 
 **Hypothetical Java adopter:**
@@ -263,7 +263,7 @@ java:
 ```
 
 Resolves:
-- `acme::cases` → `com.acme.app.cases`
+- `acme::orders` → `com.acme.app.orders`
 - `acme::usersaccess` → `com.acme.app.usersaccess`
 
 ## Per-port codegen surface

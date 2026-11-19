@@ -59,7 +59,7 @@ internal class TphGeneratedApiContractConformanceTest {
     @Test
     @Suppress("UNCHECKED_CAST")
     fun tphListsSupportFr009Filters() {
-        HARNESS.reset() // seed: Bridge id1 (quantity 5), Copay id2, PriorAuth id3
+        HARNESS.reset() // seed: Bridge id1 (quantity 5), Coupon id2, Permit id3
         val r1 = HARNESS.exchange("GET", "/api/auths?filter[quantity][eq]=5&sort=id:asc", null)
         assertEquals(200, r1.status)
         val rows1 = HARNESS.parseBody(r1.body) as List<Map<String, Any?>>
@@ -76,7 +76,7 @@ internal class TphGeneratedApiContractConformanceTest {
         assertEquals("invalid_filter_field", (HARNESS.parseBody(r4.body) as Map<String, Any?>)["error"])
         // Polymorphic list filtered by the DISCRIMINATOR (FR-017 "Filter allowlists": the base
         // allowlist includes it). Kotlin excluded it until 1.0.5 and answered this with r4's 400.
-        val r5 = HARNESS.exchange("GET", "/api/auths?filter[type][in]=Bridge,Copay&sort=id:asc", null)
+        val r5 = HARNESS.exchange("GET", "/api/auths?filter[type][in]=Bridge,Coupon&sort=id:asc", null)
         assertEquals(200, r5.status, r5.body)
         val rows5 = HARNESS.parseBody(r5.body) as List<Map<String, Any?>>
         assertEquals(listOf(1, 2), rows5.map { (it["id"] as Number).toInt() })

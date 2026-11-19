@@ -174,13 +174,18 @@ public sealed class PackageKeyedOutputTests
     public void An_enum_used_by_several_narrowed_entries_is_declared_by_exactly_one_of_them()
     {
         var root = SharedEnumModel();
-        var ctx = Ctx(root, package: false);
-        string[] Declared(Func<MetaObject, bool> include) =>
-            new EntityGenerator { Include = include }.Generate(ctx).Where(f => f.Path == "Enums.g.cs").Select(f => f.Path).ToArray();
+        // The three entries of one run: each sees the others through the run's entry list.
+        var account = new EntityGenerator { Include = o => o.Name == "Account" };
+        var plan = new EntityGenerator { Include = o => o.Name == "Plan" };
+        var other = new EntityGenerator { Include = o => o.Name == "Other" };
+        var flat = Ctx(root, package: false);
+        var ctx = new GenContext { Entities = flat.Entities, Root = flat.Root, Config = flat.Config, Generators = [account, plan, other] };
+        string[] Declared(EntityGenerator entry) =>
+            entry.Generate(ctx).Where(f => f.Path == "Enums.g.cs").Select(f => f.Path).ToArray();
 
-        var withAccount = Declared(o => o.Name == "Account");
-        var withPlan = Declared(o => o.Name == "Plan");
-        var withOther = Declared(o => o.Name == "Other");
+        var withAccount = Declared(account);
+        var withPlan = Declared(plan);
+        var withOther = Declared(other);
 
         Assert.Equal(1, withAccount.Length + withPlan.Length);
         Assert.Empty(withOther);

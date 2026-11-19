@@ -11,7 +11,7 @@
       "type": "api",
       "subType": "operational",
       "extendsBase": true,
-      "description": "A named, packaged request/response surface whose children are operations (ADR-0030). It is a wire contract: two of them (`v1`, `v2`) may declare the same operation side by side. The code behind it is one service per metadata package, whose surface is the package's operations (ADR-0064). Experimental since 1.3.0: the shape may change in a MINOR, including removals and renames (docs/compatibility-policy.md).",
+      "description": "A named, packaged request/response surface whose children are operations (ADR-0030). It is a wire contract: two of them (`v1`, `v2`) may declare the same operation side by side. The code behind it is one service per metadata package, whose surface is the package's operations (ADR-0067). Experimental since 1.3.0: the shape may change in a MINOR, including removals and renames (docs/compatibility-policy.md).",
       "whenToUse": "The application does something beyond derived CRUD: a named command (approve, cancel, import) or a named query (my open requests). Declare it here so its input, output, permission and business errors are part of the model. A plain lifecycle needs no api.operational at all: each transition nobody claims derives its own command.",
       "rules": "Children are `operation.command` and `operation.query`. Lives at the document root. Declares no fields, sources or identities: shapes are referenced, never defined, by the surface. Operation names are compared without case, are unique across every API of one package, except one operation declared identically in two APIs, such as a versioned API beside its successor (one operation declared twice in one API merges), and may not be create, get, list, update or delete in any case (ERR_TRANSITION_NAME_COLLISION). Two declared bindings may not share a method and path (ERR_BINDING_PATH_MISMATCH).",
       "children": [
@@ -35,7 +35,7 @@
       "type": "operation",
       "subType": "command",
       "extendsBase": true,
-      "description": "A named operation that changes state. Takes an `object.value` (ADR-0030). Its body is hand-written; the generated shell around it loads the row, checks the permission and the current state, runs the body, and makes the guarded update in one transaction (ADR-0063). Experimental since 1.3.0: the shape may change in a MINOR, including removals and renames (docs/compatibility-policy.md).",
+      "description": "A named operation that changes state. Takes an `object.value` (ADR-0030). Its body is hand-written; the generated shell around it loads the row, checks the permission and the current state, runs the body, and makes the guarded update in one transaction (ADR-0066). Experimental since 1.3.0: the shape may change in a MINOR, including removals and renames (docs/compatibility-policy.md).",
       "whenToUse": "A business action with its own name, input and rules: approve, cancel, transfer. A command that moves a lifecycle names the transitions it may make in @transitions; its body decides which one applies.",
       "children": [
         { "type": "attr", "subType": "string", "name": "transitions", "isArray": true, "min": 0, "max": 1, "description": "The lifecycle moves this command may make: names of `transition.action` nodes on its target entity (ERR_OPERATION_UNKNOWN_TRANSITION otherwise). A fact of the business the model cannot compute. A transition a command lists gets no derived command of its own. Listing any requires a target (ERR_OPERATION_TARGET_UNRESOLVED)." },

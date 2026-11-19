@@ -25,6 +25,10 @@ import {
   type FieldNames, type KeyNames, type ObjectNames, type SourceNames,
 } from "../names.js";
 
+/** The JSDoc on a flattened field's own `column`, which names no column of the table. */
+export const FLATTENED_COLUMN_DEPRECATION =
+  "/** @deprecated a flattened field has no column of its own; use members.<member>.column */";
+
 /** The physical-name alias keys, in the metamodel's own order. */
 const PHYSICAL_NAME_ALIASES = [...PHYSICAL_NAME_ATTR_BY_KIND.values()] as const;
 

@@ -1,4 +1,4 @@
-// The CHECK constraints `meta migrate` derives for a table, with
+// rc.19 item 13 (rulings R55) — the CHECK constraints `meta migrate` derives for a table, with
 // its names and its expression text, so the generated EF model declares the same constraints the
 // Node migrate path creates: one model, one database, through either delivery path. Ported from
 // typescript/packages/migrate-ts/src/expected-schema.ts (buildChecks, validatorCheck,
@@ -46,46 +46,228 @@ public static class CheckConstraints
         var table = CSharpNaming.Table(entity);
         var checks = new List<CheckConstraint>();
         foreach (var field in entity.Fields())
-        {
-            // No field-level CHECK on an array column: every expression below is scalar-shaped.
-            if (field.ResolvedIsArray()) continue;
-            // A derived (origin-bearing) field is no column of the table: a CHECK on it fails the
-            // migration. Its validators apply where it is read.
-            if (field.IsDerived()) continue;
-            var col = CSharpNaming.Column(field, strategy);
-            var qcol = Quote(col);
-            if (field.SubType == FIELD_SUBTYPE_ENUM && field.EffectiveEnumValues is { Count: > 0 } values)
-            {
-                var ints = field.Attr(FIELD_ATTR_INT_VALUE_MAP) as IReadOnlyDictionary<string, object?>;
-                var members = ints is null
-                    ? values.Select(Literal)
-                    : values.Select(v => ints.TryGetValue(v, out var n) && n is not null
-                        ? Number(n)
-                        : throw new InvalidOperationException(
-                            $"field.enum '{field.Name}' @intValueMap has no integer for member '{v}' — cannot build the CHECK constraint for column '{col}'."));
-                checks.Add(Named(new CheckConstraint($"{table}_{col}_chk", $"{qcol} IN ({string.Join(", ", members)})"), field));
-            }
-            // The VARCHAR(n) the column already is, when the project skips what it enforces. Not on
-            // SQLite / D1: they accept a declared length and store longer values anyway.
-            var enforcedMax = config.SkipRedundantChecks && !IsSqlite(dialect) ? VarcharLength(field) : null;
-            foreach (var v in field.Validators())
-            {
-                // A declared @constraintName asks for the CHECK by name, so it is kept even where
-                // skipRedundant would leave it out: a declaration beats a default.
-                var declared = DeclaredName(v) is not null;
-                var check = ValidatorCheck(v, qcol, table, col, dialect,
-                    skipRedundant: !declared && config.SkipRedundantChecks, enforcedMax: declared ? null : enforcedMax);
-                if (check is not null) checks.Add(Named(check, v));
-            }
-        }
-        // A cross-field validator always keeps its CHECK: it is enforced nowhere else.
+            checks.AddRange(FieldChecks(field, table, strategy, dialect, config).Select(c => c.Check));
+        var root = entity.Root() as MetaRoot;
+        var tph = root is null ? null : TphPlanBuilder.For(entity, root);
+        if (tph is not null) checks.AddRange(SubtypeFieldChecks(entity, tph, table, strategy, dialect, config));
+        // A cross-field validator always keeps its CHECK: it is enforced nowhere else, and the loader
+        // refuses @dbCheck: false on one (ERR_CROSS_FIELD_WITHOUT_CHECK).
         foreach (var v in entity.Validators())
         {
             if (CrossFieldCheck(v, entity, table, strategy, dialect) is { } check)
                 checks.Add(Named(WithCondition(check, v, entity, strategy, dialect), v));
         }
+        if (tph is not null) checks.AddRange(SubtypeCrossFieldChecks(entity, tph, table, strategy, dialect));
+        return Distinct(entity, checks, dialect);
+    }
+
+    /// <summary>
+    /// One table's CHECKs, with an exact repeat (same name, same expression) kept once, and two
+    /// different CHECKs under one name refused on every dialect. On Postgres the database would
+    /// refuse the second at CREATE TABLE. SQLite and D1 accept both (rc.21, N1), but EF's model keys
+    /// a check constraint by name: a second <c>HasCheckConstraint</c> with the same name replaces the
+    /// first (verified on EF Core 8.0.18), so the model would silently hold one of them. That is an
+    /// EF limit, so the C# port keeps the refusal where <c>meta migrate</c> accepts the pair.
+    /// </summary>
+    private static IReadOnlyList<CheckConstraint> Distinct(MetaObject entity, List<CheckConstraint> checks, string? dialect)
+    {
+        var byName = new Dictionary<string, CheckConstraint>(StringComparer.Ordinal);
+        var outList = new List<CheckConstraint>();
+        foreach (var c in checks)
+        {
+            if (byName.TryGetValue(c.Name, out var seen))
+            {
+                if (seen.Expression == c.Expression) continue;
+                var why = IsSqlite(dialect)
+                    ? "EF Core keeps one check constraint per name, so the model would hold only the last"
+                    : "Postgres requires each constraint on a table to have its own name";
+                throw new InvalidOperationException(
+                    $"object.entity '{entity.Name}': two CHECK constraints are both named '{c.Name}' ({seen.Expression} | {c.Expression}); {why}. " +
+                    "Give one of the validators (or enums) a @constraintName.");
+            }
+            byName[c.Name] = c;
+            outList.Add(c);
+        }
+        return outList;
+    }
+
+    /// <summary>One column's field-level CHECKs (its enum membership, then each validator's), each with whether its name was declared.</summary>
+    private static List<(CheckConstraint Check, bool Declared)> FieldChecks(
+        MetaField field, string table, ColumnNamingStrategy strategy, string? dialect, GenConfig config)
+    {
+        var checks = new List<(CheckConstraint, bool)>();
+        // No field-level CHECK on an array column: every expression below is scalar-shaped.
+        if (field.ResolvedIsArray()) return checks;
+        // A derived (origin-bearing) field is no column of the table: a CHECK on it fails the
+        // migration. Its validators apply where it is read.
+        if (field.IsDerived()) return checks;
+        var col = CSharpNaming.Column(field, strategy);
+        var qcol = Quote(col);
+        // @dbCheck: false (resolving) asks for no CHECK: the rule is enforced app-side only.
+        if (field.SubType == FIELD_SUBTYPE_ENUM && !OptedOut(field) && field.EffectiveEnumValues is { Count: > 0 } values)
+        {
+            var ints = field.Attr(FIELD_ATTR_INT_VALUE_MAP) as IReadOnlyDictionary<string, object?>;
+            // rc.21: a string member is stored as its @stringValueMap string, else as itself.
+            var members = ints is null
+                ? values.Select(v => Literal(EnumStorage.StoredValue(field, v)))
+                : values.Select(v => ints.TryGetValue(v, out var n) && n is not null
+                    ? Number(n)
+                    : throw new InvalidOperationException(
+                        $"field.enum '{field.Name}' @intValueMap has no integer for member '{v}' — cannot build the CHECK constraint for column '{col}'."));
+            checks.Add((Named(new CheckConstraint($"{table}_{col}_chk", $"{qcol} IN ({string.Join(", ", members)})"), field), DeclaredName(field) is not null));
+        }
+        // The VARCHAR(n) the column already is, when the project skips what it enforces. Not on
+        // SQLite / D1: they accept a declared length and store longer values anyway.
+        var enforcedMax = config.SkipRedundantChecks && !IsSqlite(dialect) ? VarcharLength(field) : null;
+        foreach (var v in field.Validators())
+        {
+            if (OptedOut(v)) continue;
+            // A declared @constraintName asks for the CHECK by name, so it is kept even where
+            // skipRedundant would leave it out: a declaration beats a default.
+            var declared = DeclaredName(v) is not null;
+            var check = ValidatorCheck(v, qcol, table, col, dialect,
+                skipRedundant: !declared && config.SkipRedundantChecks, enforcedMax: declared ? null : enforcedMax);
+            if (check is not null) checks.Add((Named(check, v), declared));
+        }
         return checks;
     }
+
+    /// <summary>
+    /// FR-017 TPH: a discriminator base's table also holds every concrete subtype's folded columns,
+    /// so it carries their field-level CHECKs too, the subtypes in name order.
+    /// <para>A column ONE field node owns (declared once, on a subtype or on an abstract level its
+    /// subtypes share) gets the text a base column gets, with no guard: a CHECK refuses only FALSE,
+    /// and a sibling's row holds NULL there, for which every field-level expression is NULL. So does
+    /// a column several sibling nodes declare with identical CHECKs. Sibling nodes that disagree
+    /// (different <c>@values</c>, a different pattern) each get their own CHECKs, guarded by the
+    /// discriminator values of the subtypes that carry that node and named after the declaring
+    /// object (<c>&lt;table&gt;_&lt;declarer&gt;_&lt;col&gt;_…</c>), so neither refuses the other's rows.</para>
+    /// </summary>
+    private static IEnumerable<CheckConstraint> SubtypeFieldChecks(
+        MetaObject entity, TphPlan tph, string table, ColumnNamingStrategy strategy, string? dialect, GenConfig config)
+    {
+        var baseNames = new HashSet<string>(entity.Fields().Select(f => f.Name), StringComparer.Ordinal);
+        var groups = new List<(string Name, List<(MetaField Node, List<string> Values)> Owners)>();
+        foreach (var st in tph.Subtypes)
+        {
+            // ADR-0039: resolving — a field on an abstract level or a parent subtype is a column too.
+            foreach (var f in st.Entity.Fields())
+            {
+                if (baseNames.Contains(f.Name)) continue;
+                var g = groups.FindIndex(x => x.Name == f.Name);
+                if (g < 0)
+                {
+                    groups.Add((f.Name, [(f, [st.Value])]));
+                    continue;
+                }
+                var owners = groups[g].Owners;
+                var o = owners.FindIndex(x => ReferenceEquals(x.Node, f));
+                if (o < 0) owners.Add((f, [st.Value]));
+                else owners[o].Values.Add(st.Value);
+            }
+        }
+        foreach (var (_, owners) in groups)
+        {
+            var per = owners.Select(o => (o.Node, o.Values, Checks: FieldChecks(o.Node, table, strategy, dialect, config))).ToList();
+            var first = per[0].Checks.Select(c => c.Check).ToList();
+            if (per.All(p => p.Checks.Select(c => c.Check).SequenceEqual(first)))
+            {
+                foreach (var c in first) yield return c;
+                continue;
+            }
+            foreach (var (node, values, nodeChecks) in per)
+                foreach (var (check, declared) in nodeChecks)
+                {
+                    var guarded = Wrap(check, DiscriminatorIn(tph, values), entity, strategy, dialect);
+                    yield return declared ? guarded : guarded with { Name = Qualified(check.Name, table, node.Parent, dialect) };
+                }
+        }
+    }
+
+    /// <summary>A default CHECK name made unique to the object that declares the rule: <c>&lt;table&gt;_&lt;declarer&gt;_…</c>.</summary>
+    private static string Qualified(string name, string table, MetaData? declarer, string? dialect)
+    {
+        var tag = (declarer?.Name ?? "subtype").ToLowerInvariant();
+        var qualified = name.StartsWith(table + "_", StringComparison.Ordinal)
+            ? $"{table}_{tag}_{name[(table.Length + 1)..]}"
+            : $"{tag}_{name}";
+        return IsSqlite(dialect) ? qualified : FitPgIdentifier(qualified);
+    }
+
+    /// <summary>Postgres's identifier limit, in bytes (NAMEDATALEN - 1). A longer name is truncated.</summary>
+    private const int PgIdentifierMaxBytes = 63;
+
+    /// <summary>
+    /// rc.21 (N2): a generated name fitted to Postgres's 63-byte identifier limit, spelled as
+    /// <c>meta migrate</c> spells it (<c>fitPgIdentifier</c>). A longer name keeps its first 54
+    /// bytes (whole characters) and gains <c>_</c> and the first 8 hex digits of the SHA-256 of the
+    /// whole name. A name that fits is unchanged.
+    /// </summary>
+    public static string FitPgIdentifier(string name)
+    {
+        var utf8 = System.Text.Encoding.UTF8;
+        if (utf8.GetByteCount(name) <= PgIdentifierMaxBytes) return name;
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(utf8.GetBytes(name)))[..8].ToLowerInvariant();
+        var head = new System.Text.StringBuilder();
+        var bytes = 0;
+        foreach (var rune in name.EnumerateRunes())
+        {
+            var n = rune.Utf8SequenceLength;
+            if (bytes + n > PgIdentifierMaxBytes - 9) break;
+            head.Append(rune.ToString());
+            bytes += n;
+        }
+        return $"{head}_{hash}";
+    }
+
+    /// <summary>The condition "the discriminator is one of <paramref name="values"/>".</summary>
+    private static IReadOnlyDictionary<string, object?> DiscriminatorIn(TphPlan tph, IReadOnlyList<string> values)
+    {
+        IReadOnlyDictionary<string, object?> Eq(string value) => new Dictionary<string, object?>
+        {
+            [KeyOp] = FILTER_OP_EQ,
+            [KeyLeft] = new Dictionary<string, object?> { [KeyField] = tph.DiscriminatorField },
+            [KeyRight] = new Dictionary<string, object?> { [KeyValue] = value },
+        };
+        return values.Count == 1
+            ? Eq(values[0])
+            : new Dictionary<string, object?> { [KeyOp] = FILTER_COMPOSE_OR, [KeyArgs] = values.Select(x => (object?)Eq(x)).ToList() };
+    }
+
+    /// <summary>
+    /// FR-017 TPH: a cross-field validator a subtype adds holds for that subtype's rows only, so the
+    /// discriminator guards it — unlike a field-level CHECK, most cross-field rules are FALSE (not
+    /// NULL) over a sibling's NULL columns (atLeastOne, requiredWhen). The guard lists every concrete
+    /// subtype the validator reaches (one on an abstract level, or on a parent subtype, reaches each
+    /// of its concrete descendants), as an <c>@condition</c> ANDed with the validator's own. Its
+    /// default name carries the declaring object (<c>&lt;table&gt;_&lt;declarer&gt;_…</c>), so the same
+    /// rule on two siblings, or on a sibling and the base, does not collide.
+    /// </summary>
+    private static IEnumerable<CheckConstraint> SubtypeCrossFieldChecks(
+        MetaObject entity, TphPlan tph, string table, ColumnNamingStrategy strategy, string? dialect)
+    {
+        var baseValidators = new HashSet<MetaValidator>(entity.Validators(), ReferenceEqualityComparer.Instance);
+        var reached = new List<(MetaValidator Validator, MetaObject Holder, List<string> Values)>();
+        foreach (var st in tph.Subtypes)
+            // ADR-0039: resolving — a validator on an abstract level or a parent subtype applies here too.
+            foreach (var v in st.Entity.Validators())
+            {
+                if (baseValidators.Contains(v)) continue;
+                var i = reached.FindIndex(r => ReferenceEquals(r.Validator, v));
+                if (i < 0) reached.Add((v, st.Entity, [st.Value]));
+                else reached[i].Values.Add(st.Value);
+            }
+        foreach (var (v, holder, values) in reached)
+        {
+            if (CrossFieldCheck(v, holder, table, strategy, dialect) is not { } check) continue;
+            var guarded = WithCondition(check, v, holder, strategy, dialect, DiscriminatorIn(tph, values));
+            yield return DeclaredName(v) is { } name ? guarded with { Name = name } : guarded with { Name = Qualified(check.Name, table, v.Parent, dialect) };
+        }
+    }
+
+    /// <summary>Whether a validator or field.enum opts out of its CHECK (<c>@dbCheck: false</c>, resolving).
+    /// <c>SkipRedundantChecks</c> is independent of it: it only ever leaves more out.</summary>
+    private static bool OptedOut(MetaData node) => node.Attr(VALIDATOR_ATTR_DB_CHECK) is false;
 
     /// <summary>The length a string column's <c>VARCHAR(n)</c> enforces: a string's <c>@maxLength</c>, a string-stored enum's resolved length.</summary>
     private static long? VarcharLength(MetaField field) => field.SubType switch
@@ -145,20 +327,6 @@ public static class CheckConstraints
         return field is null || field.IsDerived() ? null : (Quote(CSharpNaming.Column(field, strategy)), field);
     }
 
-    /// <summary>The columns a validator's <c>@fields</c> name, or null when there are none or one is missing or derived.</summary>
-    private static List<(string Qcol, MetaField Field)>? FieldRefs(MetaValidator v, MetaObject entity, ColumnNamingStrategy strategy)
-    {
-        var raw = v.Attr(VALIDATOR_ATTR_FIELDS);
-        IReadOnlyList<object?> names = raw switch
-        {
-            string s => [s],
-            IEnumerable<object?> list => list.ToList(),
-            _ => [],
-        };
-        var refs = names.Select(n => Ref(entity, n, strategy)).ToList();
-        return refs.Count == 0 || refs.Any(r => r is null) ? null : refs.Select(r => r!.Value).ToList();
-    }
-
     private static CheckConstraint? CrossFieldCheck(MetaValidator v, MetaObject entity, string table, ColumnNamingStrategy strategy, string? dialect)
     {
         switch (v.SubType)
@@ -190,21 +358,35 @@ public static class CheckConstraints
             }
             case VALIDATOR_SUBTYPE_AT_LEAST_ONE:
             {
-                var refs = FieldRefs(v, entity, strategy);
-                if (refs is null) return null;
-                return new CheckConstraint($"{table}_{CSharpNaming.Column(refs[0].Field, strategy)}_atleastone_chk",
-                    string.Join(" OR ", refs.Select(r => $"{r.Qcol} IS NOT NULL")));
+                var raw = v.Attr(VALIDATOR_ATTR_FIELDS);
+                IReadOnlyList<object?> names = raw switch
+                {
+                    IEnumerable<object?> list when raw is not string => list.ToList(),
+                    string s => [s],
+                    _ => [],
+                };
+                var refs = names.Select(n => Ref(entity, n, strategy)).ToList();
+                if (refs.Count == 0 || refs.Any(r => r is null)) return null;
+                var name = $"{table}_{CSharpNaming.Column(refs[0]!.Value.Field, strategy)}_atleastone_chk";
+                return new CheckConstraint(name, string.Join(" OR ", refs.Select(r => $"{r!.Value.Qcol} IS NOT NULL")));
             }
             case VALIDATOR_SUBTYPE_EXACTLY_ONE:
             {
-                var refs = FieldRefs(v, entity, strategy);
-                if (refs is null) return null;
+                var raw = v.Attr(VALIDATOR_ATTR_FIELDS);
+                IReadOnlyList<object?> names = raw switch
+                {
+                    IEnumerable<object?> list when raw is not string => list.ToList(),
+                    string s => [s],
+                    _ => [],
+                };
+                var refs = names.Select(n => Ref(entity, n, strategy)).ToList();
+                if (refs.Count == 0 || refs.Any(r => r is null)) return null;
                 // Postgres counts the present fields with num_nonnulls; SQLite and D1 add the
                 // presence tests, which they evaluate as 0 / 1.
                 var count = IsSqlite(dialect)
-                    ? $"({string.Join(" + ", refs.Select(r => $"({r.Qcol} IS NOT NULL)"))})"
-                    : $"num_nonnulls({string.Join(", ", refs.Select(r => r.Qcol))})";
-                return new CheckConstraint($"{table}_{CSharpNaming.Column(refs[0].Field, strategy)}_exactlyone_chk", $"{count} = 1");
+                    ? $"({string.Join(" + ", refs.Select(r => $"({r!.Value.Qcol} IS NOT NULL)"))})"
+                    : $"num_nonnulls({string.Join(", ", refs.Select(r => r!.Value.Qcol))})";
+                return new CheckConstraint($"{table}_{CSharpNaming.Column(refs[0]!.Value.Field, strategy)}_exactlyone_chk", $"{count} = 1");
             }
             default:
                 return null;
@@ -215,9 +397,22 @@ public static class CheckConstraints
     /// A cross-field validator's <c>@condition</c>: the rule applies only when it holds, so the
     /// CHECK is the negated condition OR the rule.
     /// </summary>
-    private static CheckConstraint WithCondition(CheckConstraint check, MetaValidator v, MetaObject entity, ColumnNamingStrategy strategy, string? dialect)
+    private static CheckConstraint WithCondition(
+        CheckConstraint check, MetaValidator v, MetaObject entity, ColumnNamingStrategy strategy, string? dialect,
+        IReadOnlyDictionary<string, object?>? guard = null)
     {
-        if (v.Attr(VALIDATOR_ATTR_CONDITION) is not IReadOnlyDictionary<string, object?> condition) return check;
+        var own = v.Attr(VALIDATOR_ATTR_CONDITION) as IReadOnlyDictionary<string, object?>;
+        // A TPH subtype's validator holds only where its discriminator guard does (SubtypeCrossFieldChecks).
+        var condition = guard is null
+            ? own
+            : own is null ? guard : new Dictionary<string, object?> { [KeyOp] = FILTER_COMPOSE_AND, [KeyArgs] = new List<object?> { guard, own } };
+        return condition is null ? check : Wrap(check, condition, entity, strategy, dialect);
+    }
+
+    /// <summary>The CHECK holds only where <paramref name="condition"/> does: the negated condition OR the rule.</summary>
+    private static CheckConstraint Wrap(
+        CheckConstraint check, IReadOnlyDictionary<string, object?> condition, MetaObject entity, ColumnNamingStrategy strategy, string? dialect)
+    {
         string? Column(string name) =>
             entity.Fields().FirstOrDefault(f => f.Name == name) is { } f ? Quote(CSharpNaming.Column(f, strategy)) : null;
         // An int-backed enum stores a member as its integer; a duration in the form its column stores.
@@ -225,9 +420,12 @@ public static class CheckConstraints
         {
             var field = entity.Fields().FirstOrDefault(f => f.Name == name);
             if (field?.SubType == FIELD_SUBTYPE_DURATION) return DurationLiteral(field, value, dialect, "@condition");
-            return field?.Attr(FIELD_ATTR_INT_VALUE_MAP) is IReadOnlyDictionary<string, object?> ints
-                   && value is string s && ints.TryGetValue(s, out var n) && n is not null && IsNumber(n)
-                ? Number(n)
+            if (field?.Attr(FIELD_ATTR_INT_VALUE_MAP) is IReadOnlyDictionary<string, object?> ints
+                && value is string s && ints.TryGetValue(s, out var n) && n is not null && IsNumber(n))
+                return Number(n);
+            // rc.21: a member compared with a @stringValueMap enum is its stored string.
+            return field is not null && value is string member && EnumStorage.StringValueMapOf(field) is not null
+                ? Literal(EnumStorage.StoredValue(field, member))
                 : null;
         }
         var unless = Render(Negate(condition), Column, dialect, Stored);
@@ -262,7 +460,8 @@ public static class CheckConstraints
         var numeric = when.SubType is FIELD_SUBTYPE_INT or FIELD_SUBTYPE_LONG or FIELD_SUBTYPE_DOUBLE
             or FIELD_SUBTYPE_FLOAT or FIELD_SUBTYPE_DECIMAL or FIELD_SUBTYPE_CURRENCY;
         if (numeric && Regex.IsMatch(s, @"^-?\d+(\.\d+)?$")) return s;
-        return Literal(s);
+        // rc.21: a member of a @stringValueMap enum is compared as its stored string.
+        return Literal(when.SubType == FIELD_SUBTYPE_ENUM ? EnumStorage.StoredValue(when, s) : s);
     }
 
     // ---- field.duration literals (typescript metadata duration-wire.ts) ----

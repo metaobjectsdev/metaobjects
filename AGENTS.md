@@ -22,7 +22,7 @@ The first four ship per-language today across the five ports (TS / C# / Java / P
 
 ## Status
 
-_Last refreshed 2026-10-30._
+_Last refreshed 2026-11-17._
 
 **1.0 gating — the quiet period is RETIRED (2026-09-06).** `docs/1.0-readiness.md` §G3 no
 longer asks for "one coordinated release with no metamodel-breaking change." It measured a
@@ -39,14 +39,16 @@ because a conformance corpus gates the ports against each other and never agains
 in ADR-0035 **Amendment 3**. Do not reintroduce a waiting gate in any form.
 
 
-**Where the versions are.** `latest` is **`1.2.0`** on npm, **`8.2.0`** on Maven Central,
-**`1.2.0`** on PyPI and **`1.2.0`** on NuGet (the Maven major is always **npm major + 7**, so
-1.2.0 is 8.2.0). **1.1.0, 1.1.1, 1.1.2, 1.1.3, 1.1.4 and 1.2.0 are released.** 1.0.13 is the last 1.0.x release; the four registries moved together on 1.0.13, 1.0.12, 1.0.11, 1.0.10 and 1.0.9 (Maven skipped 8.0.8), and earlier Maven alone took 1.0.6 (8.0.6) while the other three skipped that
+**Where the versions are.** `latest` is **`1.2.3`** on npm, **`8.2.3`** on Maven Central,
+**`1.2.3`** on PyPI and **`1.2.3`** on NuGet (the Maven major is always **npm major + 7**, so
+1.2.3 is 8.2.3). **1.1.0 through 1.2.0, 1.2.1 (Python only), 1.2.2 and 1.2.3 are released.**
+`CHANGELOG.md` carries a dated **[1.3.0]** section, but no registry has published it yet (the
+npm publish prep is still open); and the 1.2.x line has `1.2.4-rc.N` candidates cut. 1.0.13 is the last 1.0.x release; the four registries moved together on 1.0.13, 1.0.12, 1.0.11, 1.0.10 and 1.0.9 (Maven skipped 8.0.8), and earlier Maven alone took 1.0.6 (8.0.6) while the other three skipped that
 number. Both patterns are the convergent-publishing rule working as intended. **1.0 is CUT** and **1.1 is released**: the 1.0.0-rc candidates through 1.0.13 are superseded, and npm's `next` tag is REPOINTED onto each release — not deleted, because
 `dist-tag rm` 403s for every token we hold (`docs/RELEASING.md` §4).
 `metamodelVersion` read **`1.0`** through 1.0.13 — C4 landed and G4 shipped it, and no 1.0.x patch
 moved it (1.0.4 relaxed `@sourceRefField` onto `@cardinality: one` with a prose-only
-manifest footprint, and was ruled a hold). `metamodelVersion` read **`1.1`** from 1.1.0 through 1.1.3 for the FR-044 reporting vocabulary and the requirements slice 1 (the first slice of two, covering existence gates and per-entity coverage). **It reads `1.2` from 1.1.4** for calendar-aligned relative report windows (`startOf` on a relative date). Per-release detail lives in **`CHANGELOG.md`** — it is the log, and this file does
+manifest footprint, and was ruled a hold). `metamodelVersion` read **`1.1`** from 1.1.0 through 1.1.3 for the FR-044 reporting vocabulary and the requirements slice 1 (the first slice of two, covering existence gates and per-entity coverage). **It reads `1.2` from 1.1.4** through every published release since, for calendar-aligned relative report windows (`startOf` on a relative date). The merged tree claims **`1.3`** (`METAMODEL_VERSION` in every port) — main's 1.3.0 and the line's 1.2.4 both carry it, and neither is published. Per-release detail lives in **`CHANGELOG.md`** — it is the log, and this file does
 not duplicate it.
 
 The npm surface is **14 `@metaobjectsdev/*` packages in full lockstep**; the two `angular`
@@ -56,10 +58,11 @@ bar.
 
 **A lagging version number is INFORMATION, not drift.** Since `0.24.5` a registry publishes
 only when it has a changed product file, and when it does it adopts the shared `minor.patch`
-then current, skipping the numbers it sat out (ADR-0035 Amendment 1, operative table in
-`docs/RELEASING.md`). Two carve-outs: the 14 npm packages move atomically with each other, and
-a change to `expected-registry.json` / `metamodelVersion` still forces all four, because that
-is the contract every port byte-matches. So PyPI at `0.25.0` while npm is at `0.25.2` says
+then current, skipping the numbers it sat out (operative table in `docs/RELEASING.md`;
+the level vocabulary takes is ADR-0035 Amendment 5's feature test). Two carve-outs: the 14
+npm packages move atomically with each other, and a change to `expected-registry.json` /
+`metamodelVersion` still forces all four, at any release level, because that is the contract
+every port byte-matches. So PyPI at `0.25.0` while npm is at `0.25.2` says
 PyPI has had no product change since `0.25.0` — nothing is broken.
 
 **All five ports ship loader + canonical serializer + conformance + codegen + render + payload-VO + `verify`:**
@@ -71,7 +74,7 @@ PyPI has had no product change since `0.25.0` — nothing is broken.
 - **Kotlin** — `codegen-kotlin` (KotlinPoet on JVM): entity + Exposed table + Spring controller + payload + relations + filter allowlist + validator + stored-proc + output-parser generators. `integration-tests-kotlin` runs the persistence-conformance corpus through Exposed against Testcontainers Postgres.
 
 **Cross-port conformance corpora** (every port runs the shared corpus):
-- Metamodel: `fixtures/conformance/` (558 fixtures; 41 shared corpora in total — per-corpus counts + the corpus x port matrix live in `docs/CONFORMANCE.md`). TS / C# / Java / Python all green.
+- Metamodel: `fixtures/conformance/` (574 fixtures; 43 shared corpora in total — per-corpus counts + the corpus x port matrix live in `docs/CONFORMANCE.md`). TS / C# / Java / Python all green.
 - Render: `fixtures/render-conformance/`. TS / C# / Java / Kotlin / Python byte-identical.
 - Persistence: `fixtures/persistence-conformance/`. **Query** scenarios run on every port (TS / C# / Java / Kotlin / Python), each provisioning its test DB by executing the committed, TS-produced `canonical/schema.postgres.sql` (Postgres only — Derby dropped for the cross-port query corpus, ADR-0015; the FR-044 `report-*` scenarios also run on SQLite, MySQL and D1 where a port has the engine, see [docs/CONFORMANCE.md](docs/CONFORMANCE.md)). The **migration** scenarios are exercised by **TS only** (TS owns schema migrations). **The corpus now gates WRITES, not just reads (SP-H):** an `op: roundtrip` scenario type INSERTs through each port's runtime/ORM write codec (NOT raw SQL), reads the row back, and asserts the wire-normalized value. The `AllTypes` entity (`roundtrip-all-types.yaml`) carries one field of **every** persistable `field.*` subtype — string/int/long/double/float/decimal/boolean/date/time/timestamp(+tz)/currency/enum/uuid/object — plus an **array-of-VO** `field.object @isArray @storage:jsonb` column (`labels`, written as 2-element / empty-`[]` / single-element arrays across the three rows) — so every subtype write+read (incl. the array-of-value-object jsonb codec) round-trips through every port against Testcontainers PG. (`field.byte`/`field.short`/`field.class` were cut as non-functional registration-only stubs — the matrix tracks only genuinely-supported subtypes; see `fixtures/registry-conformance/README.md` → "Per-subtype write-round-trip matrix".)
 - API-contract: `fixtures/api-contract-conformance/`. TS / C# / Java / Kotlin / Python all green — each port runs **two lanes**: a hand-rolled reference server AND its **generated** API artifact booted over HTTP (the deployed controller/routes; TS+C# full-stack vs Testcontainers PG, Java/Kotlin/Python generated controller + in-memory repo behind the consumer seam). The generated fan-out found 10 real deployment bugs golden snapshots missed. Three sub-corpora run the **generated lane only, on all five ports** — `write-through/`, `projection/` (F22: a view-only `object.projection` serves GET list + GET by id and answers every write verb with `405 {"error": "method_not_allowed"}`) and `report/` (FR-044: a view-backed `object.report` serves GET list, answers `POST` with that same `405`, and mounts no `/{id}` route). That is deliberate, not a gap: what is under test is whether a port's GENERATOR emits those routes, and a hand-rolled reference server would answer every scenario by construction. The `m2m/` sub-corpus also gates **TPH x M:N together** (base-declared, subtype-declared, abstract-mid-declared, a non-subtype source onto a subtype TARGET, and the cross-subtype source id answering `200 []`) — the two corpora were originally built disjoint (`tph/` had no relationships, `m2m/` no discriminators), which is precisely how that defect class survived.
@@ -80,7 +83,7 @@ PyPI has had no product change since `0.25.0` — nothing is broken.
 
 **Key cross-language features shipped:** FR5 family (a/b/c/d/e + WARN envelope-shape — actionable loader errors per ADR-0009); FR-003 (Java RDB runtime persistence + projections; schema migrations are TS-only — the Java migration engine was removed); FR-006 (template.output parser-on-receipt codegen per ADR-0010 in all 5 ports); FR-008 + FR-009 (cross-port REST API contract + the nine filter operators); FR-018 (M:N relationship codegen in all 5 ports — entity navigation + idiomatic ORM wiring [Drizzle m2m / EF Core `UsingEntity` / Spring repo+JPA / Exposed / Pydantic+route as the SQLAlchemy-secondary equivalent] + REST traversal `GET /<source-plural>/{id}/<relation>` + Tier-2 docs, gated by the shared api-contract m2m corpus in both lanes + persistence-conformance; the TanStack M:N client hook is a deferred client-ergonomics follow-up); SP-H (field-subtype end-to-end hardening: every concrete `field.*` subtype write+read round-trips cross-port via the persistence `op: roundtrip` gate; cut `field.byte`/`field.short`/`field.class` non-functional stubs; cross-port filter-op reconciliation for uuid/currency); source v2 paradigm (ADR-0007); metadata-ktx Kotlin facade; per-target output directories (TS codegen); FR-044 (the reporting vocabulary — `dimension.attribute`/`dimension.time`, `measure.aggregate`/`measure.ratio`, `segment.filter`, `object.report`, `@spine` on a report to take rows from a to-one dimension entity, `@default` on a measure for empty aggregates, plus the relative-date filter value — registered and loader-validated in all five ports; a report that declares a read-only `source.rdb @kind: view` is lowered to a SQL view by `meta migrate` and read by every port, and served by a generated read-only list route in every port, gated by the api-contract `report/` sub-corpus; the TypeScript `cube-model` reference generator writes the vocabulary as Cube data-model files, gated by the `fixtures/cube-model/` corpus and a `cube` lane that loads the output into a real Cube; a served report gets the generated TanStack list hook (`use<plural of R>`, or `use<R>List` when the plural is the name) but no grid or form, see [docs/features/reporting.md](docs/features/reporting.md) and [docs/features/cube-export.md](docs/features/cube-export.md)).
 
-**Release 1.1.0** (released; npm `1.1.0`, PyPI `1.1.0`, NuGet `1.1.0` and Maven Central `8.1.0`; the latest is 1.2.0 / 8.2.0). The reporting release (FR-044): declare dimensions, measures, segments and an `object.report`, and get a SQL view, a served read-only list route in every port, a generated TanStack list hook, and a Cube data model, with `@spine` for rows that have no facts and `@default` for an empty measure. Also carries the first slice of requirements (the gate in every port's `verify`), the derived-key parity fix across the ports, and the list-hook and nested-average fixes found by the first adopter. See the `CHANGELOG.md` 1.1.0 section for the full scope, pre-release RC history, and the diffs to expect when you upgrade (ejected generators and keyless projections). It also makes documentation a set of generators in every port (ADR-0034 Amendment 9): the docs commands are removed, and `docs/features/migrations/docs-are-generators.md` is the upgrade path. The last 1.0.x release, 1.0.13 (2026-10-03), was a PATCH on 1.0.x.
+**Release 1.1.0** (released; npm `1.1.0`, PyPI `1.1.0`, NuGet `1.1.0` and Maven Central `8.1.0`; the latest is 1.2.3 / 8.2.3). The reporting release (FR-044): declare dimensions, measures, segments and an `object.report`, and get a SQL view, a served read-only list route in every port, a generated TanStack list hook, and a Cube data model, with `@spine` for rows that have no facts and `@default` for an empty measure. Also carries the first slice of requirements (the gate in every port's `verify`), the derived-key parity fix across the ports, and the list-hook and nested-average fixes found by the first adopter. See the `CHANGELOG.md` 1.1.0 section for the full scope, pre-release RC history, and the diffs to expect when you upgrade (ejected generators and keyless projections). It also makes documentation a set of generators in every port (ADR-0034 Amendment 9): the docs commands are removed, and `docs/features/migrations/docs-are-generators.md` is the upgrade path. The last 1.0.x release, 1.0.13 (2026-10-03), was a PATCH on 1.0.x.
 
 Active and planned work lives in GitHub: issues labelled `FR`, milestones for releases, and the MetaObjects Roadmap project board. `spec/roadmap.md` keeps the release direction and the FR → issue → spec index. Process: `docs/ROADMAP-PROCESS.md`.
 
@@ -99,7 +102,7 @@ git config core.hooksPath .githooks
 git config hooks.denyListPath /path/to/your/private/denylist.txt
 ```
 
-It blocks commits whose added lines match (`git commit --no-verify` bypasses, discouraged); the npm author email is the one allowed exception. Guard a new private name by editing that private denylist (single source of truth) — never add real names to this public repo or the committed hook.
+It blocks commits whose added lines match (`git commit --no-verify` bypasses, discouraged); the maintainer's email is the one allowed exception (it was the npm author field — no manifest has carried it since 1.3.0, whose author is "MetaObjects contributors"). Guard a new private name by editing that private denylist (single source of truth) — never add real names to this public repo or the committed hook.
 
 **Pre-push typecheck gate** (`.githooks/pre-push`, same `core.hooksPath`): `bun test`
 transpiles per-file and does NOT typecheck, so type-broken code can ship green on the
@@ -129,7 +132,8 @@ adds the C#/Java/Kotlin/Python conformance lanes, the Java reactor and `integrat
 Testcontainers matrix. Run `--quick` before opening a PR and the full script before a tag;
 `MO_CI_LIST_ONLY=1 scripts/ci-local.sh [flags]` prints what a selection would run without
 running it. The no-mistakes validation gate runs the script for you — see `.no-mistakes.yaml`,
-whose `lint` and `test` commands partition `--quick` between the two steps. That file is read
+whose `test` command runs `--affected` (only the lanes the change touches, per
+`scripts/ci-lane-map.txt`) and whose `lint` command runs `--only gates`. That file is read
 from the **default branch**, so it does nothing until it is merged to `main`.
 
 **`leak-scan` is hosted again.** `main`'s protection requires that one status, and `hygiene.yml`
@@ -165,7 +169,7 @@ metaobjects/
 ├── fixtures/conformance/          # cross-language test fixtures
 │
 ├── server/                        # runs on a server
-│   ├── typescript/   java/   python/   csharp/
+│   ├── typescript/   java/   python/   csharp/   rust/ (preview, ADR-0065)
 │
 └── client/                        # runs on an end-user device
     ├── web/                       # browser (TS-only — the browser is TS-native)
@@ -379,7 +383,7 @@ it is correct because the conformance corpus passes.
 
 🔗 Full vocabulary tables, the retired pre-v2 subtypes, and the per-contract traps:
 [.claude/rules/cross-language-porting.md](.claude/rules/cross-language-porting.md) (auto-loads on
-`server/{csharp,java,python,typescript}/**`, `client/web/**`, `spec/**`, `fixtures/**conformance**/**`,
+`server/{csharp,java,python,rust,typescript}/**`, `client/web/**`, `spec/**`, `fixtures/**conformance**/**`,
 `docs/ports/**`). Per-language notes live in [docs/ports/](docs/ports/).
 
 ## Design judgment (durable principles)
@@ -499,3 +503,27 @@ inverse of metadata-is-the-spine. *OMDB engine debt* — FR-003 Plan 4 closed th
 anti-patterns; the Spring Boot 3 starter and OMDB autoconfiguration shipped. *WARN
 envelope-shape on `expected-warnings.json`* — every runner asserts it; the legacy string-list
 path is retired.
+
+## Disk I/O: keep throwaway data off the drives
+
+Test databases, sandboxes and temp files must not wear out the developer's drives.
+
+- **Throwaway data goes in RAM.** Put scratch files, mutation-testing sandboxes (Stryker
+`tempDirName`) and test-only temp directories under `$DEV_SCRATCH` (fall back to the system temp
+directory when it is unset). Delete what you create when the run ends.
+- **Test databases run on a capped tmpfs at the image's `VOLUME` path** (`postgres:18*`:
+`/var/lib/postgresql`; `postgres:16/17` and `pgvector:*-pg17`: `/var/lib/postgresql/data`;
+`mysql:8*`: `/var/lib/mysql`; check others with `docker image inspect -f '{{json .Config.Volumes}}'`),
+`size=2g`, with Postgres durability off: `-c fsync=off -c synchronous_commit=off -c full_page_writes=off`.
+- **Every container you start, you remove.** Use `docker run --rm`, Testcontainers with Ryuk enabled,
+or explicit teardown in a `finally`/`trap`. Never leave a hand-started database running after your
+task. A database you mean to keep gets the label `dev.keep=true`.
+- **Generators and tools never rewrite a file whose bytes did not change**, write any manifest once per
+run (not once per file), and verify drift in memory rather than by rendering everything to a temp
+directory.
+- **Run the narrowest tests that prove the change** while iterating (one module, the affected test
+classes); run the full suite once, before the PR.
+- **No background processes outlive the task.** Kill test watchers, dev servers and sandboxes you
+started before you finish.
+
+Project specifics: test databases start in the TypeScript `integration-tests` package (`src/postgres-container.ts`, `src/mysql-container.ts`, `src/cube-container.ts`, sharing `src/throwaway.ts`), the Python `tests/integration/` launchers (`postgres_container.py`, `mysql_container.py`, `throwaway.py`), the C# `MetaObjects.IntegrationTests/Runner/PostgresContainer.cs`, the Java and Kotlin Testcontainers `PostgresContainer` classes under `server/java/integration-tests*`, and the services and sidecars in `.github/workflows/integration-tests.yml` and `local-ci.yml`.

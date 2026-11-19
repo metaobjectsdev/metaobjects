@@ -20,7 +20,7 @@ import com.metaobjects.registry.MetaDataTypeProvider;
 import com.metaobjects.transition.ActionTransition;
 
 /**
- * Business-rules Types MetaData provider (ADR-0030, ADR-0063): the declared API surface
+ * Business-rules Types MetaData provider (ADR-0030, ADR-0066): the declared API surface
  * ({@code api.*}, {@code operation.*}, {@code binding.*}) and lifecycle moves
  * ({@code transition.*}, a child of {@code field.enum}). The cross-node rules live in
  * {@code loader/RulesValidation}.
@@ -47,6 +47,6 @@ public class RulesTypesMetaDataProvider implements MetaDataTypeProvider {
 
     @Override
     public String getDescription() {
-        return "Business-rules Types (api, operation, binding, transition) — ADR-0063";
+        return "Business-rules Types (api, operation, binding, transition) — ADR-0066";
     }
 }

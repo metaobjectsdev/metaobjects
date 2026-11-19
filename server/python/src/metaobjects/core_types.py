@@ -10,6 +10,7 @@ from .meta.core.attr.attr_constants import (
     ATTR_SUBTYPE_FILTER,
     ATTR_SUBTYPE_INT,
     ATTR_SUBTYPE_INT_MAP,
+    ATTR_SUBTYPE_PROPERTIES,
     ATTR_SUBTYPE_STRING,
     ATTR_SUBTYPES,
 )
@@ -21,6 +22,7 @@ from .meta.core.field.field_constants import (
     FIELD_ATTR_CURRENCY,
     FIELD_ATTR_DEFAULT,
     FIELD_ATTR_INT_VALUE_MAP,
+    FIELD_ATTR_STRING_VALUE_MAP,
     FIELD_ATTR_PROVIDED,
     FIELD_ATTR_MAX_LENGTH,
     FIELD_ATTR_OBJECT_REF,
@@ -287,7 +289,7 @@ core_provider.add(
         factory=MetaRoot,
         description="Root metadata document",
         child_rules=[
-            # ADR-0030 / ADR-0063 — a declared API surface is a top-level, packaged node.
+            # ADR-0030 / ADR-0066 — a declared API surface is a top-level, packaged node.
             ChildRule(TYPE_API, "*"),
             ChildRule(TYPE_FIELD, "*"),
             ChildRule(TYPE_OBJECT, "*"),
@@ -380,6 +382,14 @@ for _def in core_provider._defs:  # noqa: SLF001 (provider build-time enrichment
                 required=False,
             )
         )
+        # rc.21 part B: @union / @unionAll (U15), @grain / @grainOrdinal (U14). Registered so a
+        # strict load accepts them; the shape rules run in TypeScript and C# (see CHANGELOG).
+        _def.attrs.extend([
+            AttrSchema(name="union", value_type=ATTR_SUBTYPE_STRING, required=False, is_array=True),
+            AttrSchema(name="unionAll", value_type="boolean", required=False),
+            AttrSchema(name="grain", value_type=ATTR_SUBTYPE_STRING, required=False),
+            AttrSchema(name="grainOrdinal", value_type=ATTR_SUBTYPE_STRING, required=False),
+        ])
         break
 
 # FR-044 — object.report: declared dimensions x measures of ONE entity (@from),
@@ -523,7 +533,7 @@ core_provider.add(
     )
 )
 
-# ADR-0030 / ADR-0063 — the declared API surface (api / operation / binding) and the
+# ADR-0030 / ADR-0066 — the declared API surface (api / operation / binding) and the
 # lifecycle moves of a field.enum (transition). Attr scoping is per-subtype exactly as
 # spec/metamodel/api.json and transition.json declare it; the cross-node rules live in
 # loader/validate_rules.py. Mirrors TS core-types.ts.
@@ -808,13 +818,22 @@ core_provider.add(
                 value_type=ATTR_SUBTYPE_INT_MAP,
                 required=False,
             ),
+            # rc.21 — @stringValueMap: optional per-member stored strings ({member: str}) of a
+            # string-stored enum (the string twin of @intValueMap). Content rules in
+            # _validate_enum_values (Rule 5). The ObjectManager writes and reads through it
+            # (see object_manager.py: _coerce_write_value, _decode_read_value).
+            AttrSchema(
+                name=FIELD_ATTR_STRING_VALUE_MAP,
+                value_type=ATTR_SUBTYPE_PROPERTIES,
+                required=False,
+            ),
             # FR-033 — the field.enum tolerant-extract overlays (@enumAlias / @enumDoc /
             # @coerceDefault / @normalize) are NO LONGER declared here; they are re-homed
             # to the prompt domain provider (`prompt_provider`, metaobjects-prompt) via
             # TypeRegistry.extend, matching the TS promptProvider split. @values + @provided
             # stay in core (they are core field.enum properties, declared in field.json).
         ],
-        # ADR-0063: a field.enum may carry lifecycle moves.
+        # ADR-0066: a field.enum may carry lifecycle moves.
         child_rules=[*_FIELD_CHILD_RULES, ChildRule(TYPE_TRANSITION, "*")],
     )
 )
@@ -1194,6 +1213,24 @@ core_provider.add(
             AttrSchema(name=ORIGIN_ATTR_ORDER_BY, value_type=ATTR_SUBTYPE_STRING, required=True, is_array=True),
             AttrSchema(name=ORIGIN_ATTR_FILTER, value_type=ATTR_SUBTYPE_FILTER, required=False),
             AttrSchema(name=ORIGIN_ATTR_SEGMENT, value_type=ATTR_SUBTYPE_STRING, required=False),
+        ],
+        child_rules=[ChildRule(TYPE_ATTR, "*")],
+    )
+)
+
+# origin.function (rc.21 part B, U10) — a call of a database function the project owns:
+# @function required, @schema and @args optional. Registered so a strict load accepts it.
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_ORIGIN,
+        sub_type="function",
+        factory=MetaOrigin,
+        attrs=[
+            AttrSchema(name="function", value_type=ATTR_SUBTYPE_STRING, required=True),
+            AttrSchema(name="schema", value_type=ATTR_SUBTYPE_STRING, required=False),
+            AttrSchema(name="args", value_type=ATTR_SUBTYPE_STRING, required=False, is_array=True),
+            AttrSchema(name="params", value_type=ATTR_SUBTYPE_STRING, required=False, is_array=True),
+            AttrSchema(name="returns", value_type=ATTR_SUBTYPE_STRING, required=True),
         ],
         child_rules=[ChildRule(TYPE_ATTR, "*")],
     )

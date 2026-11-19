@@ -37,10 +37,16 @@ internal static class SuperResolve
     {
         // ADR-0039: OwnChildren — super-resolution reads the PHYSICAL declaration layer; the
         // root has no super, so its own children are its children.
-        foreach (MetaData child in root.OwnChildren())
-            if (child.Name != "" && child.ResolutionKey() == key) return child;
-        return null;
+        return TopLevelIndex.FindByKey(root, TopLevelByKeyView, key, () =>
+        {
+            foreach (MetaData child in root.OwnChildren())
+                if (child.Name != "" && child.ResolutionKey() == key) return child;
+            return null;
+        });
     }
+
+    private static readonly TopLevelView TopLevelByKeyView =
+        new("super-top-level", static c => c.Name != "", static c => c.ResolutionKey());
 
     // -----------------------------------------------------------------------
     // Reference parsing & resolution
@@ -231,7 +237,8 @@ internal static class SuperResolve
         MetaData? Node = null,
         SuperFailureKind Kind = SuperFailureKind.Unresolved,
         TypeIdentity? Target = null,
-        TypeIdentity? Referrer = null);
+        TypeIdentity? Referrer = null,
+        string? MemberHint = null);
 
     /// <summary>
     /// Resolve every node's SuperRef against the full root, collecting unresolved
@@ -350,8 +357,38 @@ internal static class SuperResolve
             }
             else
             {
-                failures.Add(new DeferredSuperFailure(node.Fqn(), node.SuperRef, node));
+                failures.Add(new DeferredSuperFailure(node.Fqn(), node.SuperRef, node,
+                    MemberHint: DottedMemberHint(node, effectivePkg)));
             }
+        }
+
+        // rc.21 (U1): a dotted ref whose OWNER resolves but whose member does not names the
+        // owner's members of the referrer's type, inherited ones included — the usual cause is an
+        // identity spelled by its field (`Owner.id`) where the identity is named otherwise (an
+        // unnamed identity.primary is "primary"). Without it the only hint was the same-named
+        // object's FQN, which is wrong advice when the owner was found.
+        string? DottedMemberHint(MetaData node, string pkg)
+        {
+            if (!IsChildTargetingRef(node.SuperRef!) || ParseChildTargetingRef(node.SuperRef!) is not { } parsed) return null;
+            if (TryResolve(parsed.OwnerRef, pkg) is not MetaData current) return null;
+            foreach (var seg in parsed.Path[..^1])
+            {
+                var matches = current.Children().Where(c => c.Name == seg).ToList();
+                if (matches.Count != 1) return null;
+                current = matches[0];
+            }
+            var last = parsed.Path[^1];
+            // ADR-0039: resolving — an inherited member is a legal target.
+            var candidates = current.Children().Where(c => c.Type == node.Type).ToList();
+            var owner = current is MetaObject ? current.ResolutionKey() : current.Fqn();
+            var listed = candidates.Count == 0
+                ? $"it has no {node.Type} children"
+                : $"its {node.Type} children are: {string.Join(", ", candidates.Select(c => $"\"{c.Name}\" ({c.Type}.{c.SubType})"))}";
+            // The default name of an unnamed identity.primary is its subtype (the registry's defaultName).
+            var unnamed = node.Type == BaseTypes.TYPE_IDENTITY && candidates.Any(c => c.Name == IdentityConstants.IDENTITY_SUBTYPE_PRIMARY)
+                ? $" An {BaseTypes.TYPE_IDENTITY}.{IdentityConstants.IDENTITY_SUBTYPE_PRIMARY} declared without a name is named \"{IdentityConstants.IDENTITY_SUBTYPE_PRIMARY}\"."
+                : "";
+            return $" '{owner}' has no {node.Type} named \"{last}\"; {listed}.{unnamed}";
         }
 
         foreach (var node in pending) ResolveNode(node);

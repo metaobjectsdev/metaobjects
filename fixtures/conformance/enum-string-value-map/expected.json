@@ -1,0 +1,59 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Article",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.enum": {
+                "name": "status",
+                "@default": "Draft",
+                "@stringValueMap": {
+                  "Draft": "draft",
+                  "Published": "published",
+                  "Retracted": "retracted"
+                },
+                "@values": [
+                  "Draft",
+                  "Published",
+                  "Retracted"
+                ]
+              }
+            },
+            {
+              "field.enum": {
+                "name": "channel",
+                "@maxLength": 16,
+                "@stringValueMap": {
+                  "Email": "EMAIL_V1",
+                  "None": "None",
+                  "TextMessage": "SMS_LEGACY"
+                },
+                "@values": [
+                  "None",
+                  "Email",
+                  "TextMessage"
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

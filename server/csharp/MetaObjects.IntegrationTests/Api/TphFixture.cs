@@ -1,8 +1,8 @@
 // TphFixture — shared schema-provisioning + seed for the FR-017 TPH api-contract
 // lanes (reference + generated). One physical `auths` table holds every subtype;
-// subtype-only columns (quantity / copayAmount / approver) are nullable. The DDL
+// subtype-only columns (quantity / couponAmount / approver) are nullable. The DDL
 // mirrors fixtures/persistence-conformance/canonical/schema.postgres.sql's `auths`
-// table (literal column naming — `copayAmount` stays camelCase under the C# literal
+// table (literal column naming — `couponAmount` stays camelCase under the C# literal
 // strategy). The seed is tph/seed.json (rows keyed under the `auths` table name).
 
 using System.Globalization;
@@ -32,7 +32,7 @@ internal static class TphFixture
           "type" TEXT,
           "reference" VARCHAR(80) NOT NULL,
           "quantity" INTEGER,
-          "copayAmount" NUMERIC(10,2),
+          "couponAmount" NUMERIC(10,2),
           "approver" VARCHAR(80),
           -- FR-037 R1: the @mutability "writeOnce" column, declared on the TPH BASE so
           -- every subtype inherits it.
@@ -40,20 +40,20 @@ internal static class TphFixture
           "autoCreatedAt" TIMESTAMPTZ,
           "autoUpdatedAt" TIMESTAMPTZ,
           CONSTRAINT "auths_pkey" PRIMARY KEY ("id"),
-          CONSTRAINT "auths_type_chk" CHECK (type IN ('Bridge', 'Copay', 'PriorAuth'))
+          CONSTRAINT "auths_type_chk" CHECK (type IN ('Bridge', 'Coupon', 'Permit'))
         );
         """;
 
     private static readonly string[] Cols =
-        { "id", "type", "reference", "quantity", "copayAmount", "approver", "issuedCurrency", "autoCreatedAt", "autoUpdatedAt" };
+        { "id", "type", "reference", "quantity", "couponAmount", "approver", "issuedCurrency", "autoCreatedAt", "autoUpdatedAt" };
 
     /// <summary>Create the single `auths` table on a fresh container.</summary>
-    public static async Task ProvisionSchemaAsync(string connString)
+    public static async Task ProvisionSchemaAsync(string connString, string? extraDdl = null)
     {
         await using var c = new NpgsqlConnection(connString);
         await c.OpenAsync();
         await using var cmd = c.CreateCommand();
-        cmd.CommandText = SchemaDdl;
+        cmd.CommandText = SchemaDdl + (extraDdl is null ? "" : "\n" + extraDdl);
         await cmd.ExecuteNonQueryAsync();
     }
 
@@ -93,8 +93,8 @@ internal static class TphFixture
                         : Cols[i] switch
                         {
                             "id" or "quantity" => v.GetValue<long>(),
-                            // copayAmount is authored as a string ("12.50") to preserve scale.
-                            "copayAmount" => decimal.Parse(v.GetValue<string>(), System.Globalization.CultureInfo.InvariantCulture),
+                            // couponAmount is authored as a string ("12.50") to preserve scale.
+                            "couponAmount" => decimal.Parse(v.GetValue<string>(), System.Globalization.CultureInfo.InvariantCulture),
                             // #203 / ADR-0045 — the seed writes the OLD @autoSet sentinel VERBATIM
                             // (a direct insert, NOT a stamping create) so the seeded row keeps the
                             // old value; the offset-less wire form is interpreted as UTC (the

@@ -133,6 +133,33 @@ public abstract class MetaData
     private MetaData? _parent;
     private bool _frozen;
 
+    // Bumped by every change to this node's child list other than an append, and by any change to
+    // a package that feeds a child's resolution key. The top-level index (TopLevelIndex.cs) is valid
+    // only for the epoch it was built at; any NEW way to change the child list or a child's key MUST
+    // bump it. (An append is detected by the child count, so add-then-lookup stays linear.)
+    private int _structureEpoch;
+    private TopLevelIndexes? _topLevelIndexes;
+
+    internal int StructureEpoch => _structureEpoch;
+
+    /// <summary>The number of own children, without copying the list.</summary>
+    internal int OwnChildCount => _children.Count;
+
+    /// <summary>The own child at <paramref name="index"/> (insertion order), without copying the list.</summary>
+    internal MetaData OwnChildAt(int index) => _children[index];
+
+    /// <summary>The (lazily created) holder of this node's top-level indexes; also their lock.</summary>
+    internal TopLevelIndexes GetTopLevelIndexes() =>
+        _topLevelIndexes ?? Interlocked.CompareExchange(ref _topLevelIndexes, new TopLevelIndexes(), null) ?? _topLevelIndexes!;
+
+    /// <summary>A package feeding a resolution key changed: this node's children (whose keys may
+    /// fall through to its package) and its parent's index of it are stale.</summary>
+    private void NoteKeyChange()
+    {
+        _structureEpoch++;
+        if (_parent is not null) _parent._structureEpoch++;
+    }
+
     /// <summary>Registry-supplied coarse value type — set by the registry factory at node construction.</summary>
     private DataType? _dataType;
 
@@ -203,6 +230,11 @@ public abstract class MetaData
         return Name;
     }
 
+    /// <summary>Test seam: called on every <see cref="ResolutionKey"/> so a test can count the work reference
+    /// lookup does (a deterministic stand-in for wall-clock). Per thread, so parallel tests cannot disturb
+    /// each other; null, and so free, in production.</summary>
+    [ThreadStatic] internal static Action? ResolutionKeyProbe;
+
     /// <summary>
     /// The node's package-folded qualified key: <c>&lt;pkg&gt;::&lt;name&gt;</c> where
     /// <c>pkg</c> is this node's own package if set, else the nearest ancestor's
@@ -219,6 +251,7 @@ public abstract class MetaData
     /// </summary>
     public string ResolutionKey()
     {
+        ResolutionKeyProbe?.Invoke();
         // Prefer the node's own package, then the file-default package captured
         // at PARSE time (independent of the post-merge parent chain). Only when
         // neither is present (e.g. programmatic construction) fall back to the
@@ -250,6 +283,7 @@ public abstract class MetaData
     {
         AssertNotFrozen();
         _fileDefaultPackage = pkg;
+        NoteKeyChange();
     }
 
     // ---------------------------------------------------------------------------
@@ -272,6 +306,7 @@ public abstract class MetaData
     {
         AssertNotFrozen();
         _package = pkg;
+        NoteKeyChange();
     }
 
     // ---------------------------------------------------------------------------
@@ -461,6 +496,8 @@ public abstract class MetaData
     public void AddChild(MetaData child)
     {
         AssertNotFrozen();
+        // A child leaving another node's list is not an append there.
+        if (child._parent is not null && !ReferenceEquals(child._parent, this)) child._parent._structureEpoch++;
         child._parent = this;
         _children.Add(child);
     }

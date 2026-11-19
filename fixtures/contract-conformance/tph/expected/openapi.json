@@ -92,8 +92,8 @@
               "type": "string",
               "enum": [
                 "Bridge",
-                "Copay",
-                "PriorAuth"
+                "Coupon",
+                "Permit"
               ]
             }
           },
@@ -104,8 +104,8 @@
               "type": "string",
               "enum": [
                 "Bridge",
-                "Copay",
-                "PriorAuth"
+                "Coupon",
+                "Permit"
               ]
             }
           },
@@ -116,8 +116,8 @@
               "type": "string",
               "enum": [
                 "Bridge",
-                "Copay",
-                "PriorAuth"
+                "Coupon",
+                "Permit"
               ]
             }
           },
@@ -813,11 +813,11 @@
         }
       }
     },
-    "/api/auths/copay": {
+    "/api/auths/coupon": {
       "get": {
-        "operationId": "listCopayAuth",
+        "operationId": "listCouponAuth",
         "tags": [
-          "CopayAuth"
+          "CouponAuth"
         ],
         "parameters": [
           {
@@ -937,7 +937,7 @@
             }
           },
           {
-            "name": "filter[copayAmount]",
+            "name": "filter[couponAmount]",
             "in": "query",
             "description": "Sugar for the eq operator.",
             "schema": {
@@ -946,7 +946,7 @@
             }
           },
           {
-            "name": "filter[copayAmount][eq]",
+            "name": "filter[couponAmount][eq]",
             "in": "query",
             "schema": {
               "type": "string",
@@ -954,7 +954,7 @@
             }
           },
           {
-            "name": "filter[copayAmount][ne]",
+            "name": "filter[couponAmount][ne]",
             "in": "query",
             "schema": {
               "type": "string",
@@ -962,7 +962,7 @@
             }
           },
           {
-            "name": "filter[copayAmount][gt]",
+            "name": "filter[couponAmount][gt]",
             "in": "query",
             "schema": {
               "type": "string",
@@ -970,7 +970,7 @@
             }
           },
           {
-            "name": "filter[copayAmount][gte]",
+            "name": "filter[couponAmount][gte]",
             "in": "query",
             "schema": {
               "type": "string",
@@ -978,7 +978,7 @@
             }
           },
           {
-            "name": "filter[copayAmount][lt]",
+            "name": "filter[couponAmount][lt]",
             "in": "query",
             "schema": {
               "type": "string",
@@ -986,7 +986,7 @@
             }
           },
           {
-            "name": "filter[copayAmount][lte]",
+            "name": "filter[couponAmount][lte]",
             "in": "query",
             "schema": {
               "type": "string",
@@ -994,7 +994,7 @@
             }
           },
           {
-            "name": "filter[copayAmount][in]",
+            "name": "filter[couponAmount][in]",
             "in": "query",
             "schema": {
               "type": "string",
@@ -1002,7 +1002,7 @@
             }
           },
           {
-            "name": "filter[copayAmount][isNull]",
+            "name": "filter[couponAmount][isNull]",
             "in": "query",
             "schema": {
               "type": "boolean"
@@ -1020,9 +1020,9 @@
                 "reference",
                 "reference:asc",
                 "reference:desc",
-                "copayAmount",
-                "copayAmount:asc",
-                "copayAmount:desc"
+                "couponAmount",
+                "couponAmount:asc",
+                "couponAmount:desc"
               ]
             }
           },
@@ -1062,10 +1062,10 @@
                 "schema": {
                   "oneOf": [
                     {
-                      "$ref": "#/components/schemas/CopayAuthList"
+                      "$ref": "#/components/schemas/CouponAuthList"
                     },
                     {
-                      "$ref": "#/components/schemas/CopayAuthPage"
+                      "$ref": "#/components/schemas/CouponAuthPage"
                     }
                   ]
                 }
@@ -1085,16 +1085,16 @@
         }
       },
       "post": {
-        "operationId": "createCopayAuth",
+        "operationId": "createCouponAuth",
         "tags": [
-          "CopayAuth"
+          "CouponAuth"
         ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CopayAuthCreate"
+                "$ref": "#/components/schemas/CouponAuthCreate"
               }
             }
           }
@@ -1105,7 +1105,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CopayAuth"
+                  "$ref": "#/components/schemas/CouponAuth"
                 }
               }
             }
@@ -1133,7 +1133,7 @@
         }
       }
     },
-    "/api/auths/copay/{id}": {
+    "/api/auths/coupon/{id}": {
       "parameters": [
         {
           "name": "id",
@@ -1146,9 +1146,9 @@
         }
       ],
       "get": {
-        "operationId": "getCopayAuth",
+        "operationId": "getCouponAuth",
         "tags": [
-          "CopayAuth"
+          "CouponAuth"
         ],
         "responses": {
           "200": {
@@ -1156,7 +1156,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CopayAuth"
+                  "$ref": "#/components/schemas/CouponAuth"
                 }
               }
             }
@@ -1174,16 +1174,16 @@
         }
       },
       "patch": {
-        "operationId": "updateCopayAuth",
+        "operationId": "updateCouponAuth",
         "tags": [
-          "CopayAuth"
+          "CouponAuth"
         ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CopayAuthUpdate"
+                "$ref": "#/components/schemas/CouponAuthUpdate"
               }
             }
           }
@@ -1194,7 +1194,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CopayAuth"
+                  "$ref": "#/components/schemas/CouponAuth"
                 }
               }
             }
@@ -1232,16 +1232,16 @@
         }
       },
       "put": {
-        "operationId": "putCopayAuth",
+        "operationId": "putCouponAuth",
         "tags": [
-          "CopayAuth"
+          "CouponAuth"
         ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CopayAuthUpdate"
+                "$ref": "#/components/schemas/CouponAuthUpdate"
               }
             }
           }
@@ -1252,7 +1252,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CopayAuth"
+                  "$ref": "#/components/schemas/CouponAuth"
                 }
               }
             }
@@ -1290,9 +1290,9 @@
         }
       },
       "delete": {
-        "operationId": "deleteCopayAuth",
+        "operationId": "deleteCouponAuth",
         "tags": [
-          "CopayAuth"
+          "CouponAuth"
         ],
         "responses": {
           "204": {
@@ -1321,11 +1321,11 @@
         }
       }
     },
-    "/api/auths/priorauth": {
+    "/api/auths/permit": {
       "get": {
-        "operationId": "listPriorAuthAuth",
+        "operationId": "listPermitAuth",
         "tags": [
-          "PriorAuthAuth"
+          "PermitAuth"
         ],
         "parameters": [
           {
@@ -1542,10 +1542,10 @@
                 "schema": {
                   "oneOf": [
                     {
-                      "$ref": "#/components/schemas/PriorAuthAuthList"
+                      "$ref": "#/components/schemas/PermitAuthList"
                     },
                     {
-                      "$ref": "#/components/schemas/PriorAuthAuthPage"
+                      "$ref": "#/components/schemas/PermitAuthPage"
                     }
                   ]
                 }
@@ -1565,16 +1565,16 @@
         }
       },
       "post": {
-        "operationId": "createPriorAuthAuth",
+        "operationId": "createPermitAuth",
         "tags": [
-          "PriorAuthAuth"
+          "PermitAuth"
         ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PriorAuthAuthCreate"
+                "$ref": "#/components/schemas/PermitAuthCreate"
               }
             }
           }
@@ -1585,7 +1585,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PriorAuthAuth"
+                  "$ref": "#/components/schemas/PermitAuth"
                 }
               }
             }
@@ -1613,7 +1613,7 @@
         }
       }
     },
-    "/api/auths/priorauth/{id}": {
+    "/api/auths/permit/{id}": {
       "parameters": [
         {
           "name": "id",
@@ -1626,9 +1626,9 @@
         }
       ],
       "get": {
-        "operationId": "getPriorAuthAuth",
+        "operationId": "getPermitAuth",
         "tags": [
-          "PriorAuthAuth"
+          "PermitAuth"
         ],
         "responses": {
           "200": {
@@ -1636,7 +1636,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PriorAuthAuth"
+                  "$ref": "#/components/schemas/PermitAuth"
                 }
               }
             }
@@ -1654,16 +1654,16 @@
         }
       },
       "patch": {
-        "operationId": "updatePriorAuthAuth",
+        "operationId": "updatePermitAuth",
         "tags": [
-          "PriorAuthAuth"
+          "PermitAuth"
         ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PriorAuthAuthUpdate"
+                "$ref": "#/components/schemas/PermitAuthUpdate"
               }
             }
           }
@@ -1674,7 +1674,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PriorAuthAuth"
+                  "$ref": "#/components/schemas/PermitAuth"
                 }
               }
             }
@@ -1712,16 +1712,16 @@
         }
       },
       "put": {
-        "operationId": "putPriorAuthAuth",
+        "operationId": "putPermitAuth",
         "tags": [
-          "PriorAuthAuth"
+          "PermitAuth"
         ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PriorAuthAuthUpdate"
+                "$ref": "#/components/schemas/PermitAuthUpdate"
               }
             }
           }
@@ -1732,7 +1732,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PriorAuthAuth"
+                  "$ref": "#/components/schemas/PermitAuth"
                 }
               }
             }
@@ -1770,9 +1770,9 @@
         }
       },
       "delete": {
-        "operationId": "deletePriorAuthAuth",
+        "operationId": "deletePermitAuth",
         "tags": [
-          "PriorAuthAuth"
+          "PermitAuth"
         ],
         "responses": {
           "204": {
@@ -1831,18 +1831,18 @@
             "$ref": "#/components/schemas/BridgeAuth"
           },
           {
-            "$ref": "#/components/schemas/CopayAuth"
+            "$ref": "#/components/schemas/CouponAuth"
           },
           {
-            "$ref": "#/components/schemas/PriorAuthAuth"
+            "$ref": "#/components/schemas/PermitAuth"
           }
         ],
         "discriminator": {
           "propertyName": "type",
           "mapping": {
             "Bridge": "#/components/schemas/BridgeAuth",
-            "Copay": "#/components/schemas/CopayAuth",
-            "PriorAuth": "#/components/schemas/PriorAuthAuth"
+            "Coupon": "#/components/schemas/CouponAuth",
+            "Permit": "#/components/schemas/PermitAuth"
           }
         }
       },
@@ -1987,8 +1987,8 @@
           }
         }
       },
-      "CopayAuth": {
-        "title": "CopayAuth",
+      "CouponAuth": {
+        "title": "CouponAuth",
         "type": "object",
         "properties": {
           "id": {
@@ -1996,7 +1996,7 @@
             "format": "int64"
           },
           "type": {
-            "const": "Copay"
+            "const": "Coupon"
           },
           "reference": {
             "type": "string",
@@ -2023,7 +2023,7 @@
             ],
             "format": "date-time"
           },
-          "copayAmount": {
+          "couponAmount": {
             "type": [
               "string",
               "null"
@@ -2038,11 +2038,11 @@
           "issuedCurrency",
           "autoCreatedAt",
           "autoUpdatedAt",
-          "copayAmount"
+          "couponAmount"
         ]
       },
-      "CopayAuthCreate": {
-        "title": "CopayAuthCreate",
+      "CouponAuthCreate": {
+        "title": "CouponAuthCreate",
         "type": "object",
         "properties": {
           "reference": {
@@ -2054,7 +2054,7 @@
             "type": "string",
             "maxLength": 3
           },
-          "copayAmount": {
+          "couponAmount": {
             "type": [
               "string",
               "number"
@@ -2067,15 +2067,15 @@
           "reference"
         ]
       },
-      "CopayAuthList": {
-        "title": "CopayAuthList",
+      "CouponAuthList": {
+        "title": "CouponAuthList",
         "type": "array",
         "items": {
-          "$ref": "#/components/schemas/CopayAuth"
+          "$ref": "#/components/schemas/CouponAuth"
         }
       },
-      "CopayAuthPage": {
-        "title": "CopayAuthPage",
+      "CouponAuthPage": {
+        "title": "CouponAuthPage",
         "type": "object",
         "required": [
           "rows",
@@ -2085,7 +2085,7 @@
           "rows": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/CopayAuth"
+              "$ref": "#/components/schemas/CouponAuth"
             }
           },
           "total": {
@@ -2093,8 +2093,8 @@
           }
         }
       },
-      "CopayAuthUpdate": {
-        "title": "CopayAuthUpdate",
+      "CouponAuthUpdate": {
+        "title": "CouponAuthUpdate",
         "type": "object",
         "properties": {
           "reference": {
@@ -2102,7 +2102,7 @@
             "minLength": 1,
             "maxLength": 80
           },
-          "copayAmount": {
+          "couponAmount": {
             "type": [
               "string",
               "number",
@@ -2113,8 +2113,8 @@
           }
         }
       },
-      "PriorAuthAuth": {
-        "title": "PriorAuthAuth",
+      "PermitAuth": {
+        "title": "PermitAuth",
         "type": "object",
         "properties": {
           "id": {
@@ -2122,7 +2122,7 @@
             "format": "int64"
           },
           "type": {
-            "const": "PriorAuth"
+            "const": "Permit"
           },
           "reference": {
             "type": "string",
@@ -2167,8 +2167,8 @@
           "approver"
         ]
       },
-      "PriorAuthAuthCreate": {
-        "title": "PriorAuthAuthCreate",
+      "PermitAuthCreate": {
+        "title": "PermitAuthCreate",
         "type": "object",
         "properties": {
           "reference": {
@@ -2189,15 +2189,15 @@
           "reference"
         ]
       },
-      "PriorAuthAuthList": {
-        "title": "PriorAuthAuthList",
+      "PermitAuthList": {
+        "title": "PermitAuthList",
         "type": "array",
         "items": {
-          "$ref": "#/components/schemas/PriorAuthAuth"
+          "$ref": "#/components/schemas/PermitAuth"
         }
       },
-      "PriorAuthAuthPage": {
-        "title": "PriorAuthAuthPage",
+      "PermitAuthPage": {
+        "title": "PermitAuthPage",
         "type": "object",
         "required": [
           "rows",
@@ -2207,7 +2207,7 @@
           "rows": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/PriorAuthAuth"
+              "$ref": "#/components/schemas/PermitAuth"
             }
           },
           "total": {
@@ -2215,8 +2215,8 @@
           }
         }
       },
-      "PriorAuthAuthUpdate": {
-        "title": "PriorAuthAuthUpdate",
+      "PermitAuthUpdate": {
+        "title": "PermitAuthUpdate",
         "type": "object",
         "properties": {
           "reference": {

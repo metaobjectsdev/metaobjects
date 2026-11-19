@@ -64,7 +64,7 @@ public class Issue205ValueObjectEnumTests
     public void ValueObject_enum_field_emits_provided_enum_type_not_string()
     {
         var files = new EntityGenerator().Generate(Ctx(Load())).ToList();
-        var vo = Assert.Single(files, f => f.Path == "ContactInfo.g.cs");
+        var vo = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "ContactInfo.g.cs");
         var src = vo.Content;
 
         // The property is typed by the provided enum (resolved via PackageNamespaces),

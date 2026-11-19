@@ -30,18 +30,18 @@
           "children": [
             { "source.rdb": { "@table": "auths" } },
             { "field.long": { "name": "id" } },
-            { "field.enum": { "name": "kind", "@values": ["Copay"] } },
+            { "field.enum": { "name": "kind", "@values": ["Coupon"] } },
             { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "increment" } }
           ]
         }
       },
       {
         "object.entity": {
-          "name": "CopayAuth",
+          "name": "CouponAuth",
           "extends": "Auth",
-          "@discriminatorValue": "Copay",
+          "@discriminatorValue": "Coupon",
           "children": [
-            { "field.long": { "name": "copayAmount", "@column": "copay_cents" } }
+            { "field.long": { "name": "couponAmount", "@column": "coupon_cents" } }
           ]
         }
       }

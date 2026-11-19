@@ -15,6 +15,11 @@
       "bun": "./src/expected.ts",
       "types": "./dist/expected.d.ts",
       "default": "./dist/expected.js"
+    },
+    "./offline": {
+      "bun": "./src/offline.ts",
+      "types": "./dist/offline.d.ts",
+      "default": "./dist/offline.js"
     }
   },
   "files": [
@@ -28,7 +33,7 @@
     "typecheck": "tsc -p tsconfig.typecheck.json"
   },
   "license": "Apache-2.0",
-  "author": "Doug Mealing <doug@dougmealing.com>",
+  "author": "MetaObjects contributors",
   "homepage": "https://metaobjects.dev",
   "bugs": {
     "url": "https://github.com/metaobjectsdev/metaobjects/issues"

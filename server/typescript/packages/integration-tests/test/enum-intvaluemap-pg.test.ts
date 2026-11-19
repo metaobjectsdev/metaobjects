@@ -258,7 +258,7 @@ describe("int-backed field.enum — generated codec against real Postgres", () =
 
     const root = (await new MetaDataLoader().load([new InMemoryStringSource(meta())])).root;
     const lr = await runGen({
-      config: defineConfig({
+      config: defineConfig({ outputLayout: "flat", 
         outDir: tmp,
         extStyle: "none",
         dbImport: "./db",
@@ -476,8 +476,8 @@ describe("int-backed field.enum under TPH — real Postgres", () => {
     "metadata.root": { "package": "demo", "children": [
       { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
         { "source.rdb": { "@table": "auths" } },
-        { "field.enum": { "name": "type", "@values": ["Bridge", "Copay"],
-          "@intValueMap": { "Bridge": 1, "Copay": 2 } } },
+        { "field.enum": { "name": "type", "@values": ["Bridge", "Coupon"],
+          "@intValueMap": { "Bridge": 1, "Coupon": 2 } } },
         { "field.long": { "name": "id" } },
         { "field.string": { "name": "title" } },
         { "field.enum": { "name": "status", "@values": ["OPEN", "SHUT"],
@@ -487,8 +487,8 @@ describe("int-backed field.enum under TPH — real Postgres", () => {
       { "object.entity": { "name": "BridgeAuth", "extends": "demo::Auth",
         "@discriminatorValue": "Bridge", "children": [
         { "field.int": { "name": "quantity" } } ] } },
-      { "object.entity": { "name": "CopayAuth", "extends": "demo::Auth",
-        "@discriminatorValue": "Copay", "children": [
+      { "object.entity": { "name": "CouponAuth", "extends": "demo::Auth",
+        "@discriminatorValue": "Coupon", "children": [
         { "field.int": { "name": "amount" } } ] } }
     ] } }`;
 
@@ -505,7 +505,7 @@ describe("int-backed field.enum under TPH — real Postgres", () => {
 
     const root = (await new MetaDataLoader().load([new InMemoryStringSource(TPH_META)])).root;
     const lr = await runGen({
-      config: defineConfig({
+      config: defineConfig({ outputLayout: "flat", 
         outDir: tphTmp, extStyle: "none", dbImport: "./db", dialect: "postgres",
         generators: [entityFile(), queriesFile()],
       }),
@@ -545,7 +545,7 @@ describe("int-backed field.enum under TPH — real Postgres", () => {
       SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint
       WHERE conname = 'auths_type_chk'
     `.execute(k);
-    // Unquoted integers, not 'Bridge'/'Copay' — the discriminator's CHECK is
+    // Unquoted integers, not 'Bridge'/'Coupon' — the discriminator's CHECK is
     // subject to the same int-backing as any other enum column.
     expect(chk.rows[0]?.def).toContain("1");
     expect(chk.rows[0]?.def).toContain("2");
@@ -586,8 +586,8 @@ describe("int-backed field.enum under TPH — real Postgres", () => {
     ).execute(k);
     const bridges = await q.listBridgeAuths(tphDb);
     expect(bridges.map((r: any) => r.title).sort()).toEqual(["b", "d"]);
-    const copays = await q.listCopayAuths(tphDb);
-    expect(copays.map((r: any) => r.title)).toEqual(["c"]);
+    const coupons = await q.listCouponAuths(tphDb);
+    expect(coupons.map((r: any) => r.title)).toEqual(["c"]);
   }, 120_000);
 
   test("the polymorphic read dispatches on the DECODED discriminator", async () => {
@@ -596,9 +596,9 @@ describe("int-backed field.enum under TPH — real Postgres", () => {
     ).execute(k);
     const all = await q.listAuths(tphDb);
     expect(all).toHaveLength(1);
-    // parseAuth read `type` as "Copay" and dispatched to CopayAuthSchema — a raw 2
+    // parseAuth read `type` as "Coupon" and dispatched to CouponAuthSchema — a raw 2
     // would have thrown on the z.enum head parse.
-    expect(all[0].type).toBe("Copay");
+    expect(all[0].type).toBe("Coupon");
     expect(all[0].amount).toBe(42);
   }, 120_000);
 
@@ -607,9 +607,9 @@ describe("int-backed field.enum under TPH — real Postgres", () => {
       `INSERT INTO "auths" ("type", "title", "status") VALUES (2, 'c', 7);`,
     ).execute(k);
     const [{ id }] = (await sql<{ id: string }>`SELECT "id" FROM "auths"`.execute(k)).rows as any;
-    // The row IS a Copay, so asking for it as a Bridge must miss — proving the AND'd
+    // The row IS a Coupon, so asking for it as a Bridge must miss — proving the AND'd
     // discriminator predicate encoded to 1 rather than binding 'Bridge'.
     expect(await q.findBridgeAuthById(tphDb, Number(id))).toBeNull();
-    expect((await q.findCopayAuthById(tphDb, Number(id)))?.title).toBe("c");
+    expect((await q.findCouponAuthById(tphDb, Number(id)))?.title).toBe("c");
   }, 120_000);
 });

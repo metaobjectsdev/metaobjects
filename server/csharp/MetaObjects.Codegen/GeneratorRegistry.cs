@@ -261,6 +261,17 @@ public static class GeneratorRegistry
                 Factory = _ => new NamesGenerator(),
                 SourceFileName = "NamesGenerator.cs",
             },
+            // The indexes the EF model cannot carry (an @expr key), as one SQL file to apply after the
+            // schema EF builds. C#-only: meta migrate writes them into its own DDL.
+            ["expression-indexes"] = new()
+            {
+                Name = "expression-indexes",
+                Description = "The expression (@expr) indexes EF Core cannot model, as one SQL file applied after the schema.",
+                Tier = GeneratorTier.Native,
+                Layer = GeneratorLayer.Persistence,
+                Factory = _ => new ExpressionIndexesGenerator(),
+                SourceFileName = "ExpressionIndexesGenerator.cs",
+            },
             // The api reference (ADR-0025's api/csharp surface): an ordinary entry in codegen/Generators.cs,
             // with its output directory and page options as init properties (ADR-0034 Amendment 9).
             ["api-docs"] = new()

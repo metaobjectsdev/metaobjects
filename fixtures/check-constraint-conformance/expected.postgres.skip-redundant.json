@@ -41,6 +41,10 @@
       "expression": "length(\"ref\") <= 10"
     },
     {
+      "name": "gadgets_rank_numeric_chk",
+      "expression": "\"rank\" <= 99"
+    },
+    {
       "name": "gadgets_starts_at_cmp_chk",
       "expression": "\"starts_at\" <= \"ends_at\""
     },
@@ -73,6 +77,86 @@
     {
       "name": "parcels_label_length_chk",
       "expression": "length(\"label\") >= 1"
+    }
+  ],
+  "jobs": [
+    {
+      "name": "jobs_status_chk",
+      "expression": "\"status\" IN ('q_queued', 'q_done', 'q_failed')"
+    },
+    {
+      "name": "jobs_error_reqwhen_chk",
+      "expression": "(\"status\" IS DISTINCT FROM 'q_failed') OR (\"error\" IS NOT NULL)"
+    },
+    {
+      "name": "jobs_done_at_cmp_chk",
+      "expression": "(\"status\" <> 'q_done') OR (\"done_at\" >= \"started_at\")"
+    }
+  ],
+  "devices": [
+    {
+      "name": "devices_kind_chk",
+      "expression": "\"kind\" IN ('METER', 'SENSOR', 'SMART_METER', 'SWITCH')"
+    },
+    {
+      "name": "devices_voltage_numeric_chk",
+      "expression": "\"voltage\" >= 1 AND \"voltage\" <= 480"
+    },
+    {
+      "name": "devices_meter_serial_regex_chk",
+      "expression": "((\"kind\" <> 'METER') AND (\"kind\" <> 'SMART_METER')) OR (\"serial\" ~ '^M[0-9]+$')"
+    },
+    {
+      "name": "devices_sensor_serial_regex_chk",
+      "expression": "(\"kind\" <> 'SENSOR') OR (\"serial\" ~ '^S[0-9]+$')"
+    },
+    {
+      "name": "devices_meter_grade_chk",
+      "expression": "((\"kind\" <> 'METER') AND (\"kind\" <> 'SMART_METER')) OR (\"grade\" IN ('A', 'B'))"
+    },
+    {
+      "name": "devices_switch_grade_chk",
+      "expression": "(\"kind\" <> 'SWITCH') OR (\"grade\" IN ('X', 'Y'))"
+    },
+    {
+      "name": "devices_note_length_chk",
+      "expression": "length(\"note\") <= 40"
+    },
+    {
+      "name": "devices_mode_chk",
+      "expression": "\"mode\" IN ('AUTO', 'MANUAL')"
+    },
+    {
+      "name": "devices_firmware_length_chk",
+      "expression": "length(\"firmware\") >= 1"
+    },
+    {
+      "name": "devices_label_length_chk",
+      "expression": "length(\"label\") >= 1 AND length(\"label\") <= 12"
+    },
+    {
+      "name": "devices_powered_voltage_atleastone_chk",
+      "expression": "((\"kind\" <> 'METER') AND (\"kind\" <> 'SENSOR') AND (\"kind\" <> 'SMART_METER')) OR (\"voltage\" IS NOT NULL OR \"watts\" IS NOT NULL)"
+    },
+    {
+      "name": "devices_sensor_unit_reqwhen_chk",
+      "expression": "(\"kind\" <> 'SENSOR') OR ((\"mode\" IS DISTINCT FROM 'MANUAL') OR (\"unit\" IS NOT NULL))"
+    },
+    {
+      "name": "devices_sensor_note_reqwhen_chk",
+      "expression": "(\"kind\" <> 'SENSOR') OR ((\"mode\" IS DISTINCT FROM 'MANUAL') OR (\"note\" IS NOT NULL))"
+    },
+    {
+      "name": "devices_smartmeter_firmware_reqwhen_chk",
+      "expression": "(\"kind\" <> 'SMART_METER') OR ((\"grade\" IS DISTINCT FROM 'A') OR (\"firmware\" IS NOT NULL))"
+    },
+    {
+      "name": "devices_switch_label_cmp_chk",
+      "expression": "((\"kind\" <> 'SWITCH') OR (\"label\" IS NULL)) OR (\"label\" <> \"kind\")"
+    },
+    {
+      "name": "devices_switch_note_reqwhen_chk",
+      "expression": "(\"kind\" <> 'SWITCH') OR ((\"legacy_position\" IS DISTINCT FROM 'OFF') OR (\"note\" IS NOT NULL))"
     }
   ]
 }

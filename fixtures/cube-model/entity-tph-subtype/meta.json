@@ -22,7 +22,7 @@
                 "name": "type",
                 "@values": [
                   "Bridge",
-                  "Copay"
+                  "Coupon"
                 ]
               }
             },
@@ -53,9 +53,9 @@
       },
       {
         "object.entity": {
-          "name": "CopayAuth",
+          "name": "CouponAuth",
           "extends": "Auth",
-          "@discriminatorValue": "Copay",
+          "@discriminatorValue": "Coupon",
           "children": []
         }
       }

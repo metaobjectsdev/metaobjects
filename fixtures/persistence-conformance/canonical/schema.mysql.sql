@@ -59,7 +59,7 @@ CREATE TABLE `auths` (
   `type` VARCHAR(16),
   `reference` VARCHAR(80) NOT NULL,
   `quantity` INT,
-  `copayAmount` DECIMAL(10,2),
+  `couponAmount` DECIMAL(10,2),
   `approver` VARCHAR(80),
   `urgency` VARCHAR(16)
 );
@@ -346,7 +346,7 @@ CREATE VIEW `v_auths_by_kind` AS
     COUNT(a.`id`) AS `auths`,
     COUNT(DISTINCT a.`reference`) AS `distinctRefs`
   FROM `auths` a
-  WHERE a.`type` <> 'PriorAuth'
+  WHERE a.`type` <> 'Permit'
   GROUP BY a.`type`;
 
 CREATE VIEW `v_gadget_events_by_label` AS

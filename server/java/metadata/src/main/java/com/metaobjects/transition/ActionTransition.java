@@ -21,7 +21,7 @@ import com.metaobjects.attr.ExpressionAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
 
-/** {@code transition.action} (ADR-0063): an allowed move between two values of a {@code field.enum}. */
+/** {@code transition.action} (ADR-0066): an allowed move between two values of a {@code field.enum}. */
 @SuppressWarnings("serial")
 public class ActionTransition extends MetaTransition {
 

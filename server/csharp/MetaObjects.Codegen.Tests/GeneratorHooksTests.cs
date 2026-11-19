@@ -1080,4 +1080,26 @@ public class GeneratorHooksTests
         g.Generate(GeneratorGoldenTests.Round2Context(shapes: true)).ToList();
         Assert.Single(g.Calls, c => c == "ReferenceConfig:CaseJob.refWorkflow");
     }
+
+    // rc.21 part B (U2): a text @dbColumnType spelling is the EF column type, as meta migrate creates it.
+    [Fact]
+    public void A_text_db_column_type_spelling_is_the_column_type()
+    {
+        var root = Load("""
+            { "metadata.root": { "package": "acme", "children": [
+              { "object.entity": { "name": "Region", "children": [
+                { "source.rdb": { "@table": "regions" } },
+                { "field.long": { "name": "id" } },
+                { "field.string": { "name": "code", "@dbColumnType": "character(3)" } },
+                { "field.string": { "name": "label", "@dbColumnType": "varchar" } },
+                { "field.string": { "name": "note", "@dbColumnType": "varchar(20)" } },
+                { "field.string": { "name": "body", "@dbColumnType": "text" } },
+                { "identity.primary": { "name": "id", "@fields": "id" } } ] } } ] } }
+            """);
+        var db = Db(new DbContextGenerator(), root);
+        Assert.Contains(".Property(x => x.Code).HasColumnType(\"character(3)\");", db);
+        Assert.Contains(".Property(x => x.Label).HasColumnType(\"character varying\");", db);
+        Assert.Contains(".Property(x => x.Note).HasColumnType(\"character varying(20)\");", db);
+        Assert.Contains(".Property(x => x.Body).HasColumnType(\"text\");", db);
+    }
 }

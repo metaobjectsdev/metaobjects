@@ -1,4 +1,4 @@
-"""Node classes for the declared API surface (ADR-0030, ADR-0063): ``api.*``,
+"""Node classes for the declared API surface (ADR-0030, ADR-0066): ``api.*``,
 ``operation.*`` and ``binding.*``. Accessors are RESOLVING (ADR-0039) — Python naming
 inversion: ``attr()`` is own-only, so reads go through ``get_meta_attr()``.
 Mirrors TS ``core/api/meta-api.ts``.

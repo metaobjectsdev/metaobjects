@@ -11,9 +11,9 @@ is needed, which moves are legal, and what a command may return, so all three ca
 
 **What 1.3.0 ships.** The vocabulary, checked when it loads and by `verify`, in all five ports.
 A requirement can claim an operation or a transition. Nothing is generated from the vocabulary
-yet: the service shells that enforce these rules at run time are later work (ADR-0064). Until
+yet: the service shells that enforce these rules at run time are later work (ADR-0067). Until
 they land, a model with this vocabulary generates byte-identical code to the same model
-without it. The design is [ADR-0063](../../spec/decisions/ADR-0063-business-rules-operations-and-lifecycles.md).
+without it. The design is [ADR-0066](../../spec/decisions/ADR-0066-business-rules-operations-and-lifecycles.md).
 
 **Experimental.** This vocabulary, its loader rules, its `verify` checks and its settings may
 change in a MINOR, including removals and renames, until generated services run on it in an

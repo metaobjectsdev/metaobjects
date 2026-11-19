@@ -110,6 +110,7 @@ from metaobjects.naming import (
 )
 from metaobjects.shared.base_types import TYPE_FIELD, TYPE_IDENTITY, TYPE_INDEX
 from metaobjects.naming_refs import ref_target
+from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_ENTITY
 from metaobjects.source_resolution import primary_rdb_source
 
 #: The nodes whose DATABASE index name this module carries.
@@ -276,8 +277,9 @@ def _flattened_member_consts(
     field: MetaData, members: list[tuple[str, str]]
 ) -> list[tuple[str, _Const]]:
     """A flattened value object's ``<FIELD>_<MEMBER>_COLUMN`` constants, one per member,
-    emitted beside the field's own ``_FIELD`` constant (a flattened field has no column
-    constant of its own)."""
+    emitted beside the field's own ``_FIELD``/``_COLUMN`` pair (kept as it always was, so
+    nothing that imports it changes; on a flattened field ``_COLUMN`` names no column of the
+    table)."""
     member = _member(field.name)
     return [
         (
@@ -465,16 +467,42 @@ def render_names(
     # `<field>.<member>`, the path the naming corpus uses.
     columns: list[tuple[str, str]] = []
     flattened: list[tuple[MetaData, list[tuple[str, _Const]]]] = []
+    # rc.21 (U7): a derived field of an object read from its table (or of an abstract entity
+    # its tables extend) is no column, so it has no names entry. A projection's or
+    # write-through entity's derived field is a column of its view and keeps its entry.
+    columnless = (
+        entity.sub_type == OBJECT_SUBTYPE_ENTITY
+        if fragment
+        else src is not None and src.is_writable() and not entity.is_write_through()
+    )
+
+    # rc.21 fix round (M8): an abstract-entity fragment leaves its derived fields out (they are
+    # no column of the tables extending it), so an object whose derived fields ARE columns (a
+    # write-through entity's read view) declares the ones it inherits itself, rather than
+    # re-exporting them from a super module that does not define them.
+    def dropped_by_super_fragment(field: MetaData) -> bool:
+        return (
+            not fragment
+            and not columnless
+            and field.is_derived()
+            and super_obj is not None
+            and super_obj.sub_type == OBJECT_SUBTYPE_ENTITY
+            and super_obj.is_abstract
+        )
+
     for field in sorted(entity.fields(), key=lambda f: f.name):
+        if columnless and field.is_derived():
+            continue
+        inherited = carried_by_super(field) and not dropped_by_super_fragment(field)
         members = _flattened_members(field, strategy)
         if members is None:
             column = resolve_column_name(field, strategy)
             columns.append((field.name, f"{_member(field.name)}_COLUMN"))
-            groups.append(("fields", _field_consts(field, column), carried_by_super(field)))
+            groups.append(("fields", _field_consts(field, column), inherited))
         else:
             # A flattened field has no column of its own: it keeps its `_FIELD` constant and
             # its members carry the columns.
-            groups.append(("fields", _field_consts(field, None), carried_by_super(field)))
+            groups.append(("fields", _field_consts(field, None), inherited))
         if members:
             flattened.append((field, _flattened_member_consts(field, members)))
 
@@ -498,7 +526,7 @@ def render_names(
             kept.append(const)
             columns.append((key, const.member))
         if kept:
-            groups.append(("fields", kept, carried_by_super(field)))
+            groups.append(("fields", kept, carried_by_super(field) and not dropped_by_super_fragment(field)))
 
     for type_name in (TYPE_IDENTITY, TYPE_INDEX):
         keys = sorted(

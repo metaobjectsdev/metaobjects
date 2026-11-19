@@ -74,47 +74,33 @@ public class GeneratorUtil {
         return md instanceof MetaObject && MetaObject.SUBTYPE_REPORT.equals(md.getSubType());
     }
 
-    private static <T extends MetaData> Collection<T> filterMetaData( Collection<T> in, Class<T> clazz, MetaDataFilters filtersIn ) {
+    /**
+     * True when {@code md} passes {@code filtersIn}: no inclusive filter, or one that matches,
+     * and no {@code !}-exclusion that matches. The per-object test {@link #getFilteredMetaData}
+     * applies to a whole collection.
+     */
+    public static boolean passesFilters( MetaData md, MetaDataFilters filtersIn ) {
+        List<String> filters = filtersIn == null ? null : filtersIn.getFilters();
+        if ( filters == null || filters.isEmpty() ) return true;
 
-        List<T> out = new ArrayList<>();
-
-        List<String> filters = filtersIn==null?null:filtersIn.getFilters();
-
-        if ( filters == null || filters.isEmpty() ) {
-            out.addAll(in);
-        }
-        else {
-            List<String> incFilters = filters.stream()
-                    .filter( f -> !f.startsWith("!"))
-                    .collect(Collectors.toList());
-            List<String> excFilters = filters.stream()
-                    .filter( f -> f.startsWith("!"))
-                    .collect(Collectors.toList());
-
-            for (T md : in) {
-
-                boolean shouldAdd = incFilters.isEmpty();
-
-                // Check inclusive filters
-                for (String f : incFilters) {
-                    if ( filterMatch(md, f)) {
-                        shouldAdd = true;
-                        break;
-                    }
-                }
-
-                // Check inclusive filters
-                for (String f : excFilters) {
-                    if ( filterMatch(md, f.substring(1))) {
-                        shouldAdd = false;
-                        break;
-                    }
-                }
-
-                if (shouldAdd) out.add(md);
+        boolean included = filters.stream().allMatch( f -> f.startsWith("!") );
+        for (String f : filters) {
+            if ( !f.startsWith("!") && filterMatch(md, f) ) {
+                included = true;
+                break;
             }
         }
+        for (String f : filters) {
+            if ( f.startsWith("!") && filterMatch(md, f.substring(1)) ) return false;
+        }
+        return included;
+    }
 
+    private static <T extends MetaData> Collection<T> filterMetaData( Collection<T> in, Class<T> clazz, MetaDataFilters filtersIn ) {
+        List<T> out = new ArrayList<>();
+        for (T md : in) {
+            if ( passesFilters(md, filtersIn) ) out.add(md);
+        }
         return out;
     }
 

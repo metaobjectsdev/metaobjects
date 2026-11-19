@@ -30,8 +30,8 @@ import kotlin.test.assertTrue
  * The `Auth` base owns `lines: many AuthLine`, inherited by every subtype. If any generator failed
  * to fold a subtype into the base — the table's back-FK inference (`buildGlobalFkMap`), the relations
  * helper, or the validator registry — it would emit a reference to a `BridgeAuthTable` /
- * `CopayAuthTable` / `PriorAuthAuthTable` that the table generator no longer emits, and this compile
- * would fail. `CopayAuth` also carries a non-discriminator `@filterable field.enum` (`tier`) that
+ * `CouponAuthTable` / `PermitAuthTable` that the table generator no longer emits, and this compile
+ * would fail. `CouponAuth` also carries a non-discriminator `@filterable field.enum` (`tier`) that
  * folds into the union, so the TPH controller emits `castTo<String>(TextColumnType())` for it — this
  * gate also covers the #179 enum-filter import block on the TPH controller path.
  */
@@ -43,7 +43,7 @@ class TphFullSuiteCompilesTest {
         { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
             { "source.rdb":   { "@table": "auths" } },
             { "field.long":   { "name": "id", "@filterable": true } },
-            { "field.enum":   { "name": "type", "@values": ["Bridge", "Copay", "PriorAuth"] } },
+            { "field.enum":   { "name": "type", "@values": ["Bridge", "Coupon", "Permit"] } },
             { "field.string": { "name": "reference", "@required": true, "@maxLength": 80, "@filterable": true } },
             { "relationship.composition": { "name": "lines", "@cardinality": "many", "@objectRef": "AuthLine", "@onDelete": "cascade" } },
             { "identity.primary": { "@fields": "id", "@generation": "increment" } }
@@ -51,12 +51,12 @@ class TphFullSuiteCompilesTest {
         { "object.entity": { "name": "BridgeAuth", "extends": "Auth", "@discriminatorValue": "Bridge", "children": [
             { "field.int": { "name": "quantity", "@required": true, "@filterable": true } }
         ] } },
-        { "object.entity": { "name": "CopayAuth", "extends": "Auth", "@discriminatorValue": "Copay", "children": [
-            { "field.decimal": { "name": "copayAmount", "@precision": 10, "@scale": 2, "@filterable": true } },
+        { "object.entity": { "name": "CouponAuth", "extends": "Auth", "@discriminatorValue": "Coupon", "children": [
+            { "field.decimal": { "name": "couponAmount", "@precision": 10, "@scale": 2, "@filterable": true } },
             { "field.enum":    { "name": "tier", "@values": ["Standard", "Premium"], "@filterable": true } }
         ] } },
-        { "object.entity": { "name": "PriorAuthAuth", "extends": "Auth", "@discriminatorValue": "PriorAuth", "children": [
-            { "field.string": { "name": "priorAuthNumber", "@maxLength": 80, "@filterable": true } }
+        { "object.entity": { "name": "PermitAuth", "extends": "Auth", "@discriminatorValue": "Permit", "children": [
+            { "field.string": { "name": "permitNumber", "@maxLength": 80, "@filterable": true } }
         ] } },
         { "object.entity": { "name": "AuthLine", "children": [
             { "source.rdb":   { "@table": "auth_lines" } },
@@ -90,8 +90,8 @@ class TphFullSuiteCompilesTest {
             val names = emitted.map { it.fileName.toString() }.toSet()
             // The subtypes fold into the base — no per-subtype persistence artifact of any kind.
             for (dead in listOf(
-                "BridgeAuthTable.kt", "CopayAuthTable.kt", "PriorAuthAuthTable.kt",
-                "BridgeAuthRelations.kt", "CopayAuthRelations.kt", "PriorAuthAuthRelations.kt",
+                "BridgeAuthTable.kt", "CouponAuthTable.kt", "PermitAuthTable.kt",
+                "BridgeAuthRelations.kt", "CouponAuthRelations.kt", "PermitAuthRelations.kt",
             )) {
                 assertFalse(dead in names, "TPH subtype must not emit $dead; got $names")
             }
@@ -115,7 +115,7 @@ class TphFullSuiteCompilesTest {
     @Test
     fun `FR-017 full TPH generator suite with the names artifact in the run compiles and folds the subtype columns`() {
         // Task 6 — the names-ON arm. The base's AuthTable references `<Sub>Names.<COL>_COLUMN`
-        // for every SUBTYPE column it folds in (quantity / copayAmount / tier / priorAuthNumber
+        // for every SUBTYPE column it folds in (quantity / couponAmount / tier / permitNumber
         // belong to the subtypes' artifacts, not AuthNames). A text assertion proves the
         // reference is SPELLED; only the compiler proves it RESOLVES, and only the compiled
         // Exposed object proves it folds to the column the database has.
@@ -140,10 +140,10 @@ class TphFullSuiteCompilesTest {
             val emitted = Files.walk(outDir).filter { it.isRegularFile() }.sorted().toList()
             val authTable = emitted.first { it.fileName.toString() == "AuthTable.kt" }.readText()
             assertTrue("integer(BridgeAuthNames.QUANTITY_COLUMN).nullable()" in authTable, authTable)
-            assertTrue("portableDecimal(CopayAuthNames.COPAY_AMOUNT_COLUMN, 10, 2).nullable()" in authTable, authTable)
-            assertTrue("varchar(PriorAuthAuthNames.PRIOR_AUTH_NUMBER_COLUMN, 80).nullable()" in authTable, authTable)
+            assertTrue("portableDecimal(CouponAuthNames.COUPON_AMOUNT_COLUMN, 10, 2).nullable()" in authTable, authTable)
+            assertTrue("varchar(PermitAuthNames.PERMIT_NUMBER_COLUMN, 80).nullable()" in authTable, authTable)
             // An enum with no configured length is a text column, as `meta migrate` creates it.
-            assertTrue("customEnumeration(CopayAuthNames.TIER_COLUMN, \"TEXT\", { v -> AuthTier.valueOf(v as String) }, { e -> e.name }).nullable()" in authTable, authTable)
+            assertTrue("customEnumeration(CouponAuthNames.TIER_COLUMN, \"TEXT\", { v -> AuthTier.valueOf(v as String) }, { e -> e.name }).nullable()" in authTable, authTable)
 
             val sources = emitted.map { path ->
                 SourceFile.kotlin(outDir.relativize(path).toString().replace('/', '_'), path.readText())
@@ -161,7 +161,7 @@ class TphFullSuiteCompilesTest {
             val table = result.classLoader.loadClass("acme.auth.AuthTable").getDeclaredField("INSTANCE").get(null) as Table
             assertEquals("auths", table.tableName)
             val columns = table.columns.map { it.name }.toSet()
-            for (col in listOf("id", "type", "reference", "quantity", "copay_amount", "tier", "prior_auth_number")) {
+            for (col in listOf("id", "type", "reference", "quantity", "coupon_amount", "tier", "permit_number")) {
                 assertTrue(col in columns, "AuthTable is missing column $col; has $columns")
             }
         } finally {

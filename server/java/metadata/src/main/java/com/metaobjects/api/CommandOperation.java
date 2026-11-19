@@ -20,7 +20,7 @@ import com.metaobjects.attr.BooleanAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
 
-/** {@code operation.command} and {@code operation.query} (ADR-0030, ADR-0063), registered with {@code operation.base}. */
+/** {@code operation.command} and {@code operation.query} (ADR-0030, ADR-0066), registered with {@code operation.base}. */
 @SuppressWarnings("serial")
 public class CommandOperation extends MetaOperation {
 

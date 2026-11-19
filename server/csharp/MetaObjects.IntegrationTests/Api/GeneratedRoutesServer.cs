@@ -78,7 +78,7 @@ internal sealed class GeneratedRoutesServer : IAsyncDisposable
             throw new InvalidOperationException("generated server failed to compile:\n  " + string.Join("\n  ",
                 emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).Select(d => $"{d.Id}: {d.GetMessage()}")));
         var assembly = Assembly.Load(ms.ToArray());
-        var dbContextType = assembly.GetType($"{ns}.AppDbContext") ?? throw new InvalidOperationException("no AppDbContext");
+        var dbContextType = MetaObjects.IntegrationTests.GeneratedTypes.Find(assembly, $"{ns}.AppDbContext") ?? throw new InvalidOperationException("no AppDbContext");
 
         var builder = WebApplication.CreateBuilder();
         LoopbackKestrel.BindAnyPort(builder);
@@ -91,7 +91,7 @@ internal sealed class GeneratedRoutesServer : IAsyncDisposable
 
         var app = builder.Build();
         foreach (var name in routedNames)
-            assembly.GetType($"{ns}.{name}Routes")!.GetMethod($"Map{name}Routes", BindingFlags.Public | BindingFlags.Static)!
+            MetaObjects.IntegrationTests.GeneratedTypes.Find(assembly, $"{ns}.{name}Routes")!.GetMethod($"Map{name}Routes", BindingFlags.Public | BindingFlags.Static)!
                 .Invoke(null, [app, "/api"]);
         await app.StartAsync();
         return new GeneratedRoutesServer(app, LoopbackKestrel.BoundUrl(app));

@@ -3,7 +3,7 @@ description: >
   The per-subtype routes list every validation issue, in the shape of the core
   `validation-lists-issues` scenario: {"error": "validation", "issues": [{code, path, message}]}.
   r1 sends a reference over its @maxLength and omits the BridgeAuth subtype's @required
-  quantity. r2 nulls the base's @required reference and sends a PriorAuth approver over its
+  quantity. r2 nulls the base's @required reference and sends a PermitAuth approver over its
   @maxLength. r3 and r4 prove that nothing was written.
 requests:
   - id: r1
@@ -20,7 +20,7 @@ requests:
           - { path: [quantity], code: invalid_type }
   - id: r2
     method: PATCH
-    path: /api/auths/priorauth/3
+    path: /api/auths/permit/3
     body:
       reference: null
       approver: "AXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"

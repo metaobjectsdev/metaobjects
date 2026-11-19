@@ -130,7 +130,7 @@ public static class VerifyCommand
         /// <see cref="Naming"/> and set on the loaded root beside it. Defaults to native.
         /// </summary>
         public MetaObjects.Meta.WireFormat Wire { get; init; } = MetaObjects.Meta.WireFormat.Default;
-        /// <summary>ADR-0063 — the business-rules settings, from the same file; defaults when none is read.</summary>
+        /// <summary>ADR-0066 — the business-rules settings, from the same file; defaults when none is read.</summary>
         public MetaObjects.Config.RulesSettings Rules { get; init; } = MetaObjects.Config.RulesSettings.Default;
         /// <summary>The project's <c>api</c> block, set on the loaded root beside <see cref="Wire"/>.</summary>
         public MetaObjects.Meta.ApiSettings Api { get; init; } = MetaObjects.Meta.ApiSettings.Default;
@@ -359,7 +359,7 @@ public static class VerifyCommand
     }
 
     // ------------------------------------------------------------------------
-    // The business-rules gate (ADR-0063) — runs on EVERY verify, with no subverb.
+    // The business-rules gate (ADR-0066) — runs on EVERY verify, with no subverb.
     // ------------------------------------------------------------------------
 
     /// <summary>The command prefix the rules gate's summary and error-count lines carry.</summary>

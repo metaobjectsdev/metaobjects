@@ -236,7 +236,7 @@ describe("extractor/render payload import resolves against the REAL generated VO
     expect(extractorSrc).toContain('from "./Line.js"');
 
     // 3. Lay the real generated VO modules + the extractor/render files into a
-    //    temp dir exactly as `meta gen` would (flat, co-located).
+    //    temp dir exactly as `meta gen` would (the default package layout, R63).
     const dir = mkdtempSync(join(tmpdir(), "extractor-render-payload-"));
     TEMP_DIRS.push(dir);
     const write = (rel: string, body: string) => {
@@ -285,15 +285,15 @@ describe("the render helper honours extStyle and marks itself generated", () => 
   test('extStyle "none" drops the extension from the payload import', async () => {
     const root = await loadRoot(MODEL);
     const src = renderRenderHelper(root, "OrderDoc", PROVIDER, "none");
-    expect(src).toMatch(/from "\.\/[A-Za-z0-9_]+";/);
-    expect(src).not.toMatch(/from "\.\/[A-Za-z0-9_]+\.js";/);
+    expect(src).toMatch(/from "\.\/[A-Za-z0-9_/]+";/);
+    expect(src).not.toMatch(/from "\.\/[A-Za-z0-9_/]+\.js";/);
   });
 
   test('extStyle "js" keeps it — and is the default, so an existing caller is unchanged', async () => {
     const root = await loadRoot(MODEL);
     const explicit = renderRenderHelper(root, "OrderDoc", PROVIDER, "js");
     const defaulted = renderRenderHelper(root, "OrderDoc", PROVIDER);
-    expect(explicit).toMatch(/from "\.\/[A-Za-z0-9_]+\.js";/);
+    expect(explicit).toMatch(/from "\.\/[A-Za-z0-9_/]+\.js";/);
     expect(defaulted).toBe(explicit);
   });
 

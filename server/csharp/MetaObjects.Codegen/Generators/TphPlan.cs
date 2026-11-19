@@ -40,7 +40,7 @@ public static class TphPlanBuilder
     /// <summary>
     /// The per-subtype REST route segment for a discriminator value — the ONE place
     /// this rule lives (mirrors TS <c>tphRouteSegment</c>): the value lowercased
-    /// (<c>"Bridge"</c> → <c>bridge</c>, <c>"PriorAuth"</c> → <c>priorauth</c>).
+    /// (<c>"Bridge"</c> → <c>bridge</c>, <c>"Permit"</c> → <c>permit</c>).
     /// </summary>
     public static string RouteSegment(string discriminatorValue) =>
         discriminatorValue.ToLowerInvariant();

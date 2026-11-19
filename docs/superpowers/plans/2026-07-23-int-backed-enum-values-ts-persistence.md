@@ -809,7 +809,7 @@ live): DDL applies + converges; the discriminator column is `integer` with an in
 CHECK; a generated per-subtype create stores both enums as integers (asserted with raw
 SQL, bypassing the codec); the per-subtype read schema decodes a raw-SQL-inserted integer
 row; the per-subtype filter compares the integer; the polymorphic read dispatches on the
-decoded value; and find-by-id is discriminator-scoped (a Copay row asked for as a Bridge
+decoded value; and find-by-id is discriminator-scoped (a Coupon row asked for as a Bridge
 must MISS).
 
 **Two things the run surfaced, both pre-existing and both identical for a string-backed

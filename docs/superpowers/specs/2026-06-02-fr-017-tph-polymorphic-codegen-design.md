@@ -53,10 +53,10 @@ For an entity that carries `@discriminator`, `entityFile` emits one TS union typ
 
 ```ts
 // Generated from object.entity "Auth" with @discriminator: "type"
-// and subtypes BridgeAuth / CopayAuth / PriorAuthAuth declaring values
-// "Bridge" / "Copay" / "PriorAuth".
+// and subtypes BridgeAuth / CouponAuth / PermitAuth declaring values
+// "Bridge" / "Coupon" / "Permit".
 
-export type Auth = BridgeAuth | CopayAuth | PriorAuthAuth;
+export type Auth = BridgeAuth | CouponAuth | PermitAuth;
 
 // Type guard helpers — one per subtype.
 export function isBridgeAuth(a: Auth): a is BridgeAuth {
@@ -77,7 +77,7 @@ For each concrete subtype, `entityFile` emits a Zod schema that is the base enti
 // Base Zod schema (already emitted today for any entity).
 export const AuthSchema = z.object({
   id: z.number().int(),
-  type: z.enum(["Bridge", "Copay", "PriorAuth"]),
+  type: z.enum(["Bridge", "Coupon", "Permit"]),
 });
 
 // Per-subtype schemas — each merges the base, pins the discriminator value,
@@ -88,14 +88,14 @@ export const BridgeAuthSchema = AuthSchema.merge(z.object({
 }));
 export type BridgeAuth = z.infer<typeof BridgeAuthSchema>;
 
-export const CopayAuthSchema = AuthSchema.merge(z.object({
-  type: z.literal("Copay"),
-  copayAmount: z.number(),
+export const CouponAuthSchema = AuthSchema.merge(z.object({
+  type: z.literal("Coupon"),
+  couponAmount: z.number(),
 }));
-export type CopayAuth = z.infer<typeof CopayAuthSchema>;
+export type CouponAuth = z.infer<typeof CouponAuthSchema>;
 ```
 
-**Discriminator pin via `z.literal`.** Each subtype schema pins its `type` field to the literal value. So `BridgeAuthSchema.parse({type: "Copay", ...})` throws — typed gatekeeping is enforced by Zod, not just TypeScript.
+**Discriminator pin via `z.literal`.** Each subtype schema pins its `type` field to the literal value. So `BridgeAuthSchema.parse({type: "Coupon", ...})` throws — typed gatekeeping is enforced by Zod, not just TypeScript.
 
 ### Discriminator dispatch
 
@@ -105,11 +105,11 @@ export type CopayAuth = z.infer<typeof CopayAuthSchema>;
 /** Parse a row from the auths table, dispatching by the discriminator value. */
 export function parseAuth(row: unknown): Auth {
   // Read the discriminator without committing the row to any subtype yet.
-  const head = z.object({ type: z.enum(["Bridge", "Copay", "PriorAuth"]) }).parse(row);
+  const head = z.object({ type: z.enum(["Bridge", "Coupon", "Permit"]) }).parse(row);
   switch (head.type) {
     case "Bridge":      return BridgeAuthSchema.parse(row);
-    case "Copay":       return CopayAuthSchema.parse(row);
-    case "PriorAuth":   return PriorAuthAuthSchema.parse(row);
+    case "Coupon":       return CouponAuthSchema.parse(row);
+    case "Permit":   return PermitAuthSchema.parse(row);
   }
 }
 ```
@@ -128,7 +128,7 @@ Concrete shape of `entityFile` output:
 |---|---|
 | `Auth.ts` (base) | `AuthSchema` (full union of fields across all subtypes), `Auth` type alias to the discriminated union, type guards, `parseAuth` dispatcher. |
 | `BridgeAuth.ts` (subtype) | `BridgeAuthSchema` (base merged + own), `BridgeAuth` type, no separate type guard file. |
-| `CopayAuth.ts` (subtype) | same as above. |
+| `CouponAuth.ts` (subtype) | same as above. |
 
 The subtype files each `import { AuthSchema } from "./Auth.js"` — base must be emitted first / locatable.
 
@@ -151,10 +151,10 @@ export const auths = pgTable("auths", {
   // BridgeAuth-only columns: nullable, since rows of any other subtype have NULL here.
   quantity: integer("quantity"),
 
-  // CopayAuth-only columns: nullable.
-  copay_amount: numeric("copay_amount", { precision: 10, scale: 2 }),
+  // CouponAuth-only columns: nullable.
+  coupon_amount: numeric("coupon_amount", { precision: 10, scale: 2 }),
 
-  // PriorAuthAuth-only columns: nullable.
+  // PermitAuth-only columns: nullable.
   // ...
 });
 ```
@@ -224,7 +224,7 @@ export async function updateBridgeAuth(
 }
 ```
 
-The discriminator field is **never updatable** — clients can't change a Bridge into a Copay. Generated `updateXxx` strips the discriminator field from any patch.
+The discriminator field is **never updatable** — clients can't change a Bridge into a Coupon. Generated `updateXxx` strips the discriminator field from any patch.
 
 ### REST contract (TS routes)
 
@@ -342,7 +342,7 @@ New fixtures pinning the polymorphic CRUD shape cross-port:
 - `tph-polymorphic-list-and-get` — `GET /auths` returns subtype-tagged rows; `GET /auths/:id` returns one row.
 - `tph-per-subtype-list-and-create` — `GET /auths/bridge` filtered; `POST /auths/bridge` create.
 - `tph-per-subtype-update-and-delete` — subtype-only mutations.
-- `tph-cross-subtype-404` — `GET /auths/bridge/123` for an id that exists but is a Copay returns 404.
+- `tph-cross-subtype-404` — `GET /auths/bridge/123` for an id that exists but is a Coupon returns 404.
 
 Each fixture asserts request shape (URL + body) and response shape (status + body) cross-port byte-equivalently.
 
@@ -353,7 +353,7 @@ New TPH query scenarios:
 - `tph-insert-then-find-by-id` — insert a `BridgeAuth`, find by id; the result's subtype-only columns are NULL on other-subtype reads.
 - `tph-insert-three-subtypes-list` — insert one of each subtype; `findAllAuths()` returns three rows tagged by `@type`.
 - `tph-update-subtype-only-column` — update a Bridge's `quantity`; verify storage.
-- `tph-no-cross-subtype-update` — attempt to update a Bridge with Copay-only fields; verify they're stripped / rejected.
+- `tph-no-cross-subtype-update` — attempt to update a Bridge with Coupon-only fields; verify they're stripped / rejected.
 
 ## Open questions
 
@@ -421,7 +421,7 @@ New TPH query scenarios:
   - codegen-ts + codegen-ts-tanstack + codegen-ts-react suites: 652/0.
 - **Tier 5 (conformance corpora):** **authored + TS-green** (both corpora).
   - **api-contract** `fixtures/api-contract-conformance/tph/` — Auth base +
-    BridgeAuth/CopayAuth/PriorAuthAuth over one `auths` table; 4 scenarios
+    BridgeAuth/CouponAuth/PermitAuth over one `auths` table; 4 scenarios
     (polymorphic list/get, per-subtype list/create, per-subtype update/delete,
     cross-subtype 404). TS runs **both lanes** (hand-rolled reference +
     GENERATED `Auth.routes.ts`) over one Testcontainers Postgres per scenario per

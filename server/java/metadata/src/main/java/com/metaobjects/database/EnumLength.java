@@ -45,7 +45,8 @@ public final class EnumLength {
             ? field.getMetaAttr(EnumField.ATTR_VALUES).getValue() : null;
         if (raw instanceof List<?> values) {
             for (Object o : values) {
-                String v = String.valueOf(o);
+                // rc.21: the column holds each member's STORED string (@stringValueMap).
+                String v = EnumField.storedValue(field, String.valueOf(o));
                 if (longest == null || v.length() > longest.length()) longest = v;
             }
         }

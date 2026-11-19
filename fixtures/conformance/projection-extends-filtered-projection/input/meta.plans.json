@@ -10,7 +10,7 @@
             { "field.long": { "name": "id" } },
             { "field.string": { "name": "name" } },
             { "field.string": { "name": "code" } },
-            { "field.boolean": { "name": "consented" } },
+            { "field.boolean": { "name": "contracted" } },
             { "field.boolean": { "name": "deleted" } },
             { "identity.primary": { "name": "id", "@fields": "id" } }
           ]
@@ -20,7 +20,7 @@
         "object.projection": {
           "name": "GatedPlans",
           "abstract": true,
-          "@filter": { "consented": true },
+          "@filter": { "contracted": true },
           "children": [
             { "field.long": { "name": "planId", "extends": "Plan.id" } },
             { "field.string": { "name": "label", "children": [ { "origin.passthrough": { "@from": "Plan.name" } } ] } },

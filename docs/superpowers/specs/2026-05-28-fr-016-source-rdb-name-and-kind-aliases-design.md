@@ -14,7 +14,7 @@
 2. **[ADR-0018](../../../spec/decisions/ADR-0018-per-kind-physical-name-attrs.md)** (issued alongside this FR) revises ADR-0007's choice of a universal `@table` within rdb to per-kind physical-name aliases — `@view` / `@materializedView` / `@proc` / `@function` for the non-table kinds. Same single internal slot; the canonical attr key matches the kind.
 
 Both gaps surface together when authoring stored-proc and view declarations:
-- Reader sees `@table: "fn_get_phase_summary_per_case"` with `@kind: "storedProc"` and translates mentally that this isn't actually a table.
+- Reader sees `@table: "fn_get_stage_summary_per_consignment"` with `@kind: "storedProc"` and translates mentally that this isn't actually a table.
 - Reader sees a `source.rdb` with no `name` attr and no way to disambiguate it from other sources on the same entity in error messages.
 
 This FR closes both gaps in one focused pass — same files, same registration points, same conformance corpus refresh.

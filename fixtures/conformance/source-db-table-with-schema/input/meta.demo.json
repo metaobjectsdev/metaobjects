@@ -4,11 +4,11 @@
     "children": [
       {
         "object.entity": {
-          "name": "Case",
+          "name": "Consignment",
           "children": [
             {
               "source.rdb": {
-                "@table": "Cases",
+                "@table": "Consignments",
                 "@schema": "public"
               }
             },
@@ -19,7 +19,7 @@
             },
             {
               "field.string": {
-                "name": "caseNumber"
+                "name": "consignmentNumber"
               }
             },
             {

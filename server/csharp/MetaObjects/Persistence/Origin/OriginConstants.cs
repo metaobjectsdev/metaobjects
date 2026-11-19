@@ -30,6 +30,8 @@ public static class OriginConstants
     // along @via, projecting @of (argmax-then-project).
     public const string ORIGIN_SUBTYPE_COMPUTED    = "computed";
     public const string ORIGIN_SUBTYPE_FIRST       = "first";
+    // rc.21 part B (U10): a value computed by a database function the project owns.
+    public const string ORIGIN_SUBTYPE_FUNCTION    = "function";
 
     public static readonly string[] ORIGIN_SUBTYPES =
     [
@@ -38,6 +40,7 @@ public static class OriginConstants
         ORIGIN_SUBTYPE_AGGREGATE,
         ORIGIN_SUBTYPE_COMPUTED,
         ORIGIN_SUBTYPE_FIRST,
+        ORIGIN_SUBTYPE_FUNCTION,
     ];
 
     // #210 — the ASSEMBLY origins: they derive a value by rolling up, computing,
@@ -51,6 +54,7 @@ public static class OriginConstants
         ORIGIN_SUBTYPE_AGGREGATE,
         ORIGIN_SUBTYPE_COMPUTED,
         ORIGIN_SUBTYPE_FIRST,
+        ORIGIN_SUBTYPE_FUNCTION,
     };
 
     // passthrough attrs
@@ -84,6 +88,15 @@ public static class OriginConstants
     public const string ORIGIN_FIRST_ATTR_OF     = "of";
     public const string ORIGIN_FIRST_ATTR_VIA    = "via";
     public const string ORIGIN_FIRST_ATTR_FILTER = "filter";
+
+    // rc.21 part B (U10) origin.function attrs.
+    public const string ORIGIN_FUNCTION_ATTR_FUNCTION = "function";
+    public const string ORIGIN_FUNCTION_ATTR_SCHEMA   = "schema";
+    public const string ORIGIN_FUNCTION_ATTR_ARGS     = "args";
+    public const string ORIGIN_FUNCTION_ATTR_PARAMS   = "params";
+    public const string ORIGIN_FUNCTION_ATTR_RETURNS  = "returns";
+    /// <summary>A plain SQL identifier: what @function and @schema may hold (never free SQL).</summary>
+    public static readonly System.Text.RegularExpressions.Regex ORIGIN_FUNCTION_IDENTIFIER = new("^[A-Za-z_][A-Za-z0-9_]*$");
 
     // aggregate function vocabulary.
     //

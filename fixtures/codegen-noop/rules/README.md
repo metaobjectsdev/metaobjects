@@ -1,4 +1,4 @@
-# Business-rules vocabulary: inert in every generator (ADR-0063)
+# Business-rules vocabulary: inert in every generator (ADR-0066)
 
 Two models that differ ONLY by the business-rules vocabulary:
 

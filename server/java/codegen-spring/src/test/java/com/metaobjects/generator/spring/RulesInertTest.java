@@ -35,7 +35,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
- * ADR-0063 - the business-rules vocabulary is INERT in the Java generators.
+ * ADR-0066 - the business-rules vocabulary is INERT in the Java generators.
  *
  * <p>{@code api.operational}, {@code operation.*}, {@code binding.rest} and
  * {@code transition.action} are registered, validated at load and checked in {@code verify}, and

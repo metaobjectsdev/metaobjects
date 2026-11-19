@@ -1,4 +1,4 @@
-// Lifecycle and operation-target derivation (ADR-0063), shared by the loader's rules
+// Lifecycle and operation-target derivation (ADR-0066), shared by the loader's rules
 // pass and `meta verify`'s rules gate. Everything here is DERIVED: a lifecycle, its
 // states, its initial and terminal states and an operation's target entity have no
 // vocabulary of their own. Every port implements these rules the same way.
@@ -50,7 +50,7 @@ export function entityLineage(entity: MetaData): MetaData[] {
  * Whether an entity's lifecycles are live: it declares or inherits a source. A lifecycle on an
  * entity with no source loads and is inert, like everything else on a sourceless entity (#248):
  * it derives no command, and the writable-source check applies once a source is added
- * (ADR-0063 §2). A library's core layer declares its lifecycles this way.
+ * (ADR-0066 §2). A library's core layer declares its lifecycles this way.
  */
 export function lifecycleIsLive(entity: MetaData): boolean {
   return entity.children().some((c) => c.type === TYPE_SOURCE);
@@ -59,7 +59,7 @@ export function lifecycleIsLive(entity: MetaData): boolean {
 /**
  * The transitions a field gives an entity: those declared on a field of the entity itself or of
  * an entity it extends. A transition reached only through the field's own `extends` of another
- * entity's field is not one (ADR-0063 §2).
+ * entity's field is not one (ADR-0066 §2).
  */
 export function lifecycleTransitionsOf(entity: MetaData, field: MetaData): MetaData[] {
   const lineage = entityLineage(entity);

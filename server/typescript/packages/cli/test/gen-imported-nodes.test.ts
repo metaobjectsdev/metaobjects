@@ -121,6 +121,7 @@ function setupRepo(opts: { scopeInclude?: string[] } = {}): string {
 import { defineConfig } from "@metaobjectsdev/codegen-ts";
 export default defineConfig({
   outDir: ${JSON.stringify(genOutDir(root))},
+  outputLayout: "flat",
   dialect: "sqlite",
   dbImport: "~/db",
   extStyle: "none",
@@ -182,6 +183,19 @@ describe("meta gen — imported nodes are excluded by default (FR-023)", () => {
       const all = err.join("\n");
       expect(all).toContain("imported from dependency 'acme-common'");
       expect(all).toContain("scope.include");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("(c2) a name matching no object is refused with exit 2, even beside a known one", async () => {
+    const root = setupRepo();
+    try {
+      const exit = await run(["gen", "Order", "Ordr", "--cwd", root]);
+      expect(exit).toBe(2);
+      expect(err.join("\n")).toContain("meta gen: names 'Ordr', which matches no object in the metadata.");
+      // Refused before anything is written.
+      expect(() => readdirSync(genOutDir(root))).toThrow();
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

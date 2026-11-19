@@ -265,14 +265,14 @@ describe("the three shapes", () => {
     const c = corpusCase("tph-shared-marks");
     const tree = await contractTree(c);
     const keysOf = (path: string): string[] => Object.keys(jsonAt(tree, path)["properties"] as JsonDoc);
-    const copay = "schemas/acme/auth/CopayAuth";
+    const coupon = "schemas/acme/auth/CouponAuth";
     const bridge = "schemas/acme/auth/BridgeAuth";
-    const row = { id: 1, type: "Copay", reference: "R-1", auditRef: "A-1" };
-    expect(validatorOf(tree, `${copay}.schema.json`)(row)).toBe(true);
-    expect(keysOf(`${copay}.schema.json`)).not.toContain("token");
+    const row = { id: 1, type: "Coupon", reference: "R-1", auditRef: "A-1" };
+    expect(validatorOf(tree, `${coupon}.schema.json`)(row)).toBe(true);
+    expect(keysOf(`${coupon}.schema.json`)).not.toContain("token");
     expect(keysOf(`${bridge}.schema.json`)).not.toContain("token");
     for (const shape of ["create", "update"]) {
-      expect(keysOf(`${copay}.${shape}.schema.json`)).toEqual(["reference"]);
+      expect(keysOf(`${coupon}.${shape}.schema.json`)).toEqual(["reference"]);
       expect(keysOf(`${bridge}.${shape}.schema.json`)).toEqual(["reference"]);
     }
 
@@ -302,6 +302,21 @@ describe("what a project's run changes", () => {
     const narrowed = await emit(c, [openApiFile({ title: "t", version: "1" })], { entityFilter: [first] });
     expect(narrowed.get("openapi.json")).toBe(whole.get("openapi.json")!);
   });
+
+  for (const [label, factory] of [["jsonSchemaFile", jsonSchemaFile], ["the reference jsonSchemaFile", refJsonSchemaFile]] as const) {
+    test(`${label} writes only the named entity's schema on a narrowed run`, async () => {
+      const c = corpusCase("m2m");
+      const whole = await emit(c, [factory()]);
+      const named = (await loadCaseModel(c)).objects()[0]!.name;
+      const narrowed = await emit(c, [factory()], { entityFilter: [named] });
+      const ownFile = [...narrowed.keys()].filter((p) => p.endsWith(`/${named}.schema.json`));
+      expect(ownFile.length).toBe(1);
+      expect(narrowed.size).toBeLessThan(whole.size);
+      for (const [path, content] of narrowed) expect(whole.get(path), path).toBe(content);
+      const others = [...whole.keys()].filter((p) => p.endsWith(".schema.json") && !p.endsWith(`/${named}.schema.json`) && !narrowed.has(p));
+      expect(others.length).toBeGreaterThan(0);
+    });
+  }
 
   test("a generator filter narrows the document, and keeps what a kept object references", async () => {
     const c = corpusCase("all-fields");

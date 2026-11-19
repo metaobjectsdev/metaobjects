@@ -1,4 +1,4 @@
-// ADR-0063 — cross-node rules for operations (slice A) and lifecycles (slice B).
+// ADR-0066 — cross-node rules for operations (slice A) and lifecycles (slice B).
 //
 // Every port implements the same rules WITH THE SAME MESSAGE TEXT; the fixtures under
 // fixtures/conformance/ (`error-rules-*`, with the positive `rules-*` cases) are the
@@ -350,7 +350,7 @@ function checkOperation(op: MetaData, sink: Sink): void {
   }
 }
 
-/** ADR-0063 — the rules pass. Runs after reference-bearing validation, before freeze. */
+/** ADR-0066 — the rules pass. Runs after reference-bearing validation, before freeze. */
 export function validateRules(root: MetaData): ParseError[] {
   const sink = new Sink();
   for (const field of declaredFields(root)) checkDeclaredTransitions(field, sink);
@@ -391,7 +391,7 @@ function setKey(op: MetaData, attr: string): string {
 
 /**
  * Whether two operations of one package in different APIs are one operation exposed twice, as a
- * versioned API beside its successor does (ADR-0064 §2: one router per API, one service): the same
+ * versioned API beside its successor does (ADR-0067 §2: one router per API, one service): the same
  * name and subtype, and the same contract. The contract is every operation attribute: the
  * referenced shapes (compared by the node they resolve to), the transitions and errors (as sets),
  * the permission, public and many. Bindings are per API and are not compared.
@@ -418,7 +418,7 @@ function checkApiRoutes(ops: readonly MetaData[], sink: Sink): void {
       if (b.type !== TYPE_BINDING || b.subType !== BINDING_SUBTYPE_REST) continue;
       const path = b.attr(BINDING_ATTR_PATH);
       if (typeof path !== "string") continue;
-      // The effective method: the declared one, else the derived (ADR-0063 §1).
+      // The effective method: the declared one, else the derived (ADR-0066 §1).
       const declaredMethod = b.attr(BINDING_ATTR_METHOD);
       const method = typeof declaredMethod === "string"
         ? declaredMethod

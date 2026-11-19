@@ -149,8 +149,13 @@ public final class NeutralConfig {
         return wireFormat;
     }
 
+    /** The project's enum storage defaults ({@code enums} in this file). Never {@code null}. */
+    public EnumDefaults getEnumDefaults() {
+        return enumDefaults;
+    }
+
     /**
-     * ADR-0063 — the business-rules settings ({@code rules} and {@code verify.lifecycle} in this
+     * ADR-0066 — the business-rules settings ({@code rules} and {@code verify.lifecycle} in this
      * file), each absent key at its default.
      */
     public RulesSettings getRulesSettings() {
@@ -163,11 +168,6 @@ public final class NeutralConfig {
      */
     public ApiSettings getApiSettings() {
         return apiSettings;
-    }
-
-    /** The project's enum storage defaults ({@code enums} in this file). Never {@code null}. */
-    public EnumDefaults getEnumDefaults() {
-        return enumDefaults;
     }
 
     /** The schema settings a mapping generator agrees with ({@code migrate.foreignKeyIndexes} and friends). */
@@ -576,7 +576,7 @@ public final class NeutralConfig {
         return stringArray(include, "scope.include", origin);
     }
 
-    /** ADR-0063 — one nested settings object, or {@code null} when absent; refused unless an object with only {@code allowed} keys. */
+    /** ADR-0066 — one nested settings object, or {@code null} when absent; refused unless an object with only {@code allowed} keys. */
     private static JsonObject settingsBlock(JsonObject parent, String key, String path, java.util.List<String> allowed,
                                             String origin) {
         JsonElement el = parent.get(key);
@@ -606,7 +606,7 @@ public final class NeutralConfig {
     private static final String VERIFY_KEY_HAND_EDITS = "handEdits";
     private static final List<String> HAND_EDITS_POLICIES = List.of("fail", "notice");
 
-    /** ADR-0063 — the {@code rules} and {@code verify} blocks; see {@link #getRulesSettings()}. */
+    /** ADR-0066 — the {@code rules} and {@code verify} blocks; see {@link #getRulesSettings()}. */
     private static RulesSettings parseRulesSettings(JsonElement rules, JsonElement verify, String origin) {
         RulesSettings d = RulesSettings.DEFAULT;
         RulesSettings.PermissionNames names = null;

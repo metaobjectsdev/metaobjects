@@ -1,4 +1,4 @@
-// ADR-0063 — the business-rules vocabulary generates nothing yet.
+// ADR-0066 — the business-rules vocabulary generates nothing yet.
 //
 // 1.3.0 registers `api.operational`, `operation.*`, `binding.rest` and `transition.action`,
 // with their loader rules and `verify` checks. The generated services and enforcing shells
@@ -97,7 +97,7 @@ beforeAll(async () => {
 
 afterAll(() => rmSync(SCRATCH, { recursive: true, force: true }));
 
-describe("ADR-0063 the business-rules vocabulary is inert in every generator and in migrate", () => {
+describe("ADR-0066 the business-rules vocabulary is inert in every generator and in migrate", () => {
   test("the with-model really carries the vocabulary (else every check below is vacuous)", () => {
     expect(withRules.children().some((c) => c.type === TYPE_API)).toBe(true);
     expect(withoutRules.children().some((c) => c.type === TYPE_API)).toBe(false);

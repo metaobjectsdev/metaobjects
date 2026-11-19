@@ -1,4 +1,4 @@
-// Lifecycle constants (ADR-0063) — the `transition` type, its subtypes and attrs.
+// Lifecycle constants (ADR-0066) — the `transition` type, its subtypes and attrs.
 //
 // A lifecycle has no vocabulary of its own: it is a `field.enum` with at least one
 // `transition.action` child. Its states are the enum's @values, its initial state the
@@ -10,7 +10,7 @@ export { TYPE_TRANSITION };
 
 /** A move made by an operation. */
 export const TRANSITION_SUBTYPE_ACTION = "action";
-/** A move made by time. RESERVED, not registered (ADR-0063): a different generated
+/** A move made by time. RESERVED, not registered (ADR-0066): a different generated
  *  shape (a sweep or a derived read, no operation, no permission point). */
 export const TRANSITION_SUBTYPE_TIMED_RESERVED = "timed";
 export const TRANSITION_SUBTYPES = [TRANSITION_SUBTYPE_ACTION] as const;

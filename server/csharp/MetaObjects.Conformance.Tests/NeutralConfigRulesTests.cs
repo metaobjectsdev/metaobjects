@@ -5,7 +5,7 @@ using Xunit;
 namespace MetaObjects.Conformance.Tests;
 
 /// <summary>
-/// ADR-0063 — the <c>rules</c> and <c>verify</c> blocks of <c>config.json</c>. An absent key takes
+/// ADR-0066 — the <c>rules</c> and <c>verify</c> blocks of <c>config.json</c>. An absent key takes
 /// its default, which behaves as before the blocks existed; a mistake is refused rather than
 /// silently defaulted, because a defaulted typo would change what <c>verify</c> reports.
 /// </summary>

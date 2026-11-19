@@ -2,8 +2,8 @@
   "metadata.root": {
     "package": "acme::tasks",
     "children": [
-      { "object.entity": { "name": "Case", "children": [
-        { "source.rdb": { "@table": "cases" } },
+      { "object.entity": { "name": "Consignment", "children": [
+        { "source.rdb": { "@table": "consignments" } },
         { "field.long": { "name": "id" } },
         { "field.string": { "name": "status" } },
         { "identity.primary": { "name": "id", "@fields": "id" } },
@@ -13,11 +13,11 @@
         { "source.rdb": { "@table": "tasks" } },
         { "field.long": { "name": "id" } },
         { "field.string": { "name": "title" } },
-        { "field.long": { "name": "caseId" } },
+        { "field.long": { "name": "consignmentId" } },
         { "identity.primary": { "name": "id", "@fields": "id" } },
-        { "identity.reference": { "name": "caseId", "@fields": "caseId", "@references": "acme::tasks::Case" } }
+        { "identity.reference": { "name": "consignmentId", "@fields": "consignmentId", "@references": "acme::tasks::Consignment" } }
       ] } },
-      { "object.projection": { "name": "OpenTasks", "@filter": { "caseId.tasks.title": "x" }, "children": [
+      { "object.projection": { "name": "OpenTasks", "@filter": { "consignmentId.tasks.title": "x" }, "children": [
         { "source.rdb": { "@kind": "view", "@view": "v_open_tasks" } },
         { "field.long": { "name": "id", "extends": "acme::tasks::Task.id" } },
         { "field.string": { "name": "title", "extends": "acme::tasks::Task.title" } },

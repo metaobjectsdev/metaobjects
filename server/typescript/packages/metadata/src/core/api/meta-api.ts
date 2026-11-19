@@ -1,4 +1,4 @@
-// Node classes for the declared API surface (ADR-0030, ADR-0063): `api.*`,
+// Node classes for the declared API surface (ADR-0030, ADR-0066): `api.*`,
 // `operation.*` and `binding.*`. Accessors are RESOLVING (ADR-0039), so an
 // operation that `extends` another reads the inherited attributes.
 

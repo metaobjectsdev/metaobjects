@@ -103,11 +103,12 @@ package number is the codegen **ENGINE**'s surface, a runtime library's surface,
 CLI semantics; vocabulary moves `metamodelVersion` instead. Do NOT reason from
 "generated output changed" — ask whose surface moved.
 
-**Registry vocabulary does not force a MINOR** — a new *attribute* is a PATCH, a new
-top-level *type* is a MINOR, and a new *subtype* is a PATCH when inert. See
-`docs/RELEASING.md` → "The vocabulary rule" before choosing the level; the old
-"any registry addition ⇒ MINOR" reading spent two minors on changes no adopter
-could observe.
+**Vocabulary is decided by FEATURE, not by kind** (ADR-0035 **Amendment 5**): a type,
+subtype, attribute, enum value or view vocabulary that adds to or augments an EXISTING
+feature is a PATCH, inert or not, as long as nothing existing is removed, narrowed or
+reinterpreted; a whole new feature (its own docs page and tooling, as `requirement.*` was)
+is a MINOR. See `docs/RELEASING.md` → "The vocabulary rule" for the feature test before
+choosing the level. Any `metamodelVersion` move still publishes all four registries.
 
 ## Phase 2 — Build fresh (the stale-`dist` trap)
 

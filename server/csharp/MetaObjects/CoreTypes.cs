@@ -272,7 +272,7 @@ public static class CoreTypes
                     Wildcard(TYPE_TEMPLATE),
                     // Capability requirements are declared beside the entities they describe.
                     Wildcard(TYPE_REQUIREMENT),
-                    // ADR-0030 / ADR-0063 — a declared API surface is a top-level, packaged node.
+                    // ADR-0030 / ADR-0066 — a declared API surface is a top-level, packaged node.
                     Wildcard(TYPE_API),
                 ],
                 (tid, n) => new MetaRoot(tid, n),
@@ -323,7 +323,7 @@ public static class CoreTypes
             // declare; its structural child graph also comes from the spec.
             List<AttrSchema> objectAttrs = subType switch
             {
-                OBJECT_SUBTYPE_PROJECTION => [.. ObjectSchema.ObjectAttrs, ObjectSchema.ProjectionFilterAttr, ObjectSchema.CollectionNameAttr],
+                OBJECT_SUBTYPE_PROJECTION => [.. ObjectSchema.ObjectAttrs, ObjectSchema.ProjectionFilterAttr, .. ObjectSchema.ProjectionShapeAttrs, ObjectSchema.CollectionNameAttr],
                 OBJECT_SUBTYPE_REPORT     => [.. ObjectSchema.ObjectAttrs, .. ReportingSchema.ReportAttrs, ObjectSchema.CollectionNameAttr],
                 OBJECT_SUBTYPE_ENTITY     => [.. ObjectSchema.ObjectAttrs, ObjectSchema.CollectionNameAttr],
                 _                         => ObjectSchema.ObjectAttrs.ToList(),
@@ -372,7 +372,7 @@ public static class CoreTypes
                 // tolerant-extract overlays (@enumAlias / @enumDoc / @coerceDefault /
                 // @normalize) are re-homed to the metaobjects-prompt concern provider
                 // (reads prompt.json's field.enum extends).
-                FIELD_SUBTYPE_ENUM     => [.. FieldSchema.CommonFieldAttrs, FieldSchema.EnumValuesAttr, FieldSchema.ProvidedAttr, FieldSchema.IntValueMapAttr],
+                FIELD_SUBTYPE_ENUM     => [.. FieldSchema.CommonFieldAttrs, FieldSchema.EnumValuesAttr, FieldSchema.ProvidedAttr, FieldSchema.IntValueMapAttr, FieldSchema.StringValueMapAttr],
                 _                      => FieldSchema.CommonFieldAttrs.ToList(),
             };
 
@@ -688,7 +688,7 @@ public static class CoreTypes
                     ReportingSchema.SegmentAttrsMap[subType].ToList()));
         }
 
-        // ADR-0030 / ADR-0063 — the declared API surface (api / operation / binding) and
+        // ADR-0030 / ADR-0066 — the declared API surface (api / operation / binding) and
         // lifecycle moves (transition, a child of field.enum). One class per type; the
         // subtype carries no behaviour of its own. Descriptions, the structural child graph
         // and cardinalities come from the embedded api.json / transition.json via

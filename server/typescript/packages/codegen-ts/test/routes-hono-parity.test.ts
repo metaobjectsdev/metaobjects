@@ -32,7 +32,7 @@ const META = JSON.stringify({
       // TPH base + two subtypes.
       { "object.entity": { name: "Auth", "@discriminator": "type", children: [
         { "source.rdb": { "@table": "auths" } },
-        { "field.enum": { name: "type", "@values": ["Bridge", "Copay"] } },
+        { "field.enum": { name: "type", "@values": ["Bridge", "Coupon"] } },
         { "field.long": { name: "id" } },
         { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
       ] } },

@@ -289,7 +289,7 @@ PK → update every subtype → read back → delete → get-returns-null).
 #### TPH (table-per-hierarchy) scenarios
 
 The `tph-*.yaml` scenarios exercise single-table inheritance through the runtime
-(`Auth` base + `BridgeAuth` / `CopayAuth` / `PriorAuthAuth` subtypes over the one
+(`Auth` base + `BridgeAuth` / `CouponAuth` / `PermitAuth` subtypes over the one
 `auths` table). They require the port's **runtime TPH support** (resolving a
 subtype's inherited fields/identity/table via `extends`, plus discriminator
 inject/scope/strip). **All five ports run the `tph-*` scenarios green** — TypeScript

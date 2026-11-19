@@ -3,7 +3,7 @@ using Xunit;
 namespace MetaObjects.Cli.Tests;
 
 /// <summary>
-/// <c>dotnet meta verify</c> — the business-rules gate, end to end (ADR-0063). Drives the BUILT CLI, so
+/// <c>dotnet meta verify</c> — the business-rules gate, end to end (ADR-0066). Drives the BUILT CLI, so
 /// this proves the wiring: what is printed, where, and what reaches the exit code. The codes, severities
 /// and message text are gated cross-port by <c>RulesCheckConformanceTests</c>.
 /// </summary>

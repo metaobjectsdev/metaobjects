@@ -40,6 +40,14 @@ class GenContext:
     #: its generated package directory, and a second claimant is refused with
     #: ``ERR_NAME_COLLISION``. ``run_gen`` shares one across every generator of the run.
     claims: NameClaims = field(default_factory=NameClaims)
+    #: ``gen --entities``: whether an entity in ``entities`` was selected. ``entities`` is
+    #: always the WHOLE model in scope, so a whole-model file renders the same on a narrowed
+    #: run; a per-entity file honours this as well (``per_entity`` applies it). ``None``:
+    #: every entity is selected.
+    selected: Callable[[MetaObject], bool] | None = None
+
+    def is_selected(self, entity: MetaObject) -> bool:
+        return self.selected is None or self.selected(entity)
 
     def claim(self, scope: str, name: str, claimant: str, remedy: str) -> None:
         """Claim *name* in *scope* for the metadata node *claimant* (its ``resolution_key()``)."""
@@ -47,9 +55,31 @@ class GenContext:
 
 
 class Generator(Protocol):
+    """A generator has a ``name`` and a ``generate`` method.
+
+    It may also carry two optional attributes that ADR-0064's whole-run skip reads (both
+    default as below when absent, so no existing generator changes):
+
+    - ``cacheable: bool`` (default ``True``). ``False`` means the generator reads something
+      nobody can declare; a run that includes it never skips.
+    - ``declared_extra_inputs: tuple[str, ...]`` (default ``()``). Project-relative paths
+      the generator reads beyond the model, the config and the template roots; their
+      content is part of the run's key.
+    """
+
     name: str
 
     def generate(self, ctx: GenContext) -> list[EmittedFile]: ...
+
+
+def generator_cacheable(gen: object) -> bool:
+    """Whether a run that includes ``gen`` may be skipped when nothing changed."""
+    return bool(getattr(gen, "cacheable", True))
+
+
+def generator_extra_inputs(gen: object) -> tuple[str, ...]:
+    """The project-relative paths ``gen`` declared as extra inputs."""
+    return tuple(getattr(gen, "declared_extra_inputs", ()) or ())
 
 
 def per_entity(
@@ -60,7 +90,7 @@ def per_entity(
     def run(ctx: GenContext) -> list[EmittedFile]:
         out: list[EmittedFile] = []
         for e in ctx.entities:
-            if not ctx.matches(e):
+            if not ctx.matches(e) or not ctx.is_selected(e):
                 continue
             r = fn(e, ctx)
             out.extend(r if isinstance(r, list) else [r])
@@ -72,7 +102,8 @@ def per_entity(
 def once_per_run(
     fn: Callable[[list[MetaObject], GenContext], "EmittedFile | list[EmittedFile]"],
 ) -> Callable[[GenContext], list[EmittedFile]]:
-    """Called once with all matching entities (barrels / cross-entity files)."""
+    """Called once with all matching entities (barrels / cross-entity files) — the whole
+    model, even on a ``gen --entities`` run."""
 
     def run(ctx: GenContext) -> list[EmittedFile]:
         matched = [e for e in ctx.entities if ctx.matches(e)]

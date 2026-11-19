@@ -59,7 +59,7 @@ def _load_entities(meta: dict) -> dict[str, MetaObject]:
 # BridgeAuth (subtype)      --helpers--> PriorityTicket  [SHADOWS the name; TPH
 #   target of the unrelated Ticket hierarchy, so the source-side gate and the
 #   target-discriminator threading stay independent mechanisms]
-# CopayAuth (subtype)                                             [inherits, unshadowed]
+# CouponAuth (subtype)                                             [inherits, unshadowed]
 _META = {
     "metadata.root": {
         "package": "acme::auth",
@@ -79,7 +79,7 @@ _META = {
                 "children": [
                     {"source.rdb": {"@table": "auths"}},
                     {"field.long": {"name": "id"}},
-                    {"field.enum": {"name": "type", "@values": ["Bridge", "Copay"]}},
+                    {"field.enum": {"name": "type", "@values": ["Bridge", "Coupon"]}},
                     {"field.string": {"name": "reference", "@required": True, "@maxLength": 80}},
                     {"relationship.association": {
                         "name": "helpers", "@cardinality": "many",
@@ -101,9 +101,9 @@ _META = {
                 ],
             }},
             {"object.entity": {
-                "name": "CopayAuth",
+                "name": "CouponAuth",
                 "extends": "Auth",
-                "@discriminatorValue": "Copay",
+                "@discriminatorValue": "Coupon",
                 "children": [
                     {"field.string": {"name": "payer", "@maxLength": 80}},
                 ],
@@ -184,9 +184,9 @@ def test_every_mount_of_the_shadowed_name_passes_the_threaded_parameter() -> Non
     assert "    rows: list[Any] = render_wire(repo.find_related_helpers(None, auth_id, None), _WIRE_TAG)" in out
     # Non-shadowing subtype (inherits the base's vanilla target): gated, None literal.
     assert (
-        '    if repo.find_by_id("Copay", auth_id) is None:\n'
+        '    if repo.find_by_id("Coupon", auth_id) is None:\n'
         "        return []\n"
-        '    rows: list[Any] = render_wire(repo.find_related_helpers("Copay", auth_id, None), _WIRE_TAG)'
+        '    rows: list[Any] = render_wire(repo.find_related_helpers("Coupon", auth_id, None), _WIRE_TAG)'
     ) in out
     # Shadowing subtype: its OWN target's discriminator literal.
     assert (
@@ -201,5 +201,5 @@ def test_no_two_argument_call_of_the_shadowed_name_remains() -> None:
     # name may call the seam without the parameter every other mount passes.
     out = _render()
     assert "repo.find_related_helpers(None, auth_id)\n" not in out
-    assert 'repo.find_related_helpers("Copay", auth_id)\n' not in out
+    assert 'repo.find_related_helpers("Coupon", auth_id)\n' not in out
     assert 'repo.find_related_helpers("Bridge", auth_id)\n' not in out

@@ -12,6 +12,8 @@
 // Object-typed fields on read-only projections are not mapped here — that is a
 // separate projection-materialization concern.
 
+// The PropertyName hook is obsolete for adopters (set GenConfig.PropertyNaming); this generator still calls it.
+#pragma warning disable CS0618
 using System.Text;
 using MetaObjects.Codegen.Docs;
 using MetaObjects.Meta;
@@ -44,8 +46,10 @@ public class EntityGenerator : IGenerator
     /// subclass can override to honor an explicit casing source (an all-caps acronym a plain
     /// PascalCase of the field name would mangle). Every name this generator emits for a field —
     /// the property, the composite <c>[PrimaryKey]</c>, the reverse finders — goes through here.
-    /// The DbContext generator names the same properties: set the resolver on the config, or
-    /// override <c>DbContextGenerator.PropertyName</c> to match.</summary>
+    /// Every other generator that names a property reads <see cref="GenConfig.PropertyNaming"/>
+    /// only, so an override that answers differently from the resolver for any field is refused
+    /// when the generator runs (set <c>GenConfig.PropertyNaming</c> instead).</summary>
+    [Obsolete("set GenConfig.PropertyNaming: it is the one resolver every generator consults. An override that names a field differently from the resolver is refused when the generator runs.")]
     protected virtual string PropertyName(MetaField field) => CSharpNaming.PropertyName(field, _config);
 
     // The run's config, for the PropertyName default. Set when Generate starts.
@@ -115,6 +119,7 @@ public class EntityGenerator : IGenerator
         _wire = ctx.Root.WireFormat;
         _config = ctx.Config;
         _ctx = ctx;
+        CSharpNaming.RefuseDivergingPropertyHook(Name, ReportRows.WithReportRows(ctx), ctx.Config, PropertyName);
         // FR-044 — a view-backed report joins the set as its ROW MODEL (a keyless,
         // projection-shaped object carrying its derived fields); every other report node
         // is dropped. See ReportRows.
@@ -159,10 +164,10 @@ public class EntityGenerator : IGenerator
         var files = new List<EmittedFile>();
 
         // FR-019 — materialized shared enums (root-level abstract field.enum, non-@provided,
-        // consumed by ≥1 field) are emitted ONCE in a dedicated Enums.g.cs at the entity-module
-        // namespace; consuming entity fields REFERENCE them (no nested redeclaration). @provided
-        // shared enums emit nothing here (referenced from configured external namespace). With no
-        // shared enums in the model (the common inline case) no file is emitted — byte-identical.
+        // consumed by ≥1 field) are emitted ONCE each, as <package>/<Enum>.g.cs in the entity-module
+        // namespace (item 12); consuming entity fields REFERENCE them (no nested redeclaration).
+        // @provided shared enums emit nothing here (referenced from configured external namespace).
+        // With no shared enums in the model (the common inline case) no file is emitted.
         files.AddRange(EmitSharedEnumFiles(ctx, valueObjects));
 
         foreach (var e in mapped)
@@ -291,10 +296,10 @@ public class EntityGenerator : IGenerator
             // Read-only projections map to a view (no [Table]); tables / a write-through
             // WRITE entity carry [Table].
             isView: entity.IsReadOnlyProjection(),
-            // #214 — an entity's table-mapped class omits the derived fields: its table has no column for them.
-            // An entity's primary source is always writable (the loader refuses a read-only primary),
-            // so every entity class here maps a table.
-            excludeDerived: entity.IsEntity(),
+            // #214 — the write entity of a write-through omits the derived (view-only) fields; and
+            // (rc.19 entity-derived) so does any entity: a derived field on an entity with no read
+            // source is no column, only a definition projections inline where they reach it.
+            excludeDerived: entity.IsWriteThrough() || entity.IsEntity(),
             // A plain read-only projection keeps its warn-and-skip on object-typed columns
             // (collection materialization is a separate concern); the write entity is not a
             // view so this flag is inert there.
@@ -1073,7 +1078,7 @@ public class EntityGenerator : IGenerator
     // only one declaration (prevents CS0102 "already contains a definition for '<Name>'").
     //
     // FR-019: a field resolving to a SHARED (root-level abstract field.enum) enum is
-    // SKIPPED here — that type is materialized once in Enums.g.cs (or, when @provided,
+    // SKIPPED here — that type is materialized once in its own <Enum>.g.cs (or, when @provided,
     // not at all) and merely REFERENCED. Inline enums (no root-abstract super) keep their
     // per-object nested declaration exactly as before (byte-identical default).
     protected static List<string> CollectEnumDecls(MetaObject owner)
@@ -1095,8 +1100,8 @@ public class EntityGenerator : IGenerator
     }
 
     // FR-019 — the C# enum type a property of <field> is typed by:
-    //   • shared (root-level abstract, non-@provided) → the bare materialized type name
-    //     (same generated namespace as the entity).
+    //   • shared (root-level abstract, non-@provided) → the materialized type, global::-qualified
+    //     in its package's namespace (rc.19 R65).
     //   • @provided → <cfg.ProvidedEnumNamespace>.<Name> (codegen error if unset).
     //   • inline (the common case) → the per-object nested <Entity><Field> type name.
     private static string EnumPropertyTypeName(MetaObject owner, MetaField field, GenConfig config)
@@ -1106,9 +1111,9 @@ public class EntityGenerator : IGenerator
         return CSharpNaming.EnumTypeName(owner, field);
     }
 
-    // FR-019 — the materialized shared-enums file (Enums.g.cs), emitted ONCE per run when
-    // the model has ≥1 consumed, non-@provided root-level abstract field.enum. Returns null
-    // (no file) otherwise — so a model with only inline enums is byte-identical to pre-FR-019.
+    // FR-019 — the materialized shared enums, one file each (item 12): <package>/<Enum>.g.cs
+    // (OutputPaths.Of, ruling R39), emitted when the model has a consumed, non-@provided root-level
+    // abstract field.enum; none otherwise, so a model with only inline enums emits nothing here.
     // Referencing a @provided enum with no ProvidedEnumNamespace configured throws here too
     // (the collect walk constructs each consuming reference's type), surfacing the config gap
     // as a codegen-time error before any file is written.
@@ -1133,11 +1138,13 @@ public class EntityGenerator : IGenerator
         foreach (var e in Fr019SharedEnum.MaterializedSharedEnums(ctx.Root, reached, ctx.Scope))
         {
             // An enum two narrowed entries both use is declared by ONE of them, so the entries'
-            // outputs build together. Decided from the model alone, so each entry reaches the same
-            // answer in its own run: the enum's home is its first consumer by resolution key, and
-            // the entry that emits that object declares it.
+            // outputs build together. Decided from the model and the run's entry list, so each entry
+            // reaches the same answer in its own run: the enum's home is its first consumer by
+            // resolution key, and the entry that emits that object declares it. An entry skips the
+            // enum only when ANOTHER entity entry of this run accepts the home; with no such entry
+            // (a single narrowed entry, or a home another tool generates) it declares the enum itself.
             if (ctx.Scope is { } scope && SharedEnumHome(ctx, e, importedShapes) is { } home
-                && !scope(home) && !valueShapes.Contains(home))
+                && !scope(home) && !valueShapes.Contains(home) && AnotherEntryEmits(ctx, home))
                 continue;
             var ns = Fr019SharedEnum.MaterializedNamespace(e, ctx.Config);
             ctx.Claim($"the C# namespace {ns}", e.Name, e.Declaration?.ResolutionKey() ?? e.Name,
@@ -1161,7 +1168,7 @@ public class EntityGenerator : IGenerator
                 sb.AppendLine();
                 sb.Append(SharedEnumDeclaration(e));
                 var fileName = $"{e.Name}.g.cs";
-                return new EmittedFile(e.Declaration is { } decl ? OutputPaths.Of(decl, ctx, fileName) : fileName, sb.ToString());
+                return new EmittedFile(e.Declaration is { } decl ? OutputPaths.Of(decl, ctx, fileName) : fileName, sb.ToString()) { WholeModel = true };
             }).ToList();
 
         var flat = new StringBuilder();
@@ -1191,8 +1198,16 @@ public class EntityGenerator : IGenerator
                 flat.AppendLine();
             }
         }
-        return [new EmittedFile("Enums.g.cs", flat.ToString())];
+        return [new EmittedFile("Enums.g.cs", flat.ToString()) { WholeModel = true }];
     }
+
+    /// <summary>
+    /// Whether another entity entry of this run (<see cref="GenContext.Generators"/>) accepts
+    /// <paramref name="home"/>, so that entry declares the shared enum homed there. A run that does not
+    /// list its entries answers false, and the enum is declared here.
+    /// </summary>
+    private bool AnotherEntryEmits(GenContext ctx, MetaObject home) =>
+        ctx.Generators.OfType<EntityGenerator>().Any(g => !ReferenceEquals(g, this) && (g.Include is null || g.Include(home)));
 
     /// <summary>
     /// The object a narrowed run's shared enum is declared beside: the first, by resolution key, of
@@ -2130,7 +2145,7 @@ public static class DecimalWire
 """;
 
     private static EmittedFile EmitDecimalWireFile(string ns, string fileName) =>
-        new(fileName, DecimalWireSourceTemplate.Replace("__NS__", ns, StringComparison.Ordinal) + "\n");
+        new(fileName, DecimalWireSourceTemplate.Replace("__NS__", ns, StringComparison.Ordinal) + "\n") { WholeModel = true };
 
     // field.duration — the duration wire form (fixtures/duration-wire/). This text is the
     // Runtime/DurationWire.cs source with its namespace as __NS__; DurationWireTests gates the two
@@ -2398,7 +2413,7 @@ public static class DurationWire
 """;
 
     private static EmittedFile EmitDurationWireFile(string ns, string fileName) =>
-        new(fileName, DurationWireSourceTemplate.Replace("__NS__", ns, StringComparison.Ordinal) + "\n");
+        new(fileName, DurationWireSourceTemplate.Replace("__NS__", ns, StringComparison.Ordinal) + "\n") { WholeModel = true };
 
     // true iff FIELD is a field.duration (single or @isArray): a System.TimeSpan property carrying
     // the per-property ISO-8601 converter.
@@ -2544,7 +2559,7 @@ public static class DurationWire
         sb.AppendLine("        }");
         sb.AppendLine("    }");
         sb.AppendLine("}");
-        return new EmittedFile(fileName, sb.ToString());
+        return new EmittedFile(fileName, sb.ToString()) { WholeModel = true };
     }
 
     // One property's declaration line, from the two hooks: `public <type> <name> { <setter> }`
@@ -2601,7 +2616,7 @@ public static class DurationWire
         }
         if (field.SubType == FIELD_SUBTYPE_MAP)
         {
-                return $"Dictionary<string, {CSharpNaming.MapValueType(field, ctx.Root)}>" + (required ? string.Empty : "?");
+                return $"Dictionary<string, {MapValueTypeRef(field, owner, ctx)}>" + (required ? string.Empty : "?");
         }
         return CSharpNaming.ScalarForField(field) ?? "object";
     }
@@ -3289,4 +3304,10 @@ public static class DurationWire
             .OrderBy(o => ValueObjectNames.TypeName(o, ctx.Root), StringComparer.Ordinal)
             .ToList();
     }
+    // A map's value object is named as the owner's file sees it: global::-qualified when another
+    // object shares its short name (both namespaces' `using`s are in scope; CS0104 otherwise).
+    private static string MapValueTypeRef(MetaField field, MetaData owner, GenContext ctx) =>
+        field.ObjectRef is { Length: > 0 } && ValueObjectNames.ResolveFieldRef(field, ctx.Root) is { } vo
+            ? ValueObjectNames.ShortRef(vo, ctx.Root, ctx.Config, ValueObjectNames.Namespace(owner, ctx.Config))
+            : CSharpNaming.MapValueType(field, ctx.Root);
 }

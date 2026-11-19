@@ -7,12 +7,23 @@
 # conformance.yml's lanes, integration-tests.yml's Testcontainers matrix), so pinning the
 # gate to it runs exactly the repository's checks, the same ones GitHub runs.
 #
-# THE SPLIT. These two commands together are exactly `scripts/ci-local.sh --quick`, cut
-# along the script's own `--only` section boundaries so neither step repeats the other.
-# `scripts/ci-local.sh --help` enumerates what each section contains, and
-# `MO_CI_LIST_ONLY=1 scripts/ci-local.sh --only <section>` prints its exact step list.
-# Measured green on a warm tree 2026-09-18: test 256s (it carries the mutation gate and is
-# almost all of the cost), lint 23s.
+# THE SPLIT. `lint` is `--only gates`, the one lane every change runs. `test` is
+# `--affected`: it lists what the branch changed against its merge base, maps the paths to
+# lanes with scripts/ci-lane-map.txt, prints which lanes it selected, skipped and why, and
+# runs only those (ts-fast + ts-unit for a TypeScript or web-client change; java-slow,
+# python or csharp for a change confined to that port; every selectable lane for a change
+# to fixtures, spec, scripts, workflows, agent-context, docs or any path the map does not
+# claim; none for a change to only the root README, CHANGELOG, CONTRIBUTING, AGENTS or CLAUDE
+# files, which the gates lane covers). Selected lanes run exactly as
+# `--only <lane> --no-integration` does, so a lane's contents are unchanged. Force every
+# lane with MO_CI_FULL=1. Before 2026-11-15 this step was always `--only ts-fast --only
+# ts-unit`, so a Java, Python or C# change was validated by the TypeScript tests and by
+# nothing in its own port. Measured green on a warm tree 2026-09-18: ts-fast + ts-unit
+# 256s, gates 23s. The test step's mutation gate is DIFF-SCOPED (gate_completeness_diff in
+# the script) and runs inside ts-fast: it mutates only the stryker.conf.mjs `mutate` files
+# the branch changed against its base, and SKIPs when it changed none. That is unchanged by
+# the selection. The full pass is `--only mutation`, the flagless run's mutation lane, and
+# conformance.yml (tags, nightly, dispatch).
 #
 # ORDER IS LOAD-BEARING, and it is why the work is split this way round rather than one
 # `--quick` in `test`. The pipeline runs test BEFORE lint. The `gates` section contains
@@ -35,18 +46,19 @@
 # NOT all of them, which is the part worth being exact about: five invoke `node` directly
 # (publish-set, script-name hooks, extract field kinds, metamodel-version, migration guides),
 # `check-publish-intent.sh` spawns `node` internally, and `gate_positioning_claims` invokes
-# bare `bun`. What holds across both kinds is the flag's safety: it cannot misfire on a
-# missing dotnet/mvn/uv, because nothing in `gates`, `ts-fast` or `ts-unit` invokes them.
+# bare `bun`. `gates`, `ts-fast` and `ts-unit` invoke no dotnet/mvn/uv. `--affected` can select the
+# lanes that do, and there the flag is the point: a change to that port with its toolchain
+# missing FAILS, where a plain run would skip it and report green.
 #
-# WHAT IS DELIBERATELY NOT HERE — the rest of the flagless `scripts/ci-local.sh`: the C#,
-# Java, Kotlin and Python conformance lanes, the full Java reactor, and
-# integration-tests.yml's five-port Testcontainers matrix plus the migrate-ts / runtime-ts
-# real-Postgres suites (`--only ts-slow`). Dropped for cost — they turn a ~4.5 minute step
-# into a much longer one on every round — and for dependence: they need dotnet, mvn, uv and
-# a live Docker daemon, which a gate host is not guaranteed to have, and neither
-# `--strict-toolchains` (a missing toolchain FAILS) nor its absence (a down Docker SKIPS
-# silently) gives an honest per-change signal when they are missing. docs/RELEASING.md
-# requires the flagless run before `bun publish`, which is where they are enforced.
+# WHAT IS DELIBERATELY NOT HERE — the docker half. `--affected` implies `--no-integration`:
+# integration-tests.yml's five-port Testcontainers matrix, the migrate-ts / runtime-ts
+# real-Postgres suites (`--only ts-slow`) and the cube live check need a live Docker daemon,
+# which a gate host is not guaranteed to have, and a down daemon SKIPS silently without
+# `--strict-toolchains`. They turn a ~4.5 minute step into a much longer one on every round.
+# A port's selected lane DOES need its toolchain (dotnet, mvn, uv), and under
+# `--strict-toolchains` a missing one FAILS rather than skipping, so a change to that port
+# is never reported green unchecked. docs/RELEASING.md requires the flagless run before
+# `bun publish`, which is where the docker half and every lane are enforced.
 #
 # NOTE: this file must be at the repo ROOT as `.no-mistakes.yaml` (NOT under
 # .no-mistakes/), and repo commands are read from the DEFAULT BRANCH — so nothing here
@@ -57,7 +69,7 @@
 # commands above already run the same script the GitHub workflows run.
 
 commands:
-  test: "scripts/ci-local.sh --only ts-fast --only ts-unit --strict-toolchains"
+  test: "scripts/ci-local.sh --affected --strict-toolchains"
   lint: "scripts/ci-local.sh --only gates --strict-toolchains"
 
 # Public repository: keep PR bodies short and the run intent out of them.
@@ -66,5 +78,37 @@ pr:
   appendix: collapsed
 
 # Mark a failing test command as pre-existing when it also fails on the base.
+#
+# THE EVIDENCE PHASE. After `commands.test` passes, the gate ALWAYS runs an agent that derives
+# end-user scenarios and drives the product itself; no setting turns that turn off. It, not
+# `commands.test`, is the long part of this step: 264 recorded Test steps for this repository
+# average about 43 minutes, 130 of them over 30, against 4-5 for the command itself, and the
+# agent's budget is 75 minutes on this host. Its prompt is the one thing a repository controls,
+# so the runbook below scopes it the way `--affected` scopes the command: by the paths the
+# change touches (`path_instructions` match the changed-file list, as scripts/ci-lane-map.txt
+# does). This is guidance to a model, not a switch: it narrows what the agent is told to do
+# and does not bound it. The bound is the host's `test_agent_timeout`. These fields are read
+# from the default branch only, so they too take effect after merge.
 test:
   base_attribution: true
+  instructions: |
+    This repository ships libraries, a code generator and command line tools. There is no server or app to start. The test command already ran the lanes this change affects, and its output begins with the lanes it selected and skipped, so do not re-run the full suites or the lanes of ports the change does not touch. Drive the changed behavior directly instead: run the affected CLI command or generator on a small fixture from the fixtures directory, or the focused tests of the module the change touches. Keep to at most three scenarios and finish in about ten minutes. Report no-surface when the change has no runtime behavior, such as documentation, comments, CI configuration or metadata.
+  path_instructions:
+    - path: "docs/**"
+      instructions: |
+        Documentation only. There is nothing to start or drive. Return no-surface at once without running anything: the test command already ran the lanes whose tests read these pages, and the gates lane checks the prose.
+    - path: "server/typescript/**"
+      instructions: |
+        TypeScript port. Drive the meta CLI from the workspace on a fixture, or run bun test in only the package the change touches. Do not run the Java, Python or C# suites.
+    - path: "client/web/**"
+      instructions: |
+        Web client packages. Run bun test in only the package the change touches and check that its built entry still bundles. Do not run the server suites.
+    - path: "server/java/**"
+      instructions: |
+        Java and Kotlin ports. Run mvn test for only the Maven modules the change touches, with -pl and -am, not the whole reactor. Do not run the TypeScript, Python or C# suites.
+    - path: "server/python/**"
+      instructions: |
+        Python port. Run pytest on only the test modules the change touches. Do not run the TypeScript, Java or C# suites.
+    - path: "server/csharp/**"
+      instructions: |
+        C# port. Run dotnet test on only the test project the change touches. Do not run the TypeScript, Java or Python suites.

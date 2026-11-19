@@ -2,8 +2,9 @@
 // Re-sync this repo's OWNED copies of the reference generator templates.
 //
 // `owned-copies-current.test.ts` requires every owned copy in this repo — the
-// `test-generators` package, and one set per `examples/*/codegen/` — to be exactly what
-// `meta eject` writes today: the generator, and the template modules it calls
+// `test-generators` package, and one set per `examples/*/codegen/` that owns a reference
+// copy (an example of bespoke generators owns none; `ownedTiers()` decides) — to be exactly
+// what `meta eject` writes today: the generator, and the template modules it calls
 // (ADR-0034 Amendment 8), which sit in a `templates/` directory beside the generators'. That
 // gate exists because a drifted copy lets the suites and examples keep passing while proving
 // nothing about what an adopter actually runs.

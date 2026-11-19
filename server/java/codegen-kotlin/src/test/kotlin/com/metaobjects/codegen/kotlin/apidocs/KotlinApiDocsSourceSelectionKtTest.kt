@@ -42,16 +42,16 @@ class KotlinApiDocsSourceSelectionKtTest {
         const val PROJECT = "apidocs-source-selection"
     }
 
-    // PhaseSummary declares its @role:replica VIEW source FIRST and its @role:primary
+    // StageSummary declares its @role:replica VIEW source FIRST and its @role:primary
     // STORED-PROC source SECOND. Both are read-only kinds, so nothing about the shape is
     // exotic beyond the declaration order, and it loads with zero errors.
     private val fixture = """{
       "metadata.root": { "package": "acme::demo", "children": [
-        { "object.projection": { "name": "PhaseSummary", "children": [
+        { "object.projection": { "name": "StageSummary", "children": [
             { "source.rdb": { "name": "replicaView", "@kind": "view",
-                              "@table": "v_phase_summary", "@role": "replica" } },
+                              "@table": "v_stage_summary", "@role": "replica" } },
             { "source.rdb": { "name": "primaryProc", "@kind": "storedProc",
-                              "@proc": "fn_phase_summary", "@role": "primary" } },
+                              "@proc": "fn_stage_summary", "@role": "primary" } },
             { "field.int":    { "name": "id" } },
             { "field.string": { "name": "label" } }
         ] } }
@@ -95,7 +95,7 @@ class KotlinApiDocsSourceSelectionKtTest {
 
     @Test
     fun twoDistinctlyNamedSourcesBothSurviveOnChildren() {
-        val obj = loader.metaObjects.single { it.name.endsWith("::PhaseSummary") }
+        val obj = loader.metaObjects.single { it.name.endsWith("::StageSummary") }
         val sources = obj.getChildren(RdbSource::class.java, true)
         assertEquals(
             listOf("primaryProc", "replicaView"),
@@ -109,11 +109,11 @@ class KotlinApiDocsSourceSelectionKtTest {
         // Ground truth: what the real generators actually wrote. Both select by role, so
         // the primary storedProc wins and the replica view contributes nothing.
         assertTrue(
-            Files.exists(outDir.resolve("acme/demo/PhaseSummaryProc.kt")),
-            "expected PhaseSummaryProc.kt; files=${Files.walk(outDir).toList()}",
+            Files.exists(outDir.resolve("acme/demo/StageSummaryProc.kt")),
+            "expected StageSummaryProc.kt; files=${Files.walk(outDir).toList()}",
         )
         assertFalse(
-            Files.exists(outDir.resolve("acme/demo/PhaseSummaryTable.kt")),
+            Files.exists(outDir.resolve("acme/demo/StageSummaryTable.kt")),
             "the primary source is a storedProc, so no Exposed table object is emitted",
         )
     }
@@ -121,22 +121,22 @@ class KotlinApiDocsSourceSelectionKtTest {
     @Test
     fun theDocumentedDataAccessSymbolIsTheOneTheGeneratorsEmit() {
         val model = KotlinApiModelBuilder(com.metaobjects.generator.kotlin.Fr019SharedEnum.ProvidedEnumConfig.fromArgs(null)).build(loader, PROJECT)
-        val unit = model.units.single { it.node.endsWith("PhaseSummary") }
+        val unit = model.units.single { it.node.endsWith("StageSummary") }
         val dataAccess = unit.symbols.filter { it.kind == ApiSymbolKind.DATA_ACCESS }
 
         assertEquals(
-            listOf("PhaseSummaryProc"),
+            listOf("StageSummaryProc"),
             dataAccess.map { it.name },
             "the docs must name the symbol the role-scoped generators emit, not the one the " +
                 "first-DECLARED source would suggest",
         )
         // ...and the symbol it names is really in the generated source.
         assertTrue(
-            "object PhaseSummaryProc" in allGenerated,
+            "object StageSummaryProc" in allGenerated,
             "the documented data-access symbol must exist in the generated Kotlin",
         )
         assertFalse(
-            "PhaseSummaryTable" in allGenerated,
+            "StageSummaryTable" in allGenerated,
             "guards the inverse: the wrongly-documented symbol is emitted by nothing",
         )
     }

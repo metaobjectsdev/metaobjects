@@ -17,13 +17,17 @@ public class PackageBindingResolverTests
     {
         OutDir = "/tmp",
         Namespace = "Acme.Generated",
+        PackageNamespacesFromMetadata = true,
     };
 
+    // rc.19 R65: with no binding, a package's namespace is the package itself, PascalCased per
+    // segment (as Java and Kotlin map packages); the configured namespace places package-less types.
     [Fact]
-    public void Default_config_falls_back_to_Namespace_byte_identical_to_pre_FR021()
+    public void Default_config_maps_a_package_to_its_own_namespace_and_no_package_to_Namespace()
     {
         var cfg = CfgWithDefaults();
-        Assert.Equal("Acme.Generated", PackageBindingResolver.Resolve(cfg, "acme::cases", "Case"));
+        Assert.Equal("Acme.Orders", PackageBindingResolver.Resolve(cfg, "acme::orders", "Order"));
+        Assert.Equal("Acme.UsersAccess", PackageBindingResolver.Resolve(cfg, "acme::users-access", "User"));
         Assert.Equal("Acme.Generated", PackageBindingResolver.Resolve(cfg, null));
         Assert.Equal("Acme.Generated", PackageBindingResolver.Resolve(cfg, ""));
     }
@@ -41,16 +45,16 @@ public class PackageBindingResolverTests
             },
             PackageNamespaces = new Dictionary<string, string>
             {
-                ["acme::cases"] = "Acme.Entities.CaseSpecialOverride",
+                ["acme::orders"] = "Acme.Entities.OrderSpecialOverride",
             },
             TypeOverrides = new Dictionary<string, string>
             {
-                ["acme::cases::Currency"] = "Acme.Shared.Money",
+                ["acme::orders::Currency"] = "Acme.Shared.Money",
             },
         };
 
-        Assert.Equal("Acme.Shared.Money", PackageBindingResolver.Resolve(cfg, "acme::cases", "Currency"));
-        Assert.Equal("Acme.Entities.CaseSpecialOverride", PackageBindingResolver.Resolve(cfg, "acme::cases", "OtherType"));
+        Assert.Equal("Acme.Shared.Money", PackageBindingResolver.Resolve(cfg, "acme::orders", "Currency"));
+        Assert.Equal("Acme.Entities.OrderSpecialOverride", PackageBindingResolver.Resolve(cfg, "acme::orders", "OtherType"));
     }
 
     [Fact]
@@ -67,12 +71,12 @@ public class PackageBindingResolverTests
             },
         };
 
-        Assert.Equal("Acme.Domain.Entities.Cases",
-            PackageBindingResolver.Resolve(cfg, "acme::cases", "Case"));
+        Assert.Equal("Acme.Domain.Entities.Orders",
+            PackageBindingResolver.Resolve(cfg, "acme::orders", "Order"));
         Assert.Equal("Acme.Domain.Entities.UsersAccess",
             PackageBindingResolver.Resolve(cfg, "acme::users-access", "User"));
-        Assert.Equal("Acme.Domain.Entities.Cases.CustomProperties",
-            PackageBindingResolver.Resolve(cfg, "acme::cases::custom-properties", "CustomProperty"));
+        Assert.Equal("Acme.Domain.Entities.Orders.CustomProperties",
+            PackageBindingResolver.Resolve(cfg, "acme::orders::custom-properties", "CustomProperty"));
     }
 
     [Fact]
@@ -89,7 +93,7 @@ public class PackageBindingResolverTests
         };
 
         // Falls back to Flatten (Acme.Generated) since the package doesn't match strip.
-        Assert.Equal("Acme.Generated", PackageBindingResolver.Resolve(cfg, "other::cases", "Case"));
+        Assert.Equal("Acme.Generated", PackageBindingResolver.Resolve(cfg, "other::orders", "Order"));
     }
 
     [Fact]
@@ -164,19 +168,19 @@ public class PackageBindingResolverTests
     {
         var typeOverride = CfgWithDefaults() with
         {
-            TypeOverrides = new Dictionary<string, string> { ["acme::cases::Case"] = target },
+            TypeOverrides = new Dictionary<string, string> { ["acme::orders::Order"] = target },
         };
         var packageOverride = CfgWithDefaults() with
         {
-            PackageNamespaces = new Dictionary<string, string> { ["acme::cases"] = target },
+            PackageNamespaces = new Dictionary<string, string> { ["acme::orders"] = target },
         };
 
         foreach (var cfg in new[] { typeOverride, packageOverride })
         {
-            var ex = Assert.Throws<InvalidOperationException>(() => PackageBindingResolver.Resolve(cfg, "acme::cases", "Case"));
+            var ex = Assert.Throws<InvalidOperationException>(() => PackageBindingResolver.Resolve(cfg, "acme::orders", "Order"));
             Assert.Contains($"\"{badSegment}\" is not an identifier", ex.Message);
-            Assert.Contains("metadata package \"acme::cases\"", ex.Message);
-            Assert.Throws<InvalidOperationException>(() => PackageBindingResolver.TryResolve(cfg, "acme::cases", "Case"));
+            Assert.Contains("metadata package \"acme::orders\"", ex.Message);
+            Assert.Throws<InvalidOperationException>(() => PackageBindingResolver.TryResolve(cfg, "acme::orders", "Order"));
         }
     }
 
@@ -254,7 +258,7 @@ public class PackageBindingResolverTests
     }
 
     [Fact]
-    public void Real_P3_config_resolves_all_18_domains_correctly()
+    public void Adopter_style_config_resolves_all_domains_correctly()
     {
         var cfg = CfgWithDefaults() with
         {
@@ -271,20 +275,20 @@ public class PackageBindingResolverTests
                 ["acme::reporting"] = "Acme.Domain.Entities.ReportEntities",
                 ["acme::domain::dataEnums"] = "Acme.Domain.DataEnums",
                 ["acme::domain::dataEnums::authorizations"] = "Acme.Domain.DataEnums.Authorizations",
-                ["acme::domain::dataEnums::copayCards"] = "Acme.Domain.DataEnums.CopayCards",
-                ["acme::domain::dataEnums::dataExportIntegration"] = "Acme.Domain.DataEnums.DataExportIntegration",
-                ["acme::domain::dataEnums::spIntegration"] = "Acme.Domain.DataEnums.SPIntegration",
+                ["acme::domain::dataEnums::couponCards"] = "Acme.Domain.DataEnums.CouponCards",
+                ["acme::domain::dataEnums::warehouseFeed"] = "Acme.Domain.DataEnums.WarehouseFeed",
+                ["acme::domain::dataEnums::ediIntegration"] = "Acme.Domain.DataEnums.EDIIntegration",
             },
         };
 
-        // Convention rule: 13 of the 19 P3 domains fall through here.
-        Assert.Equal("Acme.Domain.Entities.Cases", PackageBindingResolver.Resolve(cfg, "acme::cases"));
+        // Convention rule: most of the domains fall through here.
+        Assert.Equal("Acme.Domain.Entities.Orders", PackageBindingResolver.Resolve(cfg, "acme::orders"));
         Assert.Equal("Acme.Domain.Entities.Workflow", PackageBindingResolver.Resolve(cfg, "acme::workflow"));
-        Assert.Equal("Acme.Domain.Entities.Patients", PackageBindingResolver.Resolve(cfg, "acme::patients"));
+        Assert.Equal("Acme.Domain.Entities.Players", PackageBindingResolver.Resolve(cfg, "acme::players"));
         Assert.Equal("Acme.Domain.Entities.UsersAccess", PackageBindingResolver.Resolve(cfg, "acme::users-access"));
         Assert.Equal("Acme.Domain.Entities.Authorizations", PackageBindingResolver.Resolve(cfg, "acme::authorizations"));
 
-        // Overrides win for the 6 P3-specific names.
+        // Overrides win for the adopter-specific names.
         Assert.Equal("Acme.Domain.Entities.ReportEntities", PackageBindingResolver.Resolve(cfg, "acme::reporting"));
         Assert.Equal("Acme.Domain.DataEnums", PackageBindingResolver.Resolve(cfg, "acme::domain::dataEnums"));
         Assert.Equal("Acme.Domain.DataEnums.Authorizations", PackageBindingResolver.Resolve(cfg, "acme::domain::dataEnums::authorizations"));

@@ -42,7 +42,7 @@ async function gen(root: MetaRoot): Promise<Record<string, string>> {
         outDir: tmp,
         extStyle: "none",
         dbImport: "~/db",
-        dialect: "postgres",
+        outputLayout: "flat" as const, dialect: "postgres",
         generators: [entityFile(), queriesFile(), barrel()],
       }),
       metadata: root,

@@ -1,0 +1,25 @@
+{
+  "metadata.root": {
+    "package": "acme::checks",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Job",
+          "children": [
+            { "source.rdb": { "@table": "jobs" } },
+            { "field.long": { "name": "id" } },
+            { "field.enum": { "name": "status", "@required": true, "@values": ["Queued", "Done", "Failed"],
+                "@stringValueMap": { "Queued": "q_queued", "Done": "q_done", "Failed": "q_failed" } } },
+            { "field.string": { "name": "error" } },
+            { "field.timestamp": { "name": "startedAt" } },
+            { "field.timestamp": { "name": "doneAt" } },
+            { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
+            { "validator.requiredWhen": { "name": "failureReason", "@field": "error", "@when": "status", "@equals": "Failed" } },
+            { "validator.comparison": { "name": "finished", "@left": "doneAt", "@op": "gte", "@right": "startedAt",
+                "@condition": { "op": "eq", "left": { "field": "status" }, "right": { "value": "Done" } } } }
+          ]
+        }
+      }
+    ]
+  }
+}

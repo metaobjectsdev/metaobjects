@@ -97,7 +97,7 @@ const FIXTURE = JSON.stringify({
           "@discriminator": "type",
           children: [
             { "source.rdb": { "@table": "auths" } },
-            { "field.enum": { name: "type", "@values": ["Bridge", "Copay"] } },
+            { "field.enum": { name: "type", "@values": ["Bridge", "Coupon"] } },
             { "field.long": { name: "id" } },
             { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
           ],
@@ -184,7 +184,7 @@ async function runGenerator(
   root: Awaited<ReturnType<typeof loadRoot>>,
   projectRoot: string,
 ): Promise<EmittedFile[]> {
-  const renderContext = makeRenderContext({
+  const renderContext = makeRenderContext({ outputLayout: "flat",
     dialect: "sqlite",
     loadedRoot: root,
     outDir: "/tmp",
@@ -198,7 +198,7 @@ async function runGenerator(
     // Replicates runner.ts:169 — the per-entity filter the generator declares.
     matches: (e: MetaObject) => gen.filter?.(e) ?? true,
     projectRoot,
-    config: {
+    config: { outputLayout: "flat",
       outDir: "/tmp",
       extStyle: "none",
       dbImport: "~/db",
@@ -359,7 +359,7 @@ describe("api-docs ACCURACY gate — documented symbols == real generated output
     extractorAll = joinContent(extractorFiles);
     renderAll = joinContent(renderFiles);
 
-    model = buildApiModel(root, { loadedRoot: root });
+    model = buildApiModel(root, { outputLayout: "flat", loadedRoot: root });
 
     // Sanity: the generators actually produced output for the rich fixture.
     expect(entityFiles.length).toBeGreaterThan(0);
@@ -872,24 +872,24 @@ const T5_FIXTURE = JSON.stringify({
           ],
         },
       },
-      // PhaseSummaryArgs — the @parameterRef value-object for the callable.
+      // StageSummaryArgs — the @parameterRef value-object for the callable.
       {
         "object.value": {
-          name: "PhaseSummaryArgs",
+          name: "StageSummaryArgs",
           children: [
-            { "field.long": { name: "caseId", "@required": true } },
+            { "field.long": { name: "consignmentId", "@required": true } },
             { "field.string": { name: "asOfDate", "@required": true } },
           ],
         },
       },
-      // PhaseSummary — a projection entity backed by a stored procedure → the
-      // callable generator emits callPhaseSummary(db, args): Promise<PhaseSummary[]>.
+      // StageSummary — a projection entity backed by a stored procedure → the
+      // callable generator emits callStageSummary(db, args): Promise<StageSummary[]>.
       {
         "object.projection": {
-          name: "PhaseSummary",
+          name: "StageSummary",
           children: [
-            { "source.rdb": { "@kind": "storedProc", "@proc": "fn_phase_summary", "@parameterRef": "PhaseSummaryArgs" } },
-            { "field.long": { name: "caseId" } },
+            { "source.rdb": { "@kind": "storedProc", "@proc": "fn_stage_summary", "@parameterRef": "StageSummaryArgs" } },
+            { "field.long": { name: "consignmentId" } },
             { "field.string": { name: "phase" } },
           ],
         },
@@ -941,10 +941,10 @@ describe("api-docs ACCURACY gate (T5) — relations / callable / prompt / Hono",
     honoFiles = await runGenerator(routesFileHono(), root, projectRoot);
 
     // Hono is the opt-in variant → the builder documents it only when asked.
-    model = buildApiModel(root, { loadedRoot: root, includeHonoRoutes: true });
+    model = buildApiModel(root, { outputLayout: "flat", loadedRoot: root, includeHonoRoutes: true });
 
     expect(entityFiles.length).toBeGreaterThan(0);
-    // Exactly one callable entity in the fixture (PhaseSummary).
+    // Exactly one callable entity in the fixture (StageSummary).
     expect(callableFiles.length).toBe(1);
     // One aggregated prompts.ts.
     expect(promptFiles.length).toBe(1);
@@ -1014,21 +1014,21 @@ describe("api-docs ACCURACY gate (T5) — relations / callable / prompt / Hono",
   // -----------------------------------------------------------------------
   // CALLABLE: call<Entity> in <Entity>.callable.ts at the documented path.
   // -----------------------------------------------------------------------
-  test("CALLABLE: callPhaseSummary documented + emitted at PhaseSummary.callable", () => {
-    const unit = model.units.find((u) => u.node === "PhaseSummary")!;
+  test("CALLABLE: callStageSummary documented + emitted at StageSummary.callable", () => {
+    const unit = model.units.find((u) => u.node === "StageSummary")!;
     const callable = unit.symbols.find((s) => s.kind === "callable");
-    expect(callable, "PhaseSummary carries a callable symbol").toBeDefined();
-    expect(callable!.name).toBe("callPhaseSummary");
+    expect(callable, "StageSummary carries a callable symbol").toBeDefined();
+    expect(callable!.name).toBe("callStageSummary");
 
-    const f = fileFor(callableFiles, "PhaseSummary.callable.ts")!;
+    const f = fileFor(callableFiles, "StageSummary.callable.ts")!;
     expect(f, "callable file emitted").toBeDefined();
-    expect(hasExportedFn(f.content, "callPhaseSummary")).toBe(true);
-    expect(callable!.importPath).toBe("PhaseSummary.callable");
+    expect(hasExportedFn(f.content, "callStageSummary")).toBe(true);
+    expect(callable!.importPath).toBe("StageSummary.callable");
     expect(`${callable!.importPath}.ts`).toBe(f.path);
 
     // Signature: takes the @parameterRef args VO + returns the projection array.
-    expect(callable!.signature).toContain("PhaseSummaryArgs");
-    expect(callable!.returns).toBe("PhaseSummary[]");
+    expect(callable!.signature).toContain("StageSummaryArgs");
+    expect(callable!.returns).toBe("StageSummary[]");
   });
 
   test("CALLABLE inverse: a non-callable entity carries no callable symbol", () => {
@@ -1083,7 +1083,7 @@ describe("api-docs ACCURACY gate (T5) — relations / callable / prompt / Hono",
   });
 
   test("HONO inverse: when includeHonoRoutes is NOT set, no Hono symbols are documented", () => {
-    const noHono = buildApiModel(root, { loadedRoot: root });
+    const noHono = buildApiModel(root, { outputLayout: "flat", loadedRoot: root });
     for (const u of noHono.units) {
       expect(u.symbols.some((s) => s.kind === "rest-hono")).toBe(false);
     }
@@ -1176,7 +1176,7 @@ describe("api-docs ACCURACY gate — writes are documented only where the genera
     queriesFiles = await runGenerator(queriesFile(), res.root, projectRoot);
     routesFiles = await runGenerator(routesFile(), res.root, projectRoot);
     honoFiles = await runGenerator(routesFileHono(), res.root, projectRoot);
-    model = buildApiModel(res.root, { loadedRoot: res.root, includeHonoRoutes: true });
+    model = buildApiModel(res.root, { outputLayout: "flat", loadedRoot: res.root, includeHonoRoutes: true });
   });
 
   for (const name of ["CustomerCard", "RegionTotal", "Order", "Customer"]) {

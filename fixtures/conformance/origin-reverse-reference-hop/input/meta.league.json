@@ -1,0 +1,42 @@
+{
+  "metadata.root": {
+    "package": "acme::league",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Player",
+          "children": [
+            { "source.rdb": { "@table": "players" } },
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Contract",
+          "children": [
+            { "source.rdb": { "@table": "contracts" } },
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "playerId" } },
+            { "field.boolean": { "name": "onFile" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
+            { "identity.reference": { "name": "player", "@fields": "playerId", "@references": "acme::league::Player" } }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "PlayerContractSummary",
+          "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_player_contract_summary" } },
+            { "field.long": { "name": "id", "extends": "acme::league::Player.id" } },
+            { "field.int": { "name": "contractCount", "children": [ { "origin.aggregate": { "@agg": "count", "@of": "acme::league::Contract.id", "@via": "acme::league::Player.contracts" } } ] } },
+            { "field.boolean": { "name": "latestOnFile", "children": [ { "origin.first": { "@of": "acme::league::Contract.onFile", "@via": "acme::league::Player.contracts", "@orderBy": ["id:desc"] } } ] } },
+            { "identity.primary": { "name": "id", "extends": "acme::league::Player.id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

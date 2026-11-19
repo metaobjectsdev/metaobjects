@@ -205,6 +205,20 @@ public final class ErrorMessageConstants {
     public static final String ERR_SEQUENCE_START_OUT_OF_RANGE = "ERR_SEQUENCE_START_OUT_OF_RANGE";
 
     /**
+     * A CHECK-generating validator or {@code field.enum} sets {@code @dbCheck: false} (no CHECK) and
+     * {@code @constraintName} (the CHECK's name). Cross-language contract:
+     * {@code ERR_CONSTRAINT_NAME_WITHOUT_CHECK}.
+     */
+    public static final String ERR_CONSTRAINT_NAME_WITHOUT_CHECK = "ERR_CONSTRAINT_NAME_WITHOUT_CHECK";
+
+    /**
+     * A cross-field validator ({@code comparison}, {@code requiredWhen}, {@code presentIff},
+     * {@code atLeastOne}) sets {@code @dbCheck: false}; it is enforced only by its CHECK.
+     * Cross-language contract: {@code ERR_CROSS_FIELD_WITHOUT_CHECK}.
+     */
+    public static final String ERR_CROSS_FIELD_WITHOUT_CHECK = "ERR_CROSS_FIELD_WITHOUT_CHECK";
+
+    /**
      * Error code emitted when {@code field.object @storage} is set on a field that
      * has no {@code @objectRef} — storage shape only applies to referenced objects.
      * Cross-language contract: {@code ERR_STORAGE_WITHOUT_OBJECT_REF}.

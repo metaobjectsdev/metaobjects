@@ -1,6 +1,6 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import type { Generator, GenContext, EmittedFile } from "../generator.js";
-import { entityOutputPath } from "../import-path.js";
+import { DEFAULT_OUTPUT_LAYOUT, entityOutputPath } from "../import-path.js";
 import { effectivePackage } from "../docs-paths.js";
 import { formatTs } from "../format.js";
 import { isReport } from "../source-detect.js";
@@ -51,7 +51,7 @@ export function reportExport(opts?: ReportExportOpts): Generator {
     name: "report-export",
     emitsReportExport: true,
     generate: async (ctx: GenContext): Promise<EmittedFile[]> => {
-      const layout = ctx.config.outputLayout ?? "flat";
+      const layout = ctx.config.outputLayout ?? DEFAULT_OUTPUT_LAYOUT;
       const extStyle = ctx.config.extStyle ?? "js";
       const selfTarget = ctx.renderContext?.selfTarget;
       if (selfTarget === undefined) throw new Error("report-export: no render context (run it through runGen).");
@@ -60,7 +60,8 @@ export function reportExport(opts?: ReportExportOpts): Generator {
       const out: EmittedFile[] = [
         { path: `${EXPORT_WRITERS_BASENAME}.ts`, content: await formatTs(renderExportWriters(emit)) },
       ];
-      for (const report of reports) {
+      // One module per report `meta gen <Entity>` named; the writers above serve them all.
+      for (const report of reports.filter((r) => ctx.selected?.(r) ?? true)) {
         const pkg = effectivePackage(report);
         out.push({
           path: entityOutputPath(layout, pkg, `${report.name}.export.ts`),

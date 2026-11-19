@@ -30,13 +30,13 @@ Add one attribute, `@parameterRef`, to `source.rdb`'s attribute schema in `persi
 // 1. The input shape — an ordinary object.value with typed fields.
 //    Fields may carry origin.passthrough to drift-protect against the entities they reference.
 { "object.value": {
-    "name": "PhaseSummaryArgs",
+    "name": "StageSummaryArgs",
     "children": [
       { "field.int": {
-          "name": "caseId",
+          "name": "consignmentId",
           "@required": true,
           "children": [
-            { "origin.passthrough": { "@from": "Case.id" } }
+            { "origin.passthrough": { "@from": "Consignment.id" } }
           ]
       }},
       { "field.timestamp": { "name": "asOfDate" } }
@@ -46,13 +46,13 @@ Add one attribute, `@parameterRef`, to `source.rdb`'s attribute schema in `persi
 // 2. The proc-backed entity references the input value-object via @parameterRef,
 //    exactly as templates reference their payload via @payloadRef.
 { "object.entity": {
-    "name": "PhaseSummaryPerCase",
+    "name": "StageSummaryPerConsignment",
     "children": [
       { "source.rdb": {
           "@kind": "storedProc",
-          "@proc": "fn_get_phase_summary_per_case",     // see FR-016 / ADR-0018: kind-aware physical-name attr
+          "@proc": "fn_get_stage_summary_per_consignment",     // see FR-016 / ADR-0018: kind-aware physical-name attr
           "@schema": "analytics",
-          "@parameterRef": "PhaseSummaryArgs"
+          "@parameterRef": "StageSummaryArgs"
       } },
       // Return columns are ordinary fields, as today.
       { "field.long":      { "name": "phaseId" } },
@@ -132,15 +132,15 @@ Some stored procedures (especially in legacy SQL Server / Oracle codebases) have
 
 ## Per-port codegen mapping
 
-| Port | Emission for a `source.rdb @kind: "storedProc" @parameterRef: "PhaseSummaryArgs"` |
+| Port | Emission for a `source.rdb @kind: "storedProc" @parameterRef: "StageSummaryArgs"` |
 |---|---|
-| **TypeScript** | Method on the generated repo / service: `getPhaseSummaryPerCase(args: PhaseSummaryArgs): Promise<PhaseSummaryPerCase[]>`. The `PhaseSummaryArgs` type comes from the value-object's TS codegen. Drizzle: `sql.raw` wrapper helper. |
-| **Java** | Spring repo method with `@Query(value = "{ call fn_get_phase_summary_per_case(:caseId, :asOfDate) }", nativeQuery = true)` and parameter binding driven by `PhaseSummaryArgs` field order. |
-| **Kotlin** | Exposed `transaction { ... }` block with stored-function call wrapper; typed arguments via the `PhaseSummaryArgs` data class. |
-| **C#** | EF Core: `context.PhaseSummaryPerCase.FromSqlInterpolated($"SELECT * FROM analytics.fn_get_phase_summary_per_case({args.CaseId}, {args.AsOfDate})")` or a static helper on a `Procedures` partial. |
-| **Python** | SQLAlchemy: `session.execute(text("SELECT * FROM analytics.fn_get_phase_summary_per_case(:case_id, :as_of_date)"), args.model_dump())`. Pydantic `PhaseSummaryArgs` validates inputs at call site. |
+| **TypeScript** | Method on the generated repo / service: `getStageSummaryPerConsignment(args: StageSummaryArgs): Promise<StageSummaryPerConsignment[]>`. The `StageSummaryArgs` type comes from the value-object's TS codegen. Drizzle: `sql.raw` wrapper helper. |
+| **Java** | Spring repo method with `@Query(value = "{ call fn_get_stage_summary_per_consignment(:consignmentId, :asOfDate) }", nativeQuery = true)` and parameter binding driven by `StageSummaryArgs` field order. |
+| **Kotlin** | Exposed `transaction { ... }` block with stored-function call wrapper; typed arguments via the `StageSummaryArgs` data class. |
+| **C#** | EF Core: `context.StageSummaryPerConsignment.FromSqlInterpolated($"SELECT * FROM analytics.fn_get_stage_summary_per_consignment({args.ConsignmentId}, {args.AsOfDate})")` or a static helper on a `Procedures` partial. |
+| **Python** | SQLAlchemy: `session.execute(text("SELECT * FROM analytics.fn_get_stage_summary_per_consignment(:consignment_id, :as_of_date)"), args.model_dump())`. Pydantic `StageSummaryArgs` validates inputs at call site. |
 
-Every port emits the `object.value` shape (`PhaseSummaryArgs`) as a native type per its existing object.value codegen path. **No new codegen mechanics are required** — both the value-object and the source-with-parameter-ref reuse already-shipped per-port pipelines.
+Every port emits the `object.value` shape (`StageSummaryArgs`) as a native type per its existing object.value codegen path. **No new codegen mechanics are required** — both the value-object and the source-with-parameter-ref reuse already-shipped per-port pipelines.
 
 ## `migrate-ts` impact
 
@@ -162,7 +162,7 @@ Under `fixtures/conformance/`:
 
 1. `parameter-ref-on-stored-proc/` — full shape: `source.rdb @kind: "storedProc" @parameterRef + object.value with 2 fields + return columns`.
 2. `parameter-ref-on-table-function/` — same shape with `@kind: "tableFunction"`.
-3. `parameter-ref-with-origin-passthrough/` — at least one parameter field uses `origin.passthrough @from: "Case.id"`; loader's effective-tree resolution links the parameter type to the source field's type.
+3. `parameter-ref-with-origin-passthrough/` — at least one parameter field uses `origin.passthrough @from: "Consignment.id"`; loader's effective-tree resolution links the parameter type to the source field's type.
 4. `parameter-ref-shared-across-procs/` — two `source.rdb` instances on different entities both reference the same `object.value`. Confirms reusability.
 5. `parameter-ref-optional-parameter/` — one required, one optional parameter (`@required: false` on a field child); call signature reflects optionality per port.
 6. `parameter-ref-no-args/` — `@kind: "storedProc"` with `@parameterRef` omitted (a zero-argument procedure). Loader accepts; codegen emits a no-arg method.

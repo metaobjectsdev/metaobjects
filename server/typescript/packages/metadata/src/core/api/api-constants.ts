@@ -1,4 +1,4 @@
-// Declared API surface constants (ADR-0030, ADR-0063) — type names, subtypes and
+// Declared API surface constants (ADR-0030, ADR-0066) — type names, subtypes and
 // attribute keys for `api.*`, `operation.*` and `binding.*`.
 //
 // The type-name constants live in shared/base-types.ts beside every other base type
@@ -74,7 +74,7 @@ export const PERMISSION_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*(?:(?:\.|::)[A-Za
 export const BUSINESS_ERROR_CODE_PATTERN = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/;
 
 /** Wire error codes an operation's route answers on its own, so a body may not declare them
- *  in @errors (O5): the enforcing shell's codes (ADR-0063 §6) and the API contract's generic
+ *  in @errors (O5): the enforcing shell's codes (ADR-0066 §6) and the API contract's generic
  *  ones (docs/features/api-contract.md). A body returning one would be indistinguishable on the
  *  wire from the shell or the transport answering. */
 export const RESERVED_ERROR_CODES = [

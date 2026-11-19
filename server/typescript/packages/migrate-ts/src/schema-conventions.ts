@@ -130,6 +130,9 @@ export function resolveSchemaConventions(selected: string | SchemaConventions | 
     const missing = members.filter((m) => typeof (selected as unknown as Record<string, unknown>)[m] !== "function");
     const id = String((selected as { id?: unknown }).id ?? "(no id)");
     if (missing.length > 0) throw new InvalidSchemaConventionsError(id, missing);
+    // Moved to `migrate.checks.skipRedundant`: a conventions object still setting it would
+    // otherwise be silently ignored and bring every redundant CHECK back as drift.
+    if ("skipRedundantChecks" in (selected as object)) throw new InvalidSchemaConventionsError(id, [], ["skipRedundantChecks"]);
     return selected;
   }
   const preset = PRESETS[selected];

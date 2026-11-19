@@ -148,7 +148,7 @@ public class ExtractorGenerator : IGenerator
         {
             // A readOnly member has a private setter on the POCO: an initializer cannot set it.
             if (f.IsReadOnlyMutability) continue;
-            sb.AppendLine($"        {CSharpNaming.Pascal(f.Name)} = {StrictArg((MetaObject)vo, f, ctx)},");
+            sb.AppendLine($"        {CSharpNaming.PropertyName(f, ctx.Config)} = {StrictArg((MetaObject)vo, f, ctx)},");
         }
         sb.AppendLine("    };");
     }

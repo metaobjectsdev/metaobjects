@@ -679,7 +679,7 @@ class Collection:
     #: attached to the loaded root beside `naming`.
     wire: WireFormat = WireFormat()
 
-    #: ADR-0063 — this project's `rules` / `verify` settings, read at the same rung;
+    #: ADR-0066 — this project's `rules` / `verify` settings, read at the same rung;
     #: attached to the loaded root beside `wire`.
     rules: RulesSettings = RulesSettings()
 

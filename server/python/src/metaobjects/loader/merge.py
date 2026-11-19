@@ -47,6 +47,7 @@ from ..source import (
     resolved_source,
 )
 from ..source.semantic_diff import semantic_diff
+from ..top_level_index import TopLevelView, find_top_level_by_key
 
 
 def merge_roots(
@@ -125,16 +126,41 @@ def _find_merge_match(target: MetaData, sc: MetaData) -> Optional[MetaData]:
     packages don't disambiguate siblings inside a node.
     """
     is_root = target.parent is None
-    return next(
-        (
-            c
-            for c in target.own_children()
-            if c.type == sc.type
-            and c.name == sc.name
-            and (not is_root or _root_child_key(c) == _root_child_key(sc))
-        ),
-        None,
+
+    def scan() -> Optional[MetaData]:
+        return next(
+            (
+                c
+                for c in target.own_children()
+                if c.type == sc.type
+                and c.name == sc.name
+                and (not is_root or _root_child_key(c) == _root_child_key(sc))
+            ),
+            None,
+        )
+
+    if not is_root:
+        return scan()
+    # The first root child of this (type, name) whose package-qualified key is the
+    # candidate's, answered from the root's top-level index, which stays correct as the
+    # merge appends root children.
+    return find_top_level_by_key(
+        target, _MERGE_MATCH_VIEW, _merge_match_key(sc.type, sc.name, _root_child_key(sc)), scan
     )
+
+
+_MERGE_SEP = "\0"
+
+
+def _merge_match_key(type_: str, name: str, root_child_key: str) -> str:
+    return f"{type_}{_MERGE_SEP}{name}{_MERGE_SEP}{root_child_key}"
+
+
+_MERGE_MATCH_VIEW = TopLevelView(
+    "merge-match",
+    lambda c: True,
+    lambda c: _merge_match_key(c.type, c.name, _root_child_key(c)),
+)
 
 
 def _merge_child_into(

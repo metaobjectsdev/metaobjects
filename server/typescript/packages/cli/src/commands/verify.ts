@@ -42,6 +42,8 @@ import { loadMemoryOptionsFrom, loadMetaobjectsConfig, RemovedNamingConfigError,
 import { collectionLoadOptions } from "../lib/collection-load-options.js";
 import { schemaBuildOptions, type SchemaBuildOptions } from "../lib/schema-build-options.js";
 import { computeCodegenDrift } from "../lib/codegen-drift.js";
+import { computeGenInputs, decideVerifyNoDrift, isCi, withModel } from "../lib/gen-fingerprint.js";
+import { modelHashTree } from "@metaobjectsdev/codegen-ts";
 import { hasLegacyDocsBlock, legacyDocsConfigMessage, REMOVED_VERIFY_DOCS } from "../lib/docs-removed.js";
 import { buildAgentSchemaInput } from "../lib/agent-schema.js";
 import { sourceRootsOf } from "./gen.js";
@@ -67,6 +69,7 @@ import {
 import type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
 import { buildKyselyFromUrl, inferDialect, type Dialect } from "../lib/kysely.js";
+import { warnWidenedExtenders } from "../lib/widened-extenders.js";
 import { tokensToAllowOptions, describeChange } from "../lib/allow.js";
 import {
   computeDrift,
@@ -83,6 +86,8 @@ import {
   type ReplayEngine,
   verifyReplay,
   introspect,
+  checkDeclaredFunctions,
+  DECLARED_FUNCTION_CHECK_LIMITS,
   diff,
   withoutViewRecreates,
   readSnapshot,
@@ -416,6 +421,8 @@ export async function verifyCommand(
     }, fmt);
     return 1;
   }
+  // rc.21 part B (I2): an extender whose view now returns every row of a TPH base.
+  warnWidenedExtenders(root, (line) => log.warn(line));
 
   // The project's schema settings, resolved once for every expected-schema build and drift
   // computation below. A `migrate.conventions` preset this version does not ship is a config
@@ -472,7 +479,7 @@ export async function verifyCommand(
   // reported against its path. Undefined exactly when `requirementCounts` is — same
   // opt-in-by-declaration rule.
   let requirementLedger: RequirementLedgerRow[] | undefined;
-  // ADR-0063 — the business-rules gate's findings and what the model declares. Both stay
+  // ADR-0066 — the business-rules gate's findings and what the model declares. Both stay
   // undefined for a model with no operation and no transition, and then the payload, the
   // gate list and the printed output are exactly what they were before the gate existed.
   let rulesSection: AdvisorySection<AdvisoryDiagnosticRow> | undefined;
@@ -501,7 +508,7 @@ export async function verifyCommand(
   // are checked on every `meta verify`. Opt-in by DECLARATION — a model with no
   // requirement nodes is silent, not in drift.
   const requirementExit = runRequirementVerify();
-  // Business rules (ADR-0063): operations and lifecycles are metadata too, so this gate
+  // Business rules (ADR-0066): operations and lifecycles are metadata too, so this gate
   // also runs on every `meta verify`, and is also opt-in by declaration.
   const rulesExit = runRulesVerify();
   // #313 — BOTH replay flags select this gate. `--replay-snapshot` implies
@@ -932,7 +939,7 @@ export async function verifyCommand(
     return 0;
   }
 
-  // -- business rules (ADR-0063) ----------------------------------------------
+  // -- business rules (ADR-0066) ----------------------------------------------
   function runRulesVerify(): number {
     const result = checkRules(root, collection.rulesSettings);
     if (result.summary === undefined) return 0;
@@ -1535,7 +1542,20 @@ export async function verifyCommand(
         return 1;
       }
 
-      return reportSchemaDrift(driftResult, [...ledgerDrift, ...snapshotDrift], kysely.displayUrl);
+      // rc.21 part B (N2): a declared origin.function's signature is the database's, or a finding.
+      let functionDrift: string[] = [];
+      if (kysely.dialect === "postgres") {
+        try {
+          functionDrift = await checkDeclaredFunctions(kysely.db, root);
+          if (functionDrift.length > 0) log.warn(`verify: ${DECLARED_FUNCTION_CHECK_LIMITS}`);
+        } catch (err) {
+          schemaRunError = `failed to read the declared functions from ${kysely.displayUrl}: ${describeError(err)}`;
+          log.error(`verify: ${schemaRunError}`);
+          return 1;
+        }
+      }
+
+      return reportSchemaDrift(driftResult, [...ledgerDrift, ...snapshotDrift, ...functionDrift], kysely.displayUrl);
     } finally {
       await shadow?.close();
       try {
@@ -1832,11 +1852,30 @@ export async function verifyCommand(
     }
     // The explorer's requirement ledger, built only if the docs site asks for it.
     const requirementLedger = () => requirementPayload(codegenRoot, genCollection);
+
+    // ADR-0064 §4 — locally, a key that still matches the last successful `meta gen` (the
+    // loaded model and every generator input) and a manifest whose every file still hashes to
+    // its record answer "no drift" without rendering. Never in CI (it renders and compares
+    // everything, which is the guard against a key that missed an input), and never with --full.
+    if (!flags.full && !isCi()) {
+      const inputs = withModel(computeGenInputs(genConfigDir, collection, genCollection, {
+        entities: [], generators: undefined, strict: false, baseline: "default",
+      }), modelHashTree(codegenRoot));
+      const verdict = decideVerifyNoDrift(inputs);
+      if (verdict.skip) {
+        say(
+          `meta verify — nothing changed since the last \`meta gen\`, and all ${verdict.recorded.length} ` +
+            "generated file(s) match their record (no codegen drift; --full renders and compares).",
+        );
+        return 0;
+      }
+    }
+
     let result;
     try {
       result = await computeCodegenDrift(config, codegenRoot, genConfigDir, genCollection.inScope, genCollection.ownFiles, {
         sourceRoots: sourceRootsOf(genCollection),
-        agentSchema: () => buildAgentSchemaInput(
+        agentSchema: () => codegenSchema === undefined ? undefined : buildAgentSchemaInput(
           codegenRoot,
           config.dialect,
           (m) => log.warn(`verify --codegen: [agent-docs] ${m}`),
@@ -2272,7 +2311,7 @@ function buildVerifyPayload(input: {
   names: AdvisorySection<AdvisoryDiagnosticRow>;
   deprecations: AdvisorySection<AdvisoryDiagnosticRow>;
   fields: AdvisorySection<AdvisoryDiagnosticRow>;
-  /** The business-rules gate (ADR-0063), only when the model declares operations or transitions. */
+  /** The business-rules gate (ADR-0066), only when the model declares operations or transitions. */
   rules?: AdvisorySection<AdvisoryDiagnosticRow>;
   rulesCounts?: RulesSummary;
   /** What the schema gate found, when it compared anything. */

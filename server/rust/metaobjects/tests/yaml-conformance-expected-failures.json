@@ -1,0 +1,9 @@
+{
+  "language": "rust",
+  "corpus": "fixtures/yaml-conformance",
+  "notes": "Every YAML-specific behaviour passes: the desugar, the coercion guard, positions, anchors, block scalars, and the attribute-schema errors that follow a coercion. The one fixture below, yaml-ref-root-escape, needs ADR-0059 R2 root-level `::` references and package-aware merging, which are reference-resolution features of this port and not validation passes; it leaves the ledger when they land. The ledger may only shrink and minPassing may only rise.",
+  "minPassing": 18,
+  "fixtures": [
+    "yaml-ref-root-escape"
+  ]
+}

@@ -47,6 +47,7 @@ from .meta.template.template_constants import (
 from .meta.core.api.api_constants import OPERATION_ATTR_INPUT_REF, OPERATION_ATTR_OUTPUT_REF
 from .shared.base_types import TYPE_OBJECT, TYPE_TRANSITION
 from .shared.separators import PACKAGE_SEP
+from .top_level_index import TopLevelView, find_top_level_by_key
 
 if TYPE_CHECKING:
     from .meta.meta_data import MetaData
@@ -66,7 +67,7 @@ PARENT_PREFIX = PACKAGE_PARENT + PACKAGE_SEP  # "..::"
 #: relationship/field tail; ``@parameterRef``/``@payloadRef``/``@responseRef`` name
 #: value-objects. The same set is used in every port. ``@sourceRefField`` (a FK FIELD
 #: name) and ``@implementedBy`` (which may name a template as well as an object) are
-#: NOT in the set. An operation's ``@inputRef``/``@outputRef``/``@objectRef`` are (ADR-0063).
+#: NOT in the set. An operation's ``@inputRef``/``@outputRef``/``@objectRef`` are (ADR-0066).
 #: The set is keyed by NAME, so a node type that reuses one of these names for something
 #: else is excluded by :func:`is_ref_bearing_attr`: a ``transition.action @from`` lists enum
 #: members. Mirrors TS REF_BEARING_ATTR_NAMES.
@@ -90,7 +91,7 @@ REF_BEARING_ATTR_NAMES: frozenset[str] = frozenset({
 def is_ref_bearing_attr(node: "MetaData", attr_name: str) -> bool:
     """True when *attr_name* on *node* holds an object reference: in
     REF_BEARING_ATTR_NAMES, and not on a transition.*, whose @from names
-    members of its enum (ADR-0063)."""
+    members of its enum (ADR-0066)."""
     return attr_name in REF_BEARING_ATTR_NAMES and node.type != TYPE_TRANSITION
 
 
@@ -192,19 +193,62 @@ def _top_level_of_type(root: "MetaData", type_: Optional[str]) -> list["MetaData
     return kids if type_ is None else [c for c in kids if c.type == type_]
 
 
+_REF_VIEWS: dict[Optional[str], TopLevelView] = {}
+
+
+def _ref_view(type_: Optional[str]) -> TopLevelView:
+    """The per-root lookup view for top-level nodes of *type_* (any type when None), by
+    resolution key."""
+    view = _REF_VIEWS.get(type_)
+    if view is None:
+        view = _REF_VIEWS[type_] = TopLevelView(
+            f"ref:{'*' if type_ is None else type_}",
+            (lambda c: True) if type_ is None else (lambda c: c.type == type_),
+            lambda c: c.resolution_key(),
+        )
+    return view
+
+
+def _find_by_key(root: "MetaData", type_: Optional[str], key: str) -> Optional["MetaData"]:
+    """The first top-level node of *type_* whose resolution key is exactly *key*."""
+
+    def scan() -> Optional["MetaData"]:
+        for c in _top_level_of_type(root, type_):
+            if c.resolution_key() == key:
+                return c
+        return None
+
+    return find_top_level_by_key(root, _ref_view(type_), key, scan)
+
+
+_NAMED_TOP_LEVEL_VIEW = TopLevelView("named-top-level", lambda c: c.name != "", lambda c: c.resolution_key())
+
+
+def find_named_top_level(root: "MetaData", key: str) -> Optional["MetaData"]:
+    """The first named top-level node (own children; ADR-0039: the root has no super)
+    whose resolution key is exactly *key*. The scan ``extends`` resolution uses."""
+
+    def scan() -> Optional["MetaData"]:
+        # ADR-0039 sanctioned own: extends targets are top-level nodes; the root has no super.
+        return next((c for c in root.own_children() if c.name != "" and c.resolution_key() == key), None)
+
+    return find_top_level_by_key(root, _NAMED_TOP_LEVEL_VIEW, key, scan)
+
+
 def _bind_owner(
-    candidates: list["MetaData"], owner: str, referrer_pkg: str
+    root: "MetaData", type_: Optional[str], owner: str, referrer_pkg: str
 ) -> tuple[Optional["MetaData"], Optional[str]]:
-    """Bind an owner reference among *candidates* by exact resolution key (R2).
-    Returns ``(node, error)``: *error* is the over-drop message, else ``None``."""
+    """Bind an owner reference among the root's top-level nodes of *type_* by exact
+    resolution key (R2). Returns ``(node, error)``: *error* is the over-drop message,
+    else ``None``."""
     try:
         keys = owner_candidate_keys(owner, referrer_pkg)
     except RefOverDropError as err:
         return None, str(err)
     for key in keys:
-        for c in candidates:
-            if c.resolution_key() == key:
-                return c, None
+        node = _find_by_key(root, type_, key)
+        if node is not None:
+            return node, None
     return None, None
 
 
@@ -213,7 +257,7 @@ def resolve_object_ref_checked(
 ) -> tuple[Optional["MetaData"], Optional[str]]:
     """Resolve a metadata OBJECT reference (no child tail) under ADR-0059 R2.
     Returns ``(node, error)``; *error* is set for a parent-relative over-drop."""
-    return _bind_owner(_top_level_of_type(root, TYPE_OBJECT), ref, referrer_pkg)
+    return _bind_owner(root, TYPE_OBJECT, ref, referrer_pkg)
 
 
 def resolve_object_ref(
@@ -247,7 +291,7 @@ def resolve_ref(
     effective children; the last is scoped to *last_type* when given. Returns
     ``(node, owner, error)``."""
     owner_ref, tail = split_child_tail(ref)
-    bound, err = _bind_owner(_top_level_of_type(root, owner_type), owner_ref, referrer_pkg)
+    bound, err = _bind_owner(root, owner_type, owner_ref, referrer_pkg)
     if bound is None:
         return None, None, err
     if tail == "":

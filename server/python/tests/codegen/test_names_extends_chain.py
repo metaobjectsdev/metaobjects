@@ -65,18 +65,18 @@ MODEL = {
                     "children": [
                         {"source.rdb": {"@table": "zz_auths"}},
                         {"field.long": {"name": "id"}},
-                        {"field.enum": {"name": "kind", "@values": ["Copay"]}},
+                        {"field.enum": {"name": "kind", "@values": ["Coupon"]}},
                         {"identity.primary": {"name": "pk", "@fields": "id", "@generation": "increment"}},
                     ],
                 }
             },
             {
                 "object.entity": {
-                    "name": "CopayAuth",
+                    "name": "CouponAuth",
                     "extends": "Auth",
-                    "@discriminatorValue": "Copay",
+                    "@discriminatorValue": "Coupon",
                     "children": [
-                        {"field.long": {"name": "copayAmount", "@column": "zz_copay_cents"}}
+                        {"field.long": {"name": "couponAmount", "@column": "zz_coupon_cents"}}
                     ],
                 }
             },
@@ -135,15 +135,15 @@ def test_the_child_imports_the_base_constant_instead_of_restating_it(tmp_path: P
 
 
 def test_a_tph_subtype_references_the_shared_table_name_rather_than_restating_it(tmp_path: Path) -> None:
-    src = _generate(tmp_path)["copay_auth_names.py"]
-    assert "COPAYAUTH_SOURCE_PRIMARY_TABLE: Final[str] = AUTH_SOURCE_PRIMARY_TABLE" in src
-    assert "COPAYAUTH_ID_COLUMN: Final[str] = AUTH_ID_COLUMN" in src
-    assert 'COPAYAUTH_COPAY_AMOUNT_COLUMN: Final[str] = "zz_copay_cents"' in src
+    src = _generate(tmp_path)["coupon_auth_names.py"]
+    assert "COUPONAUTH_SOURCE_PRIMARY_TABLE: Final[str] = AUTH_SOURCE_PRIMARY_TABLE" in src
+    assert "COUPONAUTH_ID_COLUMN: Final[str] = AUTH_ID_COLUMN" in src
+    assert 'COUPONAUTH_COUPON_AMOUNT_COLUMN: Final[str] = "zz_coupon_cents"' in src
     # A single-table hierarchy legitimately has two OBJECT names; only the physical one
     # is shared. So the subtype keeps its own name/type/subType as literals.
-    assert 'COPAYAUTH_NAME: Final[str] = "CopayAuth"' in src
+    assert 'COUPONAUTH_NAME: Final[str] = "CouponAuth"' in src
     # An inherited identity is reached through the base's constant, not restated.
-    assert "COPAYAUTH_IDENTITY_PK_NAME: Final[str] = AUTH_IDENTITY_PK_NAME" in src
+    assert "COUPONAUTH_IDENTITY_PK_NAME: Final[str] = AUTH_IDENTITY_PK_NAME" in src
     # The whole point: the subtype used to restate the base's table name and every column.
     assert "zz_auths" not in src
 
@@ -241,27 +241,27 @@ def test_the_emitted_modules_import_and_an_inherited_constant_resolves(tmp_path:
     (pkg / "__init__.py").write_text("")
     sys.path.insert(0, str(tmp_path))
     try:
-        spec = importlib.util.spec_from_file_location("gen.copay_auth_names", pkg / "copay_auth_names.py")
+        spec = importlib.util.spec_from_file_location("gen.coupon_auth_names", pkg / "coupon_auth_names.py")
         assert spec is not None and spec.loader is not None
         mod = importlib.util.module_from_spec(spec)
-        sys.modules["gen.copay_auth_names"] = mod
+        sys.modules["gen.coupon_auth_names"] = mod
         spec.loader.exec_module(mod)
 
         # An inherited constant, reached through the reference the generator emitted.
-        assert mod.COPAYAUTH_SOURCE_PRIMARY_TABLE == "zz_auths"
-        assert mod.COPAYAUTH_SOURCE_PRIMARY_KIND == "table"
-        assert mod.COPAYAUTH_IDENTITY_PK_SUB_TYPE == "primary"
-        assert mod.COPAYAUTH_NAME == "CopayAuth"
-        assert mod.COPAYAUTH_ID_COLUMN == "id"
-        assert mod.COPAYAUTH_COPAY_AMOUNT_COLUMN == "zz_copay_cents"
+        assert mod.COUPONAUTH_SOURCE_PRIMARY_TABLE == "zz_auths"
+        assert mod.COUPONAUTH_SOURCE_PRIMARY_KIND == "table"
+        assert mod.COUPONAUTH_IDENTITY_PK_SUB_TYPE == "primary"
+        assert mod.COUPONAUTH_NAME == "CouponAuth"
+        assert mod.COUPONAUTH_ID_COLUMN == "id"
+        assert mod.COUPONAUTH_COUPON_AMOUNT_COLUMN == "zz_coupon_cents"
         # COLUMNS_BY_FIELD stays COMPLETE — it is the lookup surface, and a miss on an
         # inherited field is the fallback-to-literal this artifact removes.
-        assert mod.COPAYAUTH_COLUMNS_BY_FIELD == {
-            "copayAmount": "zz_copay_cents", "id": "id", "kind": "kind",
+        assert mod.COUPONAUTH_COLUMNS_BY_FIELD == {
+            "couponAmount": "zz_coupon_cents", "id": "id", "kind": "kind",
         }
     finally:
         sys.path.remove(str(tmp_path))
-        sys.modules.pop("gen.copay_auth_names", None)
+        sys.modules.pop("gen.coupon_auth_names", None)
         assert tree  # keep the generated tree referenced for a readable failure
 
 
@@ -455,18 +455,18 @@ TPH_MODEL = {
                     "children": [
                         {"source.rdb": {"@table": "zz_auths"}},
                         {"field.long": {"name": "id"}},
-                        {"field.enum": {"name": "kind", "@values": ["Copay"]}},
+                        {"field.enum": {"name": "kind", "@values": ["Coupon"]}},
                         {"identity.primary": {"@fields": ["id"], "@generation": "increment"}},
                     ],
                 }
             },
             {
                 "object.entity": {
-                    "name": "CopayAuth",
+                    "name": "CouponAuth",
                     "extends": "Auth",
-                    "@discriminatorValue": "Copay",
+                    "@discriminatorValue": "Coupon",
                     "children": [
-                        {"field.long": {"name": "copayAmount", "@column": "zz_copay_cents"}},
+                        {"field.long": {"name": "couponAmount", "@column": "zz_coupon_cents"}},
                     ],
                 }
             },
@@ -476,7 +476,7 @@ TPH_MODEL = {
 
 
 def test_a_scoped_run_still_names_the_shared_table(tmp_path: Path) -> None:
-    # `metaobjects gen --entities CopayAuth`. Pass 1 emits the subtype; pass 2 walks up to
+    # `metaobjects gen --entities CouponAuth`. Pass 1 emits the subtype; pass 2 walks up to
     # `Auth` and used to render it as a FRAGMENT unconditionally. A fragment declares no
     # source, by design, because it has no physical name -- but `Auth` DOES have one: it is
     # the TPH base, and the shared table is named on it. So the base module came out with no
@@ -492,7 +492,7 @@ def test_a_scoped_run_still_names_the_shared_table(tmp_path: Path) -> None:
         GenConfig(out_dir=str(out), column_naming="snake_case"),
         result.root,
         generators=[names_generator()],
-        entity_filter=["CopayAuth"],
+        entity_filter=["CouponAuth"],
     )
     files = {str(p.relative_to(out)): p.read_text() for p in out.rglob("*.py")}
 
@@ -501,7 +501,7 @@ def test_a_scoped_run_still_names_the_shared_table(tmp_path: Path) -> None:
 
     # Every name the subtype imports from the base must EXIST in it -- the assertion the
     # ImportError would have made at runtime, made here instead.
-    child = files["copay_auth_names.py"]
+    child = files["coupon_auth_names.py"]
     imported = [
         alias.name
         for node in ast.walk(ast.parse(child))

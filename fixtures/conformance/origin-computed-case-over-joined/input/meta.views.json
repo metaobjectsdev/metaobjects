@@ -37,11 +37,11 @@
       },
       {
         "object.entity": {
-          "name": "Case",
+          "name": "Consignment",
           "children": [
             {
               "source.rdb": {
-                "@table": "cases"
+                "@table": "consignments"
               }
             },
             {
@@ -56,12 +56,12 @@
             },
             {
               "field.int": {
-                "name": "priorType"
+                "name": "serviceLevel"
               }
             },
             {
               "field.int": {
-                "name": "cumulativeStatus"
+                "name": "rollupStatus"
               }
             },
             {
@@ -101,18 +101,18 @@
       },
       {
         "object.projection": {
-          "name": "CaseLabels",
+          "name": "ConsignmentLabels",
           "children": [
             {
               "source.rdb": {
                 "@kind": "view",
-                "@view": "v_caselabels"
+                "@view": "v_consignmentlabels"
               }
             },
             {
               "field.long": {
                 "name": "id",
-                "extends": "acme::views::Case.id"
+                "extends": "acme::views::Consignment.id"
               }
             },
             {
@@ -122,7 +122,7 @@
                   {
                     "origin.passthrough": {
                       "@from": "acme::views::Status.name",
-                      "@via": "acme::views::Case.statusId"
+                      "@via": "acme::views::Consignment.statusId"
                     }
                   }
                 ]
@@ -135,7 +135,7 @@
                   {
                     "origin.passthrough": {
                       "@from": "acme::views::Status.displayName",
-                      "@via": "acme::views::Case.statusId"
+                      "@via": "acme::views::Consignment.statusId"
                     }
                   }
                 ]
@@ -175,7 +175,7 @@
                             "when": {
                               "op": "eq",
                               "left": {
-                                "field": "cumulativeStatus"
+                                "field": "rollupStatus"
                               },
                               "right": {
                                 "value": 0
@@ -187,7 +187,7 @@
                           }
                         ],
                         "else": {
-                          "field": "cumulativeStatus"
+                          "field": "rollupStatus"
                         }
                       }
                     }
@@ -197,13 +197,13 @@
             },
             {
               "field.string": {
-                "name": "benefitTypeName",
+                "name": "serviceLevelName",
                 "children": [
                   {
                     "origin.computed": {
                       "@expr": {
                         "operand": {
-                          "field": "priorType"
+                          "field": "serviceLevel"
                         },
                         "case": [
                           {
@@ -211,7 +211,7 @@
                               "value": 1
                             },
                             "then": {
-                              "value": "Medical"
+                              "value": "Standard"
                             }
                           },
                           {
@@ -219,7 +219,7 @@
                               "value": 2
                             },
                             "then": {
-                              "value": "Pharmacy"
+                              "value": "Express"
                             }
                           }
                         ]
@@ -310,7 +310,7 @@
             {
               "identity.primary": {
                 "name": "id",
-                "extends": "acme::views::Case.id"
+                "extends": "acme::views::Consignment.id"
               }
             }
           ]

@@ -27,6 +27,7 @@ export * from "./shared/base-types.js";
 export * from "./shared/structural.js";
 export * from "./core/object/object-constants.js";
 export * from "./core/field/field-constants.js";
+export * from "./core/field/enum-storage.js";
 export * from "./core/field/duration-wire.js";
 // FR-037 R1 — THE mutability accessors. Every consumer deciding "may this be
 // written, and when?" must go through these rather than reading the attr, so the
@@ -51,7 +52,7 @@ export * from "./core/api/api-constants.js";
 export { MetaApi, MetaOperation, MetaBinding } from "./core/api/meta-api.js";
 export * from "./core/transition/transition-constants.js";
 export { MetaTransition } from "./core/transition/meta-transition.js";
-// ADR-0063 — derived lifecycle and operation-target facts, shared by the loader, verify and
+// ADR-0066 — derived lifecycle and operation-target facts, shared by the loader, verify and
 // (later) the generators, so no consumer re-derives them.
 export {
   lifecyclesOf,
@@ -124,7 +125,10 @@ export {
 } from "./core/requirement/resolve-claim.js";
 export * from "./core/relationship/relationship-constants.js";
 export * from "./core/query/query-constants.js";
-export { EXPR_OP_IS_NOT_NULL, EXPR_OP_NOT, EXPR_FN_COALESCE, type ExprNode } from "./core/attr/meta-attr-expression.js";
+export {
+  EXPR_OP_IS_NOT_NULL, EXPR_OP_NOT, EXPR_FN_COALESCE, EXPR_CAST, EXPR_CAST_AS, EXPR_CAST_DB_COLUMN_TYPE, EXPR_FUNCTIONS, EXPR_CAST_TARGETS,
+  castProblem, exprViewOnlyNode, type ExprNode,
+} from "./core/attr/meta-attr-expression.js";
 export * from "./persistence/source/source-constants.js";
 export * from "./persistence/origin/origin-constants.js";
 export * from "./template/template-constants.js";
@@ -193,7 +197,7 @@ export { MetaRelationship } from "./core/relationship/meta-relationship.js";
 // Cross-entity reference lookup
 export { resolveFlattenedMember, resolveFieldPathColumn, type FlattenedMember } from "./core/field/flattened-member.js";
 export {
-  findReferenceBetween, findReferencesBetween, findReverseReferenceHops, reverseHopName,
+  findReferenceBetween, findReferencesBetween, findReverseReferenceHops, reverseHopName, reverseReferenceHopsOnto, reverseHopHint,
   type ReverseReferenceHop,
 } from "./core/relationship/find-reference.js";
 export type { ReferenceLookup } from "./core/relationship/find-reference.js";
@@ -400,6 +404,10 @@ export type { Scope, CompiledScope } from "./scope.js";
 export { validateAttrSchema } from "./attr-schema-validate.js";
 export type { AttrSchemaValidationResult } from "./attr-schema-validate.js";
 
+// rc.21 part B (I2): the widened-extender warning, which `meta gen` prints (the load's own
+// warning channel is not printed by the CLI).
+export { validateExtenderSubtypeScope } from "./loader/validation-passes.js";
+
 // Guide URLs pinned to the running release's tag (prerelease → main).
 export {
   DOCS_REPO_URL, DOCS_DEFAULT_REF, docsRefForVersion, docsBlobUrl, pinDocsRefs,
@@ -450,7 +458,7 @@ export {
 } from "./wire.js";
 export type { WireFormat, WireDecimals, WireNullMembers, WireDurations } from "./wire.js";
 
-// ADR-0063: the `rules` and `verify` blocks of .metaobjects/config.json.
+// ADR-0066: the `rules` and `verify` blocks of .metaobjects/config.json.
 export {
   RULES_PERMISSION_NAMES, RULES_LIFECYCLE_CREATE, RULES_LIFECYCLE_COMMANDS, VERIFY_LIFECYCLE_UNREACHABLE,
   DEFAULT_RULES_SETTINGS, rulesSettingsOf,

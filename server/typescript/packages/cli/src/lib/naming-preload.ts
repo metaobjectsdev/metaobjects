@@ -4,7 +4,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DEFAULT_METAOBJECTS_DIR, discoverCollectionRoot } from "@metaobjectsdev/sdk";
-import { isRegisteredColumnNamingStrategy, isRegisteredTableNamingRule } from "@metaobjectsdev/metadata";
+import { isRegisteredColumnNamingStrategy, isRegisteredTableNamingRule, isRegisteredPluralizer } from "@metaobjectsdev/metadata";
 
 /** `.metaobjects/config.json`'s basename (the sdk reader's `CONFIG_FILE`). */
 const NEUTRAL_CONFIG_FILE = "config.json";
@@ -45,10 +45,11 @@ export async function registerProjectNamingStrategies(cwd: string): Promise<stri
     return; // A malformed config is the config reader's to report.
   }
   if (naming === null || typeof naming !== "object") return;
-  const { columns, tables } = naming as { columns?: unknown; tables?: unknown };
+  const { columns, tables, collections } = naming as { columns?: unknown; tables?: unknown; collections?: unknown };
   const missing =
     (typeof columns === "string" && !isRegisteredColumnNamingStrategy(columns)) ||
-    (typeof tables === "string" && !isRegisteredTableNamingRule(tables));
+    (typeof tables === "string" && !isRegisteredTableNamingRule(tables)) ||
+    (typeof collections === "string" && !isRegisteredPluralizer(collections));
   if (!missing) return;
   const { loadMetaobjectsConfig, resolveGenConfigDir } = await import("./load-metaobjects-config.js");
   const projectRoot = resolveGenConfigDir(cwd, configDir);
@@ -59,6 +60,7 @@ export async function registerProjectNamingStrategies(cwd: string): Promise<stri
     const names = [
       typeof columns === "string" && !isRegisteredColumnNamingStrategy(columns) ? `"${columns}" (naming.columns)` : undefined,
       typeof tables === "string" && !isRegisteredTableNamingRule(tables) ? `"${tables}" (naming.tables)` : undefined,
+      typeof collections === "string" && !isRegisteredPluralizer(collections) ? `"${collections}" (naming.collections)` : undefined,
     ].filter((n): n is string => n !== undefined);
     const cause = e instanceof Error ? e.message : String(e);
     const where = `${join(projectRoot, TS_CONFIG_FILE)}: ${TS_CONFIG_FILE} did not load (${cause})`;

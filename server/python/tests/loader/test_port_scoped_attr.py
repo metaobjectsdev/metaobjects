@@ -1,8 +1,6 @@
 """``@collectionName`` is shared vocabulary every port implements (Python's REST segment and
 reverse finders read it). Python registers and type-checks it, so a model that carries it loads
-strictly here. The
-never-released ``@dbSetName`` it replaced is not vocabulary; an attribute the registry does not
-carry still fails, and a wrong value type fails.
+strictly here. An attribute the registry does not carry still fails, and a wrong value type fails.
 """
 from __future__ import annotations
 
@@ -33,7 +31,7 @@ def test_it_is_type_checked() -> None:
     assert _codes({"@collectionName": ["Diagnoses"]}) != []
 
 
-def test_the_never_released_db_set_name_is_not_vocabulary() -> None:
+def test_db_set_name_is_not_vocabulary() -> None:
     assert any("UNKNOWN_ATTR" in c for c in _codes({"@dbSetName": "Diagnoses"}))
 
 

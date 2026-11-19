@@ -214,7 +214,7 @@ public class DbContextCompileTests
         // REFERENCES the names artifact, so this test proves what Ctx()'s
         // IncludeNames: true comment claims: entity + DbContext + names compile
         // together WITH a real cross-reference between them, not merely alongside.
-        var orderSrc = entityFiles.Single(f => f.Path == "Order.g.cs").Content;
+        var orderSrc = entityFiles.Single(f => System.IO.Path.GetFileName(f.Path) == "Order.g.cs").Content;
         Assert.Contains("[Table(OrderNames.SourcePrimaryTable)]", orderSrc);
         Assert.Contains("[Column(OrderNames.StatusColumn)]", orderSrc);
     }
@@ -246,6 +246,39 @@ public class DbContextCompileTests
         var comp = CSharpCompilation.Create(
             "efcore_split_" + Guid.NewGuid().ToString("N"),
             sources.Select(c => CSharpSyntaxTree.ParseText(c, new CSharpParseOptions(LanguageVersion.CSharp12))),
+            BuildReferences(),
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        var errors = comp.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).Select(d => $"{d.Id}: {d.GetMessage()}").ToList();
+        Assert.True(errors.Count == 0, string.Join("\n", errors));
+    }
+
+    // Item 8: every model line is one complete statement, so a split at ANY boundary compiles. The
+    // @using index method used to be two entries — the provider guard and the statement it guards —
+    // and a chunk boundary between them left an `if (…)` closing its method.
+    [Fact]
+    public void A_guarded_index_method_survives_a_split_at_every_boundary()
+    {
+        var load = new MetaDataLoader().Load([new InMemoryStringSource("""
+            { "metadata.root": { "package": "acme", "children": [
+              { "object.entity": { "name": "Ticket", "children": [
+                { "source.rdb": { "@table": "tickets" } },
+                { "field.long": { "name": "id" } },
+                { "field.string": { "name": "email", "@maxLength": 80 } },
+                { "identity.primary": { "@fields": "id" } },
+                { "index.lookup": { "name": "ix_tickets_email", "@fields": "email", "@using": "gin" } } ] } } ] } }
+            """, id: "t.json")]);
+        Assert.Empty(load.Errors);
+        var ctx = new GenContext
+        {
+            Entities = load.Root.Objects(), Root = load.Root,
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", Dialect = "postgres" },
+        };
+        var split = Assert.Single(new DbContextGenerator { ModelConfigChunkSize = 1 }.Generate(ctx), f => f.Path == "AppDbContext.g.cs").Content;
+        Assert.Contains("\") modelBuilder.Entity<Ticket>().HasIndex(", split);
+        var comp = CSharpCompilation.Create(
+            "efcore_guard_" + Guid.NewGuid().ToString("N"),
+            new EntityGenerator().Generate(ctx).Select(f => f.Content).Append(split)
+                .Select(c => CSharpSyntaxTree.ParseText(c, new CSharpParseOptions(LanguageVersion.CSharp12))),
             BuildReferences(),
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         var errors = comp.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).Select(d => $"{d.Id}: {d.GetMessage()}").ToList();
@@ -362,8 +395,8 @@ public class DbContextCompileTests
     {
         var ctx = Ctx(Load());
         var entityFiles = new EntityGenerator().Generate(ctx).ToList();
-        var readModel = entityFiles.Single(f => f.Path == "InvoiceView.g.cs").Content;
-        var writeEntity = entityFiles.Single(f => f.Path == "Invoice.g.cs").Content;
+        var readModel = entityFiles.Single(f => System.IO.Path.GetFileName(f.Path) == "InvoiceView.g.cs").Content;
+        var writeEntity = entityFiles.Single(f => System.IO.Path.GetFileName(f.Path) == "Invoice.g.cs").Content;
         var dbctx = Assert.Single(new DbContextGenerator().Generate(ctx)).Content;
 
         // [0] — the read model class declares the field.uri column (a per-field TYPE binding).
@@ -434,7 +467,7 @@ public class DbContextCompileTests
         // #248 -- no primary source, so no names artifact at all, regardless of the run.
         Assert.Empty(namesFiles);
 
-        var ledger = entityFiles.Single(f => f.Path == "Ledger.g.cs").Content;
+        var ledger = entityFiles.Single(f => System.IO.Path.GetFileName(f.Path) == "Ledger.g.cs").Content;
         Assert.DoesNotContain("LedgerNames", ledger);
         Assert.DoesNotContain("[Table(LedgerNames.SourcePrimaryTable)]", ledger);
         // #248 — a sourceless entity is not in the database, so it carries no [Table] at

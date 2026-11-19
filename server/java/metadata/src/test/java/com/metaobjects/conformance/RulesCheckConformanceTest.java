@@ -36,7 +36,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Cross-port rules-gate conformance corpus ({@code fixtures/rules-check-conformance/}, ADR-0063).
+ * Cross-port rules-gate conformance corpus ({@code fixtures/rules-check-conformance/}, ADR-0066).
  * Loads {@code input/} strict, reads {@code options.json} through the config reader, runs the
  * gate and compares diagnostics (an unordered multiset) and the summary with {@code expected.json}.
  */

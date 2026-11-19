@@ -50,10 +50,10 @@ public class InheritanceConformanceTests
         var files = new EntityGenerator().Generate(Context(LoadFixture())).ToList();
 
         // Abstract bases produce no entity file (the abstract invariant).
-        Assert.DoesNotContain(files, f => f.Path == "Base.g.cs");
-        Assert.DoesNotContain(files, f => f.Path == "Auditable.g.cs");
+        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "Base.g.cs");
+        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "Auditable.g.cs");
 
-        var product = Assert.Single(files, f => f.Path == "Product.g.cs");
+        var product = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Product.g.cs");
         Assert.Contains("[Table(ProductNames.SourcePrimaryTable)]", product.Content); // §A6 (task 4)
 
         // All five fields present — 2 levels of inherited + 2 own.

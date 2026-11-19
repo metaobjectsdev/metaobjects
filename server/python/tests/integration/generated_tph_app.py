@@ -1,7 +1,7 @@
 """FR-017 Tier 4/5 — boot the GENERATED TPH router over HTTP.
 
 Peer to ``generated_m2m_app.py`` but for the single-table table-per-hierarchy
-model (Auth base + BridgeAuth / CopayAuth / PriorAuthAuth). It runs the REAL
+model (Auth base + BridgeAuth / CouponAuth / PermitAuth). It runs the REAL
 ``router_generator`` (+ the filter-allowlist generator it imports) for the
 discriminator BASE entity, writes the emitted modules to a temp package, imports
 the generated router UNMODIFIED, mounts it on a FastAPI app, and fills the

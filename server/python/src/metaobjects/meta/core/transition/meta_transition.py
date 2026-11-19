@@ -1,4 +1,4 @@
-"""MetaTransition — node class for ``transition.*`` (ADR-0063). Accessors are RESOLVING
+"""MetaTransition — node class for ``transition.*`` (ADR-0066). Accessors are RESOLVING
 (ADR-0039): a transition declared on a base entity's field applies, unchanged, to every
 entity that extends it. Python ``attr()`` is own-only, so reads go through
 ``get_meta_attr()``. Mirrors TS ``core/transition/meta-transition.ts``.

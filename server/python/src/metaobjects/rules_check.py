@@ -1,4 +1,4 @@
-"""``metaobjects verify`` — the business-rules gate (ADR-0063).
+"""``metaobjects verify`` — the business-rules gate (ADR-0066).
 
 The loader refuses a model whose operations or lifecycles are malformed. This gate reports
 what loads clean but is almost certainly not what the author meant: a state nothing can

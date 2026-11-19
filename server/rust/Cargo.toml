@@ -1,0 +1,30 @@
+# The Rust port of MetaObjects (preview). ADR-0065 records why it exists and how it
+# differs from the other five ports.
+#
+# Three crates:
+#   `metaobjects`          metamodel registry, loader, canonical serializer.
+#   `metaobjects-codegen`  the run engine (skip key, hash manifest, writer) and the
+#                          `entity` generator.
+#   `metaobjects-cli`      the `cargo-meta` binary, so `cargo meta gen` works.
+[workspace]
+resolver = "3"
+members = ["metaobjects", "metaobjects-codegen", "metaobjects-cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+license = "Apache-2.0"
+repository = "https://github.com/metaobjectsdev/metaobjects"
+
+[workspace.dependencies]
+# `preserve_order` keeps object keys in document order, which the loader needs:
+# children, attrs and error paths all follow authoring order, as JSON.parse does.
+serde_json = { version = "1.0.140", features = ["preserve_order"] }
+indexmap = "2.7"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }

@@ -1,4 +1,4 @@
-// ADR-0063 — the business-rules vocabulary is inert in every generator.
+// ADR-0066 — the business-rules vocabulary is inert in every generator.
 //
 // `api.operational`, `operation.*`, `binding.*` and `transition.*` are registered, loaded,
 // validated and checked by `verify`; no generator acts on them yet. So two models that differ

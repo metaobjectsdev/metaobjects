@@ -1,4 +1,4 @@
-"""ADR-0063 — cross-node rules for operations (slice A) and lifecycles (slice B).
+"""ADR-0066 — cross-node rules for operations (slice A) and lifecycles (slice B).
 
 A rule-for-rule port of the TypeScript reference
 ``server/typescript/packages/metadata/src/loader/rules-validation.ts``. Every port implements
@@ -463,7 +463,7 @@ def _check_operation(op: MetaData, sink: _Sink) -> None:
 
 
 def validate_rules(root: MetaData, errors: list[MetaError]) -> None:
-    """ADR-0063 — the rules pass. Runs after reference-bearing validation, before freeze."""
+    """ADR-0066 — the rules pass. Runs after reference-bearing validation, before freeze."""
     sink = _Sink(errors)
     for field in _declared_fields(root):
         _check_declared_transitions(field, sink)
@@ -511,7 +511,7 @@ def _set_key(op: MetaData, attr: str) -> frozenset[str]:
 
 def _same_operation(a: MetaData, b: MetaData) -> bool:
     """Whether two operations of one package in different APIs are one operation exposed twice (a
-    versioned API beside its successor, ADR-0064 section 2): the same name and subtype and the same
+    versioned API beside its successor, ADR-0067 section 2): the same name and subtype and the same
     contract. Bindings are per API and are not compared."""
     if a.name != b.name or a.sub_type != b.sub_type:
         return False
@@ -540,7 +540,7 @@ def _check_api_routes(ops: list[MetaData], sink: _Sink) -> None:
             path = b.get_meta_attr(BINDING_ATTR_PATH)
             if not isinstance(path, str):
                 continue
-            # The effective method: the declared one, else the derived (ADR-0063 section 1).
+            # The effective method: the declared one, else the derived (ADR-0066 section 1).
             declared_method = b.get_meta_attr(BINDING_ATTR_METHOD)
             if isinstance(declared_method, str):
                 method = declared_method

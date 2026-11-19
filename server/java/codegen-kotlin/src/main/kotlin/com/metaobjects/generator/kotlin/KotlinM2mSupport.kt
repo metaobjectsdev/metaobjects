@@ -34,7 +34,7 @@ object KotlinM2mSupport {
     /**
      * FW-3 — the target of an M:N is a TPH subtype: its rows live in the discriminator base's
      * shared table, so a stage-2 select against that table must be narrowed back to just this
-     * subtype's rows, or a sibling subtype's row (e.g. a Copay reached through `Auth`'s shared
+     * subtype's rows, or a sibling subtype's row (e.g. a Coupon reached through `Auth`'s shared
      * table) comes back tagged as this one.
      *
      * @property column   the discriminator field's physical column name (on the STORAGE object)

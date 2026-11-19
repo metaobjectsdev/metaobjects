@@ -49,7 +49,9 @@ public sealed class FlattenedMemberReferenceCodegenTests
     {
         var (ctx, warnings) = Context(Model);
         var context = Assert.Single(new DbContextGenerator().Generate(ctx)).Content;
-        Assert.Contains("modelBuilder.Entity<Plan>().OwnsOne(x => x.Address).HasOne<Country>().WithMany().HasForeignKey(e => e.CountryId)", context);
+        // rc.21 U6: the relationship is configured through the owned type's navigation to the target, when EF found one.
+        Assert.Contains("modelBuilder.Entity<Plan>().OwnsOne(x => x.Address, b => b.HasOne<Country>(", context);
+        Assert.Contains(").WithMany().HasForeignKey(e => e.CountryId)", context);
         Assert.Contains("DeleteBehavior.Restrict", context);
         Assert.Empty(warnings);
     }

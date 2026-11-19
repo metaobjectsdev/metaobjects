@@ -1,4 +1,4 @@
-// Lifecycle constants (ADR-0063) — the `transition` type, its subtype and attrs.
+// Lifecycle constants (ADR-0066) — the `transition` type, its subtype and attrs.
 //
 // A lifecycle has no vocabulary of its own: it is a `field.enum` with at least one
 // `transition.action` child. Its states are the enum's @values, its initial state the

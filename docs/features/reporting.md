@@ -269,7 +269,7 @@ physical column name is your naming strategy applied to the **derived field name
 
 | Item | Column | Type | Never null? |
 |---|---|---|---|
-| `dimension.attribute` | the dimension's name | the `@of` field's type | only when the `@of` field is required (`@required: true` or a `validator.required` child) and the dimension has no `@via`, or every hop of its `@via` is an enforced belongs-to reference over a required foreign key (below) |
+| `dimension.attribute` | the dimension's name | the `@of` field's type | only when the `@of` field is required (`@required: true` or a `validator.required` child) and the dimension has no `@via`, or every hop of its `@via` is a required, enforced reference onto a target that hides no rows (below) |
 | `dimension.time` at `hour` | `<name>Hour` | `timestamp` | same rule |
 | `dimension.time` at `day`, `week`, `month`, `quarter`, `year` | `<name><Grain>` | `date`, the first day of the bucket | same rule |
 | `count` (with or without `@distinct`) | the measure's name | `long` | yes: a count is never null |
@@ -287,19 +287,19 @@ physical column name is your naming strategy applied to the **derived field name
 | any measure above except `count`, declaring `@default` | the measure's name | as above | yes: it reads its `@default` instead of null |
 | in a `@spine` report, a dimension over a column of the spine entity | the dimension's name | the `@of` field's type | yes when the `@of` field is required (`@required` or a `validator.required` child) or one of the spine entity's `identity.primary` `@fields`; no for a dimension reached beyond the spine entity |
 
-The last two rows, and the enforced-reference rule above, are the only ways a measure other than
-`count`, or a dimension reached through `@via`, is never null. The key clause applies only under
+The last two rows, and the path rule above, are the only ways a measure other than `count`,
+or a dimension reached through `@via`, is never null. The key clause applies only under
 `@spine`, where the key is the row's own.
 
 Without `@spine`, a dimension reached through `@via` is never null when its `@of` field is
-required and **every hop is an enforced belongs-to reference over a required foreign key**: the
-entity the hop leaves holds the `identity.reference`, its first `@fields` entry is required, and
-the reference is enforced (`@enforce` defaults to true), so the join always finds a match. Every
-hop a view or report makes joins `LEFT OUTER` (this changed — a required reference is no longer
-inner-joined), so a join never drops a base row, whatever the reference's `@enforce` says; for
-these hops the match is guaranteed, so the outer join never nulls the column either. A hop over
-an optional foreign key, a to-one relationship whose foreign
-key the other entity holds, or any hop under `@spine` stays nullable. Every port derives the same answer
+required and **every hop is certain to match**: the entity the hop leaves holds the
+`identity.reference`, its first `@fields` entry is required, the reference is enforced (not
+`@enforce: false`, which can name a row that does not exist), and the target hides no rows (it
+is not a TPH subtype, whose join carries the discriminator). Every join is `LEFT OUTER` (rc.19),
+and over such a path it returns exactly what `INNER` would, so the column is never
+null-extended. A hop over an optional or unenforced foreign key, onto a TPH subtype, a to-one
+relationship whose foreign key the other entity holds, or any hop under `@spine` leaves the
+dimension nullable. Every port derives the same answer
 (`fixtures/persistence-conformance/report-shapes.json`).
 
 A derived column carries the type-shaping attributes of its `@of` field where they apply
@@ -491,13 +491,13 @@ Every other join of a `@spine` report is `LEFT OUTER` too, so no join can drop a
     COUNT(p."id") FILTER (WHERE p."status" = 'active') AS "purchases",
     COALESCE(CAST(SUM(p."amountCents") FILTER (WHERE p."status" = 'active') AS BIGINT), 0) AS "revenue",
     CAST(COALESCE(CAST(SUM(p."amountCents") FILTER (WHERE p."status" = 'active') AS BIGINT), 0) AS NUMERIC) / NULLIF(COUNT(DISTINCT p."customerEmail"), 0) AS "revenuePerBuyer"
-  FROM "programs" p0
-  LEFT OUTER JOIN "purchases" p ON p0."id" = p."programId"
+  FROM "public"."programs" p0
+  LEFT OUTER JOIN "public"."purchases" p ON p0."id" = p."programId"
   GROUP BY p0."id", p0."title"
 ```
 
 With `"@segment": "active"` on the report, the join would read
-`LEFT OUTER JOIN "purchases" p ON p0."id" = p."programId" AND p."status" = 'active'`. The
+`LEFT OUTER JOIN "public"."purchases" p ON p0."id" = p."programId" AND p."status" = 'active'`. The
 aliases are the ones the same report would get without `@spine`.
 
 `meta migrate` refuses a derived `@spine` report, naming the report and the spine, when:

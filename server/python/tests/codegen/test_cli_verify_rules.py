@@ -1,4 +1,4 @@
-"""``metaobjects verify`` — the business-rules gate (ADR-0063), end to end.
+"""``metaobjects verify`` — the business-rules gate (ADR-0066), end to end.
 
 Codes, paths and message text are gated cross-port by
 ``tests/conformance/test_rules_check_conformance.py``; these tests pin the wiring: what is

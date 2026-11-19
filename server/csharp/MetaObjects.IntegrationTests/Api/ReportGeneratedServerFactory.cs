@@ -81,7 +81,7 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
         await ReportFixture.ProvisionSchemaAsync(connectionString, engine);
 
         var (assembly, routedNames) = CompileGeneratedServer();
-        var dbContextType = assembly.GetType($"{GeneratedNamespace}.AppDbContext")
+        var dbContextType = MetaObjects.IntegrationTests.GeneratedTypes.Find(assembly, $"{GeneratedNamespace}.AppDbContext")
             ?? throw new InvalidOperationException("generated AppDbContext type not found");
 
         var builder = WebApplication.CreateBuilder();
@@ -102,7 +102,7 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
         // lane also proves the two coexist; only the reports' routes carry scenarios.
         foreach (var name in routedNames)
         {
-            var routesType = assembly.GetType($"{GeneratedNamespace}.{name}Routes")
+            var routesType = MetaObjects.IntegrationTests.GeneratedTypes.Find(assembly, $"{GeneratedNamespace}.{name}Routes")
                 ?? throw new InvalidOperationException($"generated {name}Routes type not found");
             var mapMethod = routesType.GetMethod($"Map{name}Routes", BindingFlags.Public | BindingFlags.Static)
                 ?? throw new InvalidOperationException($"generated Map{name}Routes method not found");
@@ -181,13 +181,13 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
         // The emitted tree itself: a routes file for each expected name, and no file at
         // all for the sourceless report.
         foreach (var name in ExpectedRoutedNames)
-            if (!files.Any(f => f.Path == name + "Routes.g.cs"))
+            if (!files.Any(f => Path.GetFileName(f.Path) == name + "Routes.g.cs"))
                 throw new InvalidOperationException($"no {name}Routes.g.cs was generated");
         // ...and an export module for each served report (the shared writer once), none for the sourceless one.
         var servedReports = root.Objects().Where(o => o.IsReport() && RoutesGenerator.AppliesTo(o, root))
             .Select(o => CSharpNaming.Pascal(o.Name)).ToList();
-        var exportFiles = files.Where(f => f.Path.EndsWith("Export.g.cs", StringComparison.Ordinal) || f.Path == "ReportExportWriter.g.cs")
-            .Select(f => f.Path).OrderBy(p => p, StringComparer.Ordinal).ToList();
+        var exportFiles = files.Where(f => f.Path.EndsWith("Export.g.cs", StringComparison.Ordinal) || Path.GetFileName(f.Path) == "ReportExportWriter.g.cs")
+            .Select(f => Path.GetFileName(f.Path)).OrderBy(p => p, StringComparer.Ordinal).ToList();
         var wantExport = servedReports.Select(n => n + "Export.g.cs").Append("ReportExportWriter.g.cs")
             .OrderBy(p => p, StringComparer.Ordinal).ToList();
         if (!exportFiles.SequenceEqual(wantExport))
@@ -205,7 +205,9 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
         var comp = CSharpCompilation.Create(
             "apicontract_report_generated_" + Guid.NewGuid().ToString("N"),
             trees, refs,
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            // Item 14: a concurrent Roslyn build inside a test host that is already running the
+            // other api-contract servers' builds flaked; one thread per compilation is deterministic.
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, concurrentBuild: false));
 
         using var ms = new MemoryStream();
         var emit = comp.Emit(ms);

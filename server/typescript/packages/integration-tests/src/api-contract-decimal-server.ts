@@ -109,7 +109,7 @@ export async function startGeneratedCorpusServer(
   // spelling the committed schema artifact uses, so the emitted tables read it unmodified.
   const root = await loadMetadataFile(metaPath);
   const lr = await runGen({
-    config: defineConfig({
+    config: defineConfig({ outputLayout: "flat", 
       outDir: tmp,
       extStyle: "none",
       outputLayout,

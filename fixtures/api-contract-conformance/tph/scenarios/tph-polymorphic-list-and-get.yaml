@@ -25,14 +25,14 @@ requests:
     expect:
       status: 200
       body:
-        row: { id: 2, type: "Copay", reference: "REF-2", copayAmount: "12.5" }
+        row: { id: 2, type: "Coupon", reference: "REF-2", couponAmount: "12.5" }
   - id: r4
     method: GET
     path: /api/auths/3
     expect:
       status: 200
       body:
-        row: { id: 3, type: "PriorAuth", reference: "REF-3", approver: "Dr. Smith" }
+        row: { id: 3, type: "Permit", reference: "REF-3", approver: "Dr. Smith" }
   - id: r5
     method: GET
     path: /api/auths/999

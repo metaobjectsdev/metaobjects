@@ -1,4 +1,4 @@
-// Concrete node classes for the declared API surface (ADR-0030, ADR-0063): api.*,
+// Concrete node classes for the declared API surface (ADR-0030, ADR-0066): api.*,
 // operation.* and binding.*. One class per type; the subtype carries no behaviour.
 //
 // Mirrors server/typescript/packages/metadata/src/core/api/meta-api.ts.

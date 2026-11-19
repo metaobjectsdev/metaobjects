@@ -103,7 +103,7 @@ public class ConformanceTest {
 
     private static final Path CORPUS = CorpusRoot.locate();
     private static final Set<String> REGISTERED_CODES = FixtureLint.loadRegisteredCodes(CORPUS);
-    private static final ExpectedFailures.Ledger LEDGER = ExpectedFailures.load(locateLedger());
+    static final ExpectedFailures.Ledger LEDGER = ExpectedFailures.load(locateLedger());
 
     /**
      * Cross-language provider-id aliases: the corpus uses canonical provider
@@ -149,7 +149,7 @@ public class ConformanceTest {
                 "requirement-types",
                 // FR-044 reporting vocabulary (dimension / measure / segment).
                 "reporting-types",
-                // ADR-0063 business-rules vocabulary (api / operation / binding / transition).
+                // ADR-0066 business-rules vocabulary (api / operation / binding / transition).
                 "rules-types"
             ),
             // The corpus's "metaobjects-db" provider maps to Java's

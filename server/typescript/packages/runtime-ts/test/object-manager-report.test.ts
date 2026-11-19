@@ -347,3 +347,24 @@ describe("ObjectManager reads a view-backed report (FR-044)", () => {
     expect(await om.count("Sale")).toBe(2);
   });
 });
+
+// rc.21 fix round (I3): a report dimension over a @stringValueMap enum reads and filters as its
+// member — the row model carries the map from its type source, as it carries @intValueMap.
+describe("a report dimension over a @stringValueMap enum", () => {
+  test("reads the member and filters by its stored string; an unknown stored value throws", async () => {
+    const model = JSON.parse(JSON.stringify(SALES).replace(
+      `"@intValueMap":{"OPEN":1,"CLOSED":2}`, `"@stringValueMap":{"OPEN":"open_v1","CLOSED":"closed_v1"}`));
+    const result = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(model))]);
+    expect(result.errors.map((e) => e.message)).toEqual([]);
+    if (!isMetaRoot(result.root)) throw new Error("not a root");
+    const driver = inMemoryDriver({
+      seed: { v_sales_by_status: [{ status: "open_v1", sales: 4, revenue: 4000 }, { status: "closed_v1", sales: 6, revenue: 9000 }] },
+      pkFields: { v_sales_by_status: ["status"] },
+    });
+    const om = new ObjectManager({ metadata: result.root, driver });
+    expect(await om.findMany("SalesByStatus", { status: "OPEN" })).toEqual([{ status: "OPEN", sales: 4, revenue: 4000 }]);
+    const bad = new ObjectManager({ metadata: result.root, driver: inMemoryDriver({
+      seed: { v_sales_by_status: [{ status: "lost", sales: 1, revenue: 1 }] }, pkFields: { v_sales_by_status: ["status"] } }) });
+    await expect(bad.findMany("SalesByStatus")).rejects.toThrow(/no member in @stringValueMap/);
+  });
+});

@@ -32,7 +32,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The business-rules gate ({@code verify}, ADR-0063). The loader refuses a model whose
+ * The business-rules gate ({@code verify}, ADR-0066). The loader refuses a model whose
  * operations or lifecycles are malformed; this gate reports what loads clean but is almost
  * certainly not what the author meant: a state nothing can reach, a lifecycle that cannot move,
  * a transition nothing can make, and (by setting) a permission name the model derived instead

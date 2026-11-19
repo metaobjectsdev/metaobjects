@@ -220,7 +220,7 @@ def test_a_malformed_enums_block_is_refused(tmp_path: Path, enums: object) -> No
     assert e.value.code == ErrorCode.ERR_BAD_ATTR_VALUE
 
 
-# ADR-0063 — the `rules` and `verify` blocks. Absent keys take their defaults; a mistake is refused.
+# ADR-0066 — the `rules` and `verify` blocks. Absent keys take their defaults; a mistake is refused.
 
 
 def test_rules_settings_absent_are_defaults(tmp_path: Path) -> None:

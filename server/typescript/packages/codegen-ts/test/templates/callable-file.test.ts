@@ -15,7 +15,7 @@ async function loadFirstEntity(doc: unknown) {
     new InMemoryStringSource(JSON.stringify(doc), { id: "demo.json" }),
   ]);
   if (errors.length > 0) throw new Error(`load errors: ${errors.map((e) => e.message).join("; ")}`);
-  const procEntity = root.objects().find((o) => o.name === "PhaseSummary")!;
+  const procEntity = root.objects().find((o) => o.name === "StageSummary")!;
   return { root, procEntity };
 }
 
@@ -27,22 +27,22 @@ describe("renderCallableFile", () => {
         children: [
           {
             "object.value": {
-              name: "PhaseSummaryArgs",
+              name: "StageSummaryArgs",
               children: [
-                { "field.int": { name: "caseId", "@required": true } },
+                { "field.int": { name: "consignmentId", "@required": true } },
                 { "field.timestamp": { name: "asOfDate" } },
               ],
             },
           },
           {
             "object.projection": {
-              name: "PhaseSummary",
+              name: "StageSummary",
               children: [
                 {
                   "source.rdb": {
                     "@kind": "storedProc",
-                    "@proc": "fn_phase_summary",
-                    "@parameterRef": "PhaseSummaryArgs",
+                    "@proc": "fn_stage_summary",
+                    "@parameterRef": "StageSummaryArgs",
                   },
                 },
                 { "field.long": { name: "phaseId" } },
@@ -55,12 +55,12 @@ describe("renderCallableFile", () => {
     });
 
     const out = renderCallableFile(procEntity);
-    expect(out).toContain("export async function callPhaseSummary");
-    expect(out).toContain("args: PhaseSummaryArgs");
-    expect(out).toContain("fn_phase_summary");
-    expect(out).toContain("args.caseId");
+    expect(out).toContain("export async function callStageSummary");
+    expect(out).toContain("args: StageSummaryArgs");
+    expect(out).toContain("fn_stage_summary");
+    expect(out).toContain("args.consignmentId");
     expect(out).toContain("args.asOfDate");
-    expect(out).toContain("Promise<PhaseSummary[]>");
+    expect(out).toContain("Promise<StageSummary[]>");
   });
 
   test("tableFunction with @parameterRef emits the same shape with the @function name", async () => {
@@ -70,19 +70,19 @@ describe("renderCallableFile", () => {
         children: [
           {
             "object.value": {
-              name: "PhaseSummaryArgs",
+              name: "StageSummaryArgs",
               children: [{ "field.int": { name: "id" } }],
             },
           },
           {
             "object.projection": {
-              name: "PhaseSummary",
+              name: "StageSummary",
               children: [
                 {
                   "source.rdb": {
                     "@kind": "tableFunction",
                     "@function": "fn_phase_listing",
-                    "@parameterRef": "PhaseSummaryArgs",
+                    "@parameterRef": "StageSummaryArgs",
                   },
                 },
                 { "field.long": { name: "id" } },
@@ -104,7 +104,7 @@ describe("renderCallableFile", () => {
         children: [
           {
             "object.projection": {
-              name: "PhaseSummary",
+              name: "StageSummary",
               children: [
                 {
                   "source.rdb": {
@@ -120,7 +120,7 @@ describe("renderCallableFile", () => {
       },
     });
     const out = renderCallableFile(procEntity);
-    expect(out).toContain("callPhaseSummary(db");
+    expect(out).toContain("callStageSummary(db");
     expect(out).not.toContain("args:");
     expect(out).toContain("fn_ping()");
   });

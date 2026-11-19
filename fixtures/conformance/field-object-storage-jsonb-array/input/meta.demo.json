@@ -26,11 +26,11 @@
       },
       {
         "object.entity": {
-          "name": "Patient",
+          "name": "Player",
           "children": [
             {
               "source.rdb": {
-                "@table": "patients"
+                "@table": "players"
               }
             },
             {

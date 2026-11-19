@@ -30,7 +30,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Lifecycle and operation-target derivation (ADR-0063), shared by the loader's rules pass
+ * Lifecycle and operation-target derivation (ADR-0066), shared by the loader's rules pass
  * and the {@code verify} rules gate. Everything here is DERIVED: a lifecycle, its states,
  * its initial and terminal states and an operation's target entity have no vocabulary of
  * their own. Mirrors the TypeScript {@code core/transition/lifecycle.ts}.
@@ -79,7 +79,7 @@ public final class Lifecycles {
 
     /**
      * Whether an entity's lifecycles are live: it declares or inherits a source (read resolving).
-     * A lifecycle on an entity with no source loads and is inert (ADR-0063 section 2).
+     * A lifecycle on an entity with no source loads and is inert (ADR-0066 section 2).
      */
     public static boolean lifecycleIsLive(MetaData entity) {
         for (MetaData c : entity.getChildren(MetaData.class, true)) {
@@ -120,7 +120,7 @@ public final class Lifecycles {
     /**
      * The transitions a field gives an entity: those declared on a field of the entity itself or of
      * an entity it extends. A transition reached only through the field's own {@code extends} of
-     * another entity's field is not one (ADR-0063 section 2).
+     * another entity's field is not one (ADR-0066 section 2).
      */
     public static List<MetaData> lifecycleTransitionsOf(MetaData entity, MetaData field) {
         List<MetaData> lineage = entityLineage(entity);

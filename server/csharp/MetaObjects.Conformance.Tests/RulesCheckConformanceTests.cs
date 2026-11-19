@@ -8,7 +8,7 @@ using Xunit;
 namespace MetaObjects.Conformance.Tests;
 
 /// <summary>
-/// Cross-port business-rules gate conformance corpus (ADR-0063): <c>fixtures/rules-check-conformance/</c>.
+/// Cross-port business-rules gate conformance corpus (ADR-0066): <c>fixtures/rules-check-conformance/</c>.
 /// See that directory's README.md for the fixture format. Every case is LOADED strict first, so "this
 /// model loads today" is proven by the fixture, and only then checked. <c>options.json</c> holds the
 /// <c>rules</c> and <c>verify</c> blocks of <c>.metaobjects/config.json</c>, so it is run through this

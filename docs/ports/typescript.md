@@ -319,6 +319,12 @@ meta verify --codegen     # committed output, docs included, vs a fresh regen
 meta verify --db <url>    # live DB schema vs metadata
 ```
 
+`meta gen Author Post` names objects by their short name (without the package). Each
+generator's `filter` option applies on top. A name that matches no object is refused with
+exit 2 before anything is written, even beside names that match (`meta gen: names 'Ordr',
+which matches no object in the metadata.`). Every port has the same selection: `--entities` in Python and C#,
+`-Dmeta.entities` on the Maven plugin for Java and Kotlin.
+
 ### Schema — first migration on a brand-new database
 
 `meta migrate` diffs your metadata against a **committed schema snapshot**,
@@ -641,14 +647,14 @@ a log line, an external system's column mapping.
 object extends another spreads the parent's collections rather than restating them:
 
 ```ts
-export const CopayAuthNames = {
+export const CouponAuthNames = {
   type: "object",
   subType: "entity",
-  name: "CopayAuth",
+  name: "CouponAuth",
   sources: { ...AuthNames.sources },     // the SHARED table, named once on the base
   fields: {
     ...AuthNames.fields,
-    copayAmount: { name: "copayAmount", column: "copay_cents" },
+    couponAmount: { name: "couponAmount", column: "coupon_cents" },
   },
   identities: { ...AuthNames.identities },
   indexes:    { ...AuthNames.indexes },
@@ -663,7 +669,7 @@ which is what a single-table hierarchy legitimately has two of.
 
 An abstract base a persisted entity extends gets an artifact of its own, carrying the
 columns it declares and an **empty `sources`** — it has no table, and must never acquire
-one. Reading `CopayAuthNames.sources.primary.table` still works: the spread resolves it,
+one. Reading `CouponAuthNames.sources.primary.table` still works: the spread resolves it,
 with the literal types intact.
 
 ## Use
@@ -695,7 +701,7 @@ export const db = drizzle(createClient({ url: "file:dev.sqlite" }));
 ```ts
 // src/server.ts
 import Fastify from "fastify";
-import { authorRoutes } from "./generated/Author.routes.js";
+import { authorRoutes } from "./generated/acme/blog/Author.routes.js";
 
 const app = Fastify();
 await app.register(authorRoutes);   // mounts GET/POST/PATCH/PUT/DELETE for Author
@@ -709,7 +715,7 @@ module-level singleton wired above, so `server.ts` never passes it explicitly.
 (`apiPrefix` in `metaobjects.config.ts` wraps the registration in a
 `fastify.register(..., { prefix })` block when set — see
 [`features/api-contract.md`](../features/api-contract.md).) The per-verb query
-helpers (`findAuthorById`, ...) live in the sibling `./generated/Author.queries`
+helpers (`findAuthorById`, ...) live in the sibling `./generated/acme/blog/Author.queries`
 file and take `db` as an explicit first argument — useful directly in request
 handlers, tests, or any runtime where a module singleton doesn't fit (see the
 recipe above).
@@ -726,7 +732,7 @@ npx tsx src/server.ts      # stock Node
 Node's built-in TypeScript support is **not** enough here — `node src/server.ts`
 (type stripping, on by default in Node 24; `--experimental-strip-types` before
 that) strips the types but deliberately does not rewrite module specifiers, so
-the generated `import … from "./generated/Author.routes.js"` fails with
+the generated `import … from "./generated/acme/blog/Author.routes.js"` fails with
 `ERR_MODULE_NOT_FOUND`. Run it through `tsx` as above, or compile with `npx tsc`
 first and run the emitted JavaScript.
 
@@ -821,7 +827,7 @@ binding exists only on `env`, so build the client and mount inside `fetch`:
 ```ts
 import { Hono } from "hono";
 import { drizzle } from "drizzle-orm/d1";
-import { registerAuthorRoutes } from "./generated/Author.routes.hono.js";
+import { registerAuthorRoutes } from "./generated/acme/blog/Author.routes.hono.js";
 
 interface Env { DB: D1Database }
 

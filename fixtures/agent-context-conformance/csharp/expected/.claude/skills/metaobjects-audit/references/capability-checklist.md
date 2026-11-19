@@ -364,7 +364,7 @@ to nothing, and does not check that each claimed node complies).
   resolved from config.
 - **CALIBRATION — registered, nothing generated yet:** the declared-API surface
   (`api.operational`, `operation.query`, `operation.command`, `binding.rest`) and lifecycles
-  (`transition.action` under a `field.enum`) are registered since 1.3.0 (ADR-0063), checked at
+  (`transition.action` under a `field.enum`) are registered since 1.3.0 (ADR-0066), checked at
   load and by `verify`, but no generator emits from them yet. Their absence is not an adopter
   defect; do NOT audit for them. MCP exposure of declared prompts/tools is planned and not in
   the registry.

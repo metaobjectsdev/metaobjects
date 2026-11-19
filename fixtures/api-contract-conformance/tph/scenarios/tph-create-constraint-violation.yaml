@@ -13,22 +13,22 @@ description: >
   discriminator is injected from the URL, never the body). A well-formed create still
   succeeds (201) — the guard rejects only violations, never valid bodies.
 requests:
-  # r1 — a valid PriorAuth create still succeeds (positive control: the constraint
+  # r1 — a valid Permit create still succeeds (positive control: the constraint
   #      guard must not over-reject a well-formed body).
   - id: r1
     method: POST
-    path: /api/auths/priorauth
+    path: /api/auths/permit
     body:
       reference: "REF-OK"
       approver: "Dr. Smith"
     expect:
       status: 201
       body:
-        row: { type: "PriorAuth", reference: "REF-OK", approver: "Dr. Smith" }
-  # r2 — an over-@maxLength(80) `reference` on the PriorAuth segment → 400 validation.
+        row: { type: "Permit", reference: "REF-OK", approver: "Dr. Smith" }
+  # r2 — an over-@maxLength(80) `reference` on the Permit segment → 400 validation.
   - id: r2
     method: POST
-    path: /api/auths/priorauth
+    path: /api/auths/permit
     body:
       reference: "RXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
       approver: "Dr. Smith"

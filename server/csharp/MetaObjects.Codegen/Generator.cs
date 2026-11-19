@@ -8,7 +8,15 @@ using MetaObjects.Meta;
 namespace MetaObjects.Codegen;
 
 /// <summary>A file a generator produced. <paramref name="Path"/> is relative to the out dir.</summary>
-public sealed record EmittedFile(string Path, string Content);
+public sealed record EmittedFile(string Path, string Content)
+{
+    /// <summary>
+    /// <c>true</c> for a file built from the whole model (a shared enum, a wire helper, the report
+    /// export writer): an <c>--entities</c> selection never drops it, because no selected object owns
+    /// it. <c>false</c>, the default, is a per-object file the selection narrows.
+    /// </summary>
+    public bool WholeModel { get; init; }
+}
 
 /// <summary>Resolved generation config.</summary>
 public sealed record GenConfig
@@ -188,6 +196,18 @@ public sealed record GenConfig
     public bool SweepOrphans { get; init; } = false;
 
     /// <summary>
+    /// <c>--entities</c>: the short names (<see cref="MetaObjects.Meta.MetaData.Name"/>) of the objects
+    /// this run emits PER-OBJECT files for. <c>null</c>, the default, emits every object.
+    /// <para>
+    /// Only per-object output narrows (see <see cref="CodegenRunner"/>): a file of a generator that
+    /// builds from the whole model, such as <c>AppDbContext</c>, is rendered from the WHOLE model,
+    /// byte-identical to an unfiltered run. A narrowed run never sweeps orphans and never touches the
+    /// manifest entries of files it did not write, so the unselected objects' files stay as they are.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<string>? EntitySelection { get; init; }
+
+    /// <summary>
     /// The C# type name of the EF Core DbContext that callable (stored-proc / table-function)
     /// wrappers take as their first parameter. Defaults to <c>AppDbContext</c> (the name the
     /// upstream DbContextGenerator emits). A downstream consumer that renames its context
@@ -198,17 +218,18 @@ public sealed record GenConfig
     /// <summary>
     /// The project's SQL dialect (<c>.metaobjects/config.json</c> <c>migrate.dialect</c>:
     /// <c>postgres</c>, <c>sqlite</c>, <c>mysql</c>, <c>d1</c>), or <c>null</c> when it names none.
-    /// Read only where generated code is provider-specific: the <c>@sequenceStart</c> model
-    /// annotation and the context's design-time services are Npgsql's concern, so they are emitted
-    /// for <c>postgres</c> alone.
+    /// Read only where generated code must bind one provider at compile time: the
+    /// <c>@sequenceStart</c> migrations generator subclasses Npgsql's, so it is emitted for
+    /// <c>postgres</c> alone.
     /// </summary>
     public string? Dialect { get; init; }
 
     /// <summary>
-    /// Leave out a validator CHECK the column already guarantees (a length maximum a
-    /// <c>VARCHAR(n)</c> enforces, a length minimum of zero or less), as <c>meta migrate</c> does
-    /// under <c>migrate.checks.skipRedundant</c>. A declared <c>@constraintName</c> keeps its CHECK
-    /// regardless. Default false.
+    /// <c>.metaobjects/config.json</c> <c>migrate.checks.skipRedundant</c>: leave out a validator CHECK
+    /// the column already guarantees (a <c>validator.length</c> maximum its <c>VARCHAR(n)</c> enforces,
+    /// a length minimum of 0 or less), exactly as <c>meta migrate</c> does, so the generated model and
+    /// the migrated database declare the same CHECKs. A validator with <c>@constraintName</c> keeps its
+    /// CHECK regardless. Default false.
     /// </summary>
     public bool SkipRedundantChecks { get; init; }
 
@@ -223,7 +244,7 @@ public sealed record GenConfig
     /// warns, and EF finds the services only when the context's project is the startup project. EF
     /// reads the reference only from the startup and migrations assemblies, so a context in a third
     /// assembly needs the line in its migrations project; the run warns, with the line, whenever it
-    /// cannot show the line is unnecessary (<see cref="DesignTimeServicesReferences"/>).
+    /// cannot show the line is unnecessary (rc.19 I4, <see cref="DesignTimeServicesReferences"/>).
     /// </summary>
     public string? ContextAssemblyName
     {
@@ -251,11 +272,14 @@ public sealed record GenConfig
     /// <summary>
     /// The C# property name of a field, for every generator that names one: the entity and
     /// value-object classes, the composite <c>[PrimaryKey]</c>, the DbContext's model
-    /// configuration, the reverse finders and the routes. <c>null</c>, the default, is the
-    /// PascalCased field name (<see cref="CSharpNaming.Pascal"/>). Set it to rename a property
-    /// (an acronym, say) once, so the class that declares it and every line that references it
-    /// agree. <c>EntityGenerator.PropertyName</c> and <c>DbContextGenerator.PropertyName</c> read
-    /// it by default; a subclass that overrides one of those hooks must override both.
+    /// configuration, the reverse finders, the routes (members, sort and filter names, credential
+    /// and write-deny keys), the callable arguments, the extractor mapper, the report export and
+    /// the filter allowlist's property map. <c>null</c>, the default, is the PascalCased field name
+    /// (<see cref="CSharpNaming.Pascal"/>). Set it to rename a property (an acronym, say) once, so
+    /// the class that declares it and every line that references it agree. This is the only way
+    /// to rename consistently: <c>EntityGenerator.PropertyName</c> and
+    /// <c>DbContextGenerator.PropertyName</c> default to it, are obsolete, and a generator whose
+    /// override answers differently from this resolver for any field refuses to run.
     /// </summary>
     public Func<MetaField, string>? PropertyNaming { get; init; }
 
@@ -517,6 +541,24 @@ public sealed class GenContext
             Applicability = Applicability,
             Scope = Scope is null ? include : o => Scope(o) && include(o),
         };
+
+    /// <summary>
+    /// <see cref="Narrow"/> for a probe run: the warnings are dropped and the name claims are the
+    /// probe's own, so asking a generator what it would emit for a selection neither repeats its
+    /// warnings nor records claims in the real run's ledger.
+    /// </summary>
+    internal GenContext NarrowForProbe(Func<MetaObject, bool> include) =>
+        new()
+        {
+            Entities = Entities.Where(include).ToList(),
+            Root = Root,
+            Config = Config,
+            Warn = _ => { },
+            Claims = new NameClaims(),
+            Generators = Generators,
+            Applicability = Applicability,
+            Scope = Scope is null ? include : o => Scope(o) && include(o),
+        };
 }
 
 /// <summary>
@@ -582,6 +624,32 @@ public interface IGenerator
     /// <c>?format=csv|json|xml</c> branch: see <see cref="GenContext.ReportExportMaxRows"/>.
     /// </summary>
     int? ReportExportMaxRows => null;
+
+    /// <summary>
+    /// <c>true</c> when this entry's files are built from the WHOLE model (the <c>AppDbContext</c>),
+    /// so an <c>--entities</c> selection never narrows them: they render from every object and are
+    /// written even when no selected object contributes to them. <c>false</c>, the default, has the
+    /// runner ask the entry for its output twice, once for the whole model and once for the
+    /// selection, and keep the files the selection also produces (<see cref="CodegenRunner"/>). An
+    /// owned copy of a whole-model generator keeps the override when it is copied.
+    /// </summary>
+    bool WholeModel => false;
+
+    /// <summary>
+    /// ADR-0064 — whether a run that includes this entry may be skipped when the model and everything
+    /// that generates are unchanged. <c>true</c>, the default, claims that the output depends only on
+    /// the model, the project's config, this entry's own source and the files named by
+    /// <see cref="ExtraInputs"/>. An entry that reads anything else (an environment variable, the
+    /// network, the clock) answers <c>false</c>: a run that includes it never skips, and never stores a key.
+    /// </summary>
+    bool Cacheable => true;
+
+    /// <summary>
+    /// ADR-0064 — paths (relative to the run's directory, or absolute) of files or directories this
+    /// entry reads besides the metadata and its own source. Their content joins the run's identity, so
+    /// editing one renders again. Empty by default.
+    /// </summary>
+    IReadOnlyList<string> ExtraInputs => [];
 }
 
 /// <summary>A generator entry's <c>handEdits</c> setting: what a run does with a hand-edited file.</summary>
@@ -615,6 +683,12 @@ internal sealed class HandEditsGenerator(IGenerator inner, HandEdits handEdits) 
     public HandEdits HandEdits { get; } = handEdits;
     /// <inheritdoc/>
     public int? ReportExportMaxRows => Inner.ReportExportMaxRows;
+    /// <inheritdoc/>
+    public bool WholeModel => Inner.WholeModel;
+    /// <inheritdoc/>
+    public bool Cacheable => Inner.Cacheable;
+    /// <inheritdoc/>
+    public IReadOnlyList<string> ExtraInputs => Inner.ExtraInputs;
     /// <inheritdoc/>
     public IEnumerable<EmittedFile> Generate(GenContext ctx) => Inner.Generate(ctx);
 }

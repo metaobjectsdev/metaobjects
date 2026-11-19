@@ -60,6 +60,8 @@ public static class HelperRuntime
     /// <c>DurationWire.cs</c> is the field.duration wire form it parses duration operands with.
     /// <c>ReportExportHttp.cs</c> is the HTTP side of report export: a report list route that
     /// is built with a <c>report-export</c> generator wired calls it.
+    /// <c>SerializerKeys.cs</c> reads the host serializer's own JSON key for a property, so credential
+    /// stripping and the PATCH key lookup agree with it under any naming policy.
     /// </summary>
     public static readonly IReadOnlyList<string> Files =
     [
@@ -76,6 +78,7 @@ public static class HelperRuntime
         "DurationWire.cs",
         "DecimalRangeEndpointFilter.cs",
         "ReportExportHttp.cs",
+        "SerializerKeys.cs",
     ];
 
     /// <summary>Runtime/ files that are CORE and never copied (see the header).</summary>

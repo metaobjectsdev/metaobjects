@@ -11,7 +11,7 @@
             {
               "field.enum": {
                 "name": "type",
-                "@values": ["Bridge", "Copay"]
+                "@values": ["Bridge", "Coupon"]
               }
             },
             { "field.long": { "name": "id" } },
@@ -31,11 +31,11 @@
       },
       {
         "object.entity": {
-          "name": "CopayAuth",
+          "name": "CouponAuth",
           "extends": "demo::Auth",
-          "@discriminatorValue": "Copay",
+          "@discriminatorValue": "Coupon",
           "children": [
-            { "field.decimal": { "name": "copayAmount", "@precision": 10, "@scale": 2 } }
+            { "field.decimal": { "name": "couponAmount", "@precision": 10, "@scale": 2 } }
           ]
         }
       }

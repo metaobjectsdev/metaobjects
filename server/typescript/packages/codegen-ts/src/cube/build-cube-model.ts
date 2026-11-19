@@ -54,7 +54,7 @@ import {
   type MetaSegment,
   type ReportShape,
 } from "@metaobjectsdev/metadata";
-import { intValueMapOf } from "../enum-meta.js";
+import { enumStorageMapOf } from "../enum-meta.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 import { hasWritableRdbSource, servedReport } from "../source-detect.js";
 import { isTphSubtype, tphDiscriminatorBase, tphDiscriminatorPin } from "../tph.js";
@@ -986,7 +986,7 @@ class CubeModelBuilder {
     if (field === undefined) throw new Error(`${where}: discriminator field '${pin.fieldName}' is not a field of '${entity.name}'.`);
     const value =
       field.subType === FIELD_SUBTYPE_ENUM
-        ? encodeIntEnumFilterValue(pin.value, FILTER_OP_EQ, intValueMapOf(field), pin.fieldName, where)
+        ? encodeIntEnumFilterValue(pin.value, FILTER_OP_EQ, enumStorageMapOf(field), pin.fieldName, where)
         : pin.value;
     return { kind: "cmp", ref: `${prefix}${sourceColumnNameFor(field, this.mc.extract)}`, op: FILTER_OP_EQ, value };
   }

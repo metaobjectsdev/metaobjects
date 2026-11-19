@@ -1160,6 +1160,20 @@ metadata.root:
                           counterexample: >-
                             A latest value that is whichever row the database
                             happened to return.
+                      - requirement.functional:
+                          name: originFunction
+                          title: Owned database function
+                          level: 4
+                          status: live
+                          statement: >-
+                            A value computed by a database function the
+                            project owns is declared by the function's name,
+                            schema and argument fields, so every call is
+                            checked against the model, never written as SQL.
+                          counterexample: >-
+                            A view body that calls the function by hand and
+                            keeps working after the argument column is renamed
+                            only until the view is next recreated.
 
                 - requirement.functional:
                     name: reporting
@@ -1270,9 +1284,9 @@ metadata.root:
                       background job that writes the same row skips it.
                     description: >-
                       Covers the operation and lifecycle vocabulary and the checks the
-                      loader and verify run on it (ADR-0063). The generated service
+                      loader and verify run on it (ADR-0066). The generated service
                       shells that enforce these rules at run time are later work
-                      (ADR-0064); until they land the vocabulary generates nothing.
+                      (ADR-0067); until they land the vocabulary generates nothing.
                     children:
                       - requirement.functional:
                           name: apiOperational

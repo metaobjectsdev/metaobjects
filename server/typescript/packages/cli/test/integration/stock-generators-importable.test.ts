@@ -40,6 +40,7 @@ function config(imports: string, generators: string): string {
     imports,
     `export default defineConfig({`,
     `  outDir: ${JSON.stringify(OUT)},`,
+    `  outputLayout: "flat",`,
     `  dialect: "sqlite",`,
     `  dbImport: "~/db",`,
     `  extStyle: "none",`,

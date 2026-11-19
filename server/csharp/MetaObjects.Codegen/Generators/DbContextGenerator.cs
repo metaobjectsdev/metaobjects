@@ -5,6 +5,8 @@
 // jsonb / subdocument / absent → a single json column via .ToJson), and uses
 // .PrimitiveCollection() for scalar/enum array fields (EF Core 8 API).
 
+// The PropertyName hook is obsolete for adopters (set GenConfig.PropertyNaming); this generator still calls it.
+#pragma warning disable CS0618
 using System.Text;
 using MetaObjects.Codegen.Docs;
 using MetaObjects.Meta;
@@ -29,6 +31,9 @@ namespace MetaObjects.Codegen.Generators;
 public class DbContextGenerator : IGenerator
 {
     public virtual string Name => "dbcontext-generator";
+
+    /// <summary>One context for the whole model: an <c>--entities</c> selection does not narrow it.</summary>
+    public bool WholeModel => true;
 
     /// <summary>
     /// Whether <c>OnModelCreating</c> carries the explicit 1:N relationship configuration for each
@@ -60,7 +65,10 @@ public class DbContextGenerator : IGenerator
     /// names one. Default: the run's <see cref="GenConfig.PropertyNaming"/> resolver, else
     /// PascalCase of the field name — the same answer <c>EntityGenerator.PropertyName</c> gives
     /// by default, so the two agree. A subclass that overrides the entity generator's hook
-    /// overrides this one the same way (or sets the resolver on the config instead).</summary>
+    /// overrides this one the same way (or sets the resolver on the config instead).
+    /// An override that answers differently from the resolver for any field is refused when the
+    /// generator runs (set <c>GenConfig.PropertyNaming</c> instead).</summary>
+    [Obsolete("set GenConfig.PropertyNaming: it is the one resolver every generator consults. An override that names a field differently from the resolver is refused when the generator runs.")]
     protected virtual string PropertyName(MetaField field) => CSharpNaming.PropertyName(field, _config);
 
     // The run's config, for the PropertyName default. Set when Generate starts.
@@ -97,8 +105,12 @@ public class DbContextGenerator : IGenerator
             .OrderBy(o => o.Name, StringComparer.Ordinal)
             .ToList();
         if (objects.Count == 0) return [];
+        // Every object the context names a property of: the DbSet entities and views, but also the value-object
+        // members its owned and flattened configuration reaches and a TPH subtype's own fields.
+        CSharpNaming.RefuseDivergingPropertyHook(Name, ReportRows.WithReportRows(ctx), ctx.Config, PropertyName);
         // One context, one property per name (CS0102 otherwise), claimed as emitted: an object
-        // that gets no DbSet here never takes part.
+        // that gets no DbSet here never takes part. Two objects on one table are EF's to refuse
+        // (it does, at model build), not this generator's.
         var dbSets = $"the DbSet properties of the context of {Name} entry {ctx.EntryLabel(this)}";
         foreach (var o in objects)
         {
@@ -108,7 +120,9 @@ public class DbContextGenerator : IGenerator
         }
         ClaimPhysicalAddresses(objects, ctx);
 
-        // OnModelCreating body lines (8-space indented), in a stable order.
+        // OnModelCreating body lines (8-space indented), in a stable order. INVARIANT: each entry is
+        // one complete C# statement — a guard and the statement it guards are ONE entry — because a
+        // large model is split into ConfigureModelNN methods at any entry boundary.
         var modelLines = new List<string>();
 
         // The M:N navigations, derived ONCE. M2MNavigationBuilder.For re-walks the
@@ -191,12 +205,14 @@ public class DbContextGenerator : IGenerator
         foreach (var e in objects.Where(o => o.IsEntity() && !o.IsReadOnlyProjection()))
         {
             var owner = ValueObjectNames.Ref(e, ctx.Config);
-            // #214 — these config lines target the table-mapped class, which omits the derived
-            // (origin.*) fields; so must the config, or it would reference properties the class
-            // does not declare (a compile error). A write-through entity's derived fields are
-            // mapped on its read model (registered below). An entity's primary source is always
-            // writable (the loader refuses a read-only primary), so this class always maps a table.
-            IEnumerable<MetaField> configFields = e.Fields().Where(f => !f.IsDerived());
+            // #214 — for a write-through entity these config lines target the WRITE (table)
+            // class, which omits the derived (origin.*) fields; so must the config, or it
+            // would reference properties the write class does not declare (a compile error).
+            // The derived fields' EF mapping lives on the read model (registered below).
+            // rc.19 entity-derived: an entity's derived field is never a column of its table.
+            IEnumerable<MetaField> configFields = e.IsWriteThrough() || e.IsEntity()
+                ? e.Fields().Where(f => !f.IsDerived())
+                : e.Fields();
             // #214 [0] — the per-field EF TYPE converters (owned-VO / enum / primitive
             // collection / decimal precision / timestamp column type / field.uri / field.inet /
             // @dbColumnType) over the write entity's derived-EXCLUDED field set. The SAME helper
@@ -321,9 +337,9 @@ public class DbContextGenerator : IGenerator
             // A TPH subtype's own read-only field is configured too (EmitTphSubtypeFieldConfig).
             || modelLines.Any(l => l.Contains("PropertySaveBehavior.", StringComparison.Ordinal));
 
-        // The identity start. A Postgres context with an increment key gets the generated
-        // design-time services whether or not a start is declared today, so removing the last
-        // @sequenceStart still scaffolds through them. Nothing is registered at runtime: the
+        // R36, R50 — the identity start. A Postgres context with an increment key gets the
+        // generated design-time services whether or not a start is declared today, so removing the
+        // last @sequenceStart still scaffolds through them. Nothing is registered at runtime: the
         // rewrite matters only when a migration is scaffolded, and Migrate() runs what it says.
         var written = objects.Where(o => o.IsEntity() && !o.IsReadOnlyProjection()).ToList();
         var declaresStart = written.Any(o => IdentityStartOf(o) is not null);
@@ -332,6 +348,16 @@ public class DbContextGenerator : IGenerator
             ctx.Warn($"{Name}: @sequenceStart is not in the EF model: the project names no Postgres " +
                 "dialect (.metaobjects/config.json migrate.dialect: \"postgres\"; a self-hosted runner sets GenConfig.Dialect), " +
                 "and the design-time services that keep a changed start from restarting the sequence are Npgsql's concern. meta migrate still creates the start.");
+        // Ruling R56 (item 3): @sequenceName describes an adopted database whose sequence kept its name.
+        // EF never names an identity's sequence and Npgsql cannot express it, so it is not in the model;
+        // that is not an error. Said once per run, naming every object that declares it.
+        var namedSequences = written
+            .Where(o => o.PrimaryIdentity()?.Attr(DbConstants.IDENTITY_ATTR_SEQUENCE_NAME) is string { Length: > 0 })
+            .Select(o => o.ResolutionKey())
+            .ToList();
+        if (namedSequences.Count > 0)
+            ctx.Warn($"{Name}: @sequenceName is not in the EF model ({string.Join(", ", namedSequences)}): EF never names an " +
+                "identity's sequence and Npgsql cannot express it. The database keeps the name it has, and meta migrate uses it.");
 
         var sb = new StringBuilder();
         EmitUsings(sb, needsMetadataUsing, ctx);
@@ -342,6 +368,8 @@ public class DbContextGenerator : IGenerator
         if (NeedsUnmappedEnumHelper(objects, ctx.Root)
             || modelLines.Any(l => l.Contains(UnmappedEnumMemberHelperName + "(", StringComparison.Ordinal)))
             EmitUnmappedEnumHelper(sb);
+        if (modelLines.Any(l => l.Contains(UnmappedEnumStoredMemberHelperName + "(", StringComparison.Ordinal)))
+            EmitUnmappedStoredEnumHelper(sb);
         // Gated on the EMITTED text, not on a second derivation of it. Every site that uses the
         // helper appends to modelLines (entity, read-only projection, and the flattened-VO member
         // block, which lands here as one OwnedTypeConfig string), and modelLines is complete by
@@ -351,7 +379,7 @@ public class DbContextGenerator : IGenerator
         if (modelLines.Any(l => l.Contains(MapJsonbHelperName))) EmitMapJsonbHelper(sb);
         sb.AppendLine("}");
         if (modelLines.Any(l => l.Contains(DurationIntervalHelperName + "."))) EmitDurationIntervalHelper(sb);
-        // The design-time services also scaffold a JSON column's comment (the design-time services scaffold it).
+        // The design-time services also scaffold a JSON column's comment (ruling R59).
         identityStart |= IdentityStartOn(ctx) && modelLines.Any(l => l.Contains(JsonColumnCommentAnnotation, StringComparison.Ordinal));
         if (!identityStart) return [new EmittedFile("AppDbContext.g.cs", sb.ToString())];
         var contextName = ContextClassName(ctx);
@@ -659,9 +687,20 @@ public class DbContextGenerator : IGenerator
                 lhs + ".HasColumnType(\"uuid\").HasConversion(v => System.Guid.Parse(v!), g => g.ToString(\"D\"));",
             DbConstants.DB_COLUMN_TYPE_JSONB =>
                 lhs + ".HasColumnType(\"jsonb\");",
+            // rc.21 part B (U2): a text spelling is the column type, as `meta migrate` creates it.
+            { } spelling when DbConstants.ParseDbColumnType(spelling) is { Kind: "text" or "varchar" or "char" } p =>
+                lhs + $".HasColumnType(\"{TextColumnType(p)}\");",
             _ => null,
         };
     }
+
+    /// <summary>rc.21 part B (U2): the Postgres column type a text <c>@dbColumnType</c> spelling names.</summary>
+    private static string TextColumnType(DbConstants.ParsedDbColumnType p) => p.Kind switch
+    {
+        "char" => $"character({p.Length})",
+        "varchar" => p.Length is { } n ? $"character varying({n})" : "character varying",
+        _ => "text",
+    };
 
     // FR-017 — EF TPH single-table inheritance config for a discriminator base. The
     // discriminator property is the base's @discriminator field (PascalCased); the
@@ -921,12 +960,27 @@ public class DbContextGenerator : IGenerator
     /// out ids live rows hold, so the generated design-time services
     /// (<see cref="DesignTimeServicesFile"/>) scaffold it as SQL instead.
     /// </summary>
-    private static void EmitIdentityStartConfig(string owner, MetaObject entity, List<string> modelLines)
+    private void EmitIdentityStartConfig(string owner, MetaObject entity, List<string> modelLines)
     {
         if (IdentityStartOf(entity) is not { } start) return;
         // One entry, one statement: the guard and its body never split across a chunk boundary.
-        modelLines.Add($"        if (Database.ProviderName == \"{NpgsqlProviderName}\") modelBuilder.Entity<{owner}>().Property(x => x.{CSharpNaming.Pascal(start.Field.Name)}).HasAnnotation(" +
+        modelLines.Add($"        if (Database.ProviderName == \"{NpgsqlProviderName}\") modelBuilder.Entity<{owner}>().Property(x => x.{PropertyName(start.Field)}).HasAnnotation(" +
             $"\"{NpgsqlIdentityOptionsAnnotation}\", \"'{start.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}', '1', '', '', 'False', '1'\");");
+    }
+
+    /// <summary>
+    /// The table's CHECK constraints (item 13, rulings R55): every validator that can carry one and
+    /// every scalar <c>field.enum</c>, with <c>meta migrate</c>'s names and expression text
+    /// (<see cref="CheckConstraints"/>), so an EF migration and <c>meta migrate</c> build the same
+    /// table. Declared only on a dialect migrate builds (<c>postgres</c>, <c>sqlite</c>, <c>d1</c>):
+    /// the text is dialect-specific and EF hands it to the provider verbatim. One statement per entry.
+    /// </summary>
+    protected virtual void EmitCheckConfig(string owner, MetaObject entity, GenContext ctx, List<string> modelLines)
+    {
+        if (entity.DbTable is null) return;
+        foreach (var check in CheckConstraints.For(entity, ctx.Config))
+            modelLines.Add($"        modelBuilder.Entity<{owner}>().ToTable(t => t.HasCheckConstraint(\"{CSharpNaming.CSharpStringLiteral(check.Name)}\", " +
+                $"\"{CSharpNaming.CSharpStringLiteral(check.Expression)}\"));");
     }
 
     private const string NpgsqlIdentityOptionsAnnotation = "Npgsql:IdentitySequenceOptions";
@@ -954,8 +1008,8 @@ public class DbContextGenerator : IGenerator
     }
 
     /// <summary>
-    /// The design-time services of a Postgres context, <c>&lt;Context&gt;DesignTimeServices</c> (one class for
-    /// every design-time concern): an
+    /// The design-time services of a Postgres context, <c>&lt;Context&gt;DesignTimeServices</c> (rulings R50,
+    /// R51, R59, R60; one class for every design-time concern): an
     /// <c>IDesignTimeServices</c> that wraps the model differ the context already has, so
     /// <c>dotnet ef migrations add</c> scaffolds every start-only identity change — a start added,
     /// changed or removed — as SQL, Up and Down, and never as the <c>AlterColumn</c> Npgsql would
@@ -965,7 +1019,7 @@ public class DbContextGenerator : IGenerator
     /// <c>GREATEST(n, max(id) + 1)</c> when it is below that, and never back. That makes a database
     /// rebuilt by replaying migrations begin at <c>n</c> as a fresh one does, and never hands out an
     /// id a live row holds.
-    /// <para>Design time only. The rewrite matters only when a migration is scaffolded;
+    /// <para>Ruling: design time only. The rewrite matters only when a migration is scaffolded;
     /// <c>Migrate()</c> executes the operations a migration already holds. Nothing is registered at
     /// runtime, and the file uses public EF types only (no Npgsql reference, no EF-internal type).
     /// The accepted residual risk: a migrations or startup project that neither is the context's
@@ -994,7 +1048,7 @@ public class DbContextGenerator : IGenerator
         }
         else if (DesignTimeServicesReferences.Warning(ctx.Config, Name, contextName, $"{ns}.{className}", line, consequence) is { } warning)
         {
-            // EF reads the reference only from the startup and migrations
+            // rc.19 fix round (I4): EF reads the reference only from the startup and migrations
             // assemblies, so the one generated here is read only when this project holds the
             // migrations. The run warns whenever that cannot be proved, with the line to add.
             ctx.Warn(warning);
@@ -1078,7 +1132,7 @@ public class DbContextGenerator : IGenerator
                     }
                 }
 
-                // EF 8's JsonColumn carries no comment, so a JSON column's comment rides on
+                // Ruling R59: EF 8's JsonColumn carries no comment, so a JSON column's comment rides on
                 // its owned type as an annotation and is scaffolded here, after every other operation
                 // (a new table's column exists by then). Down is the same diff the other way.
                 private const string JsonComment = "{{JsonColumnCommentAnnotation}}";
@@ -1217,7 +1271,7 @@ public class DbContextGenerator : IGenerator
         foreach (var f in fields)
         {
             var vo = f.SubType == FIELD_SUBTYPE_OBJECT ? ValueObjectNames.ResolveFieldRef(f, ctx.Root) as MetaObject : null;
-            // A JSON column's comment falls back to its value object's description (the design-time services scaffold it).
+            // A JSON column's comment falls back to its value object's description (ruling R59).
             var text = f.Attr(MetaObjects.Core.Documentation.DocumentationConstants.DOC_ATTR_DESCRIPTION) as string;
             if (string.IsNullOrEmpty(text) && vo is not null)
                 text = vo.Attr(MetaObjects.Core.Documentation.DocumentationConstants.DOC_ATTR_DESCRIPTION) as string;
@@ -1229,12 +1283,12 @@ public class DbContextGenerator : IGenerator
                 if (f.Storage == STORAGE_FLATTENED || vo is null) continue;
                 // An owned JSON column (ToJson): EF 8's JsonColumn carries no comment, so the comment
                 // rides on the owned type as an annotation, and the design-time differ scaffolds it as
-                // COMMENT ON COLUMN (the design-time services scaffold it). A value object holding a map is a plain converted
+                // COMMENT ON COLUMN (ruling R59). A value object holding a map is a plain converted
                 // property instead, and takes the comment as any column does.
                 if (!HoldsMap(vo, ctx.Root, new HashSet<MetaObject>()))
                 {
                     // An OwnedTypeConfig override decides the mapping, so the lines already emitted
-                    // say which it is (an override of the mapping decides it): only an owned JSON navigation takes the annotation.
+                    // say which it is (G1, rc.20): only an owned JSON navigation takes the annotation.
                     var mapping = MappedAs(owner, PropertyName(f), modelLines);
                     if (mapping == ObjectFieldMapping.Property)
                     {
@@ -1267,7 +1321,7 @@ public class DbContextGenerator : IGenerator
 
     /// <summary>
     /// How the model lines emitted so far map a non-flattened object field of <paramref name="owner"/>
-    /// (an override of the mapping decides it). The field-type lines, <see cref="OwnedTypeConfig"/>'s among them, are emitted before
+    /// (G1, rc.20). The field-type lines, <see cref="OwnedTypeConfig"/>'s among them, are emitted before
     /// the comments, and each line is one statement, so the emitted text is exact: a
     /// <c>OwnsOne</c>/<c>OwnsMany</c> of the navigation with a <c>ToJson</c> is an owned JSON column
     /// (the stock mapping), a <c>Property(x =&gt; x.Nav)</c> is a column an override mapped as a property
@@ -1290,7 +1344,7 @@ public class DbContextGenerator : IGenerator
         return asProperty ? ObjectFieldMapping.Property : ObjectFieldMapping.Unknown;
     }
 
-    /// <summary>The owned-type annotation carrying a JSON column's comment (the design-time services scaffold it).</summary>
+    /// <summary>The owned-type annotation carrying a JSON column's comment (ruling R59).</summary>
     internal const string JsonColumnCommentAnnotation = "MetaObjects:JsonColumnComment";
 
     /// <summary>
@@ -1300,22 +1354,8 @@ public class DbContextGenerator : IGenerator
     /// <c>identity.secondary</c> (unique) and an <c>index.lookup</c>, each with <c>@where</c>
     /// (<c>HasFilter</c>), <c>@using</c> (<c>HasMethod</c>) and <c>@orders</c>
     /// (<c>IsDescending</c>), under its resolved name. An <c>@expr</c> index is not one EF can
-    /// model; <c>meta migrate</c> creates it.
+    /// model; <see cref="ExpressionIndexesGenerator"/> writes it as SQL.
     /// </summary>
-    /// <summary>
-    /// Declares the CHECK constraints <c>meta migrate</c> creates for the table (enum membership,
-    /// validators, cross-field validators), with the same names and expression text, so an EF
-    /// migration and <c>meta migrate</c> build the same database. Declared only for a dialect
-    /// <c>meta migrate</c> builds (see <see cref="CheckConstraints.DeclaredFor"/>).
-    /// </summary>
-    protected virtual void EmitCheckConfig(string owner, MetaObject entity, GenContext ctx, List<string> modelLines)
-    {
-        if (entity.DbTable is null) return;
-        foreach (var check in CheckConstraints.For(entity, ctx.Config))
-            modelLines.Add($"        modelBuilder.Entity<{owner}>().ToTable(t => t.HasCheckConstraint(\"{CSharpNaming.CSharpStringLiteral(check.Name)}\", " +
-                $"\"{CSharpNaming.CSharpStringLiteral(check.Expression)}\"));");
-    }
-
     private void EmitIndexConfig(string owner, MetaObject entity, GenContext ctx, List<string> modelLines,
         IEnumerable<MetaField>? ownFields = null, Func<MetaData, bool>? declares = null)
     {
@@ -1367,8 +1407,8 @@ public class DbContextGenerator : IGenerator
             // @using: the access method, an Npgsql annotation (btree is the default and is left out).
             if (node.Attr(DbConstants.IDENTITY_ATTR_USING) is string method && method.Trim().Length > 0 && method.Trim() != "btree")
             {
-                modelLines.Add($"        if (Database.ProviderName == \"{NpgsqlProviderName}\")");
-                modelLines.Add($"            modelBuilder.Entity<{owner}>().HasIndex({selector}, {indexName})" +
+                // One entry per statement (the modelLines invariant): the guard and its statement are one line.
+                modelLines.Add($"        if (Database.ProviderName == \"{NpgsqlProviderName}\") modelBuilder.Entity<{owner}>().HasIndex({selector}, {indexName})" +
                     $".HasAnnotation(\"Npgsql:IndexMethod\", \"{CSharpNaming.CSharpStringLiteral(method.Trim())}\");");
             }
         }
@@ -1386,7 +1426,7 @@ public class DbContextGenerator : IGenerator
             var name = $"\"{CSharpNaming.CSharpStringLiteral(index.Name)}\"";
             var props = index.Fields.Select(PropertyName).ToList();
             var selector = props.Count == 1 ? $"x => x.{props[0]}" : $"x => new {{ {string.Join(", ", props.Select(p => "x." + p))} }}";
-            modelLines.Add($"        modelBuilder.Entity<{CSharpNaming.Pascal(index.Owner.Name)}>().HasIndex({selector}, {name}).HasDatabaseName({name});");
+            modelLines.Add($"        modelBuilder.Entity<{ValueObjectNames.Ref(index.Owner, ctx.Config)}>().HasIndex({selector}, {name}).HasDatabaseName({name});");
         }
     }
 
@@ -1598,7 +1638,7 @@ public class DbContextGenerator : IGenerator
             return [];
         }
 
-        // A reference whose fields are members of ONE flattened value object
+        // G6: a reference whose fields are members of ONE flattened value object
         // (`address.countryId`) is a foreign key of that owned type, configured on its builder.
         if (fkFields.Any(f => f.Contains('.')))
             return FlattenedMemberReferenceConfig(entity, reference, target, fkFields, ctx);
@@ -1606,10 +1646,9 @@ public class DbContextGenerator : IGenerator
         var props = new List<string>(fkFields.Count);
         foreach (var name in fkFields)
         {
-            // #214 — an entity's table-mapped class omits the derived (origin.*) fields, so
-            // naming one here would reference a property the class does not declare (a
-            // compile error in the generated file). An entity's primary source is always
-            // writable (the loader refuses a read-only primary), so its class maps a table.
+            // #214 — a write-through entity's WRITE class omits the derived (origin.*)
+            // fields, so naming one here would reference a property the class does not
+            // declare (a compile error in the generated file).
             if (entity.FindField(name) is not { } field)
             {
                 return [];
@@ -1630,10 +1669,11 @@ public class DbContextGenerator : IGenerator
     }
 
     /// <summary>
-    /// The relationship for a reference whose <c>@fields</c> are members of one flattened value
-    /// object. The member properties live on the owned type, so the foreign key is configured on
-    /// its builder, one statement:
-    /// <c>modelBuilder.Entity&lt;Plan&gt;().OwnsOne(x =&gt; x.Address).HasOne&lt;Country&gt;().WithMany().HasForeignKey(e =&gt; e.CountryId)</c>.
+    /// G6 (reference half): the relationship for a reference whose <c>@fields</c> are members of
+    /// one flattened value object. The member properties live on the owned type, so the foreign
+    /// key is configured on its builder, one statement:
+    /// <c>modelBuilder.Entity&lt;Plan&gt;().OwnsOne(x =&gt; x.Address, b =&gt; b.HasOne&lt;Country&gt;(&lt;nav&gt;).WithMany().HasForeignKey(e =&gt; e.CountryId))</c>,
+    /// where <c>&lt;nav&gt;</c> is the owned type's navigation to the target over those properties, if it has one.
     /// Fields spread over the entity and a value object, or over two value objects, have no EF
     /// mapping: the run warns and configures none.
     /// </summary>
@@ -1650,11 +1690,41 @@ public class DbContextGenerator : IGenerator
         var nav = PropertyName((MetaField)members[0]!.Embedding);
         var props = members.Select(m => PropertyName((MetaField)m!.Member)).ToList();
         var actions = ReferentialActions.Resolve(entity, reference);
-        return [$"        modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}).HasOne<{ValueObjectNames.Ref(target, ctx.Config)}>()"
+        var targetRef = ValueObjectNames.Ref(target, ctx.Config);
+        // rc.21 (U6): the owned type is the adopter's to extend (a partial with a navigation to the
+        // target is the usual shape), and EF's convention builds a relationship from such a navigation
+        // the moment the owned type joins the model. A second, navigation-less HasOne over the same
+        // columns would then be a second relationship, with a shadow FK beside it (`<Owner>_<Fk>1`).
+        // So the relationship is configured THROUGH the navigation EF found over these FK properties,
+        // when there is one, and navigation-less otherwise. Read from the model, not reflected.
+        // Which navigation: none to the target, none; exactly one, that one (whatever its name, so
+        // `HomeCountry` over `CountryId` matches too); several, the one whose convention FK is these
+        // properties — and with no such one the model build THROWS, naming the owner, rather than
+        // configure a second relationship beside them (rc.21 fix round, M6).
+        var linq = "System.Linq.Enumerable";
+        var fkNames = string.Join(", ", props.Select(p => $"\"{p}\""));
+        var toTarget = $"{linq}.Where(b.OwnedEntityType.GetNavigations(), n => n.TargetEntityType.ClrType == typeof({targetRef}))";
+        var byFk = $"{linq}.FirstOrDefault({toTarget}, n => {linq}.SequenceEqual({linq}.Select(n.ForeignKey.Properties, p => p.Name), new[] {{ {fkNames} }}))";
+        var ambiguous = $"new System.InvalidOperationException(\"{CSharpNaming.CSharpStringLiteral($"{entity.Name}.{nav} has several navigations to {target.Name} and none over {string.Join(", ", props)}: name the one this reference uses with that foreign key, or remove the others.")}\")";
+        // rc.21 part B (N3): what codegen can know, it decides here. When this entity declares
+        // another reference from the same owned member to the same target, a sole navigation may be
+        // THAT reference's, so only the navigation over these exact properties is this one's; with
+        // none, the relationship is navigation-less (the other reference keeps its navigation). With
+        // one reference, a sole navigation can only be this one's, and only "several, none over
+        // these properties" is left to the model build (the owned CLR type is invisible to codegen).
+        var siblings = entity.ReferenceIdentities().Count(r =>
+            !ReferenceEquals(r, reference)
+            && ReferenceEquals(NamingRefs.RefTarget(r, IDENTITY_REFERENCE_ATTR_REFERENCES), target)
+            && ReferentialActions.ReadIdentityFields(r) is { Count: > 0 } other
+            && other.All(f => FlattenedMembers.Resolve(entity, f) is { } m && ReferenceEquals(m.Embedding, members[0]!.Embedding)));
+        var navigation = siblings > 0
+            ? $"{byFk}?.Name"
+            : $"({linq}.Count({toTarget}) == 0 ? null : {linq}.Count({toTarget}) == 1 ? {linq}.First({toTarget}) : ({byFk} ?? throw {ambiguous}))?.Name";
+        return [$"        modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}, b => b.HasOne<{targetRef}>({navigation})"
              + $".WithMany().HasForeignKey({ForeignKeyExpression("e", props)})"
              + PrincipalKeyCall(reference, target)
              + $"{OnDeleteCall(entity, fkFields, actions.OnDelete, ctx)}"
-             + ConstraintNameCall(reference) + ";"];
+             + ConstraintNameCall(reference) + ");"];
     }
 
     /// <summary>
@@ -1842,6 +1912,36 @@ public class DbContextGenerator : IGenerator
 
     /// <summary>Name of the generated fail-fast helper the write converters end in.</summary>
     private const string UnmappedEnumMemberHelperName = "UnmappedEnumMember";
+
+    /// <summary>rc.21 — the read/write helpers a <c>@stringValueMap</c> enum's converters end in.</summary>
+    private const string UnmappedEnumStoredValueHelperName = "UnmappedEnumStoredValue";
+    private const string UnmappedEnumStoredMemberHelperName = "UnmappedEnumStoredMember";
+
+    /// <summary>
+    /// rc.21 — the fail-fast helpers a <c>@stringValueMap</c> enum's converters end in, emitted only
+    /// when a converter references them (so a model with none is byte-identical).
+    /// </summary>
+    private static void EmitUnmappedStoredEnumHelper(StringBuilder sb)
+    {
+        sb.AppendLine();
+        sb.AppendLine("    /// <summary>");
+        sb.AppendLine("    /// A field.enum column with @stringValueMap held a string that maps to no member: the");
+        sb.AppendLine("    /// database holds data the model says is impossible.");
+        sb.AppendLine("    /// </summary>");
+        sb.AppendLine($"    private static T {UnmappedEnumStoredValueHelperName}<T>(string stored, string field) =>");
+        sb.AppendLine("        throw new System.InvalidOperationException(");
+        sb.AppendLine("            $\"field.enum '{field}' read stored value '{stored}' with no member in \" +");
+        sb.AppendLine("            \"@stringValueMap — the database holds a value the model does not describe.\");");
+        sb.AppendLine();
+        sb.AppendLine("    /// <summary>");
+        sb.AppendLine("    /// A field.enum property with @stringValueMap held a value outside @values: it has no");
+        sb.AppendLine("    /// declared stored string, and writing another member's would corrupt the row silently.");
+        sb.AppendLine("    /// </summary>");
+        sb.AppendLine($"    private static string {UnmappedEnumStoredMemberHelperName}(object? value, string field) =>");
+        sb.AppendLine("        throw new System.InvalidOperationException(");
+        sb.AppendLine("            $\"field.enum '{field}' cannot write {value}: it has no stored string in \" +");
+        sb.AppendLine("            \"@stringValueMap — the value is not one of the members the model declares.\");");
+    }
 
     /// <summary>
     /// Emits the fail-fast helper every int-backed enum's provider→model converter ends
@@ -2087,8 +2187,8 @@ public class DbContextGenerator : IGenerator
     /// <summary>
     /// The complete <c>HasConversion</c> call for an enum property: the generic
     /// <c>HasConversion&lt;string&gt;()</c> for a string-backed enum, or
-    /// <c>HasConversion(model→provider, provider→model)</c> built from
-    /// <c>@intValueMap</c> for an int-backed one.
+    /// <c>HasConversion(new ValueConverter&lt;E, int|string&gt;(model→provider, provider→model))</c>
+    /// built from <c>@intValueMap</c> / <c>@stringValueMap</c> for a value-mapped one.
     /// </summary>
     /// <remarks>
     /// <para>The mapping is emitted as a TERNARY CHAIN rather than a <c>switch</c>
@@ -2109,16 +2209,18 @@ public class DbContextGenerator : IGenerator
     {
         var config = ctx.Config;
         var intMap = IntValueMapOf(f);
+        var stringMap = f.ResolvedIsArray() ? null : EnumStorage.StringValueMapOf(f);
         // A string-backed enum's column length (EnumLength.ResolveMaxLength: its @maxLength, else
         // the project's enums.maxLength) is the VARCHAR(n) `meta migrate` creates. An array enum
         // is a text[] column, whose elements carry no length.
-        if (intMap is null)
-            return !f.ResolvedIsArray() && EnumLength.ResolveMaxLength(f) is { } length
-                ? $"HasConversion<string>().HasMaxLength({length})"
-                : "HasConversion<string>()";
+        var maxLength = !f.ResolvedIsArray() && intMap is null && EnumLength.ResolveMaxLength(f) is { } length
+            ? $".HasMaxLength({length})"
+            : "";
+        if (intMap is null && stringMap is null)
+            return $"HasConversion<string>(){maxLength}";
 
         var members = f.EffectiveEnumValues ?? new List<string>();
-        if (members.Count == 0) return "HasConversion<string>()";
+        if (members.Count == 0) return $"HasConversion<string>(){maxLength}";
 
         // FR-019: a SHARED (root-level abstract) or @provided enum is NOT nested inside the
         // entity class — EntityGenerator references it instead (see its EnumPropertyTypeName)
@@ -2136,12 +2238,27 @@ public class DbContextGenerator : IGenerator
         var type = Fr019SharedEnum.SharedEnumForField(f) is { } shared
             ? Fr019SharedEnum.SharedEnumTypeReference(shared, config)
             : $"{CSharpNaming.QualifiedOwnerTypeRef(owner, entity, config)}.{CSharpNaming.EnumTypeName(entity, f)}";
+        // rc.21: a @stringValueMap enum stores each member's string. The same per-member chains as
+        // the int-backed pair below, over string literals, each ending in its throwing helper.
+        if (stringMap is not null)
+        {
+            var toStored = new System.Text.StringBuilder("v => ");
+            var fromStored = new System.Text.StringBuilder("v => ");
+            foreach (var m in members)
+                toStored.Append($"v == {type}.{m} ? \"{CSharpNaming.CSharpStringLiteral(EnumStorage.StoredValue(f, m))}\" : ");
+            toStored.Append($"{UnmappedEnumStoredMemberHelperName}(v, \"{f.Name}\")");
+            foreach (var m in members)
+                fromStored.Append($"v == \"{CSharpNaming.CSharpStringLiteral(EnumStorage.StoredValue(f, m))}\" ? {type}.{m} : ");
+            fromStored.Append($"{UnmappedEnumStoredValueHelperName}<{type}>(v, \"{f.Name}\")");
+            return $"HasConversion({TypedEnumConverter(type, "string")}({toStored}, {fromStored})){maxLength}";
+        }
+
         // Read the ints THROUGH the map, keyed by member, so @values stays the SSOT and a
         // member with no mapping cannot silently vanish from the conversion.
         var ints = new List<string>(members.Count);
         foreach (var m in members)
         {
-            if (!intMap.TryGetValue(m, out var raw) || raw is null)
+            if (!intMap!.TryGetValue(m, out var raw) || raw is null)
                 throw new InvalidOperationException(
                     $"field.enum '{f.Name}' @{FIELD_ATTR_INT_VALUE_MAP} has no integer for member '{m}' — " +
                     "cannot build the EF value conversion.");
@@ -2156,7 +2273,7 @@ public class DbContextGenerator : IGenerator
         // as the LAST member's int, silently.
         for (var i = 0; i < members.Count; i++)
             toProvider.Append($"v == {type}.{members[i]} ? {ints[i]} : ");
-        // Typed object: the lambda's parameter is the property's type, nullable or not.
+        // Typed object: the helper takes the enum boxed, so it serves any converter's model type.
         toProvider.Append($"{UnmappedEnumMemberHelperName}(v, \"{f.Name}\")");
         // Every member gets its own branch here (no last-member fallthrough) so the
         // final else can reject an int the model does not describe.
@@ -2169,11 +2286,27 @@ public class DbContextGenerator : IGenerator
         // lambdas against (CS1660), so the pair is wrapped in an explicit ValueConverter.
         // The element converter is the scalar pair unchanged, so each element is stored as
         // its declared int and an unmapped stored element throws exactly as a scalar does.
-        if (f.ResolvedIsArray())
-            return "HasConversion(new global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<"
-                + $"{type}, int>({toProvider}, {fromProvider}))";
-        return $"HasConversion({toProvider}, {fromProvider})";
+        // A scalar takes the same explicitly typed converter (see TypedEnumConverter).
+        return $"HasConversion({TypedEnumConverter(type, "int")}({toProvider}, {fromProvider}))";
     }
+
+    /// <summary>
+    /// <c>new ValueConverter&lt;E, provider&gt;</c> — a value-mapped enum's converter, typed on the
+    /// NON-nullable enum <paramref name="enumType"/> whatever the property's nullability.
+    /// </summary>
+    /// <remarks>
+    /// Handing the lambda pair straight to a scalar property's <c>HasConversion(...)</c> types it
+    /// on the property's CLR type, so an OPTIONAL field got a <c>ValueConverter&lt;E?, int&gt;</c>.
+    /// EF Core 8 cannot build the JSON collection reader/writer for a parameterised collection
+    /// over that converter, and a query such as <c>active.Contains(w.Status)</c> fails at runtime
+    /// (Npgsql: an InvalidOperationException or a MissingMethodException on
+    /// <c>JsonNullableStructCollectionReaderWriter</c>, by patch version). A converter on <c>E</c> is
+    /// what EF's own enum converters are and what an array's element converter already was; EF
+    /// passes null around it and never invokes the expressions on null, so the member chains
+    /// stay as they are.
+    /// </remarks>
+    private static string TypedEnumConverter(string enumType, string provider) =>
+        $"new global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<{enumType}, {provider}>";
 
     // #214 [0] — the per-field EF TYPE-converter emission, factored out so the SAME set of
     // converters configures BOTH the write entity (its derived-EXCLUDED field set) AND a

@@ -1,0 +1,23 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Article",
+          "children": [
+            { "field.long": { "name": "id" } },
+            {
+              "field.enum": {
+                "name": "status",
+                "@values": ["Draft", "Published"],
+                "@stringValueMap": { "Draft": "draft", "Archived": "archived" }
+              }
+            },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -10,6 +10,11 @@ import { withExt, withExtIfRelative, type ExtStyle, type RenderContext } from ".
 
 export type OutputLayout = "flat" | "package";
 
+/** The layout a target writes in when none is declared: `"flat"`, one directory. Declare
+ *  `outputLayout: "package"` for a directory per metadata package. (Main's shipped default; the
+ *  rc.19 R63 flip to `"package"` was not carried through the merge.) */
+export const DEFAULT_OUTPUT_LAYOUT: OutputLayout = "flat";
+
 /** "a::b::c" → "a/b/c"; undefined / "" → "". */
 export function packageToPath(pkg: string | undefined): string {
   if (pkg === undefined || pkg === "") return "";

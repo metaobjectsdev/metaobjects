@@ -33,7 +33,7 @@ async function loadTph(): Promise<{ root: MetaRoot; base: MetaObject; bridge: Me
                 "@discriminator": "type",
                 children: [
                   { "source.rdb": { "@table": "auths" } },
-                  { "field.enum": { name: "type", "@values": ["Bridge", "Copay"] } },
+                  { "field.enum": { name: "type", "@values": ["Bridge", "Coupon"] } },
                   { "field.long": { name: "id" } },
                   {
                     "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" },
@@ -47,19 +47,19 @@ async function loadTph(): Promise<{ root: MetaRoot; base: MetaObject; bridge: Me
                 extends: "Auth",
                 "@discriminatorValue": "Bridge",
                 // @required on a subtype-only column — must STILL be nullable in
-                // the single TPH table (Copay rows store NULL here).
+                // the single TPH table (Coupon rows store NULL here).
                 children: [{ "field.int": { name: "quantity", "@required": true } }],
               },
             },
             {
               "object.entity": {
-                name: "CopayAuth",
+                name: "CouponAuth",
                 extends: "Auth",
-                "@discriminatorValue": "Copay",
+                "@discriminatorValue": "Coupon",
                 children: [
                   {
                     "field.decimal": {
-                      name: "copayAmount",
+                      name: "couponAmount",
                       "@precision": 10,
                       "@scale": 2,
                     },
@@ -101,7 +101,7 @@ describe("FR-017 Tier 2 — Drizzle TPH single-table", () => {
     expect(out).toContain("type:");
     // Subtype-only columns folded into the single table.
     expect(out).toContain("quantity:");
-    expect(out).toContain("copay_amount");
+    expect(out).toContain("coupon_amount");
   });
 
   test("subtype-only columns are nullable even when the field is @required", async () => {

@@ -15,7 +15,7 @@
  */
 package com.metaobjects.transition;
 
-/** Names of the lifecycle vocabulary: {@code transition.*} (ADR-0063). */
+/** Names of the lifecycle vocabulary: {@code transition.*} (ADR-0066). */
 public final class TransitionConstants {
 
     private TransitionConstants() {

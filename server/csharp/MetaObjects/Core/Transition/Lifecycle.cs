@@ -1,4 +1,4 @@
-// Lifecycle and operation-target derivation (ADR-0063), shared by the loader's rules pass
+// Lifecycle and operation-target derivation (ADR-0066), shared by the loader's rules pass
 // and `verify`'s rules gate. Everything here is DERIVED: a lifecycle, its states, its
 // initial and terminal states and an operation's target entity have no vocabulary of their
 // own. Mirrors server/typescript/packages/metadata/src/core/transition/lifecycle.ts.
@@ -46,7 +46,7 @@ public static class Lifecycles
 
     /// <summary>Whether an entity's lifecycles are live: it declares or inherits a source. A lifecycle on an
     /// entity with no source loads and is inert (it derives no command); the writable-source check applies
-    /// once a source is added (ADR-0063 section 2). Read through the resolving accessor.</summary>
+    /// once a source is added (ADR-0066 section 2). Read through the resolving accessor.</summary>
     public static bool LifecycleIsLive(MetaData entity) => entity.Children().Any(c => c.Type == TYPE_SOURCE);
 
     /// <summary>An entity and every entity it extends, nearest first.</summary>
@@ -59,7 +59,7 @@ public static class Lifecycles
 
     /// <summary>The transitions a field gives an entity: those declared on a field of the entity itself or
     /// of an entity it extends. A transition reached only through the field's own <c>extends</c> of
-    /// another entity's field is not one (ADR-0063 section 2).</summary>
+    /// another entity's field is not one (ADR-0066 section 2).</summary>
     public static IReadOnlyList<MetaData> LifecycleTransitionsOf(MetaData entity, MetaData field)
     {
         var lineage = EntityLineage(entity);

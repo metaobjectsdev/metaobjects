@@ -83,10 +83,50 @@ public static class DbConstants
     /// <summary><c>@dbColumnType: jsonb</c> — genuinely-open JSON column (legal on field.string).</summary>
     public const string DB_COLUMN_TYPE_JSONB        = "jsonb";
 
-    /// <summary>The closed set of legal <c>@dbColumnType</c> values.</summary>
+    /// <summary>rc.21 part B (U2): the text column spellings <c>@dbColumnType</c> takes on a field.string.</summary>
+    public const string DB_COLUMN_TYPE_TEXT              = "text";
+    public const string DB_COLUMN_TYPE_VARCHAR           = "varchar";
+    public const string DB_COLUMN_TYPE_CHARACTER_VARYING = "character varying";
+
+    /// <summary>The closed set of legal bare <c>@dbColumnType</c> values; the sized spellings
+    /// <c>varchar(n)</c>, <c>character varying(n)</c> and <c>character(n)</c> are parsed by <see cref="ParseDbColumnType"/>.</summary>
     public static readonly IReadOnlyList<string> VALID_DB_COLUMN_TYPES = new[]
     {
         DB_COLUMN_TYPE_UUID,
         DB_COLUMN_TYPE_JSONB,
+        DB_COLUMN_TYPE_TEXT,
+        DB_COLUMN_TYPE_VARCHAR,
+        DB_COLUMN_TYPE_CHARACTER_VARYING,
     };
+
+    /// <summary>The sized spellings, as written in a message.</summary>
+    public static readonly IReadOnlyList<string> DB_COLUMN_TYPE_SIZED_SPELLINGS = new[]
+    {
+        "varchar(n)", "character varying(n)", "character(n)",
+    };
+
+    /// <summary>A parsed <c>@dbColumnType</c>: <c>uuid</c>, <c>jsonb</c>, <c>text</c>, <c>varchar</c> or <c>char</c>, and a sized spelling's length.</summary>
+    public sealed record ParsedDbColumnType(string Kind, int? Length);
+
+    private static readonly System.Text.RegularExpressions.Regex SizedDbColumnType =
+        new(@"^(varchar|character varying|character)\(([1-9][0-9]{0,8})\)\z", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// rc.21 part B (U2): parse a <c>@dbColumnType</c> value, or null for one that is not legal.
+    /// Postgres's own spellings, matched exactly, as every port parses them (TS <c>parseDbColumnType</c>).
+    /// </summary>
+    public static ParsedDbColumnType? ParseDbColumnType(string value)
+    {
+        switch (value)
+        {
+            case DB_COLUMN_TYPE_UUID: return new("uuid", null);
+            case DB_COLUMN_TYPE_JSONB: return new("jsonb", null);
+            case DB_COLUMN_TYPE_TEXT: return new("text", null);
+            case DB_COLUMN_TYPE_VARCHAR or DB_COLUMN_TYPE_CHARACTER_VARYING: return new("varchar", null);
+        }
+        var m = SizedDbColumnType.Match(value);
+        if (!m.Success) return null;
+        var n = int.Parse(m.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture);
+        return m.Groups[1].Value == "character" ? new("char", n) : new("varchar", n);
+    }
 }

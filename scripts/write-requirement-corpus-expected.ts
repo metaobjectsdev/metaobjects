@@ -195,7 +195,7 @@ function identityExpected(root: MetaData, options: Readonly<Record<string, unkno
 }
 
 // ---------------------------------------------------------------------------
-// rules — fixtures/rules-check-conformance (ADR-0063)
+// rules — fixtures/rules-check-conformance (ADR-0066)
 // ---------------------------------------------------------------------------
 
 /** A case's `options.json` holds the `rules` and `verify` config blocks as a project writes

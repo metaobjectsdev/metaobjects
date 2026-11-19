@@ -1,0 +1,89 @@
+package com.metaobjects.generator.kotlin
+
+import com.metaobjects.metadata.ktx.loadString
+import java.nio.file.Files
+import kotlin.test.Test
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+/**
+ * A generated create route writes only what a client may set: a server-generated key, a `readOnly`
+ * column and (TPH) the discriminator and a sibling subtype's column are never bound from the body
+ * (1.2.x security patch). Behaviour is gated by the api-contract `input-server-owned-dropped`
+ * scenarios; this pins the generated source, including the TPH subtype `readOnly` case.
+ */
+class KotlinServerOwnedInputTest {
+
+    private val plain = """{
+      "metadata.root": { "package": "acme::own", "children": [
+        { "object.entity": { "name": "Doc", "children": [
+            { "source.rdb":   { "@table": "docs" } },
+            { "field.long":   { "name": "id" } },
+            { "field.string": { "name": "title", "@maxLength": 100 } },
+            { "field.string": { "name": "role", "@maxLength": 20, "@mutability": "readOnly" } },
+            { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+        ] } }
+      ] }
+    }""".trimIndent()
+
+    private val tph = """{
+      "metadata.root": { "package": "acme::own", "children": [
+        { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
+            { "source.rdb": { "@table": "auths" } },
+            { "field.long": { "name": "id" } },
+            { "field.enum": { "name": "type", "@values": ["Bridge", "Permit"] } },
+            { "field.string": { "name": "reference", "@maxLength": 80 } },
+            { "field.string": { "name": "grade", "@maxLength": 20, "@mutability": "readOnly" } },
+            { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+        ] } },
+        { "object.entity": { "name": "BridgeAuth", "extends": "Auth", "@discriminatorValue": "Bridge", "children": [
+            { "field.int": { "name": "quantity" } }
+        ] } },
+        { "object.entity": { "name": "PermitAuth", "extends": "Auth", "@discriminatorValue": "Permit", "children": [
+            { "field.string": { "name": "approver", "@maxLength": 80 } }
+        ] } }
+      ] }
+    }""".trimIndent()
+
+    private fun gen(name: String, json: String): java.nio.file.Path {
+        val out = Files.createTempDirectory("kowned-")
+        val loader = loadString(name, json)
+        KotlinEntityGenerator().apply { setArgs(mapOf("outputDir" to out.toString())) }.execute(loader)
+        KotlinSpringControllerGenerator().apply { setArgs(mapOf("outputDir" to out.toString())) }.execute(loader)
+        return out
+    }
+
+    @Test
+    fun `plain create writes neither the generated key nor a readOnly column`() {
+        val out = gen("owned-plain", plain)
+        try {
+            val controller = Files.readString(out.resolve("acme/own/DocController.kt"))
+            val create = controller.substringAfter("fun create(").substringBefore("fun update(")
+            assertTrue("it[DocTable.title] = dto.title" in create, create)
+            assertFalse("it[DocTable.role]" in create, create)
+            assertFalse("it[DocTable.id] = dto.id" in create, create)
+        } finally {
+            out.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `TPH create writes only the route subtype's own settable columns`() {
+        val out = gen("owned-tph", tph)
+        try {
+            val controller = Files.readString(out.resolve("acme/own/AuthController.kt"))
+            val bridge = controller.substringAfter("fun createBridge(").substringBefore("@RequestMapping")
+            val permit = controller.substringAfter("fun createPermit(").substringBefore("@RequestMapping")
+            assertTrue("it[AuthTable.reference] = dto.reference" in bridge, bridge)
+            assertTrue("it[AuthTable.quantity] = dto.quantity" in bridge, bridge)
+            assertFalse("it[AuthTable.approver]" in bridge, bridge)
+            assertFalse("it[AuthTable.grade]" in bridge, bridge)
+            assertFalse("it[AuthTable.type] = dto.type" in bridge, bridge)
+            assertTrue("it[AuthTable.approver] = dto.approver" in permit, permit)
+            assertFalse("it[AuthTable.quantity]" in permit, permit)
+            assertFalse("it[AuthTable.grade]" in permit, permit)
+        } finally {
+            out.toFile().deleteRecursively()
+        }
+    }
+}

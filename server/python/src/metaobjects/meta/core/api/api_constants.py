@@ -1,4 +1,4 @@
-"""Declared API surface constants (ADR-0030, ADR-0063): type names, subtypes and attribute
+"""Declared API surface constants (ADR-0030, ADR-0066): type names, subtypes and attribute
 keys for ``api.*``, ``operation.*`` and ``binding.*``. Mirrors TS ``core/api/api-constants.ts``.
 """
 import re

@@ -18,7 +18,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * ADR-0063 - the business-rules vocabulary is INERT in the Kotlin generators.
+ * ADR-0066 - the business-rules vocabulary is INERT in the Kotlin generators.
  *
  * `api.operational`, `operation.*`, `binding.rest` and `transition.action` are registered,
  * validated at load and checked in `verify`; nothing generates from them yet. A model that

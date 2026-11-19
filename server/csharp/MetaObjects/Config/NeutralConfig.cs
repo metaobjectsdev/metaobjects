@@ -117,7 +117,7 @@ public sealed class NeutralConfig
     /// absent key at its native default. Never null.
     public WireFormat Wire { get; }
 
-    /// ADR-0063 — the business-rules settings (`rules` and `verify` in config.json), each absent key at
+    /// ADR-0066 — the business-rules settings (`rules` and `verify` in config.json), each absent key at
     /// its default. Never null.
     public RulesSettings Rules { get; private init; } = RulesSettings.Default;
 
@@ -591,7 +591,7 @@ public sealed class NeutralConfig
     private const string VerifyKeyHandEdits = "handEdits";
     private static readonly string[] HandEditsPolicies = ["fail", "notice"];
 
-    /// The `rules` and `verify` blocks (ADR-0063): an unknown key, an unknown value or a non-object block is
+    /// The `rules` and `verify` blocks (ADR-0066): an unknown key, an unknown value or a non-object block is
     /// refused, the same rule as `naming`.
     private static RulesSettings ReadRules(JsonElement root, string path)
     {

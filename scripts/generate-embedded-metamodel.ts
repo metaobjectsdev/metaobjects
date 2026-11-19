@@ -86,7 +86,7 @@ const CONCEPT_DIRS: Record<string, string> = {
   requirement: "core/requirement",
   // FR-044: dimension / measure / segment (the object.report vocabulary)
   reporting: "core/reporting",
-  // ADR-0063: the declared API surface (api / operation / binding) and lifecycle moves
+  // ADR-0066: the declared API surface (api / operation / binding) and lifecycle moves
   api: "core/api",
   transition: "core/transition",
   // depth-1

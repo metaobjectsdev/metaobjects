@@ -17,7 +17,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * {@code metaobjects:verify} - the business-rules gate (ADR-0063), end to end: the summary line,
+ * {@code metaobjects:verify} - the business-rules gate (ADR-0066), end to end: the summary line,
  * the diagnostics and the failure. The codes, paths and message text are gated cross-port by
  * {@code RulesCheckConformanceTest} in the metadata module.
  */

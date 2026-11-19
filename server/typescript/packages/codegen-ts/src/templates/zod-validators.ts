@@ -712,6 +712,7 @@ export function insertSchemaFields(obj: MetaObject): SchemaFieldShape[] {
  * The field SET the `<Name>UpdateSchema` accepts — same iteration + skip rules
  * as `insertSchemaFields`, but mirroring the UpdateSchema branch of
  * `renderZodValidators`:
+ *   • a primary-key field is OMITTED, generated or assigned (the URL names the row);
  *   • a TPH subtype's @discriminator field is OMITTED (clients can't change subtype);
  *   • @autoSet onCreate fields are OMITTED (creation timestamps are immutable);
  *   • @autoSet onUpdate fields are present + optional (server fills them);

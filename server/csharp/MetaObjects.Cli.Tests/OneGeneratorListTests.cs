@@ -135,7 +135,7 @@ public sealed class OneGeneratorListTests : IDisposable
 
         Assert.True(narrowed.ExitCode == 0, $"exit={narrowed.ExitCode}\nstdout={narrowed.Stdout}\nstderr={narrowed.Stderr}");
         Assert.Equal(whole, File.ReadAllText(entity));
-        var verify = OwnedRunner.Run(_tmp, declared, "verify", MetaDir, "--codegen", "--out", OutDir, "--generators", "entity", "--namespace", "Acme.Generated");
+        var verify = OwnedRunner.Run(_tmp, declared, "verify", MetaDir, "--codegen", "--full", "--out", OutDir, "--generators", "entity", "--namespace", "Acme.Generated");
         Assert.True(verify.ExitCode == 0, $"exit={verify.ExitCode}\nstdout={verify.Stdout}\nstderr={verify.Stderr}");
     }
 
@@ -229,7 +229,7 @@ public sealed class OneGeneratorListTests : IDisposable
     [Fact]
     public void Verify_codegen_in_a_project_with_no_generator_list_prints_the_amendment_line()
     {
-        var (exit, _, stderr) = CliProcess.Run(_tmp, "verify", MetaDir, "--codegen", "--out", OutDir);
+        var (exit, _, stderr) = CliProcess.Run(_tmp, "verify", MetaDir, "--codegen", "--full", "--out", OutDir);
 
         Assert.Equal(2, exit);
         Assert.Contains(CodegenCli.NoGeneratorList("dotnet meta verify --codegen"), stderr);
@@ -362,11 +362,11 @@ public sealed class OneGeneratorListTests : IDisposable
         Assert.Equal(["Subscriber.g.cs"], FilesUnder(OutDir));
         Assert.Equal(["Requirements_acme_Tests.g.cs", "Requirements_acme_Witnesses.g.cs"], FilesUnder(testsDir));
 
-        var clean = OwnedRunner.Run(_tmp, declared, "verify", MetaDir, "--codegen", "--out", OutDir, "--namespace", "Acme.Generated");
+        var clean = OwnedRunner.Run(_tmp, declared, "verify", MetaDir, "--codegen", "--full", "--out", OutDir, "--namespace", "Acme.Generated");
         Assert.True(clean.ExitCode == 0, $"exit={clean.ExitCode}\nstdout={clean.Stdout}\nstderr={clean.Stderr}");
 
         File.AppendAllText(Path.Combine(testsDir, "Requirements_acme_Tests.g.cs"), "// edited\n");
-        var drift = OwnedRunner.Run(_tmp, declared, "verify", MetaDir, "--codegen", "--out", OutDir, "--namespace", "Acme.Generated");
+        var drift = OwnedRunner.Run(_tmp, declared, "verify", MetaDir, "--codegen", "--full", "--out", OutDir, "--namespace", "Acme.Generated");
         Assert.Equal(1, drift.ExitCode);
         Assert.Contains("Requirements_acme_Tests.g.cs", drift.Stderr);
     }
@@ -385,11 +385,11 @@ public sealed class OneGeneratorListTests : IDisposable
         Assert.True(gen.ExitCode == 0, $"exit={gen.ExitCode}\nstdout={gen.Stdout}\nstderr={gen.Stderr}");
         Assert.Equal(["Subscriber.g.cs"], FilesUnder(OutDir));
 
-        var clean = OwnedRunner.Run(_tmp, declared, "verify", "--codegen", "--namespace", "Acme.Generated");
+        var clean = OwnedRunner.Run(_tmp, declared, "verify", "--codegen", "--full", "--namespace", "Acme.Generated");
         Assert.True(clean.ExitCode == 0, $"exit={clean.ExitCode}\nstdout={clean.Stdout}\nstderr={clean.Stderr}");
 
         File.AppendAllText(Path.Combine(OutDir, "Subscriber.g.cs"), "// edited\n");
-        var drift = OwnedRunner.Run(_tmp, declared, "verify", "--codegen", "--namespace", "Acme.Generated");
+        var drift = OwnedRunner.Run(_tmp, declared, "verify", "--codegen", "--full", "--namespace", "Acme.Generated");
         Assert.Equal(1, drift.ExitCode);
         Assert.Contains("Subscriber.g.cs", drift.Stderr);
 
@@ -398,7 +398,7 @@ public sealed class OneGeneratorListTests : IDisposable
         var genOther = OwnedRunner.Run(_tmp, declared, "gen", "--out", other, "--namespace", "Acme.Generated");
         Assert.True(genOther.ExitCode == 0, $"exit={genOther.ExitCode}\n{genOther.Stdout}{genOther.Stderr}");
         Assert.Equal(["Subscriber.g.cs"], FilesUnder(other));
-        var cleanOther = OwnedRunner.Run(_tmp, declared, "verify", "--codegen", "--out", other, "--namespace", "Acme.Generated");
+        var cleanOther = OwnedRunner.Run(_tmp, declared, "verify", "--codegen", "--full", "--out", other, "--namespace", "Acme.Generated");
         Assert.True(cleanOther.ExitCode == 0, $"exit={cleanOther.ExitCode}\n{cleanOther.Stdout}{cleanOther.Stderr}");
     }
 
@@ -419,15 +419,15 @@ public sealed class OneGeneratorListTests : IDisposable
         IReadOnlyList<IGenerator> declared = [new EntityGenerator(), new ApiDocsGenerator { OutDir = DocsDir }];
         Assert.Equal(0, OwnedRunner.Run(_tmp, declared, "gen", MetaDir, "--out", OutDir, "--namespace", "Acme.Generated").ExitCode);
 
-        var docsOnly = OwnedRunner.Run(_tmp, declared, "verify", MetaDir, "--codegen", "--out", OutDir, "--generators", "api-docs", "--namespace", "Acme.Generated");
+        var docsOnly = OwnedRunner.Run(_tmp, declared, "verify", MetaDir, "--codegen", "--full", "--out", OutDir, "--generators", "api-docs", "--namespace", "Acme.Generated");
         Assert.True(docsOnly.ExitCode == 0, $"exit={docsOnly.ExitCode}\nstdout={docsOnly.Stdout}\nstderr={docsOnly.Stderr}");
 
-        var codeOnly = OwnedRunner.Run(_tmp, declared, "verify", MetaDir, "--codegen", "--out", OutDir, "--generators", "entity", "--namespace", "Acme.Generated");
+        var codeOnly = OwnedRunner.Run(_tmp, declared, "verify", MetaDir, "--codegen", "--full", "--out", OutDir, "--generators", "entity", "--namespace", "Acme.Generated");
         Assert.True(codeOnly.ExitCode == 0, $"exit={codeOnly.ExitCode}\nstdout={codeOnly.Stdout}\nstderr={codeOnly.Stderr}");
 
         // What the narrowed run does produce is still checked.
         File.AppendAllText(Path.Combine(DocsDir, "api", "csharp", "README.md"), "edited\n");
-        var drift = OwnedRunner.Run(_tmp, declared, "verify", MetaDir, "--codegen", "--out", OutDir, "--generators", "api-docs", "--namespace", "Acme.Generated");
+        var drift = OwnedRunner.Run(_tmp, declared, "verify", MetaDir, "--codegen", "--full", "--out", OutDir, "--generators", "api-docs", "--namespace", "Acme.Generated");
         Assert.Equal(1, drift.ExitCode);
         Assert.Contains("api/csharp/README.md", drift.Stderr);
     }
@@ -439,7 +439,7 @@ public sealed class OneGeneratorListTests : IDisposable
         IReadOnlyList<IGenerator> declared = [new EntityGenerator(), new ApiDocsGenerator { OutDir = nestedDocs }];
         Assert.Equal(0, OwnedRunner.Run(_tmp, declared, "gen", MetaDir, "--out", OutDir, "--namespace", "Acme.Generated").ExitCode);
 
-        var verify = OwnedRunner.Run(_tmp, declared, "verify", MetaDir, "--codegen", "--out", OutDir, "--namespace", "Acme.Generated");
+        var verify = OwnedRunner.Run(_tmp, declared, "verify", MetaDir, "--codegen", "--full", "--out", OutDir, "--namespace", "Acme.Generated");
 
         Assert.True(verify.ExitCode == 0, $"exit={verify.ExitCode}\nstdout={verify.Stdout}\nstderr={verify.Stderr}");
     }
@@ -471,7 +471,7 @@ public sealed class OneGeneratorListTests : IDisposable
         Assert.Equal(CodegenCli.LegacyTemplateSpec("dotnet meta gen", "template-spec.json"), stderr.Trim());
         Assert.Equal(before, ProjectFiles());
 
-        var (verifyExit, _, verifyErr) = OwnedRunner.Run(_tmp, ["entity"], "verify", "--codegen", MetaDir, "--out", OutDir, "--namespace", "Acme.Generated");
+        var (verifyExit, _, verifyErr) = OwnedRunner.Run(_tmp, ["entity"], "verify", "--codegen", "--full", MetaDir, "--out", OutDir, "--namespace", "Acme.Generated");
         Assert.Equal(2, verifyExit);
         Assert.Equal(CodegenCli.LegacyTemplateSpec("dotnet meta verify --codegen", "template-spec.json"), verifyErr.Trim());
     }
@@ -501,7 +501,7 @@ public sealed class OneGeneratorListTests : IDisposable
         Assert.Equal(["Subscriber.summary.txt"], FilesUnder(OutDir));
         Assert.Equal("name=Subscriber\n", File.ReadAllText(Path.Combine(OutDir, "Subscriber.summary.txt")));
 
-        var (verifyExit, verifyOut, verifyErr) = OwnedRunner.Run(_tmp, declared, "verify", "--codegen", MetaDir, "--out", OutDir, "--namespace", "Acme.Generated");
+        var (verifyExit, verifyOut, verifyErr) = OwnedRunner.Run(_tmp, declared, "verify", "--codegen", "--full", MetaDir, "--out", OutDir, "--namespace", "Acme.Generated", "--full");
         Assert.True(verifyExit == 0, $"exit={verifyExit}\nstdout={verifyOut}\nstderr={verifyErr}");
         Assert.Contains("OK (generated output is in sync)", verifyOut);
     }
@@ -533,9 +533,9 @@ public sealed class OneGeneratorListTests : IDisposable
 
         Assert.True(exit == 0, $"exit={exit}\nstdout={stdout}\nstderr={stderr}");
         Assert.Equal("name=Subscriber\n", File.ReadAllText(Path.Combine(OutDir, "Subscriber.summary.txt")));
-        var verify = OwnedRunner.Run(_tmp, declared, "verify", "--codegen", MetaDir, "--out", OutDir, "--template-root", "templates", "--namespace", "Acme.Generated");
+        var verify = OwnedRunner.Run(_tmp, declared, "verify", "--codegen", "--full", MetaDir, "--out", OutDir, "--template-root", "templates", "--namespace", "Acme.Generated");
         Assert.True(verify.ExitCode == 0, $"exit={verify.ExitCode}\nstdout={verify.Stdout}\nstderr={verify.Stderr}");
-        Assert.Equal(1, OwnedRunner.Run(_tmp, declared, "verify", "--codegen", MetaDir, "--out", OutDir, "--namespace", "Acme.Generated").ExitCode);
+        Assert.Equal(1, OwnedRunner.Run(_tmp, declared, "verify", "--codegen", "--full", MetaDir, "--out", OutDir, "--namespace", "Acme.Generated").ExitCode);
     }
 
     // ---- a directory gen never had to create is an empty tree, not a missing one ---------------
@@ -550,7 +550,7 @@ public sealed class OneGeneratorListTests : IDisposable
         Assert.Equal(0, OwnedRunner.Run(_tmp, declared, "gen", MetaDir, "--out", OutDir, "--namespace", "Acme.Generated").ExitCode);
         Assert.False(Directory.Exists(testsDir));
 
-        var verify = OwnedRunner.Run(_tmp, declared, "verify", MetaDir, "--codegen", "--out", OutDir, "--namespace", "Acme.Generated");
+        var verify = OwnedRunner.Run(_tmp, declared, "verify", MetaDir, "--codegen", "--full", "--out", OutDir, "--namespace", "Acme.Generated");
         Assert.True(verify.ExitCode == 0, $"exit={verify.ExitCode}\nstdout={verify.Stdout}\nstderr={verify.Stderr}");
     }
 
@@ -568,7 +568,7 @@ public sealed class OneGeneratorListTests : IDisposable
         Directory.Delete(OutDir);
         Assert.False(Directory.Exists(testsDir));
 
-        var verify = OwnedRunner.Run(_tmp, declared, "verify", MetaDir, "--codegen", "--out", OutDir, "--namespace", "Acme.Generated");
+        var verify = OwnedRunner.Run(_tmp, declared, "verify", MetaDir, "--codegen", "--full", "--out", OutDir, "--namespace", "Acme.Generated");
 
         Assert.True(verify.ExitCode == 0, $"exit={verify.ExitCode}\nstdout={verify.Stdout}\nstderr={verify.Stderr}");
     }
@@ -578,7 +578,7 @@ public sealed class OneGeneratorListTests : IDisposable
     {
         Assert.Equal(0, OwnedRunner.Run(_tmp, Array.Empty<IGenerator>(), "gen", MetaDir, "--out", OutDir, "--namespace", "Acme.Generated").ExitCode);
 
-        var verify = OwnedRunner.Run(_tmp, Array.Empty<IGenerator>(), "verify", MetaDir, "--codegen", "--out", OutDir, "--namespace", "Acme.Generated");
+        var verify = OwnedRunner.Run(_tmp, Array.Empty<IGenerator>(), "verify", MetaDir, "--codegen", "--full", "--out", OutDir, "--namespace", "Acme.Generated");
 
         Assert.True(verify.ExitCode == 0, $"exit={verify.ExitCode}\nstdout={verify.Stdout}\nstderr={verify.Stderr}");
         Assert.Contains("codegen/Generators.cs declares no generators; nothing to check", verify.Stdout);
@@ -591,7 +591,7 @@ public sealed class OneGeneratorListTests : IDisposable
     {
         string[] args = command == "gen"
             ? ["gen", MetaDir, "--out", OutDir, "--generators", ""]
-            : ["verify", MetaDir, "--codegen", "--out", OutDir, "--generators", ""];
+            : ["verify", MetaDir, "--codegen", "--full", "--out", OutDir, "--generators", ""];
 
         var (exit, _, stderr) = OwnedRunner.Run(_tmp, ["entity"], args);
 

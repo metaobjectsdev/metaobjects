@@ -17,7 +17,7 @@ package com.metaobjects.api;
 
 import com.metaobjects.MetaData;
 
-/** Base node class for {@code type = "operation"} (ADR-0030, ADR-0063). Accessors are RESOLVING (ADR-0039). */
+/** Base node class for {@code type = "operation"} (ADR-0030, ADR-0066). Accessors are RESOLVING (ADR-0039). */
 @SuppressWarnings("serial")
 public abstract class MetaOperation extends MetaData {
 

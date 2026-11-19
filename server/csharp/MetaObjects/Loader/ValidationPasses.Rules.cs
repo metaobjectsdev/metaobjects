@@ -1,4 +1,4 @@
-// ADR-0063 — cross-node rules for operations (slice A) and lifecycles (slice B).
+// ADR-0066 — cross-node rules for operations (slice A) and lifecycles (slice B).
 //
 // Ported rule-for-rule, WITH THE SAME MESSAGE TEXT, from the TS reference
 // server/typescript/packages/metadata/src/loader/rules-validation.ts; the fixtures under
@@ -340,7 +340,7 @@ public static partial class ValidationPasses
         }
     }
 
-    /// <summary>ADR-0063 — the rules pass. Runs after reference-bearing validation, before freeze.</summary>
+    /// <summary>ADR-0066 — the rules pass. Runs after reference-bearing validation, before freeze.</summary>
     public static IReadOnlyList<MetaError> ValidateRules(MetaData root)
     {
         var sink = new RulesErrorSink();
@@ -380,7 +380,7 @@ public static partial class ValidationPasses
         string.Join("\0", Lifecycles.StringList(op, attr).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal));
 
     /// <summary>Whether two operations of one package in different APIs are one operation exposed twice
-    /// (a versioned API beside its successor, ADR-0064 section 2): same name and subtype, same contract.
+    /// (a versioned API beside its successor, ADR-0067 section 2): same name and subtype, same contract.
     /// Bindings are per API and are not compared.</summary>
     private static bool SameOperation(MetaData a, MetaData b)
     {
@@ -409,7 +409,7 @@ public static partial class ValidationPasses
             {
                 if (b.Type != TYPE_BINDING || b.SubType != BINDING_SUBTYPE_REST) continue;
                 if (b.Attr(BINDING_ATTR_PATH) is not string path) continue;
-                // The effective method: the declared one, else the derived (ADR-0063 section 1).
+                // The effective method: the declared one, else the derived (ADR-0066 section 1).
                 var method = b.Attr(BINDING_ATTR_METHOD) is string declaredMethod
                     ? declaredMethod
                     : op.SubType == OPERATION_SUBTYPE_COMMAND ? "POST" : "GET";

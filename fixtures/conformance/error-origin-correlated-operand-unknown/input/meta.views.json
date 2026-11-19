@@ -32,11 +32,11 @@
       },
       {
         "object.entity": {
-          "name": "Case",
+          "name": "Consignment",
           "children": [
             {
               "source.rdb": {
-                "@table": "cases"
+                "@table": "consignments"
               }
             },
             {
@@ -51,12 +51,12 @@
             },
             {
               "field.int": {
-                "name": "priorType"
+                "name": "serviceLevel"
               }
             },
             {
               "field.int": {
-                "name": "cumulativeStatus"
+                "name": "rollupStatus"
               }
             },
             {
@@ -87,12 +87,12 @@
       },
       {
         "object.entity": {
-          "name": "CaseHistory",
-          "@collectionName": "CaseHistory",
+          "name": "ConsignmentHistory",
+          "@collectionName": "ConsignmentHistory",
           "children": [
             {
               "source.rdb": {
-                "@table": "case_history"
+                "@table": "consignment_history"
               }
             },
             {
@@ -102,7 +102,7 @@
             },
             {
               "field.long": {
-                "name": "caseId",
+                "name": "consignmentId",
                 "@required": true
               }
             },
@@ -129,9 +129,9 @@
             },
             {
               "identity.reference": {
-                "name": "caseId",
-                "@fields": "caseId",
-                "@references": "acme::views::Case"
+                "name": "consignmentId",
+                "@fields": "consignmentId",
+                "@references": "acme::views::Consignment"
               }
             },
             {
@@ -158,7 +158,7 @@
             {
               "field.long": {
                 "name": "id",
-                "extends": "acme::views::Case.id"
+                "extends": "acme::views::Consignment.id"
               }
             },
             {
@@ -168,8 +168,8 @@
                   {
                     "origin.aggregate": {
                       "@agg": "min",
-                      "@of": "acme::views::CaseHistory.createdDate",
-                      "@via": "acme::views::Case.caseHistory",
+                      "@of": "acme::views::ConsignmentHistory.createdDate",
+                      "@via": "acme::views::Consignment.consignmentHistory",
                       "@filter": {
                         "statusId": {
                           "eq": {
@@ -185,7 +185,7 @@
             {
               "identity.primary": {
                 "name": "id",
-                "extends": "acme::views::Case.id"
+                "extends": "acme::views::Consignment.id"
               }
             }
           ]

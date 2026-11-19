@@ -118,6 +118,19 @@ public class FilterAllowlistGenerator : PerEntityGenerator
             sb.AppendLine(" },");
         }
         sb.AppendLine("    };");
+        // The field -> CLR property map, only when a property-naming resolver renamed a property
+        // beyond case (the runtime matches a field to its property case-insensitively, which
+        // covers every other spelling). Nothing is emitted otherwise, so default output is unchanged.
+        var renamed = CSharpNaming.RenamedProperties(entity, ctx.Config);
+        if (renamed.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("    /// <summary>The CLR property of each field whose property name is not the field name in another case.</summary>");
+            sb.AppendLine("    public static readonly IReadOnlyDictionary<string, string> PropertyByField = new Dictionary<string, string>(System.StringComparer.Ordinal)");
+            sb.AppendLine("    {");
+            foreach (var kvp in renamed) sb.AppendLine($"        [\"{kvp.Key}\"] = \"{kvp.Value}\",");
+            sb.AppendLine("    };");
+        }
         sb.AppendLine("}");
 
         return new EmittedFile(OutputPaths.Of(entity, ctx, $"{cls}FilterAllowlist.g.cs"), sb.ToString());

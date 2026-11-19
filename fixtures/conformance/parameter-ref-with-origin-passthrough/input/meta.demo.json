@@ -4,11 +4,11 @@
     "children": [
       {
         "object.entity": {
-          "name": "Case",
+          "name": "Consignment",
           "children": [
             {
               "source.rdb": {
-                "@table": "cases"
+                "@table": "consignments"
               }
             },
             {
@@ -27,16 +27,16 @@
       },
       {
         "object.value": {
-          "name": "PhaseSummaryArgs",
+          "name": "StageSummaryArgs",
           "children": [
             {
               "field.int": {
-                "name": "caseId",
+                "name": "consignmentId",
                 "@required": true,
                 "children": [
                   {
                     "origin.passthrough": {
-                      "@from": "demo::Case.id"
+                      "@from": "demo::Consignment.id"
                     }
                   }
                 ]
@@ -47,13 +47,13 @@
       },
       {
         "object.projection": {
-          "name": "PhaseSummary",
+          "name": "StageSummary",
           "children": [
             {
               "source.rdb": {
                 "@kind": "storedProc",
-                "@proc": "fn_get_phase_summary",
-                "@parameterRef": "demo::PhaseSummaryArgs"
+                "@proc": "fn_get_stage_summary",
+                "@parameterRef": "demo::StageSummaryArgs"
               }
             },
             {

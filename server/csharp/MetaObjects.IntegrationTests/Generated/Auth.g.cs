@@ -10,12 +10,12 @@ namespace MetaObjects.IntegrationTests.Generated;
 
 [Table(AuthNames.SourcePrimaryTable)]
 [System.Text.Json.Serialization.JsonDerivedType(typeof(BridgeAuth))]
-[System.Text.Json.Serialization.JsonDerivedType(typeof(CopayAuth))]
-[System.Text.Json.Serialization.JsonDerivedType(typeof(PriorAuthAuth))]
+[System.Text.Json.Serialization.JsonDerivedType(typeof(CouponAuth))]
+[System.Text.Json.Serialization.JsonDerivedType(typeof(PermitAuth))]
 [System.Text.Json.Serialization.JsonDerivedType(typeof(ReferralAuth))]
 public abstract class Auth
 {
-    public enum AuthType { Bridge, Copay, PriorAuth, Referral }
+    public enum AuthType { Bridge, Coupon, Permit, Referral }
     [Key]
     [Column(AuthNames.IdColumn)]
     public long Id { get; set; }

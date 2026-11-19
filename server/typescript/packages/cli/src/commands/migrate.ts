@@ -85,6 +85,7 @@ import { decimalPrecisionWarnings } from "../lib/decimal-precision-advisory.js";
 import { schemaAdvisoryLines } from "../lib/schema-advisories.js";
 import { scanForReferentialActionConflicts } from "../lib/referential-action-advisory.js";
 import type { MetaData, MetaRoot } from "@metaobjectsdev/metadata";
+import { warnWidenedExtenders } from "../lib/widened-extenders.js";
 import { describeError } from "../lib/error-text.js";
 
 /**
@@ -829,6 +830,8 @@ export async function migrateCommand(
     reportLoadError(log, "failed to load metadata", err);
     return 1;
   }
+  // rc.21 part B (I2): an extender whose view now returns every row of a TPH base.
+  warnWidenedExtenders(metadata, (line) => log.warn(line));
   warnReferentialActionConflicts(metadata, collection, schema);
 
   let kysely;
@@ -1571,6 +1574,8 @@ export async function runOfflineGenerate(
     reportLoadError(log, "migrate: failed to load metadata", err);
     return 1;
   }
+  // rc.21 part B (I2): an extender whose view now returns every row of a TPH base.
+  warnWidenedExtenders(metadata, (line) => log.warn(line));
   const schema = resolveSchemaBuild(collection, offlineGenConfig, fmt);
   if (typeof schema === "number") return schema;
   warnReferentialActionConflicts(metadata, collection, schema);
@@ -1885,6 +1890,8 @@ async function runD1Migrate(
     reportLoadError(log, "migrate: failed to load metadata", err);
     return 1;
   }
+  // rc.21 part B (I2): an extender whose view now returns every row of a TPH base.
+  warnWidenedExtenders(metadata, (line) => log.warn(line));
   const schema = resolveSchemaBuild(collection, d1GenConfig, fmt);
   if (typeof schema === "number") return schema;
   warnReferentialActionConflicts(metadata, collection, schema);

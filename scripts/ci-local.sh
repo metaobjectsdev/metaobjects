@@ -21,7 +21,8 @@
 #   scripts/ci-local.sh --quick      # FAST inner-loop tier: the cheap TS-centric
 #                                    #   gates only (leak-scan, pom parity, fixture-
 #                                    #   lint, ts build+typecheck, ts conformance,
-#                                    #   completeness, drift). Skips the other-
+#                                    #   completeness on the CHANGED files only, drift).
+#                                    #   Skips the other-
 #                                    #   language ports, the reactor, and docker.
 #   scripts/ci-local.sh --only <section> [--only <section> ...]
 #                                    # Run one or more named sections. Mutually
@@ -31,10 +32,23 @@
 #                                    #   leak-scan → the public-repo leak scan ALONE
 #                                    #            (hygiene.yml's PR gate; also in gates)
 #                                    #   ts     → ts build+typecheck, ts conformance,
-#                                    #            completeness-gate, full unit suites
+#                                    #            completeness-gate (changed files),
+#                                    #            full unit suites
 #                                    #            (ts-unit), integration-tests ts
 #                                    #   ts-fast → build+typecheck, conformance,
-#                                    #            completeness (the pure-code signal)
+#                                    #            completeness (the pure-code signal).
+#                                    #            Its mutation step mutates only the
+#                                    #            stryker.conf.mjs `mutate` files this
+#                                    #            change touches vs the base branch, and
+#                                    #            prints a SKIP when it touches none
+#                                    #            (MO_CI_MUTATION_SCOPE=full forces all;
+#                                    #            MO_CI_MUTATION_BASE sets the base ref)
+#                                    #   mutation → the FULL mutation pass over every
+#                                    #            `mutate` file (~10-45 min). For release
+#                                    #            prep and on demand; the flagless run
+#                                    #            and conformance.yml also run it. It
+#                                    #            replaces ts-fast's diff-scoped step
+#                                    #            when both are selected
 #                                    #   ts-unit → full per-package unit suites for
 #                                    #            metadata/render/runtime-ts + the
 #                                    #            client/web packages — runs in
@@ -45,13 +59,22 @@
 #                                    #   java   → java+kotlin conformance, reactor,
 #                                    #            integration-tests java+kotlin
 #                                    #   java-fast → java+kotlin conformance only
-#                                    #            (the quick correctness signal)
-#                                    #   java-slow → reactor + integration-tests
-#                                    #            (java+kotlin); CI runs the two
-#                                    #            lanes as separate parallel jobs
+#                                    #            (the quick correctness signal; a local
+#                                    #            selector and conformance.yml's lane, no
+#                                    #            local-ci job: java-slow's reactor already
+#                                    #            runs these classes)
+#                                    #   java-slow → reactor (which runs every java and
+#                                    #            kotlin conformance class) + integration-
+#                                    #            tests (java+kotlin); local-ci's one java job
 #                                    #   python → full python test suite + integration-tests
 #                                    #   csharp → full csharp codegen suite + conformance
 #                                    #            + integration-tests
+#                                    #   rust   → the Rust port (preview): cargo fmt
+#                                    #            --check, clippy -D warnings, and its
+#                                    #            tests, which run the registry and
+#                                    #            metamodel corpora and the codegen suites,
+#                                    #            then the load_bench and gen_bench tables
+#                                    #            (record only). No docker half.
 #                                    #   cube   → the cube-model live check: a real Cube
 #                                    #            (cubejs/cube, pinned) over a private
 #                                    #            Postgres, both in docker (FR-044). Its
@@ -59,6 +82,28 @@
 #                                    #            parallel lane; --quick and
 #                                    #            --no-integration drop it; no other
 #                                    #            section includes it
+#   scripts/ci-local.sh --affected   # AFFECTED-LANE tier: run only the lanes this change needs.
+#                                    #   Lists the changed paths since the merge base with the
+#                                    #   base branch (plus uncommitted and untracked files),
+#                                    #   maps them to lanes with scripts/ci-lane-map.txt, prints
+#                                    #   which lanes were selected, which were skipped and the
+#                                    #   rule each path matched, then runs the selected ones as
+#                                    #   `--only <lane> ... --no-integration` would. The
+#                                    #   selectable lanes are ts-fast, ts-unit, java-slow,
+#                                    #   python, csharp and rust; a change confined to one port
+#                                    #   selects that port, anything shared, any path the map
+#                                    #   does not claim, or no resolvable base selects all of
+#                                    #   them, and a change to only the root prose files
+#                                    #   selects none. It never
+#                                    #   runs `gates`: that lane has its own command
+#                                    #   (`--only gates`), which the no-mistakes gate runs as
+#                                    #   its Lint step, after this one's build.
+#                                    #   Mutually exclusive with --quick, --only and
+#                                    #   --integration-only. MO_CI_AFFECTED_BASE sets the base
+#                                    #   ref (default: the mutation gate's, see
+#                                    #   MO_CI_MUTATION_BASE). MO_CI_FULL=1 forces every
+#                                    #   selectable lane. The flagless run is unchanged and is
+#                                    #   what releases use.
 #   scripts/ci-local.sh --no-integration
 #                                    # Drop the docker/Postgres half of the selected
 #                                    #   sections: the integration suites, the
@@ -79,14 +124,15 @@
 # write into the tree first, in order: install, the drift gates, one workspace build.
 # Then it runs the rest as independent LANES side by side, at most MO_CI_JOBS at once
 # (default 8): java (the reactor, which already holds every java/kotlin conformance
-# class), python, mutation, csharp, ts, ts-integ, java-integ and kotlin-integ (both
+# class), python, mutation, csharp, rust, ts, ts-integ, java-integ and kotlin-integ (both
 # after java, which installs the jars they read), showcase (after java and csharp), cube
 # and gates. Each lane writes to its own log; the log prints as one block when the lane
 # ends, so output never interleaves. The summary lists every step with its time, the
 # slowest steps and each lane's wall time. Every step still runs and still fails the
 # run; only the order changes. --quick and --only run serially as before.
 # Worker counts inside the runners: MO_CI_PY_WORKERS (pytest-xdist, default 8),
-# MO_CI_TS_WORKERS (bun test --parallel for the integration suite, default 6) and
+# MO_CI_TS_WORKERS (bun test --parallel for the integration suite and the codegen-ts suite
+# in conformance: typescript, default 6) and
 # MO_CI_JVM_FORKS (surefire forkCount for the JVM integration modules, default 3).
 #
 # POSTGRES SIDECAR (see ensure_pg_sidecar below). Any lane that runs integration
@@ -128,16 +174,17 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-QUICK=0; STRICT=0; ONLY=""; NO_INTEG=0; INTEG_ONLY=0
+QUICK=0; STRICT=0; ONLY=""; NO_INTEG=0; INTEG_ONLY=0; AFFECTED=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --quick) QUICK=1 ;;
+    --affected) AFFECTED=1 ;;
     --strict-toolchains) STRICT=1 ;;
     --no-integration) NO_INTEG=1 ;;
     --integration-only) INTEG_ONLY=1 ;;
     --only) shift; case "${1:-}" in
-        gates|leak-scan|ts|ts-fast|ts-unit|ts-slow|java|java-fast|java-slow|python|csharp|cube) ONLY="$ONLY ${1}" ;;
-        *) echo "--only expects gates|leak-scan|ts|ts-fast|ts-unit|ts-slow|java|java-fast|java-slow|python|csharp|cube, got '${1:-}'" >&2; exit 2 ;;
+        gates|leak-scan|ts|ts-fast|ts-unit|ts-slow|mutation|java|java-fast|java-slow|python|csharp|rust|cube) ONLY="$ONLY ${1}" ;;
+        *) echo "--only expects gates|leak-scan|ts|ts-fast|ts-unit|ts-slow|mutation|java|java-fast|java-slow|python|csharp|rust|cube, got '${1:-}'" >&2; exit 2 ;;
       esac ;;
     -h|--help) awk 'NR==1{next} /^set -uo/{exit} {sub(/^# ?/,""); print}' "$0"; exit 0 ;;
     *) echo "unknown arg: $1 (see --help)" >&2; exit 2 ;;
@@ -145,6 +192,7 @@ while [ $# -gt 0 ]; do
   shift
 done
 [ -n "$ONLY" ] && [ "$QUICK" -eq 1 ] && { echo "--only and --quick are mutually exclusive" >&2; exit 2; }
+[ "$AFFECTED" -eq 1 ] && { [ -n "$ONLY" ] || [ "$QUICK" -eq 1 ] || [ "$INTEG_ONLY" -eq 1 ]; } && { echo "--affected selects the lanes itself; it cannot be combined with --only, --quick or --integration-only" >&2; exit 2; }
 [ "$INTEG_ONLY" -eq 1 ] && [ "$QUICK" -eq 1 ] && { echo "--integration-only and --quick are mutually exclusive" >&2; exit 2; }
 [ "$INTEG_ONLY" -eq 1 ] && [ "$NO_INTEG" -eq 1 ] && { echo "--integration-only and --no-integration are mutually exclusive" >&2; exit 2; }
 MO_CI_JOBS="${MO_CI_JOBS:-8}"
@@ -291,12 +339,15 @@ gate_extract_field_kinds() { node scripts/check-extract-field-kinds.mjs; }
 gate_uv_lock_version() { scripts/check-uv-lock-version.sh; }
 
 # ── the lane selector decides what CI runs, so nothing may run it untested ────
+# That now covers three things: the port mapping the hosted workflows use, the lane
+# history that widens it, and scripts/ci-lane-map.txt as `--affected` reads it (what the
+# no-mistakes gate's Test step runs).
 # Both selector tests existed-but-unwired at some point: test-ci-affected-ports.sh was
 # referenced by no lane at all, so the mapping that decides which ports get tested was
 # itself the one thing nothing tested. That is the worst place in the tree for an unrun
 # test — a wrong answer here does not fail, it silently stops testing a port.
 gate_ci_port_selection() {
-  scripts/test-ci-affected-ports.sh && scripts/test-ci-ports-to-run.sh
+  scripts/test-ci-affected-ports.sh && scripts/test-ci-ports-to-run.sh && scripts/test-ci-lane-selection.sh
 }
 
 # ── the no-magic-physical-names gate is wired in all five ports ───────────────
@@ -622,7 +673,12 @@ gate_conf_ts() {
   ( cd server/typescript/packages/render && bun test test/render-conformance.test.ts test/verify-conformance.test.ts test/extract/extract-conformance.test.ts test/output-prompt-conformance.test.ts ) || return 1
   ( cd server/typescript/packages/integration-tests && bun test test/validation-conformance.test.ts test/validation-conformance-runtime.test.ts ) || return 1
   ( cd server/typescript/packages/migrate-ts && bun test ) || return 1
-  ( cd server/typescript/packages/codegen-ts && bun test --timeout 30000 ) || return 1
+  # --parallel: the suite is many independent files (each builds its own model and writes
+  # into its own mkdtemp directory), so serially they spent minutes waiting on each other.
+  # Same worker count as the integration suite (scripts/integration-test.sh); MO_CI_TS_WORKERS
+  # overrides it. The cli suite below stays serial on purpose: under --parallel its tests
+  # that spawn prisma starved and timed out on the small hosted runner (pr-ci ts-fast).
+  ( cd server/typescript/packages/codegen-ts && bun test --timeout 30000 --parallel="${MO_CI_TS_WORKERS:-6}" ) || return 1
   # --timeout 30000: the cli suite invokes full `meta`/run() dispatch, which lazily
   # imports each command's (sometimes heavy: codegen, migrate-ts) module on first
   # use. On a cold/contended self-hosted runner that first cold-start import can
@@ -635,8 +691,9 @@ gate_conf_ts() {
 # conformance gate runs only NAMED conformance files in metadata/render, so the rest
 # of those suites (and runtime-ts + the client/web packages) ran nowhere — which is
 # how a @formExclude regression sat red on `main`. Deliberately its OWN lane rather
-# than folded into ts-fast: ts-fast carries the 30-min mutation gate, which flakes
-# under runner contention, and a mutation flake must not mask a unit-test failure.
+# than folded into ts-fast: ts-fast carries the mutation gate (diff-scoped since
+# 2026-11; the full pass took up to ~45 min and flaked under runner contention), and a
+# mutation flake must not mask a unit-test failure.
 # Measured ~5s total, so the independent signal is nearly free.
 # NOTE: per-package `bun test` only — a bare root `bun test` walks java/python/
 # csharp/fixtures and takes many minutes.
@@ -711,11 +768,12 @@ gate_ts_unit() {
   done
 }
 gate_conf_csharp() {
+  # The minimal console logger prints a failing test's message; plain `--verbosity quiet` names the test and nothing else.
   ( cd server/csharp \
-      && dotnet test MetaObjects.Conformance.Tests/MetaObjects.Conformance.Tests.csproj --nologo --verbosity quiet \
-      && dotnet test MetaObjects.Render.Tests/MetaObjects.Render.Tests.csproj --nologo --verbosity quiet \
-      && dotnet test MetaObjects.Codegen.Tests/MetaObjects.Codegen.Tests.csproj --nologo --verbosity quiet \
-      && dotnet test MetaObjects.Cli.Tests/MetaObjects.Cli.Tests.csproj --nologo --verbosity quiet )
+      && dotnet test MetaObjects.Conformance.Tests/MetaObjects.Conformance.Tests.csproj --nologo --verbosity quiet --logger "console;verbosity=minimal" \
+      && dotnet test MetaObjects.Render.Tests/MetaObjects.Render.Tests.csproj --nologo --verbosity quiet --logger "console;verbosity=minimal" \
+      && dotnet test MetaObjects.Codegen.Tests/MetaObjects.Codegen.Tests.csproj --nologo --verbosity quiet --logger "console;verbosity=minimal" \
+      && dotnet test MetaObjects.Cli.Tests/MetaObjects.Cli.Tests.csproj --nologo --verbosity quiet --logger "console;verbosity=minimal" )
 }
 # NOTE: these -Dtest= lists are a CHERRY-PICK, so a new test class that is not named here
 # runs in NO per-push lane and reports green. Adding a test to this module means adding its
@@ -762,6 +820,36 @@ gate_conf_python() {
   if [ "$NO_INTEG" -eq 1 ] || ! docker info >/dev/null 2>&1; then skip_integ=""; fi
   ( cd server/python && uv run --extra integration pytest tests/ $skip_integ -q -n "${MO_CI_PY_WORKERS:-8}" )
 }
+# The Rust port (preview, ADR-0065). The whole workspace suite, not a cherry-pick: the
+# registry-conformance and metamodel corpora, the unit tests, and the codegen tests (which run
+# `cargo check` on generated crates), a few seconds once built. --locked
+# so a stale Cargo.lock fails here instead of being rewritten. The build goes to the
+# workspace's own target/ (gitignored); never a CARGO_TARGET_DIR shared between checkouts.
+gate_conf_rust() {
+  ( cd server/rust \
+      && cargo fmt --all --check \
+      && cargo clippy --locked --all-targets -q -- -D warnings \
+      && cargo test --locked -q -- --nocapture \
+      && gate_rust_load_bench \
+      && gate_rust_gen_bench )
+}
+# Load time per phase and per validation pass on the 20x fitness model. Record only:
+# it prints a table and never fails on a number, so a slowdown is read in the log and
+# named by the feature that caused it. No --baseline here: baselines/load-20x.json was
+# recorded on one host, and a CI delta against it would measure the machine, not the
+# change. Deltas are a same-machine workflow — record your own baseline before a
+# feature lands and compare after it, from server/rust:
+#   cargo run --release --locked --example load_bench -- 20 15 --write-baseline <file>
+#   cargo run --release --locked --example load_bench -- 20 15 --baseline <file>
+gate_rust_load_bench() {
+  cargo run --release --locked -q --example load_bench -- 20 15
+}
+# Generation time per stage (load, plan, skip, render, write) on the 20x fitness project:
+# a first run, an unchanged run (which skips), a one-file change and a forced run. Record
+# only, like load_bench; it writes its project under $DEV_SCRATCH and removes it.
+gate_rust_gen_bench() {
+  cargo run --release --locked -q -p metaobjects-codegen --example gen_bench -- 20 9
+}
 gate_conf_kotlin() {
   ( cd server/java \
       && mvn -pl codegen-kotlin -am install -DskipTests -q \
@@ -783,7 +871,78 @@ gate_java_reactor() {
 # themselves (two concurrent `mvn install`s clobber the shared module jars). When the reactor
 # step is not selected — `--integration-only` — this installs it without its tests.
 gate_java_install() { ( cd server/java && mvn -q -DskipTests -Djacoco.skip=true install ); }
-gate_completeness() { ( cd server/typescript/packages/metadata && bun run conformance:mutation ); }
+# ── The mutation (completeness) gate: two scopes over ONE file list ───────────
+# Stryker mutates the files listed in `mutate` in server/typescript/packages/metadata/
+# stryker.conf.mjs — the ONLY copy of that list; both scopes read it from there.
+#
+#   FULL (gate_completeness): every listed file. ~10–45 min of CPU on a contended host.
+#     Runs in the flagless full run's `mutation` lane, in `--only mutation` (release prep
+#     and on demand), and wherever MO_CI_MUTATION_SCOPE=full is set — conformance.yml does,
+#     so its tag (`v*`, the release gate), nightly and dispatch runs mutate everything.
+#   DIFF (gate_completeness_diff): only the listed files this change touches. This is
+#     the step in ts-fast / --quick / --only ts, and so in the no-mistakes gate's Test
+#     step (.no-mistakes.yaml). It used to run the full pass on every gate round, which
+#     was most of that step's wall time and most of the machine's load.
+#
+# "Touches" = differs between the merge base with the base branch and the working tree.
+# The base is MO_CI_MUTATION_BASE when set, else origin/$GITHUB_BASE_REF on a GitHub PR,
+# else whichever of origin/main and origin/release/* HEAD is fewest commits ahead of (a
+# branch cut from release/1.2 diffs against release/1.2, not main). When no base resolves
+# (a shallow checkout, no remote refs) the step says so and runs the FULL pass — it never
+# guesses a smaller scope. A change to stryker.conf.mjs itself also runs the full pass.
+# When none of the listed files changed it prints a SKIP banner naming the base and the
+# reason, and passes: there is nothing new to mutate, and the full lane still covers the
+# whole list. Thresholds and concurrency come from stryker.conf.mjs unchanged.
+#
+# Why --mutate on the diff rather than Stryker's incremental mode: incremental keeps a
+# results file between runs, and a cache shared across branches and worktrees can report
+# a mutant killed by tests another branch has. The diff scope keeps no state at all.
+#
+# Sandboxes: when DEV_SCRATCH names a directory (a RAM scratch area), Stryker's sandbox
+# goes there instead of the package's .stryker-tmp/, and is removed when the step ends.
+MUTATION_PKG="server/typescript/packages/metadata"
+stryker_run() { # stryker_run [stryker args...] — in the metadata package, sandbox in DEV_SCRATCH when set
+  local tmp="" rc
+  if [ -n "${DEV_SCRATCH:-}" ] && [ -d "${DEV_SCRATCH}" ]; then
+    tmp="${DEV_SCRATCH%/}/stryker/metaobjects-$(printf '%s' "$ROOT" | cksum | cut -d' ' -f1)-$$"
+    mkdir -p "$tmp" || return 1
+  fi
+  ( cd "$MUTATION_PKG" && bun run conformance:mutation ${tmp:+--tempDirName "$tmp"} "$@" ); rc=$?
+  [ -n "$tmp" ] && rm -rf "$tmp"
+  return "$rc"
+}
+gate_completeness() { bun_install || return 1; stryker_run; }
+# The base-ref rule is shared with --affected and lives in ci-select-lanes.sh (default_base).
+MO_SELECT_LIB=1 source "$ROOT/scripts/ci-select-lanes.sh"
+mutation_base() { default_base; }
+gate_completeness_diff() {
+  if [ "${MO_CI_MUTATION_SCOPE:-diff}" = "full" ]; then
+    echo "  mutation scope: FULL (MO_CI_MUTATION_SCOPE=full)"; gate_completeness; return
+  fi
+  local base mb files changed
+  base="$(mutation_base)"
+  if [ -z "$base" ] || ! mb="$(git merge-base HEAD "$base" 2>/dev/null)"; then
+    echo "  mutation scope: FULL — no merge base with '${base:-origin/main or origin/release/*}' resolves here (shallow checkout or no remote refs), so the changed files cannot be computed"
+    gate_completeness; return
+  fi
+  files="$(cd "$MUTATION_PKG" && bun -e 'const c = (await import("./stryker.conf.mjs")).default; console.log(c.mutate.join("\n"))')" || {
+    echo "  ✖ could not read the mutate list from $MUTATION_PKG/stryker.conf.mjs" >&2; return 1; }
+  if ! git diff --quiet "$mb" -- "$MUTATION_PKG/stryker.conf.mjs"; then
+    echo "  mutation scope: FULL — stryker.conf.mjs changed since $base (merge base ${mb:0:12})"
+    gate_completeness; return
+  fi
+  # shellcheck disable=SC2086 # the mutate entries are plain paths, one per line
+  changed="$(cd "$MUTATION_PKG" && git diff --name-only --relative "$mb" -- $files)"
+  if [ -z "$changed" ]; then
+    echo ""
+    echo "  ⊘ SKIP mutation: none of the $(echo "$files" | wc -l | tr -d ' ') files in stryker.conf.mjs 'mutate' changed since $base (merge base ${mb:0:12})."
+    echo "    The full pass runs in the flagless run's mutation lane, in --only mutation, and in conformance.yml."
+    return 0
+  fi
+  echo "  mutation scope: changed files only, vs $base (merge base ${mb:0:12}):"
+  echo "$changed" | sed 's/^/    /'
+  stryker_run --mutate "$(echo "$changed" | paste -sd, -)"
+}
 gate_doc_template_drift() {
   bash scripts/sync-doc-templates.sh \
     && git diff --exit-code -- \
@@ -952,10 +1111,14 @@ start_pg_sidecar() {
     fi
     # Clear a stopped leftover of an MO_PG_SIDECAR_NAME override, then start fresh.
     docker rm -f -v "$name" >/dev/null 2>&1 || true
+    # The data directory (the image's VOLUME) is a size-capped tmpfs and durability is off:
+    # a throwaway database never touches the drives, and leaves no anonymous volume behind.
     if ! docker run -d --name "$name" --label "$MO_CI_SESSION_LABEL" \
+        --tmpfs /var/lib/postgresql/data:rw,size=2g \
         -e POSTGRES_USER=metaobjects -e POSTGRES_PASSWORD=metaobjects \
         -e POSTGRES_DB=metaobjects_test \
-        -p 127.0.0.1::5432 postgres:16 >/dev/null 2>&1; then
+        -p 127.0.0.1::5432 postgres:16 \
+        -c fsync=off -c synchronous_commit=off -c full_page_writes=off >/dev/null 2>&1; then
       echo "  ⚠ could not start the Postgres sidecar — falling back to per-scenario" >&2
       echo "    containers (slow). Integration results are unaffected." >&2
       return 0
@@ -1185,7 +1348,8 @@ lane_ts() {
   if want ts; then step_if bun "conformance: typescript" gate_conf_ts;      fi
   if want ts; then step_if bun "ts unit suites"          gate_ts_unit;      fi
 }
-lane_mutation() { if want ts; then step_if bun "completeness-gate (mutation)" gate_completeness; fi; }
+# The full run's mutation lane is the FULL pass over every file stryker.conf.mjs lists.
+lane_mutation() { if want ts; then step_if bun "completeness-gate (mutation, full)" gate_completeness; fi; }
 # ts-slow's half: the two real-PG suites plus the TS integration suite.
 lane_ts_integ() {
   integ_ready || return 0
@@ -1207,8 +1371,8 @@ lane_python() {
 }
 # NOT run here: `conformance: java` and `conformance: kotlin`. Every test class those two
 # name lives in a reactor module, and java-reactor runs every test in every reactor module,
-# so in the full run they ran each of those tests a second time. They stay the java-fast
-# lane's quick signal, where the reactor is a separate job.
+# so in the full run they ran each of those tests a second time. `--only java-fast` keeps
+# them as a quick local signal and as conformance.yml's lane; local-ci has no java-fast job.
 lane_java() {
   if want java; then
     echo "  (conformance: java / kotlin run inside java-reactor — every class they name is in a reactor module)"
@@ -1249,6 +1413,90 @@ lane_kotlin_integ() { lane_jvm_integ kotlin; }
 # finished csharp lane uses. Every other output goes to a pristine temp copy (--check).
 lane_showcase() { want gates && run_showcase; return 0; }
 
+# ── --affected: choose the lanes from what changed ────────────────────────────
+# The rules are scripts/ci-lane-map.txt, evaluated by scripts/ci-select-lanes.sh (also what
+# the hosted workflows' port detection uses). This only decides ONLY; the lanes then run
+# exactly as `--only <lane> ... --no-integration` runs them. Every uncertainty widens: no
+# resolvable base, a failed git call, an unmapped path all select every selectable lane.
+# MO_CI_FULL=1 selects them all on purpose, for a caller that cannot drop the flag.
+resolve_affected_lanes() {
+  local base mb paths why="" lane
+  if [ "${MO_CI_FULL:-0}" = "1" ]; then
+    SELECTED_LANES="$CI_SELECTABLE_LANES"; why="MO_CI_FULL=1: the full run was asked for"
+  else
+    base="${MO_CI_AFFECTED_BASE:-$(default_base)}"
+    if [ -z "$base" ] || ! mb="$(git merge-base HEAD "$base" 2>/dev/null)"; then
+      SELECTED_LANES="$CI_SELECTABLE_LANES"
+      why="no merge base with '${base:-origin/main or origin/release/*}' resolves here (shallow checkout or no remote refs), so what changed is unknown"
+    elif ! paths="$(changed_paths "$mb")"; then
+      SELECTED_LANES="$CI_SELECTABLE_LANES"; why="git could not list the change since $base"
+    else
+      local -a list=()
+      mapfile -t list < <(printf '%s\n' "$paths" | sed '/^$/d')
+      select_lanes "${list[@]}"
+      why="${#list[@]} changed path(s) since $base (merge base ${mb:0:12})"
+    fi
+  fi
+  echo ""
+  echo "── affected-lane selection: $why"
+  [ -n "${SELECTION_REPORT:-}" ] && echo "$SELECTION_REPORT"
+  local skipped=""
+  for lane in $CI_SELECTABLE_LANES; do
+    case " $SELECTED_LANES " in *" $lane "*) ;; *) skipped="$skipped $lane" ;; esac
+  done
+  echo "  selected: ${SELECTED_LANES:-(none)}"
+  if [ -n "$skipped" ]; then echo "  skipped:  ${skipped# } (not affected by this change)"; else echo "  skipped:  (none)"; fi
+  echo "  gates:    not part of this selection; run them with --only gates. Force every lane with MO_CI_FULL=1."
+  if [ -z "$SELECTED_LANES" ]; then
+    echo "  nothing to run: no selectable lane is affected."
+    exit 0
+  fi
+  for lane in $SELECTED_LANES; do ONLY="$ONLY $lane"; done
+  NO_INTEG=1
+}
+if [ "$AFFECTED" -eq 1 ]; then
+  # MO_CI_SELECTION_PRINT_ONLY=1 stops after the explanation, for the selection test and
+  # for a reviewer who wants to see what a change would run without running it.
+  resolve_affected_lanes
+  if [ "${MO_CI_SELECTION_PRINT_ONLY:-0}" = "1" ]; then exit 0; fi
+fi
+
+# The serial selections' TypeScript steps, in order. The `ts` lane of a parallel --affected
+# run calls this too, so the two cannot drift: a lane is these steps, not a copy of them.
+run_ts_serial_steps() {
+  if want_any ts ts-fast; then step_if bun "ts build + typecheck"         gate_ts_build_typecheck;     fi
+  if want_any ts ts-fast; then step_if bun "conformance: typescript"      gate_conf_ts;                fi
+  if want_any ts ts-unit; then step_if bun "ts unit suites"               gate_ts_unit;                fi
+  # The DIFF-scoped mutation step (see gate_completeness_diff); `--only mutation` asks for
+  # the full pass instead, and gets it in place of this step rather than as well.
+  if [ -n "$ONLY" ] && want mutation; then
+    step_if bun "completeness-gate (mutation, full)" gate_completeness
+  elif want_any ts ts-fast; then
+    step_if bun "completeness-gate (mutation, changed files)" gate_completeness_diff
+  fi
+}
+# One function per other port, shared by the serial heavy tier and the parallel --affected lanes.
+run_csharp_steps()  { if want csharp; then step_if dotnet "conformance: csharp" gate_conf_csharp; fi; }
+run_python_steps()  { if want python; then step_if uv "conformance: python" gate_conf_python; fi; }
+run_rust_steps()    { if want rust; then step_if cargo "conformance: rust" gate_conf_rust; fi; }
+run_java_reactor_steps() { if want_any java java-slow; then step_if mvn "java-reactor (install)" gate_java_reactor; fi; }
+
+# ── --affected, several ports: run their lanes side by side ───────────────────
+# Run one after another, a change touching every port would take the SUM of the ports'
+# times, slower than the full run's parallel lanes, so more than one selected port group
+# runs as lanes exactly as the flagless run does (at most MO_CI_JOBS at once). The groups
+# share no files: the ts lane owns node_modules/ and dist/, and java, python, csharp and rust
+# use no bun, which is also how pr-ci.yml runs them, as separate jobs. A single selected
+# group runs serially, unchanged. TypeScript's two lanes stay one group, in order, because
+# ts-unit builds into the dist/ that ts-fast's build writes.
+AFFECTED_PARALLEL=0
+if [ "$AFFECTED" -eq 1 ]; then
+  _groups=0
+  in_lane_any ts-fast ts-unit && _groups=$((_groups + 1))
+  for _g in java-slow python csharp rust; do in_lane "$_g" && _groups=$((_groups + 1)); done
+  [ "$_groups" -gt 1 ] && AFFECTED_PARALLEL=1
+fi
+
 # ── Banner ────────────────────────────────────────────────────────────────────
 PARALLEL=0
 [ -z "$ONLY" ] && [ "$QUICK" -eq 0 ] && PARALLEL=1
@@ -1259,6 +1507,7 @@ elif [ "$QUICK" -eq 1 ]; then
 else
   _mode="full — all ports + reactor + docker, $MO_CI_JOBS lanes at once"
 fi
+[ "$AFFECTED" -eq 1 ] && _mode="affected lanes — $_mode"
 [ "$NO_INTEG" -eq 1 ] && _mode="$_mode, no integration"
 [ "$INTEG_ONLY" -eq 1 ] && _mode="$_mode, integration only"
 echo "metaobjects local CI  (mode: $_mode)"
@@ -1277,46 +1526,64 @@ if [ "${MO_CI_LIST_ONLY:-0}" = "1" ]; then
 fi
 
 # ── Step invocations ──────────────────────────────────────────────────────────
-if [ "$PARALLEL" -eq 0 ]; then
+run_or_list_lanes() {
+  if [ "${MO_CI_LIST_ONLY:-0}" = "1" ]; then
+    for ((_i = 0; _i < ${#LANE_NAMES[@]}; _i++)); do
+      echo "── lane ${LANE_NAMES[_i]}${LANE_AFTER[_i]:+ (after ${LANE_AFTER[_i]})}:"
+      ( "${LANE_FNS[_i]}" )
+    done
+  else
+    echo ""; echo "── lanes (up to $MO_CI_JOBS at once; each lane's log prints when it finishes) ──"
+    run_lanes
+  fi
+}
+
+if [ "$AFFECTED_PARALLEL" -eq 1 ]; then
+  echo ""; echo "── the selected ports run as parallel lanes ──"
+  # Longest first, so with fewer slots than lanes the long ones do not queue.
+  in_lane java-slow               && lane java   "" run_java_reactor_steps
+  in_lane python                  && lane python "" run_python_steps
+  in_lane csharp                  && lane csharp "" run_csharp_steps
+  in_lane rust                    && lane rust   "" run_rust_steps
+  in_lane_any ts-fast ts-unit     && lane ts     "" run_ts_serial_steps
+  run_or_list_lanes
+elif [ "$PARALLEL" -eq 0 ]; then
   # Fast tier: shared gates and TS checks, in their original order.
   run_gates_offline
   if want gates; then step_if bun "dependencies installed"       bun_install;                 fi
   run_gates_bun
   # The ts port is split into two lanes so CI can run them as separate jobs (see
   # .github/workflows/local-ci.yml): a FAST lane (build+typecheck, conformance,
-  # completeness — the pure-code correctness signal, no docker) and a SLOW lane
+  # completeness on the changed files — the pure-code correctness signal, no docker) and a SLOW lane
   # (docker/sidecar integration). Isolating integration means a docker/sidecar
   # hiccup no longer fails the code signal, and vice versa. `--only ts` still runs both.
-  if want_any ts ts-fast; then step_if bun "ts build + typecheck"         gate_ts_build_typecheck;     fi
-  if want_any ts ts-fast; then step_if bun "conformance: typescript"      gate_conf_ts;                fi
-  if want_any ts ts-unit; then step_if bun "ts unit suites"               gate_ts_unit;                fi
-  if want_any ts ts-fast; then step_if bun "completeness-gate (mutation)" gate_completeness;           fi
+  run_ts_serial_steps
   run_drift_gates
 
   if [ "$QUICK" -eq 1 ]; then
     echo ""
-    echo "── ⊘ --quick: SKIPPING the other-language ports (csharp/java/python/kotlin),"
+    echo "── ⊘ --quick: SKIPPING the other-language ports (csharp/java/python/kotlin/rust),"
     echo "        the full Java reactor, the docker integration suite and the cube live"
     echo "        check. Run the full \`scripts/ci-local.sh\` (no flag) before opening/merging"
     echo "        a PR or tagging."
-    record SKIP 0 "csharp/java/python/kotlin conformance (--quick)"
+    record SKIP 0 "csharp/java/python/kotlin/rust conformance (--quick)"
     record SKIP 0 "java-reactor (--quick)"
     record SKIP 0 "integration-tests (--quick)"
     record SKIP 0 "cube-model live check (--quick)"
   else
     # Heavy tier for --only — other-language ports + full reactor + docker integration.
     #
-    # The Java port is split into two lanes so CI can run them as separate jobs
-    # (see .github/workflows/local-ci.yml): a FAST lane (java+kotlin conformance,
-    # ~2-3m — the correctness signal) and a SLOW lane (full reactor + docker
-    # integration). Running them as parallel jobs surfaces the conformance verdict
-    # quickly and means a cancel/OOM mid-integration no longer kills the fast
-    # signal. `--only java` still runs BOTH lanes, in order.
-    if want csharp;               then step_if dotnet "conformance: csharp"        gate_conf_csharp;  fi
+    # The Java port has two selectors: java-fast (java+kotlin conformance, ~2-3m, a quick
+    # local signal and conformance.yml's lane) and java-slow (full reactor + docker
+    # integration). The reactor runs every java-fast class, so local-ci runs java-slow
+    # alone (.github/workflows/local-ci.yml). `--only java` runs the conformance steps
+    # and the reactor, in order.
+    run_csharp_steps
     if want_any java java-fast;   then step_if mvn "conformance: java"             gate_conf_java;    fi
-    if want python;               then step_if uv "conformance: python"            gate_conf_python;  fi
+    run_python_steps
+    run_rust_steps
     if want_any java java-fast;   then step_if mvn "conformance: kotlin"           gate_conf_kotlin;  fi
-    if want_any java java-slow;   then step_if mvn "java-reactor (install)"        gate_java_reactor; fi
+    run_java_reactor_steps
     # --no-integration drops the docker half; --integration-only keeps ONLY it, which is
     # why it asks in_lane / in_lane_any (selection) where the checks above ask want.
     if [ "$NO_INTEG" -eq 1 ]; then
@@ -1411,18 +1678,11 @@ else
   lane kotlin-integ java          lane_kotlin_integ
   lane java-integ   java          lane_java_integ
   lane showcase     java,csharp   lane_showcase
+  lane rust         ""            run_rust_steps
   lane cube         ""            lane_cube
   lane gates        ""            lane_gates
 
-  if [ "${MO_CI_LIST_ONLY:-0}" = "1" ]; then
-    for ((_i = 0; _i < ${#LANE_NAMES[@]}; _i++)); do
-      echo "── lane ${LANE_NAMES[_i]}${LANE_AFTER[_i]:+ (after ${LANE_AFTER[_i]})}:"
-      ( "${LANE_FNS[_i]}" )
-    done
-  else
-    echo ""; echo "── lanes (up to $MO_CI_JOBS at once; each lane's log prints when it finishes) ──"
-    run_lanes
-  fi
+  run_or_list_lanes
 fi
 
 # ── Dry-run listing exits before summary ──────────────────────────────────────

@@ -35,7 +35,7 @@ public static class NamingRefs
 
     /// <summary>
     /// The inline attribute names whose VALUE is a metadata object reference (ADR-0059 R4).
-    /// The structural <c>extends</c> key is handled separately. An operation's <c>@inputRef</c>/<c>@outputRef</c>/<c>@objectRef</c> are in it (ADR-0063). <c>@sourceRefField</c> (a FK
+    /// The structural <c>extends</c> key is handled separately. An operation's <c>@inputRef</c>/<c>@outputRef</c>/<c>@objectRef</c> are in it (ADR-0066). <c>@sourceRefField</c> (a FK
     /// field name) and <c>@implementedBy</c> (which may name a member) are NOT in the set.
     /// </summary>
     public static readonly IReadOnlySet<string> RefBearingAttrNames = new HashSet<string>(StringComparer.Ordinal)
@@ -52,7 +52,7 @@ public static class NamingRefs
     /// <summary>
     /// True when <paramref name="attrName"/> on <paramref name="node"/> holds an object reference: in
     /// <see cref="RefBearingAttrNames"/>, and not on a <c>transition.*</c>, whose <c>@from</c> names
-    /// members of its enum (ADR-0063). The set is keyed by NAME, so a node type that reuses one of
+    /// members of its enum (ADR-0066). The set is keyed by NAME, so a node type that reuses one of
     /// these names for something else is excluded here.
     /// </summary>
     public static bool IsRefBearingAttr(MetaData node, string attrName) =>
@@ -129,16 +129,37 @@ public static class NamingRefs
         return resolved is not null && ReferenceEquals(resolved, node);
     }
 
-    private static MetaData? BindOwner(IEnumerable<MetaData> candidates, string owner, string referrerPkg)
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, TopLevelView> RefViews = new();
+
+    /// <summary>The per-root lookup view for top-level nodes of <paramref name="type"/> (any type when
+    /// null), by resolution key.</summary>
+    private static TopLevelView RefView(string? type) =>
+        RefViews.GetOrAdd(type ?? "\0*", _ => new TopLevelView(
+            $"ref:{type ?? "*"}",
+            type is null ? static _ => true : c => c.Type == type,
+            static c => c.ResolutionKey()));
+
+    /// <summary>The first top-level node of <paramref name="type"/> whose resolution key is exactly
+    /// <paramref name="key"/>.</summary>
+    private static MetaData? FindByKey(MetaData root, string? type, string key) =>
+        TopLevelIndex.FindByKey(root, RefView(type), key, () =>
+        {
+            foreach (var c in TopLevelOfType(root, type))
+                if (c.ResolutionKey() == key) return c;
+            return null;
+        });
+
+    /// <summary>Bind an owner reference among the root's top-level nodes of <paramref name="type"/> by
+    /// exact resolution key (R2).</summary>
+    private static MetaData? BindOwner(MetaData root, string? type, string owner, string referrerPkg)
     {
         IReadOnlyList<string> keys;
         try { keys = OwnerCandidateKeys(owner, referrerPkg); }
         catch (RefOverDropException) { return null; }
-        var list = candidates as IReadOnlyList<MetaData> ?? candidates.ToList();
         foreach (string key in keys)
         {
-            foreach (var c in list)
-                if (c.ResolutionKey() == key) return c;
+            MetaData? node = FindByKey(root, type, key);
+            if (node is not null) return node;
         }
         return null;
     }
@@ -153,7 +174,7 @@ public static class NamingRefs
     /// <see cref="OwnerCandidateKeys"/> to tell the two apart). The single object resolver.
     /// </summary>
     public static MetaData? ResolveObjectRef(MetaData root, string reference, string referrerPkg) =>
-        BindOwner(TopLevelOfType(root, TYPE_OBJECT), reference, referrerPkg);
+        BindOwner(root, TYPE_OBJECT, reference, referrerPkg);
 
     /// <summary>
     /// Resolve a reference that may carry a dotted child tail: bind the owner among the root's
@@ -165,7 +186,7 @@ public static class NamingRefs
         MetaData root, string reference, string referrerPkg, string? ownerType = null, string? lastType = null)
     {
         var (owner, tail) = SplitChildTail(reference);
-        MetaData? bound = BindOwner(TopLevelOfType(root, ownerType), owner, referrerPkg);
+        MetaData? bound = BindOwner(root, ownerType, owner, referrerPkg);
         if (bound is null) return (null, null);
         if (tail.Length == 0) return (bound, bound);
         string[] path = tail[CHILD_REF_SEPARATOR.Length..].Split(CHILD_REF_SEPARATOR);

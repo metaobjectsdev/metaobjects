@@ -91,7 +91,7 @@ export interface Collection {
   readonly physicalNaming: PhysicalNaming;
   /** The `wire` block of the project config (ADR-0019 Amendment 2), default when absent. */
   readonly wireFormat: WireFormat;
-  /** The `rules` and `verify` blocks of the project config (ADR-0063), each absent key at its default. */
+  /** The `rules` and `verify` blocks of the project config (ADR-0066), each absent key at its default. */
   readonly rulesSettings: RulesSettings;
   /** The `enums` block of the project config (string-stored enum defaults), none when absent.
    *  Optional so a hand-built Collection from before the block existed still type-checks. */

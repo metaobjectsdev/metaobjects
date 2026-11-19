@@ -26,7 +26,7 @@ import static org.junit.Assert.assertTrue;
  * {@code tags -> Tag} through {@code AuthTag} — resolved by the base AND, inherited, by
  * every concrete subtype. {@code BridgeAuth} ALSO declares its own directed self-join M:N
  * {@code linkedAuths -> BridgeAuth} through {@code AuthLink} — resolved by Bridge only.
- * {@code CopayAuth} declares no M:N of its own.</p>
+ * {@code CouponAuth} declares no M:N of its own.</p>
  */
 public class SpringTphM2mCodegenTest extends SharedRegistryTestBase {
 
@@ -39,7 +39,7 @@ public class SpringTphM2mCodegenTest extends SharedRegistryTestBase {
             { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
                 { "source.rdb":   { "@table": "auths" } },
                 { "field.long":   { "name": "id" } },
-                { "field.enum":   { "name": "type", "@values": ["Bridge", "Copay"] } },
+                { "field.enum":   { "name": "type", "@values": ["Bridge", "Coupon"] } },
                 { "field.string": { "name": "reference", "@required": true, "@maxLength": 80 } },
                 { "relationship.association": { "name": "tags", "@cardinality": "many",
                     "@objectRef": "Tag", "@through": "AuthTag" } },
@@ -50,8 +50,8 @@ public class SpringTphM2mCodegenTest extends SharedRegistryTestBase {
                 { "relationship.association": { "name": "linkedAuths", "@cardinality": "many",
                     "@objectRef": "BridgeAuth", "@through": "AuthLink", "@sourceRefField": "fromAuthId" } }
             ] } },
-            { "object.entity": { "name": "CopayAuth", "extends": "Auth", "@discriminatorValue": "Copay", "children": [
-                { "field.decimal": { "name": "copayAmount", "@precision": 10, "@scale": 2 } }
+            { "object.entity": { "name": "CouponAuth", "extends": "Auth", "@discriminatorValue": "Coupon", "children": [
+                { "field.decimal": { "name": "couponAmount", "@precision": 10, "@scale": 2 } }
             ] } },
             { "object.entity": { "name": "Tag", "children": [
                 { "source.rdb":   { "@table": "tags" } },
@@ -109,8 +109,8 @@ public class SpringTphM2mCodegenTest extends SharedRegistryTestBase {
         String src = generate(new SpringRepositoryGenerator(), loadFixture(), "acme/auth/AuthRepository.java");
         assertTrue("expected Bridge-scoped findTagsForBridge; saw:\n" + src,
             src.contains("List<TagDto> findTagsForBridge(Long sourceId);"));
-        assertTrue("expected Copay-scoped findTagsForCopay; saw:\n" + src,
-            src.contains("List<TagDto> findTagsForCopay(Long sourceId);"));
+        assertTrue("expected Coupon-scoped findTagsForCoupon; saw:\n" + src,
+            src.contains("List<TagDto> findTagsForCoupon(Long sourceId);"));
     }
 
     @Test
@@ -120,12 +120,12 @@ public class SpringTphM2mCodegenTest extends SharedRegistryTestBase {
         // finder also carries the target-subtype gate (FW-8 follow-up) — see
         // repositoryFinderForTphSubtypeTargetGainsTargetSubtypeParam below for the dedicated
         // coverage of that gate; this test's own concern is unchanged (subtype-OWN relation
-        // scoping + the Copay exclusion).
+        // scoping + the Coupon exclusion).
         assertTrue("expected Bridge-scoped findLinkedAuthsForBridge; saw:\n" + src,
             src.contains("List<BridgeAuthDto> findLinkedAuthsForBridge(Long sourceId, String targetSubtype);"));
-        // linkedAuths is declared on BridgeAuth only — Copay never resolves it.
-        assertFalse("Copay must not get a linkedAuths finder; saw:\n" + src,
-            src.contains("findLinkedAuthsForCopay"));
+        // linkedAuths is declared on BridgeAuth only — Coupon never resolves it.
+        assertFalse("Coupon must not get a linkedAuths finder; saw:\n" + src,
+            src.contains("findLinkedAuthsForCoupon"));
     }
 
     // --- controller ------------------------------------------------------
@@ -151,10 +151,10 @@ public class SpringTphM2mCodegenTest extends SharedRegistryTestBase {
         assertTrue("expected repository.findTagsForBridge(id); saw:\n" + src,
             src.contains("repository.findTagsForBridge(id)"));
 
-        assertTrue("expected /copay/{id}/tags; saw:\n" + src,
-            src.contains("@GetMapping(\"/copay/{id}/tags\")"));
-        assertTrue("expected findTagsForCopay delegate; saw:\n" + src,
-            src.contains("public ResponseEntity<List<TagDto>> findTagsForCopay(@PathVariable Long id)"));
+        assertTrue("expected /coupon/{id}/tags; saw:\n" + src,
+            src.contains("@GetMapping(\"/coupon/{id}/tags\")"));
+        assertTrue("expected findTagsForCoupon delegate; saw:\n" + src,
+            src.contains("public ResponseEntity<List<TagDto>> findTagsForCoupon(@PathVariable Long id)"));
     }
 
     @Test
@@ -164,11 +164,11 @@ public class SpringTphM2mCodegenTest extends SharedRegistryTestBase {
             src.contains("@GetMapping(\"/bridge/{id}/linkedAuths\")"));
         assertTrue("expected findLinkedAuthsForBridge delegate; saw:\n" + src,
             src.contains("public ResponseEntity<List<BridgeAuthDto>> findLinkedAuthsForBridge(@PathVariable Long id)"));
-        // Copay resolves no linkedAuths relationship — no mount, no finder reference.
-        assertFalse("Copay must not mount /copay/{id}/linkedAuths; saw:\n" + src,
-            src.contains("/copay/{id}/linkedAuths"));
-        assertFalse("Copay must not reference a linkedAuths finder; saw:\n" + src,
-            src.contains("findLinkedAuthsForCopay"));
+        // Coupon resolves no linkedAuths relationship — no mount, no finder reference.
+        assertFalse("Coupon must not mount /coupon/{id}/linkedAuths; saw:\n" + src,
+            src.contains("/coupon/{id}/linkedAuths"));
+        assertFalse("Coupon must not reference a linkedAuths finder; saw:\n" + src,
+            src.contains("findLinkedAuthsForCoupon"));
     }
 
     @Test
@@ -176,7 +176,7 @@ public class SpringTphM2mCodegenTest extends SharedRegistryTestBase {
         String src = generate(new SpringControllerGenerator(), loadFixture(), "acme/auth/AuthController.java");
         assertTrue(src.contains("@GetMapping\n    public ResponseEntity<?> list("));
         assertTrue(src.contains("@GetMapping(\"/bridge\")"));
-        assertTrue(src.contains("@GetMapping(\"/copay\")"));
+        assertTrue(src.contains("@GetMapping(\"/coupon\")"));
     }
 
     // --- target-side TPH gate (FW-8 follow-up) --------------------------
@@ -184,7 +184,7 @@ public class SpringTphM2mCodegenTest extends SharedRegistryTestBase {
     // linkedAuths' @objectRef is "BridgeAuth" — a CONCRETE TPH subtype of Auth
     // (@discriminatorValue "Bridge"). BridgeAuth's rows physically live in the
     // shared `auths` table, so an unscoped junction traversal cannot itself tell
-    // a genuine Bridge target from a same-table Copay row; Java cannot AND a
+    // a genuine Bridge target from a same-table Coupon row; Java cannot AND a
     // discriminator into a join it does not write (the interface is
     // consumer-implemented), so the fix widens the finder seam with a
     // build-time-literal `targetSubtype` argument (mirrors the Python
@@ -215,14 +215,14 @@ public class SpringTphM2mCodegenTest extends SharedRegistryTestBase {
         String repoSrc = generate(new SpringRepositoryGenerator(), loadFixture(), "acme/auth/AuthRepository.java");
         assertTrue(repoSrc.contains("List<TagDto> findTags(Long sourceId);"));
         assertTrue(repoSrc.contains("List<TagDto> findTagsForBridge(Long sourceId);"));
-        assertTrue(repoSrc.contains("List<TagDto> findTagsForCopay(Long sourceId);"));
+        assertTrue(repoSrc.contains("List<TagDto> findTagsForCoupon(Long sourceId);"));
         assertFalse(repoSrc.contains("findTags(Long sourceId, String targetSubtype)"));
         assertFalse(repoSrc.contains("findTagsForBridge(Long sourceId, String targetSubtype)"));
-        assertFalse(repoSrc.contains("findTagsForCopay(Long sourceId, String targetSubtype)"));
+        assertFalse(repoSrc.contains("findTagsForCoupon(Long sourceId, String targetSubtype)"));
 
         String ctrlSrc = generate(new SpringControllerGenerator(), loadFixture(), "acme/auth/AuthController.java");
         assertTrue(ctrlSrc.contains("repository.findTags(id));"));
         assertTrue(ctrlSrc.contains("repository.findTagsForBridge(id));"));
-        assertTrue(ctrlSrc.contains("repository.findTagsForCopay(id));"));
+        assertTrue(ctrlSrc.contains("repository.findTagsForCoupon(id));"));
     }
 }

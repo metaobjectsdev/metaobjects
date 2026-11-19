@@ -13,7 +13,10 @@
 // object's type is its own name.
 //
 
-import { OBJECT_SUBTYPE_VALUE, collectionSegment, type MetaObject } from "@metaobjectsdev/metadata";
+import {
+  OBJECT_SUBTYPE_VALUE, OBJECT_ATTR_COLLECTION_NAME, collectionSegment, declaredCollectionName,
+  type MetaObject,
+} from "@metaobjectsdev/metadata";
 import type { GenContext } from "../generator.js";
 import { collectionPascal } from "../naming.js";
 import { emitsInstanceArtifacts } from "../instance-artifacts.js";

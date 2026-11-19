@@ -18,18 +18,19 @@ export interface JoinNode {
   readonly pkColumn: string;
   /** Which side of this hop physically holds the FK: the parent (source) or the child (target). */
   readonly referenceHolder: "source" | "target";
-  /** Always `left`: a generated view join never drops a base row. A view that requires the
-   *  related row filters on it (`@filter: { "<hop>.id": { isNull: false } }`). */
+  /** rc.19 R62 — always `left`: a generated view join never drops a base row. A view that
+   *  requires the related row filters on it (`@filter: { "<hop>.id": { isNull: false } }`). */
   readonly joinType: "left";
-  /** The target is a TPH subtype (or an abstract level) sharing its base's table, so the join
-   *  keeps only its rows (`AND <alias>.<column> = <value>`, or `IN (…)` for several). */
+  /** TPH-scope: the target is a TPH subtype sharing its base's table, so the join keeps only
+   *  its rows (`AND <alias>.<column> = <value>` on the ON clause). */
   readonly tphScope?: TphScope;
   /** Child joins. */
   readonly children: readonly JoinNode[];
 }
 
-/** The rows of a TPH level on its base's shared table: the discriminator column and the values it
- *  stores for the level (one for a concrete leaf; every concrete subtype beneath an abstract one). */
+/** A TPH level's rows of the shared table: the discriminator column and the values stored for
+ *  it — a concrete subtype's own and those of every concrete subtype beneath it (an abstract
+ *  intermediate level has only the latter). */
 export interface TphScope {
   readonly column: string;
   readonly values: readonly (string | number)[];
@@ -79,20 +80,41 @@ export type ViewExprNode =
   | { readonly kind: "not"; readonly arg: ViewExprNode }
   | { readonly kind: "logic"; readonly op: "and" | "or"; readonly args: readonly ViewExprNode[] }
   | { readonly kind: "coalesce"; readonly args: readonly ViewExprNode[] }
-  // An entity's origin.first, inlined where a projection reaches the entity: its correlated
-  // scalar subquery, keyed on `column.outerAlias`.
+  // entity-derived: an entity's origin.first, inlined where a projection reaches the entity —
+  // its correlated scalar subquery, keyed on `column.outerAlias`.
   | { readonly kind: "first"; readonly column: FirstColumn }
-  // The current instant shifted by an ISO duration, of the kind of the field it is compared with.
+  // rc.19 `now`: the current instant shifted, of the kind of the field it is compared with.
   | { readonly kind: "now"; readonly value: RelativeNow }
-  // Searched (each `when` a predicate) or, with `operand`, simple (each `when` a value) CASE.
+  // rc.19 `case`: searched (each `when` a predicate) or, with `operand`, simple (each `when` a value).
   | {
       readonly kind: "case";
       readonly operand?: ViewExprNode;
       readonly whens: readonly { readonly when: ViewExprNode; readonly then: ViewExprNode }[];
       readonly else?: ViewExprNode;
-    };
+    }
+  // rc.21 part B (U11, U13): one of the closed function set beside coalesce (lower, upper, btrim,
+  // splitPart, concat, concatWs, substring, replace, left, right, length, nullif, greatest, least).
+  | { readonly kind: "fn"; readonly name: string; readonly args: readonly ViewExprNode[] }
+  // rc.21 part B (U12): a cast to a field subtype's column type (`spelling`: a text @dbColumnType).
+  | { readonly kind: "cast"; readonly arg: ViewExprNode; readonly to: CastTarget }
+  // rc.21 part B (U13): a scalar origin.aggregate of the projection, read on the grouped row.
+  | { readonly kind: "agg"; readonly column: AggregateColumn }
+  // rc.21 part B (U10): a call of a database function the project owns (origin.function).
+  | { readonly kind: "call"; readonly schema?: string; readonly name: string; readonly args: readonly ViewExprNode[] };
 
-/** A filter operand that is a column of the base row (`alias.column`), for a correlated origin `@filter`. */
+/** A cast's target: a field subtype, and (for a string) a text @dbColumnType spelling. */
+export interface CastTarget {
+  readonly subType: string;
+  readonly spelling?: { readonly kind: "text" | "varchar" | "char"; readonly length?: number };
+  /** rc.21 part B (N1): the full column type, when the cast is to a field's own column (an
+   *  `origin.function` call): the SqlType `meta migrate` gives that field's table column. */
+  readonly column?: SqlType;
+}
+
+/** An aggregate column a computed expression may read (U13): a scalar reduce or an any/all. */
+export type AggregateColumn = Extract<SelectColumn, { kind: "aggregate" | "predicateAgg" }>;
+
+/** rc.19 correlated-filter: a filter operand that is a column of the base row (`alias.column`). */
 export interface ColRef {
   readonly kind: "colRef";
   readonly ref: string;
@@ -106,13 +128,14 @@ export interface ViewOrderKey {
 
 /** One column of the SELECT list. */
 export type SelectColumn =
+  | GrainColumn
   | {
       readonly kind: "passthrough";
       readonly fieldName: string;        // projection field name
       readonly dbColAlias: string;       // SQL output column name
       readonly sourceAlias: string;      // join alias of the source
       readonly sourceColumn: string;     // source table's column name (already strategy-applied)
-      /** The declared field's column type when it differs from the source's (`@convert`). Postgres casts to it. */
+      /** bug `cast`: the declared field's column type when it differs from the source's (`@convert`). Postgres casts to it. */
       readonly castTo?: SqlType;
     }
   | {
@@ -186,7 +209,7 @@ export type SelectColumn =
       readonly fieldName: string;
       readonly dbColAlias: string;
       readonly expr: ViewExprNode;
-      /** The declared field's column type, for a bare NULL that would otherwise read as text. Postgres casts to it. */
+      /** bug `cast`: the declared field's column type, for a bare NULL that would otherwise read as text. Postgres casts to it. */
       readonly castTo?: SqlType;
     }
   | {
@@ -208,20 +231,30 @@ export type SelectColumn =
       /** Optional scoping filter over the child entity (refs use `childAlias`). */
       readonly filter?: ViewFilterClause;
       /**
-       * The hops of a multi-hop `@via` after the first, INNER-joined inside the subquery (the
-       * selected row must exist along the whole path). `childEntity`/`childAlias` are then the
-       * FIRST hop's (the one correlated to the base), and `sourceColumn`, `childPkColumn`,
-       * `orderBy` and `filter` are over the LAST join's alias. Absent for one hop.
+       * first-multihop: the hops of a multi-hop `@via` after the first, INNER-joined inside the
+       * subquery (the selected row must exist along the whole path). `childEntity`/`childAlias`
+       * are then the FIRST hop's (the one correlated to the base), and `sourceColumn`,
+       * `childPkColumn`, `orderBy` and `filter` are over the LAST join's alias. Absent for one hop.
        */
       readonly innerJoins?: readonly FirstInnerJoin[];
-      /**
-       * Set when the subquery is inlined in an expression or filter rather than selected as a
-       * column: the alias of the row it correlates to (a reached entity, not the view's base).
-       */
+      /** entity-derived: the alias the correlation keys on, when it is not the view's base alias. */
       readonly outerAlias?: string;
     };
 
-/** The `origin.first` column of a select list. */
+/**
+ * rc.21 part B (U14): a member of the array element a `@grain` projection's row is, read from the
+ * element (`->>` on Postgres, `json_extract` on SQLite) and cast to the member's column type; or,
+ * with `member` undefined, the element's 1-based position (`@grainOrdinal`).
+ */
+export interface GrainColumn {
+  readonly kind: "element";
+  readonly fieldName: string;
+  readonly dbColAlias: string;
+  readonly member?: string;
+  readonly castTo: SqlType;
+}
+
+/** An `origin.first` column. */
 export type FirstColumn = Extract<SelectColumn, { kind: "first" }>;
 
 /** One inner join of a multi-hop `origin.first` subquery, from the alias before it. */
@@ -254,4 +287,15 @@ export interface ViewSpec {
    * `@filter`, which scopes the rows a single aggregate spans. Undefined = no filter.
    */
   readonly where?: ViewFilterClause;
+  /**
+   * rc.21 part B (U14): one row per element of the base row's jsonb array column `column`
+   * (`CROSS JOIN LATERAL jsonb_array_elements(...) WITH ORDINALITY` / `json_each`), its element
+   * and position under `alias`. A row with no element is not returned.
+   */
+  readonly grain?: { readonly column: string; readonly alias: string };
+  /**
+   * rc.21 part B (U15): the bodies UNIONed after this one, each the same shape; `all` keeps
+   * duplicate rows (UNION ALL), else they are removed (UNION).
+   */
+  readonly union?: { readonly all: boolean; readonly members: readonly ViewSpec[] };
 }

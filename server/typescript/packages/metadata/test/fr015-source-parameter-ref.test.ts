@@ -51,9 +51,9 @@ describe("FR-015 happy paths", () => {
         children: [
           {
             "object.value": {
-              name: "PhaseSummaryArgs",
+              name: "StageSummaryArgs",
               children: [
-                { "field.int": { name: "caseId", "@required": true } },
+                { "field.int": { name: "consignmentId", "@required": true } },
                 { "field.timestamp": { name: "asOfDate" } },
               ],
             },
@@ -62,13 +62,13 @@ describe("FR-015 happy paths", () => {
             // FR-024 (B4b): proc-result shapes are object.projection (read-only,
             // external assembly); identity dropped (optional; no base entity here).
             "object.projection": {
-              name: "PhaseSummary",
+              name: "StageSummary",
               children: [
                 {
                   "source.rdb": {
                     "@kind": "storedProc",
-                    "@proc": "fn_get_phase_summary",
-                    "@parameterRef": "PhaseSummaryArgs",
+                    "@proc": "fn_get_stage_summary",
+                    "@parameterRef": "StageSummaryArgs",
                   },
                 },
                 { "field.long": { name: "phaseId" } },

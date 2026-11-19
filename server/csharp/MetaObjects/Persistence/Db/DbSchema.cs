@@ -29,23 +29,17 @@ public static class DbSchema
 
     /// <summary>
     /// R6 Plan 2b: <c>@dbColumnType</c> — physical DB column-type override on every field
-    /// subtype. The closed value set (ADR-0036 Wave 1) is <see cref="DbConstants.VALID_DB_COLUMN_TYPES"/>
-    /// — surfaced as the manifest's <c>allowedValues</c>; the subtype × value pairing is
+    /// subtype. The bare values are <see cref="DbConstants.VALID_DB_COLUMN_TYPES"/> plus the sized text
+    /// spellings (rc.21), so the manifest carries no <c>allowedValues</c>; the subtype × value pairing is
     /// validated own-only by the loader (ValidateDbColumnType → ERR_BAD_ATTR_VALUE).
     /// </summary>
     public static readonly AttrSchema DbColumnTypeSchema = new AttrSchema(
         Name: DbConstants.FIELD_ATTR_DB_COLUMN_TYPE,
         ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
         Required: false,
-        AllowedValues: [.. DbConstants.VALID_DB_COLUMN_TYPES],
-        Description:
-            "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, " +
-            "both on field.string (uuid = native Postgres uuid column over a string-typed field; " +
-            "jsonb = genuinely-open JSON column). The logical field type and its native binding are " +
-            "unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from " +
-            "a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — " +
-            "timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive " +
-            "opt-out), per ADR-0036 Wave 2.");
+        // rc.21 part B (U2): no allowedValues — the sized spellings (varchar(n), character(n)) are no
+        // closed set; ValidateDbColumnType parses the value (DbConstants.ParseDbColumnType).
+        Description: "Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres's own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.");
 
     /// <summary>
     /// ADR-0036 Wave 2: <c>@localTime</c> — the naive-timestamp opt-out on <c>field.timestamp</c>
@@ -88,21 +82,21 @@ public static class DbSchema
         Name: DbConstants.IDENTITY_ATTR_WHERE,
         ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
         Required: false,
-        Description: "Partial-index predicate (raw SQL, e.g. \"delivered_at IS NULL\"). When set, the index covers only rows matching the predicate — smaller and cheaper for queries that always filter on it. Absent = a full index over every row. RDB-physical — contributed by the db provider.");
+        Description: "Partial-index predicate (raw SQL, e.g. \"delivered_at IS NULL\"). When set, the index covers only rows matching the predicate — smaller and cheaper for queries that always filter on it. Absent = a full index over every row. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1.");
 
     /// <summary><c>@expr</c> — raw key expression for a functional/expression index; on identity.secondary.</summary>
     public static readonly AttrSchema ExprSchema = new AttrSchema(
         Name: DbConstants.IDENTITY_ATTR_EXPR,
         ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
         Required: false,
-        Description: "Raw key EXPRESSION for a functional/expression index (e.g. \"lower(email)\"). Used INSTEAD of @fields — the index key is the expression rather than plain columns. RDB-physical — contributed by the db provider.");
+        Description: "Raw key EXPRESSION for a functional/expression index (e.g. \"lower(email)\"). Used INSTEAD of @fields — the index key is the expression rather than plain columns. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1.");
 
     /// <summary><c>@using</c> — index access method (e.g. "gin"); default "btree"; on identity.secondary.</summary>
     public static readonly AttrSchema UsingSchema = new AttrSchema(
         Name: DbConstants.IDENTITY_ATTR_USING,
         ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
         Required: false,
-        Description: "Index access method (e.g. \"gin\", \"gist\", \"hash\"); default \"btree\" (not rendered). Pair with @expr for e.g. a GIN index over an array/jsonb expression. RDB-physical — contributed by the db provider.");
+        Description: "Index access method (e.g. \"gin\", \"gist\", \"hash\"); default \"btree\" (not rendered). Pair with @expr for e.g. a GIN index over an array/jsonb expression. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1.");
 
     /// <summary><c>@constraintName</c> on a validator — the database name of the CHECK it generates.</summary>
     public static readonly AttrSchema ValidatorConstraintNameSchema = new AttrSchema(
@@ -110,6 +104,20 @@ public static class DbSchema
         ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
         Required: false,
         Description: "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1.");
+
+    /// <summary><c>@dbCheck</c> on a validator — <c>false</c> generates no database CHECK for it.</summary>
+    public static readonly AttrSchema ValidatorDbCheckSchema = new AttrSchema(
+        Name: Core.Validator.ValidatorConstants.VALIDATOR_ATTR_DB_CHECK,
+        ValueType: AttrConstants.ATTR_SUBTYPE_BOOLEAN,
+        Required: false,
+        Description: "On a numeric, length or regex validator, false generates no database CHECK (meta migrate and a generated EF model leave it out); the generated app-level validators still enforce it on every write. On a cross-field validator (comparison, requiredWhen, presentIff, atLeastOne), which only its CHECK enforces, false is refused (ERR_CROSS_FIELD_WITHOUT_CHECK). Absent: true. For a column whose legacy rows break the rule, which a CHECK would refuse on their next UPDATE even NOT VALID. Refused with @constraintName (ERR_CONSTRAINT_NAME_WITHOUT_CHECK). RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1.");
+
+    /// <summary><c>@dbCheck</c> on a field.enum — <c>false</c> generates no membership CHECK.</summary>
+    public static readonly AttrSchema EnumDbCheckSchema = new AttrSchema(
+        Name: Core.Validator.ValidatorConstants.VALIDATOR_ATTR_DB_CHECK,
+        ValueType: AttrConstants.ATTR_SUBTYPE_BOOLEAN,
+        Required: false,
+        Description: "false: this enum's member list generates no database CHECK (meta migrate and a generated EF model leave it out); the generated app-level validation still holds every write to the members. Absent: true. For a column whose legacy rows hold values outside the members, which a CHECK would refuse on their next UPDATE even NOT VALID. Refused with @constraintName (ERR_CONSTRAINT_NAME_WITHOUT_CHECK). RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1.");
 
     /// <summary><c>@constraintName</c> on a field.enum — the database name of its membership CHECK.</summary>
     public static readonly AttrSchema EnumConstraintNameSchema = new AttrSchema(
@@ -137,7 +145,7 @@ public static class DbSchema
         Name: DbConstants.IDENTITY_ATTR_CONSTRAINT_NAME,
         ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
         Required: false,
-        Description: "Physical foreign-key constraint name override. Absent → the backend's auto-derived default (e.g. `<table>_<firstFkColumn>_fk`). Lets a model adopt an existing database whose FK constraints follow a different naming convention without a destructive rename. RDB-physical — contributed by the db provider.");
+        Description: "Physical foreign-key constraint name override. Absent → the backend's auto-derived default (e.g. `<table>_<firstFkColumn>_fk`). Lets a model adopt an existing database whose FK constraints follow a different naming convention without a destructive rename. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1.");
 
     /// <summary><c>@onDelete</c> — referential action on parent delete, the explicit per-FK override; on identity.reference (ADR-0047).</summary>
     public static readonly AttrSchema ReferenceOnDeleteSchema = new AttrSchema(
@@ -145,7 +153,7 @@ public static class DbSchema
         ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
         Required: false,
         AllowedValues: ["cascade", "set-null", "restrict", "no-action"],
-        Description: "Referential action on parent delete, declared directly on the FK-defining reference — the explicit per-FK override (ADR-0047). Precedence: this attr → a correlated relationship's @onDelete (declared on either side of the FK) → the relationship's subtype default. Use for a reference-only FK (no relationship), an M:N junction's FK sides, or a per-FK override; prefer declaring the action on the relationship otherwise. RDB-physical — contributed by the db provider.");
+        Description: "Referential action on parent delete, declared directly on the FK-defining reference — the explicit per-FK override (ADR-0047). Precedence: this attr → a correlated relationship's @onDelete (declared on either side of the FK) → the relationship's subtype default. Use for a reference-only FK (no relationship), an M:N junction's FK sides, or a per-FK override; prefer declaring the action on the relationship otherwise. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1.");
 
     /// <summary><c>@onUpdate</c> — referential action on key update, the explicit per-FK override; on identity.reference (ADR-0047).</summary>
     public static readonly AttrSchema ReferenceOnUpdateSchema = new AttrSchema(
@@ -153,5 +161,5 @@ public static class DbSchema
         ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
         Required: false,
         AllowedValues: ["cascade", "set-null", "restrict", "no-action"],
-        Description: "Referential action on key update, declared directly on the FK-defining reference — the explicit per-FK override (ADR-0047). Same precedence as @onDelete; when only a correlated relationship is present, @onUpdate defaults to cascade. RDB-physical — contributed by the db provider.");
+        Description: "Referential action on key update, declared directly on the FK-defining reference — the explicit per-FK override (ADR-0047). Same precedence as @onDelete; when only a correlated relationship is present, @onUpdate defaults to cascade. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1.");
 }

@@ -29,4 +29,9 @@
   <ItemGroup>
     <EmbeddedResource Include="SpecMetamodel/*.json" />
   </ItemGroup>
+  <!-- The top-level index's work counters (TopLevelIndex.Rebuilds, MetaData.ResolutionKeyProbe)
+       are internal; the conformance test project asserts reference lookup stays linear with them. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="MetaObjects.Conformance.Tests" />
+  </ItemGroup>
 </Project>

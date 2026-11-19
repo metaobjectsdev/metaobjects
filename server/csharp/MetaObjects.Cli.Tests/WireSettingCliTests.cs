@@ -104,7 +104,7 @@ public sealed class WireSettingCliTests : IDisposable
 
         WriteConfig(null);
         var (exit, stdout, stderr) = OwnedRunner.Run(
-            _tmp, ["entity"], "verify", "--codegen", MetaDir, "--out", outDir, "--namespace", "Acme.Generated");
+            _tmp, ["entity"], "verify", "--codegen", "--full", MetaDir, "--out", outDir, "--namespace", "Acme.Generated");
         var output = stdout + stderr;
         Assert.Equal(1, exit);
         Assert.Contains(

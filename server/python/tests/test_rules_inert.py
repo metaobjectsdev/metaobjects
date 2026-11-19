@@ -1,4 +1,4 @@
-"""ADR-0063 — the business-rules vocabulary is INERT in every Python generator.
+"""ADR-0066 — the business-rules vocabulary is INERT in every Python generator.
 
 1.3.0 registers ``api.operational``, ``operation.*``, ``binding.rest`` and ``transition.action``,
 validates them at load and checks them in ``verify``. The generated services and enforcing

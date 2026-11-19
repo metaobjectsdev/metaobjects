@@ -40,6 +40,7 @@ import {
   EXTENDS_TARGET_MISMATCH_RULE,
 } from "./super-resolve.js";
 import { RefOverDropError } from "./naming-refs.js";
+import { findTopLevelByKey, type TopLevelView } from "./top-level-index.js";
 import { JsonPathBuilder, type Segment as JsonPathSegment } from "./json-path.js";
 import { getYamlPosition, type YamlPosition } from "./core/yaml-positions.js";
 import {
@@ -1279,19 +1280,31 @@ function findOverlayTarget(
   nodeData: Record<string, unknown>,
   inheritedContextPkg: string,
 ): MetaData | undefined {
-  let existing = name !== "" ? parent.ownChildByTypeAndName(type, name) : undefined;
-  if (existing !== undefined && parent instanceof MetaRoot) {
+  if (parent instanceof MetaRoot) {
+    if (name === "") return undefined;
+    // The first root child of this (type, name) whose resolution key is the candidate's:
+    // the first same-name hit when its package matches, else the first exact
+    // package-qualified match (several packages may declare this name). Answered from the
+    // root's top-level index, which stays correct as this walk appends root children.
     const candidateKey = rootChildResolutionKey(nodeData, inheritedContextPkg, name);
-    if (existing.resolutionKey() !== candidateKey) {
-      // The first same-name hit is a different package — scan for an exact
-      // package-qualified match (several packages may declare this name).
-      existing = parent
-        .ownChildren()
-        .find((c) => c.type === type && c.name === name && c.resolutionKey() === candidateKey);
-    }
+    return findTopLevelByKey(parent, OVERLAY_TARGET_VIEW, overlayTargetKey(type, name, candidateKey), () =>
+      // ADR-0039: own — an overlay targets the authored layer.
+      parent.ownChildren().find((c) => c.type === type && c.name === name && c.resolutionKey() === candidateKey),
+    );
   }
-  return existing;
+  return name !== "" ? parent.ownChildByTypeAndName(type, name) : undefined;
 }
+
+/** Root-level overlay targets are keyed by (type, name, resolution key). */
+const OVERLAY_TARGET_SEP = "\u0000";
+function overlayTargetKey(type: string, name: string, resolutionKey: string): string {
+  return `${type}${OVERLAY_TARGET_SEP}${name}${OVERLAY_TARGET_SEP}${resolutionKey}`;
+}
+const OVERLAY_TARGET_VIEW: TopLevelView = {
+  id: "overlay-target",
+  includes: (c) => c.name !== "",
+  keyOf: (c) => overlayTargetKey(c.type, c.name, c.resolutionKey()),
+};
 
 /** The one wording for a missing overlay target, shared by the defensive
  *  in-walk path and the deferred pass, so the two cannot drift. */

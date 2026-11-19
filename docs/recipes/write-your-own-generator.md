@@ -260,7 +260,7 @@ public class FieldListGenerator extends FileEmittingGenerator {
 </generator>
 ```
 
-`mvn metaobjects:generate` runs it; `mvn metaobjects:verify` regenerates into a temp dir
+`mvn metaobjects:generate` runs it; `mvn metaobjects:verify` regenerates in memory
 and diffs. Extra `<args>` reach the generator through `getArg(name, default)`. Three JVM
 traps `ModelWalk` exists to close: `getName()` is the fully-qualified `shop::Customer`
 (use `ModelWalk.name`), `isArray()` is the own flag (use `ModelWalk.isArray`), and
@@ -308,6 +308,27 @@ The same claimant claiming again is not a collision, and one name in two scopes 
 names. The JVM ports take no claim call: their file writer refuses an output path two
 generators emit with different content in one run (byte-identical duplicates collapse), and
 nothing checks emitted names.
+
+## Reads outside the model: declare them, or `meta gen` may skip your output
+
+`meta gen` skips a run when nothing it is built from has changed ([ADR-0064](../../spec/decisions/ADR-0064-skip-codegen-when-nothing-changed.md)).
+That key covers the loaded model, the engine, the config, the owned generator files and the
+template roots. Anything else your generator reads has to be declared, or a change to it will
+not regenerate. In TypeScript, on the `Generator` object:
+
+- a file or directory under the project it reads: `inputs: ["prompts"]` (relative to the project root; a directory counts every file under it);
+- the raw metadata source files beside the loaded model, for their comments: `readsMetadataSources: true`;
+- something the key cannot name in advance (the network, an environment variable): `cache: false`. A run that includes that generator never skips.
+
+```ts
+generators: [entityFile(), { ...redactionGenerator(), inputs: ["prompts"] }],
+```
+
+Java and Kotlin (`cacheable()` and `extraInputs()`) and C# (`Cacheable`, `ExtraInputs`) carry
+the same declarations on their `Generator` interface; Python reads a `cacheable` attribute and
+`declared_extra_inputs`. A declaration that over-counts costs one
+extra render; a missing one can skip a change, so when in doubt declare it. `meta gen --force`
+renders everything, and CI's `verify --codegen` renders everything regardless of the key.
 
 ## Safety-relevant output: set `handEdits: "overwrite"`
 

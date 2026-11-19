@@ -195,6 +195,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         durationsIso = WireFormat.of(loader.root).durationsIso()
 
         for (declared in loader.metaObjects) {
+            if (!isSelected(declared)) continue
             // FR-044: a served report is emitted from its read model, the same object the
             // filter-allowlist, entity and table generators emit from, so the four files name
             // the same fields. Any other report maps to null and gets no controller.
@@ -271,13 +272,82 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
     /**
      * #484: a credential is never returned. The shared data class keeps its declared types, so the key is
      * dropped from the serialized tree at the HTTP boundary (absent, not null), through the same mapper
-     * (and so the same wire annotations) the response would use.
+     * (and so the same wire annotations) the response would use. [strips] says whether this file needs the
+     * shared `stripCredentials` helper at all (its own [creds], or an M:N target's).
      */
-    private fun appendRedactor(sb: StringBuilder, shortName: String, creds: Collection<String>) {
+    private fun appendRedactor(sb: StringBuilder, shortName: String, creds: Collection<String>, strips: Boolean) {
+        if (strips) appendStripCredentials(sb)
         if (creds.isEmpty()) return
         sb.append("/** GENERATED — the ${shortName} response value with its credential field(s) removed. */\n")
         sb.append("private fun redact${shortName}(mapper: ObjectMapper, row: ${shortName}): Any =\n")
-        sb.append("    mapper.valueToTree<com.fasterxml.jackson.databind.node.ObjectNode>(row).apply { remove(listOf(${creds.joinToString(", ") { "\"$it\"" }})) }\n\n")
+        sb.append("    stripCredentials(mapper, row, ${creds.joinToString(", ") { "\"$it\"" }})\n\n")
+    }
+
+    /**
+     * #484: the file-private helper every redaction goes through. The data class carries no wire annotation
+     * for a credential, so its JSON key is whatever the host's ObjectMapper makes of the property: a naming
+     * strategy (`SNAKE_CASE` writes `pinHash` as `pin_hash`), a mixin, a `@JsonProperty`. The key is READ from
+     * that mapper's serialization contract, never re-derived from the property name, and cached per row
+     * class. A contract that cannot be read (a custom serializer, a credential the class declares but the
+     * contract has no property for) refuses the response (throws, 500) instead of sending it unstripped.
+     * As a second line of defence any key spelling a credential ignoring case, `_` and `-` is removed too.
+     */
+    private fun appendStripCredentials(sb: StringBuilder) {
+        sb.append(
+            """
+            |/** GENERATED — #484: the wire keys of each row class's credentials, read once from the mapper's contract. */
+            |private val credentialWireKeys = java.util.concurrent.ConcurrentHashMap<Triple<ObjectMapper, Class<*>, List<String>>, Set<String>>()
+            |
+            |/**
+            | * GENERATED — #484: [row] as a JSON tree with its credential properties [hidden] removed, under the keys
+            | * [mapper] actually writes them with (a naming strategy, mixin or @JsonProperty is honoured), plus any key
+            | * that spells one ignoring case, `_` and `-`. Throws rather than send a row it cannot strip.
+            | */
+            |private fun stripCredentials(mapper: ObjectMapper, row: Any, vararg hidden: String): com.fasterxml.jackson.databind.node.ObjectNode {
+            |    val node = mapper.valueToTree<com.fasterxml.jackson.databind.node.ObjectNode>(row)
+            |    node.remove(credentialWireKeys.computeIfAbsent(Triple(mapper, row.javaClass, hidden.toList())) { credentialKeysOf(mapper, row.javaClass, hidden) })
+            |    val spelled = hidden.map { normalizedKey(it) }.toSet()
+            |    node.remove(node.fieldNames().asSequence().filter { normalizedKey(it) in spelled }.toList())
+            |    return node
+            |}
+            |
+            |/** GENERATED — #484: the JSON keys [mapper] writes the credential properties [hidden] of [type] under. */
+            |private fun credentialKeysOf(mapper: ObjectMapper, type: Class<*>, hidden: Array<out String>): Set<String> {
+            |    val desc: com.fasterxml.jackson.databind.BeanDescription = mapper.serializationConfig.introspect(mapper.constructType(type))
+            |    val serializer = try {
+            |        mapper.serializerProviderInstance.findValueSerializer(type)
+            |    } catch (e: com.fasterxml.jackson.databind.JsonMappingException) {
+            |        throw unstrippable(type, hidden.toList(), "the mapper has no serializer for it", e)
+            |    }
+            |    if (serializer !is com.fasterxml.jackson.databind.ser.std.BeanSerializerBase) {
+            |        throw unstrippable(type, hidden.toList(), "its serializer is not a bean serializer (a custom serializer?)", null)
+            |    }
+            |    val keys = HashSet<String>()
+            |    for (name in hidden) {
+            |        val matched = desc.findProperties().filter { it.internalName == name }.map { it.name }
+            |        if (matched.isEmpty() && declaresMember(type, name) && name !in desc.ignoredPropertyNames) {
+            |            throw unstrippable(type, listOf(name), "the credential has no property in the mapper's contract", null)
+            |        }
+            |        keys += matched
+            |    }
+            |    return keys
+            |}
+            |
+            |private fun declaresMember(type: Class<*>, name: String): Boolean =
+            |    generateSequence(type) { it.superclass }.takeWhile { it != Any::class.java }.any { c -> c.declaredFields.any { it.name == name } }
+            |
+            |private fun normalizedKey(key: String): String = key.replace("_", "").replace("-", "").lowercase()
+            |
+            |private fun unstrippable(type: Class<*>, credentials: List<String>, why: String, cause: Throwable?): IllegalStateException =
+            |    IllegalStateException(
+            |        "cannot strip the credential " + credentials.joinToString(", ") { type.simpleName + "." + it } + " from a response: " + why +
+            |            ". Credential stripping reads the ObjectMapper's serialization contract; the response is refused rather than sent unstripped.",
+            |        cause,
+            |    )
+            |
+            |
+            """.trimMargin()
+        )
     }
 
     private fun credentialNames(fields: Collection<MetaField<*>>): List<String> =
@@ -349,7 +419,8 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // #484: credential fields are removed from every response at the HTTP boundary.
         val creds = credentialNames(entity.metaFields)
         val m2mNavsForMapper = KotlinM2mSupport.resolve(entity, loader, providedEnums)
-        val needsMapper = hasPatchFields || rejectUnknown || creds.isNotEmpty() || m2mNavsForMapper.any { it.targetCredentialFields.isNotEmpty() }
+        val strips = creds.isNotEmpty() || m2mNavsForMapper.any { it.targetCredentialFields.isNotEmpty() }
+        val needsMapper = hasPatchFields || rejectUnknown || strips
 
         // #203/ADR-0045: @autoSet columns are stamped by the generated controller, not bound from
         // the caller. insert stamps BOTH onCreate+onUpdate (a fresh row's updatedAt == createdAt —
@@ -515,7 +586,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             emitFilterPipeline(this, shortName, readObj, allowlistName, scalarFields)
 
             appendRowToMapper(this, shortName, entity, readObj)
-            appendRedactor(this, shortName, creds)
+            appendRedactor(this, shortName, creds, strips)
 
             append("/**\n")
             append(" * GENERATED — REST controller for ${shortName} entity. Implements the cross-port API contract.\n")
@@ -903,7 +974,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // object/map/jsonb-open-bag (an open bag is a create-only column, see KNOWN_GAPS). Delegated to
         // [KotlinTphPlan.subtypeSettableFields] — the SSOT the entity generator's <Sub>Validation shape
         // is built from, so the create/PATCH validated set never drifts from the annotated class. This
-        // is per-subtype so a PriorAuth patch never touches a Bridge-only column.
+        // is per-subtype so a Permit patch never touches a Bridge-only column.
         fun subtypePatchFields(st: KotlinTphPlan.Subtype) =
             KotlinTphPlan.subtypeSettableFields(st.entity)
 
@@ -931,8 +1002,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // #484: credential columns (base or subtype-only) are removed from every response; the controller
         // then needs the ObjectMapper even when no subtype has a settable column.
         val creds = credentialNames(markFields)
-        val needsMapper = anyPatchFields || rejectUnknown || creds.isNotEmpty() ||
+        val strips = creds.isNotEmpty() ||
             (listOf(baseM2mNavs) + plan.subtypes.map { subtypeM2mNavs(it) }).any { navs -> navs.any { it.targetCredentialFields.isNotEmpty() } }
+        val needsMapper = anyPatchFields || rejectUnknown || strips
 
         val src = buildString {
             if (pkg.isNotEmpty()) append("package $pkg\n\n")
@@ -1061,7 +1133,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("private fun rowTo${shortName}(row: ResultRow): $shortName = $shortName(\n")
             for (field in scalarFields) append("    ${field.name} = row[$table.${field.name}],\n")
             append(")\n\n")
-            appendRedactor(this, shortName, creds)
+            appendRedactor(this, shortName, creds, strips)
 
             append("/**\n")
             append(" * GENERATED — TPH discriminator-base controller for $shortName (polymorphic + per-subtype CRUD).\n")
@@ -2053,14 +2125,14 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
     private fun appendM2mRows(out: StringBuilder, nav: KotlinM2mSupport.M2mNav, targetType: String, query: String) {
         val creds = nav.targetCredentialFields
         out.append("        val rows${if (creds.isNotEmpty()) ": List<Any>" else ""} = $query.map { row ->\n")
-        if (creds.isNotEmpty()) out.append("            objectMapper.valueToTree<com.fasterxml.jackson.databind.node.ObjectNode>(\n")
+        if (creds.isNotEmpty()) out.append("            stripCredentials(\n                objectMapper,\n")
         out.append("            $targetType(\n")
         for (fname in nav.targetScalarFields) {
             out.append("                $fname = row[${nav.targetTableObj}.$fname],\n")
         }
-        out.append("            )\n")
+        out.append("            )${if (creds.isNotEmpty()) "," else ""}\n")
         if (creds.isNotEmpty()) {
-            out.append("            ).apply { remove(listOf(${creds.joinToString(", ") { "\"$it\"" }})) }\n")
+            out.append("                ${creds.joinToString(", ") { "\"$it\"" }},\n            )\n")
         }
         out.append("        }\n")
         out.append("        ResponseEntity.ok(rows)\n")
@@ -2341,7 +2413,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             appendSortSurface(this, shortName, entity, sortFields)
             emitFilterPipeline(this, shortName, readObj, allowlistName, scalarFields)
             appendRowToMapper(this, shortName, entity, readObj)
-            appendRedactor(this, shortName, creds)
+            appendRedactor(this, shortName, creds, creds.isNotEmpty())
 
             append("/**\n")
             append(" * GENERATED — READ-ONLY REST controller for the ${shortName} $noun.\n")

@@ -129,6 +129,21 @@ public static class OriginSchema
             Description: "Optional name of a segment.filter declared on the related entity; its predicate scopes the related rows, ANDed with @filter."),
     ];
 
+    // function: a call of a database function the project owns.
+    private static readonly IReadOnlyList<AttrSchema> FunctionOriginAttrs =
+    [
+        new AttrSchema(Name: OriginConstants.ORIGIN_FUNCTION_ATTR_FUNCTION, ValueType: AttrConstants.ATTR_SUBTYPE_STRING, Required: true,
+            Description: "The function's name as the database names it: a plain identifier."),
+        new AttrSchema(Name: OriginConstants.ORIGIN_FUNCTION_ATTR_SCHEMA, ValueType: AttrConstants.ATTR_SUBTYPE_STRING, Required: false,
+            Description: "The schema the function lives in, a plain identifier. Absent: public."),
+        new AttrSchema(Name: OriginConstants.ORIGIN_FUNCTION_ATTR_ARGS, ValueType: AttrConstants.ATTR_SUBTYPE_STRING, Required: false, IsArray: true,
+            Description: "The fields passed to the function, in parameter order."),
+        new AttrSchema(Name: OriginConstants.ORIGIN_FUNCTION_ATTR_PARAMS, ValueType: AttrConstants.ATTR_SUBTYPE_STRING, Required: false, IsArray: true,
+            Description: "The function's declared parameter types, one field subtype per @args entry."),
+        new AttrSchema(Name: OriginConstants.ORIGIN_FUNCTION_ATTR_RETURNS, ValueType: AttrConstants.ATTR_SUBTYPE_STRING, Required: true,
+            Description: "The function's declared return type, the carrying field's subtype."),
+    ];
+
     /// <summary>
     /// Attrs per origin subtype. base has none; passthrough, aggregate,
     /// computed (#195), and first (#195) carry their respective attrs.
@@ -141,5 +156,6 @@ public static class OriginSchema
             [OriginConstants.ORIGIN_SUBTYPE_AGGREGATE]     = [.. AggregateOriginAttrs],
             [OriginConstants.ORIGIN_SUBTYPE_COMPUTED]      = [.. ComputedOriginAttrs],
             [OriginConstants.ORIGIN_SUBTYPE_FIRST]         = [.. FirstOriginAttrs],
+            [OriginConstants.ORIGIN_SUBTYPE_FUNCTION]      = [.. FunctionOriginAttrs],
         };
 }

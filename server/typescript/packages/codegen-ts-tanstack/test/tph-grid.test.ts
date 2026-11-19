@@ -27,7 +27,7 @@ import { renderColumnsFile } from "../src/templates/columns-file.js";
 import { makeRenderContext, buildPkMap, buildRelationMap, runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
 import { entityFile } from "@metaobjectsdev/test-generators";
 
-async function loadTph(): Promise<{ root: MetaRoot; base: MetaObject; bridge: MetaObject; copay: MetaObject }> {
+async function loadTph(): Promise<{ root: MetaRoot; base: MetaObject; bridge: MetaObject; coupon: MetaObject }> {
   const loader = new MetaDataLoader();
   const { root, errors } = await loader.load([
     new InMemoryStringSource(
@@ -41,7 +41,7 @@ async function loadTph(): Promise<{ root: MetaRoot; base: MetaObject; bridge: Me
                 "@discriminator": "type",
                 children: [
                   { "source.rdb": { "@table": "auths" } },
-                  { "field.enum": { name: "type", "@values": ["Bridge", "Copay"] } },
+                  { "field.enum": { name: "type", "@values": ["Bridge", "Coupon"] } },
                   { "field.long": { name: "id" } },
                   { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
                   { "layout.dataGrid": { name: "default", "@columns": ["type", "id"] } },
@@ -58,13 +58,13 @@ async function loadTph(): Promise<{ root: MetaRoot; base: MetaObject; bridge: Me
             },
             {
               "object.entity": {
-                name: "CopayAuth",
+                name: "CouponAuth",
                 extends: "Auth",
-                "@discriminatorValue": "Copay",
+                "@discriminatorValue": "Coupon",
                 // Opted IN to a per-subtype grid by the OPT_IN predicate below — no
                 // metadata attribute is involved any more.
                 children: [
-                  { "field.decimal": { name: "copayAmount", "@precision": 10, "@scale": 2 } },
+                  { "field.decimal": { name: "couponAmount", "@precision": 10, "@scale": 2 } },
                 ],
               },
             },
@@ -76,7 +76,7 @@ async function loadTph(): Promise<{ root: MetaRoot; base: MetaObject; bridge: Me
   ]);
   if (errors.length > 0) throw new Error(errors.map((e) => e.message).join("; "));
   const find = (n: string) => root.objects().find((o) => o.name === n)! as MetaObject;
-  return { root, base: find("Auth"), bridge: find("BridgeAuth"), copay: find("CopayAuth") };
+  return { root, base: find("Auth"), bridge: find("BridgeAuth"), coupon: find("CouponAuth") };
 }
 
 /** Same hierarchy, but the base's grid carries an `@filter` preset — the arm where an
@@ -96,7 +96,7 @@ async function loadTphFiltered(): Promise<{ root: MetaRoot }> {
                 "@discriminator": "type",
                 children: [
                   { "source.rdb": { "@table": "auths" } },
-                  { "field.enum": { name: "type", "@values": ["Bridge", "Copay"], "@filterable": true } },
+                  { "field.enum": { name: "type", "@values": ["Bridge", "Coupon"], "@filterable": true } },
                   { "field.long": { name: "id" } },
                   { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
                   {
@@ -130,11 +130,11 @@ async function loadTphFiltered(): Promise<{ root: MetaRoot }> {
 /** The per-subtype-grid opt-in, as an adopter would write it in metaobjects.config.ts.
  *  Declared ONCE and passed to BOTH generators, which is the discipline the option
  *  documents: two disagreeing predicates reproduce #287 exactly. */
-const OPT_IN = (e: MetaObject) => e.name === "CopayAuth";
+const OPT_IN = (e: MetaObject) => e.name === "CouponAuth";
 
 function ctxFor(root: MetaRoot) {
   return makeRenderContext({
-    dialect: "postgres",
+    outputLayout: "flat" as const, dialect: "postgres",
     loadedRoot: root,
     outDir: "/x",
     dbImport: "../db",
@@ -155,28 +155,28 @@ describe("FR-017 Tier 3 — TPH TanStack grid", () => {
     expect(out).toContain('id: "type"');
     expect(out).toContain('id: "id"');
     expect(out).toContain('id: "quantity"');
-    expect(out).toContain('id: "copayAmount"');
+    expect(out).toContain('id: "couponAmount"');
     // Discriminator column renders as a badge.
     expect(out).toMatch(/id: "type"[\s\S]*?renderer: "badge"/);
   });
 
   test("grid filter: base emits; a subtype emits only when tphSubtypeGrids opts it in", async () => {
-    const { base, bridge, copay } = await loadTph();
+    const { base, bridge, coupon } = await loadTph();
     const gen = tanstackGrid({ tphSubtypeGrids: OPT_IN });
     expect(gen.filter!(base)).toBe(true);    // polymorphic grid
     expect(gen.filter!(bridge)).toBe(false); // inherits layout, but not opted in
-    expect(gen.filter!(copay)).toBe(true);   // opted in
+    expect(gen.filter!(coupon)).toBe(true);   // opted in
   });
 
   test("tphSubtypeGrids defaults OFF — no TPH subtype emits without one", async () => {
     // The default is what every existing project gets, so it is the arm most worth
     // pinning: an option that silently defaulted ON would change output for models that
     // never asked for a per-subtype grid.
-    const { base, bridge, copay } = await loadTph();
+    const { base, bridge, coupon } = await loadTph();
     for (const gen of [tanstackGrid(), tanstackGridHook()]) {
       expect(gen.filter!(base)).toBe(true);
       expect(gen.filter!(bridge)).toBe(false);
-      expect(gen.filter!(copay)).toBe(false);
+      expect(gen.filter!(coupon)).toBe(false);
     }
   });
 
@@ -187,24 +187,24 @@ describe("FR-017 Tier 3 — TPH TanStack grid", () => {
     // missing that clause, so BridgeAuth got a .grid.ts whose sibling .columns.tsx never
     // exists. With the clause now driven by a caller-supplied predicate, agreement is the
     // CALLER's discipline — so this asserts it holds when the same predicate is passed.
-    const { base, bridge, copay } = await loadTph();
+    const { base, bridge, coupon } = await loadTph();
     const hook = tanstackGridHook({ tphSubtypeGrids: OPT_IN });
     expect(hook.filter!(base)).toBe(true);
     expect(hook.filter!(bridge)).toBe(false);
-    expect(hook.filter!(copay)).toBe(true);
+    expect(hook.filter!(coupon)).toBe(true);
   });
 
   test("an opted-in subtype gets BOTH artifacts; an opted-out one gets NEITHER", async () => {
     // The pairing invariant on the OPT-IN path, asserted on a real run's output rather
     // than on the predicates. `tphSubtypeGrids` is passed to both generators — the
-    // discipline the option documents — so CopayAuth must get the pair and BridgeAuth
+    // discipline the option documents — so CouponAuth must get the pair and BridgeAuth
     // must get nothing. A one-sided wiring shows up here as a file set, not a subtlety.
     const { root } = await loadTph();
     const tmp = mkdtempSync(join(tmpdir(), "tph-grid-optin-"));
     try {
       await runGen({
         config: defineConfig({
-          outDir: tmp, extStyle: "none", dbImport: "../db", dialect: "postgres",
+          outDir: tmp, extStyle: "none", dbImport: "../db", outputLayout: "flat" as const, dialect: "postgres",
           generators: [
             entityFile(),
             tanstackGrid({ tphSubtypeGrids: OPT_IN }),
@@ -214,8 +214,8 @@ describe("FR-017 Tier 3 — TPH TanStack grid", () => {
         metadata: root,
       });
       const files = readdirSync(tmp);
-      expect(files).toContain("CopayAuth.columns.tsx");
-      expect(files).toContain("CopayAuth.grid.ts");
+      expect(files).toContain("CouponAuth.columns.tsx");
+      expect(files).toContain("CouponAuth.grid.ts");
       expect(files).not.toContain("BridgeAuth.columns.tsx");
       expect(files).not.toContain("BridgeAuth.grid.ts");
     } finally {
@@ -233,7 +233,7 @@ describe("FR-017 Tier 3 — TPH TanStack grid", () => {
     try {
       await runGen({
         config: defineConfig({
-          outDir: tmp, extStyle: "none", dbImport: "../db", dialect: "postgres",
+          outDir: tmp, extStyle: "none", dbImport: "../db", outputLayout: "flat" as const, dialect: "postgres",
           generators: [
             entityFile(),
             tanstackGrid({ tphSubtypeGrids: OPT_IN }),

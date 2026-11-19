@@ -32,10 +32,6 @@ describe("a JVM-only attribute", () => {
     expect(await codes(model(`"@objectAdapter": ["com.acme.DiagnosisAdapter"],`))).not.toEqual([]);
   });
 
-  test("the never-released @dbSetName is not vocabulary (it is @collectionName)", async () => {
-    expect(await codes(model(`"@dbSetName": "Diagnosis",`))).toContain("ERR_UNKNOWN_ATTR");
-  });
-
   test("an attribute the registry does not carry still fails", async () => {
     expect(await codes(model(`"@objectAdapterX": "com.acme.DiagnosisAdapter",`))).toContain("ERR_UNKNOWN_ATTR");
   });

@@ -23,7 +23,7 @@ class MetaRoot(MetaData):
         # REST surface), attached by the same project-aware loads as `naming`; read with
         # `wire_of()`. `native` for both keys until a load attaches the project's own.
         self.wire: WireFormat = WireFormat()
-        # ADR-0063 — the project `rules` / `verify` settings, attached by the same project-aware
+        # ADR-0066 — the project `rules` / `verify` settings, attached by the same project-aware
         # loads as `wire`; read with `rules_settings_of()`. Defaults until a load attaches them.
         self.rules_settings: RulesSettings = DEFAULT_RULES_SETTINGS
         # The project `api` setting (page size, unknown-field rule), attached the same way; read with `api_of()`.

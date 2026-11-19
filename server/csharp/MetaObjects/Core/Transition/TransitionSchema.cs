@@ -1,4 +1,4 @@
-// Attribute schemas for transition.* (ADR-0063). Mirrors spec/metamodel/transition.json;
+// Attribute schemas for transition.* (ADR-0066). Mirrors spec/metamodel/transition.json;
 // descriptions come from the shared JSON via Registry.ApplySpecDescriptions.
 
 using MetaObjects.Core.Attr;

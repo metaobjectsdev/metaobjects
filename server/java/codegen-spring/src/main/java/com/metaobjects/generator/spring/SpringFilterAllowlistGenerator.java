@@ -82,6 +82,7 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
         parseArgs();
         Path outRoot = Paths.get(outDir.getAbsolutePath());
         for (MetaObject declared : loader.getMetaObjects()) {
+            if (!isSelected(declared)) continue;
             // FR-044: a served report is emitted from its read model, whose derived fields
             // all carry @filterable (Table C), so there is no report branch below. Any
             // other report has no shape and emits nothing.

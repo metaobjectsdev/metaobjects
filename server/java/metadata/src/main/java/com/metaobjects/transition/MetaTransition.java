@@ -17,7 +17,7 @@ package com.metaobjects.transition;
 
 import com.metaobjects.MetaData;
 
-/** Base node class for {@code type = "transition"} (ADR-0063): one allowed move of a lifecycle. Accessors are RESOLVING (ADR-0039). */
+/** Base node class for {@code type = "transition"} (ADR-0066): one allowed move of a lifecycle. Accessors are RESOLVING (ADR-0039). */
 @SuppressWarnings("serial")
 public abstract class MetaTransition extends MetaData {
 

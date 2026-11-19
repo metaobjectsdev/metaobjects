@@ -4,11 +4,11 @@
     "children": [
       {
         "object.entity": {
-          "name": "Case",
+          "name": "Consignment",
           "children": [
             {
               "source.rdb": {
-                "@table": "cases"
+                "@table": "consignments"
               }
             },
             {
@@ -60,7 +60,7 @@
             },
             {
               "field.long": {
-                "name": "caseId"
+                "name": "consignmentId"
               }
             },
             {
@@ -73,11 +73,11 @@
             },
             {
               "identity.reference": {
-                "name": "caseId",
+                "name": "consignmentId",
                 "@fields": [
-                  "caseId"
+                  "consignmentId"
                 ],
-                "@references": "acme::tasks::Case"
+                "@references": "acme::tasks::Consignment"
               }
             }
           ]
@@ -87,7 +87,7 @@
         "object.projection": {
           "name": "OpenTasks",
           "@filter": {
-            "caseId.status": {
+            "consignmentId.status": {
               "eq": "open"
             }
           },

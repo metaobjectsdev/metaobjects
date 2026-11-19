@@ -109,7 +109,7 @@ class NeutralConfig:
     #: for the same reason `naming` is.
     wire: WireFormat = WireFormat()
 
-    #: ADR-0063 — the `rules` and `verify` blocks (business-rules settings), each absent key at
+    #: ADR-0066 — the `rules` and `verify` blocks (business-rules settings), each absent key at
     #: its default. Attached to the loaded root (`MetaRoot.rules_settings`) beside `wire`.
     rules: RulesSettings = RulesSettings()
 
@@ -215,8 +215,8 @@ def read_neutral_config(config_dir: Path) -> NeutralConfig | None:
     naming = _read_naming(raw, path)
     wire = _read_wire(raw, path)
     rules = _read_rules(raw, path)
-    api = _read_api(raw, path)
     _check_enums(raw, path)
+    api = _read_api(raw, path)
     requirements_inherit = _read_requirements_inherit(raw, path)
 
     # Unknown top-level keys are IGNORED by design — see the module docstring.
@@ -382,7 +382,7 @@ def _read_naming(raw: dict[str, object], path: Path) -> NamingRules:
     return NamingRules(columns=columns, tables=tables, collections=collections)
 
 
-#: ADR-0063 — the closed shape of the `rules` and `verify` blocks: block -> sub-block -> key -> values.
+#: ADR-0066 — the closed shape of the `rules` and `verify` blocks: block -> sub-block -> key -> values.
 _RULES_BLOCKS: dict[str, dict[str, dict[str, tuple[str, ...]]]] = {
     "rules": {
         "permissions": {"names": RULES_PERMISSION_NAMES},
@@ -398,7 +398,7 @@ _HAND_EDITS_POLICIES: tuple[str, ...] = ("fail", "notice")
 
 
 def _read_rules(raw: dict[str, object], path: Path) -> RulesSettings:
-    """ADR-0063 — the `rules` and `verify` blocks. Absent or `{}` ⇒ every key at its default.
+    """ADR-0066 — the `rules` and `verify` blocks. Absent or `{}` ⇒ every key at its default.
     Refuses a non-object block, an unknown key at any level, or a value outside the closed set a
     key accepts, exactly as `naming` and `wire` do: a mistake must not silently fall back to the
     default and change what `verify` reports."""
@@ -453,42 +453,6 @@ def _read_rules(raw: dict[str, object], path: Path) -> RulesSettings:
         lifecycle_commands=found.get(("rules", "lifecycle", "commands"), defaults.lifecycle_commands),
         lifecycle_unreachable=found.get(("verify", "lifecycle", "unreachable"), defaults.lifecycle_unreachable),
     )
-
-
-#: Every key the `enums` block accepts, and the ONLY ones it accepts (refused, not ignored, like `naming`).
-_ENUMS_KEYS = ("maxLength",)
-
-
-def _check_enums(raw: dict[str, object], path: Path) -> None:
-    """The `enums` block: `maxLength`, a positive integer, is the column length a port that
-    sizes a string-stored enum's column gives one with no @maxLength. This port sizes no
-    column (it emits no DDL and no column type), so it reads nothing from the block, but a
-    project shared with a port that does has one: the block is accepted, and its shape is
-    checked so a typo is refused here as it is there (a non-object block, an unknown key, or
-    a value that is not a positive integer)."""
-    if "enums" not in raw:
-        return
-    enums = raw["enums"]
-    if not isinstance(enums, dict):
-        raise ParseError(f"{path}: 'enums' must be an object", code=ErrorCode.ERR_BAD_ATTR_VALUE)
-    unknown = sorted(set(enums) - set(_ENUMS_KEYS))
-    if unknown:
-        raise ParseError(
-            f"{path}: 'enums' has unknown key(s) {unknown}; accepted: {list(_ENUMS_KEYS)}",
-            code=ErrorCode.ERR_BAD_ATTR_VALUE,
-        )
-    if "maxLength" not in enums:
-        return
-    value = enums["maxLength"]
-    # A whole number however JSON spells it (32, 32.0, 1e2): a reader that parses numbers as
-    # doubles (TypeScript's) cannot tell those apart, so every port accepts all three.
-    if isinstance(value, float) and value.is_integer():
-        value = int(value)
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ParseError(
-            f"{path}: 'enums.maxLength' must be a positive integer, got {value!r}",
-            code=ErrorCode.ERR_BAD_ATTR_VALUE,
-        )
 
 
 _PAGE_SIZE_MAX = 2147483647
@@ -558,6 +522,42 @@ def _read_api(raw: dict[str, object], path: Path) -> ApiSettings:
             code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
         )
     return ApiSettings(pagination=pagination, unknown_fields=unknown_fields)
+
+
+#: Every key the `enums` block accepts, and the ONLY ones it accepts (refused, not ignored, like `naming`).
+_ENUMS_KEYS = ("maxLength",)
+
+
+def _check_enums(raw: dict[str, object], path: Path) -> None:
+    """The `enums` block: `maxLength`, a positive integer, is the column length a port that
+    sizes a string-stored enum's column gives one with no @maxLength. This port sizes no
+    column (it emits no DDL and no column type), so it reads nothing from the block, but a
+    project shared with a port that does has one: the block is accepted, and its shape is
+    checked so a typo is refused here as it is there (a non-object block, an unknown key, or
+    a value that is not a positive integer)."""
+    if "enums" not in raw:
+        return
+    enums = raw["enums"]
+    if not isinstance(enums, dict):
+        raise ParseError(f"{path}: 'enums' must be an object", code=ErrorCode.ERR_BAD_ATTR_VALUE)
+    unknown = sorted(set(enums) - set(_ENUMS_KEYS))
+    if unknown:
+        raise ParseError(
+            f"{path}: 'enums' has unknown key(s) {unknown}; accepted: {list(_ENUMS_KEYS)}",
+            code=ErrorCode.ERR_BAD_ATTR_VALUE,
+        )
+    if "maxLength" not in enums:
+        return
+    value = enums["maxLength"]
+    # A whole number however JSON spells it (32, 32.0, 1e2): a reader that parses numbers as
+    # doubles (TypeScript's) cannot tell those apart, so every port accepts all three.
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ParseError(
+            f"{path}: 'enums.maxLength' must be a positive integer, got {value!r}",
+            code=ErrorCode.ERR_BAD_ATTR_VALUE,
+        )
 
 
 #: Every key the `wire` block accepts, and the ONLY ones it accepts (refused, not ignored, like `naming`).

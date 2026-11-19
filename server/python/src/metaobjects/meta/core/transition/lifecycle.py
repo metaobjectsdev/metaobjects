@@ -1,4 +1,4 @@
-"""Lifecycle and operation-target derivation (ADR-0063), shared by the loader's rules pass
+"""Lifecycle and operation-target derivation (ADR-0066), shared by the loader's rules pass
 and ``verify``'s rules gate. Everything here is DERIVED: a lifecycle, its states, its initial
 and terminal states and an operation's target entity have no vocabulary of their own. Every
 port implements these rules the same way. Mirrors TS ``core/transition/lifecycle.ts``.
@@ -72,7 +72,7 @@ def entity_lineage(entity: MetaData) -> list[MetaData]:
 def lifecycle_transitions_of(entity: MetaData, field: MetaData) -> list[MetaData]:
     """The transitions a field gives an entity: those declared on a field of the entity itself
     or of an entity it extends. A transition reached only through the field's own ``extends``
-    of another entity's field is not one (ADR-0063 section 2)."""
+    of another entity's field is not one (ADR-0066 section 2)."""
     lineage = entity_lineage(entity)
     out: list[MetaData] = []
     for t in transitions_of(field):
@@ -118,7 +118,7 @@ def lifecycles_of(obj: MetaData) -> list[Lifecycle]:
 def lifecycle_is_live(entity: MetaData) -> bool:
     """Whether an entity's lifecycles are live: it declares or inherits a source (RESOLVING
     ``children()``, ADR-0039). A lifecycle on an entity with no source loads and is inert: it
-    derives no command (ADR-0063 section 2)."""
+    derives no command (ADR-0066 section 2)."""
     return any(c.type == TYPE_SOURCE for c in entity.children())
 
 

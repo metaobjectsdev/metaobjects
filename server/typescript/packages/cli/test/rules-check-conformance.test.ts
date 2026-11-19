@@ -1,4 +1,4 @@
-// Cross-port business-rules conformance corpus — fixtures/rules-check-conformance/ (ADR-0063).
+// Cross-port business-rules conformance corpus — fixtures/rules-check-conformance/ (ADR-0066).
 //
 // The rules gate is part of `meta verify` in every port; this corpus holds the other four to
 // this one: the same inputs, the same diagnostics down to the message text, the same summary.

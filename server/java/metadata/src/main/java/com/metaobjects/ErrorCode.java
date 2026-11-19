@@ -311,6 +311,10 @@ public enum ErrorCode {
     ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP,
     ERR_SEQUENCE_WITHOUT_INCREMENT,
     ERR_SEQUENCE_START_OUT_OF_RANGE,
+    /** A CHECK-generating validator or field.enum sets @dbCheck: false and @constraintName. */
+    ERR_CONSTRAINT_NAME_WITHOUT_CHECK,
+    /** A cross-field validator (enforced only by its CHECK) sets @dbCheck: false. */
+    ERR_CROSS_FIELD_WITHOUT_CHECK,
 
     /** @storage was set on a field that has no @objectRef. */
     ERR_STORAGE_WITHOUT_OBJECT_REF,
@@ -617,37 +621,37 @@ public enum ErrorCode {
      */
     ERR_REPORT_FOREIGN_MEASURE,
 
-    /** ADR-0063: a transition.action @from or @to names a value that is not a member of its enum (L4). */
+    /** ADR-0066: a transition.action @from or @to names a value that is not a member of its enum (L4). */
     ERR_TRANSITION_UNKNOWN_STATE,
 
-    /** ADR-0063: a transition.action on a field of anything but an object.entity, or a concrete entity with a lifecycle and a source but no writable one; an entity with no source is inert (L1, L2). */
+    /** ADR-0066: a transition.action on a field of anything but an object.entity, or a concrete entity with a lifecycle and a source but no writable one; an entity with no source is inert (L1, L2). */
     ERR_TRANSITION_NOT_ON_ENTITY,
 
-    /** ADR-0063: a field.enum declares transitions but no @default, its initial state (L3). */
+    /** ADR-0066: a field.enum declares transitions but no @default, its initial state (L3). */
     ERR_LIFECYCLE_NO_INITIAL,
 
-    /** ADR-0063: an entity redeclares an inherited lifecycle field without extending it, dropping the base's transitions (L10). */
+    /** ADR-0066: an entity redeclares an inherited lifecycle field without extending it, dropping the base's transitions (L10). */
     ERR_LIFECYCLE_REDECLARED,
 
-    /** ADR-0063: a transition or operation is named create, get, list, update or delete, or two transitions of one entity share a name (L5, L6, O0). */
+    /** ADR-0066: a transition or operation is named create, get, list, update or delete, or two transitions of one entity share a name (L5, L6, O0). */
     ERR_TRANSITION_NAME_COLLISION,
 
-    /** ADR-0063: an operation @objectRef is not an object.entity, or a command lists @transitions with no target (O2). */
+    /** ADR-0066: an operation @objectRef is not an object.entity, or a command lists @transitions with no target (O2). */
     ERR_OPERATION_TARGET_UNRESOLVED,
 
-    /** ADR-0063: a declared @objectRef disagrees with the derived target (O3). */
+    /** ADR-0066: a declared @objectRef disagrees with the derived target (O3). */
     ERR_OPERATION_TARGET_MISMATCH,
 
-    /** ADR-0063: a @transitions name is not a transition of the operation's target (O4). */
+    /** ADR-0066: a @transitions name is not a transition of the operation's target (O4). */
     ERR_OPERATION_UNKNOWN_TRANSITION,
 
-    /** ADR-0063: @inputRef is not an object.value, or @outputRef is not an entity, projection or value (O1). */
+    /** ADR-0066: @inputRef is not an object.value, or @outputRef is not an entity, projection or value (O1). */
     ERR_OPERATION_SHAPE,
 
-    /** ADR-0063: @public: true together with @permission (P1). */
+    /** ADR-0066: @public: true together with @permission (P1). */
     ERR_PERMISSION_PUBLIC_CONFLICT,
 
-    /** ADR-0063: a binding.rest @path whose placeholders are not the target's key fields (B1). */
+    /** ADR-0066: a binding.rest @path whose placeholders are not the target's key fields (B1). */
     ERR_BINDING_PATH_MISMATCH,
 
     /** An internal loader error with no stable error code. */

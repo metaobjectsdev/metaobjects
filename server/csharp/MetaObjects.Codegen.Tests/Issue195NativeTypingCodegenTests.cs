@@ -61,7 +61,7 @@ public class Issue195NativeTypingCodegenTests
             Entities = r.Root.Objects(), Root = r.Root,
             Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
         };
-        return new EntityGenerator().Generate(ctx).Single(f => f.Path == "SessionSummary.g.cs").Content;
+        return new EntityGenerator().Generate(ctx).Single(f => System.IO.Path.GetFileName(f.Path) == "SessionSummary.g.cs").Content;
     }
 
     [Fact]

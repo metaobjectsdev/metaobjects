@@ -418,7 +418,7 @@ the re-diff is empty afterwards. Postgres keeps `IS [NOT] DISTINCT FROM`.
 A `validator.*` node and a `field.enum`'s member list each become a CHECK constraint. A validator
 on a derived field — one carrying an `origin.*`, or a cross-field validator naming one — makes
 none: the field is no column of the table, so a CHECK on it would fail `CREATE TABLE`; the C#
-context skips the same validators. Three
+context skips the same validators. Four
 attributes shape it, all database-only (no generated code reads them):
 
 - **`@constraintName`** names the CHECK, for a database whose CHECKs were named by hand. On the
@@ -431,6 +431,18 @@ attributes shape it, all database-only (no generated code reads them):
   (Postgres would truncate it, and the CHECK would never match its declaration). A CHECK with a
   declared name is always emitted, even where `migrate.checks.skipRedundant` (below) would leave
   it out.
+- **`@dbCheck: false`** leaves the CHECK out: `meta migrate`, `meta verify --db` and a generated
+  EF model declare none for that validator or enum (absent, `true`). It is per node, on a
+  `numeric`, `length` or `regex` validator and on `field.enum`. Use it for a column whose legacy
+  rows break the rule: a CHECK added `NOT VALID` still refuses an `UPDATE` of such a row, whatever
+  the update changes. The generated app-level validation is unchanged, so the validator still holds
+  every write and an enum's members still bound the property. A cross-field validator
+  (`comparison`, `requiredWhen`, `presentIff`, `atLeastOne`, `exactlyOne`) is enforced only by its CHECK, so
+  `false` on one is refused (`ERR_CROSS_FIELD_WITHOUT_CHECK`): remove the validator instead.
+  A live CHECK the model no longer declares is proposed for dropping (under `--allow drop-check`
+  on Postgres). Declaring `@constraintName` too is refused (`ERR_CONSTRAINT_NAME_WITHOUT_CHECK`):
+  there is no CHECK for the name to name. `migrate.checks.skipRedundant` (below) is independent:
+  it only ever leaves more out.
 - **`@condition`** on a cross-field validator (`comparison`, `requiredWhen`, `presentIff`,
   `atLeastOne`, `exactlyOne`) is an expression, in the grammar `origin.computed` uses, over the entity's fields.
   It refuses `case` and `now` (`ERR_BAD_ATTR_VALUE`): a database CHECK can hold neither.

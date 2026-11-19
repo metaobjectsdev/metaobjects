@@ -77,7 +77,7 @@ public sealed class OrphanSweepTests : IDisposable
     }
 
     private (int Code, string Out, string Err) Gen(params string[] extra) => Run(["gen", Meta, "--out", Out, "--namespace", "Acme.Generated", .. extra]);
-    private (int Code, string Out, string Err) Verify() => Run("verify", "--codegen", Meta, "--out", Out, "--namespace", "Acme.Generated");
+    private (int Code, string Out, string Err) Verify() => Run("verify", "--codegen", "--full", Meta, "--out", Out, "--namespace", "Acme.Generated");
 
     private Dictionary<string, string> Manifest() =>
         JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(ManifestPath))!;
@@ -307,7 +307,8 @@ public sealed class OrphanSweepTests : IDisposable
         var file = Path.Combine(Out, "Telemetry.g.cs");
         File.AppendAllText(file, "// mine\n");
 
-        var gen = Gen();
+        // A hand edit makes gen render (ADR-0064 Amendment A); --force keeps the rerun explicit.
+        var gen = Gen("--force");
         Assert.EndsWith("// mine\n", File.ReadAllText(file));
         Assert.Contains("Refused to overwrite", gen.Out + gen.Err);
         Assert.DoesNotContain("handEdits", gen.Out + gen.Err);
@@ -328,7 +329,7 @@ public sealed class OrphanSweepTests : IDisposable
         Assert.Contains("edited by hand; its generator sets handEdits: Overwrite", drift.Err);
         Assert.Contains("to regenerate", drift.Err);
 
-        var gen = Gen();
+        var gen = Gen("--force"); // explicit; an edited output would regenerate anyway
         Assert.Equal(0, gen.Code);
         Assert.Equal(fresh, File.ReadAllText(file));
         Assert.Contains("overwrote hand-edited Telemetry.g.cs", gen.Out + gen.Err);

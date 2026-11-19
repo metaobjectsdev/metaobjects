@@ -444,7 +444,7 @@ _TPH_UUID_META = {
                 "children": [
                     {"source.rdb": {"@table": "auths"}},
                     {"field.uuid": {"name": "id", "@filterable": True, "@sortable": True}},
-                    {"field.enum": {"name": "type", "@values": ["Bridge", "Copay"], "@filterable": True}},
+                    {"field.enum": {"name": "type", "@values": ["Bridge", "Coupon"], "@filterable": True}},
                     {"field.string": {"name": "reference", "@required": True, "@maxLength": 80}},
                     {"identity.primary": {"name": "id", "@fields": "id", "@generation": "uuid"}},
                 ],
@@ -458,9 +458,9 @@ _TPH_UUID_META = {
                 ],
             }},
             {"object.entity": {
-                "name": "CopayAuth",
+                "name": "CouponAuth",
                 "extends": "Auth",
-                "@discriminatorValue": "Copay",
+                "@discriminatorValue": "Coupon",
                 "children": [
                     {"field.string": {"name": "payer", "@maxLength": 80}},
                 ],

@@ -12,7 +12,7 @@
 //       decimal  → @precision, @scale
 //       object   → @objectRef
 //       currency → @currency
-//       enum     → @values, @provided, @intValueMap, @maxLength
+//       enum     → @values, @provided, @intValueMap, @stringValueMap, @maxLength
 //       int/long/double/float/boolean/date/time/timestamp/uuid → none
 //   - the "any attr" wildcard is gone; a misplaced attr is now ERR_UNKNOWN_ATTR.
 //
@@ -104,6 +104,8 @@ const ENUM_CORE_EXTRA: Record<string, AttrExp> = {
   values: { valueType: "string", required: true },
   provided: { valueType: "boolean", required: false },
   intValueMap: { valueType: "intMap", required: false },
+  // rc.21: the per-member stored strings of a string-stored enum (refused beside @intValueMap).
+  stringValueMap: { valueType: "properties", required: false },
   // The column length of a string-stored enum (refused beside @intValueMap at load).
   maxLength: { valueType: "int", required: false },
 };
@@ -111,6 +113,7 @@ const ENUM_CORE_EXTRA: Record<string, AttrExp> = {
 // db provider: the name of the CHECK an enum's member list generates.
 const ENUM_DB_EXTRA: Record<string, AttrExp> = {
   constraintName: { valueType: "string", required: false },
+  dbCheck: { valueType: "boolean", required: false },
 };
 
 /** Scoped concern attrs (db / prompt). */

@@ -187,7 +187,7 @@ public sealed class MapValueObjectWriteBehaviorGeneratedServerTest
     private static async Task<(string BaseUrl, WebApplication App)> StartGeneratedServerAsync(PostgresContainer pg)
     {
         var (assembly, routeEntities) = CompileGeneratedServer();
-        var dbContextType = assembly.GetType($"{GeneratedNamespace}.AppDbContext")
+        var dbContextType = MetaObjects.IntegrationTests.GeneratedTypes.Find(assembly, $"{GeneratedNamespace}.AppDbContext")
             ?? throw new InvalidOperationException("generated AppDbContext type not found");
 
         var builder = WebApplication.CreateBuilder();
@@ -205,7 +205,7 @@ public sealed class MapValueObjectWriteBehaviorGeneratedServerTest
         var app = builder.Build();
         foreach (var entity in routeEntities)
         {
-            var routesType = assembly.GetType($"{GeneratedNamespace}.{entity}Routes");
+            var routesType = MetaObjects.IntegrationTests.GeneratedTypes.Find(assembly, $"{GeneratedNamespace}.{entity}Routes");
             if (routesType is null) continue;
             var mapMethod = routesType.GetMethod($"Map{entity}Routes", BindingFlags.Public | BindingFlags.Static);
             mapMethod?.Invoke(null, new object[] { app, "/api" });

@@ -301,7 +301,7 @@ describe("csharp.providers (read by the C# port only)", () => {
   });
 });
 
-describe("ConfigSchema — rules and verify blocks (ADR-0063)", () => {
+describe("ConfigSchema — rules and verify blocks (ADR-0066)", () => {
   test("absent keys take the defaults, which behave as before the blocks existed", () => {
     expect(rulesSettingsFromConfig(ConfigSchema.parse({ schema_version: 1 }))).toEqual({
       permissionNames: "derive", lifecycleCreate: "initial", lifecycleCommands: "unclaimed", lifecycleUnreachable: "warn",

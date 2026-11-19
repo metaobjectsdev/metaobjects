@@ -1127,13 +1127,13 @@ def _coerce_filter_value(field: MetaField, value: Any) -> Any:
                 value = True
             elif lowered in ("false", "0"):
                 value = False
-    return _coerce_write_value(field, value)
+    return _coerce_write_value(field, value, for_filter=True)
 
 
 _INT_TEXT = _re.compile(r"^\s*-?\d+\s*$")
 
 
-def _coerce_write_value(field: MetaField, value: Any) -> Any:
+def _coerce_write_value(field: MetaField, value: Any, *, for_filter: bool = False) -> Any:
     if value is None:
         return None
     sub = field.sub_type
@@ -1223,6 +1223,21 @@ def _coerce_write_value(field: MetaField, value: Any) -> Any:
             if _field_is_array(field) and isinstance(value, list):
                 return [_encode_enum_member(int_map, v) for v in value]
             return _encode_enum_member(int_map, value)
+        # rc.21: a @stringValueMap enum stores the member's string (scalar only; the
+        # loader refuses it on an array).
+        stored_map = _string_value_map(field)
+        if stored_map is not None and isinstance(value, str):
+            if value in stored_map:
+                return stored_map[value]
+            # An unmapped member raises, written or filtered (rc.21 rulings, every port). Written:
+            # no CHECK need hold behind it (@dbCheck: false), and storing the symbol would write a
+            # spelling the column does not hold. Filtered: passed through, the symbol could equal
+            # ANOTHER member's stored string and match that member's rows.
+            verb = "filter on" if for_filter else "write"
+            raise ValueError(
+                f"field.enum '{field.name}' cannot {verb} {value!r}: it has no stored string in "
+                f"@{fc.FIELD_ATTR_STRING_VALUE_MAP} — the value is not one of the members the model declares."
+            )
 
     # Everything else (string / int / long / double / float / boolean / enum)
     # is already the native type pg8000 binds directly.
@@ -1327,6 +1342,13 @@ def _int_value_map(field: MetaField) -> dict[Any, Any] | None:
     return m if isinstance(m, dict) else None
 
 
+def _string_value_map(field: MetaField) -> dict[str, str] | None:
+    """rc.21 — the declared ``@stringValueMap`` (member → stored string), or ``None``.
+    ADR-0039 resolving, as :func:`_int_value_map`."""
+    m = field.get_meta_attr(fc.FIELD_ATTR_STRING_VALUE_MAP)
+    return m if isinstance(m, dict) else None
+
+
 def _decode_read_value(field: MetaField, value: Any) -> Any:
     """Decode a stored value back to its authoring form on read.
 
@@ -1372,6 +1394,18 @@ def _decode_read_value(field: MetaField, value: Any) -> Any:
         return value
     int_map = _int_value_map(field)
     if int_map is None:
+        stored_map = _string_value_map(field)
+        if stored_map is not None and isinstance(value, str):
+            # rc.21: the stored string back to its member; an unmapped one RAISES, as an
+            # unmapped int does.
+            for member, stored in stored_map.items():
+                if stored == value:
+                    return member
+            raise ValueError(
+                f"field.enum '{field.name}' read stored value {value!r} with no member in "
+                f"@{fc.FIELD_ATTR_STRING_VALUE_MAP} (declared: {stored_map}) — the database holds "
+                f"a value the model does not describe."
+            )
         return value
     if isinstance(value, list):
         # isArray=true (``integer[]``): decode element-wise; a null element stays null.

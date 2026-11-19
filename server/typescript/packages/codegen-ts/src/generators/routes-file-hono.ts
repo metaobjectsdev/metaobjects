@@ -4,7 +4,7 @@ import { renderRoutesFileHono } from "../templates/routes-file-hono.js";
 import { servesReadApi } from "../api-surface.js";
 import { renderRoutesIndex, routesIndexFileName } from "../templates/routes-index.js";
 import { formatTs } from "../format.js";
-import { entityOutputPath } from "../import-path.js";
+import { DEFAULT_OUTPUT_LAYOUT, entityOutputPath } from "../import-path.js";
 import { isTphSubtype } from "../tph.js";
 import { resolveExpose, type ExposeOption } from "../routes-expose.js";
 import { effectivePackage } from "../docs-paths.js";
@@ -90,7 +90,7 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
     generate: async (ctx) => {
       // One note per run naming every TPH subtype held back, so the gap is visible at
       // `meta gen` time rather than discovered as missing endpoints in production.
-      const skipped = ctx.entities.filter((e) => passesOtherGates(e) && isTphSubtype(e));
+      const skipped = ctx.entities.filter((e) => (ctx.selected?.(e) ?? true) && passesOtherGates(e) && isTphSubtype(e));
       if (skipped.length > 0) {
         ctx.warn(
           `no Hono routes emitted for the TPH subtype(s) ${skipped.map((e) => e.name).join(", ")} — ` +
@@ -116,7 +116,7 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
       claimRouteSegment(ctx, entity);
       return {
         path: entityOutputPath(
-          ctx.config.outputLayout ?? "flat",
+          ctx.config.outputLayout ?? DEFAULT_OUTPUT_LAYOUT,
           effectivePackage(entity),
           `${entity.name}.routes.hono.ts`,
         ),

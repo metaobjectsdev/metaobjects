@@ -143,7 +143,7 @@ export const RETIRED_CODEGEN_ATTRS: readonly RetiredCodegenAttr[] = [
     name: "emitGrid",
     replacement:
       'pass the `tphSubtypeGrids` option — tanstackGrid({ tphSubtypeGrids: (e) => e.name === ' +
-      '"CopayAuth" }) — and pass the SAME predicate to tanstackGridHook(), or the emitted ' +
+      '"CouponAuth" }) — and pass the SAME predicate to tanstackGridHook(), or the emitted ' +
       '<Sub>.grid.ts has no <Sub>.columns.tsx to import. This one is an opt-IN, so a `filter` ' +
       'cannot express it: a filter is ANDed with the built-in gates and can only narrow',
   },

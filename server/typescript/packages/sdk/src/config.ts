@@ -249,7 +249,7 @@ export const ConfigSchema = z.object({
    * project. Only the TypeScript `meta verify` reads it: the other ports' verify already fails
    * on any edit to a generated file. `lifecycle.unreachable`: the severity of a lifecycle state
    * no transition reaches from the initial state, and of a transition that starts only from
-   * such states — `warn` (default), `error` or `off` (ADR-0063); read by every port's config reader.
+   * such states — `warn` (default), `error` or `off` (ADR-0066); read by every port's config reader.
    */
   verify: z
     .strictObject({
@@ -393,7 +393,7 @@ export const ConfigSchema = z.object({
     })
     .optional(),
   /**
-   * ADR-0063 — the business-rules settings. Read only for a model that declares an operation
+   * ADR-0066 — the business-rules settings. Read only for a model that declares an operation
    * or a transition, and every absent key takes the behaviour such a model has without it.
    * `permissions.names`: `derive` (default; verify says nothing), `advise` (verify warns on an
    * operation or derived transition command with no explicit `@permission`, which asks about the
@@ -473,7 +473,7 @@ export function wireFormatFromConfig(cfg: Pick<Config, "wire">): WireFormat {
   };
 }
 
-/** The business-rules settings a config declares, each absent key at its default (ADR-0063). */
+/** The business-rules settings a config declares, each absent key at its default (ADR-0066). */
 export function rulesSettingsFromConfig(cfg: Pick<Config, "rules" | "verify">): RulesSettings {
   return rulesSettingsOf(cfg);
 }

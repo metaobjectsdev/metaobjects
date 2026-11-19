@@ -36,7 +36,7 @@ public class GeneratorIncludeTests
         return new GenContext
         {
             Entities = r.Root.Objects(), Root = r.Root,
-            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true },
         };
     }
 
@@ -76,8 +76,8 @@ public class GeneratorIncludeTests
     public void DbContext_include_maps_only_the_accepted_objects()
     {
         var src = Assert.Single(new DbContextGenerator { Include = o => o.Name is "Customer" }.Generate(Ctx())).Content;
-        Assert.Contains("DbSet<Customer>", src);
-        Assert.DoesNotContain("DbSet<Order>", src);
+        Assert.Contains("DbSet<global::Acme.Customer>", src);
+        Assert.DoesNotContain("DbSet<global::Acme.Order>", src);
     }
 
     [Fact]
@@ -103,4 +103,130 @@ public class GeneratorIncludeTests
         Assert.Single(narrowed.Entities);
         Assert.Same(ctx.Root, narrowed.Root);
     }
+
+    // G2, rc.20: a narrowed entry declares the shared enums of what it emits, not the whole model's,
+    // so two entries splitting the model do not both declare one enum.
+    private const string SharedEnums = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "field.enum": { "name": "OrderStatus", "abstract": true, "@values": ["DRAFT", "PLACED"] } },
+      { "field.enum": { "name": "Tier", "abstract": true, "@values": ["GOLD", "SILVER"] } },
+      { "field.enum": { "name": "Mood", "abstract": true, "@values": ["CALM", "LOUD"] } },
+      { "object.entity": { "name": "Order", "children": [
+        { "source.rdb": { "@table": "orders" } },
+        { "field.long": { "name": "id" } },
+        { "field.enum": { "name": "status", "extends": "OrderStatus" } },
+        { "field.object": { "name": "note", "@objectRef": "Note" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}},
+      { "object.entity": { "name": "Customer", "children": [
+        { "source.rdb": { "@table": "customers" } },
+        { "field.long": { "name": "id" } },
+        { "field.enum": { "name": "tier", "extends": "Tier" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}},
+      { "object.value": { "name": "Note", "children": [ { "field.enum": { "name": "mood", "extends": "Mood" } } ]}}
+    ]}}
+    """;
+
+    private static string SharedEnumPaths(EntityGenerator g)
+    {
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(SharedEnums, id: "enums.json")]);
+        Assert.Empty(r.Errors);
+        var ctx = new GenContext
+        {
+            Entities = r.Root.Objects(), Root = r.Root,
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true },
+        };
+        return string.Join("|", g.Generate(ctx).Select(f => f.Path).OrderBy(p => p));
+    }
+
+    [Fact]
+    public void A_narrowed_entry_declares_only_the_shared_enums_it_uses()
+    {
+        var all = SharedEnumPaths(new EntityGenerator());
+        Assert.Contains("OrderStatus.g.cs", all);
+        Assert.Contains("Tier.g.cs", all);
+        Assert.Contains("Mood.g.cs", all);
+
+        var orders = SharedEnumPaths(new EntityGenerator { Include = o => o.Name is "Order" });
+        Assert.Contains("OrderStatus.g.cs", orders);
+        // The value object Order reaches is emitted, so the enum it uses is too.
+        Assert.Contains("Note.g.cs", orders);
+        Assert.Contains("Mood.g.cs", orders);
+        Assert.DoesNotContain("Tier.g.cs", orders);
+
+        var customers = SharedEnumPaths(new EntityGenerator { Include = o => o.Name is "Customer" });
+        Assert.Contains("Tier.g.cs", customers);
+        Assert.DoesNotContain("OrderStatus.g.cs", customers);
+        Assert.DoesNotContain("Mood.g.cs", customers);
+    }
+
+    // G2, rc.20 fix round 1: an enum both narrowed entries use is declared by exactly one of them,
+    // the one that emits its first consumer by resolution key, so their outputs build together.
+    private const string BothUse = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "field.enum": { "name": "Level", "abstract": true, "@values": ["LOW", "HIGH"] } },
+      { "object.entity": { "name": "Order", "children": [
+        { "source.rdb": { "@table": "orders" } },
+        { "field.long": { "name": "id" } },
+        { "field.enum": { "name": "level", "extends": "Level" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}},
+      { "object.entity": { "name": "Customer", "children": [
+        { "source.rdb": { "@table": "customers" } },
+        { "field.long": { "name": "id" } },
+        { "field.enum": { "name": "level", "extends": "Level" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}}
+    ]}}
+    """;
+
+    [Fact]
+    public void An_enum_both_narrowed_entries_use_is_declared_once()
+    {
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(BothUse, id: "both.json")]);
+        Assert.Empty(r.Errors);
+        // One run, one claim registry, as two entries of one generator list share.
+        var orderEntry = new EntityGenerator { Include = o => o.Name is "Order" };
+        var customerEntry = new EntityGenerator { Include = o => o.Name is "Customer" };
+        var ctx = new GenContext
+        {
+            Entities = r.Root.Objects(), Root = r.Root, Generators = [orderEntry, customerEntry],
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true },
+        };
+        var orders = orderEntry.Generate(ctx).ToList();
+        var customers = customerEntry.Generate(ctx).ToList();
+        // Customer sorts first (acme::Customer < acme::Order), so its entry declares Level.
+        Assert.Contains(customers, f => f.Path.EndsWith("Level.g.cs", StringComparison.Ordinal));
+        Assert.DoesNotContain(orders, f => f.Path.EndsWith("Level.g.cs", StringComparison.Ordinal));
+        // Order still names it.
+        Assert.Contains("global::Acme.Level", Assert.Single(orders, f => f.Path.EndsWith("Order.g.cs", StringComparison.Ordinal)).Content);
+        var errors = PackageNamespaceTests.CompileErrors(orders.Concat(customers));
+        Assert.True(errors.Count == 0, "the two entries' output should build together, but got:\n" + string.Join("\n", errors));
+        // Un-narrowed, it is declared as before.
+        Assert.Single(new EntityGenerator().Generate(ctx), f => f.Path.EndsWith("Level.g.cs", StringComparison.Ordinal));
+    }
+    // B2: a single narrowed entry whose Include does not accept the enum's home (Customer) still declares
+    // the enum, because no other entry of the run will; its output builds on its own.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_single_narrowed_entry_declares_a_shared_enum_whose_home_it_does_not_emit(bool listed)
+    {
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(BothUse, id: "both.json")]);
+        Assert.Empty(r.Errors);
+        var orderEntry = new EntityGenerator { Include = o => o.Name is "Order" };
+        // Another kind of entry accepting the home does not declare entity enums, so it does not count.
+        var routes = new RoutesGenerator { Include = o => o.Name is "Customer" };
+        var ctx = new GenContext
+        {
+            Entities = r.Root.Objects(), Root = r.Root, Generators = listed ? [orderEntry, routes] : [],
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true },
+        };
+        var orders = orderEntry.Generate(ctx).ToList();
+        Assert.Single(orders, f => f.Path.EndsWith("Level.g.cs", StringComparison.Ordinal));
+        var errors = PackageNamespaceTests.CompileErrors(orders);
+        Assert.True(errors.Count == 0, "a single narrowed entry's output should build on its own, but got:\n" + string.Join("\n", errors));
+    }
 }
+

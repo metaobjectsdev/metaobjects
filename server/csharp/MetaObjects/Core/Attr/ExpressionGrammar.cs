@@ -39,6 +39,97 @@ public static class ExpressionGrammar
     public const string EXPR_CASE_OPERAND   = "operand";
     public const string EXPR_NOW            = "now";
     public const string EXPR_NOW_START_OF   = "startOf";
+    // rc.21 part B (U12): { cast: <expr>, as: "<field subtype>", dbColumnType?: "<text spelling>" }.
+    public const string EXPR_CAST                = "cast";
+    public const string EXPR_CAST_AS             = "as";
+    public const string EXPR_CAST_DB_COLUMN_TYPE = "dbColumnType";
+
+    /// <summary>A function parameter's kind: a string, an integer, any scalar, or the type the "same" ones share.</summary>
+    private enum ParamKind { String, Int, Scalar, Same }
+    /// <summary>One function's signature: arity, each parameter's kind (the last repeats) and the result.</summary>
+    private sealed record FnSignature(int Min, int Max, ParamKind[] Params, string Result, bool Ordered = false);
+
+    /// <summary>
+    /// rc.21 part B (U11, U13): the closed, typed function set beside coalesce, by name — the TS
+    /// <c>EXPR_FUNCTIONS</c> table, entry for entry. Never free SQL.
+    /// </summary>
+    private static readonly Dictionary<string, FnSignature> Functions = new(StringComparer.Ordinal)
+    {
+        [EXPR_FN_COALESCE] = new(1, int.MaxValue, [ParamKind.Same], "same"),
+        ["greatest"] = new(1, int.MaxValue, [ParamKind.Same], "same", Ordered: true),
+        ["least"] = new(1, int.MaxValue, [ParamKind.Same], "same", Ordered: true),
+        ["nullif"] = new(2, 2, [ParamKind.Same, ParamKind.Same], "same"),
+        ["lower"] = new(1, 1, [ParamKind.String], "string"),
+        ["upper"] = new(1, 1, [ParamKind.String], "string"),
+        ["btrim"] = new(1, 2, [ParamKind.String, ParamKind.String], "string"),
+        ["splitPart"] = new(3, 3, [ParamKind.String, ParamKind.String, ParamKind.Int], "string"),
+        ["concat"] = new(1, int.MaxValue, [ParamKind.Scalar], "string"),
+        ["concatWs"] = new(2, int.MaxValue, [ParamKind.String, ParamKind.Scalar], "string"),
+        ["substring"] = new(2, 3, [ParamKind.String, ParamKind.Int, ParamKind.Int], "string"),
+        ["replace"] = new(3, 3, [ParamKind.String, ParamKind.String, ParamKind.String], "string"),
+        ["left"] = new(2, 2, [ParamKind.String, ParamKind.Int], "string"),
+        ["right"] = new(2, 2, [ParamKind.String, ParamKind.Int], "string"),
+        ["length"] = new(1, 1, [ParamKind.String], "int"),
+    };
+
+    /// <summary>The field subtypes a cast may name in <c>as</c>.</summary>
+    public static readonly IReadOnlyList<string> CastTargets =
+    [
+        FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
+        FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIMESTAMP, FIELD_SUBTYPE_UUID,
+    ];
+    private static readonly HashSet<string> NumericSubtypes = new(StringComparer.Ordinal)
+    {
+        FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT, FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_CURRENCY,
+    };
+    private static readonly HashSet<string> IntegerSubtypes = new(StringComparer.Ordinal) { FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG };
+    private static readonly HashSet<string> NonScalarSubtypes = new(StringComparer.Ordinal) { FIELD_SUBTYPE_OBJECT, FIELD_SUBTYPE_MAP };
+
+    /// <summary>Why a value of <paramref name="from"/> cannot be cast to <paramref name="to"/>, or null — TS <c>castProblem</c>.</summary>
+    public static string? CastProblem(string? from, string to, bool intStoredEnum)
+    {
+        if (from is null) return null;
+        if (NonScalarSubtypes.Contains(from)) return $"a field.{from} value cannot be cast";
+        if (from == to) return null;
+        if (from == FIELD_SUBTYPE_ENUM)
+        {
+            if (to == FIELD_SUBTYPE_STRING) return intStoredEnum ? "an int-stored enum (@intValueMap) cast to string gives its integer, not its member; cast it to int" : null;
+            if (IntegerSubtypes.Contains(to)) return intStoredEnum ? null : "only an enum stored as an integer (@intValueMap) can be cast to a number";
+            return $"an enum cannot be cast to {to}";
+        }
+        if (to == FIELD_SUBTYPE_STRING) return null;
+        if (from == FIELD_SUBTYPE_STRING) return null;
+        // Postgres casts a boolean only to and from integer (int4), so those are the only number casts.
+        if (NumericSubtypes.Contains(to))
+        {
+            if (from == FIELD_SUBTYPE_BOOLEAN) return to == FIELD_SUBTYPE_INT ? null : $"a boolean casts only to int, not {to}";
+            return NumericSubtypes.Contains(from) ? null : $"a {from} cannot be cast to {to}";
+        }
+        if (to == FIELD_SUBTYPE_BOOLEAN) return from == FIELD_SUBTYPE_INT ? null : $"a {from} cannot be cast to boolean; only an int can";
+        if (to is FIELD_SUBTYPE_DATE or FIELD_SUBTYPE_TIMESTAMP)
+            return from is FIELD_SUBTYPE_DATE or FIELD_SUBTYPE_TIMESTAMP ? null : $"a {from} cannot be cast to {to}";
+        return $"a {from} cannot be cast to {to}";
+    }
+
+    /// <summary>
+    /// The first node a CHECK condition cannot hold (case, now, cast, a function other than coalesce,
+    /// a path), or null — TS <c>exprViewOnlyNode</c>.
+    /// </summary>
+    public static string? ExprViewOnlyNode(object? node)
+    {
+        if (node is not IReadOnlyDictionary<string, object?> n) return null;
+        if (n.ContainsKey(EXPR_CAST)) return EXPR_CAST;
+        if (n.ContainsKey(EXPR_CASE)) return EXPR_CASE;
+        if (n.ContainsKey(EXPR_NOW)) return EXPR_NOW;
+        if (n.ContainsKey(KEY_FN) && !Equals(Get(n, KEY_FN), EXPR_FN_COALESCE)) return Str(Get(n, KEY_FN));
+        if (Get(n, KEY_FIELD) is string f && f.Contains('.')) return $"the path \"{f}\"";
+        foreach (var key in new[] { KEY_LEFT, KEY_RIGHT, KEY_ARG })
+            if (ExprViewOnlyNode(Get(n, key)) is { } hit) return hit;
+        if (Get(n, KEY_ARGS) is IEnumerable<object?> args)
+            foreach (var a in args)
+                if (ExprViewOnlyNode(a) is { } hit) return hit;
+        return null;
+    }
 
     // Node-kind keys (verbatim from the @expr tree — not metamodel attrs).
     private const string KEY_FIELD = "field";
@@ -76,11 +167,6 @@ public static class ExpressionGrammar
         (KEY_OP, [KEY_OP, KEY_LEFT, KEY_RIGHT, KEY_ARG, KEY_ARGS]),
     ];
 
-    private static readonly HashSet<string> NumericSubtypes = new(StringComparer.Ordinal)
-    {
-        FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT, FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_CURRENCY,
-    };
-
     /// <summary>The field names an expression tree references, in order of appearance.</summary>
     public static List<string> FieldRefs(object? node)
         => Nodes(node).Select(n => Get(n, KEY_FIELD)).OfType<string>().ToList();
@@ -97,6 +183,7 @@ public static class ExpressionGrammar
             Walk(Get(n, KEY_RIGHT));
             Walk(Get(n, KEY_ARG));
             if (Get(n, KEY_ARGS) is IEnumerable<object?> args) foreach (var a in args) Walk(a);
+            Walk(Get(n, EXPR_CAST));
             Walk(Get(n, EXPR_CASE_OPERAND));
             Walk(Get(n, EXPR_CASE_ELSE));
             if (Get(n, EXPR_CASE) is IEnumerable<object?> arms)
@@ -178,13 +265,30 @@ public static class ExpressionGrammar
             return errs;
         }
 
+        if (n.ContainsKey(EXPR_CAST))
+        {
+            var extra = n.Keys.Where(k => k != EXPR_CAST && k != EXPR_CAST_AS && k != EXPR_CAST_DB_COLUMN_TYPE).ToList();
+            if (extra.Count > 0)
+                return [$"expression '{EXPR_CAST}' takes only '{EXPR_CAST_AS}' and '{EXPR_CAST_DB_COLUMN_TYPE}' beside it, not {string.Join(", ", extra)}"];
+            if (Get(n, EXPR_CAST_AS) is not string to || !CastTargets.Contains(to))
+                return [$"'{EXPR_CAST}' requires '{EXPR_CAST_AS}': one of {string.Join(", ", CastTargets)}"];
+            if (n.ContainsKey(EXPR_CAST_DB_COLUMN_TYPE))
+            {
+                var parsed = Get(n, EXPR_CAST_DB_COLUMN_TYPE) is string spelling ? MetaObjects.Persistence.Db.DbConstants.ParseDbColumnType(spelling) : null;
+                if (parsed is null || parsed.Kind is "uuid" or "jsonb" || to != FIELD_SUBTYPE_STRING)
+                    return [$"'{EXPR_CAST}' '{EXPR_CAST_DB_COLUMN_TYPE}' is a text spelling of @dbColumnType (text, varchar, character varying, varchar(n), character varying(n), character(n)) with '{EXPR_CAST_AS}: {FIELD_SUBTYPE_STRING}'"];
+            }
+            return ValidateExprNode(Get(n, EXPR_CAST));
+        }
+
         if (n.ContainsKey(KEY_FN))
         {
-            if (Get(n, KEY_FN) is not string fn || fn != EXPR_FN_COALESCE)
+            if (Get(n, KEY_FN) is not string fn || !Functions.TryGetValue(fn, out var sig))
                 return [$"unknown expression fn '{Str(Get(n, KEY_FN))}'"];
-            return Get(n, KEY_ARGS) is IReadOnlyList<object?> args && args.Count >= 1
-                ? args.SelectMany(ValidateExprNode).ToList()
-                : [$"'{EXPR_FN_COALESCE}' requires a non-empty args array"];
+            if (Get(n, KEY_ARGS) is not IReadOnlyList<object?> args || args.Count < Math.Max(sig.Min, 1))
+                return [sig.Min <= 1 ? $"'{fn}' requires a non-empty args array" : $"'{fn}' requires at least {sig.Min} args"];
+            if (args.Count > sig.Max) return [$"'{fn}' takes at most {sig.Max} args, got {args.Count}"];
+            return args.SelectMany(ValidateExprNode).ToList();
         }
 
         if (n.ContainsKey(KEY_OP))
@@ -212,7 +316,7 @@ public static class ExpressionGrammar
             return [$"unknown expression op '{op}'"];
         }
 
-        return ["expression node must be one of {field}, {value}, {op,…}, {fn,…}, {case,…}, {now}"];
+        return ["expression node must be one of {field}, {value}, {op,…}, {fn,…}, {case,…}, {now}, {cast,…}"];
     }
 
     // -------------------------------------------------------------------------
@@ -229,8 +333,9 @@ public static class ExpressionGrammar
     /// coalesce → the unified arg subType. Also enforces per-operand op legality
     /// against the shared filter bands. Mirrors TS <c>inferExprType</c>.
     /// </summary>
-    public static InferResult InferExprType(object? node, Func<string, string?> resolveField)
+    public static InferResult InferExprType(object? node, Func<string, string?> resolveField, Func<string, bool>? isIntStoredEnum = null)
     {
+        isIntStoredEnum ??= _ => false;
         var structural = ValidateExprNode(node);
         if (structural.Count > 0) return new InferResult(null, structural);
         var n = (IReadOnlyDictionary<string, object?>)node!;
@@ -255,28 +360,28 @@ public static class ExpressionGrammar
         {
             var errors = new List<string>();
             var arms = (IReadOnlyList<object?>)Get(n, EXPR_CASE)!;
-            InferResult? operand = n.ContainsKey(EXPR_CASE_OPERAND) ? InferExprType(Get(n, EXPR_CASE_OPERAND), resolveField) : null;
+            InferResult? operand = n.ContainsKey(EXPR_CASE_OPERAND) ? InferExprType(Get(n, EXPR_CASE_OPERAND), resolveField, isIntStoredEnum) : null;
             if (operand is { } o) errors.AddRange(o.Errors);
             var results = new List<string?>();
             var resultNodes = new List<object?>();
             foreach (var armObj in arms)
             {
                 var arm = (IReadOnlyDictionary<string, object?>)armObj!;
-                var w = InferExprType(Get(arm, EXPR_CASE_WHEN), resolveField);
+                var w = InferExprType(Get(arm, EXPR_CASE_WHEN), resolveField, isIntStoredEnum);
                 errors.AddRange(w.Errors);
                 if (operand is null && w.Type is not null && w.Type != FIELD_SUBTYPE_BOOLEAN)
                     errors.Add($"a searched '{EXPR_CASE}' needs a boolean '{EXPR_CASE_WHEN}', got {w.Type}");
                 if (operand is { Type: { } ot } && w.Type is not null && Get(arm, EXPR_CASE_WHEN) is IReadOnlyDictionary<string, object?> wn
                     && !wn.ContainsKey(KEY_VALUE) && w.Type != ot)
                     errors.Add($"a simple '{EXPR_CASE}' compares its {ot} '{EXPR_CASE_OPERAND}' with a {w.Type} '{EXPR_CASE_WHEN}'");
-                var t = InferExprType(Get(arm, EXPR_CASE_THEN), resolveField);
+                var t = InferExprType(Get(arm, EXPR_CASE_THEN), resolveField, isIntStoredEnum);
                 errors.AddRange(t.Errors);
                 results.Add(t.Type);
                 resultNodes.Add(Get(arm, EXPR_CASE_THEN));
             }
             if (n.ContainsKey(EXPR_CASE_ELSE))
             {
-                var e = InferExprType(Get(n, EXPR_CASE_ELSE), resolveField);
+                var e = InferExprType(Get(n, EXPR_CASE_ELSE), resolveField, isIntStoredEnum);
                 errors.AddRange(e.Errors);
                 results.Add(e.Type);
                 resultNodes.Add(Get(n, EXPR_CASE_ELSE));
@@ -287,29 +392,56 @@ public static class ExpressionGrammar
             return new InferResult(unified, errors);
         }
 
-        if (n.ContainsKey(KEY_FN)) // coalesce
+        if (n.ContainsKey(EXPR_CAST))
         {
+            var inner = Get(n, EXPR_CAST);
+            var operand = InferExprType(inner, resolveField, isIntStoredEnum);
+            var to = (string)Get(n, EXPR_CAST_AS)!;
+            var fieldRef = inner is IReadOnlyDictionary<string, object?> innerNode ? Get(innerNode, KEY_FIELD) as string : null;
+            var problem = CastProblem(operand.Type, to, fieldRef is not null && isIntStoredEnum(fieldRef));
+            return new InferResult(to, problem is null ? operand.Errors : [.. operand.Errors, $"'{EXPR_CAST}': {problem}"]);
+        }
+
+        if (n.ContainsKey(KEY_FN))
+        {
+            var name = (string)Get(n, KEY_FN)!;
+            var sig = Functions[name];
             var args = (IReadOnlyList<object?>)Get(n, KEY_ARGS)!;
-            var argResults = args.Select(a => InferExprType(a, resolveField)).ToList();
+            var argResults = args.Select(a => InferExprType(a, resolveField, isIntStoredEnum)).ToList();
             var errors = argResults.SelectMany(a => a.Errors).ToList();
-            var (unified, differing) = UnifyTypes(args, argResults.Select(a => a.Type).ToList());
+            var same = new List<string?>();
+            var sameNodes = new List<object?>();
+            for (var i = 0; i < argResults.Count; i++)
+            {
+                var t = argResults[i].Type;
+                if (t is null) continue; // a null literal fits any parameter
+                var kind = sig.Params[Math.Min(i, sig.Params.Length - 1)];
+                if (kind == ParamKind.Same) { same.Add(t); sameNodes.Add(args[i]); }
+                else if (kind == ParamKind.String && t != FIELD_SUBTYPE_STRING) errors.Add($"'{name}' argument {i + 1} must be a string, got {t}");
+                else if (kind == ParamKind.Int && t != FIELD_SUBTYPE_INT) errors.Add($"'{name}' argument {i + 1} must be an int, got {t}{(t == FIELD_SUBTYPE_LONG ? "; cast it ({ cast: <expr>, as: int })" : "")}");
+                else if (kind == ParamKind.Scalar && NonScalarSubtypes.Contains(t)) errors.Add($"'{name}' argument {i + 1} must be a scalar, got {t}");
+            }
+            var (unified, differing) = UnifyTypes(sameNodes, same);
             if (differing is not null)
-                errors.Add($"'{EXPR_FN_COALESCE}' arguments have differing types ({string.Join(", ", differing)})");
-            return new InferResult(unified, errors);
+                errors.Add($"'{name}' arguments have differing types ({string.Join(", ", differing)})");
+            if (sig.Ordered && unified is not null && (unified == FIELD_SUBTYPE_BOOLEAN || NonScalarSubtypes.Contains(unified)))
+                errors.Add($"'{name}' needs ordered arguments, got {unified}");
+            var type = sig.Result == "same" ? unified : sig.Result == "int" ? FIELD_SUBTYPE_INT : FIELD_SUBTYPE_STRING;
+            return new InferResult(type, errors);
         }
 
         var op = (string)Get(n, KEY_OP)!;
         if (ComparisonOps.Contains(op))
         {
-            var l = InferExprType(Get(n, KEY_LEFT), resolveField);
-            var r = InferExprType(Get(n, KEY_RIGHT), resolveField);
+            var l = InferExprType(Get(n, KEY_LEFT), resolveField, isIntStoredEnum);
+            var r = InferExprType(Get(n, KEY_RIGHT), resolveField, isIntStoredEnum);
             var errors = l.Errors.Concat(r.Errors).ToList();
             if (l.Type is not null && !OpsForSubType(l.Type).Contains(op))
                 errors.Add($"op '{op}' is not legal for a {l.Type} operand");
             return new InferResult(FIELD_SUBTYPE_BOOLEAN, errors);
         }
         if (NullOps.Contains(op))
-            return new InferResult(FIELD_SUBTYPE_BOOLEAN, InferExprType(Get(n, KEY_ARG), resolveField).Errors.ToList());
+            return new InferResult(FIELD_SUBTYPE_BOOLEAN, InferExprType(Get(n, KEY_ARG), resolveField, isIntStoredEnum).Errors.ToList());
         if (op == EXPR_OP_NOT || VariadicLogicOps.Contains(op))
         {
             var kids = op == EXPR_OP_NOT
@@ -318,7 +450,7 @@ public static class ExpressionGrammar
             var errors = new List<string>();
             foreach (var k in kids)
             {
-                var kt = InferExprType(k, resolveField);
+                var kt = InferExprType(k, resolveField, isIntStoredEnum);
                 errors.AddRange(kt.Errors);
                 if (kt.Type is not null && kt.Type != FIELD_SUBTYPE_BOOLEAN)
                     errors.Add($"op '{op}' requires boolean operands, got {kt.Type}");

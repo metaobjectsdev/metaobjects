@@ -1,0 +1,13 @@
+{ "metadata.root": { "package": "acme::views", "children": [
+  { "object.entity": { "name": "Order", "children": [
+    { "source.rdb": { "@table": "orders" } },
+    { "field.long": { "name": "id" } },
+    { "field.enum": { "name": "kind", "@values": ["A", "B"] } },
+    { "identity.primary": { "name": "id", "@fields": "id" } }
+  ] } },
+  { "object.projection": { "name": "V", "children": [
+    { "source.rdb": { "@kind": "view", "@view": "v" } },
+    { "field.long": { "name": "id", "extends": "Order.id" } },
+    { "field.int": { "name": "k", "children": [ { "origin.computed": { "@expr": { "cast": { "field": "kind" }, "as": "int" } } } ] } }
+  ] } }
+] } }

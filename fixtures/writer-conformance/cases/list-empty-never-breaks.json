@@ -1,0 +1,26 @@
+{
+  "description": "An empty list prints as its brackets and never breaks, so a line with only empty lists stays long.",
+  "dialect": "core",
+  "options": {
+    "indent": "  ",
+    "width": 30,
+    "trailingComma": true
+  },
+  "ops": [
+    [
+      "line",
+      "const somethingQuiteLongIndeed = new Thing",
+      {
+        "list": {
+          "open": "(",
+          "items": [],
+          "close": ")"
+        }
+      },
+      ";"
+    ]
+  ],
+  "expected": [
+    "const somethingQuiteLongIndeed = new Thing();"
+  ]
+}

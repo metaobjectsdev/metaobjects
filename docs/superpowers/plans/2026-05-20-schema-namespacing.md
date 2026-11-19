@@ -844,11 +844,11 @@ Create `fixtures/conformance/source-db-table-with-schema/input/meta.demo.json`:
     "children": [
       {
         "object.entity": {
-          "name": "Case",
+          "name": "Consignment",
           "children": [
-            { "source.dbTable": { "@name": "Cases", "@schema": "public" } },
+            { "source.dbTable": { "@name": "Consignments", "@schema": "public" } },
             { "field.long":   { "name": "id" } },
-            { "field.string": { "name": "caseNumber" } },
+            { "field.string": { "name": "consignmentNumber" } },
             { "identity.primary": { "@fields": "id" } }
           ]
         }
@@ -867,11 +867,11 @@ Create `fixtures/conformance/source-db-table-with-schema/expected.json` with the
     "children": [
       {
         "object.entity": {
-          "name": "Case",
+          "name": "Consignment",
           "children": [
-            { "source.dbTable": { "@name": "Cases", "@schema": "public" } },
+            { "source.dbTable": { "@name": "Consignments", "@schema": "public" } },
             { "field.long":   { "name": "id" } },
-            { "field.string": { "name": "caseNumber" } },
+            { "field.string": { "name": "consignmentNumber" } },
             { "identity.primary": { "@fields": ["id"] } }
           ]
         }

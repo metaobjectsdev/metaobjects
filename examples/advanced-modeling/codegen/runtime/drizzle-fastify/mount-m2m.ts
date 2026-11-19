@@ -105,7 +105,7 @@ export function mountM2mRoute(opts: M2mRouteOptions): void {
     }
 
     // Stage 0 — the source id must name a row of THIS subtype. Skipping it would let
-    // `/auths/bridge/{a Copay's id}/linkedAuths` return that Copay's relations, because
+    // `/auths/bridge/{a Coupon's id}/linkedAuths` return that Coupon's relations, because
     // the junction FK cannot tell the subtypes apart: it points at the shared base table.
     const srcDisc = opts.sourceDiscriminator;
     if (srcDisc !== undefined) {

@@ -18,6 +18,9 @@ from typing import Any
 
 import pytest
 
+import contextlib
+import io
+
 from metaobjects import cli
 from metaobjects.cli import main
 from tests.codegen.gen_suite import GEN_SUITE
@@ -57,7 +60,9 @@ def _meta_dir(tmp_path: Path, requirements: list[dict[str, Any]]) -> str:
 
 def _verify(tmp_path: Path, meta_dir: str, *extra: str) -> int:
     out = tmp_path / "out"
-    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0
+    # gen's own report is not what this compares: a repeat run reports files as unchanged.
+    with contextlib.redirect_stdout(io.StringIO()):
+        assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0
     return main(as_config(["verify", "--codegen", "--generators", GEN_SUITE, meta_dir, "--out", str(out), *extra]))
 
 
@@ -73,6 +78,9 @@ def test_a_model_with_no_requirements_prints_nothing_and_exits_as_before(
 
     # BEFORE: the same run with the gate unplugged — what verify printed without it.
     monkeypatch.setattr(cli, "_verify_requirements", lambda args, loaded=None: 0)
+    # From an empty out dir again, so gen writes (and prints) the same files as above
+    # rather than reporting them unchanged.
+    shutil.rmtree(tmp_path / "out")
     before_code = _verify(tmp_path, meta_dir)
     before = capsys.readouterr()
 

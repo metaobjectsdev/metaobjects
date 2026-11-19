@@ -22,12 +22,12 @@ import static org.junit.Assert.assertTrue;
  * <p>{@code Auth} (base, {@code @discriminator: type}) declares {@code helpers ->
  * Tag} (Tag is NOT TPH). {@code BridgeAuth} (subtype) SHADOWS {@code helpers} onto
  * {@code PriorityTicket} — a concrete TPH subtype of the UNRELATED {@code Ticket}
- * hierarchy. {@code CopayAuth} does not shadow — it inherits the base's Tag-target
+ * hierarchy. {@code CouponAuth} does not shadow — it inherits the base's Tag-target
  * relationship unmodified.</p>
  *
  * <p>Because Java disambiguates every (relation name, source scope) pair into its
  * OWN interface method ({@code findHelpers} / {@code findHelpersForBridge} /
- * {@code findHelpersForCopay}), each finder's {@code targetSubtype} threading is
+ * {@code findHelpersForCoupon}), each finder's {@code targetSubtype} threading is
  * decided from ITS OWN resolved {@link SpringM2mSupport.M2mNav} — independently
  * correct by construction, with no shared seam across mounts to desynchronize (the
  * arity-mismatch hazard Python's single shared {@code Protocol} seam has to guard
@@ -53,7 +53,7 @@ public class SpringTphM2mShadowedTargetCodegenTest extends SharedRegistryTestBas
             { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
                 { "source.rdb":   { "@table": "auths" } },
                 { "field.long":   { "name": "id" } },
-                { "field.enum":   { "name": "type", "@values": ["Bridge", "Copay"] } },
+                { "field.enum":   { "name": "type", "@values": ["Bridge", "Coupon"] } },
                 { "field.string": { "name": "reference", "@required": true, "@maxLength": 80 } },
                 { "relationship.association": { "name": "helpers", "@cardinality": "many",
                     "@objectRef": "Tag", "@through": "AuthHelper" } },
@@ -64,8 +64,8 @@ public class SpringTphM2mShadowedTargetCodegenTest extends SharedRegistryTestBas
                 { "relationship.association": { "name": "helpers", "@cardinality": "many",
                     "@objectRef": "PriorityTicket", "@through": "BridgeHelper" } }
             ] } },
-            { "object.entity": { "name": "CopayAuth", "extends": "Auth", "@discriminatorValue": "Copay", "children": [
-                { "field.decimal": { "name": "copayAmount", "@precision": 10, "@scale": 2 } }
+            { "object.entity": { "name": "CouponAuth", "extends": "Auth", "@discriminatorValue": "Coupon", "children": [
+                { "field.decimal": { "name": "couponAmount", "@precision": 10, "@scale": 2 } }
             ] } },
             { "object.entity": { "name": "AuthHelper", "children": [
                 { "source.rdb":         { "@table": "auth_helpers" } },
@@ -130,9 +130,9 @@ public class SpringTphM2mShadowedTargetCodegenTest extends SharedRegistryTestBas
     @Test
     public void nonShadowingSubtypeFinderInheritsTheUnwidenedNonTphTarget() throws Exception {
         String src = generate(new SpringRepositoryGenerator(), loadFixture(), "acme/auth/AuthRepository.java");
-        assertTrue("expected unwidened findHelpersForCopay (inherits Tag, non-TPH); saw:\n" + src,
-            src.contains("List<TagDto> findHelpersForCopay(Long sourceId);"));
-        assertFalse(src.contains("findHelpersForCopay(Long sourceId, String targetSubtype)"));
+        assertTrue("expected unwidened findHelpersForCoupon (inherits Tag, non-TPH); saw:\n" + src,
+            src.contains("List<TagDto> findHelpersForCoupon(Long sourceId);"));
+        assertFalse(src.contains("findHelpersForCoupon(Long sourceId, String targetSubtype)"));
     }
 
     @Test
@@ -142,8 +142,8 @@ public class SpringTphM2mShadowedTargetCodegenTest extends SharedRegistryTestBas
             src.contains("repository.findHelpers(id));"));
         assertTrue("shadowing Bridge mount: repository.findHelpersForBridge(id, \"Priority\"); saw:\n" + src,
             src.contains("repository.findHelpersForBridge(id, \"Priority\")"));
-        assertTrue("non-shadowing Copay mount: repository.findHelpersForCopay(id); saw:\n" + src,
-            src.contains("repository.findHelpersForCopay(id));"));
+        assertTrue("non-shadowing Coupon mount: repository.findHelpersForCoupon(id); saw:\n" + src,
+            src.contains("repository.findHelpersForCoupon(id));"));
         assertFalse("Bridge mount must not stay unwidened; saw:\n" + src,
             src.contains("repository.findHelpersForBridge(id));"));
     }

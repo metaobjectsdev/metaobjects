@@ -128,7 +128,7 @@ async function gen(
 ) {
   await runGen({
     // The documentation generators write to the `docs` target, which a run must declare.
-    config: defineConfig({
+    config: defineConfig({ outputLayout: "flat",
       outDir: dir, extStyle: "none", dbImport: "~/server/db", dialect: "sqlite", generators,
       targets: { docs: { outDir: join(dir, "_docs") } },
     }),
@@ -598,7 +598,7 @@ describe("ADR-0034 — the requirement-tests reference over a ledger that declar
         const dir = mkdtempSync(join(tmpdir(), "codegen-req-"));
         try {
           const result = await runGen({
-            config: defineConfig({ outDir: join(dir, "out"), extStyle: "none", dbImport: "~/server/db", dialect: "sqlite", generators: [generator] }),
+            config: defineConfig({ outputLayout: "flat", outDir: join(dir, "out"), extStyle: "none", dbImport: "~/server/db", dialect: "sqlite", generators: [generator] }),
             metadata: loaded.root,
             projectRoot: dir,
           });
@@ -846,11 +846,11 @@ describe("ADR-0034 — the cube-model reference is byte-identical to the built-i
     // facts cube; ProgramSessions reaches its facts through the Session -> Week reference.
     expect("tree" in a ? a.tree.map(([p]) => p) : a).toEqual([
       "model/cubes/AllTypes.yml", "model/cubes/Asset.yml", "model/cubes/Auth.yml", "model/cubes/BridgeAuth.yml",
-      "model/cubes/CopayAuth.yml",
+      "model/cubes/CouponAuth.yml",
       "model/cubes/Entry.yml",
       "model/cubes/Gadget.yml",
       "model/cubes/GadgetEvent.yml", "model/cubes/Measurement.yml", "model/cubes/Node.yml", "model/cubes/Node_fkParent.yml",
-      "model/cubes/PriorAuthAuth.yml", "model/cubes/Program.yml", "model/cubes/ProgramFlagRosterFacts.yml",
+      "model/cubes/PermitAuth.yml", "model/cubes/Program.yml", "model/cubes/ProgramFlagRosterFacts.yml",
       "model/cubes/ProgramLongWeeksFacts.yml", "model/cubes/ProgramRosterFacts.yml", "model/cubes/ProgramSessionsFacts.yml",
       "model/cubes/ProgramSessions_fkWeek.yml", "model/cubes/ReferralAuth.yml", "model/cubes/Session.yml",
       "model/cubes/Week.yml", "model/views/ProgramFlagRoster.yml", "model/views/ProgramLongWeeks.yml",
@@ -897,7 +897,7 @@ describe("ADR-0034 — the cube-model reference is byte-identical to the built-i
     const dir = mkdtempSync(join(tmpdir(), "cube-ref-run-"));
     try {
       await runGen({
-        config: defineConfig({ outDir: join(dir, "out"), dialect: config.dialect, generators: [make()] }),
+        config: defineConfig({ outputLayout: "flat", outDir: join(dir, "out"), dialect: config.dialect, generators: [make()] }),
         metadata: root,
         projectRoot: dir,
         ...extra,
@@ -992,9 +992,9 @@ const CALLABLE_MODEL = {
     children: [
       {
         "object.value": {
-          name: "PhaseSummaryArgs",
+          name: "StageSummaryArgs",
           children: [
-            { "field.int": { name: "caseId", "@required": true } },
+            { "field.int": { name: "consignmentId", "@required": true } },
             { "field.timestamp": { name: "asOfDate" } },
           ],
         },
@@ -1002,9 +1002,9 @@ const CALLABLE_MODEL = {
       {
         // A stored procedure taking typed arguments.
         "object.projection": {
-          name: "PhaseSummary",
+          name: "StageSummary",
           children: [
-            { "source.rdb": { "@kind": "storedProc", "@proc": "fn_phase_summary", "@parameterRef": "PhaseSummaryArgs" } },
+            { "source.rdb": { "@kind": "storedProc", "@proc": "fn_stage_summary", "@parameterRef": "StageSummaryArgs" } },
             { "field.long": { name: "phaseId" } },
             { "field.string": { name: "phaseName" } },
           ],
@@ -1015,18 +1015,18 @@ const CALLABLE_MODEL = {
         "object.projection": {
           name: "OpenCase",
           children: [
-            { "source.rdb": { "@kind": "tableFunction", "@function": "fn_open_cases" } },
-            { "field.long": { name: "caseId" } },
+            { "source.rdb": { "@kind": "tableFunction", "@function": "fn_open_consignments" } },
+            { "field.long": { name: "consignmentId" } },
           ],
         },
       },
       {
         // An ordinary table: must emit no wrapper on either side.
         "object.entity": {
-          name: "Case",
+          name: "Consignment",
           children: [
             { "field.long": { name: "id" } },
-            { "source.rdb": { "@table": "cases" } },
+            { "source.rdb": { "@table": "consignments" } },
             { "identity.primary": { name: "pk", "@fields": ["id"] } },
           ],
         },
@@ -1155,7 +1155,7 @@ describe("ADR-0034 Amendment 7 — the shared-model reference publishes the same
       const root = await loadFiles([run.model]);
       return await outcomeOf(async () => {
         await runGen({
-          config: defineConfig({ outDir, extStyle: "none", dbImport: "~/db", dialect: "sqlite", generators: [make(opts)] }),
+          config: defineConfig({ outputLayout: "flat", outDir, extStyle: "none", dbImport: "~/db", dialect: "sqlite", generators: [make(opts)] }),
           metadata: root,
           projectRoot: project,
           ...(run.sourceFiles !== undefined ? { sourceFiles: run.sourceFiles } : {}),
