@@ -26,7 +26,7 @@ OPTIONS:
     --project <dir>      The project root (the directory holding .metaobjects/config.json).
                          Default: the nearest one at or above the current directory.
     --out <dir>          Where the crates are written, relative to the project root and
-                         inside it. Default: generated
+                         a sub-directory of it. Default: generated
     --generators <a,b>   Run only these generators. Available: entity
     --strict             Load strictly: an attribute no provider declares is an error.
     --force              Render and compare even when nothing changed.
@@ -34,8 +34,8 @@ OPTIONS:
     -h, --help           Print this help.
     -V, --version        Print the version.
 
-ENTITY names limit the run to the packages that contain them. Such a run never skips and
-never stores the skip key.
+ENTITY names limit the run to the crates that contain them plus the crates those depend on.
+Such a run never skips and never stores the skip key.
 
 EXIT STATUS: 0 success; 1 the run failed; 2 usage error.
 ";

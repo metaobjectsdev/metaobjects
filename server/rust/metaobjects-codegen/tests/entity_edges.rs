@@ -170,6 +170,62 @@ fn a_bare_object_ref_binds_the_own_package_first_like_the_loader() {
 }
 
 #[test]
+fn an_inherited_object_ref_binds_from_the_package_that_declared_it() {
+    // ADR-0059 R3: `Base.addr` was declared in `base`, so its bare `Address` is `base::Address`
+    // for every struct that inherits the field, whatever package that struct lives in.
+    let base = model(
+        "base",
+        r#"{ "object.value": { "name": "Address", "children": [ { "field.string": { "name": "street" } } ] } },
+        { "object.value": { "name": "Base", "abstract": true, "children": [
+          { "field.object": { "name": "addr", "@objectRef": "Address" } } ] } }"#,
+    );
+    let app = model(
+        "app",
+        r#"{ "object.value": { "name": "Address", "children": [ { "field.string": { "name": "label" } } ] } },
+        { "object.value": { "name": "Thing", "extends": "base::Base" } }"#,
+    );
+    let out = generate(&[
+        ("metaobjects/meta.base.json", &base),
+        ("metaobjects/meta.app.json", &app),
+    ])
+    .unwrap();
+    assert!(
+        out["app/src/thing.rs"].contains("base::Address"),
+        "{}",
+        out["app/src/thing.rs"]
+    );
+    assert!(
+        out["app/Cargo.toml"].contains("base = { path"),
+        "{}",
+        out["app/Cargo.toml"]
+    );
+}
+
+#[test]
+fn an_object_ref_the_loader_binds_to_an_abstract_object_is_refused_not_redirected() {
+    // From `app`, a bare `Foo` is `app::Foo` first. That one is abstract, so nothing is
+    // emitted for it, and the generator must say so instead of falling through to the
+    // package-less `Foo` the loader did not choose.
+    let root = model(
+        "",
+        r#"{ "object.value": { "name": "Foo", "children": [ { "field.long": { "name": "cents" } } ] } }"#,
+    );
+    let app = model(
+        "app",
+        r#"{ "object.value": { "name": "Foo", "abstract": true, "children": [ { "field.string": { "name": "label" } } ] } },
+        { "object.value": { "name": "Bill", "children": [
+          { "field.object": { "name": "due", "@objectRef": "Foo" } } ] } }"#,
+    );
+    let e = generate(&[
+        ("metaobjects/meta.root.json", &root),
+        ("metaobjects/meta.app.json", &app),
+    ])
+    .unwrap_err();
+    assert!(e.message.contains("app::Bill.due"), "{}", e.message);
+    assert!(e.message.contains("not a concrete"), "{}", e.message);
+}
+
+#[test]
 fn a_parent_relative_object_ref_resolves_like_the_loader() {
     // `..::Foo` from `a::b` is `a::Foo` in the loader (`ObjectIndex::resolve`); the
     // generator must accept the same spelling, not refuse it.

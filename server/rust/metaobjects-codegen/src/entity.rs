@@ -36,8 +36,8 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use metaobjects::loader::owner_candidate_keys;
 use metaobjects::node::{NodeId, PACKAGE_SEP, Tree};
+use metaobjects::validate::util::ObjectIndex;
 use serde_json::Value;
 
 use crate::generator::{
@@ -241,7 +241,8 @@ impl Plan {
     fn build(tree: &Tree, root: NodeId) -> Result<Plan, GenError> {
         // Every concrete entity and value object, in model order.
         let mut structs: Vec<StructPlan> = Vec::new();
-        let mut by_key: HashMap<String, usize> = HashMap::new();
+        let mut by_node: HashMap<NodeId, usize> = HashMap::new();
+        let index = ObjectIndex::build(tree, root);
         for &id in tree.own_children(root) {
             let n = tree.node(id);
             if n.type_name != "object"
@@ -251,7 +252,7 @@ impl Plan {
                 continue;
             }
             let pkg = tree.effective_package(id);
-            by_key.insert(tree.resolution_key(id), structs.len());
+            by_node.insert(id, structs.len());
             structs.push(StructPlan {
                 node: id,
                 key: tree.resolution_key(id),
@@ -303,7 +304,6 @@ impl Plan {
                 .filter_map(|&c| tree.attr(c, "fields").and_then(Value::as_array))
                 .flat_map(|a| a.iter().filter_map(Value::as_str).map(str::to_string))
                 .collect();
-            let owner_pkg = tree.effective_package(node);
             let mut fields: Vec<FieldPlan> = Vec::new();
             let mut enums: Vec<EnumPlan> = Vec::new();
             for &f in tree.children(node).iter() {
@@ -348,8 +348,7 @@ impl Plan {
                             )));
                         }
                         Some(r) => {
-                            let target =
-                                resolve_object_ref(&by_key, r, &owner_pkg).ok_or_else(|| {
+                            let target = bound_struct(&index, &by_node, tree, f).ok_or_else(|| {
                                     unsupported(format!(
                                         "{what} refers to {r}, which is not a concrete entity or value object the entity generator emits"
                                     ))
@@ -363,8 +362,7 @@ impl Plan {
                     },
                     "map" => {
                         let value = if let Some(r) = str_attr(tree, f, "objectRef") {
-                            let target =
-                                resolve_object_ref(&by_key, r, &owner_pkg).ok_or_else(|| {
+                            let target = bound_struct(&index, &by_node, tree, f).ok_or_else(|| {
                                     unsupported(format!(
                                         "{what} is a map of {r}, which is not a concrete entity or value object the entity generator emits"
                                     ))
@@ -733,15 +731,18 @@ fn ty_ref(ty: &Ty) -> Option<&TypeRef> {
     }
 }
 
-/// The struct an `@objectRef` names, bound by the same candidates in the same order as the
-/// loader binds it (`ObjectIndex::resolve` over [`owner_candidate_keys`]): `::Name`
-/// package-less, `..::Name` parent-relative, `pkg::Name` exact, and a bare `Name` the
-/// referrer's own package first and the root level second.
-fn resolve_object_ref(by_key: &HashMap<String, usize>, r: &str, owner_pkg: &str) -> Option<usize> {
-    owner_candidate_keys(r, owner_pkg)
-        .ok()?
-        .iter()
-        .find_map(|k| by_key.get(k).copied())
+/// The struct an `@objectRef` binds to, resolved by the loader's own resolver: the package
+/// that declared the attribute (up the `extends` chain) decides, and the first top-level
+/// object it names wins, emitted or not.
+fn bound_struct(
+    index: &ObjectIndex,
+    by_node: &HashMap<NodeId, usize>,
+    tree: &Tree,
+    field: NodeId,
+) -> Option<usize> {
+    index
+        .ref_target(tree, field, "objectRef")
+        .and_then(|t| by_node.get(&t).copied())
 }
 
 /// Two fields of one struct must not become one Rust field.

@@ -406,7 +406,6 @@ pub fn run(opts: &RunOptions, generators: &[Box<dyn Generator>]) -> Result<RunRe
                     manifest.remove(&key);
                     files.removed += 1;
                 }
-                Ok(_) if refused.contains(&key) => {}
                 Ok(_) => warnings.push(format!(
                     "{key} is no longer generated but differs from what the last run wrote, so it was kept"
                 )),
