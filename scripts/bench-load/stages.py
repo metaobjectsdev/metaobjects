@@ -384,7 +384,7 @@ class Rust(Port):
 
     def prepare(self, work, model):
         if self._meta_command() is None:
-            raise NotAvailable("not available yet: `cargo meta gen` does not exist")
+            raise NotAvailable("no cargo-meta binary found: build with `cargo build --release -p metaobjects-cli` in server/rust, put it on PATH, or set MO_BENCH_RUST_META")
         self.project = work / "rs"
         self.project.mkdir()
         copy_model(model, self.project / "metaobjects")
