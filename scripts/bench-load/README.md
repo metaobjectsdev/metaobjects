@@ -39,9 +39,9 @@ python3 scripts/bench-load/stages.py --project <path> --out <dir-outside-the-rep
 `gen-edit` (after one entity gains a field), each the median of `--runs` runs with the peak
 resident set. It writes `report.json` and `report.md` to `--out` and never gates on a number. A
 stage a port cannot run prints "not available" with the reason: the Rust generation stages read
-that way until `cargo meta gen` exists, and run on their own once it does (set
-`MO_BENCH_RUST_META` to use a command that is not on `PATH`, `MO_BENCH_RUST_GEN_ARGS` for its
-flags). Each port generates with its own CLI and one reference generator, so a generation row
+that way until a `cargo-meta` binary is built (`cargo build --release` in `server/rust`) or
+installed, and run on their own once it is (set `MO_BENCH_RUST_META` to use a command that is
+not on `PATH`, `MO_BENCH_RUST_GEN_ARGS` for its flags). Each port generates with its own CLI and one reference generator, so a generation row
 tracks a port against itself over time more than against the others. Java needs the
 `metaobjects-*` artifacts of the repo version in the local Maven repository; Kotlin loads
 through the Java loader, so it has generation rows only.

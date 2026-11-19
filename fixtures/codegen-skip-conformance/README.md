@@ -16,6 +16,7 @@ adding a case here reaches every port at once.
 | C# | `server/csharp/MetaObjects.Cli.Tests/GenSkipConformanceTests.cs` |
 | Java | `server/java/maven-plugin/src/test/java/com/metaobjects/mojo/GenSkipConformanceTest.java` |
 | Kotlin | the Java runner, with a Kotlin generator configured (Kotlin generators run through `metaobjects:generate`) |
+| Rust (preview) | `server/rust/metaobjects-codegen/tests/skip_conformance.rs` (the cases its `gen` can meet; the rest are named with their reason) |
 
 The values:
 

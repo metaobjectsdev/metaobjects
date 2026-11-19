@@ -72,8 +72,9 @@
 #                                    #   rust   → the Rust port (preview): cargo fmt
 #                                    #            --check, clippy -D warnings, and its
 #                                    #            tests, which run the registry and
-#                                    #            metamodel corpora, then the load_bench
-#                                    #            table (record only). No docker half.
+#                                    #            metamodel corpora and the codegen suites,
+#                                    #            then the load_bench and gen_bench tables
+#                                    #            (record only). No docker half.
 #                                    #   cube   → the cube-model live check: a real Cube
 #                                    #            (cubejs/cube, pinned) over a private
 #                                    #            Postgres, both in docker (FR-044). Its
@@ -819,8 +820,9 @@ gate_conf_python() {
   if [ "$NO_INTEG" -eq 1 ] || ! docker info >/dev/null 2>&1; then skip_integ=""; fi
   ( cd server/python && uv run --extra integration pytest tests/ $skip_integ -q -n "${MO_CI_PY_WORKERS:-8}" )
 }
-# The Rust port (preview, ADR-0065). The whole crate suite, not a cherry-pick: it is the
-# registry-conformance and metamodel corpora plus the unit tests, ~1s once built. --locked
+# The Rust port (preview, ADR-0065). The whole workspace suite, not a cherry-pick: the
+# registry-conformance and metamodel corpora, the unit tests, and the codegen tests (which run
+# `cargo check` on generated crates), a few seconds once built. --locked
 # so a stale Cargo.lock fails here instead of being rewritten. The build goes to the
 # workspace's own target/ (gitignored); never a CARGO_TARGET_DIR shared between checkouts.
 gate_conf_rust() {
@@ -828,7 +830,8 @@ gate_conf_rust() {
       && cargo fmt --all --check \
       && cargo clippy --locked --all-targets -q -- -D warnings \
       && cargo test --locked -q -- --nocapture \
-      && gate_rust_load_bench )
+      && gate_rust_load_bench \
+      && gate_rust_gen_bench )
 }
 # Load time per phase and per validation pass on the 20x fitness model. Record only:
 # it prints a table and never fails on a number, so a slowdown is read in the log and
@@ -840,6 +843,12 @@ gate_conf_rust() {
 #   cargo run --release --locked --example load_bench -- 20 15 --baseline <file>
 gate_rust_load_bench() {
   cargo run --release --locked -q --example load_bench -- 20 15
+}
+# Generation time per stage (load, plan, skip, render, write) on the 20x fitness project:
+# a first run, an unchanged run (which skips), a one-file change and a forced run. Record
+# only, like load_bench; it writes its project under $DEV_SCRATCH and removes it.
+gate_rust_gen_bench() {
+  cargo run --release --locked -q -p metaobjects-codegen --example gen_bench -- 20 9
 }
 gate_conf_kotlin() {
   ( cd server/java \

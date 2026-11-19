@@ -69,17 +69,19 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/contract-conformance/`](../fixtures/contract-conformance/) (FR-022 — the `contract-schema` and `openapi` generators' golden trees and refusals) | 19 cases (14 trees + 5 errors) | ✓ (one neutral engine, ADR-0034 Amendment 10; the generated API lanes also hold real traffic to the documents) | — | — | — | — |
 | [`fixtures/explorer-conformance/`](../fixtures/explorer-conformance/) (the `explorer.json` data spine: `meta export --effective` + `meta verify --format json` + the generated-file manifest in, one explorer document out) | 1 case (`shop`) | ✓ (the builder is TypeScript, and reads only port-neutral inputs) | — | — | — | — |
 
-**Rust (preview, ADR-0065) is not a column yet.** The sixth port runs five corpora
+**Rust (preview, ADR-0065) is not a column yet.** The sixth port runs six corpora
 today: `registry-conformance` (byte-identical manifest); the metamodel corpus, all 526
 green, with every validation pass the TypeScript loader runs, in the same order, so
 `server/rust/metaobjects/tests/conformance-expected-failures.json` is empty;
 `yaml-conformance`, 18 of 19 (the one on `yaml-conformance-expected-failures.json`,
 `yaml-ref-root-escape`, waits for the ADR-0059 root-level `::` reference rules, which are
 reference resolution, not a validation pass); `source-resolution-conformance` (all 28
-cases); and `naming-conformance` (all of it). Those ledgers may only shrink. While the
-port is in preview, a new fixture that fails in Rust and is not on the ledger prints a
-warning and does not fail the lane; it becomes a hard failure when the port leaves
-preview. A regression still fails: the ledger's `minPassing` (526) is the number of
+cases); `naming-conformance` (all of it); and `codegen-skip-conformance` (ADR-0064), for the
+cases its `gen` can meet (the rest are named with their reason in its runner). The ledgers
+above may only shrink; the skip corpus has none, because each case it runs asserts its result
+outright. While the port is in preview, a new fixture that fails in Rust and is not on
+the ledger prints a warning and does not fail the lane; it becomes a hard failure when the port
+leaves preview. A regression still fails: the ledger's `minPassing` (526) is the number of
 fixtures known to pass, and the run fails when fewer do. The column joins this table when
 the port leaves preview.
 
@@ -397,7 +399,7 @@ Per-port runners + commands:
 | Kotlin | `cd server/java && mvn -pl codegen-kotlin test` (snapshot suite) | `mvn -f server/java/integration-tests-kotlin/pom.xml test` (needs Docker) | `mvn -f server/java/integration-tests-kotlin/pom.xml test -Dtest=ApiContractConformanceTest` (needs Docker) |
 | C# | `dotnet test` (per project) | `scripts/integration-test.sh csharp` (needs Docker) | `dotnet test server/csharp/MetaObjects.IntegrationTests/MetaObjects.IntegrationTests.csproj --filter "FullyQualifiedName~ApiContractConformanceTest"` (needs Docker) |
 | Python | `pytest` (per package) | `scripts/integration-test.sh python` (needs Docker) | `cd server/python && uv run --extra integration pytest tests/integration/test_api_contract.py` (needs Docker) |
-| Rust (preview) | `cd server/rust && cargo test` (registry, metamodel, YAML, source-resolution and naming corpora) | — | — |
+| Rust (preview) | `cd server/rust && cargo test` (registry, metamodel, YAML, source-resolution and naming corpora; the codegen suites, which run `cargo check` on generated crates) | — | — |
 
 The `persistence-conformance` corpus is intentionally **on-demand** — none of the
 unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.

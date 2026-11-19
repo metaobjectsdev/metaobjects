@@ -23,16 +23,15 @@ here.**
   (the conformance ledger is empty and may only shrink).
   While the port is in preview, a new fixture that fails in Rust and is not on the ledger prints a
   warning and does not fail the lane; a fixture that passed and regresses still fails it, because
-  the ledger records how many fixtures must pass. Nothing is published and there is no codegen
-  or `cargo meta` command yet. Every load records how long each phase and each validation pass
-  took (`LoadResult::timings`; the `validate` module's ordered pass list holds the ported passes in
-  reference order), and `load_bench` prints the per-phase and per-pass medians, with
-  `--write-baseline` / `--baseline` to record and compare a run — a baseline is a record to
-  read, never a threshold, and the committed 20x baseline is a machine-local reference. A
-  `rust` lane runs `cargo fmt --check`, clippy, the tests and the `load_bench` table (record
-  only, printed without a baseline delta — a cross-machine delta measures the machine, not the
-  change) in `scripts/ci-local.sh --only rust`, `pr-ci` and `local-ci`, selected by changes
-  under `server/rust/`.
+  the ledger records how many fixtures must pass. Nothing is published. Every load records how
+  long each phase and each validation pass took (`LoadResult::timings`; the `validate` module's
+  ordered pass list holds the ported passes in reference order), and `load_bench` prints the
+  per-phase and per-pass medians, with `--write-baseline` / `--baseline` to record and compare a
+  run — a baseline is a record to read, never a threshold, and the committed 20x baseline is a
+  machine-local reference. A `rust` lane runs `cargo fmt --check`, clippy, the tests, and the
+  `load_bench` and `gen_bench` tables (record only, printed without a baseline delta — a
+  cross-machine delta measures the machine, not the change) in `scripts/ci-local.sh --only rust`,
+  `pr-ci` and `local-ci`, selected by changes under `server/rust/`.
 - **Rust port reads a real project, in preview.** The loader now reads YAML authoring files
   (ADR-0006: bare type keys, scalar-body names, the `[]` suffix, sigil-free attributes, anchors and
   aliases, the `ERR_YAML_COERCION` guard, and a line and column on every error from a YAML file),
@@ -41,17 +40,46 @@ here.**
   `iam` and `ai` library sources embedded in the crate, and the naming strategies, pluralizers and
   collection-name collision check. It passes `yaml-conformance` 18 of 19, and the
   `source-resolution-conformance` and `naming-conformance` corpora in full. Nothing is published.
+- **Rust port generates code, in preview: `cargo meta gen` and the `entity` generator.** Two new
+  workspace crates. `metaobjects-codegen` holds the run engine and the generator; `metaobjects-cli`
+  builds the binary `cargo-meta`, so cargo's external-subcommand rule makes `cargo meta gen` work
+  (`cargo-meta gen` too). The run engine follows ADR-0064 and keeps the other ports' manifest
+  format: it writes a generated file only when its bytes changed, saves
+  `.metaobjects/.gen-state/.hashes.json` once per run and only when a record changed, and skips the
+  whole run (nothing rendered, nothing written, not even the manifest) when the model hash tree, the
+  project config, the engine's built code, each generator's identity and the flags match the stored
+  key in `.fingerprint-rust.json` and every recorded output is still as the last run left it. The
+  shared `fixtures/codegen-skip-conformance` corpus runs against it: every case the port can meet
+  runs, and the ones it cannot (templates, ejected generators, `verify`, a kept hand edit) are named
+  with the reason. The `entity` generator writes one crate per metadata package: serde structs for
+  `object.entity` and `object.value` (inherited fields included, optional fields as `Option`, arrays
+  as `Vec`, a map as `BTreeMap`), enums for `field.enum` (shared enums once, in their declaration's
+  package) with the member symbols as the wire form, `Box` only where a by-value cycle needs it, and
+  a path dependency for each cross-package reference. The output is already rustfmt-clean under the
+  `rustfmt.toml` written beside it, so no formatter runs in the hot path. Tests: a golden test of a
+  two-package model's text, a test that generates that model and the fitness model and runs `cargo
+  check`, `rustfmt --check` and a serde round trip on the crates, and the run-engine, skip-corpus
+  and CLI suites. `gen_bench` prints time per stage (load, plan, skip, render, write) for a first
+  run, an unchanged run, a one-file change and a forced run on the 20x fitness project, record only,
+  and the `rust` lane prints it. Where Rust differs from the other ports, on purpose: there is no
+  three-way merge, so a generated file edited by hand (or an existing file nobody recorded) is
+  refused and the run exits 1 after finishing the other files, as Python does; the output directory
+  must be a sub-directory of the project (the project root itself is refused), so every manifest key
+  is project-relative; a named run (`cargo meta gen Order`) never skips and regenerates every file
+  of the crates that contain the named objects, plus the transitive closure of the crates those
+  depend on, rather than merging; and there is no `verify`, `eject`, template or client generator
+  yet. Relationships, projections and reports are not emitted. Nothing is published.
 
 - **Cross-port stage benchmark and Rust port documentation.** `scripts/bench-load/stages.py` runs
   every port (TypeScript, Python, C#, Java, Kotlin, Rust) over the same model, stage by stage: load
   and validate, a no-change generation run, a full generation and a one-entity-edit regeneration,
   each as the median of N runs with peak memory, into one `report.json` and one Markdown table. It
-  never gates on a number. The Rust generation stages read "not available yet" until `cargo meta gen`
-  exists and are picked up on their own once it does. `--project <path> --out <dir>` runs it on a
+  never gates on a number. The Rust generation stages read "not available yet" until a `cargo-meta`
+  binary is built or installed and are picked up on their own once it is. `--project <path> --out <dir>` runs it on a
   private project, copies the metadata, and refuses an output inside the repository. `load_bench`
   gained `--dir` and `--json`, `gen-model.py` gained `--unique-names`, and Java has a warm-load
   driver. New page `docs/ports/rust.md` says what the preview Rust port does and does not do, how
-  to build and test it, and the planned `cargo meta` command; the crates.io name `cargo-meta` is
+  to build and test it, and the preview scope of `cargo meta`; the crates.io name `cargo-meta` is
   held by an unrelated crate, so the CLI crate will publish under another name that installs a
   `cargo-meta` binary (a plan, not a promise). Nothing is published.
 

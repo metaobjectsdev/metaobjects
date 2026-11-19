@@ -1,13 +1,14 @@
 # The Rust port of MetaObjects (preview). ADR-0065 records why it exists and how it
 # differs from the other five ports.
 #
-# One crate today: `metaobjects` (metamodel registry, JSON loader, canonical
-# serializer). The codegen engine (`metaobjects-codegen`) and the `cargo meta`
-# command (`metaobjects-cli`) join this workspace in later steps; no placeholder
-# crates are created for them ahead of time.
+# Three crates:
+#   `metaobjects`          metamodel registry, loader, canonical serializer.
+#   `metaobjects-codegen`  the run engine (skip key, hash manifest, writer) and the
+#                          `entity` generator.
+#   `metaobjects-cli`      the `cargo-meta` binary, so `cargo meta gen` works.
 [workspace]
 resolver = "3"
-members = ["metaobjects"]
+members = ["metaobjects", "metaobjects-codegen", "metaobjects-cli"]
 
 [workspace.package]
 version = "0.1.0"
