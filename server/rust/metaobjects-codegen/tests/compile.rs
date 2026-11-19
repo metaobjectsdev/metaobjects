@@ -38,6 +38,35 @@ fn generate(project: &Scratch) {
     run(&opts, &generators).unwrap_or_else(|e| panic!("gen failed: {e}"));
 }
 
+fn copy_tree(from: &Path, to: &Path) {
+    if from.is_dir() {
+        std::fs::create_dir_all(to).unwrap();
+        for entry in std::fs::read_dir(from).unwrap() {
+            let entry = entry.unwrap();
+            copy_tree(&entry.path(), &to.join(entry.file_name()));
+        }
+    } else {
+        std::fs::copy(from, to).unwrap();
+    }
+}
+
+/// A scratch workspace holding a copy of `from`'s `generated` tree, pinned to the
+/// repository's lockfile so `--offline` resolves the same serde.
+fn locked_ws(tag: &str, from: &Path) -> Scratch {
+    let ws = Scratch::new(tag);
+    copy_tree(&from.join("generated"), &ws.path().join("out"));
+    ws.write(
+        "Cargo.toml",
+        "[workspace]\nresolver = \"2\"\nmembers = [\"out/*\"]\n",
+    );
+    std::fs::copy(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../Cargo.lock"),
+        ws.path().join("Cargo.lock"),
+    )
+    .unwrap();
+    ws
+}
+
 const PROBE_MAIN: &str = r#"
 use shop::{Address, Category, Currency, Order, OrderStatus};
 use shop_billing::Invoice;
@@ -97,26 +126,8 @@ fn generated_crates_compile_are_formatted_and_round_trip_through_serde() {
     generate(&fitness);
 
     let ws = Scratch::new("compile-ws");
-    let copy = |from: &Path, to: &Path| {
-        std::fs::create_dir_all(to).unwrap();
-        for entry in std::fs::read_dir(from).unwrap() {
-            let entry = entry.unwrap();
-            copy_tree(&entry.path(), &to.join(entry.file_name()));
-        }
-    };
-    fn copy_tree(from: &Path, to: &Path) {
-        if from.is_dir() {
-            std::fs::create_dir_all(to).unwrap();
-            for entry in std::fs::read_dir(from).unwrap() {
-                let entry = entry.unwrap();
-                copy_tree(&entry.path(), &to.join(entry.file_name()));
-            }
-        } else {
-            std::fs::copy(from, to).unwrap();
-        }
-    }
-    copy(&shop.path().join("generated"), &ws.path().join("shop-out"));
-    copy(
+    copy_tree(&shop.path().join("generated"), &ws.path().join("shop-out"));
+    copy_tree(
         &fitness.path().join("generated"),
         &ws.path().join("fitness-out"),
     );
@@ -185,5 +196,32 @@ fn generated_crates_compile_are_formatted_and_round_trip_through_serde() {
             .next()
             .unwrap()
             .starts_with(r#"{"id":9,"order":{"id":7,"#)
+    );
+}
+
+#[test]
+fn a_named_first_run_leaves_a_crate_the_real_compiler_accepts() {
+    // The regression: a named run on a never-generated project used to write lib.rs
+    // declaring every module of the crate while emitting only the named struct's file,
+    // so the crate could not build. The oracle is `cargo check` itself: the crate the
+    // run leaves behind must compile.
+    let p = Scratch::project("compile-named", &shop_files());
+    let generators: Vec<Box<dyn Generator>> = vec![Box::new(EntityGenerator)];
+    let mut opts = RunOptions::new(p.path());
+    opts.out_dir = PathBuf::from("generated");
+    opts.entities = vec!["Order".to_string()];
+    run(&opts, &generators).unwrap_or_else(|e| panic!("named gen failed: {e}"));
+    // The whole crate came out: the shared enum beside the named struct, and nothing
+    // of the crate that holds no named object.
+    assert!(p.exists("generated/shop/src/currency.rs"));
+    assert!(p.exists("generated/shop/src/order.rs"));
+    assert!(!p.exists("generated/shop_billing"));
+
+    let ws = locked_ws("compile-named-ws", p.path());
+    let check = cargo(ws.path(), &["check", "--offline", "--workspace", "-q"]);
+    assert!(
+        check.status.success(),
+        "cargo check failed on a named first run's crate:\n{}",
+        String::from_utf8_lossy(&check.stderr)
     );
 }

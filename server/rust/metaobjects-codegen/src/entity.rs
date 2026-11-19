@@ -36,6 +36,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
+use metaobjects::loader::owner_candidate_keys;
 use metaobjects::node::{NodeId, PACKAGE_SEP, Tree};
 use serde_json::Value;
 
@@ -347,8 +348,8 @@ impl Plan {
                             )));
                         }
                         Some(r) => {
-                            let target = resolve_object_ref(&structs, &by_key, r, &owner_pkg)
-                                .ok_or_else(|| {
+                            let target =
+                                resolve_object_ref(&by_key, r, &owner_pkg).ok_or_else(|| {
                                     unsupported(format!(
                                         "{what} refers to {r}, which is not a concrete entity or value object the entity generator emits"
                                     ))
@@ -362,8 +363,8 @@ impl Plan {
                     },
                     "map" => {
                         let value = if let Some(r) = str_attr(tree, f, "objectRef") {
-                            let target = resolve_object_ref(&structs, &by_key, r, &owner_pkg)
-                                .ok_or_else(|| {
+                            let target =
+                                resolve_object_ref(&by_key, r, &owner_pkg).ok_or_else(|| {
                                     unsupported(format!(
                                         "{what} is a map of {r}, which is not a concrete entity or value object the entity generator emits"
                                     ))
@@ -595,17 +596,34 @@ impl Plan {
         } else {
             let mut picked = HashSet::new();
             for name in entities {
-                let hit = self.structs.iter().position(|s| {
-                    s.key == *name || s.key.rsplit(PACKAGE_SEP).next() == Some(name.as_str())
-                });
-                match hit {
-                    Some(i) => {
-                        picked.insert(i);
-                    }
-                    None => {
+                let hits: Vec<usize> = self
+                    .structs
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, s)| {
+                        s.key == *name || s.key.rsplit(PACKAGE_SEP).next() == Some(name.as_str())
+                    })
+                    .map(|(i, _)| i)
+                    .collect();
+                match hits.as_slice() {
+                    [] => {
                         return Err(GenError::new(
                             ERR_UNSUPPORTED,
                             format!("no entity or value object named {name}"),
+                        ));
+                    }
+                    [only] => {
+                        picked.insert(*only);
+                    }
+                    many => {
+                        let keys: Vec<&str> =
+                            many.iter().map(|&i| self.structs[i].key.as_str()).collect();
+                        return Err(GenError::new(
+                            ERR_NAME_COLLISION,
+                            format!(
+                                "{name} names more than one entity or value object ({}); name one by its full package-qualified key",
+                                keys.join(", ")
+                            ),
                         ));
                     }
                 }
@@ -649,22 +667,18 @@ impl Plan {
                 let mut exports = vec![s.type_name.clone()];
                 exports.extend(s.enums.iter().map(|e| e.type_name.clone()));
                 lib_items.push((module.clone(), exports));
-                if selected.as_ref().is_none_or(|sel| sel.contains(&i)) {
-                    files.push(EmittedFile::new(
-                        format!("{cname}/src/{module}.rs"),
-                        struct_file(s, cname, &q),
-                    ));
-                }
+                files.push(EmittedFile::new(
+                    format!("{cname}/src/{module}.rs"),
+                    struct_file(s, cname, &q),
+                ));
             }
             for (_, e) in &c.shared_enums {
                 let module = module_name(&e.type_name);
                 lib_items.push((module.clone(), vec![e.type_name.clone()]));
-                if selected.is_none() {
-                    files.push(EmittedFile::new(
-                        format!("{cname}/src/{module}.rs"),
-                        enum_file(e),
-                    ));
-                }
+                files.push(EmittedFile::new(
+                    format!("{cname}/src/{module}.rs"),
+                    enum_file(e),
+                ));
             }
             lib_items.sort();
             files.push(EmittedFile::new(
@@ -690,25 +704,15 @@ fn ty_ref(ty: &Ty) -> Option<&TypeRef> {
     }
 }
 
-/// The struct an `@objectRef` names: the canonical spelling is `pkg::Name`, or `::Name` for a
-/// package-less target; a bare name is also tried in the referrer's own package.
-fn resolve_object_ref(
-    structs: &[StructPlan],
-    by_key: &HashMap<String, usize>,
-    r: &str,
-    owner_pkg: &str,
-) -> Option<usize> {
-    let _ = structs;
-    let bare = r.strip_prefix(PACKAGE_SEP).unwrap_or(r);
-    if let Some(&i) = by_key.get(bare) {
-        return Some(i);
-    }
-    if !owner_pkg.is_empty()
-        && let Some(&i) = by_key.get(&format!("{owner_pkg}{PACKAGE_SEP}{bare}"))
-    {
-        return Some(i);
-    }
-    None
+/// The struct an `@objectRef` names, bound by the same candidates in the same order as the
+/// loader binds it (`ObjectIndex::resolve` over [`owner_candidate_keys`]): `::Name`
+/// package-less, `..::Name` parent-relative, `pkg::Name` exact, and a bare `Name` the
+/// referrer's own package first and the root level second.
+fn resolve_object_ref(by_key: &HashMap<String, usize>, r: &str, owner_pkg: &str) -> Option<usize> {
+    owner_candidate_keys(r, owner_pkg)
+        .ok()?
+        .iter()
+        .find_map(|k| by_key.get(k).copied())
 }
 
 /// Two fields of one struct must not become one Rust field.

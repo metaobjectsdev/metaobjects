@@ -66,8 +66,8 @@ here.**
   other ports, on purpose: there is no three-way merge, so a generated file edited by hand (or an
   existing file nobody recorded) is refused and the run exits 1 after finishing the other files,
   as Python does; the output directory must be inside the project, so every manifest key is
-  project-relative; a named run (`cargo meta gen Order`) regenerates the whole files of the named
-  objects and their crate's manifest files rather than merging; and there is no `verify`,
+  project-relative; a named run (`cargo meta gen Order`) regenerates every file of the crates
+  that contain the named objects rather than merging; and there is no `verify`,
   `eject`, template or client generator yet. Relationships, projections and reports are not
   emitted. Nothing is published.
 

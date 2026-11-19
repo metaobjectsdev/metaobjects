@@ -216,7 +216,6 @@ pub fn write_stored(
     let mut out = Map::new();
     out.insert("format".into(), Value::from(FINGERPRINT_FORMAT));
     out.insert("fingerprint".into(), Value::from(key));
-    out.insert("extras".into(), Value::Array(Vec::new()));
     out.insert(
         "outputs".into(),
         Value::Object(
@@ -226,7 +225,6 @@ pub fn write_stored(
                 .collect(),
         ),
     );
-    out.insert("untracked".into(), Value::Array(Vec::new()));
     let mut text =
         serde_json::to_string_pretty(&Value::Object(out)).expect("a plain map serializes");
     text.push('\n');

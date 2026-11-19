@@ -11,12 +11,20 @@ use metaobjects_codegen::project::load_project;
 use metaobjects_codegen::{EntityGenerator, Generator};
 
 fn generate(files: &[(&str, &str)]) -> Result<BTreeMap<String, String>, GenError> {
+    generate_named(files, &[])
+}
+
+fn generate_named(
+    files: &[(&str, &str)],
+    entities: &[&str],
+) -> Result<BTreeMap<String, String>, GenError> {
     let project = Scratch::project("edges", files);
     let loaded = load_project(project.path(), None, false).expect("the model loads clean");
+    let names: Vec<String> = entities.iter().map(|e| e.to_string()).collect();
     let ctx = GenContext {
         tree: &loaded.result.tree,
         root: loaded.result.root,
-        entities: &[],
+        entities: &names,
     };
     EntityGenerator
         .generate(&ctx)
@@ -119,6 +127,95 @@ fn a_packaged_object_may_refer_to_a_package_less_one() {
         out["app/src/bill.rs"]
     );
     assert!(out["app/Cargo.toml"].contains("model = { path = \"../model\" }"));
+}
+
+#[test]
+fn a_bare_object_ref_binds_the_own_package_first_like_the_loader() {
+    // The loader's candidate order (ADR-0059 R2): from `app`, a bare `Foo` is `app::Foo`
+    // first and the package-less `Foo` second. The oracle is the loader itself: it
+    // validates the ref against `app::Foo`, so the generator must emit the same struct.
+    let root = model(
+        "",
+        r#"{ "object.value": { "name": "Foo", "children": [ { "field.long": { "name": "cents" } } ] } }"#,
+    );
+    let app = model(
+        "app",
+        r#"{ "object.value": { "name": "Foo", "children": [ { "field.string": { "name": "label" } } ] } },
+        { "object.entity": { "name": "Bill", "children": [
+          { "field.long": { "name": "id" } },
+          { "identity.primary": { "name": "pk", "@fields": ["id"] } },
+          { "field.object": { "name": "due", "@objectRef": "Foo" } }
+        ] } }"#,
+    );
+    let out = generate(&[
+        ("metaobjects/meta.root.json", &root),
+        ("metaobjects/meta.app.json", &app),
+    ])
+    .unwrap();
+    assert!(
+        out["app/src/bill.rs"].contains("pub due: Option<crate::Foo>"),
+        "{}",
+        out["app/src/bill.rs"]
+    );
+    assert!(
+        !out["app/Cargo.toml"].contains("model = { path"),
+        "the ref stays in the app crate: {}",
+        out["app/Cargo.toml"]
+    );
+    assert!(
+        out["app/src/foo.rs"].contains("pub label"),
+        "the app crate's Foo is app::Foo, not the package-less one: {}",
+        out["app/src/foo.rs"]
+    );
+}
+
+#[test]
+fn a_parent_relative_object_ref_resolves_like_the_loader() {
+    // `..::Foo` from `a::b` is `a::Foo` in the loader (`ObjectIndex::resolve`); the
+    // generator must accept the same spelling, not refuse it.
+    let a = model(
+        "a",
+        r#"{ "object.value": { "name": "Foo", "children": [ { "field.string": { "name": "label" } } ] } }"#,
+    );
+    let b = model(
+        "a::b",
+        r#"{ "object.entity": { "name": "Bill", "children": [
+          { "field.long": { "name": "id" } },
+          { "identity.primary": { "name": "pk", "@fields": ["id"] } },
+          { "field.object": { "name": "due", "@objectRef": "..::Foo" } }
+        ] } }"#,
+    );
+    let out = generate(&[
+        ("metaobjects/meta.a.json", &a),
+        ("metaobjects/meta.b.json", &b),
+    ])
+    .unwrap();
+    assert!(
+        out["a_b/src/bill.rs"].contains("pub due: Option<a::Foo>"),
+        "{}",
+        out["a_b/src/bill.rs"]
+    );
+    assert!(out["a_b/Cargo.toml"].contains("a = { path = \"../a\" }"));
+}
+
+#[test]
+fn a_bare_entity_name_that_matches_two_objects_is_an_error_not_a_guess() {
+    let root = model(
+        "",
+        r#"{ "object.value": { "name": "Foo", "children": [ { "field.long": { "name": "cents" } } ] } }"#,
+    );
+    let app = model(
+        "app",
+        r#"{ "object.value": { "name": "Foo", "children": [ { "field.string": { "name": "label" } } ] } }"#,
+    );
+    let files: &[(&str, &str)] = &[
+        ("metaobjects/meta.root.json", &root),
+        ("metaobjects/meta.app.json", &app),
+    ];
+    let e = generate_named(files, &["Foo"]).unwrap_err();
+    assert_eq!(e.code, "ERR_NAME_COLLISION");
+    assert!(e.message.contains("app::Foo"), "{}", e.message);
+    assert!(e.message.contains("more than one"), "{}", e.message);
 }
 
 #[test]

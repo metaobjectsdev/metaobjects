@@ -217,6 +217,20 @@ fn naming_an_entity_limits_the_run_and_never_skips_or_stores_a_key() {
 }
 
 #[test]
+fn a_named_run_emits_every_file_of_the_selected_crate_and_nothing_of_the_others() {
+    let p = Scratch::project("named-crate", &shop_files());
+    gen_ok(&p);
+    std::fs::remove_file(p.path().join("generated/shop/src/currency.rs")).unwrap();
+    std::fs::remove_file(p.path().join("generated/shop_billing/src/invoice.rs")).unwrap();
+    let r = gen_with(&p, |o| o.entities = vec!["Order".to_string()]).unwrap();
+    // `Order`'s crate is the unit: its shared enum file comes back, the untouched
+    // `shop_billing` crate does not.
+    assert!(p.exists("generated/shop/src/currency.rs"));
+    assert!(!p.exists("generated/shop_billing/src/invoice.rs"));
+    assert_eq!(r.files.created, 1, "{:?}", r.files);
+}
+
+#[test]
 fn a_load_error_stops_the_run_before_anything_is_written() {
     let p = Scratch::project("bad", &[("metaobjects/meta.bad.json", "{ not json")]);
     let e = gen_with(&p, |_| {}).expect_err("the model does not load");
