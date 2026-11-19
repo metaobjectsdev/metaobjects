@@ -39,8 +39,21 @@ here.**
   and the crate resolves a project the way the other ports do: the `.metaobjects/config.json`
   reader, the four source kinds, directory discovery (symlinks followed, `_pending` skipped), the
   `iam` and `ai` library sources embedded in the crate, and the naming strategies, pluralizers and
-  collection-name collision check. It passes `yaml-conformance` 15 of 19, and the
+  collection-name collision check. It passes `yaml-conformance` 18 of 19, and the
   `source-resolution-conformance` and `naming-conformance` corpora in full. Nothing is published.
+
+- **Cross-port stage benchmark and Rust port documentation.** `scripts/bench-load/stages.py` runs
+  every port (TypeScript, Python, C#, Java, Kotlin, Rust) over the same model, stage by stage: load
+  and validate, a no-change generation run, a full generation and a one-entity-edit regeneration,
+  each as the median of N runs with peak memory, into one `report.json` and one Markdown table. It
+  never gates on a number. The Rust generation stages read "not available yet" until `cargo meta gen`
+  exists and are picked up on their own once it does. `--project <path> --out <dir>` runs it on a
+  private project, copies the metadata, and refuses an output inside the repository. `load_bench`
+  gained `--dir` and `--json`, `gen-model.py` gained `--unique-names`, and Java has a warm-load
+  driver. New page `docs/ports/rust.md` says what the preview Rust port does and does not do, how
+  to build and test it, and the planned `cargo meta` command; the crates.io name `cargo-meta` is
+  held by an unrelated crate, so the CLI crate will publish under another name that installs a
+  `cargo-meta` binary (a plan, not a promise). Nothing is published.
 
 ### Changed
 

@@ -151,7 +151,7 @@ first-week wedge plan — and `meta init` picks up from there.
 - Already have a codebase? → Have your coding agent run the
   [fit assessment](#try-it-on-your-repo--nothing-to-install) — read-only, no
   install; it finds the drift already in your git history.
-- New here? Pick your language → [`docs/ports/`](docs/ports/) (TS / Java / Kotlin / C# / Python).
+- New here? Pick your language → [`docs/ports/`](docs/ports/) (TS / Java / Kotlin / C# / Python; Rust is in [preview](docs/ports/rust.md)).
 - Want the metamodel feature reference? → [`docs/features/`](docs/features/).
 - Want the documentation index? → [`docs/README.md`](docs/README.md).
 - Want the design rationale? → [`spec/`](spec/) + [`docs/superpowers/specs/`](docs/superpowers/specs/).
@@ -169,6 +169,7 @@ first-week wedge plan — and `meta init` picks up from there.
 | Kotlin | **Maven Central `8.2.0`** — codegen tier on top of Java: 17 generators (entity, Exposed table, names, relations, repository, output-parser, output-prompt, render-helper, extractor, filter-allowlist, validator, Spring config, storedProc, Spring controller, requirement-tests, api-docs, report-export); 24 / 24 persistence-conformance | [`docs/ports/kotlin.md`](docs/ports/kotlin.md) | [`server/java/codegen-kotlin/`](server/java/codegen-kotlin/) · [`server/java/metadata-ktx/`](server/java/metadata-ktx/) |
 | C# | **NuGet `1.2.0`** — loader + conformance + EF Core codegen + render engine + `dotnet meta` CLI all shipped | [`docs/ports/csharp.md`](docs/ports/csharp.md) | [`server/csharp/`](server/csharp/) |
 | Python | **PyPI `1.2.0`** — loader + conformance + render + entity-model codegen + ObjectManager runtime shipped; schema migrations are TS-owned (ADR-0015) | [`docs/ports/python.md`](docs/ports/python.md) | [`server/python/`](server/python/) |
+| Rust | **Preview, unpublished** — loader (JSON + YAML), project and source resolution, naming and all 40 validation passes; 526 / 526 metamodel conformance. No codegen and no `cargo meta` yet (ADR-0065) | [`docs/ports/rust.md`](docs/ports/rust.md) | [`server/rust/`](server/rust/) |
 
 ## Capability matrix
 
