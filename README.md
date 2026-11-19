@@ -331,7 +331,7 @@ metaobjects/
 │   ├── java/                       # Java port (incl. codegen-kotlin + metadata-ktx)
 │   ├── csharp/                     # C# port
 │   ├── python/                     # Python port
-│   └── rust/                       # Rust port (preview, ADR-0065 — unpublished; no codegen yet)
+│   └── rust/                       # Rust port (preview, ADR-0065 — unpublished; entity generator only)
 │
 └── client/
     └── web/                        # universal browser packages (React, TanStack, Angular, framework-agnostic)

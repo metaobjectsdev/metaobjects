@@ -23,9 +23,8 @@ here.**
   (the conformance ledger is empty and may only shrink).
   While the port is in preview, a new fixture that fails in Rust and is not on the ledger prints a
   warning and does not fail the lane; a fixture that passed and regresses still fails it, because
-  the ledger records how many fixtures must pass. Nothing is published and there is no codegen
-  or `cargo meta` command yet. Every load records how long each phase and each validation pass
-  took (`LoadResult::timings`; the `validate` module's ordered pass list holds the ported passes in
+  the ledger records how many fixtures must pass. Nothing is published. Every load records how
+  long each phase and each validation pass took (`LoadResult::timings`; the `validate` module's ordered pass list holds the ported passes in
   reference order), and `load_bench` prints the per-phase and per-pass medians, with
   `--write-baseline` / `--baseline` to record and compare a run — a baseline is a record to
   read, never a threshold, and the committed 20x baseline is a machine-local reference. A
@@ -65,11 +64,11 @@ here.**
   the 20x fitness project, record only, and the `rust` lane prints it. Where Rust differs from the
   other ports, on purpose: there is no three-way merge, so a generated file edited by hand (or an
   existing file nobody recorded) is refused and the run exits 1 after finishing the other files,
-  as Python does; the output directory must be inside the project, so every manifest key is
-  project-relative; a named run (`cargo meta gen Order`) regenerates every file of the crates
-  that contain the named objects, plus the transitive closure of the crates those depend on,
-  rather than merging; and there is no `verify`,
-  `eject`, template or client generator yet. Relationships, projections and reports are not
+  as Python does; the output directory must be a sub-directory of the project (the project root
+  itself is refused), so every manifest key is project-relative; a named run (`cargo meta gen
+  Order`) regenerates every file of the crates that contain the named objects, plus the
+  transitive closure of the crates those depend on, rather than merging; and there is no
+  `verify`, `eject`, template or client generator yet. Relationships, projections and reports are not
   emitted. Nothing is published.
 
 - **Cross-port stage benchmark and Rust port documentation.** `scripts/bench-load/stages.py` runs

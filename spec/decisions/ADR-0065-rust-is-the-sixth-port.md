@@ -27,9 +27,10 @@ five".
    (byte-identical) and the shared metamodel corpus.
 
 2. **Layout.** `server/rust/` is one Cargo workspace with a pinned toolchain
-   (`rust-toolchain.toml`). The first crate is `metaobjects` (node model, registry, providers,
-   loader, serializer). `metaobjects-codegen` and `metaobjects-cli` join the workspace when they
-   have code; the workspace carries no empty placeholder crates.
+   (`rust-toolchain.toml`). Three crates, each with code: `metaobjects` (node model, registry,
+   providers, loader, serializer), `metaobjects-codegen` (the run engine and the generators) and
+   `metaobjects-cli` (the `cargo-meta` binary). The workspace carries no empty placeholder crates;
+   a crate joins it with its first code.
 
 3. **The command is `cargo meta`.** It is a Cargo subcommand (a `cargo-meta` binary), the way the
    other build-tool-hosted ports spell theirs (`dotnet meta`, `mvn metaobjects:...`). A bare `meta`
@@ -64,7 +65,8 @@ five".
 7. **Built for speed from the start.** Generation writes only files whose bytes changed, keeps
    no per-file manifest writes on the hot path, and runs no formatter in the generation path
    (the emitter writes formatted output, as ADR-0063 rules for every port). A load benchmark over a 20-times copy of the public
-   fitness model (`cargo run --release --example load_bench`) is kept beside the crate.
+   fitness model (`cargo run --release --example load_bench`) is kept beside the crate, and
+   `gen_bench` (in `metaobjects-codegen`) times generation per stage on the same model.
 
 8. **The runtime read path: freeze, then memoize, like the other ports.** Runtime metadata
    access reads the same resolved values over and over from many threads, so the tree caches its
@@ -92,8 +94,9 @@ five".
 - The shared lane map (`scripts/ci-lane-map.txt`, read by `scripts/ci-select-lanes.sh`) has a
   `rust` lane, `server/rust/**` selects it, and the `scripts/ci-affected-ports.sh` and
   `scripts/ci-ports-to-run.sh` selectors know six ports. `scripts/ci-local.sh --only rust` runs
-  `cargo fmt --check`, clippy with warnings denied and the crate's tests, and `pr-ci` and
-  `local-ci` run it as their own job.
+  `cargo fmt --check`, clippy with warnings denied, the workspace's tests and the benchmark
+  tables (record only), and `pr-ci` and `local-ci` run it as their own job. The lane's exact
+  contents are owned by `scripts/ci-local.sh`.
 - `docs/CONFORMANCE.md` names the port beside the matrix, not as a column, until it leaves
   preview; its column then appears with per-corpus results like the others.
 - Every later phase (validation passes, overlays and cross-package references, YAML and source
