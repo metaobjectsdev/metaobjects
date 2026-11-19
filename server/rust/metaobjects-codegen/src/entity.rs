@@ -630,12 +630,36 @@ impl Plan {
             }
             Some(picked)
         };
+        // A named run emits every file of every crate that contains a selected object, plus
+        // the transitive closure of the crates those depend on: a selected crate's manifest
+        // declares a path dependency on every crate its fields reference, so a dependency
+        // crate left out would leave output `cargo check` cannot build. Unchanged bytes are
+        // never rewritten, so re-emitting a dependency crate costs nothing.
+        let selected_crates: Option<HashSet<&str>> = selected.as_ref().map(|sel| {
+            let mut chosen: HashSet<&str> = self
+                .crates
+                .iter()
+                .filter(|(_, c)| c.structs.iter().any(|i| sel.contains(i)))
+                .map(|(name, _)| name.as_str())
+                .collect();
+            let mut queue: Vec<&str> = chosen.iter().copied().collect();
+            while let Some(name) = queue.pop() {
+                if let Some(c) = self.crates.get(name) {
+                    for dep in &c.deps {
+                        if chosen.insert(dep.as_str()) {
+                            queue.push(dep.as_str());
+                        }
+                    }
+                }
+            }
+            chosen
+        });
         let mut files = Vec::new();
         for (cname, c) in &self.crates {
-            let crate_selected = selected
+            if !selected_crates
                 .as_ref()
-                .is_none_or(|sel| c.structs.iter().any(|i| sel.contains(i)));
-            if !crate_selected {
+                .is_none_or(|sel| sel.contains(cname.as_str()))
+            {
                 continue;
             }
             files.push(EmittedFile::new(

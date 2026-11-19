@@ -231,6 +231,20 @@ fn a_named_run_emits_every_file_of_the_selected_crate_and_nothing_of_the_others(
 }
 
 #[test]
+fn a_named_run_restores_a_deleted_file_of_a_dependency_crate() {
+    // `Invoice` sits in `shop_billing`, whose manifest depends on the `shop` crate; the
+    // shared enum the emitted crate imports lives there, so a named run of `Invoice`
+    // must bring that dependency crate's deleted file back.
+    let p = Scratch::project("named-dep", &shop_files());
+    gen_ok(&p);
+    std::fs::remove_file(p.path().join("generated/shop/src/currency.rs")).unwrap();
+    tick();
+    let r = gen_with(&p, |o| o.entities = vec!["Invoice".to_string()]).unwrap();
+    assert!(p.exists("generated/shop/src/currency.rs"));
+    assert_eq!(r.files.created, 1, "{:?}", r.files);
+}
+
+#[test]
 fn a_load_error_stops_the_run_before_anything_is_written() {
     let p = Scratch::project("bad", &[("metaobjects/meta.bad.json", "{ not json")]);
     let e = gen_with(&p, |_| {}).expect_err("the model does not load");

@@ -225,3 +225,81 @@ fn a_named_first_run_leaves_a_crate_the_real_compiler_accepts() {
         String::from_utf8_lossy(&check.stderr)
     );
 }
+
+#[test]
+fn a_named_first_run_across_a_crate_dependency_leaves_a_buildable_workspace() {
+    // `Invoice` lives in `shop_billing`, whose manifest declares a path dependency on the
+    // `shop` crate (Invoice.order and Invoice.currency both reach into `shop`), so the run
+    // must emit that dependency crate too or its own output cannot build. The oracle is
+    // `cargo check` itself.
+    let p = Scratch::project("compile-named-dep", &shop_files());
+    let generators: Vec<Box<dyn Generator>> = vec![Box::new(EntityGenerator)];
+    let mut opts = RunOptions::new(p.path());
+    opts.out_dir = PathBuf::from("generated");
+    opts.entities = vec!["Invoice".to_string()];
+    run(&opts, &generators).unwrap_or_else(|e| panic!("named gen failed: {e}"));
+    assert!(p.exists("generated/shop_billing/src/invoice.rs"));
+    assert!(
+        p.exists("generated/shop/src/order.rs"),
+        "the dependency crate came out too"
+    );
+
+    let ws = locked_ws("compile-named-dep-ws", p.path());
+    let check = cargo(ws.path(), &["check", "--offline", "--workspace", "-q"]);
+    assert!(
+        check.status.success(),
+        "cargo check failed on a named first run across a crate dependency:\n{}",
+        String::from_utf8_lossy(&check.stderr)
+    );
+}
+
+#[test]
+fn a_named_first_run_follows_a_three_deep_crate_dependency_chain() {
+    // A depends on B depends on C, one crate each; naming an object of A must bring out
+    // all three crates, or the chain's middle manifest points at a crate that is not there.
+    let a = r#"{ "metadata.root": { "package": "chain::a", "children": [
+      { "object.entity": { "name": "A", "children": [
+        { "field.long": { "name": "id" } },
+        { "identity.primary": { "name": "pk", "@fields": ["id"] } },
+        { "field.object": { "name": "b", "@required": true, "@objectRef": "chain::b::B" } }
+      ] } } ] } }"#;
+    let b = r#"{ "metadata.root": { "package": "chain::b", "children": [
+      { "object.entity": { "name": "B", "children": [
+        { "field.long": { "name": "id" } },
+        { "identity.primary": { "name": "pk", "@fields": ["id"] } },
+        { "field.object": { "name": "c", "@required": true, "@objectRef": "chain::c::C" } }
+      ] } } ] } }"#;
+    let c = r#"{ "metadata.root": { "package": "chain::c", "children": [
+      { "object.entity": { "name": "C", "children": [
+        { "field.long": { "name": "id" } },
+        { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+      ] } } ] } }"#;
+    let p = Scratch::project(
+        "compile-chain",
+        &[
+            ("metaobjects/meta.chain-a.json", a),
+            ("metaobjects/meta.chain-b.json", b),
+            ("metaobjects/meta.chain-c.json", c),
+        ],
+    );
+    let generators: Vec<Box<dyn Generator>> = vec![Box::new(EntityGenerator)];
+    let mut opts = RunOptions::new(p.path());
+    opts.out_dir = PathBuf::from("generated");
+    opts.entities = vec!["A".to_string()];
+    run(&opts, &generators).unwrap_or_else(|e| panic!("named gen failed: {e}"));
+    for crate_file in [
+        "generated/chain_a/src/a.rs",
+        "generated/chain_b/src/b.rs",
+        "generated/chain_c/src/c.rs",
+    ] {
+        assert!(p.exists(crate_file), "{crate_file} is missing");
+    }
+
+    let ws = locked_ws("compile-chain-ws", p.path());
+    let check = cargo(ws.path(), &["check", "--offline", "--workspace", "-q"]);
+    assert!(
+        check.status.success(),
+        "cargo check failed on a named first run's dependency chain:\n{}",
+        String::from_utf8_lossy(&check.stderr)
+    );
+}

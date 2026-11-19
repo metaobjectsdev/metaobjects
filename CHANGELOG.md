@@ -67,7 +67,8 @@ here.**
   existing file nobody recorded) is refused and the run exits 1 after finishing the other files,
   as Python does; the output directory must be inside the project, so every manifest key is
   project-relative; a named run (`cargo meta gen Order`) regenerates every file of the crates
-  that contain the named objects rather than merging; and there is no `verify`,
+  that contain the named objects, plus the transitive closure of the crates those depend on,
+  rather than merging; and there is no `verify`,
   `eject`, template or client generator yet. Relationships, projections and reports are not
   emitted. Nothing is published.
 
