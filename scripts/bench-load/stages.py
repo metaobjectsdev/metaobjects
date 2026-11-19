@@ -104,8 +104,9 @@ def copy_model(src: Path, dest: Path) -> None:
 
 
 def install_config(project: Path, model: Path) -> None:
-    """Write a port scratch project's .metaobjects/config.json: the source project's own config
-    when the benchmark copied one next to the model, else the minimal synthetic config."""
+    """The one shared prepare step: write a port scratch project's .metaobjects/config.json from
+    the config the benchmark placed next to the model (the source project's own, rewritten), or
+    the minimal synthetic config when no project config was copied."""
     src = model.parent / ".metaobjects" / "config.json"
     (project / ".metaobjects").mkdir(exist_ok=True)
     if src.exists():
@@ -200,6 +201,7 @@ class TypeScript(Port):
         run(self._meta() + ["init", "--no-skills", "--quiet"], self.project)
         shutil.rmtree(self.project / "metaobjects", ignore_errors=True)
         copy_model(model, self.project / "metaobjects")
+        install_config(self.project, model)
         cfg = self.project / "metaobjects.config.ts"
         text = cfg.read_text()
         text = text.replace(
@@ -275,10 +277,8 @@ class CSharp(Port):
         gens = self.project / "codegen/Generators.cs"
         gens.write_text(gens.read_text().replace(
             "    [\n", "    [\n        new MetaObjects.Codegen.Generators.EntityGenerator(),\n", 1))
+        install_config(self.project, model)
         cfg = self.project / ".metaobjects/config.json"
-        src_cfg = model.parent / ".metaobjects" / "config.json"
-        if src_cfg.exists():
-            shutil.copy(src_cfg, cfg)
         c = json.loads(cfg.read_text())
         c["csharp"] = {"outDir": "out", "namespace": "Bench"}
         cfg.write_text(json.dumps(c, indent=2))
@@ -325,6 +325,7 @@ class Java(Port):
         self.project = work / self.name
         self.project.mkdir()
         copy_model(model, self.project / "src/main/metaobjects")
+        install_config(self.project, model)
         gens = "".join(
             f"<generator><classname>{c}</classname><args><outputDir>${{project.build.directory}}/generated-sources/{d}"
             f"</outputDir></args></generator>" for c, d in self.generators)
