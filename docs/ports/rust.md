@@ -58,7 +58,7 @@ cargo run --release --example load_bench -- --dir <project> --json   # a real pr
 ```
 
 `--write-baseline <file>` records a run and `--baseline <file>` compares against one. A baseline is a
-record to read, never a threshold: the committed `baselines/load-20x.json` was recorded on one machine,
+record to read, never a threshold: the committed `server/rust/metaobjects/baselines/load-20x.json` was recorded on one machine,
 and a delta between two machines measures the machine. Compare against a baseline you recorded
 yourself, before and after a change, on the same machine.
 
