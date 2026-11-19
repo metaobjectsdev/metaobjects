@@ -416,8 +416,16 @@ impl Plan {
             )?;
             let pkg = tree.effective_package(decl);
             let c = crates.entry(target.crate_name.clone()).or_default();
-            if c.package.is_empty() && c.structs.is_empty() && c.shared_enums.is_empty() {
+            if c.structs.is_empty() && c.shared_enums.is_empty() {
                 c.package = pkg;
+            } else if c.package != pkg {
+                return Err(GenError::new(
+                    ERR_NAME_COLLISION,
+                    format!(
+                        "the packages '{}' and '{}' both become the crate {}",
+                        c.package, pkg, target.crate_name
+                    ),
+                ));
             }
             c.shared_enums.push((decl, plan));
         }

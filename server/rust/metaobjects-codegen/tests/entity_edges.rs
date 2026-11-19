@@ -284,6 +284,61 @@ fn a_bare_entity_name_that_matches_two_objects_is_an_error_not_a_guess() {
 }
 
 #[test]
+fn a_shared_enum_in_another_package_cannot_join_a_struct_crate() {
+    let ab = model(
+        "a::b",
+        r#"{ "object.entity": { "name": "Thing", "children": [
+          { "field.long": { "name": "id" } },
+          { "identity.primary": { "name": "pk", "@fields": ["id"] } },
+          { "field.enum": { "name": "color", "extends": "a_b::Color" } }
+        ] } }"#,
+    );
+    let a_b = model(
+        "a_b",
+        r#"{ "field.enum": { "name": "Color", "abstract": true, "@values": ["red", "blue"] } }"#,
+    );
+    let e = generate(&[
+        ("metaobjects/meta.ab.json", &ab),
+        ("metaobjects/meta.a_b.json", &a_b),
+    ])
+    .unwrap_err();
+    assert_eq!(e.code, "ERR_NAME_COLLISION");
+    assert!(
+        e.message.contains("a::b") && e.message.contains("a_b"),
+        "{}",
+        e.message
+    );
+}
+
+#[test]
+fn two_packages_that_only_own_shared_enums_cannot_share_a_crate() {
+    let ab = model(
+        "a::b",
+        r#"{ "field.enum": { "name": "Color", "abstract": true, "@values": ["red", "blue"] } }"#,
+    );
+    let a_b = model(
+        "a_b",
+        r#"{ "field.enum": { "name": "Shade", "abstract": true, "@values": ["dark", "light"] } }"#,
+    );
+    let user = model(
+        "app",
+        r#"{ "object.entity": { "name": "Thing", "children": [
+          { "field.long": { "name": "id" } },
+          { "identity.primary": { "name": "pk", "@fields": ["id"] } },
+          { "field.enum": { "name": "color", "extends": "a::b::Color" } },
+          { "field.enum": { "name": "shade", "extends": "a_b::Shade" } }
+        ] } }"#,
+    );
+    let e = generate(&[
+        ("metaobjects/meta.ab.json", &ab),
+        ("metaobjects/meta.a_b.json", &a_b),
+        ("metaobjects/meta.app.json", &user),
+    ])
+    .unwrap_err();
+    assert_eq!(e.code, "ERR_NAME_COLLISION");
+}
+
+#[test]
 fn two_enum_members_that_become_one_variant_are_an_error() {
     let m = model(
         "en",
