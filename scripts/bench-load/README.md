@@ -1,6 +1,12 @@
-# Warm-load benchmark
+# Cross-port benchmarks: load and generation
 
-Measures how long each loader takes to load a model that is N times the size of the
+This README owns the usage of every benchmark in this directory and of the Rust `load_bench`
+example. Two tools: `run.sh` (warm load across model sizes) and `stages.py` (every stage, every
+port).
+
+## Warm load by model size
+
+`run.sh` measures how long each loader takes to load a model that is N times the size of the
 persistence-conformance "fitness" model, so growth with model size is visible (a quadratic
 lookup shows up as a 20x model costing far more than 20x the 1x model).
 
@@ -49,6 +55,25 @@ must be outside this repository. Only the model label is anonymized; failure rea
 commands and errors, so a private run stays local and its report is never committed. The TypeScript
 and Java load drivers and the Java/Kotlin generation projects pass no `libraries` option, so a
 project using libraries fails those columns.
+
+## Rust `load_bench`
+
+The Rust port's load benchmark is a Cargo example, `server/rust/metaobjects/examples/load_bench.rs`.
+It loads a 20-times model built in memory from the fitness model, then prints the median time of
+each load phase and of each validation pass, and the peak memory of the process.
+
+```
+cd server/rust
+cargo run --release --example load_bench                             # 20 copies, 15 iterations, JSON
+cargo run --release --example load_bench -- 20 15 yaml               # the same model as YAML
+cargo run --release --example load_bench -- 20 15 project            # the project-reading steps
+cargo run --release --example load_bench -- --dir <project> --json   # a real project, one JSON line
+```
+
+`--write-baseline <file>` records a run and `--baseline <file>` compares against one. A baseline is
+a record to read, never a threshold: the committed `server/rust/metaobjects/baselines/load-20x.json`
+was recorded on one machine, and a delta between two machines measures the machine. Compare against
+a baseline you recorded yourself, before and after a change, on the same machine.
 
 Wall-clock is noisy on a busy machine. Compare the 20x/1x growth ratio, not absolute
 milliseconds, and treat the deterministic call-count tests in each port

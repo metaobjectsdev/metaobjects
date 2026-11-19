@@ -5,15 +5,10 @@
 //! `fitness_x19`), so the copies never collide and every bare reference still
 //! resolves inside its own copy. Nothing is written to disk.
 //!
-//! Run it in release mode:
+//! Run it in release mode. Usage, flags and baselines are documented in
+//! `scripts/bench-load/README.md` ("Rust `load_bench`"), which owns them.
 //!
-//! ```text
-//! cargo run --release --example load_bench [-- <copies> <iterations>
-//!     [json|yaml|project] [--baseline <file>] [--write-baseline <file>]]
-//! cargo run --release --example load_bench -- --dir <project> [--iterations <n>] [--json]
-//! ```
-//!
-//! `--dir` loads a real project instead of the built-in model: it resolves the project's
+//! `--dir <project>` loads a real project instead of the built-in model: it resolves the project's
 //! sources the way every port does (config, directory walk, file text) and times the whole
 //! read plus load, one untimed warm-up first, so the figure is comparable with the other
 //! ports' warm-load drivers in `scripts/bench-load/`. `--json` prints one machine-readable

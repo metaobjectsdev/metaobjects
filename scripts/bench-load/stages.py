@@ -20,8 +20,7 @@ automatically once it does).
 
 Default model: the public persistence-conformance fitness model repeated --copies times, with
 every declaration renamed per copy so the copies can be generated as well as loaded
-(`gen-model.py --unique-names`). It is the same model `run.sh`, `load_bench` and the
-reference-lookup profiling use.
+(`gen-model.py --unique-names`). It is the same model `run.sh` and `load_bench` use.
 
 --project runs the same stages on your own project instead. Its metadata directory and, when
 present, its .metaobjects/config.json are COPIED into a scratch directory (the project is never

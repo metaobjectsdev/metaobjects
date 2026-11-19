@@ -45,22 +45,10 @@ need code the port does not have yet.
 
 ### Load benchmark
 
-`load_bench` times loading a 20-times model built in memory from the public conformance fitness model
-(`fixtures/persistence-conformance/canonical/meta.fitness.json`). It prints the median time of each
-load phase and each of the 40 validation passes, and the peak memory of the process.
-
-```bash
-cd server/rust
-cargo run --release --example load_bench                       # 20 copies, 15 iterations, JSON
-cargo run --release --example load_bench -- 20 15 yaml         # the same model as YAML
-cargo run --release --example load_bench -- 20 15 project      # the project-reading steps
-cargo run --release --example load_bench -- --dir <project> --json   # a real project, one JSON line
-```
-
-`--write-baseline <file>` records a run and `--baseline <file>` compares against one. A baseline is a
-record to read, never a threshold: the committed `server/rust/metaobjects/baselines/load-20x.json` was recorded on one machine,
-and a delta between two machines measures the machine. Compare against a baseline you recorded
-yourself, before and after a change, on the same machine.
+`load_bench` (a Cargo example) times loading a 20-times model built in memory from the public
+conformance fitness model, per load phase and per validation pass, with the peak memory of the
+process. Its invocations, the baseline options and the committed baseline are documented in
+[`scripts/bench-load/README.md`](../../scripts/bench-load/README.md#rust-load_bench).
 
 [`scripts/bench-load/`](../../scripts/bench-load/README.md) runs this same model through every port,
 stage by stage (load and validate, a no-change generation run, a full generation, a one-entity-edit
