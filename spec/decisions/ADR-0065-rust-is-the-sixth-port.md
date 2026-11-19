@@ -2,7 +2,7 @@
 
 ## Status
 
-**Proposed** (2026-11-14). Registers no vocabulary: `metamodelVersion` is unchanged. Adds a sixth
+**Accepted** (2026-11-19). Registers no vocabulary: `metamodelVersion` is unchanged. Adds a sixth
 language port under `server/rust/`, in preview, and a `rust` CI lane. Amends nothing.
 
 ## Context

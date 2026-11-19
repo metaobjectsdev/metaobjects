@@ -5,12 +5,15 @@
 //! `fitness_x19`), so the copies never collide and every bare reference still
 //! resolves inside its own copy. Nothing is written to disk.
 //!
-//! Run it in release mode:
+//! Run it in release mode. Usage, flags and baselines are documented in
+//! `scripts/bench-load/README.md` ("Rust `load_bench`"), which owns them.
 //!
-//! ```text
-//! cargo run --release --example load_bench [-- <copies> <iterations>
-//!     [json|yaml|project] [--baseline <file>] [--write-baseline <file>]]
-//! ```
+//! `--dir <project>` loads a real project instead of the built-in model: it resolves the project's
+//! sources the way every port does (config, directory walk, file text) and times the whole
+//! read plus load, one untimed warm-up first, so the figure is comparable with the other
+//! ports' warm-load drivers in `scripts/bench-load/`. `--json` prints one machine-readable
+//! line (`port`, `loads`, `median_ms`, `peak_rss_mib`, `nodes`) in the shape those drivers
+//! print.
 //!
 //! The mode picks what is loaded: `json` (the default) loads the model as JSON;
 //! `yaml` loads the same model as sigil-free authoring YAML, so the phase table
@@ -190,19 +193,73 @@ fn project_rows(sources: &[(String, String)], iterations: usize) {
     }
 }
 
+/// Warm-load a project directory: the project read (config, walk, file text) plus the
+/// load, as one figure per iteration, after one untimed warm-up.
+fn dir_bench(dir: &std::path::Path, iterations: usize, json_line: bool) {
+    let naming = NamingRegistry::builtin();
+    let registry = default_registry().expect("the built-in providers compose");
+    let loader = Loader::new(&registry);
+    let load_once = || {
+        let collection = resolve_collection(dir, None, &naming).expect("the project resolves");
+        let (pairs, errors) = collection.read_sources();
+        assert!(errors.is_empty(), "read errors: {:?}", errors.first());
+        let result = loader.load_sources(&pairs);
+        assert!(
+            result.errors.is_empty(),
+            "load errors: {:?}",
+            result.errors.first()
+        );
+        result.tree.len()
+    };
+    let nodes = load_once();
+    let mut times = Vec::with_capacity(iterations);
+    for _ in 0..iterations {
+        let t = Instant::now();
+        std::hint::black_box(load_once());
+        times.push(t.elapsed());
+    }
+    let median_ms = (ms(median(times)) * 10.0).round() / 10.0;
+    let rss_mib = peak_rss_kib().map(|k| (k as f64 / 1024.0).round());
+    if json_line {
+        println!(
+            "{}",
+            json!({ "port": "rust", "loads": iterations, "median_ms": median_ms, "peak_rss_mib": rss_mib, "nodes": nodes })
+        );
+    } else {
+        println!(
+            "{nodes} nodes, warm load median of {iterations}: {median_ms} ms, peak {rss_mib:?} MiB"
+        );
+    }
+}
+
 fn main() {
     let mut baseline_path = None;
     let mut write_path = None;
+    let mut dir = None;
+    let mut dir_iterations = 7;
+    let mut json_line = false;
     let mut positional = Vec::new();
     let mut raw = std::env::args().skip(1);
     while let Some(a) = raw.next() {
         match a.as_str() {
+            "--dir" => dir = Some(raw.next().expect("--dir takes a project directory")),
+            "--iterations" => {
+                dir_iterations = raw
+                    .next()
+                    .and_then(|n| n.parse().ok())
+                    .expect("--iterations takes a number");
+            }
+            "--json" => json_line = true,
             "--baseline" => baseline_path = Some(raw.next().expect("--baseline takes a file")),
             "--write-baseline" => {
                 write_path = Some(raw.next().expect("--write-baseline takes a file"));
             }
             _ => positional.push(a),
         }
+    }
+    if let Some(dir) = dir {
+        dir_bench(std::path::Path::new(&dir), dir_iterations, json_line);
+        return;
     }
     let mut args = positional.into_iter();
     let copies: usize = args

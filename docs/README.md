@@ -57,7 +57,8 @@ docs/
     ├── java.md
     ├── kotlin.md
     ├── csharp.md
-    └── python.md
+    ├── python.md
+    └── rust.md                  # the Rust port, in preview: loader and validation only, no codegen yet
 ```
 
 If this list and `ls docs/features/` ever disagree, trust the directory listing —
