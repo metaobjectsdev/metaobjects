@@ -51,7 +51,9 @@ fn copy_tree(from: &Path, to: &Path) {
 }
 
 /// A scratch workspace holding a copy of `from`'s `generated` tree, pinned to the
-/// repository's lockfile so `--offline` resolves the same serde.
+/// repository's lockfile, so cargo resolves the same serde the repository does. Cargo is not
+/// run offline: serde is a dependency of the generated crates only, so a fresh machine has not
+/// downloaded it yet.
 fn locked_ws(tag: &str, from: &Path) -> Scratch {
     let ws = Scratch::new(tag);
     copy_tree(&from.join("generated"), &ws.path().join("out"));
@@ -169,17 +171,14 @@ fn generated_crates_compile_are_formatted_and_round_trip_through_serde() {
         );
     }
 
-    let check = cargo(
-        ws.path(),
-        &["check", "--offline", "--workspace", "--all-targets", "-q"],
-    );
+    let check = cargo(ws.path(), &["check", "--workspace", "--all-targets", "-q"]);
     assert!(
         check.status.success(),
         "cargo check failed:\n{}",
         String::from_utf8_lossy(&check.stderr)
     );
 
-    let probe = cargo(ws.path(), &["run", "--offline", "-q", "-p", "probe"]);
+    let probe = cargo(ws.path(), &["run", "-q", "-p", "probe"]);
     assert!(
         probe.status.success(),
         "the probe failed:\n{}",
@@ -218,7 +217,7 @@ fn a_named_first_run_leaves_a_crate_the_real_compiler_accepts() {
     assert!(!p.exists("generated/shop_billing"));
 
     let ws = locked_ws("compile-named-ws", p.path());
-    let check = cargo(ws.path(), &["check", "--offline", "--workspace", "-q"]);
+    let check = cargo(ws.path(), &["check", "--workspace", "-q"]);
     assert!(
         check.status.success(),
         "cargo check failed on a named first run's crate:\n{}",
@@ -245,7 +244,7 @@ fn a_named_first_run_across_a_crate_dependency_leaves_a_buildable_workspace() {
     );
 
     let ws = locked_ws("compile-named-dep-ws", p.path());
-    let check = cargo(ws.path(), &["check", "--offline", "--workspace", "-q"]);
+    let check = cargo(ws.path(), &["check", "--workspace", "-q"]);
     assert!(
         check.status.success(),
         "cargo check failed on a named first run across a crate dependency:\n{}",
@@ -296,7 +295,7 @@ fn a_named_first_run_follows_a_three_deep_crate_dependency_chain() {
     }
 
     let ws = locked_ws("compile-chain-ws", p.path());
-    let check = cargo(ws.path(), &["check", "--offline", "--workspace", "-q"]);
+    let check = cargo(ws.path(), &["check", "--workspace", "-q"]);
     assert!(
         check.status.success(),
         "cargo check failed on a named first run's dependency chain:\n{}",
