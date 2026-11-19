@@ -27,8 +27,9 @@ reference-lookup profiling use.
 present, its .metaobjects/config.json are COPIED into a scratch directory (the project is never
 written to) and the report is written to --out, which must be OUTSIDE this repository. Only the
 model label is anonymized (counts); failure reasons may quote commands and errors, so a private
-run stays local and its report is never committed. The TypeScript load driver passes no
-libraries option, so a project using libraries still fails the typescript column.
+run stays local and its report is never committed. The TypeScript and Java load drivers and the
+Java/Kotlin generation projects pass no libraries option, so a project using libraries still
+fails those columns.
 
 Generation runs each port's own command with ONE reference generator chosen to exist and work
 in that port (typescript: entity + names; python: entity; csharp: entity; java: dto +
@@ -542,8 +543,10 @@ def main() -> int:
             copy_model(src, model)
             src_cfg = src.parent / ".metaobjects" / "config.json"
             if src_cfg.exists():
+                cfg = json.loads(src_cfg.read_text())
+                cfg["sources"] = [{"path": "metaobjects"}]
                 (model.parent / ".metaobjects").mkdir()
-                shutil.copy(src_cfg, model.parent / ".metaobjects" / "config.json")
+                (model.parent / ".metaobjects" / "config.json").write_text(json.dumps(cfg, indent=2) + "\n")
             files = model_files(model)
             label = f"a private project ({len(files)} metadata files, {sum(f.stat().st_size for f in files) // 1024} KiB)"
         else:

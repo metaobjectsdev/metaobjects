@@ -47,7 +47,8 @@ The model is the fitness model repeated `--copies` times with every declaration 
 `.metaobjects/config.json` are copied into scratch (the project is never written to), and `--out`
 must be outside this repository. Only the model label is anonymized; failure reasons may quote
 commands and errors, so a private run stays local and its report is never committed. The TypeScript
-load driver passes no `libraries` option, so a project using libraries fails the typescript column.
+and Java load drivers and the Java/Kotlin generation projects pass no `libraries` option, so a
+project using libraries fails those columns.
 
 Wall-clock is noisy on a busy machine. Compare the 20x/1x growth ratio, not absolute
 milliseconds, and treat the deterministic call-count tests in each port
