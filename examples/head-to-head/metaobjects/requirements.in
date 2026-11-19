@@ -1,0 +1,4 @@
+metaobjects[jinja,pydantic]==1.2.0
+mypy
+psycopg[binary]
+pydantic

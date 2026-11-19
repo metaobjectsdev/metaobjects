@@ -1,0 +1,21 @@
+{
+  "name": "h2h-metaobjects",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@metaobjectsdev/runtime-ts": "1.2.0",
+    "drizzle-orm": "0.45.4",
+    "fastify": "5.12.7",
+    "pg": "8.23.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@metaobjectsdev/cli": "1.2.0",
+    "@metaobjectsdev/codegen-ts": "1.2.0",
+    "@metaobjectsdev/metadata": "1.2.0",
+    "@types/node": "22.20.5",
+    "@types/pg": "8.23.1",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  }
+}
