@@ -229,6 +229,15 @@ pub fn run(opts: &RunOptions, generators: &[Box<dyn Generator>]) -> Result<RunRe
             ),
         ))
     })?;
+    if out_rel.is_empty() {
+        return Err(RunError::Generator(GenError::new(
+            ERR_OUT_DIR,
+            format!(
+                "the output directory {} is the project root; it must be a sub-directory of the project, because the shared hash manifest keys every port's files and the stale-file sweep may only touch files under a prefix this port owns",
+                out_dir.display()
+            ),
+        )));
+    }
     let gen_state = project_root
         .join(DEFAULT_METAOBJECTS_DIR)
         .join(GEN_STATE_DIR);
@@ -342,11 +351,7 @@ pub fn run(opts: &RunOptions, generators: &[Box<dyn Generator>]) -> Result<RunRe
     let mut known_dirs: HashSet<PathBuf> = HashSet::new();
     let mut written_hashes: BTreeMap<String, String> = BTreeMap::new();
     for f in &emitted {
-        let key = if out_rel.is_empty() {
-            f.path.clone()
-        } else {
-            format!("{out_rel}/{}", f.path)
-        };
+        let key = format!("{out_rel}/{}", f.path);
         let path = project_root.join(&key);
         let fresh_hash = content_hash(&f.content);
         match std::fs::read(&path) {
@@ -386,11 +391,7 @@ pub fn run(opts: &RunOptions, generators: &[Box<dyn Generator>]) -> Result<RunRe
     // limited to some generators (or some objects) cannot tell a file nobody emits any more
     // from a file another generator emits, so it sweeps nothing.
     if !named && opts.generators.is_none() {
-        let prefix = if out_rel.is_empty() {
-            String::new()
-        } else {
-            format!("{out_rel}/")
-        };
+        let prefix = format!("{out_rel}/");
         let stale: Vec<(String, String)> = manifest
             .records()
             .filter(|(k, _)| k.starts_with(&prefix) && !written_hashes.contains_key(*k))
@@ -405,6 +406,7 @@ pub fn run(opts: &RunOptions, generators: &[Box<dyn Generator>]) -> Result<RunRe
                     manifest.remove(&key);
                     files.removed += 1;
                 }
+                Ok(_) if refused.contains(&key) => {}
                 Ok(_) => warnings.push(format!(
                     "{key} is no longer generated but differs from what the last run wrote, so it was kept"
                 )),

@@ -261,6 +261,19 @@ fn the_output_directory_must_be_inside_the_project() {
 }
 
 #[test]
+fn the_project_root_is_not_an_output_directory_and_nothing_is_written() {
+    let p = Scratch::project("root-out", &shop_files());
+    for out in [".", ""] {
+        let e = gen_with(&p, |o| o.out_dir = PathBuf::from(out)).expect_err("the project root");
+        assert!(e.to_string().contains("ERR_OUT_DIR_OUTSIDE_PROJECT"), "{e}");
+        assert!(e.to_string().contains("sub-directory"), "{e}");
+    }
+    assert!(!p.exists(".metaobjects/.gen-state"));
+    assert!(!p.exists("shop"));
+    assert!(!p.exists("Cargo.toml"));
+}
+
+#[test]
 fn two_name_collisions_and_a_crate_cycle_are_reported_not_emitted() {
     // Two objects that become one Rust type.
     let dup = r#"{ "metadata.root": { "package": "dup", "children": [
