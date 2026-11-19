@@ -21,6 +21,8 @@ interface OwnedTier {
   templates: string;
 }
 
+const names = new Set<string>([...CORE_NAMES, ...REACT_NAMES, ...TANSTACK_NAMES]);
+
 /** Same discovery the gate uses — a new owned copy is covered the moment it lands. */
 export function ownedTiers(repo: string = REPO_ROOT): OwnedTier[] {
   const packageSrc = join(repo, "server/typescript/packages/test-generators/src");
@@ -32,13 +34,20 @@ export function ownedTiers(repo: string = REPO_ROOT): OwnedTier[] {
     for (const e of readdirSync(examples, { withFileTypes: true })) {
       if (!e.isDirectory()) continue;
       const generators = join(examples, e.name, "codegen", "generators");
-      if (existsSync(generators)) tiers.push({ generators, templates: join(examples, e.name, "codegen", "templates") });
+      if (!existsSync(generators)) continue;
+      // A directory of BESPOKE generators — an example's own, written from scratch rather
+      // than ejected (e.g. tasks-axi-rust's rust-cli.ts) — owns no reference copy, so it is
+      // not a tier: the gate demands each tier hold at least one eject, and the sync script
+      // never introduces one ("which copies an example owns is that example's decision").
+      // It is a tier exactly when it already holds a file a reference generator is named for.
+      const holdsOwnedCopy = readdirSync(generators).some(
+        (f) => f.endsWith(".ts") && names.has(f.slice(0, -3)),
+      );
+      if (holdsOwnedCopy) tiers.push({ generators, templates: join(examples, e.name, "codegen", "templates") });
     }
   }
   return tiers;
 }
-
-const names = new Set<string>([...CORE_NAMES, ...REACT_NAMES, ...TANSTACK_NAMES]);
 
 export function tsFilesUnder(dir: string): string[] {
   if (!existsSync(dir)) return [];

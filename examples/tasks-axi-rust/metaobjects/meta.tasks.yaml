@@ -1,0 +1,181 @@
+# tasks-axi (read path) — the data shapes the Rust tool prints and parses.
+# Sigil-free YAML (ADR-0006). The command surface is NOT here: see meta.cli.yaml.
+metadata:
+  package: tasksaxi::model
+  children:
+    # ---- shared enums (package-level abstract field.enum, referenced by `extends`) ----
+    - field.enum: { name: TaskState, abstract: true, values: [queued, in_flight, done] }
+    - field.enum: { name: HoldKind, abstract: true, values: [captain, external, load, parked, future] }
+    - field.enum:
+        name: DepType
+        abstract: true
+        values: [blocked_by, parent, discovered_from]
+        stringValueMap: { blocked_by: blocked-by, parent: parent, discovered_from: discovered-from }
+    - field.enum: { name: LinkKind, abstract: true, values: [pr, report, doc] }
+    # `list --state` accepts the three states plus the derived `held`.
+    - field.enum: { name: ListState, abstract: true, values: [queued, in_flight, done, held] }
+
+    # ---- value objects ----
+    - object.value:
+        name: Hold
+        children:
+          - field.string: { name: reason, required: true }
+          - field.enum: { name: kind, extends: "tasksaxi::model::HoldKind" }
+          - field.string: { name: until }
+    - object.value:
+        name: Dep
+        children:
+          - field.enum: { name: type, required: true, extends: "tasksaxi::model::DepType" }
+          - field.string: { name: id, required: true }
+          - field.string: { name: reason }
+    - object.value:
+        name: Link
+        children:
+          - field.enum: { name: kind, required: true, extends: "tasksaxi::model::LinkKind" }
+          - field.string: { name: url, required: true }
+
+    # ---- the record ----
+    - object.entity:
+        name: Task
+        children:
+          - field.string: { name: id, required: true }
+          - field.string: { name: title, required: true }
+          - field.enum: { name: state, required: true, extends: "tasksaxi::model::TaskState" }
+          - field.string: { name: kind }
+          - field.string: { name: repo }
+          - field.int: { name: priority }
+          - field.string: { name: created }
+          - field.string: { name: closed }
+          - field.string: { name: body }
+          - field.object: { name: hold, objectRef: Hold }
+          - field.object: { name: deps, objectRef: Dep, isArray: true }
+          - field.object: { name: links, objectRef: Link, isArray: true }
+          - identity.primary: { name: id, fields: id }
+
+    # ---- the printed row: one flat record carrying every derivable column ----
+    # Each column's `row` bag says how its typed value becomes the printed cell:
+    #   absent    text printed when the value is None / empty        (default: none)
+    #   join      separator for an array column                      (default: ",")
+    #   trueText / falseText   printed for a boolean column
+    #   truncate  display limit in UTF-16 units; the hand-written read path applies it
+    # (`@maxLength` is validation, not display, so truncation has no registered home.)
+    - object.value:
+        name: TaskRow
+        children:
+          - field.string: { name: id, required: true }
+          - field.string:
+              name: title
+              required: true
+              children:
+                - attr.properties: { name: row, value: { truncate: 80 } }
+          - field.enum: { name: state, required: true, extends: "tasksaxi::model::TaskState" }
+          - field.boolean:
+              name: blocked
+              children:
+                - attr.properties: { name: row, value: { trueText: "yes", falseText: "no" } }
+          - field.string:
+              name: blocked_by
+              isArray: true
+              children:
+                - attr.properties: { name: row, value: { join: ",", absent: "none" } }
+          - field.boolean:
+              name: held
+              children:
+                - attr.properties: { name: row, value: { trueText: "yes", falseText: "no" } }
+          - field.string:
+              name: hold_reason
+              children:
+                - attr.properties: { name: row, value: { absent: "-" } }
+          - field.enum:
+              name: hold_kind
+              extends: "tasksaxi::model::HoldKind"
+              children:
+                - attr.properties: { name: row, value: { absent: "-" } }
+          - field.string:
+              name: hold_until
+              children:
+                - attr.properties: { name: row, value: { absent: "-" } }
+          - field.string:
+              name: kind
+              children:
+                - attr.properties: { name: row, value: { absent: "task" } }
+          - field.string:
+              name: repo
+              children:
+                - attr.properties: { name: row, value: { absent: "-" } }
+          - field.int:
+              name: priority
+              children:
+                - attr.properties: { name: row, value: { absent: "-" } }
+          - field.string:
+              name: created
+              children:
+                - attr.properties: { name: row, value: { absent: "-" } }
+          - field.string:
+              name: closed
+              children:
+                - attr.properties: { name: row, value: { absent: "-" } }
+          - field.string:
+              name: delivery_state
+              children:
+                - attr.properties: { name: row, value: { absent: "-" } }
+          - field.string:
+              name: deps
+              isArray: true
+              children:
+                - attr.properties: { name: row, value: { join: ",", absent: "none" } }
+          - field.string:
+              name: links
+              isArray: true
+              children:
+                - attr.properties: { name: row, value: { join: ",", absent: "none" } }
+          - field.string:
+              name: body
+              children:
+                - attr.properties: { name: row, value: { absent: "", truncate: 500 } }
+
+    # ---- column sets: which TaskRow columns a view prints, in order ----
+    # Each field names its TaskRow column through `extends`, so a rename or removal in
+    # TaskRow fails the load instead of silently changing a printed header.
+    - object.value:
+        name: TaskListRow
+        children:
+          - field.string: { name: id, extends: "tasksaxi::model::TaskRow.id" }
+          - field.enum: { name: state, extends: "tasksaxi::model::TaskRow.state" }
+          - field.string: { name: kind, extends: "tasksaxi::model::TaskRow.kind" }
+          - field.string: { name: repo, extends: "tasksaxi::model::TaskRow.repo" }
+          - field.string: { name: title, extends: "tasksaxi::model::TaskRow.title" }
+    - object.value:
+        name: TaskDetailRow
+        children:
+          - field.string: { name: id, extends: "tasksaxi::model::TaskRow.id" }
+          - field.string: { name: title, extends: "tasksaxi::model::TaskRow.title" }
+          - field.enum: { name: state, extends: "tasksaxi::model::TaskRow.state" }
+          - field.boolean: { name: blocked, extends: "tasksaxi::model::TaskRow.blocked" }
+          - field.string: { name: blocked_by, extends: "tasksaxi::model::TaskRow.blocked_by" }
+          - field.boolean: { name: held, extends: "tasksaxi::model::TaskRow.held" }
+          - field.string: { name: hold_reason, extends: "tasksaxi::model::TaskRow.hold_reason" }
+          - field.enum: { name: hold_kind, extends: "tasksaxi::model::TaskRow.hold_kind" }
+          - field.string: { name: hold_until, extends: "tasksaxi::model::TaskRow.hold_until" }
+          - field.string: { name: kind, extends: "tasksaxi::model::TaskRow.kind" }
+          - field.string: { name: repo, extends: "tasksaxi::model::TaskRow.repo" }
+          - field.int: { name: priority, extends: "tasksaxi::model::TaskRow.priority" }
+          - field.string: { name: created, extends: "tasksaxi::model::TaskRow.created" }
+          - field.string: { name: closed, extends: "tasksaxi::model::TaskRow.closed" }
+          - field.string: { name: deps, extends: "tasksaxi::model::TaskRow.deps" }
+          - field.string: { name: links, extends: "tasksaxi::model::TaskRow.links" }
+          - field.string: { name: body, extends: "tasksaxi::model::TaskRow.body" }
+
+    # ---- error codes: one int field per code, its exit code as the @default ----
+    # An enum with @intValueMap was the first try, and the loader refuses it: the map's
+    # integers must be unique and the exit codes are not (every code but VALIDATION_ERROR
+    # exits 1).
+    - object.value:
+        name: ErrorCode
+        children:
+          - field.int: { name: VALIDATION_ERROR, default: 2 }
+          - field.int: { name: NOT_FOUND, default: 1 }
+          - field.int: { name: CONFLICT, default: 1 }
+          - field.int: { name: UNSUPPORTED, default: 1 }
+          - field.int: { name: LOCKED, default: 1 }
+          - field.int: { name: UNKNOWN, default: 1 }

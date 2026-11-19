@@ -1,0 +1,13 @@
+[package]
+name = "toon-encode"
+version = "0.1.0"
+edition = "2021"
+description = "A std-only TOON v4.1 encoder"
+license = "Apache-2.0"
+publish = false
+
+[lib]
+name = "toon_encode"
+path = "src/lib.rs"
+
+[dependencies]

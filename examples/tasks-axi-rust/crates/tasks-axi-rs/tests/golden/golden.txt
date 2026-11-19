@@ -1,0 +1,1097 @@
+case	fixed/version
+arg	--version
+file	backlog.md	52afa28aa0823dd2.bin
+code	0
+stdout	0.2.6\n
+
+case	fixed/version-v
+arg	-v
+file	backlog.md	52afa28aa0823dd2.bin
+code	0
+stdout	0.2.6\n
+
+case	fixed/version-V
+arg	-V
+file	backlog.md	52afa28aa0823dd2.bin
+code	0
+stdout	0.2.6\n
+
+case	fixed/noun-version
+arg	task
+arg	--version
+file	backlog.md	52afa28aa0823dd2.bin
+code	0
+stdout	0.2.6\n
+
+case	fixed/help-list
+arg	list
+arg	--help
+file	backlog.md	52afa28aa0823dd2.bin
+code	0
+stdout	usage: tasks-axi list [flags]\nflags:\n  --state <queued|in_flight|done|held>, --repo <name>, --kind <name>, --blocked\n  --limit <n>, --fields <a,b,c>  (extra: blocked, blocked_by, body, closed, created, delivery_state, deps, held, hold_kind, hold_reason, hold_until, links, priority)\nexamples:\n  tasks-axi list --state queued\n  tasks-axi list --repo no-mistakes --fields blocked_by,created\n  tasks-axi list --blocked
+
+case	fixed/help-show
+arg	show
+arg	--help
+file	backlog.md	52afa28aa0823dd2.bin
+code	0
+stdout	usage: tasks-axi show <id> [--full]\naliases: view\nexamples:\n  tasks-axi show homemux-h7\n  tasks-axi show homemux-h7 --full
+
+case	fixed/help-view
+arg	view
+arg	--help
+file	backlog.md	52afa28aa0823dd2.bin
+code	0
+stdout	usage: tasks-axi show <id> [--full]\naliases: view\nexamples:\n  tasks-axi show homemux-h7\n  tasks-axi show homemux-h7 --full
+
+case	fixed/help-ready
+arg	ready
+arg	--help
+file	backlog.md	52afa28aa0823dd2.bin
+code	0
+stdout	usage: tasks-axi ready [--repo <name>] [--include-held]\nList unblocked, unheld queued work dispatchable right now.\nPublic-followup obligations are never dispatchable and appear only in the separate\nready_public_followups group; use tasks-axi public-followup ready for their full payloads.\nHeld work is excluded by default; --include-held shows it in a separate held group.
+
+case	fixed/help-noun-list
+arg	task
+arg	list
+arg	--help
+file	backlog.md	52afa28aa0823dd2.bin
+code	0
+stdout	usage: tasks-axi list [flags]\nflags:\n  --state <queued|in_flight|done|held>, --repo <name>, --kind <name>, --blocked\n  --limit <n>, --fields <a,b,c>  (extra: blocked, blocked_by, body, closed, created, delivery_state, deps, held, hold_kind, hold_reason, hold_until, links, priority)\nexamples:\n  tasks-axi list --state queued\n  tasks-axi list --repo no-mistakes --fields blocked_by,created\n  tasks-axi list --blocked
+
+case	fixed/help-wins
+arg	list
+arg	--bogus
+arg	--help
+file	backlog.md	52afa28aa0823dd2.bin
+code	0
+stdout	usage: tasks-axi list [flags]\nflags:\n  --state <queued|in_flight|done|held>, --repo <name>, --kind <name>, --blocked\n  --limit <n>, --fields <a,b,c>  (extra: blocked, blocked_by, body, closed, created, delivery_state, deps, held, hold_kind, hold_reason, hold_until, links, priority)\nexamples:\n  tasks-axi list --state queued\n  tasks-axi list --repo no-mistakes --fields blocked_by,created\n  tasks-axi list --blocked
+
+case	fixed/help-unknown
+arg	frobnicate
+arg	--help
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "Unknown command: frobnicate"\ncode: VALIDATION_ERROR\nhelp[1]: Run `--help` to see available commands\n
+
+case	fixed/unknown-command
+arg	frobnicate
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "Unknown command: frobnicate"\ncode: VALIDATION_ERROR\nhelp[1]: Run `--help` to see available commands\n
+
+case	fixed/unknown-command-noun
+arg	task
+arg	frobnicate
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "Unknown command: frobnicate"\ncode: VALIDATION_ERROR\nhelp[1]: Run `--help` to see available commands\n
+
+case	fixed/leading-flag
+arg	--foo
+arg	list
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: Flags must come after the command\ncode: VALIDATION_ERROR\nhelp[2]: "Run `tasks-axi <command> [args] [flags]`",Move `--foo` after the command instead of before it\n
+
+case	fixed/leading-short-flag
+arg	-x
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: Flags must come after the command\ncode: VALIDATION_ERROR\nhelp[2]: "Run `tasks-axi <command> [args] [flags]`",Move `-x` after the command instead of before it\n
+
+case	fixed/leading-flag-noun
+arg	task
+arg	--foo
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: Flags must come after the command\ncode: VALIDATION_ERROR\nhelp[2]: "Run `tasks-axi <command> [args] [flags]`",Move `--foo` after the command instead of before it\n
+
+case	fixed/show-no-id
+arg	show
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "Expected 1 positional argument, got 0"\ncode: VALIDATION_ERROR\nhelp[1]: "usage: tasks-axi show <id> [--full]"\n
+
+case	fixed/show-two-ids
+arg	show
+arg	one-a1
+arg	two
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "Expected 1 positional argument, got 2"\ncode: VALIDATION_ERROR\nhelp[1]: "usage: tasks-axi show <id> [--full]"\n
+
+case	fixed/show-unknown-flag
+arg	show
+arg	--bogus
+arg	one-a1
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "Unknown flag: --bogus"\ncode: VALIDATION_ERROR\nhelp[1]: Run the command with --help to see supported flags\n
+
+case	fixed/show-short-flag
+arg	show
+arg	-x
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "Unknown flag: -x"\ncode: VALIDATION_ERROR\nhelp[1]: Run the command with --help to see supported flags\n
+
+case	fixed/show-bad-id
+arg	show
+arg	bad id!
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "Invalid id \\"bad id!\\" - ids must be slug-shaped (letters, digits, \\"._-\\") with no spaces"\ncode: VALIDATION_ERROR\nhelp[1]: "Use a slug like `homemux-h7`, or pass --mint to generate one"\n
+
+case	fixed/show-empty-id
+arg	show
+arg	
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: Missing id\ncode: VALIDATION_ERROR\nhelp[1]: "Pass the task id, e.g. `tasks-axi show <id>`"\n
+
+case	fixed/show-blank-id
+arg	show
+arg	   
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: Missing id\ncode: VALIDATION_ERROR\nhelp[1]: "Pass the task id, e.g. `tasks-axi show <id>`"\n
+
+case	fixed/show-dot-id
+arg	show
+arg	.hidden
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "Invalid id \\".hidden\\" - ids must be slug-shaped (letters, digits, \\"._-\\") with no spaces"\ncode: VALIDATION_ERROR\nhelp[1]: "Use a slug like `homemux-h7`, or pass --mint to generate one"\n
+
+case	fixed/show-full-twice
+arg	show
+arg	one-a1
+arg	--full
+arg	--full
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "Unknown flag: --full"\ncode: VALIDATION_ERROR\nhelp[1]: Run the command with --help to see supported flags\n
+
+case	fixed/list-bad-state
+arg	list
+arg	--state
+arg	bogus
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "--state must be one of queued, in_flight, done, held"\ncode: VALIDATION_ERROR\n
+
+case	fixed/list-state-novalue
+arg	list
+arg	--state
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "--state requires a value"\ncode: VALIDATION_ERROR\nhelp[1]: Pass --state=... if the value begins with --\n
+
+case	fixed/list-state-flaglike
+arg	list
+arg	--state
+arg	--blocked
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "--state requires a value"\ncode: VALIDATION_ERROR\nhelp[1]: Pass --state=... if the value begins with --\n
+
+case	fixed/list-limit-negative
+arg	list
+arg	--limit
+arg	-1
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "--limit must be a non-negative integer"\ncode: VALIDATION_ERROR\n
+
+case	fixed/list-limit-text
+arg	list
+arg	--limit
+arg	abc
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "--limit must be a non-negative integer"\ncode: VALIDATION_ERROR\n
+
+case	fixed/list-limit-float
+arg	list
+arg	--limit
+arg	1.5
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "--limit must be a non-negative integer"\ncode: VALIDATION_ERROR\n
+
+case	fixed/list-limit-huge
+arg	list
+arg	--limit
+arg	99999999999999999999
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "--limit must be a non-negative integer"\ncode: VALIDATION_ERROR\n
+
+case	fixed/list-limit-maxsafe
+arg	list
+arg	--limit
+arg	9007199254740991
+file	backlog.md	52afa28aa0823dd2.bin
+code	0
+stdout	count: 1\ntasks[1]{id,state,kind,repo,title}:\n  one-a1,queued,task,r1,The one task\nhelp[2]:\n  - Run `tasks-axi show <id>` for full notes on a task\n  - Run `tasks-axi ready` to see unblocked queued work\n
+
+case	fixed/list-limit-unsafe
+arg	list
+arg	--limit
+arg	9007199254740992
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "--limit must be a non-negative integer"\ncode: VALIDATION_ERROR\n
+
+case	fixed/list-limit-leading-zero
+arg	list
+arg	--limit
+arg	007
+file	backlog.md	52afa28aa0823dd2.bin
+code	0
+stdout	count: 1\ntasks[1]{id,state,kind,repo,title}:\n  one-a1,queued,task,r1,The one task\nhelp[2]:\n  - Run `tasks-axi show <id>` for full notes on a task\n  - Run `tasks-axi ready` to see unblocked queued work\n
+
+case	fixed/list-bad-field
+arg	list
+arg	--fields
+arg	nope,body
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "Unknown field(s): nope. Available: blocked, blocked_by, body, closed, created, delivery_state, deps, held, hold_kind, hold_reason, hold_until, links, priority"\ncode: VALIDATION_ERROR\n
+
+case	fixed/list-field-already-default
+arg	list
+arg	--fields
+arg	id
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "Unknown field(s): id. Available: blocked, blocked_by, body, closed, created, delivery_state, deps, held, hold_kind, hold_reason, hold_until, links, priority"\ncode: VALIDATION_ERROR\n
+
+case	fixed/list-fields-empty
+arg	list
+arg	--fields=
+file	backlog.md	52afa28aa0823dd2.bin
+code	0
+stdout	count: 1\ntasks[1]{id,state,kind,repo,title}:\n  one-a1,queued,task,r1,The one task\nhelp[2]:\n  - Run `tasks-axi show <id>` for full notes on a task\n  - Run `tasks-axi ready` to see unblocked queued work\n
+
+case	fixed/list-fields-blank
+arg	list
+arg	--fields
+arg	 , ,
+file	backlog.md	52afa28aa0823dd2.bin
+code	0
+stdout	count: 1\ntasks[1]{id,state,kind,repo,title}:\n  one-a1,queued,task,r1,The one task\nhelp[2]:\n  - Run `tasks-axi show <id>` for full notes on a task\n  - Run `tasks-axi ready` to see unblocked queued work\n
+
+case	fixed/list-repo-empty
+arg	list
+arg	--repo=
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "--repo requires a value"\ncode: VALIDATION_ERROR\nhelp[1]: Pass --repo=... with a non-empty value\n
+
+case	fixed/list-repo-multiline
+arg	list
+arg	--repo
+arg	a\nb
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "--repo must be a single line"\ncode: VALIDATION_ERROR\nhelp[1]: Pass --repo=... without line breaks\n
+
+case	fixed/list-repo-novalue
+arg	list
+arg	--repo
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "--repo requires a value"\ncode: VALIDATION_ERROR\nhelp[1]: Pass --repo=... if the value begins with --\n
+
+case	fixed/list-kind-blank
+arg	list
+arg	--kind
+arg	  
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "--kind requires a value"\ncode: VALIDATION_ERROR\nhelp[1]: Pass --kind=... with a non-empty value\n
+
+case	fixed/list-positional
+arg	list
+arg	extra
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "Expected no positional arguments, got 1"\ncode: VALIDATION_ERROR\nhelp[1]: "usage: tasks-axi list [flags]"\n
+
+case	fixed/list-unknown-flag
+arg	list
+arg	--bogus
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "Unknown flag: --bogus"\ncode: VALIDATION_ERROR\nhelp[1]: Run the command with --help to see supported flags\n
+
+case	fixed/list-blocked-twice
+arg	list
+arg	--blocked
+arg	--blocked
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "Unknown flag: --blocked"\ncode: VALIDATION_ERROR\nhelp[1]: Run the command with --help to see supported flags\n
+
+case	fixed/ready-positional
+arg	ready
+arg	extra
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "Expected no positional arguments, got 1"\ncode: VALIDATION_ERROR\nhelp[1]: "usage: tasks-axi ready [--repo <name>] [--include-held]"\n
+
+case	fixed/ready-unknown-flag
+arg	ready
+arg	--bogus
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "Unknown flag: --bogus"\ncode: VALIDATION_ERROR\nhelp[1]: Run the command with --help to see supported flags\n
+
+case	fixed/ready-repo-twice
+arg	ready
+arg	--repo
+arg	r1
+arg	--repo
+arg	r2
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "Unknown flag: --repo"\ncode: VALIDATION_ERROR\nhelp[1]: Run the command with --help to see supported flags\n
+
+case	fixed/backend-markdown
+arg	list
+arg	--backend
+arg	markdown
+file	backlog.md	52afa28aa0823dd2.bin
+code	0
+stdout	count: 1\ntasks[1]{id,state,kind,repo,title}:\n  one-a1,queued,task,r1,The one task\nhelp[2]:\n  - Run `tasks-axi show <id> --backend=markdown` for full notes on a task\n  - Run `tasks-axi ready --backend=markdown` to see unblocked queued work\n
+
+case	fixed/backend-markdown-eq
+arg	list
+arg	--backend=markdown
+file	backlog.md	52afa28aa0823dd2.bin
+code	0
+stdout	count: 1\ntasks[1]{id,state,kind,repo,title}:\n  one-a1,queued,task,r1,The one task\nhelp[2]:\n  - Run `tasks-axi show <id> --backend=markdown` for full notes on a task\n  - Run `tasks-axi ready --backend=markdown` to see unblocked queued work\n
+
+case	fixed/backend-unsupported
+arg	list
+arg	--backend
+arg	sqlite
+file	backlog.md	52afa28aa0823dd2.bin
+code	1
+stdout	error: "Unsupported backend \\"sqlite\\" — P1 ships the markdown backend only"\ncode: UNSUPPORTED\nhelp[1]: "Set `backend = \\"markdown\\"` in .tasks.toml, or omit --backend"\n
+
+case	fixed/backend-novalue
+arg	list
+arg	--backend
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "--backend requires a value"\ncode: VALIDATION_ERROR\nhelp[1]: Pass --backend=... if the value begins with --\n
+
+case	fixed/backend-empty
+arg	list
+arg	--backend=
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "--backend requires a value"\ncode: VALIDATION_ERROR\nhelp[1]: Pass --backend=... with a non-empty value\n
+
+case	fixed/file-novalue
+arg	list
+arg	--file
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "--file requires a value"\ncode: VALIDATION_ERROR\nhelp[1]: Pass --file=... if the value begins with --\n
+
+case	fixed/file-empty
+arg	list
+arg	--file=
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "--file requires a value"\ncode: VALIDATION_ERROR\nhelp[1]: Pass --file=... with a non-empty value\n
+
+case	fixed/file-multiline
+arg	list
+arg	--file
+arg	a\nb
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: "--file must be a single line"\ncode: VALIDATION_ERROR\nhelp[1]: Pass --file=... without line breaks\n
+
+case	fixed/file-missing
+arg	list
+arg	--file
+arg	missing.md
+file	backlog.md	52afa28aa0823dd2.bin
+code	0
+stdout	count: 0\ntasks: 0 tasks in this backlog\nhelp[2]:\n  - "Run `tasks-axi add <id> \\"<title>\\" --file=missing.md` to add a task"\n  - Run `tasks-axi list --state done --file=missing.md` to see completed work\n
+
+case	fixed/file-space
+arg	list
+arg	--file
+arg	x y.md
+file	x y.md	52afa28aa0823dd2.bin
+code	0
+stdout	count: 1\ntasks[1]{id,state,kind,repo,title}:\n  one-a1,queued,task,r1,The one task\nhelp[2]:\n  - Run `tasks-axi show <id> --file='x y.md'` for full notes on a task\n  - Run `tasks-axi ready --file='x y.md'` to see unblocked queued work\n
+
+case	fixed/file-quote
+arg	ready
+arg	--file
+arg	it's.md
+file	it's.md	52afa28aa0823dd2.bin
+code	0
+stdout	count: 1\nready[1]{id,state,kind,repo,title}:\n  one-a1,queued,task,r1,The one task\nready_public_followups: 0 delivery-ready obligations\nhelp[1]:\n  - "Run `tasks-axi start <id> --file='it'\\\\''s.md'` to dispatch one of these"\n
+
+case	fixed/file-backtick
+arg	list
+arg	--file
+arg	back`tick.md
+file	back`tick.md	52afa28aa0823dd2.bin
+code	0
+stdout	count: 1\ntasks[1]{id,state,kind,repo,title}:\n  one-a1,queued,task,r1,The one task\n
+
+case	fixed/file-twice
+arg	list
+arg	--file
+arg	a.md
+arg	--file
+arg	b.md
+file	a.md	52afa28aa0823dd2.bin
+file	b.md	af33b80dd831b45f.bin
+code	0
+stdout	count: 2\ntasks[2]{id,state,kind,repo,title}:\n  dep-b2,in_flight,task,"-",Blocker\n  user-c3,queued,task,"-",Waits\nhelp[2]:\n  - Run `tasks-axi show <id> --file=b.md` for full notes on a task\n  - Run `tasks-axi ready --file=b.md` to see unblocked queued work\n
+
+case	fixed/notfound-globals
+arg	show
+arg	none
+arg	--file
+arg	a.md
+arg	--backend
+arg	markdown
+file	a.md	52afa28aa0823dd2.bin
+code	1
+stdout	error: "Task \\"none\\" not found in this backlog"\ncode: NOT_FOUND\nhelp[1]: Run `tasks-axi list --backend=markdown --file=a.md` to see existing tasks\n
+
+case	fixed/list-filter-and-globals
+arg	list
+arg	--repo
+arg	r1
+arg	--file
+arg	a.md
+file	a.md	52afa28aa0823dd2.bin
+code	0
+stdout	count: 1\ntasks[1]{id,state,kind,repo,title}:\n  one-a1,queued,task,r1,The one task\nhelp[2]:\n  - Run `tasks-axi show <id> --file=a.md` for full notes on a task\n  - Run `tasks-axi ready --repo=r1 --file=a.md` to see unblocked queued work\n
+
+case	fixed/ready-filter-quoted
+arg	ready
+arg	--repo
+arg	x y
+arg	--file
+arg	a.md
+file	a.md	52afa28aa0823dd2.bin
+code	0
+stdout	count: 0\nready: 0 unblocked queued tasks\nready_public_followups: 0 delivery-ready obligations\nhelp[1]:\n  - Run `tasks-axi list --state queued --repo='x y' --file=a.md` to see all queued work (incl. blocked)\n
+
+case	fixed/globals-before-command
+arg	--file
+arg	a.md
+arg	list
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: Flags must come after the command\ncode: VALIDATION_ERROR\nhelp[2]: "Run `tasks-axi <command> [args] [flags]`",Move `--file` after the command instead of before it\n
+
+case	fixed/discover-backlog
+arg	list
+file	backlog.md	52afa28aa0823dd2.bin
+code	0
+stdout	count: 1\ntasks[1]{id,state,kind,repo,title}:\n  one-a1,queued,task,r1,The one task\nhelp[2]:\n  - Run `tasks-axi show <id>` for full notes on a task\n  - Run `tasks-axi ready` to see unblocked queued work\n
+
+case	fixed/discover-data-backlog
+arg	list
+file	data/backlog.md	af33b80dd831b45f.bin
+code	0
+stdout	count: 2\ntasks[2]{id,state,kind,repo,title}:\n  dep-b2,in_flight,task,"-",Blocker\n  user-c3,queued,task,"-",Waits\nhelp[2]:\n  - Run `tasks-axi show <id>` for full notes on a task\n  - Run `tasks-axi ready` to see unblocked queued work\n
+
+case	fixed/discover-prefers-root
+arg	list
+file	backlog.md	52afa28aa0823dd2.bin
+file	data/backlog.md	af33b80dd831b45f.bin
+code	0
+stdout	count: 1\ntasks[1]{id,state,kind,repo,title}:\n  one-a1,queued,task,r1,The one task\nhelp[2]:\n  - Run `tasks-axi show <id>` for full notes on a task\n  - Run `tasks-axi ready` to see unblocked queued work\n
+
+case	fixed/no-backlog
+arg	list
+code	0
+stdout	count: 0\ntasks: 0 tasks in this backlog\nhelp[2]:\n  - "Run `tasks-axi add <id> \\"<title>\\"` to add a task"\n  - Run `tasks-axi list --state done` to see completed work\n
+
+case	fixed/no-backlog-ready
+arg	ready
+code	0
+stdout	count: 0\nready: 0 unblocked queued tasks\nready_public_followups: 0 delivery-ready obligations\nhelp[1]:\n  - Run `tasks-axi list --state queued` to see all queued work (incl. blocked)\n
+
+case	fixed/empty-file
+arg	list
+file	backlog.md	e3b0c44298fc1c14.bin
+code	0
+stdout	count: 0\ntasks: 0 tasks in this backlog\nhelp[2]:\n  - "Run `tasks-axi add <id> \\"<title>\\"` to add a task"\n  - Run `tasks-axi list --state done` to see completed work\n
+
+case	fixed/only-newline
+arg	list
+file	backlog.md	01ba4719c80b6fe9.bin
+code	0
+stdout	count: 0\ntasks: 0 tasks in this backlog\nhelp[2]:\n  - "Run `tasks-axi add <id> \\"<title>\\"` to add a task"\n  - Run `tasks-axi list --state done` to see completed work\n
+
+case	fixed/preamble-only
+arg	list
+file	backlog.md	ab3d40b876f36b3d.bin
+code	0
+stdout	count: 0\ntasks: 0 tasks in this backlog\nhelp[2]:\n  - "Run `tasks-axi add <id> \\"<title>\\"` to add a task"\n  - Run `tasks-axi list --state done` to see completed work\n
+
+case	fixed/bom
+arg	list
+file	backlog.md	54a20e07cafd1319.bin
+code	0
+stdout	count: 1\ntasks[1]{id,state,kind,repo,title}:\n  one-a1,queued,task,r1,The one task\nhelp[2]:\n  - Run `tasks-axi show <id>` for full notes on a task\n  - Run `tasks-axi ready` to see unblocked queued work\n
+
+case	fixed/invalid-utf8
+arg	list
+file	backlog.md	a4c2923d5552bc15.bin
+code	0
+stdout	count: 1\ntasks[1]{id,state,kind,repo,title}:\n  bad-a1,queued,task,"-",caf�(�� tail\nhelp[2]:\n  - Run `tasks-axi show <id>` for full notes on a task\n  - Run `tasks-axi ready` to see unblocked queued work\n
+
+case	fixed/crlf
+arg	list
+file	backlog.md	3cae5bba6005a270.bin
+code	0
+stdout	count: 1\ntasks[1]{id,state,kind,repo,title}:\n  one-a1,queued,task,r1,The one task\nhelp[2]:\n  - Run `tasks-axi show <id>` for full notes on a task\n  - Run `tasks-axi ready` to see unblocked queued work\n
+
+case	fixed/backlog-is-directory
+arg	list
+file	backlog.md/x	a1fce4363854ff88.bin
+code	1
+stdout	error: "EISDIR: illegal operation on a directory, read"\ncode: UNKNOWN\n
+
+case	fixed/show-blocked-hints
+arg	show
+arg	user-c3
+file	backlog.md	af33b80dd831b45f.bin
+code	0
+stdout	task:\n  id: user-c3\n  title: Waits\n  state: queued\n  blocked: yes\n  blocked_by: dep-b2\n  held: no\n  hold_reason: "-"\n  hold_kind: "-"\n  hold_until: "-"\n  kind: task\n  repo: "-"\n  priority: "-"\n  created: "-"\n  closed: "-"\n  deps: "blocked-by:dep-b2"\n  links: none\n  body: Body text\nhelp[2]:\n  - Run `tasks-axi unblock user-c3 --by <other>` to clear a blocker\n  - Run `tasks-axi start user-c3` to move it to in flight\n
+
+case	fixed/show-blocked-hints-globals
+arg	show
+arg	user-c3
+arg	--file
+arg	backlog.md
+file	backlog.md	af33b80dd831b45f.bin
+code	0
+stdout	task:\n  id: user-c3\n  title: Waits\n  state: queued\n  blocked: yes\n  blocked_by: dep-b2\n  held: no\n  hold_reason: "-"\n  hold_kind: "-"\n  hold_until: "-"\n  kind: task\n  repo: "-"\n  priority: "-"\n  created: "-"\n  closed: "-"\n  deps: "blocked-by:dep-b2"\n  links: none\n  body: Body text\nhelp[2]:\n  - Run `tasks-axi unblock user-c3 --by <other> --file=backlog.md` to clear a blocker\n  - Run `tasks-axi start user-c3 --file=backlog.md` to move it to in flight\n
+
+case	fixed/list-blocked-fixed
+arg	list
+arg	--blocked
+file	backlog.md	af33b80dd831b45f.bin
+code	0
+stdout	count: 1\ntasks[1]{id,state,kind,repo,title}:\n  user-c3,queued,task,"-",Waits\nhelp[2]:\n  - Run `tasks-axi show <id>` for full notes on a task\n  - Run `tasks-axi ready` to see unblocked queued work\n
+
+case	fixed/env-file
+arg	list
+env	TASKS_AXI_FILE	other.md
+file	other.md	af33b80dd831b45f.bin
+code	0
+stdout	count: 2\ntasks[2]{id,state,kind,repo,title}:\n  dep-b2,in_flight,task,"-",Blocker\n  user-c3,queued,task,"-",Waits\nhelp[2]:\n  - Run `tasks-axi show <id>` for full notes on a task\n  - Run `tasks-axi ready` to see unblocked queued work\n
+
+case	fixed/env-file-empty
+arg	list
+env	TASKS_AXI_FILE	
+file	backlog.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: TASKS_AXI_FILE must not be empty\ncode: VALIDATION_ERROR\nhelp[1]: Set it to a backlog path or remove the empty override\n
+
+case	fixed/flag-beats-env
+arg	list
+arg	--file
+arg	backlog.md
+env	TASKS_AXI_FILE	other.md
+file	other.md	af33b80dd831b45f.bin
+file	backlog.md	52afa28aa0823dd2.bin
+code	0
+stdout	count: 1\ntasks[1]{id,state,kind,repo,title}:\n  one-a1,queued,task,r1,The one task\nhelp[2]:\n  - Run `tasks-axi show <id> --file=backlog.md` for full notes on a task\n  - Run `tasks-axi ready --file=backlog.md` to see unblocked queued work\n
+
+case	fixed/env-backend
+arg	list
+env	TASKS_AXI_BACKEND	linear
+file	backlog.md	52afa28aa0823dd2.bin
+code	1
+stdout	error: "Unsupported backend \\"linear\\" — P1 ships the markdown backend only"\ncode: UNSUPPORTED\nhelp[1]: "Set `backend = \\"markdown\\"` in .tasks.toml, or omit --backend"\n
+
+case	fixed/env-backend-empty
+arg	list
+env	TASKS_AXI_BACKEND	
+file	backlog.md	52afa28aa0823dd2.bin
+code	1
+stdout	error: "Unsupported backend \\"\\" — P1 ships the markdown backend only"\ncode: UNSUPPORTED\nhelp[1]: "Set `backend = \\"markdown\\"` in .tasks.toml, or omit --backend"\n
+
+case	fixed/toml-path
+arg	list
+file	.tasks.toml	315863d2ed6d735e.bin
+file	docs/t.md	af33b80dd831b45f.bin
+code	0
+stdout	count: 2\ntasks[2]{id,state,kind,repo,title}:\n  dep-b2,in_flight,task,"-",Blocker\n  user-c3,queued,task,"-",Waits\nhelp[2]:\n  - Run `tasks-axi show <id>` for full notes on a task\n  - Run `tasks-axi ready` to see unblocked queued work\n
+
+case	fixed/toml-path-single-quotes
+arg	list
+file	.tasks.toml	725fe99b9b31b6b0.bin
+file	docs/t.md	af33b80dd831b45f.bin
+code	0
+stdout	count: 2\ntasks[2]{id,state,kind,repo,title}:\n  dep-b2,in_flight,task,"-",Blocker\n  user-c3,queued,task,"-",Waits\nhelp[2]:\n  - Run `tasks-axi show <id>` for full notes on a task\n  - Run `tasks-axi ready` to see unblocked queued work\n
+
+case	fixed/toml-backend
+arg	list
+file	.tasks.toml	a67b92c3ce5a07e0.bin
+code	1
+stdout	error: "Unsupported backend \\"jira\\" — P1 ships the markdown backend only"\ncode: UNSUPPORTED\nhelp[1]: "Set `backend = \\"markdown\\"` in .tasks.toml, or omit --backend"\n
+
+case	fixed/toml-backend-ok
+arg	list
+file	.tasks.toml	e51ac269aa782daa.bin
+code	0
+stdout	count: 0\ntasks: 0 tasks in this backlog\nhelp[2]:\n  - "Run `tasks-axi add <id> \\"<title>\\"` to add a task"\n  - Run `tasks-axi list --state done` to see completed work\n
+
+case	fixed/toml-bad-line
+arg	list
+file	.tasks.toml	2f9d23efc1830169.bin
+code	2
+stdout	error: "Invalid config line: expected `key = value`"\ncode: VALIDATION_ERROR\nhelp[1]: Use `key = value` assignments in .tasks.toml\n
+
+case	fixed/toml-bad-value
+arg	list
+file	.tasks.toml	cb5ec2b32468d2a6.bin
+code	2
+stdout	error: backend has an invalid value\ncode: VALIDATION_ERROR\n
+
+case	fixed/toml-unterminated
+arg	list
+file	.tasks.toml	994af6b8cada21a6.bin
+code	2
+stdout	error: backend has an unterminated quoted value\ncode: VALIDATION_ERROR\n
+
+case	fixed/toml-backend-number
+arg	list
+file	.tasks.toml	b3075c6d975d14e5.bin
+code	2
+stdout	error: backend must be a quoted string\ncode: VALIDATION_ERROR\n
+
+case	fixed/toml-done-keep-ok
+arg	list
+file	.tasks.toml	6fa5623959fcfe4d.bin
+code	0
+stdout	count: 0\ntasks: 0 tasks in this backlog\nhelp[2]:\n  - "Run `tasks-axi add <id> \\"<title>\\"` to add a task"\n  - Run `tasks-axi list --state done` to see completed work\n
+
+case	fixed/toml-done-keep-negative
+arg	list
+file	.tasks.toml	167396b16774aa5b.bin
+code	2
+stdout	error: markdown.done_keep must be a non-negative integer\ncode: VALIDATION_ERROR\nhelp[1]: "Set `[markdown] done_keep = 10` in .tasks.toml"\n
+
+case	fixed/toml-done-keep-text
+arg	list
+file	.tasks.toml	e3a6450154542881.bin
+code	2
+stdout	error: markdown.done_keep must be an integer\ncode: VALIDATION_ERROR\nhelp[1]: "Set `[markdown] done_keep = 10` in .tasks.toml"\n
+
+case	fixed/toml-done-keep-huge
+arg	list
+file	.tasks.toml	b41fb0d2cea4e05b.bin
+code	2
+stdout	error: markdown.done_keep must be a non-negative integer\ncode: VALIDATION_ERROR\nhelp[1]: "Set `[markdown] done_keep = 10` in .tasks.toml"\n
+
+case	fixed/toml-path-empty
+arg	list
+file	.tasks.toml	01a7cf944466c2ac.bin
+code	2
+stdout	error: markdown.path must not be empty\ncode: VALIDATION_ERROR\nhelp[1]: Set it to a backlog path or remove the empty override\n
+
+case	fixed/toml-other-table
+arg	list
+file	.tasks.toml	b9190515a56d4df5.bin
+code	0
+stdout	count: 0\ntasks: 0 tasks in this backlog\nhelp[2]:\n  - "Run `tasks-axi add <id> \\"<title>\\"` to add a task"\n  - Run `tasks-axi list --state done` to see completed work\n
+
+case	fixed/toml-crlf
+arg	list
+file	.tasks.toml	1dcb09d9adbd2ecc.bin
+file	docs/t.md	af33b80dd831b45f.bin
+code	0
+stdout	count: 2\ntasks[2]{id,state,kind,repo,title}:\n  dep-b2,in_flight,task,"-",Blocker\n  user-c3,queued,task,"-",Waits\nhelp[2]:\n  - Run `tasks-axi show <id>` for full notes on a task\n  - Run `tasks-axi ready` to see unblocked queued work\n
+
+case	fixed/toml-archive-is-backlog
+arg	list
+file	.tasks.toml	650ffdda645b4e53.bin
+code	2
+stdout	error: Archive path must not be the active backlog path\ncode: VALIDATION_ERROR\n
+
+case	fixed/toml-archive-other
+arg	list
+file	.tasks.toml	761a9f94996191ee.bin
+code	0
+stdout	count: 0\ntasks: 0 tasks in this backlog\nhelp[2]:\n  - "Run `tasks-axi add <id> \\"<title>\\"` to add a task"\n  - Run `tasks-axi list --state done` to see completed work\n
+
+case	fixed/backlog-named-done-archive
+arg	list
+file	.tasks.toml	cbdd63418276ff9d.bin
+file	done-archive.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: Archive path must not be the active backlog path\ncode: VALIDATION_ERROR\n
+
+case	fixed/backlog-named-note-archive
+arg	list
+file	.tasks.toml	e49c8792ad67e117.bin
+file	note-archive.md	52afa28aa0823dd2.bin
+code	2
+stdout	error: Note archive path must not be the active backlog path\ncode: VALIDATION_ERROR\n
+
+case	fixed/home-config-path
+arg	list
+file	h.md	af33b80dd831b45f.bin
+home	.tasks-axi/config.toml	50b7dde7c190b2c1.bin
+code	0
+stdout	count: 2\ntasks[2]{id,state,kind,repo,title}:\n  dep-b2,in_flight,task,"-",Blocker\n  user-c3,queued,task,"-",Waits\nhelp[2]:\n  - Run `tasks-axi show <id>` for full notes on a task\n  - Run `tasks-axi ready` to see unblocked queued work\n
+
+case	fixed/home-config-bad
+arg	list
+file	backlog.md	52afa28aa0823dd2.bin
+home	.tasks-axi/config.toml	2f9d23efc1830169.bin
+code	2
+stdout	error: "Invalid config line: expected `key = value`"\ncode: VALIDATION_ERROR\nhelp[1]: Use `key = value` assignments in .tasks.toml\n
+
+case	fixed/project-beats-home
+arg	list
+file	.tasks.toml	676c90b2f2c57ad5.bin
+file	h.md	52afa28aa0823dd2.bin
+file	p.md	af33b80dd831b45f.bin
+home	.tasks-axi/config.toml	50b7dde7c190b2c1.bin
+code	0
+stdout	count: 2\ntasks[2]{id,state,kind,repo,title}:\n  dep-b2,in_flight,task,"-",Blocker\n  user-c3,queued,task,"-",Waits\nhelp[2]:\n  - Run `tasks-axi show <id>` for full notes on a task\n  - Run `tasks-axi ready` to see unblocked queued work\n
+
+case	fixed/flag-beats-toml
+arg	list
+arg	--file
+arg	backlog.md
+file	.tasks.toml	676c90b2f2c57ad5.bin
+file	p.md	af33b80dd831b45f.bin
+file	backlog.md	52afa28aa0823dd2.bin
+code	0
+stdout	count: 1\ntasks[1]{id,state,kind,repo,title}:\n  one-a1,queued,task,r1,The one task\nhelp[2]:\n  - Run `tasks-axi show <id> --file=backlog.md` for full notes on a task\n  - Run `tasks-axi ready --file=backlog.md` to see unblocked queued work\n
+
+case	seed1/list
+arg	list
+file	backlog.md	8aa488e0524ac436.bin
+code	0
+stdout	count: 9\ntasks[9]{id,state,kind,repo,title}:\n  x_y-fb,in_flight,task,"-","metrics migrate (priority: 9)"\n  x_y-x2,in_flight,ship,"-","SHIP retry true naïve 42 comma,s index quote\\"s 42 (reported 2024-02-29): index"\n  x_y-9y,in_flight,task,"-","rewrite service parser quote\\"s lease 日本語 router 100% audit (reported 2024-02-29)\\n... (truncated, 117 chars total - use show x_y-9y --full to see complete text)"\n  x_y-9y,in_flight,task,"-","SCOUTS Ünïcode router service rewrite quote\\"s https://github.com/o/r/pull/042"\n  t-c4,in_flight,task,"true","Ω test gateway index 42 https://github.com/o/r/pull/042"\n  a.b-s8,queued,task,"-","migrate index true metrics 3.14 naïve résumé http://plain.example.net/a/b."\n  a.b-74,queued,secondmate,"-",router null widget test migrate adopt naïve cleanup a#b\n  fm-x-k7,queued,task,"-","retry retry résumé ß rewrite metrics parser 100% 日本語 gateway café adopt index sc\\n... (truncated, 191 chars total - use show fm-x-k7 --full to see complete text)"\n  fm-x-5x.2,done,task,"-","42 backoff (reported 2026-10-02): gateway 😀🙂"\nhelp[2]:\n  - Run `tasks-axi show <id>` for full notes on a task\n  - Run `tasks-axi ready` to see unblocked queued work\n
+
+case	seed1/list-queued
+arg	list
+arg	--state
+arg	queued
+file	backlog.md	8aa488e0524ac436.bin
+code	0
+stdout	count: 3\ntasks[3]{id,state,kind,repo,title}:\n  a.b-s8,queued,task,"-","migrate index true metrics 3.14 naïve résumé http://plain.example.net/a/b."\n  a.b-74,queued,secondmate,"-",router null widget test migrate adopt naïve cleanup a#b\n  fm-x-k7,queued,task,"-","retry retry résumé ß rewrite metrics parser 100% 日本語 gateway café adopt index sc\\n... (truncated, 191 chars total - use show fm-x-k7 --full to see complete text)"\nhelp[1]:\n  - Run `tasks-axi show <id>` for full notes on a task\n
+
+case	seed1/list-held
+arg	list
+arg	--state
+arg	held
+file	backlog.md	8aa488e0524ac436.bin
+code	0
+stdout	count: 0\ntasks: 0 held tasks in this backlog\n
+
+case	seed1/list-blocked
+arg	list
+arg	--blocked
+file	backlog.md	8aa488e0524ac436.bin
+code	0
+stdout	count: 2\ntasks[2]{id,state,kind,repo,title}:\n  x_y-9y,in_flight,task,"-","rewrite service parser quote\\"s lease 日本語 router 100% audit (reported 2024-02-29)\\n... (truncated, 117 chars total - use show x_y-9y --full to see complete text)"\n  x_y-9y,in_flight,task,"-","SCOUTS Ünïcode router service rewrite quote\\"s https://github.com/o/r/pull/042"\nhelp[2]:\n  - Run `tasks-axi show <id>` for full notes on a task\n  - Run `tasks-axi ready` to see unblocked queued work\n
+
+case	seed1/list-limit1
+arg	list
+arg	--limit
+arg	1
+file	backlog.md	8aa488e0524ac436.bin
+code	0
+stdout	count: 1 of 9 total\ntasks[1]{id,state,kind,repo,title}:\n  x_y-fb,in_flight,task,"-","metrics migrate (priority: 9)"\nhelp[2]:\n  - Run `tasks-axi show <id>` for full notes on a task\n  - Run `tasks-axi ready` to see unblocked queued work\n
+
+case	seed1/list-allfields
+arg	list
+arg	--fields
+arg	blocked,blocked_by,body,closed,created,delivery_state,deps,held,hold_kind,hold_reason,hold_until,links,priority
+file	backlog.md	8aa488e0524ac436.bin
+code	0
+stdout	count: 9\ntasks[9]{id,state,kind,repo,title,blocked,blocked_by,body,closed,created,delivery_state,deps,held,hold_kind,hold_reason,hold_until,links,priority}:\n  x_y-fb,in_flight,task,"-","metrics migrate (priority: 9)",no,none,"a,b\\n\\u001b[0m index backoff flaky\\n extra-indented index\\ncache audit widget résumé -dash migrate   spaced   colon: here\\n.5","-","-","-",none,no,"-","-","-",none,0\n  x_y-x2,in_flight,ship,"-","SHIP retry true naïve 42 comma,s index quote\\"s 42 (reported 2024-02-29): index",no,none,"service naïve naïve gateway a#b migrate   spaced   3.14 -dash adopt parser lease   spaced   backoff colon: here -dash rewrite migrate -dash a#b a#b queue service index flaky 日本語 retry true backoff null -dash résumé quote\\"s queue metrics retry gateway audit 42 3.14 index backoff rewrite lease 100% metrics migrate index [bracket] retry true 日本語 flaky quote\\"s schema migrate 日本語 100% a#b widget gateway résumé tab\\there lease backoff test -dash tab\\there router schema Ω adopt null 日本語 Ünïcode résumé c�\\n... (truncated, 503 chars total - use show x_y-x2 --full to see complete text)","-","-","-",none,no,"-",audit index retry,2000-01-01,none,"-"\n  x_y-9y,in_flight,task,"-","rewrite service parser quote\\"s lease 日本語 router 100% audit (reported 2024-02-29)\\n... (truncated, 117 chars total - use show x_y-9y --full to see complete text)",yes,x_y-x2,"","-","-","-","blocked-by:x_y-x2",no,parked,Ω 日本語 lease,2000-01-01,"report:data/some-task/report.md","-"\n  x_y-9y,in_flight,task,"-","SCOUTS Ünïcode router service rewrite quote\\"s https://github.com/o/r/pull/042",no,none,"","-",2026-10-01,"-",none,no,"-","-","-","doc:https://github.com/o/r/pull/042","-"\n  t-c4,in_flight,task,"true","Ω test gateway index 42 https://github.com/o/r/pull/042",no,none,"","-","-","-",none,no,"-","-","-","doc:https://github.com/o/r/pull/042",2\n  a.b-s8,queued,task,"-","migrate index true metrics 3.14 naïve résumé http://plain.example.net/a/b.",no,none,"","-",2026-10-01,"-","parent:x_y-9y,parent:x_y-fb",no,"-","-","-","doc:http://plain.example.net/a/b","-"\n  a.b-74,queued,secondmate,"-",router null widget test migrate adopt naïve cleanup a#b,no,none,"","-","-","-",none,no,"-","-","-",none,"-"\n  fm-x-k7,queued,task,"-","retry retry résumé ß rewrite metrics parser 100% 日本語 gateway café adopt index sc\\n... (truncated, 191 chars total - use show fm-x-k7 --full to see complete text)",no,none,"parser widget parser résumé café naïve cleanup backoff\\n[bracket] rewrite -dash Ünïcode schema -dash naïve schema router [bracket]\\nqueue true flaky \\u001b[0m cache retry backoff comma,s router naïve cleanup\\n  spaced   rewrite 3.14 retry service metrics tab\\there metrics 日本語 router comma,s null \\u001b[0m service backoff retry parser 日本語 widget rewrite backoff flaky audit quote\\"s queue lease tab\\there Ünïcode   spaced   a#b metrics café ß tab\\there widget résumé router audit \\u001b[0m true schema \\u001b[0m true   spaced \\n... (truncated, 765 chars total - use show fm-x-k7 --full to see complete text)","-",2026-10-01,"-",none,no,"-","-","-",none,"-"\n  fm-x-5x.2,done,task,"-","42 backoff (reported 2026-10-02): gateway 😀🙂",no,none,"",2024-02-29,"-","-",none,no,"-",metrics,2001-06-15,none,"-"\nhelp[2]:\n  - Run `tasks-axi show <id>` for full notes on a task\n  - Run `tasks-axi ready` to see unblocked queued work\n
+
+case	seed1/ready
+arg	ready
+file	backlog.md	8aa488e0524ac436.bin
+code	0
+stdout	count: 3\nready[3]{id,state,kind,repo,title}:\n  a.b-s8,queued,task,"-","migrate index true metrics 3.14 naïve résumé http://plain.example.net/a/b."\n  a.b-74,queued,secondmate,"-",router null widget test migrate adopt naïve cleanup a#b\n  fm-x-k7,queued,task,"-","retry retry résumé ß rewrite metrics parser 100% 日本語 gateway café adopt index sc\\n... (truncated, 191 chars total - use show fm-x-k7 --full to see complete text)"\nready_public_followups: 0 delivery-ready obligations\nhelp[1]:\n  - Run `tasks-axi start <id>` to dispatch one of these\n
+
+case	seed1/ready-held
+arg	ready
+arg	--include-held
+file	backlog.md	8aa488e0524ac436.bin
+code	0
+stdout	count: 3\nready[3]{id,state,kind,repo,title}:\n  a.b-s8,queued,task,"-","migrate index true metrics 3.14 naïve résumé http://plain.example.net/a/b."\n  a.b-74,queued,secondmate,"-",router null widget test migrate adopt naïve cleanup a#b\n  fm-x-k7,queued,task,"-","retry retry résumé ß rewrite metrics parser 100% 日本語 gateway café adopt index sc\\n... (truncated, 191 chars total - use show fm-x-k7 --full to see complete text)"\nready_public_followups: 0 delivery-ready obligations\nhelp[1]:\n  - Run `tasks-axi start <id>` to dispatch one of these\n
+
+case	seed1/ready-repo
+arg	ready
+arg	--repo
+arg	true
+file	backlog.md	8aa488e0524ac436.bin
+code	0
+stdout	count: 0\nready: 0 unblocked queued tasks\nready_public_followups: 0 delivery-ready obligations\nhelp[1]:\n  - Run `tasks-axi list --state queued --repo=true` to see all queued work (incl. blocked)\n
+
+case	seed1/show-missing
+arg	show
+arg	no-such-task
+file	backlog.md	8aa488e0524ac436.bin
+code	1
+stdout	error: "Task \\"no-such-task\\" not found in this backlog"\ncode: NOT_FOUND\nhelp[1]: Run `tasks-axi list` to see existing tasks\n
+
+case	seed1/show-x_y-fb
+arg	show
+arg	x_y-fb
+file	backlog.md	8aa488e0524ac436.bin
+code	0
+stdout	task:\n  id: x_y-fb\n  title: "metrics migrate (priority: 9)"\n  state: in_flight\n  blocked: no\n  blocked_by: none\n  held: no\n  hold_reason: "-"\n  hold_kind: "-"\n  hold_until: "-"\n  kind: task\n  repo: "-"\n  priority: 0\n  created: "-"\n  closed: "-"\n  deps: none\n  links: none\n  body: "a,b\\n\\u001b[0m index backoff flaky\\n extra-indented index\\ncache audit widget résumé -dash migrate   spaced   colon: here\\n.5"\n
+
+case	seed1/show-full-x_y-fb
+arg	view
+arg	x_y-fb
+arg	--full
+file	backlog.md	8aa488e0524ac436.bin
+code	0
+stdout	task:\n  id: x_y-fb\n  title: "metrics migrate (priority: 9)"\n  state: in_flight\n  blocked: no\n  blocked_by: none\n  held: no\n  hold_reason: "-"\n  hold_kind: "-"\n  hold_until: "-"\n  kind: task\n  repo: "-"\n  priority: 0\n  created: "-"\n  closed: "-"\n  deps: none\n  links: none\n  body: "a,b\\n\\u001b[0m index backoff flaky\\n extra-indented index\\ncache audit widget résumé -dash migrate   spaced   colon: here\\n.5"\n
+
+case	seed1/show-x_y-x2
+arg	show
+arg	x_y-x2
+file	backlog.md	8aa488e0524ac436.bin
+code	0
+stdout	task:\n  id: x_y-x2\n  title: "SHIP retry true naïve 42 comma,s index quote\\"s 42 (reported 2024-02-29): index"\n  state: in_flight\n  blocked: no\n  blocked_by: none\n  held: no\n  hold_reason: audit index retry\n  hold_kind: "-"\n  hold_until: 2000-01-01\n  kind: ship\n  repo: "-"\n  priority: "-"\n  created: "-"\n  closed: "-"\n  deps: none\n  links: none\n  body: "service naïve naïve gateway a#b migrate   spaced   3.14 -dash adopt parser lease   spaced   backoff colon: here -dash rewrite migrate -dash a#b a#b queue service index flaky 日本語 retry true backoff null -dash résumé quote\\"s queue metrics retry gateway audit 42 3.14 index backoff rewrite lease 100% metrics migrate index [bracket] retry true 日本語 flaky quote\\"s schema migrate 日本語 100% a#b widget gateway résumé tab\\there lease backoff test -dash tab\\there router schema Ω adopt null 日本語 Ünïcode résumé c�\\n... (truncated, 503 chars total - use --full to see complete text)"\n
+
+case	seed2/list
+arg	list
+arg	--file
+arg	docs/tasks.md
+file	docs/tasks.md	b6f052c5ed4c2e15.bin
+code	0
+stdout	count: 12\ntasks[12]{id,state,kind,repo,title}:\n  Homemux-cu,in_flight,task,"-","gateway flaky {brace} ß cache quote\\"s router 3.14 lease null widget cache gatewa\\n... (truncated, 268 chars total - use show Homemux-cu --full to see complete text)"\n  x_y-xr,in_flight,task,"-","lease retry [bracket] parser 100%"\n  Z-fb,in_flight,task,docs-site,"queue ß cleanup Ünïcode naïve retry queue null Ω naïve gateway index migrate [😀\\n... (truncated, 83 chars total - use show Z-fb --full to see complete text)"\n  Homemux-u1,in_flight,task,widgets,backoff true\n  Z-3g,in_flight,ship,"-","migrate Ünïcode quote\\"s backoff https://github.com/o/r/pulls/3"\n  x_y-b6,queued,task,"-","[bracket]"\n  gamma-5u,done,docs,"7","spaced   -dash quote\\"s naïve   spaced   router gateway"\n  sm-idle-qv,done,ship,"-","quote\\"s résumé widget true quote\\"s parser tab\\there \\u001b[0m Ω comma,s index cache ad\\n... (truncated, 204 chars total - use show sm-idle-qv --full to see complete text)"\n  x_y-7u,done,task,"-","SHIPPING lease gateway flaky \\u001b[0m"\n  Homemux-3h,done,task,"-",42 null\n  x_y-f6,done,secondmate,"-","\\u001b[0m queue 100% widget -dash widget tab\\there audit queue queue cache quote\\"s rew\\n... (truncated, 287 chars total - use show x_y-f6 --full to see complete text)"\n  Z-ft,done,secondmate,widgets,lease 42 metrics backoff 42   spaced   retry 3.14 null\nhelp[2]:\n  - Run `tasks-axi show <id> --file=docs/tasks.md` for full notes on a task\n  - Run `tasks-axi ready --file=docs/tasks.md` to see unblocked queued work\n
+
+case	seed2/list-queued
+arg	list
+arg	--state
+arg	queued
+arg	--file
+arg	docs/tasks.md
+file	docs/tasks.md	b6f052c5ed4c2e15.bin
+code	0
+stdout	count: 1\ntasks[1]{id,state,kind,repo,title}:\n  x_y-b6,queued,task,"-","[bracket]"\nhelp[1]:\n  - Run `tasks-axi show <id> --file=docs/tasks.md` for full notes on a task\n
+
+case	seed2/list-held
+arg	list
+arg	--state
+arg	held
+arg	--file
+arg	docs/tasks.md
+file	docs/tasks.md	b6f052c5ed4c2e15.bin
+code	0
+stdout	count: 1\ntasks[1]{id,state,kind,repo,title}:\n  x_y-xr,in_flight,task,"-","lease retry [bracket] parser 100%"\nhelp[1]:\n  - Run `tasks-axi show <id> --file=docs/tasks.md` for full notes on a task\n
+
+case	seed2/list-blocked
+arg	list
+arg	--blocked
+arg	--file
+arg	docs/tasks.md
+file	docs/tasks.md	b6f052c5ed4c2e15.bin
+code	0
+stdout	count: 0\ntasks: 0 blocked tasks in this backlog\nhelp[2]:\n  - "Run `tasks-axi add <id> \\"<title>\\" --file=docs/tasks.md` to add a task"\n  - Run `tasks-axi list --state done --file=docs/tasks.md` to see completed work\n
+
+case	seed2/list-limit1
+arg	list
+arg	--limit
+arg	1
+arg	--file
+arg	docs/tasks.md
+file	docs/tasks.md	b6f052c5ed4c2e15.bin
+code	0
+stdout	count: 1 of 12 total\ntasks[1]{id,state,kind,repo,title}:\n  Homemux-cu,in_flight,task,"-","gateway flaky {brace} ß cache quote\\"s router 3.14 lease null widget cache gatewa\\n... (truncated, 268 chars total - use show Homemux-cu --full to see complete text)"\nhelp[2]:\n  - Run `tasks-axi show <id> --file=docs/tasks.md` for full notes on a task\n  - Run `tasks-axi ready --file=docs/tasks.md` to see unblocked queued work\n
+
+case	seed2/list-allfields
+arg	list
+arg	--fields
+arg	blocked,blocked_by,body,closed,created,delivery_state,deps,held,hold_kind,hold_reason,hold_until,links,priority
+arg	--file
+arg	docs/tasks.md
+file	docs/tasks.md	b6f052c5ed4c2e15.bin
+code	0
+stdout	count: 12\ntasks[12]{id,state,kind,repo,title,blocked,blocked_by,body,closed,created,delivery_state,deps,held,hold_kind,hold_reason,hold_until,links,priority}:\n  Homemux-cu,in_flight,task,"-","gateway flaky {brace} ß cache quote\\"s router 3.14 lease null widget cache gatewa\\n... (truncated, 268 chars total - use show Homemux-cu --full to see complete text)",no,none,test a#b -dash null test,"-",2024-02-29,"-",none,no,"-","-","-",none,"-"\n  x_y-xr,in_flight,task,"-","lease retry [bracket] parser 100%",no,none,"","-",2025-01-01,"-",none,yes,captain,"tab\\there retry backoff",2500-01-01,none,"-"\n  Z-fb,in_flight,task,docs-site,"queue ß cleanup Ünïcode naïve retry queue null Ω naïve gateway index migrate [😀\\n... (truncated, 83 chars total - use show Z-fb --full to see complete text)",no,none,"","-","-","-",none,no,"-","-","-",none,"-"\n  Homemux-u1,in_flight,task,widgets,backoff true,no,none,"## Intent\\nß \\u001b[0m adopt quote\\"s rewrite true adopt migrate service null service tab\\there 日本語 naïve lease router naïve null index tab\\there Ω parser lease café [bracket] 日本語 résumé tab\\there cleanup quote\\"s cache cleanup index tab\\there adopt comma,s {brace} queue index router 42 router test naïve quote\\"s flaky widget Ünïcode quote\\"s schema café Ω 100% widget 3.14 -dash index router metrics adopt café 3.14 queue gateway lease adopt Ünïcode cleanup café 100% queue 日本語 a#b 100% service Ω tab\\there rewri\\n... (truncated, 574 chars total - use show Homemux-u1 --full to see complete text)","-","-","-",none,no,"-","-","-",none,"-"\n  Z-3g,in_flight,ship,"-","migrate Ünïcode quote\\"s backoff https://github.com/o/r/pulls/3",no,none,"","-","-","-",none,no,external,"{brace}",2000-01-01,"doc:https://github.com/o/r/pulls/3","-"\n  x_y-b6,queued,task,"-","[bracket]",no,none,"## Intent\\ntab\\there metrics colon: here -dash metrics tab\\there schema audit widget quote\\"s -dash\\n## Intent\\n\\n extra-indented colon: here\\nwidget cleanup schema gateway café tab\\there migrate   spaced  ","-","-","-",none,no,"-","-","-",none,2\n  gamma-5u,done,docs,"7","spaced   -dash quote\\"s naïve   spaced   router gateway",yes,"Homemux-cu,Homemux-cu","tab\\there ß lease Ω\\n{brace} 日本語 日本語 日本語 rewrite a#b {brace} {brace} rewrite index\\n42 [bracket] test naïve {brace} cache 3.14 100% gateway service\\n## Intent",2026-09-30,"-","-","blocked-by:Homemux-cu,blocked-by:Homemux-cu,parent:Z-3g",no,"-","-","-",none,4\n  sm-idle-qv,done,ship,"-","quote\\"s résumé widget true quote\\"s parser tab\\there \\u001b[0m Ω comma,s index cache ad\\n... (truncated, 204 chars total - use show sm-idle-qv --full to see complete text)",no,none,"## Intent\\n## Intent\\na#b 日本語 [bracket] [bracket] index\\na#b 42   spaced   retry widget tab\\there index\\nÜnïcode quote\\"s [bracket] router adopt comma,s 日本語 100% Ω café index","-","-","-","parent:x_y-b6",no,"-","-","-",none,4\n  x_y-7u,done,task,"-","SHIPPING lease gateway flaky \\u001b[0m",no,none,"",2026-10-01,2025-01-01,"-","discovered-from:Homemux-cu,blocked-by:sm-idle-qv",no,"-","-","-",none,4\n  Homemux-3h,done,task,"-",42 null,no,none,"","-",2026-09-30,"-",none,no,"-","-","-",none,2\n  x_y-f6,done,secondmate,"-","\\u001b[0m queue 100% widget -dash widget tab\\there audit queue queue cache quote\\"s rew\\n... (truncated, 287 chars total - use show x_y-f6 --full to see complete text)",no,none,"",2026-09-30,2024-02-29,"-",none,no,"-","-","-",none,2\n  Z-ft,done,secondmate,widgets,lease 42 metrics backoff 42   spaced   retry 3.14 null,no,none,"",2026-09-30,2024-02-29,"-",none,no,"-","-","-",none,"-"\nhelp[2]:\n  - Run `tasks-axi show <id> --file=docs/tasks.md` for full notes on a task\n  - Run `tasks-axi ready --file=docs/tasks.md` to see unblocked queued work\n
+
+case	seed2/ready
+arg	ready
+arg	--file
+arg	docs/tasks.md
+file	docs/tasks.md	b6f052c5ed4c2e15.bin
+code	0
+stdout	count: 1\nready[1]{id,state,kind,repo,title}:\n  x_y-b6,queued,task,"-","[bracket]"\nready_public_followups: 0 delivery-ready obligations\nhelp[1]:\n  - Run `tasks-axi start <id> --file=docs/tasks.md` to dispatch one of these\n
+
+case	seed2/ready-held
+arg	ready
+arg	--include-held
+arg	--file
+arg	docs/tasks.md
+file	docs/tasks.md	b6f052c5ed4c2e15.bin
+code	0
+stdout	count: 1\nready[1]{id,state,kind,repo,title}:\n  x_y-b6,queued,task,"-","[bracket]"\nready_public_followups: 0 delivery-ready obligations\nhelp[1]:\n  - Run `tasks-axi start <id> --file=docs/tasks.md` to dispatch one of these\n
+
+case	seed2/ready-repo
+arg	ready
+arg	--repo
+arg	docs-site
+arg	--file
+arg	docs/tasks.md
+file	docs/tasks.md	b6f052c5ed4c2e15.bin
+code	0
+stdout	count: 0\nready: 0 unblocked queued tasks\nready_public_followups: 0 delivery-ready obligations\nhelp[1]:\n  - Run `tasks-axi list --state queued --repo=docs-site --file=docs/tasks.md` to see all queued work (incl. blocked)\n
+
+case	seed2/show-missing
+arg	show
+arg	no-such-task
+arg	--file
+arg	docs/tasks.md
+file	docs/tasks.md	b6f052c5ed4c2e15.bin
+code	1
+stdout	error: "Task \\"no-such-task\\" not found in this backlog"\ncode: NOT_FOUND\nhelp[1]: Run `tasks-axi list --file=docs/tasks.md` to see existing tasks\n
+
+case	seed2/show-Z-3g
+arg	show
+arg	Z-3g
+arg	--file
+arg	docs/tasks.md
+file	docs/tasks.md	b6f052c5ed4c2e15.bin
+code	0
+stdout	task:\n  id: Z-3g\n  title: "migrate Ünïcode quote\\"s backoff https://github.com/o/r/pulls/3"\n  state: in_flight\n  blocked: no\n  blocked_by: none\n  held: no\n  hold_reason: "{brace}"\n  hold_kind: external\n  hold_until: 2000-01-01\n  kind: ship\n  repo: "-"\n  priority: "-"\n  created: "-"\n  closed: "-"\n  deps: none\n  links: "doc:https://github.com/o/r/pulls/3"\n  body: ""\n
+
+case	seed2/show-full-Z-3g
+arg	view
+arg	Z-3g
+arg	--full
+arg	--file
+arg	docs/tasks.md
+file	docs/tasks.md	b6f052c5ed4c2e15.bin
+code	0
+stdout	task:\n  id: Z-3g\n  title: "migrate Ünïcode quote\\"s backoff https://github.com/o/r/pulls/3"\n  state: in_flight\n  blocked: no\n  blocked_by: none\n  held: no\n  hold_reason: "{brace}"\n  hold_kind: external\n  hold_until: 2000-01-01\n  kind: ship\n  repo: "-"\n  priority: "-"\n  created: "-"\n  closed: "-"\n  deps: none\n  links: "doc:https://github.com/o/r/pulls/3"\n  body: ""\n
+
+case	seed2/show-x_y-f6
+arg	show
+arg	x_y-f6
+arg	--file
+arg	docs/tasks.md
+file	docs/tasks.md	b6f052c5ed4c2e15.bin
+code	0
+stdout	task:\n  id: x_y-f6\n  title: "\\u001b[0m queue 100% widget -dash widget tab\\there audit queue queue cache quote\\"s rew\\n... (truncated, 287 chars total - use --full to see complete text)"\n  state: done\n  blocked: no\n  blocked_by: none\n  held: no\n  hold_reason: "-"\n  hold_kind: "-"\n  hold_until: "-"\n  kind: secondmate\n  repo: "-"\n  priority: 2\n  created: 2024-02-29\n  closed: 2026-09-30\n  deps: none\n  links: none\n  body: ""\n
+
+case	seed3/list
+arg	list
+file	backlog.md	4d0a2052951fe95d.bin
+code	0
+stdout	count: 15\ntasks[15]{id,state,kind,repo,title}:\n  beta-9h,in_flight,task,"-","comma,s café a#b -dash backoff comma,s retry quote\\"s 日本語 [bracket] 日本語 adopt -da\\n... (truncated, 162 chars total - use show beta-9h --full to see complete text)"\n  x_y-od,in_flight,chore,"-",SHIP -dash schema 日本語 retry cleanup\n  a.b-98,in_flight,task,"-","flaky true lease quote\\"s service retry   spaced   naïve parser adopt index tab\\th\\n... (truncated, 83 chars total - use show a.b-98 --full to see complete text)"\n  sm-idle-es.3,in_flight,task,infra,null naïve rewrite 100% gateway café cleanup\n  gamma-1f,queued,task,"-","résumé test tab\\there café flaky 日本語 comma,s null lease parser \\u001b[0m test flaky 日本\\n... (truncated, 81 chars total - use show gamma-1f --full to see complete text)"\n  beta-kr,done,task,"-","colon: here"\n  Z-0j,done,task,"-","true ß gateway ß migrate ß Ünïcode a#b (priority: 9)"\n  Homemux-ea,done,task,"-","SCOUTS cleanup metrics {brace} widget"\n  fm-x-gl,queued,task,"-","audit   spaced     spaced   migrate null flaky quote\\"s naïve"\n  gamma-5g,queued,task,a/b,"lease ß [bracket] parser naïve résumé retry service widget index Ünïcode retry t\\n... (truncated, 160 chars total - use show gamma-5g --full to see complete text)"\n  alpha-b4,queued,task,"-","café backoff https://github.com/o/r/pull/42"\n  Z-ju,queued,task,"-",retry\n  sm-idle-b3,queued,task,"7","[bracket] gateway service café widget backoff \\u001b[0m cache queue null cleanup test\\n... (truncated, 256 chars total - use show sm-idle-b3 --full to see complete text)"\n  beta-9h,queued,docs,"-",DOCS-ONLY résumé retry audit\n  a.b-fx,queued,task,é-repo,index cache\nhelp[2]:\n  - Run `tasks-axi show <id>` for full notes on a task\n  - Run `tasks-axi ready` to see unblocked queued work\n
+
+case	seed3/list-queued
+arg	list
+arg	--state
+arg	queued
+file	backlog.md	4d0a2052951fe95d.bin
+code	0
+stdout	count: 8\ntasks[8]{id,state,kind,repo,title}:\n  gamma-1f,queued,task,"-","résumé test tab\\there café flaky 日本語 comma,s null lease parser \\u001b[0m test flaky 日本\\n... (truncated, 81 chars total - use show gamma-1f --full to see complete text)"\n  fm-x-gl,queued,task,"-","audit   spaced     spaced   migrate null flaky quote\\"s naïve"\n  gamma-5g,queued,task,a/b,"lease ß [bracket] parser naïve résumé retry service widget index Ünïcode retry t\\n... (truncated, 160 chars total - use show gamma-5g --full to see complete text)"\n  alpha-b4,queued,task,"-","café backoff https://github.com/o/r/pull/42"\n  Z-ju,queued,task,"-",retry\n  sm-idle-b3,queued,task,"7","[bracket] gateway service café widget backoff \\u001b[0m cache queue null cleanup test\\n... (truncated, 256 chars total - use show sm-idle-b3 --full to see complete text)"\n  beta-9h,queued,docs,"-",DOCS-ONLY résumé retry audit\n  a.b-fx,queued,task,é-repo,index cache\nhelp[1]:\n  - Run `tasks-axi show <id>` for full notes on a task\n
+
+case	seed3/list-held
+arg	list
+arg	--state
+arg	held
+file	backlog.md	4d0a2052951fe95d.bin
+code	0
+stdout	count: 6\ntasks[6]{id,state,kind,repo,title}:\n  beta-9h,in_flight,task,"-","comma,s café a#b -dash backoff comma,s retry quote\\"s 日本語 [bracket] 日本語 adopt -da\\n... (truncated, 162 chars total - use show beta-9h --full to see complete text)"\n  x_y-od,in_flight,chore,"-",SHIP -dash schema 日本語 retry cleanup\n  a.b-98,in_flight,task,"-","flaky true lease quote\\"s service retry   spaced   naïve parser adopt index tab\\th\\n... (truncated, 83 chars total - use show a.b-98 --full to see complete text)"\n  alpha-b4,queued,task,"-","café backoff https://github.com/o/r/pull/42"\n  sm-idle-b3,queued,task,"7","[bracket] gateway service café widget backoff \\u001b[0m cache queue null cleanup test\\n... (truncated, 256 chars total - use show sm-idle-b3 --full to see complete text)"\n  beta-9h,queued,docs,"-",DOCS-ONLY résumé retry audit\nhelp[1]:\n  - Run `tasks-axi show <id>` for full notes on a task\n
+
+case	seed3/list-blocked
+arg	list
+arg	--blocked
+file	backlog.md	4d0a2052951fe95d.bin
+code	0
+stdout	count: 2\ntasks[2]{id,state,kind,repo,title}:\n  sm-idle-es.3,in_flight,task,infra,null naïve rewrite 100% gateway café cleanup\n  Z-ju,queued,task,"-",retry\nhelp[2]:\n  - Run `tasks-axi show <id>` for full notes on a task\n  - Run `tasks-axi ready` to see unblocked queued work\n
+
+case	seed3/list-limit1
+arg	list
+arg	--limit
+arg	1
+file	backlog.md	4d0a2052951fe95d.bin
+code	0
+stdout	count: 1 of 15 total\ntasks[1]{id,state,kind,repo,title}:\n  beta-9h,in_flight,task,"-","comma,s café a#b -dash backoff comma,s retry quote\\"s 日本語 [bracket] 日本語 adopt -da\\n... (truncated, 162 chars total - use show beta-9h --full to see complete text)"\nhelp[2]:\n  - Run `tasks-axi show <id>` for full notes on a task\n  - Run `tasks-axi ready` to see unblocked queued work\n
+
+case	seed3/list-allfields
+arg	list
+arg	--fields
+arg	blocked,blocked_by,body,closed,created,delivery_state,deps,held,hold_kind,hold_reason,hold_until,links,priority
+file	backlog.md	4d0a2052951fe95d.bin
+code	0
+stdout	count: 15\ntasks[15]{id,state,kind,repo,title,blocked,blocked_by,body,closed,created,delivery_state,deps,held,hold_kind,hold_reason,hold_until,links,priority}:\n  beta-9h,in_flight,task,"-","comma,s café a#b -dash backoff comma,s retry quote\\"s 日本語 [bracket] 日本語 adopt -da\\n... (truncated, 162 chars total - use show beta-9h --full to see complete text)",no,none,"","-","-","-",none,yes,load,"{brace} flaky",2500-01-01,none,"-"\n  x_y-od,in_flight,chore,"-",SHIP -dash schema 日本語 retry cleanup,no,none,"","-",2026-10-02,"-",none,yes,"-",résumé   spaced     spaced,3000-06-15,none,"-"\n  a.b-98,in_flight,task,"-","flaky true lease quote\\"s service retry   spaced   naïve parser adopt index tab\\th\\n... (truncated, 83 chars total - use show a.b-98 --full to see complete text)",no,none,"\\na,b\\n  spaced   rewrite service parser cache -dash 100% {brace} metrics widget schema migrate cache cache flaky queue adopt 日本語 cleanup metrics 3.14 true true retry backoff audit gateway 100% adopt gateway router   spaced   backoff Ünïcode index ß [bracket] lease   spaced   backoff rewrite adopt café quote\\"s -dash 日本語 Ünïcode -dash résumé -dash -dash Ω audit ß 3.14 naïve gateway index Ünïcode gateway Ω -dash parser a#b tab\\there backoff queue null colon: here test true flaky [bracket] test schema\\n... (truncated, 1076 chars total - use show a.b-98 --full to see complete text)","-",2026-09-30,"-",none,yes,"-","ß colon: here backoff",3000-06-15,none,"-"\n  sm-idle-es.3,in_flight,task,infra,null naïve rewrite 100% gateway café cleanup,yes,a.b-98,"","-",2024-02-29,"-","blocked-by:a.b-98",no,"-","-","-",none,"-"\n  gamma-1f,queued,task,"-","résumé test tab\\there café flaky 日本語 comma,s null lease parser \\u001b[0m test flaky 日本\\n... (truncated, 81 chars total - use show gamma-1f --full to see complete text)",no,none,"","-","-","-",none,no,"-","-","-",none,"-"\n  beta-kr,done,task,"-","colon: here",no,none,"audit a#b naïve\\nnull cache {brace} service naïve gateway widget parser backoff cache retry comma,s backoff schema flaky [bracket] parser 3.14 backoff \\u001b[0m naïve colon: here null quote\\"s [bracket] audit 42 colon: here résumé Ω a#b widget colon: here résumé colon: here adopt flaky router comma,s tab\\there cache quote\\"s café flaky metrics lease   spaced   audit schema 100% parser flaky index Ünïcode audit test 100% cache comma,s   spaced   backoff {brace} 42 index metrics 100% 100% 42 metrics 3.14 a\\n... (truncated, 579 chars total - use show beta-kr --full to see complete text)","-",2024-02-29,"-",none,no,"-","-","-",none,"-"\n  Z-0j,done,task,"-","true ß gateway ß migrate ß Ünïcode a#b (priority: 9)",no,none," extra-indented tab\\there\\n100% index colon: here test backoff adopt \\u001b[0m\\n\\nindex test widget true audit   spaced  \\nretry naïve index cache 42 metrics backoff gateway naïve parser true colon: here audit \\u001b[0m Ω retry a#b tab\\there 日本語 adopt 100% café test backoff ß Ω tab\\there cleanup gateway widget -dash 3.14 \\u001b[0m   spaced   rewrite {brace} \\u001b[0m router 日本語 日本語 Ω résumé metrics flaky migrate adopt cleanup [bracket]   spaced   tab\\there rewrite colon: here \\u001b[0m true retry queue lease metrics \\u001b[0m cache \\n... (truncated, 610 chars total - use show Z-0j --full to see complete text)",2026-09-30,"-","-",none,no,"-","-","-",none,"-"\n  Homemux-ea,done,task,"-","SCOUTS cleanup metrics {brace} widget",no,none,"Ω quote\\"s null queue Ω audit tab\\there ß   spaced   comma,s 3.14 100%\\n## Intent\\n extra-indented a#b",2026-10-02,"-","-",none,no,"-","-","-",none,"-"\n  fm-x-gl,queued,task,"-","audit   spaced     spaced   migrate null flaky quote\\"s naïve",no,none,"\\u001b[0m ß Ω audit tab\\there tab\\there queue\\n## Intent","-",2026-10-01,"-",none,no,"-","-","-",none,"-"\n  gamma-5g,queued,task,a/b,"lease ß [bracket] parser naïve résumé retry service widget index Ünïcode retry t\\n... (truncated, 160 chars total - use show gamma-5g --full to see complete text)",no,none,"","-","-","-",none,no,"-","-","-",none,3\n  alpha-b4,queued,task,"-","café backoff https://github.com/o/r/pull/42",no,none,"","-","-","-",none,yes,"-",queue cache,"-","pr:https://github.com/o/r/pull/42",2\n  Z-ju,queued,task,"-",retry,yes,x_y-od,"{x}\\n\\u001b[0m gateway index Ünïcode true tab\\there audit index   spaced   日本語 résumé 42 metrics comma,s [bracket] colon: here metrics cleanup metrics parser Ünïcode retry 日本語 \\u001b[0m Ünïcode cache colon: here test tab\\there null comma,s résumé colon: here null retry 42 Ünïcode retry Ünïcode {brace} true cleanup test cache index 42 backoff résumé 42 index café -dash [bracket] 日本語 metrics 3.14 42 cache lease 42 quote\\"s comma,s migrate 100%   spaced   [bracket] 42 日本語 a#b colon: here ß widget queue 42 adopt \\n... (truncated, 538 chars total - use show Z-ju --full to see complete text)","-",2026-09-30,"-","blocked-by:x_y-od,blocked-by:Z-0j",no,"-","-","-",none,"-"\n  sm-idle-b3,queued,task,"7","[bracket] gateway service café widget backoff \\u001b[0m cache queue null cleanup test\\n... (truncated, 256 chars total - use show sm-idle-b3 --full to see complete text)",no,none,gateway a#b 42 日本語 a#b widget widget,"-",2026-10-01,"-",none,yes,"-","index queue colon: here","-",none,"-"\n  beta-9h,queued,docs,"-",DOCS-ONLY résumé retry audit,no,none,"1.\\n extra-indented résumé\\na#b 3.14 100% quote\\"s null index ß audit\\nmetrics comma,s true rewrite \\u001b[0m {brace} colon: here\\n1e5","-","-","-",none,no,"-","-","-",none,"-"\n  a.b-fx,queued,task,é-repo,index cache,no,none,"retry a#b naïve quote\\"s router audit 42 café","-",2025-01-01,"-",none,no,captain,"null",2001-06-15,none,"-"\nhelp[2]:\n  - Run `tasks-axi show <id>` for full notes on a task\n  - Run `tasks-axi ready` to see unblocked queued work\n
+
+case	seed3/ready
+arg	ready
+file	backlog.md	4d0a2052951fe95d.bin
+code	0
+stdout	count: 5\nready[5]{id,state,kind,repo,title}:\n  gamma-1f,queued,task,"-","résumé test tab\\there café flaky 日本語 comma,s null lease parser \\u001b[0m test flaky 日本\\n... (truncated, 81 chars total - use show gamma-1f --full to see complete text)"\n  fm-x-gl,queued,task,"-","audit   spaced     spaced   migrate null flaky quote\\"s naïve"\n  gamma-5g,queued,task,a/b,"lease ß [bracket] parser naïve résumé retry service widget index Ünïcode retry t\\n... (truncated, 160 chars total - use show gamma-5g --full to see complete text)"\n  beta-9h,queued,docs,"-",DOCS-ONLY résumé retry audit\n  a.b-fx,queued,task,é-repo,index cache\nready_public_followups: 0 delivery-ready obligations\nhelp[1]:\n  - Run `tasks-axi start <id>` to dispatch one of these\n
+
+case	seed3/ready-held
+arg	ready
+arg	--include-held
+file	backlog.md	4d0a2052951fe95d.bin
+code	0
+stdout	count: 5\nready[5]{id,state,kind,repo,title}:\n  gamma-1f,queued,task,"-","résumé test tab\\there café flaky 日本語 comma,s null lease parser \\u001b[0m test flaky 日本\\n... (truncated, 81 chars total - use show gamma-1f --full to see complete text)"\n  fm-x-gl,queued,task,"-","audit   spaced     spaced   migrate null flaky quote\\"s naïve"\n  gamma-5g,queued,task,a/b,"lease ß [bracket] parser naïve résumé retry service widget index Ünïcode retry t\\n... (truncated, 160 chars total - use show gamma-5g --full to see complete text)"\n  beta-9h,queued,docs,"-",DOCS-ONLY résumé retry audit\n  a.b-fx,queued,task,é-repo,index cache\nready_public_followups: 0 delivery-ready obligations\nheld[2]{id,state,kind,repo,title,hold_reason,hold_kind,hold_until}:\n  alpha-b4,queued,task,"-","café backoff https://github.com/o/r/pull/42",queue cache,"-","-"\n  sm-idle-b3,queued,task,"7","[bracket] gateway service café widget backoff \\u001b[0m cache queue null cleanup test\\n... (truncated, 256 chars total - use show sm-idle-b3 --full to see complete text)","index queue colon: here","-","-"\nhelp[1]:\n  - Run `tasks-axi start <id>` to dispatch one of these\n
+
+case	seed3/ready-repo
+arg	ready
+arg	--repo
+arg	infra
+file	backlog.md	4d0a2052951fe95d.bin
+code	0
+stdout	count: 0\nready: 0 unblocked queued tasks\nready_public_followups: 0 delivery-ready obligations\nhelp[1]:\n  - Run `tasks-axi list --state queued --repo=infra` to see all queued work (incl. blocked)\n
+
+case	seed3/show-missing
+arg	show
+arg	no-such-task
+file	backlog.md	4d0a2052951fe95d.bin
+code	1
+stdout	error: "Task \\"no-such-task\\" not found in this backlog"\ncode: NOT_FOUND\nhelp[1]: Run `tasks-axi list` to see existing tasks\n
+
+case	seed3/show-Z-ju
+arg	show
+arg	Z-ju
+file	backlog.md	4d0a2052951fe95d.bin
+code	0
+stdout	task:\n  id: Z-ju\n  title: retry\n  state: queued\n  blocked: yes\n  blocked_by: x_y-od\n  held: no\n  hold_reason: "-"\n  hold_kind: "-"\n  hold_until: "-"\n  kind: task\n  repo: "-"\n  priority: "-"\n  created: 2026-09-30\n  closed: "-"\n  deps: "blocked-by:x_y-od,blocked-by:Z-0j"\n  links: none\n  body: "{x}\\n\\u001b[0m gateway index Ünïcode true tab\\there audit index   spaced   日本語 résumé 42 metrics comma,s [bracket] colon: here metrics cleanup metrics parser Ünïcode retry 日本語 \\u001b[0m Ünïcode cache colon: here test tab\\there null comma,s résumé colon: here null retry 42 Ünïcode retry Ünïcode {brace} true cleanup test cache index 42 backoff résumé 42 index café -dash [bracket] 日本語 metrics 3.14 42 cache lease 42 quote\\"s comma,s migrate 100%   spaced   [bracket] 42 日本語 a#b colon: here ß widget queue 42 adopt \\n... (truncated, 538 chars total - use --full to see complete text)"\nhelp[2]:\n  - Run `tasks-axi unblock Z-ju --by <other>` to clear a blocker\n  - Run `tasks-axi start Z-ju` to move it to in flight\n
+
+case	seed3/show-full-Z-ju
+arg	view
+arg	Z-ju
+arg	--full
+file	backlog.md	4d0a2052951fe95d.bin
+code	0
+stdout	task:\n  id: Z-ju\n  title: retry\n  state: queued\n  blocked: yes\n  blocked_by: x_y-od\n  held: no\n  hold_reason: "-"\n  hold_kind: "-"\n  hold_until: "-"\n  kind: task\n  repo: "-"\n  priority: "-"\n  created: 2026-09-30\n  closed: "-"\n  deps: "blocked-by:x_y-od,blocked-by:Z-0j"\n  links: none\n  body: "{x}\\n\\u001b[0m gateway index Ünïcode true tab\\there audit index   spaced   日本語 résumé 42 metrics comma,s [bracket] colon: here metrics cleanup metrics parser Ünïcode retry 日本語 \\u001b[0m Ünïcode cache colon: here test tab\\there null comma,s résumé colon: here null retry 42 Ünïcode retry Ünïcode {brace} true cleanup test cache index 42 backoff résumé 42 index café -dash [bracket] 日本語 metrics 3.14 42 cache lease 42 quote\\"s comma,s migrate 100%   spaced   [bracket] 42 日本語 a#b colon: here ß widget queue 42 adopt 42😀a\\n## Intent\\n\\n extra-indented index"\nhelp[2]:\n  - Run `tasks-axi unblock Z-ju --by <other>` to clear a blocker\n  - Run `tasks-axi start Z-ju` to move it to in flight\n
+
+case	seed3/show-beta-kr
+arg	show
+arg	beta-kr
+file	backlog.md	4d0a2052951fe95d.bin
+code	0
+stdout	task:\n  id: beta-kr\n  title: "colon: here"\n  state: done\n  blocked: no\n  blocked_by: none\n  held: no\n  hold_reason: "-"\n  hold_kind: "-"\n  hold_until: "-"\n  kind: task\n  repo: "-"\n  priority: "-"\n  created: 2024-02-29\n  closed: "-"\n  deps: none\n  links: none\n  body: "audit a#b naïve\\nnull cache {brace} service naïve gateway widget parser backoff cache retry comma,s backoff schema flaky [bracket] parser 3.14 backoff \\u001b[0m naïve colon: here null quote\\"s [bracket] audit 42 colon: here résumé Ω a#b widget colon: here résumé colon: here adopt flaky router comma,s tab\\there cache quote\\"s café flaky metrics lease   spaced   audit schema 100% parser flaky index Ünïcode audit test 100% cache comma,s   spaced   backoff {brace} 42 index metrics 100% 100% 42 metrics 3.14 a\\n... (truncated, 579 chars total - use --full to see complete text)"\n
+
