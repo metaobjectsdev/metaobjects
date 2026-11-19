@@ -17,7 +17,8 @@
 //! sources the way every port does (config, directory walk, file text) and times the whole
 //! read plus load, one untimed warm-up first, so the figure is comparable with the other
 //! ports' warm-load drivers in `scripts/bench-load/`. `--json` prints one machine-readable
-//! line (`port`, `loads`, `median_ms`, `peak_rss_mib`) in the shape those drivers print.
+//! line (`port`, `loads`, `median_ms`, `peak_rss_mib`, `nodes`) in the shape those drivers
+//! print.
 //!
 //! The mode picks what is loaded: `json` (the default) loads the model as JSON;
 //! `yaml` loads the same model as sigil-free authoring YAML, so the phase table
