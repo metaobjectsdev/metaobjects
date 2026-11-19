@@ -24,14 +24,14 @@ here.**
   While the port is in preview, a new fixture that fails in Rust and is not on the ledger prints a
   warning and does not fail the lane; a fixture that passed and regresses still fails it, because
   the ledger records how many fixtures must pass. Nothing is published. Every load records how
-  long each phase and each validation pass took (`LoadResult::timings`; the `validate` module's ordered pass list holds the ported passes in
-  reference order), and `load_bench` prints the per-phase and per-pass medians, with
-  `--write-baseline` / `--baseline` to record and compare a run — a baseline is a record to
-  read, never a threshold, and the committed 20x baseline is a machine-local reference. A
-  `rust` lane runs `cargo fmt --check`, clippy, the tests and the `load_bench` table (record
-  only, printed without a baseline delta — a cross-machine delta measures the machine, not the
-  change) in `scripts/ci-local.sh --only rust`, `pr-ci` and `local-ci`, selected by changes
-  under `server/rust/`.
+  long each phase and each validation pass took (`LoadResult::timings`; the `validate` module's
+  ordered pass list holds the ported passes in reference order), and `load_bench` prints the
+  per-phase and per-pass medians, with `--write-baseline` / `--baseline` to record and compare a
+  run — a baseline is a record to read, never a threshold, and the committed 20x baseline is a
+  machine-local reference. A `rust` lane runs `cargo fmt --check`, clippy, the tests, and the
+  `load_bench` and `gen_bench` tables (record only, printed without a baseline delta — a
+  cross-machine delta measures the machine, not the change) in `scripts/ci-local.sh --only rust`,
+  `pr-ci` and `local-ci`, selected by changes under `server/rust/`.
 - **Rust port reads a real project, in preview.** The loader now reads YAML authoring files
   (ADR-0006: bare type keys, scalar-body names, the `[]` suffix, sigil-free attributes, anchors and
   aliases, the `ERR_YAML_COERCION` guard, and a line and column on every error from a YAML file),
@@ -49,9 +49,9 @@ here.**
   the whole run (nothing rendered, nothing written, not even the manifest) when the model hash
   tree, the project config, the engine's built code, each generator's identity and the flags match
   the stored key in `.fingerprint-rust.json` and every recorded output is still as the last run
-  left it. The shared `fixtures/codegen-skip-conformance` corpus runs against it: every case the port can meet runs,
-  and the ones it cannot (templates, ejected generators, `verify`, a kept hand edit) are named
-  with the reason. The `entity` generator writes one crate per metadata package: serde structs
+  left it. The shared `fixtures/codegen-skip-conformance` corpus runs against it: every case the
+  port can meet runs, and the ones it cannot (templates, ejected generators, `verify`, a kept hand
+  edit) are named with the reason. The `entity` generator writes one crate per metadata package: serde structs
   for `object.entity` and `object.value` (inherited fields included, optional fields as `Option`,
   arrays as `Vec`, a map as `BTreeMap`), enums for `field.enum` (shared enums once, in their
   declaration's package) with the member symbols as the wire form, `Box` only where a by-value

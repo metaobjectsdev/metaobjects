@@ -78,9 +78,9 @@ green, with every validation pass the TypeScript loader runs, in the same order,
 reference resolution, not a validation pass); `source-resolution-conformance` (all 28
 cases); `naming-conformance` (all of it); and `codegen-skip-conformance` (ADR-0064), for the
 cases its `gen` can meet (the rest are named with their reason in its runner). Those ledgers
-may only shrink. While the port is in preview, a new fixture that fails in Rust and is not on the ledger prints a
-warning and does not fail the lane; it becomes a hard failure when the port leaves
-preview. A regression still fails: the ledger's `minPassing` (526) is the number of
+may only shrink. While the port is in preview, a new fixture that fails in Rust and is not on
+the ledger prints a warning and does not fail the lane; it becomes a hard failure when the port
+leaves preview. A regression still fails: the ledger's `minPassing` (526) is the number of
 fixtures known to pass, and the run fails when fewer do. The column joins this table when
 the port leaves preview.
 
