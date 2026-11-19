@@ -1,17 +1,19 @@
 # Rust port (preview)
 
 The Rust port is **in preview** ([ADR-0065](../../spec/decisions/ADR-0065-rust-is-the-sixth-port.md)).
-It reads a project, validates it and serializes it, and it is held to the same shared conformance
-corpora as the other five ports. It does not generate code yet, and **nothing is published**: there
-is no crate on crates.io, so there is nothing to `cargo add`. You work from a checkout of this
-repository.
+It reads a project, validates it, serializes it and generates code from it, and it is held to the
+same shared conformance corpora as the other five ports. Code generation covers the `entity`
+generator only. **Nothing is published**: there is no crate on crates.io, so there is nothing to
+`cargo add`. You work from a checkout of this repository.
 
 This page says what runs today, what does not exist yet, and how to build and test it. For the
 decisions behind the port (why Rust, the layout, the preview rules), read the ADR.
 
 ## What works today
 
-One crate, `metaobjects`, in the Cargo workspace at `server/rust/`:
+The loader is the `metaobjects` crate, and the workspace at `server/rust/` adds the codegen crate
+(`metaobjects-codegen`, the run engine and generator) and the CLI crate (`metaobjects-cli`, the
+`cargo-meta` binary). What each area does:
 
 | Area | What it does |
 |---|---|
@@ -23,13 +25,15 @@ One crate, `metaobjects`, in the Cargo workspace at `server/rust/`:
 | Serializer | The canonical serializer. A tree it loads serializes to the same bytes the other ports write. |
 | Frozen tree | The loader freezes the tree when it finishes. A frozen tree memoizes its resolved reads (effective children, attributes and array-ness), so many readers can share one. |
 | Timings | Every load records how long each phase and each validation pass took (`LoadResult::timings`). |
+| Code generation (`cargo meta gen`) | The run engine and the `entity` generator, one crate per metadata package. The command and its flags are in the [CLI reference](../features/cli.md). |
 
 ### Conformance
 
-The port runs five shared corpora. A fixture that fails and is not on the port's ledger prints a
-warning and does not fail the `rust` lane while the port is in preview; a fixture that passed and
-regresses still fails it, because each ledger records how many fixtures must pass (`minPassing`) and
-may only shrink.
+The port runs six shared corpora. Four of them keep a ledger: a fixture that fails and is not on the
+port's ledger prints a warning and does not fail the `rust` lane while the port is in preview; a
+fixture that passed and regresses still fails it, because each ledger records how many fixtures must
+pass (`minPassing`) and may only shrink. `registry-conformance` (a byte-for-byte manifest) and
+`codegen-skip-conformance` (each case asserts its result outright) have no ledger.
 
 | Corpus | Rust today |
 |---|---|
@@ -38,6 +42,7 @@ may only shrink.
 | `yaml-conformance` | 18 of 19. The one on the ledger, `yaml-ref-root-escape`, waits for the root-level `::` reference rules of [ADR-0059](../../spec/decisions/ADR-0059-references-resolve-once-after-the-tree.md), which are reference resolution, not a validation pass. |
 | `source-resolution-conformance` | all 28 cases |
 | `naming-conformance` | all of it |
+| `codegen-skip-conformance` | the cases its `gen` can meet (ADR-0064); the rest are named with their reason in the runner |
 
 Rust is not yet a column in the [per-corpus table](../CONFORMANCE.md#per-corpus-totals); it joins
 when the port leaves preview. The other corpora (render, persistence, API contract, codegen compile)
@@ -56,10 +61,10 @@ regeneration, peak memory), so a port's speed can be tracked per feature next to
 
 ## What does not exist yet
 
-- **Code generation.** There is no Rust generator, no `meta gen` equivalent and no `eject`. The port
-  loads and checks metadata; it does not write code.
-- **The `cargo meta` command.** It is planned, not built. ADR-0065 names it: a Cargo subcommand (a
-  `cargo-meta` binary), the way the other build-tool-hosted ports spell theirs (`dotnet meta`,
+- **Other generators.** Only `entity` exists. There is no template, client, API or ORM generator. Relationships,
+  projections and reports are not emitted.
+- **Other `cargo meta` commands.** Only `gen` exists: no `init`, `eject`, `verify` or `fmt`. The command is a
+  Cargo subcommand (a `cargo-meta` binary), the way the other build-tool-hosted ports spell theirs (`dotnet meta`,
   `mvn metaobjects:...`). A bare `meta` stays the Node schema CLI.
 - **Drift checks.** There is no `verify` for Rust yet, so nothing compares generated Rust to the model.
 - **The service tier.** No `ObjectManager`, no persistence drivers and no web adapters.
@@ -85,13 +90,13 @@ You need `rustup`. The workspace pins its toolchain in `server/rust/rust-toolcha
 ```bash
 cd server/rust
 cargo build
-cargo test --locked                        # the corpora and the unit tests, about a second once built
+cargo test --locked                        # the corpora, the unit tests and the codegen suites (these run cargo check on generated crates)
 cargo fmt --all --check
 cargo clippy --locked --all-targets -- -D warnings
 ```
 
-The repository's one pre-PR script runs the same steps, plus the `load_bench` table (printed, never
-gated on a number):
+The repository's one pre-PR script runs the same steps, plus the `load_bench` and `gen_bench` tables
+(printed, never gated on a number):
 
 ```bash
 scripts/ci-local.sh --only rust
@@ -125,8 +130,8 @@ working call.
 
 ## A worked codegen exercise: `examples/tasks-axi-rust/`
 
-[`examples/tasks-axi-rust/`](../../examples/tasks-axi-rust/README.md) is the nearest thing to a Rust
-code generator today, and it is an experiment, not a product. It reimplements the read path of an
+[`examples/tasks-axi-rust/`](../../examples/tasks-axi-rust/README.md) is an experiment, not a product,
+and it is not the port's generator (that is `cargo meta gen`, above). It reimplements the read path of an
 agent-facing task tracker as a small Rust binary and **generates the Rust for its rows, enums, error
 codes, argument parser, help text and dispatcher from a MetaObjects model**, with an owned TypeScript
 generator (ADR-0034). The real tool is the oracle: for every implemented command and flag the two print

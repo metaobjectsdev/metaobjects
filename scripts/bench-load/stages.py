@@ -15,8 +15,7 @@ Stages (each is the median of --runs runs, with the peak resident set of the pro
 It writes report.json (machine-readable) and report.md (one table) into --out, and never
 fails on a number: a delta between two machines measures the machine, so there is no
 threshold. A stage a port cannot run is reported as "not available" with the reason (the
-Rust generation stages read that way until `cargo meta gen` exists, and are picked up
-automatically once it does).
+Rust generation stages read that way until a `cargo-meta` binary is built or installed).
 
 Default model: the public persistence-conformance fitness model repeated --copies times, with
 every declaration renamed per copy so the copies can be generated as well as loaded
