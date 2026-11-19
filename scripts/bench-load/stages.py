@@ -23,10 +23,12 @@ every declaration renamed per copy so the copies can be generated as well as loa
 (`gen-model.py --unique-names`). It is the same model `run.sh`, `load_bench` and the
 reference-lookup profiling use.
 
---project runs the same stages on your own project instead. Its metadata directory is COPIED
-into a scratch directory (the project is never written to) and the report is written to --out,
-which must be OUTSIDE this repository. The report names no path and no entity: only counts. A
-private run stays local; never commit its report.
+--project runs the same stages on your own project instead. Its metadata directory and, when
+present, its .metaobjects/config.json are COPIED into a scratch directory (the project is never
+written to) and the report is written to --out, which must be OUTSIDE this repository. Only the
+model label is anonymized (counts); failure reasons may quote commands and errors, so a private
+run stays local and its report is never committed. The TypeScript load driver passes no
+libraries option, so a project using libraries still fails the typescript column.
 
 Generation runs each port's own command with ONE reference generator chosen to exist and work
 in that port (typescript: entity + names; python: entity; csharp: entity; java: dto +
@@ -98,6 +100,17 @@ def version(cmd):
 def copy_model(src: Path, dest: Path) -> None:
     """Copy a metadata directory without its dotfiles or build output."""
     shutil.copytree(src, dest, ignore=shutil.ignore_patterns(".*", "node_modules", "target", "bin", "obj"))
+
+
+def install_config(project: Path, model: Path) -> None:
+    """Write a port scratch project's .metaobjects/config.json: the source project's own config
+    when the benchmark copied one next to the model, else the minimal synthetic config."""
+    src = model.parent / ".metaobjects" / "config.json"
+    (project / ".metaobjects").mkdir(exist_ok=True)
+    if src.exists():
+        shutil.copy(src, project / ".metaobjects" / "config.json")
+    else:
+        (project / ".metaobjects" / "config.json").write_text('{"schema_version": 1}\n')
 
 
 def model_files(model: Path):
@@ -211,8 +224,7 @@ class Python(Port):
         self.project = work / "py"
         self.project.mkdir()
         copy_model(model, self.project / "metaobjects")
-        (self.project / ".metaobjects").mkdir()
-        (self.project / ".metaobjects/config.json").write_text('{"schema_version": 1}\n')
+        install_config(self.project, model)
         (self.project / "metaobjects.config.yaml").write_text(
             "metadata: metaobjects\ntargets:\n  api:\n    outDir: src/generated\n    generators: [entity]\n")
 
@@ -263,6 +275,9 @@ class CSharp(Port):
         gens.write_text(gens.read_text().replace(
             "    [\n", "    [\n        new MetaObjects.Codegen.Generators.EntityGenerator(),\n", 1))
         cfg = self.project / ".metaobjects/config.json"
+        src_cfg = model.parent / ".metaobjects" / "config.json"
+        if src_cfg.exists():
+            shutil.copy(src_cfg, cfg)
         c = json.loads(cfg.read_text())
         c["csharp"] = {"outDir": "out", "namespace": "Bench"}
         cfg.write_text(json.dumps(c, indent=2))
@@ -373,8 +388,7 @@ class Rust(Port):
         self.project = work / "rs"
         self.project.mkdir()
         copy_model(model, self.project / "metaobjects")
-        (self.project / ".metaobjects").mkdir()
-        (self.project / ".metaobjects/config.json").write_text('{"schema_version": 1}\n')
+        install_config(self.project, model)
 
     def gen_command(self):
         extra = os.environ.get("MO_BENCH_RUST_GEN_ARGS", "").split()
@@ -526,6 +540,10 @@ def main() -> int:
                 ap.error(f"no metadata directory at <project>/{args.metadata_dir}")
             model = work / "model/metaobjects"
             copy_model(src, model)
+            src_cfg = src.parent / ".metaobjects" / "config.json"
+            if src_cfg.exists():
+                (model.parent / ".metaobjects").mkdir()
+                shutil.copy(src_cfg, model.parent / ".metaobjects" / "config.json")
             files = model_files(model)
             label = f"a private project ({len(files)} metadata files, {sum(f.stat().st_size for f in files) // 1024} KiB)"
         else:

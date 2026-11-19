@@ -43,9 +43,11 @@ through the Java loader, so it has generation rows only.
 The model is the fitness model repeated `--copies` times with every declaration renamed per copy
 (`gen-model.py --unique-names`) so it can be generated as well as loaded.
 
-`--project` measures your own project: its metadata directory is copied into scratch (the project is
-never written to), the report names no path and no entity, and `--out` must be outside this repository.
-A private run stays local and its report is never committed.
+`--project` measures your own project: its metadata directory and, when present, its
+`.metaobjects/config.json` are copied into scratch (the project is never written to), and `--out`
+must be outside this repository. Only the model label is anonymized; failure reasons may quote
+commands and errors, so a private run stays local and its report is never committed. The TypeScript
+load driver passes no `libraries` option, so a project using libraries fails the typescript column.
 
 Wall-clock is noisy on a busy machine. Compare the 20x/1x growth ratio, not absolute
 milliseconds, and treat the deterministic call-count tests in each port
