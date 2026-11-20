@@ -229,11 +229,11 @@ export function mountDynamicRoutes(options: DynamicRoutesOptions): void {
   const collection = `${prefix}/:collection`;
   const member = `${collection}/:id`;
 
-  /** The entity a collection path names in the current model, or undefined for a 404. */
-  const entityAt = (params: CollectionParams): MetaObject | undefined => model().served.get(params.collection);
-  /** The entity and the row a member path names, or undefined for a 404. */
-  function memberAt(params: MemberParams): { entity: MetaObject; id: string } | undefined {
-    const entity = entityAt(params);
+  /** The entity a collection path names in the given model, or undefined for a 404. */
+  const entityAt = (current: Model, params: CollectionParams): MetaObject | undefined => current.served.get(params.collection);
+  /** The entity and the row a member path names in the given model, or undefined for a 404. */
+  function memberAt(current: Model, params: MemberParams): { entity: MetaObject; id: string } | undefined {
+    const entity = entityAt(current, params);
     const id = entity === undefined ? undefined : rowKey(entity, params.id);
     return entity === undefined || id === undefined ? undefined : { entity, id };
   }
@@ -265,7 +265,7 @@ export function mountDynamicRoutes(options: DynamicRoutesOptions): void {
 
   fastify.get<CollectionRoute>(collection, async (req, reply) => {
     const current = model();
-    const entity = entityAt(req.params);
+    const entity = entityAt(current, req.params);
     if (entity === undefined) return notFound(reply);
     let list;
     try {
@@ -284,15 +284,16 @@ export function mountDynamicRoutes(options: DynamicRoutesOptions): void {
   });
 
   fastify.get<MemberRoute>(member, async (req, reply) => {
-    const at = memberAt(req.params);
+    const current = model();
+    const at = memberAt(current, req.params);
     if (at === undefined) return notFound(reply);
-    const row = await model().om.findById(at.entity.name, at.id);
+    const row = await current.om.findById(at.entity.name, at.id);
     return row === null ? notFound(reply) : shownBy(at.entity)(row);
   });
 
   fastify.post<CollectionRoute>(collection, async (req, reply) => {
     const current = model();
-    const entity = entityAt(req.params);
+    const entity = entityAt(current, req.params);
     if (entity === undefined) return notFound(reply);
     const row = readBody(current, entity, req.body, reply);
     if (row === undefined) return reply;
@@ -306,7 +307,7 @@ export function mountDynamicRoutes(options: DynamicRoutesOptions): void {
 
   const update = async (req: FastifyRequest<MemberRoute>, reply: FastifyReply): Promise<FastifyReply> => {
     const current = model();
-    const at = memberAt(req.params);
+    const at = memberAt(current, req.params);
     if (at === undefined) return notFound(reply);
     const { entity, id } = at;
     const row = readBody(current, entity, req.body, reply);
@@ -327,11 +328,12 @@ export function mountDynamicRoutes(options: DynamicRoutesOptions): void {
   fastify.put<MemberRoute>(member, update);
 
   fastify.delete<MemberRoute>(member, async (req, reply) => {
-    const at = memberAt(req.params);
+    const current = model();
+    const at = memberAt(current, req.params);
     if (at === undefined) return notFound(reply);
     return answerWrite(reply, async () =>
       // "ignore": a missing row is this route's 404 to answer, not an exception.
-      (await model().om.delete(at.entity.name, at.id, { ifMissing: "ignore" })) ? reply.code(204).send() : notFound(reply),
+      (await current.om.delete(at.entity.name, at.id, { ifMissing: "ignore" })) ? reply.code(204).send() : notFound(reply),
     );
   });
 }

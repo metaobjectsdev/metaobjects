@@ -53,6 +53,8 @@ export interface ProjectCopy {
   /** Rewrite the model file. Throws when `find` is not in it, so a stale test fails loudly. */
   editModel(find: string, replaceWith: string): void;
   appendModel(yaml: string): void;
+  /** Replace the whole model file. */
+  replaceModel(yaml: string): void;
   editConfig(edit: (config: Record<string, unknown>) => void): void;
   remove(): void;
 }
@@ -69,6 +71,9 @@ export function copyProject(): ProjectCopy {
       const text = readFileSync(model, "utf8");
       if (!text.includes(find)) throw new Error(`the model has no "${find}" to edit`);
       writeFileSync(model, text.replace(find, replaceWith));
+    },
+    replaceModel(yaml) {
+      writeFileSync(model, yaml);
     },
     appendModel(yaml) {
       writeFileSync(model, `${readFileSync(model, "utf8").trimEnd()}\n${yaml}`);

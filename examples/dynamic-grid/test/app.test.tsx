@@ -4,12 +4,11 @@
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { cleanup, fireEvent, render, waitFor, within, type RenderResult } from "@testing-library/react";
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { App } from "../src/client/app";
-import { API_PREFIX } from "../src/server/app";
+import { API_PREFIX, buildApp } from "../src/server/app";
+import { openRuntime } from "../src/server/runtime";
 import { headers, inProcess, tableRows, type Transport } from "./client-helpers";
-import { copyProject, openDemo, PROJECT_DIR, type Demo, type ProjectCopy } from "./helpers";
+import { copyProject, openDemo, type Demo, type ProjectCopy } from "./helpers";
 
 let project: ProjectCopy;
 let demo: Demo;
@@ -127,21 +126,49 @@ describe("the metadata changes while the page is open", () => {
 });
 
 describe("no entity is named in the client", () => {
-  test("src/client mentions no entity, field or collection of the demo model", () => {
-    const names = [...demo.runtime.current().served].flatMap(([segment, entity]) => [segment, entity.name, ...entity.fields().map((f) => f.name)]);
-    // Four of the model's names are also ordinary words of the code (a variable called
-    // `title`, an HTTP `status`), so they prove nothing either way. Every other name must
-    // not appear in the client's code at all.
-    const ordinary = ["id", "name", "title", "status"];
-    const telling = [...new Set(names)].filter((name) => !ordinary.includes(name));
-    const dir = join(PROJECT_DIR, "src", "client");
-    const offenders: string[] = [];
-    for (const file of readdirSync(dir).filter((f) => f.endsWith(".ts") || f.endsWith(".tsx"))) {
-      // Comments explain with examples from the demo; the code may not.
-      const code = readFileSync(join(dir, file), "utf8").replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
-      for (const name of telling) if (new RegExp(`\\b${name}\\b`).test(code)) offenders.push(`${file}: ${name}`);
+  test("a model whose every name is new is served by the same grid, form and routes", async () => {
+    const fresh = copyProject();
+    fresh.replaceModel(`metadata:
+  package: demo::observatory
+  children:
+    - object.entity:
+        name: Telescope
+        children:
+          - source.rdb: { table: telescopes }
+          - field.long: { name: id }
+          - field.string: { name: callsign, required: true, maxLength: 40, filterable: true }
+          - field.int: { name: apertureMm, filterable: true, sortable: true }
+          - field.enum: { name: mount, values: [dobsonian, equatorial, altazimuth], filterable: true }
+          - identity.primary: { name: pk, fields: id, generation: increment }
+          - layout.dataGrid: { name: default, columns: [callsign, apertureMm, mount], defaultSortField: callsign, filterable: true }
+`);
+    const runtime = await openRuntime({ projectDir: fresh.dir });
+    const app = buildApp({ runtime, rules: [] });
+    const other = inProcess(app);
+    try {
+      const view = render(<App fetcher={other.fetcher} baseUrl={API_PREFIX} pollMs={20} />);
+      await waitFor(() => expect(view.container.querySelector('main [aria-busy="false"]')).not.toBeNull());
+      expect(menu(view)).toEqual(["Telescope"]);
+      expect(headers(main(view))).toEqual(["Callsign", "Aperture Mm", "Mount"]);
+
+      fireEvent.click(view.getByText("New Telescope"));
+      const side = await waitFor(() => view.getByRole("complementary"));
+      fireEvent.change(within(side).getByLabelText("Callsign *"), { target: { value: "Vega-1" } });
+      fireEvent.change(within(side).getByLabelText("Aperture Mm"), { target: { value: "300" } });
+      fireEvent.change(within(side).getByLabelText("Mount"), { target: { value: "dobsonian" } });
+      fireEvent.click(within(side).getByText("Create"));
+      await waitFor(() => expect(tableRows(main(view))).toEqual([["Vega-1", "300", "Dobsonian"]]));
+
+      const listed = await app.inject({ method: "GET", url: `${API_PREFIX}/telescopes` });
+      expect(listed.statusCode).toBe(200);
+      const body = JSON.parse(listed.body) as { rows?: unknown[] } | unknown[];
+      const rows = Array.isArray(body) ? body : body.rows;
+      expect(rows).toEqual([expect.objectContaining({ callsign: "Vega-1", apertureMm: 300, mount: "dobsonian" })]);
+    } finally {
+      cleanup();
+      await app.close();
+      await runtime.close();
+      fresh.remove();
     }
-    expect(telling.length).toBeGreaterThan(25);
-    expect(offenders).toEqual([]);
   });
 });
