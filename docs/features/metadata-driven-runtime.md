@@ -158,9 +158,9 @@ exact; the timings are medians from one developer machine and move with the mach
 
 | Metadata-driven path (hand-written once, names no entity) | Files | Lines of code |
 |---|---:|---:|
-| Server: one route mount, the list contract, write checks, the model and its schema | 6 | 716 |
-| Client: the model reader, `<MetaGrid>`, `<MetaForm>` and their controls | 9 | 1107 |
-| **The mechanism: paid once, whatever the model** | 15 | 1823 |
+| Server: one route mount, the list contract, write checks, the model and its schema | 6 | 718 |
+| Client: the model reader, `<MetaGrid>`, `<MetaForm>` and their controls | 9 | 1108 |
+| **The mechanism: paid once, whatever the model** | 15 | 1826 |
 | **Generated and kept: types and name constants (`src/generated/`), which grow with the model** | 11 | 390 |
 
 | Generated path (the reference generators, same model) | Files | Lines of code |
@@ -183,14 +183,14 @@ exact; the timings are medians from one developer machine and move with the mach
 
 Per entity, the generated path adds about 726 lines in 9.4 files. The metadata-driven path
 adds about 78 (its types and name constants) and no hand-written code. The mechanism's
-1823 lines are paid once, so the two paths are the same size at about 3 entities, and at
+1826 lines are paid once, so the two paths are the same size at about 3 entities, and at
 50 entities the generated path is about 36,000 lines against about 5,700.
 
 Read those numbers with four things in mind:
 
 - **Nobody types the generated lines.** The comparison is about how much code exists to
   read in a diff, review, regenerate and keep in step with the model, not about typing.
-- **The 1823 lines are hand-written, here, because no package ships them.** The generated
+- **The 1826 lines are hand-written, here, because no package ships them.** The generated
   routes are small (149 lines) because they call helpers in `@metaobjectsdev/runtime-ts`;
   the example writes its list contract out in full. Moved into a package, an adopter's
   share of the mechanism would be close to zero.

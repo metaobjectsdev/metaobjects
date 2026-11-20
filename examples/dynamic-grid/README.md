@@ -60,17 +60,24 @@ object.
 metaobjects/meta.workshop.yaml   the model: the only thing that names an entity
 src/generated/                   types and name constants (the only generated code)
 src/server/
+  app.ts                         the HTTP app: the dynamic routes under /api
   runtime.ts                     load the model, sync the scratch schema, reload
   routes.ts                      the one route mount
   list-query.ts                  filter, sort and paging, checked against the model
   write-checks.ts                enum members, dates, value-object members
   business-rules.ts              hand-written rules, typed against src/generated/
+  seed.ts                        demo rows, written through ObjectManager
+  client-bundle.ts               the browser bundle, built when the server starts
   main.ts                        the dev server: serve, seed, watch the metadata
+src/served.ts                    what the browser needs beyond /_meta (the collection paths)
 src/client/
+  main.tsx, api.ts               mount the page; transport and error reading
   model.ts                       /_meta as the grid and the form read it
+  context.tsx                    the loaded model, for every component below it
   meta-grid.tsx                  <MetaGrid entity="..." />
   meta-form.tsx                  <MetaForm entity="..." />
   controls.tsx, form-values.ts   one input per field, chosen from its metadata
+  format.ts                      how a stored value is shown
   references.ts                  the row a foreign key points at
   app.tsx                        the page: a menu of entities, a grid, a form
 scripts/measure.ts               the numbers in the write-up
