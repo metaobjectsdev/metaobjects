@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # metaobjects is a PUBLIC repository.
-# Block commits that leak absolute local paths, or private/other-project names.
+# Block commits that leak absolute local paths, or private/other-project names, or whose
+# author/committer identity matches the private denylist (.githooks/identity-scan.sh).
 #
 # IMPORTANT: this committed hook names NO private project. The structural
 # patterns below are generic (home paths). Private project names live ONLY in an

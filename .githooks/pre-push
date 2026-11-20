@@ -9,13 +9,15 @@
 # the push when it is red. Loud by design — nothing red should leave your machine
 # quietly.
 #
-# Scope: only the TypeScript build+typecheck gate (the one local `bun test` skips).
+# Scope: the TypeScript build+typecheck gate (the one local `bun test` skips), plus the
+# identity guard (.githooks/identity-scan.sh: outgoing author/committer identities vs the private
+# denylist), which runs first and ignores SKIP_TS_TYPECHECK.
 # The Java / C# / Python compile+conformance gates stay CI-only (too heavy + toolchain
 # -dependent for a push hook); branch protection still requires them on PRs.
 #
 # Activate (one-time, per clone):  git config core.hooksPath .githooks
-# Bypass (emergencies only):       git push --no-verify
-#                                  SKIP_TS_TYPECHECK=1 git push
+# Bypass (emergencies only):       git push --no-verify          (skips both guards)
+#                                  SKIP_TS_TYPECHECK=1 git push  (skips the TS gate only)
 #
 set -uo pipefail
 

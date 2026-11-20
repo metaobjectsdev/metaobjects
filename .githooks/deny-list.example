@@ -2,6 +2,7 @@
 #
 # Copy to deny-list.local (which is gitignored) and add the real private/other-project
 # names you want blocked, one extended-regex per line. Blank lines and #-comments ignored.
+# The same list is matched against commit author and committer names and emails (identity-scan.sh).
 # Keeping the real names ONLY in the untracked .local file ensures this PUBLIC repo's
 # committed files never name a private project.
 #
