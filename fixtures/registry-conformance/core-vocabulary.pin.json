@@ -1,0 +1,610 @@
+{
+  "$comment": "The pinned vocabulary of the core provider (metaobjects-core-types): every type, subtype, attribute and structural child rule it owns. Derived from spec/metamodel/*.json by scripts/check-core-vocabulary-pin.ts. Do NOT regenerate this to make a failing gate pass: new vocabulary belongs in a pack (a separate provider), see GOVERNANCE.md, 'Extension packs and the core metamodel', and docs/features/extending-with-providers.md. Core takes a new type or attribute only once a second, independent consumer needs it, and that is a core maintainer's decision; the diff of this file is how that decision is reviewed.",
+  "types": {
+    "attr.base": {
+      "attrs": [],
+      "children": []
+    },
+    "attr.boolean": {
+      "attrs": [],
+      "children": []
+    },
+    "attr.class": {
+      "attrs": [],
+      "children": []
+    },
+    "attr.double": {
+      "attrs": [],
+      "children": []
+    },
+    "attr.expression": {
+      "attrs": [],
+      "children": []
+    },
+    "attr.filter": {
+      "attrs": [],
+      "children": []
+    },
+    "attr.int": {
+      "attrs": [],
+      "children": []
+    },
+    "attr.intMap": {
+      "attrs": [],
+      "children": []
+    },
+    "attr.long": {
+      "attrs": [],
+      "children": []
+    },
+    "attr.properties": {
+      "attrs": [],
+      "children": []
+    },
+    "attr.string": {
+      "attrs": [],
+      "children": []
+    },
+    "dimension.attribute": {
+      "attrs": [
+        "of",
+        "via"
+      ],
+      "children": []
+    },
+    "dimension.time": {
+      "attrs": [
+        "grains",
+        "of",
+        "via"
+      ],
+      "children": []
+    },
+    "field.base": {
+      "attrs": [
+        "default",
+        "mutability",
+        "required",
+        "unique"
+      ],
+      "children": [
+        "origin.*:*",
+        "validator.*:*",
+        "view.*:*"
+      ]
+    },
+    "field.boolean": {
+      "attrs": [],
+      "children": []
+    },
+    "field.currency": {
+      "attrs": [
+        "currency"
+      ],
+      "children": []
+    },
+    "field.date": {
+      "attrs": [],
+      "children": []
+    },
+    "field.decimal": {
+      "attrs": [
+        "precision",
+        "scale"
+      ],
+      "children": []
+    },
+    "field.double": {
+      "attrs": [],
+      "children": []
+    },
+    "field.duration": {
+      "attrs": [],
+      "children": []
+    },
+    "field.enum": {
+      "attrs": [
+        "intValueMap",
+        "maxLength",
+        "provided",
+        "stringValueMap",
+        "values"
+      ],
+      "children": []
+    },
+    "field.float": {
+      "attrs": [],
+      "children": []
+    },
+    "field.inet": {
+      "attrs": [
+        "lenient"
+      ],
+      "children": []
+    },
+    "field.int": {
+      "attrs": [],
+      "children": []
+    },
+    "field.long": {
+      "attrs": [],
+      "children": []
+    },
+    "field.map": {
+      "attrs": [
+        "objectRef",
+        "valueType"
+      ],
+      "children": []
+    },
+    "field.object": {
+      "attrs": [
+        "objectRef"
+      ],
+      "children": []
+    },
+    "field.string": {
+      "attrs": [
+        "maxLength",
+        "stringFormat"
+      ],
+      "children": []
+    },
+    "field.time": {
+      "attrs": [],
+      "children": []
+    },
+    "field.timestamp": {
+      "attrs": [],
+      "children": []
+    },
+    "field.uri": {
+      "attrs": [
+        "lenient"
+      ],
+      "children": []
+    },
+    "field.uuid": {
+      "attrs": [],
+      "children": []
+    },
+    "identity.primary": {
+      "attrs": [
+        "fields",
+        "generation"
+      ],
+      "children": []
+    },
+    "identity.reference": {
+      "attrs": [
+        "enforce",
+        "fields",
+        "references"
+      ],
+      "children": []
+    },
+    "identity.secondary": {
+      "attrs": [
+        "fields"
+      ],
+      "children": []
+    },
+    "index.lookup": {
+      "attrs": [
+        "fields"
+      ],
+      "children": []
+    },
+    "layout.base": {
+      "attrs": [],
+      "children": []
+    },
+    "layout.dataGrid": {
+      "attrs": [],
+      "children": []
+    },
+    "measure.aggregate": {
+      "attrs": [
+        "agg",
+        "default",
+        "distinct",
+        "filter",
+        "of",
+        "segment"
+      ],
+      "children": []
+    },
+    "measure.derived": {
+      "attrs": [
+        "expr"
+      ],
+      "children": []
+    },
+    "measure.ratio": {
+      "attrs": [
+        "default",
+        "denominator",
+        "numerator"
+      ],
+      "children": []
+    },
+    "object.base": {
+      "attrs": [
+        "object",
+        "objectAdapter"
+      ],
+      "children": [
+        "field.*:*",
+        "identity.*:*",
+        "index.*:*",
+        "layout.*:*",
+        "source.*:*",
+        "validator.*:*"
+      ]
+    },
+    "object.entity": {
+      "attrs": [
+        "collectionName",
+        "discriminator",
+        "discriminatorValue"
+      ],
+      "children": [
+        "dimension.*:*",
+        "measure.*:*",
+        "relationship.*:*",
+        "segment.*:*",
+        "template.*:*"
+      ]
+    },
+    "object.projection": {
+      "attrs": [
+        "collectionName",
+        "filter"
+      ],
+      "children": []
+    },
+    "object.report": {
+      "attrs": [
+        "collectionName",
+        "dimensions",
+        "filter",
+        "from",
+        "measures",
+        "segment",
+        "spine"
+      ],
+      "children": []
+    },
+    "object.value": {
+      "attrs": [],
+      "children": [
+        "relationship.*:*"
+      ]
+    },
+    "origin.aggregate": {
+      "attrs": [
+        "agg",
+        "distinct",
+        "filter",
+        "of",
+        "orderBy",
+        "segment",
+        "via"
+      ],
+      "children": []
+    },
+    "origin.base": {
+      "attrs": [],
+      "children": []
+    },
+    "origin.computed": {
+      "attrs": [
+        "expr"
+      ],
+      "children": []
+    },
+    "origin.first": {
+      "attrs": [
+        "filter",
+        "of",
+        "orderBy",
+        "segment",
+        "via"
+      ],
+      "children": []
+    },
+    "origin.passthrough": {
+      "attrs": [
+        "convert",
+        "from",
+        "via"
+      ],
+      "children": []
+    },
+    "relationship.aggregation": {
+      "attrs": [
+        "cardinality",
+        "objectRef",
+        "onDelete",
+        "onUpdate",
+        "sourceRefField",
+        "symmetric",
+        "through"
+      ],
+      "children": []
+    },
+    "relationship.association": {
+      "attrs": [
+        "cardinality",
+        "objectRef",
+        "onDelete",
+        "onUpdate",
+        "sourceRefField",
+        "symmetric",
+        "through"
+      ],
+      "children": []
+    },
+    "relationship.base": {
+      "attrs": [
+        "cardinality",
+        "objectRef",
+        "onDelete",
+        "onUpdate",
+        "sourceRefField",
+        "symmetric",
+        "through"
+      ],
+      "children": []
+    },
+    "relationship.composition": {
+      "attrs": [
+        "cardinality",
+        "objectRef",
+        "onDelete",
+        "onUpdate",
+        "sourceRefField",
+        "symmetric",
+        "through"
+      ],
+      "children": []
+    },
+    "requirement.architectural": {
+      "attrs": [
+        "counterexample",
+        "disposition",
+        "implementedBy",
+        "level",
+        "statement",
+        "status",
+        "supersededBy",
+        "trackedBy"
+      ],
+      "children": [
+        "requirement.*:*"
+      ]
+    },
+    "requirement.functional": {
+      "attrs": [
+        "counterexample",
+        "disposition",
+        "implementedBy",
+        "level",
+        "statement",
+        "status",
+        "supersededBy",
+        "trackedBy"
+      ],
+      "children": [
+        "requirement.*:*"
+      ]
+    },
+    "segment.filter": {
+      "attrs": [
+        "filter"
+      ],
+      "children": []
+    },
+    "source.base": {
+      "attrs": [],
+      "children": []
+    },
+    "source.rdb": {
+      "attrs": [],
+      "children": []
+    },
+    "template.base": {
+      "attrs": [],
+      "children": []
+    },
+    "template.output": {
+      "attrs": [
+        "format",
+        "htmlBodyRef",
+        "kind",
+        "maxChars",
+        "owner",
+        "payloadRef",
+        "requiredTags",
+        "since",
+        "subjectRef",
+        "textBodyRef",
+        "textRef"
+      ],
+      "children": []
+    },
+    "template.prompt": {
+      "attrs": [
+        "format",
+        "maxChars",
+        "maxTokens",
+        "model",
+        "owner",
+        "payloadRef",
+        "promptStyle",
+        "requiredSlots",
+        "requiredTags",
+        "responseFormat",
+        "responseRef",
+        "since",
+        "textRef"
+      ],
+      "children": []
+    },
+    "template.toolcall": {
+      "attrs": [
+        "maxTokens",
+        "owner",
+        "payloadRef",
+        "since",
+        "toolName"
+      ],
+      "children": []
+    },
+    "validator.array": {
+      "attrs": [
+        "max",
+        "min"
+      ],
+      "children": []
+    },
+    "validator.atLeastOne": {
+      "attrs": [
+        "condition",
+        "fields"
+      ],
+      "children": []
+    },
+    "validator.base": {
+      "attrs": [
+        "max",
+        "min"
+      ],
+      "children": []
+    },
+    "validator.comparison": {
+      "attrs": [
+        "condition",
+        "left",
+        "op",
+        "right"
+      ],
+      "children": []
+    },
+    "validator.exactlyOne": {
+      "attrs": [
+        "condition",
+        "fields"
+      ],
+      "children": []
+    },
+    "validator.length": {
+      "attrs": [
+        "max",
+        "min"
+      ],
+      "children": []
+    },
+    "validator.numeric": {
+      "attrs": [
+        "max",
+        "min"
+      ],
+      "children": []
+    },
+    "validator.presentIff": {
+      "attrs": [
+        "condition",
+        "equals",
+        "field",
+        "when"
+      ],
+      "children": []
+    },
+    "validator.regex": {
+      "attrs": [
+        "max",
+        "min",
+        "pattern"
+      ],
+      "children": []
+    },
+    "validator.required": {
+      "attrs": [],
+      "children": []
+    },
+    "validator.requiredWhen": {
+      "attrs": [
+        "condition",
+        "equals",
+        "field",
+        "when"
+      ],
+      "children": []
+    },
+    "view.base": {
+      "attrs": [],
+      "children": []
+    },
+    "view.checkbox": {
+      "attrs": [],
+      "children": []
+    },
+    "view.currency": {
+      "attrs": [],
+      "children": []
+    },
+    "view.date": {
+      "attrs": [],
+      "children": []
+    },
+    "view.dropdown": {
+      "attrs": [],
+      "children": []
+    },
+    "view.hidden": {
+      "attrs": [],
+      "children": []
+    },
+    "view.hotlink": {
+      "attrs": [],
+      "children": []
+    },
+    "view.image": {
+      "attrs": [],
+      "children": []
+    },
+    "view.month": {
+      "attrs": [],
+      "children": []
+    },
+    "view.number": {
+      "attrs": [],
+      "children": []
+    },
+    "view.password": {
+      "attrs": [],
+      "children": []
+    },
+    "view.radio": {
+      "attrs": [],
+      "children": []
+    },
+    "view.text": {
+      "attrs": [],
+      "children": []
+    },
+    "view.textarea": {
+      "attrs": [],
+      "children": []
+    },
+    "view.web": {
+      "attrs": [],
+      "children": []
+    }
+  },
+  "extends": {},
+  "registeredInCode": [
+    "metadata.root"
+  ]
+}

@@ -48,7 +48,7 @@ public class ViewVocabularyRc21LoaderTests
     private static IReadOnlyList<MetaError> Load(params string[] extra)
     {
         var json = $$"""{ "metadata.root": { "package": "acme", "children": [ {{Entities}}{{string.Concat(extra.Select(e => ",\n" + e))}} ] } }""";
-        var registry = Provider.ComposeRegistry(new[] { CoreTypes.CoreTypesProvider });
+        var registry = Provider.ComposeRegistry(new[] { CoreTypes.CoreTypesProvider, MetaObjects.Persistence.ViewExpressions.ViewExpressionsMetaDataProvider.Instance });
         return new MetaDataLoader(registry).Load([new InMemoryStringSource(json, format: MetaDataFormat.Json, id: "v.json")]).Errors;
     }
 
@@ -186,7 +186,7 @@ public class ViewVocabularyRc21LoaderTests
               { "field.string": { "name": "note", "children": [ { "origin.passthrough": { "@from": "Receipt.note", "@via": "Order.receipts" } } ] } },
               { "identity.primary": { "name": "id", "extends": "Order.primary" } } ] } } ] } }
         """;
-        var registry = Provider.ComposeRegistry(new[] { CoreTypes.CoreTypesProvider });
+        var registry = Provider.ComposeRegistry(new[] { CoreTypes.CoreTypesProvider, MetaObjects.Persistence.ViewExpressions.ViewExpressionsMetaDataProvider.Instance });
         var errors = new MetaDataLoader(registry).Load([new InMemoryStringSource(json, format: MetaDataFormat.Json, id: "r.json")]).Errors;
         if (unique) Assert.Empty(errors);
         else Assert.Contains(errors, e => e.Code.ToString() == "ERR_ORIGIN_CARDINALITY");
@@ -211,7 +211,7 @@ public class ViewVocabularyRc21LoaderTests
               { "source.rdb": { "@kind": "view", "@view": "v_trucks" } },
               { "field.string": { "name": "payload", "extends": "Truck.payloadClass" } } ] } } ] } }
         """;
-        var registry = Provider.ComposeRegistry(new[] { CoreTypes.CoreTypesProvider });
+        var registry = Provider.ComposeRegistry(new[] { CoreTypes.CoreTypesProvider, MetaObjects.Persistence.ViewExpressions.ViewExpressionsMetaDataProvider.Instance });
         var result = new MetaDataLoader(registry).Load([new InMemoryStringSource(json, format: MetaDataFormat.Json, id: "t.json")]);
         Assert.Empty(result.Errors);
         var hit = result.Warnings.Where(w => w.Contains("TruckRow", StringComparison.Ordinal)).ToList();
@@ -245,7 +245,7 @@ public class ViewVocabularyRc21LoaderTests
               { "source.rdb": { "@kind": "view", "@view": "v_invoice_rows" } },
               {{ownField}} ] } } ] } }
         """;
-        var registry = Provider.ComposeRegistry(new[] { CoreTypes.CoreTypesProvider });
+        var registry = Provider.ComposeRegistry(new[] { CoreTypes.CoreTypesProvider, MetaObjects.Persistence.ViewExpressions.ViewExpressionsMetaDataProvider.Instance });
         var result = new MetaDataLoader(registry).Load([new InMemoryStringSource(json, format: MetaDataFormat.Json, id: "n.json")]);
         Assert.Empty(result.Errors);
         var hit = result.Warnings.Where(w => w.Contains("InvoiceRow", StringComparison.Ordinal)).ToList();
@@ -276,7 +276,7 @@ public class ViewVocabularyRc21LoaderTests
               { "field.string": { "name": "tier", "children": [ { "origin.passthrough": { "@from": "C2.tier" } } ] } },
               { "identity.primary": { "name": "id", "extends": "C2.id" } } ] } } ] } }
         """;
-        var registry = Provider.ComposeRegistry(new[] { CoreTypes.CoreTypesProvider });
+        var registry = Provider.ComposeRegistry(new[] { CoreTypes.CoreTypesProvider, MetaObjects.Persistence.ViewExpressions.ViewExpressionsMetaDataProvider.Instance });
         var errors = new MetaDataLoader(registry).Load([new InMemoryStringSource(json, format: MetaDataFormat.Json, id: "f.json")]).Errors;
         if (fragment is null) Assert.Empty(errors);
         else Assert.Contains(errors, e => e.Code.ToString() == "ERR_INVALID_ORIGIN" && e.Message.Contains(fragment, StringComparison.Ordinal));

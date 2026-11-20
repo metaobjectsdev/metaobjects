@@ -1,5 +1,5 @@
 {
-  "provider": "metaobjects-core-types",
+  "provider": "metaobjects-rules",
   "types": [
     {
       "type": "transition",
@@ -21,6 +21,15 @@
         { "type": "attr", "subType": "string", "name": "from", "isArray": true, "min": 1, "max": 1, "description": "The states this move may start from: members of the parent enum's @values (ERR_TRANSITION_UNKNOWN_STATE otherwise), at least one (ERR_BAD_ATTR_VALUE when empty). The allowed moves are the business rule itself, so they cannot be computed." },
         { "type": "attr", "subType": "string", "name": "to", "min": 1, "max": 1, "description": "The state this move ends in: one member of the parent enum's @values (ERR_TRANSITION_UNKNOWN_STATE otherwise). May equal a member of @from, which records an action that leaves the state where it was." },
         { "type": "attr", "subType": "expression", "name": "condition", "min": 0, "max": 1, "description": "A guard over the entity's own fields, in the attr.expression grammar: the same name, grammar and meaning as on the cross-field validators. The shell will evaluate it against the loaded row and also put it into the guarded update's WHERE (no shell is generated yet). It cannot read the actor; that is the policy's job. A field the entity does not have, or an expression that is not boolean, is ERR_BAD_ATTR_VALUE." }
+      ]
+    }
+  ],
+  "extends": [
+    {
+      "type": "field",
+      "subType": "enum",
+      "children": [
+        { "type": "transition", "subType": "*", "name": "*", "min": 0, "max": null, "description": "Lifecycle moves between this enum's members (ADR-0066). An enum with at least one transition.action is a lifecycle: its states are @values, its initial state @default, its terminal states the members no transition leaves." }
       ]
     }
   ]

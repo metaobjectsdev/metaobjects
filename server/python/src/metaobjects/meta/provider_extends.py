@@ -16,7 +16,7 @@ same way ``db_provider`` / ``prompt_provider`` do).
 """
 from __future__ import annotations
 
-from ..registry import AttrSchema, TypeRegistry
+from ..registry import AttrSchema, ChildRule, TypeRegistry
 from ..spec_metamodel import AttrEntry, ExtendsTarget, load_provider_extends
 
 #: The wildcard subtype token used in the JSON ``extends`` matchers.
@@ -62,8 +62,20 @@ def register_extends(
     for target in load_provider_extends(file_name):
         sub_types = _expand_subtypes(target, expansion)
         schemas = [attr_schema_from_entry(a) for a in target.attrs]
+        rules = [
+            ChildRule(
+                child_type=c.child_type,
+                child_sub_type=c.child_sub_type,
+                child_name=c.child_name,
+                min=c.min,
+                max=c.max,
+                max_is_null=c.max_is_null,
+                named=c.named,
+            )
+            for c in target.children
+        ]
         for st in sub_types:
-            registry.extend(target.type, st, attributes=schemas)
+            registry.extend(target.type, st, attributes=schemas, child_rules=rules)
 
 
 def _expand_subtypes(

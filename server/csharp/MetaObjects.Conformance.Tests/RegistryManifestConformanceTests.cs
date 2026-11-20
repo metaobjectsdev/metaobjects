@@ -33,6 +33,8 @@ public class RegistryManifestConformanceTests
             // View.textarea @rows and the view.image attrs (ui-web.json).
             MetaObjects.Presentation.Ui.UiWebMetaDataProvider.Instance,
             MetaObjects.Template.PromptMetaDataProvider.Instance,
+            MetaObjects.Core.Rules.RulesMetaDataProvider.Instance,
+            MetaObjects.Persistence.ViewExpressions.ViewExpressionsMetaDataProvider.Instance,
             DocumentationTypes.DocTypesProvider,
         });
 
@@ -70,6 +72,8 @@ public class RegistryManifestConformanceTests
             // View.textarea @rows and the view.image attrs (ui-web.json).
             MetaObjects.Presentation.Ui.UiWebMetaDataProvider.Instance,
             MetaObjects.Template.PromptMetaDataProvider.Instance,
+            MetaObjects.Core.Rules.RulesMetaDataProvider.Instance,
+            MetaObjects.Persistence.ViewExpressions.ViewExpressionsMetaDataProvider.Instance,
             DocumentationTypes.DocTypesProvider,
         });
 

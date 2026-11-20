@@ -1,0 +1,89 @@
+{
+  "metadata.root": {
+    "package": "acme::commerce",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Program",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "programs"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "title"
+              }
+            },
+            {
+              "field.enum": {
+                "name": "status",
+                "@values": [
+                  "draft",
+                  "active"
+                ],
+                "@default": "draft"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "ProgramSummary",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_program_summary"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "acme::commerce::Program.id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "displayTitle",
+                "children": [
+                  {
+                    "origin.function": {
+                      "@function": "title_case",
+                      "@returns": "string",
+                      "@args": [
+                        "title"
+                      ],
+                      "@params": [
+                        "string"
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::commerce::Program.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

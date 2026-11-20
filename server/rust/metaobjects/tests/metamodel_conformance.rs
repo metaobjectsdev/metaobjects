@@ -28,6 +28,8 @@ use metaobjects::source::ErrorSource;
 
 const DEFAULT_PROVIDERS: &[&str] = &[
     "metaobjects-core-types",
+    "metaobjects-rules",
+    "metaobjects-view-expressions",
     "metaobjects-db",
     "metaobjects-documentation",
     "metaobjects-prompt",

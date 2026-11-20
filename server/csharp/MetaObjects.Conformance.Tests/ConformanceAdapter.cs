@@ -164,6 +164,10 @@ public static class ConformanceAdapter
             ["metaobjects-ui"]            = MetaObjects.Presentation.Ui.UiMetaDataProvider.Instance,
             // View.textarea @rows and the view.image attrs (ui-web.json).
             ["metaobjects-ui-web"]        = MetaObjects.Presentation.Ui.UiWebMetaDataProvider.Instance,
+            // Business rules (api/operation/binding/transition) and view expressions
+            // (origin.function, @union/@grain): their own packs, outside core-types.
+            ["metaobjects-rules"]         = MetaObjects.Core.Rules.RulesMetaDataProvider.Instance,
+            ["metaobjects-view-expressions"] = MetaObjects.Persistence.ViewExpressions.ViewExpressionsMetaDataProvider.Instance,
             ["metaobjects-prompt"]        = MetaObjects.Template.PromptMetaDataProvider.Instance,
             // Back-compat alias: pre-rename fixtures (and other ports' fixtures) still name the
             // provider "metaobjects-template"; map it to the renamed prompt provider — the same

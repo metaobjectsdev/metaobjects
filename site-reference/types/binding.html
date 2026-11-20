@@ -52,12 +52,14 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 (<code>min..max</code>, <code>*</code> = unbounded).</p>
 <h3>binding.base</h3>
 <p>Registry anchor for protocol bindings (ADR-0030, ADR-0054): not authorable.</p>
+<p><strong>Owning provider:</strong> metaobjects-rules</p>
 <p><strong>Attributes</strong></p>
 <p><em>No subtype-specific attributes.</em></p>
 <p><strong>Allowed children</strong></p>
 <p><em>No structural children.</em></p>
 <h3>binding.rest</h3>
 <p>The HTTP method and path of an operation, declared only to override the derived ones. A query is <code>GET</code>, a command <code>POST</code>; the path is <code>/&lt;collection&gt;/{id}/&lt;operation-kebab&gt;</code> for an operation with a target key and <code>/&lt;collection&gt;/&lt;operation-kebab&gt;</code> without one. Most models never write it. Experimental since 1.3.0: the shape may change in a MINOR, including removals and renames (docs/compatibility-policy.md).</p>
+<p><strong>Owning provider:</strong> metaobjects-rules</p>
 <p><strong>When to use:</strong> An operation must keep a method or path the derived one would not give it, such as an existing public URL.</p>
 <p><strong>Attributes</strong></p>
 <table>
@@ -78,7 +80,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>no</td>
 <td></td>
 <td><code>GET</code>, <code>POST</code>, <code>PUT</code>, <code>PATCH</code>, <code>DELETE</code></td>
-<td>—</td>
+<td>metaobjects-rules</td>
 <td>The HTTP method. Absent: GET for a query, POST for a command.</td>
 </tr>
 <tr>
@@ -87,7 +89,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>no</td>
 <td></td>
 <td></td>
-<td>—</td>
+<td>metaobjects-rules</td>
 <td>A path template. Its <code>{name}</code> placeholders must be exactly the target&#39;s primary key fields when the operation is keyed, and there must be none when it is not; two declared bindings of one API may not share the method and path (ERR_BINDING_PATH_MISMATCH).</td>
 </tr>
 </tbody></table>

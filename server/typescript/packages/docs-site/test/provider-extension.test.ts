@@ -73,3 +73,18 @@ test("generateSite: extraProviders lets a site document custom-subtype metadata"
   expect(existsSync(join(out, "index.html"))).toBe(true);
   expect(r.dangling).toEqual([]);
 });
+
+// The business-rules and view-expressions packs are composed by default, so a
+// model using `api.operational`, `transition.action` or `origin.function` loads
+// in the site builder exactly as it does in `meta gen` / `meta verify`.
+const fixturesRoot = join(import.meta.dir, "..", "..", "..", "..", "..", "fixtures", "conformance");
+
+test("loadModel: a model declaring api/operation/transition loads without extraProviders", async () => {
+  const model = await loadModel([join(fixturesRoot, "rules-purchase-request", "input")]);
+  expect(model.root.objects().map((o) => o.name)).toContain("PurchaseRequest");
+});
+
+test("loadModel: a projection declaring origin.function loads without extraProviders", async () => {
+  const model = await loadModel([join(fixturesRoot, "error-packs-left-out-origin-function-used", "input")]);
+  expect(model.root.objects().map((o) => o.name)).toContain("ProgramSummary");
+});

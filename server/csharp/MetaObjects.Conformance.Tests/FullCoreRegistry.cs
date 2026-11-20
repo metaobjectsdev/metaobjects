@@ -27,6 +27,8 @@ internal static class FullCoreRegistry
         MetaObjects.Presentation.Ui.UiMetaDataProvider.Instance,
         MetaObjects.Presentation.Ui.UiWebMetaDataProvider.Instance,
         MetaObjects.Template.PromptMetaDataProvider.Instance,
+        MetaObjects.Core.Rules.RulesMetaDataProvider.Instance,
+        MetaObjects.Persistence.ViewExpressions.ViewExpressionsMetaDataProvider.Instance,
     };
 
     /// <summary>Compose a fresh registry from the full core bundle.</summary>

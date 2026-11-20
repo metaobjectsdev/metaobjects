@@ -148,9 +148,17 @@ public class ConformanceTest {
                 "origin-types",
                 "requirement-types",
                 // FR-044 reporting vocabulary (dimension / measure / segment).
-                "reporting-types",
-                // ADR-0066 business-rules vocabulary (api / operation / binding / transition).
+                "reporting-types"
+            ),
+            // ADR-0066 business-rules pack (api / operation / binding / transition) and the
+            // rc.21 view-expressions pack (origin.function, @union / @grain on a projection):
+            // their own providers, in the default bundle, left out of a fixture that does not
+            // name them.
+            "metaobjects-rules", List.of(
                 "rules-types"
+            ),
+            "metaobjects-view-expressions", List.of(
+                "view-expressions-types"
             ),
             // The corpus's "metaobjects-db" provider maps to Java's
             // CoreDBMetaDataProvider (id "database-extensions"), which registers the
@@ -373,6 +381,23 @@ public class ConformanceTest {
             opts.setProviders(List.of(ConformanceTestProviders.EXAMPLE_CUSTOM_VOCABULARY));
         }
         MetaDataLoader loader = new MetaDataLoader(opts, MetaDataLoader.SUBTYPE_MANUAL, loaderName);
+        // The rules and view-expressions packs are in the default bundle; a fixture that
+        // declares a provider set without them loads against a registry composed without them.
+        List<String> packsLeftOut = new ArrayList<>();
+        if (fix.hasProvidersJson) {
+            if (!fix.requiredProviders.contains("metaobjects-rules")) {
+                packsLeftOut.add("rules-types");
+            }
+            if (!fix.requiredProviders.contains("metaobjects-view-expressions")) {
+                packsLeftOut.add("view-expressions-types");
+            }
+        }
+        if (!packsLeftOut.isEmpty() && !handledByCompose) {
+            loader.setTypeRegistry(com.metaobjects.registry.RegistryManifest.composeLoaderRegistry(
+                fix.requiredProviders.contains("example-custom-vocabulary")
+                    ? List.of(ConformanceTestProviders.EXAMPLE_CUSTOM_VOCABULARY) : List.of(),
+                packsLeftOut));
+        }
         // A fixture that requires the test-only example-template-briefing provider
         // gets its OWN registry (core + briefing) via setTypeRegistry — no global
         // singleton mutation, so the success/fail provider-extension pair is

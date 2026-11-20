@@ -118,7 +118,7 @@ test("documentation common attrs are mentioned once, not repeated per type", () 
   expect(providers).toContain("@description");
 });
 
-test("providers.md indexes all six concern providers with descriptions", () => {
+test("providers.md indexes every concern provider and pack with descriptions", () => {
   const out = docs();
   const providers = out.get("providers.md")!;
   for (const id of [
@@ -128,6 +128,8 @@ test("providers.md indexes all six concern providers with descriptions", () => {
     "metaobjects-prompt",
     "metaobjects-ui",
     "metaobjects-ui-web",
+    "metaobjects-rules",
+    "metaobjects-view-expressions",
   ]) {
     expect(providers).toContain(id);
   }

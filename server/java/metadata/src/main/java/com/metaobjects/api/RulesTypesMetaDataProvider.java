@@ -17,6 +17,9 @@ package com.metaobjects.api;
 
 import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.registry.MetaDataTypeProvider;
+import com.metaobjects.registry.spec.SpecMetamodelReader;
+
+import java.util.Map;
 import com.metaobjects.transition.ActionTransition;
 
 /**
@@ -33,7 +36,14 @@ public class RulesTypesMetaDataProvider implements MetaDataTypeProvider {
         CommandOperation.registerTypes(registry);
         RestBinding.registerTypes(registry);
         ActionTransition.registerTypes(registry);
+        // The child rules that admit these types on types core owns (an api under
+        // metadata.root, a transition under field.enum) ride in api.json / transition.json
+        // under the pack's logical id: leaving the pack out leaves neither type nor rule.
+        registry.applyProviderExtends(SpecMetamodelReader.load(), LOGICAL_ID, Map.of());
     }
+
+    /** The pack's cross-port logical id, the {@code provider} of api.json and transition.json. */
+    public static final String LOGICAL_ID = "metaobjects-rules";
 
     @Override
     public String getProviderId() {
@@ -42,7 +52,7 @@ public class RulesTypesMetaDataProvider implements MetaDataTypeProvider {
 
     @Override
     public String[] getDependencies() {
-        return new String[]{"core-types"};
+        return new String[]{"core-types", "field-types"};
     }
 
     @Override

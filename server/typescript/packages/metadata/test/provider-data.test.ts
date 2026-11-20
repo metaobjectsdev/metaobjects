@@ -423,7 +423,7 @@ test("extends with a REQUIRED attr → throws (ADR-0050: projection is optional-
   expect(reg.find("field", "string")!.attributes.map((a) => a.name)).not.toContain("mustBeThere");
 });
 
-test("extends with a structural child → throws (concern providers add attrs only)", () => {
+test("extends with a structural child → adds a child rule to the target (a pack's type under a core type)", () => {
   const reg = registryWithFields("string");
   const data: ProviderDefinition = {
     provider: "concern",
@@ -435,7 +435,9 @@ test("extends with a structural child → throws (concern providers add attrs on
       },
     ],
   };
-  expect(() => applyProviderDefinition(reg, data, {})).toThrow(/may only carry attr children/);
+  applyProviderDefinition(reg, data, {});
+  const rules = reg.find("field", "string")!.childRules;
+  expect(rules.some((r) => r.childType === "validator" && r.min === 0 && r.max === null)).toBe(true);
 });
 
 test("extends targeting an unregistered subtype → throws (registry.extend has no target)", () => {

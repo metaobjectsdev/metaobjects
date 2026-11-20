@@ -139,6 +139,8 @@ describe("Public API surface — @metaobjectsdev/metadata index", () => {
     for (const t of BASE_TYPES) {
       // origin/TYPE_ORIGIN is registered separately in Task 12; skip here
       if (t === "origin") continue;
+      // The business-rules pack (metaobjects-rules) owns these; core alone has none.
+      if (t === "api" || t === "operation" || t === "binding" || t === "transition") continue;
       const subs = registry.allSubTypesOf(t);
       expect(subs.length).toBeGreaterThan(0);
     }

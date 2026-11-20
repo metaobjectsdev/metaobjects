@@ -141,9 +141,9 @@ export interface ExtendDef {
    */
   subType: string | readonly string[];
   /**
-   * Attrs to add to each resolved target. Concern providers add attrs only — these
-   * must all be `type: "attr"` entries (lowered via `toAttrSchema`). A structural
-   * child here is rejected (concern providers do not contribute child rules).
+   * Attrs and child rules to add to each resolved target. A `type: "attr"` entry
+   * lowers via `toAttrSchema`; any other entry is a structural child rule the pack
+   * adds to the target (used by a pack that owns the child type, e.g. business rules).
    */
   children: ChildDef[];
 }
@@ -299,23 +299,25 @@ export function applyProviderDefinition(
  * For each directive: resolve the target subtypes (`"*"` → every registered subtype
  * of the type; a list → each named subtype; a string → that one), lower its `attr`
  * children to `AttrSchema[]`, and `registry.extend(type, sub, { attributes })`.
- * Concern providers contribute attrs only — a non-`attr` child is rejected.
+ * A structural (non-`attr`) child lowers to a child rule on the target, so a PACK
+ * that owns a type can also be the one that lets an existing type hold it (the
+ * business-rules pack's `transition` under `field.enum`): leaving the pack out
+ * removes the type AND the rule that admits it.
  */
 function applyExtends(registry: TypeRegistry, data: ProviderDefinition): void {
   for (const ext of data.extends ?? []) {
     const attributes: AttrSchema[] = [];
+    const childRules: ChildRule[] = [];
     for (const child of ext.children) {
-      if (!isAttrChild(child)) {
-        throw new Error(
-          `applyProviderDefinition(${data.provider}): extends "${ext.type}" may only carry attr ` +
-            `children; found a structural child "${child.type}".`,
-        );
-      }
       validateCardinality(data.provider, ext.type, child);
-      attributes.push(toAttrSchema(data.provider, ext.type, child));
+      if (isAttrChild(child)) {
+        attributes.push(toAttrSchema(data.provider, ext.type, child));
+      } else {
+        childRules.push(toChildRule(child));
+      }
     }
     for (const subType of resolveExtendSubTypes(registry, ext)) {
-      registry.extend(ext.type, subType, { attributes });
+      registry.extend(ext.type, subType, { attributes, childRules });
     }
   }
 }

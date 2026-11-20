@@ -101,6 +101,11 @@ class TypeDefinition:
     # downstream provider's type validates itself.
     references: list[ReferenceDescriptor] = field(default_factory=list)
     validate: NodeValidator | None = None
+    # Child rules a provider ADDED via ``TypeRegistry.extend`` (a pack that owns a
+    # child type and so also owns the rule admitting it on a type another provider
+    # owns). Kept separately so the strict structural pass, which re-derives the rest
+    # of ``child_rules`` from the shared spec, does not discard them.
+    extended_child_rules: list[ChildRule] = field(default_factory=list)
 
     @property
     def key(self) -> tuple[str, str]:
@@ -443,3 +448,4 @@ class TypeRegistry:
 
         for rule in child_rules or []:
             definition.child_rules.append(rule)
+            definition.extended_child_rules.append(rule)

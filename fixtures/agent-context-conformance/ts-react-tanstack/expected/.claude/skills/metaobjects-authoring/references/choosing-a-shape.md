@@ -198,5 +198,7 @@ uses the registered `attr.properties` bag rather than an invented attribute.
 free-ride ad-hoc attrs. When core later ships the concept your provider shrinks from
 `register` to `extend` (the `template.toolcall` precedent). A second independent
 consumer wanting the same concept is a consumer→core promotion candidate (ADR-0011) —
-open an upstream issue rather than adding core vocabulary yourself. Full guidance:
+open an upstream issue rather than adding core vocabulary yourself. In this repo new
+vocabulary lives in its own provider pack, never in `metaobjects-core-types` (GOVERNANCE.md,
+"Extension packs and the core metamodel"). Full guidance:
 `docs/features/downstream-metadata-decisions.md`.

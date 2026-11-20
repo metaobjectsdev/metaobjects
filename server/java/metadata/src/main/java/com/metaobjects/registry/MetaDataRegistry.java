@@ -456,7 +456,12 @@ public class MetaDataRegistry {
                 targets = d.subTypes();
             }
             for (String subType : targets) {
-                applyExtendsAttrs(d.type(), subType, d.attrs());
+                if (!d.attrs().isEmpty()) {
+                    applyExtendsAttrs(d.type(), subType, d.attrs());
+                }
+                if (!d.structChildren().isEmpty()) {
+                    applyExtendsChildren(d.type(), subType, d.structChildren());
+                }
             }
         }
     }
@@ -523,6 +528,40 @@ public class MetaDataRegistry {
                 newAttrClaims(typeId, builder));
         register(builder.build());
     }
+
+    /**
+     * Add a directive's STRUCTURAL child rules to one registered {@code (type, subType)}, so a
+     * pack that owns a child type is also the provider that lets a type another provider owns
+     * hold it. Leaving the pack out leaves neither the type nor the rule. The rules are
+     * remembered so {@link #applyStrictStructuralChildren} (which replaces a declared type's
+     * structural rules with the spec's own) re-adds them.
+     */
+    private void applyExtendsChildren(String type, String subType,
+            List<com.metaobjects.registry.spec.SpecMetamodelReader.StructChild> children) {
+        MetaDataTypeId typeId = new MetaDataTypeId(type, subType);
+        TypeDefinition existing = typeDefinitions.get(typeId);
+        if (existing == null) {
+            throw new MetaDataException(
+                "applyProviderExtends: target type must be registered before extension: "
+                        + typeId.toQualifiedName());
+        }
+        TypeDefinitionBuilder builder = TypeDefinitionBuilder.from(existing);
+        builder.withRegistry(this);
+        Map<String, ChildRequirement> remembered =
+                providerStructuralChildren.computeIfAbsent(typeId, k -> new LinkedHashMap<>());
+        for (com.metaobjects.registry.spec.SpecMetamodelReader.StructChild sc : children) {
+            ChildRequirement req = ChildRequirement.structural(
+                    sc.childName(), sc.childType(), sc.childSubType(),
+                    sc.min(), sc.max(), sc.maxIsNull(), sc.named());
+            builder.childRequirement(req);
+            remembered.put(directKey(req), req);
+        }
+        register(builder.build());
+    }
+
+    /** Structural child rules provider {@code extends} directives added, by target type. */
+    private final Map<MetaDataTypeId, Map<String, ChildRequirement>> providerStructuralChildren =
+            new LinkedHashMap<>();
 
     /** Map a spec {@code valueType} string to the Java attr subtype constant. */
     private static String extendsValueTypeToAttrSubtype(String valueType) {
@@ -1139,6 +1178,8 @@ public class MetaDataRegistry {
                 }
                 directReqs.put(directKey(req), req);
             }
+            // Rules a provider's extends added (its pack's child types) sit beside the spec's.
+            directReqs.putAll(providerStructuralChildren.getOrDefault(id, Map.of()));
 
             TypeDefinition rebuilt = new TypeDefinition(
                     def.getImplementationClass(), id.type(), id.subType(), def.getDescription(),

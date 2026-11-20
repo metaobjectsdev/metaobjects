@@ -139,8 +139,26 @@ public final class RegistryManifest {
      * @return a new, unsealed registry (the caller may seal it)
      */
     public static MetaDataRegistry composeMetamodelRegistry(Collection<MetaDataTypeProvider> extra) {
+        return composeMetamodelRegistry(extra, Set.of());
+    }
+
+    /**
+     * As {@link #composeMetamodelRegistry(Collection)}, leaving out the metamodel providers whose
+     * {@link MetaDataTypeProvider#getProviderId()} is in {@code leaveOut} — how a project composes a
+     * vocabulary pack (business rules, view expressions) out of the default bundle. A provider that
+     * another provider depends on cannot be left out (compose fails with
+     * {@code ERR_PROVIDER_MISSING_DEPENDENCY}).
+     */
+    public static MetaDataRegistry composeMetamodelRegistry(Collection<MetaDataTypeProvider> extra,
+                                                            Collection<String> leaveOut) {
         Objects.requireNonNull(extra, "extra must not be null");
-        List<MetaDataTypeProvider> providers = new ArrayList<>(metamodelProviders());
+        Objects.requireNonNull(leaveOut, "leaveOut must not be null");
+        List<MetaDataTypeProvider> providers = new ArrayList<>();
+        for (MetaDataTypeProvider p : metamodelProviders()) {
+            if (!leaveOut.contains(p.getProviderId())) {
+                providers.add(p);
+            }
+        }
         providers.addAll(extra);
         MetaDataRegistry registry = MetaDataRegistry.compose(providers);
         // Force the lazy core-constraint init NOW: it expands the named inherited
@@ -234,7 +252,13 @@ public final class RegistryManifest {
      * @return a new, sealed registry
      */
     public static MetaDataRegistry composeLoaderRegistry(Collection<MetaDataTypeProvider> extra) {
-        MetaDataRegistry r = composeMetamodelRegistry(extra);
+        return composeLoaderRegistry(extra, Set.of());
+    }
+
+    /** As {@link #composeLoaderRegistry(Collection)}, leaving out the named metamodel providers. */
+    public static MetaDataRegistry composeLoaderRegistry(Collection<MetaDataTypeProvider> extra,
+                                                         Collection<String> leaveOut) {
+        MetaDataRegistry r = composeMetamodelRegistry(extra, leaveOut);
         // The core constraint set is normally lazy-loaded on first
         // getAllValidationConstraints() read — which, post-seal, would
         // happen DURING a load and trip the seal guard. Force it now,
@@ -266,6 +290,7 @@ public final class RegistryManifest {
                 new com.metaobjects.requirement.RequirementTypesMetaDataProvider(),
                 new com.metaobjects.reporting.ReportingTypesMetaDataProvider(),
                 new com.metaobjects.api.RulesTypesMetaDataProvider(),
+                new com.metaobjects.origin.ViewExpressionsTypesMetaDataProvider(),
                 new com.metaobjects.database.CoreDBMetaDataProvider(),
                 new com.metaobjects.source.SourceTypesMetaDataProvider(),
                 new com.metaobjects.origin.OriginTypesMetaDataProvider(),

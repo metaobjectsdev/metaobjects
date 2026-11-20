@@ -6,6 +6,8 @@ import { docProvider } from "./core/documentation/doc-provider.js";
 import { promptProvider } from "./template/prompt-provider.js";
 import { uiProvider } from "./presentation/ui/ui-provider.js";
 import { uiWebProvider } from "./presentation/ui-web/ui-web-provider.js";
+import { rulesProvider } from "./core/rules/rules-provider.js";
+import { viewExpressionsProvider } from "./persistence/view-expressions/view-expressions-provider.js";
 import { type DataType } from "./data-type.js";
 import type { MetaData } from "./shared/meta-data.js";
 import { MetaRoot } from "./shared/meta-root.js";
@@ -58,10 +60,6 @@ import { MetaIndex } from "./core/index/meta-index.js";
 import { INDEX_DEFINITION } from "./core/index/index-definition.embedded.js";
 import { INDEX_SUBTYPES } from "./core/index/index-constants.js";
 import { MetaRequirement } from "./core/requirement/meta-requirement.js";
-import { MetaApi, MetaBinding, MetaOperation } from "./core/api/meta-api.js";
-import { API_DEFINITION } from "./core/api/api-definition.embedded.js";
-import { MetaTransition } from "./core/transition/meta-transition.js";
-import { TRANSITION_DEFINITION } from "./core/transition/transition-definition.embedded.js";
 import { REQUIREMENT_DEFINITION } from "./core/requirement/requirement-definition.embedded.js";
 import { REQUIREMENT_SUBTYPES } from "./core/requirement/requirement-constants.js";
 import { MetaDimension } from "./core/reporting/meta-dimension.js";
@@ -91,9 +89,6 @@ import {
   TYPE_DIMENSION,
   TYPE_MEASURE,
   TYPE_SEGMENT,
-  TYPE_API,
-  TYPE_OPERATION,
-  TYPE_BINDING,
   SUBTYPE_ROOT,
 } from "./shared/base-types.js";
 import { CHILD_RULE_WILDCARD } from "./shared/structural.js";
@@ -125,6 +120,7 @@ import {
   ORIGIN_SUBTYPE_AGGREGATE,
   ORIGIN_SUBTYPE_COMPUTED,
   ORIGIN_SUBTYPE_FIRST,
+  ORIGIN_SUBTYPE_FUNCTION,
 } from "./persistence/origin/origin-constants.js";
 
 // ---------------------------------------------------------------------------
@@ -210,8 +206,6 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
       wildcard(TYPE_TEMPLATE),
       // Capability requirements are declared beside the entities they describe.
       wildcard(TYPE_REQUIREMENT),
-      // ADR-0030 / ADR-0066 — a declared API surface is a top-level, packaged node.
-      wildcard(TYPE_API),
     ], MetaRoot),
   );
 
@@ -404,7 +398,8 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
   // (required) + @via; aggregate adds @agg (required) + @of (required) + @via;
   // collection adds @via (required).
   const ORIGIN_FACTORIES: FactoryMap = Object.fromEntries(
-    ORIGIN_SUBTYPES.map((subType) => [
+    // `function` is the view-expressions pack's (persistence/view-expressions).
+    ORIGIN_SUBTYPES.filter((subType) => subType !== ORIGIN_SUBTYPE_FUNCTION).map((subType) => [
       `${TYPE_ORIGIN}.${subType}`,
       (typeId: TypeId, name: string) =>
         new (ORIGIN_CLASS_MAP.get(subType) ?? MetaOrigin)(typeId, name),
@@ -560,25 +555,6 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     registry.register(reportingDef);
   }
 
-  // ADR-0030 / ADR-0066 — the declared API surface (api / operation / binding) and
-  // lifecycle moves (transition, a child of field.enum). One class per type; the
-  // subtype carries no behaviour of its own. The cross-node rules live in
-  // loader/rules-validation.ts.
-  const RULES_FACTORIES: FactoryMap = {};
-  for (const def of [...(API_DEFINITION.types ?? []), ...(TRANSITION_DEFINITION.types ?? [])]) {
-    const key = `${def.type}.${def.subType}`;
-    if (def.type === TYPE_API) RULES_FACTORIES[key] = (typeId: TypeId, name: string) => new MetaApi(typeId, name);
-    else if (def.type === TYPE_OPERATION) RULES_FACTORIES[key] = (typeId: TypeId, name: string) => new MetaOperation(typeId, name);
-    else if (def.type === TYPE_BINDING) RULES_FACTORIES[key] = (typeId: TypeId, name: string) => new MetaBinding(typeId, name);
-    else RULES_FACTORIES[key] = (typeId: TypeId, name: string) => new MetaTransition(typeId, name);
-  }
-  for (const rulesDef of [
-    ...defineProviderFromData(API_DEFINITION, RULES_FACTORIES),
-    ...defineProviderFromData(TRANSITION_DEFINITION, RULES_FACTORIES),
-  ]) {
-    registry.register(rulesDef);
-  }
-
   // Declare the core cross-references ON their TypeDefinitions, so the loader's
   // registry-derived validation resolves them generically (a dangling target fails the
   // load). Set on the concrete subtypes the parser produces. (Production moves these into
@@ -660,6 +636,8 @@ export const coreProviders: readonly MetaDataTypeProvider[] = [
   promptProvider,
   uiProvider,
   uiWebProvider,
+  rulesProvider,
+  viewExpressionsProvider,
 ];
 
 /**

@@ -1,7 +1,7 @@
 import { mkdtempSync, readdirSync, rmSync, statSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
-import { MetaDataLoader, composeRegistry, coreTypesProvider, dbProvider, docProvider, promptProvider, uiProvider } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, composeRegistry, coreProviders } from "@metaobjectsdev/metadata";
 import type { MetaData, MetaRoot, MetaDataTypeProvider } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 
@@ -15,7 +15,7 @@ export interface LoadedModel {
  * Load N metadata source dirs into ONE root via a staging dir of symlinks.
  *
  * `extraProviders` are consumer-supplied metamodel providers, composed AFTER
- * the built-in bundle (core-types + db + doc + prompt + ui) — mirroring
+ * the default bundle (`coreProviders`: core-types, db, doc, prompt, ui, rules, view-expressions) — mirroring
  * `loadMemory`'s `providers` option — so a site can document metadata that uses
  * custom field/view/object subtypes (e.g. a project's `metaobjects.config.ts`
  * `providers`). Defaults to none, so config-less callers are unchanged.
@@ -40,7 +40,8 @@ export async function loadModel(
       groupNames.push(name);
       symlinkSync(resolve(dir), join(staging, name));
     }
-    const registry = composeRegistry([coreTypesProvider, dbProvider, docProvider, promptProvider, uiProvider, ...extraProviders]);
+    const extraIds = new Set(extraProviders.map((p) => p.id));
+    const registry = composeRegistry([...coreProviders.filter((p) => !extraIds.has(p.id)), ...extraProviders]);
     // Feed files in files-before-subdirs order (the same order the sdk's loadMemory
     // uses), NOT fromDirectory's flat basename sort. Cross-file overlays require the
     // base (typically a top-level file) to load before an overlay that lives in a

@@ -238,7 +238,7 @@ outright.
 | Corpus | Rust today |
 |---|---|
 | `registry-conformance` | byte-identical manifest |
-| `conformance` (the metamodel corpus) | **574 of 574**, and the ledger is empty |
+| `conformance` (the metamodel corpus) | **578 of 578**, and the ledger is empty |
 | `yaml-conformance` | 18 of 19. The one on the ledger, `yaml-ref-root-escape`, waits for the root-level `::` reference rules of [ADR-0059](../../spec/decisions/ADR-0059-references-resolve-once-after-the-tree.md), which are reference resolution, not a validation pass. |
 | `source-resolution-conformance` | all 28 cases |
 | `naming-conformance` | all of it |

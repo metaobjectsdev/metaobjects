@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from metaobjects.core_types import core_provider
+from metaobjects.core_types import core_providers
 from metaobjects.meta.core.attr.attr_constants import ATTR_SUBTYPES
 from metaobjects.meta.core.field.field_constants import FIELD_SUBTYPES
 from metaobjects.meta.core.identity.identity_constants import IDENTITY_SUBTYPES
@@ -55,7 +55,8 @@ _EXPECTED: list[tuple[str, tuple[str, ...]]] = [
     (TYPE_SEGMENT, SEGMENT_SUBTYPES),
 ]
 
-_registry = compose_registry([core_provider])
+# origin.function is the view-expressions pack's, so compose the default bundle.
+_registry = compose_registry(list(core_providers))
 
 _cases = [
     (type_name, sub)

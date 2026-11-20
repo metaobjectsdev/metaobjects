@@ -21,6 +21,8 @@ import { docProvider } from "../../src/core/documentation/doc-provider.js";
 import { promptProvider } from "../../src/template/prompt-provider.js";
 import { uiProvider } from "../../src/presentation/ui/ui-provider.js";
 import { uiWebProvider } from "../../src/presentation/ui-web/ui-web-provider.js";
+import { rulesProvider } from "../../src/core/rules/rules-provider.js";
+import { viewExpressionsProvider } from "../../src/persistence/view-expressions/view-expressions-provider.js";
 import { MetaDataLoader } from "../../src/loader/meta-data-loader.js";
 import type { MetaData } from "../../src/shared/meta-data.js";
 import { canonicalSerialize, canonicalSerializeEffective } from "../../src/serializer-json.js";
@@ -159,6 +161,8 @@ export const PROVIDERS: Readonly<Record<string, MetaDataTypeProvider>> = {
   "metaobjects-template": promptProvider,
   [uiProvider.id]: uiProvider,               // "metaobjects-ui" (filter/sort field markers)
   [uiWebProvider.id]: uiWebProvider,         // "metaobjects-ui-web" (view control attrs)
+  [rulesProvider.id]: rulesProvider,         // "metaobjects-rules" (api/operation/binding/transition)
+  [viewExpressionsProvider.id]: viewExpressionsProvider, // "metaobjects-view-expressions" (origin.function, @union/@grain)
   // Test-only — provider-extension-* fixtures.
   "example-template-briefing": exampleTemplateBriefingProvider,
   "example-custom-vocabulary": exampleCustomVocabularyProvider,

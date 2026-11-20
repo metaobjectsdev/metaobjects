@@ -10,7 +10,11 @@ from typing import Iterable, Optional
 from metaobjects import LoadResult, MetaDataLoader
 from metaobjects.core_types import core_provider, core_providers
 from metaobjects.documentation import doc_provider
+from metaobjects.meta.core.rules.rules_provider import rules_provider
 from metaobjects.meta.persistence.db.db_provider import db_provider
+from metaobjects.meta.persistence.view_expressions.view_expressions_provider import (
+    view_expressions_provider,
+)
 from metaobjects.meta.presentation.ui.ui_provider import ui_provider
 from metaobjects.meta.presentation.ui.ui_web_provider import ui_web_provider
 from metaobjects.meta.template.prompt_provider import prompt_provider
@@ -129,6 +133,10 @@ _PROVIDER_MAP: dict[str, Provider] = {
     ui_provider.id: ui_provider,                    # "metaobjects-ui"
     # view.textarea @rows and the view.image attrs (ui-web.json).
     ui_web_provider.id: ui_web_provider,            # "metaobjects-ui-web"
+    # Business rules (api / operation / binding / transition) and the view-expressions
+    # vocabulary (origin.function, projection @union / @grain), each its own pack.
+    rules_provider.id: rules_provider,              # "metaobjects-rules"
+    view_expressions_provider.id: view_expressions_provider,  # "metaobjects-view-expressions"
     # Back-compat alias: pre-rename fixtures (and other ports' fixtures) still name the
     # provider "metaobjects-template"; map it to the renamed prompt provider — the same
     # alias the TS adapter keeps (adapter.ts: "metaobjects-template": promptProvider).

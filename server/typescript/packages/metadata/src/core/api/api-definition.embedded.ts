@@ -7,7 +7,7 @@
 import type { ProviderDefinition } from "../../provider-data.js";
 
 export const API_DEFINITION: ProviderDefinition = {
-  "provider": "metaobjects-core-types",
+  "provider": "metaobjects-rules",
   "types": [
     {
       "type": "api",
@@ -167,6 +167,22 @@ export const API_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "A path template. Its `{name}` placeholders must be exactly the target's primary key fields when the operation is keyed, and there must be none when it is not; two declared bindings of one API may not share the method and path (ERR_BINDING_PATH_MISMATCH)."
+        }
+      ]
+    }
+  ],
+  "extends": [
+    {
+      "type": "metadata",
+      "subType": "root",
+      "children": [
+        {
+          "type": "api",
+          "subType": "*",
+          "name": "*",
+          "min": 0,
+          "max": null,
+          "description": "A declared API surface (ADR-0030, ADR-0066): a top-level, packaged node. Contributed by the business-rules pack."
         }
       ]
     }

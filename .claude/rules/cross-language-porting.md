@@ -14,6 +14,8 @@ paths:
 
 ## Cross-language porting
 
+New vocabulary goes in its own provider pack, never in `metaobjects-core-types` ([GOVERNANCE.md](../../GOVERNANCE.md#extension-packs-and-the-core-metamodel) owns the rule).
+
 Preserve the following contracts exactly across all language ports:
 
 **Metamodel subtype vocabularies (must be identical across languages):** the `registry-conformance` gate (`fixtures/registry-conformance/`) is the structural enforcer of this rule — each port emits its registry as a canonical manifest byte-matched to `expected-registry.json`. **All five shipped ports (TS / C# / Java / Kotlin / Python) plus Rust in preview (ADR-0065, byte-identical) are live + green** (SP-G Java/Kotlin reconciliation complete; the JVM runners compose from the defined metamodel provider set so codegen-base/om classpath SPI does not pollute the measured vocabulary). See `fixtures/registry-conformance/README.md`.
