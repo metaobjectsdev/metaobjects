@@ -305,7 +305,7 @@ public class RoutesGenerator : PerEntityGenerator
             .Where(f => (CSharpNaming.ScalarFor(f.SubType) is not null
                          || (isReport && f.SubType == FIELD_SUBTYPE_ENUM))
                         && !f.ResolvedIsArray()
-                        && !(isReport && IsCredentialField(f)))   // a credential column would be a sort oracle
+                        && !IsCredentialField(f))   // a credential column would be a sort oracle (any entity, not only a report)
             .ToList();
         var sortFields = sortFieldNodes.Select(f => CSharpNaming.PropertyName(f, ctx.Config)).ToList();
 
@@ -627,8 +627,9 @@ public class RoutesGenerator : PerEntityGenerator
             .Distinct(StringComparer.Ordinal).ToList();
 
         // Sortable base scalar fields (the polymorphic list sorts on base columns).
+        var hierarchyCredentials = TphPlanBuilder.HierarchyCredentialNames(baseEntity, ctx.Root);
         var sortFieldNodes = baseEntity.Fields()
-            .Where(f => CSharpNaming.ScalarFor(f.SubType) is not null && !f.ResolvedIsArray())
+            .Where(f => CSharpNaming.ScalarFor(f.SubType) is not null && !f.ResolvedIsArray() && !hierarchyCredentials.Contains(f.Name))
             .ToList();
         var sortFields = sortFieldNodes.Select(f => CSharpNaming.PropertyName(f, ctx.Config)).ToList();
 
@@ -665,7 +666,7 @@ public class RoutesGenerator : PerEntityGenerator
         {
             var subClsName = CSharpNaming.Pascal(st.Entity.Name);
             var subSortFields = st.Entity.Fields()
-                .Where(f => CSharpNaming.ScalarFor(f.SubType) is not null && !f.ResolvedIsArray())
+                .Where(f => CSharpNaming.ScalarFor(f.SubType) is not null && !f.ResolvedIsArray() && !hierarchyCredentials.Contains(f.Name))
                 .ToList();
             AppendSortAllowlist(sb, $"{subClsName}SortAllowlist", subSortFields, ctx.Config);
             AppendSortDefaultOrder(sb, st.Entity, $"{subClsName}SortDefaultDesc", ctx.Config);
@@ -824,8 +825,7 @@ public class RoutesGenerator : PerEntityGenerator
 
     // #484 — a credential is a field that declares (or inherits, ADR-0039) a view.password child.
     // A credential is never returned by a generated route; it is also never written by one.
-    public static bool IsCredentialField(MetaField f) =>
-        f.Views().Any(v => v.SubType == MetaObjects.Presentation.View.ViewConstants.VIEW_SUBTYPE_PASSWORD);
+    public static bool IsCredentialField(MetaField f) => InstanceArtifacts.IsCredentialField(f);
 
     // #484 — write-denied: the generated create / PATCH / PUT IGNORE the key (never a 400): the
     // effective @formExclude (resolving) or a credential.

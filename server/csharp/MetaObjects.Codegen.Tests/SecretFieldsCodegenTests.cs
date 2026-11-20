@@ -137,4 +137,93 @@ public class SecretFieldsCodegenTests
         Assert.Contains("Results.Ok(rows)", src);
         Assert.Contains("Results.Ok(existing)", src);
     }
+
+    // A credential marked @filterable and @sortable is still never on either allowlist: a filter
+    // on a secret is an oracle for it and a sort leaks its order. A normal field keeps both.
+    private const string FilterSortModel = """
+    { "metadata.root": { "package": "acme::secrets", "children": [
+      { "object.entity": { "name": "Account", "children": [
+        { "source.rdb":       { "@table": "accounts" } },
+        { "field.long":       { "name": "id" } },
+        { "field.string":     { "name": "name", "@maxLength": 100, "@filterable": true, "@sortable": true } },
+        { "field.string":     { "name": "pinHash", "@maxLength": 100, "@filterable": true, "@sortable": true, "children": [ { "view.password": {} } ] } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}}
+    ]}}
+    """;
+
+    [Fact]
+    public void A_credential_marked_filterable_and_sortable_is_on_neither_allowlist()
+    {
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(FilterSortModel, id: "secrets.json")]);
+        Assert.Empty(r.Errors);
+        var ctx = new GenContext
+        {
+            Entities = r.Root.Objects(),
+            Root = r.Root,
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", ColumnNamingStrategy = ColumnNamingStrategy.Literal },
+        };
+        var filter = new FilterAllowlistGenerator().Generate(ctx)
+            .Single(f => System.IO.Path.GetFileName(f.Path) == "AccountFilterAllowlist.g.cs").Content;
+        Assert.Contains("\"name\"", filter);
+        Assert.DoesNotContain("pinHash", filter);
+
+        var routes = new RoutesGenerator().Generate(ctx)
+            .Single(f => System.IO.Path.GetFileName(f.Path) == "AccountRoutes.g.cs").Content;
+        var start = routes.IndexOf("SortAllowlist", StringComparison.Ordinal);
+        var end = routes.IndexOf("MapAccountRoutes", StringComparison.Ordinal);
+        Assert.True(start >= 0 && end > start, routes);
+        var sort = routes[start..end];
+        Assert.Contains("Name", sort);
+        Assert.DoesNotContain("PinHash", sort);
+    }
+
+    private static string TphFilterableToken(string aTokenChildren, string bTokenChildren) => $$$"""
+    { "metadata.root": { "package": "acme::secrets", "children": [
+      { "object.entity": { "name": "Thing", "@discriminator": "kind", "children": [
+        { "source.rdb":       { "@table": "things" } },
+        { "field.long":       { "name": "id" } },
+        { "field.enum":       { "name": "kind", "@values": ["A", "B"] } },
+        { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+      ]}},
+      { "object.entity": { "name": "AThing", "extends": "Thing", "@discriminatorValue": "A", "children": [
+        { "field.string": { "name": "token", "@maxLength": 100, "@filterable": true, "@sortable": true{{{aTokenChildren}}} } },
+        { "field.string": { "name": "label", "@maxLength": 100, "@filterable": true, "@sortable": true } }
+      ]}},
+      { "object.entity": { "name": "BThing", "extends": "Thing", "@discriminatorValue": "B", "children": [
+        { "field.string": { "name": "token", "@maxLength": 100, "@filterable": true, "@sortable": true{{{bTokenChildren}}} } }
+      ]}}
+    ]}}
+    """;
+
+    [Theory]
+    [InlineData("", ", \"children\": [ { \"view.password\": {} } ]")]
+    [InlineData(", \"children\": [ { \"view.password\": {} } ]", "")]
+    public void A_column_any_sibling_subtype_hides_is_on_no_filter_or_sort_allowlist(string aChildren, string bChildren)
+    {
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(TphFilterableToken(aChildren, bChildren), id: "secrets.json")]);
+        Assert.Empty(r.Errors);
+        var ctx = new GenContext
+        {
+            Entities = r.Root.Objects(),
+            Root = r.Root,
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", ColumnNamingStrategy = ColumnNamingStrategy.Literal },
+        };
+        var filters = new FilterAllowlistGenerator().Generate(ctx).ToList();
+        foreach (var name in new[] { "ThingFilterAllowlist.g.cs", "AThingFilterAllowlist.g.cs", "BThingFilterAllowlist.g.cs" })
+        {
+            var content = filters.Single(f => System.IO.Path.GetFileName(f.Path) == name).Content;
+            Assert.DoesNotContain("token", content);
+        }
+        Assert.Contains("\"label\"", filters.Single(f => System.IO.Path.GetFileName(f.Path) == "AThingFilterAllowlist.g.cs").Content);
+
+        var routes = new RoutesGenerator().Generate(ctx)
+            .Single(f => System.IO.Path.GetFileName(f.Path) == "ThingRoutes.g.cs").Content;
+        var start = routes.IndexOf("SortAllowlist", StringComparison.Ordinal);
+        var end = routes.IndexOf("MapThingRoutes", StringComparison.Ordinal);
+        Assert.True(start >= 0 && end > start, routes);
+        var sort = routes[start..end];
+        Assert.Contains("Label", sort);
+        Assert.DoesNotContain("Token", sort);
+    }
 }

@@ -45,6 +45,7 @@ final class InMemoryAccountRepositorySource {
             @Override
             public List<AccountDto> list(int limit, int offset, SortClause sort, List<FilterPredicate> filters) {
                 List<AccountDto> out = new ArrayList<>(rows);
+                out.removeIf(a -> !matchesAll(a, filters));
                 Comparator<AccountDto> c = sort != null && "name".equals(sort.field())
                     ? Comparator.comparing(AccountDto::name, Comparator.nullsLast(Comparator.naturalOrder()))
                     : Comparator.comparing(AccountDto::id, Comparator.nullsLast(Comparator.naturalOrder()));
@@ -57,7 +58,20 @@ final class InMemoryAccountRepositorySource {
 
             @Override
             public long count(List<FilterPredicate> filters) {
-                return rows.size();
+                return rows.stream().filter(a -> matchesAll(a, filters)).count();
+            }
+
+            // Scaffolding: only an `eq` on `name` is applied (the one filter a scenario sends that the
+            // allowlist admits). Any other predicate would be a scenario this seam does not model.
+            private static boolean matchesAll(AccountDto a, List<FilterPredicate> filters) {
+                if (filters == null) return true;
+                for (FilterPredicate p : filters) {
+                    if (!"name".equals(p.field()) || !"eq".equals(p.op())) {
+                        throw new UnsupportedOperationException("in-memory Account repository models only name eq, got " + p);
+                    }
+                    if (!String.valueOf(p.value()).equals(a.name())) return false;
+                }
+                return true;
             }
 
             @Override

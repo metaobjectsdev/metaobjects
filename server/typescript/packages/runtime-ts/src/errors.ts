@@ -49,6 +49,21 @@ export class ValidationError extends RuntimeError {
   }
 }
 
+/**
+ * A key text that is not the canonical spelling of a key of the PK field's declared type (`0x1`
+ * or `1e0` for an integer key). The same `ValidationError` shape, so a caller that handles a
+ * failed value handles this too; the HTTP mounts answer it `400 {"error":"invalid_id"}`.
+ */
+export class InvalidKeyError extends ValidationError {
+  constructor(entity: string, field: string, expected: string) {
+    super(`Invalid key for ${entity}.${field}: expected ${expected}`, {
+      entity,
+      errors: [{ field, rule: "invalid_key", message: `expected ${expected}`, expected }],
+    });
+    this.name = "InvalidKeyError";
+  }
+}
+
 export class NotFoundError extends RuntimeError {
   readonly id: unknown;
 

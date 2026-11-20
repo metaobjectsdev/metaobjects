@@ -29,6 +29,7 @@ from __future__ import annotations
 import datetime as _dt
 import decimal as _decimal
 import json as _json
+import math as _math
 import re as _re
 import uuid as _uuid
 from collections.abc import Iterable, Mapping
@@ -369,6 +370,9 @@ class ObjectManager:
         self._refuse_report("find_by_id", entity_name)
         entity = self._require_entity(entity_name)
         pk_field = self._primary_pk_field(entity)
+        pk = entity.find_field(pk_field)
+        if pk is not None:
+            id_value = _coerce_key_value(pk, id_value)
         rows = self.find_many(entity_name, {pk_field: id_value}, sort=None, limit=1, offset=None)
         return rows[0] if rows else None
 
@@ -587,7 +591,7 @@ class ObjectManager:
         all_cols = [_column_of(f, self._column_naming) for f in returning_fields]
         col_to_field = {_column_of(f, self._column_naming): f.name for f in returning_fields}
         assignments = ", ".join(f"{self._d.quote(c)} = {self._d.placeholder}" for c in set_cols)
-        params.append(_coerce_write_value(entity.find_field(pk_field), id_value))
+        params.append(_coerce_key_value(entity.find_field(pk_field), id_value))
         where = f"{self._d.quote(pk_col)} = {self._d.placeholder}"
         if tph is not None:
             where += f" AND {self._d.quote(_column_of(entity.find_field(tph.field), self._column_naming))} = {self._d.placeholder}"
@@ -649,7 +653,7 @@ class ObjectManager:
         if pk is None:
             raise ValueError(f"Entity '{entity.name}' has no primary key field '{pk_field}'")
         pk_col = _column_of(pk, self._column_naming)
-        params: list[Any] = [_coerce_write_value(pk, key)]
+        params: list[Any] = [_coerce_key_value(pk, key)]
         where = f"{self._d.quote(pk_col)} = {ph}"
         if tph is not None:
             where += f" AND {self._d.quote(_column_of(entity.find_field(tph.field), self._column_naming))} = {ph}"
@@ -686,7 +690,7 @@ class ObjectManager:
         table = self._table_name(entity)
         pk_field = self._primary_pk_field(entity)
         pk_col = _column_of(entity.find_field(pk_field), self._column_naming)
-        params: list[Any] = [_coerce_write_value(entity.find_field(pk_field), id_value)]
+        params: list[Any] = [_coerce_key_value(entity.find_field(pk_field), id_value)]
         where = f"{self._d.quote(pk_col)} = {self._d.placeholder}"
         # FR-017 TPH: a subtype delete is scoped to its discriminator (cross-subtype
         # delete matches no row → False, mirroring the per-subtype route's 404).
@@ -1131,6 +1135,56 @@ def _coerce_filter_value(field: MetaField, value: Any) -> Any:
 
 
 _INT_TEXT = _re.compile(r"^\s*-?\d+\s*$")
+
+
+_ASCII_DIGITS = "0123456789"
+_KEY_INT_SUBTYPES = (fc.FIELD_SUBTYPE_INT, fc.FIELD_SUBTYPE_LONG)
+_KEY_DECIMAL_SUBTYPES = (fc.FIELD_SUBTYPE_DECIMAL, fc.FIELD_SUBTYPE_DOUBLE, fc.FIELD_SUBTYPE_FLOAT)
+
+
+def _is_canonical_decimal_text(text: str, *, fractional: bool) -> bool:
+    """Canonical decimal key text: optional ``-``, ASCII digits with no leading zero (a lone
+    ``0`` is fine), no ``-0``, and, when *fractional*, an optional ``.`` plus at least one
+    digit. Checked character by character: ``int()``/``float()``/``Decimal()`` accept
+    whitespace, ``+``, ``_``, exponents, Unicode digits, ``nan`` and ``inf``, and
+    ``str.isdigit`` accepts Unicode digits, so none of them may decide."""
+    body = text[1:] if text.startswith("-") else text
+    whole, dot, frac = body.partition(".")
+    if dot and not fractional:
+        return False
+    if not whole or any(c not in _ASCII_DIGITS for c in whole):
+        return False
+    if len(whole) > 1 and whole[0] == "0":
+        return False
+    if dot and (not frac or any(c not in _ASCII_DIGITS for c in frac)):
+        return False
+    if text.startswith("-") and whole == "0" and all(c == "0" for c in frac):
+        return False
+    return True
+
+
+def _coerce_key_value(field: MetaField, value: Any) -> Any:
+    """A primary-key / id argument as the native value the key column binds.
+
+    A key arrives as TEXT from a route or a ref. For a numeric key field the text must be
+    canonical decimal (see :func:`_is_canonical_decimal_text`), else the same ``ValueError``
+    the OM raises for any unusable argument; text that names no key never names row 1 or 0.
+    A non-text value, or a non-numeric key (string, uuid), goes to the ordinary write codec."""
+    if isinstance(value, str):
+        sub = field.sub_type
+        integer = sub in _KEY_INT_SUBTYPES
+        if integer or sub in _KEY_DECIMAL_SUBTYPES:
+            if not _is_canonical_decimal_text(value, fractional=not integer) or (
+                sub in (fc.FIELD_SUBTYPE_DOUBLE, fc.FIELD_SUBTYPE_FLOAT) and _math.isinf(float(value))
+            ):
+                owner = field.parent.name if field.parent is not None else "?"
+                raise ValueError(
+                    f"Entity '{owner}' key field '{field.name}' (field.{sub}) is not canonical decimal text"
+                )
+            if integer:
+                return int(value)
+            return _decimal.Decimal(value) if sub == fc.FIELD_SUBTYPE_DECIMAL else float(value)
+    return _coerce_write_value(field, value)
 
 
 def _coerce_write_value(field: MetaField, value: Any, *, for_filter: bool = False) -> Any:

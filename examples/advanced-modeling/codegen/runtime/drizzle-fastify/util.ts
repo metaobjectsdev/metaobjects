@@ -4,6 +4,7 @@
 
 import { FIELD_SUBTYPE_UUID } from "@metaobjectsdev/metadata";
 import { matchesFormat } from "./filter-value-format.js";
+import { isCanonicalDecimal } from "../canonical-key.js";
 
 /**
  * Coerce a path-param id to number when numeric, else keep the string key.
@@ -16,8 +17,8 @@ import { matchesFormat } from "./filter-value-format.js";
  * with no declared columns (via `coerceIdForColumn`/`rawIdLiteral`).
  */
 export function parseId(raw: string): number | string {
-  const n = Number(raw);
-  return Number.isFinite(n) && raw.trim() !== "" ? n : raw;
+  // Only the canonical spelling of a number is one: `0x1` and `1e0` stay text, never row 1.
+  return isCanonicalDecimal(raw) ? Number(raw) : raw;
 }
 
 /**
@@ -36,8 +37,8 @@ export function parseId(raw: string): number | string {
 export function coerceIdForColumn(colRef: unknown, raw: string): number | string | undefined {
   const dataType = (colRef as { dataType?: string } | undefined)?.dataType;
   if (dataType === "number") {
-    const n = Number(raw);
-    return Number.isFinite(n) && raw.trim() !== "" ? n : undefined;
+    // Canonical decimal text only (see canonical-key.ts): `0x1` and `1e0` are not an id.
+    return isCanonicalDecimal(raw) ? Number(raw) : undefined;
   }
   // A Postgres uuid column rejects a malformed literal at execution time
   // ("invalid input syntax for type uuid"), which surfaced as a 500. The id's shape
@@ -50,14 +51,18 @@ export function coerceIdForColumn(colRef: unknown, raw: string): number | string
 }
 
 /**
- * SQL literal for an id on a raw-SQL view (no declared columns to inspect). Numeric ids
- * stay unquoted; anything else is emitted as a quote-escaped string literal, so a uuid
- * key is matched rather than coerced to NaN. SQLite applies column affinity on comparison,
- * so both forms land on the right column type.
+ * SQL literal for an id on a raw-SQL view (no declared columns to inspect), or `undefined`
+ * when the text reads as a number but is not the canonical spelling of one (`01`, `1e0`,
+ * `0x1`). Numeric ids stay unquoted; anything else is emitted as a quote-escaped string
+ * literal, so a uuid key is matched rather than coerced to NaN. SQLite applies column
+ * affinity to a text literal compared with an integer column, so a quoted `'01'` or `'1e0'`
+ * would name row 1 again: with no column type to say the key is a string, such text is no id.
  */
-export function rawIdLiteral(raw: string): string {
+export function rawIdLiteral(raw: string): string | undefined {
   const v = parseId(raw);
-  return typeof v === "number" ? String(v) : `'${raw.replace(/'/g, "''")}'`;
+  if (typeof v === "number") return String(v);
+  if (raw.trim() !== "" && !Number.isNaN(Number(raw))) return undefined;
+  return `'${raw.replace(/'/g, "''")}'`;
 }
 
 // Accepts "1" or boolean true (the qs serialization of withCount: 1 from buildFilterQs).

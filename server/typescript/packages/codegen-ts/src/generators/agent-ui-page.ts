@@ -32,7 +32,6 @@
 //     the field's view kind is not consulted.
 
 import {
-  FIELD_ATTR_FILTERABLE,
   FIELD_ATTR_FORM_EXCLUDE,
   LAYOUT_DATA_GRID_ATTR_COLUMNS,
   LAYOUT_DATA_GRID_ATTR_PAGE_SIZE,
@@ -49,7 +48,7 @@ import {
   type UiFieldDescriptor,
   type UiRule,
 } from "../templates/entity-ui-descriptor.js";
-import { isSortableField, resolveGridDefaultSort } from "../templates/filter-shared.js";
+import { credentialFieldNames, isFilterableField, isSortableField, resolveGridDefaultSort } from "../templates/filter-shared.js";
 import { isTphDiscriminatorBase } from "../templates/tph-discriminator.js";
 import { declaresTphDiscriminator } from "../tph.js";
 
@@ -254,6 +253,7 @@ export function renderAgentUiPage(root: MetaRoot, apiPrefix = ""): string {
       // The field nodes, keyed by name, so the three non-descriptor columns can be read
       // off the field the descriptor row came from.
       const byName = new Map(flatSurfaceFields(obj).map((f) => [f.name, f]));
+      const credentials = credentialFieldNames(obj, root);
       out.push("| Field | Label | Control | HTML type | Rules | Excluded | Filter | Sort |");
       out.push("|---|---|---|---|---|---|---|---|");
       for (const f of descriptor.fields) {
@@ -265,8 +265,8 @@ export function renderAgentUiPage(root: MetaRoot, apiPrefix = ""): string {
           htmlTypeCell(f),
           f.rules.map(ruleText).join(" · "),
           node === undefined ? "" : flag(node.attr(FIELD_ATTR_FORM_EXCLUDE)),
-          node === undefined ? "" : flag(node.attr(FIELD_ATTR_FILTERABLE)),
-          node === undefined ? "" : flag(isSortableField(node)),
+          node === undefined ? "" : flag(isFilterableField(node) && !credentials.has(f.name)),
+          node === undefined ? "" : flag(isSortableField(node) && !credentials.has(f.name)),
         ];
         out.push(`| ${cells.join(" | ")} |`);
       }

@@ -97,6 +97,12 @@ public final class GeneratedTphControllerHarness implements AutoCloseable {
 
     public GeneratedTphControllerHarness(Path corpusRoot, Path genDir, List<Map<String, Object>> seedRows)
             throws Exception {
+        this(corpusRoot, corpusRoot.resolve("tph/meta.json"), genDir, seedRows);
+    }
+
+    /** As above, serving the model in {@code metaFile} (the corpus root still names the naming and wire config). */
+    public GeneratedTphControllerHarness(Path corpusRoot, Path metaFile, Path genDir, List<Map<String, Object>> seedRows)
+            throws Exception {
         this.seedRows = seedRows;
         // ADR-0045 (#203/#229): the union AuthDto now carries two java.time.Instant components
         // (autoCreatedAt, autoUpdatedAt). Register JavaTimeModule (Instant serialization) plus a
@@ -125,7 +131,7 @@ public final class GeneratedTphControllerHarness implements AutoCloseable {
         Files.createDirectories(classesDir);
 
         // 1. Load the TPH corpus.
-        MetaDataLoader loader = loadCorpus(corpusRoot.resolve("tph/meta.json"));
+        MetaDataLoader loader = loadCorpus(metaFile);
         // ADR-0058 — this corpus's committed .metaobjects/config.json (at corpusRoot,
         // fixtures/api-contract-conformance/) declares naming.columns: literal; every field
         // here declares no @column, so the generated columns and the runtime's reads of them

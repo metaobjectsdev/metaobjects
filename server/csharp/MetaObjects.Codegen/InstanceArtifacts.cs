@@ -76,4 +76,12 @@ public static class InstanceArtifacts
         && entity.SubType != OBJECT_SUBTYPE_PROJECTION
         && entity.PrimaryIdentity() is not null
         && entity.Sources().Count == 0;
+
+    /// <summary>
+    /// #484 — a credential is a field that declares (or inherits, ADR-0039) a view.password child.
+    /// It is never returned, written, filtered on or sorted by a generated route. A model question
+    /// shared by the routes and filter-allowlist generators.
+    /// </summary>
+    public static bool IsCredentialField(MetaField f) =>
+        f.Views().Any(v => v.SubType == MetaObjects.Presentation.View.ViewConstants.VIEW_SUBTYPE_PASSWORD);
 }

@@ -228,7 +228,7 @@ ${docsPrefix}export type ${entity.name} = ${z}.infer<typeof ${entity.name}Schema
     renderZodValidators(entity, ctx),
     renderEntityConstants(entity, ctx.apiPrefix, namesConstArg(constantsNames)),
     ...(allowlists ? [renderFilterAllowlist(entity, undefined, ctx), renderSortAllowlist(entity, undefined, ctx)] : []),
-    renderFilterType(entity),
+    renderFilterType(entity, undefined, ctx.loadedRoot),
     ...(tphBlock !== null ? [tphBlock] : []),
   ];
 

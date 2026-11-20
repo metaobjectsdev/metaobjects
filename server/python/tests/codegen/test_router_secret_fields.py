@@ -118,3 +118,73 @@ def test_render_wire_hides_a_credential_of_a_dataclass_or_mapping_row() -> None:
     wire = WireOutput(hidden=("pinHash",))
     assert render_wire(Row(1, "x"), wire) == {"id": 1}
     assert render_wire(MappingProxyType({"id": 1, "pinHash": "x"}), wire) == {"id": 1}
+
+
+def test_credential_is_on_neither_filter_nor_sort_allowlist() -> None:
+    """A credential marked @filterable/@sortable is not an allowlist member (it would be an
+    eq/like/sort oracle); a normal @filterable field still is. The runtime then refuses an
+    explicit request through the existing invalid_filter_field / invalid_sort paths."""
+    from metaobjects.codegen.generators.filter_allowlist_generator import render_filter_allowlist
+
+    meta = {"metadata.root": {"package": "acme::oracle", "children": [
+        {"object.entity": {"name": "Member", "children": [
+            *_id(),
+            {"field.string": {"name": "name", "@maxLength": 100, "@filterable": True, "@sortable": True}},
+            {"field.string": {"name": "pinHash", "@maxLength": 100, "@filterable": True,
+                              "@sortable": True, "children": [{"view.password": {}}]}},
+        ]}},
+    ]}}
+    entities = _load(meta)
+    member = entities["Member"]
+    index = build_object_index(list(entities.values()))
+
+    allow = render_filter_allowlist(member, index)
+    assert '"name"' in allow
+    assert "pinHash" not in allow
+
+    router = render_router(member, index)
+    assert router is not None
+    start = router.index("_SORT_ALLOWLIST: set[str]")
+    sort_block = router[start:router.index("}", start)]
+    assert '"name"' in sort_block
+    assert "pinHash" not in sort_block
+
+
+def _tph_meta(credential_first: bool) -> dict:
+    plain = {"object.entity": {"name": "AThing", "extends": "Thing", "@discriminatorValue": "A", "children": [
+        {"field.string": {"name": "token", "@maxLength": 100, "@filterable": True, "@sortable": True}},
+        {"field.string": {"name": "label", "@maxLength": 100, "@filterable": True, "@sortable": True}},
+    ]}}
+    credential = {"object.entity": {"name": "BThing", "extends": "Thing", "@discriminatorValue": "B", "children": [
+        {"field.string": {"name": "token", "@maxLength": 100, "children": [{"view.password": {}}]}},
+    ]}}
+    return {"metadata.root": {"package": "acme::tph", "children": [
+        {"object.entity": {"name": "Thing", "@discriminator": "kind", "children": [
+            *_id(),
+            {"field.enum": {"name": "kind", "@values": ["A", "B"]}},
+        ]}},
+        *([credential, plain] if credential_first else [plain, credential]),
+    ]}}
+
+
+def test_a_column_any_sibling_subtype_hides_is_on_no_filter_or_sort_allowlist() -> None:
+    """One table backs a TPH hierarchy: `token` a sibling subtype marks view.password is no
+    filter or sort key on the base, nor on the subtype that declares it plain, whichever
+    subtype is declared first."""
+    from metaobjects.codegen.generators.filter_allowlist_generator import render_filter_allowlist
+
+    for credential_first in (False, True):
+        entities = _load(_tph_meta(credential_first))
+        index = build_object_index(list(entities.values()))
+        for name in ("Thing", "AThing", "BThing"):
+            allow = render_filter_allowlist(entities[name], index)
+            assert allow is None or "token" not in allow, (name, credential_first)
+        allow = render_filter_allowlist(entities["AThing"], index)
+        assert allow is not None and '"label"' in allow
+
+        router = render_router(entities["Thing"], index)
+        assert router is not None
+        start = router.index("_SORT_ALLOWLIST: set[str]")
+        sort_block = router[start:router.index("}", start)]
+        assert '"label"' in sort_block
+        assert "token" not in sort_block, credential_first

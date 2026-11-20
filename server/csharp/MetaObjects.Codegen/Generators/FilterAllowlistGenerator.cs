@@ -71,7 +71,10 @@ public class FilterAllowlistGenerator : PerEntityGenerator
     {
         var cls = CSharpNaming.Pascal(entity.Name);
         var filterClass = CSharpNaming.FilterAllowlistName(entity);
-        var opsByField = ComputeFilterableOps(entity);
+        var hierarchyCredentials = TphPlanBuilder.HierarchyCredentialNames(entity, ctx.Root);
+        var opsByField = ComputeFilterableOps(entity)
+            .Where(kv => !hierarchyCredentials.Contains(kv.Key))
+            .ToDictionary(kv => kv.Key, kv => kv.Value, System.StringComparer.Ordinal);
         // In its entity's namespace when package namespaces are on (as <Entity>Names is), so mapping
         // the packages apart separates the allowlists too; claimed where it is emitted.
         var ns = ValueObjectNames.CompanionNamespace(entity, ctx.Config);
@@ -149,6 +152,9 @@ public class FilterAllowlistGenerator : PerEntityGenerator
         {
             if (field.SubType == FIELD_SUBTYPE_OBJECT) continue;
             if (!IsFilterable(field)) continue;
+            // A credential is never filterable: eq / like on a secret is an oracle for it. Left off
+            // the allowlist, an explicit request is refused as any unknown field is.
+            if (InstanceArtifacts.IsCredentialField(field)) continue;
             var ops = OpsForField(field);
             if (ops.Count == 0) continue;
             out_[field.Name] = ops;

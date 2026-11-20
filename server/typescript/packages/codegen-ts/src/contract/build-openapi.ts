@@ -9,13 +9,13 @@
 
 import { flatSurfaceFields } from "../flattened.js";
 import { type MetaField, type MetaObject, type MetaRoot, opsForField } from "@metaobjectsdev/metadata";
-import { FIELD_ATTR_FILTERABLE, FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_TIMESTAMP, FILTER_OP_IN, FILTER_OP_IS_NULL, FILTER_OP_LIKE } from "@metaobjectsdev/metadata/constants";
+import { FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_TIMESTAMP, FILTER_OP_IN, FILTER_OP_IS_NULL, FILTER_OP_LIKE } from "@metaobjectsdev/metadata/constants";
 import { hasItemRoute, itemRouteField, servedPath, servesReadApi } from "../api-surface.js";
 import { isProjection } from "../projection/projection-detector.js";
 import type { RelationMap } from "../relation-resolver.js";
 import { CRUD_VERBS, type CrudVerb, type ExposeOption, intersectExpose, resolveExpose, TPH_POLYMORPHIC_VERBS } from "../routes-expose.js";
 import { isReport } from "../source-detect.js";
-import { sortableFields } from "../templates/filter-shared.js";
+import { credentialFieldNames, isFilterableField, sortableFields } from "../templates/filter-shared.js";
 import { tphPlan } from "../templates/tph-discriminator.js";
 import { isTphSubtype } from "../tph.js";
 import { ContractEmitError, ERR_CONTRACT_NAME_COLLISION } from "./contract-errors.js";
@@ -118,9 +118,11 @@ function filterValueSchema(field: MetaField, op: string): JsonSchema {
 }
 
 /** One parameter per filterable field and operator, so removing either is a visible change. */
-function filterParameters(obj: MetaObject, excludeField: string | undefined): JsonSchema[] {
+function filterParameters(obj: MetaObject, excludeField: string | undefined, root: MetaRoot): JsonSchema[] {
   const params: JsonSchema[] = [];
-  const filterable = flatSurfaceFields(obj).filter((f) => f.attr(FIELD_ATTR_FILTERABLE) === true && f.name !== excludeField);
+  // A column a sibling subtype of one table marks as a credential is refused by the server allowlist too.
+  const credentials = credentialFieldNames(obj, root);
+  const filterable = flatSurfaceFields(obj).filter((f) => isFilterableField(f) && !credentials.has(f.name) && f.name !== excludeField);
   for (const field of filterable) {
     const ops = opsForField(field);
     if (ops.length === 0) continue;
@@ -132,8 +134,8 @@ function filterParameters(obj: MetaObject, excludeField: string | undefined): Js
   return params;
 }
 
-function sortParameter(obj: MetaObject, excludeField: string | undefined): JsonSchema[] {
-  const fields = sortableFields(obj).filter((f) => f.name !== excludeField);
+function sortParameter(obj: MetaObject, excludeField: string | undefined, root: MetaRoot): JsonSchema[] {
+  const fields = sortableFields(obj, root).filter((f) => f.name !== excludeField);
   if (fields.length === 0) return [];
   const values = fields.flatMap((f) => [f.name, ...SORT_DIRECTIONS.map((d) => `${f.name}:${d}`)]);
   return [{ name: "sort", in: "query", schema: { type: "string", enum: values } }];
@@ -195,13 +197,15 @@ interface ResourceOps {
   readonly reportExport: boolean;
   readonly item: boolean;
   readonly refs: PathRefs;
+  /** The loaded model: a credential column is read across the single-table hierarchy it sits in. */
+  readonly root: MetaRoot;
 }
 
 function listOperation(r: ResourceOps): JsonSchema {
   const { row } = r;
   const parameters = [
-    ...filterParameters(row, r.excludeField),
-    ...sortParameter(row, r.excludeField),
+    ...filterParameters(row, r.excludeField, r.root),
+    ...sortParameter(row, r.excludeField, r.root),
     ...pageParameters(r.report ? 1 : 0),
     ...(r.reportExport ? [{ name: "format", in: "query", schema: { type: "string", enum: ["csv", "json", "xml"] } }] : []),
   ];
@@ -318,20 +322,20 @@ function pathsOf(obj: MetaObject, input: OpenApiBuildInput, refs: PathRefs): Rec
   const report = isReport(obj);
   if (isProjection(obj)) {
     return resourcePaths({
-      row: obj, path, report, reportExport: report && input.reportExport, item: hasItemRoute(obj), refs,
+      row: obj, path, report, reportExport: report && input.reportExport, item: hasItemRoute(obj), refs, root: input.root,
       verbs: new Set<CrudVerb>(["list", "get"]),
     });
   }
   const plan = tphPlan(obj, root);
   const paths: Record<string, JsonSchema> = {
-    ...resourcePaths({ row: obj, path, report: false, reportExport: false, item: true, refs, verbs: verbsOf(plan === null ? CRUD_VERBS : TPH_POLYMORPHIC_VERBS, obj, expose) }),
+    ...resourcePaths({ row: obj, path, report: false, reportExport: false, item: true, refs, root: input.root, verbs: verbsOf(plan === null ? CRUD_VERBS : TPH_POLYMORPHIC_VERBS, obj, expose) }),
     ...m2mPaths(obj, path, relationMap, refs),
   };
   if (plan === null) return paths;
   for (const { entity, routeSegment } of plan.subtypes) {
     const subPath = `${path}/${routeSegment}`;
     Object.assign(paths, resourcePaths({
-      row: entity, path: subPath, report: false, reportExport: false, item: true, refs,
+      row: entity, path: subPath, report: false, reportExport: false, item: true, refs, root: input.root,
       verbs: verbsOf(CRUD_VERBS, obj, expose), excludeField: plan.discriminatorField,
     }), m2mPaths(entity, subPath, relationMap, refs));
   }

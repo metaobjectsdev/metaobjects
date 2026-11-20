@@ -125,8 +125,8 @@ Five rows need a footnote:
 | `@maxLength` | int | Length for string types (drives `varchar(N)`). |
 | `@column` | string | Physical column name (overrides the project's `naming.columns` rule). |
 | `@default` | any | Default value (literal or canonical SQL default function). |
-| `@filterable` | bool | Field appears in the generated server-side filter allowlist. |
-| `@sortable` | bool | Field appears in the server-side sort allowlist (defaults to `@filterable`). |
+| `@filterable` | bool | Field appears in the generated server-side filter allowlist, unless it is a credential (`view.password`); see [api-contract.md](api-contract.md). |
+| `@sortable` | bool | Field appears in the server-side sort allowlist (defaults to `@filterable`), unless it is a credential. |
 
 ## Column naming — `@column` and the `naming` setting
 

@@ -66,7 +66,7 @@ export function renderValueObjectFile(obj: MetaObject, apiPrefix = "", ctx?: Ren
   // FR-017 Tier 3: the per-subtype CLIENT filter type, discriminator-excluded —
   // kept in lockstep with the per-subtype allowlist above so a typed
   // `<Sub>Filter` can't express a filter the server allowlist would 400.
-  const tphFilterType = tphSubtype ? renderFilterType(obj, discField) : null;
+  const tphFilterType = tphSubtype ? renderFilterType(obj, discField, ctx?.loadedRoot) : null;
   // A sourceless entity's wire contract: create + PATCH schemas, allowlists, filter type.
   // No constants object — it names a table and a route this object does not have. The
   // allowlists import runtime types, so a contract-only target (runtime: false) skips them.
@@ -96,7 +96,7 @@ export function renderValueObjectFile(obj: MetaObject, apiPrefix = "", ctx?: Ren
     ...(tphSortAllowlist !== null ? [tphSortAllowlist] : []),
     ...(tphFilterType !== null ? [tphFilterType] : []),
     ...(sourcelessAllowlists ? [renderFilterAllowlist(obj, undefined, ctx), renderSortAllowlist(obj, undefined, ctx)] : []),
-    ...(sourceless ? [renderFilterType(obj)] : []),
+    ...(sourceless ? [renderFilterType(obj, undefined, ctx?.loadedRoot)] : []),
   ];
   const body = joinCode(sections, { on: "\n" }).toString();
   // ADR-0044/#228 — the hand-edit sidecar name follows this value object's EMITTED

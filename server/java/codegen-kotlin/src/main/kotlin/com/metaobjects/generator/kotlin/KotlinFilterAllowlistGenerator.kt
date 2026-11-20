@@ -108,7 +108,10 @@ open class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObj
         // left to an adopter who wants the 400 to own this generator: subclass it and name the
         // subclass in the Maven plugin's `<generator><classname>`.
         val opsByField = if (KotlinTphPlan.isTphBase(entity, loader)) {
-            computeFilterableOps(entity.metaFields + KotlinTphPlan.collectSubtypeFields(entity, loader))
+            computeFilterableOps(
+                entity.metaFields + KotlinTphPlan.collectSubtypeFields(entity, loader),
+                KotlinTphPlan.hierarchyCredentialNames(entity, loader),
+            )
         } else {
             computeFilterableOps(entity)
         }
@@ -191,13 +194,26 @@ open class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObj
          * is the UNION of the base's own + every subtype-only filterable column (so the polymorphic
          * + per-subtype lists can filter on subtype columns, matching the Java/Python/TS lanes).
          */
-        fun computeFilterableOps(fields: Iterable<MetaField<*>>): Map<String, Set<String>> {
+        fun computeFilterableOps(fields: Iterable<MetaField<*>>): Map<String, Set<String>> =
+            computeFilterableOps(fields, fields.filter { KotlinGenUtil.isCredentialField(it) }.map { it.name }.toSet())
+
+        /**
+         * [computeFilterableOps] with the credential names given: a TPH base passes the names any
+         * declaration in its hierarchy marks, since a shared column is declared once per subtype and the
+         * union keeps only the first declaration. Such a column is a credential whichever declaration
+         * comes first.
+         */
+        fun computeFilterableOps(fields: Iterable<MetaField<*>>, credentials: Set<String>): Map<String, Set<String>> {
             val out = linkedMapOf<String, Set<String>>()
             for (field in fields) {
                 // field.object / field.map are jsonb columns with no scalar SQL column —
                 // excluded from the filter allowlist (no filter dispatch).
                 if (field is ObjectField || field is MapField) continue
                 if (!isFilterable(field)) continue
+                // A credential (view.password) is never filterable, whatever @filterable says: a filter on it
+                // is an oracle for the secret. Left off the allowlist, a request for it is refused as any
+                // unknown field is.
+                if (field.name in credentials) continue
                 val ops = opsForField(field)
                 if (ops.isEmpty()) continue
                 out.putIfAbsent(field.name, ops) // dedup base/subtype column names

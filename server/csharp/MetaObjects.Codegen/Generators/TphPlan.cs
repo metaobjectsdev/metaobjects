@@ -120,6 +120,22 @@ public static class TphPlanBuilder
         return outFields;
     }
 
+    /// <summary>
+    /// The names of the columns any declaration in <paramref name="entity"/>'s TPH hierarchy (the base
+    /// and every concrete subtype) marks as a credential (<c>view.password</c>). One table backs the
+    /// hierarchy, so a column a sibling subtype hides is no more filterable or sortable here. Empty
+    /// when the entity is in no hierarchy.
+    /// </summary>
+    public static HashSet<string> HierarchyCredentialNames(MetaObject entity, MetaRoot root)
+    {
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        if (DiscriminatorRoot(entity) is not { } baseObj || For(baseObj, root) is not { } plan) return names;
+        foreach (var member in plan.Subtypes.Select(st => st.Entity).Prepend(baseObj))
+            foreach (var f in member.Fields())
+                if (InstanceArtifacts.IsCredentialField(f)) names.Add(f.Name);
+        return names;
+    }
+
     // The concrete subtypes bound to this base via extends, in stable (name-sorted) order.
     private static List<(MetaObject Subtype, string Value)> CollectConcreteSubtypes(MetaObject baseObj, MetaRoot root)
     {

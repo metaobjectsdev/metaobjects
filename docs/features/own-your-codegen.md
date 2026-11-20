@@ -387,7 +387,7 @@ calls it copies the adapter's source too:
 
 | `meta eject …` | Copies into `codegen/generators/` | Also copies into `codegen/runtime/` (verbatim from `@metaobjectsdev/runtime-ts/src`) |
 |---|---|---|
-| `routes` | `routes.ts` — the whole route composition (CRUD, read-only projections, M:N traversal, TPH per-subtype sets), not a call into the engine | `drizzle-fastify/*` (mounts, filter parser, list params, M:N and read-only mounts, error handler), `route-errors.ts`, `constraint-errors.ts`, `timestamp-wire.ts` |
+| `routes` | `routes.ts` — the whole route composition (CRUD, read-only projections, M:N traversal, TPH per-subtype sets), not a call into the engine | `drizzle-fastify/*` (mounts, filter parser, list params, M:N and read-only mounts, error handler), `route-errors.ts`, `constraint-errors.ts`, `timestamp-wire.ts`, `decimal-wire.ts`, `duration-wire.ts`, `wire-format.ts`, `sql-dialect.ts`, `canonical-key.ts`, `errors.ts` |
 | `routes-hono` | `routes-hono.ts`, likewise self-contained | `hono/*`, plus the shared parser, allowlist, envelope and timestamp files it reaches |
 | `entity` | `entity.ts` | `drizzle-fastify/filter-allowlist.ts` — the `FilterAllowlist` / `SortAllowlist` types the entity module's allowlists are typed by |
 

@@ -2,7 +2,6 @@ import { flatSurfaceFields } from "@metaobjectsdev/codegen-ts/engine";
 import { code, type Code } from "@metaobjectsdev/codegen-ts/engine";
 import { MetaField, MetaObject } from "@metaobjectsdev/metadata";
 import {
-  FIELD_ATTR_FILTERABLE,
   FIELD_SUBTYPE_BOOLEAN,
   FIELD_SUBTYPE_INT,
   FIELD_SUBTYPE_LONG,
@@ -20,7 +19,7 @@ import {
   opsForField,
 } from "@metaobjectsdev/metadata";
 import { enumValues } from "@metaobjectsdev/codegen-ts/engine";
-import { sortableFields, declaredSortDefaultOrder } from "./filter-shared.js";
+import { credentialFieldNames, isFilterableField, isSortableField, declaredSortDefaultOrder } from "./filter-shared.js";
 import type { RenderContext } from "@metaobjectsdev/codegen-ts/engine";
 import { httpRuntimeSpecifier } from "@metaobjectsdev/codegen-ts/engine";
 import { DEFAULT_OUTPUT_LAYOUT } from "@metaobjectsdev/codegen-ts/engine";
@@ -114,10 +113,13 @@ function valueShape(f: MetaField): string {
   return "";
 }
 
-function filterableFields(entity: MetaObject, exclude?: string): MetaField[] {
+function filterableFields(entity: MetaObject, exclude: string | undefined, ctx: RenderContext | undefined): MetaField[] {
   // fields() returns effective fields, so inherited fields (from extends:/super:) are included in allowlists.
+  // A credential is never filterable, whatever @filterable says (isFilterableField); a column a
+  // sibling subtype of the same table marks as a credential is not either (credentialFieldNames).
+  const credentials = credentialFieldNames(entity, ctx?.loadedRoot);
   return flatSurfaceFields(entity)
-    .filter((c) => c.attr(FIELD_ATTR_FILTERABLE) === true && c.name !== exclude);
+    .filter((c) => isFilterableField(c) && !credentials.has(c.name) && c.name !== exclude);
 }
 
 /**
@@ -133,7 +135,7 @@ function filterableFields(entity: MetaObject, exclude?: string): MetaField[] {
  * branching is needed here. Absent `ctx`, or in the default mode, output is unchanged.
  */
 export function renderFilterAllowlist(entity: MetaObject, exclude?: string, ctx?: RenderContext): Code {
-  const fields = filterableFields(entity, exclude);
+  const fields = filterableFields(entity, exclude, ctx);
   if (fields.length === 0) {
     return code`
 import type { FilterAllowlist } from ${JSON.stringify(allowlistTypesFrom(entity, ctx))};
@@ -169,7 +171,9 @@ export function renderSortAllowlist(entity: MetaObject, exclude?: string, ctx?: 
   // @sortable: false explicitly opts out.
   // Uses shared isSortableField predicate — must stay in sync with renderFilterType.
   // `exclude` (FR-017): per-subtype TPH allowlists omit the discriminator.
-  const sortable = sortableFields(entity).filter((f) => f.name !== exclude);
+  // A credential is never sortable (isSortableField), nor a column a sibling subtype marks as one.
+  const credentials = credentialFieldNames(entity, ctx?.loadedRoot);
+  const sortable = flatSurfaceFields(entity).filter((f) => isSortableField(f) && !credentials.has(f.name) && f.name !== exclude);
   if (sortable.length === 0) {
     return code`
 import type { SortAllowlist } from ${JSON.stringify(allowlistTypesFrom(entity, ctx))};

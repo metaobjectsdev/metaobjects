@@ -4,9 +4,8 @@
 
 import { flatSurfaceFields } from "../flattened.js";
 import { code, type Code } from "../poet.js";
-import { MetaField, MetaObject } from "@metaobjectsdev/metadata";
+import { MetaField, MetaObject, type MetaRoot } from "@metaobjectsdev/metadata";
 import {
-  FIELD_ATTR_FILTERABLE,
   FIELD_SUBTYPE_BOOLEAN,
   FIELD_SUBTYPE_INT,
   FIELD_SUBTYPE_LONG,
@@ -16,7 +15,7 @@ import {
   FIELD_SUBTYPE_ENUM,
   opsForField,
 } from "@metaobjectsdev/metadata";
-import { isSortableField } from "./filter-shared.js";
+import { credentialFieldNames, isFilterableField, isSortableField } from "./filter-shared.js";
 import { entityTypeNames } from "../entity-type-names.js";
 import { enumValues } from "../enum-meta.js";
 
@@ -80,11 +79,15 @@ function renderFieldUnion(field: MetaField): string {
  * per-subtype route path), keeping the client `<Sub>Filter` type aligned with
  * the server's per-subtype allowlist.
  */
-export function renderFilterType(entity: MetaObject, exclude?: string): Code {
+export function renderFilterType(entity: MetaObject, exclude?: string, root?: MetaRoot): Code {
   const filterName = entityTypeNames(entity).filter;
   // fields() returns effective fields, so inherited fields (from extends:/super:) are included in filter types.
-  const allFields = flatSurfaceFields(entity).filter((c) => c.name !== exclude);
-  const filterableFieldsList = allFields.filter((c) => c.attr(FIELD_ATTR_FILTERABLE) === true);
+  // A column a sibling subtype of the same table marks as a credential is no more filterable or
+  // sortable here than in the server allowlist (credentialFieldNames), or the client type would
+  // offer a filter the server answers 400.
+  const credentials = credentialFieldNames(entity, root);
+  const allFields = flatSurfaceFields(entity).filter((c) => c.name !== exclude && !credentials.has(c.name));
+  const filterableFieldsList = allFields.filter(isFilterableField);
   // Sort union uses isSortableField — same predicate as renderSortAllowlist to prevent
   // client/server mismatches (@filterable: true + @sortable: false must be excluded from both).
   const sortFieldNames = allFields.filter(isSortableField).map((f) => `"${f.name}"`);

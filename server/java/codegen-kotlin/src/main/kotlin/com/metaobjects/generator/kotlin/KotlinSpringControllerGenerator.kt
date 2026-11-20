@@ -446,8 +446,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // surface on the Exposed Table; @storage controls a separate column shape) and the
         // `field.string @dbColumnType=jsonb` open bag — a JSONB value is not a scalar sort
         // target (its in-process type is a kotlinx JsonElement, not a comparable scalar).
+        // A credential (view.password) is never sortable: the order would leak the hidden value.
         val sortFields = KotlinGenUtil.columnFields(entity)
-            .filterNot { isNonScalarSurface(it) }
+            .filterNot { isNonScalarSurface(it) || KotlinGenUtil.isCredentialField(it) }
             .map { it.name }
 
         // Per-field dispatch map (filter dispatch); only used inside the generated
@@ -927,8 +928,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // Union scalar fields (base own + subtype-only), in the data class / table order.
         val scalarFields = (KotlinGenUtil.columnFields(base).filterNot { it is ObjectField || it is MapField } +
             KotlinTphPlan.collectSubtypeFields(base, plan).filterNot { it is ObjectField || it is MapField })
+        val hierarchyCredentials = KotlinTphPlan.hierarchyCredentialNames(base, loader)
         val sortFields = KotlinGenUtil.columnFields(base)
-            .filterNot { isNonScalarSurface(it) }
+            .filterNot { isNonScalarSurface(it) || it.name in hierarchyCredentials }
             .map { it.name }
         val baseFieldNames = base.metaFields.map { it.name }.toSet()
         val allowlistName = "${shortName}FilterAllowlist"
@@ -2321,7 +2323,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
 
         // #484: a report's credential column is not sortable (the order would leak the hidden value).
         val sortFields = entity.metaFields
-            .filterNot { isNonScalarSurface(it) }
+            .filterNot { isNonScalarSurface(it) || KotlinGenUtil.isCredentialField(it) }
             .map { it.name }
             .filterNot { GeneratorUtil.isReport(entity) && it in KotlinGenUtil.reportCredentialNames(entity) }
         // FR-044: a report's int-backed enum column is typed by the enum of the entity it

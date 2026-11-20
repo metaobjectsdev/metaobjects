@@ -176,7 +176,7 @@ next release moves `metamodelVersion`.
   generated code is the types and name constants its hand-written business rules use.
   Editing the metadata changes the grid, the form and the API with no regeneration.
   `docs/features/metadata-driven-runtime.md` measures it against the reference generators
-  for the same model (1,823 hand-written lines paid once, against 3,629 generated lines
+  for the same model (1,826 hand-written lines paid once, against 3,629 generated lines
   that grow by about 726 an entity), gives the per-row cost of the metadata lookups, and
   lists what the approach cannot do. It is an example on the TypeScript port, not a package.
 
@@ -192,6 +192,39 @@ next release moves `metamodelVersion`.
   vocabulary rule".
 
 ### Fixed
+
+- **A credential is never filterable or sortable, in every port.** A field that declares a
+  `view.password` and that a model also marked `@filterable` or `@sortable` was on the generated
+  filter and sort allowlists, so a client could learn its value by probing (`filter[pinHash][eq]=...`,
+  a `like` prefix one character at a time, or the order of a `sort`). The allowlists are now built
+  without a credential (in every port a column a sibling subtype of the same single table marks as one
+  counts too, whichever subtype is declared first, as it does for hiding the column from responses),
+  so a request that names it is refused like any other field they do not hold (`400` `invalid_filter_field`
+  or `invalid_sort`, naming the field). The client filter type, the OpenAPI parameters and the agent UI
+  page leave it out too. In Java, Kotlin and C#, whose sort allowlist lists every scalar field and never read `@sortable`, a
+  credential was sortable with no mark at all, so the generated routes change for any model with a
+  credential: regenerate. Your own code is unaffected. Gated by `filter-sort-refuses-credential` in the `secret-fields/`
+  sub-corpus of the api-contract conformance corpus, in the generated lane of all five ports, and by
+  `tph-sibling-credential` in `secret-fields/tph/` for the shared-column case.
+
+- **A numeric key is read only from canonical decimal text, in the TypeScript, Java and Python
+  ObjectManagers.** A path parameter or ref string for an integer, long, decimal, double or float
+  primary key went through the language's own number parser, which reads `0x1`, `1e0`, `0b1`, `+1`,
+  ` 1 ` and the empty string as numbers (and Java's and Python's also `1_0`, a Unicode digit, `NaN`):
+  text that is no key named row 1 (or row 0), and two different texts named one row. An integer key
+  is now an optional `-` and ASCII digits with no leading zero; a decimal key may add `.` and at
+  least one digit; nothing else is a key. TypeScript refuses it with `InvalidKeyError` (a
+  `ValidationError`), which the mounts answer `400 {"error":"invalid_id"}` like an id the column
+  cannot hold; the drizzle-fastify and hono mounts and the deprecated `parseId` read ids by the
+  same rule, and it also refuses an integer key that is not a safe integer (beyond 2^53) and a decimal
+  key that is not finite: a `field.long` key above 2^53 used to round silently to another row, where
+  Java accepts an integer key up to `Long.MAX_VALUE`. Java refuses a ref id with `IllegalArgumentException` and Python a key argument with
+  `ValueError`, the errors each already raised for an unusable argument. A string or uuid key is
+  untouched (`0123` stays `0123`). If you pass a key as text to `findById`, `update`, `delete` or
+  `load`, pass its decimal spelling. The read-only mount of a raw-SQL view, which has no column type to
+  consult, answers `400 invalid_id` for text that reads as a number without being its canonical spelling
+  (`01`, `1e0`), because SQLite would convert a quoted `'01'` back to row 1. Not changed: the numeric path parameters of the generated Spring
+  and FastAPI routes, which those frameworks parse before the ObjectManager sees them.
 
 - **Fix, TypeScript: `DELETE` on a missing row answers `404`, not `500`, from the
   ObjectManager route mount.** `mountCrudRoutes` and `mountDeleteRoute` in
