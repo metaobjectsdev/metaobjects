@@ -312,7 +312,7 @@ copies `KotlinSharedModelGenerator.kt` into a `codegen/` module under your packa
 
 ### Declarative template-codegen (`TemplateScopeGenerator`)
 
-The 18 generators above are a starting point, not the ceiling. When you need a shape
+The 18 generators above are not the ceiling. When you need a shape
 none of them emits, Kotlin has **both** authoring paths — and which to reach for is a
 real decision (tradeoff table: [`codegen-concepts.md` §3](../features/codegen-concepts.md)).
 

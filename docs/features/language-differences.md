@@ -64,9 +64,11 @@ EF Core in C#, Spring in Java, Exposed in Kotlin, Pydantic and FastAPI in Python
 output is something a project opts into (the `wire` setting), not a default the ports are
 bent to fit ([ADR-0019 Amendment 2](../../spec/decisions/ADR-0019-runtime-return-type-contract.md)).
 Second, **generated application code is a reference helper**, not a guarantee
-([ADR-0034 Amendment 3](../../spec/decisions/ADR-0034-codegen-scaffold-and-own.md)): a route,
-a repository or a DTO is a starting point you can eject and change, so a difference in what
-the reference writes is a difference you can remove in your own copy.
+([ADR-0034 Amendments 3 and 11](../../spec/decisions/ADR-0034-codegen-scaffold-and-own.md)): a route,
+a repository or a DTO is real code you can run as shipped, or eject and change, so a difference in what
+the reference writes is a difference you can remove in your own copy. Parity between ports is
+capability parity: every port gets every capability unless a ruling says it differs, and the output
+stays idiomatic to each language.
 
 The rest (the list default of a project without `api.pagination`, Python's field names and data access) are
 known gaps rather than design, and the roadmap closes several of them. When one closes, its row

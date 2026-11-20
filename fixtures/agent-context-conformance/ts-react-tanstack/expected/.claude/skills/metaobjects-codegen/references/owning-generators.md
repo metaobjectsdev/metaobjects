@@ -27,16 +27,17 @@ Then do **not**:
 - pin an older MetaObjects release, or wait for a newer one, to get past it;
 - branch, patch, or rebuild a clone of the MetaObjects repository.
 
-The reference generators are starting points you take a copy of. They are
+The reference generators emit real code, and you may take a copy of one. They are
 conformance-gated so the copy starts out correct — not so that each project's output
 becomes the library's problem. Once you run a generator in your build, what it emits for
 your model is yours, exactly as if you had written it.
 
 **What is legitimately upstream** is only what you cannot own: the **loader and
 metamodel** (valid metadata rejected, invalid metadata accepted, a wrong resolution), the
-**core runtime** your app imports (the metadata-driven `ObjectManager`, prompt render, the
-reply parser — not an HTTP adapter you ejected, which is yours), the **codegen engine
-itself** (the runner, the three-way merge, `verify`), and **`meta migrate`**. The test is
+**core contracts and runtime** your app imports (prompt render, the reply parser, the
+store-neutral contracts — not an HTTP adapter you ejected, which is yours), the **codegen engine
+itself** (the runner, the three-way merge, `verify`), and the **store-specific helpers you
+cannot eject** (the `ObjectManager` drivers and `meta migrate`), which MetaObjects supports and fixes. The test is
 mechanical: if changing a generator — or a file eject copied beside it — fixes it, it is
 yours.
 

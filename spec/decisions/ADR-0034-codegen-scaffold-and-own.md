@@ -51,7 +51,7 @@ component library — code you copy into your project and own."
    logic** (this was the intent, not yet what every generator shipped: see Amendment 8).
    Tooling stays minimal: `meta init` scaffolds a sensible default generator
    set + local-import config for a running start; it does **not** interview the
-   project or select templates. **Adding a new starting point is adding a documented
+   project or select templates. **Adding a new template is adding a documented
    file, never a CLI change.**
 
 3. **"Force" by making generators scaffold-only — there is no black-box to fight.**
@@ -62,7 +62,7 @@ component library — code you copy into your project and own."
 
 4. **Conformance gates the reference templates, not consumer forks.** The scaffolded
    reference templates stay byte-gated by the codegen conformance corpus (they must
-   be correct starting points). A consumer's owned fork is theirs and ungated. The
+   be correct). A consumer's owned fork is theirs and ungated. The
    engine + primitives stay strictly versioned and tested.
 
 5. **Authoring is a menu — all options exposed, not one mechanism per port.** Owning
@@ -73,7 +73,7 @@ component library — code you copy into your project and own."
    `MetaObjects.Render`), **Groovy** scripting on the JVM, or **cross-language
    generation** (a TS/Python generator emitting Java/C#/Kotlin, since the metamodel
    loader *and* render engine exist in every port). The library ships reference
-   starting points in each form; the consumer/Claude picks. Native classes are
+   templates in each form; the consumer/Claude picks. Native classes are
    port-bound; Mustache and cross-language travel. This dissolves the "compiled ports
    are awkward to copy" concern — Mustache and cross-language give clean, owned,
    portable options alongside extend-the-class.
@@ -114,7 +114,7 @@ Decision 2 left the copy to "plain file operations" by a human or Claude, with
 command: `meta eject <name>` copies ANY reference template, from any package, at any
 time after `init`, reporting the import line to wire and the packages the copied file
 needs. The doctrine is unchanged — the adopter owns the file, and `meta gen` runs their
-copy — but "adding a starting point is adding a documented file" now also means it is
+copy — but "adding a template is adding a documented file" now also means it is
 reachable by name.
 
 ### Amendment 2 (2026-09-13) — codegen is OPT-IN; `init` scaffolds an empty selection
@@ -142,7 +142,7 @@ is an LLM in the repo, which is well able to make the call given a truthful cata
 is badly served by a default that pre-empts it.
 
 **Everything else in ADR-0034 stands** — the engine/template split, scaffold-and-own
-ownership, no interview, and "adding a starting point is adding a documented file,
+ownership, no interview, and "adding a template is adding a documented file,
 never a CLI change".
 
 **Compatibility.** This is a PATCH. No existing project changes by one byte: an adopter
@@ -159,12 +159,12 @@ Design: `docs/superpowers/specs/2026-09-12-opt-in-codegen-and-generator-catalog-
 **Clarifies:** Decision 4 ("conformance gates the reference templates … they must be
 correct starting points") and the positioning that lists codegen as the first capability.
 
-**Ruling.** MetaObjects has two layers, and only the first is a product promise.
+**Ruling.** MetaObjects has two layers, and only the first is a product promise. *(Amendment 11 changes what the first layer contains, lifts the REST freeze below and replaces the parity ruling below with capability parity.)*
 
 | Layer | What it is | Promise |
 |---|---|---|
 | **Core** | The metamodel, loader, canonical format and registry; runtime metadata access (the `ObjectManager` and its drivers, not the HTTP adapters that mount it); schema migrations (`meta migrate`); the drift gates (`meta verify`); prompt render and the reply parser | Conformance-gated, identical behaviour in every port that ships it, covered by `docs/compatibility-policy.md`. A defect here is a MetaObjects bug. |
-| **Helpers** | Every generator that writes application code into the adopter's repo: routes, controllers, ORM wiring, DTOs, forms, grids, hooks, filter allowlists | Reference starting points. They compile and pass the reference fixtures; the adopter copies them with `meta eject` and owns the copy. A defect in the reference is fixed there, and an adopter's copy is theirs to fix. |
+| **Helpers** | Every generator that writes application code into the adopter's repo: routes, controllers, ORM wiring, DTOs, forms, grids, hooks, filter allowlists | Reference helpers. They compile and pass the reference fixtures; the adopter runs them as shipped or copies them with `meta eject` and owns the copy. A defect in the reference is fixed there, and an adopter's copy is theirs to fix. |
 
 The line is a mechanical test: **what the tool guarantees is core; what it writes into
 your repo is a helper.** Migrations are written into the repo too, but `meta migrate`
@@ -280,8 +280,8 @@ eject command (`docs/features/own-your-codegen.md`, "Per port").
 **Ruling (maintainer).** MetaObjects is a solid core — the typed model, loader, registry,
 `verify`, `migrate`, prompt render and reply extract — and on that core **adopters build
 their own code generators** for whatever they need: OpenAPI, JSON Schema, Zod, DTOs,
-clients, docs, anything. The reference generators are examples and starting points to
-eject and modify, not the product. Skills, docs and agent context PUSH people and their
+clients, docs, anything. The reference generators emit real code you can run as shipped, and are
+examples to eject and modify, not the product. Skills, docs and agent context PUSH people and their
 coding agents to write a generator whenever they need an output nothing ships, and make
 that feel easy.
 
@@ -1227,3 +1227,43 @@ maintainer decided the emitter is the next feature (FR-022).
 stay as worked examples of writing one, and say that a stock generator now exists.
 
 **Packaged output.** Two new generators. No existing generator emits different bytes.
+
+### Amendment 11 (2026-11-19) — the core is contracts and conformance kits, and generated code is real code
+
+**Rulings (maintainer, 2026-11-12 and 2026-11-13).** Four points of Amendment 3 are replaced, and
+one wording rule is added. Nothing here changes the engine, the `Generator` interface, the
+scaffold-and-own contract or the compatibility policy.
+
+1. **The core is the contracts and the conformance kits.** Store-specific code (SQL writers,
+   introspectors, drivers, mappings) is a **supported helper**, not core. The first layer of
+   Amendment 3's table now reads: the metamodel, loader, canonical format and registry; the
+   store-neutral contracts (the expected schema and the guarded update of ADR-0066 §6); the drift
+   gates (`meta verify`); prompt render and the reply parser; and the conformance kits that hold
+   every port to them. The `ObjectManager` drivers, the `meta migrate` writer and the HTTP adapters
+   are supported helpers. A helper still compiles, passes its reference fixtures and is fixed in
+   the reference when it is wrong; it is not named in the compatibility promise.
+2. **The REST freeze is lifted.** The ruling that generated REST templates outside TypeScript
+   are frozen no longer stands. New REST features go to every port.
+3. **Parity is capability parity.** The ruling that cross-port parity is not required of helpers no
+   longer stands. Every port gets every capability and every refusal of a change unless a ruling or
+   an ADR deliberately makes it differ. Parity is capability, not identical output: each port
+   still writes its own language's idiom (ADR-0019 Amendment 2), and a difference that is kept is
+   recorded in `docs/features/language-differences.md`.
+4. **Generated code is real code.** A generator's output is code an adopter ships. They run it as
+   shipped, extend it through the hooks a generator provides, or copy the generator with
+   `meta eject` and own the copy. Documents about generated code do not call it a starter, a
+   starting point or throwaway. (The older word "starting point" for a reference template survives
+   only where it names a template an adopter copies to write their own generator.)
+
+**Versions of helpers.** Each helper package carries its own version, and its starting major
+reflects its readiness: a stable, proven helper starts at 1.x and a new or unstable one at 0.x
+(see ADR-0035 Amendment 6). Helpers graduate to 1.x by readiness.
+
+**Stability labels, not a promise.** New code goes in helper packages at 0.x. A contract-level
+addition (new vocabulary) carries an `experimental` label until it is proven in use. The labels are
+facts, listed in `docs/features/stability-labels.md`. MetaObjects publishes no new support window or
+promise with them; `docs/compatibility-policy.md` stands as written.
+
+**What does not change.** Amendment 3's mechanical test, restated: what the tool guarantees as a
+contract is core; what it writes into your repo or a store is a helper. The engine, the layout
+and the eject contract stay covered by the compatibility policy.

@@ -20,6 +20,7 @@ fix and disclosure timeline.
 
 ## Supported versions
 
-MetaObjects is pre-1.0 and ships from the `main` line. Security fixes target the latest
-released version of each language package (npm, NuGet, Maven Central, PyPI). Please
-verify against the latest release before reporting.
+MetaObjects is at 1.x and ships from the `main` line. Security fixes target the latest
+released version of each language package (npm, NuGet, Maven Central, PyPI); a fix that has to
+reach an earlier minor is made on a `release/<major>.<minor>` branch. No support window or fix
+time is promised beyond that. Please verify against the latest release before reporting.

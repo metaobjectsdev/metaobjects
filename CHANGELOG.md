@@ -10,255 +10,14 @@ here.**
 
 ## [Unreleased]
 
-**New metamodel vocabulary, experimental: `api.*`, `operation.*`, `binding.*` and `transition.*`
-(ADR-0066).** It is additive: nothing that loaded before stops loading. This vocabulary ships in
-1.3.0 with `metamodelVersion` 1.3 if it merges before the 1.3.0 publish; if it lands after, the
-next release moves `metamodelVersion`.
-
-### Added
-
-- **Business rules: operations, permission names and lifecycles (ADR-0066). Experimental:** the
-  shape may change in a MINOR, including removals and renames, until generated services run on
-  it in an adopter estate (`docs/compatibility-policy.md`). The names ADR-0030
-  reserved are registered, with a lifecycle vocabulary, in all five ports:
-  - `api.operational` holds `operation.command` and `operation.query`, with `@inputRef`,
-    `@outputRef`, `@many` (query), `@objectRef`, `@transitions` and `@errors` (command),
-    `@permission` and `@public`. An optional `binding.rest` (`@method`, `@path`) overrides the
-    derived HTTP binding.
-  - `transition.action` is a child of a `field.enum` on an entity, with `@from`, `@to`,
-    `@condition` (the validators' grammar), `@permission` and `@public`. An enum with a
-    transition is a lifecycle: its states, initial state (`@default`), terminal states and each
-    unclaimed transition's command are derived. `transition.timed` is reserved. A lifecycle
-    belongs to the entity that declares the field and to the entities that extend it, never to
-    one whose field merely `extends` that field. A lifecycle on an entity with no source loads
-    and is inert, so a library's core layer can declare one; the writable-source check applies
-    once a source is added.
-  - Permission names include their owner. A declared `@permission` is a dotted identifier path
-    (`purchasing.approve`; a package prefix may use `::`). When it is absent, an operation asks
-    about `<package>.<operation>` and a transition's derived command about
-    `<package>.<Entity>.<transition>`, so two entities' `cancel` transitions never share a
-    grant. Operation names are unique across the APIs of a package, except one operation
-    declared identically in two APIs, such as a `v1` beside a `v2`.
-  - The loader refuses a malformed operation or lifecycle with eleven new codes, each pinned by a
-    `fixtures/conformance/error-rules-*` case: `ERR_TRANSITION_UNKNOWN_STATE`,
-    `ERR_TRANSITION_NOT_ON_ENTITY`, `ERR_LIFECYCLE_NO_INITIAL`, `ERR_LIFECYCLE_REDECLARED`,
-    `ERR_TRANSITION_NAME_COLLISION`, `ERR_OPERATION_SHAPE`, `ERR_OPERATION_TARGET_UNRESOLVED`,
-    `ERR_OPERATION_TARGET_MISMATCH`, `ERR_OPERATION_UNKNOWN_TRANSITION`,
-    `ERR_PERMISSION_PUBLIC_CONFLICT` and `ERR_BINDING_PATH_MISMATCH`. Names are compared without
-    case, an `@errors` code may not be one the route answers itself, two declared bindings
-    may not share a method and path, and a `@permission` must be a dotted identifier path.
-  - `verify` in every port gains a rules gate: unreachable states, an initial state that is
-    terminal, transitions that can never be made, a transition `@permission` no command reads,
-    and permission names the model derived. It is pinned by the new
-    `fixtures/rules-check-conformance/` corpus.
-  - New settings in `.metaobjects/config.json`: `rules.permissions.names`,
-    `rules.lifecycle.commands`, `rules.lifecycle.create` and `verify.lifecycle.unreachable`.
-    Absent, each behaves as before. `rules.lifecycle.create` is read and validated and has no
-    effect yet: the service shells that act on it are later work.
-  - A requirement's `@implementedBy` may name an operation (`Purchasing.decide`) or a
-    transition (`PurchaseRequest.status.submit`).
-  - The Rust preview port (ADR-0065) registers the same vocabulary and runs the same loader
-    rules with the same messages, so it still passes `registry-conformance` byte for byte and
-    the whole metamodel corpus (574 of 574, ledger empty). It reads and validates the new
-    settings. It has no `verify`, so the rules gate does not run there.
-
-  Nothing is generated from the vocabulary yet: the enforcing service shells are later work
-  (ADR-0067), and `fixtures/codegen-noop/rules/` holds every generator to byte-identical output.
-  A model that declares none of it sees no change. See `docs/features/business-rules.md`.
-  ADR-0067 records the layering and service-seam design, and amends ADR-0045.
-- **Rust port foundation, in preview (ADR-0065).** `server/rust/` is a Cargo workspace with a
-  pinned toolchain and one crate, `metaobjects`: the node model, the type registry and the
-  built-in providers (strict, sealed after bootstrap, the same `ERR_*` codes), and a JSON loader
-  that reads packages, children, subtypes, attributes, `extends` and references, with the
-  canonical serializer. The loader freezes the tree when it finishes, and a frozen tree memoizes
-  its resolved reads (effective children, attrs and array-ness) for many concurrent readers, as
-  the other ports do. It passes `registry-conformance` byte for byte and all 526 of the
-  metamodel fixtures, and runs every validation pass the TypeScript loader runs, in the same order
-  (the conformance ledger is empty and may only shrink).
-  While the port is in preview, a new fixture that fails in Rust and is not on the ledger prints a
-  warning and does not fail the lane; a fixture that passed and regresses still fails it, because
-  the ledger records how many fixtures must pass. Nothing is published. Every load records how
-  long each phase and each validation pass took (`LoadResult::timings`; the `validate` module's
-  ordered pass list holds the ported passes in reference order), and `load_bench` prints the
-  per-phase and per-pass medians, with `--write-baseline` / `--baseline` to record and compare a
-  run — a baseline is a record to read, never a threshold, and the committed 20x baseline is a
-  machine-local reference. A `rust` lane runs `cargo fmt --check`, clippy, the tests, and the
-  `load_bench` and `gen_bench` tables (record only, printed without a baseline delta — a
-  cross-machine delta measures the machine, not the change) in `scripts/ci-local.sh --only rust`,
-  `pr-ci` and `local-ci`, selected by changes under `server/rust/`.
-- **Rust port reads a real project, in preview.** The loader now reads YAML authoring files
-  (ADR-0006: bare type keys, scalar-body names, the `[]` suffix, sigil-free attributes, anchors and
-  aliases, the `ERR_YAML_COERCION` guard, and a line and column on every error from a YAML file),
-  and the crate resolves a project the way the other ports do: the `.metaobjects/config.json`
-  reader, the four source kinds, directory discovery (symlinks followed, `_pending` skipped), the
-  `iam` and `ai` library sources embedded in the crate, and the naming strategies, pluralizers and
-  collection-name collision check. It passes `yaml-conformance` 18 of 19, and the
-  `source-resolution-conformance` and `naming-conformance` corpora in full. Nothing is published.
-- **Rust port generates code, in preview: `cargo meta gen` and the `entity` generator.** Two new
-  workspace crates. `metaobjects-codegen` holds the run engine and the generator; `metaobjects-cli`
-  builds the binary `cargo-meta`, so cargo's external-subcommand rule makes `cargo meta gen` work
-  (`cargo-meta gen` too). The run engine follows ADR-0064 and keeps the other ports' manifest
-  format: it writes a generated file only when its bytes changed, saves
-  `.metaobjects/.gen-state/.hashes.json` once per run and only when a record changed, and skips the
-  whole run (nothing rendered, nothing written, not even the manifest) when the model hash tree, the
-  project config, the engine's built code, each generator's identity and the flags match the stored
-  key in `.fingerprint-rust.json` and every recorded output is still as the last run left it. The
-  shared `fixtures/codegen-skip-conformance` corpus runs against it: every case the port can meet
-  runs, and the ones it cannot (templates, a kept hand edit) are named with the reason. The `entity` generator writes one crate per metadata package: serde structs for
-  `object.entity` and `object.value` (inherited fields included, optional fields as `Option`, arrays
-  as `Vec`, a map as `BTreeMap`), enums for `field.enum` (shared enums once, in their declaration's
-  package) with the member symbols as the wire form, `Box` only where a by-value cycle needs it, and
-  a path dependency for each cross-package reference. The output is already rustfmt-clean under the
-  `rustfmt.toml` written beside it, so no formatter runs in the hot path. Tests: a golden test of a
-  two-package model's text, a test that generates that model and the fitness model and runs `cargo
-  check`, `rustfmt --check` and a serde round trip on the crates, and the run-engine, skip-corpus
-  and CLI suites. `gen_bench` prints time per stage (load, plan, skip, render, write) for a first
-  run, an unchanged run, a one-file change and a forced run on the 20x fitness project, record only,
-  and the `rust` lane prints it. Where Rust differs from the other ports, on purpose: there is no
-  three-way merge, so a generated file edited by hand (or an existing file nobody recorded) is
-  refused and the run exits 1 after finishing the other files, as Python does; the output directory
-  must be a sub-directory of the project (the project root itself is refused), so every manifest key
-  is project-relative; a named run (`cargo meta gen Order`) never skips and regenerates every file
-  of the crates that contain the named objects, plus the transitive closure of the crates those
-  depend on, rather than merging. Navigation across relationships is not emitted. Nothing is
-  published.
-
-- **Rust port's command line, in preview: `cargo meta init`, `verify --codegen` and `eject`, and
-  the `client` and `commands` generators (ADR-0065 Amendment 1).** A Rust developer can now run the
-  whole codegen loop on a JSON or YAML model. `init` scaffolds `.metaobjects/config.json`, the
-  ignore rules that keep `.hashes.json` committed and a first metadata file, writing only what is
-  missing. `gen` now removes a generated file nothing emits any more (an edited one is refused by
-  name) and prints what it created, updated and removed and which crates to re-check. `verify
-  --codegen` renders in memory, compares with disk, writes nothing and exits 1 on drift; locally it
-  may answer from the stored skip key, and `--full` or a set `CI` always renders. `--db`,
-  `--templates` and `--deps` exit 2 and say where that check lives. Exit codes are the shared ones
-  (0, 1, 2). `eject <generator>` writes a `codegen/` crate the project owns (the copied generator
-  and the generator list); `gen` and `verify` then build and run it, `gen --list` shows how each
-  copy compares with the shipped source, and `eject --undo` takes back copies still identical.
-  There is no plugin contract: the engine's Rust API has no stability promise in preview.
-  The `entity` generator now also writes `<Name>Create` and `<Name>Patch` for every entity and a
-  `validate()` on value objects and both bodies (lengths, bounds, item counts, patterns, text
-  forms, nested value objects and the rules across members), exact decimals and signed durations
-  in a generated `meta_support` crate, and honors `wire.nullMembers`. The new `client` generator
-  writes a typed `reqwest` client per served entity from the REST contract: `list`, `page`, `get`,
-  `create`, `update`, `delete` and many-to-many traversal, with a query type that has one method
-  per `@filterable` field and operator and an enum of the `@sortable` fields, so a filter or sort
-  the server would refuse does not compile. The new `commands` generator writes `clap` command
-  groups over that client as a library (a `Subcommand` and an async `run`, no `main`), with
-  bodies checked by `validate()` before anything is sent. **`commands` is Rust-only by decision**,
-  recorded with `client` in the shared generator registry with `rust` as the only port. Generated
-  crates import nothing from MetaObjects. Gates: the port now runs `validation-conformance`
-  through the generated `validate()`, the `decimal-wire` and `duration-wire` vectors, the `core`
-  cases of `writer-conformance`, both columns of the skip corpus, and the generator registry with
-  the eject contract; a compile gate builds and format-checks every generator's output for two
-  models and drives the generated client and commands over HTTP against a local stub, from a
-  committed lockfile; and a scale gate holds twenty copies of the fitness model to linear growth
-  and a size budget. Not there yet: `fmt`, a template gate, server-side generators, and clients
-  for projections and reports. Schema migrations and database checks stay with the Node `meta`
-  tool for every server language (ADR-0015). Nothing is published.
-
-- **Cross-port stage benchmark and Rust port documentation.** `scripts/bench-load/stages.py` runs
-  every port (TypeScript, Python, C#, Java, Kotlin, Rust) over the same model, stage by stage: load
-  and validate, a no-change generation run, a full generation and a one-entity-edit regeneration,
-  each as the median of N runs with peak memory, into one `report.json` and one Markdown table. It
-  never gates on a number. The Rust generation stages read "not available yet" until a `cargo-meta`
-  binary is built or installed and are picked up on their own once it is. `--project <path> --out <dir>` runs it on a
-  private project, copies the metadata, and refuses an output inside the repository. `load_bench`
-  gained `--dir` and `--json`, `gen-model.py` gained `--unique-names`, and Java has a warm-load
-  driver. New page `docs/ports/rust.md` says what the preview Rust port does and does not do, how
-  to build and test it, and the preview scope of `cargo meta`; the crates.io name `cargo-meta` is
-  held by an unrelated crate, so the CLI crate will publish under another name that installs a
-  `cargo-meta` binary (a plan, not a promise). Nothing is published.
-- **Example and write-up: metadata-driven grids, forms and routes in TypeScript.**
-  `examples/dynamic-grid/` serves and renders every entity of a model from the loaded
-  metadata: one grid component and one form component that take an entity name and read the
-  rest from `GET /_meta`, and one Fastify mount over `ObjectManager`, on SQLite. The only
-  generated code is the types and name constants its hand-written business rules use.
-  Editing the metadata changes the grid, the form and the API with no regeneration.
-  `docs/features/metadata-driven-runtime.md` measures it against the reference generators
-  for the same model (1,826 hand-written lines paid once, against 3,629 generated lines
-  that grow by about 726 an entity), gives the per-row cost of the metadata lookups, and
-  lists what the approach cannot do. It is an example on the TypeScript port, not a package.
-
-### Changed
-
-- **Release policy: vocabulary is versioned by feature, not by kind (ADR-0035 Amendment 5).** Adding
-  to or augmenting an existing feature (a type, subtype, attribute, enum value or view vocabulary,
-  additive and loading every existing document with the same meaning) is a PATCH; a whole new
-  feature is a MINOR; a break stays a MAJOR. `metamodelVersion` will gain a patch component moved by
-  the same decision (accepted, not yet implemented: it stays `<major>.<minor>` until every port
-  reads three components), and any move of it still publishes all four registries. Policy text only:
-  no version, vocabulary or `metamodelVersion` changes here. See `docs/RELEASING.md`, "The
-  vocabulary rule".
-
-### Fixed
-
-- **A credential is never filterable or sortable, in every port.** A field that declares a
-  `view.password` and that a model also marked `@filterable` or `@sortable` was on the generated
-  filter and sort allowlists, so a client could learn its value by probing (`filter[pinHash][eq]=...`,
-  a `like` prefix one character at a time, or the order of a `sort`). The allowlists are now built
-  without a credential (in every port a column a sibling subtype of the same single table marks as one
-  counts too, whichever subtype is declared first, as it does for hiding the column from responses),
-  so a request that names it is refused like any other field they do not hold (`400` `invalid_filter_field`
-  or `invalid_sort`, naming the field). The client filter type, the OpenAPI parameters and the agent UI
-  page leave it out too. In Java, Kotlin and C#, whose sort allowlist lists every scalar field and never read `@sortable`, a
-  credential was sortable with no mark at all, so the generated routes change for any model with a
-  credential: regenerate. Your own code is unaffected. Gated by `filter-sort-refuses-credential` in the `secret-fields/`
-  sub-corpus of the api-contract conformance corpus, in the generated lane of all five ports, and by
-  `tph-sibling-credential` in `secret-fields/tph/` for the shared-column case.
-
-- **A numeric key is read only from canonical decimal text, in the TypeScript, Java and Python
-  ObjectManagers.** A path parameter or ref string for an integer, long, decimal, double or float
-  primary key went through the language's own number parser, which reads `0x1`, `1e0`, `0b1`, `+1`,
-  ` 1 ` and the empty string as numbers (and Java's and Python's also `1_0`, a Unicode digit, `NaN`):
-  text that is no key named row 1 (or row 0), and two different texts named one row. An integer key
-  is now an optional `-` and ASCII digits with no leading zero; a decimal key may add `.` and at
-  least one digit; nothing else is a key. TypeScript refuses it with `InvalidKeyError` (a
-  `ValidationError`), which the mounts answer `400 {"error":"invalid_id"}` like an id the column
-  cannot hold; the drizzle-fastify and hono mounts and the deprecated `parseId` read ids by the
-  same rule, and it also refuses an integer key that is not a safe integer (beyond 2^53) and a decimal
-  key that is not finite: a `field.long` key above 2^53 used to round silently to another row, where
-  Java accepts an integer key up to `Long.MAX_VALUE`. Java refuses a ref id with `IllegalArgumentException` and Python a key argument with
-  `ValueError`, the errors each already raised for an unusable argument. A string or uuid key is
-  untouched (`0123` stays `0123`). If you pass a key as text to `findById`, `update`, `delete` or
-  `load`, pass its decimal spelling. The read-only mount of a raw-SQL view, which has no column type to
-  consult, answers `400 invalid_id` for text that reads as a number without being its canonical spelling
-  (`01`, `1e0`), because SQLite would convert a quoted `'01'` back to row 1. Not changed: the numeric path parameters of the generated Spring
-  and FastAPI routes, which those frameworks parse before the ObjectManager sees them.
-
-- **Fix, TypeScript: `DELETE` on a missing row answers `404`, not `500`, from the
-  ObjectManager route mount.** `mountCrudRoutes` and `mountDeleteRoute` in
-  `@metaobjectsdev/runtime-ts/fastify` called `ObjectManager.delete` in its default mode, which
-  throws for a row that is not there, so the request ended as `500 {"error":"internal"}`. They
-  now answer `404 {"error":"not_found"}`, as the update route and the generated routes do.
-- **Fix, TypeScript: `findMany` with an `offset` and no `limit` works on SQLite and MySQL.**
-  The Kysely and Drizzle drivers in `@metaobjectsdev/runtime-ts` wrote `OFFSET` with no
-  `LIMIT`, which is a syntax error on both databases, so the call threw. An offset alone
-  now carries a limit no result can reach, and skips rows on every dialect.
-- **Fix, Java, Kotlin and Python: `<Entity>Names` has no entry for a derived field with no
-  column.** The TypeScript and C# names generators already left out a derived (`origin.*`) field
-  of an entity read from its table; Java, Kotlin and Python still emitted a column constant
-  naming a column that does not exist. They now match: a projection's or write-through entity's
-  derived field keeps its entry, an entity's does not.
-- **Fix, TypeScript: `meta verify --db` accepts the function calls Postgres accepts.** The
-  declared `origin.function` signature check compared parameter types by exact name, so an
-  `integer` argument for a `bigint` or `numeric` parameter, a polymorphic `any*` parameter and a
-  variadic function were all reported as mismatches. It now allows integer to bigint to numeric
-  widening and the float widenings onto real and double precision, treats `any*` parameters as
-  wildcards and does not check a variadic function's trailing arity (its required fixed
-  parameters still are). A genuine mismatch (a narrowing,
-  an unrelated type, a wrong return type) still fails.
-- **Fix, TypeScript and C#: the widened-extender warning covers every extender whose base
-  changed.** An extender with no identity of its own keeps its super's identity anchor (rc.21).
-  The load warned only for a TPH base read through a subtype column; it now warns whenever the
-  base differs from the pre-rc.21 derivation, naming both entities and the
-  `identity.primary { extends: ... }` that keeps the old one.
-- **Loading a large model no longer slows down quadratically (TypeScript, Python, C#).** Reference resolution looked each name up by scanning every top-level object, so load time grew with the square of the model; each root now keeps a name index, invalidated whenever its top-level nodes change, with the same first-match-wins result. A 20x-size model loads about 5x faster in TypeScript and 1.5x to 2x faster in Python and C#; loaded trees are byte-identical.
-
-## [1.3.0] — 2026-11-17
+## [1.3.0] — unreleased
 
 
 _npm `1.3.0` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+
+**New metamodel vocabulary, experimental: `api.*`, `operation.*`, `binding.*` and `transition.*`
+(ADR-0066).** It is additive: nothing that loaded before stops loading. This vocabulary ships in
+1.3.0, under `metamodelVersion` 1.3.
 
 **`metamodelVersion` moves to `1.3`.** This release adds vocabulary (`field.duration`,
 `validator.exactlyOne`, `@constraintName`, `@condition`, `@maxLength` on `field.enum`,
@@ -455,6 +214,169 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   are unchanged and out of scope here: a PATCH or PUT key is still read by the field name.
 
 ### Added
+
+- **Business rules: operations, permission names and lifecycles (ADR-0066). Experimental:** the
+  shape may change in a MINOR, including removals and renames, until generated services run on
+  it in an adopter estate (`docs/compatibility-policy.md`). The names ADR-0030
+  reserved are registered, with a lifecycle vocabulary, in all five ports:
+  - `api.operational` holds `operation.command` and `operation.query`, with `@inputRef`,
+    `@outputRef`, `@many` (query), `@objectRef`, `@transitions` and `@errors` (command),
+    `@permission` and `@public`. An optional `binding.rest` (`@method`, `@path`) overrides the
+    derived HTTP binding.
+  - `transition.action` is a child of a `field.enum` on an entity, with `@from`, `@to`,
+    `@condition` (the validators' grammar), `@permission` and `@public`. An enum with a
+    transition is a lifecycle: its states, initial state (`@default`), terminal states and each
+    unclaimed transition's command are derived. `transition.timed` is reserved. A lifecycle
+    belongs to the entity that declares the field and to the entities that extend it, never to
+    one whose field merely `extends` that field. A lifecycle on an entity with no source loads
+    and is inert, so a library's core layer can declare one; the writable-source check applies
+    once a source is added.
+  - Permission names include their owner. A declared `@permission` is a dotted identifier path
+    (`purchasing.approve`; a package prefix may use `::`). When it is absent, an operation asks
+    about `<package>.<operation>` and a transition's derived command about
+    `<package>.<Entity>.<transition>`, so two entities' `cancel` transitions never share a
+    grant. Operation names are unique across the APIs of a package, except one operation
+    declared identically in two APIs, such as a `v1` beside a `v2`.
+  - The loader refuses a malformed operation or lifecycle with eleven new codes, each pinned by a
+    `fixtures/conformance/error-rules-*` case: `ERR_TRANSITION_UNKNOWN_STATE`,
+    `ERR_TRANSITION_NOT_ON_ENTITY`, `ERR_LIFECYCLE_NO_INITIAL`, `ERR_LIFECYCLE_REDECLARED`,
+    `ERR_TRANSITION_NAME_COLLISION`, `ERR_OPERATION_SHAPE`, `ERR_OPERATION_TARGET_UNRESOLVED`,
+    `ERR_OPERATION_TARGET_MISMATCH`, `ERR_OPERATION_UNKNOWN_TRANSITION`,
+    `ERR_PERMISSION_PUBLIC_CONFLICT` and `ERR_BINDING_PATH_MISMATCH`. Names are compared without
+    case, an `@errors` code may not be one the route answers itself, two declared bindings
+    may not share a method and path, and a `@permission` must be a dotted identifier path.
+  - `verify` in every port gains a rules gate: unreachable states, an initial state that is
+    terminal, transitions that can never be made, a transition `@permission` no command reads,
+    and permission names the model derived. It is pinned by the new
+    `fixtures/rules-check-conformance/` corpus.
+  - New settings in `.metaobjects/config.json`: `rules.permissions.names`,
+    `rules.lifecycle.commands`, `rules.lifecycle.create` and `verify.lifecycle.unreachable`.
+    Absent, each behaves as before. `rules.lifecycle.create` is read and validated and has no
+    effect yet: the service shells that act on it are later work.
+  - A requirement's `@implementedBy` may name an operation (`Purchasing.decide`) or a
+    transition (`PurchaseRequest.status.submit`).
+  - The Rust preview port (ADR-0065) registers the same vocabulary and runs the same loader
+    rules with the same messages, so it still passes `registry-conformance` byte for byte and
+    the whole metamodel corpus (574 of 574, ledger empty). It reads and validates the new
+    settings. It has no `verify`, so the rules gate does not run there.
+
+  Nothing is generated from the vocabulary yet: the enforcing service shells are later work
+  (ADR-0067), and `fixtures/codegen-noop/rules/` holds every generator to byte-identical output.
+  A model that declares none of it sees no change. See `docs/features/business-rules.md`.
+  ADR-0067 records the layering and service-seam design, and amends ADR-0045.
+- **Rust port foundation, in preview (ADR-0065).** `server/rust/` is a Cargo workspace with a
+  pinned toolchain and one crate, `metaobjects`: the node model, the type registry and the
+  built-in providers (strict, sealed after bootstrap, the same `ERR_*` codes), and a JSON loader
+  that reads packages, children, subtypes, attributes, `extends` and references, with the
+  canonical serializer. The loader freezes the tree when it finishes, and a frozen tree memoizes
+  its resolved reads (effective children, attrs and array-ness) for many concurrent readers, as
+  the other ports do. It passes `registry-conformance` byte for byte and all 526 of the
+  metamodel fixtures, and runs every validation pass the TypeScript loader runs, in the same order
+  (the conformance ledger is empty and may only shrink).
+  While the port is in preview, a new fixture that fails in Rust and is not on the ledger prints a
+  warning and does not fail the lane; a fixture that passed and regresses still fails it, because
+  the ledger records how many fixtures must pass. Nothing is published. Every load records how
+  long each phase and each validation pass took (`LoadResult::timings`; the `validate` module's
+  ordered pass list holds the ported passes in reference order), and `load_bench` prints the
+  per-phase and per-pass medians, with `--write-baseline` / `--baseline` to record and compare a
+  run — a baseline is a record to read, never a threshold, and the committed 20x baseline is a
+  machine-local reference. A `rust` lane runs `cargo fmt --check`, clippy, the tests, and the
+  `load_bench` and `gen_bench` tables (record only, printed without a baseline delta — a
+  cross-machine delta measures the machine, not the change) in `scripts/ci-local.sh --only rust`,
+  `pr-ci` and `local-ci`, selected by changes under `server/rust/`.
+- **Rust port reads a real project, in preview.** The loader now reads YAML authoring files
+  (ADR-0006: bare type keys, scalar-body names, the `[]` suffix, sigil-free attributes, anchors and
+  aliases, the `ERR_YAML_COERCION` guard, and a line and column on every error from a YAML file),
+  and the crate resolves a project the way the other ports do: the `.metaobjects/config.json`
+  reader, the four source kinds, directory discovery (symlinks followed, `_pending` skipped), the
+  `iam` and `ai` library sources embedded in the crate, and the naming strategies, pluralizers and
+  collection-name collision check. It passes `yaml-conformance` 18 of 19, and the
+  `source-resolution-conformance` and `naming-conformance` corpora in full. Nothing is published.
+- **Rust port generates code, in preview: `cargo meta gen` and the `entity` generator.** Two new
+  workspace crates. `metaobjects-codegen` holds the run engine and the generator; `metaobjects-cli`
+  builds the binary `cargo-meta`, so cargo's external-subcommand rule makes `cargo meta gen` work
+  (`cargo-meta gen` too). The run engine follows ADR-0064 and keeps the other ports' manifest
+  format: it writes a generated file only when its bytes changed, saves
+  `.metaobjects/.gen-state/.hashes.json` once per run and only when a record changed, and skips the
+  whole run (nothing rendered, nothing written, not even the manifest) when the model hash tree, the
+  project config, the engine's built code, each generator's identity and the flags match the stored
+  key in `.fingerprint-rust.json` and every recorded output is still as the last run left it. The
+  shared `fixtures/codegen-skip-conformance` corpus runs against it: every case the port can meet
+  runs, and the ones it cannot (templates, a kept hand edit) are named with the reason. The `entity` generator writes one crate per metadata package: serde structs for
+  `object.entity` and `object.value` (inherited fields included, optional fields as `Option`, arrays
+  as `Vec`, a map as `BTreeMap`), enums for `field.enum` (shared enums once, in their declaration's
+  package) with the member symbols as the wire form, `Box` only where a by-value cycle needs it, and
+  a path dependency for each cross-package reference. The output is already rustfmt-clean under the
+  `rustfmt.toml` written beside it, so no formatter runs in the hot path. Tests: a golden test of a
+  two-package model's text, a test that generates that model and the fitness model and runs `cargo
+  check`, `rustfmt --check` and a serde round trip on the crates, and the run-engine, skip-corpus
+  and CLI suites. `gen_bench` prints time per stage (load, plan, skip, render, write) for a first
+  run, an unchanged run, a one-file change and a forced run on the 20x fitness project, record only,
+  and the `rust` lane prints it. Where Rust differs from the other ports, on purpose: there is no
+  three-way merge, so a generated file edited by hand (or an existing file nobody recorded) is
+  refused and the run exits 1 after finishing the other files, as Python does; the output directory
+  must be a sub-directory of the project (the project root itself is refused), so every manifest key
+  is project-relative; a named run (`cargo meta gen Order`) never skips and regenerates every file
+  of the crates that contain the named objects, plus the transitive closure of the crates those
+  depend on, rather than merging. Navigation across relationships is not emitted. Nothing is
+  published.
+
+- **Rust port's command line, in preview: `cargo meta init`, `verify --codegen` and `eject`, and
+  the `client` and `commands` generators (ADR-0065 Amendment 1).** A Rust developer can now run the
+  whole codegen loop on a JSON or YAML model. `init` scaffolds `.metaobjects/config.json`, the
+  ignore rules that keep `.hashes.json` committed and a first metadata file, writing only what is
+  missing. `gen` now removes a generated file nothing emits any more (an edited one is refused by
+  name) and prints what it created, updated and removed and which crates to re-check. `verify
+  --codegen` renders in memory, compares with disk, writes nothing and exits 1 on drift; locally it
+  may answer from the stored skip key, and `--full` or a set `CI` always renders. `--db`,
+  `--templates` and `--deps` exit 2 and say where that check lives. Exit codes are the shared ones
+  (0, 1, 2). `eject <generator>` writes a `codegen/` crate the project owns (the copied generator
+  and the generator list); `gen` and `verify` then build and run it, `gen --list` shows how each
+  copy compares with the shipped source, and `eject --undo` takes back copies still identical.
+  There is no plugin contract: the engine's Rust API has no stability promise in preview.
+  The `entity` generator now also writes `<Name>Create` and `<Name>Patch` for every entity and a
+  `validate()` on value objects and both bodies (lengths, bounds, item counts, patterns, text
+  forms, nested value objects and the rules across members), exact decimals and signed durations
+  in a generated `meta_support` crate, and honors `wire.nullMembers`. The new `client` generator
+  writes a typed `reqwest` client per served entity from the REST contract: `list`, `page`, `get`,
+  `create`, `update`, `delete` and many-to-many traversal, with a query type that has one method
+  per `@filterable` field and operator and an enum of the `@sortable` fields, so a filter or sort
+  the server would refuse does not compile. The new `commands` generator writes `clap` command
+  groups over that client as a library (a `Subcommand` and an async `run`, no `main`), with
+  bodies checked by `validate()` before anything is sent. **`commands` is Rust-only by decision**,
+  recorded with `client` in the shared generator registry with `rust` as the only port. Generated
+  crates import nothing from MetaObjects. Gates: the port now runs `validation-conformance`
+  through the generated `validate()`, the `decimal-wire` and `duration-wire` vectors, the `core`
+  cases of `writer-conformance`, both columns of the skip corpus, and the generator registry with
+  the eject contract; a compile gate builds and format-checks every generator's output for two
+  models and drives the generated client and commands over HTTP against a local stub, from a
+  committed lockfile; and a scale gate holds twenty copies of the fitness model to linear growth
+  and a size budget. Not there yet: `fmt`, a template gate, server-side generators, and clients
+  for projections and reports. Schema migrations and database checks stay with the Node `meta`
+  tool for every server language (ADR-0015). Nothing is published.
+
+- **Cross-port stage benchmark and Rust port documentation.** `scripts/bench-load/stages.py` runs
+  every port (TypeScript, Python, C#, Java, Kotlin, Rust) over the same model, stage by stage: load
+  and validate, a no-change generation run, a full generation and a one-entity-edit regeneration,
+  each as the median of N runs with peak memory, into one `report.json` and one Markdown table. It
+  never gates on a number. The Rust generation stages read "not available yet" until a `cargo-meta`
+  binary is built or installed and are picked up on their own once it is. `--project <path> --out <dir>` runs it on a
+  private project, copies the metadata, and refuses an output inside the repository. `load_bench`
+  gained `--dir` and `--json`, `gen-model.py` gained `--unique-names`, and Java has a warm-load
+  driver. New page `docs/ports/rust.md` says what the preview Rust port does and does not do, how
+  to build and test it, and the preview scope of `cargo meta`; the crates.io name `cargo-meta` is
+  held by an unrelated crate, so the CLI crate will publish under another name that installs a
+  `cargo-meta` binary (a plan, not a promise). Nothing is published.
+- **Example and write-up: metadata-driven grids, forms and routes in TypeScript.**
+  `examples/dynamic-grid/` serves and renders every entity of a model from the loaded
+  metadata: one grid component and one form component that take an entity name and read the
+  rest from `GET /_meta`, and one Fastify mount over `ObjectManager`, on SQLite. The only
+  generated code is the types and name constants its hand-written business rules use.
+  Editing the metadata changes the grid, the form and the API with no regeneration.
+  `docs/features/metadata-driven-runtime.md` measures it against the reference generators
+  for the same model (1,826 hand-written lines paid once, against 3,629 generated lines
+  that grow by about 726 an entity), gives the per-row cost of the metadata lookups, and
+  lists what the approach cannot do. It is an example on the TypeScript port, not a package.
 
 - **A working loop first in the agent context.** The always-on file `meta init` scaffolds
   (`.metaobjects/AGENTS.md` and `CLAUDE.md`) now opens with the whole loop for the declared
@@ -1272,6 +1194,23 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
 
 ### Documentation
 
+- **The rulings of 2026-11-12 and 2026-11-13 are written down, and the 1.3.0 wording is corrected
+  before publish.** ADR-0034 Amendment 11: the core is the contracts and the conformance kits;
+  store-specific code (SQL writers, introspectors, drivers, mappings) is a supported helper; the
+  REST freeze on non-TypeScript generators is lifted; parity is capability parity; and generated
+  code is real code, run as shipped, extended through hooks, or owned by ejecting. ADR-0035
+  Amendment 6: one version per helper package, a stable one starting at `1.x` and a new one at
+  `0.x`. ADR-0066 §6 says the persistence scenario that will hold store drivers to the guarded
+  update does not exist yet, and ADR-0067 §3 says the interface-only attachment was the design's
+  choice. The old core line is replaced in `README.md`, `AGENTS.md`, `docs/llms/`,
+  `docs/CONFORMANCE.md` and the codegen skill's `owning-generators.md`, and the "starter" and
+  "starting point" wording about generated code is gone from the docs. No new promise is
+  published: the new [Stability labels](docs/features/stability-labels.md) page lists which pieces
+  are stable, preview or experimental and adds no support window. The fit-assessment skill and
+  its capability sheet now describe Rust as a sixth port in preview, and `SECURITY.md` no longer
+  says pre-1.0. The `[Unreleased]` entries moved into this section, and its header says
+  `unreleased` until the publish dates it.
+
 - **ADR-0015 Amendment 1: EF Core Migrations is a supported second C# path.** `meta migrate` stays
   the reference engine; the EF context is held to it by the shared CHECK corpus and the identity
   start rule.
@@ -1306,6 +1245,15 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   fields.
 
 ### Changed
+
+- **Release policy: vocabulary is versioned by feature, not by kind (ADR-0035 Amendment 5).** Adding
+  to or augmenting an existing feature (a type, subtype, attribute, enum value or view vocabulary,
+  additive and loading every existing document with the same meaning) is a PATCH; a whole new
+  feature is a MINOR; a break stays a MAJOR. `metamodelVersion` will gain a patch component moved by
+  the same decision (accepted, not yet implemented: it stays `<major>.<minor>` until every port
+  reads three components), and any move of it still publishes all four registries. Policy text only:
+  no version, vocabulary or `metamodelVersion` changes here. See `docs/RELEASING.md`, "The
+  vocabulary rule".
 
 - **`meta init` and `metaobjects init` write `outputLayout: "package"`.** A new project gets one
   directory per metadata package (`acme::blog` writes `src/generated/acme/blog/Author.ts`), so two
@@ -1838,6 +1786,68 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   the TypeScript and Python shims. Use `ValueObjectNames.TypeName(obj, root)`.
 
 ### Fixed
+
+- **A credential is never filterable or sortable, in every port.** A field that declares a
+  `view.password` and that a model also marked `@filterable` or `@sortable` was on the generated
+  filter and sort allowlists, so a client could learn its value by probing (`filter[pinHash][eq]=...`,
+  a `like` prefix one character at a time, or the order of a `sort`). The allowlists are now built
+  without a credential (in every port a column a sibling subtype of the same single table marks as one
+  counts too, whichever subtype is declared first, as it does for hiding the column from responses),
+  so a request that names it is refused like any other field they do not hold (`400` `invalid_filter_field`
+  or `invalid_sort`, naming the field). The client filter type, the OpenAPI parameters and the agent UI
+  page leave it out too. In Java, Kotlin and C#, whose sort allowlist lists every scalar field and never read `@sortable`, a
+  credential was sortable with no mark at all, so the generated routes change for any model with a
+  credential: regenerate. Your own code is unaffected. Gated by `filter-sort-refuses-credential` in the `secret-fields/`
+  sub-corpus of the api-contract conformance corpus, in the generated lane of all five ports, and by
+  `tph-sibling-credential` in `secret-fields/tph/` for the shared-column case.
+
+- **A numeric key is read only from canonical decimal text, in the TypeScript, Java and Python
+  ObjectManagers.** A path parameter or ref string for an integer, long, decimal, double or float
+  primary key went through the language's own number parser, which reads `0x1`, `1e0`, `0b1`, `+1`,
+  ` 1 ` and the empty string as numbers (and Java's and Python's also `1_0`, a Unicode digit, `NaN`):
+  text that is no key named row 1 (or row 0), and two different texts named one row. An integer key
+  is now an optional `-` and ASCII digits with no leading zero; a decimal key may add `.` and at
+  least one digit; nothing else is a key. TypeScript refuses it with `InvalidKeyError` (a
+  `ValidationError`), which the mounts answer `400 {"error":"invalid_id"}` like an id the column
+  cannot hold; the drizzle-fastify and hono mounts and the deprecated `parseId` read ids by the
+  same rule, and it also refuses an integer key that is not a safe integer (beyond 2^53) and a decimal
+  key that is not finite: a `field.long` key above 2^53 used to round silently to another row, where
+  Java accepts an integer key up to `Long.MAX_VALUE`. Java refuses a ref id with `IllegalArgumentException` and Python a key argument with
+  `ValueError`, the errors each already raised for an unusable argument. A string or uuid key is
+  untouched (`0123` stays `0123`). If you pass a key as text to `findById`, `update`, `delete` or
+  `load`, pass its decimal spelling. The read-only mount of a raw-SQL view, which has no column type to
+  consult, answers `400 invalid_id` for text that reads as a number without being its canonical spelling
+  (`01`, `1e0`), because SQLite would convert a quoted `'01'` back to row 1. Not changed: the numeric path parameters of the generated Spring
+  and FastAPI routes, which those frameworks parse before the ObjectManager sees them.
+
+- **Fix, TypeScript: `DELETE` on a missing row answers `404`, not `500`, from the
+  ObjectManager route mount.** `mountCrudRoutes` and `mountDeleteRoute` in
+  `@metaobjectsdev/runtime-ts/fastify` called `ObjectManager.delete` in its default mode, which
+  throws for a row that is not there, so the request ended as `500 {"error":"internal"}`. They
+  now answer `404 {"error":"not_found"}`, as the update route and the generated routes do.
+- **Fix, TypeScript: `findMany` with an `offset` and no `limit` works on SQLite and MySQL.**
+  The Kysely and Drizzle drivers in `@metaobjectsdev/runtime-ts` wrote `OFFSET` with no
+  `LIMIT`, which is a syntax error on both databases, so the call threw. An offset alone
+  now carries a limit no result can reach, and skips rows on every dialect.
+- **Fix, Java, Kotlin and Python: `<Entity>Names` has no entry for a derived field with no
+  column.** The TypeScript and C# names generators already left out a derived (`origin.*`) field
+  of an entity read from its table; Java, Kotlin and Python still emitted a column constant
+  naming a column that does not exist. They now match: a projection's or write-through entity's
+  derived field keeps its entry, an entity's does not.
+- **Fix, TypeScript: `meta verify --db` accepts the function calls Postgres accepts.** The
+  declared `origin.function` signature check compared parameter types by exact name, so an
+  `integer` argument for a `bigint` or `numeric` parameter, a polymorphic `any*` parameter and a
+  variadic function were all reported as mismatches. It now allows integer to bigint to numeric
+  widening and the float widenings onto real and double precision, treats `any*` parameters as
+  wildcards and does not check a variadic function's trailing arity (its required fixed
+  parameters still are). A genuine mismatch (a narrowing,
+  an unrelated type, a wrong return type) still fails.
+- **Fix, TypeScript and C#: the widened-extender warning covers every extender whose base
+  changed.** An extender with no identity of its own keeps its super's identity anchor (rc.21).
+  The load warned only for a TPH base read through a subtype column; it now warns whenever the
+  base differs from the pre-rc.21 derivation, naming both entities and the
+  `identity.primary { extends: ... }` that keeps the old one.
+- **Loading a large model no longer slows down quadratically (TypeScript, Python, C#).** Reference resolution looked each name up by scanning every top-level object, so load time grew with the square of the model; each root now keeps a name index, invalidated whenever its top-level nodes change, with the same first-match-wins result. A 20x-size model loads about 5x faster in TypeScript and 1.5x to 2x faster in Python and C#; loaded trees are byte-identical.
 
 - **No CHECK for a derived field.** A validator on a field that carries an `origin` (or a
   cross-field validator naming one) made `meta migrate` emit a CHECK on a column that does not

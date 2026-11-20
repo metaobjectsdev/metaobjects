@@ -287,7 +287,9 @@ The shells are later work. This is what they are held to:
 7. Refuse a lifecycle field on the generic update path (409 `state_managed`).
 
 **The guarded update is part of the store-neutral storage contract** (§8). Every store
-driver, including one an adopter writes, is held to it by a persistence-conformance scenario.
+driver, including one an adopter writes, will be held to it by a persistence-conformance scenario.
+That scenario does not exist yet: no file under `fixtures/persistence-conformance/` pins the
+guarded update, so until it lands the contract is stated here and implemented, not yet gated.
 
 ### 7. Events and invariants in 1.3.0
 

@@ -886,7 +886,7 @@ engine, `com.metaobjects.config.SharedModel`, stays in the package, so the owned
 **Ejecting hands over the helper runtime too.** The `routes`, `dto` and `repository` output imports helper classes from `com.metaobjects.generator.spring.runtime` (`FilterParser`, `FilterParseResult`, `FilterPredicate`, `PatchValidationException`, `ConstraintErrors`, `RecordComponentNames`). These are helpers, not core. Ejecting one of those generators copies the classes its output imports into `src/main/java/<runtimePackage>/` (default `<groupId>.runtime`) of the module that compiles the generated code, and the owned generator's output imports that copy. The copies are JDK-only. The owned web tier then builds with no MetaObjects artifact on the application classpath, and you can fix a helper bug in your copy without waiting for a release. A packaged generator that must use the same copy takes `<args><runtimePackage>…</runtimePackage></args>`. What stays core: the loader and registry, render and extract, OMDB and `metaobjects-om`. `mvn metaobjects:verify` treats the copies as owned code, not stale output. The table, the aggregator rule and a diff recipe for pulling an upstream fix are in [Own your codegen → What eject hands over](../features/own-your-codegen.md#what-eject-hands-over-and-what-stays-core).
 
 
-The built-in set above is a starting point, not the ceiling. When you need a shape
+The built-in set above is not the ceiling. When you need a shape
 it does not emit, the JVM port gives you **both** authoring paths, and which one to
 reach for is a real decision — see the tradeoff table in
 [`codegen-concepts.md` §3](../features/codegen-concepts.md).

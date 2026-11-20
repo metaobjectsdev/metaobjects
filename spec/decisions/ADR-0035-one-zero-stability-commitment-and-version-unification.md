@@ -485,6 +485,29 @@ the same release that first writes three. **Until it lands**, the gate and the p
 - **A feature-level two-component `metamodelVersion` that ignores augmentations.** Rejected: a
   model that uses an augmentation would need a newer port with no number saying so.
 
+## Amendment 6 (2026-11-19) — one version per helper package, starting by readiness
+
+**Rulings (maintainer, 2026-11-13).** Amendment 4 made the generator tier convenience and its
+changes PATCH. ADR-0034 Amendment 11 now places store-specific code and generators in supported
+helpers. This amendment says how a helper is numbered.
+
+1. **Each helper package carries its own version.** A helper is not on the lockstep line the core
+   packages share. The convergent-publishing rule and the lockstep set
+   (`scripts/publish-set.mjs`) are unchanged for the core; a helper joins them only by a separate,
+   explicit decision, because the intent check refuses a public package that is off the line unless
+   it is declared source-only.
+2. **A helper starts at the major its readiness earns.** A stable, proven helper starts at `1.x`.
+   A new or unstable one starts at `0.x` and graduates to `1.x` by readiness, on evidence, the way
+   a `preview` library is promoted. Existing code moves to this model after 1.3.0, not in it.
+3. **A contract-level addition carries an `experimental` label until it is proven.** New vocabulary
+   is the case: it registers, loads and validates, and its shape may change in a MINOR until it has
+   run in an adopter estate with the drift gate enforced. Labels are listed as facts in
+   `docs/features/stability-labels.md`.
+4. **No support window is published.** The compatibility policy stands as written, and this
+   amendment adds no support or fix-time commitment.
+
+This amendment is documentation of a ruling. It moves no package and publishes nothing.
+
 ## Consequences
 
 - After 1.0, a breaking change to the CLI surface or the scaffold-and-own contract
