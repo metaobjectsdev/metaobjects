@@ -44,10 +44,11 @@ export function isCanonicalInteger(text: string): boolean {
 }
 
 /**
- * True when `text` is a canonical integer, optionally followed by `.` and at least one digit, and
- * reads back as a finite number.
+ * True when `text` is a canonical integer (a safe integer when it has no fraction), or one
+ * followed by `.` and at least one digit that reads back as a finite number.
  */
 export function isCanonicalDecimal(text: string): boolean {
+  if (!text.includes(".")) return isCanonicalInteger(text);
   return hasDecimalShape(text) && Number.isFinite(Number(text));
 }
 
@@ -55,7 +56,6 @@ function hasDecimalShape(text: string): boolean {
   const negative = text.startsWith("-");
   const unsigned = negative ? text.slice(1) : text;
   const dot = unsigned.indexOf(".");
-  if (dot < 0) return hasIntegerShape(text);
   const whole = unsigned.slice(0, dot);
   const fraction = unsigned.slice(dot + 1);
   if (!isCanonicalWhole(whole) || !allDigits(fraction)) return false;

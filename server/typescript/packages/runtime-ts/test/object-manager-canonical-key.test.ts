@@ -17,7 +17,7 @@ import { inMemoryDriver } from "../src/drivers/in-memory-driver.js";
 import { InvalidKeyError, ValidationError } from "../src/errors.js";
 import { isCanonicalDecimal, isCanonicalInteger } from "../src/canonical-key.js";
 import { mountCrudRoutes } from "../src/fastify/index.js";
-import { coerceIdForColumn, rawIdLiteral } from "../src/drizzle-fastify/util.js";
+import { coerceIdForColumn, parseId, rawIdLiteral } from "../src/drizzle-fastify/util.js";
 
 function entity(name: string, pkSubtype: string): MetaData {
   const e = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), name);
@@ -60,6 +60,9 @@ describe("canonical key text", () => {
     expect(isCanonicalInteger("-9007199254740991")).toBe(true);
     expect(isCanonicalInteger("9007199254740992")).toBe(false);
     expect(isCanonicalInteger("9007199254740993")).toBe(false);
+    expect(isCanonicalDecimal("9007199254740991")).toBe(true);
+    expect(isCanonicalDecimal("9007199254740992")).toBe(false);
+    expect(isCanonicalDecimal("9007199254740993")).toBe(false);
     expect(isCanonicalDecimal("1" + "0".repeat(400))).toBe(false);
     expect(isCanonicalDecimal("1" + "0".repeat(400) + ".5")).toBe(false);
   });
@@ -112,6 +115,15 @@ describe("ObjectManager — a decimal key must be canonical decimal text", () =>
   }
 });
 
+describe("ObjectManager — a decimal key past 2^53 is no key", () => {
+  for (const text of ["9007199254740992", "9007199254740993"]) {
+    test(`findById refuses ${text}`, async () => {
+      await expect(om.findById("Price", text)).rejects.toBeInstanceOf(InvalidKeyError);
+      await expect(om.findById("Post", text)).rejects.toBeInstanceOf(InvalidKeyError);
+    });
+  }
+});
+
 describe("HTTP mounts answer a non-canonical id 400 invalid_id", () => {
   test("the ObjectManager mount, on GET, PATCH and DELETE", async () => {
     const app = Fastify();
@@ -133,6 +145,13 @@ describe("HTTP mounts answer a non-canonical id 400 invalid_id", () => {
     const col = { dataType: "number" };
     expect(coerceIdForColumn(col, "1")).toBe(1);
     for (const text of ["0x1", "1e0", " 1", "+1", "", "1."]) expect(coerceIdForColumn(col, text)).toBeUndefined();
+    for (const text of ["9007199254740992", "9007199254740993"]) expect(coerceIdForColumn(col, text)).toBeUndefined();
+    expect(coerceIdForColumn(col, "9007199254740991")).toBe(9007199254740991);
+  });
+
+  test("parseId never turns text past 2^53 into a rounded number", () => {
+    for (const text of ["9007199254740992", "9007199254740993"]) expect(parseId(text)).toBe(text);
+    expect(parseId("9007199254740991")).toBe(9007199254740991);
   });
 });
 
@@ -148,7 +167,7 @@ describe("rawIdLiteral on a raw-SQL view", () => {
   });
 
   test("text that reads as a number without being its canonical spelling is no id", () => {
-    for (const text of ["01", "1e0", "0x1", "+1", " 1", "1 ", "1.", "-0"]) {
+    for (const text of ["01", "1e0", "0x1", "+1", " 1", "1 ", "1.", "-0", "9007199254740992", "9007199254740993"]) {
       expect(rawIdLiteral(text)).toBeUndefined();
     }
   });
