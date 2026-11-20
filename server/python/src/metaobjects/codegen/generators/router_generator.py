@@ -50,7 +50,7 @@ from metaobjects.apidocs.naming import snake_case as _snake_case
 from metaobjects.codegen.constants import GENERATED_MARKER, generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, per_entity
-from metaobjects.codegen.generators.tph_plan import TphPlan, is_tph_subtype, tph_plan_for
+from metaobjects.codegen.generators.tph_plan import TphPlan, is_tph_subtype, tph_credential_names, tph_plan_for
 from metaobjects.codegen.instance_artifacts import has_item_route
 from metaobjects.source_resolution import primary_rdb_source
 from metaobjects.codegen.import_path import OUTPUT_LAYOUT_FLAT, ModuleScope, import_line
@@ -1487,12 +1487,13 @@ class RouterGenerator:
 
         # Sort allowlist = base scalar fields ∪ every subtype's own scalar fields, so a
         # per-subtype list can sort on a subtype-only column too. Stable order.
-        sort_field_nodes = list(_scalar_fields(entity))
+        hierarchy_credentials = tph_credential_names(entity, object_index)
+        sort_field_nodes = [f for f in _scalar_fields(entity) if f.name not in hierarchy_credentials]
         sort_fields: list[str] = [f.name for f in sort_field_nodes]
         seen = set(sort_fields)
         for st in plan.subtypes:
             for f in _scalar_fields(st.entity):
-                if f.name not in seen:
+                if f.name not in seen and f.name not in hierarchy_credentials:
                     seen.add(f.name)
                     sort_fields.append(f.name)
                     sort_field_nodes.append(f)

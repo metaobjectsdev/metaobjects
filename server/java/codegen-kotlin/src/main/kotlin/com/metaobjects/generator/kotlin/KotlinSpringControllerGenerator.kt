@@ -928,8 +928,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // Union scalar fields (base own + subtype-only), in the data class / table order.
         val scalarFields = (KotlinGenUtil.columnFields(base).filterNot { it is ObjectField || it is MapField } +
             KotlinTphPlan.collectSubtypeFields(base, plan).filterNot { it is ObjectField || it is MapField })
+        val hierarchyCredentials = KotlinTphPlan.hierarchyCredentialNames(base, loader)
         val sortFields = KotlinGenUtil.columnFields(base)
-            .filterNot { isNonScalarSurface(it) || KotlinGenUtil.isCredentialField(it) }
+            .filterNot { isNonScalarSurface(it) || it.name in hierarchyCredentials }
             .map { it.name }
         val baseFieldNames = base.metaFields.map { it.name }.toSet()
         val allowlistName = "${shortName}FilterAllowlist"

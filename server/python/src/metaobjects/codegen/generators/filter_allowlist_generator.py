@@ -39,7 +39,7 @@ from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.name_claims import claimed_module_path
 from metaobjects.codegen.value_objects import pkg_of
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, per_entity
-from metaobjects.codegen.generators.tph_plan import tph_plan_for
+from metaobjects.codegen.generators.tph_plan import tph_credential_names, tph_plan_for
 from metaobjects.codegen.instance_artifacts import is_sourceless_entity
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.credential import is_credential_field
@@ -216,13 +216,17 @@ class FilterAllowlistGenerator:
         table's per-subtype routes (and the polymorphic base) can filter on a
         subtype-only column. Non-TPH entities are unaffected."""
         out: dict[str, tuple[str, ...]] = {}
+        hierarchy_credentials = (
+            tph_credential_names(entity, object_index) if object_index is not None else frozenset()
+        )
 
         def add(f: MetaField) -> None:
             if f.sub_type == fc.FIELD_SUBTYPE_OBJECT or f.name in out or not _is_filterable(f):
                 return
             # #484: a credential is never a filter key (eq/like probing is an oracle); not on
-            # the allowlist, so the existing invalid_filter_field refusal answers it.
-            if is_credential_field(f):
+            # the allowlist, so the existing invalid_filter_field refusal answers it. A column
+            # any sibling subtype of the same table marks as a credential is one too.
+            if is_credential_field(f) or f.name in hierarchy_credentials:
                 return
             # A derived report field over an array or a map is not filterable.
             if entity.sub_type == OBJECT_SUBTYPE_REPORT and (

@@ -212,6 +212,11 @@ object KotlinTphPlan {
         (base.metaFields + everySubtypeField(base, loader))
             .filter { KotlinGenUtil.isApiWriteDenied(it) }.map { it.name }.toSet()
 
+    /** #484: the names marked credential on ANY declaration in [base]'s hierarchy (the base and every subtype). */
+    fun hierarchyCredentialNames(base: MetaObject, loader: MetaDataLoader): Set<String> =
+        (base.metaFields + everySubtypeField(base, loader))
+            .filter { KotlinGenUtil.isCredentialField(it) }.map { it.name }.toSet()
+
     /** [collectSubtypeFields] from an already-resolved [Plan] (the generators that hold one). */
     fun collectSubtypeFields(base: MetaObject, plan: Plan): List<MetaField<*>> {
         val baseNames = base.metaFields.map { it.name }.toHashSet()

@@ -148,4 +148,46 @@ class KotlinSecretFieldsTest {
             out.toFile().deleteRecursively()
         }
     }
+
+    private fun tphFilterableToken(aTokenChildren: String, bTokenChildren: String) = """{
+      "metadata.root": { "package": "acme::secrets", "children": [
+        { "object.entity": { "name": "Thing", "@discriminator": "kind", "children": [
+            { "source.rdb": { "@table": "things" } },
+            { "field.long": { "name": "id" } },
+            { "field.enum": { "name": "kind", "@values": ["A", "B"] } },
+            { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+        ] } },
+        { "object.entity": { "name": "AThing", "extends": "Thing", "@discriminatorValue": "A", "children": [
+            { "field.string": { "name": "token", "@maxLength": 100, "@filterable": true, "@sortable": true$aTokenChildren } },
+            { "field.string": { "name": "label", "@maxLength": 100, "@filterable": true, "@sortable": true } }
+        ] } },
+        { "object.entity": { "name": "BThing", "extends": "Thing", "@discriminatorValue": "B", "children": [
+            { "field.string": { "name": "token", "@maxLength": 100, "@filterable": true, "@sortable": true$bTokenChildren } }
+        ] } }
+      ] }
+    }""".trimIndent()
+
+    @Test
+    fun `a column any sibling subtype hides is on no filter or sort allowlist in either declaration order`() {
+        val credential = ", \"children\": [ { \"view.password\": {} } ]"
+        for ((i, order) in listOf("" to credential, credential to "").withIndex()) {
+            val out = Files.createTempDirectory("ksecret-tph-allow-")
+            try {
+                val loader = loadString("secret-fields-tph-allow-$i", tphFilterableToken(order.first, order.second))
+                KotlinSpringControllerGenerator().apply { setArgs(mapOf("outputDir" to out.toString())) }.execute(loader)
+                KotlinFilterAllowlistGenerator().apply { setArgs(mapOf("outputDir" to out.toString())) }.execute(loader)
+                val dir = out.resolve("acme/secrets")
+
+                val filter = Files.readString(dir.resolve("ThingFilterAllowlist.kt"))
+                assertTrue("\"label\"" in filter, filter)
+                assertFalse("token" in filter, filter)
+
+                val controller = Files.readString(dir.resolve("ThingController.kt"))
+                val sort = controller.substringAfter("ThingSortAllowlist = setOf(").substringBefore("\n)")
+                assertFalse("token" in sort, sort)
+            } finally {
+                out.toFile().deleteRecursively()
+            }
+        }
+    }
 }

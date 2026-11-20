@@ -163,6 +163,20 @@ public final class SpringGeneratorSupport {
         return writeDeniedNames(fields);
     }
 
+    /**
+     * #484 — the credential names of {@code entity}, widened to its whole TPH hierarchy (the base and
+     * every subtype) when it is in one: a column any declaration marks as a credential is one for all.
+     */
+    public static List<String> hierarchyCredentialNames(MetaObject entity) {
+        List<MetaField> fields = new ArrayList<>(entity.getMetaFields());
+        MetaObject root = TphPlan.discriminatorRoot(entity);
+        if (root != null) {
+            fields.addAll(root.getMetaFields());
+            fields.addAll(TphPlan.everySubtypeField(root, root.getLoader()));
+        }
+        return credentialNames(fields);
+    }
+
     /** #484 — the credential wire names of {@code entity}'s DTO components. */
     public static List<String> credentialNames(MetaObject entity) {
         // A served report's columns are DERIVED from their @of fields and carry only type-shaping

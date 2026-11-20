@@ -1160,9 +1160,10 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // columns are not sortable across the polymorphic collection. Same canonical band as the
         // vanilla allowlist above — hand-listing the exclusions here had already drifted from it.
         List<String> sortFields = new ArrayList<>();
+        List<String> hierarchyCredentials = SpringGeneratorSupport.hierarchyCredentialNames(base);
         for (MetaField field : base.getMetaFields()) {
             if (!FilterOps.supportsFiltering(field.getSubType())) continue;
-            if (SpringGeneratorSupport.isCredentialField(field)) continue; // never sortable: the order leaks it
+            if (hierarchyCredentials.contains(field.getName())) continue; // never sortable: the order leaks it
             sortFields.add(field.getName());
         }
 

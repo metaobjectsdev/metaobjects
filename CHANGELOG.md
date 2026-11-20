@@ -164,9 +164,9 @@ next release moves `metamodelVersion`.
   `view.password` and that a model also marked `@filterable` or `@sortable` was on the generated
   filter and sort allowlists, so a client could learn its value by probing (`filter[pinHash][eq]=...`,
   a `like` prefix one character at a time, or the order of a `sort`). The allowlists are now built
-  without a credential (in TypeScript a column a sibling subtype of the same single table marks as one
-  counts too, as it does for hiding the column from responses; the other ports decide per entity, as they do
-  for responses), so a request that names it is refused like any other field they do not hold (`400` `invalid_filter_field`
+  without a credential (in every port a column a sibling subtype of the same single table marks as one
+  counts too, whichever subtype is declared first, as it does for hiding the column from responses),
+  so a request that names it is refused like any other field they do not hold (`400` `invalid_filter_field`
   or `invalid_sort`, naming the field). The client filter type, the OpenAPI parameters and the agent UI
   page leave it out too. In Java, Kotlin and C#, whose sort allowlist lists every scalar field and never read `@sortable`, a
   credential was sortable with no mark at all, so the generated routes change for any model with a
@@ -182,7 +182,9 @@ next release moves `metamodelVersion`.
   least one digit; nothing else is a key. TypeScript refuses it with `InvalidKeyError` (a
   `ValidationError`), which the mounts answer `400 {"error":"invalid_id"}` like an id the column
   cannot hold; the drizzle-fastify and hono mounts and the deprecated `parseId` read ids by the
-  same rule. Java refuses a ref id with `IllegalArgumentException` and Python a key argument with
+  same rule, and it also refuses an integer key that is not a safe integer (beyond 2^53) and a decimal
+  key that is not finite: a `field.long` key above 2^53 used to round silently to another row, where
+  Java accepts an integer key up to `Long.MAX_VALUE`. Java refuses a ref id with `IllegalArgumentException` and Python a key argument with
   `ValueError`, the errors each already raised for an unusable argument. A string or uuid key is
   untouched (`0123` stays `0123`). If you pass a key as text to `findById`, `update`, `delete` or
   `load`, pass its decimal spelling. The read-only mount of a raw-SQL view, which has no column type to

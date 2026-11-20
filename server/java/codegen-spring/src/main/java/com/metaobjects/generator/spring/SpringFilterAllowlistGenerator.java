@@ -137,6 +137,16 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
      * polymorphic + per-subtype lists can filter on subtype columns, matching the Python/TS lanes).
      */
     static Map<String, Set<String>> computeFilterableOps(Iterable<MetaField> fields) {
+        return computeFilterableOps(fields, SpringGeneratorSupport.credentialNames(toList(fields)));
+    }
+
+    /**
+     * {@link #computeFilterableOps(Iterable)} with the credential names given: a TPH base passes the
+     * names any declaration in its hierarchy marks, since a shared column is declared once per subtype
+     * and the union keeps only the first declaration. Such a column is a credential whichever
+     * declaration comes first.
+     */
+    static Map<String, Set<String>> computeFilterableOps(Iterable<MetaField> fields, java.util.Collection<String> credentials) {
         Map<String, Set<String>> out = new LinkedHashMap<>();
         for (MetaField field : fields) {
             if (field instanceof ObjectField) continue;
@@ -144,11 +154,17 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
             // A credential (view.password) is never filterable, whatever @filterable says: a filter on
             // it is an oracle for the secret. Left off the allowlist, a request for it is refused as
             // any unknown field is.
-            if (SpringGeneratorSupport.isCredentialField(field)) continue;
+            if (credentials.contains(field.getName())) continue;
             Set<String> ops = opsForField(field);
             if (ops.isEmpty()) continue;
             out.putIfAbsent(field.getName(), ops); // dedup base/subtype column names
         }
+        return out;
+    }
+
+    private static java.util.List<MetaField> toList(Iterable<MetaField> fields) {
+        java.util.List<MetaField> out = new java.util.ArrayList<>();
+        fields.forEach(out::add);
         return out;
     }
 
@@ -204,7 +220,7 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
             java.util.List<MetaField> union = new java.util.ArrayList<>();
             entity.getMetaFields().forEach(union::add);
             union.addAll(TphPlan.collectSubtypeFields(entity, loader));
-            opsByField = computeFilterableOps(union);
+            opsByField = computeFilterableOps(union, SpringGeneratorSupport.hierarchyCredentialNames(entity));
         } else {
             opsByField = computeFilterableOps(entity);
         }

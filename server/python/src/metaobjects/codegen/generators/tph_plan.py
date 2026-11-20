@@ -126,3 +126,18 @@ def tph_plan_for(base: MetaObject, object_index: dict[str, MetaObject]) -> TphPl
 def is_tph_base(obj: MetaObject, object_index: dict[str, MetaObject]) -> bool:
     """True when *obj* carries ``@discriminator`` AND has at least one concrete subtype."""
     return tph_plan_for(obj, object_index) is not None
+
+
+def tph_credential_names(entity: MetaObject, object_index: dict[str, MetaObject]) -> frozenset[str]:
+    """The names of the columns any declaration in *entity*'s TPH hierarchy marks as a
+    credential (``view.password``). One table backs the base and every subtype, so a name a
+    sibling subtype hides is no more filterable or sortable here than there. Empty when
+    *entity* is not part of a TPH hierarchy."""
+    from metaobjects.meta.core.field.credential import is_credential_field
+
+    base = _discriminator_root(entity)
+    plan = tph_plan_for(base, object_index) if base is not None else None
+    if plan is None:
+        return frozenset()
+    members = [plan.base, *(st.entity for st in plan.subtypes)]
+    return frozenset(f.name for m in members for f in m.fields() if is_credential_field(f))

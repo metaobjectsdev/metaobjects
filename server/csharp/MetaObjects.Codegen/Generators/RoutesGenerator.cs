@@ -627,8 +627,9 @@ public class RoutesGenerator : PerEntityGenerator
             .Distinct(StringComparer.Ordinal).ToList();
 
         // Sortable base scalar fields (the polymorphic list sorts on base columns).
+        var hierarchyCredentials = TphPlanBuilder.HierarchyCredentialNames(baseEntity, ctx.Root);
         var sortFieldNodes = baseEntity.Fields()
-            .Where(f => CSharpNaming.ScalarFor(f.SubType) is not null && !f.ResolvedIsArray() && !IsCredentialField(f))
+            .Where(f => CSharpNaming.ScalarFor(f.SubType) is not null && !f.ResolvedIsArray() && !hierarchyCredentials.Contains(f.Name))
             .ToList();
         var sortFields = sortFieldNodes.Select(f => CSharpNaming.PropertyName(f, ctx.Config)).ToList();
 
@@ -665,7 +666,7 @@ public class RoutesGenerator : PerEntityGenerator
         {
             var subClsName = CSharpNaming.Pascal(st.Entity.Name);
             var subSortFields = st.Entity.Fields()
-                .Where(f => CSharpNaming.ScalarFor(f.SubType) is not null && !f.ResolvedIsArray() && !IsCredentialField(f))
+                .Where(f => CSharpNaming.ScalarFor(f.SubType) is not null && !f.ResolvedIsArray() && !hierarchyCredentials.Contains(f.Name))
                 .ToList();
             AppendSortAllowlist(sb, $"{subClsName}SortAllowlist", subSortFields, ctx.Config);
             AppendSortDefaultOrder(sb, st.Entity, $"{subClsName}SortDefaultDesc", ctx.Config);
