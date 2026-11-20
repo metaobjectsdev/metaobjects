@@ -48,7 +48,7 @@ export const NAMES_FILE_SUFFIX = ".names.ts";
 // wired to nothing: no generator, orphan sweep or write path ever compared a path
 // against it, so its presence implied tool support for a name that is pure convention.
 // A `<Entity>.extra.ts` sibling is safe because codegen only writes the paths it
-// records in `.gen-state/.hashes.json` — not because of its name — and the generated
+// records in the `.gen-state/.hashes/` manifest — not because of its name — and the generated
 // barrel is built from the model, so it does not re-export it. Say that in prose;
 // do not re-add a constant that suggests the engine knows the name.
 

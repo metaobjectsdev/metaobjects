@@ -64,7 +64,7 @@ public sealed class GenRefusalExitCodeTests : IDisposable
 
         Assert.Equal(0, adoptRun.ExitCode);
         Assert.Equal(onDisk, File.ReadAllText(stale));   // adopting writes nothing either
-        Assert.True(File.Exists(Path.Combine(_tmp, ".metaobjects", ".gen-state", ".hashes.json")));
+        Assert.True(Directory.Exists(Path.Combine(_tmp, ".metaobjects", ".gen-state", ".hashes")));
     }
 
     [Fact]

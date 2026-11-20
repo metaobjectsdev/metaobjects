@@ -19,7 +19,7 @@ export interface EmittedFile {
   /** Set by the runner from generator.name — generators should not set this. */
   generatedBy?: string;
   /** The resolution key of the metadata node this file was rendered from
-   *  (`acme::shop::Order`), recorded beside the file's hash in `.gen-state/.hashes.json`.
+   *  (`acme::shop::Order`), recorded beside the file's hash in the manifest under `.gen-state/.hashes/`.
    *  `perEntity` sets it for you; a generator rendering one file from one node by other
    *  means sets it itself. Leave it unset for a file rendered from the whole model or a
    *  whole package (a barrel, a docs index). */
@@ -153,7 +153,7 @@ export interface GenContext {
    * The files this run generated, for a generator marked `readsRunOutput` (the docs site's
    * model explorer, which lists what was generated from each node). The runner runs such a
    * generator after every other one, so the list is complete. Paths are project-relative,
-   * as `.gen-state/.hashes.json` keys them. A run narrowed with `--generators` adds the
+   * as the manifest under `.gen-state/.hashes/` keys them. A run narrowed with `--generators` adds the
    * files the committed manifest records for the generators it did not run, so a narrowed
    * run lists what a full run lists. Absent for a generator without the marker.
    */

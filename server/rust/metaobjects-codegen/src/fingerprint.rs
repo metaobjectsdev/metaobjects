@@ -29,7 +29,7 @@ use crate::sha256::{Sha256, hex, sha256_hex};
 pub const FINGERPRINT_FORMAT: u64 = 1;
 
 /// Where this port keeps its key, beside the (committed) manifest and never committed
-/// itself (`.gen-state/*` is ignored except `.hashes.json`).
+/// itself (`.gen-state/*` is ignored except `.hashes/`).
 pub const FINGERPRINT_FILE: &str = ".fingerprint-rust.json";
 
 /// The hash of an input that does not exist. A file that appears or disappears changes it.

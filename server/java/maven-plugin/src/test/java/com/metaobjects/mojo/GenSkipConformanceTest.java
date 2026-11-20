@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -299,6 +300,22 @@ public class GenSkipConformanceTest {
             case "selection-changed" -> lax = true;
             case "declared-extra-edited" -> Files.writeString(project.resolve("lookup.txt"), "lookup 2");
             case "uncacheable-generator" -> { }   // set up before the first run
+            case "legacy-manifest" -> {
+                // Put the manifest back in its pre-1.3.0 form: every file of .hashes/ merged into one .hashes.json.
+                Path gs = project.resolve(".metaobjects/.gen-state");
+                assertTrue("a package manifest exists after the first run", Files.isDirectory(gs.resolve(".hashes")));
+                JsonObject merged = new JsonObject();
+                try (var s = Files.list(gs.resolve(".hashes"))) {
+                    for (Path f : s.sorted().toList()) {
+                        for (var e : JsonParser.parseString(Files.readString(f)).getAsJsonObject().entrySet()) {
+                            merged.add(e.getKey(), e.getValue());
+                        }
+                    }
+                }
+                Files.writeString(gs.resolve(".hashes.json"), merged + "\n");
+                deleteTree(gs.resolve(".hashes"));
+                Files.delete(gs.resolve(".hashes"));
+            }
             case "generated-file-deleted" -> Files.delete(project.resolve("gen/Out.java"));
             case "generated-file-edited" -> Files.writeString(project.resolve("gen/Out.java"),
                     Files.readString(project.resolve("gen/Out.java")) + "// hand edit\n");
@@ -375,11 +392,21 @@ public class GenSkipConformanceTest {
         }
         ci = null;
         verifyFull = false;
+        if (id.equals("legacy-manifest")) {
+            Path gs = project.resolve(".metaobjects/.gen-state");
+            assertTrue("a read-only verify migrates nothing", Files.isRegularFile(gs.resolve(".hashes.json")));
+            assertFalse("a read-only verify writes no package manifest", Files.exists(gs.resolve(".hashes")));
+        }
 
         int before = FixtureGenerator.runs;
         gen(id.equals("force"));
         boolean ran = FixtureGenerator.runs > before;
         assertEquals(id + ": gen " + expectGen, expectGen.equals("regenerate"), ran);
+        if (id.equals("legacy-manifest")) {
+            Path gs = project.resolve(".metaobjects/.gen-state");
+            assertFalse("the write run removed the legacy manifest", Files.exists(gs.resolve(".hashes.json")));
+            assertTrue("and left package manifests", Files.isRegularFile(gs.resolve(".hashes/.root.json")));
+        }
     }
 
     private void setUp0() throws IOException {

@@ -14,9 +14,9 @@ DEFAULT_API_PREFIX = "/api"
 @dataclass
 class GenConfig:
     out_dir: str
-    # Where the codegen hash manifest lives (``<gen_state_dir>/.hashes.json``), which
-    # records what this generator wrote so a later run can tell its own output from a
-    # hand edit. None disables that detection and falls back to the legacy
+    # Where the codegen hash manifest lives (``<gen_state_dir>/.hashes/``, one file per
+    # package), which records what this generator wrote so a later run can tell its own
+    # output from a hand edit. None disables that detection and falls back to the legacy
     # @generated-marker rule — mirroring TS, where a runGen with no projectRoot also
     # gets weaker guarantees. The CLI always sets it to
     # ``<project>/.metaobjects/.gen-state``. COMMIT the manifest: it is the only thing

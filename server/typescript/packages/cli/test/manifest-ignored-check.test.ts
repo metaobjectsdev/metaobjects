@@ -1,6 +1,6 @@
 // The check that ships with the fix.
 //
-// A project whose `.gitignore` still excludes `.gen-state/.hashes.json` looks
+// A project whose `.gitignore` still excludes `.gen-state/.hashes/` looks
 // completely healthy — gen succeeds, output is correct — while hand-edit detection
 // silently does not work anywhere but the generating machine. That invisibility is
 // the whole reason a doc is not enough.
@@ -27,7 +27,7 @@ function gitInit(): void {
 }
 
 function writeManifest(): void {
-  const p = join(root, HASH_MANIFEST_REL);
+  const p = join(root, HASH_MANIFEST_REL, ".root.json");
   mkdirSync(dirname(p), { recursive: true });
   writeFileSync(p, "{}\n");
 }
@@ -51,18 +51,18 @@ describe("warnIfManifestIgnored", () => {
     writeManifest();
     // The naive form. git will not descend into an excluded directory, so the `!`
     // below it never applies — the manifest stays ignored and nobody notices.
-    writeIgnore(".gen-state/\n!.gen-state/.hashes.json\n");
+    writeIgnore(".gen-state/\n!.gen-state/.hashes/\n");
 
     const warnings = captureWarnings(() => warnIfManifestIgnored(root));
     expect(warnings.length).toBe(1);
-    expect(warnings[0]).toContain(".hashes.json");
+    expect(warnings[0]).toContain(".hashes");
     expect(warnings[0]).toContain(".gen-state/*");
   });
 
   test("SILENT on the correct glob form", () => {
     gitInit();
     writeManifest();
-    writeIgnore(".gen-state/*\n!.gen-state/.hashes.json\n");
+    writeIgnore(".gen-state/*\n!.gen-state/.hashes/\n");
     expect(captureWarnings(() => warnIfManifestIgnored(root))).toEqual([]);
   });
 
@@ -124,7 +124,7 @@ describe("the advisory names the rule that is actually in force", () => {
     const warns = captureWarnings(() => warnIfManifestIgnored(root));
     expect(warns).toHaveLength(1);
     expect(warns[0]).toContain(".metaobjects/.gitignore:1");
-    expect(warns[0]).toContain("!.gen-state/.hashes.json");
+    expect(warns[0]).toContain("!.gen-state/.hashes/");
   });
 
   test("when git cannot say, it degrades to the generic form and asserts no location", () => {

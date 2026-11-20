@@ -1,11 +1,12 @@
 // FR-038 §8 — the gen-state readers orphan reconciliation is built on.
 //
-// `.gen-state/.hashes.json` is the only record of what a previous run wrote, so
+// the `.gen-state/.hashes/` manifest is the only record of what a previous run wrote, so
 // its key set IS the "previously generated" universe. These tests pin the three
 // properties the reconciliation decision depends on: the key list is complete,
 // the snapshot read REFUSES a tampered snapshot (returns undefined rather than
 // stale text), and forgetting a path removes both halves of the record.
 
+import { manifestEntries, manifestFiles } from "./support/manifest.js";
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -89,9 +90,7 @@ describe("forgetGeneratedPaths", () => {
     expect(readGeneratedSnapshot(genStateDir, "out/Keep.ts")).toBe(
       "export const b = 2;\n",
     );
-    const hashes = JSON.parse(
-      readFileSync(join(genStateDir, ".hashes.json"), "utf-8"),
-    ) as Record<string, string>;
+    const hashes = manifestEntries(genStateDir);
     expect(Object.keys(hashes)).toEqual(["out/Keep.ts"]);
   });
 
@@ -117,8 +116,8 @@ describe("forgetGeneratedPaths", () => {
 
   test("an empty set leaves the manifest untouched", () => {
     generate("out/Keep.ts", "export const b = 2;\n");
-    const before = readFileSync(join(genStateDir, ".hashes.json"), "utf-8");
+    const before = manifestFiles(genStateDir);
     forgetGeneratedPaths(genStateDir, []);
-    expect(readFileSync(join(genStateDir, ".hashes.json"), "utf-8")).toBe(before);
+    expect(manifestFiles(genStateDir)).toEqual(before);
   });
 });

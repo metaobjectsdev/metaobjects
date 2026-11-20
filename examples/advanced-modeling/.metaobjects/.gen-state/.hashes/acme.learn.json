@@ -109,6 +109,5 @@
     "hash": "655f1fdd3c2f104fe48e8fb9a4147c3977a820f82e2b0a6ce1db8e4bd1b3ca2c",
     "generatedBy": "entity-file",
     "sourceNode": "acme::learn::SyllabusSection"
-  },
-  "src/generated/index.ts": "b542ee705d68fe1695f930a14bd7fb54bf8e89f4f0688aaba58b7df2c2fb29db"
+  }
 }

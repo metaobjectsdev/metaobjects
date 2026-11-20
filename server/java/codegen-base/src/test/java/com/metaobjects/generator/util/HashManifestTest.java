@@ -57,7 +57,7 @@ public class HashManifestTest {
         HashManifest.record(genState, "src/Z.java", "z", OWNER);
         HashManifest.record(genState, "src/A.java", "a", OWNER);
 
-        String raw = Files.readString(genState.resolve(".hashes.json"));
+        String raw = Files.readString(genState.resolve(".hashes/.root.json"));
         assertTrue("expected a trailing newline", raw.endsWith("\n"));
         // Sorted: A before Z.
         assertTrue(raw.indexOf("src/A.java") < raw.indexOf("src/Z.java"));
@@ -108,7 +108,7 @@ public class HashManifestTest {
         assertEquals(Map.of("src/Owned.java", OWNER), owners);
 
         com.google.gson.JsonObject raw = com.google.gson.JsonParser.parseString(
-            Files.readString(genState.resolve(".hashes.json"))).getAsJsonObject();
+            Files.readString(genState.resolve(".hashes/.root.json"))).getAsJsonObject();
         assertEquals("abc", raw.get("src/Plain.java").getAsString());
         assertEquals("def", raw.get("src/Legacy.java").getAsString());
         com.google.gson.JsonObject owned = raw.getAsJsonObject("src/Owned.java");

@@ -51,16 +51,17 @@ const META_COMMON_JSON = JSON.stringify(
 // pattern, then explicitly re-include `migrations/` and `config.json` so the
 // tracked artifacts are never swept up even if a future broad pattern were added.
 const METAOBJECTS_GITIGNORE_BODY = `# The codegen merge base. The snapshot BODIES are a second full copy of all
-# generated output — never commit those. \`.hashes.json\` is different: it is one
-# hash per generated path, and it is the only thing that lets \`meta gen\` tell "this
-# file is exactly what I wrote" from "somebody edited this" on a machine that did
-# not generate it. Without it committed, every fresh clone and every CI runner has
-# no merge base, and a hand-edited generated file cannot be recognised as such.
+# generated output — never commit those. \`.hashes/\` is different: it holds one
+# hash per generated path (a file per model package), and it is the only thing
+# that lets \`meta gen\` tell "this file is exactly what I wrote" from "somebody
+# edited this" on a machine that did not generate it. Without it committed, every
+# fresh clone and every CI runner has no merge base, and a hand-edited generated
+# file cannot be recognised as such.
 #
 # The glob form matters: \`.gen-state/\` (a directory) would stop git descending, and
 # the negation below could never take effect.
 .gen-state/*
-!.gen-state/.hashes.json
+!.gen-state/.hashes/
 
 # Per-target codegen output routed under .metaobjects/<target>/ is regenerable
 # (re-run \`meta gen\`); never commit it. The canonical output is your configured

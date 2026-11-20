@@ -6,7 +6,7 @@
 //             overlays already resolved, references already in their canonical spelling.
 //   verify    the `meta verify --format json` payload: the requirement ledger rows, each
 //             link as the gate resolved it, the counts and the findings.
-//   manifest  `.metaobjects/.gen-state/.hashes.json`: which generated file came from which
+//   manifest  the entries of `.metaobjects/.gen-state/.hashes/`: which generated file came from which
 //             node, where the port records it.
 //
 // Every port already has a canonical serializer and writes the same manifest, so a Java, C#
@@ -61,7 +61,7 @@ export interface ExplorerInput {
   /** Parsed `meta verify --format json` output. Without it there is no ledger and no
    *  `implementedBy` / `supersededBy` edge. */
   verify?: unknown;
-  /** Parsed `.metaobjects/.gen-state/.hashes.json`. Without it there is no `generated`. */
+  /** The merged entries of `.metaobjects/.gen-state/.hashes/`. Without it there is no `generated`. */
   manifest?: unknown;
   /** The routes the project mounts: `[{ node, method, path }]`, one per route, `node` a node
    *  id. A route whose node is not in the model is dropped. Without it there is no `api`. */

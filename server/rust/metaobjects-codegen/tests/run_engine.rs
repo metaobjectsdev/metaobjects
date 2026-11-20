@@ -18,7 +18,7 @@ use metaobjects_codegen::{
     run, verify,
 };
 
-const MANIFEST: &str = ".metaobjects/.gen-state/.hashes.json";
+const MANIFEST: &str = ".metaobjects/.gen-state/.hashes/shop.json";
 
 fn generators() -> Vec<Box<dyn Generator>> {
     vec![Box::new(EntityGenerator)]
@@ -203,7 +203,12 @@ fn an_orphan_with_a_hand_edit_is_never_deleted_and_fails_the_run_by_name() {
             other => panic!("expected a refusal, got {other}"),
         }
         assert_eq!(p.read(orphan), "// mine\n", "the edit is left in place");
-        assert!(p.read(MANIFEST).contains(orphan), "and it stays recorded");
+        // The object is gone, so nothing places the orphan any more: it is filed under the root.
+        assert!(
+            p.read(".metaobjects/.gen-state/.hashes/.root.json")
+                .contains(orphan),
+            "and it stays recorded"
+        );
         assert!(
             !p.exists(&format!(".metaobjects/.gen-state/{FINGERPRINT_FILE}")),
             "a refused run is not a current one"

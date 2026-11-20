@@ -9,6 +9,7 @@
 // hand, so the gen-state these tests reconcile is the gen-state `meta gen`
 // actually produces.
 
+import { setManifestEntry } from "./support/manifest.js";
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, existsSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -170,10 +171,7 @@ describe("sweepOrphans", () => {
     // The manifest is the trust root. An entry that disagrees with the file on
     // disk means the file is not what we wrote, whatever the reason.
     generate(STUB_A, "// stub a\n");
-    const hashesPath = join(genStateDir, ".hashes.json");
-    const hashes = JSON.parse(readFileSync(hashesPath, "utf-8")) as Record<string, string>;
-    hashes[STUB_A] = "0".repeat(64);
-    writeFileSync(hashesPath, JSON.stringify(hashes, null, 2) + "\n");
+    setManifestEntry(genStateDir, STUB_A, "0".repeat(64));
 
     const result = sweepOrphans({
       genStateDir,

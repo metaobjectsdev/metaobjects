@@ -1,7 +1,7 @@
 // The scenario this whole mechanism exists for, driven end to end through runGen.
 //
 // A teammate clones the repo. The generated output is committed; the `.gen-state`
-// snapshot BODIES are gitignored so they are absent; `.gen-state/.hashes.json` is
+// snapshot BODIES are gitignored so they are absent; `.gen-state/.hashes/` is
 // committed so it is present. One generated file carries a hand edit — the
 // `leadingWildcard: true` change the docs explicitly tell adopters to make inside a
 // generated allowlist. They run `meta gen`.
@@ -11,6 +11,7 @@
 // decision that runGen never reaches is worth nothing — which is exactly how the
 // orphan mechanism shipped inert earlier in this branch.
 
+import { manifestExists, removeManifest } from "./support/manifest.js";
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import {
   mkdtempSync, rmSync, readFileSync, writeFileSync, readdirSync, existsSync, statSync,
@@ -47,18 +48,19 @@ async function gen(opts: { baselineFresh?: boolean } = {}) {
   });
 }
 
-/** Delete every snapshot body but keep `.hashes.json` — what a clone actually has,
+/** Delete every snapshot body but keep `.hashes/` — what a clone actually has,
  *  given the gitignore `meta init` now scaffolds. */
 function simulateFreshClone(): void {
   const walk = (dir: string): void => {
     for (const entry of readdirSync(dir)) {
       const full = join(dir, entry);
+      if (entry === ".hashes") continue; // the manifest directory is what a clone keeps
       if (statSync(full).isDirectory()) { walk(full); rmSync(full, { recursive: true, force: true }); }
-      else if (entry !== ".hashes.json" && entry !== ".engine.json") rmSync(full, { force: true });
+      else if (entry !== ".engine.json") rmSync(full, { force: true });
     }
   };
   walk(genStateDir());
-  expect(existsSync(join(genStateDir(), ".hashes.json"))).toBe(true);
+  expect(manifestExists(genStateDir())).toBe(true);
 }
 
 describe("regen on a fresh clone: hashes committed, bodies absent", () => {
@@ -127,7 +129,7 @@ describe("regen on a fresh clone: hashes committed, bodies absent", () => {
     await gen();
     const target = join(projectRoot, "generated", "Post.ts");
     simulateFreshClone();
-    rmSync(join(genStateDir(), ".hashes.json"), { force: true });
+    removeManifest(genStateDir());
     writeFileSync(target, "// my edit\n");
 
     const result = await gen();

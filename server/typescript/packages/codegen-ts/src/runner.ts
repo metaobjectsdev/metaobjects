@@ -384,7 +384,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
         ? join(projectRoot, ".metaobjects", ".gen-state")
         : join(tmpdir(), `meta-gen-state-${process.pid}`));
   // A file written OUTSIDE the project has no place in the project's gen-state: its
-  // manifest key would be `../..`-relative, committed into `.hashes.json`, and its snapshot
+  // manifest key would be `../..`-relative, committed into the hash manifest, and its snapshot
   // body — stored at `<gen-state>/<key>` — would walk out of `.gen-state/` and land a second
   // copy of the output in the project tree. Such files get the process-isolated state a run
   // with no project gets: written, never recorded.
@@ -422,14 +422,14 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     if (untrackedCount === 0) return;
     warnings.push(
       `${untrackedCount} generated file(s) were written outside the project root and are not ` +
-      `recorded in .metaobjects/.gen-state/.hashes.json, so hand-edit protection does not apply ` +
+      `recorded in .metaobjects/.gen-state/.hashes/, so hand-edit protection does not apply ` +
       `to them: a later run overwrites them without checking for edits.`,
     );
   };
 
   // #232 — make an unexplained regen diff explained: if the codegen engine changed
   // since the last gen, note it (generated output may legitimately differ). Purely
-  // informational — the version file is separate from `.hashes.json` and never
+  // informational — the version file is separate from the hash manifest and never
   // affects the merge. Only fires when a prior stamp exists AND differs.
   // Captured BEFORE any write, because the first write creates the manifest — read
   // it afterwards and every project looks migrated.
@@ -1118,8 +1118,8 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
         `project created before the manifest was committed. ` +
         `ONE-TIME FIX: re-run with --baseline=adopt — it records the files you have as ` +
         `the merge base and writes NOTHING — then commit ` +
-        `'.metaobjects/.gen-state/.hashes.json' (un-ignore it in .metaobjects/.gitignore ` +
-        `with '.gen-state/*' + '!.gen-state/.hashes.json') and run 'meta gen' again, where ` +
+        `'.metaobjects/.gen-state/.hashes/' (un-ignore it in .metaobjects/.gitignore ` +
+        `with '.gen-state/*' + '!.gen-state/.hashes/') and run 'meta gen' again, where ` +
         `the regeneration arrives as its own reviewable diff. Adopting DECLARES these files ` +
         `to be generated output, so an edit already inside one of them is part of the ` +
         `baseline and that regeneration will replace it — commit before you run it. ` +
@@ -1167,7 +1167,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // `--baseline=adopt` — the counterpart of the aggregate above, and aggregated for the
   // same reason: every adopted file has one cause and one next step. Reported even though
   // nothing failed, because a run that writes nothing and exits 0 is otherwise
-  // indistinguishable from a no-op, and the file it DID produce (`.hashes.json`) is the
+  // indistinguishable from a no-op, and the file it DID produce (the hash manifest) is the
   // one the adopter now has to commit.
   const reportAdoptions = (): void => {
     const adopted = writes.filter((w) => w.status === "adopted");
@@ -1176,8 +1176,8 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     const more = adopted.length > MAX_NAMED ? `, and ${adopted.length - MAX_NAMED} more` : "";
     warnings.push(
       `Recorded ${adopted.length} existing file(s) as the codegen baseline and wrote ` +
-      `nothing. NEXT: commit '.metaobjects/.gen-state/.hashes.json' (un-ignore it in ` +
-      `.metaobjects/.gitignore with '.gen-state/*' + '!.gen-state/.hashes.json'), then run ` +
+      `nothing. NEXT: commit '.metaobjects/.gen-state/.hashes/' (un-ignore it in ` +
+      `.metaobjects/.gitignore with '.gen-state/*' + '!.gen-state/.hashes/'), then run ` +
       `'meta gen' — these files regenerate normally from here, as their own reviewable ` +
       `diff. Adopting DECLARED them to be generated output: an edit already inside one is ` +
       `part of the baseline and that regeneration will replace it, so check the diff ` +
@@ -1398,7 +1398,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     // first would be unrecoverable if a later write threw. Ordering cannot change
     // the decision — a path this run emitted is never an orphan either way.
     sweep(false);
-  });
+  }, root.objects().map((o) => ({ name: o.name, package: effectivePackage(o) ?? "" })));
 
   // #232 — stamp the engine version that produced this snapshot, so the NEXT gen can
   // detect an engine change. Written after a successful run only, and only by a run that

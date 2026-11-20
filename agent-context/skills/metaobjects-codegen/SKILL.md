@@ -176,7 +176,7 @@ You run a `gen` step. The runner:
 3. Runs each configured **generator** — most emit one file per entity; some emit a
    single shared file (a barrel, a DB-context, an app-config).
 4. Decides whether it may overwrite a file, by a committed **hash manifest**
-   (`.metaobjects/.gen-state/.hashes.json`) on every port. If a file still hashes to what
+   (`.metaobjects/.gen-state/.hashes/`) on every port. If a file still hashes to what
    the generator recorded writing, it is safe to overwrite; if it was edited, or there is
    no record of it, the write is **refused by name**. TypeScript additionally
    three-way-merges against a snapshot when one is present locally. **Commit the
@@ -189,7 +189,7 @@ You run a `gen` step. The runner:
    write). On Java and Kotlin a refusal is a warning and `mvn metaobjects:verify` is the
    gate that fails. The one-time fix for a project that predates the committed manifest
    is **`gen --baseline=adopt`**: it records the files you have as the baseline and writes
-   nothing, so there is finally a `.hashes.json` to commit — then `gen` again, and the
+   nothing, so there is finally a `.hashes/` to commit — then `gen` again, and the
    regeneration lands as its own diff. Adopting DECLARES those files to be generated
    output, so an edit already inside one is part of the baseline and that regeneration
    replaces it; commit before you run it. (TypeScript additionally has

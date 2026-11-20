@@ -8,7 +8,7 @@
 // false in exactly the situation adopters spend most of their time in.
 //
 // The fix rests on one question, asked of one piece of evidence: IS THIS FILE
-// BYTE-FOR-BYTE WHAT WE RECORDED WRITING? `.hashes.json` answers it without the
+// BYTE-FOR-BYTE WHAT WE RECORDED WRITING? the `.hashes/` manifest answers it without the
 // snapshot body, which is why the manifest is the part that gets committed —
 // a hash per path is small and reviewable, where a second full copy of all
 // generated output is neither.
@@ -21,6 +21,7 @@
 // hand-edited content as though we had written it would launder the edit into the
 // manifest, and the NEXT run would then overwrite it with a clear conscience.
 
+import { manifestFiles } from "../support/manifest.js";
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -222,7 +223,7 @@ describe("the manifest is a committed artifact", () => {
         outputRelPath: rel,
       });
     }
-    const raw = readFileSync(join(state, ".hashes.json"), "utf-8");
+    const raw = manifestFiles(state)[".root.json"]!; // no model, so every path files under the root
     const keys = Object.keys(JSON.parse(raw) as Record<string, string>);
     expect(keys).toEqual(["a.ts", "m.ts", "z.ts"]);
   });

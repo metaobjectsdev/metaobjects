@@ -14,6 +14,7 @@
 //   3. The refusal names no remedy a `requirementTests()` owner cannot perform, and the
 //      recovery that DOES keep the edit is printed once per run rather than per file.
 
+
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -99,11 +100,11 @@ function writeMyBody(path: string): void {
 function dropSnapshotBodies(projectRoot: string): void {
   const genState = join(projectRoot, ".metaobjects", ".gen-state");
   for (const entry of readdirSync(genState)) {
-    if (entry !== ".hashes.json") {
+    if (entry !== ".hashes") {
       rmSync(join(genState, entry), { recursive: true, force: true });
     }
   }
-  expect(readdirSync(genState)).toEqual([".hashes.json"]);
+  expect(readdirSync(genState)).toEqual([".hashes"]);
 }
 
 describe("`<Entity>.extra.ts` is a convention, not a mechanism", () => {

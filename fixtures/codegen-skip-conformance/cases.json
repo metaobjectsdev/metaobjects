@@ -111,6 +111,12 @@
       "verify": "must-render"
     },
     {
+      "id": "legacy-manifest",
+      "change": "The manifest is put back in its pre-1.3.0 form: every file in .hashes/ is merged into one .hashes.json and the directory is removed (ADR-0064 Amendment 1). The next write run splits it again, so gen does not skip.",
+      "gen": "regenerate",
+      "verify": "may-answer-no-drift"
+    },
+    {
       "id": "generated-file-deleted",
       "change": "A file the manifest records is deleted.",
       "gen": "regenerate",

@@ -24,7 +24,7 @@ Generated files carry the header:
 
 The header is **informational on this port** — the write decision never reads it. What
 the runner overwrites is decided by `.metaobjects/.gen-state/`: the snapshot body if the
-machine has one (three-way merge), otherwise the committed `.hashes.json` (byte-for-byte
+machine has one (three-way merge), otherwise the committed `.hashes/` (byte-for-byte
 what it wrote ⇒ overwrite; anything else ⇒ refused, exit 1). A sibling file you created
 (`<Entity>.extra.ts` by convention) is never touched because it is not a path the runner
 records — not because of its name, and not because of the header. Locate generated output at the

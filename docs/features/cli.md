@@ -54,7 +54,7 @@ vocabulary everywhere, each port implementing the modes it supports.
 | Subverb | What it checks | Touches a DB? |
 |---|---|---|
 | `verify --db` | **Schema drift** — does the live database (or snapshot) match the metadata? (migrate engine, ADR-0015) | yes |
-| `verify --codegen` | **Codegen drift** — regenerate from metadata in memory and fail if it differs from the committed generated output. Catches "metadata changed but `meta gen` wasn't re-run". **A hand-edited generated file** (Node `meta`): `meta gen` three-way-merges hand edits, so the gate compares the *generated contribution* against the committed `.gen-state/.hashes.json` and reports each edited file separately, by path, with how to see the edit and how to drop it. What that report does to the exit code is the `verify.handEdits` key in `.metaobjects/config.json`: `"fail"` exits 1, `"notice"` (and a project without the key, as before 1.3) prints it and exits 0. `meta init` writes `"fail"` for a new project. `--allow-hand-edits` relaxes `fail` to a notice for one run; `--forbid-hand-edits` makes a hand edit fail for one run whatever the key says. The other ports compare the generated files byte for byte, so any edit is drift and fails: `dotnet meta verify --codegen`, `mvn metaobjects:verify` (Java and Kotlin) and `metaobjects verify --codegen` each exit non-zero and name the file. | no |
+| `verify --codegen` | **Codegen drift** — regenerate from metadata in memory and fail if it differs from the committed generated output. Catches "metadata changed but `meta gen` wasn't re-run". **A hand-edited generated file** (Node `meta`): `meta gen` three-way-merges hand edits, so the gate compares the *generated contribution* against the committed `.gen-state/.hashes/` and reports each edited file separately, by path, with how to see the edit and how to drop it. What that report does to the exit code is the `verify.handEdits` key in `.metaobjects/config.json`: `"fail"` exits 1, `"notice"` (and a project without the key, as before 1.3) prints it and exits 0. `meta init` writes `"fail"` for a new project. `--allow-hand-edits` relaxes `fail` to a notice for one run; `--forbid-hand-edits` makes a hand edit fail for one run whatever the key says. The other ports compare the generated files byte for byte, so any edit is drift and fails: `dotnet meta verify --codegen`, `mvn metaobjects:verify` (Java and Kotlin) and `metaobjects verify --codegen` each exit non-zero and name the file. | no |
 | `verify --templates` | **Template/prompt drift** — `Renderer.verify` checks each `template.*` node's `{{field}}` references against its payload VO (FR-004). A Jinja body (Python and TypeScript, ADR-0061) is checked the same way. | no |
 | `verify --docs` | **Removed in 1.1.0** (ADR-0034 Amendment 9). It prints where the check went and exits 2: documentation is written by entries in `generators`, so `verify --codegen` checks it with the rest of the declared output. | — |
 | `verify --deps` | **Dependency drift** (FR-023) — re-resolves each declared dependency (its `path`, its installed `npm` / `python` package, or its `maven` / `nuget` package in the local cache) and compares its installed artifact's hash against `.metaobjects/deps.lock.json`, same comparison as `meta deps check`. Needs the publisher reachable, so it is never part of the bare-`verify` default. A `drifted` or `unresolved` dependency fails with `ERR_DEPENDENCY_UPSTREAM_DRIFT`. **Node `meta`; Python (`metaobjects verify --deps`, plus `metaobjects deps check`), C# (`dotnet meta verify --deps`), and Java and Kotlin (`-Dmeta.verify.mode=deps`) have the `path`-only counterpart.** See [`metadata-dependencies.md`](metadata-dependencies.md). | no |
@@ -289,7 +289,7 @@ ships. When `verify` renders, it compares in memory: no temp tree is written.
 ## `gen` refuses rather than guesses — and `--baseline` is how you answer it
 
 Every port's `gen` decides per file whether it may overwrite, from a committed hash
-manifest (`.metaobjects/.gen-state/.hashes.json`). A file that still hashes to what the
+manifest (`.metaobjects/.gen-state/.hashes/`). A file that still hashes to what the
 generator recorded writing is safe to overwrite; one that was edited, or that no record
 covers, is **refused by name and left exactly as it is**.
 
@@ -324,10 +324,10 @@ Syntax per port, and the orphan rule both follow:
 [own-your-codegen](own-your-codegen.md#handedits-keep-or-discard-edits-to-one-generators-files).
 
 **`adopt` exists because the refusal's own remedy was unreachable.** It told you to commit
-`.hashes.json` — but nothing writes a manifest until a `gen` succeeds, and a run where
+`.hashes/` — but nothing writes a manifest until a `gen` succeeds, and a run where
 every file refuses writes none, so there was nothing to commit and the next run refused
 identically. `adopt` breaks that loop: it records what is on disk, writes not one byte of
-output, and leaves exactly one file to commit. Then `gen` again, and the regeneration
+output, and leaves the manifest to commit. Then `gen` again, and the regeneration
 arrives as its own reviewable diff.
 
 **What adopting declares** — say this out loud before running it: that the files you have

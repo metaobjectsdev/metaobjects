@@ -97,6 +97,17 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   `codegen-kotlin` generators ignored a generator's `<filters>` and wrote every object; they now
   honour them, as the `codegen-base` generators always did. A pom whose filters were inert
   generates fewer files: remove the `<filters>` that no longer describe what you want.
+- **The hash manifest is one file per package.** `.metaobjects/.gen-state/.hashes.json` is replaced
+  by `.metaobjects/.gen-state/.hashes/<package>.json` (and `.root.json` for a path in no package), so
+  two branches that regenerate files in different packages no longer conflict on one file. Nothing to
+  do but commit: the first `meta gen` (or `dotnet meta gen`, `mvn metaobjects:generate`,
+  `metaobjects gen`, `cargo meta gen`) reads the old file, writes the package files, deletes the old
+  file and adds `!.gen-state/.hashes/` to `.metaobjects/.gitignore` when that file ignores
+  `.gen-state/*`. A project whose root `.gitignore` excludes `.metaobjects/.gen-state/` should
+  un-ignore the new directory the way it un-ignored the old file; `meta verify` still names the
+  rule that is in force. A pipeline that read `.hashes.json` directly reads every file in
+  `.hashes/` instead. ADR-0064 Amendment 1;
+  [docs/features/migrations/per-package-hash-manifest.md](docs/features/migrations/per-package-hash-manifest.md).
 - **`metamodelVersion` is `1.3`.** Upgrade every port together.
 
 ### Security
@@ -214,6 +225,19 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   are unchanged and out of scope here: a PATCH or PUT key is still read by the field name.
 
 ### Added
+
+- **The hash manifest is one file per package (ADR-0064 Amendment 1).** Every port that keeps hash
+  state, TypeScript, C#, Java, Kotlin, Python and Rust, writes `.gen-state/.hashes/<package>.json`
+  instead of one `.gen-state/.hashes.json`. The file name is the package's `::` segments joined with
+  `.`, percent-encoding any byte outside `[A-Za-z0-9_-]`. A file is placed by the `sourceNode` the
+  entry records, else by the model object its file name names (matched by words, so `OrderLine.cs`
+  and `order_line.py` both find `OrderLine`), else it stays where it was, else it goes in
+  `.root.json`. Placement only decides which file holds an entry: a reader merges them all, so a
+  wrong placement costs a merge conflict and nothing else. A write touches only the files whose
+  bytes change, so a run that changes nothing still writes nothing. The shared vectors are
+  `fixtures/codegen-skip-conformance/manifests.json`, and a `legacy-manifest` case in that corpus
+  holds every port to the migration. A test merges two real git branches that change different
+  packages with no conflict.
 
 - **Business rules: operations, permission names and lifecycles (ADR-0066). Experimental:** the
   shape may change in a MINOR, including removals and renames, until generated services run on

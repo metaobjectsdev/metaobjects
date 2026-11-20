@@ -1,8 +1,14 @@
 # Migration: Java and Kotlin commit the codegen hash manifest
 
+> **Since 1.3.0 the manifest is a directory, `.gen-state/.hashes/`, with one file per model
+> package** (see [the per-package manifest migration](per-package-hash-manifest.md)). Read
+> `.hashes.json` below as that directory; the first `gen` after upgrading converts it. The
+> commands and ignore rule below already name the directory: a repo-level ignore that still
+> un-ignores only `.hashes.json` ignores `.hashes/`, and nothing warns you.
+
 **Changed in:** Maven 8.1.0 (npm, PyPI and NuGet 1.1.0) · **Ports affected:** Java and Kotlin
-**Automatic fix:** the first `mvn metaobjects:generate` run does it; you commit one file per
-module. Decision record:
+**Automatic fix:** the first `mvn metaobjects:generate` run does it; you commit the manifest
+directory in each module. Decision record:
 [ADR-0060](https://github.com/metaobjectsdev/metaobjects/blob/main/spec/decisions/ADR-0060-jvm-codegen-hash-manifest.md).
 
 ## What changed
@@ -16,10 +22,10 @@ From 8.1.0 the Java and Kotlin generators record every file they write in a comm
 manifest, the same one TypeScript, Python and C# use:
 
 ```
-<module basedir>/.metaobjects/.gen-state/.hashes.json
+<module basedir>/.metaobjects/.gen-state/.hashes/<package>.json
 ```
 
-It maps each generated file's module-relative path to the SHA-256 of what was written and
+Each file maps each generated file's module-relative path to the SHA-256 of what was written and
 to its owner: the generator that wrote it (its registry id, or the class name of a
 generator of your own) and that generator's output directory within the module:
 
@@ -49,21 +55,21 @@ With it:
    writes fresh output and records it. It deletes nothing. It prints one notice:
 
    ```
-   mvn metaobjects:generate: created the codegen hash manifest `.metaobjects/.gen-state/.hashes.json` and adopted N existing generated file(s) into it. Commit it: ...
+   mvn metaobjects:generate: created the codegen hash manifest `.metaobjects/.gen-state/.hashes/` and adopted N existing generated file(s) into it. Commit it: ...
    ```
 
 2. Commit the manifest, in every module that runs the plugin:
 
    ```bash
-   git add .metaobjects/.gen-state/.hashes.json
+   git add .metaobjects/.gen-state/.hashes/
    git commit -m "chore: commit the codegen hash manifest"
    ```
 
-   If a `.gitignore` excludes `.metaobjects/` or `.gen-state/`, re-include the one file:
+   If a `.gitignore` excludes `.metaobjects/` or `.gen-state/`, re-include the directory:
 
    ```gitignore
    .metaobjects/.gen-state/*
-   !.metaobjects/.gen-state/.hashes.json
+   !.metaobjects/.gen-state/.hashes/
    ```
 
    Exclude the directory's contents (`.gen-state/*`), not the directory itself: git does not

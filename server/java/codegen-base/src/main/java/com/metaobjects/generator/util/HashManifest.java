@@ -15,7 +15,12 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.LinkedHashMap;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.util.TreeMap;
 
 /**
@@ -24,8 +29,9 @@ import java.util.TreeMap;
  *
  * <p>Mirrors the shape and algorithm the TypeScript, Python and C# ports already share:
  * a JSON object {@code { "<project-relative path>": "<sha-256 hex>" }}, keys sorted,
- * pretty-printed, one trailing newline, at
- * {@code <project>/.metaobjects/.gen-state/.hashes.json} where {@code <project>} is the
+ * pretty-printed, one trailing newline, split into one file per model package under
+ * {@code <project>/.metaobjects/.gen-state/.hashes/} (ADR-0064 Amendment 1; a pre-1.3.0
+ * {@code .hashes.json} is still read and is removed by the next write) where {@code <project>} is the
  * Maven project base dir. The KEYS are not meant to be portable between ports — each
  * keys relative to its own notion of "the project" — only the shape and the hashing
  * algorithm (sha-256 hex of the UTF-8 content) are shared, so identical content hashes
@@ -58,11 +64,117 @@ public final class HashManifest {
         }
     }
 
-    private static final String FILE_NAME = ".hashes.json";
+    /** The pre-1.3.0 single manifest, still read (underneath the package files) and removed by the next write. */
+    private static final String LEGACY_FILE_NAME = ".hashes.json";
+    /** The directory of per-package manifests (ADR-0064 Amendment 1). */
+    private static final String DIR_NAME = ".hashes";
+    /** The manifest of every path that belongs to no package. */
+    public static final String ROOT_FILE_NAME = ".root.json";
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 
-    private static Path pathFor(Path genStateDir) {
-        return genStateDir.resolve(FILE_NAME);
+    private static Path legacyPath(Path genStateDir) {
+        return genStateDir.resolve(LEGACY_FILE_NAME);
+    }
+
+    private static Path dirPath(Path genStateDir) {
+        return genStateDir.resolve(DIR_NAME);
+    }
+
+    /** A model object as placement sees it: its name and its {@code ::}-separated package ({@code ""}: none). */
+    public record ModelObject(String name, String pkg) {}
+
+    /**
+     * Which package manifest a recorded path belongs to, from the loaded model's root-level
+     * objects: the entry's {@code sourceNode} first, then the object whose name the file's
+     * stem begins with (ADR-0064 Amendment 1 section 3). A pure function of the model and the
+     * entry, so an entry moves only when its object does.
+     */
+    public static final class Placement {
+        // Each name's lowercase words (joined by a space) -> the packages declaring a name of those words.
+        private final Map<String, java.util.Set<String>> packagesByWords = new java.util.HashMap<>();
+
+        public Placement(Iterable<ModelObject> objects) {
+            for (ModelObject o : objects) {
+                if (o.name() == null || o.name().isEmpty()) continue;
+                List<String> words = words(o.name());
+                if (words.isEmpty()) continue;
+                packagesByWords.computeIfAbsent(String.join(" ", words), k -> new java.util.HashSet<>())
+                        .add(o.pkg() == null ? "" : o.pkg());
+            }
+        }
+
+        /** The package of {@code path}'s manifest, or {@code null} for the root manifest. {@code entry} may be null. */
+        public String packageOf(String path, JsonObject entry) {
+            String sourceNode = entry == null ? null : stringField(entry, "sourceNode");
+            if (sourceNode != null) {
+                int dot = sourceNode.indexOf('.');
+                String qualified = dot < 0 ? sourceNode : sourceNode.substring(0, dot);
+                int sep = qualified.lastIndexOf("::");
+                return sep <= 0 ? null : qualified.substring(0, sep);
+            }
+            String base = path.substring(path.lastIndexOf('/') + 1);
+            int dot = base.indexOf('.');
+            List<String> stem = words(dot < 0 ? base : base.substring(0, dot));
+            for (int n = stem.size(); n >= 1; n--) {
+                java.util.Set<String> packages = packagesByWords.get(String.join(" ", stem.subList(0, n)));
+                if (packages == null) continue;
+                if (packages.size() != 1) return null;
+                String only = packages.iterator().next();
+                return only.isEmpty() ? null : only;
+            }
+            return null;
+        }
+
+        /** Lowercase words of a name: split at '_' and '-', before an uppercase letter after a lowercase
+         *  letter or digit, and before the last capital of a run that a lowercase letter follows. */
+        static List<String> words(String name) {
+            List<String> out = new ArrayList<>();
+            StringBuilder word = new StringBuilder();
+            for (int i = 0; i < name.length(); i++) {
+                char c = name.charAt(i);
+                if (c == '_' || c == '-') {
+                    flush(out, word);
+                    continue;
+                }
+                boolean upper = c >= 'A' && c <= 'Z';
+                if (upper && word.length() > 0) {
+                    char prev = name.charAt(i - 1);
+                    boolean prevLowerOrDigit = (prev >= 'a' && prev <= 'z') || (prev >= '0' && prev <= '9');
+                    boolean prevUpper = prev >= 'A' && prev <= 'Z';
+                    boolean nextLower = i + 1 < name.length() && name.charAt(i + 1) >= 'a' && name.charAt(i + 1) <= 'z';
+                    if (prevLowerOrDigit || (prevUpper && nextLower)) flush(out, word);
+                }
+                word.append(Character.toLowerCase(c));
+            }
+            flush(out, word);
+            return out;
+        }
+
+        private static void flush(List<String> out, StringBuilder word) {
+            if (word.length() > 0) out.add(word.toString());
+            word.setLength(0);
+        }
+    }
+
+    /** The manifest file name of {@code pkg} ({@code null} or empty: the root manifest). */
+    public static String fileName(String pkg) {
+        if (pkg == null || pkg.isEmpty()) return ROOT_FILE_NAME;
+        StringBuilder sb = new StringBuilder();
+        boolean first = true;
+        for (String segment : pkg.split("::", -1)) {
+            if (!first) sb.append('.');
+            first = false;
+            for (byte b : segment.getBytes(StandardCharsets.UTF_8)) {
+                int c = b & 0xFF;
+                if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
+                    sb.append((char) c);
+                } else {
+                    sb.append('%').append(Character.toUpperCase(Character.forDigit(c >> 4, 16)))
+                            .append(Character.toUpperCase(Character.forDigit(c & 0xF, 16)));
+                }
+            }
+        }
+        return sb.append(".json").toString();
     }
 
     /** sha-256 hex (lowercase) of {@code content}'s UTF-8 bytes. */
@@ -89,7 +201,25 @@ public final class HashManifest {
      * carries the marker) rather than a cold refusal.
      */
     public static boolean exists(Path genStateDir) {
-        return Files.isRegularFile(pathFor(genStateDir));
+        return hasLegacy(genStateDir) || !packageFiles(genStateDir).isEmpty();
+    }
+
+    /** Whether the pre-1.3.0 single manifest is still on disk: the next write run migrates it. */
+    public static boolean hasLegacy(Path genStateDir) {
+        return Files.isRegularFile(legacyPath(genStateDir));
+    }
+
+    /** The per-package manifest files, in file-name order. */
+    private static List<Path> packageFiles(Path genStateDir) {
+        Path dir = dirPath(genStateDir);
+        if (!Files.isDirectory(dir)) return List.of();
+        try (Stream<Path> s = Files.list(dir)) {
+            return s.filter(p -> p.getFileName().toString().endsWith(".json") && Files.isRegularFile(p))
+                    .sorted(Comparator.comparing(p -> p.getFileName().toString()))
+                    .collect(Collectors.toList());
+        } catch (IOException e) {
+            return List.of();
+        }
     }
 
     /**
@@ -122,9 +252,15 @@ public final class HashManifest {
         return out;
     }
 
+    /** The union of every manifest file: the legacy one underneath, package files in name order on top. */
     private static Map<String, JsonElement> entries(Path genStateDir) {
         Map<String, JsonElement> out = new LinkedHashMap<>();
-        Path path = pathFor(genStateDir);
+        readInto(legacyPath(genStateDir), out);
+        for (Path p : packageFiles(genStateDir)) readInto(p, out);
+        return out;
+    }
+
+    private static Map<String, JsonElement> readInto(Path path, Map<String, JsonElement> out) {
         if (!Files.isRegularFile(path)) return out;
         JsonElement parsed;
         try {
@@ -139,38 +275,140 @@ public final class HashManifest {
         return out;
     }
 
+    /** The package file each key is recorded in now (a key only in the legacy file is not listed). */
+    private static Map<String, String> fileOfKeys(Path genStateDir) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (Path p : packageFiles(genStateDir)) {
+            for (String key : readInto(p, new LinkedHashMap<>()).keySet()) out.put(key, p.getFileName().toString());
+        }
+        return out;
+    }
+
     private static String stringField(JsonObject object, String field) {
         JsonElement v = object.get(field);
         return v != null && v.isJsonPrimitive() && v.getAsJsonPrimitive().isString() ? v.getAsString() : null;
     }
 
-    /**
-     * Persist the manifest with SORTED keys, pretty-printed, one trailing newline. A key
-     * with an owner is written as {@code { "hash", "generator", "outputDir" }}, one without
-     * as the plain hash. Sorted because the file is committed: insertion order would make
-     * the diff — and any merge conflict between two people who both regenerated — depend
-     * on which generator happened to run first.
-     */
+    /** {@link #save(Path, Map, Map, Placement)} with no model: each entry stays in the file it is in, else the root. */
     public static void save(Path genStateDir, Map<String, String> hashes, Map<String, Owner> owners) {
+        save(genStateDir, hashes, owners, null);
+    }
+
+    /**
+     * Persist the manifest as one file per package: each file holds exactly what the single
+     * manifest held for its paths, with SORTED keys, pretty-printed, one trailing newline. A key
+     * with an owner is written as {@code { "hash", "generator", "outputDir" }}, one without as
+     * the plain hash; any other field the entry already carried (another port's provenance) is
+     * kept. Sorted because the files are committed: insertion order would make the diff, and
+     * any merge between two people who both regenerated, depend on which generator ran first.
+     *
+     * <p>Each entry is filed by {@code placement} ({@code null}: where it already is, else the
+     * root). Only files whose bytes change are written, a package file left empty is deleted,
+     * the root file stays as {@code {}} when nothing is recorded at all, and the legacy single
+     * file is removed.
+     */
+    public static void save(Path genStateDir, Map<String, String> hashes, Map<String, Owner> owners,
+                            Placement placement) {
         try {
-            Files.createDirectories(genStateDir);
-            JsonObject root = new JsonObject();
+            Map<String, JsonElement> existing = entries(genStateDir);
+            Map<String, String> currentFile = placement == null ? fileOfKeys(genStateDir) : Map.of();
+            Map<String, JsonObject> files = new java.util.TreeMap<>();
             for (Map.Entry<String, String> e : new TreeMap<>(hashes).entrySet()) {
-                Owner owner = owners.get(e.getKey());
-                if (owner == null) {
-                    root.addProperty(e.getKey(), e.getValue());
+                String key = e.getKey();
+                Owner owner = owners.get(key);
+                JsonElement prior = existing.get(key);
+                JsonObject extras = new JsonObject();
+                if (prior != null && prior.isJsonObject()) {
+                    for (Map.Entry<String, JsonElement> f : prior.getAsJsonObject().entrySet()) {
+                        String name = f.getKey();
+                        if (!name.equals("hash") && !name.equals("generator") && !name.equals("outputDir")
+                                && !name.equals("owner")) {
+                            extras.add(name, f.getValue());
+                        }
+                    }
+                }
+                JsonElement value;
+                if (owner == null && extras.size() == 0) {
+                    value = new com.google.gson.JsonPrimitive(e.getValue());
                 } else {
                     JsonObject entry = new JsonObject();
                     entry.addProperty("hash", e.getValue());
-                    entry.addProperty("generator", owner.generator());
-                    entry.addProperty("outputDir", owner.outputDir());
-                    root.add(e.getKey(), entry);
+                    if (owner != null) {
+                        entry.addProperty("generator", owner.generator());
+                        entry.addProperty("outputDir", owner.outputDir());
+                    }
+                    for (Map.Entry<String, JsonElement> f : extras.entrySet()) entry.add(f.getKey(), f.getValue());
+                    value = entry;
                 }
+                String file = placement != null
+                        ? fileName(placement.packageOf(key, value.isJsonObject() ? value.getAsJsonObject() : null))
+                        : currentFile.getOrDefault(key, ROOT_FILE_NAME);
+                files.computeIfAbsent(file, k -> new JsonObject()).add(key, value);
             }
-            Files.writeString(pathFor(genStateDir), GSON.toJson(root) + "\n", StandardCharsets.UTF_8);
+            if (files.isEmpty()) files.put(ROOT_FILE_NAME, new JsonObject());
+
+            Path dir = dirPath(genStateDir);
+            Files.createDirectories(dir);
+            for (Map.Entry<String, JsonObject> f : files.entrySet()) {
+                writeIfChanged(dir.resolve(f.getKey()), GSON.toJson(f.getValue()) + "\n");
+            }
+            for (Path stale : packageFiles(genStateDir)) {
+                if (!files.containsKey(stale.getFileName().toString())) Files.delete(stale);
+            }
+            if (Files.deleteIfExists(legacyPath(genStateDir))) ensureGitignore(genStateDir);   // only a migrating write
         } catch (IOException e) {
             throw new UncheckedIOException("Could not write codegen hash manifest at " + genStateDir, e);
         }
+    }
+
+    private static void writeIfChanged(Path path, String text) throws IOException {
+        if (Files.isRegularFile(path) && Files.readString(path, StandardCharsets.UTF_8).equals(text)) return;
+        Files.writeString(path, text, StandardCharsets.UTF_8);
+    }
+
+    private static final String GITIGNORE_RULE = ".gen-state/*";
+    private static final String GITIGNORE_LEGACY_NEGATION = "!.gen-state/.hashes.json";
+    private static final String GITIGNORE_DIR_NEGATION = "!.gen-state/.hashes/";
+
+    /**
+     * Run by a migrating write only. The scaffolded {@code .metaobjects/.gitignore} ignores
+     * {@code .gen-state/*} and re-includes the manifest; the new directory needs its own negation.
+     * With the rule present, the legacy negation is replaced by {@code !.gen-state/.hashes/} (or the
+     * new line goes right after the rule when there was none); a file that already has the new line
+     * only loses the legacy one. A file with no such rule is left alone.
+     */
+    private static void ensureGitignore(Path genStateDir) throws IOException {
+        Path parent = genStateDir.toAbsolutePath().getParent();
+        if (parent == null) return;
+        Path file = parent.resolve(".gitignore");
+        if (!Files.isRegularFile(file)) return;
+        String[] lines = Files.readString(file, StandardCharsets.UTF_8).split("\n", -1);
+        boolean hasRule = false;
+        boolean hasNew = false;
+        for (String l : lines) {
+            String t = l.trim();
+            if (t.equals(GITIGNORE_RULE)) hasRule = true;
+            if (t.equals(GITIGNORE_DIR_NEGATION)) hasNew = true;
+        }
+        if (!hasRule) return;
+        List<String> out = new ArrayList<>();
+        boolean added = hasNew;
+        boolean afterRule = false;
+        for (String l : lines) {
+            String t = l.trim();
+            if (t.equals(GITIGNORE_LEGACY_NEGATION)) {
+                if (!added) { out.add(GITIGNORE_DIR_NEGATION); added = true; }
+                continue;
+            }
+            out.add(l);
+            if (t.equals(GITIGNORE_RULE)) afterRule = true;
+        }
+        if (!added && afterRule) {
+            int at = out.indexOf(GITIGNORE_RULE) + 1;
+            out.add(at, GITIGNORE_DIR_NEGATION);
+        }
+        String text = String.join("\n", out);
+        if (!text.equals(String.join("\n", lines))) Files.writeString(file, text, StandardCharsets.UTF_8);
     }
 
     /** Record that {@code owner} wrote {@code key} with {@code content}: load, mutate, save. */

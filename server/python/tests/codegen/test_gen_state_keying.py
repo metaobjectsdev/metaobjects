@@ -35,10 +35,11 @@ from metaobjects.codegen.overwrite_policy import (
 )
 from tests.codegen.gen_suite import GEN_SUITE
 from tests.codegen.config_helpers import as_config
+from tests.codegen.manifest_helpers import read_manifest
 
 
 def _manifest(gen_state: Path) -> dict[str, str]:
-    return json.loads((gen_state / ".hashes.json").read_text(encoding="utf-8"))
+    return read_manifest(gen_state)
 
 
 def test_key_is_project_relative_not_out_relative(tmp_path: Path) -> None:
@@ -171,9 +172,7 @@ def test_a_project_reached_through_a_symlink_keeps_its_jurisdiction(
     monkeypatch.chdir(tmp_path)
     assert main(as_config(["gen", "--generators", GEN_SUITE, str(link / "metaobjects"), "--out", str(link / "gen")])) == 0
 
-    manifest = json.loads(
-        (real / ".metaobjects" / ".gen-state" / ".hashes.json").read_text(encoding="utf-8")
-    )
+    manifest = read_manifest(real / ".metaobjects" / ".gen-state")
     assert manifest, "gen recorded no manifest"
     # Not one key escapes the project. A `../` key is the whole defect.
     assert not any(k.startswith("..") for k in manifest), sorted(manifest)[:3]
@@ -212,7 +211,6 @@ def test_output_outside_the_project_is_not_recorded_in_its_manifest(
     assert main(as_config(["gen", "--generators", GEN_SUITE, str(proj / "metaobjects"), "--out", str(elsewhere)])) == 0
     assert any(elsewhere.iterdir())
 
-    hashes = proj / ".metaobjects" / ".gen-state" / ".hashes.json"
-    keys = list(json.loads(hashes.read_text(encoding="utf-8"))) if hashes.exists() else []
+    keys = list(read_manifest(proj / ".metaobjects" / ".gen-state"))
     assert not any(k.startswith("..") for k in keys), sorted(keys)[:3]
     assert "outside the project" in capsys.readouterr().out

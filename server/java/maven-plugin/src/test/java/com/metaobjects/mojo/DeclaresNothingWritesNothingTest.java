@@ -92,7 +92,8 @@ public class DeclaresNothingWritesNothingTest {
         assertEquals(List.of(
                 // The codegen hash manifest — not a generator's output, but something every
                 // `generate` run now writes/updates alongside it (see HashManifest).
-                ".metaobjects/.gen-state/.hashes.json",
+                ".metaobjects/.gen-state/.hashes/.root.json",
+                ".metaobjects/.gen-state/.hashes/verify.demo.json",
                 "generated/META-INF/services/com.metaobjects.registry.ObjectClassBindingProvider",
                 "generated/com/metaobjects/generated/GeneratedObjectClassBindingProvider.java",
                 "generated/verify/demo/Gadget.java",
@@ -109,7 +110,7 @@ public class DeclaresNothingWritesNothingTest {
         assertFalse("the listed generator wrote nothing", written.isEmpty());
         assertTrue("a file the entry did not declare: " + written,
                 written.stream().allMatch(f ->
-                        f.equals(".metaobjects/.gen-state/.hashes.json")
+                        f.startsWith(".metaobjects/.gen-state/.hashes/")
                         || (f.startsWith("generated/verify/demo/") && f.endsWith(".kt"))));
     }
 }

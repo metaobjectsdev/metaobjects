@@ -37,7 +37,7 @@ import java.util.regex.Pattern;
  * it were somebody's hand-written source. The marker still matters at the ONE moment the
  * manifest cannot help: an existing file at a generated path that has never been recorded.
  * There, carrying the marker is what lets a pre-manifest file (adopted from before this
- * project committed {@code .metaobjects/.gen-state/.hashes.json}) be taken as this
+ * project committed {@code .metaobjects/.gen-state/.hashes/}) be taken as this
  * toolchain's own rather than refused as hand-written — see {@link #write} for the full
  * decision tree. Absent any manifest configuration on the active {@link Run} (an embedder,
  * or a test driving a generator directly), the marker alone still decides, exactly as
@@ -146,6 +146,9 @@ public final class GeneratedFileWriter {
         private Map<String, String> hashes;
         private Map<String, HashManifest.Owner> owners;
         private boolean dirty;
+        // Where each entry is filed among the per-package manifests; set by the runner once the
+        // model is loaded. Unset: an entry stays in the file it is in.
+        private HashManifest.Placement placement;
 
         // Every path write() was asked to produce this run, whatever the outcome — written,
         // unchanged, refused or adopted. This is the "emitted" set the caller's orphan sweep
@@ -192,7 +195,7 @@ public final class GeneratedFileWriter {
 
         /**
          * Turn on manifest-aware writes for this run: {@code genStateDir} is the directory
-         * holding {@code .hashes.json} (typically {@code <basedir>/.metaobjects/.gen-state}),
+         * holding {@code .hashes/} (typically {@code <basedir>/.metaobjects/.gen-state}),
          * and {@code projectRoot} is what manifest keys are relative to (typically the
          * module basedir). Called once, by the Mojo, right after {@link #beginRun}. Leaving
          * this unset keeps every write on the legacy marker-only rule.
@@ -202,6 +205,20 @@ public final class GeneratedFileWriter {
             this.projectRoot = projectRoot;
             this.hashes = HashManifest.load(genStateDir);
             this.owners = HashManifest.loadOwners(genStateDir);
+            // A run that finds the pre-1.3.0 single manifest always saves, so it is migrated.
+            this.dirty = HashManifest.hasLegacy(genStateDir);
+            return this;
+        }
+
+        /** The placement the runner set, or {@code null}. */
+        public HashManifest.Placement placement() {
+            return placement;
+        }
+
+        /** File each manifest entry under the package of the model object it belongs to
+         *  (ADR-0064 Amendment 1). Called by the runner once the model is loaded. */
+        public Run placeBy(HashManifest.Placement placement) {
+            this.placement = placement;
             return this;
         }
 
@@ -210,7 +227,7 @@ public final class GeneratedFileWriter {
          *  calls it for whatever is still unwritten. */
         public void flush() {
             if (!dirty) return;
-            HashManifest.save(genStateDir, hashes, owners);
+            HashManifest.save(genStateDir, hashes, owners, placement);
             dirty = false;
         }
 

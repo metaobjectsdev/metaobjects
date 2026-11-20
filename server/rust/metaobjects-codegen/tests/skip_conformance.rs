@@ -162,6 +162,8 @@ fn write_json(p: &Scratch, rel: &str, doc: &Value) {
 
 const SHOP_FILE: &str = "metaobjects/meta.shop.json";
 const BILLING_FILE: &str = "metaobjects/meta.billing.json";
+const LEGACY_MANIFEST: &str = ".metaobjects/.gen-state/.hashes.json";
+const MANIFEST_DIR: &str = ".metaobjects/.gen-state/.hashes";
 const KEY_FILE: &str = ".metaobjects/.gen-state/.fingerprint-rust.json";
 
 /// Apply the case's change and run the next `gen`.
@@ -334,6 +336,23 @@ fn next_run(id: &str, p: &Scratch, ask: Ask) -> Answer {
             p.write(&copy, "// the owned generator, edited\n");
             ask.go(p, Probe::default(), |_| {})
         }
+        "legacy-manifest" => {
+            // Back to the pre-1.3.0 form: every per-package file merged into one `.hashes.json`.
+            let dir = p.path().join(".metaobjects/.gen-state/.hashes");
+            let mut merged = serde_json::Map::new();
+            for e in std::fs::read_dir(&dir).unwrap() {
+                let text = std::fs::read_to_string(e.unwrap().path()).unwrap();
+                let Value::Object(m) = serde_json::from_str(&text).unwrap() else {
+                    panic!("a manifest file is an object");
+                };
+                merged.extend(m);
+            }
+            std::fs::remove_dir_all(&dir).unwrap();
+            let mut text = serde_json::to_string_pretty(&Value::Object(merged)).unwrap();
+            text.push('\n');
+            p.write(LEGACY_MANIFEST, &text);
+            ask.go(p, Probe::default(), |_| {})
+        }
         "failed-run" => {
             let original = p.read(SHOP_FILE);
             let mut doc = shop_json();
@@ -412,6 +431,17 @@ fn every_case_in_the_shared_corpus_behaves_as_it_says() {
             "regenerate" => {
                 let r = result.unwrap_or_else(|e| panic!("{id}: the run failed: {e}"));
                 assert_eq!(r.outcome, Outcome::Generated, "{id}: {}", case["change"]);
+                if id == "legacy-manifest" {
+                    assert!(
+                        r.manifest_written,
+                        "{id}: the migration is a manifest write"
+                    );
+                    assert!(
+                        !p.exists(LEGACY_MANIFEST),
+                        "{id}: the legacy file is removed"
+                    );
+                    assert!(p.exists(MANIFEST_DIR), "{id}: per-package files are left");
+                }
             }
             other => panic!("{id}: unknown gen expectation {other}"),
         }
@@ -443,6 +473,10 @@ fn every_case_in_the_shared_corpus_behaves_as_it_says() {
                     "{id}: nothing drifted: {}",
                     case["change"]
                 );
+                if id == "legacy-manifest" {
+                    assert!(p.exists(LEGACY_MANIFEST), "{id}: verify migrates nothing");
+                    assert!(!p.exists(MANIFEST_DIR), "{id}: verify migrates nothing");
+                }
             }
             (expected, other) => panic!("{id}: verify should {expected}, got {other:?}"),
         }

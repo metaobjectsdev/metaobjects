@@ -1,5 +1,9 @@
 # Upgrading from 1.0 to 1.1 (1.0.x → 1.1.0)
 
+> **Since 1.3.0 the manifest is a directory, `.metaobjects/.gen-state/.hashes/`, with one file per
+> model package** (see [the per-package manifest migration](per-package-hash-manifest.md)). Read
+> `.hashes.json` below as that directory; the first `gen` after upgrading converts it.
+
 This is the one page for moving a project from any 1.0.x release to 1.1.0 (npm, PyPI and NuGet
 `1.1.0`; Maven Central `8.1.0`). It lists the steps in order and every change that needs
 something from you, per port, each with its fix. The per-change detail is in `CHANGELOG.md`
@@ -56,7 +60,7 @@ skip them, so read the whole list before you regenerate.
    3 and 4 are done: a bare cross-package `extends` now fails with `ERR_UNRESOLVED_SUPER`, and
    the message names the spelling to write (see "References and `extends`").
 6. **Java and Kotlin: let `mvn metaobjects:generate` write the hash manifest, then commit
-   `.metaobjects/.gen-state/.hashes.json`** in every module (see "JVM hash manifest").
+   `.metaobjects/.gen-state/.hashes/`** in every module (see "JVM hash manifest").
 7. **Resync the generators you own.** `meta eject --list` (TypeScript; `metaobjects gen --list`
    in Python, which has no `eject --list`; `dotnet meta gen --list`,
    `mvn metaobjects:eject -Dlist=true` in the other ports)
@@ -121,7 +125,7 @@ that records the existing pages: [docs-are-generators.md](docs-are-generators.md
 
 ### JVM hash manifest (Java and Kotlin)
 
-`mvn metaobjects:generate` records what it writes in `.metaobjects/.gen-state/.hashes.json`,
+`mvn metaobjects:generate` records what it writes in `.metaobjects/.gen-state/.hashes/`,
 the committed manifest the other ports already use, and decides overwrites from it. An edited
 generated file is refused by name (1.0 overwrote it), and a file no generator emits any more is
 deleted. The first run adopts your existing generated files and tells you to commit the

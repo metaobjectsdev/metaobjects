@@ -24,3 +24,21 @@ The values:
   in full).
 - `verify`: `may-answer-no-drift` (a local `verify --codegen` may answer from the stored key and
   the manifest without rendering) or `must-render` (it must render and compare).
+
+## `manifests.json`: the hash manifest is one file per package
+
+[ADR-0064 Amendment 1](../../spec/decisions/ADR-0064-skip-codegen-when-nothing-changed.md) replaces the
+single `.metaobjects/.gen-state/.hashes.json` with one file per model package under `.hashes/`. The
+vectors in `manifests.json` are run by each port's manifest unit tests, beside the cases above:
+
+- `fileNames`: a package's manifest file name (`null` is the root manifest, `.root.json`).
+- `placement`: for the loaded `objects`, which manifest a recorded path (and its entry) is filed
+  under: the `sourceNode` rule first, then the stem rule, else the root.
+- `legacySplit`: a legacy `.hashes.json` is split into exactly `files` (parsed content; `goldenText`
+  is one file's bytes in full), the legacy file is removed, and a second identical write changes no
+  file. `gitignoreBefore` becomes `gitignoreAfter`; a file that already holds the new line, or has no
+  `.gen-state/*` rule, is left alone.
+
+A port's tests also assert what the vectors cannot: two writes that change entries in two packages
+change two files and no third, a save that changes nothing writes nothing, a package that loses its
+last entry loses its file, and a read-only command migrates nothing.

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -231,6 +232,15 @@ def _failed_run(p: Project, h: Harness) -> None:
     (p.root / "metaobjects" / "meta.a.json").write_text(good)
 
 
+def _legacy_manifest(p: Project, h: Harness) -> None:
+    """Put the manifest back in its pre-1.3.0 form: one .hashes.json, no .hashes/ directory."""
+    merged: dict[str, object] = {}
+    for f in sorted((p.state / ".hashes").glob("*.json")):
+        merged.update(json.loads(f.read_text()))
+    shutil.rmtree(p.state / ".hashes")
+    (p.state / ".hashes.json").write_text(json.dumps(dict(sorted(merged.items())), indent=2) + "\n")
+
+
 def _write(rel: str, text: str) -> Callable[[Project, Harness], None]:
     def go(p: Project, h: Harness) -> None:
         f = p.root / rel
@@ -281,6 +291,7 @@ HANDLERS: dict[str, tuple[Callable[[Project, Harness], None], tuple[str, ...]]] 
     "force": (_NOOP, ("--force",)),
     "ci": (_NOOP, ()),
     "failed-run": (_failed_run, ()),
+    "legacy-manifest": (_legacy_manifest, ()),
 }
 
 
@@ -316,6 +327,8 @@ def test_case(case: dict[str, str], tmp_path: Path, monkeypatch, capsys) -> None
         assert rendered, "verify must render and compare"
     else:
         assert not rendered and v_rc == 0, "verify may answer from the fingerprint"
+    if case["id"] == "legacy-manifest":
+        assert (project.state / ".hashes.json").exists(), "verify must not migrate"
 
     monkeypatch.delenv("CI", raising=False)
     rc, skipped = h.gen(*flags)
@@ -325,6 +338,9 @@ def test_case(case: dict[str, str], tmp_path: Path, monkeypatch, capsys) -> None
         assert skipped and rc == 0
     else:
         assert not skipped
+    if case["id"] == "legacy-manifest":
+        assert not (project.state / ".hashes.json").exists(), "the write run removes the legacy file"
+        assert list((project.state / ".hashes").glob("*.json")), "and leaves per-package files"
 
 
 def test_unchanged_files_keep_their_timestamp_and_report_unchanged(
@@ -338,14 +354,16 @@ def test_unchanged_files_keep_their_timestamp_and_report_unchanged(
     assert files
     for f in files:
         os.utime(f, (1, 1))
-    manifest = project.state / ".hashes.json"
-    manifest_bytes = manifest.read_bytes()
-    os.utime(manifest, (1, 1))
+    manifests = sorted((project.state / ".hashes").glob("*.json"))
+    assert manifests
+    manifest_bytes = [m.read_bytes() for m in manifests]
+    for m in manifests:
+        os.utime(m, (1, 1))
     assert h.gen("--force")[0] == 0
     out = h.out
     assert all(f.stat().st_mtime == 1 for f in files), "an identical file was rewritten"
-    assert manifest.stat().st_mtime == 1, "an unchanged manifest was rewritten"
-    assert manifest.read_bytes() == manifest_bytes
+    assert all(m.stat().st_mtime == 1 for m in manifests), "an unchanged manifest was rewritten"
+    assert [m.read_bytes() for m in manifests] == manifest_bytes
     assert "wrote 0 file(s)" in out and "left as they were" in out
     assert not [ln for ln in out.splitlines() if ln.startswith(str(generated))]
 

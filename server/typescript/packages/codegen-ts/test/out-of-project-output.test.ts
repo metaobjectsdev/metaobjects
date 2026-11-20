@@ -2,7 +2,7 @@
 //
 // The manifest keys every generated file by its path relative to the project root, so a
 // target whose outDir is outside the project (a scratch preview, a sibling checkout) was
-// recorded as `../../<elsewhere>/X.ts` in the COMMITTED `.hashes.json` — 87 such keys on
+// recorded as `../../<elsewhere>/X.ts` in the COMMITTED `.hashes/` manifest — 87 such keys on
 // one adopter estate after a single preview run. Worse, the snapshot body is stored at
 // `<gen-state>/<key>`, so the `../..` walked out of `.gen-state/` and wrote a second full
 // copy of the output into the project tree itself.
@@ -10,6 +10,7 @@
 // Such a file is now written untracked, exactly as a run with no project root writes it:
 // no manifest key, no snapshot under the project, and one warning saying so.
 
+import { manifestEntries } from "./support/manifest.js";
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, readFileSync, readdirSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -48,7 +49,7 @@ async function genInto(outDir: string) {
   });
 }
 
-const hashesFile = (): string => join(projectRoot, ".metaobjects", ".gen-state", ".hashes.json");
+const genState = (): string => join(projectRoot, ".metaobjects", ".gen-state");
 
 describe("output outside the project root", () => {
   test("is written, but recorded nowhere in the project", async () => {
@@ -56,7 +57,7 @@ describe("output outside the project root", () => {
     const result = await genInto(out);
 
     expect(readdirSync(out).length).toBeGreaterThan(0);
-    const keys = existsSync(hashesFile()) ? Object.keys(JSON.parse(readFileSync(hashesFile(), "utf-8"))) : [];
+    const keys = Object.keys(manifestEntries(genState()));
     expect(keys.filter((k) => k.startsWith(".."))).toEqual([]);
     // Nothing but the (possibly absent) gen-state directory appeared in the project.
     expect(readdirSync(projectRoot).filter((e) => e !== ".metaobjects")).toEqual([]);
@@ -65,7 +66,7 @@ describe("output outside the project root", () => {
 
   test("output inside the project is still tracked", async () => {
     await genInto(join(projectRoot, "generated"));
-    const keys = Object.keys(JSON.parse(readFileSync(hashesFile(), "utf-8")));
+    const keys = Object.keys(manifestEntries(genState()));
     expect(keys.length).toBeGreaterThan(0);
     expect(keys.every((k) => k.startsWith("generated/"))).toBe(true);
   });

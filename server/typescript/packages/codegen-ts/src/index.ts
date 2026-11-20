@@ -96,6 +96,15 @@ export { decideAndWrite, GitMissingError, WRITE_STATUSES } from "./overwrite-pol
 // written — which is how the gate scopes itself to its own output instead of
 // convicting every stranger's file that happens to sit in the same directory.
 export { contentHash, readGeneratedHash, listGeneratedPaths, recordGeneratedProvenance } from "./overwrite-policy.js";
+export {
+  HASHES_DIR,
+  LEGACY_HASHES_FILE,
+  ROOT_MANIFEST,
+  manifestExists,
+  manifestFileName,
+  readManifestState,
+  type PlacementObject,
+} from "./hash-manifest-store.js";
 export type { GeneratedProvenance } from "./overwrite-policy.js";
 export { modelHashTree, MODEL_HASH_FORMAT, type ModelHashTree, type ModelHashNode } from "./model-hash.js";
 

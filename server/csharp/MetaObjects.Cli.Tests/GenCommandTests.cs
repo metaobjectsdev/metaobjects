@@ -56,11 +56,11 @@ public sealed class GenCommandTests : IDisposable
         Assert.True(outcome.Ok, string.Join("; ", outcome.LoadErrors));
 
         Assert.True(
-            File.Exists(Path.Combine(_tmp, ".metaobjects", ".gen-state", ".hashes.json")),
+            Directory.Exists(Path.Combine(_tmp, ".metaobjects", ".gen-state", ".hashes")),
             "expected the manifest beside the project's metaobjects/ dir");
         Assert.False(
-            File.Exists(Path.Combine(
-                Directory.GetCurrentDirectory(), ".metaobjects", ".gen-state", ".hashes.json")),
+            Directory.Exists(Path.Combine(
+                Directory.GetCurrentDirectory(), ".metaobjects", ".gen-state", ".hashes")),
             "gen must not scatter .metaobjects/ into the current working directory");
     }
 
@@ -83,6 +83,6 @@ public sealed class GenCommandTests : IDisposable
         Assert.True(outcome.Ok);
         Assert.Equal(onDisk, File.ReadAllText(stale));   // not one byte written
         Assert.Contains(outcome.Result!.Files, f => f.Status == "adopted");
-        Assert.True(File.Exists(Path.Combine(_tmp, ".metaobjects", ".gen-state", ".hashes.json")));
+        Assert.True(Directory.Exists(Path.Combine(_tmp, ".metaobjects", ".gen-state", ".hashes")));
     }
 }

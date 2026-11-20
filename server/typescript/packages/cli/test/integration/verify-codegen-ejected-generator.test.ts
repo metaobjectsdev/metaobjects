@@ -21,7 +21,7 @@
  *   3. The printed remedy terminates. That is NOT free: it is precisely where the
  *      0.24.3 hand-edit loop lived. There the remedy could not work, because
  *      `meta gen` re-merged the edit and the next verify failed identically. Here it
- *      does work, because the discriminator is `.gen-state/.hashes.json` — a record
+ *      does work, because the discriminator is `.gen-state/.hashes/` — a record
  *      of what the GENERATOR WROTE — and re-running `meta gen` writes through the new
  *      generator and re-records the hash. The two cases must not be conflated: a hand
  *      edit in a generated FILE is preserved and forgiven, while a change to the

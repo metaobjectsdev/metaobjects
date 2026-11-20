@@ -285,16 +285,16 @@ public class GeneratedFileWriterTest {
         Path out = project.resolve("gen/X.java");
         Files.createDirectories(out.getParent());
         Files.writeString(out, GENERATED_BODY);
-        Files.createDirectories(genState);
+        Files.createDirectories(genState.resolve(".hashes"));
         String manifest = "{\"gen/X.java\": \"" + HashManifest.contentHash(GENERATED_BODY) + "\"}";
-        Files.writeString(genState.resolve(".hashes.json"), manifest);
+        Files.writeString(genState.resolve(".hashes/.root.json"), manifest);
 
         try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
             run.configureManifest(genState, project);
             assertEquals(GeneratedFileWriter.Outcome.UNCHANGED, GeneratedFileWriter.write(out, GENERATED_BODY));
         }
         assertEquals("not rewritten (a rewrite would pretty-print it)", manifest,
-                Files.readString(genState.resolve(".hashes.json")));
+                Files.readString(genState.resolve(".hashes/.root.json")));
     }
 
     @Test
@@ -519,7 +519,7 @@ public class GeneratedFileWriterTest {
             run.configureManifest(genState, project);
             GeneratedFileWriter.write(out, GENERATED_BODY);
         }
-        Path manifest = genState.resolve(".hashes.json");
+        Path manifest = genState.resolve(".hashes/.root.json");
         String before = Files.readString(manifest);
         Files.setLastModifiedTime(manifest, LONG_AGO);
 

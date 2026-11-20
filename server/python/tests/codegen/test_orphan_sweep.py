@@ -16,8 +16,9 @@ from pathlib import Path
 import pytest
 
 from metaobjects.cli import main
+from tests.codegen.manifest_helpers import read_manifest
 
-MANIFEST = Path(".metaobjects") / ".gen-state" / ".hashes.json"
+MANIFEST = Path(".metaobjects") / ".gen-state"
 
 
 def _value(name: str) -> dict:
@@ -49,7 +50,7 @@ def _project(root: Path, children: list[dict], *, package: str = "acme",
 
 
 def _manifest(root: Path) -> dict[str, str]:
-    return json.loads((root / MANIFEST).read_text(encoding="utf-8"))
+    return read_manifest(root / MANIFEST)
 
 
 def _find(out: Path, name: str) -> list[Path]:

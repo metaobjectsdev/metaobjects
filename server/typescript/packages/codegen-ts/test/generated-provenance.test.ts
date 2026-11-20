@@ -1,6 +1,7 @@
 // Node provenance in the generated-file manifest: `perEntity` stamps each file with the node
-// it rendered, and the runner records that on the file's `.hashes.json` entry, so a reader
+// it rendered, and the runner records that on the file's `.hashes/` entry, so a reader
 // (the explorer builder) can say which files a node produced without matching names.
+import { LEGACY_HASHES_FILE, manifestEntries, manifestExists, manifestFiles, seedLegacyManifest } from "./support/manifest.js";
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -19,7 +20,7 @@ beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "codegen-provenance-")); });
 afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
 
 const manifest = (dir: string): Record<string, unknown> =>
-  JSON.parse(readFileSync(join(dir, ".metaobjects", ".gen-state", ".hashes.json"), "utf8"));
+  manifestEntries(join(dir, ".metaobjects", ".gen-state"));
 
 describe("perEntity stamps the source node", () => {
   test("each file carries its entity's resolution key unless the generator set one", async () => {
@@ -32,7 +33,7 @@ describe("perEntity stamps the source node", () => {
   });
 });
 
-describe("runGen records provenance in .hashes.json", () => {
+describe("runGen records provenance in the .hashes/ manifest", () => {
   test("a per-entity file gets { hash, generatedBy, sourceNode }; a whole-model file stays plain", async () => {
     const { root } = await new MetaDataLoader().load([new FileSource(FIXTURE)]);
     const entity: Generator = { name: "alpha", generate: perEntity((e) => ({ path: `${e.name}.alpha.ts`, content: "// a\n" })) };
@@ -55,11 +56,11 @@ describe("runGen records provenance in .hashes.json", () => {
 describe("recordGeneratedProvenance", () => {
   function seed(entries: Record<string, unknown>): string {
     const dir = join(tmp, ".gen-state");
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, ".hashes.json"), JSON.stringify(entries));
+    // A legacy single-file manifest on purpose: the write below migrates it.
+    seedLegacyManifest(dir, entries);
     return dir;
   }
-  const read = (dir: string): Record<string, unknown> => JSON.parse(readFileSync(join(dir, ".hashes.json"), "utf8"));
+  const read = (dir: string): Record<string, unknown> => manifestEntries(dir);
 
   test("keeps the JVM owner fields beside the provenance", () => {
     const dir = seed({ "a.kt": { hash: "h1", generator: "kotlin-entity", outputDir: "src" } });
@@ -75,14 +76,15 @@ describe("recordGeneratedProvenance", () => {
 
   test("never records a path the manifest has no hash for, and writes nothing when nothing changes", () => {
     const dir = seed({ "a.ts": "h3" });
-    const before = readFileSync(join(dir, ".hashes.json"), "utf8");
+    const before = readFileSync(join(dir, LEGACY_HASHES_FILE), "utf8");
     recordGeneratedProvenance(dir, new Map([["b.ts", { generatedBy: "g", sourceNode: "x::B" }], ["a.ts", { generatedBy: "g" }]]));
-    expect(readFileSync(join(dir, ".hashes.json"), "utf8")).toBe(before);
+    expect(readFileSync(join(dir, LEGACY_HASHES_FILE), "utf8")).toBe(before);
+    expect(manifestFiles(dir)).toEqual({}); // not migrated either
   });
 
   test("no manifest, no file", () => {
     const dir = join(tmp, "none");
     recordGeneratedProvenance(dir, new Map([["a.ts", { generatedBy: "g", sourceNode: "x::A" }]]));
-    expect(() => readFileSync(join(dir, ".hashes.json"))).toThrow();
+    expect(manifestExists(dir)).toBe(false);
   });
 });

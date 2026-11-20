@@ -1,6 +1,7 @@
 // #232 — the gen-state records the codegen engine version, and `meta gen` notes an
 // engine change since the last run (so an unexplained regen diff is explained). The
-// stamp is a separate file from `.hashes.json` and never affects the three-way merge.
+// stamp is a separate file from the `.hashes/` manifest and never affects the three-way merge.
+import { manifestExists } from "./support/manifest.js";
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -16,14 +17,14 @@ describe("#232 — gen-state engine-version stamp", () => {
     expect(loadEngineVersion(state)).toBeUndefined();
   });
 
-  test("save then load round-trips the version, in a separate .engine.json (not .hashes.json)", () => {
+  test("save then load round-trips the version, in a separate .engine.json (not the manifest)", () => {
     saveEngineVersion(state, "0.20.9");
     expect(loadEngineVersion(state)).toBe("0.20.9");
     expect(existsSync(join(state, ".engine.json"))).toBe(true);
     // Must NOT pollute the hashes file (the merge input).
     const engine = JSON.parse(readFileSync(join(state, ".engine.json"), "utf-8"));
     expect(engine).toEqual({ codegenVersion: "0.20.9" });
-    expect(existsSync(join(state, ".hashes.json"))).toBe(false);
+    expect(manifestExists(state)).toBe(false);
   });
 
   test("malformed .engine.json → undefined, never throws (informational only)", () => {

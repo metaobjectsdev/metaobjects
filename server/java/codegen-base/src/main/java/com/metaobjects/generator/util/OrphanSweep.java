@@ -159,6 +159,13 @@ public final class OrphanSweep {
      */
     public static Result sweep(Path genStateDir, Path projectRoot, List<Entry> dirs, Set<Path> emitted,
                                Set<HashManifest.Owner> runOwners, Supplier<Set<HashManifest.Owner>> configured) {
+        return sweep(genStateDir, projectRoot, dirs, emitted, runOwners, configured, null);
+    }
+
+    /** {@link #sweep} that files the surviving entries by {@code placement} ({@code null}: where they are). */
+    public static Result sweep(Path genStateDir, Path projectRoot, List<Entry> dirs, Set<Path> emitted,
+                               Set<HashManifest.Owner> runOwners, Supplier<Set<HashManifest.Owner>> configured,
+                               HashManifest.Placement placement) {
         if (!HashManifest.exists(genStateDir)) {
             return new Result(List.of(), List.of(), List.of());
         }
@@ -216,7 +223,7 @@ public final class OrphanSweep {
         if (!forget.isEmpty()) {
             Map<String, String> updated = new LinkedHashMap<>(hashes);
             for (String key : forget) updated.remove(key);
-            HashManifest.save(genStateDir, updated, owners);
+            HashManifest.save(genStateDir, updated, owners, placement);
         }
 
         removed.sort(String::compareTo);

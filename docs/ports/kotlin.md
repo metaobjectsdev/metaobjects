@@ -26,7 +26,7 @@ Two modules:
 
 There is no three-way merge on the JVM (that is TypeScript-only). Kotlin runs through the same
 `mvn metaobjects:generate` write path as Java: a file that still matches the committed hash
-manifest (`.metaobjects/.gen-state/.hashes.json`) is overwritten, and an edited one is refused by
+manifest (`.metaobjects/.gen-state/.hashes/`) is overwritten, and an edited one is refused by
 name (or replaced with `<handEdits>overwrite</handEdits>`). `mvn metaobjects:eject -Dnames=<name>`
 copies a generator into your repo to own.
 

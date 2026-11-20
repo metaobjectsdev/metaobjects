@@ -21,7 +21,7 @@
 //      `baseline: "fresh"` flag opts into "overwrite from fresh and re-baseline".
 //
 // Integrity (caveat 2 from the spike): we keep a sha-256 of each canonical
-// snapshot at `.gen-state/.hashes.json`.
+// snapshot, in the manifest under `.gen-state/.hashes/` (one file per model package).
 //
 // THE MANIFEST IS COMMITTED; THE BODIES ARE NOT. That split is what makes step 4
 // possible. A hash per path is small and reviewable, where a second full copy of
@@ -42,6 +42,19 @@ import {
 } from "node:fs";
 import { dirname, join, isAbsolute, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import {
+  HASHES_DIR,
+  LEGACY_HASHES_FILE,
+  ROOT_MANIFEST,
+  buildPlacementIndex,
+  manifestExists,
+  manifestFileName,
+  placeEntry,
+  readManifestState,
+  type ManifestState,
+  type PlacementIndex,
+  type PlacementObject,
+} from "./hash-manifest-store.js";
 import { tmpdir } from "node:os";
 import { createHash, randomBytes } from "node:crypto";
 
@@ -91,7 +104,7 @@ export type MergeStrategy = "overwrite" | "skip-existing";
  *  "adopt" — opt-in via `meta gen --baseline=adopt`. Same population, opposite
  *  half: where the run would REFUSE, record the file's CURRENT content as the
  *  merge base and write nothing. It exists because the refusal's leading remedy
- *  ("commit .hashes.json") could not be performed by the population it named —
+ *  ("commit .hashes/") could not be performed by the population it named —
  *  nothing writes a manifest until a gen succeeds, and gen refuses until one
  *  exists. `adopt` is the run that produces the file to commit.
  *
@@ -142,8 +155,6 @@ export interface WriteResult {
   discardedEdit?: boolean;
 }
 
-const HASHES_FILE = ".hashes.json";
-
 type HashesFile = Record<string, string>;
 
 function sha256(content: string | Buffer): string {
@@ -153,7 +164,7 @@ function sha256(content: string | Buffer): string {
 /**
  * The manifest of a run in progress, held in memory and written once at its end.
  *
- * Every write updates `.hashes.json`, and the file is the whole project's record, so
+ * Every write updates the manifest, and the manifest is the whole project's record, so
  * rewriting it per written file made bookkeeping quadratic in the project's size: at
  * a thousand generated files the rewrites were most of a run's wall time, for the same
  * bytes one write at the end produces. `withManifestBatch` holds the manifest for one
@@ -166,6 +177,10 @@ function sha256(content: string | Buffer): string {
 interface ManifestBatch {
   raw: Record<string, unknown>;
   dirty: boolean;
+  /** Where each entry was read from, so a write rewrites only the files that changed. */
+  state: ManifestState;
+  /** The run's model, for placing entries that carry no `sourceNode`. */
+  index: PlacementIndex | undefined;
 }
 const manifestBatches = new Map<string, ManifestBatch>();
 
@@ -184,11 +199,26 @@ function batchFor(genStateDir: string): ManifestBatch | undefined {
  * read them as unrecorded and refuse them next run. When `fn` threw, a failed manifest
  * write is swallowed so `fn`'s error stays the one reported. A nested call for the same
  * directory joins the outer batch.
+ *
+ * `objects` is the run's loaded model (root-level object names and packages): the manifest
+ * is one file per package, and an entry that records no `sourceNode` is filed under the
+ * package of the object its file is named for. A run that finds the legacy single
+ * `.hashes.json` writes even when nothing else changed, because that is the migration.
  */
-export function withManifestBatch<T>(genStateDir: string, fn: () => T): T {
+export function withManifestBatch<T>(
+  genStateDir: string,
+  fn: () => T,
+  objects?: readonly PlacementObject[],
+): T {
   const key = resolve(genStateDir);
   if (manifestBatches.has(key)) return fn();
-  const batch: ManifestBatch = { raw: readManifestFile(genStateDir), dirty: false };
+  const state = readManifestState(genStateDir);
+  const batch: ManifestBatch = {
+    raw: state.entries,
+    dirty: state.legacy,
+    state,
+    index: objects !== undefined ? buildPlacementIndex(objects) : undefined,
+  };
   manifestBatches.set(key, batch);
   let result: T;
   try {
@@ -196,34 +226,120 @@ export function withManifestBatch<T>(genStateDir: string, fn: () => T): T {
   } catch (err) {
     manifestBatches.delete(key);
     try {
-      if (batch.dirty) writeManifestFile(genStateDir, batch.raw);
+      if (batch.dirty) flushBatch(genStateDir, batch);
     } catch {
       // `fn`'s error is the cause to report; a failed manifest write must not replace it.
     }
     throw err;
   }
   manifestBatches.delete(key);
-  if (batch.dirty) writeManifestFile(genStateDir, batch.raw);
+  if (batch.dirty) flushBatch(genStateDir, batch);
   return result;
+}
+
+function flushBatch(genStateDir: string, batch: ManifestBatch): void {
+  writeManifestFiles(genStateDir, batch.raw, batch.state, batch.index);
+}
+
+function manifestText(entries: Record<string, unknown>): string {
+  // Keys SORTED, because this file is committed: insertion order would make the diff
+  // depend on which entity happened to generate first.
+  const sorted: Record<string, unknown> = {};
+  for (const key of Object.keys(entries).sort()) sorted[key] = entries[key];
+  return JSON.stringify(sorted, null, 2) + "\n";
+}
+
+const NEGATION_LEGACY = "!.gen-state/.hashes.json";
+const NEGATION_DIR = "!.gen-state/.hashes/";
+
+/**
+ * The scaffolded `.metaobjects/.gitignore` ignores `.gen-state/*` and un-ignores the legacy
+ * file only, so the new directory would be ignored and never reach another machine. Put its
+ * negation where the legacy one was and drop the legacy one, which names a file that no longer
+ * exists; with no legacy line, add it after the `.gen-state/*` rule. A file with no such rule
+ * is left alone. Only the migration calls this.
+ */
+export function ensureHashesDirNotIgnored(genStateDir: string): void {
+  const file = join(dirname(genStateDir), ".gitignore");
+  let text: string;
+  try {
+    text = readFileSync(file, "utf-8");
+  } catch {
+    return;
+  }
+  const lines = text.split("\n");
+  if (!lines.some((l) => l.trim() === ".gen-state/*")) return;
+  const hasDir = lines.some((l) => l.trim() === NEGATION_DIR);
+  const firstLegacy = lines.findIndex((l) => l.trim() === NEGATION_LEGACY);
+  const out: string[] = [];
+  let placed = hasDir;
+  lines.forEach((line, i) => {
+    const t = line.trim();
+    if (t === NEGATION_LEGACY) {
+      if (i === firstLegacy && !placed) {
+        out.push(NEGATION_DIR);
+        placed = true;
+      }
+      return;
+    }
+    out.push(line);
+    if (!placed && firstLegacy === -1 && t === ".gen-state/*") {
+      out.push(NEGATION_DIR);
+      placed = true;
+    }
+  });
+  const next = out.join("\n");
+  if (next !== text) writeFileSync(file, next);
+}
+
+/**
+ * Write `entries` as per-package manifests. Writes only the files whose bytes changed,
+ * removes package files that no longer hold an entry, and removes the legacy file (the
+ * migration). Returns nothing: a caller that wanted "did anything change" asked before.
+ */
+export function writeManifestFiles(
+  genStateDir: string,
+  entries: Record<string, unknown>,
+  state: ManifestState,
+  index: PlacementIndex | undefined,
+): void {
+  const groups = new Map<string, Record<string, unknown>>();
+  for (const [path, entry] of Object.entries(entries)) {
+    const pkg = placeEntry(path, entry, index);
+    const name = pkg === undefined ? (state.fileOf.get(path) ?? ROOT_MANIFEST) : manifestFileName(pkg);
+    let group = groups.get(name);
+    if (group === undefined) groups.set(name, (group = {}));
+    group[path] = entry;
+  }
+  // "No manifest" must stay distinguishable from "an empty one".
+  if (groups.size === 0) groups.set(ROOT_MANIFEST, {});
+
+  const dir = join(genStateDir, HASHES_DIR);
+  mkdirSync(dir, { recursive: true });
+  for (const [name, group] of groups) {
+    const text = manifestText(group);
+    if (state.texts.get(name) === text) continue;
+    writeFileSync(join(dir, name), text);
+    state.texts.set(name, text);
+  }
+  for (const name of [...state.texts.keys()]) {
+    if (groups.has(name)) continue;
+    rmSync(join(dir, name), { force: true });
+    state.texts.delete(name);
+  }
+  state.fileOf = new Map();
+  for (const [name, group] of groups) for (const path of Object.keys(group)) state.fileOf.set(path, name);
+
+  if (state.legacy) {
+    rmSync(join(genStateDir, LEGACY_HASHES_FILE), { force: true });
+    state.legacy = false;
+    ensureHashesDirNotIgnored(genStateDir);
+  }
 }
 
 function readRawManifest(genStateDir: string): Record<string, unknown> {
   const batch = batchFor(genStateDir);
-  return batch !== undefined ? batch.raw : readManifestFile(genStateDir);
-}
-
-function readManifestFile(genStateDir: string): Record<string, unknown> {
-  const f = join(genStateDir, HASHES_FILE);
-  if (!existsSync(f)) return {};
-  try {
-    const parsed: unknown = JSON.parse(readFileSync(f, "utf-8"));
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
-    }
-    return {};
-  } catch {
-    return {};
-  }
+  return batch !== undefined ? batch.raw : readManifestState(genStateDir).entries;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -254,7 +370,7 @@ function saveHashes(genStateDir: string, hashes: HashesFile): void {
   }
   // A run that changed nothing writes nothing (ADR-0064 §1): the manifest is only written
   // when an entry was added, changed or removed.
-  if (existsSync(join(genStateDir, HASHES_FILE)) || manifestBatchOpen(genStateDir)) {
+  if (manifestExists(genStateDir) || manifestBatchOpen(genStateDir)) {
     const same =
       Object.keys(next).length === Object.keys(raw).length &&
       Object.keys(next).every((k) => JSON.stringify(next[k]) === JSON.stringify(raw[k]));
@@ -279,18 +395,8 @@ function writeRawManifest(genStateDir: string, entries: Record<string, unknown>)
     batch.dirty = true;
     return;
   }
-  writeManifestFile(genStateDir, entries);
-}
-
-function writeManifestFile(genStateDir: string, entries: Record<string, unknown>): void {
-  mkdirSync(genStateDir, { recursive: true });
-  // Keys SORTED, because this file is committed. Insertion order would make the
-  // diff — and any merge conflict between two people who both regenerated —
-  // depend on which entity happened to generate first, which is noise nobody can
-  // review.
-  const sorted: Record<string, unknown> = {};
-  for (const key of Object.keys(entries).sort()) sorted[key] = entries[key];
-  writeFileSync(join(genStateDir, HASHES_FILE), JSON.stringify(sorted, null, 2) + "\n");
+  // Outside a batch: read what is there (for the files' current bytes), then write.
+  writeManifestFiles(genStateDir, entries, readManifestState(genStateDir), undefined);
 }
 
 /** What produced one generated file: the generator, and the metadata node it was rendered
@@ -372,7 +478,7 @@ export function listGeneratedProvenance(
 // ---------------------------------------------------------------------------
 // FR-038 §8 — readers for orphan reconciliation.
 //
-// `.hashes.json`'s key set is the ONLY record of what a previous run wrote, so
+// The manifest's key set is the ONLY record of what a previous run wrote, so
 // it is also the only way to notice that a file we used to generate is no longer
 // generated. These three functions expose that record without widening the write
 // path: nothing here decides anything (see reconcile-orphans.ts) and nothing here
@@ -392,7 +498,7 @@ export function listGeneratedPaths(genStateDir: string): string[] {
 }
 
 /**
- * sha-256 of `content`, hex — the same function that produces `.hashes.json`.
+ * sha-256 of `content`, hex — the same function that produces the manifest's hashes.
  *
  * Exported so a caller can ask the one question the manifest exists to answer
  * ("is this file byte-for-byte what we recorded writing?") without needing the
@@ -456,7 +562,7 @@ export function readGeneratedSnapshot(
 
 /**
  * Drop both halves of the record for paths this run no longer generates — each
- * snapshot file and its `.hashes.json` entry.
+ * snapshot file and its manifest entry.
  *
  * BOTH halves, or the next run sees the path again in `listGeneratedPaths` and
  * re-decides an orphan that has already been dealt with. A no-op for a path that was
@@ -489,7 +595,7 @@ const ENGINE_FILE = ".engine.json";
 /**
  * The codegen engine version that last wrote this `.gen-state`, or undefined if it
  * was never stamped (a pre-#232 snapshot, or a fresh project). Informational only —
- * a separate reserved file from `.hashes.json`, it never participates in the
+ * a separate reserved file from the hash manifest, it never participates in the
  * three-way merge decision. (#232)
  */
 export function loadEngineVersion(genStateDir: string): string | undefined {
@@ -519,7 +625,7 @@ export function saveEngineVersion(genStateDir: string, version: string): void {
 }
 
 function snapshotPath(genStateDir: string, relPath: string): string {
-  // `.hashes.json` is reserved at the top of .gen-state/; relPath must never
+  // `.hashes/` (and the legacy `.hashes.json`) is reserved at the top of .gen-state/; relPath must never
   // collide with it. Output paths derived from entity names ("Post.ts" etc.)
   // are JS-identifier-shape so this is a non-issue in practice.
   return join(genStateDir, relPath);
@@ -677,7 +783,7 @@ function resolveGenStateDir(opts: DecideAndWriteOpts): string {
  *  instead of a wall of per-file warnings. */
 export function hasHashManifest(genStateDir: string): boolean {
   if (batchFor(genStateDir)?.dirty === true) return true;
-  return existsSync(join(genStateDir, HASHES_FILE));
+  return manifestExists(genStateDir);
 }
 
 /** Normalize the legacy `MergeStrategy` string shorthand into an options object. */

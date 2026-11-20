@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from tests.codegen.manifest_helpers import read_manifest
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.overwrite_policy import (
     content_hash,
@@ -106,7 +107,7 @@ def test_manifest_is_sorted_and_detectable(tmp_path: Path) -> None:
     assert has_hash_manifest(str(state)) is True
     # Sorted, because this file is committed: insertion order would make the diff
     # depend on which entity generated first.
-    data = json.loads((state / ".hashes.json").read_text())
+    data = read_manifest(state)
     assert list(data.keys()) == ["a.py", "m.py", "z.py"]
 
 
@@ -146,7 +147,7 @@ def test_jvm_object_entry_is_read_and_preserved_on_record(tmp_path: Path) -> Non
     target = tmp_path / "Other.py"
     assert _gen(target, "other\n", state) == "new"
 
-    saved = json.loads((state / ".hashes.json").read_text(encoding="utf-8"))
+    saved = read_manifest(state)
     assert saved["Jvm.java"] == jvm
     assert saved["Plain.txt"] == "abc"
     assert saved["Other.py"] == content_hash("other\n")
@@ -154,7 +155,7 @@ def test_jvm_object_entry_is_read_and_preserved_on_record(tmp_path: Path) -> Non
     jvm_file = tmp_path / "Jvm.java"
     jvm_file.write_text("jvm body", encoding="utf-8")
     assert _gen(jvm_file, "jvm body v2", state) == "overwrite"
-    saved = json.loads((state / ".hashes.json").read_text(encoding="utf-8"))
+    saved = read_manifest(state)
     assert saved["Jvm.java"]["generator"] == "java:dto"
     assert saved["Jvm.java"]["outputDir"] == "target/gen"
     assert saved["Jvm.java"]["hash"] == content_hash("jvm body v2")

@@ -1,6 +1,6 @@
 // `--baseline=adopt` — the first step a pre-manifest project can actually perform.
 //
-// The no-manifest refusal used to LEAD with "commit .metaobjects/.gen-state/.hashes.json",
+// The no-manifest refusal used to LEAD with "commit .metaobjects/.gen-state/.hashes/",
 // which the population it names cannot do: nothing writes a manifest until a `gen` succeeds,
 // and `gen` refuses until one exists. The only escape was `--baseline=fresh`, framed —
 // correctly — as the lossy one, so an adopter whose committed output was already a
@@ -12,6 +12,7 @@
 // next regen replaces it. That is pinned below, because the message says it and a message
 // nothing tests goes stale.
 
+import { manifestEntries, manifestExists } from "./support/manifest.js";
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -32,7 +33,6 @@ afterEach(() => { rmSync(projectRoot, { recursive: true, force: true }); });
 
 const genStateDir = (): string => join(projectRoot, ".metaobjects", ".gen-state");
 const outDir = (): string => join(projectRoot, "generated");
-const hashesFile = (): string => join(genStateDir(), ".hashes.json");
 
 async function gen(opts: { baseline?: BaselineMode; dryRun?: boolean } = {}) {
   const { root } = await new MetaDataLoader().load([new FileSource(FIXTURE)]);
@@ -91,8 +91,8 @@ describe("--baseline=adopt", () => {
     // Not one byte written: this is the whole promise of the mode.
     expect(filesOnDisk()).toEqual(before);
     // …and the manifest the adopter is told to commit now exists, naming those files.
-    expect(existsSync(hashesFile())).toBe(true);
-    const hashes = JSON.parse(readFileSync(hashesFile(), "utf-8")) as Record<string, string>;
+    expect(manifestExists(genStateDir())).toBe(true);
+    const hashes = manifestEntries(genStateDir());
     expect(Object.keys(hashes).length).toBeGreaterThanOrEqual(stale.length);
   });
 
@@ -105,7 +105,7 @@ describe("--baseline=adopt", () => {
 
     const notice = result.warnings.filter((w) => w.includes("baseline"));
     expect(notice.length).toBe(1);
-    expect(notice[0]).toContain(".hashes.json");
+    expect(notice[0]).toContain(".hashes/");
     // The honesty clause: adopt declares your files to BE generated output.
     expect(notice[0]).toMatch(/replace|regenerat/i);
   });
@@ -165,8 +165,9 @@ describe("--baseline=adopt", () => {
     const walk = (dir: string): void => {
       for (const e of readdirSync(dir)) {
         const full = join(dir, e);
-        if (statSync(full).isDirectory()) { walk(full); rmSync(full, { recursive: true, force: true }); }
-        else if (e !== ".hashes.json" && e !== ".engine.json") rmSync(full, { force: true });
+        if (e === ".hashes") continue; // the manifest directory is what a clone keeps
+      if (statSync(full).isDirectory()) { walk(full); rmSync(full, { recursive: true, force: true }); }
+        else if (e !== ".engine.json") rmSync(full, { force: true });
       }
     };
     walk(genStateDir());
@@ -185,7 +186,7 @@ describe("--baseline=adopt", () => {
     const result = await gen({ baseline: "adopt", dryRun: true });
 
     expect(result.files.some((f) => f.status === "adopted")).toBe(true);
-    expect(existsSync(hashesFile())).toBe(false);
+    expect(manifestExists(genStateDir())).toBe(false);
   });
 });
 

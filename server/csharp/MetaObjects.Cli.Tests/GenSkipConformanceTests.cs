@@ -154,6 +154,7 @@ public sealed class GenSkipConformanceTests : IDisposable
 
         string[] more = [];
         string? ci = null;
+        var legacy = false;
         switch (id)
         {
             case "no-change": break;
@@ -212,6 +213,17 @@ public sealed class GenSkipConformanceTests : IDisposable
             case "fingerprint-missing": File.Delete(FingerprintPath()); break;
             case "force": more = ["--force"]; break;
             case "ci": ci = "true"; break;
+            case "legacy-manifest":
+                // Back to the pre-1.3.0 form: every file in .hashes/ merged into one .hashes.json, the directory removed.
+                var merged = new SortedDictionary<string, System.Text.Json.JsonElement>(StringComparer.Ordinal);
+                foreach (var f in Directory.GetFiles(P(".metaobjects/.gen-state/.hashes"), "*.json"))
+                    foreach (var kv in System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(File.ReadAllText(f))!)
+                        merged[kv.Key] = kv.Value;
+                File.WriteAllText(P(".metaobjects/.gen-state/.hashes.json"),
+                    System.Text.Json.JsonSerializer.Serialize(merged, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }) + "\n");
+                Directory.Delete(P(".metaobjects/.gen-state/.hashes"), recursive: true);
+                legacy = true;
+                break;
             case "failed-run":
                 var good = File.ReadAllText(P("metaobjects/meta.order.json"));
                 File.WriteAllText(P("metaobjects/meta.order.json"), "{ not json");
@@ -224,15 +236,25 @@ public sealed class GenSkipConformanceTests : IDisposable
 
         // verify first: it changes nothing. gen second: a regenerate stores a new key.
         Assert.Equal(verify, VerifyDecision(declared, more, ci));
+        if (legacy)
+        {
+            // verify is read-only: it migrates nothing.
+            Assert.True(File.Exists(P(".metaobjects/.gen-state/.hashes.json")));
+            Assert.False(Directory.Exists(P(".metaobjects/.gen-state/.hashes")));
+        }
         Assert.Equal(gen, GenDecision(declared, more));
+        if (legacy)
+        {
+            Assert.False(File.Exists(P(".metaobjects/.gen-state/.hashes.json")));
+            Assert.NotEmpty(Directory.GetFiles(P(".metaobjects/.gen-state/.hashes"), "*.json"));
+        }
     }
 
     [Fact]
     public void A_skipped_gen_renders_nothing_and_leaves_every_file_and_the_key_untouched()
     {
         Assert.Equal(0, RunGen(Declared()).Exit);
-        var manifest = P(".metaobjects/.gen-state/.hashes.json");
-        var files = Directory.GetFiles(OutDir).Append(manifest).Append(FingerprintPath()).ToList();
+        var files = Directory.GetFiles(OutDir).Concat(Directory.GetFiles(P(".metaobjects/.gen-state/.hashes"))).Append(FingerprintPath()).ToList();
         var stamp = DateTime.UtcNow.AddHours(-2);
         foreach (var f in files) File.SetLastWriteTimeUtc(f, stamp);
 
