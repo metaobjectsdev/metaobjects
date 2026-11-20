@@ -992,12 +992,29 @@ fn check_operation(ctx: &Ctx<'_>, op: NodeId, sink: &mut Sink<'_>) {
     }
 }
 
+/// Whether two attr values as written are the same value. A list or a map is never the
+/// same as another (the reference compares them by identity), so two operations that
+/// both carry a malformed value are not declared identically.
+fn same_written(a: &Value, b: &Value) -> bool {
+    !a.is_array() && !a.is_object() && a == b
+}
+
 /// A reference attr's identity: the node it resolves to, else the value as written.
-#[derive(PartialEq)]
 enum RefIdentity<'a> {
     Node(NodeId),
     Raw(&'a Value),
     Absent,
+}
+
+impl PartialEq for RefIdentity<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Node(a), Self::Node(b)) => a == b,
+            (Self::Raw(a), Self::Raw(b)) => same_written(a, b),
+            (Self::Absent, Self::Absent) => true,
+            _ => false,
+        }
+    }
 }
 
 fn ref_identity<'a>(ctx: &Ctx<'a>, op: NodeId, attr: &str) -> RefIdentity<'a> {
@@ -1032,7 +1049,11 @@ fn same_operation(ctx: &Ctx<'_>, a: NodeId, b: NodeId) -> bool {
         && [A_TRANSITIONS, A_ERRORS]
             .iter()
             .all(|attr| set_of(tree, a, attr) == set_of(tree, b, attr))
-        && tree.attr(a, A_PERMISSION) == tree.attr(b, A_PERMISSION)
+        && match (tree.attr(a, A_PERMISSION), tree.attr(b, A_PERMISSION)) {
+            (None, None) => true,
+            (Some(x), Some(y)) => same_written(x, y),
+            _ => false,
+        }
         && is_true(tree, a, A_PUBLIC) == is_true(tree, b, A_PUBLIC)
         && is_true(tree, a, A_MANY) == is_true(tree, b, A_MANY)
 }
@@ -1174,6 +1195,24 @@ mod tests {
         ] {
             assert!(codes.contains_key(c), "{c}");
         }
+    }
+
+    #[test]
+    fn a_written_list_or_map_is_never_the_same_value_as_another() {
+        let s = |v: &str| Value::String(v.to_string());
+        assert!(same_written(
+            &s("purchasing.approve"),
+            &s("purchasing.approve")
+        ));
+        assert!(!same_written(
+            &s("purchasing.approve"),
+            &s("purchasing.decide")
+        ));
+        assert!(same_written(&Value::Bool(true), &Value::Bool(true)));
+        let list = serde_json::json!(["a"]);
+        assert!(!same_written(&list, &list.clone()));
+        let map = serde_json::json!({ "a": 1 });
+        assert!(!same_written(&map, &map.clone()));
     }
 
     #[test]
