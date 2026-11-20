@@ -19,7 +19,7 @@ import {
   type MetaField,
   type MetaObject,
 } from "@metaobjectsdev/metadata";
-import { enumMembers, readDate } from "./list-query";
+import { enumMembers, isRecord, readDate } from "./list-query";
 
 /** One problem with a write, in the shape the `validation` 400 lists them. */
 export interface WriteIssue {
@@ -31,10 +31,6 @@ export interface WriteIssue {
 const CODE_ENUM = "enum";
 const CODE_DATE = "date";
 const CODE_UNKNOWN_MEMBER = "unknown_member";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 /** The value object a `field.object` holds, when its `@objectRef` names one. */
 export function valueObjectOf(field: MetaField): MetaObject | undefined {

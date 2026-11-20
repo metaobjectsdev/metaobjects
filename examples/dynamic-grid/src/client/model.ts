@@ -139,7 +139,7 @@ interface RawNode {
   readonly children: readonly RawNode[];
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -190,9 +190,12 @@ export function buildClientModel(metaDocument: unknown, served: ServedInfo): Cli
     const reference = identities.find(
       (n) => n.subType === IDENTITY_SUBTYPE_REFERENCE && stringList(n.attr(IDENTITY_ATTR_FIELDS)).includes(field.name),
     );
-    const sortable = field.attr(FIELD_ATTR_SORTABLE);
-    const filterable = field.attr(FIELD_ATTR_FILTERABLE) === true;
-    const view = field.views()[0];
+    // A credential is never filtered, sorted or written, whatever else the model says of it.
+    const views = field.views();
+    const credential = views.some((v) => v.subType === VIEW_SUBTYPE_PASSWORD);
+    const sortAttr = field.attr(FIELD_ATTR_SORTABLE);
+    const filterable = field.attr(FIELD_ATTR_FILTERABLE) === true && !credential;
+    const view = views[0];
     const valueObjectName = field.subType === FIELD_SUBTYPE_OBJECT ? shortName(field.attr(FIELD_ATTR_OBJECT_REF)) : undefined;
     const generated =
       primary !== undefined &&
@@ -207,14 +210,14 @@ export function buildClientModel(metaDocument: unknown, served: ServedInfo): Cli
       required: field.attr(FIELD_ATTR_REQUIRED) === true,
       // The same function the server derives its allowlist with, so the two cannot disagree.
       filterOps: filterable ? opsForField(field) : [],
-      sortable: sortable === true || (sortable !== false && filterable),
+      sortable: !credential && (sortAttr === true || (sortAttr !== false && filterable)),
       enumValues: stringList(field.attr(FIELD_ATTR_VALUES)),
       validators: (raw?.children ?? []).filter((n) => n.type === TYPE_VALIDATOR),
       valueObject: valueObjectName === undefined ? undefined : objectModel(valueObjectName),
       references: reference === undefined ? undefined : shortName(reference.attr(IDENTITY_REFERENCE_ATTR_REFERENCES)),
       isArray: raw?.isArray === true,
       generated,
-      writable: !generated && field.attr(FIELD_ATTR_FORM_EXCLUDE) !== true && !field.views().some((v) => v.subType === VIEW_SUBTYPE_PASSWORD),
+      writable: !generated && !credential && field.attr(FIELD_ATTR_FORM_EXCLUDE) !== true,
     };
   }
 

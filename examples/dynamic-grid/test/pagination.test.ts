@@ -47,6 +47,22 @@ describe("the project's setting (defaultLimit 10, maxLimit 50)", () => {
     expect(res.body).toEqual({ error: "limit_too_large", maxLimit: 50 });
   });
 
+  test("pages do not overlap: rows that tie on the sort field are ordered by their key", async () => {
+    // Twelve work orders share four statuses, so most of every page is a tie.
+    const pages: { id: number; status: string }[] = [];
+    for (const offset of [0, 5, 10]) {
+      pages.push(...(rowsOf((await demo.get(`/api/work_orders?sort=status:desc&limit=5&offset=${offset}`)).body) as { id: number; status: string }[]));
+    }
+    expect(pages.map((row) => row.id).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    const expected = [...pages].sort((a, b) => (a.status === b.status ? a.id - b.id : a.status < b.status ? 1 : -1));
+    expect(pages).toEqual(expected);
+  });
+
+  test("with no sort, pages follow the key", async () => {
+    const second = rowsOf((await demo.get("/api/work_orders?limit=5&offset=5")).body) as { id: number }[];
+    expect(second.map((row) => row.id)).toEqual([6, 7, 8, 9, 10]);
+  });
+
   test("offset pages through the rows", async () => {
     const ids = async (query: string): Promise<unknown[]> =>
       rowsOf((await demo.get(`/api/work_orders?sort=dueOn&${query}`)).body).map((row) => (row as Record<string, unknown>)["id"]);
@@ -100,5 +116,11 @@ describe("no api.pagination in the project config", () => {
   test("lists are unbounded, as the generated routes are without the setting", async () => {
     expect(rowsOf((await demo.get("/api/work_orders")).body)).toHaveLength(12);
     expect(rowsOf((await demo.get("/api/work_orders?limit=1000")).body)).toHaveLength(12);
+  });
+
+  test("an offset with no limit skips rows and returns the rest", async () => {
+    const res = await demo.get("/api/work_orders?offset=5");
+    expect(res.status).toBe(200);
+    expect((rowsOf(res.body) as { id: number }[]).map((row) => row.id)).toEqual([6, 7, 8, 9, 10, 11, 12]);
   });
 });

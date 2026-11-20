@@ -151,6 +151,13 @@ for (const { name, build, supportsTransactions } of DRIVERS) {
       expect(await om.count("Post", { authorId: u.id as number })).toBe(2);
     });
 
+    test("findMany with an offset and no limit skips rows and returns the rest", async () => {
+      // SQLite and MySQL have no OFFSET without a LIMIT; every driver must still answer.
+      for (const email of ["a@y", "b@y", "c@y"]) await om.create("User", { email });
+      const rest = await om.findMany("User", {}, { orderBy: ["email", "asc"], offset: 1 });
+      expect(rest.map((u) => u.email)).toEqual(["b@y", "c@y"]);
+    });
+
     test("update + delete", async () => {
       const u = await om.create("User", { email: "u@y" });
       const u2 = await om.update("User", u.id, { email: "z@y" });

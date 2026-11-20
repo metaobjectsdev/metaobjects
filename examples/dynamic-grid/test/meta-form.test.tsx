@@ -8,7 +8,7 @@ import { cleanup, fireEvent, waitFor, within, type RenderResult } from "@testing
 import type { Row } from "../src/client/api";
 import { MetaForm, type MetaFormProps } from "../src/client/meta-form";
 import { MetaGrid } from "../src/client/meta-grid";
-import { inProcess, mount, type Transport } from "./client-helpers";
+import { clientModel, inProcess, mount, type Transport } from "./client-helpers";
 import { copyProject, openDemo, type Demo } from "./helpers";
 
 let demo: Demo;
@@ -162,6 +162,7 @@ describe("fields the form does not offer", () => {
         "- field.date: { name: hiredOn, filterable: true }",
         "          - field.string:",
         "              name: portalSecret",
+        "              filterable: true",
         "              children:",
         "                - view.password: { name: masked }",
         "          - field.string: { name: payrollCode, maxLength: 20, formExclude: true }",
@@ -171,6 +172,9 @@ describe("fields the form does not offer", () => {
     try {
       const view = await form({ entity: "Technician" }, inProcess(other.app));
       expect(controls(view.container).map(([label]) => label)).toEqual(["Name *", "Level *", "Hourly Rate *", "Hired On"]);
+      // Nor is the credential offered to filter or sort on, though the model marks it @filterable.
+      const secret = (await clientModel(inProcess(other.app))).entity("Technician")?.field("portalSecret");
+      expect(secret).toMatchObject({ filterOps: [], sortable: false, writable: false });
     } finally {
       cleanup();
       await other.close();

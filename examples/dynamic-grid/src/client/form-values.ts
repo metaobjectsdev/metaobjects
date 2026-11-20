@@ -23,7 +23,7 @@ import {
   VIEW_SUBTYPE_TEXTAREA,
 } from "@metaobjectsdev/metadata/constants";
 import type { Row } from "./api";
-import type { FieldModel, ObjectModel } from "./model";
+import { isRecord, type FieldModel, type ObjectModel } from "./model";
 
 /** The kinds of control this form can draw. */
 export const CONTROL_KINDS = [
@@ -68,10 +68,6 @@ export interface FormValues {
 /** The fields of `object` a person edits: the ones a request may set. */
 export function editableFields(object: ObjectModel): readonly FieldModel[] {
   return object.fields.filter((field) => field.writable);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** A stored value as its control holds it. */

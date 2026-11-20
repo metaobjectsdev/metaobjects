@@ -123,33 +123,44 @@ rule below has tests in `examples/dynamic-grid/test/`.
 |---|---|---|
 | Filter allowlist | Only a `@filterable` field filters, and only with the operators of its subtype. Anything else is `400 invalid_filter_field` or `invalid_filter_op`, with the allowed list. | `list-allowlist.test.ts` |
 | Sort allowlist | Only a sortable field sorts. Anything else is `400 invalid_sort`. | `list-allowlist.test.ts` |
+| Stable pages | Every list is ordered by the caller's sort and then the primary key, so rows that tie on the sort do not move between pages. | `pagination.test.ts` |
 | Typed filter values | A value is read against the field's subtype (a number, a real date, an enum member) before it reaches a query. A bad one is `400 invalid_filter_value`. | `list-allowlist.test.ts` |
 | No SQL from request text | Field and table names in SQL come from the model through `ObjectManager`; request values are bound parameters. The test logs every statement and checks hostile request text appears in none of them. | `no-sql-from-request.test.ts` |
 | Unknown fields | A body key the entity does not declare is `400 unknown_fields`, before validation, unless the project sets `api.unknownFields: "drop"`. A generated primary key, a credential and a `@formExclude` field are not settable. | `write-contract.test.ts` |
-| Credentials | A field with a `view.password` is in no response and is set by no request. | `write-contract.test.ts` |
+| Credentials | A field with a `view.password` is in no response, is set by no request, and cannot be filtered or sorted on even when the model marks it `@filterable`: a `like` filter on a hidden value would read it out a prefix at a time. | `write-contract.test.ts` |
+| One address per row | A whole-number key is addressed by its plain decimal form only. `0x1`, `1e0`, `01` and ` 1` are `404`, not row 1. | `write-contract.test.ts` |
 | Pagination | `api.pagination` `defaultLimit` and `maxLimit` are honoured: an oversized `limit` is `400 limit_too_large`, a bad bound `400 pagination.invalid_value`. | `pagination.test.ts` |
 | Validation | The model's validators run on every write, then enum membership, real dates and value-object members, then the hand-written rules. All answer `400 validation` with one issue per field path. | `write-contract.test.ts` |
 | Constraint errors | A unique or foreign-key failure is a `409` or `400` that names no table or column. | `write-contract.test.ts` |
+| Model reload | Reloads run one at a time. A schema change is applied by the migration engine's transactional applier, so one that fails part-way changes nothing and the model that was being served stays in place. | `reload-safety.test.ts` |
 
-While building this, `DELETE` on a missing row through the `ObjectManager` route mount in
-`@metaobjectsdev/runtime-ts/fastify` turned out to answer `500`. That is fixed in the
-package (it answers `404`), and the example's mount does the same.
+Three defects outside the example turned up while building this:
+
+- `DELETE` on a missing row through the `ObjectManager` route mount in
+  `@metaobjectsdev/runtime-ts/fastify` answered `500`. Fixed in the package (it answers
+  `404`), and the example's mount does the same.
+- An `offset` with no `limit` was a SQL syntax error on SQLite and MySQL in both the Kysely
+  and the Drizzle driver, so a list with no `api.pagination` answered `500` to `?offset=5`.
+  Fixed in the drivers.
+- The reference route generator's filter allowlist does not leave out a credential that a
+  model marks `@filterable`. This mount does. The generators were out of scope here, so
+  that one is reported and not changed.
 
 ## Measurement
 
 Run it yourself: `bun run measure` in the example. It runs the reference generators in
 memory on the example's own metadata, counts both sides with one rule (a line is code when
 it is not blank and not only a comment), and times the metadata lookups. The sizes are
-exact; the timings are medians from one developer machine and move with the machine (two
-runs an hour apart put the server's per-row overhead at 6.5 and 7.7 µs).
+exact; the timings are medians from one developer machine and move with the machine
+(four runs on one day put the server's per-row overhead between 5.2 and 7.7 µs).
 
 ### Size, for this model (5 entities and a value object)
 
 | Metadata-driven path (hand-written once, names no entity) | Files | Lines of code |
 |---|---:|---:|
-| Server: one route mount, the list contract, write checks, the model and its schema | 6 | 662 |
-| Client: the model reader, `<MetaGrid>`, `<MetaForm>` and their controls | 9 | 1119 |
-| **The mechanism: paid once, whatever the model** | 15 | 1781 |
+| Server: one route mount, the list contract, write checks, the model and its schema | 6 | 716 |
+| Client: the model reader, `<MetaGrid>`, `<MetaForm>` and their controls | 9 | 1107 |
+| **The mechanism: paid once, whatever the model** | 15 | 1823 |
 | **Generated and kept: types and name constants (`src/generated/`), which grow with the model** | 11 | 390 |
 
 | Generated path (the reference generators, same model) | Files | Lines of code |
@@ -168,18 +179,18 @@ runs an hour apart put the server's per-row overhead at 6.5 and 7.7 µs).
 | Not in either total | Files | Lines of code |
 |---|---:|---:|
 | Demo shell: the page, the dev server, seed rows | 7 | 339 |
-| Hand-written business rules | 1 | 48 |
+| Hand-written business rules | 1 | 49 |
 
 Per entity, the generated path adds about 726 lines in 9.4 files. The metadata-driven path
 adds about 78 (its types and name constants) and no hand-written code. The mechanism's
-1781 lines are paid once, so the two paths are the same size at about 3 entities, and at
+1823 lines are paid once, so the two paths are the same size at about 3 entities, and at
 50 entities the generated path is about 36,000 lines against about 5,700.
 
 Read those numbers with four things in mind:
 
 - **Nobody types the generated lines.** The comparison is about how much code exists to
   read in a diff, review, regenerate and keep in step with the model, not about typing.
-- **The 1781 lines are hand-written, here, because no package ships them.** The generated
+- **The 1823 lines are hand-written, here, because no package ships them.** The generated
   routes are small (149 lines) because they call helpers in `@metaobjectsdev/runtime-ts`;
   the example writes its list contract out in full. Moved into a package, an adopter's
   share of the mechanism would be close to zero.
@@ -196,18 +207,18 @@ Read those numbers with four things in mind:
 
 | What | Cost | Paid |
 |---|---|---|
-| Server: read and check a list query against the model (two filters, a sort, paging) | 3.0 µs | per request |
-| Server: `ObjectManager.findMany`, 1000 rows of 9 columns | 9.52 ms (9.5 µs a row) | per request |
-| Server: the same `SELECT` through Kysely with no metadata | 1.80 ms (1.8 µs a row) | per request |
-| Server: **metadata overhead per row** (the difference) | **7.7 µs** | per row |
-| Browser: build the client model from `/_meta` (5.2 KB of JSON) | 0.17 ms | once per model load |
-| Browser: format 1000 rows of 7 columns from field metadata | 0.92 ms (0.9 µs a row) | per page drawn |
-| Browser: the same cells as plain `String(value)` | 0.06 ms (0.1 µs a row) | per page drawn |
-| Browser: **metadata overhead per row** (the difference) | **0.9 µs** | per row |
+| Server: read and check a list query against the model (two filters, a sort, paging) | 1.9 µs | per request |
+| Server: `ObjectManager.findMany`, 1000 rows of 9 columns | 6.63 ms (6.6 µs a row) | per request |
+| Server: the same `SELECT` through Kysely with no metadata | 1.45 ms (1.5 µs a row) | per request |
+| Server: **metadata overhead per row** (the difference) | **5.2 µs** | per row |
+| Browser: build the client model from `/_meta` (5.2 KB of JSON) | 0.12 ms | once per model load |
+| Browser: format 1000 rows of 7 columns from field metadata | 0.82 ms (0.8 µs a row) | per page drawn |
+| Browser: the same cells as plain `String(value)` | 0.04 ms (0.0 µs a row) | per page drawn |
+| Browser: **metadata overhead per row** (the difference) | **0.8 µs** | per row |
 
-So a page of 25 rows costs about 0.19 ms of metadata work on the server and 0.02 ms in the
+So a page of 25 rows costs about 0.13 ms of metadata work on the server and 0.02 ms in the
 browser. That is small beside a database round trip, and it is not nothing for an export of
-a million rows (about 8 seconds of it). The "browser" rows were timed in Bun, not in a
+a million rows (5 to 8 seconds of it, across the four runs). The "browser" rows were timed in Bun, not in a
 browser. The raw `SELECT` returns database values as they are stored (snake-case columns,
 `0`/`1` booleans, JSON as text), so part of the difference is work a hand-written query
 would also have to do before a client could use the rows.
@@ -254,8 +265,8 @@ makes none.
   api-contract conformance corpus in every port. This mount is tested by the example's own
   suite against the same error codes, and by nothing else.
 - **The live schema change is a development convenience.** On reload the example applies
-  additive schema changes to its own throwaway SQLite file and refuses a change that would
-  lose data. A real database is changed with `meta migrate`, reviewed and committed, and
+  additive schema changes to its own throwaway SQLite file, in one transaction, and
+  refuses a change that would lose data. A real database is changed with `meta migrate`, reviewed and committed, and
   this page does not suggest otherwise.
 - **No authorization.** Everything served is served to everyone. Guards are the
   application's to add, as they are for generated routes

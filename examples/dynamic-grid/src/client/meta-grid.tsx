@@ -83,10 +83,12 @@ function filterControl(field: FieldModel): Exclude<ControlKind, "group" | "check
 
 function FilterBar(props: {
   readonly entity: EntityModel;
+  /** Fields the caller's `where` already fixes: not offered, or a filter could undo the scope. */
+  readonly fixed: readonly string[];
   readonly filters: readonly ActiveFilter[];
   readonly onChange: (filters: readonly ActiveFilter[]) => void;
 }): ReactNode {
-  const fields = props.entity.fields.filter((f) => f.filterOps.length > 0);
+  const fields = props.entity.fields.filter((f) => f.filterOps.length > 0 && !props.fixed.includes(f.name));
   const [fieldName, setFieldName] = useState(fields[0]?.name ?? "");
   const field = fields.find((f) => f.name === fieldName);
   const [chosenOp, setChosenOp] = useState<FilterOp | undefined>(undefined);
@@ -219,8 +221,9 @@ function Grid(props: MetaGridProps & { readonly model: EntityModel }): ReactNode
   const where = props.where;
   const query = useMemo(() => {
     const filter: Record<string, Record<string, string>> = {};
-    for (const [name, value] of Object.entries(where ?? {})) filter[name] = { [FILTER_OP_EQ]: String(value) };
     for (const f of filters) filter[f.field] = { ...filter[f.field], [f.op]: f.value };
+    // Last, and whole: nothing a person adds in the filter bar widens the caller's scope.
+    for (const [name, value] of Object.entries(where ?? {})) filter[name] = { [FILTER_OP_EQ]: String(value) };
     const sort = sorting[0];
     return buildFilterQs({
       ...filter,
@@ -262,6 +265,7 @@ function Grid(props: MetaGridProps & { readonly model: EntityModel }): ReactNode
       {config.filterable && (
         <FilterBar
           entity={entity}
+          fixed={Object.keys(where ?? {})}
           filters={filters}
           onChange={(next) => {
             setFilters(next);

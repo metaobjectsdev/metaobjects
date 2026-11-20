@@ -41,6 +41,7 @@ import {
   FILTER_OP_LTE,
   FILTER_OP_NE,
   opsForField,
+  VIEW_SUBTYPE_PASSWORD,
   type ApiPagination,
   type FilterOp,
   type MetaField,
@@ -64,7 +65,7 @@ const SORT_ORDERS = ["asc", "desc"] as const;
 type SortOrder = (typeof SORT_ORDERS)[number];
 
 /** The longest `in` list a request may send; the generated routes use the same ceiling. */
-export const MAX_IN_LIST = 100;
+const MAX_IN_LIST = 100;
 
 /** A request the model does not allow. `details` is spread into the 400 body. */
 export class ListQueryError extends Error {
@@ -152,19 +153,37 @@ export function enumMembers(field: MetaField): readonly string[] {
   return Array.isArray(values) ? values.map(String) : [];
 }
 
-/** The fields a list may be filtered on: exactly those the model marks `@filterable`. */
-export function filterableFields(entity: MetaObject): ReadonlyMap<string, MetaField> {
+/**
+ * True for a credential: a field that declares a `view.password`, the one place the
+ * metamodel says a value is secret. No route here reads or writes one, as no generated
+ * route does: a CRUD route cannot hash it on the way in and must not show it on the way
+ * out. The application writes it through its own code.
+ */
+export function isCredential(field: MetaField): boolean {
+  return field.views().some((view) => view.subType === VIEW_SUBTYPE_PASSWORD);
+}
+
+/**
+ * The fields a list may be filtered on: those the model marks `@filterable`, less any
+ * credential. A filter on a value no response shows would still read it out, one `like`
+ * prefix at a time.
+ */
+function filterableFields(entity: MetaObject): ReadonlyMap<string, MetaField> {
   const out = new Map<string, MetaField>();
   for (const field of entity.fields()) {
-    if (field.attr(FIELD_ATTR_FILTERABLE) === true) out.set(field.name, field);
+    if (field.attr(FIELD_ATTR_FILTERABLE) === true && !isCredential(field)) out.set(field.name, field);
   }
   return out;
 }
 
-/** The fields a list may be sorted on: `@sortable`, which follows `@filterable` when unset. */
-export function sortableFields(entity: MetaObject): ReadonlyMap<string, MetaField> {
+/**
+ * The fields a list may be sorted on: `@sortable`, which follows `@filterable` when unset.
+ * Never a credential: the order of the rows would say how their secrets compare.
+ */
+function sortableFields(entity: MetaObject): ReadonlyMap<string, MetaField> {
   const out = new Map<string, MetaField>();
   for (const field of entity.fields()) {
+    if (isCredential(field)) continue;
     const sortable = field.attr(FIELD_ATTR_SORTABLE);
     if (sortable === true || (sortable !== false && field.attr(FIELD_ATTR_FILTERABLE) === true)) {
       out.set(field.name, field);
@@ -188,7 +207,7 @@ export function assertFilterableSubTypes(entity: MetaObject): void {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -351,8 +370,15 @@ export function readListQuery(
   const offset = readPageBound(query, "offset");
   if (limit !== undefined) opts.limit = limit;
   if (offset !== undefined) opts.offset = offset;
+  // The caller's sort, then the key. Without the key, rows that tie on the sort field (or
+  // every row, when there is no sort) come back in whatever order the database likes, and
+  // a row can show on two pages while another shows on none.
   const sort = readSort(entity, query["sort"]);
-  if (sort !== undefined) opts.orderBy = sort;
+  const orderBy: [string, SortOrder][] = sort === undefined ? [] : [sort];
+  for (const key of entity.primaryIdentity()?.fields ?? []) {
+    if (key !== sort?.[0]) orderBy.push([key, "asc"]);
+  }
+  if (orderBy.length > 0) opts.orderBy = orderBy;
   const withCount = query["withCount"] === "1" || query["withCount"] === true;
   return { filter: readFilter(entity, query["filter"]), opts, withCount };
 }

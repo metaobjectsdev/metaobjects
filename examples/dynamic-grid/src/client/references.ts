@@ -26,36 +26,28 @@ export function useReferenceTitles(object: ObjectModel, rows: readonly Row[]): (
   const model = useModel();
   const fetcher = useEntityPathFetcher();
   const [titles, setTitles] = useState<ReadonlyMap<string, string>>(new Map());
-  // What has been asked for, so a re-render does not ask again. Reset with the model: a
-  // reload may have changed which field is the title.
-  const asked = useRef<{ revision: number; keys: Set<string> }>({ revision: model.revision, keys: new Set() });
+  // What has been asked for, so a re-render does not ask again. It lasts as long as the
+  // component: a grid is mounted afresh for a reloaded model, which may title rows differently.
+  const asked = useRef(new Set<string>());
 
   useEffect(() => {
-    if (asked.current.revision !== model.revision) {
-      asked.current = { revision: model.revision, keys: new Set() };
-      setTitles(new Map());
-    }
-    let live = true;
     for (const field of object.fields) {
       const target = field.references === undefined ? undefined : model.entity(field.references);
       if (target === undefined) continue;
       for (const row of rows) {
         const id = row[field.name];
         const key = cacheKey(target.name, id);
-        if (id === null || id === undefined || asked.current.keys.has(key)) continue;
-        asked.current.keys.add(key);
+        if (id === null || id === undefined || asked.current.has(key)) continue;
+        asked.current.add(key);
         fetcher<Row>(`${target.path}/${encodeURIComponent(String(id))}`).then(
-          (referenced) => {
-            if (live) setTitles((known) => new Map(known).set(key, rowTitle(target, referenced)));
-          },
+          // Kept whichever page is showing by now: a title is asked for once, so an answer
+          // dropped because the rows changed meanwhile would never be asked for again.
+          (referenced) => setTitles((known) => new Map(known).set(key, rowTitle(target, referenced))),
           // A row that is gone, or a list the caller may not read: the cell keeps the key.
           () => undefined,
         );
       }
     }
-    return () => {
-      live = false;
-    };
   }, [fetcher, model, object, rows]);
 
   return useMemo(

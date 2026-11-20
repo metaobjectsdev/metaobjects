@@ -220,6 +220,9 @@ function applyOrderLimit(
     }
   }
   if (limit !== undefined) out = out.limit(limit);
+  // SQLite and MySQL have no OFFSET without a LIMIT (the bare clause is a syntax error),
+  // so an offset alone gets a limit no result can reach. Postgres takes the same statement.
+  else if (offset !== undefined) out = out.limit(Number.MAX_SAFE_INTEGER);
   if (offset !== undefined) out = out.offset(offset);
   return out;
 }

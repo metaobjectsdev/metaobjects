@@ -13,11 +13,12 @@
 import {
   apiPaginationOf,
   apiUnknownFieldsOf,
+  FIELD_ATTR_DEFAULT,
   FIELD_ATTR_FORM_EXCLUDE,
+  FIELD_SUBTYPE_INT,
+  FIELD_SUBTYPE_LONG,
   GENERATION_ASSIGNED,
   IDENTITY_ATTR_GENERATION,
-  VIEW_SUBTYPE_PASSWORD,
-  type MetaField,
   type MetaObject,
 } from "@metaobjectsdev/metadata";
 import {
@@ -29,10 +30,10 @@ import {
   withConstraintMapping,
   type ObjectManager,
   type Row,
+  type ValidationFailure,
 } from "@metaobjectsdev/runtime-ts";
-import type { ValidationFailure } from "@metaobjectsdev/runtime-ts";
-import type { FastifyError, FastifyInstance, FastifyReply } from "fastify";
-import { ListQueryError, readListQuery } from "./list-query";
+import type { FastifyError, FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { isCredential, isRecord, ListQueryError, readListQuery } from "./list-query";
 import { declaredValueIssues, type WriteIssue } from "./write-checks";
 import { SERVED_ROUTE_PATH, type ServedInfo } from "../served";
 import type { Model } from "./runtime";
@@ -51,8 +52,13 @@ export interface PendingWrite {
   /** The entity name, as the metadata declares it. */
   readonly entity: string;
   readonly verb: "create" | "update";
-  /** The row as it will stand after the write: on update, the stored row with the body over it. */
+  /**
+   * The row as it will stand after the write: on create, the body over the model's declared
+   * defaults; on update, the body over the stored row.
+   */
   readonly next: Readonly<Row>;
+  /** On update, the row as it stands now, so a rule can tell what the write changes. */
+  readonly stored?: Readonly<Row>;
   readonly om: ObjectManager;
 }
 
@@ -77,14 +83,29 @@ function generatedKeyFields(entity: MetaObject): readonly string[] {
   return primary === undefined || primary.attr(IDENTITY_ATTR_GENERATION) === GENERATION_ASSIGNED ? [] : primary.fields;
 }
 
+/** The values a new row takes for the fields its body leaves out: the model's `@default`s. */
+function declaredDefaults(entity: MetaObject): Row {
+  const defaults: Row = {};
+  for (const field of entity.fields()) {
+    const value = field.attr(FIELD_ATTR_DEFAULT);
+    if (value !== undefined) defaults[field.name] = value;
+  }
+  return defaults;
+}
+
+const WHOLE_NUMBER_KEYS: ReadonlySet<string> = new Set([FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG]);
+
 /**
- * True for a credential: a field that declares a `view.password`, the one place the
- * metamodel says a value is secret. No route here reads or writes one, as no generated
- * route does: a CRUD route cannot hash it on the way in and must not show it on the way
- * out. The application writes it through its own code.
+ * The key a path segment names, or undefined when it is not how this entity's key is
+ * written. A whole-number key has one address, its plain decimal form: `0x1`, `1e0` and
+ * `01` all read as 1 to a lenient parser, and one row must not answer at several URLs.
  */
-function isCredential(field: MetaField): boolean {
-  return field.views().some((view) => view.subType === VIEW_SUBTYPE_PASSWORD);
+function rowKey(entity: MetaObject, text: string): string | undefined {
+  const keyName = entity.primaryIdentity()?.fields[0];
+  const key = keyName === undefined ? undefined : entity.findField(keyName);
+  if (key === undefined || !WHOLE_NUMBER_KEYS.has(key.subType)) return text;
+  const n = Number(text);
+  return Number.isSafeInteger(n) && String(n) === text ? text : undefined;
 }
 
 /**
@@ -92,7 +113,7 @@ function isCredential(field: MetaField): boolean {
  * database generates, a credential, and a field marked `@formExclude`. The generated
  * insert and update schemas leave the same ones out.
  */
-export function writableFieldNames(entity: MetaObject): ReadonlySet<string> {
+function writableFieldNames(entity: MetaObject): ReadonlySet<string> {
   const names = new Set(
     entity.fields().filter((field) => !isCredential(field) && field.attr(FIELD_ATTR_FORM_EXCLUDE) !== true).map((field) => field.name),
   );
@@ -100,21 +121,22 @@ export function writableFieldNames(entity: MetaObject): ReadonlySet<string> {
   return names;
 }
 
-/** A stored row as a response carries it: without the entity's credentials. */
-function shown(entity: MetaObject, row: Row): Row {
-  const hidden = entity.fields().filter(isCredential);
-  if (hidden.length === 0) return row;
-  const out: Row = { ...row };
-  for (const field of hidden) delete out[field.name];
-  return out;
+/**
+ * Turns a stored row of `entity` into what a response carries: the row without the
+ * entity's credentials. The fields are looked up once, not once a row.
+ */
+function shownBy(entity: MetaObject): (row: Row) => Row {
+  const hidden = entity.fields().filter(isCredential).map((field) => field.name);
+  if (hidden.length === 0) return (row) => row;
+  return (row) => {
+    const out: Row = { ...row };
+    for (const name of hidden) delete out[name];
+    return out;
+  };
 }
 
 function toIssue(failure: ValidationFailure): WriteIssue {
   return { path: [failure.field], code: failure.rule, message: failure.message };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function validation(reply: FastifyReply, issues: readonly WriteIssue[]): FastifyReply {
@@ -188,6 +210,19 @@ async function writeIssues(
   return issues;
 }
 
+interface CollectionParams {
+  readonly collection: string;
+}
+interface MemberParams extends CollectionParams {
+  readonly id: string;
+}
+interface CollectionRoute {
+  Params: CollectionParams;
+}
+interface MemberRoute {
+  Params: MemberParams;
+}
+
 export function mountDynamicRoutes(options: DynamicRoutesOptions): void {
   const { fastify, prefix, model } = options;
   const rules = options.rules ?? [];
@@ -195,13 +230,12 @@ export function mountDynamicRoutes(options: DynamicRoutesOptions): void {
   const member = `${collection}/:id`;
 
   /** The entity a collection path names in the current model, or undefined for a 404. */
-  function entityAt(params: unknown): MetaObject | undefined {
-    const segment = isRecord(params) ? params["collection"] : undefined;
-    return typeof segment === "string" ? model().served.get(segment) : undefined;
-  }
-  function idOf(params: unknown): string {
-    const id = isRecord(params) ? params["id"] : undefined;
-    return typeof id === "string" ? id : "";
+  const entityAt = (params: CollectionParams): MetaObject | undefined => model().served.get(params.collection);
+  /** The entity and the row a member path names, or undefined for a 404. */
+  function memberAt(params: MemberParams): { entity: MetaObject; id: string } | undefined {
+    const entity = entityAt(params);
+    const id = entity === undefined ? undefined : rowKey(entity, params.id);
+    return entity === undefined || id === undefined ? undefined : { entity, id };
   }
   const notFound = (reply: FastifyReply): FastifyReply => reply.code(404).send({ error: ERROR_NOT_FOUND });
 
@@ -229,7 +263,7 @@ export function mountDynamicRoutes(options: DynamicRoutesOptions): void {
     };
   });
 
-  fastify.get(collection, async (req, reply) => {
+  fastify.get<CollectionRoute>(collection, async (req, reply) => {
     const current = model();
     const entity = entityAt(req.params);
     if (entity === undefined) return notFound(reply);
@@ -240,61 +274,64 @@ export function mountDynamicRoutes(options: DynamicRoutesOptions): void {
       if (err instanceof ListQueryError) return reply.code(400).send({ error: err.code, ...err.details });
       throw err;
     }
-    const rows = (await current.om.findMany(entity.name, list.filter, list.opts)).map((row) => shown(entity, row));
-    if (!list.withCount) return rows;
     // The total ignores the page: it is how many rows the filter matches.
-    return { rows, total: await current.om.count(entity.name, list.filter) };
+    const [stored, total] = await Promise.all([
+      current.om.findMany(entity.name, list.filter, list.opts),
+      list.withCount ? current.om.count(entity.name, list.filter) : undefined,
+    ]);
+    const rows = stored.map(shownBy(entity));
+    return total === undefined ? rows : { rows, total };
   });
 
-  fastify.get(member, async (req, reply) => {
-    const entity = entityAt(req.params);
-    if (entity === undefined) return notFound(reply);
-    // The raw path text: ObjectManager reads it against the key's declared type.
-    const row = await model().om.findById(entity.name, idOf(req.params));
-    return row === null ? notFound(reply) : shown(entity, row);
+  fastify.get<MemberRoute>(member, async (req, reply) => {
+    const at = memberAt(req.params);
+    if (at === undefined) return notFound(reply);
+    const row = await model().om.findById(at.entity.name, at.id);
+    return row === null ? notFound(reply) : shownBy(at.entity)(row);
   });
 
-  fastify.post(collection, async (req, reply) => {
+  fastify.post<CollectionRoute>(collection, async (req, reply) => {
     const current = model();
     const entity = entityAt(req.params);
     if (entity === undefined) return notFound(reply);
     const row = readBody(current, entity, req.body, reply);
     if (row === undefined) return reply;
     return answerWrite(reply, async () => {
-      const issues = await writeIssues(rules, entity, row, { entity: entity.name, verb: "create", next: row, om: current.om });
+      const next = { ...declaredDefaults(entity), ...row };
+      const issues = await writeIssues(rules, entity, row, { entity: entity.name, verb: "create", next, om: current.om });
       if (issues.length > 0) return validation(reply, issues);
-      return reply.code(201).send(shown(entity, await current.om.create(entity.name, row)));
+      return reply.code(201).send(shownBy(entity)(await current.om.create(entity.name, row)));
     });
   });
 
-  const update = async (req: { params: unknown; body: unknown }, reply: FastifyReply): Promise<FastifyReply> => {
+  const update = async (req: FastifyRequest<MemberRoute>, reply: FastifyReply): Promise<FastifyReply> => {
     const current = model();
-    const entity = entityAt(req.params);
-    if (entity === undefined) return notFound(reply);
+    const at = memberAt(req.params);
+    if (at === undefined) return notFound(reply);
+    const { entity, id } = at;
     const row = readBody(current, entity, req.body, reply);
     if (row === undefined) return reply;
-    const id = idOf(req.params);
     return answerWrite(reply, async () => {
       // A rule judges the row as it will stand, so it needs the stored one under the body.
       const stored = await current.om.findById(entity.name, id);
       if (stored === null) return notFound(reply);
       const next = { ...stored, ...row };
-      const issues = await writeIssues(rules, entity, row, { entity: entity.name, verb: "update", next, om: current.om });
+      const issues = await writeIssues(rules, entity, row, { entity: entity.name, verb: "update", next, stored, om: current.om });
       if (issues.length > 0) return validation(reply, issues);
       const updated = await current.om.update(entity.name, id, row, { ifMissing: "ignore" });
-      return updated === null ? notFound(reply) : reply.code(200).send(shown(entity, updated));
+      return updated === null ? notFound(reply) : reply.code(200).send(shownBy(entity)(updated));
     });
   };
   // The update verb answers on both methods, as every port's routes do.
-  fastify.patch(member, update);
-  fastify.put(member, update);
+  fastify.patch<MemberRoute>(member, update);
+  fastify.put<MemberRoute>(member, update);
 
-  fastify.delete(member, async (req, reply) => {
-    const entity = entityAt(req.params);
-    if (entity === undefined) return notFound(reply);
+  fastify.delete<MemberRoute>(member, async (req, reply) => {
+    const at = memberAt(req.params);
+    if (at === undefined) return notFound(reply);
     return answerWrite(reply, async () =>
       // "ignore": a missing row is this route's 404 to answer, not an exception.
-      (await model().om.delete(entity.name, idOf(req.params), { ifMissing: "ignore" })) ? reply.code(204).send() : notFound(reply),
+      (await model().om.delete(at.entity.name, at.id, { ifMissing: "ignore" })) ? reply.code(204).send() : notFound(reply),
     );
   });
 }

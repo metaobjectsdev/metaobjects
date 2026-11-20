@@ -6,9 +6,9 @@
  * every request, so a metadata edit takes effect on the next request with no code
  * generated and no route re-registered.
  */
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { LibsqlDialect } from "@libsql/kysely-libsql";
 import {
   collectionSegment,
@@ -17,15 +17,17 @@ import {
   type MetaObject,
   type MetaRoot,
 } from "@metaobjectsdev/metadata";
-import { emit, planOffline, splitSqlStatements, type SchemaSnapshot } from "@metaobjectsdev/migrate-ts";
+import { applyPending, emit, planOffline, type SchemaSnapshot } from "@metaobjectsdev/migrate-ts";
 import { ObjectManager, type Row } from "@metaobjectsdev/runtime-ts";
 import { kyselyDriver } from "@metaobjectsdev/runtime-ts/drivers";
 import { loadMemory } from "@metaobjectsdev/sdk";
-import { Kysely, sql } from "kysely";
+import { Kysely } from "kysely";
 import { assertFilterableSubTypes } from "./list-query";
 
 const SQLITE = "sqlite";
 const EMPTY_SCHEMA: SchemaSnapshot = { tables: [], views: [] };
+/** The file of a migration directory the engine applies. */
+const MIGRATION_UP_FILE = "up.sql";
 
 /** One loaded generation of the model. Immutable; a reload makes a new one. */
 export interface Model {
@@ -68,17 +70,30 @@ function servedEntities(root: MetaRoot): ReadonlyMap<string, MetaObject> {
 
 /**
  * Bring the database from `from` to what `root` declares, and return the schema it now has.
- * The DDL is the migration engine's own output for this model: `meta migrate` would write
- * the same statements to a file.
+ *
+ * Both halves are the migration engine's own: the DDL is what `meta migrate` would write
+ * for this model, and it is applied the way `meta migrate apply-pending` applies a
+ * migration, as one file in one transaction. A statement that fails takes the ones before
+ * it back, so the database never holds half of a model and the snapshot the caller keeps
+ * stays true.
  */
-async function syncSchema(db: Kysely<Record<string, Row>>, root: MetaRoot, from: SchemaSnapshot): Promise<SchemaSnapshot> {
+async function syncSchema(db: Kysely<Record<string, Row>>, root: MetaRoot, from: SchemaSnapshot, migration: string): Promise<SchemaSnapshot> {
   // Replacing a CHECK constraint is allowed, because that is what adding a member to an
   // enum is, and it loses no data. Nothing else destructive is: a change that drops a
   // column or a table throws here, and the caller keeps serving the model it already has.
   const plan = await planOffline({ metadata: root, dialect: SQLITE, snapshot: from, allow: { dropCheck: true } });
+  if (plan.diff.changes.length === 0) return plan.nextSnapshot;
   const emitted = emit(plan.diff.changes, { dialect: SQLITE, expectedSchema: plan.expected, actualSchema: from });
-  for (const statement of splitSqlStatements(emitted.up, { dialect: SQLITE })) {
-    await sql.raw(statement).execute(db);
+  mkdirSync(migration, { recursive: true });
+  writeFileSync(join(migration, MIGRATION_UP_FILE), emitted.up);
+  try {
+    // One connection, two views of it: the runtime types a row's columns, the migration
+    // engine does not look at rows at all.
+    await applyPending(db as unknown as Kysely<Record<string, unknown>>, dirname(migration), { dryRun: false, dialect: SQLITE });
+  } catch (err) {
+    // Not applied, so not kept: the next reload plans this change again from `from`.
+    rmSync(migration, { recursive: true, force: true });
+    throw err;
   }
   return plan.nextSnapshot;
 }
@@ -107,15 +122,36 @@ export async function openRuntime(options: OpenRuntimeOptions): Promise<Runtime>
   let schema = EMPTY_SCHEMA;
   let model: Model | undefined;
 
-  async function reload(): Promise<Model> {
+  async function load(): Promise<Model> {
     const root = await loadMemory(options.projectDir);
     const served = servedEntities(root);
-    schema = await syncSchema(db, root, schema);
-    model = { revision: (model?.revision ?? 0) + 1, root, om: new ObjectManager({ metadata: root, driver }), served };
+    const revision = (model?.revision ?? 0) + 1;
+    schema = await syncSchema(db, root, schema, join(scratch, "migrations", `${String(revision).padStart(6, "0")}-reload`));
+    model = { revision, root, om: new ObjectManager({ metadata: root, driver }), served };
     return model;
   }
 
-  await reload();
+  // One load at a time, each planning from the schema the one before it left: two saves
+  // in quick succession must not both plan the same change.
+  let last: Promise<unknown> = Promise.resolve();
+  function reload(): Promise<Model> {
+    const next = last.then(load);
+    last = next.catch(() => undefined);
+    return next;
+  }
+
+  const close = async (): Promise<void> => {
+    await db.destroy();
+    rmSync(scratch, { recursive: true, force: true });
+  };
+
+  try {
+    await reload();
+  } catch (err) {
+    // Nothing was opened for the caller to close.
+    await close();
+    throw err;
+  }
 
   return {
     current(): Model {
@@ -124,9 +160,6 @@ export async function openRuntime(options: OpenRuntimeOptions): Promise<Runtime>
     },
     reload,
     db,
-    async close(): Promise<void> {
-      await db.destroy();
-      rmSync(scratch, { recursive: true, force: true });
-    },
+    close,
   };
 }

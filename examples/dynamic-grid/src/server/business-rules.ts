@@ -36,10 +36,16 @@ export const doneNeedsTechnician: WriteRule = ({ entity, next }) => {
   ];
 };
 
-/** A line may only take a part that is still sold, and no more of it than is in stock. */
-export const lineTakesAvailableStock: WriteRule = async ({ entity, next, om }) => {
+/**
+ * A line may only take a part that is still sold, and no more of it than is in stock. It
+ * is a rule about choosing a part and a quantity, so an edit that changes neither (moving
+ * the line to another work order) is not judged again on a decision already made.
+ */
+export const lineTakesAvailableStock: WriteRule = async ({ entity, next, stored, om }) => {
   if (entity !== WorkOrderLineNames.name) return [];
   const line = next as Partial<WorkOrderLine>;
+  const before = stored as Partial<WorkOrderLine> | undefined;
+  if (before !== undefined && before.partId === line.partId && before.quantity === line.quantity) return [];
   if (line.partId === undefined) return [];
   const part = (await om.findById(PartNames.name, line.partId)) as Part | null;
   // No such part is the database's to refuse (the foreign key), not this rule's.
@@ -52,8 +58,8 @@ export const lineTakesAvailableStock: WriteRule = async ({ entity, next, om }) =
       message: `${part.sku} is discontinued and cannot be added to a work order.`,
     });
   }
-  const quantity = line.quantity ?? 1;
-  if (quantity > part.stockQty) {
+  // `next` carries the model's default for a quantity the body left out.
+  if (line.quantity !== undefined && line.quantity > part.stockQty) {
     issues.push({
       path: [WorkOrderLineNames.fields.quantity.name],
       code: RULE_INSUFFICIENT_STOCK,

@@ -89,7 +89,7 @@ here.**
   generated code is the types and name constants its hand-written business rules use.
   Editing the metadata changes the grid, the form and the API with no regeneration.
   `docs/features/metadata-driven-runtime.md` measures it against the reference generators
-  for the same model (1,781 hand-written lines paid once, against 3,629 generated lines
+  for the same model (1,823 hand-written lines paid once, against 3,629 generated lines
   that grow by about 726 an entity), gives the per-row cost of the metadata lookups, and
   lists what the approach cannot do. It is an example on the TypeScript port, not a package.
 
@@ -111,6 +111,10 @@ here.**
   `@metaobjectsdev/runtime-ts/fastify` called `ObjectManager.delete` in its default mode, which
   throws for a row that is not there, so the request ended as `500 {"error":"internal"}`. They
   now answer `404 {"error":"not_found"}`, as the update route and the generated routes do.
+- **Fix, TypeScript: `findMany` with an `offset` and no `limit` works on SQLite and MySQL.**
+  The Kysely and Drizzle drivers in `@metaobjectsdev/runtime-ts` wrote `OFFSET` with no
+  `LIMIT`, which is a syntax error on both databases, so the call threw. An offset alone
+  now carries a limit no result can reach, and skips rows on every dialect.
 - **Fix, Java, Kotlin and Python: `<Entity>Names` has no entry for a derived field with no
   column.** The TypeScript and C# names generators already left out a derived (`origin.*`) field
   of an entity read from its table; Java, Kotlin and Python still emitted a column constant

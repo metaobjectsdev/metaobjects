@@ -4,7 +4,7 @@
  */
 import type { EntityFetcher } from "@metaobjectsdev/runtime-web";
 import { SERVED_ROUTE_PATH, type ServedInfo } from "../served";
-import { buildClientModel, type ClientModel } from "./model";
+import { buildClientModel, isRecord, type ClientModel } from "./model";
 
 /** A plain row, as the API returns it. */
 export type Row = Record<string, unknown>;
@@ -42,10 +42,6 @@ export async function loadClientModel(fetcher: EntityFetcher): Promise<ClientMod
 
 export async function servedRevision(fetcher: EntityFetcher): Promise<number> {
   return (await fetcher<ServedInfo>(SERVED_ROUTE_PATH)).revision;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** One line a person can read, for a refusal that is not about a particular field. */

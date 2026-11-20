@@ -6,10 +6,14 @@
  * reading the model and not a list somebody typed.
  */
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
-import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
+import type { EntityFetcher } from "@metaobjectsdev/runtime-web";
+import { EntityFetcherProvider } from "@metaobjectsdev/tanstack";
 import { FIELD_ATTR_FILTERABLE, LAYOUT_DATA_GRID_ATTR_COLUMNS, opsForField } from "@metaobjectsdev/metadata";
+import { ModelProvider } from "../src/client/context";
 import { MetaGrid } from "../src/client/meta-grid";
-import { header, headers, inProcess, mount, tableRows, type Transport } from "./client-helpers";
+import { API_PREFIX } from "../src/server/app";
+import { clientModel, header, headers, inProcess, mount, tableRows, type Transport } from "./client-helpers";
 import { copyProject, openDemo, type Demo, type ProjectCopy } from "./helpers";
 
 let demo: Demo;
@@ -214,5 +218,39 @@ describe("filters", () => {
     // The grid's own request (the filter bar also asks for the work orders a line may point at).
     const list = transport.calls.find((call) => call.path.startsWith("/api/work_order_lines?"));
     expect(list?.path).toContain("filter%5BworkOrderId%5D%5Beq%5D=1");
+  });
+
+  test("a field `where` fixes is not offered as a filter, so the list cannot be pointed at another owner", async () => {
+    const view = await grid("WorkOrderLine", { where: { workOrderId: 1 } });
+    expect(options(view.getByLabelText("Filter field"))).toEqual(["partId", "quantity"]);
+  });
+});
+
+describe("the row a foreign key points at", () => {
+  test("a title asked for before the page was fetched again still arrives", async () => {
+    // Hold every lookup of a referenced row until the test lets it go.
+    const held: (() => void)[] = [];
+    const fetcher: EntityFetcher = async <T,>(path: string, init?: RequestInit): Promise<T> => {
+      if (path.startsWith("/api/customers/") || path.startsWith("/api/technicians/")) await new Promise<void>((go) => held.push(go));
+      return transport.fetcher<T>(path, init);
+    };
+    const model = await clientModel(transport);
+    transport.calls.length = 0;
+    const page = (refresh: number) => (
+      <EntityFetcherProvider fetcher={fetcher} baseUrl={API_PREFIX}>
+        <ModelProvider model={model}>
+          <MetaGrid entity="WorkOrder" refresh={refresh} />
+        </ModelProvider>
+      </EntityFetcherProvider>
+    );
+    const lists = (): number => transport.calls.filter((call) => call.path.startsWith("/api/work_orders?")).length;
+    const view = render(page(0));
+    await waitFor(() => expect(held.length).toBeGreaterThan(0));
+    // A row was saved elsewhere, so the page is fetched again while the lookups are out.
+    view.rerender(page(1));
+    await waitFor(() => expect(lists()).toBe(2));
+    await waitFor(() => expect(view.container.querySelector('[aria-busy="false"]')).not.toBeNull());
+    for (const go of held.splice(0)) go();
+    await waitFor(() => expect(tableRows(view.container).flat()).toContain("Harbor Bakery"));
   });
 });

@@ -162,6 +162,20 @@ describe("round trip", () => {
   });
 });
 
+describe("the id in a path", () => {
+  test("a numeric key is addressed by its plain decimal form and nothing else", async () => {
+    expect((await demo.get("/api/customers/1")).status).toBe(200);
+    // Each of these is 1 to a lenient number parser, and none of them is the row's address.
+    for (const id of ["0x1", "1e0", "1.0", "01", "+1", "%201", "1%20"]) {
+      expect([id, (await demo.get(`/api/customers/${id}`)).status]).toEqual([id, 404]);
+      expect([id, (await demo.send("PATCH", `/api/customers/${id}`, { name: "Renamed" })).status]).toEqual([id, 404]);
+      expect([id, (await demo.send("DELETE", `/api/customers/${id}`)).status]).toEqual([id, 404]);
+    }
+    expect((await demo.get("/api/customers/1e400")).status).toBe(404);
+    expect((await demo.get("/api/customers/1")).body).not.toMatchObject({ name: "Renamed" });
+  });
+});
+
 describe("constraints the database enforces", () => {
   test("a unique violation is a 409 that says only which kind", async () => {
     const res = await demo.send("POST", "/api/parts", { sku: "BRG-6204", name: "duplicate", unitPriceCents: 1 });
@@ -209,6 +223,28 @@ describe("hand-written business rules, typed against the generated code", () => 
     expect((await demo.send("POST", "/api/work_order_lines", { workOrderId: 1, partId: 5, quantity: 3 })).status).toBe(201);
   });
 
+  test("a line that leaves its quantity out is judged at the model's default of 1", async () => {
+    // Part 6 is discontinued and out of stock: both rules speak, the second about the default.
+    const res = await demo.send("POST", "/api/work_order_lines", { workOrderId: 2, partId: 6 });
+    expect(res.body).toMatchObject({
+      issues: [{ code: "work_order_line.part_discontinued" }, { code: "work_order_line.insufficient_stock" }],
+    });
+    const created = await demo.send("POST", "/api/work_order_lines", { workOrderId: 2, partId: 4 });
+    expect(created.status).toBe(201);
+    expect(created.body).toMatchObject({ quantity: 1 });
+  });
+
+  test("an edit that changes neither the part nor the quantity is not judged again", async () => {
+    const line = (await demo.send("POST", "/api/work_order_lines", { workOrderId: 3, partId: 4, quantity: 5 })).body as { id: number };
+    // Stock falls below what the line already holds, and the part is then withdrawn.
+    await demo.runtime.current().om.update("Part", 4, { stockQty: 2, discontinued: true });
+    expect((await demo.send("PATCH", `/api/work_order_lines/${line.id}`, { workOrderId: 4 })).status).toBe(200);
+    // Asking for more is a new decision, and is judged.
+    expect((await demo.send("PATCH", `/api/work_order_lines/${line.id}`, { quantity: 6 })).body).toMatchObject({
+      issues: [{ code: "work_order_line.part_discontinued" }, { code: "work_order_line.insufficient_stock" }],
+    });
+  });
+
   test("a rule is not asked about a body the metadata already refuses", async () => {
     const res = await demo.send("POST", "/api/work_order_lines", { workOrderId: 1, partId: 5, quantity: 0 });
     expect(res.status).toBe(400);
@@ -231,6 +267,7 @@ describe("fields no route reads or writes", () => {
         "          - field.string:",
         "              name: portalSecret",
         "              maxLength: 200",
+        "              filterable: true",
         "              children:",
         "                - view.password: { name: masked }",
         "          - field.string: { name: payrollCode, maxLength: 20, formExclude: true }",
@@ -264,6 +301,16 @@ describe("fields no route reads or writes", () => {
     const created = await guarded.send("POST", "/api/technicians", { name: "Finn Aldous", level: "apprentice", hourlyRate: "30.00" });
     expect(created.status).toBe(201);
     expect(created.body).not.toHaveProperty("portalSecret");
+  });
+
+  test("a credential cannot be filtered or sorted on, even when the model marks it @filterable", async () => {
+    // Otherwise `like` reads it out a prefix at a time, with no response ever showing it.
+    const filtered = await guarded.get("/api/technicians?filter[portalSecret][like]=s3%25");
+    expect(filtered.status).toBe(400);
+    expect(filtered.body).toMatchObject({ error: "invalid_filter_field", field: "portalSecret", allowed: ["name", "level", "hourlyRate", "hiredOn"] });
+    const sorted = await guarded.get("/api/technicians?sort=portalSecret:asc");
+    expect(sorted.status).toBe(400);
+    expect(sorted.body).toMatchObject({ error: "invalid_sort" });
   });
 
   test("neither can be set through a route, and the stored values stand", async () => {
