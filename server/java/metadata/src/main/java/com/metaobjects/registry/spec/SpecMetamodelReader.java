@@ -66,12 +66,13 @@ public final class SpecMetamodelReader {
     /** Classpath directory the metadata jar embeds the spec files under. */
     public static final String EMBED_DIR = "spec/metamodel";
 
-    /** The 21 shared provider-definition file names (keep in lockstep with {@code spec/metamodel/}). */
+    /** The 22 shared provider-definition file names (keep in lockstep with {@code spec/metamodel/}). */
     public static final List<String> SPEC_FILES = List.of(
             "api.json", "attr.json", "db.json", "documentation.json", "field.json", "identity.json",
             "index.json", "layout.json", "object.json", "origin.json", "prompt.json",
             "relationship.json", "reporting.json", "requirement.json", "source.json",
-            "template.json", "transition.json", "ui.json", "ui-web.json", "validator.json", "view.json");
+            "template.json", "transition.json", "ui.json", "ui-web.json", "validator.json", "view.json",
+            "view-expressions.json");
 
     /** Wildcard token used in the JSON for "any type / any subType". */
     private static final String WILDCARD = "*";
@@ -150,9 +151,13 @@ public final class SpecMetamodelReader {
      * (e.g. {@code ui.json}'s {@code field.*} or {@code prompt.json}'s
      * {@code template.prompt}). {@code wildcardSubType} is true for the {@code "*"}
      * any-subtype matcher; otherwise {@code subTypes} lists the exact subtypes.
+     * {@code structChildren} are the STRUCTURAL child rules the directive adds to each
+     * target (a pack that owns a child type also carries the rule that admits it on a type
+     * another provider owns, e.g. the business-rules pack's {@code api} on
+     * {@code metadata.root}); empty for an attr-only directive.
      */
     public record ExtendsDirective(String type, List<String> subTypes, boolean wildcardSubType,
-                                   List<ExtendsAttr> attrs) {
+                                   List<ExtendsAttr> attrs, List<StructChild> structChildren) {
     }
 
     // providerName -> the extends directives declared in that provider's spec file
@@ -261,7 +266,8 @@ public final class SpecMetamodelReader {
                 if (providerName != null) {
                     providerExtends
                             .computeIfAbsent(providerName, k -> new ArrayList<>())
-                            .add(new ExtendsDirective(type, subTypes, wildcard, directiveAttrs));
+                            .add(new ExtendsDirective(type, subTypes, wildcard, directiveAttrs,
+                                    parseStructChildren(e)));
                 }
             }
         }

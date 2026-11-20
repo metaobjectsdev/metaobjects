@@ -639,8 +639,19 @@ public sealed class TypeRegistry
         foreach (ChildRule rule in childRules ?? [])
         {
             def.AppendChildRule(rule);
+            // Remembered so the strict structural pass (which rebuilds a spec-declared
+            // type's rules from its own JSON) keeps what a pack added.
+            string extKey = $"{type}.{subType}";
+            if (!_extendedRules.TryGetValue(extKey, out List<ChildRule>? added))
+            {
+                _extendedRules[extKey] = added = new List<ChildRule>();
+            }
+            added.Add(rule);
         }
     }
+
+    // (type.subType) -> structural child rules a provider added through Extend.
+    private readonly Dictionary<string, List<ChildRule>> _extendedRules = new(StringComparer.Ordinal);
 
     // ------------------------------------------------------------------
     // FR-033 (provider re-home) — apply a concern provider's extends directives
@@ -698,9 +709,12 @@ public sealed class TypeRegistry
             }
 
             List<AttrSchema> schemas = d.Attrs.Select(ToAttrSchema).ToList();
+            List<ChildRule> rules = (d.StructChildren ?? [])
+                .Select(sc => new ChildRule(sc.ChildType, sc.ChildSubType, sc.ChildName, sc.Min, sc.Max, sc.MaxIsNull, sc.Named))
+                .ToList();
             foreach (string subType in targets)
             {
-                Extend(d.Type, subType, attributes: schemas);
+                Extend(d.Type, subType, attributes: schemas, childRules: rules);
             }
         }
     }
@@ -867,6 +881,10 @@ public sealed class TypeRegistry
                 rules.Add(new ChildRule(
                     sc.ChildType, sc.ChildSubType, sc.ChildName,
                     sc.Min, sc.Max, sc.MaxIsNull, sc.Named));
+            }
+            if (_extendedRules.TryGetValue(key, out List<ChildRule>? extended))
+            {
+                rules.AddRange(extended); // a pack's rule on a type it does not own
             }
 
             _defs[key] = CopyValidation(def, new TypeDefinition(

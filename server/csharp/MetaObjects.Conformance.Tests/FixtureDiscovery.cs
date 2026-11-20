@@ -95,6 +95,9 @@ public static class FixtureDiscovery
             "metaobjects-ui",
             // View.textarea @rows and the view.image attrs.
             "metaobjects-ui-web",
+            // The business-rules and view-expressions packs are in the default bundle.
+            "metaobjects-rules",
+            "metaobjects-view-expressions",
         };
 
     /// <summary>

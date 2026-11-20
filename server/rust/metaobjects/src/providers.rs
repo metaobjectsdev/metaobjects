@@ -24,6 +24,8 @@ use crate::registry::{
 pub const CORE_TYPES_ID: &str = "metaobjects-core-types";
 pub const DB_ID: &str = "metaobjects-db";
 pub const DOCUMENTATION_ID: &str = "metaobjects-documentation";
+pub const RULES_ID: &str = "metaobjects-rules";
+pub const VIEW_EXPRESSIONS_ID: &str = "metaobjects-view-expressions";
 pub const PROMPT_ID: &str = "metaobjects-prompt";
 pub const UI_ID: &str = "metaobjects-ui";
 pub const UI_WEB_ID: &str = "metaobjects-ui-web";
@@ -89,10 +91,10 @@ const CORE_FAMILIES: &[(&str, &str)] = &[
     spec!("index"),
     spec!("requirement"),
     spec!("reporting"),
-    spec!("api"),
-    spec!("transition"),
 ];
 
+const RULES_FAMILIES: &[(&str, &str)] = &[spec!("api"), spec!("transition")];
+const VIEW_EXPRESSIONS_SPEC: (&str, &str) = spec!("view-expressions");
 const DB_SPEC: (&str, &str) = spec!("db");
 const DOCUMENTATION_SPEC: (&str, &str) = spec!("documentation");
 const PROMPT_SPEC: (&str, &str) = spec!("prompt");
@@ -253,6 +255,8 @@ fn parse_definition(file: &str, raw: &str) -> ProviderDefinition {
 /// The parsed definitions, parsed once per process.
 struct Definitions {
     core: Vec<ProviderDefinition>,
+    rules: Vec<ProviderDefinition>,
+    view_expressions: ProviderDefinition,
     db: ProviderDefinition,
     documentation: ProviderDefinition,
     prompt: ProviderDefinition,
@@ -266,6 +270,8 @@ fn definitions() -> &'static Definitions {
         let p = |(name, raw): (&str, &str)| parse_definition(name, raw);
         Definitions {
             core: CORE_FAMILIES.iter().map(|f| p(*f)).collect(),
+            rules: RULES_FAMILIES.iter().map(|f| p(*f)).collect(),
+            view_expressions: p(VIEW_EXPRESSIONS_SPEC),
             db: p(DB_SPEC),
             documentation: p(DOCUMENTATION_SPEC),
             prompt: p(PROMPT_SPEC),
@@ -458,15 +464,14 @@ fn apply_definition(
     }
     for ext in &data.extends {
         let mut attributes = Vec::new();
+        let mut child_rules = Vec::new();
         for child in &ext.children {
-            if child.type_name != ATTR_CHILD_TYPE {
-                return Err(MetaError::unknown(format!(
-                    "applyProviderDefinition({}): extends \"{}\" may only carry attr children; found a structural child \"{}\".",
-                    data.provider, ext.type_name, child.type_name
-                )));
-            }
             validate_cardinality(&data.provider, &ext.type_name, child)?;
-            attributes.push(to_attr_schema(&data.provider, &ext.type_name, child)?);
+            if child.type_name == ATTR_CHILD_TYPE {
+                attributes.push(to_attr_schema(&data.provider, &ext.type_name, child)?);
+            } else {
+                child_rules.push(to_child_rule(child));
+            }
         }
         let sub_types = match &ext.sub_type {
             ChildSubType::One(s) if s == WILDCARD => registry.all_sub_types_of(&ext.type_name),
@@ -474,7 +479,7 @@ fn apply_definition(
             ChildSubType::Many(list) => list.clone(),
         };
         for sub in sub_types {
-            registry.extend(&ext.type_name, &sub, attributes.clone(), Vec::new())?;
+            registry.extend(&ext.type_name, &sub, attributes.clone(), child_rules.clone())?;
         }
     }
     Ok(())
@@ -484,14 +489,7 @@ fn apply_definition(
 
 fn register_core(registry: &mut TypeRegistry) -> Result<(), MetaError> {
     let mut root = TypeDefinition::new("metadata", "root", "Root metadata document");
-    root.child_rules = [
-        "object",
-        "field",
-        "validator",
-        "template",
-        "requirement",
-        "api",
-    ]
+    root.child_rules = ["object", "field", "validator", "template", "requirement"]
     .iter()
     .map(|t| ChildRule::wildcard(t))
     .collect();
@@ -531,6 +529,32 @@ pub fn core_types_provider() -> Provider {
         &[],
         "Core metaobjects metamodel types and subtypes.",
         register_core,
+    )
+}
+
+/// The business-rules pack (ADR-0066): `api`, `operation`, `binding`, `transition`,
+/// and the child rules that admit them on `metadata.root` and `field.enum`.
+pub fn rules_provider() -> Provider {
+    Provider::new(
+        RULES_ID,
+        &[CORE_TYPES_ID],
+        "Business rules: declared APIs, operations, bindings and lifecycle transitions.",
+        |r| {
+            for def in &definitions().rules {
+                apply_definition(r, def)?;
+            }
+            Ok(())
+        },
+    )
+}
+
+/// View expressions: `origin.function` and the projection `@union`/`@grain` attrs.
+pub fn view_expressions_provider() -> Provider {
+    Provider::new(
+        VIEW_EXPRESSIONS_ID,
+        &[CORE_TYPES_ID],
+        "View expressions: function origins and projection unions and grains.",
+        |r| apply_definition(r, &definitions().view_expressions),
     )
 }
 
@@ -583,6 +607,8 @@ pub fn ui_web_provider() -> Provider {
 pub fn core_providers() -> Vec<Provider> {
     vec![
         core_types_provider(),
+        rules_provider(),
+        view_expressions_provider(),
         db_provider(),
         documentation_provider(),
         prompt_provider(),

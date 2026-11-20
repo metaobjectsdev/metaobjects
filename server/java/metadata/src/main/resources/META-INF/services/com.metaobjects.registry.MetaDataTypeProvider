@@ -12,6 +12,7 @@ com.metaobjects.api.RulesTypesMetaDataProvider
 com.metaobjects.database.CoreDBMetaDataProvider
 com.metaobjects.source.SourceTypesMetaDataProvider
 com.metaobjects.origin.OriginTypesMetaDataProvider
+com.metaobjects.origin.ViewExpressionsTypesMetaDataProvider
 com.metaobjects.documentation.DocumentationMetaDataProvider
 com.metaobjects.view.ViewTypesMetaDataProvider
 com.metaobjects.layout.LayoutTypesMetaDataProvider

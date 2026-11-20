@@ -56,6 +56,13 @@
         "object.value"
       ]
     },
+    "metaobjects-rules": {
+      "declaresTypes": true,
+      "projectsOnto": [
+        "field.enum",
+        "metadata.root"
+      ]
+    },
     "metaobjects-ui": {
       "declaresTypes": false,
       "projectsOnto": [
@@ -69,6 +76,12 @@
       "projectsOnto": [
         "view.image",
         "view.textarea"
+      ]
+    },
+    "metaobjects-view-expressions": {
+      "declaresTypes": true,
+      "projectsOnto": [
+        "object.projection"
       ]
     }
   }

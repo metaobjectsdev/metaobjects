@@ -3423,7 +3423,9 @@
         {
           "childType": "api",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
           "childType": "field",

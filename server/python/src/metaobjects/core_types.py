@@ -77,33 +77,6 @@ from .meta.core.object.object_constants import (
     OBJECT_SUBTYPES,
 )
 from .meta.core.relationship.meta_relationship import MetaRelationship
-from .meta.core.api.api_constants import (
-    API_SUBTYPE_OPERATIONAL,
-    BINDING_ATTR_METHOD,
-    BINDING_ATTR_PATH,
-    BINDING_SUBTYPE_REST,
-    HTTP_METHODS,
-    OPERATION_ATTR_ERRORS,
-    OPERATION_ATTR_INPUT_REF,
-    OPERATION_ATTR_MANY,
-    OPERATION_ATTR_OBJECT_REF,
-    OPERATION_ATTR_OUTPUT_REF,
-    OPERATION_ATTR_PERMISSION,
-    OPERATION_ATTR_PUBLIC,
-    OPERATION_ATTR_TRANSITIONS,
-    OPERATION_SUBTYPE_COMMAND,
-    OPERATION_SUBTYPE_QUERY,
-)
-from .meta.core.api.meta_api import MetaApi, MetaBinding, MetaOperation
-from .meta.core.transition.meta_transition import MetaTransition
-from .meta.core.transition.transition_constants import (
-    TRANSITION_ATTR_CONDITION,
-    TRANSITION_ATTR_FROM,
-    TRANSITION_ATTR_PERMISSION,
-    TRANSITION_ATTR_PUBLIC,
-    TRANSITION_ATTR_TO,
-    TRANSITION_SUBTYPE_ACTION,
-)
 from .meta.core.reporting.meta_dimension import MetaDimension
 from .meta.core.reporting.meta_measure import MetaMeasure
 from .meta.core.reporting.meta_segment import MetaSegment
@@ -219,10 +192,6 @@ from .shared.base_types import (
     TYPE_RELATIONSHIP,
     TYPE_REQUIREMENT,
     TYPE_SEGMENT,
-    TYPE_API,
-    TYPE_BINDING,
-    TYPE_OPERATION,
-    TYPE_TRANSITION,
     TYPE_SOURCE,
     TYPE_TEMPLATE,
     TYPE_VALIDATOR,
@@ -289,8 +258,6 @@ core_provider.add(
         factory=MetaRoot,
         description="Root metadata document",
         child_rules=[
-            # ADR-0030 / ADR-0066 — a declared API surface is a top-level, packaged node.
-            ChildRule(TYPE_API, "*"),
             ChildRule(TYPE_FIELD, "*"),
             ChildRule(TYPE_OBJECT, "*"),
             # Capability requirements are declared beside the entities they describe.
@@ -382,14 +349,6 @@ for _def in core_provider._defs:  # noqa: SLF001 (provider build-time enrichment
                 required=False,
             )
         )
-        # rc.21 part B: @union / @unionAll (U15), @grain / @grainOrdinal (U14). Registered so a
-        # strict load accepts them; the shape rules run in TypeScript and C# (see CHANGELOG).
-        _def.attrs.extend([
-            AttrSchema(name="union", value_type=ATTR_SUBTYPE_STRING, required=False, is_array=True),
-            AttrSchema(name="unionAll", value_type="boolean", required=False),
-            AttrSchema(name="grain", value_type=ATTR_SUBTYPE_STRING, required=False),
-            AttrSchema(name="grainOrdinal", value_type=ATTR_SUBTYPE_STRING, required=False),
-        ])
         break
 
 # FR-044 — object.report: declared dimensions x measures of ONE entity (@from),
@@ -530,104 +489,6 @@ core_provider.add(
             AttrSchema(name=REPORTING_ATTR_FILTER, value_type=ATTR_SUBTYPE_FILTER, required=True),
         ],
         child_rules=[ChildRule(TYPE_ATTR, "*")],
-    )
-)
-
-# ADR-0030 / ADR-0066 — the declared API surface (api / operation / binding) and the
-# lifecycle moves of a field.enum (transition). Attr scoping is per-subtype exactly as
-# spec/metamodel/api.json and transition.json declare it; the cross-node rules live in
-# loader/validate_rules.py. Mirrors TS core-types.ts.
-_OPERATION_COMMON_ATTRS = [
-    AttrSchema(name=OPERATION_ATTR_INPUT_REF, value_type=ATTR_SUBTYPE_STRING, required=False),
-    AttrSchema(name=OPERATION_ATTR_OUTPUT_REF, value_type=ATTR_SUBTYPE_STRING, required=False),
-    AttrSchema(name=OPERATION_ATTR_OBJECT_REF, value_type=ATTR_SUBTYPE_STRING, required=False),
-    AttrSchema(name=OPERATION_ATTR_PERMISSION, value_type=ATTR_SUBTYPE_STRING, required=False),
-    AttrSchema(name=OPERATION_ATTR_PUBLIC, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
-]
-# The registry anchors: not authorable, they carry what every subtype of the type shares.
-core_provider.add(TypeDefinition(type=TYPE_API, sub_type=SUBTYPE_BASE, factory=MetaApi))
-core_provider.add(
-    TypeDefinition(
-        type=TYPE_OPERATION,
-        sub_type=SUBTYPE_BASE,
-        factory=MetaOperation,
-        attrs=list(_OPERATION_COMMON_ATTRS),
-        child_rules=[ChildRule(TYPE_BINDING, "*")],
-    )
-)
-core_provider.add(TypeDefinition(type=TYPE_BINDING, sub_type=SUBTYPE_BASE, factory=MetaBinding))
-core_provider.add(
-    TypeDefinition(
-        type=TYPE_TRANSITION,
-        sub_type=SUBTYPE_BASE,
-        factory=MetaTransition,
-        attrs=[
-            AttrSchema(name=TRANSITION_ATTR_PERMISSION, value_type=ATTR_SUBTYPE_STRING, required=False),
-            AttrSchema(name=TRANSITION_ATTR_PUBLIC, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
-        ],
-    )
-)
-core_provider.add(
-    TypeDefinition(
-        type=TYPE_API,
-        sub_type=API_SUBTYPE_OPERATIONAL,
-        factory=MetaApi,
-        child_rules=[ChildRule(TYPE_OPERATION, "*")],
-    )
-)
-core_provider.add(
-    TypeDefinition(
-        type=TYPE_OPERATION,
-        sub_type=OPERATION_SUBTYPE_COMMAND,
-        factory=MetaOperation,
-        attrs=[
-            *_OPERATION_COMMON_ATTRS,
-            AttrSchema(name=OPERATION_ATTR_TRANSITIONS, value_type=ATTR_SUBTYPE_STRING, required=False, is_array=True),
-            AttrSchema(name=OPERATION_ATTR_ERRORS, value_type=ATTR_SUBTYPE_STRING, required=False, is_array=True),
-        ],
-        child_rules=[ChildRule(TYPE_BINDING, "*")],
-    )
-)
-core_provider.add(
-    TypeDefinition(
-        type=TYPE_OPERATION,
-        sub_type=OPERATION_SUBTYPE_QUERY,
-        factory=MetaOperation,
-        attrs=[
-            *_OPERATION_COMMON_ATTRS,
-            AttrSchema(name=OPERATION_ATTR_MANY, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
-        ],
-        child_rules=[ChildRule(TYPE_BINDING, "*")],
-    )
-)
-core_provider.add(
-    TypeDefinition(
-        type=TYPE_BINDING,
-        sub_type=BINDING_SUBTYPE_REST,
-        factory=MetaBinding,
-        attrs=[
-            AttrSchema(
-                name=BINDING_ATTR_METHOD,
-                value_type=ATTR_SUBTYPE_STRING,
-                required=False,
-                allowed_values=HTTP_METHODS,
-            ),
-            AttrSchema(name=BINDING_ATTR_PATH, value_type=ATTR_SUBTYPE_STRING, required=False),
-        ],
-    )
-)
-core_provider.add(
-    TypeDefinition(
-        type=TYPE_TRANSITION,
-        sub_type=TRANSITION_SUBTYPE_ACTION,
-        factory=MetaTransition,
-        attrs=[
-            AttrSchema(name=TRANSITION_ATTR_FROM, value_type=ATTR_SUBTYPE_STRING, required=True, is_array=True),
-            AttrSchema(name=TRANSITION_ATTR_TO, value_type=ATTR_SUBTYPE_STRING, required=True),
-            AttrSchema(name=TRANSITION_ATTR_CONDITION, value_type=ATTR_SUBTYPE_EXPRESSION, required=False),
-            AttrSchema(name=TRANSITION_ATTR_PERMISSION, value_type=ATTR_SUBTYPE_STRING, required=False),
-            AttrSchema(name=TRANSITION_ATTR_PUBLIC, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
-        ],
     )
 )
 
@@ -833,8 +694,7 @@ core_provider.add(
             # TypeRegistry.extend, matching the TS promptProvider split. @values + @provided
             # stay in core (they are core field.enum properties, declared in field.json).
         ],
-        # ADR-0066: a field.enum may carry lifecycle moves.
-        child_rules=[*_FIELD_CHILD_RULES, ChildRule(TYPE_TRANSITION, "*")],
+        child_rules=list(_FIELD_CHILD_RULES),
     )
 )
 
@@ -1218,24 +1078,6 @@ core_provider.add(
     )
 )
 
-# origin.function (rc.21 part B, U10) — a call of a database function the project owns:
-# @function required, @schema and @args optional. Registered so a strict load accepts it.
-core_provider.add(
-    TypeDefinition(
-        type=TYPE_ORIGIN,
-        sub_type="function",
-        factory=MetaOrigin,
-        attrs=[
-            AttrSchema(name="function", value_type=ATTR_SUBTYPE_STRING, required=True),
-            AttrSchema(name="schema", value_type=ATTR_SUBTYPE_STRING, required=False),
-            AttrSchema(name="args", value_type=ATTR_SUBTYPE_STRING, required=False, is_array=True),
-            AttrSchema(name="params", value_type=ATTR_SUBTYPE_STRING, required=False, is_array=True),
-            AttrSchema(name="returns", value_type=ATTR_SUBTYPE_STRING, required=True),
-        ],
-        child_rules=[ChildRule(TYPE_ATTR, "*")],
-    )
-)
-
 # view.* (base + 13 control kinds). FR-033 — view.currency's @locale is re-homed to
 # the UI domain provider (`ui_provider`, metaobjects-ui) via TypeRegistry.extend
 # (ui.json declares @locale on view.currency), matching the TS uiProvider split. Core
@@ -1450,6 +1292,10 @@ from .meta.template.prompt_provider import prompt_provider  # noqa: E402
 from .meta.presentation.ui.ui_provider import ui_provider  # noqa: E402
 from .meta.presentation.ui.ui_web_provider import ui_web_provider  # noqa: E402
 from .documentation.doc_provider import doc_provider  # noqa: E402
+from .meta.core.rules.rules_provider import rules_provider  # noqa: E402
+from .meta.persistence.view_expressions.view_expressions_provider import (  # noqa: E402
+    view_expressions_provider,
+)
 
 core_providers: list[Provider] = [
     core_provider,
@@ -1460,6 +1306,10 @@ core_providers: list[Provider] = [
     # view.textarea @rows and the view.image attrs (ui-web.json): cross-port vocabulary
     # only TypeScript implements so far. Loaded strictly here and ignored.
     ui_web_provider,
+    # The business-rules pack (ADR-0066) and the view-expressions pack are their own
+    # providers, in the default bundle so every existing model loads unchanged.
+    rules_provider,
+    view_expressions_provider,
 ]
 
 # #265 — the ids of the LIBRARY providers above, as a frozen set. Consulted by

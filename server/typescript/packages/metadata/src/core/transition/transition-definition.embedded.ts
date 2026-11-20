@@ -7,7 +7,7 @@
 import type { ProviderDefinition } from "../../provider-data.js";
 
 export const TRANSITION_DEFINITION: ProviderDefinition = {
-  "provider": "metaobjects-core-types",
+  "provider": "metaobjects-rules",
   "types": [
     {
       "type": "transition",
@@ -64,6 +64,22 @@ export const TRANSITION_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "A guard over the entity's own fields, in the attr.expression grammar: the same name, grammar and meaning as on the cross-field validators. The shell will evaluate it against the loaded row and also put it into the guarded update's WHERE (no shell is generated yet). It cannot read the actor; that is the policy's job. A field the entity does not have, or an expression that is not boolean, is ERR_BAD_ATTR_VALUE."
+        }
+      ]
+    }
+  ],
+  "extends": [
+    {
+      "type": "field",
+      "subType": "enum",
+      "children": [
+        {
+          "type": "transition",
+          "subType": "*",
+          "name": "*",
+          "min": 0,
+          "max": null,
+          "description": "Lifecycle moves between this enum's members (ADR-0066). An enum with at least one transition.action is a lifecycle: its states are @values, its initial state @default, its terminal states the members no transition leaves."
         }
       ]
     }

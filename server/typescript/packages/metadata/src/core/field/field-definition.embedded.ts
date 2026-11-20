@@ -269,14 +269,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
       "rules": "Required @values is a non-empty, duplicate-free set; each member must match ^[A-Za-z_][A-Za-z0-9_]*$ so it is a legal identifier in every target language, and is its own stored string unless @stringValueMap (string) or @intValueMap (integer) maps it. Optional FR-010/FR-011 overlays add tolerant-extract aliasing (@enumAlias), per-member docs (@enumDoc), an uncoercible-value fallback (@coerceDefault, must be one of @values), and ASCII normalization mode (@normalize).",
       "children": [
         {
-          "type": "transition",
-          "subType": "*",
-          "name": "*",
-          "min": 0,
-          "max": null,
-          "description": "Lifecycle moves between this enum's members (ADR-0066). An enum with at least one transition.action is a lifecycle: its states are @values, its initial state @default, its terminal states the members no transition leaves."
-        },
-        {
           "type": "attr",
           "subType": "string",
           "name": "values",

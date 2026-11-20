@@ -138,7 +138,8 @@ public class CoreTypesTests
     [Fact]
     public void Core_provider_registers_correct_subtypes_for_origin()
     {
-        var reg = ComposedRegistry();
+        // origin.function is the view-expressions pack's, so it is composed with core.
+        var reg = Provider.ComposeRegistry(new[] { CoreTypes.CoreTypesProvider, MetaObjects.Persistence.ViewExpressions.ViewExpressionsMetaDataProvider.Instance });
         Assert.Equal(ORIGIN_SUBTYPES.OrderBy(s => s),
                      reg.AllSubTypesOf(TYPE_ORIGIN).OrderBy(s => s));
     }

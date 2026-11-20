@@ -89,6 +89,9 @@ const CONCEPT_DIRS: Record<string, string> = {
   // ADR-0066: the declared API surface (api / operation / binding) and lifecycle moves
   api: "core/api",
   transition: "core/transition",
+  // The view-expressions pack (origin.function + the projection union/grain attrs)
+  // is its own provider; its data file is spec/metamodel/view-expressions.json.
+  "view-expressions": "persistence/view-expressions",
   // depth-1
   template: "template",
   // FR-033 S1.5: the prompt concern provider lives in template/ (templateProvider

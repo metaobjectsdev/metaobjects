@@ -586,6 +586,13 @@ gate_requirements_ledger() { bun_install && bun scripts/check-requirements-ledge
 # the cross-port manifest and spec/metamodel — 72 concrete subtypes.
 gate_requirements_vocabulary() { bun_install && bun scripts/check-requirements-vocabulary.ts && bun scripts/test-requirements-vocabulary.ts; }
 
+# ── the core provider's vocabulary is pinned ────────────────────────────────────
+# New vocabulary lives in a pack (a separate provider) until a second consumer needs it
+# in core (GOVERNANCE.md, "Extension packs and the core metamodel"). The pin turns that
+# into a failing gate: adding a type, attribute or child rule under metaobjects-core-types
+# changes the computed view and fails with a message pointing at the pack mechanism.
+gate_core_vocabulary_pin() { bun_install && bun scripts/check-core-vocabulary-pin.ts && bun scripts/test-core-vocabulary-pin.ts; }
+
 # ── forward scaffolding: a requirement may come BEFORE its vocabulary ──────────
 # Phase 3. Author the promise and the counterexample first, then scaffold the
 # spec/metamodel entry it implies. The gate half is that the scaffolder proposes
@@ -1322,6 +1329,7 @@ run_gates_bun() {
   if want gates; then step_if bun "scripts/ typecheck"        gate_scripts_typecheck;      fi
   if want gates; then step_if bun "requirements ledger verifies" gate_requirements_ledger;    fi
   if want gates; then step_if bun "requirements cover vocabulary" gate_requirements_vocabulary; fi
+  if want gates; then step_if bun "core vocabulary is pinned"    gate_core_vocabulary_pin;    fi
   if want gates; then step_if bun "metamodel scaffolder"      gate_scaffold_metamodel;     fi
   if want gates; then step_if bun "requirement harness"       gate_requirement_harness;    fi
   if want gates; then step_if bun "fixture-lint"                 gate_fixture_lint;           fi

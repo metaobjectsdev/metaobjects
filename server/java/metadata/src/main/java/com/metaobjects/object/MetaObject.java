@@ -255,16 +255,8 @@ public abstract class MetaObject extends MetaData {
             // object.projection, so it survives pruning here while staying off entity/value.
             def.optionalAttributeWithConstraints(ATTR_FILTER)
                .ofType(FilterAttribute.SUBTYPE_FILTER).asSingle();
-            // rc.21 part B: @union / @unionAll (U15) and @grain / @grainOrdinal (U14), registered
-            // so a strict load accepts them; the shape rules run in TypeScript and C#.
-            def.optionalAttributeWithConstraints("union")
-               .ofType(StringAttribute.SUBTYPE_STRING).asArray();
-            def.optionalAttributeWithConstraints("unionAll")
-               .ofType(com.metaobjects.attr.BooleanAttribute.SUBTYPE_BOOLEAN).asSingle();
-            def.optionalAttributeWithConstraints("grain")
-               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
-            def.optionalAttributeWithConstraints("grainOrdinal")
-               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            // @union / @unionAll / @grain / @grainOrdinal belong to the view-expressions pack
+            // (ViewExpressionsTypesMetaDataProvider), not to core.
         });
 
         // FR-044 — object.report: a fixed combination of dimensions and measures of ONE

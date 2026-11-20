@@ -1246,6 +1246,49 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
 
 ### Changed
 
+- **Business rules and view expressions are packs, not core vocabulary.** The 1.3.0 vocabulary that
+  never shipped in a release moves out of the one provider a project cannot leave out
+  (`metaobjects-core-types`) into two providers of its own, in every port that carries it
+  (TypeScript, C#, Java and Kotlin, Python, Rust). Both are composed by default, so **no model
+  changes**: every existing model loads and generates exactly as before, and the registry manifest
+  is byte-identical to the previous candidate in every row but one (below). Each pack can now be
+  left out, moved or versioned on its own, and it is moved now because moving it after the release
+  would be a break (`GOVERNANCE.md`, "Extension packs and the core metamodel": new vocabulary lives
+  in a pack until a second consumer needs it in core).
+  - **`metaobjects-rules`** (business rules, ADR-0066): `api.*`, `operation.*`, `binding.*` and
+    `transition.*`, plus the two child rules that admit them on core types, an `api` under the
+    document root and a `transition` under `field.enum`. The pack owns those rules, so composing it
+    out removes the types and the rules together.
+  - **`metaobjects-view-expressions`** (the vocabulary a projection needs to replace a hand-written
+    `@sql` view): `origin.function` and the projection attributes `@union`, `@unionAll`, `@grain`
+    and `@grainOrdinal`. The `cast` node and the SQL function set of `attr.expression`, and the
+    text `@dbColumnType` spellings, are grammar the loader parses in code, not registered
+    vocabulary, so they cannot be composed out by a provider and stay as they were.
+  - **Leaving a pack out.** Compose the default bundle without it
+    (`composeRegistry(coreProviders.filter(p => p.id !== "metaobjects-rules"))` in TypeScript, the
+    port's equivalent elsewhere). A model that does not use its types loads unchanged. A model that
+    does gets a loader error naming the unknown type, subtype or attribute
+    (`ERR_UNKNOWN_TYPE`, `ERR_UNKNOWN_SUBTYPE`, `ERR_UNKNOWN_ATTR`) and not a generator failure,
+    because the loader refuses what is invalid for the model, while a limit of one generator is
+    that generator's own error. Gated by the `packs-left-out-model-loads` and
+    `error-packs-left-out-*` conformance fixtures in every port.
+  - **One manifest row changes.** The `api` child rule on `metadata.root` is now declared in data
+    and carries its cardinality (`min` 0, `max` unbounded), where the code-registered rule carried
+    none. `metamodelVersion` stays `1.3`: it is the same vocabulary.
+  - **Embedders:** `coreTypesProvider` alone (and `registerCoreTypes`) no longer carries these two
+    packs; `coreProviders` still does. `ExtendDef` entries in a provider definition may now carry
+    structural children, which become child rules on the extended type (the mechanism a pack uses
+    to be admitted by a type core owns).
+  - **The core provider's vocabulary is pinned** (`fixtures/registry-conformance/core-vocabulary.pin.json`,
+    gate `core vocabulary is pinned` in `scripts/ci-local.sh`): adding a type, subtype, attribute or
+    child rule under `metaobjects-core-types` fails the gate with a message pointing at
+    `GOVERNANCE.md` and the pack mechanism. Regenerating the pin is a core maintainer's decision.
+  - **Reporting and requirements stay in core.** Moving them is not the same small move:
+    `object.report` and the `dimension`/`measure`/`segment` child rules are woven into
+    `object.json`, the relative-date filter value belongs to the `attr.filter` grammar, and the
+    requirements ledger is read by the `verify` gate in every port. They are the next candidates
+    for a pack of their own.
+
 - **Release policy: vocabulary is versioned by feature, not by kind (ADR-0035 Amendment 5).** Adding
   to or augmenting an existing feature (a type, subtype, attribute, enum value or view vocabulary,
   additive and loading every existing document with the same meaning) is a PATCH; a whole new

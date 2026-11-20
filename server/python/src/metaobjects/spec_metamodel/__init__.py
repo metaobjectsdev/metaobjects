@@ -61,6 +61,7 @@ SPEC_FILES: tuple[str, ...] = (
     "ui.json",
     "ui-web.json",
     "validator.json",
+    "view-expressions.json",
     "view.json",
 )
 
@@ -419,6 +420,9 @@ class ExtendsTarget:
     type: str
     sub_type: str
     attrs: tuple[AttrEntry, ...]
+    # Structural child rules the directive adds (a pack that owns a child type also
+    # owns the rule admitting it on a type another provider owns).
+    children: tuple[StructChild, ...] = ()
 
 
 def load_provider_extends(file_name: str) -> list[ExtendsTarget]:
@@ -443,13 +447,14 @@ def load_provider_extends(file_name: str) -> list[ExtendsTarget]:
         type_ = e.get("type")
         sub_el = e.get("subType")
         attrs = tuple(SpecMetamodelReader._parse_attr_children(e))
+        children = tuple(SpecMetamodelReader._parse_struct_children(e))
         sub_types: list[str]
         if isinstance(sub_el, list):
             sub_types = [str(s) for s in sub_el]
         else:
             sub_types = [str(sub_el)]  # explicit subtype, or the literal "*"
         for st in sub_types:
-            out.append(ExtendsTarget(type=type_, sub_type=st, attrs=attrs))
+            out.append(ExtendsTarget(type=type_, sub_type=st, attrs=attrs, children=children))
     return out
 
 
@@ -569,6 +574,7 @@ def _apply_strict_structural_children(registry, reader: SpecMetamodelReader) -> 
         # Keep only the non-structural rules (the any-attr wildcard); drop every
         # broad structural placement, then add the strict graph.
         kept = [r for r in definition.child_rules if r.child_type == TYPE_ATTR]
+        extended = list(definition.extended_child_rules)
         for sc in reader.structural_children(definition.type, definition.sub_type):
             kept.append(
                 ChildRule(
@@ -581,6 +587,9 @@ def _apply_strict_structural_children(registry, reader: SpecMetamodelReader) -> 
                     named=sc.named,
                 )
             )
+        # A rule a provider added with ``extend`` survives: it is not in the shared
+        # type's own graph, it belongs to the pack that owns the child type.
+        kept.extend(r for r in extended if r not in kept)
         definition.child_rules[:] = kept
 
 

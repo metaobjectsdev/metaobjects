@@ -13,7 +13,7 @@ provider owns. This is the ownership lens over the same vocabulary
 
 Core metaobjects metamodel types and subtypes.
 
-**Owns (registers):** `attr.base`, `attr.boolean`, `attr.class`, `attr.double`, `attr.expression`, `attr.filter`, `attr.int`, `attr.intMap`, `attr.long`, `attr.properties`, `attr.string`, `field.base`, `field.boolean`, `field.currency`, `field.date`, `field.decimal`, `field.double`, `field.duration`, `field.enum`, `field.float`, `field.inet`, `field.int`, `field.long`, `field.map`, `field.object`, `field.string`, `field.time`, `field.timestamp`, `field.uri`, `field.uuid`, `identity.primary`, `identity.reference`, `identity.secondary`, `layout.base`, `layout.dataGrid`, `object.base`, `object.entity`, `object.projection`, `object.report`, `object.value`, `origin.aggregate`, `origin.base`, `origin.computed`, `origin.first`, `origin.function`, `origin.passthrough`, `relationship.aggregation`, `relationship.association`, `relationship.base`, `relationship.composition`, `source.base`, `source.rdb`, `template.base`, `template.output`, `template.prompt`, `template.toolcall`, `validator.array`, `validator.atLeastOne`, `validator.base`, `validator.comparison`, `validator.exactlyOne`, `validator.length`, `validator.numeric`, `validator.presentIff`, `validator.regex`, `validator.required`, `validator.requiredWhen`, `view.base`, `view.checkbox`, `view.currency`, `view.date`, `view.dropdown`, `view.hidden`, `view.hotlink`, `view.image`, `view.month`, `view.number`, `view.password`, `view.radio`, `view.text`, `view.textarea`, `view.web`
+**Owns (registers):** `attr.base`, `attr.boolean`, `attr.class`, `attr.double`, `attr.expression`, `attr.filter`, `attr.int`, `attr.intMap`, `attr.long`, `attr.properties`, `attr.string`, `field.base`, `field.boolean`, `field.currency`, `field.date`, `field.decimal`, `field.double`, `field.duration`, `field.enum`, `field.float`, `field.inet`, `field.int`, `field.long`, `field.map`, `field.object`, `field.string`, `field.time`, `field.timestamp`, `field.uri`, `field.uuid`, `identity.primary`, `identity.reference`, `identity.secondary`, `layout.base`, `layout.dataGrid`, `object.base`, `object.entity`, `object.projection`, `object.report`, `object.value`, `origin.aggregate`, `origin.base`, `origin.computed`, `origin.first`, `origin.passthrough`, `relationship.aggregation`, `relationship.association`, `relationship.base`, `relationship.composition`, `source.base`, `source.rdb`, `template.base`, `template.output`, `template.prompt`, `template.toolcall`, `validator.array`, `validator.atLeastOne`, `validator.base`, `validator.comparison`, `validator.exactlyOne`, `validator.length`, `validator.numeric`, `validator.presentIff`, `validator.regex`, `validator.required`, `validator.requiredWhen`, `view.base`, `view.checkbox`, `view.currency`, `view.date`, `view.dropdown`, `view.hidden`, `view.hotlink`, `view.image`, `view.month`, `view.number`, `view.password`, `view.radio`, `view.text`, `view.textarea`, `view.web`
 
 **Contributes attributes:**
 
@@ -31,12 +31,11 @@ Core metaobjects metamodel types and subtypes.
 - `identity.secondary`: `@fields`
 - `object.base`: `@object`, `@objectAdapter`
 - `object.entity`: `@collectionName`, `@discriminator`, `@discriminatorValue`
-- `object.projection`: `@collectionName`, `@filter`, `@grain`, `@grainOrdinal`, `@union`, `@unionAll`
+- `object.projection`: `@collectionName`, `@filter`
 - `object.report`: `@collectionName`, `@dimensions`, `@filter`, `@from`, `@measures`, `@segment`, `@spine`
 - `origin.aggregate`: `@agg`, `@distinct`, `@filter`, `@of`, `@orderBy`, `@segment`, `@via`
 - `origin.computed`: `@expr`
 - `origin.first`: `@filter`, `@of`, `@orderBy`, `@segment`, `@via`
-- `origin.function`: `@args`, `@function`, `@params`, `@returns`, `@schema`
 - `origin.passthrough`: `@convert`, `@from`, `@via`
 - `relationship.aggregation`: `@cardinality`, `@objectRef`, `@onDelete`, `@onUpdate`, `@sourceRefField`, `@symmetric`, `@through`
 - `relationship.association`: `@cardinality`, `@objectRef`, `@onDelete`, `@onUpdate`, `@sourceRefField`, `@symmetric`, `@through`
@@ -128,6 +127,21 @@ Prompt / AI + serialization domain — @xmlText / @example / @instruction field 
 - `field.uuid`: `@example`, `@instruction`, `@xmlText`
 - `object.value`: `@normalize`
 
+## metaobjects-rules
+
+Business rules (ADR-0066, experimental): the declared API surface (api / operation / binding) and lifecycle moves (transition on a field.enum).
+
+**Owns (registers):** `api.base`, `api.operational`, `binding.base`, `binding.rest`, `operation.base`, `operation.command`, `operation.query`, `transition.action`, `transition.base`
+
+**Contributes attributes:**
+
+- `binding.rest`: `@method`, `@path`
+- `operation.base`: `@inputRef`, `@objectRef`, `@outputRef`, `@permission`, `@public`
+- `operation.command`: `@errors`, `@transitions`
+- `operation.query`: `@many`
+- `transition.action`: `@condition`, `@from`, `@to`
+- `transition.base`: `@permission`, `@public`
+
 ## metaobjects-ui
 
 UI/query-surface domain — @filterable / @sortable / @sortableDefaultOrder field markers driving generated CRUD filter + sort allowlists (Project D).
@@ -164,4 +178,15 @@ Web presentation view attrs — @rows (view.textarea) and the view.image control
 
 - `view.image`: `@accept`, `@aspectRatio`, `@maxBytes`, `@maxEdge`, `@store`
 - `view.textarea`: `@rows`
+
+## metaobjects-view-expressions
+
+View expressions (rc.21): origin.function plus the projection @union / @unionAll / @grain / @grainOrdinal attributes.
+
+**Owns (registers):** `origin.function`
+
+**Contributes attributes:**
+
+- `object.projection`: `@grain`, `@grainOrdinal`, `@union`, `@unionAll`
+- `origin.function`: `@args`, `@function`, `@params`, `@returns`, `@schema`
 
