@@ -6,6 +6,7 @@
 
 use std::fmt;
 
+use metaobjects::collection::Collection;
 use metaobjects::node::{NodeId, Tree};
 
 /// One generated file: its path relative to the output directory (always `/`-separated)
@@ -25,13 +26,16 @@ impl EmittedFile {
     }
 }
 
-/// What a generator reads: the loaded model and the run's entity selection.
+/// What a generator reads: the loaded model, the project's settings and the run's entity
+/// selection.
 #[derive(Debug, Clone, Copy)]
 pub struct GenContext<'a> {
     pub tree: &'a Tree,
     pub root: NodeId,
     /// Object names the run was limited to (`cargo meta gen A B`); empty means every object.
     pub entities: &'a [String],
+    /// The resolved project: its naming and wire settings (`.metaobjects/config.json`).
+    pub collection: &'a Collection,
 }
 
 /// A generator failed: a shared-style error code and a message for people.
@@ -46,6 +50,15 @@ impl GenError {
         Self {
             code,
             message: message.into(),
+        }
+    }
+}
+
+impl From<crate::writer::WriterError> for GenError {
+    fn from(e: crate::writer::WriterError) -> Self {
+        Self {
+            code: e.code,
+            message: e.message,
         }
     }
 }

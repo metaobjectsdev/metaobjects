@@ -58,7 +58,7 @@ docs/
     ├── kotlin.md
     ├── csharp.md
     ├── python.md
-    └── rust.md                  # the Rust port, in preview: loader, validation and the entity generator (cargo meta gen)
+    └── rust.md                  # the Rust port, in preview: loader, validation, cargo meta (init/gen/verify/eject) and its three generators
 ```
 
 If this list and `ls docs/features/` ever disagree, trust the directory listing —

@@ -25,6 +25,7 @@ fn generate_named(
         tree: &loaded.result.tree,
         root: loaded.result.root,
         entities: &names,
+        collection: &loaded.collection,
     };
     EntityGenerator
         .generate(&ctx)

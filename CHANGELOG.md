@@ -50,8 +50,7 @@ here.**
   project config, the engine's built code, each generator's identity and the flags match the stored
   key in `.fingerprint-rust.json` and every recorded output is still as the last run left it. The
   shared `fixtures/codegen-skip-conformance` corpus runs against it: every case the port can meet
-  runs, and the ones it cannot (templates, ejected generators, `verify`, a kept hand edit) are named
-  with the reason. The `entity` generator writes one crate per metadata package: serde structs for
+  runs, and the ones it cannot (templates, a kept hand edit) are named with the reason. The `entity` generator writes one crate per metadata package: serde structs for
   `object.entity` and `object.value` (inherited fields included, optional fields as `Option`, arrays
   as `Vec`, a map as `BTreeMap`), enums for `field.enum` (shared enums once, in their declaration's
   package) with the member symbols as the wire form, `Box` only where a by-value cycle needs it, and
@@ -67,8 +66,42 @@ here.**
   must be a sub-directory of the project (the project root itself is refused), so every manifest key
   is project-relative; a named run (`cargo meta gen Order`) never skips and regenerates every file
   of the crates that contain the named objects, plus the transitive closure of the crates those
-  depend on, rather than merging; and there is no `verify`, `eject`, template or client generator
-  yet. Relationships, projections and reports are not emitted. Nothing is published.
+  depend on, rather than merging. Navigation across relationships is not emitted. Nothing is
+  published.
+
+- **Rust port's command line, in preview: `cargo meta init`, `verify --codegen` and `eject`, and
+  the `client` and `commands` generators (ADR-0065 Amendment 1).** A Rust developer can now run the
+  whole codegen loop on a JSON or YAML model. `init` scaffolds `.metaobjects/config.json`, the
+  ignore rules that keep `.hashes.json` committed and a first metadata file, writing only what is
+  missing. `gen` now removes a generated file nothing emits any more (an edited one is refused by
+  name) and prints what it created, updated and removed and which crates to re-check. `verify
+  --codegen` renders in memory, compares with disk, writes nothing and exits 1 on drift; locally it
+  may answer from the stored skip key, and `--full` or a set `CI` always renders. `--db`,
+  `--templates` and `--deps` exit 2 and say where that check lives. Exit codes are the shared ones
+  (0, 1, 2). `eject <generator>` writes a `codegen/` crate the project owns (the copied generator
+  and the generator list); `gen` and `verify` then build and run it, `gen --list` shows how each
+  copy compares with the shipped source, and `eject --undo` takes back copies still identical.
+  There is no plugin contract: the engine's Rust API has no stability promise in preview.
+  The `entity` generator now also writes `<Name>Create` and `<Name>Patch` for every entity and a
+  `validate()` on value objects and both bodies (lengths, bounds, item counts, patterns, text
+  forms, nested value objects and the rules across members), exact decimals and signed durations
+  in a generated `meta_support` crate, and honors `wire.nullMembers`. The new `client` generator
+  writes a typed `reqwest` client per served entity from the REST contract: `list`, `page`, `get`,
+  `create`, `update`, `delete` and many-to-many traversal, with a query type that has one method
+  per `@filterable` field and operator and an enum of the `@sortable` fields, so a filter or sort
+  the server would refuse does not compile. The new `commands` generator writes `clap` command
+  groups over that client as a library (a `Subcommand` and an async `run`, no `main`), with
+  bodies checked by `validate()` before anything is sent. **`commands` is Rust-only by decision**,
+  recorded with `client` in the shared generator registry with `rust` as the only port. Generated
+  crates import nothing from MetaObjects. Gates: the port now runs `validation-conformance`
+  through the generated `validate()`, the `decimal-wire` and `duration-wire` vectors, the `core`
+  cases of `writer-conformance`, both columns of the skip corpus, and the generator registry with
+  the eject contract; a compile gate builds and format-checks every generator's output for two
+  models and drives the generated client and commands over HTTP against a local stub, from a
+  committed lockfile; and a scale gate holds twenty copies of the fitness model to linear growth
+  and a size budget. Not there yet: `fmt`, a template gate, server-side generators, and clients
+  for projections and reports. Schema migrations and database checks stay with the Node `meta`
+  tool for every server language (ADR-0015). Nothing is published.
 
 - **Cross-port stage benchmark and Rust port documentation.** `scripts/bench-load/stages.py` runs
   every port (TypeScript, Python, C#, Java, Kotlin, Rust) over the same model, stage by stage: load

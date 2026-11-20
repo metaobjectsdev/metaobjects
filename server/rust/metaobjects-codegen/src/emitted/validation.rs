@@ -1,0 +1,449 @@
+//! What `validate()` reports, and the checks it is built from.
+//!
+//! A generated `validate()` is a list of calls into this module, one per rule the model
+//! declares, so the rule a call enforces can be read off the call. A check that is handed
+//! `None` passes: an absent value breaks no rule, and whether a member may be absent is a
+//! property of its type. Nothing here depends on MetaObjects.
+//!
+//! This file is written by the `entity` generator into the support crate (`meta_support`)
+//! every generated model crate depends on.
+
+use std::cmp::Ordering;
+use std::fmt;
+
+use super::wire::Decimal;
+
+/// A value longer or shorter than the model allows.
+pub const RULE_LENGTH: &str = "length";
+/// A value that does not match the model's `validator.regex`.
+pub const RULE_REGEX: &str = "regex";
+/// A number outside the model's `validator.numeric` bounds.
+pub const RULE_NUMERIC: &str = "numeric";
+/// A list with more or fewer items than the model's `validator.array` allows.
+pub const RULE_ARRAY: &str = "array";
+/// Text that is not in the form its field type requires.
+pub const RULE_FORMAT: &str = "format";
+/// Two members that break the model's `validator.comparison`.
+pub const RULE_COMPARISON: &str = "comparison";
+/// A member the model's `validator.requiredWhen` requires and the value lacks.
+pub const RULE_REQUIRED_WHEN: &str = "requiredWhen";
+/// A member present when the model's `validator.presentIff` forbids it, or the reverse.
+pub const RULE_PRESENT_IFF: &str = "presentIff";
+/// None of the members the model's `validator.atLeastOne` names is present.
+pub const RULE_AT_LEAST_ONE: &str = "atLeastOne";
+/// Not exactly one of the members the model's `validator.exactlyOne` names is present.
+pub const RULE_EXACTLY_ONE: &str = "exactlyOne";
+
+/// One rule a value breaks.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Violation {
+    /// The member that broke the rule, by its wire name; a member of a nested object is
+    /// `outer.inner`, and an element of a list is `outer[0].inner`.
+    pub field: String,
+    /// The rule: `length`, `regex`, `numeric`, `array` or `format`, or the kind of a rule
+    /// across members (`comparison`, `requiredWhen`, `presentIff`, `atLeastOne`,
+    /// `exactlyOne`).
+    pub rule: &'static str,
+    pub message: String,
+}
+
+impl Violation {
+    /// The three parts, for carrying a violation into another crate's `Violation`.
+    pub fn into_parts(self) -> (String, &'static str, String) {
+        (self.field, self.rule, self.message)
+    }
+}
+
+impl fmt::Display for Violation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for Violation {}
+
+/// Report that `field` breaks `rule`.
+pub fn fail(out: &mut Vec<Violation>, field: &str, rule: &'static str, message: &str) {
+    out.push(Violation { field: field.to_string(), rule, message: message.to_string() });
+}
+
+/// The violations of a nested value, with `prefix` put before each member name.
+pub fn nested(out: &mut Vec<Violation>, prefix: &str, found: Vec<Violation>) {
+    for Violation { field, rule, message } in found {
+        out.push(Violation { field: format!("{prefix}.{field}"), rule, message });
+    }
+}
+
+/// A string's length in characters is within the bounds.
+pub fn length(
+    out: &mut Vec<Violation>,
+    field: &str,
+    value: Option<&str>,
+    min: Option<usize>,
+    max: Option<usize>,
+) {
+    let Some(value) = value else { return };
+    let got = value.chars().count();
+    if let Some(min) = min.filter(|&min| got < min) {
+        fail(
+            out,
+            field,
+            RULE_LENGTH,
+            &format!("'{field}' must be at least {min} chars (got {got})"),
+        );
+    }
+    if let Some(max) = max.filter(|&max| got > max) {
+        fail(
+            out,
+            field,
+            RULE_LENGTH,
+            &format!("'{field}' must be at most {max} chars (got {got})"),
+        );
+    }
+}
+
+/// A list's item count is within the bounds.
+pub fn items(
+    out: &mut Vec<Violation>,
+    field: &str,
+    count: Option<usize>,
+    min: Option<usize>,
+    max: Option<usize>,
+) {
+    let Some(got) = count else { return };
+    if let Some(min) = min.filter(|&min| got < min) {
+        fail(
+            out,
+            field,
+            RULE_ARRAY,
+            &format!("'{field}' must have at least {min} items (got {got})"),
+        );
+    }
+    if let Some(max) = max.filter(|&max| got > max) {
+        fail(
+            out,
+            field,
+            RULE_ARRAY,
+            &format!("'{field}' must have at most {max} items (got {got})"),
+        );
+    }
+}
+
+/// A number is within the bounds, both inclusive.
+pub fn range<T>(
+    out: &mut Vec<Violation>,
+    field: &str,
+    value: Option<T>,
+    min: Option<T>,
+    max: Option<T>,
+) where
+    T: PartialOrd + fmt::Display,
+{
+    let Some(got) = value else { return };
+    if let Some(min) = min.filter(|min| got < *min) {
+        fail(out, field, RULE_NUMERIC, &format!("'{field}' must be at least {min} (got {got})"));
+    }
+    if let Some(max) = max.filter(|max| got > *max) {
+        fail(out, field, RULE_NUMERIC, &format!("'{field}' must be at most {max} (got {got})"));
+    }
+}
+
+/// A string matches the model's pattern from its first character to its last.
+pub fn pattern(out: &mut Vec<Violation>, field: &str, value: Option<&str>, pattern: &str) {
+    if value.is_some_and(|value| !super::pattern::full_match(pattern, value)) {
+        fail(out, field, RULE_REGEX, &format!("'{field}' does not match required pattern"));
+    }
+}
+
+/// A string is in the form `accepts` tests; `must` finishes the sentence "'field' must ...".
+pub fn format(
+    out: &mut Vec<Violation>,
+    field: &str,
+    value: Option<&str>,
+    accepts: fn(&str) -> bool,
+    must: &str,
+) {
+    if value.is_some_and(|value| !accepts(value)) {
+        fail(out, field, RULE_FORMAT, &format!("'{field}' must {must}"));
+    }
+}
+
+/// A decimal fits `precision` digits with `scale` of them after the point. Nothing is
+/// rounded to make it fit.
+pub fn decimal(
+    out: &mut Vec<Violation>,
+    field: &str,
+    value: Option<&Decimal>,
+    precision: usize,
+    scale: usize,
+) {
+    if value.is_some_and(|value| !value.fits(precision, scale)) {
+        let message = format!("'{field}' must fit {precision} digits with {scale} after the point");
+        fail(out, field, RULE_FORMAT, &message);
+    }
+}
+
+/// An absolute URI: a scheme, a non-empty remainder and, when the remainder opens an
+/// authority with `//`, a non-empty authority. Surrounding spaces are ignored.
+pub fn is_absolute_uri(value: &str) -> bool {
+    let value = value.trim_matches(|c: char| c <= ' ');
+    let Some((scheme, rest)) = value.split_once(':') else { return false };
+    let mut chars = scheme.chars();
+    let scheme_ok = chars.next().is_some_and(|c| c.is_ascii_alphabetic())
+        && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '.' | '-'));
+    if !scheme_ok || rest.is_empty() {
+        return false;
+    }
+    match rest.strip_prefix("//") {
+        None => true,
+        Some(after) => !after.split(['/', '?', '#']).next().unwrap_or("").is_empty(),
+    }
+}
+
+/// A DNS host name: at most 253 characters, in dot-separated labels of 1 to 63 letters,
+/// digits and hyphens that neither start nor end with a hyphen.
+pub fn is_hostname(value: &str) -> bool {
+    let label = |label: &str| {
+        let bytes = label.as_bytes();
+        (1..=63).contains(&bytes.len())
+            && bytes.iter().all(|b| b.is_ascii_alphanumeric() || *b == b'-')
+            && bytes[0] != b'-'
+            && bytes[bytes.len() - 1] != b'-'
+    };
+    (1..=253).contains(&value.len()) && value.split('.').all(label)
+}
+
+/// An email address in the loose sense: one `@` with text on both sides and no spaces.
+pub fn is_email(value: &str) -> bool {
+    match value.split_once('@') {
+        Some((local, domain)) => {
+            !local.is_empty()
+                && !domain.is_empty()
+                && !domain.contains('@')
+                && !value.chars().any(|c| c.is_whitespace() || c.is_control())
+        }
+        None => false,
+    }
+}
+
+/// A UUID in the 8-4-4-4-12 hexadecimal form.
+pub fn is_uuid(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    bytes.len() == 36
+        && bytes.iter().enumerate().all(|(at, b)| match at {
+            8 | 13 | 18 | 23 => *b == b'-',
+            _ => b.is_ascii_hexdigit(),
+        })
+}
+
+fn two_digits(text: &str) -> Option<i64> {
+    let bytes = text.as_bytes();
+    (bytes.len() == 2 && bytes.iter().all(u8::is_ascii_digit)).then(|| text.parse().ok())?
+}
+
+/// Days since 1970-01-01 of a `YYYY-MM-DD` calendar date.
+fn date_days(text: &str) -> Option<i64> {
+    let bytes = text.as_bytes();
+    if bytes.len() != 10 || bytes[4] != b'-' || bytes[7] != b'-' {
+        return None;
+    }
+    if !bytes[..4].iter().all(u8::is_ascii_digit) {
+        return None;
+    }
+    let year: i64 = text[..4].parse().ok()?;
+    let month = two_digits(&text[5..7])?;
+    let day = two_digits(&text[8..10])?;
+    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let month_days = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if leap => 29,
+        2 => 28,
+        _ => return None,
+    };
+    if !(1..=month_days).contains(&day) {
+        return None;
+    }
+    // The days-from-civil algorithm, with March as the first month of the year.
+    let y = if month <= 2 { year - 1 } else { year };
+    let era = y.div_euclid(400);
+    let year_of_era = y.rem_euclid(400);
+    let day_of_year = (153 * ((month + 9) % 12) + 2) / 5 + day - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    Some(era * 146_097 + day_of_era - 719_468)
+}
+
+/// Nanoseconds since midnight of `HH:MM`, `HH:MM:SS` or `HH:MM:SS.fff`.
+fn time_nanos(text: &str) -> Option<i128> {
+    let (clock, fraction) = match text.split_once('.') {
+        Some((clock, fraction)) => (clock, fraction),
+        None => (text, ""),
+    };
+    let mut parts = clock.split(':');
+    let hour = two_digits(parts.next()?)?;
+    let minute = two_digits(parts.next()?)?;
+    let second = match parts.next() {
+        Some(second) => two_digits(second)?,
+        None => 0,
+    };
+    if parts.next().is_some() || hour > 23 || minute > 59 || second > 59 {
+        return None;
+    }
+    let has_fraction = text.contains('.');
+    if has_fraction && (fraction.is_empty() || clock.len() != 8) {
+        return None;
+    }
+    if !fraction.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let kept = &fraction[..fraction.len().min(9)];
+    let nanos: i128 = format!("{kept:0<9}").parse().ok()?;
+    Some(i128::from((hour * 60 + minute) * 60 + second) * 1_000_000_000 + nanos)
+}
+
+/// A calendar date, `YYYY-MM-DD`.
+pub fn is_date(value: &str) -> bool {
+    date_days(value).is_some()
+}
+
+/// A time of day: `HH:MM:SS`, with an optional fraction of a second.
+pub fn is_time(value: &str) -> bool {
+    time_nanos(value).is_some()
+}
+
+/// A timestamp: a date, `T`, a time of day and an optional zone (`Z` or `+HH:MM`).
+pub fn is_timestamp(value: &str) -> bool {
+    instant_key(Some(value)).is_some()
+}
+
+/// A time of day as a number that orders the way the times do.
+pub fn time_key(value: Option<&str>) -> Option<i128> {
+    time_nanos(value?)
+}
+
+/// A timestamp as nanoseconds since 1970-01-01T00:00:00Z, so two timestamps order by the
+/// moment they name whatever zone each was written in. One with no zone is read as UTC.
+pub fn instant_key(value: Option<&str>) -> Option<i128> {
+    let value = value?;
+    let (date, rest) = value.split_once(['T', ' '])?;
+    let (clock, offset_seconds) = if let Some(clock) = rest.strip_suffix(['Z', 'z']) {
+        (clock, 0)
+    } else if let Some(at) = rest.rfind(['+', '-']) {
+        let (clock, zone) = rest.split_at(at);
+        let (hours, minutes) = zone[1..].split_once(':')?;
+        let seconds = (two_digits(hours)? * 60 + two_digits(minutes)?) * 60;
+        (clock, if zone.starts_with('-') { -seconds } else { seconds })
+    } else {
+        (rest, 0)
+    };
+    let seconds = i128::from(date_days(date)? * 86_400 - offset_seconds);
+    Some(seconds * 1_000_000_000 + time_nanos(clock)?)
+}
+
+/// How two values of a rule across members are compared.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Op {
+    Eq,
+    Ne,
+    Gt,
+    Gte,
+    Lt,
+    Lte,
+}
+
+/// How two values order, or `None` when either is absent: an absent value is SQL `NULL`,
+/// and a comparison with it is neither true nor false.
+pub fn ord<T: PartialOrd>(left: Option<T>, right: Option<T>) -> Option<Ordering> {
+    left?.partial_cmp(&right?)
+}
+
+/// Whether two values are equal, or `None` when either is absent.
+pub fn same<T: PartialEq>(left: Option<T>, right: Option<T>) -> Option<bool> {
+    Some(left? == right?)
+}
+
+/// Whether an ordering satisfies `op`, or `None` when there is no ordering.
+pub fn test(ordering: Option<Ordering>, op: Op) -> Option<bool> {
+    let ordering = ordering?;
+    Some(match op {
+        Op::Eq => ordering == Ordering::Equal,
+        Op::Ne => ordering != Ordering::Equal,
+        Op::Gt => ordering == Ordering::Greater,
+        Op::Gte => ordering != Ordering::Less,
+        Op::Lt => ordering == Ordering::Less,
+        Op::Lte => ordering != Ordering::Greater,
+    })
+}
+
+/// Three-valued AND: false when any part is false, unknown when any part is unknown.
+pub fn all(parts: &[Option<bool>]) -> Option<bool> {
+    if parts.contains(&Some(false)) {
+        Some(false)
+    } else if parts.contains(&None) {
+        None
+    } else {
+        Some(true)
+    }
+}
+
+/// Three-valued OR: true when any part is true, unknown when any part is unknown.
+pub fn any(parts: &[Option<bool>]) -> Option<bool> {
+    if parts.contains(&Some(true)) {
+        Some(true)
+    } else if parts.contains(&None) {
+        None
+    } else {
+        Some(false)
+    }
+}
+
+/// Three-valued NOT: unknown stays unknown.
+pub fn not(value: Option<bool>) -> Option<bool> {
+    value.map(|value| !value)
+}
+
+/// `left` against `right` under `op`; unknown when either is absent.
+pub fn compare<T: PartialOrd>(left: Option<T>, right: Option<T>, op: Op) -> Option<bool> {
+    test(ord(left, right), op)
+}
+
+/// Whether two values differ; unknown when either is absent.
+pub fn differ<T: PartialEq>(left: Option<T>, right: Option<T>) -> Option<bool> {
+    not(same(left, right))
+}
+
+/// Report the rule `name` across members, against `field`, when it applies and does not
+/// hold. A rule whose condition is unknown does not apply, and one whose verdict is unknown
+/// (a member it compares is absent) holds.
+pub fn rule(
+    out: &mut Vec<Violation>,
+    field: &str,
+    rule: &'static str,
+    name: &str,
+    applies: Option<bool>,
+    holds: Option<bool>,
+) {
+    if applies == Some(true) && holds == Some(false) {
+        fail(out, field, rule, &format!("'{field}' breaks the rule '{name}'"));
+    }
+}
+
+/// A member that must be present when the gate is open.
+pub fn required_when(gate: Option<bool>, present: bool) -> Option<bool> {
+    Some(present || gate != Some(true))
+}
+
+/// A member that is present exactly when the gate is open.
+pub fn present_iff(gate: Option<bool>, present: bool) -> Option<bool> {
+    Some(present == (gate == Some(true)))
+}
+
+/// At least one of the members is present.
+pub fn at_least_one(present: &[bool]) -> Option<bool> {
+    Some(present.contains(&true))
+}
+
+/// Exactly one of the members is present.
+pub fn exactly_one(present: &[bool]) -> Option<bool> {
+    Some(present.iter().filter(|present| **present).count() == 1)
+}

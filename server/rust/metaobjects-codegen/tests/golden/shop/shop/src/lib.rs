@@ -6,9 +6,17 @@ mod address;
 mod category;
 mod currency;
 mod order;
+mod order_category;
 
 pub use address::Address;
 pub use category::Category;
+pub use category::CategoryCreate;
+pub use category::CategoryPatch;
 pub use currency::Currency;
 pub use order::Order;
+pub use order::OrderCreate;
+pub use order::OrderPatch;
 pub use order::OrderStatus;
+pub use order_category::OrderCategory;
+pub use order_category::OrderCategoryCreate;
+pub use order_category::OrderCategoryPatch;

@@ -1,0 +1,434 @@
+//! Wire types of the generated model: exact decimals, signed ISO-8601 durations and the
+//! helpers a patch body needs.
+//!
+//! The Rust standard library has no exact decimal and no signed duration, so the generated
+//! support crate carries these two small types. Both hold a value in ONE form (its canonical wire
+//! text, or its length in nanoseconds), so two equal values compare equal and serialize to
+//! the same bytes. Nothing here depends on MetaObjects.
+//!
+//! This file is written by the `entity` generator into the support crate (`meta_support`)
+//! every generated model crate depends on.
+
+use std::cmp::Ordering;
+use std::fmt;
+use std::str::FromStr;
+
+/// Text that is not in the wire grammar of the type it was parsed as.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WireError {
+    /// What was being parsed: `decimal` or `duration`.
+    pub kind: &'static str,
+    /// The text that was refused.
+    pub text: String,
+}
+
+impl fmt::Display for WireError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "not a {}: {:?}", self.kind, self.text)
+    }
+}
+
+impl std::error::Error for WireError {}
+
+/// The largest exponent a decimal may carry on input. A larger one is refused instead of
+/// being expanded into that many digits.
+const MAX_DECIMAL_EXPONENT: i64 = 4096;
+
+/// An exact decimal number, held as its canonical wire text: no exponent, no plus sign, no
+/// leading zeros, no trailing fraction zeros, and zero as `0`. It never passes through a
+/// float, and it serializes as a JSON string.
+///
+/// On input it accepts a JSON string in plain or exponent form (`"12.50"`, `"1e-7"`) and a
+/// JSON number, which is exact to 15 significant digits.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Decimal(String);
+
+impl Decimal {
+    /// Parse decimal text: an optional `-`, digits with no leading zero, an optional
+    /// fraction and an optional exponent. Anything else is refused: whitespace, a plus
+    /// sign, a comma, `NaN`, `Infinity`, hex, `1.` and `.5`.
+    pub fn parse(text: &str) -> Result<Self, WireError> {
+        canonical_decimal(text)
+            .map(Decimal)
+            .ok_or_else(|| WireError { kind: "decimal", text: text.to_string() })
+    }
+
+    /// The decimal a float prints as at 15 significant digits, the most a float carries
+    /// exactly. `None` for a value that is not finite.
+    pub fn from_f64(value: f64) -> Option<Self> {
+        if !value.is_finite() {
+            return None;
+        }
+        canonical_decimal(&format!("{value:.14e}")).map(Decimal)
+    }
+
+    /// The canonical text.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn is_negative(&self) -> bool {
+        self.0.starts_with('-')
+    }
+
+    fn magnitude(&self) -> (&str, &str) {
+        let digits = self.0.strip_prefix('-').unwrap_or(&self.0);
+        digits.split_once('.').unwrap_or((digits, ""))
+    }
+
+    /// How many digits stand before the decimal point. A value below one has none.
+    pub fn integer_digits(&self) -> usize {
+        let (int, _) = self.magnitude();
+        if int == "0" {
+            0
+        } else {
+            int.len()
+        }
+    }
+
+    /// How many digits stand after the decimal point.
+    pub fn fraction_digits(&self) -> usize {
+        self.magnitude().1.len()
+    }
+
+    /// Whether the value fits a column of `precision` digits with `scale` of them after
+    /// the point, without rounding.
+    pub fn fits(&self, precision: usize, scale: usize) -> bool {
+        self.fraction_digits() <= scale && self.integer_digits() <= precision.saturating_sub(scale)
+    }
+}
+
+fn canonical_decimal(text: &str) -> Option<String> {
+    let (negative, rest) = match text.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, text),
+    };
+    let (mantissa, exponent) = match rest.find(['e', 'E']) {
+        Some(at) => (&rest[..at], Some(&rest[at + 1..])),
+        None => (rest, None),
+    };
+    let (int, frac) = match mantissa.split_once('.') {
+        Some((int, frac)) => (int, Some(frac)),
+        None => (mantissa, None),
+    };
+    let all_digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    if !all_digits(int) || (int.len() > 1 && int.starts_with('0')) {
+        return None;
+    }
+    if frac.is_some_and(|f| !all_digits(f)) {
+        return None;
+    }
+    let exponent = match exponent {
+        None => 0,
+        Some(e) => {
+            let digits = e.strip_prefix(['+', '-']).unwrap_or(e);
+            if !all_digits(digits) {
+                return None;
+            }
+            let magnitude = digits.parse::<i64>().unwrap_or(i64::MAX);
+            if e.starts_with('-') {
+                -magnitude
+            } else {
+                magnitude
+            }
+        }
+    };
+    let frac = frac.unwrap_or("");
+    let all = format!("{int}{frac}");
+    let digits = all.trim_start_matches('0');
+    if digits.is_empty() {
+        return Some("0".to_string());
+    }
+    if exponent.abs() > MAX_DECIMAL_EXPONENT {
+        return None;
+    }
+    // The decimal point sits `point` digits into `digits`.
+    let dropped = i64::try_from(all.len() - digits.len()).ok()?;
+    let point = i64::try_from(int.len()).ok()? + exponent - dropped;
+    let len = i64::try_from(digits.len()).ok()?;
+    let (int_part, frac_part) = if point <= 0 {
+        let zeros = "0".repeat(usize::try_from(-point).ok()?);
+        ("0".to_string(), format!("{zeros}{digits}"))
+    } else if point >= len {
+        let zeros = "0".repeat(usize::try_from(point - len).ok()?);
+        (format!("{digits}{zeros}"), String::new())
+    } else {
+        let (a, b) = digits.split_at(usize::try_from(point).ok()?);
+        (a.to_string(), b.to_string())
+    };
+    let frac_part = frac_part.trim_end_matches('0');
+    let mut out = String::new();
+    if negative {
+        out.push('-');
+    }
+    out.push_str(&int_part);
+    if !frac_part.is_empty() {
+        out.push('.');
+        out.push_str(frac_part);
+    }
+    Some(out)
+}
+
+impl Ord for Decimal {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (self.is_negative(), other.is_negative()) {
+            (false, true) => return Ordering::Greater,
+            (true, false) => return Ordering::Less,
+            _ => {}
+        }
+        let (a_int, a_frac) = self.magnitude();
+        let (b_int, b_frac) = other.magnitude();
+        let magnitude = a_int
+            .len()
+            .cmp(&b_int.len())
+            .then_with(|| a_int.cmp(b_int))
+            .then_with(|| a_frac.cmp(b_frac));
+        if self.is_negative() {
+            magnitude.reverse()
+        } else {
+            magnitude
+        }
+    }
+}
+
+impl PartialOrd for Decimal {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl fmt::Display for Decimal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl FromStr for Decimal {
+    type Err = WireError;
+
+    fn from_str(text: &str) -> Result<Self, WireError> {
+        Decimal::parse(text)
+    }
+}
+
+impl From<i64> for Decimal {
+    fn from(value: i64) -> Self {
+        Decimal(value.to_string())
+    }
+}
+
+impl serde::Serialize for Decimal {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.0)
+    }
+}
+
+struct DecimalVisitor;
+
+impl serde::de::Visitor<'_> for DecimalVisitor {
+    type Value = Decimal;
+
+    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("a decimal as a string or a number")
+    }
+
+    fn visit_str<E: serde::de::Error>(self, text: &str) -> Result<Decimal, E> {
+        Decimal::parse(text).map_err(E::custom)
+    }
+
+    fn visit_i64<E: serde::de::Error>(self, value: i64) -> Result<Decimal, E> {
+        Ok(Decimal(value.to_string()))
+    }
+
+    fn visit_u64<E: serde::de::Error>(self, value: u64) -> Result<Decimal, E> {
+        Ok(Decimal(value.to_string()))
+    }
+
+    fn visit_f64<E: serde::de::Error>(self, value: f64) -> Result<Decimal, E> {
+        Decimal::from_f64(value).ok_or_else(|| E::custom("a decimal must be finite"))
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Decimal {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_any(DecimalVisitor)
+    }
+}
+
+const NANOS_PER_SECOND: i128 = 1_000_000_000;
+const NANOS_PER_MINUTE: i128 = 60 * NANOS_PER_SECOND;
+const NANOS_PER_HOUR: i128 = 60 * NANOS_PER_MINUTE;
+
+/// A signed span of time, held in nanoseconds and written as an ISO-8601 duration.
+///
+/// On input it accepts weeks, days, hours, minutes and seconds (`P1DT2H`, `-PT30S`,
+/// `PT0.5S`); a day is 24 hours and a week is 7 days. Years and months are refused,
+/// because their length depends on a calendar. Only the seconds may carry a fraction, and
+/// digits past the ninth are dropped. On output hours are never folded into days: 26 hours
+/// is `PT26H`, and zero is `PT0S`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct Duration {
+    nanos: i128,
+}
+
+impl Duration {
+    pub const ZERO: Duration = Duration { nanos: 0 };
+
+    pub const fn from_nanos(nanos: i128) -> Self {
+        Duration { nanos }
+    }
+
+    /// The length in nanoseconds; negative for a negative duration.
+    pub const fn nanos(self) -> i128 {
+        self.nanos
+    }
+
+    pub fn parse(text: &str) -> Result<Self, WireError> {
+        duration_nanos(text)
+            .map(Duration::from_nanos)
+            .ok_or_else(|| WireError { kind: "duration", text: text.to_string() })
+    }
+}
+
+/// The digits at the start of `text` and what follows them.
+fn leading_digits(text: &str) -> (&str, &str) {
+    let end = text.bytes().position(|b| !b.is_ascii_digit()).unwrap_or(text.len());
+    text.split_at(end)
+}
+
+fn duration_nanos(text: &str) -> Option<i128> {
+    let (negative, rest) = match text.strip_prefix(['-', '+']) {
+        Some(rest) => (text.starts_with('-'), rest),
+        None => (false, text),
+    };
+    let mut rest = rest.strip_prefix('P')?;
+    if rest.is_empty() {
+        return None;
+    }
+    let mut total: i128 = 0;
+    // The date part: weeks, then days, each at most once.
+    for (unit, hours) in [('W', 7 * 24), ('D', 24)] {
+        let (digits, after) = leading_digits(rest);
+        if !digits.is_empty() && after.starts_with(unit) {
+            let count = digits.parse::<i128>().ok()?;
+            total = total.checked_add(count.checked_mul(hours * NANOS_PER_HOUR)?)?;
+            rest = &after[1..];
+        }
+    }
+    if let Some(time) = rest.strip_prefix('T') {
+        if !time.starts_with(|c: char| c.is_ascii_digit()) {
+            return None;
+        }
+        rest = time;
+        for (unit, nanos) in [('H', NANOS_PER_HOUR), ('M', NANOS_PER_MINUTE)] {
+            let (digits, after) = leading_digits(rest);
+            if !digits.is_empty() && after.starts_with(unit) {
+                let count = digits.parse::<i128>().ok()?;
+                total = total.checked_add(count.checked_mul(nanos)?)?;
+                rest = &after[1..];
+            }
+        }
+        let (digits, after) = leading_digits(rest);
+        if !digits.is_empty() {
+            let (fraction, after) = match after.strip_prefix('.') {
+                Some(tail) => {
+                    let (fraction, after) = leading_digits(tail);
+                    if fraction.is_empty() {
+                        return None;
+                    }
+                    (fraction, after)
+                }
+                None => ("", after),
+            };
+            let seconds = digits.parse::<i128>().ok()?;
+            total = total.checked_add(seconds.checked_mul(NANOS_PER_SECOND)?)?;
+            // Nine fraction digits are kept; the rest are dropped, toward zero.
+            let kept = &fraction[..fraction.len().min(9)];
+            total = total.checked_add(format!("{kept:0<9}").parse::<i128>().ok()?)?;
+            rest = after.strip_prefix('S')?;
+        }
+    }
+    if !rest.is_empty() {
+        return None;
+    }
+    Some(if negative { -total } else { total })
+}
+
+impl fmt::Display for Duration {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.nanos == 0 {
+            return f.write_str("PT0S");
+        }
+        let magnitude = self.nanos.unsigned_abs();
+        let hours = magnitude / NANOS_PER_HOUR.unsigned_abs();
+        let minutes = magnitude / NANOS_PER_MINUTE.unsigned_abs() % 60;
+        let seconds = magnitude / NANOS_PER_SECOND.unsigned_abs() % 60;
+        let fraction = magnitude % NANOS_PER_SECOND.unsigned_abs();
+        if self.nanos < 0 {
+            f.write_str("-")?;
+        }
+        f.write_str("PT")?;
+        if hours > 0 {
+            write!(f, "{hours}H")?;
+        }
+        if minutes > 0 {
+            write!(f, "{minutes}M")?;
+        }
+        if fraction > 0 {
+            let digits = format!("{fraction:09}");
+            write!(f, "{seconds}.{}S", digits.trim_end_matches('0'))?;
+        } else if seconds > 0 {
+            write!(f, "{seconds}S")?;
+        }
+        Ok(())
+    }
+}
+
+impl FromStr for Duration {
+    type Err = WireError;
+
+    fn from_str(text: &str) -> Result<Self, WireError> {
+        Duration::parse(text)
+    }
+}
+
+impl serde::Serialize for Duration {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
+struct DurationVisitor;
+
+impl serde::de::Visitor<'_> for DurationVisitor {
+    type Value = Duration;
+
+    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("an ISO-8601 duration such as PT1H30M (no years or months)")
+    }
+
+    fn visit_str<E: serde::de::Error>(self, text: &str) -> Result<Duration, E> {
+        Duration::parse(text).map_err(E::custom)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Duration {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_str(DurationVisitor)
+    }
+}
+
+/// Deserializes a member of a patch body: a member that is present, `null` included,
+/// becomes `Some`, so a patch can tell "set this to null" from "leave this alone".
+pub fn present<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::Deserialize<'de>,
+{
+    T::deserialize(deserializer).map(Some)
+}
+
+/// The value a patch sets for a nullable member, when it sets one that is not null.
+pub fn set<T>(member: &Option<Option<T>>) -> Option<&T> {
+    member.as_ref().and_then(Option::as_ref)
+}

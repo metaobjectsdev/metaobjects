@@ -3,7 +3,7 @@
 //! (`fixtures/persistence-conformance/canonical/meta.fitness.json`).
 //!
 //! Each copy keeps every name and gets its own root package (`fitness_x00` ... `fitness_x19`),
-//! so each becomes its own crate. The project lives under `$DEV_SCRATCH` (a RAM disk when set)
+//! so each becomes its own model, client and command crate: every shipped generator runs. The project lives under `$DEV_SCRATCH` (a RAM disk when set)
 //! and is removed when the run ends.
 //!
 //! ```text
@@ -30,7 +30,7 @@ use std::time::Instant;
 
 use metaobjects::timing::{ms, render_table};
 use metaobjects_codegen::engine::{STAGE_LOAD, STAGE_PLAN, STAGE_RENDER, STAGE_SKIP, STAGE_WRITE};
-use metaobjects_codegen::{EntityGenerator, Generator, Outcome, RunOptions, RunReport, run};
+use metaobjects_codegen::{Outcome, RunOptions, RunReport, run, shipped_generators};
 use serde_json::{Map, Value, json};
 
 const FITNESS: &str =
@@ -69,8 +69,7 @@ fn copy_text(i: usize) -> String {
 fn gen_run(project: &Path, force: bool) -> RunReport {
     let mut opts = RunOptions::new(project);
     opts.force = force;
-    let generators: Vec<Box<dyn Generator>> = vec![Box::new(EntityGenerator)];
-    run(&opts, &generators).unwrap_or_else(|e| panic!("gen failed: {e}"))
+    run(&opts, &shipped_generators()).unwrap_or_else(|e| panic!("gen failed: {e}"))
 }
 
 /// Time per stage in milliseconds, every stage present (zero when the run skipped it), plus

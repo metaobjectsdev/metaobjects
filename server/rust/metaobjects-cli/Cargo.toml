@@ -23,5 +23,8 @@ path = "src/main.rs"
 metaobjects = { path = "../metaobjects" }
 metaobjects-codegen = { path = "../metaobjects-codegen" }
 
+[dev-dependencies]
+serde_json.workspace = true
+
 [lints]
 workspace = true

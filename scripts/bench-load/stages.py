@@ -31,7 +31,7 @@ fails those columns.
 
 Generation runs each port's own command with ONE reference generator chosen to exist and work
 in that port (typescript: entity + names; python: entity; csharp: entity; java: dto +
-value-object; kotlin: entity; rust: whatever `cargo meta gen` is configured with), so a
+value-object; kotlin: entity; rust: entity, or the flags in MO_BENCH_RUST_GEN_ARGS), so a
 generation row compares a port with its earlier self and with the other ports' trend, not the
 same bytes. Scratch lives under $DEV_SCRATCH (else the system temp dir) and is removed on exit.
 """
@@ -391,7 +391,9 @@ class Rust(Port):
         install_config(self.project, model)
 
     def gen_command(self):
-        extra = os.environ.get("MO_BENCH_RUST_GEN_ARGS", "").split()
+        # `cargo meta gen` runs every shipped generator; the row tracks `entity`, as the
+        # other ports' rows track one generator. MO_BENCH_RUST_GEN_ARGS replaces the flags.
+        extra = os.environ.get("MO_BENCH_RUST_GEN_ARGS", "--generators entity").split()
         return self._meta_command() + ["gen"] + extra
 
 

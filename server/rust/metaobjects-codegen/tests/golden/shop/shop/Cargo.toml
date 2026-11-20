@@ -8,3 +8,4 @@ description = "Generated from the MetaObjects package shop."
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
+meta_support = { path = "../meta_support" }

@@ -8,4 +8,5 @@ description = "Generated from the MetaObjects package shop::billing."
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
+meta_support = { path = "../meta_support" }
 shop = { path = "../shop" }
