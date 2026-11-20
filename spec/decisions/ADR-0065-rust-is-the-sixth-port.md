@@ -156,7 +156,10 @@ so they are not re-derived.
    writer}`, recorded in the registry's `eject.engineSurface.rust` and held by the port's test of
    the eject contract (ADR-0034 Amendment 8). Nothing is recorded about an eject: what a project
    owns is what is on disk, and `--undo` removes only copies still identical to the shipped source.
-   The owned crate's files are inputs of the skip key (ADR-0064).
+   Every file of the owned crate is an input of the skip key (ADR-0064), not only the ones `eject`
+   writes, since the generator list is the project's file and may pull in any module beside it; the
+   crate's build directory and lockfile are not. A build of the owned crate that fails, or a
+   generator in it that panics, exits 1: the command keeps the shared 0, 1, 2.
 6. **A hand-edited generated file is refused, by name.** There is no three-way merge, as in every
    port but TypeScript. The same rule covers the orphan sweep: a generated file nothing emits any
    more is removed, unless it was edited, in which case the run fails and names it.

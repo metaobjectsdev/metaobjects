@@ -435,6 +435,47 @@ fn an_owned_generator_crate_is_an_input_of_the_skip_key() {
 }
 
 #[test]
+fn every_source_of_an_owned_crate_is_an_input_and_its_build_output_is_not() {
+    // The generator list is the adopter's file, so it may pull in a module the scaffold never
+    // wrote (`mod util;`). An edit there changes what the owned generators emit; a skip that
+    // did not see it would report "nothing changed" over stale output.
+    let p = Scratch::project("owned-module", &shop_files());
+    p.write("codegen/Cargo.toml", "[package]\nname = \"codegen\"\n");
+    p.write("codegen/main.rs", "mod util;\nfn main() {}\n");
+    p.write("codegen/util.rs", "// v1\n");
+    p.write("codegen/generators/entity.rs", "// the owned generator\n");
+    gen_ok(&p);
+    assert_eq!(gen_ok(&p).outcome, Outcome::Skipped);
+
+    // What cargo writes on its own is no change: the build directory and the lockfile.
+    p.write("codegen/target/debug/util.rs", "build output");
+    p.write("codegen/Cargo.lock", "version = 4\n");
+    assert_eq!(gen_ok(&p).outcome, Outcome::Skipped);
+    assert!(!check(&p, |_| {}).rendered);
+
+    // An edit to the module beside the list.
+    p.write("codegen/util.rs", "// v2\n");
+    assert!(
+        check(&p, |_| {}).rendered,
+        "verify must not answer from the stored key after an owned module changed"
+    );
+    let r = gen_ok(&p);
+    assert_eq!(r.outcome, Outcome::Generated);
+    assert_eq!(r.no_skip_reason, Some("an input changed"));
+    assert_eq!(gen_ok(&p).outcome, Outcome::Skipped);
+
+    // A new file anywhere in the crate, and one that only shares a skipped name deeper down.
+    p.write("codegen/support/mod.rs", "// a new module\n");
+    assert_eq!(gen_ok(&p).outcome, Outcome::Generated);
+    p.write(
+        "codegen/support/target/notes.rs",
+        "// a source that happens to sit in `target`\n",
+    );
+    assert_eq!(gen_ok(&p).outcome, Outcome::Generated);
+    assert_eq!(gen_ok(&p).outcome, Outcome::Skipped);
+}
+
+#[test]
 fn naming_an_entity_limits_the_run_and_never_skips_or_stores_a_key() {
     let p = Scratch::project("named", &shop_files());
     gen_ok(&p);

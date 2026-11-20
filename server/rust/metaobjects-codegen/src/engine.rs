@@ -27,6 +27,7 @@ use metaobjects::timing::LoadTimings;
 use crate::fingerprint::{
     self, ABSENT, InputEntry, KIND_CONFIG, KIND_ENGINE, KIND_EXTRA, KIND_FLAG, KIND_GENERATOR,
     KIND_MODEL, KIND_TOOL, StoredFingerprint, build_model_tree, fold, hash_file, hash_tree,
+    hash_tree_except,
 };
 use crate::generator::{
     ERR_OUT_DIR, ERR_PATH_COLLISION, EmittedFile, GenContext, GenError, Generator,
@@ -277,6 +278,12 @@ fn io_error(what: &str, path: &Path, e: &std::io::Error) -> RunError {
     RunError::Io(format!("{what} {}: {e}", path.display()))
 }
 
+/// The owned generator crate (`cargo meta eject`). Every source in it is an input of every
+/// run, so editing any of them regenerates (ADR-0064, `owned-generator-edited`).
+pub const OWNED_DIR: &str = "codegen";
+/// What in [`OWNED_DIR`] is not an input: cargo's build output, and the lockfile cargo
+/// itself rewrites.
+pub const OWNED_NOT_INPUTS: &[&str] = &["target", "Cargo.lock"];
 /// Where `cargo meta eject` puts the owned copies.
 pub const OWNED_GENERATORS_DIR: &str = "codegen/generators";
 /// The owned crate's manifest; its presence is what makes a project "own its generators".
@@ -421,22 +428,15 @@ fn prepare<'g>(
             entries.push(InputEntry::new(KIND_EXTRA, extra, digest));
         }
     }
-    // The owned generator crate. Its build output (`codegen/target`) is not an input, so the
-    // three things that are get named one by one.
+    // The owned generator crate, whole: the generator list is the adopter's file and may pull
+    // in any module beside it (`mod util;`), so naming the files the scaffold writes would
+    // leave an edit to the rest unseen and the skip stale.
     if project_root.join(OWNED_MANIFEST).is_file() {
-        for (name, digest) in [
-            (
-                OWNED_MANIFEST,
-                hash_file(&project_root.join(OWNED_MANIFEST)),
-            ),
-            (OWNED_MAIN, hash_file(&project_root.join(OWNED_MAIN))),
-            (
-                OWNED_GENERATORS_DIR,
-                hash_tree(&project_root.join(OWNED_GENERATORS_DIR)),
-            ),
-        ] {
-            entries.push(InputEntry::new(KIND_EXTRA, name, digest));
-        }
+        entries.push(InputEntry::new(
+            KIND_EXTRA,
+            OWNED_DIR,
+            hash_tree_except(&project_root.join(OWNED_DIR), OWNED_NOT_INPUTS),
+        ));
     }
     let key = fold(&entries);
     let stored = fingerprint::read_stored(&gen_state);

@@ -610,8 +610,21 @@ enum Host<'a> {
     Owned,
 }
 
+/// What this command exits with when the project's `codegen/` crate exited with `code`
+/// (`None`: a signal ended it). The owned crate runs this same command line, so 0, 1 and 2
+/// are its answers and pass through. Anything else is a build that failed or a generator
+/// that panicked (cargo and a panic both exit 101), and that is a failure, 1: the documented
+/// codes are 0, 1 and 2, and a script reading them must not meet a fourth.
+pub fn owned_exit_code(code: Option<i32>) -> i32 {
+    match code {
+        Some(0) => 0,
+        Some(2) => 2,
+        _ => 1,
+    }
+}
+
 /// Build and run the project's `codegen/` crate with the same arguments. Its exit status is
-/// this command's.
+/// this command's, held to 0, 1 or 2 by [`owned_exit_code`].
 fn hand_off(project: &Path, rest: &[String], cwd: &Path, err: &mut dyn Write) -> i32 {
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| OsString::from("cargo"));
     let status = std::process::Command::new(cargo)
@@ -624,7 +637,7 @@ fn hand_off(project: &Path, rest: &[String], cwd: &Path, err: &mut dyn Write) ->
         .current_dir(cwd)
         .status();
     match status {
-        Ok(s) => s.code().unwrap_or(1),
+        Ok(s) => owned_exit_code(s.code()),
         Err(e) => {
             let _ = writeln!(
                 err,

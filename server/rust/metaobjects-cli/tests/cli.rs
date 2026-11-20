@@ -566,3 +566,67 @@ fn an_ejected_generator_builds_and_writes_what_the_shipped_one_writes() {
             .contains("pub const fn symbol(self)")
     );
 }
+
+/// A stand-in owned crate with no dependencies, so the build is the compiler alone.
+fn own_a_crate(p: &Project, package: &str, main: &str) {
+    p.write(
+        "codegen/Cargo.toml",
+        &format!(
+            "[package]\nname = \"{package}\"\nversion = \"0.0.0\"\nedition = \"2024\"\n\n\
+             [[bin]]\nname = \"{package}\"\npath = \"main.rs\"\n\n[workspace]\n"
+        ),
+    );
+    p.write("codegen/main.rs", main);
+}
+
+#[test]
+fn an_owned_crate_that_breaks_exits_1_and_its_own_answers_pass_through() {
+    // The contract is the one `docs/ports/rust.md` states: 0 in sync or done, 1 a failure or
+    // drift, 2 a usage error. cargo answers 101 for a build that failed and Rust answers 101
+    // for a panic; a script that reads 1 as "drift or failure" must not meet either.
+    let broken = [
+        (
+            "panics",
+            "fn main() {\n    panic!(\"a generator panicked\");\n}\n",
+        ),
+        (
+            "does-not-compile",
+            "fn main() {\n    let x: u32 = \"not a number\";\n}\n",
+        ),
+        (
+            "exits-101",
+            "fn main() {\n    std::process::exit(101);\n}\n",
+        ),
+        ("exits-3", "fn main() {\n    std::process::exit(3);\n}\n"),
+    ];
+    for (tag, main) in broken {
+        let p = Project::new(&format!("owned-broken-{tag}"));
+        own_a_crate(&p, &format!("codegen-{tag}"), main);
+        for command in ["gen", "verify"] {
+            let r = p.run(&["meta", command]);
+            assert_eq!(
+                r.status.code(),
+                Some(1),
+                "{tag}: `{command}` must fail with 1\n{}",
+                text(&r.stderr)
+            );
+        }
+        // What went wrong is still on the screen.
+        let said = text(&p.run(&["meta", "gen"]).stderr);
+        if tag == "panics" {
+            assert!(said.contains("a generator panicked"), "{said}");
+        }
+        if tag == "does-not-compile" {
+            assert!(said.contains("mismatched types"), "{said}");
+        }
+    }
+    for code in [0, 1, 2] {
+        let p = Project::new(&format!("owned-answers-{code}"));
+        own_a_crate(
+            &p,
+            &format!("codegen-answers-{code}"),
+            &format!("fn main() {{\n    std::process::exit({code});\n}}\n"),
+        );
+        assert_eq!(p.run(&["meta", "gen"]).status.code(), Some(code));
+    }
+}

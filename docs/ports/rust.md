@@ -51,6 +51,8 @@ cargo install --path <repo-root>/server/rust/metaobjects-cli
 
 **Exit codes** are the ones every port's tool uses: 0 success, 1 the run failed (a model that does not
 load, a refused file, drift), 2 a usage error. An unknown flag names the flags the command takes.
+An owned generator crate that fails to build, or a generator in it that panics, is a failed run: 1,
+with the compiler's or the panic's own message.
 
 There is no `migrate`, no `verify --db` and no `fmt` in `cargo meta`. Schema migrations and database
 checks are the Node `meta` tool's for every server language
@@ -207,7 +209,9 @@ While that crate exists, `cargo meta gen` and `cargo meta verify` build and run 
 one way to generate. A copy is the shipped source byte for byte, and it imports only the engine
 surface (`metaobjects_codegen::{emitted, generator, names, plan, writer}`); the shared text a generator
 writes (the transport, the command helpers) is inside the generator, so an owned `client` owns its
-transport too. The owned crate's files are inputs of the skip key: editing a generator regenerates.
+transport too. Every file in `codegen/` is an input of the skip key, whether `eject` wrote it or you
+added it (a module beside the generator list, say), so editing any of them regenerates. Only the
+crate's build directory (`codegen/target`) and its `Cargo.lock` are left out.
 
 `cargo meta gen --list` shows each owned copy as `identical`, or as `DIFFERS` with how many shipped
 lines it lacks and how many are its own.
