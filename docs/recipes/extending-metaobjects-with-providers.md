@@ -181,8 +181,8 @@ $ meta gen
 ✓ 7 files written under src/db/generated/ + src/llm/generated/.
 
 $ meta verify
-✓ No metadata drift. 4 providers composed:
-    metaobjects-core-types, metaobjects-forge, metaobjects-documentation, example-template-toolcall
+✓ No metadata drift. Providers composed:
+    metaobjects-core-types, metaobjects-documentation, ..., example-template-toolcall
 ```
 
 ## What happens when the provider is missing

@@ -3,9 +3,11 @@
 The metamodel is **open under composition**: every type, subtype, and attribute
 the loader understands is contributed by a `MetaDataTypeProvider`. The core
 package ships its own provider bundle (`metaobjects-core-types`,
-`metaobjects-forge`, `metaobjects-documentation`), but the same mechanism is
-how a downstream consumer adds an application-specific subtype — e.g., a
-`template.toolcall` that the core doesn't know about.
+`metaobjects-documentation` and the other concern providers), but the same
+mechanism is how new vocabulary is added — whether by a downstream consumer
+(e.g., a `template.toolcall` that the core doesn't know about) or by this
+project: new vocabulary lives in its own provider, a pack (see
+[Where vocabulary lives](#where-vocabulary-lives)).
 
 This page covers:
 
@@ -102,15 +104,32 @@ field) and pick a word no other provider on that node type already holds. A stor
 provider for goes in the `attr.properties` bag, not an invented attribute. `meta types
 --detail` prints the registering provider next to each attribute, so you can see what is taken.
 
-## What modularity does and does not mean
+## Where vocabulary lives
 
-> **MetaObjects modularity is additive and behavioural, never subtractive: every port
-> ships the same vocabulary; a concern your model does not declare costs nothing,
-> generates nothing and diagnoses nothing; and downstream providers may add optional
-> vocabulary — so any model that loads under the default bundle loads identically in
-> every port.**
+**Core holds only the base metamodel. Everything else is vocabulary in its own provider (a
+pack), composed by default and individually removable.** Reporting, business rules,
+requirements, view expressions and any new vocabulary each belong in a provider of their own.
+"Composed by default" means no model changes: a model that loads today loads identically under
+the default bundle. "Individually removable" means an embedder can leave a pack out of
+`composeRegistry`, and ADR-0050 (above) guarantees the reduced registry is coherent, with no
+silently weakened types.
 
-Concretely, you opt in by **declaring**, not by configuring:
+The rule that decides what may enter core is owned by
+[GOVERNANCE.md](../../GOVERNANCE.md#extension-packs-and-the-core-metamodel): a new type, subtype
+or attribute needs a second, independent consumer before it enters core, and until then it
+lives in an extension pack. This page does not restate it. Which mechanism to use for the
+vocabulary is [ADR-0037](../../spec/decisions/ADR-0037-metamodel-vocabulary-expansion-decision-framework.md).
+
+**Current state, pending the split (not the design intent).** Today the reporting
+(`dimension`, `measure`, `segment`), requirements (`requirement.*`) and business-rule
+vocabularies, and the newest view expressions, are still registered by the one
+`metaobjects-core-types` provider (`metadata/src/core-types.ts`), and `metaobjects-core-types`
+therefore cannot be composed without them. That is where they landed, not where they belong:
+separating each into its own provider is planned work, and no new vocabulary should follow
+their example.
+
+You opt a concern in by **declaring**, not by configuring, and a concern your model does not
+declare costs nothing, generates nothing and diagnoses nothing:
 
 | concern | how you opt in | what exists if you don't |
 |---|---|---|
@@ -119,16 +138,9 @@ Concretely, you opt in by **declaring**, not by configuring:
 | prompts | declare `template.*` nodes | nothing |
 | requirements | declare `requirement.*` nodes | nothing — `verify` is silent |
 
-**Vocabulary is not subtractable, and that is deliberate.** You cannot compose a registry
-without `template.*` or `index.*`, because a model authored elsewhere would then *fail to
-load* rather than degrade — forking the interchange format into dialects, which is the
-exact failure a cross-language standard exists to prevent. Registered-but-undeclared
-vocabulary costs a model nothing: no generator, runtime or migration path reads a type you
-never declare.
-
-Reduced compositions remain available to **library embedders** (`composeRegistry` with a
-subset), and ADR-0050 guarantees any reduced composition is *coherent* — no silently
-weakened types. Anything a reduced registry loads, the full bundle loads identically.
+Cross-port rules still hold. Every port registers the same default composition, and
+`expected-registry.json` is what all five byte-match, so a pack leaves the default bundle only
+by a decision recorded against that manifest, never per port.
 
 ## Two registration modes
 
@@ -652,10 +664,13 @@ overlay semantics, common patterns).
   every toolcall to declare a stub `@textRef`. A new subtype
   (`template.toolcall` with `@payloadRef` + `@toolName` required, no
   `@textRef`) is the honest fit.
-- **The semantic concept is so universal it deserves a name in the closed
-  core vocabulary.** Example: `source.rdb` is a persistence-paradigm split —
+- **The semantic concept is a structural split that needs first-class subtype
+  identity.** Example: `source.rdb` is a persistence-paradigm split —
   there will eventually be `source.kv`, `source.graph`, etc., and they all
-  need first-class subtype identity for cross-port codegen routing.
+  need first-class subtype identity for cross-port codegen routing. Where the
+  subtype lives (core or a pack) is decided by
+  [GOVERNANCE.md](../../GOVERNANCE.md#extension-packs-and-the-core-metamodel),
+  not by this list.
 - **You need load-time error detection even in a lax load.** A strict load
   (the default for every tool) refuses an undeclared `@-attr` with
   `ERR_UNKNOWN_ATTR`, so a missing provider is caught either way. A lax load
