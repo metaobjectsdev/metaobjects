@@ -12,19 +12,22 @@
 //! with a [`PatternError`]: lookaround, named groups, inline flags, backreferences, `\b`, `\p{..}`
 //! and possessive quantifiers.
 //!
-//! A match gives up and answers `false` after a fixed number of steps, or when it nests too deeply,
-//! so a pathological pattern cannot hang or overflow the stack of a caller.
+//! Matching keeps its choice points on the heap, so the call stack does not grow with the text:
+//! a text of any length matches `(a)*` or `(\w+\s?)*` without overflowing it. A match is given a
+//! step budget that grows with the length of the text, and when a pathological pattern spends it
+//! the answer is [`Outcome::GaveUp`], which is neither a match nor a mismatch. A caller must
+//! report it as its own result, so a value is never refused or accepted on a guess.
 //!
 //! This file is written by the `entity` generator into the support crate (`meta_support`)
 //! every generated model crate depends on.
 
-use std::cell::Cell;
 use std::fmt;
+use std::rc::Rc;
 
-/// The most steps one match may take before it answers `false`.
-const STEP_BUDGET: u32 = 1_000_000;
-/// The deepest nesting of group and repeat work one match may reach before it answers `false`.
-const DEPTH_LIMIT: u32 = 1_000;
+/// The steps one match may take before it gives up, whatever the length of the text.
+const STEP_BUDGET: u64 = 1_000_000;
+/// The steps a match may take in addition for each character of the text.
+const STEP_ALLOWANCE_PER_CHAR: u64 = 32;
 /// The deepest nesting of groups a pattern may have.
 const NESTING_LIMIT: u32 = 100;
 
@@ -134,18 +137,39 @@ impl Pattern {
         Ok(Pattern { alts })
     }
 
-    /// True when the whole text matches, as if the pattern were wrapped in `^(?: ... )$`.
-    pub fn is_full_match(&self, text: &str) -> bool {
+    /// Whether the whole text matches, as if the pattern were wrapped in `^(?: ... )$`.
+    pub fn outcome(&self, text: &str) -> Outcome {
         let chars: Vec<char> = text.chars().collect();
-        let matcher = Matcher { text: &chars, steps: Cell::new(0), depth: Cell::new(0) };
-        let end = chars.len();
-        self.alts.iter().any(|alt| matcher.seq(alt, 0, &|p| p == end))
+        Matcher::run(&chars, &self.alts)
+    }
+
+    /// True only when the whole text matches. False for a mismatch and for a give-up alike; use
+    /// [`Pattern::outcome`] to tell them apart.
+    pub fn is_full_match(&self, text: &str) -> bool {
+        self.outcome(text) == Outcome::Match
     }
 }
 
 /// Parses and matches in one call; a pattern that does not parse matches nothing.
+pub fn outcome(source: &str, text: &str) -> Outcome {
+    Pattern::parse(source).map_or(Outcome::NoMatch, |p| p.outcome(text))
+}
+
+/// True only when the whole text matches `source`. False for a mismatch, a give-up and a
+/// pattern that does not parse; use [`outcome`] to tell the first two apart.
 pub fn full_match(source: &str, text: &str) -> bool {
-    Pattern::parse(source).map(|p| p.is_full_match(text)).unwrap_or(false)
+    outcome(source, text) == Outcome::Match
+}
+
+/// What matching a text against a pattern came to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Outcome {
+    /// The whole text matches.
+    Match,
+    /// The whole text does not match.
+    NoMatch,
+    /// The match spent its step budget before it could tell.
+    GaveUp,
 }
 
 struct Parser {
@@ -411,35 +435,76 @@ impl Parser {
     }
 }
 
-struct Matcher<'a> {
-    text: &'a [char],
-    steps: Cell<u32>,
-    depth: Cell<u32>,
+/// What follows the node being matched: the rest of a sequence, or the next iteration of a
+/// repeat. Frames are shared, and a chain of them is as long as the pattern is nested, never as
+/// long as the text is.
+enum Cont<'a> {
+    Accept,
+    Seq { nodes: &'a [Node], next: Rc<Cont<'a>> },
+    Iter { rep: &'a Rep, count: u32, start: usize, next: Rc<Cont<'a>> },
 }
 
-impl Matcher<'_> {
-    /// Counts one step; false once the budget is spent.
-    fn tick(&self) -> bool {
-        let steps = self.steps.get();
-        if steps >= STEP_BUDGET {
-            return false;
+/// One unit of matching work, started at a text position.
+enum Work<'a> {
+    /// Match `nodes` in order, then follow the continuation.
+    Nodes(&'a [Node], Rc<Cont<'a>>),
+    /// A repeat of a multi-character node has done `count` iterations.
+    Rep { rep: &'a Rep, count: u32, next: Rc<Cont<'a>> },
+    /// A repeat of a one-character node may take any count from `lo` to `hi`; the position is
+    /// where the repeat began.
+    Counts { rest: &'a [Node], next: Rc<Cont<'a>>, lo: usize, hi: usize, lazy: bool },
+    /// Follow the continuation.
+    Resume(Rc<Cont<'a>>),
+}
+
+enum Step<'a> {
+    To(Work<'a>, usize),
+    Fail,
+    GaveUp,
+    Accept,
+}
+
+/// A backtracking matcher whose choice points live on the heap, so the depth of the call stack
+/// does not depend on the text.
+struct Matcher<'a> {
+    text: &'a [char],
+    steps: u64,
+    budget: u64,
+    stack: Vec<(Work<'a>, usize)>,
+}
+
+impl<'a> Matcher<'a> {
+    fn run(text: &'a [char], alts: &'a [Vec<Node>]) -> Outcome {
+        let mut m = Matcher {
+            text,
+            steps: 0,
+            budget: STEP_BUDGET + STEP_ALLOWANCE_PER_CHAR * text.len() as u64,
+            stack: Vec::new(),
+        };
+        let accept = Rc::new(Cont::Accept);
+        for alt in alts.iter().rev() {
+            m.stack.push((Work::Nodes(alt, accept.clone()), 0));
         }
-        self.steps.set(steps + 1);
-        true
+        while let Some((mut work, mut pos)) = m.stack.pop() {
+            loop {
+                if !m.spend(1) {
+                    return Outcome::GaveUp;
+                }
+                match m.step(work, pos) {
+                    Step::To(w, p) => (work, pos) = (w, p),
+                    Step::Fail => break,
+                    Step::GaveUp => return Outcome::GaveUp,
+                    Step::Accept => return Outcome::Match,
+                }
+            }
+        }
+        Outcome::NoMatch
     }
 
-    /// Counts one step and one level of nesting; false when either limit is reached.
-    fn enter(&self) -> bool {
-        let depth = self.depth.get();
-        if depth >= DEPTH_LIMIT || !self.tick() {
-            return false;
-        }
-        self.depth.set(depth + 1);
-        true
-    }
-
-    fn leave(&self) {
-        self.depth.set(self.depth.get() - 1);
+    /// Charges `n` steps; false once the budget is spent.
+    fn spend(&mut self, n: usize) -> bool {
+        self.steps = self.steps.saturating_add(n as u64);
+        self.steps <= self.budget
     }
 
     fn is_single(node: &Node) -> bool {
@@ -459,62 +524,88 @@ impl Matcher<'_> {
         }
     }
 
-    /// Matches `nodes` at `pos`, then calls `k` with the position after them.
-    fn seq(&self, nodes: &[Node], pos: usize, k: &dyn Fn(usize) -> bool) -> bool {
-        if !self.enter() {
-            return false;
-        }
-        let result = match nodes.split_first() {
-            None => k(pos),
-            Some((first, rest)) => self.node(first, pos, &|p| self.seq(rest, p, k)),
-        };
-        self.leave();
-        result
-    }
-
-    fn node(&self, node: &Node, pos: usize, k: &dyn Fn(usize) -> bool) -> bool {
-        match node {
-            Node::Start => pos == 0 && k(pos),
-            Node::End => pos == self.text.len() && k(pos),
-            Node::Group(alts) => alts.iter().any(|alt| self.seq(alt, pos, k)),
-            Node::Repeat(rep) => self.repeat(rep, pos, k),
-            _ => self.single(node, pos) && k(pos + 1),
-        }
-    }
-
-    fn repeat(&self, rep: &Rep, pos: usize, k: &dyn Fn(usize) -> bool) -> bool {
-        if !Self::is_single(&rep.node) {
-            return self.rep_more(rep, 0, pos, k);
-        }
-        let mut avail = 0;
-        while below(rep.max.map(|m| m as usize), avail) && self.single(&rep.node, pos + avail) {
-            avail += 1;
-        }
-        let min = rep.min as usize;
-        if avail < min {
-            return false;
-        }
-        let counts: Vec<usize> =
-            if rep.lazy { (min..=avail).collect() } else { (min..=avail).rev().collect() };
-        counts.into_iter().any(|n| self.tick() && k(pos + n))
-    }
-
-    /// Repeats a multi-character node; `count` iterations are done and the next starts at `pos`.
-    fn rep_more(&self, rep: &Rep, count: u32, pos: usize, k: &dyn Fn(usize) -> bool) -> bool {
-        if !self.enter() {
-            return false;
-        }
-        let can_more = below(rep.max, count);
-        let more = || {
-            can_more
-                && self.node(&rep.node, pos, &|p| {
+    fn step(&mut self, work: Work<'a>, pos: usize) -> Step<'a> {
+        match work {
+            Work::Nodes(nodes, next) => match nodes.split_first() {
+                None => Step::To(Work::Resume(next), pos),
+                Some((first, rest)) => self.node(first, rest, next, pos),
+            },
+            Work::Rep { rep, count, next } => {
+                let more = below(rep.max, count).then(|| {
+                    let iter = Cont::Iter { rep, count, start: pos, next: next.clone() };
+                    Work::Nodes(std::slice::from_ref(&*rep.node), Rc::new(iter))
+                });
+                let done = (count >= rep.min).then_some(Work::Resume(next));
+                let (first, second) = if rep.lazy { (done, more) } else { (more, done) };
+                if let Some(work) = second {
+                    self.stack.push((work, pos));
+                }
+                first.map_or(Step::Fail, |work| Step::To(work, pos))
+            }
+            Work::Counts { rest, next, lo, hi, lazy } => {
+                let take = if lazy { lo } else { hi };
+                if lo < hi {
+                    let (lo, hi) = if lazy { (lo + 1, hi) } else { (lo, hi - 1) };
+                    self.stack.push((Work::Counts { rest, next: next.clone(), lo, hi, lazy }, pos));
+                }
+                Step::To(Work::Nodes(rest, next), pos + take)
+            }
+            Work::Resume(next) => match &*next {
+                Cont::Accept if pos == self.text.len() => Step::Accept,
+                Cont::Accept => Step::Fail,
+                Cont::Seq { nodes, next } => Step::To(Work::Nodes(nodes, next.clone()), pos),
+                Cont::Iter { rep, count, start, next } => {
                     // An iteration that consumed nothing and is past the minimum adds nothing.
-                    (p != pos || count < rep.min) && self.rep_more(rep, count + 1, p, k)
-                })
-        };
-        let done = || count >= rep.min && k(pos);
-        let result = if rep.lazy { done() || more() } else { more() || done() };
-        self.leave();
-        result
+                    if pos == *start && *count >= rep.min {
+                        Step::Fail
+                    } else {
+                        Step::To(Work::Rep { rep, count: count + 1, next: next.clone() }, pos)
+                    }
+                }
+            },
+        }
+    }
+
+    fn node(
+        &mut self,
+        node: &'a Node,
+        rest: &'a [Node],
+        next: Rc<Cont<'a>>,
+        pos: usize,
+    ) -> Step<'a> {
+        match node {
+            Node::Start if pos == 0 => Step::To(Work::Nodes(rest, next), pos),
+            Node::End if pos == self.text.len() => Step::To(Work::Nodes(rest, next), pos),
+            Node::Start | Node::End => Step::Fail,
+            Node::Group(alts) => {
+                let after = Rc::new(Cont::Seq { nodes: rest, next });
+                for alt in alts.iter().skip(1).rev() {
+                    self.stack.push((Work::Nodes(alt, after.clone()), pos));
+                }
+                alts.first().map_or(Step::Fail, |alt| Step::To(Work::Nodes(alt, after), pos))
+            }
+            Node::Repeat(rep) if Self::is_single(&rep.node) => {
+                let mut avail = 0;
+                while below(rep.max.map(|m| m as usize), avail)
+                    && self.single(&rep.node, pos + avail)
+                {
+                    avail += 1;
+                }
+                let lo = rep.min as usize;
+                if !self.spend(avail) {
+                    return Step::GaveUp;
+                }
+                if avail < lo {
+                    return Step::Fail;
+                }
+                Step::To(Work::Counts { rest, next, lo, hi: avail, lazy: rep.lazy }, pos)
+            }
+            Node::Repeat(rep) => {
+                let next = Rc::new(Cont::Seq { nodes: rest, next });
+                Step::To(Work::Rep { rep, count: 0, next }, pos)
+            }
+            _ if self.single(node, pos) => Step::To(Work::Nodes(rest, next), pos + 1),
+            _ => Step::Fail,
+        }
     }
 }

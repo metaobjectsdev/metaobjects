@@ -109,7 +109,11 @@ model the value breaks: lengths, bounds, item counts, patterns, text forms, the 
 object and, on a create body, the model's rules across members (`validator.comparison`,
 `requiredWhen`, `presentIff`, `atLeastOne`, `exactlyOne`). A `validator.regex` pattern is matched by a
 small matcher the support crate carries, so no regex crate is needed; a pattern outside what that
-matcher supports is refused when you generate, not at run time.
+matcher supports is refused when you generate, not at run time. The matcher keeps its choice points on
+the heap, so a text of any length matches a repeated group such as `^(\w+\s?)*$` without overflowing
+the stack. Each match has a step budget that grows with the text, and a pathological pattern that
+spends it reports its own violation, `'field' pattern could not be evaluated within limits`, never
+the ordinary mismatch.
 
 The project's `wire.nullMembers` setting is honored: `omit` leaves a `None` member out of the JSON,
 and the default writes `null`, which is what `serde` does on its own
@@ -130,9 +134,9 @@ let api = meta_client::Client::new("https://example.test/api");
 let orders = shop_client::OrderClient::new(&api);
 
 let query = shop_client::OrderQuery::new()
-    .title_like("%bike%")
-    .total_gte(&"10.00".parse()?)
-    .sort(shop_client::OrderSort::Title, meta_client::Direction::Ascending)
+    .status_eq(shop::OrderStatus::InFlight)
+    .total_gte(1250)
+    .sort(shop_client::OrderSort::Total, meta_client::Direction::Descending)
     .limit(20);
 let rows: Vec<shop::Order> = orders.list(&query).await?;
 let page = orders.page(&query).await?;          // rows and the total the filters match
@@ -175,9 +179,9 @@ let answer = shop_cli::run(app.command, &api).await?;   // a serde_json::Value t
 ```
 
 ```bash
-app order list --filter title:like=%bike% --sort title:asc --limit 20 --count
-app order create --json '{"title":"A bike"}' --total 12.50
-app order update 7 --title "A better bike"
+app order list --filter status=IN_FLIGHT --filter total:gte=1250 --sort total:desc --limit 20 --count
+app order create --json "$(cat order.json)" --total 1250
+app order update 7 --status done --total 1500
 ```
 
 `list` checks `--filter` and `--sort` against the same allowlists the typed client is built from.

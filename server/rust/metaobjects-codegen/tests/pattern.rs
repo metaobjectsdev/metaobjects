@@ -1,6 +1,6 @@
 //! The full-match pattern matcher that generated crates carry for `validator.regex`.
 
-use metaobjects_codegen::emitted::pattern::{Pattern, PatternError, full_match};
+use metaobjects_codegen::emitted::pattern::{Outcome, Pattern, PatternError, full_match, outcome};
 use std::time::{Duration, Instant};
 
 /// Each row is a pattern, the texts it must accept and the texts it must reject.
@@ -207,13 +207,13 @@ fn empty_loops_terminate() {
 }
 
 #[test]
-fn pathological_patterns_stop_at_the_step_budget() {
+fn pathological_patterns_give_up_instead_of_answering() {
     let start = Instant::now();
     let text = "a".repeat(64);
-    assert!(!full_match("(a*)*b", &text));
-    assert!(!full_match("(a|a)*b", &text));
-    assert!(!full_match("(a+)+b", &text));
-    assert!(!full_match("((a*)*)*b", &text));
+    for pattern in ["(a*)*b", "(a|a)*b", "(a+)+b", "((a*)*)*b"] {
+        assert_eq!(outcome(pattern, &text), Outcome::GaveUp, "{pattern}");
+        assert!(!full_match(pattern, &text), "{pattern}");
+    }
     assert!(
         start.elapsed() < Duration::from_secs(10),
         "budget did not stop the match"
@@ -221,20 +221,68 @@ fn pathological_patterns_stop_at_the_step_budget() {
 }
 
 #[test]
+fn a_give_up_is_neither_a_match_nor_a_mismatch() {
+    assert_eq!(
+        outcome("(a+)+b", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab"),
+        Outcome::Match
+    );
+    assert_eq!(outcome("(a+)+b", "bb"), Outcome::NoMatch);
+    assert_eq!(outcome("(a+)+b", &"a".repeat(64)), Outcome::GaveUp);
+    assert_eq!(outcome("(", "a"), Outcome::NoMatch);
+}
+
+#[test]
 fn long_inputs_do_not_overflow_the_stack() {
     let text = "a".repeat(200_000);
-    assert!(full_match("a*", &text));
-    assert!(full_match(".*", &text));
-    assert!(full_match("[a-z]+", &text));
-    assert!(!full_match("(a)*", &text));
-    assert!(!full_match("(ab)*", &"ab".repeat(100_000)));
+    assert_eq!(outcome("a*", &text), Outcome::Match);
+    assert_eq!(outcome(".*", &text), Outcome::Match);
+    assert_eq!(outcome("[a-z]+", &text), Outcome::Match);
+    assert_eq!(outcome("(a)*", &text), Outcome::Match);
+    assert_eq!(outcome("(?:a|b)+", &text), Outcome::Match);
+    assert_eq!(outcome("(ab)*", &"ab".repeat(100_000)), Outcome::Match);
+    assert_eq!(outcome("(ab)*", &format!("{text}b")), Outcome::NoMatch);
+    let words = "word ".repeat(40_000);
+    assert_eq!(outcome(r"(\w+\s?)*", &words), Outcome::Match);
+    assert_eq!(outcome(r"(\w+\s)*", &format!("{words}!")), Outcome::NoMatch);
     let deep = format!("{}a{}", "(".repeat(5_000), ")".repeat(5_000));
     assert!(Pattern::parse(&deep).is_err());
     assert!(!full_match(&deep, "a"));
 }
 
 #[test]
+fn a_few_hundred_characters_match_a_repeated_group() {
+    let sentence = "the quick brown fox jumps over the lazy dog ".repeat(10);
+    assert_eq!(outcome(r"^(\w+\s?)*$", &sentence), Outcome::Match);
+    assert_eq!(outcome("^(a)*$", &"a".repeat(500)), Outcome::Match);
+}
+
+#[test]
 fn moderate_group_repeats_still_match() {
     assert!(full_match("(ab)*", &"ab".repeat(100)));
     assert!(full_match("(?:a|b)+", &"ab".repeat(100)));
+}
+
+#[test]
+fn validate_reports_a_give_up_as_its_own_violation() {
+    use metaobjects_codegen::emitted::validation::{self, RULE_REGEX};
+
+    let mut out = Vec::new();
+    validation::pattern(&mut out, "code", Some("bb"), "(a+)+b");
+    assert_eq!(out.len(), 1);
+    assert_eq!(out[0].rule, RULE_REGEX);
+    assert_eq!(out[0].message, "'code' does not match required pattern");
+
+    let mut out = Vec::new();
+    validation::pattern(&mut out, "code", Some(&"a".repeat(64)), "(a+)+b");
+    assert_eq!(out.len(), 1);
+    assert_eq!(out[0].rule, RULE_REGEX);
+    assert_eq!(
+        out[0].message,
+        "'code' pattern could not be evaluated within limits"
+    );
+
+    let mut out = Vec::new();
+    validation::pattern(&mut out, "code", Some("aab"), "(a+)+b");
+    validation::pattern(&mut out, "code", None, "(a+)+b");
+    assert!(out.is_empty());
 }

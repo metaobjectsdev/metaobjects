@@ -148,10 +148,21 @@ pub fn range<T>(
     }
 }
 
-/// A string matches the model's pattern from its first character to its last.
+/// A string matches the model's pattern from its first character to its last. A match that
+/// spends its step budget is reported as its own violation, never as a mismatch.
 pub fn pattern(out: &mut Vec<Violation>, field: &str, value: Option<&str>, pattern: &str) {
-    if value.is_some_and(|value| !super::pattern::full_match(pattern, value)) {
-        fail(out, field, RULE_REGEX, &format!("'{field}' does not match required pattern"));
+    let Some(value) = value else { return };
+    match super::pattern::outcome(pattern, value) {
+        super::pattern::Outcome::Match => {}
+        super::pattern::Outcome::NoMatch => {
+            fail(out, field, RULE_REGEX, &format!("'{field}' does not match required pattern"));
+        }
+        super::pattern::Outcome::GaveUp => fail(
+            out,
+            field,
+            RULE_REGEX,
+            &format!("'{field}' pattern could not be evaluated within limits"),
+        ),
     }
 }
 

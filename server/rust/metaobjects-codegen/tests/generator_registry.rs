@@ -21,7 +21,6 @@ const REGISTRY: &str =
 const PORT: &str = "rust";
 /// How the crate is spelled in a path.
 const CRATE: &str = "metaobjects_codegen";
-const LIB_RS: &str = include_str!("../src/lib.rs");
 
 fn registry() -> Value {
     serde_json::from_str(REGISTRY).expect("the registry is JSON")
@@ -114,6 +113,21 @@ fn modules_named(line: &str) -> Vec<&str> {
     found
 }
 
+/// The engine modules the crate exports. Each `use` is a compile-time probe: a module the crate
+/// does not export fails the build of this test.
+fn exported_engine_modules() -> BTreeSet<&'static str> {
+    macro_rules! exported {
+        ($($module:ident),* $(,)?) => {{
+            $(
+                #[allow(unused_imports)]
+                use metaobjects_codegen::$module;
+            )*
+            BTreeSet::from([$(stringify!($module)),*])
+        }};
+    }
+    exported!(emitted, generator, names, plan, writer)
+}
+
 #[test]
 fn depth_an_owned_copy_names_nothing_outside_the_engine_surface() {
     let registry = registry();
@@ -132,14 +146,11 @@ fn depth_an_owned_copy_names_nothing_outside_the_engine_surface() {
                 .unwrap_or_else(|| panic!("{path} is not a module of {CRATE}"))
         })
         .collect();
-    for module in &engine {
-        assert!(
-            LIB_RS
-                .lines()
-                .any(|l| l.trim() == format!("pub mod {module};")),
-            "the registry names the engine module {module}, which the crate does not export"
-        );
-    }
+    assert_eq!(
+        engine,
+        exported_engine_modules(),
+        "the registry's engine surface and the modules the crate exports differ; edit both together"
+    );
     for r in REFERENCES {
         assert!(
             !engine.contains(r.module),

@@ -195,7 +195,10 @@ so they are not re-derived.
    `validation-conformance` corpus. Rules across members run on a create body only, because a
    patch does not carry the members they compare. `validator.regex` is matched by a small matcher
    the support crate carries (the repository forbids a regex dependency), and a pattern outside
-   what it supports is refused at generation, never at run time.
+   what it supports is refused at generation, never at run time. The matcher keeps its choice
+   points on the heap, so the call stack does not grow with the text. A match that spends its step
+   budget (which grows with the text) is a give-up, reported by `validate()` as its own violation,
+   never as a mismatch and never as a match.
 
 **`client` and `commands`.**
 
