@@ -24,7 +24,7 @@ _No structural children._
 
 ### binding.rest
 
-The HTTP method and path of an operation, declared only to override the derived ones. A query is `GET`, a command `POST`; the path is `/<collection>/{id}/<operation-kebab>` for an operation with a target key and `/<collection>/<operation-kebab>` without one (setting `api.operationPaths` chooses the `:verb` style). Most models never write it. Experimental since 1.3.0: the shape may change in a MINOR, including removals and renames (docs/compatibility-policy.md).
+The HTTP method and path of an operation, declared only to override the derived ones. A query is `GET`, a command `POST`; the path is `/<collection>/{id}/<operation-kebab>` for an operation with a target key and `/<collection>/<operation-kebab>` without one. Most models never write it. Experimental since 1.3.0: the shape may change in a MINOR, including removals and renames (docs/compatibility-policy.md).
 
 **When to use:** An operation must keep a method or path the derived one would not give it, such as an existing public URL.
 
