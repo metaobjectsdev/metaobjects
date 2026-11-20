@@ -1068,6 +1068,7 @@ an int-backed enum carries `dbValue()` and `fromDbValue(int)`, and the payload t
 | Migrations | TS-only (`@metaobjectsdev/cli migrate`) — the Java migration engine and the OMDB runtime auto-create path were both removed (ADR-0015); apply the TS-produced DDL to the database |
 | Drift verify | `Verify.check` / `Verify.checkOutputPrompt` (prompts). Live-DB schema-drift verification is part of the TS migration toolchain |
 | Requirement gate + requirement tests | Yes (`mvn metaobjects:verify`, on every run; `JUnitRequirementTestsGenerator` emits JUnit Jupiter and is ejectable) |
+| Business-rules gate (ADR-0066, experimental) | Yes (`mvn metaobjects:verify`, on every run; see [business rules](../features/business-rules.md)) |
 | Runtime metadata | Full — OMDB ObjectManager |
 | REST controller codegen | Spring Web MVC — `metaobjects-codegen-spring` (FR-008 §2.1) |
 

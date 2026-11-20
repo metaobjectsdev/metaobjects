@@ -65,8 +65,8 @@ Rules of the contract:
   each selected mode runs and the **exit code is non-zero if *any* mode reports
   drift**.
 - **Bare `verify` runs the same default gate set in every port: codegen drift,
-  prompt templates and the requirement ledger.** `--db`, `--deps` and `--replay`
-  stay opt-in. A gate the run has no configuration for is skipped with a one-line
+  prompt templates, the requirement ledger and the business-rules gate.** `--db`, `--deps`
+  and `--replay` stay opt-in. A gate the run has no configuration for is skipped with a one-line
   note, never failed: Node `meta` needs a `metaobjects.config.ts` for codegen (a config that
   exists but fails to load is not a missing config: it exits 2 with the load error);
   `metaobjects verify` needs a `metaobjects.config.yaml` or `--prompts <dir>` for
@@ -167,6 +167,12 @@ Rules of the contract:
   [`fixtures/requirement-check-conformance/`](../../fixtures/requirement-check-conformance/README.md).
   The seven requirement *authoring-lint* advisories are still printed by the Node `meta`
   only. See [requirements.md](requirements.md#the-gate-in-every-port).
+- **The business-rules gate runs on every `verify`, in every port**
+  ([ADR-0066](../../spec/decisions/ADR-0066-business-rules-operations-and-lifecycles.md)).
+  It is not a subverb and nothing mutes it. A model with no operation and no transition gets no
+  line. A model with one gets a summary line, and an error-severity finding exits non-zero. The
+  codes, settings and the checks are in [business-rules.md](business-rules.md#what-verify-reports).
+  Rust has no `verify`, so the gate does not run there.
 
 ### The prompt directory: `--prompts` everywhere (F101)
 
@@ -667,7 +673,8 @@ meta gen --format json      → { gen[], summary, help[], antiPatterns: { status
 meta verify --format json   → { verify[], exitCode, summary, help[],
                                 antiPatterns: { status, total, rows[] },
                                 requirements: { status, total, rows[] },
-                                requirementCounts?, schemaDrift?, notRepresented[] }
+                                requirementCounts?, rules?: { status, total, rows[] },
+                                rulesCounts?, schemaDrift?, notRepresented[] }
 ```
 
 A pass that did **not** run says so (`status: "skipped"` with a `note` giving the

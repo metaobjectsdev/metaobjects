@@ -72,7 +72,8 @@ organisational and never reference the model.
 `template.*`**. A declared prompt is a model node realising a capability in the same sense
 an entity is — and it is the one most in need of a status, because a retired prompt leaves
 no table behind to notice. L5 names a member of one: a field, a view, a validator, an
-identity, or a template's child.
+identity, a template's child, an operation of an `api.operational`, or a transition of a
+lifecycle ([business rules](business-rules.md)).
 
 ```jsonc
 { "requirement.functional": {

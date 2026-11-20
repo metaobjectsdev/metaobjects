@@ -1150,6 +1150,7 @@ generated code), and no `migrate` surface (schema is TypeScript-owned).
 | Drift verify | `dotnet meta verify` (template drift, FR-004; `--codegen` regenerates the list in `codegen/Generators.cs` and diffs it) |
 | API reference docs | Yes — the `ApiDocsGenerator` entry in `codegen/Generators.cs` (`OutDir`, `ApiSubDir`, `ProjectName`, `ModelBaseUrl`); `dotnet meta docs` was removed in 1.1.0 ([migration](../features/migrations/docs-are-generators.md#c)) |
 | Requirement gate + requirement tests | Yes (`dotnet meta verify`, on every run; `requirement-tests` emits xUnit and is ejectable) |
+| Business-rules gate (ADR-0066, experimental) | Yes (`dotnet meta verify`, on every run; see [business rules](../features/business-rules.md)) |
 | Runtime metadata | Loader API + render engine; ObjectManager-style runtime tier on the roadmap |
 
 ## Conformance status
