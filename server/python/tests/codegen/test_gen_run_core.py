@@ -12,6 +12,7 @@ import pytest
 
 from metaobjects.cli import main
 from metaobjects.codegen import overwrite_policy
+from tests.codegen.manifest_helpers import read_manifest
 from tests.codegen.config_helpers import as_config
 from tests.codegen.gen_suite import GEN_SUITE
 
@@ -49,8 +50,8 @@ def manifest_writes(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
 
 def _manifest(tmp_path: Path) -> dict[str, object]:
-    [path] = list(tmp_path.rglob(".hashes.json"))
-    return json.loads(path.read_text())
+    [state] = {p.parent for p in tmp_path.rglob(".hashes") if p.is_dir()}
+    return read_manifest(state)
 
 
 def test_a_run_writes_the_manifest_once(tmp_path: Path, manifest_writes: list[str]) -> None:
@@ -65,10 +66,11 @@ def test_a_run_writes_the_manifest_once(tmp_path: Path, manifest_writes: list[st
     # Two files regenerate and are recorded again: still one write. (Deleting a file
     # alone is not enough: it regenerates to the hash already recorded, which writes
     # nothing.)
-    [path] = list(tmp_path.rglob(".hashes.json"))
-    trimmed = {k: v for k, v in recorded.items() if k not in ("out/Program.py", "out/Week.py")}
-    assert len(trimmed) == len(recorded) - 2
-    path.write_text(json.dumps(trimmed))
+    gone = ("out/Program.py", "out/Week.py")
+    for path in tmp_path.rglob(".hashes/*.json"):
+        kept = {k: v for k, v in json.loads(path.read_text()).items() if k not in gone}
+        path.write_text(json.dumps(kept))
+    assert len(_manifest(tmp_path)) == len(recorded) - 2
     (out / "Program.py").unlink()
     (out / "Week.py").unlink()
     manifest_writes.clear()

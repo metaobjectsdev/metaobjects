@@ -1,0 +1,171 @@
+"""ADR-0064 Amendment 1: the hash manifest is one file per model package.
+
+Runs the shared vectors (``fixtures/codegen-skip-conformance/manifests.json``) against the
+Python manifest store, plus the file-level separation, the read-only guarantee and an end-to-end
+multi-package ``gen``.
+"""
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+
+import pytest
+
+from metaobjects.cli import main
+from metaobjects.codegen import overwrite_policy as op
+from metaobjects.codegen.overwrite_policy import (
+    HashManifest,
+    has_hash_manifest,
+    package_file_name,
+    place_entry,
+    set_placement_objects,
+)
+from tests.codegen.config_helpers import as_config
+from tests.codegen.gen_suite import GEN_SUITE
+from tests.codegen.manifest_helpers import manifest_files, read_manifest
+
+VECTORS = json.loads(
+    (Path(__file__).parents[4] / "fixtures" / "codegen-skip-conformance" / "manifests.json").read_text()
+)
+OBJECTS = [(o["name"], o["package"]) for o in VECTORS["objects"]]
+
+
+@pytest.mark.parametrize("case", VECTORS["fileNames"], ids=lambda c: c["file"])
+def test_file_names(case: dict) -> None:
+    assert package_file_name(case["package"]) == case["file"]
+
+
+@pytest.mark.parametrize("case", VECTORS["placement"], ids=lambda c: f'{c["path"]}->{c["package"]}')
+def test_placement(case: dict) -> None:
+    entry = case.get("entry", "h")
+    package = place_entry(case["path"], entry, OBJECTS)
+    assert package == case["package"]
+
+
+def _state(tmp_path: Path) -> Path:
+    state = tmp_path / ".metaobjects" / ".gen-state"
+    state.mkdir(parents=True)
+    return state
+
+
+def test_legacy_split(tmp_path: Path) -> None:
+    split = VECTORS["legacySplit"]
+    state = _state(tmp_path)
+    gitignore = state.parent / ".gitignore"
+    gitignore.write_text(split["gitignoreBefore"])
+    (state / ".hashes.json").write_text(json.dumps(split["legacy"]))
+    set_placement_objects(str(state), OBJECTS)
+
+    session = HashManifest(str(state))
+    assert session.dirty, "a run that finds a legacy manifest always saves"
+    session.save()
+
+    assert {n: c for n, c in manifest_files(state).items()} == split["files"]
+    assert (state / ".hashes" / split["goldenFile"]).read_text() == split["goldenText"]
+    assert not (state / ".hashes.json").exists()
+    assert gitignore.read_text() == split["gitignoreAfter"]
+
+    before = {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in (state / ".hashes").glob("*.json")}
+    again = HashManifest(str(state))
+    assert not again.dirty
+    again.dirty = True
+    again.save()
+    after = {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in (state / ".hashes").glob("*.json")}
+    assert after == before, "a second identical write changes no file"
+
+
+def test_different_packages_different_files(tmp_path: Path) -> None:
+    state = _state(tmp_path)
+    set_placement_objects(str(state), OBJECTS)
+    m = HashManifest(str(state))
+    m.record("gen/Order.ts", "a")
+    m.record("gen/Customer.ts", "b")
+    m.record("gen/index.ts", "c")
+    m.save()
+    files = manifest_files(state)
+    assert sorted(files) == [".root.json", "acme.crm.json", "acme.shop.json"]
+
+    paths = {n: state / ".hashes" / n for n in files}
+    for p in paths.values():
+        os.utime(p, (1, 1))
+    crm_bytes = paths["acme.crm.json"].read_bytes()
+
+    m = HashManifest(str(state))
+    m.record("gen/Order.ts", "changed")  # package A only
+    m.save()
+    assert paths["acme.shop.json"].stat().st_mtime != 1
+    assert paths["acme.crm.json"].stat().st_mtime == 1
+    assert paths[".root.json"].stat().st_mtime == 1
+    assert paths["acme.crm.json"].read_bytes() == crm_bytes
+
+    # A no-op save writes nothing.
+    m = HashManifest(str(state))
+    for p in paths.values():
+        os.utime(p, (2, 2))
+    m.record("gen/Order.ts", op.content_hash("changed"))  # a different value: dirty
+    m.dirty = False
+    m.save()
+    assert all(p.stat().st_mtime == 2 for p in paths.values())
+
+    # Removing a package's last entry deletes its file.
+    raw = read_manifest(state)
+    del raw["gen/Customer.ts"]
+    op._save_hashes(str(state), {k: op._entry_hash(v) or "" for k, v in raw.items()})
+    assert not paths["acme.crm.json"].exists()
+    assert paths["acme.shop.json"].exists()
+
+
+def test_empty_manifest_keeps_the_root_file(tmp_path: Path) -> None:
+    state = _state(tmp_path)
+    set_placement_objects(str(state), OBJECTS)
+    m = HashManifest(str(state))
+    m.record("gen/Order.ts", "a")
+    m.save()
+    op._save_hashes(str(state), {})
+    assert manifest_files(state) == {".root.json": {}}
+    assert has_hash_manifest(str(state))
+
+
+def test_read_only_load_migrates_nothing(tmp_path: Path) -> None:
+    state = _state(tmp_path)
+    legacy = state / ".hashes.json"
+    legacy.write_text(json.dumps({"gen/Order.ts": "h1"}))
+    os.utime(legacy, (1, 1))
+    assert has_hash_manifest(str(state))
+    assert op.read_generated_hash(str(state), "gen/Order.ts") == "h1"
+    assert legacy.read_bytes() == json.dumps({"gen/Order.ts": "h1"}).encode()
+    assert legacy.stat().st_mtime == 1
+    assert not (state / ".hashes").exists()
+
+
+def test_union_prefers_package_files_over_the_legacy_file(tmp_path: Path) -> None:
+    state = _state(tmp_path)
+    (state / ".hashes").mkdir()
+    (state / ".hashes.json").write_text(json.dumps({"a": "old", "b": "legacy"}))
+    (state / ".hashes" / "x.json").write_text(json.dumps({"a": "new"}))
+    assert op.read_generated_hash(str(state), "a") == "new"
+    assert op.read_generated_hash(str(state), "b") == "legacy"
+
+
+def test_gen_on_a_multi_package_model_writes_one_manifest_per_package(tmp_path: Path) -> None:
+    meta = tmp_path / "metaobjects"
+    meta.mkdir()
+    for pkg, name in (("shop", "Order"), ("crm", "Customer")):
+        (meta / f"meta.{pkg}.json").write_text(json.dumps({"metadata.root": {
+            "package": f"acme::{pkg}",
+            "children": [{"object.entity": {"name": name, "children": [
+                {"field.long": {"name": "id"}}, {"field.string": {"name": "title"}}]}}],
+        }}))
+    out = tmp_path / "gen"
+    assert main(as_config(["gen", "--generators", GEN_SUITE, str(meta), "--out", str(out)])) == 0
+    state = tmp_path / ".metaobjects" / ".gen-state"
+    files = manifest_files(state)
+    assert "acme.shop.json" in files and "acme.crm.json" in files
+    assert all(k.endswith(("Order.py", "Order.json")) or "Order" in os.path.basename(k)
+               for k in files["acme.shop.json"])
+    assert all("Customer" in os.path.basename(k) for k in files["acme.crm.json"])
+    assert not (state / ".hashes.json").exists()
+    # Each key is recorded exactly once across the files.
+    keys = [k for entries in files.values() for k in entries]
+    assert len(keys) == len(set(keys))

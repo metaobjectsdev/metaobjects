@@ -15,7 +15,7 @@
 // so the next run failed identically. Requirement-test stubs were the worst case,
 // being worthless until hand-edited.
 //
-// The discriminator is `.gen-state/.hashes.json`, which records what the GENERATOR
+// The discriminator is the manifest under `.gen-state/.hashes/`, which records what the GENERATOR
 // WROTE rather than what the file became, and is the committed half of `.gen-state`
 // precisely so this is answerable on a machine that did not generate the output.
 // When a fresh regen hashes to what we recorded writing, the generator's

@@ -10,6 +10,7 @@
 // exists but lacks a path ⇒ per-file naming, because there the file IS the
 // information. Self-extinguishing either way.
 
+import { manifestExists } from "./support/manifest.js";
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -57,8 +58,9 @@ function dropBodiesOnly(): void {
   const walk = (dir: string): void => {
     for (const e of readdirSync(dir)) {
       const full = join(dir, e);
+      if (e === ".hashes") continue; // the manifest directory is what a clone keeps
       if (statSync(full).isDirectory()) { walk(full); rmSync(full, { recursive: true, force: true }); }
-      else if (e !== ".hashes.json" && e !== ".engine.json") rmSync(full, { force: true });
+      else if (e !== ".engine.json") rmSync(full, { force: true });
     }
   };
   walk(genStateDir());
@@ -94,7 +96,7 @@ describe("no manifest at all — the upgrade path", () => {
     const msg = result.warnings[0]!;
     expect(msg).toContain(`${refused.length} existing file(s)`);
     expect(msg).toContain("--baseline=fresh");
-    expect(msg).toContain(".hashes.json");
+    expect(msg).toContain(".hashes/");
     // Names some files so it is actionable, without pasting all of them.
     expect(msg).toContain("Post.ts");
   });
@@ -147,6 +149,6 @@ describe("a migrated project", () => {
     const result = await gen();
     expect(result.files.some((f) => f.status === "refused")).toBe(false);
     expect(result.warnings.filter((w) => w.includes("Refused"))).toEqual([]);
-    expect(existsSync(join(genStateDir(), ".hashes.json"))).toBe(true);
+    expect(manifestExists(genStateDir())).toBe(true);
   });
 });

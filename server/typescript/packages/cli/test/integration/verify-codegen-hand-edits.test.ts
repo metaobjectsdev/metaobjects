@@ -10,7 +10,7 @@
  * the edit again, so the next verify failed identically. An unbreakable loop for
  * anyone doing the sanctioned thing.
  *
- * The discriminator is `.gen-state/.hashes.json`, which records what the GENERATOR
+ * The discriminator is `.gen-state/.hashes/`, which records what the GENERATOR
  * WROTE (not what the file became) and is committed while the snapshot bodies are
  * not — the split exists so this question is answerable on a machine that did not
  * generate the output.
@@ -20,6 +20,7 @@ import {
   cpSync,
   mkdtempSync,
   mkdirSync,
+  readdirSync,
   rmSync,
   writeFileSync,
   readFileSync,
@@ -325,9 +326,9 @@ describe("meta verify --codegen — hand-edited generated output", () => {
       expect(await run(["gen", "--cwd", root])).toBe(0);
 
       // No manifest ⇒ nothing is proven ⇒ the old, conservative verdict stands.
-      const manifest = join(root, ".metaobjects", ".gen-state", ".hashes.json");
+      const manifest = join(root, ".metaobjects", ".gen-state", ".hashes");
       expect(existsSync(manifest)).toBe(true);
-      rmSync(manifest);
+      rmSync(manifest, { recursive: true, force: true });
 
       out = []; err = [];
       const exit = await run(["verify", "--cwd", root, "--codegen"]);
@@ -419,10 +420,12 @@ describe("meta verify --codegen — hand edits are visible", () => {
       weakenValidator(root);
       // Simulate the clone: keep only the committed half of .gen-state.
       const genState = join(root, ".metaobjects", ".gen-state");
-      const hashes = readFileSync(join(genState, ".hashes.json"), "utf8");
+      const hashes = Object.fromEntries(
+        readdirSync(join(genState, ".hashes")).map((n) => [n, readFileSync(join(genState, ".hashes", n), "utf8")]),
+      );
       rmSync(genState, { recursive: true, force: true });
-      mkdirSync(genState, { recursive: true });
-      writeFileSync(join(genState, ".hashes.json"), hashes);
+      mkdirSync(join(genState, ".hashes"), { recursive: true });
+      for (const [n, text] of Object.entries(hashes)) writeFileSync(join(genState, ".hashes", n), text);
 
       out = []; err = [];
       expect(await run(["verify", "--cwd", root, "--codegen"])).toBe(0);

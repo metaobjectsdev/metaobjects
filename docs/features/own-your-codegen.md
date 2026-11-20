@@ -453,7 +453,7 @@ are in:
   they touch the same lines.
 - **Anywhere else** — a fresh clone, a teammate's checkout, CI — the snapshot bodies are
   gitignored and absent, so there is nothing to merge against. What *is* committed is
-  `.gen-state/.hashes.json`, one hash per generated path. That is enough to tell a file
+  `.gen-state/.hashes/`, one hash per generated path. That is enough to tell a file
   nobody has touched (safe to regenerate) from one carrying an edit, and an edited file
   is **refused with its path named** rather than overwritten. On TypeScript, Python and
   C# a refusal fails the run (exit 1); on Java and Kotlin it is a warning.
@@ -513,7 +513,7 @@ forbids renaming it, so the body has to stay where it is.
 **Java and Kotlin decide from the same committed hash manifest (since 8.1.0, ADR-0060).**
 Generated **source** on these ports, the code MetaObjects authors, goes through
 `GeneratedFileWriter`, which records every file it writes in
-`<module basedir>/.metaobjects/.gen-state/.hashes.json`, the same file as the other
+`<module basedir>/.metaobjects/.gen-state/.hashes/`, the same file as the other
 ports. Two executions in one module share it: each entry the JVM writes names the generator
 and output directory that wrote it, and a run never deletes a file another configured
 generator owns, even in an output directory they share; two modules have two manifests. A file that still hashes to its record is
@@ -582,7 +582,7 @@ Neither write could reach disk, so there is no order-dependent output to report 
 failing the build there would punish exactly the person the refusal exists to protect.
 Restore the file to generated output and the collision is raised again on the next run.
 
-Keep `.gen-state/.hashes.json` committed. Ignoring it is what turns the second case into
+Keep `.gen-state/.hashes/` committed. Ignoring it is what turns the second case into
 a silent overwrite, since a machine with neither a snapshot nor a hash cannot tell your
 edit from its own output.
 
@@ -599,7 +599,7 @@ handles those files by one rule:
   out, deletes nothing, because the files of the part it skipped would all look stale. So
   does `--baseline=adopt`, which writes nothing by definition.
 - **A candidate is a file the manifest says `gen` wrote.** It lies under an output directory
-  of the run, `.metaobjects/.gen-state/.hashes.json` records writing it, and no generator
+  of the run, `.metaobjects/.gen-state/.hashes/` records writing it, and no generator
   emitted it this run. A file the manifest does not record is not generated output, whatever
   its name or header, and is never a candidate. In TypeScript a full `meta gen` covers every
   declared output directory (`outDir` and each `targets.*.outDir`), whether or not a
@@ -675,7 +675,7 @@ regenerate, which would change nothing. A project whose manifest records nothing
 first run, before anything is committed) has no evidence either way, so the gate reports
 every extra file plainly and `gen` deletes none.
 
-Keep `.hashes.json` committed: it is the only record that says which files in an output
+Keep `.hashes/` committed: it is the only record that says which files in an output
 directory `gen` wrote, so without it a clean clone can neither delete a stale file nor
 protect an edited one.
 
@@ -763,7 +763,7 @@ the pointer is good advice — but nothing in the toolchain implements it, and i
 knowing exactly what that means:
 
 - **It is safe, but not because of its name.** `meta gen` writes only the paths it records
-  in `.gen-state/.hashes.json`, and the orphan sweep deletes only from that same set. Any
+  in `.gen-state/.hashes/`, and the orphan sweep deletes only from that same set. Any
   file you create in the output directory is untouched, whatever you call it. Renaming
   `Order.extra.ts` to `order-helpers.ts` changes nothing.
 - **The generated barrel does not re-export it.** `index.ts` carries one

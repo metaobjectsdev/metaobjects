@@ -56,7 +56,7 @@ is built (never before), a new node for new behaviour.
 - `npx meta verify --db <url>` (the live schema matches the metadata).
 
 Commit the metadata, the generated code, `.metaobjects/migrations/` and
-`.metaobjects/.gen-state/.hashes.json`.
+`.metaobjects/.gen-state/.hashes/`.
 
 ## Calling the generated REST API
 

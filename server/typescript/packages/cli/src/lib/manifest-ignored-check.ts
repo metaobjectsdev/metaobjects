@@ -1,6 +1,6 @@
 // Advisory: is the codegen hash manifest git-ignored?
 //
-// `.gen-state/.hashes.json` is what lets `meta gen` tell "this file is exactly what
+// `.gen-state/.hashes/` (one manifest per model package) is what lets `meta gen` tell "this file is exactly what
 // I wrote" from "somebody edited this" on a machine that did not generate it. If it
 // is ignored, that knowledge never leaves the generating machine, and on every other
 // machine a hand-edited generated file cannot be recognised as such.
@@ -20,9 +20,9 @@ import { join } from "node:path";
 import { log } from "./log.js";
 import { gitIgnoreSource, isGitIgnored } from "./git-ignore.js";
 
-/** Project-relative path of the manifest — the one artifact of `.gen-state/` that is
- *  meant to be committed. */
-export const HASH_MANIFEST_REL = join(".metaobjects", ".gen-state", ".hashes.json");
+/** Project-relative path of the manifest directory — the one artifact of `.gen-state/` that is
+ *  meant to be committed (one file per model package, ADR-0064 Amendment 1). */
+export const HASH_MANIFEST_REL = join(".metaobjects", ".gen-state", ".hashes");
 
 /**
  * Warn once when the hash manifest is git-ignored, naming the fix.
@@ -55,7 +55,7 @@ export function warnIfManifestIgnored(cwd: string): string | undefined {
     src !== undefined
       ? `The rule is '${src.pattern}' at ${src.file}:${src.line} — replace it there with ` +
         `a '/*' form plus a '!' negation for the manifest ` +
-        `(e.g. '${src.pattern.replace(/\/$/, "")}/*' and '!${src.pattern.replace(/\/$/, "")}/.hashes.json')`
+        `(e.g. '${src.pattern.replace(/\/$/, "")}/*' and '!${src.pattern.replace(/\/$/, "")}/.hashes/')`
       : `Find the rule with 'git check-ignore -v ${HASH_MANIFEST_REL}' and replace it with ` +
         `a '/*' form plus a '!' negation for the manifest`;
 

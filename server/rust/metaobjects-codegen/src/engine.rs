@@ -32,7 +32,7 @@ use crate::fingerprint::{
 use crate::generator::{
     ERR_OUT_DIR, ERR_PATH_COLLISION, EmittedFile, GenContext, GenError, Generator,
 };
-use crate::hashes::{HashManifest, content_hash};
+use crate::hashes::{HASHES_DIR, HashManifest, content_hash};
 use crate::project::{LoadedProject, load_project};
 use crate::sha256::sha256_hex;
 
@@ -221,7 +221,7 @@ impl std::fmt::Display for RunError {
                     write!(
                         f,
                         "refused to overwrite {} file(s) that differ from what the last run wrote \
-                         (edited by hand, or not recorded in {DEFAULT_METAOBJECTS_DIR}/{GEN_STATE_DIR}/.hashes.json): {}. \
+                         (edited by hand, or not recorded in {DEFAULT_METAOBJECTS_DIR}/{GEN_STATE_DIR}/.hashes/): {}. \
                          Restore them, or delete them to generate them afresh.",
                         r.edited.len(),
                         r.edited.join(", ")
@@ -394,7 +394,17 @@ fn prepare<'g>(
     let gen_state = project_root
         .join(DEFAULT_METAOBJECTS_DIR)
         .join(GEN_STATE_DIR);
-    let manifest = HashManifest::load(&gen_state);
+    let mut manifest = HashManifest::load(&gen_state);
+    // The model's root-level objects decide which package's manifest file records a path.
+    // ADR-0039 sanctioned own: a top-level scan of the loader ROOT, as in `build_model_tree`.
+    let tree = &loaded.result.tree;
+    manifest.set_objects(
+        tree.own_children(loaded.result.root)
+            .iter()
+            .filter(|&&c| tree.node(c).type_name == "object")
+            .map(|&c| (tree.node(c).name.clone(), tree.effective_package(c)))
+            .collect(),
+    );
     let model = build_model_tree(&loaded.result.tree, loaded.result.root);
     let cacheable = selected.iter().all(|g| g.cacheable());
     let mut entries = vec![
@@ -497,6 +507,9 @@ pub fn run(opts: &RunOptions, generators: &[Box<dyn Generator>]) -> Result<RunRe
         Some("entities were named")
     } else if !p.cacheable {
         Some("a generator is not cacheable")
+    } else if p.manifest.is_legacy() {
+        // A legacy single-file manifest is migrated by a run that writes (ADR-0064 Amendment 1).
+        Some("the manifest is the legacy single file")
     } else {
         match &p.stored {
             None => Some("no stored key"),
@@ -611,7 +624,7 @@ pub fn run(opts: &RunOptions, generators: &[Box<dyn Generator>]) -> Result<RunRe
     let manifest_written = p
         .manifest
         .save()
-        .map_err(|e| io_error("writing", &p.gen_state.join(".hashes.json"), &e))?;
+        .map_err(|e| io_error("writing", &p.gen_state.join(HASHES_DIR), &e))?;
     if !refusal.is_empty() {
         return Err(RunError::Refused(refusal));
     }

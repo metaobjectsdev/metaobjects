@@ -78,7 +78,7 @@ GEN FLAGS:
                         First-time-on-existing-file behavior. Default: refuse a file that
                         cannot be proved to be generated output. "adopt" records the files
                         you have as the merge base and writes NOTHING — the first run a
-                        project with no committed .hashes.json can perform. "fresh"
+                        project with no committed .hashes/ manifest can perform. "fresh"
                         overwrites them with fresh output and re-baselines (discards edits).
   --no-antipatterns     Suppress the advisory "hand-rolled what MetaObjects can model" pass
   --limit <n|all>       How many advisory lines TEXT output prints before it truncates
@@ -217,7 +217,7 @@ FLAGS:
                         First-time-on-existing-file behavior. Default: refuse a file that
                         cannot be proved to be generated output. "adopt" records the files
                         you have as the merge base and writes NOTHING — the first run a
-                        project with no committed .hashes.json can perform. "fresh"
+                        project with no committed .hashes/ manifest can perform. "fresh"
                         overwrites them with fresh output and re-baselines (discards edits).
   --no-antipatterns     Suppress the advisory "hand-rolled what MetaObjects can model" pass
   --limit <n|all>       Advisory lines TEXT output prints before truncating (default 20)

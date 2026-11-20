@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import * as fs from "node:fs";
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { isManifestPath, manifestEntries, manifestFiles, manifestMtimes } from "../support/manifest.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { decideAndWrite, mergeTempDir, withManifestBatch } from "../../src/overwrite-policy.js";
@@ -18,8 +19,6 @@ afterEach(() => {
   rmSync(state, { recursive: true, force: true });
 });
 
-const MANIFEST = () => join(state, ".hashes.json");
-
 function run(files: Record<string, string>): void {
   withManifestBatch(state, () => {
     for (const [name, content] of Object.entries(files)) {
@@ -29,7 +28,7 @@ function run(files: Record<string, string>): void {
 }
 
 const manifestWrites = (spy: { mock: { calls: unknown[][] } }) =>
-  spy.mock.calls.filter((c) => String(c[0]).endsWith(".hashes.json")).length;
+  spy.mock.calls.filter((c) => String(c[0]).includes("/.hashes/")).length;
 
 describe("hash manifest, once per run", () => {
   test("a run that writes many files writes the manifest once", () => {
@@ -38,18 +37,20 @@ describe("hash manifest, once per run", () => {
       run({ "A.ts": "a\n", "B.ts": "b\n", "C.ts": "c\n" });
       expect(manifestWrites(spy)).toBe(1);
     } finally { spy.mockRestore(); }
-    expect(Object.keys(JSON.parse(readFileSync(MANIFEST(), "utf-8"))).sort()).toEqual(["A.ts", "B.ts", "C.ts"]);
+    expect(Object.keys(manifestEntries(state)).sort()).toEqual(["A.ts", "B.ts", "C.ts"]);
   });
 
   test("a run that changes nothing does not write the manifest", () => {
     run({ "A.ts": "a\n", "B.ts": "b\n" });
-    const before = statSync(MANIFEST()).mtimeMs;
+    const before = manifestMtimes(state);
+    const beforeBytes = manifestFiles(state);
     const spy = spyOn(fs, "writeFileSync");
     try {
       run({ "A.ts": "a\n", "B.ts": "b\n" });
       expect(manifestWrites(spy)).toBe(0);
     } finally { spy.mockRestore(); }
-    expect(statSync(MANIFEST()).mtimeMs).toBe(before);
+    expect(manifestMtimes(state)).toEqual(before);
+    expect(manifestFiles(state)).toEqual(beforeBytes);
   });
 });
 

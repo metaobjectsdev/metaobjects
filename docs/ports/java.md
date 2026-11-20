@@ -27,7 +27,7 @@ Prompt / template drift is still checked via the `metaobjects-render` `Verify` A
 ## Regeneration and hand edits
 
 There is no three-way merge on the JVM (that is TypeScript-only). `mvn metaobjects:generate`
-records each file it writes in `.metaobjects/.gen-state/.hashes.json`: a file that still matches
+records each file it writes in `.metaobjects/.gen-state/.hashes/`: a file that still matches
 is overwritten, and an edited one is refused by name (`<handEdits>keep</handEdits>`, the default)
 or replaced (`<handEdits>overwrite</handEdits>`). `mvn metaobjects:eject -Dnames=<name>` copies a
 generator into your repo to own. Commit the manifest. Details:

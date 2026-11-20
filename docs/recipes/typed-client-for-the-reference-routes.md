@@ -283,7 +283,7 @@ meta verify --codegen          exit 1
 ```
 
 The client and the routes move together or the build fails. Commit
-`.metaobjects/.gen-state/.hashes.json` so a fresh clone can tell a hand edit from stale output.
+`.metaobjects/.gen-state/.hashes/` so a fresh clone can tell a hand edit from stale output.
 
 ## See also
 

@@ -25,13 +25,13 @@ from importlib import util as importlib_util
 from pathlib import Path
 from typing import Iterable
 
-from .overwrite_policy import HASHES_FILE, content_hash
+from .overwrite_policy import _read_union, content_hash, has_hash_manifest
 
 #: Bump when the fingerprint's own recipe changes: every stored fingerprint then misses.
 FINGERPRINT_FORMAT = 2
 
 #: Where this port keeps its fingerprint, beside the (committed) manifest and never
-#: committed itself (``.gen-state/*`` is ignored except ``.hashes.json``).
+#: committed itself (``.gen-state/*`` is ignored except ``.hashes/``).
 FINGERPRINT_FILE = ".fingerprint-python.json"
 
 #: The hash of an input that does not exist. A file that appears or disappears changes it.
@@ -255,13 +255,10 @@ def current_key(
 
 def _manifest_records(gen_state_dir: str) -> dict[str, str] | None:
     """key -> recorded hash, or ``None`` when there is no readable manifest."""
-    try:
-        with open(os.path.join(gen_state_dir, HASHES_FILE), encoding="utf-8") as fh:
-            raw = json.load(fh)
-    except (OSError, ValueError):
+    # The union of every manifest file (ADR-0064 Amendment 1); none at all is "no manifest".
+    if not has_hash_manifest(gen_state_dir):
         return None
-    if not isinstance(raw, dict):
-        return None
+    raw, _where = _read_union(gen_state_dir)
     records: dict[str, str] = {}
     for key, value in raw.items():
         if isinstance(value, str):

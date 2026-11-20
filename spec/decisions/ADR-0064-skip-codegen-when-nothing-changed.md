@@ -120,3 +120,103 @@ and the manifest is keyed by output path, so per-unit records will not collide.
 - A generator that reads something it did not declare could make a skip wrong. The defenses are
   the declared extras, `cache: false`, `--force`, and CI's full `verify --codegen`.
 - Nothing changes for an adopter who never runs `gen` twice without a change in between.
+
+## Amendment 1 (2026-11-20): the hash manifest is one file per package
+
+Registers no vocabulary: `metamodelVersion` is unchanged. For 1.3.0, in every port that keeps hash
+state (TypeScript, Python, C#, Java and Kotlin, and Rust in preview). This is the "per-package keys
+come next" step of §6, applied to the one file every generated path is recorded in.
+
+### Context
+
+The committed manifest, `.metaobjects/.gen-state/.hashes.json`, is one file for the whole project. Any
+two branches that regenerate any file in any package both rewrite it, so they conflict on it even
+when they share no generated file, and an adopter with parallel branches cannot validate them side by
+side. The file's bytes are already deterministic (sorted keys), so the conflict is not noise from
+ordering: it is one file standing for many independent facts.
+
+### Decision
+
+**1. One manifest per model package.** The manifests live in
+`.metaobjects/.gen-state/.hashes/` (on the JVM, under the module's basedir like the file they
+replace), one JSON file per model package:
+
+- A package file is named for the package: its `::`-separated segments joined with `.`, each segment
+  with every byte outside `[A-Za-z0-9_-]` written as `%XX` (uppercase hex of the UTF-8 byte), then
+  `.json`. `acme::shop` is `acme.shop.json`. Package segments never contain a `.`, so the name is
+  unambiguous.
+- A generated path that belongs to no package goes in one root manifest, `.root.json`. A leading dot
+  cannot start a package name, so the root cannot collide with a package.
+- A file holds exactly what the single manifest held for its paths, unchanged: one JSON object keyed
+  by project-relative path, keys sorted, two-space indentation, a trailing newline, each value a
+  SHA-256 hex string or an object carrying `hash` and any owner or provenance fields the port keeps
+  (`generator` and `outputDir` on the JVM, `generatedBy` and `sourceNode` in TypeScript). Nothing
+  about a value changes, so no reader of one entry changes.
+
+**2. Reading is a union.** A reader merges every `*.json` file in `.hashes/`, in file-name order, with
+the legacy `.hashes.json` underneath them (a key in a package file wins). An absent, unreadable or
+corrupt file reads as empty, which fails closed as before, and is replaced on the next write. "The
+project has a manifest" means the legacy file or at least one file in `.hashes/` exists. Which file
+an entry was found in is never evidence about the path: a reader asks for a path and gets its
+record from wherever it is. This is what makes placement (below) safe to get wrong: a misplaced
+entry costs a merge conflict that could have been avoided and nothing else.
+
+**3. Placement is a pure function, so it is stable.** A writer files each entry under:
+
+1. **Its recorded `sourceNode`**, when it has one (TypeScript records it). The package is the
+   `sourceNode` up to its first `.`, minus its last `::` segment (`acme::shop::Order.id` files under
+   `acme::shop`). A `sourceNode` with no `::` names an object in no package: the root manifest.
+2. **Else the object whose name the file's stem begins with, word by word.** The stem is the file's
+   base name up to its first `.` (`gen/OrderDto.java` has the stem `OrderDto`). Both the stem and an
+   object's name are split into lowercase words: at every `_` and `-`, before an uppercase letter that
+   follows a lowercase letter or a digit, and before the last uppercase letter of a run that is
+   followed by a lowercase letter (`HTTPServer` is `http` and `server`; `order_line` and `OrderLine`
+   are both `order` and `line`; digits stay with the word before them). A loaded root-level object
+   matches when its words are the first words of the stem's (`Order` matches `OrderDto`,
+   `order_names` and `order-line`, not `Ordered` or `orders`). The matches with the most words win;
+   when they are declared in more than one package, or in none, the file has no package.
+   Otherwise the matched objects' package is the file's. Matching by words, not by exact spelling, is what lets
+   a snake_case port (Python, Rust) and a PascalCase one place a file the same way.
+3. **Else where the entry already is**, when the writer has no model (a tool that edits the
+   manifest without loading one), and
+4. **Else the root manifest.**
+
+Every port implements 1 and 2 as one function over the loaded model and runs it for every entry on
+every write, so an entry moves when its object moves package or is renamed, and does not move
+otherwise. `fixtures/codegen-skip-conformance/manifests.json` holds the vectors.
+
+**4. A write touches only the files that changed.** A writer computes every manifest's bytes and
+writes a file only when they differ from what it read, deletes a package file that no longer holds
+an entry, and keeps `.root.json` present (as `{}`) when no entry exists at all, so "no manifest" stays
+distinguishable from "an empty one". Within a run each manifest is still written at most once, only
+when something changed (§1). So two branches that regenerate files in different packages change
+different files, and git merges them with nothing to resolve; only a file recorded in the root
+manifest, or one path in one package, can still collide, and those are the files whose own bytes
+would collide too.
+
+**5. A legacy manifest is migrated by the next write run.** A run that finds `.hashes.json` reads
+it, files every entry by §3, writes the per-package files, deletes `.hashes.json`, and counts as a
+run that changed the manifest, so it happens even when no generated file changed. A read-only
+command (`verify`) reads the union and migrates nothing. The migration also adds
+`!.gen-state/.hashes/` after the `!.gen-state/.hashes.json` line of `.metaobjects/.gitignore` when
+that file holds the `.gen-state/*` rule the scaffold writes, because without it git would ignore the
+new directory; a project whose rule lives elsewhere gets the existing "manifest is git-ignored"
+advisory, now naming `.hashes/`. The adopter commits the result and does nothing else. A branch that
+still holds the legacy file merges as an ordinary add/delete; take the migrated side and run `gen`.
+
+**6. Everything that read the manifest reads the union.** The write decision (overwrite, refuse,
+merge), the orphan sweep, `verify --codegen`, the explorer's list of generated files and the skip
+state (§3's stored-key check, which asks every recorded file whether it still hashes to its record)
+go through the one reader, so a run keys on the same set of paths as before. The stored skip key
+(`.fingerprint-<port>.json`) is not committed and is unchanged.
+
+### Consequences
+
+- Two branches that change generated files in different packages produce manifests that merge with
+  no conflict. The conformance cases and each port's unit tests assert the file-level separation;
+  the TypeScript suite proves the merge with git.
+- An adopter's first `gen` on 1.3.0 rewrites its manifest into `.hashes/` and removes
+  `.hashes.json`. Commit both changes; there is no flag and no second step.
+- A file the writer cannot attribute (a barrel, an index, a docs page) is in the root manifest. Those
+  files are the ones whose own contents collide when two branches touch them.
+- A project that named `.hashes.json` in a script or an ignore rule must name `.hashes/`.

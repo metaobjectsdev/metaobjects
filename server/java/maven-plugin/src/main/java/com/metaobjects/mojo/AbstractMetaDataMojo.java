@@ -588,6 +588,8 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         // the stored fingerprint alone: the recorded output hashes already stop a later full run
         // from trusting a file this run changed.
         if ( narrowed() ) return false;
+        // A manifest still in the pre-1.3.0 single-file form is migrated by this run's write, so it runs.
+        if ( HashManifest.hasLegacy(genStateDir) ) return false;
         try {
             fingerprintFile = GenFingerprint.fileFor(genStateDir, fingerprintOwnerTag());
             fingerprintBase = fingerprintInputs(loader);

@@ -46,9 +46,10 @@ def test_unchanged_files_keep_mtime_manifest_untouched_and_report_unchanged(
     assert main(["gen"]) == 0
     files = [f for f in (root / "gen").rglob("*.py")]
     assert files
-    manifest = root / ".metaobjects" / ".gen-state" / ".hashes.json"
-    before = manifest.read_bytes()
-    for f in [*files, manifest]:
+    manifests = sorted((root / ".metaobjects" / ".gen-state" / ".hashes").glob("*.json"))
+    assert manifests
+    before = [m.read_bytes() for m in manifests]
+    for f in [*files, *manifests]:
         os.utime(f, (1, 1))
     capsys.readouterr()
 
@@ -56,8 +57,8 @@ def test_unchanged_files_keep_mtime_manifest_untouched_and_report_unchanged(
     out = capsys.readouterr().out
 
     assert all(f.stat().st_mtime == 1 for f in files), "an identical file was rewritten"
-    assert manifest.stat().st_mtime == 1, "an unchanged manifest was rewritten"
-    assert manifest.read_bytes() == before
+    assert all(m.stat().st_mtime == 1 for m in manifests), "an unchanged manifest was rewritten"
+    assert [m.read_bytes() for m in manifests] == before
     assert "wrote 0 file(s)" in out and f"{len(files)} file(s) left as they were" in out
     assert not [ln for ln in out.splitlines() if ln.startswith(str(root / "gen"))]
 
@@ -92,10 +93,12 @@ def test_manifest_bytes_keep_sorted_keys_and_extra_fields(tmp_path: Path) -> Non
     session.record("b.py", "new", None)
     session.record("a.py", "x", None)
     assert session.save() is True
-    raw = json.loads((state / ".hashes.json").read_text())
+    assert not (state / ".hashes.json").exists()
+    [only] = list((state / ".hashes").glob("*.json"))
+    raw = json.loads(only.read_text())
     assert list(raw) == ["a.py", "b.py"]
     assert raw["b.py"]["owner"] == "jvm" and raw["b.py"]["hash"] == overwrite_policy.content_hash("new")
-    assert (state / ".hashes.json").read_text().endswith("}\n")
+    assert only.read_text().endswith("}\n")
     assert session.save() is False
 
 
@@ -137,8 +140,8 @@ def test_non_prompt_targets_rewrite_nothing_and_save_no_manifest_when_unchanged(
     files = [f for f in (root / "gen").rglob("*") if f.is_file()]
     assert len(files) > 4 and {f.relative_to(root).parts[1] for f in files} == {"models", "api"}
     assert len(saves) == 1, f"first run saved the manifest {len(saves)} times"
-    manifest = root / ".metaobjects" / ".gen-state" / ".hashes.json"
-    for f in [*files, manifest]:
+    manifests = sorted((root / ".metaobjects" / ".gen-state" / ".hashes").glob("*.json"))
+    for f in [*files, *manifests]:
         os.utime(f, (1, 1))
     saves.clear()
     capsys.readouterr()
@@ -146,7 +149,7 @@ def test_non_prompt_targets_rewrite_nothing_and_save_no_manifest_when_unchanged(
     assert main(["gen", "--force"]) == 0
     rewritten = [str(f) for f in files if f.stat().st_mtime != 1]
     assert rewritten == [], f"unchanged files were rewritten: {rewritten}"
-    assert saves == [] and manifest.stat().st_mtime == 1
+    assert saves == [] and all(m.stat().st_mtime == 1 for m in manifests)
     assert "wrote 0 file(s)" in capsys.readouterr().out
 
 

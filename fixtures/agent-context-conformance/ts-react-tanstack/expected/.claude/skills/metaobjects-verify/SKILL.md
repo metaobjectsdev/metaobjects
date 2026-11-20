@@ -152,7 +152,7 @@ with `ERR_DEPENDENCY_SNAPSHOT_STALE` naming the fix: run `meta deps sync`.
   regen) fails the build. Wire it into CI so a stale `@generated` file fails.
   **A hand edit inside a generated file is reported apart from drift** — `meta gen`
   three-way-merges hand edits by design, and the Node gate judges the *generated
-  contribution* against the committed `.metaobjects/.gen-state/.hashes.json`, not the
+  contribution* against the committed `.metaobjects/.gen-state/.hashes/`, not the
   bytes, then lists every generated file carrying a hand edit (count + paths). Whether
   that list fails the build is `verify.handEdits` in `.metaobjects/config.json`:
   `"fail"` exits 1 (what `meta init` writes for a new project), `"notice"` (and a

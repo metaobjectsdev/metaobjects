@@ -12,7 +12,7 @@ build), and Bun is simply the fastest dev workflow in this repo.
 Three-way merge is a TypeScript feature: on the machine that generated a file, `meta gen`
 merges your edits into regenerated output. On a fresh clone or in CI the snapshot bodies are
 not present, so an edited file is refused by name rather than merged (commit
-`.metaobjects/.gen-state/.hashes.json`). The other ports do not merge at all.
+`.metaobjects/.gen-state/.hashes/`). The other ports do not merge at all.
 
 ## Keep your ORM (Prisma, TypeORM, Drizzle you already have)
 

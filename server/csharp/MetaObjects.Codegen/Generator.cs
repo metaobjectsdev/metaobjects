@@ -25,7 +25,7 @@ public sealed record GenConfig
     public required string OutDir { get; init; }
 
     /// <summary>
-    /// Where the codegen hash manifest lives (<c>&lt;GenStateDir&gt;/.hashes.json</c>),
+    /// Where the codegen hash manifest lives (<c>&lt;GenStateDir&gt;/.hashes/</c>, one file per package),
     /// recording what this generator wrote so a later run can tell its own output from a
     /// hand edit.
     /// <para>

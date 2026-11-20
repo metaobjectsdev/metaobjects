@@ -13,7 +13,9 @@ public sealed class GenEntitiesSelectionTests : IDisposable
     private readonly string _tmp = Path.Combine(Path.GetTempPath(), "meta-entities-" + Guid.NewGuid().ToString("N"));
     private string MetaDir => Path.Combine(_tmp, "metaobjects");
     private string OutDir => Path.Combine(_tmp, "generated");
-    private string Manifest => Path.Combine(_tmp, ".metaobjects", ".gen-state", ".hashes.json");
+    private string ManifestText() => string.Concat(
+        Directory.GetFiles(Path.Combine(_tmp, ".metaobjects", ".gen-state", ".hashes"), "*.json").Order(StringComparer.Ordinal)
+            .Select(File.ReadAllText));
 
     private static string Entity(string name, string table) => $$$"""
       { "object.entity": { "name": "{{{name}}}", "children": [
@@ -120,7 +122,7 @@ public sealed class GenEntitiesSelectionTests : IDisposable
     {
         Assert.Equal(0, Gen().ExitCode);
         var widget = Read("Widget.g.cs");
-        var manifestBefore = File.ReadAllText(Manifest);
+        var manifestBefore = ManifestText();
         Assert.Contains("Widget.g.cs", manifestBefore);
 
         // Metadata drops Widget: a full run would sweep its files, a narrowed one must not.
@@ -131,7 +133,7 @@ public sealed class GenEntitiesSelectionTests : IDisposable
         Assert.True(exit == 0, $"exit={exit}\n{stdout}\n{stderr}");
         Assert.Equal(widget, Read("Widget.g.cs"));
         Assert.DoesNotContain("removed:", stdout);
-        var manifestAfter = File.ReadAllText(Manifest);
+        var manifestAfter = ManifestText();
         Assert.Contains("Widget.g.cs", manifestAfter);
         Assert.Contains("WidgetNames.g.cs", manifestAfter);
         Assert.Contains("Supplier.g.cs", manifestAfter);

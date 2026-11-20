@@ -10,7 +10,7 @@
  * letter therefore ended in `verify --codegen` exiting 1 on a project with no
  * drift of any kind, naming sixteen files it does not own.
  *
- * The rule is JURISDICTION, not staleness: `.gen-state/.hashes.json` records what
+ * The rule is JURISDICTION, not staleness: `.gen-state/.hashes/` records what
  * the generator WROTE, and `meta gen`'s own orphan sweep already scopes itself to
  * those paths (`listGeneratedPaths`) before it will delete anything. The gate now
  * asks the same question of the same evidence, so the two doors agree.
@@ -26,6 +26,7 @@ import {
   cpSync,
   mkdtempSync,
   mkdirSync,
+  readdirSync,
   rmSync,
   writeFileSync,
   readFileSync,
@@ -38,7 +39,10 @@ const FIXTURES = resolve(import.meta.dirname, "../fixtures");
 const WORKSPACE_TMP = resolve(import.meta.dirname, "../fixtures/__tmp__");
 
 const OUT = "generated";
-const MANIFEST = join(".metaobjects", ".gen-state", ".hashes.json");
+const MANIFEST = join(".metaobjects", ".gen-state", ".hashes");
+/** Every manifest file, concatenated. */
+const manifestText = (root: string): string =>
+  readdirSync(join(root, MANIFEST)).map((n) => readFileSync(join(root, MANIFEST, n), "utf8")).join("\n");
 
 function setupRepo(): string {
   mkdirSync(WORKSPACE_TMP, { recursive: true });
@@ -167,7 +171,7 @@ describe("meta verify --codegen — files MetaObjects never wrote", () => {
       out = []; err = [];
       expect(await run(["gen", "--cwd", root])).toBe(0);
       expect(existsSync(join(root, OUT, "Tag.ts"))).toBe(false);
-      expect(readFileSync(join(root, MANIFEST), "utf8")).not.toContain("Tag.ts");
+      expect(manifestText(root)).not.toContain("Tag.ts");
 
       out = []; err = [];
       expect(await run(["verify", "--cwd", root, "--codegen"])).toBe(0);
@@ -258,7 +262,7 @@ export default defineConfig({
       // No records ⇒ nothing distinguishes our stale output from a stranger's
       // file, so the gate keeps convicting rather than going quiet.
       expect(existsSync(join(root, MANIFEST))).toBe(true);
-      rmSync(join(root, MANIFEST));
+      rmSync(join(root, MANIFEST), { recursive: true, force: true });
 
       out = []; err = [];
       const exit = await run(["verify", "--cwd", root, "--codegen"]);

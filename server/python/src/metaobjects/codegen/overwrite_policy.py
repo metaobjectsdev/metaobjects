@@ -11,8 +11,8 @@ single case that got overwritten — silently. And it was wrong in the other dir
 too: a file this generator wrote, whose template later stopped emitting the header,
 was refused as though it were somebody's hand-written source.
 
-The decision now comes from a hash manifest at ``<gen_state_dir>/.hashes.json``,
-recording what we wrote:
+The decision now comes from a hash manifest at ``<gen_state_dir>/.hashes/``,
+recording what we wrote (one file per model package under ``.hashes/``, ADR-0064 Amendment 1):
 
     identical fresh content              -> "unchanged"
     file still hashes to what we wrote   -> "overwrite"   (nothing is lost)
@@ -41,7 +41,15 @@ from .constants import GENERATED_MARKER
 
 # status: "new" | "unchanged" | "overwrite" | "refused" | "adopted" | "skipped"
 
+#: The legacy single manifest. Read underneath the per-package files; removed by the next write.
 HASHES_FILE = ".hashes.json"
+#: ADR-0064 Amendment 1: one manifest file per model package lives in this directory.
+HASHES_DIR = ".hashes"
+#: The manifest for paths that belong to no package.
+ROOT_MANIFEST = ".root.json"
+_GITIGNORE_RULE = ".gen-state/*"
+_GITIGNORE_LEGACY = "!.gen-state/.hashes.json"
+_GITIGNORE_DIR = "!.gen-state/.hashes/"
 
 
 def content_hash(content: str) -> str:
@@ -66,23 +74,134 @@ def _manifest_path(gen_state_dir: str) -> str:
     return os.path.join(gen_state_dir, HASHES_FILE)
 
 
+def _hashes_dir(gen_state_dir: str) -> str:
+    return os.path.join(gen_state_dir, HASHES_DIR)
+
+
+# --- placement (ADR-0064 Amendment 1, section 3) ----------------------------------------
+
+
+def package_file_name(package: str | None) -> str:
+    """The manifest file name for a package; ``None`` (or empty) is the root manifest."""
+    if not package:
+        return ROOT_MANIFEST
+    segments = []
+    for seg in package.split("::"):
+        out = []
+        for byte in seg.encode("utf-8"):
+            ch = chr(byte)
+            if byte < 0x80 and (ch.isalnum() or ch in "_-"):
+                out.append(ch)
+            else:
+                out.append(f"%{byte:02X}")
+        segments.append("".join(out))
+    return ".".join(segments) + ".json"
+
+
+def place_entry(
+    path: str, entry: object, objects: list[tuple[str, str]]
+) -> str | None:
+    """The package a manifest entry is filed under, or ``None`` for the root manifest.
+
+    ``objects`` is the loaded root-level objects as ``(name, package)`` (package ``""`` for
+    none). A ``sourceNode`` wins; else the object whose name the file's stem begins with.
+    """
+    if isinstance(entry, dict) and isinstance(entry.get("sourceNode"), str):
+        head = entry["sourceNode"].split(".", 1)[0]
+        idx = head.rfind("::")
+        return head[:idx] if idx >= 0 else None
+    stem = _words(os.path.basename(path).split(".", 1)[0])
+    best_len = 0
+    packages: set[str] = set()
+    for name, package in objects:
+        words = _words(name)
+        if not words or words != stem[: len(words)]:
+            continue
+        if len(words) > best_len:
+            best_len, packages = len(words), {package}
+        elif len(words) == best_len:
+            packages.add(package)
+    if len(packages) != 1:
+        return None
+    return next(iter(packages)) or None
+
+
+def _words(text: str) -> list[str]:
+    """Lowercase words: split at ``_`` and ``-``, before an uppercase letter that follows a
+    lowercase letter or digit, and before the last capital of a run followed by a lowercase
+    letter (``HTTPServer`` is ``http``, ``server``). Digits stay with the word before them."""
+    words: list[str] = []
+    cur = ""
+    for i, ch in enumerate(text):
+        if ch in "_-":
+            if cur:
+                words.append(cur)
+            cur = ""
+            continue
+        if ch.isascii() and ch.isupper() and cur:
+            prev = text[i - 1]
+            nxt = text[i + 1] if i + 1 < len(text) else ""
+            lower_before = prev.isascii() and (prev.islower() or prev.isdigit())
+            run_end = prev.isascii() and prev.isupper() and nxt.isascii() and nxt.islower()
+            if lower_before or run_end:
+                words.append(cur)
+                cur = ""
+        cur += ch.lower() if ch.isascii() else ch
+    if cur:
+        words.append(cur)
+    return words
+
+
+def objects_of_root(root: object) -> list[tuple[str, str]]:
+    """The ``(name, package)`` of every root-level object of a loaded root."""
+    from .template_codegen.template_data import package_of  # lazy: avoids an import cycle
+
+    # ADR-0039 sanctioned own: top-level scan of the loader ROOT (never extended).
+    return [
+        (c.name, package_of(c))
+        for c in root.own_children()  # type: ignore[attr-defined]
+        if c.type == "object"
+    ]
+
+
+# The loaded model's objects, per gen-state dir, supplied by the runner once the model is
+# loaded. Without one the writer keeps each entry where it was found (rule 3).
+_placements: dict[str, list[tuple[str, str]] | None] = {}
+
+
+def set_placement_objects(gen_state_dir: str | None, objects: list[tuple[str, str]] | None) -> None:
+    if gen_state_dir is not None:
+        _placements[os.path.abspath(gen_state_dir)] = objects
+
+
 def has_hash_manifest(gen_state_dir: str) -> bool:
-    """Whether this project has a manifest AT ALL.
+    """Whether this project has a manifest AT ALL (the legacy file or a file in ``.hashes/``).
 
     Distinct from "the manifest has no entry for this path": a project with no
     manifest predates the manifest being committed, so all its refusals share one
     cause and deserve one instruction rather than one warning per file.
     """
     batch = _batches.get(os.path.abspath(gen_state_dir))
-    return os.path.exists(_manifest_path(gen_state_dir)) or bool(batch and batch.dirty)
+    return bool(
+        os.path.exists(_manifest_path(gen_state_dir))
+        or _package_files(gen_state_dir)
+        or (batch and batch.dirty)
+    )
+
+
+def _package_files(gen_state_dir: str) -> list[str]:
+    try:
+        return sorted(n for n in os.listdir(_hashes_dir(gen_state_dir)) if n.endswith(".json"))
+    except OSError:
+        return []
 
 
 class _ManifestBatch:
     __slots__ = ("raw", "dirty")
 
-    def __init__(self, raw: dict[str, object]) -> None:
+    def __init__(self, raw: dict[str, object], dirty: bool = False) -> None:
         self.raw = raw
-        self.dirty = False
+        self.dirty = dirty
 
 
 # One in-memory manifest per gen-state dir while a run is in progress. Without it every
@@ -107,7 +226,10 @@ def manifest_batch(gen_state_dir: str | None) -> Iterator[None]:
     if key in _batches:
         yield
         return
-    batch = _ManifestBatch(_read_manifest_file(gen_state_dir))
+    # A legacy manifest makes the run dirty: the next write run migrates it.
+    batch = _ManifestBatch(
+        _read_manifest_file(gen_state_dir), os.path.exists(_manifest_path(gen_state_dir))
+    )
     _batches[key] = batch
     try:
         yield
@@ -130,10 +252,7 @@ def _read_raw(gen_state_dir: str) -> dict[str, object]:
     return _read_manifest_file(gen_state_dir)
 
 
-def _read_manifest_file(gen_state_dir: str) -> dict[str, object]:
-    path = _manifest_path(gen_state_dir)
-    if not os.path.exists(path):
-        return {}
+def _read_json_object(path: str) -> dict[str, object]:
     try:
         with open(path, encoding="utf-8") as fh:
             parsed = json.load(fh)
@@ -141,9 +260,26 @@ def _read_manifest_file(gen_state_dir: str) -> dict[str, object]:
         # Unreadable or corrupt reads as ABSENT, which fails closed: every file then
         # refuses rather than being assumed ours.
         return {}
-    if not isinstance(parsed, dict):
-        return {}
-    return parsed
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _read_union(gen_state_dir: str) -> tuple[dict[str, object], dict[str, str]]:
+    """The union of every manifest file (legacy underneath, package files in name order
+    winning), and the file each key was found in (``""`` for the legacy file)."""
+    merged: dict[str, object] = {}
+    where: dict[str, str] = {}
+    for key, value in _read_json_object(_manifest_path(gen_state_dir)).items():
+        merged[key] = value
+        where[key] = ""
+    for name in _package_files(gen_state_dir):
+        for key, value in _read_json_object(os.path.join(_hashes_dir(gen_state_dir), name)).items():
+            merged[key] = value
+            where[key] = name
+    return merged, where
+
+
+def _read_manifest_file(gen_state_dir: str) -> dict[str, object]:
+    return _read_union(gen_state_dir)[0]
 
 
 def _entry_hash(value: object) -> str | None:
@@ -165,7 +301,7 @@ def _load_hashes(gen_state_dir: str) -> dict[str, str]:
 
 def _save_hashes(gen_state_dir: str, hashes: dict[str, str]) -> None:
     raw = _read_raw(gen_state_dir)
-    # Keys SORTED, because this file is committed. Insertion order would make the
+    # Keys SORTED, because these files are committed. Insertion order would make the
     # diff — and any merge conflict between two people who both regenerated — depend
     # on which entity happened to generate first.
     ordered: dict[str, object] = {}
@@ -183,11 +319,67 @@ def _save_hashes(gen_state_dir: str, hashes: dict[str, str]) -> None:
     _write_manifest_file(gen_state_dir, ordered)
 
 
+def _manifest_text(entries: dict[str, object]) -> str:
+    return json.dumps({k: entries[k] for k in sorted(entries)}, indent=2) + "\n"
+
+
 def _write_manifest_file(gen_state_dir: str, ordered: dict[str, object]) -> None:
-    os.makedirs(gen_state_dir, exist_ok=True)
-    with open(_manifest_path(gen_state_dir), "w", encoding="utf-8") as fh:
-        json.dump(ordered, fh, indent=2)
-        fh.write("\n")
+    """Write every manifest file whose bytes changed (ADR-0064 Amendment 1, section 4)."""
+    _, where = _read_union(gen_state_dir)
+    objects = _placements.get(os.path.abspath(gen_state_dir))
+    files: dict[str, dict[str, object]] = {}
+    for key, entry in ordered.items():
+        if objects is not None:
+            package = place_entry(key, entry, objects)
+            name = package_file_name(package)
+        else:
+            name = where.get(key) or ROOT_MANIFEST
+        files.setdefault(name, {})[key] = entry
+    if not ordered:
+        files[ROOT_MANIFEST] = {}
+
+    directory = _hashes_dir(gen_state_dir)
+    os.makedirs(directory, exist_ok=True)
+    for name, entries in files.items():
+        text = _manifest_text(entries)
+        path = os.path.join(directory, name)
+        try:
+            with open(path, encoding="utf-8") as fh:
+                if fh.read() == text:
+                    continue
+        except OSError:
+            pass
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(text)
+    for name in _package_files(gen_state_dir):
+        if name not in files:
+            os.remove(os.path.join(directory, name))
+    legacy = _manifest_path(gen_state_dir)
+    if os.path.exists(legacy):
+        os.remove(legacy)
+        _ensure_gitignore(gen_state_dir)
+
+
+def _ensure_gitignore(gen_state_dir: str) -> None:
+    """Add ``!.gen-state/.hashes/`` after the legacy negation, when the ignore file has the
+    ``.gen-state/*`` rule and lacks it (``<gen-state>/../.gitignore``)."""
+    path = os.path.join(os.path.dirname(os.path.abspath(gen_state_dir)), ".gitignore")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+    except OSError:
+        return
+    lines = text.split("\n")
+    stripped = [ln.strip() for ln in lines]
+    if _GITIGNORE_RULE not in stripped or _GITIGNORE_DIR in stripped:
+        return
+    if _GITIGNORE_LEGACY in stripped:
+        lines.insert(stripped.index(_GITIGNORE_LEGACY) + 1, _GITIGNORE_DIR)
+    else:
+        idx = stripped.index(_GITIGNORE_RULE)
+        lines.insert(idx + 1, _GITIGNORE_DIR)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines))
 
 
 class HashManifest:
@@ -203,7 +395,8 @@ class HashManifest:
     def __init__(self, gen_state_dir: str) -> None:
         self.gen_state_dir = gen_state_dir
         self.hashes: dict[str, str] = _load_hashes(gen_state_dir)
-        self.dirty = False
+        # A legacy manifest is migrated by the next write run, even when nothing else changed.
+        self.dirty = os.path.exists(_manifest_path(gen_state_dir))
 
     def get(self, rel_path: str, legacy_rel_path: str | None = None) -> str | None:
         recorded = self.hashes.get(rel_path)

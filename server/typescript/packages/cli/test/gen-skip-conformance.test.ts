@@ -6,7 +6,7 @@
 // A case id this runner does not know fails, so a case added to the table reaches this
 // port at once.
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
 import * as fs from "node:fs";
 import { join, resolve } from "node:path";
 import { genCommand } from "../src/commands/gen.js";
@@ -156,6 +156,8 @@ interface Runner {
   engine?: FingerprintEntry[];
   /** `verify --codegen --full`. */
   full?: boolean;
+  /** Checked after both answers: what the read-only questions must have left alone. */
+  after?: (p: Project) => void;
 }
 
 const append = (path: string, text: string) => writeFileSync(path, readFileSync(path, "utf-8") + text);
@@ -220,6 +222,22 @@ const RUNNERS: Record<string, Runner> = {
     },
   },
   "fingerprint-missing": { change: (p) => unlinkSync(stateFile(p)) },
+  // ADR-0064 Amendment 1: put the manifest back in its pre-1.3.0 single-file form.
+  "legacy-manifest": {
+    change: (p) => {
+      const state = join(p.root, ".metaobjects", ".gen-state");
+      const merged: Record<string, unknown> = {};
+      for (const name of readdirSync(join(state, ".hashes")).sort()) {
+        Object.assign(merged, JSON.parse(readFileSync(join(state, ".hashes", name), "utf-8")));
+      }
+      rmSync(join(state, ".hashes"), { recursive: true, force: true });
+      writeFileSync(join(state, ".hashes.json"), JSON.stringify(merged, null, 2) + "\n");
+    },
+    // A local verify reads the union and migrates nothing, so the legacy file is still there.
+    after: (p) => {
+      expect(existsSync(join(p.root, ".metaobjects", ".gen-state", ".hashes.json"))).toBe(true);
+    },
+  },
   "force": { args: ["--force"], full: true },
   "ci": { env: { CI: "true" } },
   "failed-run": {
@@ -248,6 +266,7 @@ describe("codegen-skip-conformance (ADR-0064)", () => {
       await runner.change?.(p);
       expect(await genSkips(p, runner)).toBe(c.gen === "skip");
       expect(await verifyMayAnswer(p, runner)).toBe(c.verify === "may-answer-no-drift");
+      runner.after?.(p);
     }, 30_000);
   }
 });
@@ -258,7 +277,7 @@ describe("meta gen with nothing changed (ADR-0064)", () => {
     expect(await gen(p)).toBe(0);
     const watched = [
       join(p.root, "generated", "mine.txt"),
-      join(p.root, ".metaobjects", ".gen-state", ".hashes.json"),
+      join(p.root, ".metaobjects", ".gen-state", ".hashes", ".root.json"),
       stateFile(p),
     ];
     const before = watched.map((f) => statSync(f).mtimeMs);
@@ -277,7 +296,7 @@ describe("meta gen with nothing changed (ADR-0064)", () => {
     expect(await gen(p)).toBe(0);
     const watched = [
       join(p.root, "generated", "mine.txt"),
-      join(p.root, ".metaobjects", ".gen-state", ".hashes.json"),
+      join(p.root, ".metaobjects", ".gen-state", ".hashes", ".root.json"),
     ];
     const before = watched.map((f) => statSync(f).mtimeMs);
     await new Promise((r) => setTimeout(r, 20));

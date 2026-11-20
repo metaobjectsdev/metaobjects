@@ -114,11 +114,14 @@ from metaobjects.codegen.config import DEFAULT_API_PREFIX, GenConfig
 from metaobjects.codegen.overwrite_policy import (
     STATUS_SKIPPED,
     STATUS_UNCHANGED,
+    HASHES_FILE,
     HashManifest,
     has_hash_manifest,
     is_pristine_generated,
     manifest_batch,
+    objects_of_root,
     read_generated_hash,
+    set_placement_objects,
 )
 from metaobjects.codegen.project_config import (
     CONFIG_FILENAME,
@@ -969,7 +972,7 @@ def _run_suite(
     # The hash manifest gives `metaobjects gen` hand-edit detection: without it the
     # write path falls back to the legacy @generated-marker rule, which cannot tell an
     # edited generated file from a pristine one (an edited file keeps its marker).
-    # COMMIT `.gen-state/.hashes.json`.
+    # COMMIT `.gen-state/.hashes/`.
     #
     # Anchored on the caller's project, NEVER on `Path.cwd()`. cwd is whatever directory
     # the process happens to sit in, so a cwd default leaks a `.metaobjects/` into any
@@ -2055,6 +2058,8 @@ def _cmd_gen_config_run(args: argparse.Namespace, state: _SkipState) -> int:
     identity = _skip_identity(args, config, _find_config(args), strict=strict, baseline=baseline)
     if (
         not narrowed
+        # A legacy manifest is migrated by the next write run (ADR-0064 Amendment 1).
+        and not os.path.exists(os.path.join(gen_state_dir, HASHES_FILE))
         and _skip_matches(config, identity, root)
         and not getattr(args, "force", False)
         and baseline != "adopt"
@@ -2070,6 +2075,7 @@ def _cmd_gen_config_run(args: argparse.Namespace, state: _SkipState) -> int:
     sweep_refused: list[str] = []
     # Every target and the orphan sweep share one in-memory manifest: one write per run. The
     # batch closes before the stored key is made, which hashes the manifest as written.
+    set_placement_objects(gen_state_dir, objects_of_root(root))
     with manifest_batch(gen_state_dir):
         written, errors = _run_gen_targets(
             config, targets, root,
@@ -3457,7 +3463,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "first-time-on-existing-file behaviour. 'default' refuses a file that cannot "
             "be proved to be generated output; 'adopt' records the files you have as the "
             "baseline and writes NOTHING — the one run a project with no committed "
-            ".gen-state/.hashes.json can perform, since nothing writes a manifest until a "
+            ".gen-state/.hashes/ can perform, since nothing writes a manifest until a "
             "gen succeeds. Adopting DECLARES those files to be generated output: the next "
             "gen regenerates over them, so commit before you run it."
         ),

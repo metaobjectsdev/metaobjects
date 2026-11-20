@@ -14,7 +14,7 @@ Python port has no `migrate` command by design; it consumes the canonical
 ## Regeneration and hand edits
 
 `metaobjects gen` has no three-way merge (that is TypeScript-only). It decides per file from a
-committed hash manifest, `.metaobjects/.gen-state/.hashes.json`: a file that still matches what
+committed hash manifest, `.metaobjects/.gen-state/.hashes/`: a file that still matches what
 the generator wrote is overwritten, and an edited one is refused by name. To change what a
 generator emits, `metaobjects eject <name>` copies it into `codegen/generators/` for you to own.
 Commit the manifest.

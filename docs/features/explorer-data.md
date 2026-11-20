@@ -19,7 +19,7 @@ reads three documents, and a fourth optional input, the REST routes (see [`api`]
 | --- | --- | --- |
 | Effective canonical JSON | `meta export --effective` | nodes, inheritance, every model edge |
 | The verify payload | `meta verify --format json` | the requirement ledger, and the `implementedBy` / `supersededBy` edges |
-| The generated-file manifest | `.metaobjects/.gen-state/.hashes.json`, written by `meta gen` | which generated files each node produced |
+| The generated-file manifest | `.metaobjects/.gen-state/.hashes/`, written by `meta gen` | which generated files each node produced |
 
 Only the first is required. Without the verify payload there is no `ledger` and no requirement
 claim edge; without the manifest there is no `generated` section.
@@ -88,7 +88,7 @@ subject is not a requirement. `node` names that other subject: a
 carries `""`. Read the subject from `path` and `node`, never from `message`, whose wording may
 change. The structured payload is TypeScript-only, as the rest of `--format json` is.
 
-### Node provenance in `.hashes.json`
+### Node provenance in the manifest
 
 Each generated file now records the metadata node it was rendered from. A generator built with
 `perEntity` sets this automatically. An `EmittedFile` can also name its node directly with
@@ -208,14 +208,21 @@ two spaces, with one trailing newline. That makes the file safe to commit and di
 ## Building it
 
 ```ts
-import { readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { buildExplorer, serializeExplorer } from "@metaobjectsdev/docs-site";
 
 const read = (f: string) => JSON.parse(readFileSync(f, "utf8"));
+// The manifest is one file per model package; the explorer wants their union.
+const hashes = ".metaobjects/.gen-state/.hashes";
+const manifest = Object.assign(
+  {},
+  ...readdirSync(hashes).filter((f) => f.endsWith(".json")).map((f) => read(`${hashes}/${f}`)),
+);
+
 writeFileSync("explorer.json", serializeExplorer(buildExplorer({
   model: read("effective.json"),                        // meta export --effective --out effective.json
   verify: read("verify.json"),                          // meta verify --format json > verify.json
-  manifest: read(".metaobjects/.gen-state/.hashes.json"),
+  manifest,
 })));
 ```
 

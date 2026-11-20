@@ -1,0 +1,281 @@
+{
+  "$comment": "ADR-0064 Amendment 1. Every port with hash state runs these vectors against its own manifest store: fileNames (a package's manifest file name), placement (which manifest a path is filed under, given the loaded objects) and legacySplit (a legacy .hashes.json becomes these package files, byte for byte, and is removed). 'package': null is the root manifest (.root.json). A manifest file's text is the object with keys sorted, two-space indentation and a trailing newline ('goldenText' is one file in full).",
+  "version": 1,
+  "objects": [
+    {
+      "name": "Order",
+      "package": "acme::shop"
+    },
+    {
+      "name": "OrderLine",
+      "package": "acme::lines"
+    },
+    {
+      "name": "Customer",
+      "package": "acme::crm"
+    },
+    {
+      "name": "Invoice",
+      "package": "acme::billing"
+    },
+    {
+      "name": "Item",
+      "package": "acme::shop"
+    },
+    {
+      "name": "Item",
+      "package": "acme::crm"
+    },
+    {
+      "name": "Widget",
+      "package": ""
+    },
+    {
+      "name": "URLMap",
+      "package": "acme::web"
+    }
+  ],
+  "fileNames": [
+    {
+      "package": "acme::shop",
+      "file": "acme.shop.json"
+    },
+    {
+      "package": "acme",
+      "file": "acme.json"
+    },
+    {
+      "package": "acme::shop-v2",
+      "file": "acme.shop-v2.json"
+    },
+    {
+      "package": "Acme::Shop",
+      "file": "Acme.Shop.json"
+    },
+    {
+      "package": "a b",
+      "file": "a%20b.json"
+    },
+    {
+      "package": "acme::shöp",
+      "file": "acme.sh%C3%B6p.json"
+    },
+    {
+      "package": "acme::a.b",
+      "file": "acme.a%2Eb.json"
+    },
+    {
+      "package": null,
+      "file": ".root.json"
+    }
+  ],
+  "placement": [
+    {
+      "path": "gen/acme/shop/Order.ts",
+      "package": "acme::shop",
+      "why": "stem equals an object name"
+    },
+    {
+      "path": "gen/Order.hooks.ts",
+      "package": "acme::shop",
+      "why": "the stem stops at the first dot"
+    },
+    {
+      "path": "gen/Order.generated.v2.ts",
+      "package": "acme::shop",
+      "why": "still the first dot"
+    },
+    {
+      "path": "gen/OrderDto.java",
+      "package": "acme::shop",
+      "why": "the rest of the stem is more words"
+    },
+    {
+      "path": "gen/Order_v2.ts",
+      "package": "acme::shop",
+      "why": "'_' ends a word"
+    },
+    {
+      "path": "gen/OrderLineDto.java",
+      "package": "acme::lines",
+      "why": "the match with the most words wins"
+    },
+    {
+      "path": "gen/OrderLine.ts",
+      "package": "acme::lines"
+    },
+    {
+      "path": "gen/Ordered.ts",
+      "package": null,
+      "why": "'ordered' is one word, not 'order' and 'ed'"
+    },
+    {
+      "path": "gen/order.hooks.ts",
+      "package": "acme::shop",
+      "why": "words match without regard to case"
+    },
+    {
+      "path": "gen/Order/index.ts",
+      "package": null,
+      "why": "only the base name counts, and 'index' matches no object"
+    },
+    {
+      "path": "gen/Item.ts",
+      "package": null,
+      "why": "the longest name is declared in two packages"
+    },
+    {
+      "path": "gen/Widget.ts",
+      "package": null,
+      "why": "an object in no package has no package manifest"
+    },
+    {
+      "path": "gen/index.ts",
+      "package": null,
+      "why": "a file of the whole model"
+    },
+    {
+      "path": "gen/index.ts",
+      "package": "acme::crm",
+      "entry": {
+        "hash": "h",
+        "generatedBy": "entity",
+        "sourceNode": "acme::crm::Customer"
+      },
+      "why": "a sourceNode wins over the stem"
+    },
+    {
+      "path": "gen/Order.ts",
+      "package": "acme::crm",
+      "entry": {
+        "hash": "h",
+        "generatedBy": "entity",
+        "sourceNode": "acme::crm::Customer"
+      },
+      "why": "a sourceNode wins even when the stem names another object"
+    },
+    {
+      "path": "gen/Order.ts",
+      "package": "acme::shop",
+      "entry": {
+        "hash": "h",
+        "generatedBy": "entity",
+        "sourceNode": "acme::shop::Order.id"
+      },
+      "why": "a sourceNode stops at its first dot"
+    },
+    {
+      "path": "gen/Order.ts",
+      "package": null,
+      "entry": {
+        "hash": "h",
+        "generatedBy": "entity",
+        "sourceNode": "Widget"
+      },
+      "why": "a sourceNode with no '::' is an object in no package"
+    },
+    {
+      "path": "gen/Order.ts",
+      "package": "acme::shop",
+      "entry": {
+        "hash": "h",
+        "generator": "java:dto",
+        "outputDir": "gen"
+      },
+      "why": "owner fields are not provenance: the stem decides"
+    },
+    {
+      "path": "gen/order_line.py",
+      "package": "acme::lines",
+      "why": "a snake_case stem matches a PascalCase name"
+    },
+    {
+      "path": "gen/order_line_dto.py",
+      "package": "acme::lines",
+      "why": "more words after the match"
+    },
+    {
+      "path": "gen/order.py",
+      "package": "acme::shop",
+      "why": "a one-word snake_case stem"
+    },
+    {
+      "path": "gen/order_names.py",
+      "package": "acme::shop",
+      "why": "the match with the most words wins: 'order' has no 'order_names'"
+    },
+    {
+      "path": "gen/order-line.hooks.ts",
+      "package": "acme::lines",
+      "why": "'-' ends a word"
+    },
+    {
+      "path": "gen/orders.py",
+      "package": null,
+      "why": "'orders' is one word, not 'order' and 's'"
+    },
+    {
+      "path": "gen/url_map.py",
+      "package": "acme::web",
+      "why": "an acronym name matches its snake_case stem"
+    },
+    {
+      "path": "gen/URLMap.cs",
+      "package": "acme::web",
+      "why": "a run of capitals ends before the last one when a lowercase letter follows"
+    },
+    {
+      "path": "gen/Order2.ts",
+      "package": null,
+      "why": "digits stay with the word before them: 'order2' is one word"
+    }
+  ],
+  "legacySplit": {
+    "legacy": {
+      "gen/Customer.ts": {
+        "hash": "h3",
+        "generatedBy": "entity",
+        "sourceNode": "acme::crm::Customer"
+      },
+      "gen/Invoice.ts": "h5",
+      "gen/Order.ts": "h1",
+      "gen/OrderDto.java": {
+        "hash": "h2",
+        "generator": "java:dto",
+        "outputDir": "gen"
+      },
+      "gen/OrderLine.ts": "h6",
+      "gen/index.ts": "h4"
+    },
+    "files": {
+      ".root.json": {
+        "gen/index.ts": "h4"
+      },
+      "acme.shop.json": {
+        "gen/Order.ts": "h1",
+        "gen/OrderDto.java": {
+          "hash": "h2",
+          "generator": "java:dto",
+          "outputDir": "gen"
+        }
+      },
+      "acme.crm.json": {
+        "gen/Customer.ts": {
+          "hash": "h3",
+          "generatedBy": "entity",
+          "sourceNode": "acme::crm::Customer"
+        }
+      },
+      "acme.billing.json": {
+        "gen/Invoice.ts": "h5"
+      },
+      "acme.lines.json": {
+        "gen/OrderLine.ts": "h6"
+      }
+    },
+    "goldenFile": "acme.shop.json",
+    "goldenText": "{\n  \"gen/Order.ts\": \"h1\",\n  \"gen/OrderDto.java\": {\n    \"hash\": \"h2\",\n    \"generator\": \"java:dto\",\n    \"outputDir\": \"gen\"\n  }\n}\n",
+    "gitignoreBefore": ".gen-state/*\n!.gen-state/.hashes.json\n",
+    "gitignoreAfter": ".gen-state/*\n!.gen-state/.hashes.json\n!.gen-state/.hashes/\n"
+  }
+}

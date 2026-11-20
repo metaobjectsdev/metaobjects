@@ -3,6 +3,7 @@
 // stored value (someone tampered with .gen-state), we treat the snapshot as
 // absent and fall back to first-time-existing semantics.
 
+import { manifestEntries, manifestExists } from "../support/manifest.js";
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -66,8 +67,8 @@ describe(".gen-state integrity", () => {
     decideAndWrite(path, v1, { genStateDir: state, outputRelPath: "User.ts" });
 
     // Hashes file is present.
-    expect(existsSync(join(state, ".hashes.json"))).toBe(true);
-    const hashes = JSON.parse(readFileSync(join(state, ".hashes.json"), "utf-8"));
+    expect(manifestExists(state)).toBe(true);
+    const hashes = manifestEntries(state);
     expect(hashes["User.ts"]).toBeDefined();
 
     // User edits the "field email" line (line 2)

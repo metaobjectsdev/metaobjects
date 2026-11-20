@@ -6,6 +6,7 @@
 // it used to three-way merge against such a body instead, keeping the old content as a "hand
 // edit" that `verify --codegen` then reported.
 
+import { removeManifest, seedLegacyManifest } from "./support/manifest.js";
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -26,7 +27,6 @@ afterEach(() => { rmSync(projectRoot, { recursive: true, force: true }); });
 
 const genStateDir = (): string => join(projectRoot, ".metaobjects", ".gen-state");
 const outDir = (): string => join(projectRoot, "generated");
-const hashesFile = (): string => join(genStateDir(), ".hashes.json");
 
 const STALE = "STALE LINE WRITTEN BY AN OLDER ENGINE\n";
 
@@ -50,7 +50,8 @@ async function gen(baseline?: BaselineMode) {
 function staleAndUnrecorded(): string[] {
   const names = readdirSync(outDir()).filter((e) => statSync(join(outDir(), e)).isFile());
   for (const n of names) writeFileSync(join(outDir(), n), readFileSync(join(outDir(), n), "utf-8") + STALE);
-  writeFileSync(hashesFile(), "{}\n");
+  removeManifest(genStateDir());
+  seedLegacyManifest(genStateDir(), {});
   return names;
 }
 

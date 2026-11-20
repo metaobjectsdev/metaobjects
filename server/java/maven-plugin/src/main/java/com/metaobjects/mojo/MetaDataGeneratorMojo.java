@@ -154,6 +154,7 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
         try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
             if (genStateDir != null) {
                 run.configureManifest(genStateDir, projectRoot);
+                run.placeBy(placementOf(loader));
             }
 
             // Every output dir THIS EXECUTION's generators write to, with the handEdits
@@ -189,13 +190,14 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
             boolean sweepRefused = false;
             if (migrating) {
                 getLog().info("MetaData Mojo > Recorded the generator and output dir of every generated "
-                        + "file in `.metaobjects/.gen-state/.hashes.json`; this build deletes no orphaned file.");
+                        + "file in `.metaobjects/.gen-state/.hashes/`; this build deletes no orphaned file.");
             } else if (selected != null) {
                 // A narrowed run did not try to produce the other objects' files, so not
                 // emitting them says nothing about whether they are orphans.
                 getLog().info("MetaData Mojo > Deleted no orphaned file: meta.entities narrowed this build.");
             } else if (genStateDir != null) {
-                sweepRefused = sweepOrphans(genStateDir, projectRoot, handEditsByDir, emittedThisBuild, runOwners);
+                sweepRefused = sweepOrphans(genStateDir, projectRoot, handEditsByDir, emittedThisBuild, runOwners,
+                        run.placement());
             }
             reportManifestNotices(run, genStateDir, hadManifestAtStart);
 
@@ -277,7 +279,8 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
      * generator the module configures in no execution any more.
      */
     private boolean sweepOrphans(Path genStateDir, Path projectRoot, Map<Path, List<String>> handEditsByDir,
-                              Set<Path> emitted, Set<HashManifest.Owner> runOwners) {
+                              Set<Path> emitted, Set<HashManifest.Owner> runOwners,
+                              HashManifest.Placement placement) {
         List<OrphanSweep.Entry> dirs = new ArrayList<>();
         for (Map.Entry<Path, List<String>> e : handEditsByDir.entrySet()) {
             boolean allOverwrite = !e.getValue().isEmpty() && e.getValue().stream()
@@ -285,7 +288,7 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
             dirs.add(new OrphanSweep.Entry(e.getKey(), e.getKey() + File.separator, allOverwrite));
         }
         OrphanSweep.Result swept = OrphanSweep.sweep(
-                genStateDir, projectRoot, dirs, emitted, runOwners, this::configuredOwners);
+                genStateDir, projectRoot, dirs, emitted, runOwners, this::configuredOwners, placement);
         for (String path : swept.removed) {
             getLog().info("MetaData Mojo > Removed orphaned generated file no longer produced: " + path);
         }
@@ -335,6 +338,18 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
         return emittedThisBuild;
     }
 
+    /** Where manifest entries are filed (ADR-0064 Amendment 1): the loaded model's root-level objects, by name and package. */
+    static HashManifest.Placement placementOf(MetaDataLoader loader) {
+        if (loader == null) return null;
+        List<HashManifest.ModelObject> objects = new ArrayList<>();
+        for (com.metaobjects.MetaData child : loader.getRoot().getChildren()) {
+            // getName() is package-qualified ("pkg::Name"); placement matches the bare name.
+            String name = child.getName() == null ? "" : child.getName();
+            objects.add(new HashManifest.ModelObject(name.substring(name.lastIndexOf("::") + 2), child.getPackage()));
+        }
+        return new HashManifest.Placement(objects);
+    }
+
     private record Emission(HashManifest.Owner owner, String hash) {}
 
     /**
@@ -362,16 +377,16 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
             String lead = hadManifestAtStart
                     ? OWNER + ": adopted " + run.adoptedPaths().size()
                         + " existing generated file(s) into the codegen hash manifest "
-                        + "`.metaobjects/.gen-state/.hashes.json`."
+                        + "`.metaobjects/.gen-state/.hashes/`."
                     : OWNER + ": created the codegen hash manifest "
-                        + "`.metaobjects/.gen-state/.hashes.json` and adopted " + run.adoptedPaths().size()
+                        + "`.metaobjects/.gen-state/.hashes/` and adopted " + run.adoptedPaths().size()
                         + " existing generated file(s) into it.";
             getLog().warn(lead + " Commit it: it is how the next run tells a file it generated "
                     + "from one you edited, and how it removes files no generator emits any more.");
         }
         if (run.untrackedCount() > 0) {
             getLog().warn(run.untrackedCount() + " generated file(s) were written outside the project "
-                    + "root and are not recorded in `.metaobjects/.gen-state/.hashes.json`, so "
+                    + "root and are not recorded in `.metaobjects/.gen-state/.hashes/`, so "
                     + "hand-edit protection does not apply to them beyond the GENERATED marker rule.");
         }
     }

@@ -332,6 +332,8 @@ public static class GenFingerprint
     public static bool CanSkipGen(string projectRoot, string model, string identity)
     {
         if (!MatchesStored(projectRoot, model, identity)) return false;
+        // A pre-1.3.0 manifest is migrated by a write run, so gen runs (verify, read-only, may still answer).
+        if (HashManifest.HasLegacy(GenStateDir(projectRoot))) return false;
         if (ManifestOf(projectRoot) is not { } manifest) return false;
         // Amendment A: every recorded file must still be what the stored run left. A missing entry is a mismatch.
         var stored = Read(projectRoot)!;

@@ -542,7 +542,7 @@ fn init_files() -> [(&'static str, &'static str); 3] {
         ),
         (
             ".metaobjects/.gitignore",
-            "# The generation state. `.hashes.json` is committed: it is one hash per generated\n# path, and the only thing that lets `gen` tell \"this file is exactly what I wrote\" from\n# \"somebody edited this\" on a machine that did not generate it. Everything else here (the\n# skip key) describes one machine's last run and is not.\n#\n# The glob form matters: `.gen-state/` (a directory) would stop git descending, and the\n# negation below could never take effect.\n.gen-state/*\n!.gen-state/.hashes.json\n",
+            "# The generation state. `.hashes/` is committed: it is one hash per generated\n# path (one file per model package), and the only thing that lets `gen` tell \"this file is exactly what I wrote\" from\n# \"somebody edited this\" on a machine that did not generate it. Everything else here (the\n# skip key) describes one machine's last run and is not.\n#\n# The glob form matters: `.gen-state/` (a directory) would stop git descending, and the\n# negation below could never take effect.\n.gen-state/*\n!.gen-state/.hashes.json\n!.gen-state/.hashes/\n",
         ),
         (
             "metaobjects/meta.app.yaml",
@@ -596,7 +596,7 @@ fn cmd_init(
     let _ = writeln!(
         out,
         "next: declare your objects in metaobjects/ (JSON or YAML), then run `{TOOL} gen`.\n\
-         Commit .metaobjects/.gen-state/.hashes.json with the generated crates.\n\
+         Commit .metaobjects/.gen-state/.hashes/ with the generated crates.\n\
          Schema migrations are the Node `meta` command's (`meta migrate`), for every server language."
     );
     Ok(0)

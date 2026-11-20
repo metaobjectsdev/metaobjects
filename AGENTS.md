@@ -263,7 +263,7 @@ import { EntityFetcherProvider, EntityGrid } from "@metaobjectsdev/tanstack";
 
 - **TS runtime**: Bun-first for development (zero-config TS, native test runner). Node-compatible for distribution; users install via npm/pnpm/bun without lock-in to Bun's runtime.
 - **Module system**: ESM only. No CommonJS, no transpile step required.
-- **Storage format**: JSON files in `metaobjects/meta.<concept>.json` at project root. `.metaobjects/.gen-state/` holds the codegen merge base: the snapshot **bodies are gitignored** (a second full copy of all generated output), but **`.hashes.json` is COMMITTED** — one hash per generated path, and the only thing that lets `meta gen` tell "this file is exactly what I wrote" from "somebody edited this" on a machine that did not generate it. Ignore it and a fresh clone or CI runner silently overwrites hand edits; commit it and an edited file is refused by name instead.
+- **Storage format**: JSON files in `metaobjects/meta.<concept>.json` at project root. `.metaobjects/.gen-state/` holds the codegen merge base: the snapshot **bodies are gitignored** (a second full copy of all generated output), but **`.hashes/` (one file per model package) is COMMITTED** — one hash per generated path, and the only thing that lets `meta gen` tell "this file is exactly what I wrote" from "somebody edited this" on a machine that did not generate it. Ignore it and a fresh clone or CI runner silently overwrites hand edits; commit it and an edited file is refused by name instead.
 - **Codegen substrate**: the vendored ts-poet printer (`codegen-ts/src/poet.ts`) for greenfield emit, ts-morph for in-place edits, Biome for format pass, `git merge-file --diff3` for hand-edit-preserving regen.
 - **Runtime substrate**: Kysely for TS (user-provided connection, async-only).
 - **Migration substrate**: Postgres + SQLite for TS v0.3.
@@ -304,7 +304,7 @@ project-root/
 ├── .metaobjects/                      # HIDDEN — tool state
 │   ├── config.json                    # static project state
 │   └── .gen-state/                    # codegen merge base
-│       ├── .hashes.json               #   COMMIT THIS — one hash per generated path
+│       ├── .hashes/<package>.json      #   COMMIT THIS — one hash per generated path, one file per package
 │       └── <mirrored output>           #   gitignored (a 2nd copy of all output)
 └── metaobjects.config.ts              # runtime config
 ```

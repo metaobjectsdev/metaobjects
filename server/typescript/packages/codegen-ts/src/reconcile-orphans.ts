@@ -18,7 +18,7 @@
 /**
  * A generator's opt-in to orphan reconciliation, and the namespace it applies to.
  *
- * Declaring this is the ONLY way in: `.gen-state/.hashes.json` records paths, not
+ * Declaring this is the ONLY way in: the manifest under `.gen-state/.hashes/` records paths, not
  * which generator produced each one, so the runner genuinely cannot work out who
  * owns what. Deriving ownership from the output directory instead would be worse
  * than useless — every generator in a single-target project writes to the same
@@ -67,7 +67,7 @@ export interface OrphanDecision {
 
 export interface ReconcileOrphansArgs {
   /** Relative paths this generator emitted on some previous run — in practice the
-   *  keys of `.gen-state/.hashes.json`. */
+   *  keys of the manifest under `.gen-state/.hashes/`. */
   readonly previouslyGenerated: readonly string[];
   /** Relative paths emitted on THIS run. */
   readonly emitted: readonly string[];

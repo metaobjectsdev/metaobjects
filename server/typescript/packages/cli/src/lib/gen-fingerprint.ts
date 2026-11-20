@@ -21,6 +21,7 @@ import { existsSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, 
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Collection } from "@metaobjectsdev/sdk/collection";
+import { readManifestState } from "@metaobjectsdev/codegen-ts";
 import { GEN_CONFIG_FILE } from "./gen-collection.js";
 
 /** Bumped whenever what goes into the fingerprint changes, so an old stored key never matches. */
@@ -60,7 +61,6 @@ export interface StoredFingerprint {
 }
 
 export const FINGERPRINT_FILE = ".fingerprint-typescript.json";
-const HASHES_FILE = ".hashes.json";
 
 /** Directories never descended into: dependencies, VCS and tool state, build caches. */
 const SKIP_DIRS = new Set(["node_modules", ".git", ".turbo", ".cache", ".metaobjects"]);
@@ -444,12 +444,11 @@ export function clearStoredFingerprint(genStateDir: string): void {
   rmSync(join(genStateDir, FINGERPRINT_FILE), { force: true });
 }
 
-/** The manifest's recorded paths and hashes; empty when there is none. */
+/** The manifest's recorded paths and hashes (every package's manifest, ADR-0064 Amendment 1);
+ *  empty when there is none. */
 function recordedFiles(genStateDir: string): Map<string, string> {
   const out = new Map<string, string>();
-  const raw = readJson(join(genStateDir, HASHES_FILE));
-  if (raw === undefined) return out;
-  for (const [path, value] of Object.entries(raw)) {
+  for (const [path, value] of Object.entries(readManifestState(genStateDir).entries)) {
     if (typeof value === "string") out.set(path, value);
     else if (typeof value === "object" && value !== null && typeof (value as { hash?: unknown }).hash === "string") {
       out.set(path, (value as { hash: string }).hash);
@@ -468,6 +467,16 @@ export type SkipVerdict =
  * the generated files (no render, no write); a file changed since then makes the run render.
  */
 export function decideGenSkip(inputs: GenInputs): SkipVerdict {
+  // A run that finds the pre-1.3.0 single manifest migrates it (ADR-0064 Amendment 1), which
+  // is a write, so it never skips.
+  if (readManifestState(inputs.genStateDir).legacy) {
+    return { skip: false, reason: "the manifest is still in its single-file form" };
+  }
+  return decideKeyAndOutputs(inputs);
+}
+
+/** The skip decision without the migration rule: what a read-only `verify` may rely on. */
+function decideKeyAndOutputs(inputs: GenInputs): SkipVerdict {
   // Never decide without the model half: the generator half alone says nothing about it.
   if (!inputs.entries.some((e) => e.kind === "model")) return { skip: false, reason: "the model was not hashed" };
   const stored = readStoredFingerprint(inputs.genStateDir);
@@ -492,7 +501,7 @@ export function decideGenSkip(inputs: GenInputs): SkipVerdict {
  * hand edit is not an input, so `gen` may skip over one, but `verify` must still see it.
  */
 export function decideVerifyNoDrift(inputs: GenInputs): SkipVerdict {
-  const verdict = decideGenSkip(inputs);
+  const verdict = decideKeyAndOutputs(inputs);
   if (!verdict.skip) return verdict;
   const recorded = recordedFiles(inputs.genStateDir);
   if (recorded.size === 0) return { skip: false, reason: "the manifest records no file" };

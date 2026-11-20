@@ -8,6 +8,7 @@ from metaobjects.meta.meta_data import MetaData
 from metaobjects.codegen.config import GenConfig
 from metaobjects.codegen.constants import GENERATED_MARKER
 from metaobjects.codegen.runner import run_gen
+from tests.codegen.manifest_helpers import has_manifest
 from metaobjects.codegen.generators.entity_model import entity_model
 
 
@@ -118,7 +119,7 @@ def test_run_gen_errors_on_path_collision(tmp_path: Path) -> None:
 
 # ── `baseline="adopt"` — the first run a pre-manifest project can perform ──────────
 #
-# The no-manifest refusal used to LEAD with "commit .metaobjects/.gen-state/.hashes.json",
+# The no-manifest refusal used to LEAD with "commit .metaobjects/.gen-state/.hashes/",
 # which the population it names cannot do: nothing writes a manifest until a gen succeeds,
 # and a run where every file refuses writes none. `adopt` records what is on disk as the
 # baseline and writes nothing, which is the run that produces the file to commit.
@@ -149,7 +150,7 @@ def test_adopt_records_the_files_and_writes_nothing(tmp_path: Path) -> None:
     statuses = {Path(p).name: s for p, s in result.files}
     assert statuses["Subscriber.py"] == "adopted"
     assert (out / "Subscriber.py").read_text() == before  # not one byte written
-    assert (state / ".hashes.json").exists()  # …and the file to commit now exists
+    assert has_manifest(state)  # …and the file to commit now exists
 
 
 def test_adopt_says_what_to_do_next_once(tmp_path: Path) -> None:
@@ -164,7 +165,7 @@ def test_adopt_says_what_to_do_next_once(tmp_path: Path) -> None:
 
     notices = [w for w in result.warnings if "baseline" in w]
     assert len(notices) == 1
-    assert ".hashes.json" in notices[0]
+    assert ".hashes/" in notices[0]
     assert "replace" in notices[0] or "regenerat" in notices[0]
 
 
@@ -209,7 +210,7 @@ def test_the_no_manifest_refusal_leads_with_the_performable_remedy(tmp_path: Pat
     assert len(msgs) == 1
     assert "--baseline=adopt" in msgs[0]
     # What it must no longer do: prescribe committing a file this project cannot produce.
-    assert "Commit '.metaobjects/.gen-state/.hashes.json' and re-run" not in msgs[0]
+    assert "Commit '.metaobjects/.gen-state/.hashes/' and re-run" not in msgs[0]
 
 
 def test_run_gen_refuses_a_model_with_colliding_collection_names(tmp_path: Path) -> None:

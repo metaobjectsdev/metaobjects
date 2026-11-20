@@ -6,6 +6,7 @@
 // on disk, `verify --codegen` convicted it and said "run 'meta gen'", and gen never
 // deleted anything, so the gate failed the same way after every run.
 
+import { manifestFiles } from "./support/manifest.js";
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -16,7 +17,7 @@ import { entityFile } from "../src/generators/entity-file.js";
 import type { Generator } from "../src/generator.js";
 
 const OUT = "gen";
-const MANIFEST = join(".metaobjects", ".gen-state", ".hashes.json");
+const GEN_STATE = join(".metaobjects", ".gen-state");
 
 async function model(...names: string[]): Promise<MetaRoot> {
   const doc = JSON.stringify({
@@ -41,7 +42,8 @@ afterEach(() => {
 });
 
 const abs = (rel: string): string => join(projectRoot, rel);
-const manifest = (): string => readFileSync(abs(MANIFEST), "utf8");
+// Every manifest file, concatenated: the assertions ask whether a path is recorded anywhere.
+const manifest = (): string => Object.values(manifestFiles(abs(GEN_STATE))).join("\n");
 
 async function gen(
   names: string[],

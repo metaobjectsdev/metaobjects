@@ -391,7 +391,7 @@ generator as `ctx.renderContext?.apiPrefix`.
 
 `content` is the file as written — TypeScript, JSON, YAML, SQL, Markdown. No port formats
 it or adds a header for you. On TypeScript, C# and Python a header is optional: the write
-decision uses the committed `.metaobjects/.gen-state/.hashes.json`, so a JSON file is
+decision uses the committed `.metaobjects/.gen-state/.hashes/`, so a JSON file is
 protected like any other. On the JVM, `FileEmittingGenerator` routes a file whose content
 carries the `GENERATED` header comment through the ownership guard and writes a file that
 cannot carry one (JSON) as given.

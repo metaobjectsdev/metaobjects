@@ -25,6 +25,8 @@ from .overwrite_policy import (
     decide_and_write,
     has_hash_manifest,
     manifest_batch,
+    objects_of_root,
+    set_placement_objects,
 )
 
 _VALID_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -233,6 +235,7 @@ def run_gen(
     # Captured BEFORE any write, because the first write creates the manifest — read
     # it afterwards and every project looks migrated.
     tracking_hashes = config.gen_state_dir is not None
+    set_placement_objects(config.gen_state_dir, objects_of_root(metadata))
     had_manifest = tracking_hashes and has_hash_manifest(config.gen_state_dir or "")
 
     refused: list[str] = []
@@ -334,7 +337,7 @@ def _finish(
     if untracked:
         result.warnings.append(
             f"{untracked} generated file(s) were written outside the project root and are "
-            f"not recorded in .metaobjects/.gen-state/.hashes.json, so hand-edit protection "
+            f"not recorded in .metaobjects/.gen-state/.hashes/, so hand-edit protection "
             f"does not apply to them beyond the @generated header rule."
         )
 
@@ -366,7 +369,7 @@ def _finish(
                 f"for a project created before the manifest was committed. ONE-TIME FIX: "
                 f"re-run with --baseline=adopt — it records the files you have as the "
                 f"baseline and writes NOTHING — then commit "
-                f"'.metaobjects/.gen-state/.hashes.json' and run gen again, where the "
+                f"'.metaobjects/.gen-state/.hashes/' and run gen again, where the "
                 f"regeneration arrives as its own reviewable diff. Adopting DECLARES these "
                 f"files to be generated output, so an edit already inside one of them is "
                 f"part of the baseline and that regeneration will replace it — commit "
@@ -393,7 +396,7 @@ def _finish(
         )
         result.warnings.append(
             f"Recorded {len(adopted)} existing file(s) as the codegen baseline and wrote "
-            f"nothing. NEXT: commit '.metaobjects/.gen-state/.hashes.json', then run gen "
+            f"nothing. NEXT: commit '.metaobjects/.gen-state/.hashes/', then run gen "
             f"again — these files regenerate normally from here, as their own reviewable "
             f"diff. Adopting DECLARED them to be generated output: an edit already inside "
             f"one is part of the baseline and that regeneration will replace it, so check "

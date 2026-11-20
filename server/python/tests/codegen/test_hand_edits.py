@@ -13,9 +13,10 @@ from pathlib import Path
 import pytest
 
 from metaobjects.cli import main
+from tests.codegen.manifest_helpers import read_manifest
 from metaobjects.codegen.project_config import load_project_config
 
-MANIFEST = Path(".metaobjects") / ".gen-state" / ".hashes.json"
+MANIFEST = Path(".metaobjects") / ".gen-state"
 KEEP = "targets:\n  app:\n    outDir: gen\n    generators: [entity]\n"
 OVERWRITE = (
     "targets:\n  app:\n    outDir: gen\n    generators:\n"
@@ -48,7 +49,7 @@ def _file(out: Path, stem: str) -> Path:
 
 
 def _manifest(root: Path) -> dict[str, str]:
-    return json.loads((root / MANIFEST).read_text(encoding="utf-8"))
+    return read_manifest(root / MANIFEST)
 
 
 @pytest.mark.parametrize("config", [KEEP, OVERWRITE], ids=["keep", "overwrite"])
@@ -127,7 +128,8 @@ def test_a_file_nobody_generated_is_never_overwritten(
     assert main(["gen"]) == 0
     target = _file(out, "telemetry")
     # Forget the record: the file is now someone else's as far as gen can prove.
-    (tmp_path / MANIFEST).write_text("{}", encoding="utf-8")
+    for f in (tmp_path / MANIFEST / ".hashes").glob("*.json"):
+        f.write_text("{}\n", encoding="utf-8")
     target.write_text("# not generated\n", encoding="utf-8")
     assert main(["gen"]) == 1
     assert target.read_text(encoding="utf-8") == "# not generated\n"

@@ -22,7 +22,7 @@ public sealed class OrphanSweepTests : IDisposable
     private string Meta => Path.Combine(_root, "metaobjects");
     private string Out => Path.Combine(_root, "gen");
     private string Docs => Path.Combine(_root, "docs");
-    private string ManifestPath => Path.Combine(_root, ".metaobjects", ".gen-state", ".hashes.json");
+    private string ManifestPath => Path.Combine(_root, ".metaobjects", ".gen-state", ".hashes");
 
     public OrphanSweepTests() => Directory.CreateDirectory(Meta);
     public void Dispose() { try { Directory.Delete(_root, recursive: true); } catch { } }
@@ -80,7 +80,9 @@ public sealed class OrphanSweepTests : IDisposable
     private (int Code, string Out, string Err) Verify() => Run("verify", "--codegen", "--full", Meta, "--out", Out, "--namespace", "Acme.Generated");
 
     private Dictionary<string, string> Manifest() =>
-        JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(ManifestPath))!;
+        Directory.GetFiles(ManifestPath, "*.json").Order(StringComparer.Ordinal)
+            .SelectMany(f => JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(f))!)
+            .ToDictionary(kv => kv.Key, kv => kv.Value);
 
     [Fact]
     public void A_renamed_value_object_is_deleted_and_verify_goes_green()
@@ -368,7 +370,9 @@ public sealed class OrphanSweepTests : IDisposable
         Model("acme", "Telemetry");
         Assert.Equal(0, Gen().Code);
         var file = Path.Combine(Out, "Telemetry.g.cs");
-        File.WriteAllText(ManifestPath, "{}");
+        Directory.Delete(ManifestPath, recursive: true);
+        Directory.CreateDirectory(ManifestPath);
+        File.WriteAllText(Path.Combine(ManifestPath, ".root.json"), "{}");
         File.WriteAllText(file, "// not generated\n");
 
         Gen();

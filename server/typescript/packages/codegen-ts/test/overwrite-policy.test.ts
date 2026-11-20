@@ -2,6 +2,7 @@
 // More elaborate scenarios (clean merge, conflict, integrity, missing git,
 // first-time-existing) live in test/overwrite-policy/*.test.ts.
 
+import { manifestEntries, seedLegacyManifest } from "./support/manifest.js";
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -96,8 +97,8 @@ describe("decideAndWrite (three-way merge)", () => {
 describe("shared manifest with object-valued entries", () => {
   test("reads an object entry's hash and preserves its fields on record and forget", () => {
     const jvm = { hash: contentHash("jvm body"), generator: "java:dto", outputDir: "target/gen" };
-    const manifest = join(state, ".hashes.json");
-    writeFileSync(manifest, JSON.stringify({ "Jvm.java": jvm, "Plain.txt": "abc", "Gone.java": { ...jvm } }, null, 2) + "\n");
+    // Seeded as the legacy single file on purpose: the runs below migrate it.
+    seedLegacyManifest(state, { "Jvm.java": jvm, "Plain.txt": "abc", "Gone.java": { ...jvm } });
 
     expect(readGeneratedHash(state, "Jvm.java")).toBe(jvm.hash);
 
@@ -109,7 +110,8 @@ describe("shared manifest with object-valued entries", () => {
 
     forgetGeneratedPaths(state, ["Gone.java"]);
 
-    const saved = JSON.parse(readFileSync(manifest, "utf-8"));
+    const saved = manifestEntries(state);
+    expect(existsSync(join(state, ".hashes.json"))).toBe(false); // migrated
     expect(saved["Jvm.java"]).toEqual(jvm);
     expect(saved["Plain.txt"]).toBe("abc");
     expect(saved["Other.ts"]).toBe(contentHash("x\n"));
@@ -119,7 +121,7 @@ describe("shared manifest with object-valued entries", () => {
     writeFileSync(jvmFile, "jvm body");
     const rewrite = decideAndWrite(jvmFile, "jvm body v2", { genStateDir: state, outputRelPath: "Jvm.java" });
     expect(rewrite.status).not.toBe("refused");
-    const after = JSON.parse(readFileSync(manifest, "utf-8"));
+    const after = manifestEntries(state);
     expect(after["Jvm.java"]).toEqual({ ...jvm, hash: contentHash("jvm body v2") });
   });
 });

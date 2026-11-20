@@ -1,5 +1,9 @@
 # Migration — commit `.gen-state/.hashes.json`
 
+> **Since 1.3.0 the manifest is a directory, `.gen-state/.hashes/`, with one file per model
+> package** (see [the per-package manifest migration](per-package-hash-manifest.md)). Read
+> `.hashes.json` below as that directory; the first `gen` after upgrading converts it.
+
 **Applies to:** every existing TypeScript project scaffolded by `meta init` before this
 release. **Action required:** one edit to `.metaobjects/.gitignore`, then commit one file.
 
@@ -107,7 +111,10 @@ That means those files differ from fresh output and there is no hash recording t
 Run it once, commit the manifest, and the refusals stop: from then on every machine can
 tell your edits from its own output.
 
-## When two branches both regenerated: resolving a `.hashes.json` conflict
+## When two branches both regenerated: resolving a manifest conflict
+
+Since 1.3.0 this only happens when both branches changed the same package's generated files,
+because each package has its own manifest file. The advice below applies to that one file.
 
 Now that the manifest is committed, two people who both ran `meta gen` on different
 branches will conflict on it. This is expected and harmless — both sides are just

@@ -11,6 +11,7 @@
 // comparison, which a preview can do exactly.
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { manifestExists } from "./support/manifest.js";
 import { mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -83,7 +84,7 @@ describe("previewWriteStatus agrees with decideAndWrite", () => {
     writeFileSync(path, "// hand-written\n");
     previewWriteStatus(path, "fresh\n", opts());
     expect(readFileSync(path, "utf-8")).toBe("// hand-written\n");
-    expect(existsSync(join(state, ".hashes.json"))).toBe(false);
+    expect(manifestExists(state)).toBe(false);
   });
 
   test("with the snapshot body present it stays coarse, and says so honestly", () => {
