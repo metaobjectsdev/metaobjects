@@ -297,7 +297,7 @@ def _write_all(
             else rel
         )
         # A file written OUTSIDE the project has no place in the project's manifest: its
-        # key would be `../`-relative and committed into `.hashes.json`. It gets the
+        # key would be `../`-relative and committed into the manifest. It gets the
         # manifest-less rule a run with no project gets — written, never recorded.
         outside = bool(config.project_root) and (key.startswith("..") or os.path.isabs(key))
         if outside:

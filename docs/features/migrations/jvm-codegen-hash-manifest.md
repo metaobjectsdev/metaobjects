@@ -1,5 +1,9 @@
 # Migration: Java and Kotlin commit the codegen hash manifest
 
+> **Since 1.3.0 the manifest is a directory, `.gen-state/.hashes/`, with one file per model
+> package** (see [the per-package manifest migration](per-package-hash-manifest.md)). Read
+> `.hashes.json` below as that directory; the first `gen` after upgrading converts it.
+
 **Changed in:** Maven 8.1.0 (npm, PyPI and NuGet 1.1.0) · **Ports affected:** Java and Kotlin
 **Automatic fix:** the first `mvn metaobjects:generate` run does it; you commit one file per
 module. Decision record:

@@ -1,6 +1,6 @@
 //! SHA-256 (FIPS 180-4), std only.
 //!
-//! The hash manifest (`.metaobjects/.gen-state/.hashes.json`) records the SHA-256 of
+//! The hash manifest (`.metaobjects/.gen-state/.hashes/`) records the SHA-256 of
 //! every generated file, the same digest every port writes, so the Rust port needs
 //! the algorithm. It is a few dozen lines, so it lives here rather than as a
 //! dependency of a code generator. This file is also compiled into `build.rs`

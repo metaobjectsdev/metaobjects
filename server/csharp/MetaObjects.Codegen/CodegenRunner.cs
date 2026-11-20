@@ -140,7 +140,7 @@ public static class CodegenRunner
                     }
                     // The manifest key. Project-root-relative when the caller names a project,
                     // so two runs with different --out cannot collide on one entry inside the
-                    // single manifest that is anchored on that project. `file.Path` rides
+                    // manifest that is anchored on that project. `file.Path` rides
                     // along as the legacy spelling — it is what the manifest used to be keyed
                     // by, and it is still what a refusal is REPORTED as (the name the reader
                     // sees under --out).

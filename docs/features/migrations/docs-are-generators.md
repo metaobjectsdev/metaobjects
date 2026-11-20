@@ -1,5 +1,9 @@
 # Migration: documentation is a generator you declare
 
+> **Since 1.3.0 the manifest is a directory, `.metaobjects/.gen-state/.hashes/`, with one file per
+> model package** (see [the per-package manifest migration](per-package-hash-manifest.md)). Read
+> `.hashes.json` below as that directory; the first `gen` after upgrading converts it.
+
 **Removed in:** 1.1.0 (Maven 8.1.0) · **Ports affected:** all five
 **Automatic fix:** none. Each section below is written so you, or a coding agent working in
 your repository, can make the change by hand.

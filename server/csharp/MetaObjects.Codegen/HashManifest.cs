@@ -1,6 +1,6 @@
 // The codegen hash manifest — how a run tells its own output from a hand edit.
 //
-// Mirrors codegen-ts's `.gen-state/.hashes.json` and Python's overwrite_policy, using
+// Mirrors codegen-ts's `.gen-state/.hashes/` and Python's overwrite_policy, using
 // the same algorithm — sha-256 hex of the UTF-8 content — so the same file content
 // hashes identically on every port.
 //

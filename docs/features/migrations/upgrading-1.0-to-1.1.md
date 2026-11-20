@@ -1,5 +1,9 @@
 # Upgrading from 1.0 to 1.1 (1.0.x → 1.1.0)
 
+> **Since 1.3.0 the manifest is a directory, `.metaobjects/.gen-state/.hashes/`, with one file per
+> model package** (see [the per-package manifest migration](per-package-hash-manifest.md)). Read
+> `.hashes.json` below as that directory; the first `gen` after upgrading converts it.
+
 This is the one page for moving a project from any 1.0.x release to 1.1.0 (npm, PyPI and NuGet
 `1.1.0`; Maven Central `8.1.0`). It lists the steps in order and every change that needs
 something from you, per port, each with its fix. The per-change detail is in `CHANGELOG.md`
