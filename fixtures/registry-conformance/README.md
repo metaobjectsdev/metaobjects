@@ -25,6 +25,15 @@ This is the same proven pattern as `render-conformance` and
 strongest signal, simplest model, no escape-hatch ledger. The logical
 vocabulary must have **zero** per-port divergence by contract.
 
+## Core vocabulary pin
+
+[`core-vocabulary.pin.json`](./core-vocabulary.pin.json) pins what `metaobjects-core-types`
+registers. The `core vocabulary is pinned` gate in `scripts/ci-local.sh`
+(`scripts/check-core-vocabulary-pin.ts`) fails when a type, subtype, attribute or child rule is
+added to core, and points at
+[GOVERNANCE.md](../../GOVERNANCE.md#extension-packs-and-the-core-metamodel): new vocabulary goes
+in its own provider pack. Regenerating the pin is a core maintainer's decision.
+
 ## Manifest schema (FR-033)
 
 The manifest carries the cross-port logical vocabulary **plus** (FR-033 Task 5)
