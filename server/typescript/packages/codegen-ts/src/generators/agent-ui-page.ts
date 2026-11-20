@@ -42,7 +42,7 @@ import type { MetaData, MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
 import { flatSurfaceFields } from "../flattened.js";
 import { GENERATED_HEADER } from "../constants.js";
 import { generatableObjects, isReport } from "../source-detect.js";
-import { hasGeneratedForm, restPath, servedPath, servesClientHooks } from "../api-surface.js";
+import { hasGeneratedForm, isCredentialField, restPath, servedPath, servesClientHooks } from "../api-surface.js";
 import {
   buildEntityUiDescriptor,
   type UiFieldDescriptor,
@@ -183,19 +183,23 @@ export function hasUiSurface(obj: MetaObject): boolean {
   return servesClientHooks(obj);
 }
 
-function gridSection(obj: MetaObject, grid: MetaData): string[] {
+function gridSection(obj: MetaObject, grid: MetaData, root: MetaRoot): string[] {
   const out: string[] = [];
   out.push(`**Grid \`${grid.name}\`**`);
   out.push("");
+  // A credential is never a grid column, even when @columns names it — the generated grids
+  // drop it, so the page does not list it.
+  const credentials = credentialFieldNames(obj, root);
   const columns = grid.attr(LAYOUT_DATA_GRID_ATTR_COLUMNS);
-  if (Array.isArray(columns) && columns.length > 0) {
-    out.push(`- columns: ${columns.map((c) => `\`${String(c)}\``).join(", ")}`);
+  const shown = Array.isArray(columns) ? columns.map(String).filter((c) => !credentials.has(c)) : [];
+  if (shown.length > 0) {
+    out.push(`- columns: ${shown.map((c) => `\`${c}\``).join(", ")}`);
   }
   // The RESOLVED sort, through the same call the grid const and grid hook use — a
   // page that read the two attrs itself would print no direction for a grid whose
   // direction comes from the named field's @sortableDefaultOrder, i.e. would teach
   // an agent the opposite of what the generated grid does.
-  const defaultSort = resolveGridDefaultSort(obj, grid);
+  const defaultSort = resolveGridDefaultSort(obj, grid, root);
   if (defaultSort !== undefined) {
     out.push(`- default sort: \`${defaultSort.field}:${defaultSort.order}\``);
   }
@@ -264,7 +268,8 @@ export function renderAgentUiPage(root: MetaRoot, apiPrefix = ""): string {
           controlCell(f),
           htmlTypeCell(f),
           f.rules.map(ruleText).join(" · "),
-          node === undefined ? "" : flag(node.attr(FIELD_ATTR_FORM_EXCLUDE)),
+          // The generated forms skip a credential exactly as they skip @formExclude.
+          node === undefined ? "" : flag(node.attr(FIELD_ATTR_FORM_EXCLUDE) === true || isCredentialField(node)),
           node === undefined ? "" : flag(isFilterableField(node) && !credentials.has(f.name)),
           node === undefined ? "" : flag(isSortableField(node) && !credentials.has(f.name)),
         ];
@@ -296,7 +301,7 @@ export function renderAgentUiPage(root: MetaRoot, apiPrefix = ""): string {
     }
     for (const grid of dataGrids(obj)) {
       out.push("");
-      out.push(...gridSection(obj, grid));
+      out.push(...gridSection(obj, grid, root));
     }
     out.push("");
   }

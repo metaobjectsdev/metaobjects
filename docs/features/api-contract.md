@@ -625,6 +625,13 @@ set (`@mutability: writeOnce` on PATCH, the TPH discriminator, `@autoSet: onCrea
 a generated edit form submits every field it was given, so a `400` would fail every save. A required field
 that is also ignored can never be created through the API, so mark such a field optional.
 
+The generated TypeScript client tier follows the same marks. The React and Angular forms render no control
+for a credential or a `@formExclude` field. The TanStack and Angular grids never emit a column for a
+credential, even when a `layout.dataGrid`'s `@columns` names it, and a `@defaultSortField` naming one gives
+the grid no initial sort. A `@filter` preset over a credential fails `meta gen`, because the server would
+refuse that filter on every request. On a single-table (TPH) base's grid, a column that any subtype marks as
+a credential counts.
+
 The same rule covers every key a client never sets, in every port, on the plain and the TPH per-subtype
 routes:
 

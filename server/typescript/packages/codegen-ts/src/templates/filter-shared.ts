@@ -116,7 +116,11 @@ export interface GridDefaultSort {
  * disagree: the endpoint returns the field's declared order while the grid that
  * queries it renders the opposite.
  *
- * Returns undefined when the layout names no field — a grid with no initial sort.
+ * Returns undefined when the layout names no field — a grid with no initial sort — and when
+ * the field it names is a credential (`credentialFieldNames`): the sort allowlist never holds
+ * one, so the endpoint would refuse the grid's very first request, and the order of a secret
+ * leaks it. Pass `root` (the loaded model) so a column a TPH sibling declares as a credential
+ * counts too.
  *
  * The field lookup cannot miss on a LOADED model: `validateDataGridSortFields`
  * refuses `@defaultSortField` naming a field the entity does not have
@@ -130,10 +134,12 @@ export interface GridDefaultSort {
 export function resolveGridDefaultSort(
   entity: MetaObject,
   layout: MetaData,
+  root?: MetaRoot,
 ): GridDefaultSort | undefined {
   // ADR-0039: resolving — a layout may inherit its grid attrs via extends.
   const fieldName = layout.attr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD);
   if (typeof fieldName !== "string" || fieldName === "") return undefined;
+  if (credentialFieldNames(entity, root).has(fieldName)) return undefined;
 
   const declared = layout.attr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER);
   if (declared === "asc" || declared === "desc") return { field: fieldName, order: declared };

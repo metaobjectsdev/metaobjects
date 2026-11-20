@@ -1,5 +1,5 @@
 import { code, imp, joinCode, type Code } from "@metaobjectsdev/codegen-ts/engine";
-import type { MetaObject, MetaField } from "@metaobjectsdev/metadata";
+import type { MetaObject, MetaField, MetaRoot } from "@metaobjectsdev/metadata";
 import {
   LAYOUT_SUBTYPE_DATA_GRID,
   LAYOUT_DATA_GRID_ATTR_PAGE_SIZE,
@@ -8,6 +8,8 @@ import {
   LAYOUT_DATA_GRID_ATTR_COLUMNS,
   OBJECT_ATTR_DISCRIMINATOR,
   VIEW_SUBTYPE_HIDDEN,
+  FILTER_COMPOSE_AND,
+  FILTER_COMPOSE_OR,
 } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "@metaobjectsdev/codegen-ts/engine";
 import {
@@ -18,8 +20,10 @@ import {
   VIEW_CONTEXT_GRID,
   effectivePackage,
   flatSurfaceFields,
+  tphHierarchy,
 } from "@metaobjectsdev/codegen-ts/engine";
 import {
+  credentialFieldNames,
   isSortableField,
   resolveGridDefaultSort,
   type GridDefaultSort,
@@ -91,6 +95,35 @@ function fieldLabel(field: MetaField): string {
 }
 
 /**
+ * Every column name a credential occupies anywhere in `entity`'s single table: a TPH base's
+ * polymorphic grid folds in subtype-only columns, so the marks of every subtype count, not only
+ * the base's own (`credentialFieldNames` answers for one object's own columns).
+ */
+function gridCredentialNames(entity: MetaObject, root: MetaRoot): ReadonlySet<string> {
+  return new Set(tphHierarchy(entity, root).flatMap((o) => [...credentialFieldNames(o, root)]));
+}
+
+/**
+ * The first credential a grid's `@filter` preset names, at any depth of its `and` / `or`
+ * composition, or undefined when it names none.
+ */
+function credentialInFilter(filter: Record<string, unknown>, credentials: ReadonlySet<string>): string | undefined {
+  for (const [key, clause] of Object.entries(filter)) {
+    if (key === FILTER_COMPOSE_AND || key === FILTER_COMPOSE_OR) {
+      if (!Array.isArray(clause)) continue;
+      for (const sub of clause) {
+        if (typeof sub !== "object" || sub === null || Array.isArray(sub)) continue;
+        const found = credentialInFilter(sub as Record<string, unknown>, credentials);
+        if (found !== undefined) return found;
+      }
+      continue;
+    }
+    if (credentials.has(key)) return key;
+  }
+  return undefined;
+}
+
+/**
  * Extract grid specs from an entity's dataGrid layouts, resolving column
  * metadata against the entity's field list.
  *
@@ -98,13 +131,15 @@ function fieldLabel(field: MetaField): string {
  * fall back to all fields on the entity (pre-E-T2 behaviour, kept for
  * backwards compat with metadata not yet migrated by E-T4).
  */
-function extractGrids(entity: MetaObject, tph?: TphGridInfo): GridSpec[] {
+function extractGrids(entity: MetaObject, root: MetaRoot, tph?: TphGridInfo): GridSpec[] {
   // fields() and layouts() are both effective (own + inherited via extends:/super:).
   // For a TPH base, also index the subtype-only fields so they can be folded
   // into the polymorphic grid's column set.
   const fieldsByName = new Map(
     [...flatSurfaceFields(entity), ...(tph?.subtypeFields ?? [])].map((f) => [f.name, f] as const),
   );
+
+  const credentials = gridCredentialNames(entity, root);
 
   const grids: GridSpec[] = [];
   for (const layout of entity.layouts()) {
@@ -131,6 +166,11 @@ function extractGrids(entity: MetaObject, tph?: TphGridInfo): GridSpec[] {
     const columns: ColumnSpec[] = columnNames.flatMap((name) => {
       const field = fieldsByName.get(name);
       if (!field) return [];     // columns ref that doesn't exist on entity; defensive skip
+      // A credential (a `view.password` on any declaration of the column) is never a column,
+      // even when @columns names it: the generated API never returns its value, and a header
+      // would offer a sort and a filter the server's allowlists refuse. Same rule as the
+      // generated forms, which skip it.
+      if (credentials.has(name)) return [];
       const viewKind = fieldViewKind(field);
       // #355 — `view.hidden` is registered as "Not rendered; carried but not shown", and
       // the generated FORM has always honoured that (an <input type="hidden">). The grid
@@ -160,7 +200,8 @@ function extractGrids(entity: MetaObject, tph?: TphGridInfo): GridSpec[] {
     });
 
     // ADR-0039: resolving — dataGrid layout attrs may be inherited via extends.
-    const defaultSort = resolveGridDefaultSort(entity, layout);
+    // A @defaultSortField naming a credential resolves to no initial sort.
+    const defaultSort = resolveGridDefaultSort(entity, layout, root);
 
     const filterAttr = layout.attr(LAYOUT_DATA_GRID_ATTR_FILTER);
     const grid: GridSpec = {
@@ -171,7 +212,19 @@ function extractGrids(entity: MetaObject, tph?: TphGridInfo): GridSpec[] {
     };
     if (defaultSort !== undefined) grid.defaultSort = defaultSort;
     if (typeof filterAttr === "object" && filterAttr !== null && !Array.isArray(filterAttr)) {
-      grid.filter = filterAttr as Record<string, unknown>;
+      const filter = filterAttr as Record<string, unknown>;
+      // A preset filter over a credential is refused, not rewritten. The server's filter
+      // allowlist never holds a credential, so the grid's every request would answer 400; and
+      // dropping the clause would silently change which rows the grid shows.
+      const credential = credentialInFilter(filter, credentials);
+      if (credential !== undefined) {
+        throw new Error(
+          `dataGrid layout "${grid.name}" on entity "${entity.name}" has @filter over credential ` +
+            `field "${credential}" (it declares a view.password). A credential is never filterable: ` +
+            "remove the clause from @filter.",
+        );
+      }
+      grid.filter = filter;
     }
     grids.push(grid);
   }
@@ -206,7 +259,7 @@ export function renderColumnsFile(entity: MetaObject, ctx: RenderContext): strin
         subtypeFields: collectTphSubtypeFields(entity, ctx.loadedRoot),
       }
     : undefined;
-  const grids      = extractGrids(entity, tph);
+  const grids      = extractGrids(entity, ctx.loadedRoot, tph);
 
   const ColumnDefSym = imp("t:ColumnDef@@tanstack/react-table");
 
