@@ -25,7 +25,7 @@ PATTERNS=$(grep -vE '^[[:space:]]*(#|$)' "$DENY_FILE" | paste -sd'|' -)
 
 # 0 when the identity text matches the denylist after the maintainer's allowed address is removed.
 matches() {
-  printf '%s\n' "$1" | sed -E "s/$LEAK_ALLOW//Ig" | grep -qEi "$PATTERNS"
+  printf '%s\n' "$1" | tr '[:upper:]' '[:lower:]' | sed -E "s/$LEAK_ALLOW//g" | grep -qEi "$PATTERNS"
 }
 
 mode="${1:-}"
@@ -44,9 +44,15 @@ case "$mode" in
     ;;
   range)
     shas=""
+    if ! log=$(git log --format='%H%x09%an%x09%ae%x09%cn%x09%ce' "$@" 2>&1); then
+      echo "" >&2
+      echo "  push blocked — cannot list the commits to scan (unresolvable range); fetch the remote and retry:" >&2
+      echo "$log" | sed 's/^/      /' >&2
+      exit 1
+    fi
     while IFS=$'\t' read -r sha an ae cn ce; do
       if matches "$an $ae $cn $ce"; then shas="$shas $sha"; fi
-    done < <(git log --format='%H%x09%an%x09%ae%x09%cn%x09%ce' "$@" 2>/dev/null)
+    done <<< "$log"
     if [ -n "$shas" ]; then
       echo "" >&2
       echo "  push blocked — author or committer identity matches the private denylist on:" >&2
