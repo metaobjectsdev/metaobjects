@@ -26,7 +26,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 
 | Corpus | Fixtures | TS | Java | Kotlin | C# | Python |
 |---|---|---|---|---|---|---|
-| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 574 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
+| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 578 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
 | [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 19 | 19 / 19 | 18 / 19 (1 ledgered: `yaml-quoted-leading-zero` — Java pipeline strips quotes off `"007"`) | inherits via Java | 18 / 19 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 19 / 19 |
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 45 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/verify-strict-conformance/`](../fixtures/verify-strict-conformance/) | 1 | ✓ | — | — | — | ✓ |
@@ -71,7 +71,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/explorer-conformance/`](../fixtures/explorer-conformance/) (the `explorer.json` data spine: `meta export --effective` + `meta verify --format json` + the generated-file manifest in, one explorer document out) | 1 case (`shop`) | ✓ (the builder is TypeScript, and reads only port-neutral inputs) | — | — | — | — |
 
 **Rust (preview, ADR-0065) is not a column yet.** The sixth port runs these corpora
-today: `registry-conformance` (byte-identical manifest); the metamodel corpus, all 574
+today: `registry-conformance` (byte-identical manifest); the metamodel corpus, all 578
 green, with every validation pass the TypeScript loader runs, in the same order, so
 `server/rust/metaobjects/tests/conformance-expected-failures.json` is empty;
 `yaml-conformance`, 18 of 19 (the one on `yaml-conformance-expected-failures.json`,
@@ -89,7 +89,7 @@ generator, and a scale gate over twenty copies of the fitness model. The ledgers
 only shrink; the corpora without one assert each case outright. While the port is in
 preview, a new fixture that fails in Rust and is not on the ledger prints a warning and does
 not fail the lane; it becomes a hard failure when the port leaves preview. A regression
-still fails: the ledger's `minPassing` (574) is the number of fixtures known to pass, and the
+still fails: the ledger's `minPassing` (578) is the number of fixtures known to pass, and the
 run fails when fewer do. The column joins this table when the port leaves preview.
 
 A ✓ means the port runs the corpus green; an explicit `n / m` is used where a port
@@ -424,7 +424,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 
 ## Fixture-to-doc mapping
 
-### `fixtures/conformance/` — metamodel loader + canonical serializer (574)
+### `fixtures/conformance/` — metamodel loader + canonical serializer (578)
 
 | Fixture prefix | Feature doc |
 |---|---|
@@ -822,7 +822,7 @@ JSON and verify payload feeds it unchanged.
 
 ## Orphaned fixtures (tested but not yet documented)
 
-The fixtures in the nine corpora mapped above (metamodel 574 + yaml 19 + verify 45
+The fixtures in the nine corpora mapped above (metamodel 578 + yaml 19 + verify 45
 + render 18 + persistence 67 + api-contract 141 + source-resolution 28 + scope 10 +
 dependency 47) each map to a feature doc, and so do the two requirement corpora, `rules-check-conformance`, `shared-model-conformance`, the
 `cube-model` corpus and `explorer-conformance`, whose case lists live in their own READMEs. None are orphaned today. The remaining

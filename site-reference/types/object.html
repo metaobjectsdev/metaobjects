@@ -214,7 +214,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>no</td>
 <td></td>
 <td></td>
-<td>metaobjects-core-types</td>
+<td>metaobjects-view-expressions</td>
 <td>rc.21: the view has one row per element of this base-entity field, a field.object array stored as jsonb; a base row with no element has no row. A field whose origin.passthrough @from names the field&#39;s @objectRef value object (Address.city) reads that member of the element; the base&#39;s own fields read the parent row as usual. An origin.aggregate is refused on such a projection.</td>
 </tr>
 <tr>
@@ -223,7 +223,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>no</td>
 <td></td>
 <td></td>
-<td>metaobjects-core-types</td>
+<td>metaobjects-view-expressions</td>
 <td>rc.21: with @grain, the name of a field.int or field.long of this projection (with no origin) that holds the element&#39;s 1-based position in the array.</td>
 </tr>
 <tr>
@@ -250,7 +250,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>no</td>
 <td></td>
 <td></td>
-<td>metaobjects-core-types</td>
+<td>metaobjects-view-expressions</td>
 <td>rc.21: the view is this projection&#39;s rows UNIONed with each named projection&#39;s rows. Each named projection has the same effective fields as this one, in order: names, subtypes, array-ness and physical column names (ERR_BAD_ATTR_VALUE otherwise); its own @filter, joins and base apply to its rows. Usually this projection extends one branch and names the others. A named projection may be abstract and sourceless.</td>
 </tr>
 <tr>
@@ -259,7 +259,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>no</td>
 <td></td>
 <td></td>
-<td>metaobjects-core-types</td>
+<td>metaobjects-view-expressions</td>
 <td>rc.21: with @union, keep duplicate rows (UNION ALL). Absent or false: duplicates are removed (UNION), SQL&#39;s own default.</td>
 </tr>
 </tbody></table>
