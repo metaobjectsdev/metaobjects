@@ -108,6 +108,43 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   rule that is in force. A pipeline that read `.hashes.json` directly reads every file in
   `.hashes/` instead. ADR-0064 Amendment 1;
   [docs/features/migrations/per-package-hash-manifest.md](docs/features/migrations/per-package-hash-manifest.md).
+- **Ignore the generation key and keep the hash manifest: two `.gitignore` lines.** `gen` now writes
+  an uncommitted `.metaobjects/.gen-state/.fingerprint-<port>.json` (one per module on the JVM). In a
+  project whose root `.gitignore` already ignores generated state, add
+  `**/.metaobjects/.gen-state/*` and `!**/.metaobjects/.gen-state/.hashes/`; otherwise the key shows
+  as untracked. The exception matters: the key stays uncommitted and the per-package hash manifest
+  under `.hashes/` stays committed, so do not ignore the whole `.metaobjects/` directory. A project
+  that took the 1.2.3 lines (`!**/.metaobjects/.gen-state/.hashes.json`) replaces that one.
+- **Every join a generated view or report makes is `LEFT OUTER`.** A row whose reference is null,
+  or whose related row is missing, now appears with nulls in the joined columns instead of
+  vanishing. Expect the regenerated view bodies to differ in `meta migrate`: one view replacement
+  per view that joined through a required reference.
+- **TypeScript and C#: a projection that extends another keeps its super's identity anchor.** Over a
+  table-per-hierarchy root, a projection whose own fields bind a subtype's column used to return
+  only that subtype's rows; its view now returns **every** row of the shared table, the subtype
+  column NULL on the others. The load warns when a projection's output widened this way.
+- **`meta migrate` and `meta verify --db` refuse a foreign key onto columns the target does not hold
+  unique** (`FkTargetNotUniqueError`, listing every offending reference at once), where the
+  database refused it at apply time after earlier statements had run. A foreign key onto a
+  hand-made unique index can fail `verify --db` that passed before.
+- **On Postgres the primary key's name is compared.** A convention switch or a table rename
+  renames the key in place, and `meta verify --db` reports a mismatch it used to pass.
+- **`meta verify` exits 2 when `metaobjects.config.ts` exists but fails to load**, and prints that
+  load error (and so does `meta prompt-snapshot`), where it used to continue without the
+  config's providers and report an unknown subtype.
+- **TypeScript and Python: two shared enums with one name are `ERR_NAME_COLLISION`.** The second
+  used to be dropped silently and its fields typed with the first one's members. Rename one.
+- **TypeScript: an owned generator that imports one of ts-poet's `def`, `literalOf`, `arrayOf`,
+  `asOneline`, `Import.fromMaybeString`, `saveFiles`, `conditionalOutput` or its `toString` import
+  options no longer loads.** The printer is now vendored without them; `code`, `imp`, `joinCode`,
+  `Import` and the `Code` type still resolve from a bare `ts-poet` import.
+- **`docsSiteFile()` builds the model explorer by default.** The site under `site/` changes, with
+  object pages under `model/`. Pass `docsSiteFile({ site: "classic" })` to keep the earlier site.
+- **C#: an int-backed enum throws on write for a value its `@intValueMap` does not describe**, as
+  the read side already did. A cast such as `(Status)99` used to be stored as the last member's
+  integer.
+- **C# and Java: a names class no longer extends its base's** when that would make a base constant
+  that is not a column of its own table reachable through it. It is emitted complete instead.
 - **`metamodelVersion` is `1.3`.** Upgrade every port together.
 
 ### Security
@@ -856,8 +893,10 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   migrations and one built by `meta migrate` match. A project can supply its own conventions
   object from `metaobjects.config.ts`; an unknown preset name, or an object missing a member, is
   refused by name. The PK name is now introspected too, so a `baseline --from-db` snapshot of a
-  database whose primary keys are not named `<table>_pkey` records their names (not compared;
-  nothing churns). See `docs/features/migrations-and-drift.md`, "Schema conventions".
+  database whose primary keys are not named `<table>_pkey` records their names. On Postgres the name
+  is then compared, so a convention switch or a table rename renames the key in place and
+  `meta verify --db` reports a mismatch it used to pass (see "A constraint or index whose only change
+  is its name is renamed in place", below). See `docs/features/migrations-and-drift.md`, "Schema conventions".
 - **`migrate.checks.skipRedundant`: leave out the CHECKs a column type already enforces.** Set in
   `.metaobjects/config.json` (default `false`), `meta migrate` and `meta verify --db` leave out a
   `validator.length` maximum the column's `VARCHAR(n)` enforces (not on SQLite or D1, which do not
@@ -1776,11 +1815,13 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   any build globs or `<Compile>` items that named the flat files. Python and the JVM ports follow
   in #544–#549 (`docs/CONFORMANCE.md`, "Generated paths keyed by package").
 
-- **Breaking, C#: a generated type's namespace is its metadata package (rulings R64, R65).** With
-  no binding for it, a packaged type's namespace is the package itself, each `::` segment
-  PascalCased (`acme::alpha` → `Acme.Alpha`), as the Java and Kotlin ports map packages, whether
-  or not a namespace is configured. `--namespace` / `csharp.namespace` (`GenConfig.Namespace`) now
-  places only the objects with no package and the artifacts of no single object: the context and
+- **C#, opt-in: with `csharp.packageNamespaces: true`, a generated type's namespace is its metadata
+  package (rulings R64, R65).** This is **not** the default: with the setting off (its default) and
+  a `csharp.namespace` configured, every type stays in that namespace and the output is
+  byte-identical to 1.2.0. With the setting on and no binding for a type, a packaged type's
+  namespace is the package itself, each `::` segment PascalCased (`acme::alpha` → `Acme.Alpha`),
+  as the Java and Kotlin ports map packages, even when a namespace is configured.
+  `--namespace` / `csharp.namespace` (`GenConfig.Namespace`) then places only the objects with no package and the artifacts of no single object: the context and
   its design-time services, the callable wrappers, the template tier (render helpers, parsers,
   extractors, output prompts) and the shared runtime helpers. A per-object companion follows its
   object into the package namespace: `<X>Names`, `<X>FilterAllowlist`, `<X>Routes`, `<X>Queries`
@@ -1800,7 +1841,8 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   keeps its meaning (the package mapping applies only to the default `Flatten`). A hook override
   on `DbContextGenerator` receives the `global::`-qualified type as its `owner` argument
   (`global::Acme.Alpha.Note`), which it can splice into `Entity<{owner}>` as before. A `@provided`
-  enum is the adopter's type and is named as configured, unchanged. **Upgrade note:** on the next
+  enum is the adopter's type and is named as configured, unchanged. **Upgrade note:** none unless you
+  turn the setting on. When you do, on the next
   `gen`, every generated type in a package that no `PackageNamespaces`, `TypeOverrides` or
   `Convention` entry maps moves once, from the configured namespace to its package's namespace,
   together with its routes, reverse finders, names, filter allowlist and report export; update
