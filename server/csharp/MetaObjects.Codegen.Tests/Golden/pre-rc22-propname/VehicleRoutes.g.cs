@@ -16,7 +16,6 @@ public static class VehicleRoutes
     {
         "Id",
         "Plate",
-        "VinHash",
     };
 
     private static readonly System.Collections.Generic.Dictionary<string, bool> SortDefaultDesc = new(System.StringComparer.OrdinalIgnoreCase)
@@ -39,7 +38,6 @@ public static class VehicleRoutes
     {
         "Id",
         "Plate",
-        "VinHash",
         "SeatCount",
         "RegNo",
     };
@@ -52,7 +50,6 @@ public static class VehicleRoutes
     {
         "Id",
         "Plate",
-        "VinHash",
         "PayloadKg",
     };
 
@@ -457,7 +454,6 @@ public static class VehicleRoutes
         {
             "Id" => desc ? q.OrderByDescending(x => EF.Property<object>(x!, "Id") == null).ThenByDescending(x => EF.Property<object>(x!, "Id")) : q.OrderBy(x => EF.Property<object>(x!, "Id") == null).ThenBy(x => EF.Property<object>(x!, "Id")),
             "Plate" => desc ? q.OrderByDescending(x => EF.Property<object>(x!, "Plate") == null).ThenByDescending(x => EF.Property<object>(x!, "Plate")) : q.OrderBy(x => EF.Property<object>(x!, "Plate") == null).ThenBy(x => EF.Property<object>(x!, "Plate")),
-            "VinHash" => desc ? q.OrderByDescending(x => EF.Property<object>(x!, "VinHash") == null).ThenByDescending(x => EF.Property<object>(x!, "VinHash")) : q.OrderBy(x => EF.Property<object>(x!, "VinHash") == null).ThenBy(x => EF.Property<object>(x!, "VinHash")),
             _ => (IOrderedQueryable<Vehicle>)q.OrderBy(x => 0),
         };
     }

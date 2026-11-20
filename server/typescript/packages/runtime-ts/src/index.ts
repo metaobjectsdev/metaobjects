@@ -18,6 +18,7 @@ export type { ValidationFailure } from "./errors.js";
 export {
   RuntimeError,
   ValidationError,
+  InvalidKeyError,
   NotFoundError,
   ConstraintViolationError,
   MetadataError,

@@ -298,8 +298,10 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
     fastify.get(`${path}/:id`, ro, async (req, reply) => {
       const { id } = req.params as { id: string };
       if (useRawSql) {
+        const idLiteral = rawIdLiteral(id);
+        if (idLiteral === undefined) return reply.code(400).send({ error: "invalid_id" });
         // biome-ignore lint/suspicious/noExplicitAny: dynamic raw result
-        const rows = await rawRows(db, dialect, sql.raw(`SELECT * FROM ${quoteIdent(dialect, viewName)} WHERE ${quoteIdent(dialect, idCol)} = ${rawIdLiteral(id)} LIMIT 1`)) as any[];
+        const rows = await rawRows(db, dialect, sql.raw(`SELECT * FROM ${quoteIdent(dialect, viewName)} WHERE ${quoteIdent(dialect, idCol)} = ${idLiteral} LIMIT 1`)) as any[];
         const row = rows[0] ? camelizeRow(rows[0]) : undefined;
         return row ?? reply.code(404).send({ error: "not_found" });
       }

@@ -123,4 +123,29 @@ class KotlinSecretFieldsTest {
         assertFalse("redactAccount" in controller, controller)
         assertFalse("JsonInclude" in entity, entity)
     }
+
+    @Test
+    fun `a credential marked filterable and sortable is on neither allowlist`() {
+        val out = Files.createTempDirectory("ksecret-allow-")
+        try {
+            val source = model(marked = true)
+                .replace("\"name\": \"name\"", "\"name\": \"name\", \"@filterable\": true, \"@sortable\": true")
+                .replace("\"name\": \"pinHash\"", "\"name\": \"pinHash\", \"@filterable\": true, \"@sortable\": true")
+            val loader = loadString("secret-fields-allowlist", source)
+            KotlinSpringControllerGenerator().apply { setArgs(mapOf("outputDir" to out.toString())) }.execute(loader)
+            KotlinFilterAllowlistGenerator().apply { setArgs(mapOf("outputDir" to out.toString())) }.execute(loader)
+            val dir = out.resolve("acme/secrets")
+
+            val filter = Files.readString(dir.resolve("AccountFilterAllowlist.kt"))
+            assertTrue("\"name\"" in filter, filter)
+            assertFalse("pinHash" in filter, filter)
+
+            val controller = Files.readString(dir.resolve("AccountController.kt"))
+            val sort = controller.substringAfter("AccountSortAllowlist = setOf(").substringBefore("\n)")
+            assertTrue("\"name\"" in sort, sort)
+            assertFalse("pinHash" in sort, sort)
+        } finally {
+            out.toFile().deleteRecursively()
+        }
+    }
 }

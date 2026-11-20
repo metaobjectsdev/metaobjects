@@ -219,7 +219,7 @@ ${joinCode(constFieldLines, { on: "\n" })}
     ...(allowlists
       ? [renderFilterAllowlist(projection, undefined, ctx), renderSortAllowlist(projection, undefined, ctx)]
       : []),
-    renderFilterType(projection),
+    renderFilterType(projection, undefined, ctx?.loadedRoot),
   ];
 
   const body = joinCode(sections, { on: "\n" }).toString();

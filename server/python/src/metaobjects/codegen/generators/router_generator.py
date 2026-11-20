@@ -25,7 +25,8 @@ collection-and-item shape to mount.
 Filter operators are wired by delegating to the per-entity
 ``<entity_snake>_filter_allowlist.py`` module (FR-009 §3.5) and the
 shared ``metaobjects.codegen.runtime.filter_parser`` helper. Only fields
-with ``@filterable: true`` appear in the allowlist; everything else
+with ``@filterable: true`` appear in the allowlist (never a ``view.password``
+credential, #484, nor in the sort allowlist); everything else
 returns ``invalid_filter_field`` per the cross-port wire envelope. The
 generated ``list`` handler accepts the FastAPI ``Request`` to read raw
 query params, calls ``parse_filter`` against the allowlist, and threads
@@ -185,9 +186,8 @@ def _scalar_fields(entity: MetaObject) -> list[MetaField]:
         # A derived report field over an array or a map is one jsonb value: ordering by it is
         # meaningless, so it is not sortable (nor filterable, see the filter allowlist).
         fields = [f for f in fields if f.sub_type != fc.FIELD_SUBTYPE_MAP and not field_is_array(f)]
-        # #484: a hidden credential column is no sort key either (an oracle).
-        fields = [f for f in fields if not _is_credential(f)]
-    return fields
+    # #484: a hidden credential column is no sort key either (an oracle), on every entity kind.
+    return [f for f in fields if not is_credential_field(f)]
 
 
 #: ADR-0019 Amendment 1 (W2): a request body's decimal fields are parsed exactly (no float
@@ -494,13 +494,6 @@ def _is_auto_set(field: MetaField) -> bool:
     )
 
 
-def _is_credential(field: MetaField) -> bool:
-    """#484 — a field declaring (or inheriting) a ``view.password`` child is a credential:
-    never returned by a generated route, never written by one. RESOLVING ``children()``
-    (ADR-0039), so an inherited ``view.password`` counts."""
-    return is_credential_field(field)
-
-
 def _denied_names(entity: MetaObject) -> list[str]:
     """#484 — the fields a generated create / PATCH / PUT ignores: ``@formExclude`` (RESOLVING
     read) or a credential. Ignored, never 400'd — a generated edit form submits every field it
@@ -509,14 +502,14 @@ def _denied_names(entity: MetaObject) -> list[str]:
     return [
         f.name
         for f in entity.fields()
-        if f.get_meta_attr(fc.FIELD_ATTR_FORM_EXCLUDE) is True or _is_credential(f)
+        if f.get_meta_attr(fc.FIELD_ATTR_FORM_EXCLUDE) is True or is_credential_field(f)
     ]
 
 
 def _hidden_names(entities: list[MetaObject]) -> list[str]:
     """#484 — the credential fields of *entities*, which no generated response carries.
     ``@formExclude`` alone does not hide a field."""
-    return list(dict.fromkeys(f.name for e in entities for f in e.fields() if _is_credential(f)))
+    return list(dict.fromkeys(f.name for e in entities for f in e.fields() if is_credential_field(f)))
 
 
 def _denied_strip_lines(names: list[str], indent: str = "    ") -> list[str]:

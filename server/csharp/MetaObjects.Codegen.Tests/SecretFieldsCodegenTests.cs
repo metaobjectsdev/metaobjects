@@ -137,4 +137,44 @@ public class SecretFieldsCodegenTests
         Assert.Contains("Results.Ok(rows)", src);
         Assert.Contains("Results.Ok(existing)", src);
     }
+
+    // A credential marked @filterable and @sortable is still never on either allowlist: a filter
+    // on a secret is an oracle for it and a sort leaks its order. A normal field keeps both.
+    private const string FilterSortModel = """
+    { "metadata.root": { "package": "acme::secrets", "children": [
+      { "object.entity": { "name": "Account", "children": [
+        { "source.rdb":       { "@table": "accounts" } },
+        { "field.long":       { "name": "id" } },
+        { "field.string":     { "name": "name", "@maxLength": 100, "@filterable": true, "@sortable": true } },
+        { "field.string":     { "name": "pinHash", "@maxLength": 100, "@filterable": true, "@sortable": true, "children": [ { "view.password": {} } ] } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}}
+    ]}}
+    """;
+
+    [Fact]
+    public void A_credential_marked_filterable_and_sortable_is_on_neither_allowlist()
+    {
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(FilterSortModel, id: "secrets.json")]);
+        Assert.Empty(r.Errors);
+        var ctx = new GenContext
+        {
+            Entities = r.Root.Objects(),
+            Root = r.Root,
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", ColumnNamingStrategy = ColumnNamingStrategy.Literal },
+        };
+        var filter = new FilterAllowlistGenerator().Generate(ctx)
+            .Single(f => System.IO.Path.GetFileName(f.Path) == "AccountFilterAllowlist.g.cs").Content;
+        Assert.Contains("\"name\"", filter);
+        Assert.DoesNotContain("pinHash", filter);
+
+        var routes = new RoutesGenerator().Generate(ctx)
+            .Single(f => System.IO.Path.GetFileName(f.Path) == "AccountRoutes.g.cs").Content;
+        var start = routes.IndexOf("SortAllowlist", StringComparison.Ordinal);
+        var end = routes.IndexOf("MapAccountRoutes", StringComparison.Ordinal);
+        Assert.True(start >= 0 && end > start, routes);
+        var sort = routes[start..end];
+        Assert.Contains("Name", sort);
+        Assert.DoesNotContain("PinHash", sort);
+    }
 }

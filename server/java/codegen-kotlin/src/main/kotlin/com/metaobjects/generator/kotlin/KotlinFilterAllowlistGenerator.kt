@@ -198,6 +198,10 @@ open class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObj
                 // excluded from the filter allowlist (no filter dispatch).
                 if (field is ObjectField || field is MapField) continue
                 if (!isFilterable(field)) continue
+                // A credential (view.password) is never filterable, whatever @filterable says: a filter on it
+                // is an oracle for the secret. Left off the allowlist, a request for it is refused as any
+                // unknown field is.
+                if (KotlinGenUtil.isCredentialField(field)) continue
                 val ops = opsForField(field)
                 if (ops.isEmpty()) continue
                 out.putIfAbsent(field.name, ops) // dedup base/subtype column names

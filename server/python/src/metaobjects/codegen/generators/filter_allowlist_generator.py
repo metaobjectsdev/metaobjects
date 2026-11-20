@@ -8,7 +8,8 @@ FR-009 §3.5 (cross-port). Emits a per-entity static allowlist:
 * ``<ENTITY>_FILTER_OPS_BY_FIELD: dict[str, frozenset[str]]`` — the
   per-field operator vocabulary (gate against ``invalid_filter_op``).
 
-Authoring contract: only fields with ``@filterable: true`` appear in the
+Authoring contract: only fields with ``@filterable: true`` (and no ``view.password``
+credential, #484) appear in the
 allowlist. If no field is marked filterable, the file is still emitted (with
 empty frozensets) so the generated router can unconditionally delegate to
 it without conditional codegen branching.
@@ -41,6 +42,7 @@ from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, pe
 from metaobjects.codegen.generators.tph_plan import tph_plan_for
 from metaobjects.codegen.instance_artifacts import is_sourceless_entity
 from metaobjects.meta.core.field import field_constants as fc
+from metaobjects.meta.core.field.credential import is_credential_field
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.codegen.type_map import field_is_array
 from metaobjects.meta.core.object.meta_object import MetaObject
@@ -206,7 +208,7 @@ class FilterAllowlistGenerator:
     ) -> dict[str, tuple[str, ...]]:
         """Build the ``{field_name: op_tuple}`` map for ``entity`` (own + inherited
         effective fields). Only fields with ``@filterable: true`` are included;
-        object fields and fields whose ``_ops_for_field`` yields no operators are
+        object fields, credential fields (``view.password``) and fields whose ``_ops_for_field`` yields no operators are
         skipped. Preserves declaration order so the emitted source is deterministic.
 
         FR-017 TPH: when ``entity`` is a discriminator base (``object_index`` given),
@@ -217,6 +219,10 @@ class FilterAllowlistGenerator:
 
         def add(f: MetaField) -> None:
             if f.sub_type == fc.FIELD_SUBTYPE_OBJECT or f.name in out or not _is_filterable(f):
+                return
+            # #484: a credential is never a filter key (eq/like probing is an oracle); not on
+            # the allowlist, so the existing invalid_filter_field refusal answers it.
+            if is_credential_field(f):
                 return
             # A derived report field over an array or a map is not filterable.
             if entity.sub_type == OBJECT_SUBTYPE_REPORT and (

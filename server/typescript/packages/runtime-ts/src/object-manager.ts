@@ -38,7 +38,8 @@ import {
   resolveN2mDescriptor, buildN2mLazySpecs, buildN2mBatchSpecs,
   resolveJoinColumnName,
 } from "./n2m-resolver.js";
-import { MetadataError, UnsafeNameError, ValidationError, NotFoundError } from "./errors.js";
+import { MetadataError, UnsafeNameError, ValidationError, NotFoundError, InvalidKeyError } from "./errors.js";
+import { isCanonicalDecimal, isCanonicalInteger } from "./canonical-key.js";
 import { VALID_ENTITY_NAME, DEFAULT_IF_MISSING } from "./constants.js";
 
 export interface ObjectManagerOptions {
@@ -575,21 +576,24 @@ function formatValidationMessage(entityName: string, errors: { field: string; ru
   return `Validation failed for ${entityName} (${summary})`;
 }
 
-const NUMERIC_SUBTYPES = new Set([
-  FIELD_SUBTYPE_INT,
-  FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT, FIELD_SUBTYPE_DECIMAL,
-]);
+const INTEGER_SUBTYPES = new Set([FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG]);
+const DECIMAL_SUBTYPES = new Set([FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT, FIELD_SUBTYPE_DECIMAL]);
 
 // Coerce a raw string PK value to the field's declared type: numeric subtypes
-// get Number(); everything else keeps the string exactly. Serves decodeRef
-// (which always returns strings) AND raw HTTP path params via coerceIdArg —
-// a string/uuid pk must never be Number()-ed ('0123' ≠ '123').
+// get Number(), but only from canonical decimal text (`0x1` and `1e0` are not a
+// key: InvalidKeyError); everything else keeps the string exactly. Serves
+// decodeRef (which always returns strings) AND raw HTTP path params via
+// coerceIdArg — a string/uuid pk must never be Number()-ed ('0123' ≠ '123').
 function coercePkValue(entity: MetaData, fieldName: string, rawValue: string): string | number {
   // ADR-0039: resolving — the PK field may be inherited from a BaseEntity via extends.
   const field = entity.children().find((c) => c.type === TYPE_FIELD && c.name === fieldName);
-  if (field && NUMERIC_SUBTYPES.has(field.subType)) {
-    const n = Number(rawValue);
-    if (!Number.isNaN(n)) return n;
+  if (field && INTEGER_SUBTYPES.has(field.subType)) {
+    if (!isCanonicalInteger(rawValue)) throw new InvalidKeyError(entity.name, fieldName, "a canonical decimal integer");
+    return Number(rawValue);
+  }
+  if (field && DECIMAL_SUBTYPES.has(field.subType)) {
+    if (!isCanonicalDecimal(rawValue)) throw new InvalidKeyError(entity.name, fieldName, "a canonical decimal number");
+    return Number(rawValue);
   }
   return rawValue;
 }

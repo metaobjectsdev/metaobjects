@@ -809,6 +809,8 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         for (MetaField field : entity.getMetaFields()) {
             if (!FilterOps.supportsFiltering(field.getSubType())) continue;
             if (credentials.contains(field.getName())) continue;
+            // A credential (view.password) is never sortable: the order would leak the hidden value.
+            if (SpringGeneratorSupport.isCredentialField(field)) continue;
             // A derived report field over an array is not sortable (a map has no band above).
             if (com.metaobjects.generator.util.GeneratorUtil.isReport(entity) && (field.isArrayType() || field instanceof com.metaobjects.field.MapField)) continue;
             sortFields.add(field.getName());
@@ -1160,6 +1162,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         List<String> sortFields = new ArrayList<>();
         for (MetaField field : base.getMetaFields()) {
             if (!FilterOps.supportsFiltering(field.getSubType())) continue;
+            if (SpringGeneratorSupport.isCredentialField(field)) continue; // never sortable: the order leaks it
             sortFields.add(field.getName());
         }
 

@@ -12,6 +12,7 @@
  *
  * What it answers:
  *  - a body Fastify's JSON parser refused → `400 { "error": "invalid_json" }`;
+ *  - a key text ObjectManager refused as no key of the PK's type → `400 { "error": "invalid_id" }`;
  *  - any other deliberate 4xx (an auth hook's 401, schema validation, 413, 415) → rethrown,
  *    so the enclosing scope's handler — the adopter's, or Fastify's default — answers it
  *    exactly as it did before the mount existed;
@@ -31,6 +32,10 @@ import {
   isMalformedJsonBodyError,
   logUnexpectedError,
 } from "../route-errors.js";
+import { InvalidKeyError } from "../errors.js";
+
+/** Wire code for an id that is not the canonical spelling of a key of the PK's type. */
+const ERROR_CODE_INVALID_ID = "invalid_id";
 
 export function contractRouteErrorHandler(
   error: unknown,
@@ -39,6 +44,11 @@ export function contractRouteErrorHandler(
 ): FastifyReply {
   if (isMalformedJsonBodyError(error)) {
     return reply.code(HTTP_STATUS_BAD_REQUEST).send(INVALID_JSON_BODY);
+  }
+  // ObjectManager refused a key text that is no key (`0x1`, `1e0`): the id the mounts that read
+  // a column already answer `invalid_id` for.
+  if (error instanceof InvalidKeyError) {
+    return reply.code(HTTP_STATUS_BAD_REQUEST).send({ error: ERROR_CODE_INVALID_ID });
   }
   // Throwing from a route-level handler hands the error to the enclosing scope's handler.
   if (isDeliberateClientError(error)) throw error;

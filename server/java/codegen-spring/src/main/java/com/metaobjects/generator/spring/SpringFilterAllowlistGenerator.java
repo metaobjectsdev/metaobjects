@@ -141,6 +141,10 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
         for (MetaField field : fields) {
             if (field instanceof ObjectField) continue;
             if (!isFilterable(field)) continue;
+            // A credential (view.password) is never filterable, whatever @filterable says: a filter on
+            // it is an oracle for the secret. Left off the allowlist, a request for it is refused as
+            // any unknown field is.
+            if (SpringGeneratorSupport.isCredentialField(field)) continue;
             Set<String> ops = opsForField(field);
             if (ops.isEmpty()) continue;
             out.putIfAbsent(field.getName(), ops); // dedup base/subtype column names

@@ -149,6 +149,9 @@ public class FilterAllowlistGenerator : PerEntityGenerator
         {
             if (field.SubType == FIELD_SUBTYPE_OBJECT) continue;
             if (!IsFilterable(field)) continue;
+            // A credential is never filterable: eq / like on a secret is an oracle for it. Left off
+            // the allowlist, an explicit request is refused as any unknown field is.
+            if (InstanceArtifacts.IsCredentialField(field)) continue;
             var ops = OpsForField(field);
             if (ops.Count == 0) continue;
             out_[field.Name] = ops;

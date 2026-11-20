@@ -83,7 +83,8 @@ public class SpringSecretFieldsCodegenTest extends SharedRegistryTestBase {
             controller.contains("redactAll(rows, \"pinHash\")"));
         assertTrue(controller.contains("redact(saved, \"pinHash\")"));
         assertFalse("@formExclude alone is still returned", controller.contains("redact(saved, \"pinHash\", \"tokenHash\")"));
-        assertFalse(controller.contains("\"tokenHash\")"));
+        assertFalse(controller.contains("redact(saved, \"tokenHash\")"));
+        assertFalse(controller.contains("redactAll(rows, \"tokenHash\")"));
     }
 
     @Test
@@ -165,5 +166,30 @@ public class SpringSecretFieldsCodegenTest extends SharedRegistryTestBase {
         assertFalse(controller.contains("redact"));
         assertFalse(controller.contains("ObjectMapper"));
         assertTrue(controller.contains("AccountViewController(AccountViewRepository repository) {"));
+    }
+
+    /** A credential the model also marks {@code @filterable} and {@code @sortable}, beside a normal field. */
+    private static final String FILTERABLE_CREDENTIAL = MARKED
+        .replace("{ \"field.string\": { \"name\": \"name\" } }",
+                 "{ \"field.string\": { \"name\": \"name\", \"@filterable\": true, \"@sortable\": true } }")
+        .replace("\"name\": \"pinHash\"", "\"name\": \"pinHash\", \"@filterable\": true, \"@sortable\": true");
+
+    @Test
+    public void credentialIsNeverOnTheFilterOrSortAllowlist() throws Exception {
+        Path gen = tmp.newFolder("gen-allow").toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(
+            tmp.newFolder("ws-allow").toPath(), "allow", FILTERABLE_CREDENTIAL);
+        run(new SpringControllerGenerator(), loader, gen);
+        run(new SpringFilterAllowlistGenerator(), loader, gen);
+
+        String filter = Files.readString(gen.resolve("acme/secrets/AccountFilterAllowlist.java"));
+        assertTrue("a normal filterable field stays; saw:\n" + filter, filter.contains("\"name\""));
+        assertFalse("a credential is never filterable; saw:\n" + filter, filter.contains("pinHash"));
+
+        String controller = Files.readString(gen.resolve("acme/secrets/AccountController.java"));
+        String sort = controller.substring(controller.indexOf("SORT_ALLOWLIST = Set.of("));
+        sort = sort.substring(0, sort.indexOf(");"));
+        assertTrue("a normal sortable field stays; saw: " + sort, sort.contains("\"name\""));
+        assertFalse("a credential is never sortable; saw: " + sort, sort.contains("pinHash"));
     }
 }

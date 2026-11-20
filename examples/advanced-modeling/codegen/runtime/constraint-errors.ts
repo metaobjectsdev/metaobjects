@@ -27,6 +27,7 @@
  * to match. An unrecognised error is still a 500 — but a 500 whose body says nothing about
  * the query, with the real error left to the server log where it belongs.
  */
+import { InvalidKeyError } from "./errors.js";
 
 /** The constraint kinds worth telling a client apart. */
 export type ConstraintKind = "foreign_key" | "unique" | "check" | "not_null";
@@ -107,6 +108,9 @@ export async function withConstraintMapping<T>(
   } catch (err) {
     const failure = classifyConstraintError(err);
     if (failure !== undefined) return onFailure(failure);
+    // A key text that is no key carries no database detail, and the route's error handler
+    // answers it 400 `invalid_id`; redacting it to a 500 would hide a caller's own mistake.
+    if (err instanceof InvalidKeyError) throw err;
     // Not a constraint problem — the operator needs the detail, the caller must not have it.
     logError(err);
     throw new RedactedDatabaseError();

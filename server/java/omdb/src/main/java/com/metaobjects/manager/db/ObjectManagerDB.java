@@ -21,6 +21,7 @@ import com.metaobjects.object.MetaObject;
 import com.metaobjects.reporting.ReportReadModel;
 import com.metaobjects.*;
 import com.metaobjects.manager.*;
+import com.metaobjects.manager.db.codec.KeyText;
 import com.metaobjects.manager.db.driver.*;
 import com.metaobjects.manager.exp.Expression;
 import com.metaobjects.util.MetaDataUtil;
@@ -1322,7 +1323,12 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
         int i = 0;
         
         for (MetaField mf : getPrimaryKeys(mc)) {
-            Expression e = new Expression(mf.getName(), ref.getIds()[i]);
+            if (i >= ref.getIds().length) {
+                throw new IllegalArgumentException("Invalid object reference for MetaObject [" + mc.getName()
+                        + "]: expected " + getPrimaryKeys(mc).size() + " key id(s), got " + ref.getIds().length);
+            }
+            // A numeric key is read only from canonical decimal text (KeyText); string/uuid keys pass through.
+            Expression e = new Expression(mf.getName(), KeyText.coerce(mf, ref.getIds()[i]));
             if (exp == null) {
                 exp = e;
             } else {

@@ -260,8 +260,10 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
     app.get(`${path}/:id`, guardRoute(async (c) => {
       const id = c.req.param("id") ?? "";
       if (useRawSql) {
+        const idLiteral = rawIdLiteral(id);
+        if (idLiteral === undefined) return c.json({ error: "invalid_id" }, 400);
         // biome-ignore lint/suspicious/noExplicitAny: dynamic raw result
-        const rows = (await rawRows(db, dialect, sql.raw(`SELECT * FROM ${quoteIdent(dialect, viewName)} WHERE ${quoteIdent(dialect, idCol)} = ${rawIdLiteral(id)} LIMIT 1`))) as any[];
+        const rows = (await rawRows(db, dialect, sql.raw(`SELECT * FROM ${quoteIdent(dialect, viewName)} WHERE ${quoteIdent(dialect, idCol)} = ${idLiteral} LIMIT 1`))) as any[];
         const row = rows[0] ? camelizeRow(rows[0]) : undefined;
         return row ? c.json(row) : c.json({ error: "not_found" }, 404);
       }

@@ -15,7 +15,8 @@
 // runs the opposite way from the endpoint it queries.
 
 import { flatSurfaceFields } from "../flattened.js";
-import { MetaField, MetaObject, type MetaData } from "@metaobjectsdev/metadata";
+import { hiddenFieldNames, isCredentialField, tphHierarchy } from "../api-surface.js";
+import { MetaField, MetaObject, type MetaData, type MetaRoot } from "@metaobjectsdev/metadata";
 import {
   FIELD_ATTR_FILTERABLE,
   FIELD_ATTR_SORTABLE,
@@ -29,14 +30,27 @@ import {
 export type SortOrder = "asc" | "desc";
 
 /**
+ * Returns true if the given field is on the filter allowlist: it is marked `@filterable: true`
+ * and is not a credential. A filter on a secret is an oracle for it (`eq`, or `like` a prefix,
+ * one character at a time), so a credential (a field that declares a `view.password`) is never
+ * filterable, whatever the model marks. The allowlist is built from this predicate, so a
+ * request that names one is refused as any other field the allowlist does not hold.
+ */
+export function isFilterableField(field: MetaField): boolean {
+  return field.attr(FIELD_ATTR_FILTERABLE) === true && !isCredentialField(field);
+}
+
+/**
  * Returns true if the given field should be included in sort operations.
  *
  * Rules (in priority order):
+ *   0. a credential   → never sortable (the order of a secret leaks it)
  *   1. @sortable: true  → always sortable (even without @filterable)
  *   2. @sortable: false → never sortable (overrides @filterable)
  *   3. no @sortable     → sortable iff @filterable === true
  */
 export function isSortableField(field: MetaField): boolean {
+  if (isCredentialField(field)) return false;
   const sortableAttr = field.attr(FIELD_ATTR_SORTABLE);
   if (sortableAttr === true) return true;
   if (sortableAttr === false) return false;
@@ -44,11 +58,24 @@ export function isSortableField(field: MetaField): boolean {
 }
 
 /**
+ * The field names no allowlist of `entity` may hold because the column is a credential: a
+ * `view.password` on ANY declaration of a column that subtypes of one single-table (TPH)
+ * hierarchy share counts on every subtype that has it, the same rule the generated routes use to
+ * hide the column. `root` is the loaded model the hierarchy is read from; without it the entity
+ * stands alone.
+ */
+export function credentialFieldNames(entity: MetaObject, root: MetaRoot | undefined): ReadonlySet<string> {
+  const hierarchy = root === undefined ? [entity] : tphHierarchy(entity, root);
+  return new Set(hiddenFieldNames(entity, hierarchy));
+}
+
+/**
  * Returns all sortable field children of the given entity.
  */
-export function sortableFields(entity: MetaObject): MetaField[] {
+export function sortableFields(entity: MetaObject, root?: MetaRoot): MetaField[] {
   // fields() returns effective fields, so inherited fields (from extends:/super:) are included in sort ops.
-  return flatSurfaceFields(entity).filter(isSortableField);
+  const credentials = credentialFieldNames(entity, root);
+  return flatSurfaceFields(entity).filter((f) => isSortableField(f) && !credentials.has(f.name));
 }
 
 /**

@@ -118,3 +118,33 @@ def test_render_wire_hides_a_credential_of_a_dataclass_or_mapping_row() -> None:
     wire = WireOutput(hidden=("pinHash",))
     assert render_wire(Row(1, "x"), wire) == {"id": 1}
     assert render_wire(MappingProxyType({"id": 1, "pinHash": "x"}), wire) == {"id": 1}
+
+
+def test_credential_is_on_neither_filter_nor_sort_allowlist() -> None:
+    """A credential marked @filterable/@sortable is not an allowlist member (it would be an
+    eq/like/sort oracle); a normal @filterable field still is. The runtime then refuses an
+    explicit request through the existing invalid_filter_field / invalid_sort paths."""
+    from metaobjects.codegen.generators.filter_allowlist_generator import render_filter_allowlist
+
+    meta = {"metadata.root": {"package": "acme::oracle", "children": [
+        {"object.entity": {"name": "Member", "children": [
+            *_id(),
+            {"field.string": {"name": "name", "@maxLength": 100, "@filterable": True, "@sortable": True}},
+            {"field.string": {"name": "pinHash", "@maxLength": 100, "@filterable": True,
+                              "@sortable": True, "children": [{"view.password": {}}]}},
+        ]}},
+    ]}}
+    entities = _load(meta)
+    member = entities["Member"]
+    index = build_object_index(list(entities.values()))
+
+    allow = render_filter_allowlist(member, index)
+    assert '"name"' in allow
+    assert "pinHash" not in allow
+
+    router = render_router(member, index)
+    assert router is not None
+    start = router.index("_SORT_ALLOWLIST: set[str]")
+    sort_block = router[start:router.index("}", start)]
+    assert '"name"' in sort_block
+    assert "pinHash" not in sort_block
