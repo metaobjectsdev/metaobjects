@@ -732,7 +732,7 @@ Postgres's text. If the metadata does not load, the baseline is written as befor
 ## Drift verify commands per port
 
 A bare `verify` runs the same default gate set in every port: **codegen drift**,
-**prompt-template drift** and the **requirement ledger**. What a check does when the run has
+**prompt-template drift**, the **requirement ledger** and the **business-rules gate**. What a check does when the run has
 no configuration for it differs by port. TypeScript, Java and Python skip it with a one-line
 note and do not fail: TypeScript skips the codegen gate when there is no `metaobjects.config.ts`
 (and its template gate passes with a note when the model has no `template.*` nodes), Java skips

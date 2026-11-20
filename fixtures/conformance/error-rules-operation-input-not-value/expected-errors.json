@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_OPERATION_SHAPE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.purchasing.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[3]['api.operational'].children[0]['operation.command']"
+      }
+    }
+  ],
+  "warnings": []
+}

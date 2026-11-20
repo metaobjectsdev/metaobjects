@@ -1019,6 +1019,7 @@ their own pages: [C#](csharp.md), [Java](java.md#known-gaps),
 | Templates + render (FR-004) | Yes (Mustache, and Jinja via nunjucks: a `.jinja` / `.j2` / `.jinja2` body, ADR-0061) |
 | Output parser codegen (FR-006) | Yes (`outputParser()` — Zod dual API) |
 | Requirement gate + requirement tests | Yes (`meta verify`; `requirementTests()`, ejectable) |
+| Business-rules gate (ADR-0066, experimental) | Yes (`meta verify`; see [business rules](../features/business-rules.md)) |
 | Cube export (FR-044) | Yes (`cubeModel()`, ejectable; TypeScript only) |
 | Payload-VO codegen | Yes (via projection codegen) |
 | Migrations | `meta migrate` (Postgres / SQLite / D1) |

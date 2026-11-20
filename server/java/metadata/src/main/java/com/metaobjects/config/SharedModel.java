@@ -322,7 +322,7 @@ public final class SharedModel {
                 // ADR-0039 sanctioned own-only case: an INHERITED ref-bearing attr belongs to the
                 // base node's own layer and is checked when the base itself is walked.
                 for (MetaAttribute<?> attr : node.getMetaAttrs(false)) {
-                    if (!References.REF_BEARING_ATTR_NAMES.contains(attr.getName())) continue;
+                    if (!References.isRefBearingAttr(node, attr.getName())) continue;
                     Object value = attr.getValue();
                     if (value instanceof String s) candidates.add(s);
                 }

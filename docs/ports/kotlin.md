@@ -984,6 +984,7 @@ reason.
 | Migrations | Via the TS toolchain (`@metaobjectsdev/cli migrate`) |
 | Drift verify | Template-drift: `Renderer.verify` (build-time); generated-table drift: `MetadataStartupValidator` (startup) |
 | Requirement gate + requirement tests | Yes (`mvn metaobjects:verify`, the Java goal; `KotlinRequirementTestsGenerator` emits JUnit Jupiter and is ejectable) |
+| Business-rules gate (ADR-0066, experimental) | Yes (`mvn metaobjects:verify`, the Java goal; see [business rules](../features/business-rules.md)) |
 | Runtime metadata | Via Java OMDB (or hand-written Exposed transactions) |
 
 ## Test count

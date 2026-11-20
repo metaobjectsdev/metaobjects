@@ -1,0 +1,18 @@
+metadata:
+  package: acme::purchasing
+  children:
+    - object.entity:
+        name: PurchaseRequest
+        children:
+          - source.rdb: { table: purchase_requests }
+          - field.long: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
+          - field.enum:
+              name: status
+              values: [draft, submitted, approved, archived, legacy]
+              default: draft
+              children:
+                - transition.action: { name: submit, from: [draft], to: submitted }
+                - transition.action: { name: approve, from: [submitted], to: approved }
+                - transition.action: { name: restore, from: [archived, legacy], to: draft }
+                - transition.action: { name: reopen, from: [approved, archived], to: submitted }

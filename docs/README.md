@@ -46,10 +46,12 @@ docs/
 │   ├── metadata-dependencies.md     # building on a metadata model published elsewhere (FR-023)
 │   ├── libraries.md                 # reusable declared design you opt into, a layer at a time (FR-043)
 │   ├── reporting.md                 # dimensions, measures, segments, reports: vocabulary and load rules (FR-044)
+│   ├── business-rules.md            # operations, permission names and lifecycles: vocabulary, load rules, verify checks (ADR-0066)
 │   ├── contract-emitters.md         # the contract-schema and openapi generators: JSON Schema and OpenAPI for the REST contract (FR-022)
 │   ├── cube-export.md               # the cube-model generator: reporting vocabulary as Cube data-model files (FR-044)
 │   ├── explorer-data.md             # explorer.json and its inputs: export --effective, the verify ledger rows, manifest provenance
 │   ├── explorer-site.md             # the model explorer site docsSiteFile() builds from explorer.json
+│   ├── metadata-driven-runtime.md   # one grid, one form and one route mount for every entity, read from the loaded metadata (TypeScript example, measured)
 │   └── own-your-codegen.md          # scaffold-and-own generator ownership (ADR-0034)
 └── ports/                       # one file per language/framework port
     ├── typescript.md
@@ -77,6 +79,7 @@ this tree is documentation, not the source of truth.
 | Build on a metadata model another repository publishes (`dependencies`, `meta deps sync`, overlay/extend across the boundary) | [`features/metadata-dependencies.md`](features/metadata-dependencies.md) |
 | Adopt a design MetaObjects already ships — users/groups/roles, an LLM trace envelope — instead of authoring it (`libraries`, `meta eject <library>`) | [`features/libraries.md`](features/libraries.md) |
 | Record what the system is supposed to do, and stop agents reviving retired features | [`features/requirements.md`](features/requirements.md) |
+| Declare what the application does: named commands and queries, who may run them, and the allowed moves of a status field (`api.operational`, `operation.*`, `transition.action`; load-time checked, with a rules gate in `verify`) | [`features/business-rules.md`](features/business-rules.md) |
 | Declare what a dashboard groups by and counts (`dimension`, `measure`, `segment`, `object.report`; load-time checked; a view-backed report becomes a SQL view served by a generated read-only list route and a TypeScript list hook) | [`features/reporting.md`](features/reporting.md) |
 | Download a report as CSV, JSON or XML (`?format=`, the `report-export` generator, its cap and null forms) | [`features/reporting.md`](features/reporting.md#exporting-a-report) |
 | Move existing Zod, Drizzle or Pydantic models into the model, and prove the generated types match before you switch | [`features/adopting-existing-models.md`](features/adopting-existing-models.md) |
@@ -92,6 +95,7 @@ this tree is documentation, not the source of truth.
 | Know which feature is supported in which port today | the capability matrix in the root [`README.md`](../README.md) or the per-port "Capability snapshot" table |
 | See which conformance fixtures gate each feature (and which port passes which) | [`CONFORMANCE.md`](CONFORMANCE.md) |
 | See a worked, non-toy model end to end (projections, value objects, TPH, prompt payloads on one runnable spine) | [`../examples/advanced-modeling/`](../examples/advanced-modeling/) |
+| Serve and render every entity from the loaded metadata instead of generating a route, grid and form per entity (TypeScript; one grid and one form component, measured against the generators, with what it cannot do) | [`features/metadata-driven-runtime.md`](features/metadata-driven-runtime.md), [`../examples/dynamic-grid/`](../examples/dynamic-grid/) |
 | Read the canonical spec (target-agnostic) | [`../spec/`](../spec/) |
 | Find a release recipe (Cloudflare D1, etc.) | [`recipes/`](recipes/) |
 | Keep drizzle-kit migrations while MetaObjects owns the model | [`recipes/drizzle-kit-migrations.md`](recipes/drizzle-kit-migrations.md) |

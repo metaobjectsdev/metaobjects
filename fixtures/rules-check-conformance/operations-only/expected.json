@@ -1,0 +1,15 @@
+{
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "WARN_PERMISSION_DERIVED_NAME",
+      "path": "acme::reports::Dashboard.totals",
+      "message": "operation.query \"totals\" has no @permission, so it asks the policy about the derived name \"acme::reports.totals\", which changes if the operation is renamed. Declare @permission, or @public: true."
+    }
+  ],
+  "summary": {
+    "operations": 2,
+    "lifecycles": 0,
+    "transitions": 0
+  }
+}

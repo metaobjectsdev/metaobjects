@@ -148,7 +148,9 @@ public class ConformanceTest {
                 "origin-types",
                 "requirement-types",
                 // FR-044 reporting vocabulary (dimension / measure / segment).
-                "reporting-types"
+                "reporting-types",
+                // ADR-0066 business-rules vocabulary (api / operation / binding / transition).
+                "rules-types"
             ),
             // The corpus's "metaobjects-db" provider maps to Java's
             // CoreDBMetaDataProvider (id "database-extensions"), which registers the

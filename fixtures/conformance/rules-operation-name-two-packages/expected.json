@@ -1,0 +1,110 @@
+{
+  "metadata.root": {
+    "children": [
+      {
+        "object.entity": {
+          "name": "PurchaseRequest",
+          "package": "acme::purchasing",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "purchase_requests"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "title"
+              }
+            },
+            {
+              "field.enum": {
+                "name": "status",
+                "@default": "draft",
+                "@values": [
+                  "draft",
+                  "submitted",
+                  "approved",
+                  "rejected"
+                ],
+                "children": [
+                  {
+                    "transition.action": {
+                      "name": "submit",
+                      "@from": [
+                        "draft"
+                      ],
+                      "@to": "submitted"
+                    }
+                  },
+                  {
+                    "transition.action": {
+                      "name": "approve",
+                      "@from": [
+                        "submitted"
+                      ],
+                      "@to": "approved"
+                    }
+                  },
+                  {
+                    "transition.action": {
+                      "name": "reject",
+                      "@from": [
+                        "submitted"
+                      ],
+                      "@to": "rejected"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "api.operational": {
+          "name": "Purchasing",
+          "package": "acme::purchasing",
+          "children": [
+            {
+              "operation.query": {
+                "name": "openRequests",
+                "@many": true,
+                "@outputRef": "acme::purchasing::PurchaseRequest",
+                "@permission": "acme::purchasing.openRequests"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "api.operational": {
+          "name": "Review",
+          "package": "acme::review",
+          "children": [
+            {
+              "operation.query": {
+                "name": "openRequests",
+                "@many": true,
+                "@outputRef": "acme::purchasing::PurchaseRequest",
+                "@permission": "review.openRequests"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

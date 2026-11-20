@@ -157,6 +157,8 @@ first-week wedge plan — and `meta init` picks up from there.
 - Want the design rationale? → [`spec/`](spec/) + [`docs/superpowers/specs/`](docs/superpowers/specs/).
 - Want a worked, non-toy model? → [`examples/advanced-modeling/`](examples/advanced-modeling/)
   (projections, value objects, TPH, prompt payloads on one runnable spine).
+- Want the metadata to drive the UI and the API at runtime, with no per-entity codegen? → [`docs/features/metadata-driven-runtime.md`](docs/features/metadata-driven-runtime.md)
+  and [`examples/dynamic-grid/`](examples/dynamic-grid/) (TypeScript).
 - Want the cross-language contract? → [`fixtures/`](fixtures/) (the conformance corpora are the oracle).
 - Upgrading from 1.0.x to 1.1? → [`docs/features/migrations/upgrading-1.0-to-1.1.md`](docs/features/migrations/upgrading-1.0-to-1.1.md).
 
@@ -169,7 +171,7 @@ first-week wedge plan — and `meta init` picks up from there.
 | Kotlin | **Maven Central `8.2.0`** — codegen tier on top of Java: 17 generators (entity, Exposed table, names, relations, repository, output-parser, output-prompt, render-helper, extractor, filter-allowlist, validator, Spring config, storedProc, Spring controller, requirement-tests, api-docs, report-export); 24 / 24 persistence-conformance | [`docs/ports/kotlin.md`](docs/ports/kotlin.md) | [`server/java/codegen-kotlin/`](server/java/codegen-kotlin/) · [`server/java/metadata-ktx/`](server/java/metadata-ktx/) |
 | C# | **NuGet `1.2.0`** — loader + conformance + EF Core codegen + render engine + `dotnet meta` CLI all shipped | [`docs/ports/csharp.md`](docs/ports/csharp.md) | [`server/csharp/`](server/csharp/) |
 | Python | **PyPI `1.2.0`** — loader + conformance + render + entity-model codegen + ObjectManager runtime shipped; schema migrations are TS-owned (ADR-0015) | [`docs/ports/python.md`](docs/ports/python.md) | [`server/python/`](server/python/) |
-| Rust | **Preview, unpublished** — loader (JSON + YAML), project and source resolution, naming and all 40 validation passes; 526 / 526 metamodel conformance; `cargo meta init` / `gen` / `verify --codegen` / `eject` with the `entity`, `client` and `commands` generators (ADR-0065). Schema migrations stay with the Node `meta` tool | [`docs/ports/rust.md`](docs/ports/rust.md) | [`server/rust/`](server/rust/) |
+| Rust | **Preview, unpublished** — loader (JSON + YAML), project and source resolution, naming and all 41 validation passes; 574 / 574 metamodel conformance; `cargo meta init` / `gen` / `verify --codegen` / `eject` with the `entity`, `client` and `commands` generators (ADR-0065). Schema migrations stay with the Node `meta` tool | [`docs/ports/rust.md`](docs/ports/rust.md) | [`server/rust/`](server/rust/) |
 
 ## Capability matrix
 
@@ -316,7 +318,8 @@ metaobjects/
 │   ├── superpowers/specs/          # design specs
 │   └── RELEASING.md                # npm publish procedure
 ├── examples/
-│   └── advanced-modeling/          # a worked, runnable non-toy model
+│   ├── advanced-modeling/          # a worked, runnable non-toy model
+│   └── dynamic-grid/               # runtime metadata: one grid, form and route mount for every entity (TypeScript)
 ├── library/                        # shipped libraries, opt-in per project via `libraries: [...]`
 │   ├── ai/                         #   the LLM-call trace envelope (stable)
 │   └── iam/                        #   users, groups, roles, grants (preview)

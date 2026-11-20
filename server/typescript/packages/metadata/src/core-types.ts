@@ -58,6 +58,10 @@ import { MetaIndex } from "./core/index/meta-index.js";
 import { INDEX_DEFINITION } from "./core/index/index-definition.embedded.js";
 import { INDEX_SUBTYPES } from "./core/index/index-constants.js";
 import { MetaRequirement } from "./core/requirement/meta-requirement.js";
+import { MetaApi, MetaBinding, MetaOperation } from "./core/api/meta-api.js";
+import { API_DEFINITION } from "./core/api/api-definition.embedded.js";
+import { MetaTransition } from "./core/transition/meta-transition.js";
+import { TRANSITION_DEFINITION } from "./core/transition/transition-definition.embedded.js";
 import { REQUIREMENT_DEFINITION } from "./core/requirement/requirement-definition.embedded.js";
 import { REQUIREMENT_SUBTYPES } from "./core/requirement/requirement-constants.js";
 import { MetaDimension } from "./core/reporting/meta-dimension.js";
@@ -87,6 +91,9 @@ import {
   TYPE_DIMENSION,
   TYPE_MEASURE,
   TYPE_SEGMENT,
+  TYPE_API,
+  TYPE_OPERATION,
+  TYPE_BINDING,
   SUBTYPE_ROOT,
 } from "./shared/base-types.js";
 import { CHILD_RULE_WILDCARD } from "./shared/structural.js";
@@ -203,6 +210,8 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
       wildcard(TYPE_TEMPLATE),
       // Capability requirements are declared beside the entities they describe.
       wildcard(TYPE_REQUIREMENT),
+      // ADR-0030 / ADR-0066 — a declared API surface is a top-level, packaged node.
+      wildcard(TYPE_API),
     ], MetaRoot),
   );
 
@@ -549,6 +558,25 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
   };
   for (const reportingDef of defineProviderFromData(REPORTING_DEFINITION, REPORTING_FACTORIES)) {
     registry.register(reportingDef);
+  }
+
+  // ADR-0030 / ADR-0066 — the declared API surface (api / operation / binding) and
+  // lifecycle moves (transition, a child of field.enum). One class per type; the
+  // subtype carries no behaviour of its own. The cross-node rules live in
+  // loader/rules-validation.ts.
+  const RULES_FACTORIES: FactoryMap = {};
+  for (const def of [...(API_DEFINITION.types ?? []), ...(TRANSITION_DEFINITION.types ?? [])]) {
+    const key = `${def.type}.${def.subType}`;
+    if (def.type === TYPE_API) RULES_FACTORIES[key] = (typeId: TypeId, name: string) => new MetaApi(typeId, name);
+    else if (def.type === TYPE_OPERATION) RULES_FACTORIES[key] = (typeId: TypeId, name: string) => new MetaOperation(typeId, name);
+    else if (def.type === TYPE_BINDING) RULES_FACTORIES[key] = (typeId: TypeId, name: string) => new MetaBinding(typeId, name);
+    else RULES_FACTORIES[key] = (typeId: TypeId, name: string) => new MetaTransition(typeId, name);
+  }
+  for (const rulesDef of [
+    ...defineProviderFromData(API_DEFINITION, RULES_FACTORIES),
+    ...defineProviderFromData(TRANSITION_DEFINITION, RULES_FACTORIES),
+  ]) {
+    registry.register(rulesDef);
   }
 
   // Declare the core cross-references ON their TypeDefinitions, so the loader's

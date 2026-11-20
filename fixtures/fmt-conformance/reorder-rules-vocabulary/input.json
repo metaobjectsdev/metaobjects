@@ -1,0 +1,16 @@
+{"metadata.root": {"children": [
+  {"object.entity": {"children": [
+    {"source.rdb": {"@table": "purchase_requests"}},
+    {"field.long": {"name": "id"}},
+    {"identity.primary": {"@fields": "id", "name": "pk"}},
+    {"field.enum": {"children": [
+      {"transition.action": {"@to": "submitted", "@permission": "purchasing.submit", "name": "submit", "@from": ["draft"]}},
+      {"transition.action": {"@to": "approved", "@from": ["submitted"], "name": "approve", "@public": true}}
+    ], "@default": "draft", "name": "status", "@values": ["draft", "submitted", "approved"]}}
+  ], "name": "PurchaseRequest"}},
+  {"object.value": {"name": "SubmitInput", "children": [{"field.long": {"extends": "PurchaseRequest.id", "name": "requestId"}}]}},
+  {"api.operational": {"children": [
+    {"operation.command": {"@transitions": ["submit"], "children": [{"binding.rest": {"@path": "/purchase-requests/{id}/submit", "@method": "POST"}}], "@inputRef": "SubmitInput", "name": "submit", "@errors": ["not_ready"]}},
+    {"operation.query": {"@many": true, "name": "drafts", "@outputRef": "PurchaseRequest", "@public": true}}
+  ], "name": "Purchasing"}}
+], "package": "acme::purchasing"}}

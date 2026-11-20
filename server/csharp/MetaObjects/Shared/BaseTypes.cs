@@ -46,6 +46,15 @@ public static class BaseTypes
     public const string TYPE_DIMENSION    = "dimension";
     public const string TYPE_MEASURE      = "measure";
     public const string TYPE_SEGMENT      = "segment";
+    /// <summary>
+    /// ADR-0030 / ADR-0066 — the declared API surface: <c>api.operational</c> holds
+    /// <c>operation.command</c> / <c>operation.query</c>, each optionally carrying a <c>binding.rest</c>.
+    /// </summary>
+    public const string TYPE_API          = "api";
+    public const string TYPE_OPERATION    = "operation";
+    public const string TYPE_BINDING      = "binding";
+    /// <summary>ADR-0066 — an allowed move between two members of a <c>field.enum</c> (<c>transition.action</c>).</summary>
+    public const string TYPE_TRANSITION   = "transition";
 
     public static readonly string[] BASE_TYPES =
     [
@@ -66,6 +75,10 @@ public static class BaseTypes
         TYPE_DIMENSION,
         TYPE_MEASURE,
         TYPE_SEGMENT,
+        TYPE_API,
+        TYPE_OPERATION,
+        TYPE_BINDING,
+        TYPE_TRANSITION,
     ];
 
     // -----------------------------------------------------------------------

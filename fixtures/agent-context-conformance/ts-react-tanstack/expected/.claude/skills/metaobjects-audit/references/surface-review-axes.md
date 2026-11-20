@@ -228,9 +228,9 @@ The full hunt for each axis of Phase 1b (Partial / Deep path). Each axis runs in
   Exposed `T.update({ (T.id eq id) and (T.status eq <from>) })` on Kotlin; EF Core
   `ExecuteUpdateAsync` after a `Where(x => x.Status == <from>)` on C#. Each checks the
   affected-row count. `<from>` is the generated enum constant, never a literal (signature 13 in
-  `drift-signatures.md`). **If the allowed transitions need a declared form, that is a question
-  for the human, never a new attribute** (ADR-0023): the sketch proposes the ORM guard and
-  records the transition table as an open decision. Pillar `runtime`, surface `repository`.
+  `drift-signatures.md`). **The allowed transitions have a declared form**, `transition.action`
+  under a `field.enum` (ADR-0066, experimental): cite that table in the sketch, never a new
+  attribute (ADR-0023). The sketch proposes the ORM guard. Pillar `runtime`, surface `repository`.
 
 - [ ] **H. Authoring-correctness / ADR-conformance (deep).** Invented/unregistered
   `@`-attrs or post-bootstrap registration (ADR-0023 — custom attrs belong in a registered

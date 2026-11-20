@@ -1,0 +1,28 @@
+{
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "ERR_REQUIREMENT_DANGLING_REF",
+      "path": "Approval.Decided",
+      "message": "'Purchasing.decideNow' does not resolve in the loaded model (status 'live' — the model moved and the requirement is stale). 'acme::purchasing::Purchasing' has no member 'decideNow'."
+    },
+    {
+      "severity": "error",
+      "code": "ERR_REQUIREMENT_DANGLING_REF",
+      "path": "Approval.Submitted",
+      "message": "'PurchaseRequest.status.send' does not resolve in the loaded model (status 'live' — the model moved and the requirement is stale). 'acme::purchasing::PurchaseRequest.status' has no member 'send'."
+    }
+  ],
+  "summary": {
+    "total": 3,
+    "functional": 3,
+    "architectural": 0,
+    "byStatus": {
+      "live": 3
+    },
+    "undecided": 0,
+    "deferredUntracked": 0,
+    "entitiesClaimed": 1,
+    "entitiesTotal": 1
+  }
+}

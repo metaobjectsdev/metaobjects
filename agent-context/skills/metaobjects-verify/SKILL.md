@@ -93,8 +93,8 @@ always means "found nothing", never "never looked"; what the payload does not ca
 is named in its own `notRepresented[]`.
 
 **A bare `verify` runs the code gates, not the database gate.** In every port a bare
-run covers codegen drift (stale generated code), prompt-template drift and the
-requirement ledger, paired with the advisory anti-pattern pass above. `verify --db
+run covers codegen drift (stale generated code), prompt-template drift, the
+requirement ledger and the business-rules gate, paired with the advisory anti-pattern pass above. `verify --db
 <url>`, `--deps` and `--replay` stay opt-in (`--db` is Node `meta` only). A bare run
 skips a gate it has no configuration for and says so in one line: Node `meta` with
 no `metaobjects.config.ts`, Python with no `metaobjects.config.yaml`, `dotnet meta`

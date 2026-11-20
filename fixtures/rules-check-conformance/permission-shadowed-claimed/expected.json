@@ -1,0 +1,21 @@
+{
+  "diagnostics": [
+    {
+      "severity": "warn",
+      "code": "WARN_TRANSITION_PERMISSION_SHADOWED",
+      "path": "acme::purchasing::PurchaseRequest.status.approve",
+      "message": "transition \"approve\" declares @public: true, but it derives no command of its own: it is made only by \"Purchasing.decide\", which asks the policy about its own permission, so the attribute is never read. Remove it from the transition, or declare it on the command that makes the transition."
+    },
+    {
+      "severity": "warn",
+      "code": "WARN_TRANSITION_PERMISSION_SHADOWED",
+      "path": "acme::purchasing::PurchaseRequest.status.reject",
+      "message": "transition \"reject\" declares @permission \"purchasing.review\", but it derives no command of its own: it is made only by \"Purchasing.decide\", \"Purchasing.overrule\", which ask the policy about their own permission, so the attribute is never read. Remove it from the transition, or declare it on the command that makes the transition."
+    }
+  ],
+  "summary": {
+    "operations": 2,
+    "lifecycles": 1,
+    "transitions": 3
+  }
+}

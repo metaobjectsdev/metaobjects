@@ -1,0 +1,53 @@
+metadata:
+  package: acme::purchasing
+  children:
+    - object.entity:
+        name: PurchaseRequest
+        children:
+          - source.rdb: { table: purchase_requests }
+          - field.long: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
+          - field.enum:
+              name: status
+              values: [draft, submitted, approved]
+              default: draft
+              children:
+                - transition.action: { name: submit, from: [draft], to: submitted }
+                - transition.action: { name: approve, from: [submitted], to: approved }
+    - object.value:
+        name: ApproveInput
+        children:
+          - field.long: { name: requestId, extends: PurchaseRequest.id }
+    - api.operational:
+        name: Purchasing
+        children:
+          - operation.command:
+              name: decide
+              inputRef: ApproveInput
+              transitions: [approve]
+              permission: purchasing.decide
+
+    - requirement.functional:
+        name: Approval
+        level: 4
+        status: live
+        statement: A submitted request can be approved.
+        counterexample: A submitted request nobody can approve.
+        implementedBy: [PurchaseRequest]
+        children:
+          # An operation of a declared API.
+          - requirement.functional:
+              name: Decided
+              level: 5
+              status: live
+              statement: A reviewer decides a submitted request.
+              counterexample: A request that waits forever.
+              implementedBy: [Purchasing.decide]
+          # A transition of a lifecycle.
+          - requirement.functional:
+              name: Submitted
+              level: 5
+              status: live
+              statement: A draft request can be submitted.
+              counterexample: A draft that cannot be sent.
+              implementedBy: [PurchaseRequest.status.submit]

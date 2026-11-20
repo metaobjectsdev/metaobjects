@@ -23,6 +23,12 @@ import {
   type WireFormat,
   type WireNullMembers,
   type PhysicalNaming,
+  RULES_PERMISSION_NAMES,
+  RULES_LIFECYCLE_CREATE,
+  RULES_LIFECYCLE_COMMANDS,
+  VERIFY_LIFECYCLE_UNREACHABLE,
+  rulesSettingsOf,
+  type RulesSettings,
   API_KEY_PAGINATION,
   PAGINATION_KEY_DEFAULT_LIMIT,
   PAGINATION_KEY_MAX_LIMIT,
@@ -241,16 +247,21 @@ export const ConfigSchema = z.object({
    * `notice` lists the file and exits 0 (`--forbid-hand-edits` tightens that for one run).
    * Absent means `notice`, what verify has always done; `meta init` writes `fail` for a new
    * project. Only the TypeScript `meta verify` reads it: the other ports' verify already fails
-   * on any edit to a generated file.
+   * on any edit to a generated file. `lifecycle.unreachable`: the severity of a lifecycle state
+   * no transition reaches from the initial state, and of a transition that starts only from
+   * such states — `warn` (default), `error` or `off` (ADR-0066); read by every port's config reader.
    */
   verify: z
     .strictObject({
       handEdits: z.enum(HAND_EDITS_POLICIES, {
         message: `"verify.handEdits" must be one of ${HAND_EDITS_POLICIES.map((v) => `"${v}"`).join(", ")}`,
       }).optional(),
+      lifecycle: z.strictObject({
+        unreachable: z.enum(VERIFY_LIFECYCLE_UNREACHABLE).optional(),
+      }).optional(),
     }, {
       error: (iss) => iss.code === "unrecognized_keys"
-        ? `"verify" has an unknown key "${iss.keys[0]}" (expected "handEdits")`
+        ? `"verify" has an unknown key "${iss.keys[0]}" (expected "handEdits" or "lifecycle")`
         : iss.code === "invalid_type" ? `"verify" must be an object` : undefined,
     })
     .optional(),
@@ -382,6 +393,29 @@ export const ConfigSchema = z.object({
     })
     .optional(),
   /**
+   * ADR-0066 — the business-rules settings. Read only for a model that declares an operation
+   * or a transition, and every absent key takes the behaviour such a model has without it.
+   * `permissions.names`: `derive` (default; verify says nothing), `advise` (verify warns on an
+   * operation or derived transition command with no explicit `@permission`, which asks about the
+   * derived name `<package>.<operation>` or `<package>.<Entity>.<transition>`) or `require` (it
+   * fails). `lifecycle.create`: `initial` (default; a create starts a row in the lifecycle's
+   * initial state) or `any`; it is validated and has no effect yet, since no service shell reads
+   * it. `lifecycle.commands`: which transitions derive a command of their
+   * own, `unclaimed` (default; those no command lists in `@transitions`), `all` or `none`.
+   * Read by every port's config reader.
+   */
+  rules: z
+    .strictObject({
+      permissions: z.strictObject({
+        names: z.enum(RULES_PERMISSION_NAMES).optional(),
+      }).optional(),
+      lifecycle: z.strictObject({
+        create: z.enum(RULES_LIFECYCLE_CREATE).optional(),
+        commands: z.enum(RULES_LIFECYCLE_COMMANDS).optional(),
+      }).optional(),
+    })
+    .optional(),
+  /**
    * C#-scoped settings. `outDir` is where `dotnet meta gen` writes and a bare `dotnet meta
    * verify` diffs, relative to the directory holding `.metaobjects/`; `namespace` is the C#
    * namespace generated types that no package binding places land in. Only the C# port reads
@@ -437,6 +471,11 @@ export function wireFormatFromConfig(cfg: Pick<Config, "wire">): WireFormat {
     nullMembers: cfg.wire?.nullMembers ?? DEFAULT_WIRE_FORMAT.nullMembers,
     durations: cfg.wire?.durations ?? DEFAULT_WIRE_FORMAT.durations,
   };
+}
+
+/** The business-rules settings a config declares, each absent key at its default (ADR-0066). */
+export function rulesSettingsFromConfig(cfg: Pick<Config, "rules" | "verify">): RulesSettings {
+  return rulesSettingsOf(cfg);
 }
 
 export const DEFAULT_CONFIG: Config = ConfigSchema.parse({ schema_version: 1 });

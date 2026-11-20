@@ -44,6 +44,7 @@ import {
   compileScope,
   matchesScope,
   REF_BEARING_ATTR_NAMES,
+  isRefBearingAttr,
   resolveObjectRef,
   serializeSharedDocument,
   packageOfResolutionKey,
@@ -186,6 +187,7 @@ function checkClosure(
       // one's, and is checked when the base itself is walked — reading it via the
       // resolving `attr()` here would attribute the base's reference to this node.
       for (const attrName of REF_BEARING_ATTR_NAMES) {
+        if (!isRefBearingAttr(node, attrName)) continue;
         const value = node.ownAttr(attrName);
         if (typeof value === "string") candidates.push(value);
       }

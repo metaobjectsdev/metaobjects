@@ -48,6 +48,31 @@ export * from "./core/reporting/reporting-constants.js";
 export { MetaDimension } from "./core/reporting/meta-dimension.js";
 export { MetaMeasure } from "./core/reporting/meta-measure.js";
 export { MetaSegment } from "./core/reporting/meta-segment.js";
+export * from "./core/api/api-constants.js";
+export { MetaApi, MetaOperation, MetaBinding } from "./core/api/meta-api.js";
+export * from "./core/transition/transition-constants.js";
+export { MetaTransition } from "./core/transition/meta-transition.js";
+// ADR-0066 — derived lifecycle and operation-target facts, shared by the loader, verify and
+// (later) the generators, so no consumer re-derives them.
+export {
+  lifecyclesOf,
+  entityLineage,
+  entityTransitions,
+  lifecycleTransitionsOf,
+  lifecycleIsLive,
+  transitionsOf,
+  transitionFrom,
+  transitionTo,
+  reachableStates,
+  terminalStates,
+  primaryKeyFields,
+  projectionBaseEntity,
+  deriveOperationTarget,
+  operationTarget,
+  operationIsKeyed,
+  type Lifecycle,
+  type DerivedTarget,
+} from "./core/transition/lifecycle.js";
 export { isDerivedExpr, derivedExprFields, type DerivedExprNode } from "./core/reporting/derived-expr.js";
 export {
   reportFrom,
@@ -327,6 +352,9 @@ export {
   didYouMeanHint,
   didYouMeanSuperHint,
   REF_BEARING_ATTR_NAMES,
+  isRefBearingAttr,
+  effectivePackageOf,
+  topLevelNodeOf,
 } from "./naming-refs.js";
 export { resolveReferences } from "./loader/resolve-references.js";
 
@@ -429,6 +457,16 @@ export {
   DEFAULT_WIRE_FORMAT, wireFormatOf,
 } from "./wire.js";
 export type { WireFormat, WireDecimals, WireNullMembers, WireDurations } from "./wire.js";
+
+// ADR-0066: the `rules` and `verify` blocks of .metaobjects/config.json.
+export {
+  RULES_PERMISSION_NAMES, RULES_LIFECYCLE_CREATE, RULES_LIFECYCLE_COMMANDS, VERIFY_LIFECYCLE_UNREACHABLE,
+  DEFAULT_RULES_SETTINGS, rulesSettingsOf,
+} from "./rules-settings.js";
+export type {
+  RulesSettings, RulesConfigBlocks, RulesPermissionNames, RulesLifecycleCreate, RulesLifecycleCommands,
+  VerifyLifecycleUnreachable,
+} from "./rules-settings.js";
 
 // Retired vocabulary: the map the loader reads to explain a retirement, and the raw-document
 // rewriter `meta upgrade` drives from the SAME entries — so the error message and the fix

@@ -265,6 +265,7 @@ public final class RegistryManifest {
                 new com.metaobjects.index.IndexTypesMetaDataProvider(),
                 new com.metaobjects.requirement.RequirementTypesMetaDataProvider(),
                 new com.metaobjects.reporting.ReportingTypesMetaDataProvider(),
+                new com.metaobjects.api.RulesTypesMetaDataProvider(),
                 new com.metaobjects.database.CoreDBMetaDataProvider(),
                 new com.metaobjects.source.SourceTypesMetaDataProvider(),
                 new com.metaobjects.origin.OriginTypesMetaDataProvider(),

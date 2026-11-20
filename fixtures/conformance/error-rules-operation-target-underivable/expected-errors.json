@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_OPERATION_TARGET_UNRESOLVED",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.purchasing.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[4]['api.operational'].children[3]['operation.command']"
+      }
+    }
+  ],
+  "warnings": []
+}

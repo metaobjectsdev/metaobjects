@@ -573,6 +573,8 @@ static int RunVerify(string[] rest)
         Naming = resolvedMeta.Naming,
         // ADR-0019 Amendment 2 — the wire setting, from the same file, for the --codegen regen.
         Wire = resolvedMeta.Wire ?? MetaObjects.Meta.WireFormat.Default,
+        // ADR-0066 — the business-rules settings, for the rules gate.
+        Rules = resolvedMeta.Rules ?? MetaObjects.Config.RulesSettings.Default,
         Api = resolvedMeta.Api ?? MetaObjects.Meta.ApiSettings.Default,
         TemplatesRoot = templatesRoot,
         OutDir = outDir,
@@ -660,6 +662,11 @@ static int RunVerify(string[] rest)
     // load refuse the metadata, each says so.
     var requirementExit = VerifyCommand.RunRequirementGate(opts, requireImplementers, Console.Error, result.LoadFailureReported);
 
+    // The business-rules gate (ADR-0066): operations and lifecycles are metadata too, so it runs on
+    // EVERY verify and is opt-in by declaration. A model with no operation and no transition sees no
+    // line and no exit-code change. Its errors fold into the exit code like any other gate's.
+    var rulesExit = VerifyCommand.RunRulesGate(opts, Console.Error);
+
     // The field AUTHORING lint — a reference identity over a field the object lacks, a
     // field name declared twice in one children list. Both load clean on every port. Runs
     // on every `verify`, whichever gates were selected; warnings ONLY, never the exit code.
@@ -670,7 +677,7 @@ static int RunVerify(string[] rest)
     // fold its exit code into the aggregate the same way every other subverb does — max,
     // non-zero on any drift.
     var gatesExit = codegenHandedOff ? Math.Max(result.ExitCode, codegenHandoffExit) : result.ExitCode;
-    return Math.Max(Math.Max(gatesExit, requirementExit), depsExit);
+    return Math.Max(Math.Max(Math.Max(gatesExit, requirementExit), rulesExit), depsExit);
 }
 
 // `dotnet meta verify --deps` (FR-023): re-resolve each declared dependency's `path` and compare its

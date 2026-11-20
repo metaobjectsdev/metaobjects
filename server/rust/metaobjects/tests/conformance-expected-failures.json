@@ -1,6 +1,6 @@
 {
   "language": "rust",
   "notes": "The Rust port is in preview. It passes every fixture of the shared metamodel corpus, so the ledger is empty. The ledger may only shrink and is kept for the day a new fixture lands that Rust does not pass yet: list it here with the reason, and it leaves when the work that covers it lands. minPassing is the number of fixtures known to pass; the run fails when fewer do, and it may only rise.",
-  "minPassing": 526,
+  "minPassing": 574,
   "fixtures": []
 }

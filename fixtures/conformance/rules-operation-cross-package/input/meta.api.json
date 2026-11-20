@@ -1,0 +1,51 @@
+{
+  "metadata.root": {
+    "package": "acme::api",
+    "children": [
+      {
+        "api.operational": {
+          "name": "Purchasing",
+          "children": [
+            {
+              "operation.command": {
+                "name": "decide",
+                "@inputRef": "acme::purchasing::DecisionInput",
+                "@transitions": [
+                  "approve",
+                  "reject"
+                ],
+                "@permission": "purchasing.decide",
+                "@errors": [
+                  "over_budget",
+                  "already_decided"
+                ],
+                "children": [
+                  {
+                    "binding.rest": {
+                      "@method": "PUT",
+                      "@path": "/purchase-requests/{id}/decision"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "operation.query": {
+                "name": "openRequests",
+                "@outputRef": "acme::purchasing::RequestSummary",
+                "@many": true,
+                "@public": true
+              }
+            },
+            {
+              "operation.query": {
+                "name": "requestSummary",
+                "@outputRef": "acme::purchasing::RequestSummary"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

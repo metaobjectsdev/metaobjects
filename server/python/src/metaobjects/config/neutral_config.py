@@ -23,6 +23,13 @@ from metaobjects.naming import (
     registered_table_naming_rules,
     unknown_naming_strategy_message,
 )
+from metaobjects.rules_settings import (
+    RULES_LIFECYCLE_COMMANDS,
+    RULES_LIFECYCLE_CREATE,
+    RULES_PERMISSION_NAMES,
+    VERIFY_LIFECYCLE_UNREACHABLE,
+    RulesSettings,
+)
 from metaobjects.wire import WIRE_DECIMALS, WIRE_DURATIONS, WIRE_NULL_MEMBERS, WireFormat
 
 #: The DEFAULT value of `sources` when the key is absent or empty — never a
@@ -101,6 +108,10 @@ class NeutralConfig:
     #: Attached to the loaded root (`MetaRoot.wire`) beside `naming`; validated HERE
     #: for the same reason `naming` is.
     wire: WireFormat = WireFormat()
+
+    #: ADR-0066 — the `rules` and `verify` blocks (business-rules settings), each absent key at
+    #: its default. Attached to the loaded root (`MetaRoot.rules_settings`) beside `wire`.
+    rules: RulesSettings = RulesSettings()
 
     #: FR-023 — `requirements.inherit`: scope patterns naming the dependencies whose
     #: requirements this project takes on as its own ledger (`Collection.in_ledger`).
@@ -203,6 +214,7 @@ def read_neutral_config(config_dir: Path) -> NeutralConfig | None:
     libraries = _read_libraries(raw, path)
     naming = _read_naming(raw, path)
     wire = _read_wire(raw, path)
+    rules = _read_rules(raw, path)
     _check_enums(raw, path)
     api = _read_api(raw, path)
     requirements_inherit = _read_requirements_inherit(raw, path)
@@ -216,6 +228,7 @@ def read_neutral_config(config_dir: Path) -> NeutralConfig | None:
         libraries=libraries,
         naming=naming,
         wire=wire,
+        rules=rules,
         requirements_inherit=requirements_inherit,
         api=api,
     )
@@ -367,6 +380,79 @@ def _read_naming(raw: dict[str, object], path: Path) -> NamingRules:
             code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
         )
     return NamingRules(columns=columns, tables=tables, collections=collections)
+
+
+#: ADR-0066 — the closed shape of the `rules` and `verify` blocks: block -> sub-block -> key -> values.
+_RULES_BLOCKS: dict[str, dict[str, dict[str, tuple[str, ...]]]] = {
+    "rules": {
+        "permissions": {"names": RULES_PERMISSION_NAMES},
+        "lifecycle": {"create": RULES_LIFECYCLE_CREATE, "commands": RULES_LIFECYCLE_COMMANDS},
+    },
+    "verify": {"lifecycle": {"unreachable": VERIFY_LIFECYCLE_UNREACHABLE}},
+}
+
+
+#: `verify.handEdits` and its values: read by the TypeScript `meta verify` only, validated by every port.
+_VERIFY_KEY_HAND_EDITS = "handEdits"
+_HAND_EDITS_POLICIES: tuple[str, ...] = ("fail", "notice")
+
+
+def _read_rules(raw: dict[str, object], path: Path) -> RulesSettings:
+    """ADR-0066 — the `rules` and `verify` blocks. Absent or `{}` ⇒ every key at its default.
+    Refuses a non-object block, an unknown key at any level, or a value outside the closed set a
+    key accepts, exactly as `naming` and `wire` do: a mistake must not silently fall back to the
+    default and change what `verify` reports."""
+    found: dict[tuple[str, str, str], str] = {}
+    for block, subs in _RULES_BLOCKS.items():
+        if block not in raw:
+            continue
+        value = raw[block]
+        if not isinstance(value, dict):
+            raise ParseError(f'{path}: "{block}" must be an object', code=ErrorCode.ERR_BAD_ATTR_VALUE)
+        for sub_name, sub_value in value.items():
+            if block == "verify" and sub_name == _VERIFY_KEY_HAND_EDITS:
+                # Read by the TypeScript `meta verify` only (this port's verify already fails on
+                # any hand edit); validated here so the file `metaobjects init` writes loads.
+                if sub_value not in _HAND_EDITS_POLICIES:
+                    choices = ", ".join(f'"{a}"' for a in _HAND_EDITS_POLICIES)
+                    raise ParseError(
+                        f'{path}: "verify.handEdits" must be one of {choices}, got {json.dumps(sub_value)}',
+                        code=ErrorCode.ERR_BAD_ATTR_VALUE,
+                    )
+                continue
+            if sub_name not in subs:
+                expected = ", ".join(f'"{k}"' for k in ((_VERIFY_KEY_HAND_EDITS, *subs) if block == "verify" else subs))
+                raise ParseError(
+                    f'{path}: "{block}" has an unknown key "{sub_name}" (expected {expected})',
+                    code=ErrorCode.ERR_BAD_ATTR_VALUE,
+                )
+            if not isinstance(sub_value, dict):
+                raise ParseError(
+                    f'{path}: "{block}.{sub_name}" must be an object', code=ErrorCode.ERR_BAD_ATTR_VALUE
+                )
+            keys = subs[sub_name]
+            for key, key_value in sub_value.items():
+                if key not in keys:
+                    expected = ", ".join(f'"{k}"' for k in keys)
+                    raise ParseError(
+                        f'{path}: "{block}.{sub_name}" has an unknown key "{key}" (expected {expected})',
+                        code=ErrorCode.ERR_BAD_ATTR_VALUE,
+                    )
+                allowed = keys[key]
+                if not isinstance(key_value, str) or key_value not in allowed:
+                    choices = ", ".join(f'"{a}"' for a in allowed)
+                    raise ParseError(
+                        f'{path}: "{block}.{sub_name}.{key}" must be one of {choices}, got {json.dumps(key_value)}',
+                        code=ErrorCode.ERR_BAD_ATTR_VALUE,
+                    )
+                found[(block, sub_name, key)] = key_value
+    defaults = RulesSettings()
+    return RulesSettings(
+        permission_names=found.get(("rules", "permissions", "names"), defaults.permission_names),
+        lifecycle_create=found.get(("rules", "lifecycle", "create"), defaults.lifecycle_create),
+        lifecycle_commands=found.get(("rules", "lifecycle", "commands"), defaults.lifecycle_commands),
+        lifecycle_unreachable=found.get(("verify", "lifecycle", "unreachable"), defaults.lifecycle_unreachable),
+    )
 
 
 _PAGE_SIZE_MAX = 2147483647

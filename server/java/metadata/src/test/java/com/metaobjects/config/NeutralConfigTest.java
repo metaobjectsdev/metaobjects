@@ -195,4 +195,49 @@ public class NeutralConfigTest {
     public void refusesAVersionBesideAnotherTransport() {
         assertBadAttr("[{\"name\":\"a\",\"npm\":\"@x/y\",\"version\":\"1.0.0\"}]");
     }
+
+    // ADR-0066 — the `rules` and `verify` blocks. An absent key takes its default; a mistake is
+    // refused rather than silently defaulted, because a defaulted typo would change what verify reports.
+
+    @Test
+    public void rulesSettingsAbsentKeysTakeTheDefaults() throws IOException {
+        Path dir = writeConfig("{ \"schema_version\": 1 }");
+        assertEquals(RulesSettings.DEFAULT, NeutralConfig.read(dir).orElseThrow().getRulesSettings());
+        assertEquals("derive", RulesSettings.DEFAULT.permissionNames().wireName());
+        assertEquals("warn", RulesSettings.DEFAULT.lifecycleUnreachable().wireName());
+    }
+
+    @Test
+    public void rulesSettingsEveryKeyIsRead() throws IOException {
+        Path dir = writeConfig("{ \"schema_version\": 1, "
+                + "\"rules\": { \"permissions\": { \"names\": \"require\" }, "
+                + "\"lifecycle\": { \"create\": \"any\", \"commands\": \"none\" } }, "
+                + "\"verify\": { \"handEdits\": \"fail\", \"lifecycle\": { \"unreachable\": \"error\" } } }");
+        RulesSettings s = NeutralConfig.read(dir).orElseThrow().getRulesSettings();
+        assertEquals("require", s.permissionNames().wireName());
+        assertEquals("any", s.lifecycleCreate().wireName());
+        assertEquals("none", s.lifecycleCommands().wireName());
+        assertEquals("error", s.lifecycleUnreachable().wireName());
+    }
+
+    @Test
+    public void rulesSettingsMistakesAreRefusedNotDefaulted() throws IOException {
+        String[] mistakes = {
+            "\"rules\": { \"permission\": { \"names\": \"advise\" } }",
+            "\"rules\": { \"lifecycle\": { \"initial\": \"any\" } }",
+            "\"rules\": { \"permissions\": { \"names\": \"strict\" } }",
+            "\"rules\": { \"lifecycle\": { \"commands\": true } }",
+            "\"rules\": \"advise\"",
+            "\"rules\": null",
+            "\"verify\": null",
+            "\"verify\": { \"lifecycle\": { \"unreachable\": \"fail\" } }",
+            "\"verify\": { \"lifecycles\": {} }",
+            "\"verify\": { \"handEdits\": \"warn\" }",
+        };
+        for (String mistake : mistakes) {
+            Path dir = writeConfig("{ \"schema_version\": 1, " + mistake + " }");
+            MetaDataException ex = assertThrows(mistake, MetaDataException.class, () -> NeutralConfig.read(dir));
+            assertEquals(mistake, ErrorCode.ERR_BAD_ATTR_VALUE, ex.getCode().orElseThrow());
+        }
+    }
 }

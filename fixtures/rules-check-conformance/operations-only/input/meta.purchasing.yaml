@@ -1,0 +1,19 @@
+metadata:
+  package: acme::reports
+  children:
+    - object.entity:
+        name: Order
+        children:
+          - source.rdb: { table: orders }
+          - field.long: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
+          - field.long: { name: totalCents }
+    - object.value:
+        name: Totals
+        children:
+          - field.long: { name: totalCents }
+    - api.operational:
+        name: Dashboard
+        children:
+          - operation.query: { name: totals, outputRef: Totals }
+          - operation.query: { name: recentOrders, outputRef: Order, many: true, permission: reports.read }

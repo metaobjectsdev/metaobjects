@@ -1,0 +1,22 @@
+{
+  "metadata.root": {
+    "package": "acme::review",
+    "children": [
+      {
+        "api.operational": {
+          "name": "Review",
+          "children": [
+            {
+              "operation.query": {
+                "name": "openRequests",
+                "@outputRef": "acme::purchasing::PurchaseRequest",
+                "@many": true,
+                "@permission": "review.openRequests"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -268,6 +268,9 @@ function makeDrizzleDriver(
       if (w !== undefined) q = q.where(w);
       q = applyOrder(q, spec.orderBy, table);
       if (spec.limit !== undefined) q = q.limit(spec.limit);
+      // SQLite and MySQL have no OFFSET without a LIMIT (the bare clause is a syntax
+      // error), so an offset alone gets a limit no result can reach.
+      else if (spec.offset !== undefined) q = q.limit(Number.MAX_SAFE_INTEGER);
       if (spec.offset !== undefined) q = q.offset(spec.offset);
       const rows = (await q) as Row[];
       return rows.map((r) => toDbKeyedRow(table, jsKeyedFromSelect(r, selectArg)));

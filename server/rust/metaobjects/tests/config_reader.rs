@@ -280,6 +280,14 @@ fn a_nested_typo_or_wrong_type_is_an_error() {
         json!({"schema_version": 1, "scope": {"include": [""]}}),
         json!({"schema_version": 1, "verify": {"handEdits": "maybe"}}),
         json!({"schema_version": 1, "verify": {"other": 1}}),
+        json!({"schema_version": 1, "verify": {"lifecycle": {"unreachable": "loud"}}}),
+        json!({"schema_version": 1, "verify": {"lifecycle": {"unreachablee": "off"}}}),
+        json!({"schema_version": 1, "rules": []}),
+        json!({"schema_version": 1, "rules": {"permission": {}}}),
+        json!({"schema_version": 1, "rules": {"permissions": {"names": "always"}}}),
+        json!({"schema_version": 1, "rules": {"permissions": {"name": "derive"}}}),
+        json!({"schema_version": 1, "rules": {"lifecycle": {"create": "none"}}}),
+        json!({"schema_version": 1, "rules": {"lifecycle": {"commands": 1}}}),
         json!({"schema_version": 1, "requirements": {"inheret": []}}),
         json!({"schema_version": 1, "csharp": {"outDir": ""}}),
         json!({"schema_version": 1, "libraries": "iam"}),
@@ -317,6 +325,67 @@ fn extract_and_confidence_thresholds_ignore_unknown_keys_as_the_typescript_reade
     .unwrap()
     .config;
     assert_eq!(c.extract_metaignore.as_deref(), Some(".m"));
+}
+
+#[test]
+fn the_business_rules_settings_default_and_are_kept() {
+    use metaobjects::config::{
+        RulesLifecycleCommands, RulesLifecycleCreate, RulesPermissionNames, RulesSettings,
+        VerifyLifecycleUnreachable,
+    };
+    let parse = |doc: Value| {
+        parse_config(&doc, "c.json", &NamingRegistry::builtin())
+            .unwrap()
+            .config
+    };
+    // Absent, and empty at every level, take every default.
+    for doc in [
+        json!({"schema_version": 1}),
+        json!({"schema_version": 1, "rules": {}, "verify": {}}),
+        json!({"schema_version": 1, "rules": {"permissions": {}, "lifecycle": {}}, "verify": {"lifecycle": {}}}),
+    ] {
+        assert_eq!(parse(doc).rules, RulesSettings::default());
+    }
+    let c = parse(json!({
+        "schema_version": 1,
+        "rules": {"permissions": {"names": "require"}, "lifecycle": {"create": "any", "commands": "none"}},
+        "verify": {"handEdits": "fail", "lifecycle": {"unreachable": "error"}}
+    }));
+    assert_eq!(
+        c.rules,
+        RulesSettings {
+            permission_names: RulesPermissionNames::Require,
+            lifecycle_create: RulesLifecycleCreate::Any,
+            lifecycle_commands: RulesLifecycleCommands::NoneDerived,
+            lifecycle_unreachable: VerifyLifecycleUnreachable::Error,
+        }
+    );
+    assert_eq!(c.hand_edits, Some(HandEditsPolicy::Fail));
+    // `rules` is a known key: it does not draw the unknown-key warning.
+    let l = parse_config(
+        &json!({"schema_version": 1, "rules": {}}),
+        "c.json",
+        &NamingRegistry::builtin(),
+    )
+    .unwrap();
+    assert!(l.warnings.is_empty(), "{:?}", l.warnings);
+}
+
+#[test]
+fn a_verify_typo_names_both_keys_it_accepts() {
+    let err = parse_config(
+        &json!({"schema_version": 1, "verify": {"lifecycles": {}}}),
+        "c.json",
+        &NamingRegistry::builtin(),
+    )
+    .unwrap_err();
+    assert!(
+        err.message.contains(
+            "\"verify\" has an unknown key \"lifecycles\" (expected \"handEdits\" or \"lifecycle\")"
+        ),
+        "{}",
+        err.message
+    );
 }
 
 #[test]

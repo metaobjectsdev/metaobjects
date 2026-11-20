@@ -58,6 +58,9 @@ public sealed record ResolvedMetadata(
     /// constructor and <c>Deconstruct</c> keep the signatures they had.</summary>
     public EnumDefaults? Enums { get; init; }
 
+    /// <summary>ADR-0066 — the project's business-rules settings (<c>rules</c> and <c>verify</c> in config.json); null when no config was read.</summary>
+    public RulesSettings? Rules { get; init; }
+
     /// <summary>The project's <c>api</c> block, set on the loaded root by <see cref="Load"/>.</summary>
     public ApiSettings? Api { get; init; }
 
@@ -154,7 +157,7 @@ public static class MetadataLocation
             // No config found means no project to read a lock from: nothing is imported.
             var explicitImports = explicitCfg is null ? ImportScope.None : ImportScope.Resolve(explicitCfg.ConfigDir, explicitCfg);
             return new ResolvedMetadata(
-                metadataDir, null, explicitLibs, explicitNaming, explicitCfg?.Wire, explicitCfg?.OutDir, explicitImports, explicitCfg?.Namespace, LoadProviders(explicitCfg)) { Enums = explicitCfg?.Enums, Api = explicitCfg?.Api };
+                metadataDir, null, explicitLibs, explicitNaming, explicitCfg?.Wire, explicitCfg?.OutDir, explicitImports, explicitCfg?.Namespace, LoadProviders(explicitCfg)) { Enums = explicitCfg?.Enums, Rules = explicitCfg?.Rules, Api = explicitCfg?.Api };
         }
 
         var cfg = NeutralConfig.Read(cwd, validateNaming);
@@ -169,7 +172,7 @@ public static class MetadataLocation
             // No declared sources: resolve the DEFAULT directory through the same ladder
             // the shared conformance corpus gates (ERR_COLLECTION_NOT_FOUND when absent).
             var defaultFiles = SourceResolver.ResolveCollection(cwd);
-            return new ResolvedMetadata(Path.Combine(cwd, NeutralConfig.DefaultMetadataDir), defaultFiles, libraries, naming, wire, cfg?.OutDir, imports, cfg?.Namespace, LoadProviders(cfg)) { Enums = cfg?.Enums, Api = cfg?.Api };
+            return new ResolvedMetadata(Path.Combine(cwd, NeutralConfig.DefaultMetadataDir), defaultFiles, libraries, naming, wire, cfg?.OutDir, imports, cfg?.Namespace, LoadProviders(cfg)) { Enums = cfg?.Enums, Rules = cfg?.Rules, Api = cfg?.Api };
         }
 
         if (specs.Count > 1)
@@ -199,6 +202,6 @@ public static class MetadataLocation
                 "\"sources\" at the file's containing directory.");
         }
 
-        return new ResolvedMetadata(resolved, files, libraries, naming, wire, cfg?.OutDir, imports, cfg?.Namespace, LoadProviders(cfg)) { Enums = cfg?.Enums, Api = cfg?.Api };
+        return new ResolvedMetadata(resolved, files, libraries, naming, wire, cfg?.OutDir, imports, cfg?.Namespace, LoadProviders(cfg)) { Enums = cfg?.Enums, Rules = cfg?.Rules, Api = cfg?.Api };
     }
 }

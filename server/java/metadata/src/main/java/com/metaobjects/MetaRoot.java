@@ -126,6 +126,7 @@ public class MetaRoot extends MetaData implements com.metaobjects.database.Physi
                 .optionalChild(MetaValidator.TYPE_VALIDATOR, "*", "*")
                 .optionalChild(com.metaobjects.template.TemplateConstants.TYPE_TEMPLATE, "*", "*")
                 .optionalChild(com.metaobjects.requirement.MetaRequirement.TYPE_REQUIREMENT, "*", "*")
+                .optionalChild(com.metaobjects.api.ApiConstants.TYPE_API, "*", "*")
                 .optionalChild(com.metaobjects.attr.MetaAttribute.TYPE_ATTR, "*", "*")
             );
             log.debug("Registered MetaRoot type (metadata.root) with unified registry");

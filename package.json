@@ -6,7 +6,8 @@
   "type": "module",
   "workspaces": [
     "server/typescript/packages/*",
-    "client/web/packages/*"
+    "client/web/packages/*",
+    "examples/dynamic-grid"
   ],
   "scripts": {
     "build": "bun run --filter '*' build",

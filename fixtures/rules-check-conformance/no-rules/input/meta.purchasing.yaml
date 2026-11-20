@@ -1,0 +1,10 @@
+metadata:
+  package: acme::purchasing
+  children:
+    - object.entity:
+        name: PurchaseRequest
+        children:
+          - source.rdb: { table: purchase_requests }
+          - field.long: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
+          - field.enum: { name: status, values: [draft, submitted], default: draft }

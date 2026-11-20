@@ -1,0 +1,37 @@
+metadata:
+  package: acme::purchasing
+  children:
+    - object.entity:
+        name: Request
+        abstract: true
+        children:
+          - field.long: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
+          - field.enum:
+              name: status
+              values: [draft, submitted]
+              default: draft
+              children:
+                - transition.action: { name: submit, from: [draft], to: submitted }
+    - object.entity:
+        name: PurchaseRequest
+        extends: Request
+        children:
+          - source.rdb: { table: purchase_requests }
+    - object.entity:
+        name: TravelRequest
+        extends: Request
+        children:
+          - source.rdb: { table: travel_requests }
+    - object.value:
+        name: SubmitInput
+        children:
+          - field.long: { name: requestId, extends: Request.id }
+    - api.operational:
+        name: Requests
+        children:
+          - operation.command:
+              name: submitRequest
+              inputRef: SubmitInput
+              transitions: [submit]
+              permission: requests.submit

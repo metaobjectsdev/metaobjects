@@ -22,6 +22,8 @@ global using static MetaObjects.Core.Index.IndexConstants;
 global using static MetaObjects.Core.Relationship.RelationshipConstants;
 global using static MetaObjects.Core.Requirement.RequirementConstants;
 global using static MetaObjects.Core.Reporting.ReportingConstants;
+global using static MetaObjects.Core.Api.ApiConstants;
+global using static MetaObjects.Core.Transition.TransitionConstants;
 global using static MetaObjects.Persistence.Source.SourceConstants;
 global using static MetaObjects.Persistence.Origin.OriginConstants;
 global using static MetaObjects.Persistence.Db.DbConstants;

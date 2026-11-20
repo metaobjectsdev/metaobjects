@@ -20,6 +20,7 @@ _No subtype-specific attributes._
 
 **Allowed children**
 
+- `api.*` — 0..*
 - `field.*` — 0..*
 - `object.*` — 0..*
 - `requirement.*` — 0..*

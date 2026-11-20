@@ -1,12 +1,12 @@
 """FR-033 — the Python reader for the shared ``spec/metamodel/*.json`` files.
 
-The 15 JSON files (one per concern provider) are the cross-port single source of
+The JSON files (one per concern provider) are the cross-port single source of
 truth for every type / attr / common-attr **description** (+ optional
 ``rules``/``example``/``whenToUse``). They are byte-identical across the ports by
 design, so each port READS them rather than hand-copying the prose — the exact
 duplication FR-033 kills.
 
-This module embeds committed copies of the 15 files **inside the package** (beside
+This module embeds committed copies of those files **inside the package** (beside
 this ``__init__.py``, in ``metaobjects/spec_metamodel/``) and reads them via
 ``importlib.resources`` — AOT-safe (ships with the wheel, no arbitrary filesystem
 scan). A byte-identity gate test (``tests/conformance/test_spec_metamodel_embed.py``)
@@ -38,9 +38,10 @@ import json
 from dataclasses import dataclass, field
 from importlib import resources
 
-#: The 15 shared provider-definition file names (keep in lockstep with the
+#: The shared provider-definition file names (keep in lockstep with the
 #: repo-root ``spec/metamodel/`` directory — the byte-identity gate enforces it).
 SPEC_FILES: tuple[str, ...] = (
+    "api.json",
     "attr.json",
     "db.json",
     "documentation.json",
@@ -56,6 +57,7 @@ SPEC_FILES: tuple[str, ...] = (
     "requirement.json",
     "source.json",
     "template.json",
+    "transition.json",
     "ui.json",
     "ui-web.json",
     "validator.json",
@@ -177,7 +179,7 @@ class SpecMetamodelReader:
 
     @classmethod
     def load(cls) -> "SpecMetamodelReader":
-        """Load + parse the 15 embedded ``spec/metamodel/*.json`` files via
+        """Load + parse the embedded ``spec/metamodel/*.json`` files via
         ``importlib.resources`` (off the package, AOT-safe)."""
         reader = cls()
         pkg = resources.files(__package__)

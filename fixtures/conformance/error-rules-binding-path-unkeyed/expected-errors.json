@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_BINDING_PATH_MISMATCH",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.purchasing.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[3]['api.operational'].children[1]['operation.query'].children[0]['binding.rest']"
+      }
+    }
+  ],
+  "warnings": []
+}

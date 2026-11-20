@@ -60,7 +60,7 @@ That was a **modelling error, not a tool limitation**, and it is worth stating p
 is an easy one to repeat:
 
 > `@implementedBy` is legal at **L4/L5 only**, and **L5 names a member** — a field, a view, a
-> validator, an identity, or a template's child.
+> validator, an identity, a template's child, an operation or a transition.
 
 So a live-system fact is not an annotation hung off a requirement. It is modelled as an object,
 a field, or a validator, and the requirement **tags that member**. No oracle attribute is needed

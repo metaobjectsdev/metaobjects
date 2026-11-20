@@ -113,7 +113,7 @@ the loader requires those attrs to exist, never to say anything.
 **Hierarchy is nesting, and links live at the bottom.** L1 solution, L2 segment, L3
 service — these never reference the model. **L4** binds a declared top-level node — an
 `object.*` **or a `template.*`** — and **L5** binds a member of one: a field, view,
-validator, identity, or a template's child. `implementedBy` above L4 is an error.
+validator, identity, a template's child, an operation, or a transition. `implementedBy` above L4 is an error.
 Regrouping *moves* a node; it does not edit a parent string.
 
 **Write an L5 ref as a dotted `pkg::Owner.member` path** — the level and the shape of the

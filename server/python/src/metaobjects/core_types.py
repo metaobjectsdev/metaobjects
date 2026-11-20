@@ -77,6 +77,33 @@ from .meta.core.object.object_constants import (
     OBJECT_SUBTYPES,
 )
 from .meta.core.relationship.meta_relationship import MetaRelationship
+from .meta.core.api.api_constants import (
+    API_SUBTYPE_OPERATIONAL,
+    BINDING_ATTR_METHOD,
+    BINDING_ATTR_PATH,
+    BINDING_SUBTYPE_REST,
+    HTTP_METHODS,
+    OPERATION_ATTR_ERRORS,
+    OPERATION_ATTR_INPUT_REF,
+    OPERATION_ATTR_MANY,
+    OPERATION_ATTR_OBJECT_REF,
+    OPERATION_ATTR_OUTPUT_REF,
+    OPERATION_ATTR_PERMISSION,
+    OPERATION_ATTR_PUBLIC,
+    OPERATION_ATTR_TRANSITIONS,
+    OPERATION_SUBTYPE_COMMAND,
+    OPERATION_SUBTYPE_QUERY,
+)
+from .meta.core.api.meta_api import MetaApi, MetaBinding, MetaOperation
+from .meta.core.transition.meta_transition import MetaTransition
+from .meta.core.transition.transition_constants import (
+    TRANSITION_ATTR_CONDITION,
+    TRANSITION_ATTR_FROM,
+    TRANSITION_ATTR_PERMISSION,
+    TRANSITION_ATTR_PUBLIC,
+    TRANSITION_ATTR_TO,
+    TRANSITION_SUBTYPE_ACTION,
+)
 from .meta.core.reporting.meta_dimension import MetaDimension
 from .meta.core.reporting.meta_measure import MetaMeasure
 from .meta.core.reporting.meta_segment import MetaSegment
@@ -192,6 +219,10 @@ from .shared.base_types import (
     TYPE_RELATIONSHIP,
     TYPE_REQUIREMENT,
     TYPE_SEGMENT,
+    TYPE_API,
+    TYPE_BINDING,
+    TYPE_OPERATION,
+    TYPE_TRANSITION,
     TYPE_SOURCE,
     TYPE_TEMPLATE,
     TYPE_VALIDATOR,
@@ -258,6 +289,8 @@ core_provider.add(
         factory=MetaRoot,
         description="Root metadata document",
         child_rules=[
+            # ADR-0030 / ADR-0066 — a declared API surface is a top-level, packaged node.
+            ChildRule(TYPE_API, "*"),
             ChildRule(TYPE_FIELD, "*"),
             ChildRule(TYPE_OBJECT, "*"),
             # Capability requirements are declared beside the entities they describe.
@@ -500,6 +533,104 @@ core_provider.add(
     )
 )
 
+# ADR-0030 / ADR-0066 — the declared API surface (api / operation / binding) and the
+# lifecycle moves of a field.enum (transition). Attr scoping is per-subtype exactly as
+# spec/metamodel/api.json and transition.json declare it; the cross-node rules live in
+# loader/validate_rules.py. Mirrors TS core-types.ts.
+_OPERATION_COMMON_ATTRS = [
+    AttrSchema(name=OPERATION_ATTR_INPUT_REF, value_type=ATTR_SUBTYPE_STRING, required=False),
+    AttrSchema(name=OPERATION_ATTR_OUTPUT_REF, value_type=ATTR_SUBTYPE_STRING, required=False),
+    AttrSchema(name=OPERATION_ATTR_OBJECT_REF, value_type=ATTR_SUBTYPE_STRING, required=False),
+    AttrSchema(name=OPERATION_ATTR_PERMISSION, value_type=ATTR_SUBTYPE_STRING, required=False),
+    AttrSchema(name=OPERATION_ATTR_PUBLIC, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
+]
+# The registry anchors: not authorable, they carry what every subtype of the type shares.
+core_provider.add(TypeDefinition(type=TYPE_API, sub_type=SUBTYPE_BASE, factory=MetaApi))
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_OPERATION,
+        sub_type=SUBTYPE_BASE,
+        factory=MetaOperation,
+        attrs=list(_OPERATION_COMMON_ATTRS),
+        child_rules=[ChildRule(TYPE_BINDING, "*")],
+    )
+)
+core_provider.add(TypeDefinition(type=TYPE_BINDING, sub_type=SUBTYPE_BASE, factory=MetaBinding))
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_TRANSITION,
+        sub_type=SUBTYPE_BASE,
+        factory=MetaTransition,
+        attrs=[
+            AttrSchema(name=TRANSITION_ATTR_PERMISSION, value_type=ATTR_SUBTYPE_STRING, required=False),
+            AttrSchema(name=TRANSITION_ATTR_PUBLIC, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
+        ],
+    )
+)
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_API,
+        sub_type=API_SUBTYPE_OPERATIONAL,
+        factory=MetaApi,
+        child_rules=[ChildRule(TYPE_OPERATION, "*")],
+    )
+)
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_OPERATION,
+        sub_type=OPERATION_SUBTYPE_COMMAND,
+        factory=MetaOperation,
+        attrs=[
+            *_OPERATION_COMMON_ATTRS,
+            AttrSchema(name=OPERATION_ATTR_TRANSITIONS, value_type=ATTR_SUBTYPE_STRING, required=False, is_array=True),
+            AttrSchema(name=OPERATION_ATTR_ERRORS, value_type=ATTR_SUBTYPE_STRING, required=False, is_array=True),
+        ],
+        child_rules=[ChildRule(TYPE_BINDING, "*")],
+    )
+)
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_OPERATION,
+        sub_type=OPERATION_SUBTYPE_QUERY,
+        factory=MetaOperation,
+        attrs=[
+            *_OPERATION_COMMON_ATTRS,
+            AttrSchema(name=OPERATION_ATTR_MANY, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
+        ],
+        child_rules=[ChildRule(TYPE_BINDING, "*")],
+    )
+)
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_BINDING,
+        sub_type=BINDING_SUBTYPE_REST,
+        factory=MetaBinding,
+        attrs=[
+            AttrSchema(
+                name=BINDING_ATTR_METHOD,
+                value_type=ATTR_SUBTYPE_STRING,
+                required=False,
+                allowed_values=HTTP_METHODS,
+            ),
+            AttrSchema(name=BINDING_ATTR_PATH, value_type=ATTR_SUBTYPE_STRING, required=False),
+        ],
+    )
+)
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_TRANSITION,
+        sub_type=TRANSITION_SUBTYPE_ACTION,
+        factory=MetaTransition,
+        attrs=[
+            AttrSchema(name=TRANSITION_ATTR_FROM, value_type=ATTR_SUBTYPE_STRING, required=True, is_array=True),
+            AttrSchema(name=TRANSITION_ATTR_TO, value_type=ATTR_SUBTYPE_STRING, required=True),
+            AttrSchema(name=TRANSITION_ATTR_CONDITION, value_type=ATTR_SUBTYPE_EXPRESSION, required=False),
+            AttrSchema(name=TRANSITION_ATTR_PERMISSION, value_type=ATTR_SUBTYPE_STRING, required=False),
+            AttrSchema(name=TRANSITION_ATTR_PUBLIC, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
+        ],
+    )
+)
+
 # field.* (one factory, data_type by subtype)
 # Note: FIELD_SUBTYPE_ENUM is excluded from FIELD_SUBTYPES; it is registered
 # separately below with its required @values AttrSchema (sharing these child rules).
@@ -702,7 +833,8 @@ core_provider.add(
             # TypeRegistry.extend, matching the TS promptProvider split. @values + @provided
             # stay in core (they are core field.enum properties, declared in field.json).
         ],
-        child_rules=_FIELD_CHILD_RULES,
+        # ADR-0066: a field.enum may carry lifecycle moves.
+        child_rules=[*_FIELD_CHILD_RULES, ChildRule(TYPE_TRANSITION, "*")],
     )
 )
 

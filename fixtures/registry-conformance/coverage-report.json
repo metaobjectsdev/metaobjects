@@ -1,6 +1,6 @@
 {
-  "registeredSubTypeCount": 79,
-  "exercisedSubTypeCount": 71,
+  "registeredSubTypeCount": 86,
+  "exercisedSubTypeCount": 78,
   "untestedSubTypes": [
     "attr.boolean",
     "attr.class",
@@ -101,7 +101,6 @@
         "formExclude",
         "instruction",
         "mutability",
-        "sortable",
         "sortableDefaultOrder",
         "unique",
         "xmlText"
@@ -146,7 +145,6 @@
         "dbColumnType",
         "default",
         "example",
-        "filterable",
         "formExclude",
         "instruction",
         "mutability",
@@ -171,7 +169,6 @@
     {
       "key": "field.long",
       "untestedAttrs": [
-        "column",
         "db.indexed",
         "dbColumnType",
         "example",
@@ -263,7 +260,6 @@
         "dbColumnType",
         "default",
         "example",
-        "filterable",
         "formExclude",
         "instruction",
         "mutability",

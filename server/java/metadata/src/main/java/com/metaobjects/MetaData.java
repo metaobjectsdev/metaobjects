@@ -1335,7 +1335,8 @@ public class MetaData implements Cloneable, Serializable {
             throw new InvalidMetaDataException(data, String.format(
                 "%s.%s does not accept child '%s' of type %s.%s. %s",
                 this.getType(), this.getSubType(), data.getName(),
-                data.getType(), data.getSubType(), supportedChildren));
+                data.getType(), data.getSubType(), supportedChildren),
+                ErrorCode.ERR_CHILD_NOT_ALLOWED, this.getSource());
         }
 
         // Constraint enforcement during construction, against the resolved registry.

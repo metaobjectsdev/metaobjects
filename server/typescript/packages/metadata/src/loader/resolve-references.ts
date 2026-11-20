@@ -23,7 +23,7 @@ import {
 } from "../core/object/object-constants.js";
 import { TYPE_OBJECT } from "../shared/base-types.js";
 import {
-  REF_BEARING_ATTR_NAMES,
+  isRefBearingAttr,
   effectivePackageOf,
   resolveObjectRef,
   spellRef,
@@ -134,7 +134,7 @@ export function resolveReferences(root: MetaData): void {
       // ADR-0039: own — this pass rewrites the declared-here layer; an inherited
       // attribute is resolved once, on the node that declares it.
       for (const attr of node.ownMetaAttrs()) {
-        if (REF_BEARING_ATTR_NAMES.has(attr.name)) resolveAttr(root, node, attr, declPkg);
+        if (isRefBearingAttr(node, attr.name)) resolveAttr(root, node, attr, declPkg);
       }
     }
     // ADR-0039: own — structural walk over the physical declaration tree.

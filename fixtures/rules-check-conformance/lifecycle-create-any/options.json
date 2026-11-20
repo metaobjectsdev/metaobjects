@@ -1,0 +1,1 @@
+{ "rules": { "lifecycle": { "create": "any" } } }

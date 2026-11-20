@@ -1,0 +1,35 @@
+metadata:
+  package: acme::purchasing
+  children:
+    - object.entity:
+        name: PurchaseRequest
+        children:
+          - source.rdb: { table: purchase_requests }
+          - field.long: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
+          - field.enum:
+              name: status
+              values: [draft, submitted, approved, rejected]
+              default: draft
+              children:
+                - transition.action: { name: submit, from: [draft], to: submitted, permission: purchasing.submit }
+                - transition.action: { name: approve, from: [submitted], to: approved, public: true }
+                - transition.action: { name: reject, from: [submitted], to: rejected, permission: purchasing.review }
+    - object.value:
+        name: DecisionInput
+        children:
+          - field.long: { name: requestId, extends: PurchaseRequest.id }
+          - field.string: { name: comment }
+    - api.operational:
+        name: Purchasing
+        children:
+          - operation.command:
+              name: decide
+              inputRef: DecisionInput
+              transitions: [approve, reject]
+              permission: purchasing.decide
+          - operation.command:
+              name: overrule
+              inputRef: DecisionInput
+              transitions: [reject]
+              permission: purchasing.overrule

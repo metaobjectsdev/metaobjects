@@ -17,6 +17,7 @@ import {
   TYPE_ORIGIN,
   TYPE_TEMPLATE,
   TYPE_REQUIREMENT,
+  TYPE_API,
   SUBTYPE_BASE,
   SUBTYPE_ROOT,
   FIELD_SUBTYPE_STRING,
@@ -449,7 +450,7 @@ describe("registerCoreTypes", () => {
     expect(def!.childRules).toHaveLength(0);
   });
 
-  it("metadata.root allows object, field, validator, template and requirement children (NOT a bare attr — strict model)", () => {
+  it("metadata.root allows object, field, validator, template, requirement and api children (NOT a bare attr — strict model)", () => {
     // FR-033 S1-simple: the attr wildcard is dropped from the document root; the
     // genuinely-open structural wildcards stay. `requirement` joined them when
     // the capability ledger became metadata (ruling amendment 3) — capability
@@ -457,7 +458,7 @@ describe("registerCoreTypes", () => {
     const def = registry.find(TYPE_METADATA, SUBTYPE_ROOT);
     expect(def).toBeDefined();
     const childTypes = def!.childRules.map((r) => r.childType).sort();
-    expect(childTypes).toEqual([TYPE_FIELD, TYPE_OBJECT, TYPE_VALIDATOR, TYPE_TEMPLATE, TYPE_REQUIREMENT].sort());
+    expect(childTypes).toEqual([TYPE_FIELD, TYPE_OBJECT, TYPE_VALIDATOR, TYPE_TEMPLATE, TYPE_REQUIREMENT, TYPE_API].sort());
   });
 
   // 6. attr.* has empty child rules

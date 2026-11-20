@@ -63,6 +63,14 @@ describe("kyselyDriver — SQLite — selectOne / selectMany", () => {
     expect(rows).toHaveLength(2);
   });
 
+  test("selectMany with an offset and no limit skips rows and returns the rest", async () => {
+    // SQLite has no OFFSET without a LIMIT: the bare clause is a syntax error.
+    const rows = await driver.selectMany({
+      table: "posts", columns: ["id"], orderBy: [{ column: "id", direction: "asc" }], offset: 1,
+    });
+    expect(rows.map((r) => r.id)).toEqual([2]);
+  });
+
   test("count", async () => {
     expect(await driver.count({ table: "posts" })).toBe(2);
   });
