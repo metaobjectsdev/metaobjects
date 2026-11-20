@@ -28,13 +28,17 @@ public class PerPackageManifestTest {
     private Path module;
 
     private MetaDataGeneratorMojo generate() throws Exception {
+        return generate("");
+    }
+
+    private MetaDataGeneratorMojo generate(String extraChildren) throws Exception {
         module = tmp.getRoot().toPath().resolve("module");
         Files.createDirectories(module.resolve("metaobjects"));
         Files.writeString(module.resolve("metaobjects/meta.shop.json"), """
                 {"metadata.root": {"package": "acme::shop", "children": [
-                  {"object.entity": {"name": "Order", "children": [ {"field.long": {"name": "id"}} ]}}
+                  {"object.entity": {"name": "Order", "children": [ {"field.long": {"name": "id"}} ]}}EXTRA
                 ]}}
-                """);
+                """.replace("EXTRA", extraChildren));
         Files.writeString(module.resolve("metaobjects/meta.crm.json"), """
                 {"metadata.root": {"package": "acme::crm", "children": [
                   {"object.entity": {"name": "Customer", "children": [ {"field.long": {"name": "id"}} ]}}
@@ -74,5 +78,14 @@ public class PerPackageManifestTest {
         assertEquals(new TreeSet<>(List.of("generated/acme/shop/Order.java", "generated/acme/crm/Customer.java")),
                 new TreeSet<>(HashManifest.load(module.resolve(".metaobjects/.gen-state")).keySet().stream()
                         .filter(k -> k.endsWith("Order.java") || k.endsWith("Customer.java")).toList()));
+    }
+
+    @Test
+    public void aNonObjectRootNodeNamedLikeAFileDoesNotChangePlacement() throws Exception {
+        // A template named "Customer" in acme::shop must not claim Customer.java away from acme::crm.
+        generate(",\n  {\"object.value\": {\"name\": \"Payload\", \"children\": [ {\"field.string\": {\"name\": \"x\"}} ]}},\n  {\"template.output\": {\"name\": \"Customer\", \"@payloadRef\": \"acme::shop::Payload\", \"@textRef\": \"p/customer\"}}").execute();
+        Path dir = module.resolve(".metaobjects/.gen-state/.hashes");
+        assertTrue(Files.readString(dir.resolve("acme.crm.json")).contains("Customer.java"));
+        assertFalse(Files.exists(dir.resolve("acme.shop.json")) && Files.readString(dir.resolve("acme.shop.json")).contains("Customer.java"));
     }
 }

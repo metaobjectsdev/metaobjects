@@ -124,7 +124,7 @@ export default defineConfig({
 ```
 
 **The first run after the upgrade.** 1.0 wrote its pages without recording them in
-`.metaobjects/.gen-state/.hashes.json`, so `meta gen` cannot tell them from pages somebody
+`.metaobjects/.gen-state/.hashes/`, so `meta gen` cannot tell them from pages somebody
 edited, and refuses each one whose content changed. Run the docs entries once with a fresh
 baseline, naming only the docs entries your config declares (this example declares all six):
 
@@ -135,7 +135,7 @@ meta gen --generators docs,api-docs,requirements,agent-docs,docs-site,metamodel-
 This writes fresh pages over the 1.0 ones and records them. 1.0 overwrote these pages on every
 `meta docs`, so nothing of yours is in them to lose. `--generators` keeps the fresh baseline
 off your code: a generated code file you edited is still refused, not overwritten. Commit
-`.metaobjects/.gen-state/.hashes.json` with the pages. From then on, run `meta gen`:
+`.metaobjects/.gen-state/.hashes/` with the pages. From then on, run `meta gen`:
 
 ```
 meta gen

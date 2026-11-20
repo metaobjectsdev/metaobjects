@@ -138,28 +138,37 @@ fn words(s: &str) -> Vec<String> {
     out
 }
 
-/// `.gitignore` text with the `.hashes/` negation added after the legacy one, or `None`
-/// when nothing needs to change (no `.gen-state/*` rule, or the line is already there).
+/// `.gitignore` text with the legacy `!.gen-state/.hashes.json` line replaced by
+/// `!.gen-state/.hashes/` (or the new line inserted after `.gen-state/*` when there is no
+/// legacy line), or `None` when nothing needs to change (no `.gen-state/*` rule, or neither
+/// the legacy line nor a missing new line).
 pub fn migrate_gitignore(text: &str) -> Option<String> {
     let lines: Vec<&str> = text.lines().collect();
-    if !lines.iter().any(|l| l.trim() == GITIGNORE_RULE)
-        || lines.iter().any(|l| l.trim() == GITIGNORE_DIR)
-    {
+    if !lines.iter().any(|l| l.trim() == GITIGNORE_RULE) {
+        return None;
+    }
+    let has_dir = lines.iter().any(|l| l.trim() == GITIGNORE_DIR);
+    let has_legacy = lines.iter().any(|l| l.trim() == GITIGNORE_LEGACY);
+    if has_dir && !has_legacy {
         return None;
     }
     let mut out = String::new();
-    let mut added = false;
+    let mut added = has_dir;
     for l in &lines {
-        out.push_str(l);
-        out.push('\n');
-        if !added && l.trim() == GITIGNORE_LEGACY {
-            out.push_str(GITIGNORE_DIR);
-            out.push('\n');
-            added = true;
+        let t = l.trim();
+        if t == GITIGNORE_LEGACY || (!added && !has_legacy && t == GITIGNORE_RULE) {
+            if t == GITIGNORE_RULE {
+                out.push_str(l);
+                out.push('\n');
+            }
+            if !added {
+                out.push_str(GITIGNORE_DIR);
+                out.push('\n');
+                added = true;
+            }
+            continue;
         }
-    }
-    if !added {
-        out.push_str(GITIGNORE_DIR);
+        out.push_str(l);
         out.push('\n');
     }
     Some(out)
@@ -339,8 +348,11 @@ impl HashManifest {
                 .or_default()
                 .insert(k.clone(), v.clone());
         }
-        // The root manifest stays (as `{}`) so "no manifest" is distinguishable from "empty".
-        groups.entry(ROOT_FILE.to_string()).or_default();
+        // With no entry at all the root manifest stays (as `{}`), so "no manifest" is
+        // distinguishable from "empty"; otherwise it exists only when it holds an entry.
+        if groups.is_empty() {
+            groups.insert(ROOT_FILE.to_string(), Map::new());
+        }
         groups
             .into_iter()
             .map(|(name, m)| (name, manifest_text(&m)))

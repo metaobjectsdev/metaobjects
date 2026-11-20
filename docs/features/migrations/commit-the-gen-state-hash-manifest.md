@@ -30,7 +30,7 @@ with:
 
 ```gitignore
 .gen-state/*
-!.gen-state/.hashes.json
+!.gen-state/.hashes/
 ```
 
 **The glob is load-bearing.** `.gen-state/` names a *directory*, and git does not descend
@@ -42,7 +42,7 @@ Then produce the manifest and commit it:
 
 ```bash
 meta gen --baseline=adopt                 # records what you have; writes NOTHING else
-git add .metaobjects/.gitignore .metaobjects/.gen-state/.hashes.json
+git add .metaobjects/.gitignore .metaobjects/.gen-state/.hashes/
 git commit -m "chore: commit the codegen hash manifest"
 meta gen                                  # the regeneration, now on its own
 ```
@@ -121,9 +121,9 @@ branches will conflict on it. This is expected and harmless — both sides are j
 records of generated content — but resolve it the right way:
 
 ```bash
-git checkout --ours .metaobjects/.gen-state/.hashes.json   # either side will do
+git checkout --ours .metaobjects/.gen-state/.hashes/   # either side will do
 meta gen                                                    # rewrites every entry
-git add .metaobjects/.gen-state/.hashes.json
+git add .metaobjects/.gen-state/.hashes/
 ```
 
 Take **either** side, then re-run `meta gen`. It rewrites the entry for every path it

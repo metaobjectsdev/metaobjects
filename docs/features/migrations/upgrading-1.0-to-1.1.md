@@ -60,7 +60,7 @@ skip them, so read the whole list before you regenerate.
    3 and 4 are done: a bare cross-package `extends` now fails with `ERR_UNRESOLVED_SUPER`, and
    the message names the spelling to write (see "References and `extends`").
 6. **Java and Kotlin: let `mvn metaobjects:generate` write the hash manifest, then commit
-   `.metaobjects/.gen-state/.hashes.json`** in every module (see "JVM hash manifest").
+   `.metaobjects/.gen-state/.hashes/`** in every module (see "JVM hash manifest").
 7. **Resync the generators you own.** `meta eject --list` (TypeScript; `metaobjects gen --list`
    in Python, which has no `eject --list`; `dotnet meta gen --list`,
    `mvn metaobjects:eject -Dlist=true` in the other ports)
@@ -125,7 +125,7 @@ that records the existing pages: [docs-are-generators.md](docs-are-generators.md
 
 ### JVM hash manifest (Java and Kotlin)
 
-`mvn metaobjects:generate` records what it writes in `.metaobjects/.gen-state/.hashes.json`,
+`mvn metaobjects:generate` records what it writes in `.metaobjects/.gen-state/.hashes/`,
 the committed manifest the other ports already use, and decides overwrites from it. An edited
 generated file is refused by name (1.0 overwrote it), and a file no generator emits any more is
 deleted. The first run adopts your existing generated files and tells you to commit the

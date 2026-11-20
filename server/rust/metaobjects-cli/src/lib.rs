@@ -542,7 +542,7 @@ fn init_files() -> [(&'static str, &'static str); 3] {
         ),
         (
             ".metaobjects/.gitignore",
-            "# The generation state. `.hashes/` is committed: it is one hash per generated\n# path (one file per model package), and the only thing that lets `gen` tell \"this file is exactly what I wrote\" from\n# \"somebody edited this\" on a machine that did not generate it. Everything else here (the\n# skip key) describes one machine's last run and is not.\n#\n# The glob form matters: `.gen-state/` (a directory) would stop git descending, and the\n# negation below could never take effect.\n.gen-state/*\n!.gen-state/.hashes.json\n!.gen-state/.hashes/\n",
+            "# The generation state. `.hashes/` is committed: it is one hash per generated\n# path (one file per model package), and the only thing that lets `gen` tell \"this file is exactly what I wrote\" from\n# \"somebody edited this\" on a machine that did not generate it. Everything else here (the\n# skip key) describes one machine's last run and is not.\n#\n# The glob form matters: `.gen-state/` (a directory) would stop git descending, and the\n# negation below could never take effect.\n.gen-state/*\n!.gen-state/.hashes/\n",
         ),
         (
             "metaobjects/meta.app.yaml",

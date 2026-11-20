@@ -361,8 +361,8 @@ def _write_manifest_file(gen_state_dir: str, ordered: dict[str, object]) -> None
 
 
 def _ensure_gitignore(gen_state_dir: str) -> None:
-    """Add ``!.gen-state/.hashes/`` after the legacy negation, when the ignore file has the
-    ``.gen-state/*`` rule and lacks it (``<gen-state>/../.gitignore``)."""
+    """Replace the legacy negation with ``!.gen-state/.hashes/`` (or add it after the rule when
+    there is no legacy line), when the ignore file has the ``.gen-state/*`` rule (``<gen-state>/../.gitignore``)."""
     path = os.path.join(os.path.dirname(os.path.abspath(gen_state_dir)), ".gitignore")
     try:
         with open(path, encoding="utf-8") as fh:
@@ -370,16 +370,26 @@ def _ensure_gitignore(gen_state_dir: str) -> None:
     except OSError:
         return
     lines = text.split("\n")
-    stripped = [ln.strip() for ln in lines]
-    if _GITIGNORE_RULE not in stripped or _GITIGNORE_DIR in stripped:
+    if _GITIGNORE_RULE not in [ln.strip() for ln in lines]:
         return
-    if _GITIGNORE_LEGACY in stripped:
-        lines.insert(stripped.index(_GITIGNORE_LEGACY) + 1, _GITIGNORE_DIR)
-    else:
-        idx = stripped.index(_GITIGNORE_RULE)
-        lines.insert(idx + 1, _GITIGNORE_DIR)
-    with open(path, "w", encoding="utf-8") as fh:
-        fh.write("\n".join(lines))
+    out: list[str] = []
+    have_new = _GITIGNORE_DIR in [ln.strip() for ln in lines]
+    for ln in lines:
+        if ln.strip() == _GITIGNORE_LEGACY:
+            if not have_new:  # the legacy negation is REPLACED by the directory one
+                out.append(_GITIGNORE_DIR)
+                have_new = True
+            continue
+        out.append(ln)
+        if ln.strip() == _GITIGNORE_RULE and not have_new:
+            # No legacy line anywhere: the new negation follows the rule.
+            if _GITIGNORE_LEGACY not in [x.strip() for x in lines]:
+                out.append(_GITIGNORE_DIR)
+                have_new = True
+    new_text = "\n".join(out)
+    if new_text != text:
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(new_text)
 
 
 class HashManifest:

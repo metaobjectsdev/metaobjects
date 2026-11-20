@@ -1,6 +1,5 @@
 {
   "crates/tasks-axi-gen/Cargo.toml": "8264f393b6d8dc42a9aa7343d4db4b0e40aaf7d295860620c4fa563dee1190e1",
-  "crates/tasks-axi-gen/src/cli.rs": "9eae5b155001caf4ca344658087a4e73e080a4fa031726ea8c7de73626267cf0",
   "crates/tasks-axi-gen/src/dispatch.rs": "53c03673a89e480c6fe6324d4fc94f22b3f9117feb56613ac2fbd13dd9f60f3e",
   "crates/tasks-axi-gen/src/enums.rs": "6cefaacbe7536d636455fa71684f53e5ae2ca110fc0cf809f0d57c92e04548af",
   "crates/tasks-axi-gen/src/errors.rs": "b8c91ca62bca287aa0505ead5c9604bbbcec72a7aa90b4253febb1bd4a80a367",

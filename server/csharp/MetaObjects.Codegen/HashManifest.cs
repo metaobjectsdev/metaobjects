@@ -372,25 +372,33 @@ public static class HashManifest
         }
         foreach (var existing in Directory.EnumerateFiles(dir, "*.json").ToList())
             if (!files.ContainsKey(Path.GetFileName(existing))) File.Delete(existing);
-        if (LegacyExists(genStateDir)) File.Delete(LegacyPath(genStateDir));
-        EnsureIgnoreLine(genStateDir);
+        if (LegacyExists(genStateDir))
+        {
+            File.Delete(LegacyPath(genStateDir));
+            MigrateIgnoreFile(genStateDir); // only a migrating run touches .gitignore
+        }
     }
 
-    // The scaffold's `.gen-state/*` rule would git-ignore the new directory, so add its negation after the legacy one.
-    private static void EnsureIgnoreLine(string genStateDir)
+    // The `.gen-state/*` rule would git-ignore the new directory: replace the legacy negation with the new one
+    // (or insert it after the rule when there is no legacy line). A file without the rule is left alone.
+    private static void MigrateIgnoreFile(string genStateDir)
     {
         var path = Path.GetFullPath(Path.Combine(genStateDir, "..", ".gitignore"));
         if (!File.Exists(path)) return;
         var text = File.ReadAllText(path);
-        var lines = text.Split('\n').Select(l => l.TrimEnd('\r')).ToList();
-        if (!lines.Contains(".gen-state/*") || lines.Contains(IgnoreLine)) return;
-        var at = lines.IndexOf(LegacyIgnoreLine);
-        if (at >= 0)
+        var lines = text.Split('\n').ToList();
+        bool Is(string l, string v) => l.TrimEnd('\r') == v;
+        var rule = lines.FindIndex(l => Is(l, ".gen-state/*"));
+        if (rule < 0) return;
+        var hasNew = lines.Any(l => Is(l, IgnoreLine));
+        var legacy = lines.FindIndex(l => Is(l, LegacyIgnoreLine));
+        if (legacy >= 0)
         {
-            lines.Insert(at + 1, IgnoreLine);
-            File.WriteAllText(path, string.Join("\n", lines));
+            if (hasNew) lines.RemoveAt(legacy); else lines[legacy] = IgnoreLine;
         }
-        else File.WriteAllText(path, text + (text.EndsWith('\n') || text.Length == 0 ? "" : "\n") + IgnoreLine + "\n");
+        else if (!hasNew) lines.Insert(rule + 1, IgnoreLine);
+        var next = string.Join("\n", lines);
+        if (next != text) File.WriteAllText(path, next);
     }
 
     /// <summary>Record that <paramref name="relPath"/> was written with this content.

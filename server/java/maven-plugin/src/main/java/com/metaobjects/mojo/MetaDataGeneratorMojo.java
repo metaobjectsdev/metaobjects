@@ -342,7 +342,7 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
     static HashManifest.Placement placementOf(MetaDataLoader loader) {
         if (loader == null) return null;
         List<HashManifest.ModelObject> objects = new ArrayList<>();
-        for (com.metaobjects.MetaData child : loader.getRoot().getChildren()) {
+        for (com.metaobjects.object.MetaObject child : loader.getRoot().getChildren(com.metaobjects.object.MetaObject.class, false)) {
             // getName() is package-qualified ("pkg::Name"); placement matches the bare name.
             String name = child.getName() == null ? "" : child.getName();
             objects.add(new HashManifest.ModelObject(name.substring(name.lastIndexOf("::") + 2), child.getPackage()));

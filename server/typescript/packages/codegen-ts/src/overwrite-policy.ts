@@ -254,9 +254,10 @@ const NEGATION_DIR = "!.gen-state/.hashes/";
 
 /**
  * The scaffolded `.metaobjects/.gitignore` ignores `.gen-state/*` and un-ignores the legacy
- * file only, so the new directory would be ignored and never reach another machine. Add its
- * negation after the legacy one. A file with no `.gen-state/*` rule, or one that already has
- * the line, is left alone.
+ * file only, so the new directory would be ignored and never reach another machine. Put its
+ * negation where the legacy one was and drop the legacy one, which names a file that no longer
+ * exists; with no legacy line, add it after the `.gen-state/*` rule. A file with no such rule
+ * is left alone. Only the migration calls this.
  */
 export function ensureHashesDirNotIgnored(genStateDir: string): void {
   const file = join(dirname(genStateDir), ".gitignore");
@@ -267,12 +268,28 @@ export function ensureHashesDirNotIgnored(genStateDir: string): void {
     return;
   }
   const lines = text.split("\n");
-  const trimmed = lines.map((l) => l.trim());
-  if (!trimmed.includes(".gen-state/*") || trimmed.includes(NEGATION_DIR)) return;
-  const at = trimmed.indexOf(NEGATION_LEGACY);
-  if (at === -1) lines.splice(trimmed.lastIndexOf(".gen-state/*") + 1, 0, NEGATION_DIR);
-  else lines.splice(at + 1, 0, NEGATION_DIR);
-  writeFileSync(file, lines.join("\n"));
+  if (!lines.some((l) => l.trim() === ".gen-state/*")) return;
+  const hasDir = lines.some((l) => l.trim() === NEGATION_DIR);
+  const firstLegacy = lines.findIndex((l) => l.trim() === NEGATION_LEGACY);
+  const out: string[] = [];
+  let placed = hasDir;
+  lines.forEach((line, i) => {
+    const t = line.trim();
+    if (t === NEGATION_LEGACY) {
+      if (i === firstLegacy && !placed) {
+        out.push(NEGATION_DIR);
+        placed = true;
+      }
+      return;
+    }
+    out.push(line);
+    if (!placed && firstLegacy === -1 && t === ".gen-state/*") {
+      out.push(NEGATION_DIR);
+      placed = true;
+    }
+  });
+  const next = out.join("\n");
+  if (next !== text) writeFileSync(file, next);
 }
 
 /**

@@ -198,9 +198,10 @@ would collide too.
 it, files every entry by §3, writes the per-package files, deletes `.hashes.json`, and counts as a
 run that changed the manifest, so it happens even when no generated file changed. A read-only
 command (`verify`) reads the union and migrates nothing. The migration also adds
-`!.gen-state/.hashes/` after the `!.gen-state/.hashes.json` line of `.metaobjects/.gitignore` when
-that file holds the `.gen-state/*` rule the scaffold writes, because without it git would ignore the
-new directory; a project whose rule lives elsewhere gets the existing "manifest is git-ignored"
+`!.gen-state/.hashes/` to `.metaobjects/.gitignore`, in the place of the `!.gen-state/.hashes.json`
+line (which it removes: it names a file that no longer exists), or after `.gen-state/*` when there
+is no such line, when that file holds the `.gen-state/*` rule the scaffold writes, because without
+it git would ignore the new directory. Only a migrating run touches `.gitignore`; a project whose rule lives elsewhere gets the existing "manifest is git-ignored"
 advisory, now naming `.hashes/`. The adopter commits the result and does nothing else. A branch that
 still holds the legacy file merges as an ordinary add/delete; take the migrated side and run `gen`.
 

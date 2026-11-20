@@ -276,6 +276,6 @@
     "goldenFile": "acme.shop.json",
     "goldenText": "{\n  \"gen/Order.ts\": \"h1\",\n  \"gen/OrderDto.java\": {\n    \"hash\": \"h2\",\n    \"generator\": \"java:dto\",\n    \"outputDir\": \"gen\"\n  }\n}\n",
     "gitignoreBefore": ".gen-state/*\n!.gen-state/.hashes.json\n",
-    "gitignoreAfter": ".gen-state/*\n!.gen-state/.hashes.json\n!.gen-state/.hashes/\n"
+    "gitignoreAfter": ".gen-state/*\n!.gen-state/.hashes/\n"
   }
 }

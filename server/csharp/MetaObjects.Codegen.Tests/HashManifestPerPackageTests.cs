@@ -222,4 +222,41 @@ public class HashManifestPerPackageTests : IDisposable
         CodegenRunner.Run(config, r.Root, [new PerObject()]);
         foreach (var f in Directory.GetFiles(HashesDir)) Assert.Equal(stamp, File.GetLastWriteTimeUtc(f));
     }
+
+    private string MigrateWith(string gitignore)
+    {
+        Directory.CreateDirectory(StateDir);
+        File.WriteAllText(Path.Combine(StateDir, ".hashes.json"), "{\n  \"gen/Order.cs\": \"h1\"\n}\n");
+        var ignore = Path.Combine(_root, ".metaobjects", ".gitignore");
+        File.WriteAllText(ignore, gitignore);
+        using (var batch = HashManifest.Batch(StateDir, Objs))
+        {
+            new HashManifest.Session(StateDir).Save();
+            batch.Complete();
+        }
+        return File.ReadAllText(ignore);
+    }
+
+    [Fact]
+    public void Migration_inserts_the_new_line_after_the_rule_when_there_is_no_legacy_line()
+        => Assert.Equal(".gen-state/*\n!.gen-state/.hashes/\nother\n", MigrateWith(".gen-state/*\nother\n"));
+
+    [Fact]
+    public void Migration_only_drops_the_legacy_line_when_the_new_one_is_there()
+        => Assert.Equal(".gen-state/*\n!.gen-state/.hashes/\n",
+            MigrateWith(".gen-state/*\n!.gen-state/.hashes.json\n!.gen-state/.hashes/\n"));
+
+    [Fact]
+    public void Migration_leaves_a_gitignore_without_the_rule_alone()
+        => Assert.Equal("node_modules\n", MigrateWith("node_modules\n"));
+
+    [Fact]
+    public void A_non_migrating_save_leaves_gitignore_alone()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, ".metaobjects"));
+        var ignore = Path.Combine(_root, ".metaobjects", ".gitignore");
+        File.WriteAllText(ignore, ".gen-state/*\n!.gen-state/.hashes.json\n");
+        Record(("gen/Order.cs", "a"));
+        Assert.Equal(".gen-state/*\n!.gen-state/.hashes.json\n", File.ReadAllText(ignore));
+    }
 }

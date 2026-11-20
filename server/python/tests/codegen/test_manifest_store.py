@@ -99,13 +99,18 @@ def test_different_packages_different_files(tmp_path: Path) -> None:
     assert paths[".root.json"].stat().st_mtime == 1
     assert paths["acme.crm.json"].read_bytes() == crm_bytes
 
-    # A no-op save writes nothing.
-    m = HashManifest(str(state))
+    # A no-op save writes nothing: recording identical content again keeps the session
+    # clean, and a save changes no file's bytes or mtime.
     for p in paths.values():
         os.utime(p, (2, 2))
-    m.record("gen/Order.ts", op.content_hash("changed"))  # a different value: dirty
-    m.dirty = False
-    m.save()
+    before = {n: p.read_bytes() for n, p in paths.items()}
+    m = HashManifest(str(state))
+    m.record("gen/Order.ts", "changed")  # identical to what the last save recorded
+    m.record("gen/Customer.ts", "b")
+    m.record("gen/index.ts", "c")
+    assert not m.dirty, "an unchanged re-record must keep the session clean"
+    assert m.save() is False
+    assert {n: p.read_bytes() for n, p in paths.items()} == before
     assert all(p.stat().st_mtime == 2 for p in paths.values())
 
     # Removing a package's last entry deletes its file.
@@ -169,3 +174,23 @@ def test_gen_on_a_multi_package_model_writes_one_manifest_per_package(tmp_path: 
     # Each key is recorded exactly once across the files.
     keys = [k for entries in files.values() for k in entries]
     assert len(keys) == len(set(keys))
+
+
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [
+        (".gen-state/*\n!.gen-state/.hashes.json\n", ".gen-state/*\n!.gen-state/.hashes/\n"),
+        (".gen-state/*\n", ".gen-state/*\n!.gen-state/.hashes/\n"),
+        (
+            ".gen-state/*\n!.gen-state/.hashes.json\n!.gen-state/.hashes/\n",
+            ".gen-state/*\n!.gen-state/.hashes/\n",
+        ),
+        ("other\n", "other\n"),
+    ],
+)
+def test_gitignore_migration(tmp_path: Path, before: str, after: str) -> None:
+    state = _state(tmp_path)
+    (state.parent / ".gitignore").write_text(before)
+    (state / ".hashes.json").write_text(json.dumps({"gen/Order.ts": "h"}))
+    HashManifest(str(state)).save()
+    assert (state.parent / ".gitignore").read_text() == after

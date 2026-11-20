@@ -355,8 +355,7 @@ public final class HashManifest {
             for (Path stale : packageFiles(genStateDir)) {
                 if (!files.containsKey(stale.getFileName().toString())) Files.delete(stale);
             }
-            Files.deleteIfExists(legacyPath(genStateDir));
-            ensureGitignore(genStateDir);
+            if (Files.deleteIfExists(legacyPath(genStateDir))) ensureGitignore(genStateDir);   // only a migrating write
         } catch (IOException e) {
             throw new UncheckedIOException("Could not write codegen hash manifest at " + genStateDir, e);
         }
@@ -372,35 +371,44 @@ public final class HashManifest {
     private static final String GITIGNORE_DIR_NEGATION = "!.gen-state/.hashes/";
 
     /**
-     * The scaffolded {@code .metaobjects/.gitignore} ignores {@code .gen-state/*} and re-includes the
-     * manifest; without the new negation git would ignore the {@code .hashes/} directory. Adds it
-     * after the legacy negation (else after the rule) when the rule is there and the line is not;
-     * any other file is left alone.
+     * Run by a migrating write only. The scaffolded {@code .metaobjects/.gitignore} ignores
+     * {@code .gen-state/*} and re-includes the manifest; the new directory needs its own negation.
+     * With the rule present, the legacy negation is replaced by {@code !.gen-state/.hashes/} (or the
+     * new line goes right after the rule when there was none); a file that already has the new line
+     * only loses the legacy one. A file with no such rule is left alone.
      */
     private static void ensureGitignore(Path genStateDir) throws IOException {
         Path parent = genStateDir.toAbsolutePath().getParent();
         if (parent == null) return;
         Path file = parent.resolve(".gitignore");
         if (!Files.isRegularFile(file)) return;
-        String text = Files.readString(file, StandardCharsets.UTF_8);
-        String[] lines = text.split("\n", -1);
-        int rule = -1;
-        int legacy = -1;
-        for (int i = 0; i < lines.length; i++) {
-            String line = lines[i].trim();
-            if (line.equals(GITIGNORE_DIR_NEGATION)) return;
-            if (line.equals(GITIGNORE_RULE) && rule < 0) rule = i;
-            if (line.equals(GITIGNORE_LEGACY_NEGATION) && legacy < 0) legacy = i;
+        String[] lines = Files.readString(file, StandardCharsets.UTF_8).split("\n", -1);
+        boolean hasRule = false;
+        boolean hasNew = false;
+        for (String l : lines) {
+            String t = l.trim();
+            if (t.equals(GITIGNORE_RULE)) hasRule = true;
+            if (t.equals(GITIGNORE_DIR_NEGATION)) hasNew = true;
         }
-        if (rule < 0) return;
-        int after = legacy >= 0 ? legacy : rule;
-        StringBuilder out = new StringBuilder();
-        for (int i = 0; i < lines.length; i++) {
-            out.append(lines[i]);
-            if (i == after) out.append('\n').append(GITIGNORE_DIR_NEGATION);
-            if (i < lines.length - 1) out.append('\n');
+        if (!hasRule) return;
+        List<String> out = new ArrayList<>();
+        boolean added = hasNew;
+        boolean afterRule = false;
+        for (String l : lines) {
+            String t = l.trim();
+            if (t.equals(GITIGNORE_LEGACY_NEGATION)) {
+                if (!added) { out.add(GITIGNORE_DIR_NEGATION); added = true; }
+                continue;
+            }
+            out.add(l);
+            if (t.equals(GITIGNORE_RULE)) afterRule = true;
         }
-        Files.writeString(file, out.toString(), StandardCharsets.UTF_8);
+        if (!added && afterRule) {
+            int at = out.indexOf(GITIGNORE_RULE) + 1;
+            out.add(at, GITIGNORE_DIR_NEGATION);
+        }
+        String text = String.join("\n", out);
+        if (!text.equals(String.join("\n", lines))) Files.writeString(file, text, StandardCharsets.UTF_8);
     }
 
     /** Record that {@code owner} wrote {@code key} with {@code content}: load, mutate, save. */

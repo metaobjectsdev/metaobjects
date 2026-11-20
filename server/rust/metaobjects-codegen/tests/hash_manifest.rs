@@ -313,3 +313,33 @@ fn a_run_over_a_two_package_model_writes_a_manifest_per_package_and_a_root_one()
     );
     assert!(files[ROOT_FILE].contains("index.txt"));
 }
+
+#[test]
+fn the_gitignore_migration_replaces_the_legacy_line_or_inserts_after_the_rule() {
+    let new = ".gen-state/*\n!.gen-state/.hashes/\n";
+    assert_eq!(
+        migrate_gitignore(".gen-state/*\n!.gen-state/.hashes.json\n").as_deref(),
+        Some(new)
+    );
+    assert_eq!(migrate_gitignore(".gen-state/*\n").as_deref(), Some(new));
+    assert_eq!(
+        migrate_gitignore(".gen-state/*\n!.gen-state/.hashes/\n!.gen-state/.hashes.json\n")
+            .as_deref(),
+        Some(new)
+    );
+}
+
+#[test]
+fn a_manifest_whose_entries_are_all_in_packages_has_no_root_file() {
+    let root = scratch("noroot");
+    let gs = gen_state(&root);
+    std::fs::create_dir_all(gs.join(HASHES_DIR)).unwrap();
+    std::fs::write(gs.join(HASHES_DIR).join(ROOT_FILE), "{}\n").unwrap();
+    let mut m = HashManifest::load(&gs);
+    m.set_objects(vec![("Order".into(), "acme::shop".into())]);
+    m.record("gen/Order.rs", "o1");
+    assert!(m.save().unwrap());
+    let names: Vec<String> = files_of(&gs).into_keys().collect();
+    assert_eq!(names, ["acme.shop.json"]);
+    let _ = std::fs::remove_dir_all(&root);
+}

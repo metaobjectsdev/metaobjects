@@ -75,14 +75,28 @@ describe("shared vectors", () => {
     expect(files().map((f) => statSync(join(dirOf(), f)).mtimeMs)).toEqual(before);
   });
 
-  test("the gitignore rewrite leaves a file with the new line, or no .gen-state/* rule, alone", () => {
+  test("the gitignore rewrite replaces the legacy negation, or adds one after .gen-state/*", () => {
     const ignore = join(tmp, ".metaobjects", ".gitignore");
-    for (const body of [VECTORS.legacySplit.gitignoreAfter, "node_modules/\n"]) {
-      writeFileSync(ignore, body);
+    const cases: [string, string][] = [
+      [".gen-state/*\n!.gen-state/.hashes.json\n", ".gen-state/*\n!.gen-state/.hashes/\n"],
+      ["a/\n.gen-state/*\n", "a/\n.gen-state/*\n!.gen-state/.hashes/\n"],
+      [".gen-state/*\n!.gen-state/.hashes/\n!.gen-state/.hashes.json\n", ".gen-state/*\n!.gen-state/.hashes/\n"],
+      [".gen-state/*\n!.gen-state/.hashes/\n", ".gen-state/*\n!.gen-state/.hashes/\n"],
+      ["node_modules/\n!.gen-state/.hashes.json\n", "node_modules/\n!.gen-state/.hashes.json\n"],
+    ];
+    for (const [before, after] of cases) {
+      writeFileSync(ignore, before);
       writeFileSync(join(state, ".hashes.json"), JSON.stringify({ "a.ts": "h" }));
       withManifestBatch(state, () => {});
-      expect(readFileSync(ignore, "utf-8")).toBe(body);
+      expect(readFileSync(ignore, "utf-8")).toBe(after);
     }
+  });
+
+  test("a save that does not migrate leaves .gitignore alone", () => {
+    const ignore = join(tmp, ".metaobjects", ".gitignore");
+    writeFileSync(ignore, ".gen-state/*\n!.gen-state/.hashes.json\n");
+    save({ "gen/Order.ts": "o1" });
+    expect(readFileSync(ignore, "utf-8")).toBe(".gen-state/*\n!.gen-state/.hashes.json\n");
   });
 });
 

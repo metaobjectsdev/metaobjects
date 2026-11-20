@@ -120,18 +120,41 @@ public class HashManifestPackagesTest {
     }
 
     @Test
-    public void gitignoreAlreadyMigratedOrWithoutTheRuleIsLeftAlone() throws Exception {
+    public void gitignoreIsTouchedOnlyByAMigratingWrite() throws Exception {
         Path gs = genState();
         Files.createDirectories(gs);
         Path gitignore = gs.getParent().resolve(".gitignore");
-        String other = "node_modules/\n";
-        Files.writeString(gitignore, other);
+        String legacyIgnore = ".gen-state/*\n!.gen-state/.hashes.json\n";
+        Files.writeString(gitignore, legacyIgnore);
+        // A non-migrating save leaves it untouched, even with the legacy line in it.
         HashManifest.record(gs, "gen/A.java", "a", OWNER);
-        assertEquals(other, Files.readString(gitignore));
-        String migrated = ".gen-state/*\n!.gen-state/.hashes/\n";
-        Files.writeString(gitignore, migrated);
-        HashManifest.record(gs, "gen/B.java", "b", OWNER);
-        assertEquals(migrated, Files.readString(gitignore));
+        assertEquals(legacyIgnore, Files.readString(gitignore));
+        // A migrating write replaces the legacy negation.
+        Files.writeString(gs.resolve(".hashes.json"), "{\"gen/B.java\":\"b\"}");
+        HashManifest.record(gs, "gen/C.java", "c", OWNER);
+        assertEquals(".gen-state/*\n!.gen-state/.hashes/\n", Files.readString(gitignore));
+    }
+
+    @Test
+    public void migrationInsertsAfterTheRuleOrOnlyDropsTheLegacyLine() throws Exception {
+        Path gs = genState();
+        Files.createDirectories(gs);
+        Path gitignore = gs.getParent().resolve(".gitignore");
+        Files.writeString(gs.resolve(".hashes.json"), "{\"gen/B.java\":\"b\"}");
+        Files.writeString(gitignore, ".gen-state/*\n");
+        HashManifest.record(gs, "gen/C.java", "c", OWNER);
+        assertEquals(".gen-state/*\n!.gen-state/.hashes/\n", Files.readString(gitignore));
+
+        Files.writeString(gs.resolve(".hashes.json"), "{\"gen/B.java\":\"b\"}");
+        Files.writeString(gitignore, ".gen-state/*\n!.gen-state/.hashes.json\n!.gen-state/.hashes/\n");
+        HashManifest.record(gs, "gen/D.java", "d", OWNER);
+        assertEquals(".gen-state/*\n!.gen-state/.hashes/\n", Files.readString(gitignore));
+
+        Files.writeString(gs.resolve(".hashes.json"), "{\"gen/B.java\":\"b\"}");
+        String other = "node_modules/\n!.gen-state/.hashes.json\n";
+        Files.writeString(gitignore, other);
+        HashManifest.record(gs, "gen/E.java", "e", OWNER);
+        assertEquals("no .gen-state/* rule: untouched", other, Files.readString(gitignore));
     }
 
     private HashManifest.Placement twoPackages() {
