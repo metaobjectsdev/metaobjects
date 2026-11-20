@@ -57,6 +57,10 @@ next release moves `metamodelVersion`.
     effect yet: the service shells that act on it are later work.
   - A requirement's `@implementedBy` may name an operation (`Purchasing.decide`) or a
     transition (`PurchaseRequest.status.submit`).
+  - The Rust preview port (ADR-0065) registers the same vocabulary and runs the same loader
+    rules with the same messages, so it still passes `registry-conformance` byte for byte and
+    the whole metamodel corpus (574 of 574, ledger empty). It reads and validates the new
+    settings. It has no `verify`, so the rules gate does not run there.
 
   Nothing is generated from the vocabulary yet: the enforcing service shells are later work
   (ADR-0067), and `fixtures/codegen-noop/rules/` holds every generator to byte-identical output.

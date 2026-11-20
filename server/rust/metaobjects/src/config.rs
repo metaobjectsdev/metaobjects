@@ -41,6 +41,7 @@ pub const CONFIG_TOP_LEVEL_KEYS: &[&str] = &[
     "wire",
     "api",
     "enums",
+    "rules",
     "csharp",
 ];
 
@@ -103,6 +104,45 @@ string_enum!(
     /// `verify.handEdits`.
     HandEditsPolicy { Fail => "fail", Notice => "notice" }
 );
+string_enum!(
+    /// `rules.permissions.names`: how strongly `verify` asks for an explicit `@permission`.
+    RulesPermissionNames { Derive => "derive", Advise => "advise", Require => "require" }
+);
+string_enum!(
+    /// `rules.lifecycle.create`: whether a create may start a row in any state.
+    RulesLifecycleCreate { Initial => "initial", Any => "any" }
+);
+string_enum!(
+    /// `rules.lifecycle.commands`: which transitions derive a command of their own.
+    RulesLifecycleCommands { Unclaimed => "unclaimed", All => "all", NoneDerived => "none" }
+);
+string_enum!(
+    /// `verify.lifecycle.unreachable`: the severity of an unreachable lifecycle state.
+    VerifyLifecycleUnreachable { Warn => "warn", Error => "error", Off => "off" }
+);
+
+/// The business-rules settings (ADR-0066), from the `rules` and `verify` blocks, each
+/// absent key at its default. Every port reads the same keys with the same defaults.
+/// This port validates and keeps them; nothing here reads them yet, because the checks
+/// they tune live in `verify`, which the Rust port does not have.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RulesSettings {
+    pub permission_names: RulesPermissionNames,
+    pub lifecycle_create: RulesLifecycleCreate,
+    pub lifecycle_commands: RulesLifecycleCommands,
+    pub lifecycle_unreachable: VerifyLifecycleUnreachable,
+}
+
+impl Default for RulesSettings {
+    fn default() -> Self {
+        Self {
+            permission_names: RulesPermissionNames::Derive,
+            lifecycle_create: RulesLifecycleCreate::Initial,
+            lifecycle_commands: RulesLifecycleCommands::Unclaimed,
+            lifecycle_unreachable: VerifyLifecycleUnreachable::Warn,
+        }
+    }
+}
 
 /// The output form of a generated REST surface, each absent key at its default.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -278,6 +318,8 @@ pub struct Config {
     pub wire: Option<WireConfig>,
     pub api: Option<ApiConfig>,
     pub enums: Option<EnumDefaults>,
+    /// `rules.*` and `verify.lifecycle.*`, each absent key at its default.
+    pub rules: RulesSettings,
     pub csharp: Option<CsharpConfig>,
 }
 
@@ -300,6 +342,7 @@ impl Default for Config {
             wire: None,
             api: None,
             enums: None,
+            rules: RulesSettings::default(),
             csharp: None,
         }
     }
@@ -907,6 +950,64 @@ fn parse_enums(v: &Value, issues: &mut Issues) -> Option<EnumDefaults> {
     Some(out)
 }
 
+/// The value of `key` in `o` when it is one of `options`; an issue at `<at>.<key>` otherwise.
+fn enum_key(
+    o: &Map<String, Value>,
+    at: &str,
+    key: &str,
+    options: &[&str],
+    issues: &mut Issues,
+) -> Option<String> {
+    enum_of(o.get(key)?, &format!("{at}.{key}"), options, None, issues)
+}
+
+/// The `rules` block (ADR-0066): closed at every level, as `naming` and `wire` are, so a
+/// misspelling cannot fall back to a default and change what `verify` reports.
+fn parse_rules(v: &Value, rules: &mut RulesSettings, issues: &mut Issues) {
+    let Some(o) = strict_object(v, "rules", &["permissions", "lifecycle"], issues) else {
+        return;
+    };
+    if let Some(p) = o.get("permissions")
+        && let Some(po) = strict_object(p, "rules.permissions", &["names"], issues)
+        && let Some(n) = enum_key(
+            po,
+            "rules.permissions",
+            "names",
+            RulesPermissionNames::ALL,
+            issues,
+        )
+        .and_then(|s| RulesPermissionNames::parse(&s))
+    {
+        rules.permission_names = n;
+    }
+    if let Some(l) = o.get("lifecycle")
+        && let Some(lo) = strict_object(l, "rules.lifecycle", &["create", "commands"], issues)
+    {
+        if let Some(c) = enum_key(
+            lo,
+            "rules.lifecycle",
+            "create",
+            RulesLifecycleCreate::ALL,
+            issues,
+        )
+        .and_then(|s| RulesLifecycleCreate::parse(&s))
+        {
+            rules.lifecycle_create = c;
+        }
+        if let Some(c) = enum_key(
+            lo,
+            "rules.lifecycle",
+            "commands",
+            RulesLifecycleCommands::ALL,
+            issues,
+        )
+        .and_then(|s| RulesLifecycleCommands::parse(&s))
+        {
+            rules.lifecycle_commands = c;
+        }
+    }
+}
+
 fn parse_csharp(v: &Value, issues: &mut Issues) -> Option<CsharpConfig> {
     let o = strict_object(v, "csharp", &["outDir", "namespace", "providers"], issues)?;
     let mut out = CsharpConfig {
@@ -1075,13 +1176,30 @@ pub fn parse_config(
                 match v.as_object() {
                     None => issues.add("verify", "\"verify\" must be an object"),
                     Some(vo) => {
-                        if let Some(k) = vo.keys().find(|k| k.as_str() != "handEdits") {
+                        if let Some(k) = vo
+                            .keys()
+                            .find(|k| !["handEdits", "lifecycle"].contains(&k.as_str()))
+                        {
                             issues.add(
                                 "verify",
                                 format!(
-                                    "\"verify\" has an unknown key \"{k}\" (expected \"handEdits\")"
+                                    "\"verify\" has an unknown key \"{k}\" (expected \"handEdits\" or \"lifecycle\")"
                                 ),
                             );
+                        }
+                        if let Some(l) = vo.get("lifecycle")
+                            && let Some(lo) =
+                                strict_object(l, "verify.lifecycle", &["unreachable"], &mut issues)
+                            && let Some(u) = enum_key(
+                                lo,
+                                "verify.lifecycle",
+                                "unreachable",
+                                VerifyLifecycleUnreachable::ALL,
+                                &mut issues,
+                            )
+                            .and_then(|s| VerifyLifecycleUnreachable::parse(&s))
+                        {
+                            cfg.rules.lifecycle_unreachable = u;
                         }
                         if let Some(h) = vo.get("handEdits") {
                             let list: Vec<String> = HandEditsPolicy::ALL
@@ -1120,6 +1238,9 @@ pub fn parse_config(
             }
             if let Some(v) = o.get("enums") {
                 cfg.enums = parse_enums(v, &mut issues);
+            }
+            if let Some(v) = o.get("rules") {
+                parse_rules(v, &mut cfg.rules, &mut issues);
             }
             if let Some(v) = o.get("csharp") {
                 cfg.csharp = parse_csharp(v, &mut issues);

@@ -32,9 +32,13 @@ def _project(tmp_path: Path, variant: str, config: dict | None = None) -> str:
     return str(meta)
 
 
-def _verify(tmp_path: Path, meta_dir: str) -> int:
+def _gen(tmp_path: Path, meta_dir: str) -> None:
     out = tmp_path / "out"
     assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0
+
+
+def _verify(tmp_path: Path, meta_dir: str) -> int:
+    out = tmp_path / "out"
     return main(as_config(["verify", "--codegen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]))
 
 
@@ -42,6 +46,8 @@ def test_a_model_with_no_rules_prints_nothing_and_exits_as_before(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     meta_dir = _project(tmp_path, "without")
+    # Generate once and drop what `gen` printed: only the two `verify` runs are compared.
+    _gen(tmp_path, meta_dir)
     capsys.readouterr()
     after_code = _verify(tmp_path, meta_dir)
     after = capsys.readouterr()
@@ -59,6 +65,7 @@ def test_a_model_with_rules_prints_the_summary(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     meta_dir = _project(tmp_path, "with")
+    _gen(tmp_path, meta_dir)
     capsys.readouterr()
     code = _verify(tmp_path, meta_dir)
     err = capsys.readouterr().err
@@ -70,6 +77,7 @@ def test_an_error_severity_finding_exits_1(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     meta_dir = _project(tmp_path, "with", {"rules": {"permissions": {"names": "require"}}})
+    _gen(tmp_path, meta_dir)
     capsys.readouterr()
     code = _verify(tmp_path, meta_dir)
     err = capsys.readouterr().err

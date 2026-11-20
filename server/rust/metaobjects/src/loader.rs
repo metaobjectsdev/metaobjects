@@ -45,7 +45,10 @@ const PENDING_DIR: &str = "_pending";
 const TYPE_IDENTITY: &str = "identity";
 const IDENTITY_UNIQUE_KEY_SUBTYPES: &[&str] = &["primary", "secondary"];
 
-/// Attributes whose value names another top-level object (ADR-0059 R4).
+/// Attributes whose value names another top-level object (ADR-0059 R4). An operation's
+/// `@inputRef`, `@outputRef` and `@objectRef` are among them (ADR-0066). The set is keyed
+/// by name, so [`is_ref_bearing_attr`] excludes a node type that reuses one of these
+/// names for something else.
 pub const REF_BEARING_ATTR_NAMES: &[&str] = &[
     "objectRef",
     "through",
@@ -57,7 +60,18 @@ pub const REF_BEARING_ATTR_NAMES: &[&str] = &[
     "payloadRef",
     "responseRef",
     "spine",
+    "inputRef",
+    "outputRef",
 ];
+
+const TYPE_TRANSITION: &str = "transition";
+
+/// `true` when `attr` on a node of type `type_name` holds an object reference: it is in
+/// [`REF_BEARING_ATTR_NAMES`], and the node is not a `transition.*`, whose `@from` lists
+/// members of its enum (ADR-0066).
+pub fn is_ref_bearing_attr(type_name: &str, attr: &str) -> bool {
+    REF_BEARING_ATTR_NAMES.contains(&attr) && type_name != TYPE_TRANSITION
+}
 
 /// One load: the tree, its root, and every error and warning.
 #[derive(Debug)]
@@ -947,10 +961,11 @@ fn resolve_references(tree: &mut Tree, root: NodeId, top: &TopLevel) {
         if id != root {
             resolve_extends(tree, top, id);
             let decl_pkg = tree.effective_package(tree.top_level_of(id));
+            let type_name = tree.node(id).type_name.as_str();
             let names: Vec<String> = tree
                 // ADR-0039: own — reference resolution rewrites the value this node declares, not an inherited one.
                 .own_attrs(id)
-                .filter(|(k, _)| REF_BEARING_ATTR_NAMES.contains(&k.as_str()))
+                .filter(|(k, _)| is_ref_bearing_attr(type_name, k))
                 .map(|(k, _)| k.clone())
                 .collect();
             for name in names {

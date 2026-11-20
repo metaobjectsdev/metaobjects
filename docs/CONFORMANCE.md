@@ -71,7 +71,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/explorer-conformance/`](../fixtures/explorer-conformance/) (the `explorer.json` data spine: `meta export --effective` + `meta verify --format json` + the generated-file manifest in, one explorer document out) | 1 case (`shop`) | ✓ (the builder is TypeScript, and reads only port-neutral inputs) | — | — | — | — |
 
 **Rust (preview, ADR-0065) is not a column yet.** The sixth port runs six corpora
-today: `registry-conformance` (byte-identical manifest); the metamodel corpus, all 526
+today: `registry-conformance` (byte-identical manifest); the metamodel corpus, all 574
 green, with every validation pass the TypeScript loader runs, in the same order, so
 `server/rust/metaobjects/tests/conformance-expected-failures.json` is empty;
 `yaml-conformance`, 18 of 19 (the one on `yaml-conformance-expected-failures.json`,
@@ -82,7 +82,7 @@ cases its `gen` can meet (the rest are named with their reason in its runner). T
 above may only shrink; the skip corpus has none, because each case it runs asserts its result
 outright. While the port is in preview, a new fixture that fails in Rust and is not on
 the ledger prints a warning and does not fail the lane; it becomes a hard failure when the port
-leaves preview. A regression still fails: the ledger's `minPassing` (526) is the number of
+leaves preview. A regression still fails: the ledger's `minPassing` (574) is the number of
 fixtures known to pass, and the run fails when fewer do. The column joins this table when
 the port leaves preview.
 

@@ -87,6 +87,8 @@ const CORE_FAMILIES: &[(&str, &str)] = &[
     spec!("index"),
     spec!("requirement"),
     spec!("reporting"),
+    spec!("api"),
+    spec!("transition"),
 ];
 
 const DB_SPEC: (&str, &str) = spec!("db");
@@ -480,10 +482,17 @@ fn apply_definition(
 
 fn register_core(registry: &mut TypeRegistry) -> Result<(), MetaError> {
     let mut root = TypeDefinition::new("metadata", "root", "Root metadata document");
-    root.child_rules = ["object", "field", "validator", "template", "requirement"]
-        .iter()
-        .map(|t| ChildRule::wildcard(t))
-        .collect();
+    root.child_rules = [
+        "object",
+        "field",
+        "validator",
+        "template",
+        "requirement",
+        "api",
+    ]
+    .iter()
+    .map(|t| ChildRule::wildcard(t))
+    .collect();
     registry.register(root)?;
     for family in &definitions().core {
         for def in define_from_data(family)? {
