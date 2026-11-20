@@ -15,11 +15,11 @@ use std::path::Path;
 use common::Scratch;
 use metaobjects_codegen::generator::GenContext;
 use metaobjects_codegen::project::load_project;
-use metaobjects_codegen::{EntityGenerator, Generator};
+use metaobjects_codegen::shipped_generators;
 
 const MODEL_FILE: &str = "meta.purchasing.json";
 
-/// Every file the entity generator writes for one variant: path to contents.
+/// Every file the shipped generators write for one variant: path to contents.
 fn emit(variant: &str) -> BTreeMap<String, String> {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../../fixtures/codegen-noop/rules")
@@ -37,13 +37,21 @@ fn emit(variant: &str) -> BTreeMap<String, String> {
         tree: &loaded.result.tree,
         root: loaded.result.root,
         entities: &[],
+        collection: &loaded.collection,
     };
-    EntityGenerator
-        .generate(&ctx)
-        .expect("the entity generator runs")
-        .into_iter()
-        .map(|f| (f.path, f.content))
-        .collect()
+    let mut files = BTreeMap::new();
+    for g in shipped_generators() {
+        let emitted = g
+            .generate(&ctx)
+            .unwrap_or_else(|e| panic!("the {} generator runs: {e:?}", g.name()));
+        for f in emitted {
+            // Two generators that both write a shared crate write the same bytes.
+            if let Some(prev) = files.insert(f.path.clone(), f.content.clone()) {
+                assert_eq!(prev, f.content, "{} is written twice, differently", f.path);
+            }
+        }
+    }
+    files
 }
 
 #[test]

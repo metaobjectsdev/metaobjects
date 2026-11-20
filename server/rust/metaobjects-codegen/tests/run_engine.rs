@@ -13,7 +13,10 @@ use metaobjects_codegen::engine::{
     Outcome, STAGE_LOAD, STAGE_PLAN, STAGE_RENDER, STAGE_SKIP, STAGE_WRITE,
 };
 use metaobjects_codegen::fingerprint::FINGERPRINT_FILE;
-use metaobjects_codegen::{EntityGenerator, Generator, RunError, RunOptions, RunReport, run};
+use metaobjects_codegen::{
+    Change, ChangeKind, EntityGenerator, Generator, RunError, RunOptions, RunReport, VerifyReport,
+    run, verify,
+};
 
 const MANIFEST: &str = ".metaobjects/.gen-state/.hashes.json";
 
@@ -106,9 +109,14 @@ fn a_changed_model_rewrites_only_the_file_that_changed_and_saves_the_manifest_on
     let order = p.mtime("generated/shop/src/order.rs");
     let address = p.mtime("generated/shop/src/address.rs");
     tick();
+    let marker = r#"{ "field.string": { "name": "tags", "isArray": true } },"#;
+    assert!(
+        common::SHOP.contains(marker),
+        "the shop model no longer has the line this edits"
+    );
     let edited = common::SHOP.replace(
-        r#"{ "field.string": { "name": "type" } },"#,
-        r#"{ "field.string": { "name": "type" } },
+        marker,
+        r#"{ "field.string": { "name": "tags", "isArray": true } },
     { "field.string": { "name": "channel" } },"#,
     );
     p.write("metaobjects/meta.shop.json", &edited);
@@ -134,7 +142,7 @@ fn a_hand_edited_generated_file_is_refused_and_the_run_stores_no_key() {
     p.write(path, &edited);
     let e = gen_ok_err(&p);
     match e {
-        RunError::Refused(paths) => assert_eq!(paths, vec![path.to_string()]),
+        RunError::Refused(r) => assert_eq!(r.edited, vec![path.to_string()]),
         other => panic!("expected a refusal, got {other}"),
     }
     assert_eq!(p.read(path), edited, "the edit is left in place");
@@ -153,8 +161,8 @@ fn an_existing_file_nobody_recorded_is_refused_not_adopted() {
     let p = Scratch::project("unrecorded", &shop_files());
     p.write("generated/shop/Cargo.toml", "# somebody else's\n");
     match gen_ok_err(&p) {
-        RunError::Refused(paths) => {
-            assert_eq!(paths, vec!["generated/shop/Cargo.toml".to_string()])
+        RunError::Refused(r) => {
+            assert_eq!(r.edited, vec!["generated/shop/Cargo.toml".to_string()])
         }
         other => panic!("expected a refusal, got {other}"),
     }
@@ -177,18 +185,294 @@ fn a_package_that_goes_away_has_its_generated_files_removed() {
 }
 
 #[test]
-fn an_orphan_with_a_hand_edit_is_kept_with_a_warning() {
+fn an_orphan_with_a_hand_edit_is_never_deleted_and_fails_the_run_by_name() {
+    // The cross-port rule: a recorded file no generator emits any more is deleted only while
+    // it is still what a run wrote. One that was edited stays, stays recorded, and fails the
+    // run, so the next run reports it again and no skip key hides it.
     let p = Scratch::project("orphan-edited", &shop_files());
     gen_ok(&p);
-    p.write("generated/shop_billing/src/invoice.rs", "// mine\n");
+    let orphan = "generated/shop_billing/src/invoice.rs";
+    p.write(orphan, "// mine\n");
+    std::fs::remove_file(p.path().join("metaobjects/meta.billing.json")).unwrap();
+    for _ in 0..2 {
+        match gen_ok_err(&p) {
+            RunError::Refused(r) => {
+                assert!(r.edited.is_empty(), "{r:?}");
+                assert_eq!(r.orphans, vec![orphan.to_string()]);
+            }
+            other => panic!("expected a refusal, got {other}"),
+        }
+        assert_eq!(p.read(orphan), "// mine\n", "the edit is left in place");
+        assert!(p.read(MANIFEST).contains(orphan), "and it stays recorded");
+        assert!(
+            !p.exists(&format!(".metaobjects/.gen-state/{FINGERPRINT_FILE}")),
+            "a refused run is not a current one"
+        );
+    }
+    // Its pristine neighbours went in the first run.
+    assert!(!p.exists("generated/shop_billing/Cargo.toml"));
+    // Deleting it is the remedy: the next run forgets the record and succeeds.
+    std::fs::remove_file(p.path().join(orphan)).unwrap();
+    gen_ok(&p);
+    assert!(!p.read(MANIFEST).contains("shop_billing"));
+}
+
+#[test]
+fn a_file_the_manifest_does_not_record_is_a_stranger_the_sweep_never_touches() {
+    let p = Scratch::project("stranger", &shop_files());
+    gen_ok(&p);
+    p.write(
+        "generated/shop/src/mine.rs",
+        "// hand-written, never generated\n",
+    );
+    p.write("generated/notes.md", "kept\n");
     std::fs::remove_file(p.path().join("metaobjects/meta.billing.json")).unwrap();
     let r = gen_ok(&p);
-    assert!(p.exists("generated/shop_billing/src/invoice.rs"));
-    assert!(
-        r.warnings.iter().any(|w| w.contains("invoice.rs")),
-        "{:?}",
-        r.warnings
+    assert!(r.files.removed >= 4, "{:?}", r.files);
+    assert_eq!(
+        p.read("generated/shop/src/mine.rs"),
+        "// hand-written, never generated\n"
     );
+    assert_eq!(p.read("generated/notes.md"), "kept\n");
+}
+
+#[test]
+fn a_run_narrowed_to_some_generators_sweeps_nothing() {
+    let p = Scratch::project("narrow-sweep", &shop_files());
+    gen_ok(&p);
+    std::fs::remove_file(p.path().join("metaobjects/meta.billing.json")).unwrap();
+    let r = gen_with(&p, |o| o.generators = Some(vec!["entity".to_string()])).unwrap();
+    assert_eq!(r.files.removed, 0);
+    assert!(p.exists("generated/shop_billing/src/invoice.rs"));
+}
+
+#[test]
+fn the_change_report_names_what_changed_and_which_crates_to_rebuild() {
+    let p = Scratch::project("changes", &shop_files());
+    let first = gen_ok(&p);
+    assert_eq!(first.changes.len(), first.files.created);
+    assert!(first.changes.iter().all(|c| c.kind == ChangeKind::Created));
+    assert_eq!(
+        first.changed_roots(),
+        vec![
+            "meta_support".to_string(),
+            "shop".to_string(),
+            "shop_billing".to_string()
+        ]
+    );
+
+    // One field added to one value object: one file rewritten, in one crate.
+    p.write(
+        "metaobjects/meta.shop.json",
+        &common::SHOP.replace(
+            r#"{ "field.string": { "name": "zipCode" } }"#,
+            r#"{ "field.string": { "name": "zipCode" } }, { "field.string": { "name": "city" } }"#,
+        ),
+    );
+    let second = gen_ok(&p);
+    assert_eq!(
+        second.changes,
+        vec![Change {
+            path: "generated/shop/src/address.rs".to_string(),
+            kind: ChangeKind::Updated
+        }]
+    );
+    assert_eq!(second.changed_roots(), vec!["shop".to_string()]);
+
+    // A package removed: every one of its files is reported as removed.
+    std::fs::remove_file(p.path().join("metaobjects/meta.billing.json")).unwrap();
+    let third = gen_ok(&p);
+    assert!(!third.changes.is_empty());
+    assert!(third.changes.iter().all(|c| c.kind == ChangeKind::Removed));
+    assert_eq!(third.changed_roots(), vec!["shop_billing".to_string()]);
+
+    // Nothing changed: the report is empty.
+    let fourth = gen_with(&p, |o| o.force = true).unwrap();
+    assert!(fourth.changes.is_empty() && fourth.changed_roots().is_empty());
+}
+
+fn check(p: &Scratch, tweak: impl FnOnce(&mut RunOptions)) -> VerifyReport {
+    let mut opts = RunOptions::new(p.path());
+    tweak(&mut opts);
+    verify(&opts, &generators()).unwrap_or_else(|e| panic!("verify failed: {e}"))
+}
+
+/// Every file under the project with its bytes, so "verify wrote nothing" is an equality.
+fn snapshot(p: &Scratch) -> std::collections::BTreeMap<String, Vec<u8>> {
+    fn walk(
+        dir: &std::path::Path,
+        base: &std::path::Path,
+        out: &mut std::collections::BTreeMap<String, Vec<u8>>,
+    ) {
+        for e in std::fs::read_dir(dir).unwrap().filter_map(Result::ok) {
+            let path = e.path();
+            if path.is_dir() {
+                walk(&path, base, out);
+            } else {
+                let rel = path
+                    .strip_prefix(base)
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned();
+                out.insert(rel, std::fs::read(&path).unwrap());
+            }
+        }
+    }
+    let mut out = std::collections::BTreeMap::new();
+    walk(p.path(), p.path(), &mut out);
+    out
+}
+
+#[test]
+fn verify_before_any_gen_reports_every_file_missing_and_writes_nothing() {
+    let p = Scratch::project("verify-fresh", &shop_files());
+    let before = snapshot(&p);
+    let r = check(&p, |_| {});
+    assert!(r.rendered && !r.in_sync());
+    assert_eq!(r.missing.len(), r.checked);
+    assert!(r.drifted.is_empty() && r.extra.is_empty());
+    assert_eq!(
+        snapshot(&p),
+        before,
+        "verify writes nothing: no file, no manifest, no key"
+    );
+}
+
+#[test]
+fn verify_after_gen_is_in_sync_and_answers_from_the_key_unless_told_to_render() {
+    let p = Scratch::project("verify-clean", &shop_files());
+    let generated = gen_ok(&p);
+    let before = snapshot(&p);
+    let local = check(&p, |_| {});
+    assert!(
+        local.in_sync() && !local.rendered,
+        "a local run answers from the key"
+    );
+    assert_eq!(local.checked, generated.files.created);
+    let full = check(&p, |o| o.force = true);
+    assert!(
+        full.in_sync() && full.rendered,
+        "--full (and CI) always render"
+    );
+    assert_eq!(full.checked, generated.files.created);
+    assert_eq!(snapshot(&p), before);
+}
+
+#[test]
+fn verify_names_a_drifted_a_missing_and_an_extra_file() {
+    let p = Scratch::project("verify-drift", &shop_files());
+    gen_ok(&p);
+    // drifted: an edit by hand. missing: a deleted file. extra: a package that went away,
+    // one of whose files was also edited.
+    p.write("generated/shop/src/address.rs", "// edited\n");
+    std::fs::remove_file(p.path().join("generated/shop/src/category.rs")).unwrap();
+    p.write(
+        "generated/shop_billing/src/invoice.rs",
+        "// edited orphan\n",
+    );
+    std::fs::remove_file(p.path().join("metaobjects/meta.billing.json")).unwrap();
+    let before = snapshot(&p);
+    let r = check(&p, |_| {});
+    assert!(r.rendered && !r.in_sync());
+    assert_eq!(r.drifted, vec!["generated/shop/src/address.rs".to_string()]);
+    assert_eq!(
+        r.missing,
+        vec!["generated/shop/src/category.rs".to_string()]
+    );
+    let edited: Vec<&str> = r
+        .extra
+        .iter()
+        .filter(|x| x.edited)
+        .map(|x| x.path.as_str())
+        .collect();
+    assert_eq!(edited, vec!["generated/shop_billing/src/invoice.rs"]);
+    assert!(
+        r.extra
+            .iter()
+            .any(|x| !x.edited && x.path == "generated/shop_billing/Cargo.toml")
+    );
+    assert_eq!(snapshot(&p), before);
+
+    // A narrowed verify cannot tell an orphan from another generator's file: no extras.
+    let narrow = check(&p, |o| o.generators = Some(vec!["entity".to_string()]));
+    assert!(narrow.extra.is_empty());
+    assert_eq!(narrow.drifted.len(), 1);
+}
+
+#[test]
+fn verify_reports_exactly_what_gen_then_fixes() {
+    // The gate and the sweep agree, so "regenerate" is a remedy that cannot loop.
+    let p = Scratch::project("verify-agrees", &shop_files());
+    gen_ok(&p);
+    std::fs::remove_file(p.path().join("metaobjects/meta.billing.json")).unwrap();
+    std::fs::remove_file(p.path().join("generated/shop/src/category.rs")).unwrap();
+    assert!(!check(&p, |_| {}).in_sync());
+    gen_ok(&p);
+    assert!(check(&p, |o| o.force = true).in_sync());
+}
+
+#[test]
+fn an_owned_generator_crate_is_an_input_of_the_skip_key() {
+    // ADR-0064 `owned-generator-edited`: the engine cannot see inside an owned generator's
+    // build, so its sources are hashed into the key and an edit regenerates.
+    let p = Scratch::project("owned-input", &shop_files());
+    p.write("codegen/Cargo.toml", "[package]\nname = \"codegen\"\n");
+    p.write("codegen/main.rs", "fn main() {}\n");
+    p.write("codegen/generators/entity.rs", "// v1\n");
+    gen_ok(&p);
+    assert_eq!(gen_ok(&p).outcome, Outcome::Skipped);
+    assert!(!check(&p, |_| {}).rendered);
+    p.write("codegen/target/debug/junk", "build output is not an input");
+    assert_eq!(gen_ok(&p).outcome, Outcome::Skipped);
+    p.write("codegen/generators/entity.rs", "// v2\n");
+    assert!(
+        check(&p, |_| {}).rendered,
+        "verify must render after an owned generator edit"
+    );
+    let r = gen_ok(&p);
+    assert_eq!(r.outcome, Outcome::Generated);
+    assert_eq!(r.no_skip_reason, Some("an input changed"));
+}
+
+#[test]
+fn every_source_of_an_owned_crate_is_an_input_and_its_build_output_is_not() {
+    // The generator list is the adopter's file, so it may pull in a module the scaffold never
+    // wrote (`mod util;`). An edit there changes what the owned generators emit; a skip that
+    // did not see it would report "nothing changed" over stale output.
+    let p = Scratch::project("owned-module", &shop_files());
+    p.write("codegen/Cargo.toml", "[package]\nname = \"codegen\"\n");
+    p.write("codegen/main.rs", "mod util;\nfn main() {}\n");
+    p.write("codegen/util.rs", "// v1\n");
+    p.write("codegen/generators/entity.rs", "// the owned generator\n");
+    gen_ok(&p);
+    assert_eq!(gen_ok(&p).outcome, Outcome::Skipped);
+
+    // What cargo writes on its own is no change: the build directory and the lockfile.
+    p.write("codegen/target/debug/util.rs", "build output");
+    p.write("codegen/Cargo.lock", "version = 4\n");
+    assert_eq!(gen_ok(&p).outcome, Outcome::Skipped);
+    assert!(!check(&p, |_| {}).rendered);
+
+    // An edit to the module beside the list.
+    p.write("codegen/util.rs", "// v2\n");
+    assert!(
+        check(&p, |_| {}).rendered,
+        "verify must not answer from the stored key after an owned module changed"
+    );
+    let r = gen_ok(&p);
+    assert_eq!(r.outcome, Outcome::Generated);
+    assert_eq!(r.no_skip_reason, Some("an input changed"));
+    assert_eq!(gen_ok(&p).outcome, Outcome::Skipped);
+
+    // A new file anywhere in the crate, and one that only shares a skipped name deeper down.
+    p.write("codegen/support/mod.rs", "// a new module\n");
+    assert_eq!(gen_ok(&p).outcome, Outcome::Generated);
+    p.write(
+        "codegen/support/target/notes.rs",
+        "// a source that happens to sit in `target`\n",
+    );
+    assert_eq!(gen_ok(&p).outcome, Outcome::Generated);
+    assert_eq!(gen_ok(&p).outcome, Outcome::Skipped);
 }
 
 #[test]

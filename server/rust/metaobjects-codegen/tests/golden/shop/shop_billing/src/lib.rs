@@ -5,3 +5,5 @@
 mod invoice;
 
 pub use invoice::Invoice;
+pub use invoice::InvoiceCreate;
+pub use invoice::InvoicePatch;

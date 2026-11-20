@@ -1,19 +1,30 @@
-//! The `entity` generator: serde structs, enums and value objects, one crate per package.
+//! The `entity` generator: serde structs, enums, value objects and the bodies a caller sends,
+//! one crate per package.
 //!
 //! ADR-0065 maps a metadata package to a Cargo crate, because a crate is Rust's unit of
 //! compilation and visibility. For the package `acme::billing` the generator writes:
 //!
 //! ```text
-//! <out>/acme_billing/Cargo.toml       the crate (serde, plus one path dependency per package it refers to)
+//! <out>/acme_billing/Cargo.toml       the crate (serde, the support crate, one path dependency per package it refers to)
 //! <out>/acme_billing/rustfmt.toml     pins the formatting the files are written in
 //! <out>/acme_billing/src/lib.rs       one `mod` per type and a `pub use` of each type
-//! <out>/acme_billing/src/<type>.rs    one struct (and the enums its fields declare) per file
+//! <out>/acme_billing/src/<type>.rs    one object: its struct, its enums and, for an entity, its create and patch bodies
+//! <out>/meta_support/                 the wire types and validation checks every model crate uses
 //! ```
 //!
 //! What becomes what:
 //!
 //! - a concrete `object.entity` or `object.value` becomes a `pub struct` with every
 //!   EFFECTIVE field, so a field inherited through `extends` is a field of the struct;
+//! - an entity also gets `<Name>Create` (what a caller sends to create one: no generated
+//!   key, no read-only or derived member; a member the server fills is optional) and
+//!   `<Name>Patch` (every member optional; a nullable member tells "set to null" from "leave
+//!   alone");
+//! - a value object, a create body and a patch body each have `validate()`, which returns
+//!   every rule of the model the value breaks: lengths, bounds, item counts, patterns, text
+//!   forms, the rules of a nested value object and, on a create body, the model's rules
+//!   across members (`validator.comparison`, `requiredWhen`, `presentIff`, `atLeastOne`,
+//!   `exactlyOne`, each under its `@condition`);
 //! - a `field.enum` becomes a `pub enum` whose variants serialize as the member symbols
 //!   (the wire form stays the symbol, as in every port). An enum declared on a field is
 //!   named `<Object><Field>`; a shared enum (a root-level abstract `field.enum` that fields
@@ -24,44 +35,41 @@
 //!   closes a cycle of by-value containment, and a reference into another package is a path
 //!   dependency on that package's crate.
 //!
-//! Types the standard library has no counterpart for stay textual, as they are on the wire:
-//! `decimal`, `date`, `time`, `timestamp`, `uuid`, `uri` and `duration` are `String` (a
-//! decimal is a string precisely so it never passes through a float), `currency` is `i64`
-//! minor units, and `inet` is `std::net::IpAddr`. Navigation across relationships is not
-//! generated: a relationship is not a field, and the foreign-key fields it is built on are.
+//! A `decimal` is the support crate's exact `Decimal` (held as decimal text; its string form
+//! never passes through a float) and a `duration` its `Duration`; both read and write the
+//! portable wire form. `date`, `time`,
+//! `timestamp`, `uuid` and `uri` stay `String`, as they are on the wire, and `validate()`
+//! checks their form. `currency` is `i64` minor units and `inet` is `std::net::IpAddr`
+//! (text when the field is `@lenient`). Navigation across relationships is not generated: a
+//! relationship is not a field, and the foreign-key fields it is built on are.
 //!
 //! The output is already formatted (ADR-0063: no formatter runs in the generation path), and
 //! each crate carries the `rustfmt.toml` its text was written under, so `cargo fmt` over the
 //! output changes nothing and never makes a later run refuse a file.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::HashSet;
 
-use metaobjects::node::{NodeId, PACKAGE_SEP, Tree};
-use metaobjects::validate::util::ObjectIndex;
-use serde_json::Value;
-
-use crate::generator::{
-    ERR_CRATE_CYCLE, ERR_NAME_COLLISION, ERR_UNSUPPORTED, EmittedFile, GenContext, GenError,
-    Generator,
+use metaobjects_codegen::emitted::{PATTERN_RS, VALIDATION_RS, WIRE_RS};
+use metaobjects_codegen::generator::{EmittedFile, GenContext, GenError, Generator};
+use metaobjects_codegen::names::{PRELUDE_TYPES, literal, module_name};
+use metaobjects_codegen::plan::{
+    Class, CmpOp, Cond, CratePlan, CrossKind, CrossRule, EnumPlan, FieldPlan, Format, Kind,
+    Literal, NullMembers, Operand, Plan, Presence, SUPPORT_CRATE, StructPlan, Ty,
 };
-use crate::names::{
-    PRELUDE_TYPES, crate_name, doc_comment, field_ident, literal, module_name, pascal, type_ident,
-};
+use metaobjects_codegen::writer::{CodeWriter, Piece, RUSTFMT_TOML, file, item, list};
 
 /// Bump when the emitted text changes shape, so a stored skip key never survives it.
-const FORMAT: u32 = 1;
+const FORMAT: u32 = 2;
 
 /// The line every generated Rust file starts with.
-pub const BANNER: &str = "// @generated by the MetaObjects entity generator. Do not edit: change the model and run `cargo meta gen`.\n";
+pub const BANNER: &str = "// @generated by the MetaObjects entity generator. Do not edit: change the model and run `cargo meta gen`.";
 
-const MAX_WIDTH: usize = 100;
+const MANIFEST_BANNER: &str = "# @generated by the MetaObjects entity generator. Do not edit: change the model and run `cargo meta gen`.\n";
 
-const RUSTFMT_TOML: &str = "# @generated by the MetaObjects entity generator.\n\
-# The generated files are written in rustfmt's output form under these settings; they pin\n\
-# that form, so `cargo fmt` over the output changes nothing.\n\
-max_width = 100\n\
-reorder_imports = false\n\
-reorder_modules = false\n";
+const VALIDATION: &str = "meta_support::validation";
+const WIRE: &str = "meta_support::wire";
+/// The name a `validate()` body knows the support crate's checks by.
+const CHECK: &str = "check";
 
 /// The entity generator.
 #[derive(Debug, Clone, Copy, Default)]
@@ -77,809 +85,118 @@ impl Generator for EntityGenerator {
     }
 
     fn generate(&self, ctx: &GenContext<'_>) -> Result<Vec<EmittedFile>, GenError> {
-        let plan = Plan::build(ctx.tree, ctx.root)?;
-        plan.emit(ctx.entities)
-    }
-}
-
-// ---- the plan --------------------------------------------------------------------------
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct TypeRef {
-    crate_name: String,
-    type_name: String,
-}
-
-#[derive(Debug, Clone)]
-enum Ty {
-    Str,
-    Prim(&'static str),
-    Ip,
-    Ref(TypeRef),
-    Map(Box<Ty>),
-}
-
-#[derive(Debug)]
-struct Member {
-    variant: String,
-    wire: String,
-}
-
-#[derive(Debug)]
-struct EnumPlan {
-    type_name: String,
-    doc: Option<String>,
-    members: Vec<Member>,
-}
-
-#[derive(Debug)]
-struct FieldPlan {
-    wire: String,
-    ident: String,
-    ty: Ty,
-    array: bool,
-    optional: bool,
-    boxed: bool,
-    doc: Option<String>,
-}
-
-#[derive(Debug)]
-struct StructPlan {
-    node: NodeId,
-    key: String,
-    crate_name: String,
-    type_name: String,
-    doc: Option<String>,
-    fields: Vec<FieldPlan>,
-    enums: Vec<EnumPlan>,
-}
-
-#[derive(Debug, Default)]
-struct CratePlan {
-    package: String,
-    structs: Vec<usize>,
-    shared_enums: Vec<(NodeId, EnumPlan)>,
-    deps: BTreeSet<String>,
-}
-
-struct Plan {
-    structs: Vec<StructPlan>,
-    crates: BTreeMap<String, CratePlan>,
-}
-
-fn unsupported(msg: String) -> GenError {
-    GenError::new(ERR_UNSUPPORTED, msg)
-}
-
-fn str_attr<'t>(tree: &'t Tree, id: NodeId, name: &str) -> Option<&'t str> {
-    tree.attr(id, name).and_then(Value::as_str)
-}
-
-fn bool_attr(tree: &Tree, id: NodeId, name: &str) -> bool {
-    tree.attr(id, name).and_then(Value::as_bool) == Some(true)
-}
-
-fn enum_members(tree: &Tree, field: NodeId, what: &str) -> Result<Vec<String>, GenError> {
-    let values = tree
-        .attr(field, "values")
-        .and_then(Value::as_array)
-        .ok_or_else(|| unsupported(format!("{what} is a field.enum with no @values")))?;
-    Ok(values
-        .iter()
-        .map(|v| v.as_str().map_or_else(|| v.to_string(), str::to_string))
-        .collect())
-}
-
-fn plan_enum(
-    type_name: &str,
-    symbols: &[String],
-    doc: Option<String>,
-) -> Result<EnumPlan, GenError> {
-    let mut seen: HashMap<String, &str> = HashMap::new();
-    let mut members = Vec::with_capacity(symbols.len());
-    for s in symbols {
-        let variant = type_ident(s);
-        if let Some(other) = seen.insert(variant.clone(), s) {
-            return Err(GenError::new(
-                ERR_NAME_COLLISION,
-                format!(
-                    "enum {type_name}: the members '{other}' and '{s}' both become the Rust variant {variant}"
-                ),
-            ));
-        }
-        members.push(Member {
-            variant,
-            wire: s.clone(),
-        });
-    }
-    Ok(EnumPlan {
-        type_name: type_name.to_string(),
-        doc,
-        members,
-    })
-}
-
-/// The root-level abstract `field.enum` a field resolves to through `extends`, if any
-/// (ADR-0026 Amendment 1; the walk the TypeScript `resolveSharedEnumDeclaration` makes).
-fn shared_enum_declaration(tree: &Tree, root: NodeId, field: NodeId) -> Option<NodeId> {
-    let mut seen = HashSet::new();
-    let mut cur = Some(field);
-    while let Some(n) = cur {
-        let node = tree.node(n);
-        if node.type_name != "field" || node.sub_type != "enum" || !seen.insert(n) {
-            return None;
-        }
-        if node.is_abstract && node.parent == Some(root) {
-            return Some(n);
-        }
-        // ADR-0039 sanctioned own: the question is whether THIS node redeclares the
-        // vocabulary; a resolving read would see the inherited @values on every hop.
-        if tree.own_attr(n, "values").is_some() || tree.own_attr(n, "intValueMap").is_some() {
-            return None;
-        }
-        cur = node.super_node;
-    }
-    None
-}
-
-fn scalar(sub_type: &str) -> Option<Ty> {
-    Some(match sub_type {
-        "string" | "decimal" | "date" | "time" | "timestamp" | "uuid" | "uri" | "duration" => {
-            Ty::Str
-        }
-        "int" => Ty::Prim("i32"),
-        "long" | "currency" => Ty::Prim("i64"),
-        "double" => Ty::Prim("f64"),
-        "float" => Ty::Prim("f32"),
-        "boolean" => Ty::Prim("bool"),
-        "inet" => Ty::Ip,
-        _ => return None,
-    })
-}
-
-impl Plan {
-    fn build(tree: &Tree, root: NodeId) -> Result<Plan, GenError> {
-        // Every concrete entity and value object, in model order.
-        let mut structs: Vec<StructPlan> = Vec::new();
-        let mut by_node: HashMap<NodeId, usize> = HashMap::new();
-        let index = ObjectIndex::build(tree, root);
-        for &id in tree.own_children(root) {
-            let n = tree.node(id);
-            if n.type_name != "object"
-                || !matches!(n.sub_type.as_str(), "entity" | "value")
-                || n.is_abstract
-            {
+        let plan = Plan::of(ctx)?;
+        let selected = plan.selected_crates(ctx.entities)?;
+        let mut files = support_crate();
+        for (cname, c) in &plan.crates {
+            if selected.as_ref().is_some_and(|sel| !sel.contains(cname)) {
                 continue;
             }
-            let pkg = tree.effective_package(id);
-            by_node.insert(id, structs.len());
-            structs.push(StructPlan {
-                node: id,
-                key: tree.resolution_key(id),
-                crate_name: crate_name(&pkg),
-                type_name: type_ident(&n.name),
-                doc: str_attr(tree, id, "description").map(str::to_string),
-                fields: Vec::new(),
-                enums: Vec::new(),
-            });
-        }
-
-        let mut crates: BTreeMap<String, CratePlan> = BTreeMap::new();
-        for (i, s) in structs.iter().enumerate() {
-            let pkg = tree.effective_package(s.node);
-            let c = crates.entry(s.crate_name.clone()).or_default();
-            if c.structs.is_empty() {
-                c.package = pkg.clone();
-            } else if c.package != pkg {
-                return Err(GenError::new(
-                    ERR_NAME_COLLISION,
-                    format!(
-                        "the packages '{}' and '{}' both become the crate {}",
-                        c.package, pkg, s.crate_name
-                    ),
-                ));
-            }
-            c.structs.push(i);
-        }
-
-        // Fields.
-        let mut shared: BTreeMap<NodeId, TypeRef> = BTreeMap::new();
-        for i in 0..structs.len() {
-            let (node, owner_crate, owner_type, owner_key) = {
-                let s = &structs[i];
-                (
-                    s.node,
-                    s.crate_name.clone(),
-                    s.type_name.clone(),
-                    s.key.clone(),
-                )
-            };
-            let primary: HashSet<String> = tree
-                .children(node)
-                .iter()
-                .filter(|&&c| {
-                    let n = tree.node(c);
-                    n.type_name == "identity" && n.sub_type == "primary"
-                })
-                .filter_map(|&c| tree.attr(c, "fields").and_then(Value::as_array))
-                .flat_map(|a| a.iter().filter_map(Value::as_str).map(str::to_string))
-                .collect();
-            let mut fields: Vec<FieldPlan> = Vec::new();
-            let mut enums: Vec<EnumPlan> = Vec::new();
-            for &f in tree.children(node).iter() {
-                let fnode = tree.node(f);
-                if fnode.type_name != "field" {
-                    continue;
-                }
-                let what = format!("{owner_key}.{}", fnode.name);
-                let array = tree.resolved_is_array(f);
-                let mut boxed = false;
-                let ty = match fnode.sub_type.as_str() {
-                    "enum" => {
-                        if let Some(decl) = shared_enum_declaration(tree, root, f) {
-                            if str_attr_own_true(tree, decl, "provided") {
-                                return Err(unsupported(format!(
-                                    "{what} uses the @provided enum {}: the Rust generator has no setting for where a hand-written enum lives yet",
-                                    tree.node(decl).name
-                                )));
-                            }
-                            let target = shared.entry(decl).or_insert_with(|| TypeRef {
-                                crate_name: crate_name(&tree.effective_package(decl)),
-                                type_name: type_ident(&tree.node(decl).name),
-                            });
-                            Ty::Ref(target.clone())
-                        } else {
-                            let symbols = enum_members(tree, f, &what)?;
-                            let name = format!("{owner_type}{}", pascal(&fnode.name));
-                            let doc = str_attr(tree, f, "description").map(str::to_string);
-                            enums.push(plan_enum(&name, &symbols, doc)?);
-                            Ty::Ref(TypeRef {
-                                crate_name: owner_crate.clone(),
-                                type_name: name,
-                            })
-                        }
-                    }
-                    "object" => match str_attr(tree, f, "objectRef") {
-                        // The loader refuses a field.object without an @objectRef
-                        // (ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF), so none reaches here.
-                        None => {
-                            return Err(unsupported(format!(
-                                "{what} is a field.object with no @objectRef"
-                            )));
-                        }
-                        Some(r) => {
-                            let target = bound_struct(&index, &by_node, tree, f).ok_or_else(|| {
-                                    unsupported(format!(
-                                        "{what} refers to {r}, which is not a concrete entity or value object the entity generator emits"
-                                    ))
-                                })?;
-                            boxed = !array;
-                            Ty::Ref(TypeRef {
-                                crate_name: structs[target].crate_name.clone(),
-                                type_name: structs[target].type_name.clone(),
-                            })
-                        }
-                    },
-                    "map" => {
-                        let value = if let Some(r) = str_attr(tree, f, "objectRef") {
-                            let target = bound_struct(&index, &by_node, tree, f).ok_or_else(|| {
-                                    unsupported(format!(
-                                        "{what} is a map of {r}, which is not a concrete entity or value object the entity generator emits"
-                                    ))
-                                })?;
-                            Ty::Ref(TypeRef {
-                                crate_name: structs[target].crate_name.clone(),
-                                type_name: structs[target].type_name.clone(),
-                            })
-                        } else {
-                            let vt = str_attr(tree, f, "valueType").unwrap_or("string");
-                            scalar(vt).ok_or_else(|| {
-                                unsupported(format!(
-                                    "{what} is a map with the unsupported @valueType {vt}"
-                                ))
-                            })?
-                        };
-                        Ty::Map(Box::new(value))
-                    }
-                    other => scalar(other).ok_or_else(|| {
-                        unsupported(format!(
-                            "{what} has the field subtype {other}, which has no Rust mapping"
-                        ))
-                    })?,
-                };
-                // A map is one value, never wrapped in a Vec.
-                let array = array && !matches!(ty, Ty::Map(_));
-                let optional = !(bool_attr(tree, f, "required") || primary.contains(&fnode.name));
-                fields.push(FieldPlan {
-                    wire: fnode.name.clone(),
-                    ident: field_ident(&fnode.name),
-                    ty,
-                    array,
-                    optional,
-                    boxed,
-                    doc: str_attr(tree, f, "description").map(str::to_string),
-                });
-            }
-            check_fields(&owner_key, &fields)?;
-            structs[i].fields = fields;
-            structs[i].enums = enums;
-        }
-
-        // Shared enums are materialized once, in their declaration's package, and only when a
-        // field consumes them.
-        for (&decl, target) in &shared {
-            let symbols = enum_members(tree, decl, &tree.resolution_key(decl))?;
-            let plan = plan_enum(
-                &target.type_name,
-                &symbols,
-                str_attr(tree, decl, "description").map(str::to_string),
-            )?;
-            let pkg = tree.effective_package(decl);
-            let c = crates.entry(target.crate_name.clone()).or_default();
-            if c.structs.is_empty() && c.shared_enums.is_empty() {
-                c.package = pkg;
-            } else if c.package != pkg {
-                return Err(GenError::new(
-                    ERR_NAME_COLLISION,
-                    format!(
-                        "the packages '{}' and '{}' both become the crate {}",
-                        c.package, pkg, target.crate_name
-                    ),
-                ));
-            }
-            c.shared_enums.push((decl, plan));
-        }
-
-        let mut plan = Plan { structs, crates };
-        plan.link_dependencies();
-        plan.check_names()?;
-        plan.check_cycles()?;
-        plan.box_cycles();
-        Ok(plan)
-    }
-
-    /// Every reference into another crate is a path dependency on it.
-    fn link_dependencies(&mut self) {
-        let mut edges: Vec<(String, String)> = Vec::new();
-        for s in &self.structs {
-            for f in &s.fields {
-                if let Some(t) = ty_ref(&f.ty)
-                    && t.crate_name != s.crate_name
-                {
-                    edges.push((s.crate_name.clone(), t.crate_name.clone()));
-                }
-            }
-        }
-        for (from, to) in edges {
-            self.crates.get_mut(&from).expect("crate").deps.insert(to);
-        }
-    }
-
-    /// Two types of one crate must not share a Rust name or a module name.
-    fn check_names(&self) -> Result<(), GenError> {
-        for (cname, c) in &self.crates {
-            let mut types: BTreeMap<String, String> = BTreeMap::new();
-            let mut modules: BTreeMap<String, String> = BTreeMap::new();
-            let mut claim = |ty: &str, origin: String, module: Option<String>| {
-                if let Some(prev) = types.insert(ty.to_string(), origin.clone()) {
-                    return Err(GenError::new(
-                        ERR_NAME_COLLISION,
-                        format!("crate {cname}: {origin} and {prev} are both named {ty}"),
-                    ));
-                }
-                if let Some(m) = module
-                    && let Some(prev) = modules.insert(m.clone(), origin.clone())
-                {
-                    return Err(GenError::new(
-                        ERR_NAME_COLLISION,
-                        format!("crate {cname}: {origin} and {prev} both become the module {m}"),
-                    ));
-                }
-                Ok(())
-            };
-            for &i in &c.structs {
-                let s = &self.structs[i];
-                claim(&s.type_name, s.key.clone(), Some(module_name(&s.type_name)))?;
-                for e in &s.enums {
-                    claim(&e.type_name, format!("the enum {}", e.type_name), None)?;
-                }
-            }
-            for (decl, e) in &c.shared_enums {
-                claim(
-                    &e.type_name,
-                    format!("the shared enum declaration #{}", decl.index()),
-                    Some(module_name(&e.type_name)),
-                )?;
-            }
-        }
-        Ok(())
-    }
-
-    /// Cargo refuses cyclic path dependencies, so two packages that refer to each other
-    /// cannot become two crates.
-    fn check_cycles(&self) -> Result<(), GenError> {
-        #[derive(Clone, Copy, PartialEq)]
-        enum Mark {
-            Open,
-            Done,
-        }
-        fn visit<'a>(
-            name: &'a str,
-            crates: &'a BTreeMap<String, CratePlan>,
-            marks: &mut HashMap<&'a str, Mark>,
-            path: &mut Vec<&'a str>,
-        ) -> Option<Vec<String>> {
-            match marks.get(name) {
-                Some(Mark::Done) => return None,
-                Some(Mark::Open) => {
-                    let start = path.iter().position(|p| *p == name).unwrap_or(0);
-                    let mut cycle: Vec<String> =
-                        path[start..].iter().map(|s| s.to_string()).collect();
-                    cycle.push(name.to_string());
-                    return Some(cycle);
-                }
-                None => {}
-            }
-            marks.insert(name, Mark::Open);
-            path.push(name);
-            if let Some(c) = crates.get(name) {
-                for dep in &c.deps {
-                    if let Some(cycle) = visit(dep, crates, marks, path) {
-                        return Some(cycle);
-                    }
-                }
-            }
-            path.pop();
-            marks.insert(name, Mark::Done);
-            None
-        }
-        let mut marks = HashMap::new();
-        for name in self.crates.keys() {
-            if let Some(cycle) = visit(name, &self.crates, &mut marks, &mut Vec::new()) {
-                return Err(GenError::new(
-                    ERR_CRATE_CYCLE,
-                    format!(
-                        "these packages refer to each other, so their crates would depend on each other, which Cargo refuses: {}",
-                        cycle.join(" -> ")
-                    ),
-                ));
-            }
-        }
-        Ok(())
-    }
-
-    /// A struct that contains itself by value, directly or through others, has no size.
-    /// Every by-value containment edge that lies inside a cycle goes through a `Box`.
-    fn box_cycles(&mut self) {
-        let index: HashMap<(&str, &str), usize> = self
-            .structs
-            .iter()
-            .enumerate()
-            .map(|(i, s)| ((s.crate_name.as_str(), s.type_name.as_str()), i))
-            .collect();
-        let edges: Vec<Vec<(usize, usize)>> = self
-            .structs
-            .iter()
-            .map(|s| {
-                s.fields
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, f)| f.boxed)
-                    .filter_map(|(fi, f)| {
-                        let t = ty_ref(&f.ty)?;
-                        let target = *index.get(&(t.crate_name.as_str(), t.type_name.as_str()))?;
-                        Some((fi, target))
-                    })
-                    .collect()
-            })
-            .collect();
-        let adjacency: Vec<Vec<usize>> = edges
-            .iter()
-            .map(|e| e.iter().map(|&(_, t)| t).collect())
-            .collect();
-        let component = strongly_connected(&adjacency);
-        let mut cyclic: Vec<(usize, usize)> = Vec::new();
-        for (si, list) in edges.iter().enumerate() {
-            for &(fi, target) in list {
-                if component[si] == component[target] {
-                    cyclic.push((si, fi));
-                }
-            }
-        }
-        for s in &mut self.structs {
-            for f in &mut s.fields {
-                f.boxed = false;
-            }
-        }
-        for (si, fi) in cyclic {
-            self.structs[si].fields[fi].boxed = true;
-        }
-    }
-
-    fn emit(&self, entities: &[String]) -> Result<Vec<EmittedFile>, GenError> {
-        let selected: Option<HashSet<usize>> = if entities.is_empty() {
-            None
-        } else {
-            let mut picked = HashSet::new();
-            for name in entities {
-                let exact = name.strip_prefix(PACKAGE_SEP);
-                let hits: Vec<usize> = self
-                    .structs
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, s)| match exact {
-                        Some(key) => s.key == key,
-                        None => {
-                            s.key == *name
-                                || s.key.rsplit(PACKAGE_SEP).next() == Some(name.as_str())
-                        }
-                    })
-                    .map(|(i, _)| i)
-                    .collect();
-                match hits.as_slice() {
-                    [] => {
-                        return Err(GenError::new(
-                            ERR_UNSUPPORTED,
-                            format!("no entity or value object named {name}"),
-                        ));
-                    }
-                    [only] => {
-                        picked.insert(*only);
-                    }
-                    many => {
-                        let keys: Vec<&str> =
-                            many.iter().map(|&i| self.structs[i].key.as_str()).collect();
-                        return Err(GenError::new(
-                            ERR_NAME_COLLISION,
-                            format!(
-                                "{name} names more than one entity or value object ({}); name one by its full key, `::Name` for a package-less object or `pkg::Name`",
-                                keys.join(", ")
-                            ),
-                        ));
-                    }
-                }
-            }
-            Some(picked)
-        };
-        // A named run emits every file of every crate that contains a selected object, plus
-        // the transitive closure of the crates those depend on: a selected crate's manifest
-        // declares a path dependency on every crate its fields reference, so a dependency
-        // crate left out would leave output `cargo check` cannot build. Unchanged bytes are
-        // never rewritten, so re-emitting a dependency crate costs nothing.
-        let selected_crates: Option<HashSet<&str>> = selected.as_ref().map(|sel| {
-            let mut chosen: HashSet<&str> = self
-                .crates
-                .iter()
-                .filter(|(_, c)| c.structs.iter().any(|i| sel.contains(i)))
-                .map(|(name, _)| name.as_str())
-                .collect();
-            let mut queue: Vec<&str> = chosen.iter().copied().collect();
-            while let Some(name) = queue.pop() {
-                if let Some(c) = self.crates.get(name) {
-                    for dep in &c.deps {
-                        if chosen.insert(dep.as_str()) {
-                            queue.push(dep.as_str());
-                        }
-                    }
-                }
-            }
-            chosen
-        });
-        let mut files = Vec::new();
-        for (cname, c) in &self.crates {
-            if !selected_crates
-                .as_ref()
-                .is_none_or(|sel| sel.contains(cname.as_str()))
-            {
-                continue;
-            }
-            files.push(EmittedFile::new(
-                format!("{cname}/Cargo.toml"),
-                cargo_toml(cname, c),
-            ));
-            files.push(EmittedFile::new(
-                format!("{cname}/rustfmt.toml"),
-                RUSTFMT_TOML.to_string(),
-            ));
-            let shadowed: HashSet<&str> = c
-                .structs
-                .iter()
-                .map(|&i| self.structs[i].type_name.as_str())
-                .chain(
-                    c.structs
-                        .iter()
-                        .flat_map(|&i| self.structs[i].enums.iter().map(|e| e.type_name.as_str())),
-                )
-                .chain(c.shared_enums.iter().map(|(_, e)| e.type_name.as_str()))
-                .filter(|n| PRELUDE_TYPES.contains(n))
-                .collect();
-            let q = Qualifier { shadowed };
-
-            let mut lib_items: Vec<(String, Vec<String>)> = Vec::new();
-            for &i in &c.structs {
-                let s = &self.structs[i];
-                let module = module_name(&s.type_name);
-                let mut exports = vec![s.type_name.clone()];
-                exports.extend(s.enums.iter().map(|e| e.type_name.clone()));
-                lib_items.push((module.clone(), exports));
-                files.push(EmittedFile::new(
-                    format!("{cname}/src/{module}.rs"),
-                    struct_file(s, cname, &q),
-                ));
-            }
-            for (_, e) in &c.shared_enums {
-                let module = module_name(&e.type_name);
-                lib_items.push((module.clone(), vec![e.type_name.clone()]));
-                files.push(EmittedFile::new(
-                    format!("{cname}/src/{module}.rs"),
-                    enum_file(e),
-                ));
-            }
-            lib_items.sort();
-            files.push(EmittedFile::new(
-                format!("{cname}/src/lib.rs"),
-                lib_file(&c.package, &lib_items),
-            ));
+            model_crate(&plan, cname, c, &mut files)?;
         }
         Ok(files)
     }
 }
 
-fn str_attr_own_true(tree: &Tree, id: NodeId, name: &str) -> bool {
-    // ADR-0039 sanctioned own: `@provided` marks THIS declaration as supplied by hand-written
-    // code, like `abstract`; it does not flow down an extends chain.
-    tree.own_attr(id, name).and_then(|a| a.value.as_bool()) == Some(true)
+// ---- crates ----------------------------------------------------------------------------
+
+/// The crate of wire types and checks the model crates share. It is generated, so the
+/// output depends on nothing from MetaObjects.
+fn support_crate() -> Vec<EmittedFile> {
+    let manifest = format!(
+        "{MANIFEST_BANNER}[package]\n\
+         name = {}\n\
+         version = \"0.1.0\"\n\
+         edition = \"2021\"\n\
+         publish = false\n\
+         description = \"Wire types and validation checks for the generated MetaObjects model crates.\"\n\
+         \n\
+         [dependencies]\n\
+         serde = \"1\"\n",
+        literal(SUPPORT_CRATE)
+    );
+    let lib = format!(
+        "{BANNER}\n\
+         \n\
+         //! What every generated model crate uses: the exact `Decimal` and the ISO-8601\n\
+         //! `Duration` of the wire form, and the checks `validate()` is written in.\n\
+         \n\
+         pub mod pattern;\n\
+         pub mod validation;\n\
+         pub mod wire;\n"
+    );
+    let file = |name: &str, text: &str| {
+        EmittedFile::new(format!("{SUPPORT_CRATE}/{name}"), text.to_string())
+    };
+    vec![
+        file("Cargo.toml", &manifest),
+        file("rustfmt.toml", RUSTFMT_TOML),
+        file("src/lib.rs", &lib),
+        file("src/pattern.rs", &format!("{BANNER}\n\n{PATTERN_RS}")),
+        file("src/validation.rs", &format!("{BANNER}\n\n{VALIDATION_RS}")),
+        file("src/wire.rs", &format!("{BANNER}\n\n{WIRE_RS}")),
+    ]
 }
 
-fn ty_ref(ty: &Ty) -> Option<&TypeRef> {
-    match ty {
-        Ty::Ref(r) => Some(r),
-        Ty::Map(inner) => ty_ref(inner),
-        _ => None,
-    }
-}
+fn model_crate(
+    plan: &Plan,
+    cname: &str,
+    c: &CratePlan,
+    files: &mut Vec<EmittedFile>,
+) -> Result<(), GenError> {
+    files.push(EmittedFile::new(
+        format!("{cname}/Cargo.toml"),
+        cargo_toml(cname, c),
+    ));
+    files.push(EmittedFile::new(
+        format!("{cname}/rustfmt.toml"),
+        RUSTFMT_TOML.to_string(),
+    ));
+    let shadowed: HashSet<&str> = c
+        .structs
+        .iter()
+        .flat_map(|&i| {
+            let s = &plan.structs[i];
+            std::iter::once(s.type_name.as_str())
+                .chain(s.enums.iter().map(|e| e.type_name.as_str()))
+        })
+        .chain(c.shared_enums.iter().map(|(_, e)| e.type_name.as_str()))
+        .filter(|n| PRELUDE_TYPES.contains(n))
+        .collect();
+    let q = Qualifier { shadowed };
 
-/// The struct an `@objectRef` binds to, resolved by the loader's own resolver: the package
-/// that declared the attribute (up the `extends` chain) decides, and the first top-level
-/// object it names wins, emitted or not.
-fn bound_struct(
-    index: &ObjectIndex,
-    by_node: &HashMap<NodeId, usize>,
-    tree: &Tree,
-    field: NodeId,
-) -> Option<usize> {
-    index
-        .ref_target(tree, field, "objectRef")
-        .and_then(|t| by_node.get(&t).copied())
-}
-
-/// Two fields of one struct must not become one Rust field.
-fn check_fields(owner: &str, fields: &[FieldPlan]) -> Result<(), GenError> {
-    let mut seen: HashMap<&str, &str> = HashMap::new();
-    for f in fields {
-        let bare = f.ident.strip_prefix("r#").unwrap_or(&f.ident);
-        if let Some(prev) = seen.insert(bare, &f.wire) {
-            return Err(GenError::new(
-                ERR_NAME_COLLISION,
-                format!(
-                    "{owner}: the fields '{prev}' and '{}' both become the Rust field {bare}",
-                    f.wire
-                ),
-            ));
+    let mut lib_items: Vec<(String, Vec<String>)> = Vec::new();
+    for &i in &c.structs {
+        let s = &plan.structs[i];
+        let mut exports = vec![s.type_name.clone()];
+        if s.has_inputs() {
+            exports.push(s.create_name());
+            exports.push(s.patch_name());
         }
+        exports.extend(s.enums.iter().map(|e| e.type_name.clone()));
+        lib_items.push((s.module(), exports));
+        let text = struct_file(plan, s, cname, &q)?;
+        files.push(EmittedFile::new(
+            format!("{cname}/src/{}.rs", s.module()),
+            text,
+        ));
     }
+    for (_, e) in &c.shared_enums {
+        let module = module_name(&e.type_name);
+        lib_items.push((module.clone(), vec![e.type_name.clone()]));
+        let text = file(BANNER, &[item(|w| enum_item(w, e))?]);
+        files.push(EmittedFile::new(format!("{cname}/src/{module}.rs"), text));
+    }
+    lib_items.sort();
+    files.push(EmittedFile::new(
+        format!("{cname}/src/lib.rs"),
+        lib_file(&c.package, &lib_items),
+    ));
     Ok(())
 }
 
-/// Tarjan's algorithm: the component number of every node.
-fn strongly_connected(adjacency: &[Vec<usize>]) -> Vec<usize> {
-    struct State<'a> {
-        adjacency: &'a [Vec<usize>],
-        index: Vec<Option<usize>>,
-        low: Vec<usize>,
-        on_stack: Vec<bool>,
-        stack: Vec<usize>,
-        next: usize,
-        component: Vec<usize>,
-        components: usize,
-    }
-    fn connect(s: &mut State<'_>, v: usize) {
-        s.index[v] = Some(s.next);
-        s.low[v] = s.next;
-        s.next += 1;
-        s.stack.push(v);
-        s.on_stack[v] = true;
-        for k in 0..s.adjacency[v].len() {
-            let w = s.adjacency[v][k];
-            match s.index[w] {
-                None => {
-                    connect(s, w);
-                    s.low[v] = s.low[v].min(s.low[w]);
-                }
-                Some(wi) if s.on_stack[w] => s.low[v] = s.low[v].min(wi),
-                Some(_) => {}
-            }
-        }
-        if Some(s.low[v]) == s.index[v] {
-            while let Some(w) = s.stack.pop() {
-                s.on_stack[w] = false;
-                s.component[w] = s.components;
-                if w == v {
-                    break;
-                }
-            }
-            s.components += 1;
-        }
-    }
-    let n = adjacency.len();
-    let mut s = State {
-        adjacency,
-        index: vec![None; n],
-        low: vec![0; n],
-        on_stack: vec![false; n],
-        stack: Vec::new(),
-        next: 0,
-        component: vec![0; n],
-        components: 0,
-    };
-    for v in 0..n {
-        if s.index[v].is_none() {
-            connect(&mut s, v);
-        }
-    }
-    s.component
-}
-
-// ---- the text --------------------------------------------------------------------------
-
-/// Spells a std type by its short name, or by its full path in a crate that declares a type
-/// with the same name (an object called `Option` must not capture the field types).
-struct Qualifier<'a> {
-    shadowed: HashSet<&'a str>,
-}
-
-impl Qualifier<'_> {
-    fn std(&self, short: &'static str, full: &'static str) -> &'static str {
-        if self.shadowed.contains(short) {
-            full
-        } else {
-            short
-        }
-    }
-}
-
-fn render_ty(ty: &Ty, current: &str, q: &Qualifier<'_>) -> String {
-    match ty {
-        Ty::Str => q.std("String", "std::string::String").to_string(),
-        Ty::Prim(p) => (*p).to_string(),
-        Ty::Ip => "std::net::IpAddr".to_string(),
-        Ty::Ref(r) if r.crate_name == current => format!("crate::{}", r.type_name),
-        Ty::Ref(r) => format!("{}::{}", r.crate_name, r.type_name),
-        Ty::Map(v) => format!(
-            "std::collections::BTreeMap<{}, {}>",
-            q.std("String", "std::string::String"),
-            render_ty(v, current, q)
-        ),
-    }
-}
-
-fn field_type_text(f: &FieldPlan, current: &str, q: &Qualifier<'_>) -> String {
-    let mut text = render_ty(&f.ty, current, q);
-    if f.boxed {
-        text = format!("{}<{text}>", q.std("Box", "std::boxed::Box"));
-    }
-    if f.array {
-        text = format!("{}<{text}>", q.std("Vec", "std::vec::Vec"));
-    }
-    if f.optional {
-        text = format!("{}<{text}>", q.std("Option", "std::option::Option"));
-    }
-    text
-}
-
 fn cargo_toml(name: &str, c: &CratePlan) -> String {
-    let mut out = String::new();
-    out.push_str("# @generated by the MetaObjects entity generator. Do not edit: change the model and run `cargo meta gen`.\n");
+    let mut out = String::from(MANIFEST_BANNER);
     out.push_str("[package]\n");
     out.push_str(&format!("name = {}\n", literal(name)));
     out.push_str("version = \"0.1.0\"\n");
@@ -896,6 +213,9 @@ fn cargo_toml(name: &str, c: &CratePlan) -> String {
     }
     out.push_str("\n[dependencies]\n");
     out.push_str("serde = { version = \"1\", features = [\"derive\"] }\n");
+    out.push_str(&format!(
+        "{SUPPORT_CRATE} = {{ path = \"../{SUPPORT_CRATE}\" }}\n"
+    ));
     for dep in &c.deps {
         out.push_str(&format!("{dep} = {{ path = \"../{dep}\" }}\n"));
     }
@@ -903,8 +223,7 @@ fn cargo_toml(name: &str, c: &CratePlan) -> String {
 }
 
 fn lib_file(package: &str, items: &[(String, Vec<String>)]) -> String {
-    let mut out = String::from(BANNER);
-    out.push('\n');
+    let mut out = format!("{BANNER}\n\n");
     if package.is_empty() {
         out.push_str("//! Generated from the MetaObjects model that declares no package.\n");
     } else {
@@ -925,74 +244,828 @@ fn lib_file(package: &str, items: &[(String, Vec<String>)]) -> String {
     out
 }
 
-fn enum_text(e: &EnumPlan) -> String {
-    let mut out = String::new();
-    if let Some(doc) = &e.doc {
-        out.push_str(&doc_comment(doc, ""));
-    }
-    out.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]\n");
-    out.push_str(&format!("pub enum {} {{\n", e.type_name));
-    for m in &e.members {
-        if m.variant != m.wire {
-            out.push_str(&format!("    #[serde(rename = {})]\n", literal(&m.wire)));
+// ---- text ------------------------------------------------------------------------------
+
+fn text(s: impl Into<String>) -> Piece {
+    Piece::Text(s.into())
+}
+
+/// Spells a std type by its short name, or by its full path in a crate that declares a type
+/// with the same name (an object called `Option` must not capture the field types).
+struct Qualifier<'a> {
+    shadowed: HashSet<&'a str>,
+}
+
+impl Qualifier<'_> {
+    fn std(&self, short: &'static str, full: &'static str) -> &'static str {
+        if self.shadowed.contains(short) {
+            full
+        } else {
+            short
         }
-        out.push_str(&format!("    {},\n", m.variant));
     }
-    out.push_str("}\n\n");
-    out.push_str(&format!("impl {} {{\n", e.type_name));
-    out.push_str("    /// The wire spelling of the member.\n");
-    out.push_str("    pub const fn as_str(self) -> &'static str {\n");
-    out.push_str("        match self {\n");
-    for m in &e.members {
-        out.push_str(&format!(
-            "            {}::{} => {},\n",
-            e.type_name,
-            m.variant,
-            literal(&m.wire)
+
+    fn vec(&self) -> &'static str {
+        self.std("Vec", "std::vec::Vec")
+    }
+
+    fn option(&self) -> &'static str {
+        self.std("Option", "std::option::Option")
+    }
+}
+
+fn render_ty(ty: &Ty, current: &str, q: &Qualifier<'_>) -> String {
+    match ty {
+        Ty::Str => q.std("String", "std::string::String").to_string(),
+        Ty::Prim(p) => (*p).to_string(),
+        Ty::Ip => "std::net::IpAddr".to_string(),
+        Ty::Decimal => format!("{WIRE}::Decimal"),
+        Ty::Duration => format!("{WIRE}::Duration"),
+        Ty::Ref(r) if r.crate_name == current => format!("crate::{}", r.type_name),
+        Ty::Ref(r) => format!("{}::{}", r.crate_name, r.type_name),
+        Ty::Map(v) => format!(
+            "std::collections::BTreeMap<{}, {}>",
+            q.std("String", "std::string::String"),
+            render_ty(v, current, q)
+        ),
+    }
+}
+
+/// Which of an object's three types a member belongs to.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Shape {
+    Read,
+    Create,
+    Patch,
+}
+
+/// How a member holds its value.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Access {
+    /// `T`.
+    Plain,
+    /// `Option<T>`.
+    Opt,
+    /// `Option<Option<T>>`: absent, null, or set.
+    Tri,
+}
+
+fn access(f: &FieldPlan, shape: Shape) -> Access {
+    match shape {
+        Shape::Read if f.optional || f.credential => Access::Opt,
+        Shape::Read => Access::Plain,
+        Shape::Create if f.create == Presence::Optional => Access::Opt,
+        Shape::Create => Access::Plain,
+        // A member the model lets be null is nullable in a patch; any other is set or left.
+        Shape::Patch if f.optional => Access::Tri,
+        Shape::Patch => Access::Opt,
+    }
+}
+
+fn in_shape(f: &FieldPlan, shape: Shape) -> bool {
+    match shape {
+        Shape::Read => true,
+        Shape::Create => f.create != Presence::Absent,
+        Shape::Patch => f.patch,
+    }
+}
+
+fn member_type(f: &FieldPlan, shape: Shape, current: &str, q: &Qualifier<'_>) -> String {
+    let mut text = render_ty(&f.ty, current, q);
+    if f.boxed {
+        text = format!("{}<{text}>", q.std("Box", "std::boxed::Box"));
+    }
+    if f.array {
+        text = format!("{}<{text}>", q.vec());
+    }
+    match access(f, shape) {
+        Access::Plain => text,
+        Access::Opt => format!("{}<{text}>", q.option()),
+        Access::Tri => format!("{0}<{0}<{text}>>", q.option()),
+    }
+}
+
+fn enum_item(w: &mut CodeWriter, e: &EnumPlan) {
+    if let Some(doc) = &e.doc {
+        w.doc(doc);
+    }
+    w.line(
+        "#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]",
+    );
+    w.block(format!("pub enum {} {{", e.type_name), |w| {
+        for m in &e.members {
+            if m.variant != m.wire {
+                w.line(format!("#[serde(rename = {})]", literal(&m.wire)));
+            }
+            w.line(format!("{},", m.variant));
+        }
+    });
+    w.blank();
+    w.block(format!("impl {} {{", e.type_name), |w| {
+        w.line("/// The wire spelling of the member.");
+        w.block("pub const fn as_str(self) -> &'static str {", |w| {
+            w.block("match self {", |w| {
+                for m in &e.members {
+                    w.line(format!(
+                        "{}::{} => {},",
+                        e.type_name,
+                        m.variant,
+                        literal(&m.wire)
+                    ));
+                }
+            });
+        });
+    });
+}
+
+fn struct_item(
+    w: &mut CodeWriter,
+    plan: &Plan,
+    s: &StructPlan,
+    shape: Shape,
+    current: &str,
+    q: &Qualifier<'_>,
+) {
+    let (name, derive_default) = match shape {
+        Shape::Read => (s.type_name.clone(), false),
+        Shape::Create => (s.create_name(), false),
+        Shape::Patch => (s.patch_name(), true),
+    };
+    match shape {
+        Shape::Read => {
+            if let Some(doc) = &s.doc {
+                w.doc(doc);
+            }
+        }
+        Shape::Create => {
+            w.doc(&format!(
+                "What a caller sends to create one `{}`: the members the server does not fill itself.",
+                s.type_name
+            ));
+        }
+        Shape::Patch => {
+            w.doc(&format!(
+                "A change to one `{}`: a member left `None` is not touched. A member the model lets be\nnull is `Some(None)` to set it to null.",
+                s.type_name
+            ));
+        }
+    }
+    let default = if derive_default { "Default, " } else { "" };
+    w.line(format!(
+        "#[derive(Debug, Clone, {default}PartialEq, serde::Serialize, serde::Deserialize)]"
+    ));
+    let members: Vec<&FieldPlan> = s.fields.iter().filter(|f| in_shape(f, shape)).collect();
+    if members.is_empty() {
+        w.line(format!("pub struct {name} {{}}"));
+        return;
+    }
+    w.block(format!("pub struct {name} {{"), |w| {
+        for f in members {
+            if let Some(doc) = &f.doc {
+                w.doc(doc);
+            }
+            let mut attrs: Vec<String> = Vec::new();
+            let bare = f.ident.strip_prefix("r#").unwrap_or(&f.ident);
+            if bare != f.wire {
+                attrs.push(format!("rename = {}", literal(&f.wire)));
+            }
+            match access(f, shape) {
+                Access::Plain => {}
+                Access::Opt if shape == Shape::Patch => {
+                    attrs.push("default".to_string());
+                    attrs.push("skip_serializing_if = \"Option::is_none\"".to_string());
+                }
+                Access::Opt => {
+                    // A request body leaves out what the caller did not set: a `null` there
+                    // would be a value. A row follows the project's `wire.nullMembers`, and
+                    // a credential is never part of one.
+                    if shape == Shape::Create
+                        || f.credential
+                        || plan.null_members == NullMembers::Omit
+                    {
+                        if f.credential && shape == Shape::Read {
+                            attrs.push("default".to_string());
+                        }
+                        attrs.push("skip_serializing_if = \"Option::is_none\"".to_string());
+                    }
+                }
+                Access::Tri => {
+                    attrs.push("default".to_string());
+                    attrs.push(format!("deserialize_with = \"{WIRE}::present\""));
+                    attrs.push("skip_serializing_if = \"Option::is_none\"".to_string());
+                }
+            }
+            // rustfmt breaks an attribute's arguments without a trailing comma, a form the
+            // writer's lists do not have, so arguments that do not fit one line are written
+            // as one attribute each.
+            let joined = format!("#[serde({})]", attrs.join(", "));
+            if attrs.is_empty() {
+            } else if w.fits(&joined) {
+                w.line(joined);
+            } else {
+                for a in attrs {
+                    w.line(format!("#[serde({a})]"));
+                }
+            }
+            w.line(format!(
+                "pub {}: {},",
+                f.ident,
+                member_type(f, shape, current, q)
+            ));
+        }
+    });
+}
+
+// ---- validate() ------------------------------------------------------------------------
+
+/// A statement of a `validate()` body.
+enum Stmt {
+    Line(Piece),
+    /// `head rhs`, laid out as rustfmt lays out an assignment.
+    Assign(String, Piece),
+    Block(String, Vec<Stmt>),
+}
+
+fn write_stmts(w: &mut CodeWriter, stmts: Vec<Stmt>) {
+    for s in stmts {
+        match s {
+            Stmt::Line(p) => {
+                w.line(p);
+            }
+            Stmt::Assign(head, rhs) => {
+                w.assign(&head, rhs);
+            }
+            Stmt::Block(head, body) => {
+                w.block(head, |w| write_stmts(w, body));
+            }
+        }
+    }
+}
+
+fn call(function: &str, args: Vec<String>) -> Stmt {
+    Stmt::Line(list(&format!("{CHECK}::{function}("), args, ");"))
+}
+
+fn bind(name: &str, function: &str, args: Vec<String>) -> Stmt {
+    Stmt::Assign(
+        format!("let {name} ="),
+        list(&format!("{CHECK}::{function}("), args, ");"),
+    )
+}
+
+fn member(f: &FieldPlan) -> String {
+    format!("self.{}", f.ident)
+}
+
+/// `Option<&str>` of a text member.
+fn str_value(f: &FieldPlan, a: Access) -> String {
+    let m = member(f);
+    match a {
+        Access::Plain => format!("Some({m}.as_str())"),
+        Access::Opt => format!("{m}.as_deref()"),
+        Access::Tri => format!("{WIRE}::set(&{m}).map(|v| v.as_str())"),
+    }
+}
+
+/// `Option<T>` of a `Copy` member.
+fn copy_value(f: &FieldPlan, a: Access) -> String {
+    let m = member(f);
+    match a {
+        Access::Plain => format!("Some({m})"),
+        Access::Opt => m,
+        Access::Tri => format!("{WIRE}::set(&{m}).copied()"),
+    }
+}
+
+/// `Option<T>` of a member that is cloned to be compared.
+fn clone_value(f: &FieldPlan, a: Access) -> String {
+    let m = member(f);
+    match a {
+        Access::Plain => format!("Some({m}.clone())"),
+        Access::Opt => format!("{m}.clone()"),
+        Access::Tri => format!("{WIRE}::set(&{m}).cloned()"),
+    }
+}
+
+fn opt_usize(v: Option<u64>) -> String {
+    v.map_or_else(|| "None".to_string(), |n| format!("Some({n})"))
+}
+
+/// A numeric bound as a literal of the member's own type; `None` when the type cannot
+/// hold it, in which case every value is on the right side of it.
+fn bound(n: Option<&serde_json::Number>, f: &FieldPlan, is_min: bool) -> String {
+    let Some(n) = n else {
+        return "None".to_string();
+    };
+    let some = |s: String| format!("Some({s})");
+    match f.kind {
+        Kind::Decimal => format!("{WIRE}::Decimal::parse({}).ok()", literal(&n.to_string())),
+        Kind::Double | Kind::Float => match n.as_f64() {
+            Some(v) if f.kind == Kind::Float && v.abs() > f64::from(f32::MAX) => "None".to_string(),
+            Some(v) => some(format!("{v:?}")),
+            None => "None".to_string(),
+        },
+        _ => {
+            // A whole-number member: a fractional bound tightens to the next whole number.
+            let whole = n.as_i64().or_else(|| {
+                n.as_f64().map(|v| {
+                    if is_min {
+                        v.ceil() as i64
+                    } else {
+                        v.floor() as i64
+                    }
+                })
+            });
+            match whole {
+                Some(v) if f.kind == Kind::Int => some(
+                    v.clamp(i64::from(i32::MIN), i64::from(i32::MAX))
+                        .to_string(),
+                ),
+                Some(v) => some(v.to_string()),
+                None => "None".to_string(),
+            }
+        }
+    }
+}
+
+fn format_check(format: Format) -> (&'static str, &'static str) {
+    match format {
+        Format::Hostname => ("is_hostname", "be a hostname"),
+        Format::Email => ("is_email", "be an email address"),
+        Format::AbsoluteUri => ("is_absolute_uri", "be an absolute URI"),
+        Format::Uuid => ("is_uuid", "be a UUID"),
+        Format::Date => ("is_date", "be an ISO 8601 date"),
+        Format::Time => ("is_time", "be an ISO 8601 time"),
+        Format::Timestamp => ("is_timestamp", "be an ISO 8601 timestamp"),
+    }
+}
+
+/// The checks of one member's own rules.
+fn member_checks(plan: &Plan, f: &FieldPlan, a: Access, out: &mut Vec<Stmt>) {
+    let name = literal(&f.wire);
+    let m = member(f);
+    let rules = &f.rules;
+    // A nested value object carries rules of its own. An entity reached by value is a row
+    // the server returned, which has none.
+    let nested =
+        f.ty.type_ref()
+            .filter(|_| f.kind == Kind::Object)
+            .and_then(|t| plan.struct_of(t))
+            .is_some_and(|i| !plan.structs[i].is_entity);
+    if f.array {
+        if rules.min_items.is_some() || rules.max_items.is_some() {
+            let count = match a {
+                Access::Plain => format!("Some({m}.len())"),
+                Access::Opt => format!("{m}.as_ref().map(|v| v.len())"),
+                Access::Tri => format!("{WIRE}::set(&{m}).map(|v| v.len())"),
+            };
+            out.push(call(
+                "items",
+                vec![
+                    "&mut out".into(),
+                    name.clone(),
+                    count,
+                    opt_usize(rules.min_items),
+                    opt_usize(rules.max_items),
+                ],
+            ));
+        }
+        if nested {
+            let each = |items: &str| {
+                Stmt::Block(
+                    format!("for (at, value) in {items}.enumerate() {{"),
+                    vec![
+                        Stmt::Line(text(format!(
+                            "let prefix = format!(\"{}[{{at}}]\");",
+                            f.wire
+                        ))),
+                        call(
+                            "nested",
+                            vec![
+                                "&mut out".into(),
+                                "&prefix".into(),
+                                "value.validate()".into(),
+                            ],
+                        ),
+                    ],
+                )
+            };
+            out.push(match a {
+                Access::Plain => each(&format!("{m}.iter()")),
+                Access::Opt => each(&format!("{m}.iter().flatten()")),
+                Access::Tri => Stmt::Block(
+                    format!("if let Some(items) = {WIRE}::set(&{m}) {{"),
+                    vec![each("items.iter()")],
+                ),
+            });
+        }
+        return;
+    }
+    if rules.min_len.is_some() || rules.max_len.is_some() {
+        out.push(call(
+            "length",
+            vec![
+                "&mut out".into(),
+                name.clone(),
+                str_value(f, a),
+                opt_usize(rules.min_len),
+                opt_usize(rules.max_len),
+            ],
         ));
     }
-    out.push_str("        }\n    }\n}\n");
-    out
+    if let Some(pattern) = &rules.pattern {
+        out.push(call(
+            "pattern",
+            vec![
+                "&mut out".into(),
+                name.clone(),
+                str_value(f, a),
+                literal(pattern),
+            ],
+        ));
+    }
+    if rules.min.is_some() || rules.max.is_some() {
+        let value = if f.kind == Kind::Decimal {
+            clone_value(f, a)
+        } else {
+            copy_value(f, a)
+        };
+        out.push(call(
+            "range",
+            vec![
+                "&mut out".into(),
+                name.clone(),
+                value,
+                bound(rules.min.as_ref(), f, true),
+                bound(rules.max.as_ref(), f, false),
+            ],
+        ));
+    }
+    if let Some(format) = rules.format {
+        let (check, must) = format_check(format);
+        out.push(call(
+            "format",
+            vec![
+                "&mut out".into(),
+                name.clone(),
+                str_value(f, a),
+                format!("{CHECK}::{check}"),
+                literal(must),
+            ],
+        ));
+    }
+    if nested {
+        let nested_call = |value: &str| {
+            call(
+                "nested",
+                vec![
+                    "&mut out".into(),
+                    name.clone(),
+                    format!("{value}.validate()"),
+                ],
+            )
+        };
+        match a {
+            Access::Plain => out.push(nested_call(&m)),
+            Access::Opt => {
+                out.push(Stmt::Block(
+                    format!("if let Some(value) = &{m} {{"),
+                    vec![nested_call("value")],
+                ));
+            }
+            Access::Tri => out.push(Stmt::Block(
+                format!("if let Some(value) = {WIRE}::set(&{m}) {{"),
+                vec![nested_call("value")],
+            )),
+        }
+    }
 }
 
-fn enum_file(e: &EnumPlan) -> String {
-    format!("{BANNER}\n{}", enum_text(e))
+/// `Option<X>` of a create member, where `X` is the type its comparison class compares.
+fn operand_field(f: &FieldPlan, class: Class) -> String {
+    let a = access(f, Shape::Create);
+    let m = member(f);
+    let plain = a == Access::Plain;
+    let mapped = |map: &str, direct: &str| {
+        if plain {
+            format!("Some({direct})")
+        } else {
+            format!("{m}.map({map})")
+        }
+    };
+    match class {
+        Class::Int if f.kind == Kind::Int => mapped("i64::from", &format!("i64::from({m})")),
+        Class::Int => copy_value(f, a),
+        Class::Float => match f.kind {
+            Kind::Double => copy_value(f, a),
+            Kind::Float | Kind::Int => mapped("f64::from", &format!("f64::from({m})")),
+            _ => mapped("|v| v as f64", &format!("{m} as f64")),
+        },
+        Class::Decimal => {
+            let decimal = format!("{WIRE}::Decimal");
+            match f.kind {
+                Kind::Decimal => clone_value(f, a),
+                Kind::Int => mapped(
+                    &format!("|v| {decimal}::from(i64::from(v))"),
+                    &format!("{decimal}::from(i64::from({m}))"),
+                ),
+                Kind::Long | Kind::Currency => mapped(
+                    &format!("{decimal}::from"),
+                    &format!("{decimal}::from({m})"),
+                ),
+                Kind::Float if plain => format!("{decimal}::from_f64(f64::from({m}))"),
+                Kind::Float => format!("{m}.and_then(|v| {decimal}::from_f64(f64::from(v)))"),
+                _ if plain => format!("{decimal}::from_f64({m})"),
+                _ => format!("{m}.and_then({decimal}::from_f64)"),
+            }
+        }
+        Class::Text => str_value(f, a),
+        Class::Time => format!("{CHECK}::time_key({})", str_value(f, a)),
+        Class::Instant => format!("{CHECK}::instant_key({})", str_value(f, a)),
+        Class::Duration | Class::Bool => copy_value(f, a),
+        Class::Symbol => mapped("|v| v.as_str()", &format!("{m}.as_str()")),
+        Class::Uuid if plain => format!("Some({m}.to_ascii_lowercase())"),
+        Class::Uuid => format!("{m}.as_deref().map(|v| v.to_ascii_lowercase())"),
+        Class::Address if plain => format!("Some({m}.to_string())"),
+        Class::Address => format!("{m}.as_ref().map(|v| v.to_string())"),
+    }
 }
 
-fn struct_file(s: &StructPlan, current: &str, q: &Qualifier<'_>) -> String {
-    let mut out = String::from(BANNER);
-    out.push('\n');
-    if let Some(doc) = &s.doc {
-        out.push_str(&doc_comment(doc, ""));
-    }
-    let mut body = String::new();
-    let mut too_wide = false;
-    for f in &s.fields {
-        if let Some(doc) = &f.doc {
-            body.push_str(&doc_comment(doc, "    "));
+fn operand_literal(lit: &Literal, class: Class) -> String {
+    match (lit, class) {
+        (Literal::Bool(b), _) => format!("Some({b})"),
+        (Literal::Int(n), _) => format!("Some({n})"),
+        (Literal::Float(v), _) => format!("Some({v:?})"),
+        (Literal::Decimal(t), _) => format!("{WIRE}::Decimal::parse({}).ok()", literal(t)),
+        (Literal::Duration(n), _) => format!("Some({WIRE}::Duration::from_nanos({n}))"),
+        (Literal::Str(s), Class::Time) => format!("{CHECK}::time_key(Some({}))", literal(s)),
+        (Literal::Str(s), Class::Instant) => {
+            format!("{CHECK}::instant_key(Some({}))", literal(s))
         }
-        let bare = f.ident.strip_prefix("r#").unwrap_or(&f.ident);
-        if bare != f.wire {
-            body.push_str(&format!("    #[serde(rename = {})]\n", literal(&f.wire)));
+        (Literal::Str(s), Class::Uuid | Class::Address) => {
+            format!("Some({}.to_string())", literal(s))
         }
-        let line = format!("    pub {}: {},\n", f.ident, field_type_text(f, current, q));
-        too_wide |= line.trim_end().chars().count() > MAX_WIDTH;
-        body.push_str(&line);
+        (Literal::Str(s), _) => format!("Some({})", literal(s)),
     }
-    // A field line past the width is one rustfmt would break in a form this emitter does not
-    // reproduce, so such a struct is left as written.
-    if too_wide {
-        out.push_str("#[rustfmt::skip]\n");
+}
+
+fn operand(s: &StructPlan, op: &Operand, class: Class) -> String {
+    match op {
+        Operand::Field(i) => operand_field(&s.fields[*i], class),
+        Operand::Value(lit) => operand_literal(lit, class),
+        Operand::Coalesce(parts) => {
+            let mut parts = parts.iter().map(|p| operand(s, p, class));
+            let first = parts.next().unwrap_or_else(|| "None".to_string());
+            parts.fold(first, |acc, next| format!("{acc}.or({next})"))
+        }
     }
-    out.push_str("#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]\n");
-    if s.fields.is_empty() {
-        out.push_str(&format!("pub struct {} {{}}\n", s.type_name));
+}
+
+/// Whether a create member is present, as a `bool` expression.
+fn present(f: &FieldPlan) -> String {
+    match access(f, Shape::Create) {
+        Access::Plain => "true".to_string(),
+        _ => format!("{}.is_some()", member(f)),
+    }
+}
+
+/// Whether an operand holds nothing, as a `bool` expression.
+fn absent(s: &StructPlan, op: &Operand) -> String {
+    match op {
+        Operand::Field(i) => match access(&s.fields[*i], Shape::Create) {
+            Access::Plain => "false".to_string(),
+            _ => format!("{}.is_none()", member(&s.fields[*i])),
+        },
+        Operand::Value(_) => "false".to_string(),
+        Operand::Coalesce(parts) => parts
+            .iter()
+            .map(|p| absent(s, p))
+            .collect::<Vec<_>>()
+            .join(" && "),
+    }
+}
+
+/// The check that compares two bound names, as a function of the support crate and its
+/// arguments. The arguments are always names, so the call fits one line.
+fn comparison(op: CmpOp, class: Class, left: &str, right: &str) -> (&'static str, Vec<String>) {
+    let operands = vec![left.to_string(), right.to_string()];
+    if class.is_ordered() {
+        let op = format!("{CHECK}::Op::{}", op.variant());
+        return ("compare", operands.into_iter().chain([op]).collect());
+    }
+    (if op == CmpOp::Ne { "differ" } else { "same" }, operands)
+}
+
+/// `let name = value;`
+fn set(name: &str, value: String) -> Stmt {
+    Stmt::Line(text(format!("let {name} = {value};")))
+}
+
+/// How many verdicts one `all` or `any` call takes, so its line always fits.
+const VERDICTS_PER_CALL: usize = 6;
+
+/// Lowers a condition to statements and returns the name its verdict is bound to. Every
+/// part gets a name of its own, so no line outgrows the width however deep the condition.
+fn condition(s: &StructPlan, c: &Cond, n: &mut usize, out: &mut Vec<Stmt>) -> String {
+    let mut fresh = |prefix: &str| {
+        *n += 1;
+        format!("{prefix}{n}")
+    };
+    match c {
+        Cond::Compare {
+            op,
+            class,
+            left,
+            right,
+        } => {
+            let (l, r, name) = (fresh("l"), fresh("r"), fresh("c"));
+            out.push(set(&l, operand(s, left, *class)));
+            out.push(set(&r, operand(s, right, *class)));
+            let (function, args) = comparison(*op, *class, &l, &r);
+            out.push(bind(&name, function, args));
+            name
+        }
+        Cond::IsNull(op) => {
+            let name = fresh("c");
+            out.push(set(&name, format!("Some({})", absent(s, op))));
+            name
+        }
+        Cond::IsNotNull(op) => {
+            let name = fresh("c");
+            out.push(set(&name, format!("Some(!({}))", absent(s, op))));
+            name
+        }
+        Cond::Not(inner) => {
+            let arg = condition(s, inner, n, out);
+            let name = {
+                *n += 1;
+                format!("c{n}")
+            };
+            out.push(bind(&name, "not", vec![arg]));
+            name
+        }
+        Cond::All(parts) | Cond::Any(parts) => {
+            let function = if matches!(c, Cond::All(_)) {
+                "all"
+            } else {
+                "any"
+            };
+            let mut names: Vec<String> = parts.iter().map(|p| condition(s, p, n, out)).collect();
+            // Both are associative, so a long list is folded a few verdicts at a time.
+            loop {
+                let mut folded = Vec::new();
+                for group in names.chunks(VERDICTS_PER_CALL) {
+                    *n += 1;
+                    let name = format!("c{n}");
+                    out.push(set(
+                        &name,
+                        format!("{CHECK}::{function}(&[{}])", group.join(", ")),
+                    ));
+                    folded.push(name);
+                }
+                if folded.len() == 1 {
+                    return folded.remove(0);
+                }
+                names = folded;
+            }
+        }
+    }
+}
+
+/// The check of one rule across the members of a create body.
+fn cross_check(s: &StructPlan, rule: &CrossRule, n: &mut usize, out: &mut Vec<Stmt>) {
+    let applies = match &rule.condition {
+        Some(c) => condition(s, c, n, out),
+        None => "Some(true)".to_string(),
+    };
+    let gate = |when: usize, class: Class, equals: &Literal, out: &mut Vec<Stmt>| {
+        out.push(set("when", operand_field(&s.fields[when], class)));
+        out.push(set("equals", operand_literal(equals, class)));
+        out.push(bind("gate", "same", vec!["when".into(), "equals".into()]));
+    };
+    let presence = |fields: &[usize]| {
+        let each: Vec<String> = fields.iter().map(|&i| present(&s.fields[i])).collect();
+        Stmt::Assign("let present =".to_string(), list("[", each, "];"))
+    };
+    let (subject, constant) = match &rule.kind {
+        CrossKind::Comparison {
+            left,
+            op,
+            right,
+            class,
+        } => {
+            out.push(set("left", operand_field(&s.fields[*left], *class)));
+            out.push(set("right", operand_field(&s.fields[*right], *class)));
+            let (function, args) = comparison(*op, *class, "left", "right");
+            out.push(bind("holds", function, args));
+            (*left, "RULE_COMPARISON")
+        }
+        CrossKind::RequiredWhen {
+            field,
+            when,
+            class,
+            equals,
+        } => {
+            gate(*when, *class, equals, out);
+            out.push(set("present", present(&s.fields[*field])));
+            out.push(bind(
+                "holds",
+                "required_when",
+                vec!["gate".into(), "present".into()],
+            ));
+            (*field, "RULE_REQUIRED_WHEN")
+        }
+        CrossKind::PresentIff {
+            field,
+            when,
+            class,
+            equals,
+        } => {
+            gate(*when, *class, equals, out);
+            out.push(set("present", present(&s.fields[*field])));
+            out.push(bind(
+                "holds",
+                "present_iff",
+                vec!["gate".into(), "present".into()],
+            ));
+            (*field, "RULE_PRESENT_IFF")
+        }
+        CrossKind::AtLeastOne { fields } => {
+            out.push(presence(fields));
+            out.push(bind("holds", "at_least_one", vec!["&present".into()]));
+            (fields[0], "RULE_AT_LEAST_ONE")
+        }
+        CrossKind::ExactlyOne { fields } => {
+            out.push(presence(fields));
+            out.push(bind("holds", "exactly_one", vec!["&present".into()]));
+            (fields[0], "RULE_EXACTLY_ONE")
+        }
+    };
+    out.push(call(
+        "rule",
+        vec![
+            "&mut out".into(),
+            literal(&s.fields[subject].wire),
+            format!("{CHECK}::{constant}"),
+            literal(&rule.name),
+            applies,
+            "holds".into(),
+        ],
+    ));
+}
+
+fn validate_item(w: &mut CodeWriter, plan: &Plan, s: &StructPlan, shape: Shape, q: &Qualifier<'_>) {
+    let name = match shape {
+        Shape::Read => s.type_name.clone(),
+        Shape::Create => s.create_name(),
+        Shape::Patch => s.patch_name(),
+    };
+    let mut stmts = Vec::new();
+    for f in s.fields.iter().filter(|f| in_shape(f, shape)) {
+        member_checks(plan, f, access(f, shape), &mut stmts);
+    }
+    if shape == Shape::Create {
+        let mut n = 0;
+        for rule in &s.cross {
+            cross_check(s, rule, &mut n, &mut stmts);
+        }
+    }
+    let vec = q.vec();
+    w.block(format!("impl {name} {{"), |w| {
+        w.line("/// Every rule of the model this value breaks; empty when it breaks none.");
+        w.block(
+            format!("pub fn validate(&self) -> {vec}<{VALIDATION}::Violation> {{"),
+            |w| {
+                if stmts.is_empty() {
+                    w.line(format!("{vec}::new()"));
+                } else {
+                    w.line(format!("use {VALIDATION} as {CHECK};"));
+                    w.line(format!("let mut out = {vec}::new();"));
+                    write_stmts(w, stmts);
+                    w.line("out");
+                }
+            },
+        );
+    });
+}
+
+fn struct_file(
+    plan: &Plan,
+    s: &StructPlan,
+    current: &str,
+    q: &Qualifier<'_>,
+) -> Result<String, GenError> {
+    let mut items = vec![item(|w| struct_item(w, plan, s, Shape::Read, current, q))?];
+    if s.is_entity {
+        for shape in [Shape::Create, Shape::Patch] {
+            items.push(item(|w| struct_item(w, plan, s, shape, current, q))?);
+            items.push(item(|w| validate_item(w, plan, s, shape, q))?);
+        }
     } else {
-        out.push_str(&format!("pub struct {} {{\n{body}}}\n", s.type_name));
+        items.push(item(|w| validate_item(w, plan, s, Shape::Read, q))?);
     }
     for e in &s.enums {
-        out.push('\n');
-        out.push_str(&enum_text(e));
+        items.push(item(|w| enum_item(w, e))?);
     }
-    out
+    Ok(file(BANNER, &items))
 }

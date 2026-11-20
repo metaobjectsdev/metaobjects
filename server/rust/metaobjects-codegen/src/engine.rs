@@ -12,6 +12,9 @@
 //!
 //! A run that skips records `load`, `plan` and `skip` only: it renders nothing and writes
 //! nothing, not even the manifest or the stored key (ADR-0064).
+//!
+//! [`verify`] is the same pipeline with the last stage swapped: it renders in memory and
+//! compares with disk (`compare`), and writes nothing at all.
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -23,13 +26,14 @@ use metaobjects::timing::LoadTimings;
 
 use crate::fingerprint::{
     self, ABSENT, InputEntry, KIND_CONFIG, KIND_ENGINE, KIND_EXTRA, KIND_FLAG, KIND_GENERATOR,
-    KIND_MODEL, KIND_TOOL, build_model_tree, fold, hash_file, hash_tree,
+    KIND_MODEL, KIND_TOOL, StoredFingerprint, build_model_tree, fold, hash_file, hash_tree,
+    hash_tree_except,
 };
 use crate::generator::{
     ERR_OUT_DIR, ERR_PATH_COLLISION, EmittedFile, GenContext, GenError, Generator,
 };
 use crate::hashes::{HashManifest, content_hash};
-use crate::project::load_project;
+use crate::project::{LoadedProject, load_project};
 use crate::sha256::sha256_hex;
 
 pub const STAGE_LOAD: &str = "load";
@@ -37,6 +41,7 @@ pub const STAGE_PLAN: &str = "plan";
 pub const STAGE_SKIP: &str = "skip";
 pub const STAGE_RENDER: &str = "render";
 pub const STAGE_WRITE: &str = "write";
+pub const STAGE_COMPARE: &str = "compare";
 
 /// The gen-state directory beneath a project's `.metaobjects`.
 pub const GEN_STATE_DIR: &str = ".gen-state";
@@ -100,6 +105,32 @@ pub struct FileCounts {
     pub removed: usize,
 }
 
+/// What a run did to one file it changed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChangeKind {
+    Created,
+    Updated,
+    Removed,
+}
+
+/// One entry of the change report: a file the run created, rewrote or removed. A file whose
+/// bytes did not change is not in it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Change {
+    /// The file's path from the project root, `/`-separated.
+    pub path: String,
+    pub kind: ChangeKind,
+}
+
+impl Change {
+    fn new(path: &str, kind: ChangeKind) -> Self {
+        Self {
+            path: path.to_string(),
+            kind,
+        }
+    }
+}
+
 /// The result of a run that did not fail.
 #[derive(Debug, Clone)]
 pub struct RunReport {
@@ -109,6 +140,11 @@ pub struct RunReport {
     /// The load's own phases and validation passes.
     pub load_timings: LoadTimings,
     pub files: FileCounts,
+    /// The change report: every file the run created, rewrote or removed, in the order it
+    /// did so. Empty when the run skipped or nothing changed.
+    pub changes: Vec<Change>,
+    /// The output directory, from the project root.
+    pub out_rel: String,
     /// Whether the manifest was rewritten.
     pub manifest_written: bool,
     /// Why the run did not skip, when it did not.
@@ -119,6 +155,40 @@ pub struct RunReport {
     pub project_root: PathBuf,
 }
 
+impl RunReport {
+    /// The directories directly under the output directory that hold a changed file, sorted.
+    /// The generators write one crate per directory, so this is the list of crates a build
+    /// has to look at again (`cargo check -p <each>`); every other crate is byte-identical.
+    pub fn changed_roots(&self) -> Vec<String> {
+        let prefix = format!("{}/", self.out_rel);
+        let mut roots: Vec<String> = self
+            .changes
+            .iter()
+            .filter_map(|c| c.path.strip_prefix(&prefix))
+            .filter_map(|rest| rest.split_once('/').map(|(root, _)| root.to_string()))
+            .collect();
+        roots.sort_unstable();
+        roots.dedup();
+        roots
+    }
+}
+
+/// The files a run would not touch because a person changed them.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Refusal {
+    /// Files the run emits whose bytes on disk are not what a run wrote (edited by hand, or
+    /// never recorded). They were not overwritten.
+    pub edited: Vec<String>,
+    /// Recorded files the run no longer emits that were edited by hand. They were not deleted.
+    pub orphans: Vec<String>,
+}
+
+impl Refusal {
+    pub fn is_empty(&self) -> bool {
+        self.edited.is_empty() && self.orphans.is_empty()
+    }
+}
+
 /// Why a run failed.
 #[derive(Debug)]
 pub enum RunError {
@@ -127,8 +197,8 @@ pub enum RunError {
     /// A generator failed.
     Generator(GenError),
     /// Existing files are not what a previous run left (hand-edited, or unrecorded), so
-    /// they were left alone. The rest of the run completed.
-    Refused(Vec<String>),
+    /// they were left alone. The rest of the run completed, and no skip key was stored.
+    Refused(Refusal),
     /// A file could not be read or written.
     Io(String),
 }
@@ -146,14 +216,32 @@ impl std::fmt::Display for RunError {
                 Ok(())
             }
             RunError::Generator(e) => write!(f, "{e}"),
-            RunError::Refused(paths) => write!(
-                f,
-                "refused to overwrite {} file(s) that differ from what the last run wrote \
-                 (edited by hand, or not recorded in {DEFAULT_METAOBJECTS_DIR}/{GEN_STATE_DIR}/.hashes.json): {}. \
-                 Restore them, or delete them to generate them afresh.",
-                paths.len(),
-                paths.join(", ")
-            ),
+            RunError::Refused(r) => {
+                if !r.edited.is_empty() {
+                    write!(
+                        f,
+                        "refused to overwrite {} file(s) that differ from what the last run wrote \
+                         (edited by hand, or not recorded in {DEFAULT_METAOBJECTS_DIR}/{GEN_STATE_DIR}/.hashes.json): {}. \
+                         Restore them, or delete them to generate them afresh.",
+                        r.edited.len(),
+                        r.edited.join(", ")
+                    )?;
+                }
+                if !r.edited.is_empty() && !r.orphans.is_empty() {
+                    writeln!(f)?;
+                }
+                if !r.orphans.is_empty() {
+                    write!(
+                        f,
+                        "{} generated file(s) are no longer generated but have been edited by hand, \
+                         so they were NOT deleted: {}. Delete each one, or move your edits into a \
+                         file of your own first.",
+                        r.orphans.len(),
+                        r.orphans.join(", ")
+                    )?;
+                }
+                Ok(())
+            }
             RunError::Io(m) => write!(f, "{m}"),
         }
     }
@@ -190,8 +278,74 @@ fn io_error(what: &str, path: &Path, e: &std::io::Error) -> RunError {
     RunError::Io(format!("{what} {}: {e}", path.display()))
 }
 
-/// Run `generators` over the project: the whole pipeline.
-pub fn run(opts: &RunOptions, generators: &[Box<dyn Generator>]) -> Result<RunReport, RunError> {
+/// The owned generator crate (`cargo meta eject`). Every source in it is an input of every
+/// run, so editing any of them regenerates (ADR-0064, `owned-generator-edited`).
+pub const OWNED_DIR: &str = "codegen";
+/// What in [`OWNED_DIR`] is not an input: cargo's build output, and the lockfile cargo
+/// itself rewrites.
+pub const OWNED_NOT_INPUTS: &[&str] = &["target", "Cargo.lock"];
+/// Where `cargo meta eject` puts the owned copies.
+pub const OWNED_GENERATORS_DIR: &str = "codegen/generators";
+/// The owned crate's manifest; its presence is what makes a project "own its generators".
+pub const OWNED_MANIFEST: &str = "codegen/Cargo.toml";
+/// The owned crate's generator list.
+pub const OWNED_MAIN: &str = "codegen/main.rs";
+
+/// Everything a run knows before it renders: the loaded model, where the files go, the
+/// manifest and the skip key.
+struct Prepared<'g> {
+    loaded: LoadedProject,
+    project_root: PathBuf,
+    out_dir: PathBuf,
+    out_rel: String,
+    gen_state: PathBuf,
+    manifest: HashManifest,
+    selected: Vec<&'g dyn Generator>,
+    cacheable: bool,
+    key: String,
+    stored: Option<StoredFingerprint>,
+    warnings: Vec<String>,
+    timings: LoadTimings,
+}
+
+impl Prepared<'_> {
+    /// The manifest key of a generated file: its path from the project root.
+    fn key_of(&self, file: &EmittedFile) -> String {
+        format!("{}/{}", self.out_rel, file.path)
+    }
+
+    /// Whether every recorded file still has the bytes the last successful run left, under
+    /// the same key: the whole "nothing changed" answer.
+    fn unchanged_since_last_run(&self) -> bool {
+        self.stored.as_ref().is_some_and(|s| {
+            s.key == self.key
+                && fingerprint::output_hashes(&self.manifest, &self.project_root).as_ref()
+                    == Some(&s.outputs)
+        })
+    }
+
+    /// Recorded files under the output directory that this run did not emit, with the hash
+    /// the manifest holds for each.
+    fn not_emitted(&self, emitted: &HashSet<String>) -> Vec<(String, String)> {
+        let prefix = format!("{}/", self.out_rel);
+        self.manifest
+            .records()
+            .filter(|(k, _)| k.starts_with(&prefix) && !emitted.contains(*k))
+            .map(|(k, h)| (k.to_string(), h.to_string()))
+            .collect()
+    }
+}
+
+/// A run limited to some objects or some generators cannot tell a file nobody emits any
+/// more from a file the rest of the run would emit, so it neither sweeps nor reports extras.
+fn narrowed(opts: &RunOptions) -> bool {
+    !opts.entities.is_empty() || opts.generators.is_some()
+}
+
+fn prepare<'g>(
+    opts: &RunOptions,
+    generators: &'g [Box<dyn Generator>],
+) -> Result<Prepared<'g>, RunError> {
     let mut timings = LoadTimings::default();
 
     // load
@@ -202,7 +356,6 @@ pub fn run(opts: &RunOptions, generators: &[Box<dyn Generator>]) -> Result<RunRe
     let project_root = loaded.collection.config_dir.clone();
     let mut warnings = loaded.collection.warnings.clone();
     warnings.extend(loaded.result.warnings.iter().map(ToString::to_string));
-    let load_timings = loaded.result.timings.clone();
 
     // plan
     let start = Instant::now();
@@ -241,7 +394,7 @@ pub fn run(opts: &RunOptions, generators: &[Box<dyn Generator>]) -> Result<RunRe
     let gen_state = project_root
         .join(DEFAULT_METAOBJECTS_DIR)
         .join(GEN_STATE_DIR);
-    let mut manifest = HashManifest::load(&gen_state);
+    let manifest = HashManifest::load(&gen_state);
     let model = build_model_tree(&loaded.result.tree, loaded.result.root);
     let cacheable = selected.iter().all(|g| g.cacheable());
     let mut entries = vec![
@@ -275,68 +428,49 @@ pub fn run(opts: &RunOptions, generators: &[Box<dyn Generator>]) -> Result<RunRe
             entries.push(InputEntry::new(KIND_EXTRA, extra, digest));
         }
     }
+    // The owned generator crate, whole: the generator list is the adopter's file and may pull
+    // in any module beside it (`mod util;`), so naming the files the scaffold writes would
+    // leave an edit to the rest unseen and the skip stale.
+    if project_root.join(OWNED_MANIFEST).is_file() {
+        entries.push(InputEntry::new(
+            KIND_EXTRA,
+            OWNED_DIR,
+            hash_tree_except(&project_root.join(OWNED_DIR), OWNED_NOT_INPUTS),
+        ));
+    }
     let key = fold(&entries);
     let stored = fingerprint::read_stored(&gen_state);
     timings.add_phase(STAGE_PLAN, start.elapsed());
 
-    // skip
-    let named = !opts.entities.is_empty();
-    let no_skip_reason = if opts.force {
-        Some("--force")
-    } else if named {
-        Some("entities were named")
-    } else if !cacheable {
-        Some("a generator is not cacheable")
-    } else {
-        match &stored {
-            None => Some("no stored key"),
-            Some(s) if s.key != key => Some("an input changed"),
-            Some(_) => None,
-        }
-    };
-    let mut no_skip_reason = no_skip_reason;
-    if no_skip_reason.is_none() {
-        let start = Instant::now();
-        let unchanged = stored.as_ref().is_some_and(|s| {
-            fingerprint::output_hashes(&manifest, &project_root).as_ref() == Some(&s.outputs)
-        });
-        timings.add_phase(STAGE_SKIP, start.elapsed());
-        if unchanged {
-            return Ok(RunReport {
-                outcome: Outcome::Skipped,
-                timings,
-                load_timings,
-                files: FileCounts::default(),
-                manifest_written: false,
-                no_skip_reason: None,
-                warnings,
-                project_root,
-            });
-        }
-        no_skip_reason = Some("a generated file changed or is missing");
-    }
+    Ok(Prepared {
+        loaded,
+        project_root,
+        out_dir,
+        out_rel,
+        gen_state,
+        manifest,
+        selected,
+        cacheable,
+        key,
+        stored,
+        warnings,
+        timings,
+    })
+}
 
-    // A run that goes on to write deletes the stored key first, so a failed or half-written
-    // run is never mistaken for a current one. A named run leaves the full-run key alone.
-    if !named {
-        fingerprint::delete_stored(&gen_state);
-    }
-
-    // render
+/// Run the selected generators in memory. Two files claiming one path is an error.
+fn render(p: &mut Prepared<'_>, opts: &RunOptions) -> Result<Vec<EmittedFile>, RunError> {
     let start = Instant::now();
     let ctx = GenContext {
-        tree: &loaded.result.tree,
-        root: loaded.result.root,
+        tree: &p.loaded.result.tree,
+        root: p.loaded.result.root,
         entities: &opts.entities,
+        collection: &p.loaded.collection,
     };
     let mut emitted: Vec<EmittedFile> = Vec::new();
-    for g in &selected {
+    for g in &p.selected {
         emitted.extend(g.generate(&ctx).map_err(RunError::Generator)?);
     }
-    timings.add_phase(STAGE_RENDER, start.elapsed());
-
-    // write
-    let start = Instant::now();
     let mut seen: HashSet<&str> = HashSet::with_capacity(emitted.len());
     for f in &emitted {
         if !seen.insert(f.path.as_str()) {
@@ -346,28 +480,85 @@ pub fn run(opts: &RunOptions, generators: &[Box<dyn Generator>]) -> Result<RunRe
             )));
         }
     }
+    p.timings.add_phase(STAGE_RENDER, start.elapsed());
+    Ok(emitted)
+}
+
+/// Run `generators` over the project: the whole pipeline.
+pub fn run(opts: &RunOptions, generators: &[Box<dyn Generator>]) -> Result<RunReport, RunError> {
+    let mut p = prepare(opts, generators)?;
+    let load_timings = p.loaded.result.timings.clone();
+
+    // skip
+    let named = !opts.entities.is_empty();
+    let mut no_skip_reason = if opts.force {
+        Some("--force")
+    } else if named {
+        Some("entities were named")
+    } else if !p.cacheable {
+        Some("a generator is not cacheable")
+    } else {
+        match &p.stored {
+            None => Some("no stored key"),
+            Some(s) if s.key != p.key => Some("an input changed"),
+            Some(_) => None,
+        }
+    };
+    if no_skip_reason.is_none() {
+        let start = Instant::now();
+        let unchanged = p.unchanged_since_last_run();
+        p.timings.add_phase(STAGE_SKIP, start.elapsed());
+        if unchanged {
+            return Ok(RunReport {
+                outcome: Outcome::Skipped,
+                timings: p.timings,
+                load_timings,
+                files: FileCounts::default(),
+                changes: Vec::new(),
+                out_rel: p.out_rel,
+                manifest_written: false,
+                no_skip_reason: None,
+                warnings: p.warnings,
+                project_root: p.project_root,
+            });
+        }
+        no_skip_reason = Some("a generated file changed or is missing");
+    }
+
+    // A run that goes on to write deletes the stored key first, so a failed or half-written
+    // run is never mistaken for a current one. A named run leaves the full-run key alone.
+    if !named {
+        fingerprint::delete_stored(&p.gen_state);
+    }
+
+    let emitted = render(&mut p, opts)?;
+
+    // write
+    let start = Instant::now();
     let mut files = FileCounts::default();
-    let mut refused: Vec<String> = Vec::new();
+    let mut changes: Vec<Change> = Vec::new();
+    let mut refusal = Refusal::default();
     let mut known_dirs: HashSet<PathBuf> = HashSet::new();
     let mut written_hashes: BTreeMap<String, String> = BTreeMap::new();
     for f in &emitted {
-        let key = format!("{out_rel}/{}", f.path);
-        let path = project_root.join(&key);
+        let key = p.key_of(f);
+        let path = p.project_root.join(&key);
         let fresh_hash = content_hash(&f.content);
         match std::fs::read(&path) {
             Ok(disk) if disk == f.content.as_bytes() => {
                 files.unchanged += 1;
-                manifest.record(&key, &fresh_hash);
+                p.manifest.record(&key, &fresh_hash);
             }
             Ok(disk) => {
                 let disk_hash = sha256_hex(&disk);
-                if manifest.hash_of(&key) == Some(disk_hash.as_str()) {
+                if p.manifest.hash_of(&key) == Some(disk_hash.as_str()) {
                     std::fs::write(&path, &f.content)
                         .map_err(|e| io_error("writing", &path, &e))?;
                     files.overwritten += 1;
-                    manifest.record(&key, &fresh_hash);
+                    changes.push(Change::new(&key, ChangeKind::Updated));
+                    p.manifest.record(&key, &fresh_hash);
                 } else {
-                    refused.push(key.clone());
+                    refusal.edited.push(key.clone());
                     continue;
                 }
             }
@@ -379,37 +570,37 @@ pub fn run(opts: &RunOptions, generators: &[Box<dyn Generator>]) -> Result<RunRe
                 }
                 std::fs::write(&path, &f.content).map_err(|e| io_error("writing", &path, &e))?;
                 files.created += 1;
-                manifest.record(&key, &fresh_hash);
+                changes.push(Change::new(&key, ChangeKind::Created));
+                p.manifest.record(&key, &fresh_hash);
             }
             Err(e) => return Err(io_error("reading", &path, &e)),
         }
         written_hashes.insert(key, fresh_hash);
     }
 
-    // Generated files this run no longer emits (a package that went away) are removed when
-    // they are still exactly what a run wrote; one with an edit is kept and reported. A run
-    // limited to some generators (or some objects) cannot tell a file nobody emits any more
-    // from a file another generator emits, so it sweeps nothing.
-    if !named && opts.generators.is_none() {
-        let prefix = format!("{out_rel}/");
-        let stale: Vec<(String, String)> = manifest
-            .records()
-            .filter(|(k, _)| k.starts_with(&prefix) && !written_hashes.contains_key(*k))
-            .map(|(k, h)| (k.to_string(), h.to_string()))
+    // The orphan sweep. A generated file this run no longer emits (an object or a package
+    // that went away) is removed when it is still exactly what a run wrote. One that was
+    // edited by hand is never deleted: it stays, stays recorded, and fails the run by name,
+    // as an edited file that is still emitted does. A file the manifest does not record is a
+    // stranger and is never touched.
+    if !narrowed(opts) {
+        let emitted_keys: HashSet<String> = written_hashes
+            .keys()
+            .cloned()
+            .chain(refusal.edited.iter().cloned())
             .collect();
-        for (key, recorded) in stale {
-            let path = project_root.join(&key);
+        for (key, recorded) in p.not_emitted(&emitted_keys) {
+            let path = p.project_root.join(&key);
             match std::fs::read(&path) {
                 Ok(disk) if sha256_hex(&disk) == recorded => {
                     std::fs::remove_file(&path).map_err(|e| io_error("removing", &path, &e))?;
-                    remove_empty_parents(&path, &out_dir);
-                    manifest.remove(&key);
+                    remove_empty_parents(&path, &p.out_dir);
+                    p.manifest.remove(&key);
                     files.removed += 1;
+                    changes.push(Change::new(&key, ChangeKind::Removed));
                 }
-                Ok(_) => warnings.push(format!(
-                    "{key} is no longer generated but differs from what the last run wrote, so it was kept"
-                )),
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => manifest.remove(&key),
+                Ok(_) => refusal.orphans.push(key),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => p.manifest.remove(&key),
                 Err(e) => return Err(io_error("reading", &path, &e)),
             }
         }
@@ -417,39 +608,157 @@ pub fn run(opts: &RunOptions, generators: &[Box<dyn Generator>]) -> Result<RunRe
 
     // The manifest is written once, and only when a record changed. It is written even when a
     // file was refused: every record in it is on disk.
-    let manifest_written = manifest
+    let manifest_written = p
+        .manifest
         .save()
-        .map_err(|e| io_error("writing", &gen_state.join(".hashes.json"), &e))?;
-    if !refused.is_empty() {
-        return Err(RunError::Refused(refused));
+        .map_err(|e| io_error("writing", &p.gen_state.join(".hashes.json"), &e))?;
+    if !refusal.is_empty() {
+        return Err(RunError::Refused(refusal));
     }
 
     // Store the key only for a full run, with every generator cacheable.
-    if !named && cacheable {
+    if !named && p.cacheable {
         let mut outputs: BTreeMap<String, String> = BTreeMap::new();
-        for (key, _) in manifest.records() {
+        for (key, _) in p.manifest.records() {
             let digest = match written_hashes.get(key) {
                 Some(h) => h.clone(),
-                None => std::fs::read(project_root.join(key))
+                None => std::fs::read(p.project_root.join(key))
                     .map(|b| sha256_hex(&b))
                     .unwrap_or_else(|_| ABSENT.to_string()),
             };
             outputs.insert(key.to_string(), digest);
         }
-        fingerprint::write_stored(&gen_state, &key, &outputs)
-            .map_err(|e| io_error("writing", &gen_state, &e))?;
+        fingerprint::write_stored(&p.gen_state, &p.key, &outputs)
+            .map_err(|e| io_error("writing", &p.gen_state, &e))?;
     }
-    timings.add_phase(STAGE_WRITE, start.elapsed());
+    p.timings.add_phase(STAGE_WRITE, start.elapsed());
 
     Ok(RunReport {
         outcome: Outcome::Generated,
-        timings,
+        timings: p.timings,
         load_timings,
         files,
+        changes,
+        out_rel: p.out_rel,
         manifest_written,
         no_skip_reason,
-        warnings,
-        project_root,
+        warnings: p.warnings,
+        project_root: p.project_root,
+    })
+}
+
+/// A generated file `verify` found on disk that no generator emits any more.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExtraFile {
+    pub path: String,
+    /// It no longer has the bytes a run wrote, so `gen` will refuse to delete it.
+    pub edited: bool,
+}
+
+/// What `verify` found. Nothing was written to get it.
+#[derive(Debug, Clone)]
+pub struct VerifyReport {
+    /// False when the answer came from the stored key and the manifest alone (a local run
+    /// with nothing changed since the last `gen`); true when the generators ran.
+    pub rendered: bool,
+    /// How many generated files were compared (recorded files, when nothing was rendered).
+    pub checked: usize,
+    /// Files whose bytes on disk differ from a fresh render.
+    pub drifted: Vec<String>,
+    /// Files a fresh render emits that are not on disk.
+    pub missing: Vec<String>,
+    /// Recorded files no generator emits any more. Never reported for a narrowed run.
+    pub extra: Vec<ExtraFile>,
+    pub timings: LoadTimings,
+    pub warnings: Vec<String>,
+    pub project_root: PathBuf,
+}
+
+impl VerifyReport {
+    pub fn in_sync(&self) -> bool {
+        self.drifted.is_empty() && self.missing.is_empty() && self.extra.is_empty()
+    }
+}
+
+/// Compare what the generators would write with what is on disk, in memory. Nothing is
+/// written: no file, no manifest, no stored key, no temporary tree.
+///
+/// `opts.force` is `verify --full`: render even when the stored key says nothing changed.
+/// The caller sets it when `CI` is set, so a build server always renders (ADR-0064).
+pub fn verify(
+    opts: &RunOptions,
+    generators: &[Box<dyn Generator>],
+) -> Result<VerifyReport, RunError> {
+    let mut p = prepare(opts, generators)?;
+
+    if !opts.force && !narrowed(opts) && p.cacheable {
+        let start = Instant::now();
+        let unchanged = p.unchanged_since_last_run();
+        p.timings.add_phase(STAGE_SKIP, start.elapsed());
+        if unchanged {
+            let prefix = format!("{}/", p.out_rel);
+            let checked = p
+                .manifest
+                .records()
+                .filter(|(k, _)| k.starts_with(&prefix))
+                .count();
+            return Ok(VerifyReport {
+                rendered: false,
+                checked,
+                drifted: Vec::new(),
+                missing: Vec::new(),
+                extra: Vec::new(),
+                timings: p.timings,
+                warnings: p.warnings,
+                project_root: p.project_root,
+            });
+        }
+    }
+
+    let emitted = render(&mut p, opts)?;
+    let start = Instant::now();
+    let mut drifted = Vec::new();
+    let mut missing = Vec::new();
+    let mut emitted_keys: HashSet<String> = HashSet::with_capacity(emitted.len());
+    for f in &emitted {
+        let key = p.key_of(f);
+        let path = p.project_root.join(&key);
+        match std::fs::read(&path) {
+            Ok(disk) if disk == f.content.as_bytes() => {}
+            Ok(_) => drifted.push(key.clone()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => missing.push(key.clone()),
+            Err(e) => return Err(io_error("reading", &path, &e)),
+        }
+        emitted_keys.insert(key);
+    }
+    // The gate reports exactly what `gen` would sweep, so "regenerate" is always the remedy
+    // and can never loop: an unrecorded file is nobody's, and a recorded path already gone
+    // from disk is forgotten by the next run without a word.
+    let mut extra = Vec::new();
+    if !narrowed(opts) {
+        for (key, recorded) in p.not_emitted(&emitted_keys) {
+            let path = p.project_root.join(&key);
+            match std::fs::read(&path) {
+                Ok(disk) => extra.push(ExtraFile {
+                    edited: sha256_hex(&disk) != recorded,
+                    path: key,
+                }),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(io_error("reading", &path, &e)),
+            }
+        }
+    }
+    p.timings.add_phase(STAGE_COMPARE, start.elapsed());
+
+    Ok(VerifyReport {
+        rendered: true,
+        checked: emitted.len(),
+        drifted,
+        missing,
+        extra,
+        timings: p.timings,
+        warnings: p.warnings,
+        project_root: p.project_root,
     })
 }
 

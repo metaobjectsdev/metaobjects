@@ -10,8 +10,9 @@ The model never says *how* an operation works. That is code. The model says wher
 is needed, which moves are legal, and what a command may return, so all three can be checked.
 
 **What 1.3.0 ships.** The vocabulary, checked when it loads and by `verify`, in all five ports.
-The Rust preview port loads the vocabulary and runs the same loader rules; it has no `verify`,
-so the checks under "What `verify` reports" do not run there ([Rust port](../ports/rust.md)).
+The Rust preview port loads the vocabulary and runs the same loader rules; its `verify` is the
+codegen drift gate only, so the checks under "What `verify` reports" do not run there
+([Rust port](../ports/rust.md)).
 A requirement can claim an operation or a transition. Nothing is generated from the vocabulary
 yet: the service shells that enforce these rules at run time are later work (ADR-0067). Until
 they land, a model with this vocabulary generates byte-identical code to the same model

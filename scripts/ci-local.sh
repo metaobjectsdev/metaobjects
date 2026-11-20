@@ -71,8 +71,8 @@
 #                                    #            + integration-tests
 #                                    #   rust   → the Rust port (preview): cargo fmt
 #                                    #            --check, clippy -D warnings, and its
-#                                    #            tests, which run the registry and
-#                                    #            metamodel corpora and the codegen suites,
+#                                    #            tests, which run its shared corpora
+#                                    #            and the codegen compile and scale gates,
 #                                    #            then the load_bench and gen_bench tables
 #                                    #            (record only). No docker half.
 #                                    #   cube   → the cube-model live check: a real Cube
@@ -849,9 +849,10 @@ gate_conf_rust() {
 gate_rust_load_bench() {
   cargo run --release --locked -q --example load_bench -- 20 15
 }
-# Generation time per stage (load, plan, skip, render, write) on the 20x fitness project:
-# a first run, an unchanged run (which skips), a one-file change and a forced run. Record
-# only, like load_bench; it writes its project under $DEV_SCRATCH and removes it.
+# Generation time per stage (load, plan, skip, render, write) on the 20x fitness project,
+# with every shipped generator: a first run, an unchanged run (which skips), a one-file
+# change and a forced run. Record only, like load_bench; it writes its project under
+# $DEV_SCRATCH and removes it.
 gate_rust_gen_bench() {
   cargo run --release --locked -q -p metaobjects-codegen --example gen_bench -- 20 9
 }

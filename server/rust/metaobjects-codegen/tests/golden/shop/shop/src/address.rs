@@ -7,3 +7,13 @@ pub struct Address {
     #[serde(rename = "zipCode")]
     pub zip_code: Option<String>,
 }
+
+impl Address {
+    /// Every rule of the model this value breaks; empty when it breaks none.
+    pub fn validate(&self) -> Vec<meta_support::validation::Violation> {
+        use meta_support::validation as check;
+        let mut out = Vec::new();
+        check::length(&mut out, "street", Some(self.street.as_str()), Some(1), None);
+        out
+    }
+}

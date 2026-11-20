@@ -13,7 +13,7 @@ pub struct Order {
     pub currency: crate::Currency,
     pub total: i64,
     #[serde(rename = "taxRate")]
-    pub tax_rate: Option<String>,
+    pub tax_rate: Option<meta_support::wire::Decimal>,
     pub r#type: Option<String>,
     pub tags: Option<Vec<String>>,
     pub attributes: Option<std::collections::BTreeMap<String, String>>,
@@ -22,6 +22,128 @@ pub struct Order {
     #[serde(rename = "billTo")]
     pub bill_to: Option<crate::Address>,
     pub history: Option<Vec<crate::Address>>,
+}
+
+/// What a caller sends to create one `Order`: the members the server does not fill itself.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct OrderCreate {
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    /// Where the order is.
+    pub status: crate::OrderStatus,
+    /// A currency the shop trades in.
+    pub currency: crate::Currency,
+    pub total: i64,
+    #[serde(rename = "taxRate", skip_serializing_if = "Option::is_none")]
+    pub tax_rate: Option<meta_support::wire::Decimal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub r#type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attributes: Option<std::collections::BTreeMap<String, String>>,
+    #[serde(rename = "shipTo")]
+    pub ship_to: crate::Address,
+    #[serde(rename = "billTo", skip_serializing_if = "Option::is_none")]
+    pub bill_to: Option<crate::Address>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub history: Option<Vec<crate::Address>>,
+}
+
+impl OrderCreate {
+    /// Every rule of the model this value breaks; empty when it breaks none.
+    pub fn validate(&self) -> Vec<meta_support::validation::Violation> {
+        use meta_support::validation as check;
+        let mut out = Vec::new();
+        check::format(
+            &mut out,
+            "createdAt",
+            Some(self.created_at.as_str()),
+            check::is_timestamp,
+            "be an ISO 8601 timestamp",
+        );
+        check::nested(&mut out, "shipTo", self.ship_to.validate());
+        if let Some(value) = &self.bill_to {
+            check::nested(&mut out, "billTo", value.validate());
+        }
+        for (at, value) in self.history.iter().flatten().enumerate() {
+            let prefix = format!("history[{at}]");
+            check::nested(&mut out, &prefix, value.validate());
+        }
+        out
+    }
+}
+
+/// A change to one `Order`: a member left `None` is not touched. A member the model lets be
+/// null is `Some(None)` to set it to null.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct OrderPatch {
+    #[serde(rename = "createdAt", default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
+    /// Where the order is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<crate::OrderStatus>,
+    /// A currency the shop trades in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub currency: Option<crate::Currency>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total: Option<i64>,
+    #[serde(rename = "taxRate")]
+    #[serde(default)]
+    #[serde(deserialize_with = "meta_support::wire::present")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tax_rate: Option<Option<meta_support::wire::Decimal>>,
+    #[serde(default)]
+    #[serde(deserialize_with = "meta_support::wire::present")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub r#type: Option<Option<String>>,
+    #[serde(default)]
+    #[serde(deserialize_with = "meta_support::wire::present")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Option<Vec<String>>>,
+    #[serde(default)]
+    #[serde(deserialize_with = "meta_support::wire::present")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attributes: Option<Option<std::collections::BTreeMap<String, String>>>,
+    #[serde(rename = "shipTo", default, skip_serializing_if = "Option::is_none")]
+    pub ship_to: Option<crate::Address>,
+    #[serde(rename = "billTo")]
+    #[serde(default)]
+    #[serde(deserialize_with = "meta_support::wire::present")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bill_to: Option<Option<crate::Address>>,
+    #[serde(default)]
+    #[serde(deserialize_with = "meta_support::wire::present")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub history: Option<Option<Vec<crate::Address>>>,
+}
+
+impl OrderPatch {
+    /// Every rule of the model this value breaks; empty when it breaks none.
+    pub fn validate(&self) -> Vec<meta_support::validation::Violation> {
+        use meta_support::validation as check;
+        let mut out = Vec::new();
+        check::format(
+            &mut out,
+            "createdAt",
+            self.created_at.as_deref(),
+            check::is_timestamp,
+            "be an ISO 8601 timestamp",
+        );
+        if let Some(value) = &self.ship_to {
+            check::nested(&mut out, "shipTo", value.validate());
+        }
+        if let Some(value) = meta_support::wire::set(&self.bill_to) {
+            check::nested(&mut out, "billTo", value.validate());
+        }
+        if let Some(items) = meta_support::wire::set(&self.history) {
+            for (at, value) in items.iter().enumerate() {
+                let prefix = format!("history[{at}]");
+                check::nested(&mut out, &prefix, value.validate());
+            }
+        }
+        out
+    }
 }
 
 /// Where the order is.

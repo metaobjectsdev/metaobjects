@@ -9,3 +9,67 @@ pub struct Category {
     pub parent: Option<Box<crate::Category>>,
     pub subcategories: Option<Vec<crate::Category>>,
 }
+
+/// What a caller sends to create one `Category`: the members the server does not fill itself.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CategoryCreate {
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    pub title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent: Option<Box<crate::Category>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subcategories: Option<Vec<crate::Category>>,
+}
+
+impl CategoryCreate {
+    /// Every rule of the model this value breaks; empty when it breaks none.
+    pub fn validate(&self) -> Vec<meta_support::validation::Violation> {
+        use meta_support::validation as check;
+        let mut out = Vec::new();
+        check::format(
+            &mut out,
+            "createdAt",
+            Some(self.created_at.as_str()),
+            check::is_timestamp,
+            "be an ISO 8601 timestamp",
+        );
+        check::length(&mut out, "title", Some(self.title.as_str()), Some(1), None);
+        out
+    }
+}
+
+/// A change to one `Category`: a member left `None` is not touched. A member the model lets be
+/// null is `Some(None)` to set it to null.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CategoryPatch {
+    #[serde(rename = "createdAt", default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default)]
+    #[serde(deserialize_with = "meta_support::wire::present")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent: Option<Option<Box<crate::Category>>>,
+    #[serde(default)]
+    #[serde(deserialize_with = "meta_support::wire::present")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subcategories: Option<Option<Vec<crate::Category>>>,
+}
+
+impl CategoryPatch {
+    /// Every rule of the model this value breaks; empty when it breaks none.
+    pub fn validate(&self) -> Vec<meta_support::validation::Violation> {
+        use meta_support::validation as check;
+        let mut out = Vec::new();
+        check::format(
+            &mut out,
+            "createdAt",
+            self.created_at.as_deref(),
+            check::is_timestamp,
+            "be an ISO 8601 timestamp",
+        );
+        check::length(&mut out, "title", self.title.as_deref(), Some(1), None);
+        out
+    }
+}

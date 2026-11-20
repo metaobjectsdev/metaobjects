@@ -7,3 +7,40 @@ pub struct Invoice {
     /// A currency the shop trades in.
     pub currency: Option<shop::Currency>,
 }
+
+/// What a caller sends to create one `Invoice`: the members the server does not fill itself.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct InvoiceCreate {
+    pub id: i64,
+    pub order: shop::Order,
+    /// A currency the shop trades in.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub currency: Option<shop::Currency>,
+}
+
+impl InvoiceCreate {
+    /// Every rule of the model this value breaks; empty when it breaks none.
+    pub fn validate(&self) -> Vec<meta_support::validation::Violation> {
+        Vec::new()
+    }
+}
+
+/// A change to one `Invoice`: a member left `None` is not touched. A member the model lets be
+/// null is `Some(None)` to set it to null.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct InvoicePatch {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub order: Option<shop::Order>,
+    /// A currency the shop trades in.
+    #[serde(default)]
+    #[serde(deserialize_with = "meta_support::wire::present")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub currency: Option<Option<shop::Currency>>,
+}
+
+impl InvoicePatch {
+    /// Every rule of the model this value breaks; empty when it breaks none.
+    pub fn validate(&self) -> Vec<meta_support::validation::Violation> {
+        Vec::new()
+    }
+}

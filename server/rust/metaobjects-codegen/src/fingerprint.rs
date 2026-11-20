@@ -82,6 +82,12 @@ pub fn hash_file(path: &Path) -> String {
 /// One hash over every file under `root` (relative path and content), or over the file
 /// itself, or [`ABSENT`]. Adding, removing, renaming or editing any file changes it.
 pub fn hash_tree(root: &Path) -> String {
+    hash_tree_except(root, &[])
+}
+
+/// [`hash_tree`], leaving out the entries of `root` itself that are named in `skip` (a
+/// build directory, a lockfile). A file of the same name deeper in the tree still counts.
+pub fn hash_tree_except(root: &Path, skip: &[&str]) -> String {
     if !root.exists() {
         return ABSENT.to_string();
     }
@@ -103,7 +109,25 @@ pub fn hash_tree(root: &Path) -> String {
         }
     }
     let mut files = Vec::new();
-    walk(root, &mut files);
+    let mut top: Vec<_> = match std::fs::read_dir(root) {
+        Ok(read) => read.filter_map(Result::ok).map(|e| e.path()).collect(),
+        Err(_) => Vec::new(),
+    };
+    top.sort();
+    for p in top {
+        let skipped = p
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| skip.contains(&n));
+        if skipped {
+            continue;
+        }
+        if p.is_dir() {
+            walk(&p, &mut files);
+        } else {
+            files.push(p);
+        }
+    }
     let mut h = Sha256::new();
     for f in files {
         let rel = f.strip_prefix(root).unwrap_or(&f);
