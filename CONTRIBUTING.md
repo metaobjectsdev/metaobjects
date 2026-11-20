@@ -21,7 +21,11 @@ conformance corpora. This guide covers how to propose changes.
   client names, personal information, or absolute local paths in code, docs, fixtures,
   **or commit messages**. Use generic terms ("a downstream consumer", "a sibling
   project") and repo-relative paths (`<repo-root>`). A local pre-commit hook enforces
-  this, and `scripts/ci-local.sh` re-runs the same leak scan over your branch.
+  this, and `scripts/ci-local.sh` re-runs the same leak scan over your branch. With a
+  private denylist configured, the hooks also refuse a commit (pre-commit) or push
+  (pre-push) whose author or committer name or email matches it. Hosted CI cannot see
+  the private denylist, so that identity check protects only machines with the hooks
+  installed.
 
 ## How to contribute a change
 

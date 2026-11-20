@@ -19,6 +19,27 @@
 #
 set -uo pipefail
 
+# Read the pushed refs once (stdin: <localref> <localsha> <remoteref> <remotesha>); both the
+# identity guard and the TS gate below use them.
+ZERO="0000000000000000000000000000000000000000"
+_PUSH_REFS="$(cat)"
+
+# ── Identity guard: no outgoing commit may carry an author/committer identity that matches the
+# private denylist. Runs first and ignores SKIP_TS_TYPECHECK. A new branch is checked against
+# every commit not already on a remote.
+_IDENT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
+if [ -x "$_IDENT_ROOT/.githooks/identity-scan.sh" ]; then
+  while read -r _lr localsha _rr remotesha; do
+    [ -z "${localsha:-}" ] && continue
+    [ "$localsha" = "$ZERO" ] && continue
+    if [ "$remotesha" = "$ZERO" ]; then
+      "$_IDENT_ROOT/.githooks/identity-scan.sh" range "$localsha" --not --remotes || exit 1
+    else
+      "$_IDENT_ROOT/.githooks/identity-scan.sh" range "$remotesha..$localsha" || exit 1
+    fi
+  done <<< "$_PUSH_REFS"
+fi
+
 # ── Always-run, toolchain-free guard (BEFORE the TS-skip below — unrelated gate).
 # Reactor-excluded Java/Kotlin integration-test poms must track the reactor
 # <version>. They are outside the reactor, so a release `versions:set` skips them;
@@ -40,7 +61,6 @@ if [ "${SKIP_TS_TYPECHECK:-}" = "1" ]; then
 fi
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
-ZERO="0000000000000000000000000000000000000000"
 
 # Collect the files changed across every ref being pushed (stdin: <localref> <localsha>
 # <remoteref> <remotesha>). A brand-new branch (remote sha = zeros) has no remote base,
@@ -59,7 +79,7 @@ while read -r _localref localsha _remoteref remotesha; do
   files="$(git diff --name-only "$remotesha..$localsha" 2>/dev/null || true)"
   changed="$changed
 $files"
-done
+done <<< "$_PUSH_REFS"
 
 # Skip the (slow) gate when the push touches no TypeScript sources.
 if [ "$run_gate" -ne 1 ]; then
