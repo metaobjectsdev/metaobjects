@@ -11,7 +11,7 @@ publish = false
 build = "build.rs"
 
 [dependencies]
-metaobjects = { path = "../metaobjects" }
+metaobjects = { path = "../metaobjects", version = "0.1.0" }
 serde_json.workspace = true
 indexmap.workspace = true
 serde.workspace = true

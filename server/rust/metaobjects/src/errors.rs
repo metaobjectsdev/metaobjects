@@ -1,7 +1,9 @@
 //! Error codes shared by every port, and the error type this crate returns.
 //!
 //! The codes are the cross-port contract in `fixtures/conformance/ERROR-CODES.json`;
-//! a test in this module fails if one used here is missing from that file.
+//! a test in this module fails if one used here is missing from that file. The test
+//! reads the byte-identical copy at `data/ERROR-CODES.json`, which the parity test holds
+//! to the fixture.
 
 use std::fmt;
 
@@ -129,7 +131,7 @@ mod tests {
 
     #[test]
     fn every_code_is_in_the_shared_catalogue() {
-        let raw = include_str!("../../../../fixtures/conformance/ERROR-CODES.json");
+        let raw = include_str!("../data/ERROR-CODES.json");
         let doc: serde_json::Value = serde_json::from_str(raw).unwrap();
         let codes = doc["codes"].as_object().unwrap();
         for code in ALL_CODES {

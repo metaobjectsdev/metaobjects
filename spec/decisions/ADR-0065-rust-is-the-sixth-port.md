@@ -5,7 +5,8 @@
 **Accepted** (2026-11-19). Registers no vocabulary: `metamodelVersion` is unchanged. Adds a sixth
 language port under `server/rust/`, in preview, and a `rust` CI lane. Amends nothing.
 **Amendment 1** (2026-11-19) records the command line, the shape of the generated crates and the
-`client` and `commands` generators.
+`client` and `commands` generators. **Amendment 2** (2026-11-20) records the vendored copies of
+repository data the crate builds from.
 
 ## Context
 
@@ -230,3 +231,27 @@ so they are not re-derived.
     copy's output has a byte budget and a longest-file budget, and all the crates must build. A
     time budget on a shared machine measures the machine; the times are printed, and their
     ceilings sit far above a normal run to catch a step that stopped scaling.
+
+### Amendment 2 (2026-11-20) — the vendored copies of repository data
+
+The crate builds on its own: `cargo package` sees only the crate directory, so the files the crate
+embeds from the repository are vendored as byte-identical copies under `server/rust/metaobjects/data/`:
+
+- `spec/metamodel/*.json` → `data/metamodel/` (the provider definitions the registry loads),
+- `fixtures/conformance/ERROR-CODES.json` → `data/ERROR-CODES.json` (the shared error catalogue),
+- `library/` → `data/library/` (the shipped libraries, `iam` and `ai`).
+
+This is the same single-source pattern the C# port already uses (`server/csharp/MetaObjects/SpecMetamodel/`,
+with a byte gate and a refresh step in `MetaObjects.csproj`). The repository's files stay the source of
+truth; a copy is never edited by hand.
+
+The parity gate is `tests/vendored_data_parity.rs`. It runs in the `rust` lane and fails when a copy
+differs from its source, or when `library/` and `data/library/` differ in file count. Outside the
+repository (a packaged crate has no `spec/` beside it) it passes without comparing. Its failure
+message names the step that fixes it, run from the repository root:
+
+```sh
+cp spec/metamodel/<name>.json server/rust/metaobjects/data/metamodel/
+cp fixtures/conformance/ERROR-CODES.json server/rust/metaobjects/data/
+rsync -a --delete library/ server/rust/metaobjects/data/library/
+```

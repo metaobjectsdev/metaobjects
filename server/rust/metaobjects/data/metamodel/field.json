@@ -1,0 +1,199 @@
+{
+  "provider": "metaobjects-core-types",
+  "types": [
+    {
+      "type": "field",
+      "subType": "base",
+      "dataType": "string",
+      "description": "Abstract base field — the shared root subtype that concrete field subtypes specialize. Carries the attrs common to every field but binds no concrete data type of its own (falls back to string). Not authored directly: a `field.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.",
+      "children": [
+        { "type": "validator", "subType": "*", "name": "*", "min": 0, "max": null },
+        { "type": "view", "subType": "*", "name": "*", "min": 0, "max": null },
+        { "type": "origin", "subType": "*", "name": "*", "min": 0, "max": null },
+        { "type": "attr", "subType": "boolean", "name": "required", "min": 0, "max": 1, "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction." },
+        { "type": "attr", "subType": "string", "name": "mutability", "min": 0, "max": 1, "allowedValues": ["readWrite", "writeOnce", "readOnly"], "description": "FR-037 R1: who may write this field, and when. 'readWrite' (the default when absent) — the caller may set it on create and change it on update. 'writeOnce' — the caller sets it on create; it is excluded from the update shape thereafter, so a value presented on PATCH is ignored rather than rejected. 'readOnly' — nobody writes it: codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas omit it from input variants; the value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner. The three are mutually exclusive modes of ONE axis — who may write, and when — so the illegal pair is unrepresentable and inheritance has a total order: a subtype may TIGHTEN an inherited mode (readWrite < writeOnce < readOnly) and never loosen it (ERR_MUTABILITY_DOWNGRADE). Pairing a non-readWrite mode with @autoSet is ERR_MUTABILITY_AUTOSET_CONFLICT: @autoSet already says the SERVER supplies the value, which is a different axis from who may write it." },
+        { "type": "attr", "name": "default", "min": 0, "max": 1, "description": "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue()." },
+        { "type": "attr", "subType": "boolean", "name": "unique", "min": 0, "max": 1, "description": "When true, the field gets a column-level UNIQUE constraint." }
+      ]
+    },
+    {
+      "type": "field",
+      "subType": "string",
+      "dataType": "string",
+      "extendsBase": true,
+      "description": "Variable-length text. Binds to the native string type; DB column is VARCHAR/TEXT (use @maxLength for VARCHAR(n)).",
+      "whenToUse": "Plain variable-length text. Set @maxLength to size the column. The default for textual data.",
+      "children": [
+        { "type": "attr", "subType": "int", "name": "maxLength", "min": 0, "max": 1, "description": "Maximum character length for string-typed fields (drives VARCHAR(n))." },
+        { "type": "attr", "subType": "string", "name": "stringFormat", "min": 0, "max": 1, "allowedValues": ["email", "hostname"], "description": "ADR-0036/0037: a closed validation format for a plain string field that has NO native type or behavior of its own — email | hostname. The field stays a plain string (native binding + DB column unchanged); codegen emits the matching validator (Zod z.email() / a hostname check; PG CHECK where appropriate). The canonical matcher per format lives in each port's codegen, NOT author validator.regex (cross-language regex engines diverge). Named @stringFormat (not @format) to avoid colliding with template.* @format (output format). Concepts WITH a native type or behavior are subtypes instead (uuid → field.uuid, url/uri → field.uri, ip → field.inet)." }
+      ]
+    },
+    {
+      "type": "field",
+      "subType": "int",
+      "dataType": "int",
+      "extendsBase": true,
+      "description": "32-bit signed integer. Binds to the native int type; DB column is INTEGER.",
+      "whenToUse": "A whole number within +/-2^31. Use long instead if values can exceed that."
+    },
+    {
+      "type": "field",
+      "subType": "long",
+      "dataType": "long",
+      "extendsBase": true,
+      "description": "64-bit signed integer. Binds to the native long/bigint type; DB column is BIGINT.",
+      "whenToUse": "A whole number that may exceed 32 bits (ids, counters, epoch millis)."
+    },
+    {
+      "type": "field",
+      "subType": "double",
+      "dataType": "double",
+      "extendsBase": true,
+      "description": "Double-precision (64-bit) IEEE-754 floating point. Binds to the native double/number type; DB column is DOUBLE PRECISION. Not for money — use field.currency or field.decimal.",
+      "whenToUse": "An approximate floating-point number where exactness is not required. For money/precision use decimal."
+    },
+    {
+      "type": "field",
+      "subType": "float",
+      "dataType": "double",
+      "extendsBase": true,
+      "description": "Single-precision floating point. Binds to the native double/number type (TS has no distinct float); DB column is REAL. Not for money."
+    },
+    {
+      "type": "field",
+      "subType": "decimal",
+      "dataType": "string",
+      "extendsBase": true,
+      "description": "Precision-exact decimal (use @precision/@scale). Native TS binding is string (lossless); DB column is NUMERIC(p,s); the wire form is a string. Classified DATA_TYPE_STRING so an exact decimal is never silently rounded through a double.",
+      "whenToUse": "A value needs exact precision (money amounts, rates, quantities). Use decimal with @precision/@scale — never double, which loses precision.",
+      "rules": "The wire and native-TS form is a STRING to stay precision-exact end-to-end (Drizzle pg numeric infers as string; SP-H/ADR-0019). Set @precision (total significant digits) and @scale (digits right of the point) to drive NUMERIC(p,s).",
+      "children": [
+        { "type": "attr", "subType": "int", "name": "precision", "min": 0, "max": 1, "description": "Total number of significant digits for decimal-typed fields." },
+        { "type": "attr", "subType": "int", "name": "scale", "min": 0, "max": 1, "description": "Number of digits to the right of the decimal point for decimal-typed fields." }
+      ]
+    },
+    {
+      "type": "field",
+      "subType": "boolean",
+      "dataType": "boolean",
+      "extendsBase": true,
+      "description": "True/false flag. Binds to the native boolean type; DB column is BOOLEAN.",
+      "whenToUse": "A true/false flag."
+    },
+    {
+      "type": "field",
+      "subType": "date",
+      "dataType": "date",
+      "extendsBase": true,
+      "description": "Calendar date (no time-of-day). Binds to the native date/temporal type; DB column is DATE.",
+      "whenToUse": "A column is a calendar date with no time-of-day. Use date instead of a string."
+    },
+    {
+      "type": "field",
+      "subType": "time",
+      "dataType": "date",
+      "extendsBase": true,
+      "description": "Time-of-day (no calendar date). Binds to the native date/temporal type; DB column is TIME."
+    },
+    {
+      "type": "field",
+      "subType": "timestamp",
+      "dataType": "date",
+      "extendsBase": true,
+      "description": "Date + time-of-day instant (optionally with timezone). Binds to the native date/temporal type; DB column is TIMESTAMP(TZ). Pair with @autoSet for created/updated stamping.",
+      "whenToUse": "A column records an instant (created/updated at). Use timestamp so it serializes ISO-8601 with timezone consistently."
+    },
+    {
+      "type": "field",
+      "subType": "object",
+      "dataType": "object",
+      "extendsBase": true,
+      "description": "A nested structured value (set @objectRef to the target object). Storage is governed by @storage: flattened (prefixed columns), jsonb (single jsonb column, supports isArray), or subdocument (document-store hint).",
+      "whenToUse": "A field holds a nested structured value (or an array of them). Set @objectRef + @storage so the shape is typed and persisted (flattened/jsonb) instead of an untyped blob.",
+      "rules": "Set @objectRef to the nested object's name (or FQN). @storage selects physical layout — flattened expands into prefixed parent columns (isArray must be false), jsonb stores the structured value (or array when isArray=true) in one jsonb column, subdocument emits no Postgres column. Defaults to single-jsonb-column when @storage is absent.",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "objectRef", "min": 0, "max": 1, "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization." }
+      ]
+    },
+    {
+      "type": "field",
+      "subType": "map",
+      "dataType": "object",
+      "extendsBase": true,
+      "description": "An open-keyed map (Record<string,V> / dict[str,V]) stored in a single jsonb column. Keys are always strings (the JSON object constraint); the value type is set by @valueType (a scalar field subtype) or @objectRef (a value-object).",
+      "whenToUse": "A field is an open-keyed map of values (Record<string,V>). Use it for dynamic keys instead of an untyped jsonb string.",
+      "rules": "Keys are always strings. Set exactly one of @valueType (a scalar value subtype: string/int/long/double/float/decimal/boolean/date/time/timestamp/uuid) or @objectRef (a value-object name or FQN). Stored as a single jsonb column holding the JSON object — never a native array; isArray does not apply.",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "valueType", "min": 0, "max": 1, "description": "Scalar value subtype for a scalar-valued map (string/int/long/double/float/decimal/boolean/date/time/timestamp/uuid). Mutually exclusive with @objectRef; exactly one of the two must be set." },
+        { "type": "attr", "subType": "string", "name": "objectRef", "min": 0, "max": 1, "description": "Name (or FQN) of the value-object for a value-object-valued map. Mutually exclusive with @valueType; exactly one of the two must be set." }
+      ]
+    },
+    {
+      "type": "field",
+      "subType": "currency",
+      "dataType": "long",
+      "extendsBase": true,
+      "description": "Stores money as integer minor units (cents). Binds to long; the client formats via @currency/@locale. Float arithmetic for money is forbidden.",
+      "whenToUse": "A column holds money. Use currency so it stores integer minor-units and the client formats it — never floats or hand-rolled cents math.",
+      "rules": "Storage is integer minor units (cents for USD, yen for JPY) — the wire form is unchanged from long. The server never formats currency; all formatting is client-side via Intl.NumberFormat using @currency (ISO 4217) and @locale (BCP 47). Float arithmetic for money is forbidden.",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "currency", "min": 0, "max": 1, "default": "USD", "description": "ISO 4217 currency code for a currency-subtype field. Storage is integer minor units; defaults to 'USD' when omitted." }
+      ]
+    },
+    {
+      "type": "field",
+      "subType": "enum",
+      "dataType": "string",
+      "extendsBase": true,
+      "description": "String-backed enumeration constrained to a closed set of member symbols (@values). Each member is its own stored string, unless @stringValueMap gives it another (or @intValueMap an integer).",
+      "whenToUse": "A field is a fixed, closed set of string values. Set @values so the union type, DB CHECK, and validation are generated — don't hand-roll constants + checks.",
+      "rules": "Required @values is a non-empty, duplicate-free set; each member must match ^[A-Za-z_][A-Za-z0-9_]*$ so it is a legal identifier in every target language, and is its own stored string unless @stringValueMap (string) or @intValueMap (integer) maps it. Optional FR-010/FR-011 overlays add tolerant-extract aliasing (@enumAlias), per-member docs (@enumDoc), an uncoercible-value fallback (@coerceDefault, must be one of @values), and ASCII normalization mode (@normalize).",
+      "children": [
+        { "type": "transition", "subType": "*", "name": "*", "min": 0, "max": null, "description": "Lifecycle moves between this enum's members (ADR-0066). An enum with at least one transition.action is a lifecycle: its states are @values, its initial state @default, its terminal states the members no transition leaves." },
+        { "type": "attr", "subType": "string", "name": "values", "isArray": true, "min": 1, "max": 1, "description": "Member symbols of an enum-subtype field. Declaration order is significant; each is a legal identifier and its own stored string unless @stringValueMap or @intValueMap maps it." },
+        { "type": "attr", "subType": "boolean", "name": "provided", "min": 0, "max": 1, "description": "FR-019: marks an abstract package-level field.enum as externally provided — codegen references the type (resolved via per-port codegen config) instead of materializing it. Default false. Not a field attr — it lives on the type declaration." },
+        { "type": "attr", "subType": "int", "name": "maxLength", "min": 0, "max": 1, "description": "Column length of a string-stored enum (drives VARCHAR(n)); every member must fit. Overrides the project's enums.maxLength. Refused with @intValueMap, whose column is an integer. Justified in ADR-0023 Amendment 1." },
+        { "type": "attr", "subType": "intMap", "name": "intValueMap", "min": 0, "max": 1, "description": "Optional per-member int values ({member: int}) switching this enum field's DB persistence from string+CHECK to integer+CHECK. Keys must exactly match @values; values must be unique integers. The generated native type and wire format are unchanged in every language." },
+        { "type": "attr", "subType": "properties", "name": "stringValueMap", "min": 0, "max": 1, "description": "Optional per-member stored strings ({member: string}) for a string-stored enum whose database spelling differs from its member symbols (a legacy column holding lowercase 'draft', or 'LEGACY_A'). The column, its CHECK, its length, a @default and a @condition literal hold the stored strings; the generated native type and wire format keep the members. Keys must exactly match @values; values must be unique non-empty strings. The string twin of @intValueMap, refused with it and on an array enum (ERR_BAD_ATTR_VALUE)." }
+      ]
+    },
+    {
+      "type": "field",
+      "subType": "uuid",
+      "dataType": "string",
+      "extendsBase": true,
+      "description": "Logical UUID identity scalar. A bare scalar (no required attrs, no loader value-validation) — binds to TS string (no native UUID type); DB column is Postgres-native uuid.",
+      "whenToUse": "A key or external identifier is a UUID. Use it for a typed UUID column instead of a plain string."
+    },
+    {
+      "type": "field",
+      "subType": "uri",
+      "dataType": "string",
+      "extendsBase": true,
+      "description": "A URI/URL string (ADR-0036/0037 — a concept with a native type + behavior, so a subtype not a @stringFormat). Binds to TS string (TS has no native URI type, same as field.uuid); other ports bind to their native URI type (Java java.net.URI, C# System.Uri, Python urllib.parse, Kotlin java.net.URI) and parse scheme/authority/path. DB column is text (Postgres has no uri type). Codegen emits a URL/URI validator (TS Zod z.string().url()). v1 ships WITHOUT @kind — the native type subsumes url/urn; @kind is reserved for a later url|urn value-constraint.",
+      "whenToUse": "A field holds a URL or URI. Use it for a typed URI column + URL validation instead of a plain string.",
+      "children": [
+        { "type": "attr", "subType": "boolean", "name": "lenient", "min": 0, "max": 1, "description": "#234: opt this field out of strict well-formedness enforcement. When true, codegen binds a plain string (no URL/IP validator, no native URI/InetAddress type; field.inet uses a text column, not the native inet type) so a not-strictly-valid value round-trips unchanged. Default (absent/false) is strict: an absolute-scheme URI / an IPv4-or-IPv6 literal." }
+      ]
+    },
+    {
+      "type": "field",
+      "subType": "inet",
+      "dataType": "string",
+      "extendsBase": true,
+      "description": "An IP-address string (IPv4 or IPv6) (ADR-0036/0037 — a concept with a native type + behavior, so a subtype not a @stringFormat). Binds to TS string (TS has no native IP type, same as field.uuid); other ports bind to their native IP type (Java java.net.InetAddress, C# System.Net.IPAddress, Python ipaddress, Kotlin java.net.InetAddress). DB column is the Postgres-native inet type. Codegen emits an IPv4-or-IPv6 literal validator (a Zod regex union in TS — z.string().ip() was removed in Zod 4 — native IP-type parsing in the other ports); add @lenient to bind a plain string with no validator. v1 ships WITHOUT @kind — the native type subsumes ipv4/ipv6; @kind is reserved for a later ipv4|ipv6 value-constraint.",
+      "whenToUse": "A field holds an IPv4 or IPv6 address. Use it for a native Postgres inet column + IP validation instead of a plain string.",
+      "children": [
+        { "type": "attr", "subType": "boolean", "name": "lenient", "min": 0, "max": 1, "description": "#234: opt this field out of strict well-formedness enforcement. When true, codegen binds a plain string (no URL/IP validator, no native URI/InetAddress type; field.inet uses a text column, not the native inet type) so a not-strictly-valid value round-trips unchanged. Default (absent/false) is strict: an absolute-scheme URI / an IPv4-or-IPv6 literal." }
+      ]
+    },
+    {
+      "type": "field",
+      "subType": "duration",
+      "dataType": "string",
+      "extendsBase": true,
+      "description": "A fixed-length span of time: days, hours, minutes and seconds (ADR-0036/0037 — a concept with a native type + behavior). Binds to TS string (TS has no native duration type); other ports bind to their native type (C# System.TimeSpan, Java and Kotlin java.time.Duration, Python datetime.timedelta). DB column is the Postgres-native interval type; SQLite, D1 and MySQL store a 64-bit integer count of microseconds, which orders and compares as the span does. The wire form is an ISO-8601 duration: every port writes [-]PT[nH][nM][n[.f]S] (hours never folded into days, as many fractional digits as its native type holds, zero is PT0S) and reads that form plus leading week and day counts (nW, exactly 7 days; nD, exactly 24 hours) and a fraction of any length, truncated toward zero. Years and months are refused: a calendar span is not a fixed length. Justified in ADR-0023 Amendment 1.",
+      "whenToUse": "A field holds an elapsed time, a timeout or a delay. Use it for a native Postgres interval column and a native duration type instead of a string or a number of seconds. A calendar span (\"every 3 months\") is not a duration: model it as an int and a unit."
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "$comment": "Library manifest (FR-043 §4). Embedded beside the YAML in every port. Every fact here is RESOLVED by a test, never trusted: `packages` against the library loaded standalone, `layers[].refs` against the embedded set, `generators[].name` against the generator registry, `generators[].anchor` against the library's own nodes, and `name` against the last package segment.",
+  "name": "ai",
+  "kind": "feature",
+  "stability": "stable",
+  "since": "0.20.0",
+  "description": "The LLM-call trace envelope: what was asked, what came back, what it cost, how long it took.",
+  "useWhen": "the application calls a language model and someone will ask what it cost or why a call failed",
+  "packages": ["metaobjects::ai"],
+  "layers": {
+    "": { "refs": ["ai/model", "ai/requirements"], "description": "the core model and its requirements — sourceless, so it adds no tables" },
+    "db": { "refs": ["ai/db"], "description": "the concrete llm_call table" }
+  },
+  "generators": [
+    { "name": "trace-helper", "anchor": "metaobjects::ai::LlmCallBase" }
+  ],
+  "runtime": {
+    "typescript": ["@metaobjectsdev/runtime-ts"]
+  }
+}

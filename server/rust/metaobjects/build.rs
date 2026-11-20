@@ -1,7 +1,7 @@
-//! Embeds the repo-root `library/` tree (YAML files and `library.json` manifests)
-//! into the crate, as the other ports do, so a shipped library resolves with no
-//! file on disk. When the directory is absent (the crate built outside the
-//! repository) the embed is empty.
+//! Embeds the shipped libraries (YAML files and `library.json` manifests) into the
+//! crate, as the other ports do, so a shipped library resolves with no file on disk.
+//! They come from `data/library/`, a byte-identical copy of the repo-root `library/`
+//! that `tests/vendored_data_parity.rs` holds to its source.
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -36,7 +36,7 @@ fn collect(
 fn main() {
     let manifest_dir =
         PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
-    let lib_dir = manifest_dir.join("../../../library");
+    let lib_dir = manifest_dir.join("data/library");
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed={}", lib_dir.display());
     let (mut yaml, mut manifests) = (Vec::new(), Vec::new());

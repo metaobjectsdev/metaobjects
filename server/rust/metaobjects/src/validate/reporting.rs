@@ -1770,7 +1770,7 @@ mod tests {
 
     #[test]
     fn every_code_is_in_the_shared_catalogue() {
-        let raw = include_str!("../../../../../fixtures/conformance/ERROR-CODES.json");
+        let raw = include_str!("../../data/ERROR-CODES.json");
         let doc: Value = serde_json::from_str(raw).unwrap();
         let codes = doc["codes"].as_object().unwrap();
         for c in [

@@ -524,7 +524,7 @@ mod tests {
 
     #[test]
     fn every_code_is_in_the_shared_catalogue() {
-        let raw = include_str!("../../../../../fixtures/conformance/ERROR-CODES.json");
+        let raw = include_str!("../../data/ERROR-CODES.json");
         let doc: serde_json::Value = serde_json::from_str(raw).unwrap();
         let codes = doc["codes"].as_object().unwrap();
         for code in [ERR_INVALID_RELATIONSHIP, ERR_BAD_ATTR_VALUE] {
