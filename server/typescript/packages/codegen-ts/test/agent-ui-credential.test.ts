@@ -55,4 +55,52 @@ describe("agent/ui.md describes a credential as the generated UI treats it", () 
     expect(out).not.toContain("`email`, `pinHash`");
     expect(out).not.toContain("default sort");
   });
+
+  // Oracle: the generated TanStack grid (credential-grid-column.test.ts) drops these same
+  // columns from the TPH base grid. A page that lists them contradicts the generated code.
+  test("a TPH base grid lists neither a subtype-only credential nor a sibling-marked shared column", async () => {
+    const PASSWORD = { "view.password": {} };
+    const model = {
+      "metadata.root": {
+        children: [
+          {
+            "object.entity": {
+              name: "Auth",
+              "@discriminator": "type",
+              children: [
+                { "source.rdb": { "@table": "auths" } },
+                { "field.enum": { name: "type", "@values": ["Bridge", "Coupon"] } },
+                { "field.long": { name: "id" } },
+                { "identity.primary": { name: "id", "@fields": "id", "@generation": "increment" } },
+                { "layout.dataGrid": { name: "default", "@columns": ["type", "id", "pin", "code"] } },
+              ],
+            },
+          },
+          {
+            "object.entity": {
+              name: "BridgeAuth", extends: "Auth", "@discriminatorValue": "Bridge",
+              children: [
+                { "field.string": { name: "pin", children: [PASSWORD] } },
+                { "field.string": { name: "code" } },
+              ],
+            },
+          },
+          {
+            "object.entity": {
+              name: "CouponAuth", extends: "Auth", "@discriminatorValue": "Coupon",
+              children: [{ "field.string": { name: "code", children: [PASSWORD] } }],
+            },
+          },
+        ],
+      },
+    };
+    const res = await new MetaDataLoader({ strict: true }).load([
+      new InMemoryStringSource(JSON.stringify(model), { id: "meta.json", format: "json" }),
+    ]);
+    expect(res.errors).toEqual([]);
+    const out = renderAgentUiPage(res.root);
+    expect(out).toContain("- columns: `type`, `id`");
+    expect(out).not.toContain("`pin`, `code`");
+    expect(out).not.toMatch(/- columns:.*`(pin|code)`/);
+  });
 });

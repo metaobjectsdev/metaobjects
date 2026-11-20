@@ -42,7 +42,7 @@ import type { MetaData, MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
 import { flatSurfaceFields } from "../flattened.js";
 import { GENERATED_HEADER } from "../constants.js";
 import { generatableObjects, isReport } from "../source-detect.js";
-import { hasGeneratedForm, isCredentialField, restPath, servedPath, servesClientHooks } from "../api-surface.js";
+import { hasGeneratedForm, isCredentialField, restPath, servedPath, servesClientHooks, tphHierarchy } from "../api-surface.js";
 import {
   buildEntityUiDescriptor,
   type UiFieldDescriptor,
@@ -188,8 +188,9 @@ function gridSection(obj: MetaObject, grid: MetaData, root: MetaRoot): string[] 
   out.push(`**Grid \`${grid.name}\`**`);
   out.push("");
   // A credential is never a grid column, even when @columns names it — the generated grids
-  // drop it, so the page does not list it.
-  const credentials = credentialFieldNames(obj, root);
+  // drop it, so the page does not list it. A TPH base grid folds in every subtype's columns, so
+  // a credential on any member of the hierarchy counts (the rule the tanstack grid uses).
+  const credentials = new Set(tphHierarchy(obj, root).flatMap((o) => [...credentialFieldNames(o, root)]));
   const columns = grid.attr(LAYOUT_DATA_GRID_ATTR_COLUMNS);
   const shown = Array.isArray(columns) ? columns.map(String).filter((c) => !credentials.has(c)) : [];
   if (shown.length > 0) {
