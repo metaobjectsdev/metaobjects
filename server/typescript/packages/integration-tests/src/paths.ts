@@ -46,6 +46,11 @@ export const API_CONTRACT_WRITE_THROUGH_SCENARIOS_DIR = resolve(API_CONTRACT_WRI
 export const API_CONTRACT_SECRET_FIELDS_DIR = resolve(API_CONTRACT_DIR, "secret-fields");
 export const API_CONTRACT_SECRET_FIELDS_SCENARIOS_DIR = resolve(API_CONTRACT_SECRET_FIELDS_DIR, "scenarios");
 
+// fixtures/api-contract-conformance/secret-fields/tph/ — a TPH hierarchy whose subtypes share one
+// column that one of them marks as a credential (the generated lane of the TPH harness).
+export const API_CONTRACT_SECRET_FIELDS_TPH_DIR = resolve(API_CONTRACT_SECRET_FIELDS_DIR, "tph");
+export const API_CONTRACT_SECRET_FIELDS_TPH_SCENARIOS_DIR = resolve(API_CONTRACT_SECRET_FIELDS_TPH_DIR, "scenarios");
+
 // Enum @default applied on create subcorpus (GENERATED lane only, every port).
 export const API_CONTRACT_ENUM_DEFAULT_DIR = resolve(API_CONTRACT_DIR, "enum-default");
 export const API_CONTRACT_ENUM_DEFAULT_SCENARIOS_DIR = resolve(API_CONTRACT_ENUM_DEFAULT_DIR, "scenarios");

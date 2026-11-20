@@ -171,7 +171,8 @@ next release moves `metamodelVersion`.
   page leave it out too. In Java, Kotlin and C#, whose sort allowlist lists every scalar field and never read `@sortable`, a
   credential was sortable with no mark at all, so the generated routes change for any model with a
   credential: regenerate. Your own code is unaffected. Gated by `filter-sort-refuses-credential` in the `secret-fields/`
-  sub-corpus of the api-contract conformance corpus, in the generated lane of all five ports.
+  sub-corpus of the api-contract conformance corpus, in the generated lane of all five ports, and by
+  `tph-sibling-credential` in its `tph/` directory for the shared-column case.
 
 - **A numeric key is read only from canonical decimal text, in the TypeScript, Java and Python
   ObjectManagers.** A path parameter or ref string for an integer, long, decimal, double or float

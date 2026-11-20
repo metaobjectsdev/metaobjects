@@ -12,7 +12,14 @@ import { join } from "node:path";
 import {
   API_CONTRACT_SECRET_FIELDS_DIR,
   API_CONTRACT_SECRET_FIELDS_SCENARIOS_DIR,
+  API_CONTRACT_SECRET_FIELDS_TPH_DIR,
+  API_CONTRACT_SECRET_FIELDS_TPH_SCENARIOS_DIR,
 } from "../src/paths.ts";
+import {
+  startGeneratedTphServer,
+  type GeneratedTphServerHandle,
+  type TphSeed,
+} from "../src/api-contract-tph-generated-server.ts";
 import { openApiCheck, type ContractCheck } from "../src/api-contract-openapi-check.ts";
 import { loadScenarios, assertResponse, type ApiScenario, parseBodyExact } from "../src/api-contract-scenario.ts";
 import { OUTPUT_LAYOUTS, postgresFor } from "../src/output-layout.ts";
@@ -72,6 +79,37 @@ for (const layout of OUTPUT_LAYOUTS) describe(`api contract secret fields (#484)
       await pg.stop();
     }
   }, { timeout: 60_000 });
+});
+
+const TPH_SEED = JSON.parse(readFileSync(join(API_CONTRACT_SECRET_FIELDS_TPH_DIR, "seed.json"), "utf8")) as TphSeed;
+const TPH_META_PATH = join(API_CONTRACT_SECRET_FIELDS_TPH_DIR, "meta.json");
+
+// A TPH hierarchy shares one table, so a column any subtype marks as a credential is one for the
+// whole table: the base and both subtypes refuse a filter or sort on it.
+for (const layout of OUTPUT_LAYOUTS) describe(`api contract secret fields — TPH sibling credential — GENERATED routes lane [${layout}]`, () => {
+  const startDb = postgresFor(layout);
+  for (const scenario of loadScenarios(API_CONTRACT_SECRET_FIELDS_TPH_SCENARIOS_DIR)) {
+    test(scenario.name, async () => {
+      const pg = await startDb();
+      let server: GeneratedTphServerHandle | null = null;
+      try {
+        server = await startGeneratedTphServer(pg.connectionUri, TPH_META_PATH, layout);
+        await server.applySeed(TPH_SEED);
+        for (const req of scenario.requests) {
+          const res = await fetch(server.baseUrl + req.path, { method: req.method });
+          const bodyText = await res.text();
+          let body: unknown = null;
+          if (bodyText.length > 0) {
+            try { body = parseBodyExact(bodyText); } catch { body = bodyText; }
+          }
+          assertResponse(scenario.name, req, res.status, body);
+        }
+      } finally {
+        if (server) await server.close();
+        await pg.stop();
+      }
+    }, { timeout: 120_000 });
+  }
 });
 
 async function getJson(server: GeneratedSecretFieldsServerHandle, path: string): Promise<Array<Record<string, unknown>>> {

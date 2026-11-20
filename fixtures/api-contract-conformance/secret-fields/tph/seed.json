@@ -1,0 +1,7 @@
+{
+  "auths": [
+    { "id": 1, "type": "Bridge",    "reference": "REF-1", "quantity": 5,        "couponAmount": null, "approver": null,        "issuedCurrency": "USD", "autoCreatedAt": "2000-01-01T00:00:00", "autoUpdatedAt": "2000-01-01T00:00:00" },
+    { "id": 2, "type": "Coupon",     "reference": "REF-2", "quantity": null,     "couponAmount": "12.50", "approver": null,        "issuedCurrency": "GBP", "autoCreatedAt": "2000-01-01T00:00:00", "autoUpdatedAt": "2000-01-01T00:00:00" },
+    { "id": 3, "type": "Permit", "reference": "REF-3", "quantity": null,     "couponAmount": null, "approver": "Dr. Smith", "issuedCurrency": "EUR", "autoCreatedAt": "2000-01-01T00:00:00", "autoUpdatedAt": "2000-01-01T00:00:00" }
+  ]
+}

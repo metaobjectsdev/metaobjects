@@ -52,6 +52,7 @@ class GeneratedTphControllerHarness(
     corpusRoot: Path,
     genDir: Path,
     private val seedRows: List<Map<String, Any?>>,
+    metaFile: Path = corpusRoot.resolve("tph/meta.json"),
 ) : AutoCloseable {
 
     private val mapper: ObjectMapper = ObjectMapper()
@@ -66,11 +67,11 @@ class GeneratedTphControllerHarness(
     private val authTable: Table
     private val authTypeClass: Class<*>
     private val dbSeq = AtomicInteger(0)
+    private val dbPrefix = "tph_auth_" + java.util.UUID.randomUUID().toString().replace("-", "")
     private var host: TomcatHost? = null
 
     init {
-        val metaJson = corpusRoot.resolve("tph/meta.json")
-        val uri: URI = URIHelper.toURI("model:file:" + metaJson.toAbsolutePath().toString().replace('\\', '/'))
+        val uri: URI = URIHelper.toURI("model:file:" + metaFile.toAbsolutePath().toString().replace('\\', '/'))
         val loader = loadUris("api-contract-tph-generated", listOf(uri))
         // ADR-0058 — this corpus's committed .metaobjects/config.json (at corpusRoot,
         // fixtures/api-contract-conformance/) declares naming.columns: literal; every field
@@ -129,7 +130,7 @@ class GeneratedTphControllerHarness(
 
     /** Rebuild a fresh in-memory H2 + controller + Tomcat, then seed via a direct Exposed insert. */
     fun reset() {
-        val dbName = "tph_auth_${dbSeq.incrementAndGet()}"
+        val dbName = "${dbPrefix}_${dbSeq.incrementAndGet()}"
         val db = Database.connect("jdbc:h2:mem:$dbName;DB_CLOSE_DELAY=-1;MODE=PostgreSQL", driver = "org.h2.Driver")
         transaction(db) { SchemaUtils.create(authTable) }
 
