@@ -154,8 +154,9 @@ let one = orders.get(7).await?;
 - An error is `meta_client::Error`: `Transport`, `Api` (the status and the contract's
   `{error, message}` body) or `Decode`.
 
-The transport is `reqwest` with its default features, written out as the `meta_client` crate. A project
-that wants another HTTP stack or TLS backend changes that one crate, which it owns.
+The transport is `reqwest` with its default features plus `json` and `query`, written out as the
+`meta_client` crate. A project that wants another HTTP stack or TLS backend changes that one crate,
+which it owns.
 
 Not generated yet: clients for `object.projection` and `object.report` routes.
 

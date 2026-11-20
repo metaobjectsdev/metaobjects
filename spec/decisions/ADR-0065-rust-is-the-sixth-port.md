@@ -207,7 +207,8 @@ so they are not re-derived.
     Rust server to exist. A filter or a sort the server would refuse does not compile: the query
     type has one method per `@filterable` field and operator and an enum of the `@sortable`
     fields. `get`, `update` and `delete` exist only for a single key of text or a whole number; a
-    view-backed entity is read-only. The transport is `reqwest` with its default features.
+    view-backed entity is read-only. The transport is `reqwest` with its default features plus
+    `json` and `query`.
     Clients for `object.projection` and `object.report` routes are not generated yet.
 11. **`commands` writes a library, not a binary.** A `<package>_cli` crate exports a `clap`
     `Subcommand` and an asynchronous `run`; the binary, its name, the API's address and how an
