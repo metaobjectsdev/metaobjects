@@ -61,7 +61,7 @@ export function coerceIdForColumn(colRef: unknown, raw: string): number | string
 export function rawIdLiteral(raw: string): string | undefined {
   const v = parseId(raw);
   if (typeof v === "number") return String(v);
-  if (raw.trim() !== "" && Number.isFinite(Number(raw))) return undefined;
+  if (raw.trim() !== "" && !Number.isNaN(Number(raw))) return undefined;
   return `'${raw.replace(/'/g, "''")}'`;
 }
 
