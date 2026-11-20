@@ -479,7 +479,12 @@ fn apply_definition(
             ChildSubType::Many(list) => list.clone(),
         };
         for sub in sub_types {
-            registry.extend(&ext.type_name, &sub, attributes.clone(), child_rules.clone())?;
+            registry.extend(
+                &ext.type_name,
+                &sub,
+                attributes.clone(),
+                child_rules.clone(),
+            )?;
         }
     }
     Ok(())
@@ -490,9 +495,9 @@ fn apply_definition(
 fn register_core(registry: &mut TypeRegistry) -> Result<(), MetaError> {
     let mut root = TypeDefinition::new("metadata", "root", "Root metadata document");
     root.child_rules = ["object", "field", "validator", "template", "requirement"]
-    .iter()
-    .map(|t| ChildRule::wildcard(t))
-    .collect();
+        .iter()
+        .map(|t| ChildRule::wildcard(t))
+        .collect();
     registry.register(root)?;
     for family in &definitions().core {
         for def in define_from_data(family)? {
