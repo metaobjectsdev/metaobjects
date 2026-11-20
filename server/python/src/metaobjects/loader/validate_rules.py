@@ -41,7 +41,7 @@ Rules:
                                      no target is declared or derivable
   O3 ERR_OPERATION_TARGET_MISMATCH   a declared @objectRef disagrees with the derived target
   O4 ERR_OPERATION_UNKNOWN_TRANSITION a @transitions name is not a transition of the target
-  O5 ERR_BAD_ATTR_VALUE              an @errors code is not lower snake case, or is listed twice
+  O5 ERR_BAD_ATTR_VALUE              an @errors code is not lower snake case, is listed twice, or is one the route answers itself
   B1 ERR_BINDING_PATH_MISMATCH       a binding.rest @path's placeholders are not the target's key fields
                                      (a keyed operation) or are not empty (an unkeyed one)
 

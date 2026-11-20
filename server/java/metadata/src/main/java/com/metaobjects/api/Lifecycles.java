@@ -283,7 +283,7 @@ public final class Lifecycles {
         for (MetaData f : projection.getChildren(MetaData.class, true)) {
             if (!MetaField.TYPE_FIELD.equals(f.getType())) continue;
             Extended ext = extendedMember(f);
-            if (ext != null && isEntity(ext.owner()) && !owners.contains(ext.owner())) owners.add(ext.owner());
+            if (ext != null && isEntity(ext.owner()) && !containsIdentity(owners, ext.owner())) owners.add(ext.owner());
         }
         return owners.size() == 1 ? owners.get(0) : null;
     }
