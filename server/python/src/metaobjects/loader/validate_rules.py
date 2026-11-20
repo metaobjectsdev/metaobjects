@@ -10,7 +10,7 @@ One broken rule yields one error:
 - Each error's source is the offending node: the transition, the enum field (L3), the entity
   (L2b), the operation or the binding.
 - An operation whose @inputRef / @outputRef fails O1 is not checked further; one whose target
-  fails O2 or O3 is not checked for O4 or O5.
+  fails O2 or O3 is not checked for O4 or B1.
 - An error is reported once per (node, code), so a broken transition on an abstract base is
   reported once, not once per inheritor.
 

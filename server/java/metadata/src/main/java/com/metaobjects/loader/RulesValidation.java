@@ -49,7 +49,7 @@ import java.util.regex.Pattern;
  * <p>One broken rule yields one error: each error's source is the offending node (the
  * transition, the enum field (L3), the entity (L2b), the operation or the binding); an
  * operation that fails O1 is not checked further, one whose target fails O2 or O3 is not
- * checked for O4 or O5; and an error is reported once per (node, code), so a broken transition
+ * checked for O4 or B1; and an error is reported once per (node, code), so a broken transition
  * on an abstract base is reported once, not once per inheritor.</p>
  *
  * <p>Rules: L1 and L2 {@code ERR_TRANSITION_NOT_ON_ENTITY}; L3 {@code ERR_LIFECYCLE_NO_INITIAL};

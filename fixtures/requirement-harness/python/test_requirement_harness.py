@@ -77,7 +77,7 @@ def test_declare_businessRules_operationCommand():
 def test_declare_businessRules_operationQuery():
     """metaobjects.declare.businessRules.operationQuery"""
 
-# Transition — A transition names the states it leaves and the state it reaches, all members of its enum, on a field of an entity with a writable source; the field's default is the initial state, and verify reports a state nothing reaches.
+# Transition — A transition names the states it leaves and the state it reaches, all members of its enum, on a field of an entity; an entity with a source needs a writable one, and the lifecycle of an entity with no source is inert. The field's default is the initial state, and verify reports a state nothing reaches.
 @pytest.mark.skip(reason="unfilled slot — write an assertion that fails when: A status value that a typo in a transition made unreachable, found only when a row needs it.")
 def test_declare_businessRules_transitionAction():
     """metaobjects.declare.businessRules.transitionAction"""
