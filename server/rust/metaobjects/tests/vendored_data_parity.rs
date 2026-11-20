@@ -17,15 +17,25 @@ fn files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
+/// The crate's directory, relative to the repository root.
+const CRATE_DIR: &str = "server/rust/metaobjects";
+
 fn same(copy: &Path, source: &Path) {
+    let krate = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let root = krate.join("../../..");
     let a = fs::read(copy).unwrap();
     let b = fs::read(source)
         .unwrap_or_else(|_| panic!("{} has no source {}", copy.display(), source.display()));
+    // Name the step that fixes it, as a command run from the repository root.
+    let copy_rel = Path::new(CRATE_DIR).join(copy.strip_prefix(krate).unwrap());
+    let source_rel = source.strip_prefix(&root).unwrap();
     assert!(
         a == b,
-        "{} drifted from {}: copy it again",
+        "{} drifted from {}: from the repository root, run `cp {} {}`",
         copy.display(),
-        source.display()
+        source.display(),
+        source_rel.display(),
+        copy_rel.display()
     );
 }
 
@@ -56,7 +66,7 @@ fn vendored_copies_match_their_sources() {
     assert_eq!(
         vendored.len(),
         sources.len(),
-        "library/ and data/library differ in file count"
+        "library/ and {CRATE_DIR}/data/library differ in file count: from the repository root, run `rsync -a --delete library/ {CRATE_DIR}/data/library/`"
     );
     for c in &vendored {
         same(
