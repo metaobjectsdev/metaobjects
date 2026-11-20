@@ -322,7 +322,7 @@ children and the cardinality of that subtype. Documentation attributes
 </tr>
 <tr>
 <td><code>operation.command</code></td>
-<td>A named operation that changes state. Takes an <code>object.value</code> (ADR-0030). Its body is hand-written; the generated shell around it loads the row, checks the permission and the current state, runs the body, and makes the guarded update in one transaction (ADR-0066). Experimental since 1.3.0: the shape may change in a MINOR, including removals and renames (docs/compatibility-policy.md).</td>
+<td>A named operation that changes state. Takes an <code>object.value</code> (ADR-0030). Its body is hand-written. The contract (ADR-0066) is that a generated shell around it loads the row, checks the permission and the current state, runs the body, and makes the guarded update in one transaction. No shell is generated yet: this vocabulary is registered, loaded and checked, and nothing is generated from it. Experimental since 1.3.0: the shape may change in a MINOR, including removals and renames (docs/compatibility-policy.md).</td>
 <td><a href="types/operation.html#operationcommand">types/operation.md#operationcommand</a></td>
 </tr>
 <tr>
@@ -427,7 +427,7 @@ children and the cardinality of that subtype. Documentation attributes
 </tr>
 <tr>
 <td><code>transition.action</code></td>
-<td>An allowed move between two values of a <code>field.enum</code>, made by an operation (ADR-0066). A <code>field.enum</code> with at least one is a lifecycle, named after the field. Its states are the enum&#39;s @values, its initial state the enum&#39;s @default, its terminal states the members no transition leaves; none of them has vocabulary of its own. Each transition becomes a guarded update (<code>... WHERE id = ? AND &lt;field&gt; IN (@from) [AND @condition]</code>), its own command when no declared operation claims it, its own permission point and its own wire error. Experimental since 1.3.0: the shape may change in a MINOR, including removals and renames (docs/compatibility-policy.md).</td>
+<td>An allowed move between two values of a <code>field.enum</code>, made by an operation (ADR-0066). A <code>field.enum</code> with at least one is a lifecycle, named after the field. Its states are the enum&#39;s @values, its initial state the enum&#39;s @default, its terminal states the members no transition leaves; none of them has vocabulary of its own. Each transition is held to become a guarded update (<code>... WHERE id = ? AND &lt;field&gt; IN (@from) [AND @condition]</code>), its own command when no declared operation claims it, its own permission point and its own wire error. No shell is generated yet: nothing is generated from this vocabulary, and the loader and <code>verify</code> only check it. Experimental since 1.3.0: the shape may change in a MINOR, including removals and renames (docs/compatibility-policy.md).</td>
 <td><a href="types/transition.html#transitionaction">types/transition.md#transitionaction</a></td>
 </tr>
 <tr>
