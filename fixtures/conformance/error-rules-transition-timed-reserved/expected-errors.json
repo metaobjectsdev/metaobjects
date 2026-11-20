@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_UNKNOWN_SUBTYPE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.purchasing.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[5]['field.enum'].children[0]['transition.timed']"
+      }
+    }
+  ],
+  "warnings": []
+}

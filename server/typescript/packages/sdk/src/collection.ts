@@ -22,12 +22,14 @@ import {
   type PhysicalNaming,
   type WireFormat,
   DEFAULT_WIRE_FORMAT,
+  DEFAULT_RULES_SETTINGS,
+  type RulesSettings,
   type EnumDefaults,
   type ApiPagination,
   type UnknownFieldsMode,
   DEFAULT_ENUM_DEFAULTS,
 } from "@metaobjectsdev/metadata";
-import { apiPaginationFromConfig, apiUnknownFieldsFromConfig, CONFIG_FILE, enumDefaultsFromConfig, loadConfig, physicalNamingFromConfig, wireFormatFromConfig, type Config, type HandEditsPolicy } from "./config.js";
+import { apiPaginationFromConfig, apiUnknownFieldsFromConfig, CONFIG_FILE, enumDefaultsFromConfig, loadConfig, physicalNamingFromConfig, rulesSettingsFromConfig, wireFormatFromConfig, type Config, type HandEditsPolicy } from "./config.js";
 import { discoverCollectionRoot, exists, isDir } from "./discovery.js";
 import { compileScope, matchesScope, type Scope } from "./scope.js";
 import { DEFAULT_METADATA_DIR, DEFAULT_METAOBJECTS_DIR, isMetadataFile } from "./metadata-files.js";
@@ -89,6 +91,8 @@ export interface Collection {
   readonly physicalNaming: PhysicalNaming;
   /** The `wire` block of the project config (ADR-0019 Amendment 2), default when absent. */
   readonly wireFormat: WireFormat;
+  /** The `rules` and `verify` blocks of the project config (ADR-0066), each absent key at its default. */
+  readonly rulesSettings: RulesSettings;
   /** The `enums` block of the project config (string-stored enum defaults), none when absent.
    *  Optional so a hand-built Collection from before the block existed still type-checks. */
   readonly enumDefaults?: EnumDefaults | undefined;
@@ -305,6 +309,7 @@ export async function resolveCollection(
   let libraries: readonly string[] = [];
   let physicalNaming: PhysicalNaming = DEFAULT_PHYSICAL_NAMING;
   let wireFormat: WireFormat = DEFAULT_WIRE_FORMAT;
+  let rulesSettings: RulesSettings = DEFAULT_RULES_SETTINGS;
   let enumDefaults: EnumDefaults = DEFAULT_ENUM_DEFAULTS;
   let apiPagination: ApiPagination | undefined;
   let apiUnknownFields: UnknownFieldsMode | undefined;
@@ -329,6 +334,7 @@ export async function resolveCollection(
     libraries = cfg.libraries;
     physicalNaming = physicalNamingFromConfig(cfg);
     wireFormat = wireFormatFromConfig(cfg);
+    rulesSettings = rulesSettingsFromConfig(cfg);
     enumDefaults = enumDefaultsFromConfig(cfg);
     apiPagination = apiPaginationFromConfig(cfg);
     apiUnknownFields = apiUnknownFieldsFromConfig(cfg);
@@ -450,6 +456,7 @@ export async function resolveCollection(
     libraries,
     physicalNaming,
     wireFormat,
+    rulesSettings,
     enumDefaults,
     apiPagination,
     apiUnknownFields,

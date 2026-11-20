@@ -44,10 +44,10 @@ Before inventing, converge. Two failure modes to avoid:
 - **Re-deriving a shape core already ships (or plans).** If the roadmap already
   charts the concept, model it *in a shape that can fold into the eventual core
   vocabulary* rather than a divergent one.
-- **Claiming a chartered name.** The declared-API surface and ecosystem tier reserve
-  the type names `api`, `operation`, `surface`, and `binding` for planned core
-  vocabulary. Do not use those names for a project-local type — a later core release
-  would force a breaking rename. Pick a project-local name that stays clear of them.
+- **Claiming a chartered name.** The declared-API surface (registered as experimental in
+  1.3.0, ADR-0066) and ecosystem tier reserve the type names `api`, `operation`, `surface`,
+  and `binding` for core vocabulary. Do not use those names for a project-local type — a
+  core release would force a breaking rename. Pick a project-local name that stays clear of them.
 
 ## Step 2 — run the ADR-0037 ordered test
 
@@ -115,7 +115,7 @@ several channels — an HTTP webhook, a chat-room message, a heartbeat ping, a r
 email handed off to a local mail command, and a local stream write. Walking the ladder:
 
 - **Step 0/1:** no shipped subtype covers "outbound delivery channel," and the concept
-  sits near the (deferred) declared-API + ecosystem-tier roadmap — so model it
+  sits near the declared-API (experimental since 1.3.0) + ecosystem-tier roadmap — so model it
   downstream in a fold-in-friendly shape, avoiding the chartered names.
 - **Step 2:** "delivery channel" is a genuine thing with its own behavior and config
   (step 3) → a project-registered subtype; the individual channels are a closed

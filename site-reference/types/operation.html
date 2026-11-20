@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Metamodel — `operation` types | MetaObjects</title>
+  <meta name="description" content="The MetaObjects metamodel reference — every type, subtype and attribute the loader accepts, generated from the strict registry.">
+  <link rel="icon" href="/images/mo-logo-only.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    /* Page-scoped — do not touch the shared landing styles. */
+    .reference { max-width: 68rem; margin: 0 auto; padding: 3rem 1.5rem 4rem; }
+    .reference h1 { font-size: 2.2rem; line-height: 1.15; color: var(--primary-blue); margin: 0 0 1rem; }
+    .reference h2 { font-size: 1.4rem; margin: 2.5rem 0 0.75rem; color: var(--primary-blue); }
+    .reference h3 { font-size: 1.1rem; margin: 2rem 0 0.5rem; font-family: var(--font-mono); }
+    .reference table { width: 100%; border-collapse: collapse; margin: 1rem 0 2rem; font-size: 0.9rem; display: block; overflow-x: auto; }
+    .reference th, .reference td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--light-gray, #e5e7eb); vertical-align: top; }
+    .reference th { font-weight: 600; white-space: nowrap; }
+    .reference code { font-family: var(--font-mono); font-size: 0.875em; }
+    .reference a { color: var(--royal-blue); }
+    .reference-breadcrumb { font-family: var(--font-mono); font-size: 0.8rem; letter-spacing: 0.04em;
+      text-transform: uppercase; color: var(--medium-gray); margin: 0 0 0.75rem; }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <a href="/" class="brand">
+      <img src="/images/mo-logo-only.png" alt="" class="brand-mark">
+      <span class="brand-name">MetaObjects</span>
+    </a>
+    <nav>
+      <a href="/getting-started.html" class="nav-link">Get started</a>
+      <a href="/story.html" class="nav-link">Story</a>
+      <a href="/videos.html" class="nav-link">Videos</a>
+      <a href="/reference/" class="nav-link">Reference</a>
+      <a href="https://github.com/metaobjectsdev/metaobjects" class="nav-link">GitHub</a>
+      <a href="https://github.com/metaobjectsdev/metaobjects/tree/main/spec" class="nav-link nav-cta">Spec</a>
+    </nav>
+  </header>
+  <main class="reference">
+    <p class="reference-breadcrumb"><a href="/reference/">Metamodel reference</a></p>
+<!-- @generated — DO NOT EDIT.
+     Metamodel reference for the `operation` type family — each subtype's composed attributes, allowed children, and cardinality.
+     Regenerate with: meta gen (the metamodel-docs generator, metamodelDocsFile()) --><h1>Metamodel — <code>operation</code> types</h1>
+<p>Each section below is one <code>operation.&lt;subType&gt;</code>. The <strong>Attributes</strong> table lists
+the subtype&#39;s own + concern-contributed attributes (provider-tagged); universal
+documentation attributes are omitted here (see <a href="../providers.html">providers.md</a>).
+<strong>Allowed children</strong> lists the structural child rules with their cardinality
+(<code>min..max</code>, <code>*</code> = unbounded).</p>
+<h3>operation.base</h3>
+<p>Registry anchor for the attributes every operation shares (ADR-0054): not authorable.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@inputRef</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>—</td>
+<td>The <code>object.value</code> this operation takes as its input (ADR-0030). Absent on an operation whose only parameter is the target&#39;s borrowed key. Anything other than an <code>object.value</code> is ERR_OPERATION_SHAPE.</td>
+</tr>
+<tr>
+<td><code>@objectRef</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>—</td>
+<td>The entity this operation acts on, declared only when it cannot be derived. It is derived from the input value when its fields <code>extend</code> every primary key field of exactly one entity, each once, else from the output&#39;s base entity; an input that borrows part of a key, one key field twice, or the keys of two entities derives nothing, so declare it. Declared and derivable, the two must agree (ERR_OPERATION_TARGET_MISMATCH). It must name an <code>object.entity</code> (ERR_OPERATION_TARGET_UNRESOLVED).</td>
+</tr>
+<tr>
+<td><code>@outputRef</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>—</td>
+<td>The object this operation returns: an <code>object.projection</code>, <code>object.entity</code> or <code>object.value</code>. Which projection a query returns is the author&#39;s choice among several over one entity, so it cannot be computed. Anything else is ERR_OPERATION_SHAPE.</td>
+</tr>
+<tr>
+<td><code>@permission</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>—</td>
+<td>The permission name the generated shell will ask the project&#39;s policy about before anything is written (no shell is generated yet). A key into grant data (who holds it is data, what the policy decides is code), so an explicit name is stable: a derived name moves when the operation is renamed. A dotted identifier path such as <code>purchasing.approve</code>; a package prefix may use <code>::</code> (ERR_BAD_ATTR_VALUE otherwise). Absent and not @public: the shell will use the derived name <code>&lt;package&gt;.&lt;operation&gt;</code>, with the package of the operation&#39;s API, and <code>verify</code> advises or requires an explicit one (setting <code>rules.permissions.names</code>). Several operations may share one.</td>
+</tr>
+<tr>
+<td><code>@public</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>—</td>
+<td>The shell will call no permission check (no shell is generated yet). Authentication is the transport&#39;s job and is unaffected. Absent means checked. Declaring it with @permission is ERR_PERMISSION_PUBLIC_CONFLICT.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<ul>
+<li><code>binding.*</code> — 0..*</li>
+</ul>
+<h3>operation.command</h3>
+<p>A named operation that changes state. Takes an <code>object.value</code> (ADR-0030). Its body is hand-written. The contract (ADR-0066) is that a generated shell around it loads the row, checks the permission and the current state, runs the body, and makes the guarded update in one transaction. No shell is generated yet: this vocabulary is registered, loaded and checked, and nothing is generated from it. Experimental since 1.3.0: the shape may change in a MINOR, including removals and renames (docs/compatibility-policy.md).</p>
+<p><strong>When to use:</strong> A business action with its own name, input and rules: approve, cancel, transfer. A command that moves a lifecycle names the transitions it may make in @transitions; its body decides which one applies.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@errors</code></td>
+<td>string[]</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>—</td>
+<td>The business failures the hand-written body may return, each a lower snake case code (<code>insufficient_funds</code>). They name the wire error, the OpenAPI document and the typed result; the shell will refuse an undeclared one (no shell is generated yet). A code that is not lower snake case, appears twice, or is one the route answers itself (not_found, forbidden, invalid_transition, transition_condition_failed, state_managed, validation, invalid_json, invalid_id, method_not_allowed, constraint_violation, internal) is ERR_BAD_ATTR_VALUE.</td>
+</tr>
+<tr>
+<td><code>@inputRef</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>—</td>
+<td>The <code>object.value</code> this operation takes as its input (ADR-0030). Absent on an operation whose only parameter is the target&#39;s borrowed key. Anything other than an <code>object.value</code> is ERR_OPERATION_SHAPE.</td>
+</tr>
+<tr>
+<td><code>@objectRef</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>—</td>
+<td>The entity this operation acts on, declared only when it cannot be derived. It is derived from the input value when its fields <code>extend</code> every primary key field of exactly one entity, each once, else from the output&#39;s base entity; an input that borrows part of a key, one key field twice, or the keys of two entities derives nothing, so declare it. Declared and derivable, the two must agree (ERR_OPERATION_TARGET_MISMATCH). It must name an <code>object.entity</code> (ERR_OPERATION_TARGET_UNRESOLVED).</td>
+</tr>
+<tr>
+<td><code>@outputRef</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>—</td>
+<td>The object this operation returns: an <code>object.projection</code>, <code>object.entity</code> or <code>object.value</code>. Which projection a query returns is the author&#39;s choice among several over one entity, so it cannot be computed. Anything else is ERR_OPERATION_SHAPE.</td>
+</tr>
+<tr>
+<td><code>@permission</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>—</td>
+<td>The permission name the generated shell will ask the project&#39;s policy about before anything is written (no shell is generated yet). A key into grant data (who holds it is data, what the policy decides is code), so an explicit name is stable: a derived name moves when the operation is renamed. A dotted identifier path such as <code>purchasing.approve</code>; a package prefix may use <code>::</code> (ERR_BAD_ATTR_VALUE otherwise). Absent and not @public: the shell will use the derived name <code>&lt;package&gt;.&lt;operation&gt;</code>, with the package of the operation&#39;s API, and <code>verify</code> advises or requires an explicit one (setting <code>rules.permissions.names</code>). Several operations may share one.</td>
+</tr>
+<tr>
+<td><code>@public</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>—</td>
+<td>The shell will call no permission check (no shell is generated yet). Authentication is the transport&#39;s job and is unaffected. Absent means checked. Declaring it with @permission is ERR_PERMISSION_PUBLIC_CONFLICT.</td>
+</tr>
+<tr>
+<td><code>@transitions</code></td>
+<td>string[]</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>—</td>
+<td>The lifecycle moves this command may make: names of <code>transition.action</code> nodes on its target entity (ERR_OPERATION_UNKNOWN_TRANSITION otherwise). A fact of the business the model cannot compute. A transition a command lists gets no derived command of its own. Listing any requires a target (ERR_OPERATION_TARGET_UNRESOLVED).</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<ul>
+<li><code>binding.*</code> — 0..*</li>
+</ul>
+<h3>operation.query</h3>
+<p>A named operation that reads. Returns an <code>object.projection</code> (or an entity or value). It changes nothing. Experimental since 1.3.0: the shape may change in a MINOR, including removals and renames (docs/compatibility-policy.md).</p>
+<p><strong>When to use:</strong> A read with its own name and shape beyond derived get and list: my open requests, the dashboard summary.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@inputRef</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>—</td>
+<td>The <code>object.value</code> this operation takes as its input (ADR-0030). Absent on an operation whose only parameter is the target&#39;s borrowed key. Anything other than an <code>object.value</code> is ERR_OPERATION_SHAPE.</td>
+</tr>
+<tr>
+<td><code>@many</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>—</td>
+<td>The query returns a list and takes the filter, sort and paging contract. Not implied by the projection, so declared. Absent means one row. Legal on a query only.</td>
+</tr>
+<tr>
+<td><code>@objectRef</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>—</td>
+<td>The entity this operation acts on, declared only when it cannot be derived. It is derived from the input value when its fields <code>extend</code> every primary key field of exactly one entity, each once, else from the output&#39;s base entity; an input that borrows part of a key, one key field twice, or the keys of two entities derives nothing, so declare it. Declared and derivable, the two must agree (ERR_OPERATION_TARGET_MISMATCH). It must name an <code>object.entity</code> (ERR_OPERATION_TARGET_UNRESOLVED).</td>
+</tr>
+<tr>
+<td><code>@outputRef</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>—</td>
+<td>The object this operation returns: an <code>object.projection</code>, <code>object.entity</code> or <code>object.value</code>. Which projection a query returns is the author&#39;s choice among several over one entity, so it cannot be computed. Anything else is ERR_OPERATION_SHAPE.</td>
+</tr>
+<tr>
+<td><code>@permission</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>—</td>
+<td>The permission name the generated shell will ask the project&#39;s policy about before anything is written (no shell is generated yet). A key into grant data (who holds it is data, what the policy decides is code), so an explicit name is stable: a derived name moves when the operation is renamed. A dotted identifier path such as <code>purchasing.approve</code>; a package prefix may use <code>::</code> (ERR_BAD_ATTR_VALUE otherwise). Absent and not @public: the shell will use the derived name <code>&lt;package&gt;.&lt;operation&gt;</code>, with the package of the operation&#39;s API, and <code>verify</code> advises or requires an explicit one (setting <code>rules.permissions.names</code>). Several operations may share one.</td>
+</tr>
+<tr>
+<td><code>@public</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>—</td>
+<td>The shell will call no permission check (no shell is generated yet). Authentication is the transport&#39;s job and is unaffected. Absent means checked. Declaring it with @permission is ERR_PERMISSION_PUBLIC_CONFLICT.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<ul>
+<li><code>binding.*</code> — 0..*</li>
+</ul>
+
+  </main>
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <p>
+        <strong>MetaObjects</strong> · <a href="https://github.com/metaobjectsdev/metaobjects">GitHub</a> · <a href="https://github.com/metaobjectsdev/metaobjects/blob/main/LICENSE">Apache 2.0</a> · <a href="https://github.com/metaobjectsdev/metaobjects/blob/main/spec/roadmap.md">Roadmap</a> · <a href="/llms.txt">llms.txt</a>
+      </p>
+      <p class="site-footer-meta">
+        Generated from the strict registry by <code>meta gen</code> (<code>metamodelDocsFile()</code>). Do not edit by hand.
+      </p>
+    </div>
+  </footer>
+</body>
+</html>

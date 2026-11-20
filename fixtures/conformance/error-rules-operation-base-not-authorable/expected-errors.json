@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_ABSTRACT_SUBTYPE_AUTHORED",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.purchasing.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[3]['api.operational'].children[3]['operation.base']"
+      }
+    }
+  ],
+  "warnings": []
+}

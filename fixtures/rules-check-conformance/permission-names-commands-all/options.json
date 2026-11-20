@@ -1,0 +1,1 @@
+{ "rules": { "permissions": { "names": "advise" }, "lifecycle": { "commands": "all" } } }

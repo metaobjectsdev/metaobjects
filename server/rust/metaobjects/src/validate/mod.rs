@@ -15,6 +15,7 @@ pub mod prompt;
 pub mod refs;
 pub mod relationships;
 pub mod reporting;
+pub mod rules;
 pub mod structure;
 pub mod util;
 
@@ -63,18 +64,19 @@ pub type PassFn = fn(&Ctx<'_>, &mut Findings);
 ///  validateDataGridFilterValues               validateProjectionFilter
 ///  validateOriginSegmentsAndCorrelation       validateProjectionUnionAndGrain
 ///  validateDerivedCycles                      validateReporting
-///  validateRelationships                      validateOneSideReferenceResolution
-///  validateM2MJunctionPairing                 validateIndexLookupFields
-///  validateColumnNameCollisions               validateRetiredRequirementLinks
-///  runRegisteredValidation                    validateTemplatePayloadRefs
-///  validateAttrSchema (errors + warnings)     validateFieldObjectStorage
-///  validateFieldMap                           validateEnumMaxLength
-///  validateIdentitySequence                   validateCrossFieldValidators
-///  validateDbCheck                            validateSourceRoles
-///  validateSourceEscapes                      validateSourcePhysicalNames
-///  validateFieldMutability                    validateEnumNormalizeAmbiguity (warning)
-///  validateEnumNormalizeCollision             validateSourceParameterRef
-///  validateDiscriminator                      validateFieldDefaults
+///  validateRules                              validateRelationships
+///  validateOneSideReferenceResolution         validateM2MJunctionPairing
+///  validateIndexLookupFields                  validateColumnNameCollisions
+///  validateRetiredRequirementLinks            runRegisteredValidation
+///  validateTemplatePayloadRefs                validateAttrSchema (errors + warnings)
+///  validateFieldObjectStorage                 validateFieldMap
+///  validateEnumMaxLength                      validateIdentitySequence
+///  validateCrossFieldValidators               validateDbCheck
+///  validateSourceRoles                        validateSourceEscapes
+///  validateSourcePhysicalNames                validateFieldMutability
+///  validateEnumNormalizeAmbiguity (warning)   validateEnumNormalizeCollision
+///  validateSourceParameterRef                 validateDiscriminator
+///  validateFieldDefaults
 /// ```
 pub const PASSES: &[(&str, PassFn)] = &[
     ("subtype rules", structure::subtype_rules),
@@ -120,6 +122,7 @@ pub const PASSES: &[(&str, PassFn)] = &[
     ),
     ("derived cycles", origin::validate_derived_cycles),
     ("reporting", reporting::validate_reporting),
+    ("rules", rules::validate_rules),
     ("relationships", relationships::validate_relationships),
     (
         "one-side reference resolution",

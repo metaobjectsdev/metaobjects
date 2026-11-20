@@ -1,0 +1,99 @@
+{
+  "metadata.root": {
+    "package": "acme::purchasing",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Request",
+          "abstract": true,
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "title"
+              }
+            },
+            {
+              "field.enum": {
+                "name": "status",
+                "@values": [
+                  "draft",
+                  "submitted",
+                  "approved",
+                  "rejected"
+                ],
+                "@default": "draft",
+                "children": [
+                  {
+                    "transition.action": {
+                      "name": "submit",
+                      "@from": [
+                        "draft"
+                      ],
+                      "@to": "submitted"
+                    }
+                  },
+                  {
+                    "transition.action": {
+                      "name": "approve",
+                      "@from": [
+                        "submitted"
+                      ],
+                      "@to": "approved"
+                    }
+                  },
+                  {
+                    "transition.action": {
+                      "name": "reject",
+                      "@from": [
+                        "submitted"
+                      ],
+                      "@to": "rejected"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "PurchaseRequest",
+          "extends": "Request",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "purchase_requests"
+              }
+            },
+            {
+              "field.enum": {
+                "name": "status",
+                "@values": [
+                  "draft",
+                  "submitted",
+                  "approved",
+                  "rejected"
+                ],
+                "@default": "draft"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

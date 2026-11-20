@@ -24,7 +24,7 @@ from ..meta.core.object.object_constants import (
 from ..meta.core.reporting.reporting_constants import REPORTING_ATTR_OF, REPORTING_ATTR_VIA
 from ..meta.meta_data import MetaData
 from ..naming_refs import (
-    REF_BEARING_ATTR_NAMES,
+    is_ref_bearing_attr,
     RefOverDropError,
     effective_package_of,
     find_named_top_level,
@@ -143,7 +143,7 @@ def resolve_references(root: MetaData) -> None:
             # ADR-0039 sanctioned own: this pass rewrites the declared-here layer; an
             # inherited attribute is resolved once, on the node that declares it.
             for attr in node.own_meta_attrs():
-                if attr.name in REF_BEARING_ATTR_NAMES and isinstance(attr, MetaAttr):
+                if is_ref_bearing_attr(node, attr.name) and isinstance(attr, MetaAttr):
                     _resolve_attr(root, node, attr, decl_pkg)
         # ADR-0039 sanctioned own: structural walk over the physical declaration tree.
         for child in node.own_children():

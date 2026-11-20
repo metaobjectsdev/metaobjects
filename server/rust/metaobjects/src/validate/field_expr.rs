@@ -916,6 +916,56 @@ fn condition_problem<'a>(
     literal_comparison_problem(condition, &field_of)
 }
 
+/// An object's effective fields by name.
+pub(crate) fn fields_by_name<'a>(ctx: &Ctx<'a>, obj: NodeId) -> HashMap<&'a str, NodeId> {
+    let tree = ctx.tree;
+    field_children(ctx, obj)
+        .into_iter()
+        .map(|x| (tree.node(x).name.as_str(), x))
+        .collect()
+}
+
+/// Why a `@condition` over an object's fields is refused, or `None` when it is legal.
+/// `label` opens the message. One rule for a cross-field validator's condition and a
+/// transition's guard (ADR-0066): every field it names is a field of the object, and the
+/// expression passes [`condition_problem`].
+pub(crate) fn condition_message(
+    ctx: &Ctx<'_>,
+    condition: &Value,
+    object_name: &str,
+    fields: &HashMap<&str, NodeId>,
+    label: &str,
+) -> Option<String> {
+    let mut refs: Vec<&String> = Vec::new();
+    let mut nodes = Vec::new();
+    expression_nodes(condition, &mut nodes);
+    for n in nodes {
+        if let Some(Value::String(s)) = n.get("field")
+            && !refs.contains(&s)
+        {
+            refs.push(s);
+        }
+    }
+    let mut unknown: Vec<&String> = refs
+        .into_iter()
+        .filter(|r| !fields.contains_key(r.as_str()))
+        .collect();
+    unknown.sort();
+    if !unknown.is_empty() {
+        let names: Vec<String> = unknown.iter().map(|u| format!("\"{u}\"")).collect();
+        return Some(format!(
+            "{label} names {}, which {} of \"{object_name}\".",
+            names.join(", "),
+            if unknown.len() == 1 {
+                "is not a field"
+            } else {
+                "are not fields"
+            }
+        ));
+    }
+    condition_problem(ctx, condition, fields).map(|problem| format!("{label} {problem}"))
+}
+
 pub fn validate_cross_field_validators(ctx: &Ctx<'_>, f: &mut Findings) {
     let tree = ctx.tree;
     for &obj in tree
@@ -923,11 +973,7 @@ pub fn validate_cross_field_validators(ctx: &Ctx<'_>, f: &mut Findings) {
         .iter()
         .filter(|&&c| tree.node(c).type_name == TYPE_OBJECT)
     {
-        let field_nodes = field_children(ctx, obj);
-        let fields: HashMap<&str, NodeId> = field_nodes
-            .iter()
-            .map(|&x| (tree.node(x).name.as_str(), x))
-            .collect();
+        let fields = fields_by_name(ctx, obj);
         let oname = &tree.node(obj).name;
         // ADR-0039: own — each validator is checked where it is declared.
         for &v in tree.own_children(obj) {
@@ -1004,40 +1050,8 @@ pub fn validate_cross_field_validators(ctx: &Ctx<'_>, f: &mut Findings) {
                 "validator.{} \"{oname}.{}\" @condition",
                 vn.sub_type, vn.name
             );
-            let mut refs: Vec<String> = Vec::new();
-            let mut nodes = Vec::new();
-            expression_nodes(condition, &mut nodes);
-            for n in nodes {
-                if let Some(Value::String(s)) = n.get("field")
-                    && !refs.contains(s)
-                {
-                    refs.push(s.clone());
-                }
-            }
-            let mut unknown: Vec<&String> = refs
-                .iter()
-                .filter(|r| !fields.contains_key(r.as_str()))
-                .collect();
-            unknown.sort();
-            if !unknown.is_empty() {
-                let names: Vec<String> = unknown.iter().map(|u| format!("\"{u}\"")).collect();
-                push(
-                    f,
-                    ERR_BAD_ATTR_VALUE,
-                    format!(
-                        "{label} names {}, which {} of \"{oname}\".",
-                        names.join(", "),
-                        if unknown.len() == 1 {
-                            "is not a field"
-                        } else {
-                            "are not fields"
-                        }
-                    ),
-                );
-                continue;
-            }
-            if let Some(problem) = condition_problem(ctx, condition, &fields) {
-                push(f, ERR_BAD_ATTR_VALUE, format!("{label} {problem}"));
+            if let Some(message) = condition_message(ctx, condition, oname, &fields, &label) {
+                push(f, ERR_BAD_ATTR_VALUE, message);
             }
         }
     }

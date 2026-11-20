@@ -2862,7 +2862,6 @@ public static partial class ValidationPasses
         var errors = new List<MetaError>();
         foreach (var obj in root.Children().OfType<MetaObject>())
         {
-            var fieldNames = obj.Fields().Select(f => f.Name).ToHashSet(StringComparer.Ordinal);
             foreach (var v in obj.OwnChildren().Where(c => c.Type == TYPE_VALIDATOR && CrossFieldValidatorSubtypes.Contains(c.SubType)))
             {
                 // validator.atLeastOne takes no @max: "exactly one of these fields" is
@@ -2915,26 +2914,35 @@ public static partial class ValidationPasses
                 }
                 var condition = v.Attr(VALIDATOR_ATTR_CONDITION);
                 if (condition is null) continue;
-                var label = $"validator.{v.SubType} \"{obj.Name}.{v.Name}\" @condition";
-                var unknown = MetaObjects.Core.Attr.ExpressionGrammar.FieldRefs(condition)
-                    .Distinct(StringComparer.Ordinal).Where(f => !fieldNames.Contains(f))
-                    .OrderBy(f => f, StringComparer.Ordinal).ToList();
-                if (unknown.Count > 0)
+                var message = ConditionMessage(condition, obj, $"validator.{v.SubType} \"{obj.Name}.{v.Name}\" @condition");
+                if (message is not null)
                 {
-                    errors.Add(new MetaError(
-                        $"{label} names {string.Join(", ", unknown.Select(f => $"\"{f}\""))}, " +
-                        $"which {(unknown.Count == 1 ? "is not a field" : "are not fields")} of \"{obj.Name}\".",
-                        ErrorCode.ERR_BAD_ATTR_VALUE,
-                        Envelope: v.Source));
-                    continue;
-                }
-                if (ConditionProblem(condition, obj) is { } problem)
-                {
-                    errors.Add(new MetaError($"{label} {problem}", ErrorCode.ERR_BAD_ATTR_VALUE, Envelope: v.Source));
+                    errors.Add(new MetaError(message, ErrorCode.ERR_BAD_ATTR_VALUE, Envelope: v.Source));
                 }
             }
         }
         return errors;
+    }
+
+    /// <summary>
+    /// Why a <c>@condition</c> (the attr.expression grammar) over <paramref name="obj"/>'s own fields is
+    /// refused, or null when it is legal. <paramref name="label"/> opens the message. One rule for a
+    /// cross-field validator's condition and a transition's guard (ADR-0066): every named field is a
+    /// field of <paramref name="obj"/>, and the expression passes <see cref="ConditionProblem"/>.
+    /// Mirrors TS conditionMessage.
+    /// </summary>
+    public static string? ConditionMessage(object condition, MetaObject obj, string label)
+    {
+        var fieldNames = obj.Fields().Select(f => f.Name).ToHashSet(StringComparer.Ordinal);
+        var unknown = MetaObjects.Core.Attr.ExpressionGrammar.FieldRefs(condition)
+            .Distinct(StringComparer.Ordinal).Where(f => !fieldNames.Contains(f))
+            .OrderBy(f => f, StringComparer.Ordinal).ToList();
+        if (unknown.Count > 0)
+        {
+            return $"{label} names {string.Join(", ", unknown.Select(f => $"\"{f}\""))}, " +
+                   $"which {(unknown.Count == 1 ? "is not a field" : "are not fields")} of \"{obj.Name}\".";
+        }
+        return ConditionProblem(condition, obj) is { } problem ? $"{label} {problem}" : null;
     }
 
     /// <summary>The accepted ISO-8601 duration form, the same pattern as TS DURATION_PATTERN.</summary>

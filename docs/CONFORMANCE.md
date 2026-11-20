@@ -1,6 +1,6 @@
 # Conformance coverage
 
-The MetaObjects standard ships **42 shared conformance corpora** under
+The MetaObjects standard ships **43 shared conformance corpora** under
 [`fixtures/`](../fixtures/). Every port runs every corpus that is *applicable to
 it* and asserts the same expected behaviour against the same fixtures. **This page
 is the inverse index**: fixture → feature doc + per-port pass status, and it is the
@@ -26,7 +26,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 
 | Corpus | Fixtures | TS | Java | Kotlin | C# | Python |
 |---|---|---|---|---|---|---|
-| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 526 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
+| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 574 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
 | [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 19 | 19 / 19 | 18 / 19 (1 ledgered: `yaml-quoted-leading-zero` — Java pipeline strips quotes off `"007"`) | inherits via Java | 18 / 19 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 19 / 19 |
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 45 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/verify-strict-conformance/`](../fixtures/verify-strict-conformance/) | 1 | ✓ | — | — | — | ✓ |
@@ -53,24 +53,25 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/shared-model-conformance/`](../fixtures/shared-model-conformance/) | 15 cases (9 publish + 6 refusal) | ✓ (reference implementation) | ✓ (all 15; `SharedModelConformanceTest`) | inherits via Java (`KotlinSharedModelGeneratorTest` pins the generator) | ✓ (all 15; `SharedModelConformanceTests`) | ✓ (serializer arm: the 9 publish cases' document bytes; no publisher) |
 | [`fixtures/agent-context-conformance/`](../fixtures/agent-context-conformance/) | 5 | ✓ (the emitter is TS-owned) | — | — | — | — |
 | [`fixtures/metamodel-docs/`](../fixtures/metamodel-docs/) | 1 | ✓ (docs emit is TS-owned) | — | — | — | — |
-| [`fixtures/fmt-conformance/`](../fixtures/fmt-conformance/) (#304 — `meta fmt`) | 12 | ✓ (reference) | ✓ | inherits via Java | ✓ | ✓ |
+| [`fixtures/fmt-conformance/`](../fixtures/fmt-conformance/) (#304 — `meta fmt`) | 13 | ✓ (reference) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/field-lint-conformance/`](../fixtures/field-lint-conformance/) (the `verify` field authoring lint) | 15 | ✓ (reference) | ✓ | inherits via Java | ✓ | ✓ |
-| [`fixtures/requirement-check-conformance/`](../fixtures/requirement-check-conformance/) (the `verify` requirement gate, ADR-0057) | 43 cases | ✓ (reference) | ✓ | inherits via Java (one Maven `metaobjects:verify` goal) | ✓ | ✓ |
-| [`fixtures/requirement-test-identity-conformance/`](../fixtures/requirement-test-identity-conformance/) (the identity, skip state and digest of each generated requirement test, and the filter seam, ADR-0057) | 26 cases | ✓ (reference) | ✓ | identity function inherits via Java; emitted names asserted by its own generator test | ✓ | ✓ |
+| [`fixtures/requirement-check-conformance/`](../fixtures/requirement-check-conformance/) (the `verify` requirement gate, ADR-0057) | 49 cases | ✓ (reference) | ✓ | inherits via Java (one Maven `metaobjects:verify` goal) | ✓ | ✓ |
+| [`fixtures/requirement-test-identity-conformance/`](../fixtures/requirement-test-identity-conformance/) (the identity, skip state and digest of each generated requirement test, and the filter seam, ADR-0057) | 27 cases | ✓ (reference) | ✓ | identity function inherits via Java; emitted names asserted by its own generator test | ✓ | ✓ |
+| [`fixtures/rules-check-conformance/`](../fixtures/rules-check-conformance/) (the `verify` business-rules gate, ADR-0066) | 16 cases | ✓ (reference) | ✓ | inherits via Java (one Maven `metaobjects:verify` goal) | ✓ | ✓ |
 | [`fixtures/naming-conformance/`](../fixtures/naming-conformance/) | 8 cases + 23 collection segments (`@collectionName`, `naming.collections`) | ✓ | ✓ | inherits via Java (`RouteNaming.pluralize`, `RouteNaming.collectionSegment`) | ✓ | ✓ |
 | [`fixtures/wire-conformance/`](../fixtures/wire-conformance/) (the `wire` setting, ADR-0019 Amendment 2) | 6 cases + 8 refusals | ✓ | ✓ | inherits via Java (one config reader) | ✓ | ✓ |
 | [`fixtures/enum-length-conformance/`](../fixtures/enum-length-conformance/) (a string-stored enum's column length: `@maxLength`, else `enums.maxLength`) | 5 cases + 1 overflow + 5 refusals; run by a port that sizes the column | ✓ | ✓ | inherits via Java (one config reader, one resolver) | ✓ | — (sizes no column: emits no DDL or column type; the config reader accepts and shape-checks the `enums` block) |
 | [`fixtures/check-constraint-conformance/`](../fixtures/check-constraint-conformance/) (the CHECK constraints `meta migrate` derives: name and expression text per dialect) | 1 model, 5 expected files (postgres, sqlite, d1, and both skip-redundant variants) | ✓ (reference, `migrate-ts`) | — (no CHECK in a generated model) | — (same) | ✓ (the EF context declares them; live-Postgres `EnsureCreated` lane) | — (same) |
 | [`fixtures/foreign-key-index-conformance/`](../fixtures/foreign-key-index-conformance/) (the indexes `migrate.foreignKeyIndexes` adds: which foreign keys are uncovered, and each index's name per dialect, a name over 63 bytes cut on Postgres; and the name each declared `identity.secondary` / `index.lookup` is created under) | 1 model, 4 expected files (FK and declared, postgres and sqlite) | ✓ (reference, `migrate-ts`; the Drizzle tables declare the declared names) | — (no index in a generated model) | ✓ (the Exposed tables declare them) | ✓ (the EF context declares them) | — (same as Java) |
 | [`fixtures/codegen-skip-conformance/`](../fixtures/codegen-skip-conformance/) (when `gen` may skip and what a local `verify --codegen` may answer, ADR-0064) | one case table in `cases.json` | ✓ | ✓ | ✓ (through the Java runner) | ✓ | ✓ |
-| [`fixtures/codegen-noop/`](../fixtures/codegen-noop/) (FR-044 — reporting vocabulary: what is lowered, what stays inert) | 1 model pair (`reporting/with` vs `reporting/without`) | ✓ (codegen + migrate) | ✓ | ✓ | ✓ | ✓ |
+| [`fixtures/codegen-noop/`](../fixtures/codegen-noop/) (vocabulary with no lowering yet: FR-044 reporting, what is lowered and what stays inert; ADR-0066 business rules, inert everywhere) | 2 model pairs (`reporting/` and `rules/`, each `with` vs `without`) | ✓ (codegen + migrate) | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/cube-model/`](../fixtures/cube-model/) (FR-044 Plan 4 — the `cube-model` generator's golden Cube files, plus the canonical model's golden) | 46 cases (36 trees + 10 errors) + 1 canonical golden | ✓ (the exporter is TypeScript-only, spec R6; its `cube` lane also loads the files into a real Cube) | — | — | — | — |
 | [`fixtures/writer-conformance/`](../fixtures/writer-conformance/) (ADR-0063 — the code writer generators write through) | 41 cases (31 core + 10 TypeScript) | ✓ (the first writer; core and TypeScript dialect) | — (writer not built yet) | — (writer not built yet) | — (writer not built yet) | — (writer not built yet) |
 | [`fixtures/contract-conformance/`](../fixtures/contract-conformance/) (FR-022 — the `contract-schema` and `openapi` generators' golden trees and refusals) | 19 cases (14 trees + 5 errors) | ✓ (one neutral engine, ADR-0034 Amendment 10; the generated API lanes also hold real traffic to the documents) | — | — | — | — |
 | [`fixtures/explorer-conformance/`](../fixtures/explorer-conformance/) (the `explorer.json` data spine: `meta export --effective` + `meta verify --format json` + the generated-file manifest in, one explorer document out) | 1 case (`shop`) | ✓ (the builder is TypeScript, and reads only port-neutral inputs) | — | — | — | — |
 
 **Rust (preview, ADR-0065) is not a column yet.** The sixth port runs six corpora
-today: `registry-conformance` (byte-identical manifest); the metamodel corpus, all 526
+today: `registry-conformance` (byte-identical manifest); the metamodel corpus, all 574
 green, with every validation pass the TypeScript loader runs, in the same order, so
 `server/rust/metaobjects/tests/conformance-expected-failures.json` is empty;
 `yaml-conformance`, 18 of 19 (the one on `yaml-conformance-expected-failures.json`,
@@ -81,7 +82,7 @@ cases its `gen` can meet (the rest are named with their reason in its runner). T
 above may only shrink; the skip corpus has none, because each case it runs asserts its result
 outright. While the port is in preview, a new fixture that fails in Rust and is not on
 the ledger prints a warning and does not fail the lane; it becomes a hard failure when the port
-leaves preview. A regression still fails: the ledger's `minPassing` (526) is the number of
+leaves preview. A regression still fails: the ledger's `minPassing` (574) is the number of
 fixtures known to pass, and the run fails when fewer do. The column joins this table when
 the port leaves preview.
 
@@ -109,9 +110,11 @@ the corpora above do two different jobs. Only the first is a promise to adopters
   `persistence-conformance/` (runtime reads and writes, and the TS-owned migration
   scenarios), `agent-context-conformance/`, `metamodel-docs/`, `fmt-conformance/`
   (the canonical serializer, surfaced per-file — ADR-0034's "canonical format" is core),
-  `field-lint-conformance/` (the advisory field lint every port's `verify` prints) and
+  `field-lint-conformance/` (the advisory field lint every port's `verify` prints),
   `requirement-check-conformance/` (the requirement gate every port's `verify` runs; a
-  drift gate is core, and it is not ejectable in any port). `codegen-skip-conformance/` (ADR-0064: which changes make `gen` render, and what a local `verify --codegen` may answer from the stored key) is core for the same reason.
+  drift gate is core, and it is not ejectable in any port),
+  `rules-check-conformance/` (the business-rules gate every port's `verify` runs, ADR-0066) and
+  `codegen-skip-conformance/` (ADR-0064: which changes make `gen` render, and what a local `verify --codegen` may answer from the stored key), core for the same reason.
   A red cell here is a MetaObjects bug.
 - **Template quality checks — not a promise.** The generated lane of
   `api-contract-conformance/`, `generator-registry-conformance/` (stable generator names),
@@ -408,7 +411,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 
 ## Fixture-to-doc mapping
 
-### `fixtures/conformance/` — metamodel loader + canonical serializer (526)
+### `fixtures/conformance/` — metamodel loader + canonical serializer (574)
 
 | Fixture prefix | Feature doc |
 |---|---|
@@ -432,6 +435,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 | `projection-*`, `error-projection-*`, `field-readonly-on-view-projection` | [features/source-kinds.md](features/source-kinds.md) (projections + the object taxonomy, ADR-0028) |
 | `requirement-*`, `error-unknown-attr-requirement` | [features/requirements.md](features/requirements.md) (vocabulary only — the gate has its own corpus, `requirement-check-conformance/`; see "Split coverage" above) |
 | `reporting-*`, `error-dimension-*`, `error-measure-*`, `error-ratio-*`, `error-segment-*`, `error-report-*`, `error-relative-date-*` | [features/reporting.md](features/reporting.md) (the `dimension` / `measure` / `segment` / `object.report` vocabulary and its load-time rules; design in the [FR-044 spec](superpowers/specs/2026-10-02-fr-044-core-reporting-design.md)) |
+| `rules-*`, `error-rules-*` | [features/business-rules.md](features/business-rules.md) (operations, permission names and lifecycles: the vocabulary and its load-time rules, ADR-0066; the `verify` gate has its own corpus, `rules-check-conformance/`) |
 | `provider-extension-*`, `provider-custom-vocabulary-*` | [features/extending-with-providers.md](features/extending-with-providers.md) (a project's own provider: a new subtype plus attributes on an existing type load with it and are refused without it, every port writing the provider in its own language) |
 | `object-collection-name` | [features/migrations/physical-naming.md](features/migrations/physical-naming.md) (`@collectionName` and the `collections` pluralizer) |
 | `smoke-empty-metadata` | [features/entities.md](features/entities.md) |
@@ -718,9 +722,9 @@ own those two functions), and
 `server/python/tests/codegen/test_route_path_naming.py` +
 `server/python/tests/unit/test_fr016_source_name_and_kind_aliases.py` (same split).
 
-### `fixtures/requirement-check-conformance/` (43 cases)
+### `fixtures/requirement-check-conformance/` (49 cases)
 
-All 43 cases → [features/requirements.md](features/requirements.md) ("The gate in every
+All 49 cases → [features/requirements.md](features/requirements.md) ("The gate in every
 port"). Each case is a directory: `input/` metadata, an optional `options.json`
 (`libraries`, `requireImplementers`) and an `expected.json` holding the gate's diagnostics
 (severity, code, requirement path, message text) and the ledger summary, or `null` for a
@@ -735,9 +739,9 @@ a port that disagrees with one is wrong. The case list, and what each pins, is i
 (Kotlin inherits it, through the shared Maven goal) and
 `server/csharp/MetaObjects.Conformance.Tests/RequirementCheckConformanceTests.cs`.
 
-### `fixtures/requirement-test-identity-conformance/` (26 cases)
+### `fixtures/requirement-test-identity-conformance/` (27 cases)
 
-All 26 cases → [features/requirements.md](features/requirements.md) ("Generated
+All 27 cases → [features/requirements.md](features/requirements.md) ("Generated
 requirement tests and witnesses"). It pins the *identity* of every test the
 `requirement-tests` generator yields from a ledger (package, path, unit, id, witness key,
 status, skip state and digest), witness-key collisions, and the view a project's filter
@@ -753,6 +757,24 @@ outside ASCII. The case list is in the
 `server/csharp/MetaObjects.Conformance.Tests/RequirementTestIdentityConformanceTests.cs`.
 Kotlin's identity function is the Java one; the names its generator emits are asserted by
 `server/java/codegen-kotlin/src/test/kotlin/com/metaobjects/generator/kotlin/KotlinRequirementTestsGeneratorTest.kt`.
+
+### `fixtures/rules-check-conformance/` (16 cases)
+
+All 16 cases → [features/business-rules.md](features/business-rules.md) ("What `verify`
+reports"). Each case is a directory: `input/` metadata, an optional `options.json` (the
+`rules` and `verify` blocks of `.metaobjects/config.json`, read through each port's own config
+reader) and an `expected.json` holding the gate's diagnostics (severity, code, node address,
+message text) and its summary counts, or `null` for a model with no operation and no
+transition. The expectations are written from the TypeScript reference
+(`scripts/write-requirement-corpus-expected.ts rules`). The case list is in the
+[corpus README](../fixtures/rules-check-conformance/README.md).
+
+**Every port's `verify` is held to it:**
+`server/typescript/packages/cli/test/rules-check-conformance.test.ts`,
+`server/csharp/MetaObjects.Conformance.Tests/RulesCheckConformanceTests.cs`,
+`server/java/metadata/src/test/java/com/metaobjects/conformance/RulesCheckConformanceTest.java`
+and `server/python/tests/conformance/test_rules_check_conformance.py`. Kotlin inherits the Java
+gate through the shared Maven goal.
 
 ### `fixtures/cube-model/` (46 cases)
 
@@ -787,9 +809,9 @@ JSON and verify payload feeds it unchanged.
 
 ## Orphaned fixtures (tested but not yet documented)
 
-The fixtures in the nine corpora mapped above (metamodel 526 + yaml 19 + verify 45
+The fixtures in the nine corpora mapped above (metamodel 574 + yaml 19 + verify 45
 + render 18 + persistence 67 + api-contract 139 + source-resolution 28 + scope 10 +
-dependency 47) each map to a feature doc, and so do the two requirement corpora, `shared-model-conformance`, the
+dependency 47) each map to a feature doc, and so do the two requirement corpora, `rules-check-conformance`, `shared-model-conformance`, the
 `cube-model` corpus and `explorer-conformance`, whose case lists live in their own READMEs. None are orphaned today. The remaining
 corpora in the totals table gate tooling contracts (registry manifests, provider
 composition, agent context, docs emit) rather than user-facing metamodel behaviour,

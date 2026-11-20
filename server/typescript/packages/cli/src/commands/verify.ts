@@ -52,6 +52,7 @@ import {
   checkRequirements, summariseRequirements, scanRequirements, type Diagnostic,
 } from "../lib/requirement-check.js";
 import { lintRequirements } from "../lib/requirement-lint.js";
+import { checkRules, type RulesSummary } from "../lib/rules-check.js";
 import { lintOverlays } from "../lib/overlay-lint.js";
 import { lintNodeNames } from "../lib/name-lint.js";
 import { lintDeprecatedReferences } from "../lib/deprecation-lint.js";
@@ -478,6 +479,11 @@ export async function verifyCommand(
   // reported against its path. Undefined exactly when `requirementCounts` is — same
   // opt-in-by-declaration rule.
   let requirementLedger: RequirementLedgerRow[] | undefined;
+  // ADR-0066 — the business-rules gate's findings and what the model declares. Both stay
+  // undefined for a model with no operation and no transition, and then the payload, the
+  // gate list and the printed output are exactly what they were before the gate existed.
+  let rulesSection: AdvisorySection<AdvisoryDiagnosticRow> | undefined;
+  let rulesSummary: RulesSummary | undefined;
 
   // Whether the schema gate is selected. `runSchemaVerify` makes this decision
   // internally (it is selected by --db or --dialect d1, not by a subverb flag);
@@ -502,6 +508,9 @@ export async function verifyCommand(
   // are checked on every `meta verify`. Opt-in by DECLARATION — a model with no
   // requirement nodes is silent, not in drift.
   const requirementExit = runRequirementVerify();
+  // Business rules (ADR-0066): operations and lifecycles are metadata too, so this gate
+  // also runs on every `meta verify`, and is also opt-in by declaration.
+  const rulesExit = runRulesVerify();
   // #313 — BOTH replay flags select this gate. `--replay-snapshot` implies
   // `--replay`'s work, so a broken chain must fail under it even when `--replay`
   // was not passed; naming only `flags.replay` here is how `--replay-snapshot`
@@ -540,6 +549,7 @@ export async function verifyCommand(
     codegenExit,
     depsExit,
     requirementExit,
+    rulesExit,
     replayExit,
   );
 
@@ -553,6 +563,9 @@ export async function verifyCommand(
     { gate: "codegen", ran: runCodegen, ok: codegenExit === 0 },
     { gate: "deps", ran: runDeps, ok: depsExit === 0 },
     { gate: "requirements", ran: true, ok: requirementExit === 0 },
+    // Listed only when the model declares an operation or a transition: a row for a gate
+    // with nothing to check would change every existing project's payload.
+    ...(rulesSummary !== undefined ? [{ gate: "rules", ran: true, ok: rulesExit === 0 }] : []),
     { gate: "replay", ran: flags.replay || flags.replaySnapshot, ok: replayExit === 0 },
   ];
 
@@ -578,6 +591,8 @@ export async function verifyCommand(
         names: nameSection,
         deprecations: deprecationSection,
         fields: fieldSection,
+        ...(rulesSection !== undefined ? { rules: rulesSection } : {}),
+        ...(rulesSummary !== undefined ? { rulesCounts: rulesSummary } : {}),
         ...(schemaDrift !== undefined ? { schemaDrift } : {}),
         errors: schemaRunError !== undefined ? [{ gate: "schema", error: schemaRunError }] : [],
       }),
@@ -919,6 +934,30 @@ export async function verifyCommand(
 
     if (errors.length > 0) {
       log.error(`meta verify — requirements: ${errors.length} error(s).`);
+      return 1;
+    }
+    return 0;
+  }
+
+  // -- business rules (ADR-0066) ----------------------------------------------
+  function runRulesVerify(): number {
+    const result = checkRules(root, collection.rulesSettings);
+    if (result.summary === undefined) return 0;
+    rulesSummary = result.summary;
+    const s = result.summary;
+    // Printed on every run that has something to check, like the requirement line: a gate
+    // that says nothing when it passes cannot be told from one that checked nothing.
+    say(
+      `meta verify — rules: ${s.operations} operation(s), ${s.lifecycles} lifecycle(s) ` +
+      `with ${s.transitions} transition(s).`,
+    );
+    const errors = result.diagnostics.filter((d) => d.severity === "error");
+    const warns = result.diagnostics.filter((d) => d.severity === "warn");
+    for (const d of errors) log.error(formatDiagnostic(d));
+    warnCapped(warns.map(formatDiagnostic), flags.limit, { structured });
+    rulesSection = ranSection(result.diagnostics.map((d) => toDiagnosticRow(d, "gate")));
+    if (errors.length > 0) {
+      log.error(`meta verify — rules: ${errors.length} error(s).`);
       return 1;
     }
     return 0;
@@ -2272,6 +2311,9 @@ function buildVerifyPayload(input: {
   names: AdvisorySection<AdvisoryDiagnosticRow>;
   deprecations: AdvisorySection<AdvisoryDiagnosticRow>;
   fields: AdvisorySection<AdvisoryDiagnosticRow>;
+  /** The business-rules gate (ADR-0066), only when the model declares operations or transitions. */
+  rules?: AdvisorySection<AdvisoryDiagnosticRow>;
+  rulesCounts?: RulesSummary;
   /** What the schema gate found, when it compared anything. */
   schemaDrift?: SchemaDriftSection;
   /** Gates that could not run at all (an unreachable database) — failures, not drift. */
@@ -2311,6 +2353,10 @@ function buildVerifyPayload(input: {
   if (input.fields.status === "ran" && input.fields.total > 0) {
     parts.push(`${input.fields.total} field authoring finding(s)`);
   }
+  const rulesTotal = input.rules?.total ?? 0;
+  if (rulesTotal > 0) {
+    parts.push(`${rulesTotal} rules finding(s)`);
+  }
 
   const help: string[] = errors.map((e) =>
     `the ${e.gate} gate could not run, which is not drift: ${e.error} — fix the connection and re-run`);
@@ -2347,8 +2393,14 @@ function buildVerifyPayload(input: {
       `${input.fields.total} field authoring finding(s) — see fields.rows[]; each names a reference identity listing a field its object lacks, or a field name declared twice in one children list`,
     );
   }
+  if (rulesTotal > 0) {
+    help.push(
+      `${rulesTotal} business-rules finding(s) — see rules.rows[]; each names a lifecycle state or transition nothing can reach, a lifecycle that cannot move, or a permission name the model derived instead of declaring`,
+    );
+  }
   if (
     failed.length === 0 &&
+    rulesTotal === 0 &&
     input.antiPatterns.total === 0 &&
     input.requirements.total === 0 &&
     input.overlays.total === 0 &&
@@ -2371,6 +2423,8 @@ function buildVerifyPayload(input: {
     names: input.names,
     deprecations: input.deprecations,
     fields: input.fields,
+    ...(input.rules !== undefined ? { rules: input.rules } : {}),
+    ...(input.rulesCounts !== undefined ? { rulesCounts: input.rulesCounts } : {}),
     ...(input.requirementCounts !== undefined ? { requirementCounts: input.requirementCounts } : {}),
     ...(input.requirementLedger !== undefined ? { requirementLedger: input.requirementLedger } : {}),
     ...(input.schemaDrift !== undefined ? { schemaDrift: input.schemaDrift } : {}),

@@ -28,6 +28,7 @@ import { parseJson } from "../parser-json.js";
 import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateSortableHasSupportedSubtype, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateFieldMap,
   validateEnumMaxLength, validateIdentitySequence, validateCrossFieldValidators, validateDbCheck, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateOneSideReferenceResolution, validateM2MJunctionPairing, validateIndexLookupFields, validateProjectionFilter, validateOriginSegmentsAndCorrelation, validateProjectionUnionAndGrain, validateDerivedCycles, validateExtenderSubtypeScope, validateRetiredRequirementLinks, validateColumnNameCollisions } from "./validation-passes.js";
 import { validateReporting } from "./reporting-validation.js";
+import { validateRules } from "./rules-validation.js";
 import { runRegisteredValidation } from "./validation-registry.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
 import { validateSourceEscapes } from "../persistence/source/validate-source-escapes.js";
@@ -673,6 +674,9 @@ export class MetaDataLoader {
       // FR-044 — reporting vocabulary cross-node rules (dimensions, measures,
       // segments, reports, relative-date filter values).
       errors.push(...validateReporting(root));
+
+      // ADR-0066 — business rules: operations (slice A) and lifecycles (slice B).
+      errors.push(...validateRules(root));
 
       // FR-017 — M:N relationship validation (deferred-resolution): @through names a
       // junction declaring two identity.reference children; @sourceRefField matches one;

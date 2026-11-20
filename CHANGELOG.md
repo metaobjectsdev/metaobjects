@@ -10,8 +10,62 @@ here.**
 
 ## [Unreleased]
 
+**New metamodel vocabulary, experimental: `api.*`, `operation.*`, `binding.*` and `transition.*`
+(ADR-0066).** It is additive: nothing that loaded before stops loading. This vocabulary ships in
+1.3.0 with `metamodelVersion` 1.3 if it merges before the 1.3.0 publish; if it lands after, the
+next release moves `metamodelVersion`.
+
 ### Added
 
+- **Business rules: operations, permission names and lifecycles (ADR-0066). Experimental:** the
+  shape may change in a MINOR, including removals and renames, until generated services run on
+  it in an adopter estate (`docs/compatibility-policy.md`). The names ADR-0030
+  reserved are registered, with a lifecycle vocabulary, in all five ports:
+  - `api.operational` holds `operation.command` and `operation.query`, with `@inputRef`,
+    `@outputRef`, `@many` (query), `@objectRef`, `@transitions` and `@errors` (command),
+    `@permission` and `@public`. An optional `binding.rest` (`@method`, `@path`) overrides the
+    derived HTTP binding.
+  - `transition.action` is a child of a `field.enum` on an entity, with `@from`, `@to`,
+    `@condition` (the validators' grammar), `@permission` and `@public`. An enum with a
+    transition is a lifecycle: its states, initial state (`@default`), terminal states and each
+    unclaimed transition's command are derived. `transition.timed` is reserved. A lifecycle
+    belongs to the entity that declares the field and to the entities that extend it, never to
+    one whose field merely `extends` that field. A lifecycle on an entity with no source loads
+    and is inert, so a library's core layer can declare one; the writable-source check applies
+    once a source is added.
+  - Permission names include their owner. A declared `@permission` is a dotted identifier path
+    (`purchasing.approve`; a package prefix may use `::`). When it is absent, an operation asks
+    about `<package>.<operation>` and a transition's derived command about
+    `<package>.<Entity>.<transition>`, so two entities' `cancel` transitions never share a
+    grant. Operation names are unique across the APIs of a package, except one operation
+    declared identically in two APIs, such as a `v1` beside a `v2`.
+  - The loader refuses a malformed operation or lifecycle with eleven new codes, each pinned by a
+    `fixtures/conformance/error-rules-*` case: `ERR_TRANSITION_UNKNOWN_STATE`,
+    `ERR_TRANSITION_NOT_ON_ENTITY`, `ERR_LIFECYCLE_NO_INITIAL`, `ERR_LIFECYCLE_REDECLARED`,
+    `ERR_TRANSITION_NAME_COLLISION`, `ERR_OPERATION_SHAPE`, `ERR_OPERATION_TARGET_UNRESOLVED`,
+    `ERR_OPERATION_TARGET_MISMATCH`, `ERR_OPERATION_UNKNOWN_TRANSITION`,
+    `ERR_PERMISSION_PUBLIC_CONFLICT` and `ERR_BINDING_PATH_MISMATCH`. Names are compared without
+    case, an `@errors` code may not be one the route answers itself, two declared bindings
+    may not share a method and path, and a `@permission` must be a dotted identifier path.
+  - `verify` in every port gains a rules gate: unreachable states, an initial state that is
+    terminal, transitions that can never be made, a transition `@permission` no command reads,
+    and permission names the model derived. It is pinned by the new
+    `fixtures/rules-check-conformance/` corpus.
+  - New settings in `.metaobjects/config.json`: `rules.permissions.names`,
+    `rules.lifecycle.commands`, `rules.lifecycle.create` and `verify.lifecycle.unreachable`.
+    Absent, each behaves as before. `rules.lifecycle.create` is read and validated and has no
+    effect yet: the service shells that act on it are later work.
+  - A requirement's `@implementedBy` may name an operation (`Purchasing.decide`) or a
+    transition (`PurchaseRequest.status.submit`).
+  - The Rust preview port (ADR-0065) registers the same vocabulary and runs the same loader
+    rules with the same messages, so it still passes `registry-conformance` byte for byte and
+    the whole metamodel corpus (574 of 574, ledger empty). It reads and validates the new
+    settings. It has no `verify`, so the rules gate does not run there.
+
+  Nothing is generated from the vocabulary yet: the enforcing service shells are later work
+  (ADR-0067), and `fixtures/codegen-noop/rules/` holds every generator to byte-identical output.
+  A model that declares none of it sees no change. See `docs/features/business-rules.md`.
+  ADR-0067 records the layering and service-seam design, and amends ADR-0045.
 - **Rust port foundation, in preview (ADR-0065).** `server/rust/` is a Cargo workspace with a
   pinned toolchain and one crate, `metaobjects`: the node model, the type registry and the
   built-in providers (strict, sealed after bootstrap, the same `ERR_*` codes), and a JSON loader

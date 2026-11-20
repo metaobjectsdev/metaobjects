@@ -1,0 +1,79 @@
+{
+  "metadata.root": {
+    "package": "acme::purchasing",
+    "children": [
+      {
+        "object.entity": {
+          "name": "PurchaseRequest",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "purchase_requests"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "title"
+              }
+            },
+            {
+              "field.enum": {
+                "name": "status",
+                "@values": [
+                  "draft",
+                  "submitted",
+                  "approved",
+                  "rejected"
+                ],
+                "@default": "draft",
+                "isArray": true,
+                "children": [
+                  {
+                    "transition.action": {
+                      "name": "submit",
+                      "@from": [
+                        "draft"
+                      ],
+                      "@to": "submitted"
+                    }
+                  },
+                  {
+                    "transition.action": {
+                      "name": "approve",
+                      "@from": [
+                        "submitted"
+                      ],
+                      "@to": "approved"
+                    }
+                  },
+                  {
+                    "transition.action": {
+                      "name": "reject",
+                      "@from": [
+                        "submitted"
+                      ],
+                      "@to": "rejected"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -21,7 +21,7 @@ The loader is the `metaobjects` crate, and the workspace at `server/rust/` adds 
 | Project resolution | Reads `.metaobjects/config.json` and resolves sources the way every port does: the four source kinds, directory discovery (symlinks followed, `_pending` skipped), and the `iam` and `ai` library sources, which are embedded in the crate so a library resolves with no file on disk. See [Metadata sources](../features/metadata-sources.md). |
 | Naming | The naming strategies, the pluralizers and the collection-name collision check ([ADR-0058](../../spec/decisions/ADR-0058-one-physical-naming-setting.md)). |
 | Registry | The type registry and the built-in providers. It is strict and sealed after bootstrap, with the same `ERR_*` codes as the other ports. |
-| Validation | All 40 validation passes the TypeScript loader runs, in the same order. The ordered list is `PASSES` in `server/rust/metaobjects/src/validate/mod.rs`. |
+| Validation | All 41 validation passes the TypeScript loader runs, in the same order, the business-rules pass among them (operations, permission names and lifecycles, [ADR-0066](../../spec/decisions/ADR-0066-business-rules-operations-and-lifecycles.md)). The ordered list is `PASSES` in `server/rust/metaobjects/src/validate/mod.rs`. |
 | Serializer | The canonical serializer. A tree it loads serializes to the same bytes the other ports write. |
 | Frozen tree | The loader freezes the tree when it finishes. A frozen tree memoizes its resolved reads (effective children, attributes and array-ness), so many readers can share one. |
 | Timings | Every load records how long each phase and each validation pass took (`LoadResult::timings`). |
@@ -38,7 +38,7 @@ pass (`minPassing`) and may only shrink. `registry-conformance` (a byte-for-byte
 | Corpus | Rust today |
 |---|---|
 | `registry-conformance` | byte-identical manifest |
-| `conformance` (the metamodel corpus) | **526 of 526**, and the ledger is empty |
+| `conformance` (the metamodel corpus) | **574 of 574**, and the ledger is empty |
 | `yaml-conformance` | 18 of 19. The one on the ledger, `yaml-ref-root-escape`, waits for the root-level `::` reference rules of [ADR-0059](../../spec/decisions/ADR-0059-references-resolve-once-after-the-tree.md), which are reference resolution, not a validation pass. |
 | `source-resolution-conformance` | all 28 cases |
 | `naming-conformance` | all of it |
@@ -66,7 +66,7 @@ regeneration, peak memory), so a port's speed can be tracked per feature next to
 - **Other `cargo meta` commands.** Only `gen` exists: no `init`, `eject`, `verify` or `fmt`. The command is a
   Cargo subcommand (a `cargo-meta` binary), the way the other build-tool-hosted ports spell theirs (`dotnet meta`,
   `mvn metaobjects:...`). A bare `meta` stays the Node schema CLI.
-- **Drift checks.** There is no `verify` for Rust yet, so nothing compares generated Rust to the model.
+- **Drift checks.** There is no `verify` for Rust yet, so nothing compares generated Rust to the model. That includes the business-rules checks `verify` runs in the other ports (an unreachable state, a permission name left to derive): the loader refuses a broken operation or lifecycle, and the port reads and validates the `rules` and `verify.lifecycle` settings, but nothing reports on them.
 - **The service tier.** No `ObjectManager`, no persistence drivers and no web adapters.
 - **Templates and prompts.** No render engine, no payload value objects and no output parser.
 - **Publication.** The crate sets `publish = false`. There is no crates.io release, no version policy

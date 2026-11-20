@@ -34,7 +34,7 @@ internal static class ResolveReferences
             // is resolved once, on the node that declares it.
             foreach (string name in node.OwnAttrs().Keys.ToList())
             {
-                if (NamingRefs.RefBearingAttrNames.Contains(name)) ResolveAttr(root, node, name, declPkg);
+                if (NamingRefs.IsRefBearingAttr(node, name)) ResolveAttr(root, node, name, declPkg);
             }
         }
         // ADR-0039: own — structural walk over the physical declaration tree.

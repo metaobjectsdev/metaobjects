@@ -1,0 +1,21 @@
+{
+  "diagnostics": [
+    {
+      "severity": "warn",
+      "code": "WARN_LIFECYCLE_UNREACHABLE_STATE",
+      "path": "acme::purchasing::PurchaseRequest.status",
+      "message": "states \"archived\", \"legacy\" of \"status\" cannot be reached from the initial state \"draft\" by any transition. Add the transition that leads there, or set verify.lifecycle.unreachable if only seeded data uses them."
+    },
+    {
+      "severity": "warn",
+      "code": "WARN_TRANSITION_UNREACHABLE",
+      "path": "acme::purchasing::PurchaseRequest.status.restore",
+      "message": "transition \"restore\" starts only from \"archived\", \"legacy\", which no transition reaches from the initial state \"draft\", so it can never be made."
+    }
+  ],
+  "summary": {
+    "operations": 0,
+    "lifecycles": 1,
+    "transitions": 4
+  }
+}

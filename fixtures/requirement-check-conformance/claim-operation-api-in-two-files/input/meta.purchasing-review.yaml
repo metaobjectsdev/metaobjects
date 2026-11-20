@@ -1,0 +1,11 @@
+metadata:
+  package: acme::purchasing
+  children:
+    - api.operational:
+        name: Purchasing
+        children:
+          - operation.query:
+              name: pending
+              outputRef: PurchaseRequest
+              many: true
+              permission: purchasing.review

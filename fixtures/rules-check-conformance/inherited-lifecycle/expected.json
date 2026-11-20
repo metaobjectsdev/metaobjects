@@ -1,0 +1,27 @@
+{
+  "diagnostics": [
+    {
+      "severity": "warn",
+      "code": "WARN_LIFECYCLE_UNREACHABLE_STATE",
+      "path": "acme::purchasing::Request.status",
+      "message": "state \"archived\" of \"status\" cannot be reached from the initial state \"draft\" by any transition. Add the transition that leads there, or set verify.lifecycle.unreachable if only seeded data uses it."
+    },
+    {
+      "severity": "warn",
+      "code": "WARN_PERMISSION_DERIVED_NAME",
+      "path": "acme::purchasing::PurchaseRequest.status.submit",
+      "message": "the command derived from transition \"submit\" of \"PurchaseRequest\" has no @permission, so it asks the policy about the derived name \"acme::purchasing.PurchaseRequest.submit\", which changes if the transition is renamed. Declare @permission, or @public: true."
+    },
+    {
+      "severity": "warn",
+      "code": "WARN_PERMISSION_DERIVED_NAME",
+      "path": "acme::purchasing::TravelRequest.status.submit",
+      "message": "the command derived from transition \"submit\" of \"TravelRequest\" has no @permission, so it asks the policy about the derived name \"acme::purchasing.TravelRequest.submit\", which changes if the transition is renamed. Declare @permission, or @public: true."
+    }
+  ],
+  "summary": {
+    "operations": 0,
+    "lifecycles": 1,
+    "transitions": 1
+  }
+}

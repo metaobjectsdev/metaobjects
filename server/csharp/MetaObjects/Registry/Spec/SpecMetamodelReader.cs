@@ -1,6 +1,6 @@
 // FR-033 — the C# reader for the shared spec/metamodel/*.json provider files.
 //
-// The 19 JSON files (one per concern provider) are the cross-port single source of
+// The 21 JSON files (one per concern provider) are the cross-port single source of
 // truth for every type / attr / common-attr DESCRIPTION (+ optional rules/example/
 // whenToUse). They are byte-identical across the ports by design, so each port READS
 // them rather than hand-copying the prose — the exact duplication FR-033 kills.
@@ -115,13 +115,13 @@ public sealed record SpecExtendsDirective(
 /// </summary>
 public sealed class SpecMetamodelReader
 {
-    /// <summary>The 19 shared provider-definition file names (keep in lockstep with <c>spec/metamodel/</c>).</summary>
+    /// <summary>The 21 shared provider-definition file names (keep in lockstep with <c>spec/metamodel/</c>).</summary>
     public static readonly IReadOnlyList<string> SpecFiles = new[]
     {
-        "attr.json", "db.json", "documentation.json", "field.json", "identity.json",
+        "api.json", "attr.json", "db.json", "documentation.json", "field.json", "identity.json",
         "index.json", "layout.json", "object.json", "origin.json", "prompt.json",
         "relationship.json", "reporting.json", "requirement.json", "source.json", "template.json",
-        "ui.json", "ui-web.json", "validator.json", "view.json",
+        "transition.json", "ui.json", "ui-web.json", "validator.json", "view.json",
     };
 
     /// <summary>The embedded-resource logical-name prefix (RootNamespace + folder).</summary>
@@ -173,7 +173,7 @@ public sealed class SpecMetamodelReader
     // ------------------------------------------------------------------
 
     /// <summary>
-    /// Load + parse the 19 embedded <c>spec/metamodel/*.json</c> files off this
+    /// Load + parse the 21 embedded <c>spec/metamodel/*.json</c> files off this
     /// assembly's manifest resources (AOT-safe).
     /// </summary>
     /// <exception cref="InvalidOperationException">If a spec file is missing or unparseable.</exception>

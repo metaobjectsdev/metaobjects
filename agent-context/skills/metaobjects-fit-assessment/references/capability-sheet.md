@@ -29,8 +29,8 @@ building block. Every generator is a reference helper an adopter selects, ejects
   (TS); `mvn metaobjects:verify` (Java/Kotlin; unset `meta.verify.mode` runs both the codegen and the template gate); `dotnet meta
   verify --codegen` (C#; bare `verify` runs it when `csharp.outDir` (or `--out`) and `codegen/Generators.cs` are present);
   `metaobjects verify` (Python; `--codegen` is part of the default). Since 1.2 a bare `verify` runs
-  codegen drift, prompt templates and the requirement ledger in every port, and skips with a note
-  a gate it has no configuration for. Source: `docs/features/cli.md`.
+  codegen drift, prompt templates, the requirement ledger and the business-rules gate in every
+  port, and skips with a note a gate it has no configuration for. Source: `docs/features/cli.md`.
 - **Generated code compiles**: a codegen-compile gate compiles every port's emitted model tier
   with its real compiler in CI (`docs/CONFORMANCE.md`, "Split coverage").
 - **Sharing a model** (`docs/features/metadata-dependencies.md`): in one repository, every port
@@ -80,8 +80,8 @@ a released version counts these as generators the project writes, from the examp
 `docs/recipes/write-your-own-generator.md`.
 
 **Contract-only cannot** bind a shape to a queue, topic or transport as declared vocabulary
-(`api.*`, `operation.*`, `binding.*` are not shipped); a generator can still emit per-transport
-code from the shapes.
+(the declared-API vocabulary is experimental, its only protocol binding is `binding.rest`, and a
+messaging binding is reserved); a generator can still emit per-transport code from the shapes.
 - promise byte-identical JSON from type-only output: field-name casing on the wire follows each
   consumer's serializer settings (the byte-identical REST wire is a property of the *generated
   routes*, gated by `fixtures/api-contract-conformance/`). Check it in the wedge.
@@ -136,6 +136,6 @@ code from the shapes.
   `.j2`, `.jinja2`) in Python and TypeScript only; Java, Kotlin and C# render Mustache and refuse
   a Jinja-only body with `ERR_TEMPLATE_ENGINE_UNSUPPORTED`. MCP exposure of declared prompts/tools
   is not shipped.
-- **Not shipped, never promise**: the `api.*`/`operation.*`/`binding.*` declared-API surface;
-  the cut `byte`/`short`/`class` field stubs; `index.fulltext`/`vector`/`spatial`; native PG enums
+- **Not shipped, never promise**: the `api.*`/`operation.*`/`binding.*` declared-API surface,
+  which is registered but experimental (ADR-0066) and generates nothing yet; the cut `byte`/`short`/`class` field stubs; `index.fulltext`/`vector`/`spatial`; native PG enums
   and int-backed enums.

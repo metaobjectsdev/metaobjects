@@ -37,6 +37,8 @@ import {
 import { SOURCE_ATTR_PARAMETER_REF } from "./persistence/source/source-constants.js";
 import { OBJECT_REPORT_ATTR_FROM, OBJECT_REPORT_ATTR_SPINE } from "./core/object/object-constants.js";
 import { TEMPLATE_ATTR_PAYLOAD_REF, TEMPLATE_ATTR_RESPONSE_REF } from "./template/template-constants.js";
+import { OPERATION_ATTR_INPUT_REF, OPERATION_ATTR_OUTPUT_REF } from "./core/api/api-constants.js";
+import { TYPE_TRANSITION } from "./shared/base-types.js";
 
 const PARENT_PREFIX = PACKAGE_PARENT + PACKAGE_SEPARATOR; // "..::"
 
@@ -48,7 +50,9 @@ const PARENT_PREFIX = PACKAGE_PARENT + PACKAGE_SEPARATOR; // "..::"
  * relationship/field tail; `@parameterRef`/`@payloadRef`/`@responseRef` name
  * value-objects. The same set is used in every port. `@sourceRefField` (a FK FIELD
  * name) and `@implementedBy` (which may name a template as well as an object) are
- * NOT in the set.
+ * NOT in the set. An operation's `@inputRef`/`@outputRef`/`@objectRef` are (ADR-0066).
+ * The set is keyed by NAME, so a node type that reuses one of these names for something
+ * else is excluded by `isRefBearingAttr`: a `transition.action @from` lists enum members.
  */
 export const REF_BEARING_ATTR_NAMES: ReadonlySet<string> = new Set<string>([
   RELATIONSHIP_ATTR_OBJECT_REF, // = FIELD_ATTR_OBJECT_REF (same spelling "objectRef")
@@ -64,7 +68,15 @@ export const REF_BEARING_ATTR_NAMES: ReadonlySet<string> = new Set<string>([
   TEMPLATE_ATTR_RESPONSE_REF,
   OBJECT_REPORT_ATTR_FROM, // = ORIGIN_PASSTHROUGH_ATTR_FROM ("from")
   OBJECT_REPORT_ATTR_SPINE,
+  OPERATION_ATTR_INPUT_REF,
+  OPERATION_ATTR_OUTPUT_REF,
 ]);
+
+/** True when `attrName` on `node` holds an object reference: in REF_BEARING_ATTR_NAMES,
+ *  and not on a `transition.*`, whose `@from` names members of its enum (ADR-0066). */
+export function isRefBearingAttr(node: MetaData, attrName: string): boolean {
+  return REF_BEARING_ATTR_NAMES.has(attrName) && node.type !== TYPE_TRANSITION;
+}
 
 /** True when `raw` is a relative reference form (`::Rest` or `..::Rest`). */
 export function isRelativeRef(raw: string): boolean {

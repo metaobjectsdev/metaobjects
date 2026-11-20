@@ -2,6 +2,30 @@
   "metamodelVersion": "1.3",
   "types": [
     {
+      "type": "api",
+      "subType": "base",
+      "description": "Registry anchor for the declared API surface (ADR-0030, ADR-0054): not authorable. The `api` subtype axis is the interaction model, never the protocol; protocol lives in `binding.*` on each operation.",
+      "attrs": [],
+      "children": []
+    },
+    {
+      "type": "api",
+      "subType": "operational",
+      "description": "A named, packaged request/response surface whose children are operations (ADR-0030). It is a wire contract: two of them (`v1`, `v2`) may declare the same operation side by side. The code behind it is one service per metadata package, whose surface is the package's operations (ADR-0067). Experimental since 1.3.0: the shape may change in a MINOR, including removals and renames (docs/compatibility-policy.md).",
+      "rules": "Children are `operation.command` and `operation.query`. Lives at the document root. Declares no fields, sources or identities: shapes are referenced, never defined, by the surface. Operation names are compared without case, are unique across every API of one package, except one operation declared identically in two APIs, such as a versioned API beside its successor (one operation declared twice in one API merges), and may not be create, get, list, update or delete in any case (ERR_TRANSITION_NAME_COLLISION). Two declared bindings of one API may not share a method and path (ERR_BINDING_PATH_MISMATCH).",
+      "whenToUse": "The application does something beyond derived CRUD: a named command (approve, cancel, import) or a named query (my open requests). Declare it here so its input, output, permission and business errors are part of the model. A plain lifecycle needs no api.operational at all: a transition nobody claims is held to derive its own command once a shell is generated, and no shell is generated yet.",
+      "attrs": [],
+      "children": [
+        {
+          "childType": "operation",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        }
+      ]
+    },
+    {
       "type": "attr",
       "subType": "base",
       "description": "Abstract base attribute — the polymorphic/unconstrained value-type marker. Stores its value type-preserved (never stringified), accepting any type; used for an untyped attr (e.g. a field's @default, whose value-type follows the owning field's subtype). Not authored directly: a `attr.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.",
@@ -76,6 +100,43 @@
       "subType": "string",
       "description": "A string-valued metadata attribute. Coerces to and validates as text; the default value-type for inline @-syntax attrs (array-of-string is the same subtype with isArray).",
       "attrs": [],
+      "children": []
+    },
+    {
+      "type": "binding",
+      "subType": "base",
+      "description": "Registry anchor for protocol bindings (ADR-0030, ADR-0054): not authorable.",
+      "attrs": [],
+      "children": []
+    },
+    {
+      "type": "binding",
+      "subType": "rest",
+      "description": "The HTTP method and path of an operation, declared only to override the derived ones. A query is `GET`, a command `POST`; the path is `/<collection>/{id}/<operation-kebab>` for an operation with a target key and `/<collection>/<operation-kebab>` without one. Most models never write it. Experimental since 1.3.0: the shape may change in a MINOR, including removals and renames (docs/compatibility-policy.md).",
+      "whenToUse": "An operation must keep a method or path the derived one would not give it, such as an existing public URL.",
+      "attrs": [
+        {
+          "name": "method",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "allowedValues": [
+            "GET",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE"
+          ],
+          "description": "The HTTP method. Absent: GET for a query, POST for a command."
+        },
+        {
+          "name": "path",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "A path template. Its `{name}` placeholders must be exactly the target's primary key fields when the operation is keyed, and there must be none when it is not; two declared bindings of one API may not share the method and path (ERR_BINDING_PATH_MISMATCH)."
+        }
+      ],
       "children": []
     },
     {
@@ -1338,6 +1399,13 @@
       "children": [
         {
           "childType": "origin",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "transition",
           "childSubType": "*",
           "childName": "*",
           "min": 0,
@@ -3353,6 +3421,11 @@
       "attrs": [],
       "children": [
         {
+          "childType": "api",
+          "childSubType": "*",
+          "childName": "*"
+        },
+        {
           "childType": "field",
           "childSubType": "*",
           "childName": "*"
@@ -3921,6 +3994,182 @@
         },
         {
           "childType": "validator",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        }
+      ]
+    },
+    {
+      "type": "operation",
+      "subType": "base",
+      "description": "Registry anchor for the attributes every operation shares (ADR-0054): not authorable.",
+      "attrs": [
+        {
+          "name": "inputRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The `object.value` this operation takes as its input (ADR-0030). Absent on an operation whose only parameter is the target's borrowed key. Anything other than an `object.value` is ERR_OPERATION_SHAPE."
+        },
+        {
+          "name": "objectRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The entity this operation acts on, declared only when it cannot be derived. It is derived from the input value when its fields `extend` every primary key field of exactly one entity, each once, else from the output's base entity; an input that borrows part of a key, one key field twice, or the keys of two entities derives nothing, so declare it. Declared and derivable, the two must agree (ERR_OPERATION_TARGET_MISMATCH). It must name an `object.entity` (ERR_OPERATION_TARGET_UNRESOLVED)."
+        },
+        {
+          "name": "outputRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The object this operation returns: an `object.projection`, `object.entity` or `object.value`. Which projection a query returns is the author's choice among several over one entity, so it cannot be computed. Anything else is ERR_OPERATION_SHAPE."
+        },
+        {
+          "name": "permission",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The permission name the generated shell will ask the project's policy about before anything is written (no shell is generated yet). A key into grant data (who holds it is data, what the policy decides is code), so an explicit name is stable: a derived name moves when the operation is renamed. A dotted identifier path such as `purchasing.approve`; a package prefix may use `::` (ERR_BAD_ATTR_VALUE otherwise). Absent and not @public: the shell will use the derived name `<package>.<operation>`, with the package of the operation's API, and `verify` advises or requires an explicit one (setting `rules.permissions.names`). Several operations may share one."
+        },
+        {
+          "name": "public",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "The shell will call no permission check (no shell is generated yet). Authentication is the transport's job and is unaffected. Absent means checked. Declaring it with @permission is ERR_PERMISSION_PUBLIC_CONFLICT."
+        }
+      ],
+      "children": [
+        {
+          "childType": "binding",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        }
+      ]
+    },
+    {
+      "type": "operation",
+      "subType": "command",
+      "description": "A named operation that changes state. Takes an `object.value` (ADR-0030). Its body is hand-written. The contract (ADR-0066) is that a generated shell around it loads the row, checks the permission and the current state, runs the body, and makes the guarded update in one transaction. No shell is generated yet: this vocabulary is registered, loaded and checked, and nothing is generated from it. Experimental since 1.3.0: the shape may change in a MINOR, including removals and renames (docs/compatibility-policy.md).",
+      "whenToUse": "A business action with its own name, input and rules: approve, cancel, transfer. A command that moves a lifecycle names the transitions it may make in @transitions; its body decides which one applies.",
+      "attrs": [
+        {
+          "name": "errors",
+          "valueType": "string",
+          "isArray": true,
+          "required": false,
+          "description": "The business failures the hand-written body may return, each a lower snake case code (`insufficient_funds`). They name the wire error, the OpenAPI document and the typed result; the shell will refuse an undeclared one (no shell is generated yet). A code that is not lower snake case, appears twice, or is one the route answers itself (not_found, forbidden, invalid_transition, transition_condition_failed, state_managed, validation, invalid_json, invalid_id, method_not_allowed, constraint_violation, internal) is ERR_BAD_ATTR_VALUE."
+        },
+        {
+          "name": "inputRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The `object.value` this operation takes as its input (ADR-0030). Absent on an operation whose only parameter is the target's borrowed key. Anything other than an `object.value` is ERR_OPERATION_SHAPE."
+        },
+        {
+          "name": "objectRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The entity this operation acts on, declared only when it cannot be derived. It is derived from the input value when its fields `extend` every primary key field of exactly one entity, each once, else from the output's base entity; an input that borrows part of a key, one key field twice, or the keys of two entities derives nothing, so declare it. Declared and derivable, the two must agree (ERR_OPERATION_TARGET_MISMATCH). It must name an `object.entity` (ERR_OPERATION_TARGET_UNRESOLVED)."
+        },
+        {
+          "name": "outputRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The object this operation returns: an `object.projection`, `object.entity` or `object.value`. Which projection a query returns is the author's choice among several over one entity, so it cannot be computed. Anything else is ERR_OPERATION_SHAPE."
+        },
+        {
+          "name": "permission",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The permission name the generated shell will ask the project's policy about before anything is written (no shell is generated yet). A key into grant data (who holds it is data, what the policy decides is code), so an explicit name is stable: a derived name moves when the operation is renamed. A dotted identifier path such as `purchasing.approve`; a package prefix may use `::` (ERR_BAD_ATTR_VALUE otherwise). Absent and not @public: the shell will use the derived name `<package>.<operation>`, with the package of the operation's API, and `verify` advises or requires an explicit one (setting `rules.permissions.names`). Several operations may share one."
+        },
+        {
+          "name": "public",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "The shell will call no permission check (no shell is generated yet). Authentication is the transport's job and is unaffected. Absent means checked. Declaring it with @permission is ERR_PERMISSION_PUBLIC_CONFLICT."
+        },
+        {
+          "name": "transitions",
+          "valueType": "string",
+          "isArray": true,
+          "required": false,
+          "description": "The lifecycle moves this command may make: names of `transition.action` nodes on its target entity (ERR_OPERATION_UNKNOWN_TRANSITION otherwise). A fact of the business the model cannot compute. A transition a command lists gets no derived command of its own. Listing any requires a target (ERR_OPERATION_TARGET_UNRESOLVED)."
+        }
+      ],
+      "children": [
+        {
+          "childType": "binding",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        }
+      ]
+    },
+    {
+      "type": "operation",
+      "subType": "query",
+      "description": "A named operation that reads. Returns an `object.projection` (or an entity or value). It changes nothing. Experimental since 1.3.0: the shape may change in a MINOR, including removals and renames (docs/compatibility-policy.md).",
+      "whenToUse": "A read with its own name and shape beyond derived get and list: my open requests, the dashboard summary.",
+      "attrs": [
+        {
+          "name": "inputRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The `object.value` this operation takes as its input (ADR-0030). Absent on an operation whose only parameter is the target's borrowed key. Anything other than an `object.value` is ERR_OPERATION_SHAPE."
+        },
+        {
+          "name": "many",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "The query returns a list and takes the filter, sort and paging contract. Not implied by the projection, so declared. Absent means one row. Legal on a query only."
+        },
+        {
+          "name": "objectRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The entity this operation acts on, declared only when it cannot be derived. It is derived from the input value when its fields `extend` every primary key field of exactly one entity, each once, else from the output's base entity; an input that borrows part of a key, one key field twice, or the keys of two entities derives nothing, so declare it. Declared and derivable, the two must agree (ERR_OPERATION_TARGET_MISMATCH). It must name an `object.entity` (ERR_OPERATION_TARGET_UNRESOLVED)."
+        },
+        {
+          "name": "outputRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The object this operation returns: an `object.projection`, `object.entity` or `object.value`. Which projection a query returns is the author's choice among several over one entity, so it cannot be computed. Anything else is ERR_OPERATION_SHAPE."
+        },
+        {
+          "name": "permission",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The permission name the generated shell will ask the project's policy about before anything is written (no shell is generated yet). A key into grant data (who holds it is data, what the policy decides is code), so an explicit name is stable: a derived name moves when the operation is renamed. A dotted identifier path such as `purchasing.approve`; a package prefix may use `::` (ERR_BAD_ATTR_VALUE otherwise). Absent and not @public: the shell will use the derived name `<package>.<operation>`, with the package of the operation's API, and `verify` advises or requires an explicit one (setting `rules.permissions.names`). Several operations may share one."
+        },
+        {
+          "name": "public",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "The shell will call no permission check (no shell is generated yet). Authentication is the transport's job and is unaffected. Absent means checked. Declaring it with @permission is ERR_PERMISSION_PUBLIC_CONFLICT."
+        }
+      ],
+      "children": [
+        {
+          "childType": "binding",
           "childSubType": "*",
           "childName": "*",
           "min": 0,
@@ -4980,6 +5229,73 @@
           "isArray": false,
           "required": true,
           "description": "Wire tool name surfaced to the LLM (vendor-specific format)."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "transition",
+      "subType": "action",
+      "description": "An allowed move between two values of a `field.enum`, made by an operation (ADR-0066). A `field.enum` with at least one is a lifecycle, named after the field. Its states are the enum's @values, its initial state the enum's @default, its terminal states the members no transition leaves; none of them has vocabulary of its own. Each transition is held to become a guarded update (`... WHERE id = ? AND <field> IN (@from) [AND @condition]`), its own command when no declared operation claims it, its own permission point and its own wire error. No shell is generated yet: nothing is generated from this vocabulary, and the loader and `verify` only check it. Experimental since 1.3.0: the shape may change in a MINOR, including removals and renames (docs/compatibility-policy.md).",
+      "rules": "Legal only under a `field.enum` of an `object.entity` (ERR_TRANSITION_NOT_ON_ENTITY). A concrete entity with a lifecycle and a source needs a writable one (ERR_TRANSITION_NOT_ON_ENTITY); on an entity with no source the lifecycle loads and is inert, deriving no command until a source is added. The field must declare @default (ERR_LIFECYCLE_NO_INITIAL). The field is not an array, and @from names at least one state (ERR_BAD_ATTR_VALUE). Names are unique across every lifecycle of the entity, compared without case, and may not be create, get, list, update or delete in any case (ERR_TRANSITION_NAME_COLLISION). A transition belongs to the entity that declares its field and to every entity extending it, never to an entity whose field merely `extends` that field; an inheritor that redeclares the field without extending it is ERR_LIFECYCLE_REDECLARED.",
+      "whenToUse": "A status field whose values may only change in certain ways: a request is submitted from draft, approved or rejected from submitted. Declare each allowed move here; once a shell is generated, the generic update path will no longer write the field. A move that leaves the state where it was (from submitted to submitted) records an action that changes nothing but still happened, such as a first approval of two.",
+      "attrs": [
+        {
+          "name": "condition",
+          "valueType": "expression",
+          "isArray": false,
+          "required": false,
+          "description": "A guard over the entity's own fields, in the attr.expression grammar: the same name, grammar and meaning as on the cross-field validators. The shell will evaluate it against the loaded row and also put it into the guarded update's WHERE (no shell is generated yet). It cannot read the actor; that is the policy's job. A field the entity does not have, or an expression that is not boolean, is ERR_BAD_ATTR_VALUE."
+        },
+        {
+          "name": "from",
+          "valueType": "string",
+          "isArray": true,
+          "required": true,
+          "description": "The states this move may start from: members of the parent enum's @values (ERR_TRANSITION_UNKNOWN_STATE otherwise), at least one (ERR_BAD_ATTR_VALUE when empty). The allowed moves are the business rule itself, so they cannot be computed."
+        },
+        {
+          "name": "permission",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "As on an operation: the permission name the derived command for this transition will ask the policy about (no command is derived yet). A dotted identifier path, as on an operation. Absent and not @public: the derived name `<package>.<Entity>.<transition>`, naming the concrete entity, so two entities' transitions of one name ask about different permissions. Read only when the transition derives its own command; a declared operation that claims it uses its own, and verify warns that this one is never read (WARN_TRANSITION_PERMISSION_SHADOWED)."
+        },
+        {
+          "name": "public",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "As on an operation: the derived command will call no permission check (no command is derived yet). Declaring it with @permission is ERR_PERMISSION_PUBLIC_CONFLICT."
+        },
+        {
+          "name": "to",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The state this move ends in: one member of the parent enum's @values (ERR_TRANSITION_UNKNOWN_STATE otherwise). May equal a member of @from, which records an action that leaves the state where it was."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "transition",
+      "subType": "base",
+      "description": "Registry anchor for the attributes every lifecycle move shares (ADR-0054): not authorable.",
+      "attrs": [
+        {
+          "name": "permission",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "As on an operation: the permission name the derived command for this transition will ask the policy about (no command is derived yet). A dotted identifier path, as on an operation. Absent and not @public: the derived name `<package>.<Entity>.<transition>`, naming the concrete entity, so two entities' transitions of one name ask about different permissions. Read only when the transition derives its own command; a declared operation that claims it uses its own, and verify warns that this one is never read (WARN_TRANSITION_PERMISSION_SHADOWED)."
+        },
+        {
+          "name": "public",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "As on an operation: the derived command will call no permission check (no command is derived yet). Declaring it with @permission is ERR_PERMISSION_PUBLIC_CONFLICT."
         }
       ],
       "children": []

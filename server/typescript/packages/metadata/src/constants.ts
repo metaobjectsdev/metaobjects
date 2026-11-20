@@ -37,6 +37,7 @@
 
 export * from "./shared/base-types.js";
 export * from "./shared/structural.js";
+export * from "./core/api/api-constants.js";
 export * from "./core/attr/attr-constants.js";
 export * from "./core/documentation/doc-constants.js";
 export * from "./core/field/field-constants.js";
@@ -45,6 +46,7 @@ export * from "./core/index/index-constants.js";
 export * from "./core/object/object-constants.js";
 export * from "./core/query/query-constants.js";
 export * from "./core/relationship/relationship-constants.js";
+export * from "./core/transition/transition-constants.js";
 export * from "./core/reporting/reporting-constants.js";
 export * from "./core/validator/validator-constants.js";
 export * from "./persistence/db/db-constants.js";

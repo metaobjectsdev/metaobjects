@@ -1,0 +1,188 @@
+{
+  "metadata.root": {
+    "children": [
+      {
+        "api.operational": {
+          "name": "Purchasing",
+          "package": "acme::api",
+          "children": [
+            {
+              "operation.command": {
+                "name": "decide",
+                "@errors": [
+                  "over_budget",
+                  "already_decided"
+                ],
+                "@inputRef": "acme::purchasing::DecisionInput",
+                "@permission": "purchasing.decide",
+                "@transitions": [
+                  "approve",
+                  "reject"
+                ],
+                "children": [
+                  {
+                    "binding.rest": {
+                      "@method": "PUT",
+                      "@path": "/purchase-requests/{id}/decision"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "operation.query": {
+                "name": "openRequests",
+                "@many": true,
+                "@outputRef": "acme::purchasing::RequestSummary",
+                "@public": true
+              }
+            },
+            {
+              "operation.query": {
+                "name": "requestSummary",
+                "@outputRef": "acme::purchasing::RequestSummary"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "PurchaseRequest",
+          "package": "acme::purchasing",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "purchase_requests"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "title"
+              }
+            },
+            {
+              "field.long": {
+                "name": "amountCents"
+              }
+            },
+            {
+              "field.enum": {
+                "name": "status",
+                "@default": "draft",
+                "@values": [
+                  "draft",
+                  "submitted",
+                  "approved",
+                  "rejected"
+                ],
+                "children": [
+                  {
+                    "transition.action": {
+                      "name": "submit",
+                      "@from": [
+                        "draft"
+                      ],
+                      "@to": "submitted"
+                    }
+                  },
+                  {
+                    "transition.action": {
+                      "name": "approve",
+                      "@condition": {
+                        "op": "gt",
+                        "left": {
+                          "field": "amountCents"
+                        },
+                        "right": {
+                          "value": 0
+                        }
+                      },
+                      "@from": [
+                        "submitted"
+                      ],
+                      "@to": "approved"
+                    }
+                  },
+                  {
+                    "transition.action": {
+                      "name": "reject",
+                      "@from": [
+                        "submitted"
+                      ],
+                      "@to": "rejected"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "DecisionInput",
+          "package": "acme::purchasing",
+          "children": [
+            {
+              "field.long": {
+                "name": "requestId",
+                "extends": "acme::purchasing::PurchaseRequest.id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "comment"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "RequestSummary",
+          "package": "acme::purchasing",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_request_summary"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "acme::purchasing::PurchaseRequest.id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "title",
+                "extends": "acme::purchasing::PurchaseRequest.title"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "extends": "acme::purchasing::PurchaseRequest.pk"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
