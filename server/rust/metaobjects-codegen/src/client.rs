@@ -395,7 +395,7 @@ fn client_crate(
     for s in served {
         let route = s.route.as_ref().expect("a served entity has a route");
         let mut exports = vec![s.client_name(), s.query_name()];
-        if has_sort(s) {
+        if s.has_sort() {
             exports.push(s.sort_name());
         }
         lib_items.push((s.module(), exports));
@@ -475,10 +475,6 @@ fn lib_file(package: &str, items: &[(String, Vec<String>)]) -> String {
 
 // ---- one entity ------------------------------------------------------------------------
 
-fn has_sort(s: &StructPlan) -> bool {
-    s.sortable().next().is_some()
-}
-
 /// A type of a model crate, by its path from another crate.
 fn model_type(crate_name: &str, type_name: &str, deps: &mut BTreeSet<String>) -> String {
     deps.insert(crate_name.to_string());
@@ -544,7 +540,7 @@ fn param(f: &FieldPlan, deps: &mut BTreeSet<String>) -> Param {
 /// and the statement that records it.
 fn filter_method(w: &mut CodeWriter, f: &FieldPlan, op: &str, p: &Param) {
     let field = literal(&f.wire);
-    let bare = f.ident.strip_prefix("r#").unwrap_or(&f.ident);
+    let bare = f.bare_ident();
     let (suffix, arg, doc, statement) = match op {
         "in" => (
             "in".to_string(),
@@ -655,7 +651,7 @@ fn query_items(
                     filter_method(w, f, op, p);
                 }
             }
-            if has_sort(s) {
+            if s.has_sort() {
                 w.blank();
                 w.prose("Sort by one field. A later sort replaces an earlier one.");
                 let head = piece![
@@ -688,7 +684,7 @@ fn query_items(
             }
         });
     })?);
-    if has_sort(s) {
+    if s.has_sort() {
         let sort = s.sort_name();
         // Two fields that differ only in case would be one variant; the wire name decides.
         let mut seen = BTreeSet::new();
@@ -752,14 +748,7 @@ fn client_item(
     let patch = model_type(&s.crate_name, &s.patch_name(), deps);
     let key = route.key.map(|k| {
         let f = &s.fields[k];
-        (
-            f.wire.clone(),
-            if f.ty == Ty::Str {
-                "&str".to_string()
-            } else {
-                param(f, deps).ty
-            },
-        )
+        (f.wire.clone(), param(f, deps).ty)
     });
     let traversals: Vec<(String, String, String)> = route
         .traversals

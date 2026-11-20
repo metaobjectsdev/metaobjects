@@ -241,6 +241,12 @@ fn stage_rows(t: &LoadTimings) -> Vec<(String, f64)> {
         .collect()
 }
 
+fn print_warnings(err: &mut dyn Write, warnings: &[String]) {
+    for w in warnings {
+        let _ = writeln!(err, "warning: {w}");
+    }
+}
+
 fn print_timings(out: &mut dyn Write, t: &LoadTimings) {
     let _ = writeln!(out);
     let _ = write!(out, "{}", render_table("stage", &stage_rows(t), None));
@@ -371,9 +377,7 @@ fn cmd_gen(
     options.entities = s.words.clone();
     match run(&options, generators) {
         Ok(report) => {
-            for w in &report.warnings {
-                let _ = writeln!(err, "warning: {w}");
-            }
+            print_warnings(err, &report.warnings);
             let _ = writeln!(out, "{}", report_summary(&report));
             for line in change_report(&report) {
                 let _ = writeln!(out, "{line}");
@@ -476,9 +480,7 @@ fn cmd_verify(
     options.force = s.has("--full") || ci_forces_render(std::env::var_os("CI"));
     match verify(&options, generators) {
         Ok(report) => {
-            for w in &report.warnings {
-                let _ = writeln!(err, "warning: {w}");
-            }
+            print_warnings(err, &report.warnings);
             let (to_out, to_err) = verify_lines(&report);
             for line in to_out {
                 let _ = writeln!(out, "{line}");

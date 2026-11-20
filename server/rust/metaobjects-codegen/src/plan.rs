@@ -124,11 +124,6 @@ impl Ty {
             _ => None,
         }
     }
-
-    /// Whether a value is `Copy`, so a member can be read without borrowing.
-    pub fn is_copy(&self) -> bool {
-        matches!(self, Ty::Prim(_) | Ty::Ip | Ty::Duration)
-    }
 }
 
 /// What a field holds, by its metamodel subtype.
@@ -234,12 +229,6 @@ pub struct Rules {
     pub format: Option<Format>,
 }
 
-impl Rules {
-    pub fn is_empty(&self) -> bool {
-        *self == Rules::default()
-    }
-}
-
 /// Whether a body carries a member, and whether it must.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Presence {
@@ -292,6 +281,13 @@ pub struct FieldPlan {
     /// marks it `@filterable`.
     pub filter_ops: Vec<&'static str>,
     pub sortable: bool,
+}
+
+impl FieldPlan {
+    /// The identifier without its `r#` keyword escape.
+    pub fn bare_ident(&self) -> &str {
+        self.ident.strip_prefix("r#").unwrap_or(&self.ident)
+    }
 }
 
 /// One of the six comparisons.
@@ -530,6 +526,11 @@ impl StructPlan {
             .filter(|f| f.sortable && !f.array && !matches!(f.kind, Kind::Object | Kind::Map))
     }
 
+    /// Whether a list request may sort at all.
+    pub fn has_sort(&self) -> bool {
+        self.sortable().next().is_some()
+    }
+
     /// The fields a list request may filter on.
     pub fn filterable(&self) -> impl Iterator<Item = &FieldPlan> {
         self.fields
@@ -545,6 +546,28 @@ pub struct CratePlan {
     pub shared_enums: Vec<(NodeId, EnumPlan)>,
     /// The model crates this one refers to.
     pub deps: BTreeSet<String>,
+}
+
+/// Claim `crate_name` for `pkg`: a crate still `fresh` takes the package, and a crate that
+/// already holds members must have been claimed by the same one.
+fn bind_package(
+    c: &mut CratePlan,
+    crate_name: &str,
+    pkg: String,
+    fresh: bool,
+) -> Result<(), GenError> {
+    if fresh {
+        c.package = pkg;
+    } else if c.package != pkg {
+        return Err(GenError::new(
+            ERR_NAME_COLLISION,
+            format!(
+                "the packages '{}' and '{}' both become the crate {}",
+                c.package, pkg, crate_name
+            ),
+        ));
+    }
+    Ok(())
 }
 
 /// How the project wants members that hold nothing written.
@@ -699,7 +722,7 @@ fn bound_struct(
 fn check_fields(owner: &str, fields: &[FieldPlan]) -> Result<(), GenError> {
     let mut seen: HashMap<&str, &str> = HashMap::new();
     for f in fields {
-        let bare = f.ident.strip_prefix("r#").unwrap_or(&f.ident);
+        let bare = f.bare_ident();
         if let Some(prev) = seen.insert(bare, &f.wire) {
             return Err(GenError::new(
                 ERR_NAME_COLLISION,
@@ -792,10 +815,7 @@ fn field_rules(
         // `@maxLength` sizes an enum's column and is no rule of its value; on text the
         // tighter of it and the validator's bound wins.
         let attr_max = u64_attr(tree, f, ATTR_MAX_LENGTH);
-        rules.max_len = match (attr_max, length_max) {
-            (Some(a), Some(b)) => Some(a.min(b)),
-            (a, b) => a.or(b),
-        };
+        rules.max_len = attr_max.into_iter().chain(length_max).min();
         // A required string is not satisfied by the empty string, unless the model set a
         // minimum of its own (`@min: 0` says the empty string is fine).
         if kind == Kind::String && required && !authored_min_len {
@@ -858,17 +878,8 @@ impl Plan {
         for (i, s) in structs.iter().enumerate() {
             let pkg = tree.effective_package(s.node);
             let c = crates.entry(s.crate_name.clone()).or_default();
-            if c.structs.is_empty() {
-                c.package = pkg.clone();
-            } else if c.package != pkg {
-                return Err(GenError::new(
-                    ERR_NAME_COLLISION,
-                    format!(
-                        "the packages '{}' and '{}' both become the crate {}",
-                        c.package, pkg, s.crate_name
-                    ),
-                ));
-            }
+            let fresh = c.structs.is_empty();
+            bind_package(c, &s.crate_name, pkg, fresh)?;
             c.structs.push(i);
         }
 
@@ -1079,17 +1090,8 @@ impl Plan {
             )?;
             let pkg = tree.effective_package(decl);
             let c = crates.entry(target.crate_name.clone()).or_default();
-            if c.structs.is_empty() && c.shared_enums.is_empty() {
-                c.package = pkg;
-            } else if c.package != pkg {
-                return Err(GenError::new(
-                    ERR_NAME_COLLISION,
-                    format!(
-                        "the packages '{}' and '{}' both become the crate {}",
-                        c.package, pkg, target.crate_name
-                    ),
-                ));
-            }
+            let fresh = c.structs.is_empty() && c.shared_enums.is_empty();
+            bind_package(c, &target.crate_name, pkg, fresh)?;
             c.shared_enums.push((decl, plan));
         }
 

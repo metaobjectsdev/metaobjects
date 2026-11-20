@@ -492,7 +492,7 @@ fn flags(s: &StructPlan, patch: bool, has_id: bool) -> Vec<Flag<'_>> {
         } else {
             f.create != Presence::Absent
         };
-        let bare = f.ident.strip_prefix("r#").unwrap_or(&f.ident);
+        let bare = f.bare_ident();
         if !carried
             || matches!(f.kind, Kind::Object | Kind::Map)
             || RESERVED_FLAGS.contains(&bare)
@@ -500,10 +500,7 @@ fn flags(s: &StructPlan, patch: bool, has_id: bool) -> Vec<Flag<'_>> {
         {
             continue;
         }
-        let value = match &f.ty {
-            Ty::Prim(p) => p,
-            _ => "String",
-        };
+        let value = render_prim(&f.ty);
         let ty = if f.array {
             format!("Vec<{value}>")
         } else {
@@ -592,11 +589,7 @@ fn entity_file(
     let command = format!("{}Command", s.type_name);
     let key = route.key.map(|k| &s.fields[k]);
     let id_line = key.map(|f| {
-        let ty = if f.ty == Ty::Str {
-            "String".to_string()
-        } else {
-            render_prim(&f.ty)
-        };
+        let ty = render_prim(&f.ty);
         format!("id: {ty},")
     });
     // How `run` hands the key to the client: text is borrowed, a number is copied.
@@ -616,7 +609,6 @@ fn entity_file(
     } else {
         Vec::new()
     };
-    let fixed: BTreeSet<&str> = ["list", "get", "create", "update", "delete", "help"].into();
     let mut seen = BTreeSet::new();
     // (variant, command name, relation, client method)
     let related: Vec<(String, String, String, String)> = route
@@ -629,7 +621,7 @@ fn entity_file(
                 return None;
             }
             let mut name = snake(&t.name).replace('_', "-");
-            if fixed.contains(name.as_str()) {
+            if FIXED_VERBS.contains(&name.as_str()) {
                 name.push_str("-of");
             }
             Some((
@@ -820,6 +812,9 @@ fn entity_file(
     items.push(run);
     Ok(file(BANNER, &items))
 }
+
+/// The verbs a generated command already owns; a traversal named like one gets `-of`.
+const FIXED_VERBS: &[&str] = &["list", "get", "create", "update", "delete", "help"];
 
 /// A whole-number key's type.
 fn render_prim(ty: &Ty) -> String {

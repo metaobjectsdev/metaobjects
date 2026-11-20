@@ -186,11 +186,6 @@ impl Refusal {
     pub fn is_empty(&self) -> bool {
         self.edited.is_empty() && self.orphans.is_empty()
     }
-
-    /// Every refused path, the still-emitted ones first.
-    pub fn paths(&self) -> impl Iterator<Item = &str> {
-        self.edited.iter().chain(&self.orphans).map(String::as_str)
-    }
 }
 
 /// Why a run failed.
@@ -282,9 +277,6 @@ fn io_error(what: &str, path: &Path, e: &std::io::Error) -> RunError {
     RunError::Io(format!("{what} {}: {e}", path.display()))
 }
 
-/// The owned generator crate (`cargo meta eject`): its sources are an input of every run, so
-/// editing an owned generator regenerates (ADR-0064, `owned-generator-edited`).
-pub const OWNED_DIR: &str = "codegen";
 /// Where `cargo meta eject` puts the owned copies.
 pub const OWNED_GENERATORS_DIR: &str = "codegen/generators";
 /// The owned crate's manifest; its presence is what makes a project "own its generators".
