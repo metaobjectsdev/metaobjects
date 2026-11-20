@@ -21,7 +21,11 @@ conformance corpora. This guide covers how to propose changes.
   client names, personal information, or absolute local paths in code, docs, fixtures,
   **or commit messages**. Use generic terms ("a downstream consumer", "a sibling
   project") and repo-relative paths (`<repo-root>`). A local pre-commit hook enforces
-  this, and `scripts/ci-local.sh` re-runs the same leak scan over your branch.
+  this, and `scripts/ci-local.sh` re-runs the same leak scan over your branch. With a
+  private denylist configured, the hooks also refuse a commit (pre-commit) or push
+  (pre-push) whose author or committer name or email matches it. Hosted CI cannot see
+  the private denylist, so that identity check protects only machines with the hooks
+  installed.
 
 ## How to contribute a change
 
@@ -143,9 +147,10 @@ integration suite and the TypeScript `codegen-ts` conformance suite, and the JVM
 integration modules' surefire forks.
 
 It SKIPS (loudly, not silently) any port whose toolchain (bun/dotnet/uv/mvn) isn't
-installed. The `.githooks/pre-push` hook additionally runs the TS build+typecheck
-gate and a Java pom-version drift guard on every push (activate hooks once per
-clone: `git config core.hooksPath .githooks`).
+installed. The `.githooks/pre-push` hook additionally runs the identity guard (the
+author and committer of every outgoing commit against the private denylist; not skipped by
+`SKIP_TS_TYPECHECK=1`), the TS build+typecheck gate and a Java pom-version drift guard on
+every push (activate hooks once per clone: `git config core.hooksPath .githooks`).
 
 If you drive changes through the no-mistakes validation gate, `.no-mistakes.yaml` pins its
 `test` step to `scripts/ci-local.sh --affected --strict-toolchains` and its `lint` step to

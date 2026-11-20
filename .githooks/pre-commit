@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # metaobjects is a PUBLIC repository.
-# Block commits that leak absolute local paths, or private/other-project names.
+# Block commits that leak absolute local paths, or private/other-project names, or whose
+# author/committer identity matches the private denylist (.githooks/identity-scan.sh).
 #
 # IMPORTANT: this committed hook names NO private project. The structural
 # patterns below are generic (home paths). Private project names live ONLY in an
@@ -40,6 +41,11 @@ hits=$(git diff --cached --diff-filter="$LEAK_DIFF_FILTER" -U0 --no-color 2>/dev
   /^\+\+\+ /              { f=$2; sub(/^b\//,"",f); next }
   /^\+/ && !/^\+\+\+/     { if (f !~ /^\.githooks\//) print f "\t" substr($0,2) }
 ' | grep -Ei "$PATTERNS" | grep -vEi "$ALLOW")
+
+# The author/committer identity git would record must not match the denylist either.
+if [ -x "$ROOT/.githooks/identity-scan.sh" ]; then
+  "$ROOT/.githooks/identity-scan.sh" staged || exit 1
+fi
 
 # A pre-release version must never be committed: scripts/release.mjs derives the lockstep
 # set from the CLI's CURRENT version, so a stray -rc.N silently shrinks the next release.

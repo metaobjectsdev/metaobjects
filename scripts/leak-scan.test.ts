@@ -86,3 +86,148 @@ describe("leak-scan", () => {
     expect(scan(dir, "pre-commit").status).toBe(1);
   });
 });
+
+describe("identity scan (author and committer vs the private denylist)", () => {
+  // Synthetic denylist and identities only; nothing here names a real person or employer.
+  const deny = () => {
+    const f = join(tmp, "deny.txt");
+    writeFileSync(f, "# synthetic\nacmecorp\n");
+    return f;
+  };
+  function identityFixture(): string {
+    const dir = fixture();
+    cpSync(join(REPO, ".githooks", "identity-scan.sh"), join(dir, ".githooks", "identity-scan.sh"));
+    git(dir, "config", "hooks.denyListPath", deny());
+    return dir;
+  }
+  function run(dir: string, args: string[], env: Record<string, string> = {}) {
+    const r = spawnSync("bash", [join(dir, ".githooks", "identity-scan.sh"), ...args], {
+      cwd: dir,
+      encoding: "utf8",
+      env: { ...process.env, ...env },
+    });
+    return { status: r.status, out: `${r.stdout}${r.stderr}` };
+  }
+  const bad = { GIT_AUTHOR_NAME: "Pat", GIT_AUTHOR_EMAIL: "pat@acmecorp.example" };
+  const good = { GIT_COMMITTER_NAME: "Sam", GIT_COMMITTER_EMAIL: "sam@example.com" };
+
+  test("a denylisted author email blocks a commit and names only the role", () => {
+    const dir = identityFixture();
+    const r = run(dir, ["staged"], { ...good, ...bad });
+    expect(r.status).toBe(1);
+    expect(r.out).toContain("author");
+    expect(r.out).not.toContain("committer");
+    expect(r.out.toLowerCase()).not.toContain("acmecorp");
+  });
+
+  test("a denylisted committer name blocks a commit", () => {
+    const dir = identityFixture();
+    const r = run(dir, ["staged"], {
+      GIT_AUTHOR_NAME: "Sam",
+      GIT_AUTHOR_EMAIL: "sam@example.com",
+      GIT_COMMITTER_NAME: "AcmeCorp Bot",
+      GIT_COMMITTER_EMAIL: "bot@example.com",
+    });
+    expect(r.status).toBe(1);
+    expect(r.out).toContain("committer");
+  });
+
+  test("a clean identity passes, and so does no denylist at all", () => {
+    const dir = identityFixture();
+    const clean = { GIT_AUTHOR_NAME: "Sam", GIT_AUTHOR_EMAIL: "sam@example.com", ...good };
+    expect(run(dir, ["staged"], clean).status).toBe(0);
+    git(dir, "config", "hooks.denyListPath", join(tmp, "missing.txt"));
+    expect(run(dir, ["staged"], { ...good, ...bad }).status).toBe(0);
+  });
+
+  test("the pre-commit hook refuses a denylisted identity", () => {
+    const dir = identityFixture();
+    cpSync(join(REPO, ".githooks", "pre-commit"), join(dir, ".githooks", "pre-commit"));
+    const r = spawnSync("bash", [join(dir, ".githooks", "pre-commit")], {
+      cwd: dir,
+      encoding: "utf8",
+      env: { ...process.env, ...good, ...bad },
+    });
+    expect(r.status).toBe(1);
+  });
+
+  test("a range scan lists only the SHAs of commits with a denylisted identity", () => {
+    const dir = identityFixture();
+    writeFileSync(join(dir, "c.md"), "x\n");
+    git(dir, "add", "-A");
+    const env = { ...process.env, ...bad, ...good };
+    const c = spawnSync("git", ["commit", "-q", "-m", "tainted"], { cwd: dir, env });
+    expect(c.status).toBe(0);
+    const sha = spawnSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).stdout.trim();
+    const r = run(dir, ["range", "HEAD~1..HEAD"]);
+    expect(r.status).toBe(1);
+    expect(r.out).toContain(sha);
+    expect(r.out.toLowerCase()).not.toContain("acmecorp");
+    expect(run(dir, ["range", "HEAD~1..HEAD~1"]).status).toBe(0);
+  });
+
+  test("a range that cannot be resolved blocks instead of passing", () => {
+    const dir = identityFixture();
+    const r = run(dir, ["range", `${"1".repeat(40)}..HEAD`]);
+    expect(r.status).toBe(1);
+    expect(r.out).toContain("push blocked");
+  });
+
+  describe("pre-push wiring", () => {
+    const ZERO = "0".repeat(40);
+    function pushFixture() {
+      const dir = identityFixture();
+      cpSync(join(REPO, ".githooks", "pre-push"), join(dir, ".githooks", "pre-push"));
+      const rev = () => spawnSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).stdout.trim();
+      const base = rev();
+      writeFileSync(join(dir, "c.md"), "x\n");
+      git(dir, "add", "-A");
+      return { dir, base, commit: (env: Record<string, string>) => {
+        const c = spawnSync("git", ["commit", "-q", "-m", "next"], { cwd: dir, env: { ...process.env, ...env } });
+        expect(c.status).toBe(0);
+        return rev();
+      } };
+    }
+    function push(dir: string, line: string) {
+      const r = spawnSync("bash", [join(dir, ".githooks", "pre-push")], {
+        cwd: dir,
+        encoding: "utf8",
+        input: `${line}\n`,
+        env: { ...process.env, SKIP_TS_TYPECHECK: "1" },
+      });
+      return { status: r.status, out: `${r.stdout}${r.stderr}` };
+    }
+
+    test("a new branch carrying a denylisted identity is refused", () => {
+      const { dir, commit } = pushFixture();
+      const head = commit({ ...bad, ...good });
+      const r = push(dir, `refs/heads/x ${head} refs/heads/x ${ZERO}`);
+      expect(r.status).toBe(1);
+      expect(r.out).toContain(head);
+    });
+
+    test("an update carrying a denylisted identity is refused, a clean one passes", () => {
+      const { dir, base, commit } = pushFixture();
+      const head = commit({ ...bad, ...good });
+      expect(push(dir, `refs/heads/main ${head} refs/heads/main ${base}`).status).toBe(1);
+      expect(push(dir, `refs/heads/main ${base} refs/heads/main ${base}`).status).toBe(0);
+    });
+
+    test("an update whose remote sha is unknown locally is refused", () => {
+      const { dir, commit } = pushFixture();
+      const head = commit({ ...good, GIT_AUTHOR_NAME: "Sam", GIT_AUTHOR_EMAIL: "sam@example.com" });
+      expect(push(dir, `refs/heads/main ${head} refs/heads/main ${"1".repeat(40)}`).status).toBe(1);
+    });
+  });
+
+  test("the maintainer's allowed address is not treated as a match", () => {
+    const dir = identityFixture();
+    writeFileSync(join(tmp, "deny.txt"), "dougmealing\n");
+    const r = run(dir, ["staged"], {
+      GIT_AUTHOR_NAME: "Doug",
+      GIT_AUTHOR_EMAIL: "doug@dougmealing.com",
+      ...good,
+    });
+    expect(r.status).toBe(0);
+  });
+});
