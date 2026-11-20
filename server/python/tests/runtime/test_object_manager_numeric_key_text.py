@@ -20,6 +20,7 @@ MODEL = """{"metadata.root": {"package": "acme", "children": [
     {"source.rdb": {"@table": "things"}},
     {"field.long": {"name": "id"}},
     {"field.decimal": {"name": "price", "@precision": 10, "@scale": 2}},
+    {"field.double": {"name": "ratio"}},
     {"field.string": {"name": "code"}},
     {"field.uuid": {"name": "ref"}},
     {"identity.primary": {"name": "pk", "@fields": "id"}}
@@ -60,6 +61,12 @@ def test_canonical_decimal_key_is_read(text: str, expected: str) -> None:
 def test_non_canonical_decimal_key_is_refused(text: str) -> None:
     with pytest.raises(ValueError, match="Thing.*price"):
         _coerce_key_value(_field("price"), text)
+
+
+def test_double_key_beyond_float_range_is_refused() -> None:
+    assert _coerce_key_value(_field("ratio"), "1.5") == 1.5
+    with pytest.raises(ValueError, match="Thing.*ratio"):
+        _coerce_key_value(_field("ratio"), "9" * 400)
 
 
 def test_string_key_is_untouched() -> None:

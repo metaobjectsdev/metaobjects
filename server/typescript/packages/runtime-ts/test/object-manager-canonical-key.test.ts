@@ -55,6 +55,15 @@ describe("canonical key text", () => {
     }
   });
 
+  test("a canonical integer that is not one exact JS number is no key", () => {
+    expect(isCanonicalInteger("9007199254740991")).toBe(true);
+    expect(isCanonicalInteger("-9007199254740991")).toBe(true);
+    expect(isCanonicalInteger("9007199254740992")).toBe(false);
+    expect(isCanonicalInteger("9007199254740993")).toBe(false);
+    expect(isCanonicalDecimal("1" + "0".repeat(400))).toBe(false);
+    expect(isCanonicalDecimal("1" + "0".repeat(400) + ".5")).toBe(false);
+  });
+
   test("a decimal adds an optional fraction of at least one digit", () => {
     for (const ok of ["0", "1.5", "-0.25", "10.50", "7"]) expect(isCanonicalDecimal(ok)).toBe(true);
     for (const bad of ["1.", ".5", "1e3", "0x1", " 1.5", "+1.5", "-0.0", "01.5", "1.5.2", ""]) {

@@ -29,19 +29,33 @@ function isCanonicalWhole(unsigned: string): boolean {
   return allDigits(unsigned) && (unsigned.length === 1 || unsigned[0] !== "0");
 }
 
-/** True when `text` is an optional `-` and canonical whole digits, and is not negative zero. */
-export function isCanonicalInteger(text: string): boolean {
+function hasIntegerShape(text: string): boolean {
   const negative = text.startsWith("-");
   const unsigned = negative ? text.slice(1) : text;
   return isCanonicalWhole(unsigned) && !(negative && unsigned === "0");
 }
 
-/** True when `text` is a canonical integer, optionally followed by `.` and at least one digit. */
+/**
+ * True when `text` is an optional `-` and canonical whole digits, is not negative zero, and reads
+ * back as exactly one JS number (a safe integer): two canonical texts never name one key.
+ */
+export function isCanonicalInteger(text: string): boolean {
+  return hasIntegerShape(text) && Number.isSafeInteger(Number(text));
+}
+
+/**
+ * True when `text` is a canonical integer, optionally followed by `.` and at least one digit, and
+ * reads back as a finite number.
+ */
 export function isCanonicalDecimal(text: string): boolean {
+  return hasDecimalShape(text) && Number.isFinite(Number(text));
+}
+
+function hasDecimalShape(text: string): boolean {
   const negative = text.startsWith("-");
   const unsigned = negative ? text.slice(1) : text;
   const dot = unsigned.indexOf(".");
-  if (dot < 0) return isCanonicalInteger(text);
+  if (dot < 0) return hasIntegerShape(text);
   const whole = unsigned.slice(0, dot);
   const fraction = unsigned.slice(dot + 1);
   if (!isCanonicalWhole(whole) || !allDigits(fraction)) return false;

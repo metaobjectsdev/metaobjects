@@ -29,6 +29,7 @@ from __future__ import annotations
 import datetime as _dt
 import decimal as _decimal
 import json as _json
+import math as _math
 import re as _re
 import uuid as _uuid
 from collections.abc import Iterable, Mapping
@@ -1173,7 +1174,9 @@ def _coerce_key_value(field: MetaField, value: Any) -> Any:
         sub = field.sub_type
         integer = sub in _KEY_INT_SUBTYPES
         if integer or sub in _KEY_DECIMAL_SUBTYPES:
-            if not _is_canonical_decimal_text(value, fractional=not integer):
+            if not _is_canonical_decimal_text(value, fractional=not integer) or (
+                sub in (fc.FIELD_SUBTYPE_DOUBLE, fc.FIELD_SUBTYPE_FLOAT) and _math.isinf(float(value))
+            ):
                 owner = field.parent.name if field.parent is not None else "?"
                 raise ValueError(
                     f"Entity '{owner}' key field '{field.name}' (field.{sub}) is not canonical decimal text"
