@@ -28,6 +28,7 @@ import {
   LAYOUT_DATA_GRID_ATTR_FILTERABLE,
   FIELD_ATTR_SORTABLE_DEFAULT_ORDER,
   DOC_ATTR_TITLE,
+  VIEW_SUBTYPE_PASSWORD,
 } from "@metaobjectsdev/metadata/constants";
 import type { GridConfig } from "./fetcher.js";
 
@@ -60,6 +61,13 @@ function firstView(field: MetaFieldRead): MetaViewRead | undefined {
   // inherits the parent's view, and an own-only read drops it, so the column would
   // silently lose both its header and its renderer hint.
   return field.views()[0];
+}
+
+// A credential (a field declaring or inheriting `view.password`) is never a grid column or
+// initial sort: the server's filter and sort allowlists refuse it. A TPH sibling subtype's
+// credential mark on a shared column is not visible here without a model root.
+function isCredential(field: MetaFieldRead): boolean {
+  return field.views().some((v) => v.subType === VIEW_SUBTYPE_PASSWORD);
 }
 
 function header(field: MetaFieldRead): string {
@@ -130,11 +138,13 @@ export function buildGrid(meta: MetaRead, gridName?: string): MetaGrid {
 
   const columns: MetaColumn[] = names
     .map((n) => fieldsByName.get(n))
-    .filter((f): f is MetaFieldRead => f !== undefined)
+    .filter((f): f is MetaFieldRead => f !== undefined && !isCredential(f))
     .map((f) => ({ field: f.name, header: header(f), viewKind: viewKind(f) }));
 
   const pageSizeAttr = layout?.attr(LAYOUT_DATA_GRID_ATTR_PAGE_SIZE);
-  const sortField = layout?.attr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD);
+  const sortFieldAttr = layout?.attr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD);
+  const sortFieldMeta = typeof sortFieldAttr === "string" ? fieldsByName.get(sortFieldAttr) : undefined;
+  const sortField = sortFieldMeta !== undefined && isCredential(sortFieldMeta) ? undefined : sortFieldAttr;
   const sortOrder = layout?.attr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER);
 
   const config: GridConfig = {

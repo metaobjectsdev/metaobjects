@@ -176,6 +176,7 @@ export {
   declaredSortDefaultOrder,
   sortDefaultOrder,
   resolveGridDefaultSort,
+  credentialFieldNames,
 } from "./templates/filter-shared.js";
 export type { SortOrder, GridDefaultSort } from "./templates/filter-shared.js";
 

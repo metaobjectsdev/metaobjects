@@ -9,7 +9,7 @@
 //   <EntityGrid {...grid} columns={subscriberDefaultColumns} grid={subscriberDefaultGrid} />
 
 import { code, imp, joinCode, type Code } from "@metaobjectsdev/codegen-ts/engine";
-import type { MetaObject, MetaLayout } from "@metaobjectsdev/metadata";
+import type { MetaObject, MetaLayout, MetaRoot } from "@metaobjectsdev/metadata";
 import { LAYOUT_SUBTYPE_DATA_GRID } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "@metaobjectsdev/codegen-ts/engine";
 
@@ -43,7 +43,7 @@ interface GridSpec {
   defaultSort?: GridDefaultSort | undefined;
 }
 
-function extractGrids(entity: MetaObject): GridSpec[] {
+function extractGrids(entity: MetaObject, root: MetaRoot): GridSpec[] {
   const out: GridSpec[] = [];
   for (const l of entity.layouts() as MetaLayout[]) {
     if (l.subType !== LAYOUT_SUBTYPE_DATA_GRID) continue;
@@ -51,7 +51,8 @@ function extractGrids(entity: MetaObject): GridSpec[] {
       name: l.name || "default",
       pageSize: l.pageSize ?? 25,
       hasFilterPreset: l.filter !== undefined,
-      defaultSort: resolveGridDefaultSort(entity, l),
+      // A @defaultSortField naming a credential resolves to no initial sort, as in the grid const.
+      defaultSort: resolveGridDefaultSort(entity, l, root),
     });
   }
   return out;
@@ -64,7 +65,7 @@ function capitalize(s: string): string {
 export function renderGridHookFile(entity: MetaObject, ctx: RenderContext): string {
   const entityName = entity.name;
   const lcEntity   = entityName.charAt(0).toLowerCase() + entityName.slice(1);
-  const grids      = extractGrids(entity);
+  const grids      = extractGrids(entity, ctx.loadedRoot);
 
   if (grids.length === 0) return "";
 

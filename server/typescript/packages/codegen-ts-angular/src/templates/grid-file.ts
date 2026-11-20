@@ -4,7 +4,7 @@
 // header + meta.view) but in Angular-native shape (EntityGridColumn[]).
 
 import { code, imp } from "@metaobjectsdev/codegen-ts";
-import type { MetaField, MetaObject } from "@metaobjectsdev/metadata";
+import type { MetaField, MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
 import {
   LAYOUT_SUBTYPE_DATA_GRID,
   LAYOUT_DATA_GRID_ATTR_PAGE_SIZE,
@@ -20,6 +20,7 @@ import {
   viewForContext,
   VIEW_CONTEXT_GRID,
   resolveGridDefaultSort,
+  credentialFieldNames,
   type GridDefaultSort,
   effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
@@ -70,8 +71,9 @@ function fieldLabel(field: MetaField): string {
   return humanize(field.name);
 }
 
-function extractGrids(entity: MetaObject): GridSpec[] {
+function extractGrids(entity: MetaObject, root: MetaRoot): GridSpec[] {
   const fieldsByName = new Map(entity.fields().map((f) => [f.name, f] as const));
+  const credentials = credentialFieldNames(entity, root);
   const out: GridSpec[] = [];
   for (const layout of entity.layouts()) {
     if (layout.subType !== LAYOUT_SUBTYPE_DATA_GRID) continue;
@@ -83,6 +85,9 @@ function extractGrids(entity: MetaObject): GridSpec[] {
     const columns: ColumnSpec[] = columnNames.flatMap((name) => {
       const f = fieldsByName.get(name);
       if (!f) return [];
+      // A credential (a `view.password` on any declaration of the column) is never a column,
+      // even when @columns names it — the same rule as the TanStack tier and the generated forms.
+      if (credentials.has(name)) return [];
       const viewKind = fieldViewKind(f);
       // #355 — `view.hidden` means "not rendered"; drop the column rather than emit one
       // that prints the value. Same rule as the TanStack tier, which renders the same
@@ -90,7 +95,8 @@ function extractGrids(entity: MetaObject): GridSpec[] {
       if (viewKind === VIEW_SUBTYPE_HIDDEN) return [];
       return [{ id: name, header: fieldLabel(f), viewKind }];
     });
-    const defaultSort = resolveGridDefaultSort(entity, layout);
+    // A @defaultSortField naming a credential resolves to no initial sort.
+    const defaultSort = resolveGridDefaultSort(entity, layout, root);
     const grid: GridSpec = {
       name: layout.name || "default",
       pageSize: (layout.attr(LAYOUT_DATA_GRID_ATTR_PAGE_SIZE) as number | undefined) ?? 25,
@@ -110,7 +116,7 @@ function renderColumnLiteral(col: ColumnSpec): string {
 export function renderGridFile(entity: MetaObject, ctx: RenderContext): string {
   const entityName = entity.name;
   const lcEntity = entityName.charAt(0).toLowerCase() + entityName.slice(1);
-  const grids = extractGrids(entity);
+  const grids = extractGrids(entity, ctx.loadedRoot);
 
   const ComponentSym = imp("Component@@angular/core");
   const signalSym = imp("signal@@angular/core");

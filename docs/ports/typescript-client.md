@@ -322,7 +322,8 @@ on `Author`):
 - `<entity><Grid>Columns` — array of TanStack `ColumnDef<T>`, one per
   column key, each carrying `meta.view` (resolved from the field's
   `view.*` child) for the renderer registry. Omit `@columns` and every
-  field on the entity becomes a column.
+  field on the entity becomes a column, except a credential (`view.password`), which is never a column
+  ([api-contract.md](../features/api-contract.md#credentials-and-excluded-fields)).
 - `<entity><Grid>Grid` — the config const carrying
   `{ name, pageSize, defaultSort?, filterable }` — shape declared as
   `GridConfig` in `@metaobjectsdev/runtime-web`.

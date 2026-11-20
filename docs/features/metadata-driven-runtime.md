@@ -83,7 +83,8 @@ What each component takes from the model:
 | `view.textarea` `@rows` | | a textarea |
 | `@required`, `@maxLength`, `validator.numeric` `@min`/`@max`, `@default` | | required marks, input limits, starting values |
 | `relationship.*` with `@cardinality: many` | | the related rows listed beside the row being edited |
-| `view.password`, `@formExclude` | | no control: no request may set the field |
+| `view.password` | no column, and no first sort; a TPH sibling's credential mark on a shared column is not seen here | no control: no request may set the field |
+| `@formExclude` | | no control: no request may set the field |
 
 ## Run it
 
