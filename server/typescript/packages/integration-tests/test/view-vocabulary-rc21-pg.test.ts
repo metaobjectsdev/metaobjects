@@ -266,9 +266,13 @@ describe("rc.21 part B view vocabulary — live Postgres", () => {
     // A local timestamp result on a zoned field: the cast would read it in the session's zone.
     const [zoned] = await findings({ "field.timestamp": fn({ name: "since" }, { "@function": "member_since", "@args": ["id"], "@params": ["long"], "@returns": "timestamp" }) });
     expect(zoned).toMatch(/needs app\.member_since\(bigint\) → timestamp with time zone; the database has app\.member_since\(bigint\) → timestamp without time zone\.$/);
-    // A parameter of another type, and a function that does not exist.
-    const [param] = await findings({ "field.decimal": fn({ name: "limit" }, { "@function": "credit_limit", "@args": ["pin"], "@params": ["int"], "@returns": "decimal" }) });
-    expect(param).toMatch(/needs app\.credit_limit\(integer\) → numeric; the database has app\.credit_limit\(bigint\) → numeric\.$/);
+    // An argument Postgres widens implicitly (integer onto a bigint parameter) is a call the
+    // database serves, so it is not a finding.
+    expect(await findings({ "field.decimal": fn({ name: "limit" }, { "@function": "credit_limit", "@args": ["pin"], "@params": ["int"], "@returns": "decimal" }) })).toEqual([]);
+    // A parameter of an unrelated type (no implicit widening reaches it), and a function that does not exist.
+    await sql.raw(`CREATE FUNCTION app.pin_label(text) RETURNS text LANGUAGE sql STABLE AS $$ SELECT 'pin-' || $1 $$`).execute(k);
+    const [param] = await findings({ "field.string": fn({ name: "pinLabel" }, { "@function": "pin_label", "@args": ["pin"], "@params": ["int"], "@returns": "string" }) });
+    expect(param).toMatch(/needs app\.pin_label\(integer\) → text \| character varying \| character; the database has app\.pin_label\(text\) → text\.$/);
     // Fix round 3 (M1): a trailing defaulted parameter may be left out; fewer than the required ones is a finding.
     await sql.raw(`CREATE FUNCTION app.tier_label(bigint, as_of date DEFAULT current_date) RETURNS text LANGUAGE sql STABLE
       AS $$ SELECT 'tier-' || $1 || '@' || $2 $$`).execute(k);
