@@ -1,0 +1,37 @@
+{
+  "src/generated/Address.ts": {
+    "hash": "a55aa3c99f720f85bd1339e2e56005b7f51e76400e3c5ddfa73b0306466d3f4b",
+    "generatedBy": "entity-file",
+    "sourceNode": "demo::workshop::Address"
+  },
+  "src/generated/Customer.names.ts": "a59e56679a51c1b5ea4edbdea8ff6d27c30dd713f66989cc154d70bb09b53737",
+  "src/generated/Customer.ts": {
+    "hash": "29ed46747e82c3cd871345f27351a1fa3fb855712cfc372680e095a12a59a82f",
+    "generatedBy": "entity-file",
+    "sourceNode": "demo::workshop::Customer"
+  },
+  "src/generated/Part.names.ts": "d4029bb4b23e7bc046de97ba986e909f8becbcdb91ce9d212561782cb1afa8c4",
+  "src/generated/Part.ts": {
+    "hash": "ba246077dfe64e429636c26f8778019071cea24d1012ab68ac9e90b4495538a0",
+    "generatedBy": "entity-file",
+    "sourceNode": "demo::workshop::Part"
+  },
+  "src/generated/Technician.names.ts": "f823ad55f98a0faf76d7270693cdf1b3b5ff40ead0807b3857db7903d4a6819d",
+  "src/generated/Technician.ts": {
+    "hash": "6950505993d290cfed87f937ccb18c482a3b855314dec92ded3494b8cd731efa",
+    "generatedBy": "entity-file",
+    "sourceNode": "demo::workshop::Technician"
+  },
+  "src/generated/WorkOrder.names.ts": "a8af877b82ddd7e5a7d5b8cfe849e5dae68ff95a8e427f02222bf2597388da6e",
+  "src/generated/WorkOrder.ts": {
+    "hash": "2464f34a23164740444e62f1ec619e0dea2b843d6a67c9eb46545404785e1308",
+    "generatedBy": "entity-file",
+    "sourceNode": "demo::workshop::WorkOrder"
+  },
+  "src/generated/WorkOrderLine.names.ts": "863abcf330aeec349cdf3acf163c87a3e2f13d9b72d776f3c9714ada7e26c5b6",
+  "src/generated/WorkOrderLine.ts": {
+    "hash": "33fde848e1e0ad46dd807ed73cc80207885cddcb3789dd3b5810baa5f0fea9bc",
+    "generatedBy": "entity-file",
+    "sourceNode": "demo::workshop::WorkOrderLine"
+  }
+}

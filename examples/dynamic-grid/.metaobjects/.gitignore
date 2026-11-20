@@ -1,0 +1,9 @@
+# Gen-state bodies are a second full copy of all generated output — not worth
+# committing. The MANIFEST is: `.hashes.json` is the only thing that lets
+# `meta gen` tell "this file is exactly what I wrote" from "somebody edited
+# this" on a machine that did not generate it (CLAUDE.md, Storage format).
+#
+# The glob matters. Git will not descend into an excluded DIRECTORY, so a
+# negation under `.gen-state/` can never apply — it has to be `.gen-state/*`.
+.gen-state/*
+!.gen-state/.hashes.json

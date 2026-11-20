@@ -82,6 +82,16 @@ here.**
   to build and test it, and the preview scope of `cargo meta`; the crates.io name `cargo-meta` is
   held by an unrelated crate, so the CLI crate will publish under another name that installs a
   `cargo-meta` binary (a plan, not a promise). Nothing is published.
+- **Example and write-up: metadata-driven grids, forms and routes in TypeScript.**
+  `examples/dynamic-grid/` serves and renders every entity of a model from the loaded
+  metadata: one grid component and one form component that take an entity name and read the
+  rest from `GET /_meta`, and one Fastify mount over `ObjectManager`, on SQLite. The only
+  generated code is the types and name constants its hand-written business rules use.
+  Editing the metadata changes the grid, the form and the API with no regeneration.
+  `docs/features/metadata-driven-runtime.md` measures it against the reference generators
+  for the same model (1,781 hand-written lines paid once, against 3,629 generated lines
+  that grow by about 726 an entity), gives the per-row cost of the metadata lookups, and
+  lists what the approach cannot do. It is an example on the TypeScript port, not a package.
 
 ### Changed
 
@@ -96,6 +106,11 @@ here.**
 
 ### Fixed
 
+- **Fix, TypeScript: `DELETE` on a missing row answers `404`, not `500`, from the
+  ObjectManager route mount.** `mountCrudRoutes` and `mountDeleteRoute` in
+  `@metaobjectsdev/runtime-ts/fastify` called `ObjectManager.delete` in its default mode, which
+  throws for a row that is not there, so the request ended as `500 {"error":"internal"}`. They
+  now answer `404 {"error":"not_found"}`, as the update route and the generated routes do.
 - **Fix, Java, Kotlin and Python: `<Entity>Names` has no entry for a derived field with no
   column.** The TypeScript and C# names generators already left out a derived (`origin.*`) field
   of an entity read from its table; Java, Kotlin and Python still emitted a column constant

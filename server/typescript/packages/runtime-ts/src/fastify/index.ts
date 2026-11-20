@@ -271,7 +271,10 @@ export function mountDeleteRoute(opts: SingleVerbOptions): void {
     // Pre-coercing conflated '0123' with 123 on a string pk: wrong-row DELETE.
     return withConstraintMapping(
       async () => {
-        const deleted = await (await opts.om()).delete(opts.entity, id);
+        // ifMissing: "ignore" so this route owns the 404, as the update route does.
+        // ObjectManager's default throws NotFoundError, which is not a constraint
+        // failure and so left as the redacted 500.
+        const deleted = await (await opts.om()).delete(opts.entity, id, { ifMissing: "ignore" });
         return deleted ? reply.code(204).send() : reply.code(404).send({ error: "not_found" });
       },
       (f) => reply.code(f.status).send(f.body),

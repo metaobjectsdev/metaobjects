@@ -1,0 +1,169 @@
+# demo::workshop — a small repair-shop model. Nothing below is rendered by generated UI
+# code: the grid and the form in src/client/ read this file (served as /_meta) at runtime,
+# and the routes in src/server/ read the loaded model on every request.
+#
+# Edit it and restart `bun run dev` (or just save: the dev server reloads the model) and
+# the grid, the form, the filters and the API change with it. Nothing is regenerated.
+metadata:
+  package: demo::workshop
+  children:
+    # A value object: no table, no identity. Embedded in Customer as one JSON column.
+    - object.value:
+        name: Address
+        children:
+          - field.string: { name: street, required: true, maxLength: 120 }
+          - field.string: { name: city, required: true, maxLength: 80 }
+          - field.string: { name: postalCode, maxLength: 12 }
+
+    - object.entity:
+        name: Customer
+        children:
+          - source.rdb: { table: customers }
+          - field.long: { name: id }
+          - field.string: { name: name, required: true, maxLength: 120, filterable: true }
+          - field.string:
+              name: email
+              maxLength: 320
+              filterable: true
+              children:
+                - validator.regex: { name: emailFmt, pattern: "[^@\\s]+@[^@\\s]+" }
+          - field.enum:
+              name: tier
+              values: [standard, gold, platinum]
+              required: true
+              default: standard
+              filterable: true
+          - field.boolean: { name: active, required: true, default: true, filterable: true }
+          - field.object: { name: billingAddress, objectRef: Address, storage: jsonb }
+          - identity.primary: { name: pk, fields: id, generation: increment }
+          - relationship.association: { name: workOrders, objectRef: WorkOrder, cardinality: many }
+          - layout.dataGrid:
+              name: default
+              columns: [name, email, tier, active]
+              defaultSortField: name
+              pageSize: 10
+              filterable: true
+
+    - object.entity:
+        name: Technician
+        children:
+          - source.rdb: { table: technicians }
+          - field.long: { name: id }
+          - field.string: { name: name, required: true, maxLength: 120, filterable: true }
+          - field.enum:
+              name: level
+              values: [apprentice, journeyman, master]
+              required: true
+              filterable: true
+          # A decimal: exact, travels as a string, never through a double.
+          - field.decimal:
+              name: hourlyRate
+              precision: 8
+              scale: 2
+              required: true
+              filterable: true
+          - field.date: { name: hiredOn, filterable: true }
+          - identity.primary: { name: pk, fields: id, generation: increment }
+          - layout.dataGrid:
+              name: default
+              columns: [name, level, hourlyRate, hiredOn]
+              defaultSortField: name
+              pageSize: 10
+              filterable: true
+
+    - object.entity:
+        name: Part
+        children:
+          - source.rdb: { table: parts }
+          - field.long: { name: id }
+          - field.string: { name: sku, required: true, maxLength: 40, unique: true, filterable: true }
+          - field.string: { name: name, required: true, maxLength: 160, filterable: true }
+          - field.currency:
+              name: unitPriceCents
+              currency: USD
+              required: true
+              filterable: true
+              children:
+                - view.currency: { name: display, locale: en-US }
+          - field.int:
+              name: stockQty
+              required: true
+              default: 0
+              filterable: true
+              children:
+                - validator.numeric: { name: stockNonNegative, min: 0 }
+          - field.boolean: { name: discontinued, required: true, default: false, filterable: true }
+          - identity.primary: { name: pk, fields: id, generation: increment }
+          - layout.dataGrid:
+              name: default
+              columns: [sku, name, unitPriceCents, stockQty, discontinued]
+              defaultSortField: sku
+              pageSize: 10
+              filterable: true
+
+    - object.entity:
+        name: WorkOrder
+        children:
+          - source.rdb: { table: work_orders }
+          - field.long: { name: id }
+          - field.string: { name: title, required: true, maxLength: 160, filterable: true }
+          - field.enum:
+              name: status
+              values: [open, in_progress, blocked, done]
+              required: true
+              default: open
+              filterable: true
+          - field.enum:
+              name: priority
+              values: [low, normal, urgent]
+              required: true
+              default: normal
+              filterable: true
+          - field.long: { name: customerId, required: true, filterable: true }
+          - field.long: { name: technicianId, filterable: true }
+          - field.decimal: { name: estimatedHours, precision: 6, scale: 2, filterable: true }
+          - field.date: { name: dueOn, filterable: true }
+          - field.string:
+              name: notes
+              maxLength: 2000
+              children:
+                - view.textarea: { rows: 4 }
+          - identity.primary: { name: pk, fields: id, generation: increment }
+          - identity.reference: { name: refCustomer, fields: customerId, references: Customer }
+          - identity.reference: { name: refTechnician, fields: technicianId, references: Technician }
+          - relationship.composition:
+              name: lines
+              objectRef: WorkOrderLine
+              cardinality: many
+              onDelete: cascade
+          - layout.dataGrid:
+              name: default
+              columns: [title, status, priority, customerId, technicianId, estimatedHours, dueOn]
+              defaultSortField: dueOn
+              defaultSortOrder: desc
+              pageSize: 10
+              filterable: true
+
+    - object.entity:
+        name: WorkOrderLine
+        children:
+          - source.rdb: { table: work_order_lines }
+          - field.long: { name: id }
+          - field.long: { name: workOrderId, required: true, filterable: true }
+          - field.long: { name: partId, required: true, filterable: true }
+          - field.int:
+              name: quantity
+              required: true
+              default: 1
+              filterable: true
+              children:
+                - validator.numeric: { name: quantityPositive, min: 1 }
+          - identity.primary: { name: pk, fields: id, generation: increment }
+          - identity.reference: { name: refWorkOrder, fields: workOrderId, references: WorkOrder }
+          - identity.reference: { name: refPart, fields: partId, references: Part }
+          - layout.dataGrid:
+              name: default
+              columns: [workOrderId, partId, quantity]
+              defaultSortField: workOrderId
+              pageSize: 10
+              filterable: true

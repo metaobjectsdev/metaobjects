@@ -1,0 +1,47 @@
+{
+  "name": "@metaobjectsdev/example-dynamic-grid",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Proof: one grid, one form and one route mount driven by the loaded metadata at runtime, on ObjectManager and SQLite. No per-entity generated UI or routes.",
+  "type": "module",
+  "scripts": {
+    "dev": "bun src/server/main.ts",
+    "gen": "meta gen",
+    "measure": "bun scripts/measure.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^3.10.0",
+    "@libsql/kysely-libsql": "^0.4.1",
+    "@metaobjectsdev/metadata": "workspace:*",
+    "@metaobjectsdev/migrate-ts": "workspace:*",
+    "@metaobjectsdev/react": "workspace:*",
+    "@metaobjectsdev/runtime-ts": "workspace:*",
+    "@metaobjectsdev/runtime-web": "workspace:*",
+    "@metaobjectsdev/sdk": "workspace:*",
+    "@metaobjectsdev/tanstack": "workspace:*",
+    "@tanstack/react-table": "^8.20.0",
+    "fastify": "^5.6.2",
+    "kysely": "^0.27.0",
+    "qs": "^6.13.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-hook-form": "^7.54.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@metaobjectsdev/cli": "workspace:*",
+    "@metaobjectsdev/codegen-ts": "workspace:*",
+    "@metaobjectsdev/codegen-ts-react": "workspace:*",
+    "@metaobjectsdev/codegen-ts-tanstack": "workspace:*",
+    "@testing-library/dom": "^10.0.0",
+    "@testing-library/react": "^16.0.0",
+    "@types/node": "^22.0.0",
+    "@types/qs": "^6.9.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "jsdom": "^29.1.1",
+    "typescript": "^5.6.0"
+  }
+}
