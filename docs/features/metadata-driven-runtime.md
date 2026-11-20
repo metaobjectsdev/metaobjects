@@ -134,7 +134,7 @@ rule below has tests in `examples/dynamic-grid/test/`.
 | Constraint errors | A unique or foreign-key failure is a `409` or `400` that names no table or column. | `write-contract.test.ts` |
 | Model reload | Reloads run one at a time. A schema change is applied by the migration engine's transactional applier, so one that fails part-way changes nothing and the model that was being served stays in place. | `reload-safety.test.ts` |
 
-Three defects outside the example turned up while building this:
+Two defects outside the example turned up while building this:
 
 - `DELETE` on a missing row through the `ObjectManager` route mount in
   `@metaobjectsdev/runtime-ts/fastify` answered `500`. Fixed in the package (it answers
@@ -142,9 +142,6 @@ Three defects outside the example turned up while building this:
 - An `offset` with no `limit` was a SQL syntax error on SQLite and MySQL in both the Kysely
   and the Drizzle driver, so a list with no `api.pagination` answered `500` to `?offset=5`.
   Fixed in the drivers.
-- The reference route generator's filter allowlist does not leave out a credential that a
-  model marks `@filterable`. This mount does. The generators were out of scope here, so
-  that one is reported and not changed.
 
 ## Measurement
 

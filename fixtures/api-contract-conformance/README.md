@@ -57,7 +57,7 @@ fixtures/api-contract-conformance/
 ```
 
 Beside the 34 core scenarios above sit eleven **sub-corpora**, each a directory with its
-own `meta.json`, `seed.json`, `scenarios/` and `README.md` (105 scenarios in all, 139 with the
+own `meta.json`, `seed.json`, `scenarios/` and `README.md` (107 scenarios in all, 141 with the
 core):
 
 | Directory | Scenarios | Gates | Lanes |
@@ -66,7 +66,7 @@ core):
 | `m2m/` | 9 | M:N traversal, and TPH x M:N together | both |
 | `jsonb/` | 6 | typed value-object columns, the numbers inside them, and an undeclared nested member dropped (a double stays a JSON number; a decimal is a canonical string, option A of the 1.1.0 review) | both |
 | `write-through/` | 2 | an entity that writes a table and reads a view | generated only |
-| `secret-fields/` | 2 | #484: a `@formExclude` or credential (`view.password`) field is ignored on create, PATCH and PUT, and a credential is never returned; a `readOnly` field is ignored the same way and still returned | generated only |
+| `secret-fields/` | 4 | #484: a `@formExclude` or credential (`view.password`) field is ignored on create, PATCH and PUT, and a credential is never returned; a `readOnly` field is ignored the same way and still returned; a credential is on no filter or sort allowlist, so a filter or sort naming it is `400` (the `tph/` sub-directory checks this for a column one subtype of a single-table hierarchy marks as a credential) | generated only |
 | `enum-default/` | 2 | a create that omits a `field.enum` carrying `@default` stores the default (echo and GET by id), and a supplied member is kept | generated only |
 | `projection/` | 12 | a read-only `object.projection`: reads served, every write `405`; no declared identity means no `/{id}` route; a key not named `id` addresses the row; decimal and float filters. Its `docs-routes.json` pins the routes each port documents | generated only |
 | `report/` | 37 | a view-backed `object.report` (FR-044): list, filter, sort and paging on derived fields, `POST` is `405`, no `/{id}` route; a `@spine` report keeps a row with no facts, and a measure with `@default` filters and sorts as its default; a dimension over an array or a map is neither filterable nor sortable. Also carries `schema.postgres.sql`, the TypeScript-produced table and views the C# lane executes | generated only |
