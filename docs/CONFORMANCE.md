@@ -101,8 +101,9 @@ fixtures as passing, but a future port-level reconciliation pass would close the
 
 ### Core corpora and template quality checks
 
-Since [ADR-0034 Amendment 3](../spec/decisions/ADR-0034-codegen-scaffold-and-own.md#amendment-3-2026-09-22--generators-are-reference-helpers-the-core-is-what-metaobjects-guarantees),
-the corpora above do two different jobs. Only the first is a promise to adopters.
+Since [ADR-0034 Amendments 3 and 11](../spec/decisions/ADR-0034-codegen-scaffold-and-own.md#amendment-11-2026-11-19--the-core-is-contracts-and-conformance-kits-and-generated-code-is-real-code),
+the corpora above do two different jobs. Only the first is a promise to adopters: the core is
+the contracts and the conformance kits that hold every port to them.
 
 - **Core — the contract.** `conformance/`, `yaml-conformance/`, `registry-conformance/`,
   `validation-conformance/`, `provider-composition-conformance/`,
@@ -122,7 +123,7 @@ the corpora above do two different jobs. Only the first is a promise to adopters
   `rules-check-conformance/` (the business-rules gate every port's `verify` runs, ADR-0066) and
   `codegen-skip-conformance/` (ADR-0064: which changes make `gen` render, and what a local `verify --codegen` may answer from the stored key), core for the same reason.
   A red cell here is a MetaObjects bug.
-- **Template quality checks — not a promise.** The generated lane of
+- **Generator quality checks — a supported helper's tests, not a core promise.** The generated lane of
   `api-contract-conformance/`, `generator-registry-conformance/` (stable generator names),
   `codegen-noop/` (vocabulary with no lowering yet emits nothing), `writer-conformance/` (the code
   writer the reference generators write through, ADR-0063), `contract-conformance/` (the JSON Schema and OpenAPI output), `cube-model/` (the Cube
@@ -130,7 +131,7 @@ the corpora above do two different jobs. Only the first is a promise to adopters
   `requirement-test-identity-conformance/` (which tests the `requirement-tests` reference
   generator yields from a ledger and what each is called; the text it writes is not
   pinned), the codegen-compile gate and the eject contract (below). They check that the
-  reference generators are correct starting points; an adopter's ejected copy is theirs and is not gated. The hand-rolled
+  reference generators emit correct code; an adopter's ejected copy is theirs and is not gated. The hand-rolled
   reference-server lane of `api-contract-conformance/` still pins the wire contract that
   the runtimes and the client speak, which is core.
 

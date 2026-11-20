@@ -5,11 +5,12 @@ the **durable spine**. You own the generated code in your repo — it runs witho
 MetaObjects runtime dependency, and if `@metaobjectsdev/*` (or the Maven/PyPI/NuGet
 packages) disappeared, you keep working code.
 
-**Generators are reference helpers, not guarantees** ([ADR-0034 Amendment 3](../../spec/decisions/ADR-0034-codegen-scaffold-and-own.md#amendment-3-2026-09-22--generators-are-reference-helpers-the-core-is-what-metaobjects-guarantees)).
-What MetaObjects guarantees is the core — the metamodel and loader, runtime metadata
-access, `meta migrate`, `meta verify`, prompt render and the reply parser. Every generator
-that writes application code into your repo is a starting point: it compiles and passes
-its reference fixtures, and you copy it and own it. A defect in the reference is fixed
+**Generators are supported helpers, not core guarantees** ([ADR-0034 Amendments 3 and 11](../../spec/decisions/ADR-0034-codegen-scaffold-and-own.md#amendment-11-2026-11-19--the-core-is-contracts-and-conformance-kits-and-generated-code-is-real-code)).
+What MetaObjects guarantees is the core: the contracts and the conformance kits — the metamodel
+and loader, the store-neutral contracts, `meta verify`, prompt render and the reply parser.
+Store-specific code and every generator that writes application code into your repo are
+helpers: they compile and pass their reference fixtures, and what they generate is real code.
+Run it as shipped, extend it through hooks, or copy the generator with `meta eject` and own it. A defect in the reference is fixed
 there; your copy is yours.
 
 **Need an output nothing here emits? Write the generator.** That is the primary path, not

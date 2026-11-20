@@ -84,9 +84,10 @@ permission, the adopter's implementation stops compiling. In Python the type che
 start-up check say what is missing. Hand-written code cannot reach the shell's internals, so it
 cannot bypass the shell's guarantees with an override.
 
-There is no generated base class to extend, and C# does not use partial methods. A partial
-class is the same class, so hand-written code would see the shell's private state and could
-call around it.
+There is no generated base class to extend, and C# does not use partial methods. That was the
+design's choice, taken as the safer one; no separate ruling decided it, and it can be reopened
+by a later ruling. A partial class is the same class, so hand-written code would see the
+shell's private state and could call around it.
 
 ### 4. Per language
 
@@ -198,4 +199,4 @@ no existing output churns.
   Events are kept for derived CRUD as optional before and after hooks per verb
   (`layers.crudHooks`), inside the operation's transaction (§4). They may refuse or replace
   the input, but they never choose which operation runs.
-- **C# partial methods.** Rejected by the attachment ruling (§3).
+- **C# partial methods.** Rejected by the design's choice of an interface-only attachment (§3).

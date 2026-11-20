@@ -186,7 +186,9 @@ Omitting a real option is a scored defect, just like inventing one.
 
 **M8 — The verdict-deciding fact is not always in the code.** Size you can count; trajectory
 you cannot.
-- **Structural disqualifiers ARE in the repo**: language outside the five ports, no
+- **Structural disqualifiers ARE in the repo**: language outside the five published ports (Rust
+  is a sixth port in preview and unpublished: it generates code today with `cargo meta gen`, but
+  there is no crate to depend on, so treat it as a trial, not a fit), no
   entity-shaped data at all, a DBA-gated schema. Cite them. They rule out scopes, not the whole
   spectrum: a Go estate has no port, but a TypeScript web client on the other side of it may
   still have a seam worth a contract.
@@ -330,7 +332,7 @@ invalid output). Each row rules out *scopes*, not MetaObjects wholesale:
 
 | Check | Consequence |
 |---|---|
-| Backend language outside TS/Java/Kotlin/C#/Python | no codegen or runtime for that side; a seam to a supported-language consumer can still take a contract, generated for that side only |
+| Backend language outside TS/Java/Kotlin/C#/Python | no published codegen or runtime for that side; a seam to a supported-language consumer can still take a contract, generated for that side only. **Rust is the exception in preview:** `cargo meta gen` runs the `entity`, `client` and `commands` generators from a checkout, with nothing published to depend on (`docs/ports/rust.md`), so say it is a trial, not a supported port |
 | No relational store (MongoDB, Cassandra, Neo4j, a remote API) | schema pillar N/A; model the stored records as sourceless entities (`identity.primary`, no `source.*`) — types, create/PATCH schemas, filter allowlists, `verify` and prompts IN; data access is a generator the adopter owns (`docs/recipes/document-graph-and-wide-column-stores.md`) |
 | DB not Postgres/SQLite/D1 (MySQL, ClickHouse, SQL Server, …) | `meta migrate` / `verify --db` OUT for that database — say so; types and data access unaffected. MySQL is a supported codegen + runtime dialect (`dialect: "mysql"`; `docs/recipes/mysql.md`) |
 | ORM no reference generator targets (TypeORM, Sequelize, SQLAlchemy ORM, Django ORM, Hibernate-only entities on the Java lane; Prisma on TypeScript IS targeted: `orm: "prisma"` generates `schema.prisma`, so FULL keeps Prisma) | FULL means replacing the data layer — price it as such; CONTRACT SPINE and PARTIAL leave it untouched |

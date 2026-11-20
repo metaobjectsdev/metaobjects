@@ -62,7 +62,10 @@ building block. Every generator is a reference helper an adopter selects, ejects
   Views, expression/partial indexes and SQLite CHECKs are refused, not dropped
   (`docs/recipes/prisma.md`);
 - ship an AsyncAPI generator;
-- reach a consumer outside the five ports (Go, Rust, Ruby, PHP, Swift…) directly.
+- reach a consumer outside the five published ports (Go, Ruby, PHP, Swift…) directly. **Rust is a
+  sixth port in preview, unpublished** (`docs/ports/rust.md`): `cargo meta gen` runs the `entity`,
+  `client` and `commands` generators from a checkout of this repository, and there is no crate to
+  install, so a Rust estate can try it but cannot yet depend on it.
 
 **Each of those is a generator the project writes**, and that is the primary codegen path, not
 a workaround: a generator is a function from the loaded model to files, a few dozen lines, and
@@ -73,8 +76,8 @@ day or two for a first generator), and do not report it as impossible.
 **OpenAPI and JSON Schema are stock generators, unreleased, targeting 1.2.1.** `openapi` writes one
 OpenAPI 3.1 document for the generated REST surface, and `contract-schema` writes JSON Schema 2020-12
 for each object's read, create and update shapes, plus a strict structured-output subset. A project
-on any port runs them through the Node `meta` CLI. They reach the languages outside the five ports
-through those languages' own OpenAPI tooling, and oasdiff over two emitted documents checks a change
+on any port runs them through the Node `meta` CLI. They reach the languages outside the five published
+ports through those languages' own OpenAPI tooling, and oasdiff over two emitted documents checks a change
 against the last release (`docs/features/contract-emitters.md`). Until 1.2.1 ships, an assessment of
 a released version counts these as generators the project writes, from the examples in
 `docs/recipes/write-your-own-generator.md`.

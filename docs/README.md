@@ -52,7 +52,8 @@ docs/
 │   ├── explorer-data.md             # explorer.json and its inputs: export --effective, the verify ledger rows, manifest provenance
 │   ├── explorer-site.md             # the model explorer site docsSiteFile() builds from explorer.json
 │   ├── metadata-driven-runtime.md   # one grid, one form and one route mount for every entity, read from the loaded metadata (TypeScript example, measured)
-│   └── own-your-codegen.md          # scaffold-and-own generator ownership (ADR-0034)
+│   ├── own-your-codegen.md          # scaffold-and-own generator ownership (ADR-0034)
+│   └── stability-labels.md          # which pieces are stable, preview or experimental today (a list of facts, no promise)
 └── ports/                       # one file per language/framework port
     ├── typescript.md
     ├── typescript-client.md     # browser-side TS (React, TanStack, Angular, codegen pairs)

@@ -203,7 +203,7 @@ first-week wedge plan — and `meta init` picks up from there.
 A "Yes" means the feature is covered by the shared conformance corpora at
 [`fixtures/`](fixtures/) for that port, or by a port-local test of equivalent
 scope. For rows that describe generated code, the coverage is of the reference
-generators on their fixtures — a quality check on the starting point, not a promise
+generators on their fixtures — a quality check on the generators, not a promise
 about the code in your repo. A "partial" means the loader recognizes the metamodel feature but the
 codegen / runtime tier doesn't fully exercise it yet.
 
@@ -218,16 +218,16 @@ the consumer-side wiring (React + TanStack, and the
 ## What is guaranteed, and what is yours
 
 MetaObjects has two layers, and only the first is a promise
-([ADR-0034 Amendment 3](spec/decisions/ADR-0034-codegen-scaffold-and-own.md#amendment-3-2026-09-22--generators-are-reference-helpers-the-core-is-what-metaobjects-guarantees)):
+([ADR-0034 Amendments 3 and 11](spec/decisions/ADR-0034-codegen-scaffold-and-own.md#amendment-11-2026-11-19--the-core-is-contracts-and-conformance-kits-and-generated-code-is-real-code)):
 
 | | Core — guaranteed | Helpers — yours |
 |---|---|---|
-| **What** | The metamodel, loader, canonical format and registry; runtime metadata access (the `ObjectManager`, not the HTTP adapters that mount it); schema migrations (`meta migrate`); the drift gates (`meta verify`); prompt render and the reply parser | Every generator that writes code into your repo — the ones you write for the outputs you need, and the reference routes, controllers, ORM wiring, DTOs, forms, grids and hooks you copy |
-| **Promise** | Conformance-gated, the same behaviour in every port that ships it, covered by the [compatibility policy](docs/compatibility-policy.md) | Reference starting points that compile and pass their reference fixtures. Run one as shipped, or copy it with `meta eject` and change it freely |
+| **What** | The contracts and the conformance kits: the metamodel, loader, canonical format and registry; the store-neutral contracts (the expected schema and the guarded update); the drift gates (`meta verify`); prompt render and the reply parser | Store-specific code (SQL writers, introspectors, drivers such as the `ObjectManager` drivers and the `meta migrate` writer, mappings) and every generator that writes code into your repo — the ones you write for the outputs you need, and the routes, controllers, ORM wiring, DTOs, forms, grids and hooks MetaObjects ships |
+| **Promise** | Conformance-gated, the same behaviour in every port that ships it, covered by the [compatibility policy](docs/compatibility-policy.md) | Supported helpers that compile and pass their reference fixtures, with the same capabilities in every port unless a ruling says otherwise. The code they generate is real code: run it as shipped, extend it through hooks, or copy it with `meta eject` and own it |
 | **A defect is** | A MetaObjects bug, fixed in a release | A bug in the reference, fixed there; your copy is yours |
 
-The test is mechanical: what the tool guarantees is core; what it writes into your repo
-is a helper. Every port can eject: `meta eject` (TypeScript), `metaobjects eject` (Python),
+The test is mechanical: what the tool guarantees as a contract is core; what it writes into
+your repo or a store is a helper. Every port can eject: `meta eject` (TypeScript), `metaobjects eject` (Python),
 `mvn metaobjects:eject` (Java and Kotlin) and `dotnet meta eject` (C#).
 
 ## Six pillars
@@ -250,9 +250,9 @@ sixth ships two libraries at their own stability labels:
    20-line shape plus worked examples to copy. The reference generators
    (Drizzle/Zod + Fastify for TS, Spring REST + DTO + repository for Java, `data class` +
    Exposed for Kotlin, EF Core entity class + ASP.NET routes for C#, Pydantic + FastAPI for
-   Python) are starting points: run one as shipped when it already emits what you want, or
+   Python) emit real code: run one as shipped when it already emits what you want, or
    eject the one that is close, change it, and regenerate.
-   The engine that runs generators is core; their output is yours.
+   The engine that runs generators is core; the code it writes is yours.
 2. **Runtime metadata** — load metadata at runtime, drive behavior dynamically
    (CRUD, validation, relationships, dynamic admin UIs; typed tool payloads are
    declared today, with MCP exposure on the roadmap).

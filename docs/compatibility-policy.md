@@ -85,6 +85,8 @@ work*. A release can move one without the other, and most releases move neither.
 
 ## Shipped libraries (`libraries: [...]`)
 
+_Which pieces carry which label today is listed in [Stability labels](features/stability-labels.md); that page is a list of facts and adds no promise._
+
 A [library](features/libraries.md) is declared design MetaObjects ships as metadata —
 nodes an adopter opts into and then generates from. What its SHAPE promises depends on
 the `stability` its manifest declares, and `meta gen --list` prints it:

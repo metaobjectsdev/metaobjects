@@ -40,7 +40,7 @@ The library also ships a documented **template library** of reference generators
 already emits what you want, import it and run it as shipped; when one is close to what you
 need, you copy it into your repo and own it. A single standard template set has never fit
 across projects — framework conventions, naming, structure, and business patterns are
-per-project. Don't fight a black-box generator; own a starting point and edit it.
+per-project. Don't fight a black-box generator; eject the one that is close and own the copy.
 Choosing and adapting a starting template is a **human/Claude judgment call**, not a
 CLI flag. (See ADR-0034.)
 
@@ -243,7 +243,7 @@ drop the files of objects the run did not name.
 
 A generator picks its scope by which helper it composes — the same way it picks
 object vs model today. Reference templates and the guidance call out the scope each
-starting point is for, so "I need a per-package service layer" maps to a clear
+generator is for, so "I need a per-package service layer" maps to a clear
 pattern instead of hand-rolled grouping.
 
 ### Declarative template scopes
