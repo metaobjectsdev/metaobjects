@@ -1,0 +1,44 @@
+# library/ai/model.yaml — the CORE layer: the LLM-call trace envelope.
+#
+# Adopters opt in via `libraries: ["ai"]`, then `extends: "metaobjects::ai::LlmCallBase"`.
+#
+# This layer declares NO `source.rdb`, so opting into `"ai"` alone adds zero tables and
+# zero generated code — the design is present and resolvable, and nothing else happens
+# until the adopter adds `"ai/db"`. See library/iam/model.yaml for the full rationale.
+#
+# This file was split out of the former `library/ai/llm-call.yaml`, which shipped the
+# abstract base and a concrete `LlmCall` carrying `source.rdb` together. That was
+# recorded as an accepted wart on the grounds that splitting would change what existing
+# `ai` adopters get; a sweep of the estate found there are none, so it was closed rather
+# than documented (FR-043 Amendment 1).
+metadata:
+  package: metaobjects::ai
+  children:
+    - object.entity:
+        name: LlmCallBase
+        abstract: true
+        children:
+          - field.uuid:     { name: traceId }
+          - field.uuid:     { name: spanId }
+          - field.uuid:     { name: parentSpanId }
+          - field.string:   { name: sessionId }
+          - field.string:   { name: callType }
+          - field.string:   { name: system }
+          - field.string:   { name: requestModel }
+          - field.string:   { name: responseModel }
+          - field.int:      { name: inputTokens }
+          - field.int:      { name: outputTokens }
+          - field.currency: { name: costMinor, currency: USD }
+          - field.int:      { name: latencyMs }
+          - field.string:   { name: finishReason }
+          - field.string:   { name: status }
+          - field.string:   { name: errorDetail }
+          - field.timestamp: { name: startedAt }
+          - field.string:   { name: llmRequest,  dbColumnType: jsonb }   # generic jsonb (no objectRef)
+          - field.string:   { name: llmResponse, dbColumnType: jsonb }
+    - object.entity:
+        name: LlmCall
+        extends: metaobjects::ai::LlmCallBase
+        description: The concrete trace row. Its `source.rdb` lives in db.yaml, so opting into the core layer alone declares the shape without proposing a table.
+        children:
+          - identity.primary: { name: id, fields: ["spanId"] }

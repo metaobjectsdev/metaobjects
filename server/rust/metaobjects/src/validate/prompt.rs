@@ -317,10 +317,8 @@ mod tests {
 
     #[test]
     fn every_code_is_in_the_shared_table() {
-        let table: Value = serde_json::from_str(include_str!(
-            "../../../../../fixtures/conformance/ERROR-CODES.json"
-        ))
-        .unwrap();
+        let table: Value =
+            serde_json::from_str(include_str!("../../data/ERROR-CODES.json")).unwrap();
         for code in [
             ERR_INVALID_TEMPLATE,
             ERR_SUBTYPE_RULE_VIOLATION,

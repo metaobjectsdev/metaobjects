@@ -1,0 +1,112 @@
+# library/ai/requirements.yaml — what the LLM-call trace envelope PROMISES.
+#
+# A RETROFIT, not new design: llm-call.yaml landed 2026-06-03 and `requirement.functional`
+# first appears 2026-08-11, so the library could not have carried requirements when it was
+# written. That is why this file is worth reading as a worked example — it shows what
+# declaring the design of something that already exists actually turns up.
+#
+# The entry that earns its keep is `typedIo`, honestly `partial` + `accepted`: the library
+# declares the ENVELOPE and the adopter declares the typed VO columns. Recording that seam
+# in the ledger is where an agent meets it, before adding a fourth trace column.
+#
+# HIERARCHY IS NESTING, and the L4/L5 split is grain. An L4 names the OBJECT it is about;
+# the fields that carry it hang off it as an L5 child. Writing the fields at L4 is
+# ERR_REQUIREMENT_L4_NOT_OBJECT, and writing the concerns as SIBLINGS of the L2 leaves the
+# L2 claiming nothing — both of which this file did until the standalone verify gate
+# existed (`cli/test/shipped-library-verify.test.ts`).
+metadata:
+  package: metaobjects::ai
+  children:
+    - requirement.functional:
+        name: llmTracing
+        level: 2
+        status: live
+        statement: Every call to a language model leaves a row that says what was asked, what came back, what it cost and how long it took.
+        counterexample: A spend figure nobody can attribute to a call.
+        description: The segment this library covers. Its three children below are the concerns it decomposes into.
+        children:
+          - requirement.functional:
+              name: envelope
+              level: 4
+              status: live
+              statement: A trace row identifies its call and its place in a trace — trace, span, parent span, session, call type, system.
+              counterexample: A log line that cannot be joined to the request that produced it.
+              implementedBy: [LlmCallBase]
+              children:
+                - requirement.functional:
+                    name: traceAddressing
+                    level: 5
+                    status: live
+                    statement: The four addressing columns are declared on the base — trace, span, parent span and session.
+                    counterexample: A row whose place in a trace is inferred from insertion order.
+                    description: >-
+                      The member grain exists here so the claim RESOLVES against the fields
+                      themselves: renaming or dropping one of them dangles this reference and
+                      fails the build, which naming the object alone would not.
+                    implementedBy: [LlmCallBase.traceId, LlmCallBase.spanId, LlmCallBase.parentSpanId, LlmCallBase.sessionId]
+
+          - requirement.functional:
+              name: accounting
+              level: 4
+              status: live
+              statement: A trace row carries the tokens in, the tokens out, and the cost in integer minor units.
+              counterexample: A cost stored as a float.
+              description: >-
+                `field.currency` — integer minor units on the wire, always. Float arithmetic for
+                money is forbidden by the cross-port wire contract, and a spend total is exactly
+                the sum that exposes it.
+              implementedBy: [LlmCallBase]
+              children:
+                - requirement.functional:
+                    name: tokenAndCostColumns
+                    level: 5
+                    status: live
+                    statement: Tokens in, tokens out and cost are three declared columns, the cost a field.currency.
+                    counterexample: A cost column declared as a double.
+                    implementedBy: [LlmCallBase.inputTokens, LlmCallBase.outputTokens, LlmCallBase.costMinor]
+
+          - requirement.functional:
+              name: typedIo
+              level: 4
+              status: partial
+              disposition: accepted
+              statement: The request and response bodies are stored as structured jsonb, not as opaque text.
+              counterexample: A prompt stored as a string nobody can query a field out of.
+              notes: >-
+                The library declares the two columns as generic jsonb with no `@objectRef`,
+                because it cannot know the adopter's request/response shape. Typing them is the
+                ADOPTER's move: declare an `object.value` and overlay the field with
+                `@objectRef` + `@storage: jsonb`. This is the seam ADR-0024 drew, recorded here
+                rather than in prose so it is in the ledger an agent reads before adding a
+                fourth trace column of its own.
+              implementedBy: [LlmCallBase]
+              children:
+                - requirement.functional:
+                    name: jsonbBodies
+                    level: 5
+                    status: live
+                    statement: The request and response bodies are declared as jsonb columns on the base.
+                    counterexample: A prompt stored in a text column.
+                    description: >-
+                      `live` where its parent is `partial`, and the split is the point: the
+                      COLUMNS are shipped and this claim is fully realised; what is outstanding
+                      is the TYPING of them, which is the parent's gap and the adopter's move.
+                    implementedBy: [LlmCallBase.llmRequest, LlmCallBase.llmResponse]
+
+    - requirement.architectural:
+        name: traceRowsCarryTiming
+        status: live
+        statement: Every trace row records when the call started and how long it took.
+        counterexample: A latency figure derived from log timestamps after the fact.
+        description: >-
+          Architectural, so it propagates down `extends` to every adopter entity deriving
+          from LlmCallBase — which is the point: an adopter's own trace table is claimed
+          by this requirement for free, and dropping the columns breaks the build.
+        implementedBy: [LlmCallBase]
+
+    - requirement.architectural:
+        name: traceRowsCarryOutcome
+        status: live
+        statement: Every trace row records how the call ended — a status, a finish reason, and the error detail when there was one.
+        counterexample: A failed call indistinguishable from one that never happened.
+        implementedBy: [LlmCallBase]

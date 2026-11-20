@@ -36,7 +36,7 @@ fn collect(
 fn main() {
     let manifest_dir =
         PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
-    let lib_dir = manifest_dir.join("../../../library");
+    let lib_dir = manifest_dir.join("data/library");
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed={}", lib_dir.display());
     let (mut yaml, mut manifests) = (Vec::new(), Vec::new());

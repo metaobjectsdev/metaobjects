@@ -1,0 +1,189 @@
+{
+  "provider": "metaobjects-core-types",
+  "types": [
+    {
+      "type": "requirement",
+      "subType": "functional",
+      "description": "What the product does for a user, stated as one violable claim. Its check is EXISTENCE, run by `meta verify`: a live or partial claim with no implementing node anywhere in its subtree is a warning, and a named node that no longer exists is an error. Hierarchy is nesting — an L1 solution contains its L2 segments, which contain L3 services, and so on down to the levels that reference the model.",
+      "whenToUse": "Something exists because someone asked for it. L1-L3 are levels of ABSTRACTION AND OWNERSHIP in the problem domain — whose need is this, and at what altitude — and are never a directory, package, deployable or module. Binding to technical constructs happens only at L4 (an object) and L5 (a member), which is the allocation step. Test every node: if a refactor that changes no behaviour would force it to move, its level is wrong.",
+      "children": [
+        {
+          "type": "attr",
+          "subType": "int",
+          "name": "level",
+          "min": 1,
+          "max": 1,
+          "description": "1 solution, 2 segment, 3 service, 4 object, 5 member. L1-L3 are levels of abstraction and ownership in the problem domain, NOT of code structure. Nesting depth must agree with it; skipping a level is legal, going back up is not."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "status",
+          "min": 1,
+          "max": 1,
+          "allowedValues": [
+            "planned",
+            "live",
+            "partial",
+            "retired"
+          ],
+          "description": "planned intended but not built yet; live implemented and in use; partial implemented with known gaps; retired BUILT THEN DELIBERATELY REMOVED — it must not be rebuilt. A requirement is PRESCRIPTIVE: it states what SHOULD be true and never journals what happened, and retired satisfies that because it states a prohibition in force, falsifiable by the capability reappearing. On retired, @implementedBy is REFUSED at load (ERR_REQUIREMENT_RETIRED_HAS_IMPLEMENTORS) — a retired capability has no implementation by definition, so its references cannot dangle because they cannot exist; @supersededBy names the requirement that replaced it. A dangling @implementedBy is an ERROR on live/partial (the model moved, the requirement is stale) and ALLOWED on planned, where the nodes do not exist YET. Neither planned nor retired contributes to object coverage: planning a capability must not silence the warning that nothing implements it, and neither must retiring one."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "disposition",
+          "min": 0,
+          "max": 1,
+          "allowedValues": [
+            "accepted",
+            "deferred"
+          ],
+          "description": "What has been DECIDED about outstanding work — a different question from whether the work is done, which is what @status answers. accepted: the gap is understood and deliberately not being closed. deferred: it will be closed, but not now. ABSENT MEANS UNDECIDED, which is a real and useful state — it is what an unreviewed gap looks like, and it is the one a review should be able to find. Meaningful on planned and partial only; on a status with no outstanding work it is a WARNING. Deliberately NOT a workflow vocabulary: which sprint, who owns it and whether it is in progress belong in the tracker named by @trackedBy, because two systems holding that answer will drift and only one of them is refreshed daily."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "trackedBy",
+          "isArray": true,
+          "min": 0,
+          "max": 1,
+          "description": "Issue or ticket references for outstanding work — a URL, an owner/repo#123 shorthand, or a tracker key. Free-form and NOT resolved by verify, which does not reach the network; nothing here is checked to exist. Its job is to stop a deferred gap becoming invisible, so verify warns when a deferred requirement names no ticket. Also the right place to link the ticket that a planned requirement will be built under."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "statement",
+          "min": 1,
+          "max": 1,
+          "description": "What the capability is, in one sentence."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "counterexample",
+          "min": 1,
+          "max": 1,
+          "description": "What breaking it looks like, in one sentence — a STATIC falsifiability test, authored once, never a state. A requirement MUST be violable: 'every entity has a uuid primary key' is (point at one with a composite string key); 'things are persisted' is not, and is a description rather than a requirement. Renamed from @violation in 0.24.0, which read as a status."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "supersededBy",
+          "min": 0,
+          "max": 1,
+          "description": "The requirement that REPLACED this one. Legal on @status: retired only (ERR_REQUIREMENT_SUPERSEDED_BY_NOT_RETIRED otherwise), and RESOLVED like any other reference, so a dangling one is ERR_REQUIREMENT_DANGLING_REF and a supersession chain stays walkable: A names B, and when B is retired in turn it names C. That resolution is the whole point — 0.24.0 deregistered an unresolved string, and the 2026-08-10 ruling had asked for the resolving form (point 4) which was never built. A prose note in @notes points one hop and goes stale; this does not."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "implementedBy",
+          "isArray": true,
+          "min": 0,
+          "max": 1,
+          "description": "FQN references to the model nodes realising this requirement. Legal on level 4 (an object) and level 5 (a field, view or identity) only; an organisational level carrying it is ERR_REQUIREMENT_LINK_ABOVE_FLOOR. Many-to-many by construction — several requirements may name the same node."
+        },
+        {
+          "type": "requirement",
+          "subType": "*",
+          "name": "*",
+          "min": 0,
+          "max": null,
+          "description": "Nested child requirements. Hierarchy IS nesting — an L1 solution contains its L2 segments, which contain L3 services — so regrouping moves a node rather than editing a parent string, and a requirement is addressable by the same dotted child-name path as every other node."
+        }
+      ]
+    },
+    {
+      "type": "requirement",
+      "subType": "architectural",
+      "description": "How the system is built, applied uniformly across the model. Its check is UNIVERSALITY, the opposite polarity to a functional requirement. What `meta verify` enforces is that a live or partial policy is applied at all — one claiming nothing is an error — not that each node it claims complies. Flat by default and object-independent; it may optionally sit in a levelled tree when a quality taxonomy is being used to organise non-functional requirements.",
+      "whenToUse": "Something exists because every entity here looks like this — a uuid primary key, an @autoSet createdAt, a change-attribution column, tenant scoping. The discriminator is mechanical: did this exist because someone asked for something, or because it is the architecture? For a non-functional tree, an established quality taxonomy makes a good fixed upper structure (e.g. an ISO/IEC 25010 characteristic at L1, its sub-characteristic or a control-catalogue category at L2), with the model-binding claims at L4 and L5 as usual.",
+      "children": [
+        {
+          "type": "attr",
+          "subType": "int",
+          "name": "level",
+          "min": 0,
+          "max": 1,
+          "description": "OPTIONAL here, unlike on a functional requirement where it is required. ABSENT means a flat, object-independent policy that may reference the model directly — the original and still the default form. PRESENT means this node sits in a levelled tree, and then the same rules as functional apply: nesting must agree with the level, and only L4/L5 may carry @implementedBy. Levelling is opt-in so that adding a taxonomy on top of existing flat policies does not invalidate them."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "status",
+          "min": 1,
+          "max": 1,
+          "allowedValues": [
+            "planned",
+            "live",
+            "partial",
+            "retired"
+          ],
+          "description": "As on requirement.functional. A live or partial architectural requirement claimed by NOTHING is an error: a policy declared and applied to nothing. planned is exempt from that check — it is not applied yet by definition — and retired is exempt because a withdrawn policy governs nothing."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "disposition",
+          "min": 0,
+          "max": 1,
+          "allowedValues": [
+            "accepted",
+            "deferred"
+          ],
+          "description": "As on requirement.functional. On an architectural requirement, accepted is the common and important case: a policy that is genuinely not universal, where the exceptions are known and tolerated, is more honest as partial+accepted than as a live claim nobody audits."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "trackedBy",
+          "isArray": true,
+          "min": 0,
+          "max": 1,
+          "description": "As on requirement.functional. Issue or ticket references for outstanding work; free-form, not resolved."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "statement",
+          "min": 1,
+          "max": 1,
+          "description": "The policy, in one sentence."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "counterexample",
+          "min": 1,
+          "max": 1,
+          "description": "What breaking it looks like — the node that would contradict it. A STATIC falsifiability test, not a state. This is what makes universality checkable. Renamed from @violation in 0.24.0, which read as a status."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "supersededBy",
+          "min": 0,
+          "max": 1,
+          "description": "The requirement that REPLACED this one. Legal on @status: retired only (ERR_REQUIREMENT_SUPERSEDED_BY_NOT_RETIRED otherwise), and RESOLVED like any other reference, so a dangling one is ERR_REQUIREMENT_DANGLING_REF and a supersession chain stays walkable: A names B, and when B is retired in turn it names C. That resolution is the whole point — 0.24.0 deregistered an unresolved string, and the 2026-08-10 ruling had asked for the resolving form (point 4) which was never built. A prose note in @notes points one hop and goes stale; this does not."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "implementedBy",
+          "isArray": true,
+          "min": 0,
+          "max": 1,
+          "description": "FQN references to the nodes applying this policy. High fan-out is normal and expected: one uuid-primary-key requirement is claimed by every entity."
+        },
+        {
+          "type": "requirement",
+          "subType": "*",
+          "name": "*",
+          "min": 0,
+          "max": null,
+          "description": "Nested child requirements. Present so a non-functional tree can be organised by a quality taxonomy the same way a functional tree is organised by capability — the absence of this rule, while requirement.functional had it, is what previously made an architectural node nestable UNDER a functional one but never under another architectural one."
+        }
+      ]
+    }
+  ]
+}

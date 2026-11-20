@@ -1,0 +1,78 @@
+{
+  "provider": "metaobjects-documentation",
+  "types": [
+    {
+      "type": "*",
+      "subType": "*",
+      "description": "Universal documentation common attrs — accepted on EVERY metatype (registered as common attrs, NOT per-type). The named attr children below are the documentation vocabulary.",
+      "children": [
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "description",
+          "min": 0,
+          "max": 1,
+          "description": "What this element IS and COVERS, written for someone using it. Markdown allowed, multi-line via YAML '|' block scalar. Flows into doc-gen surfaces (JSDoc / XML-doc / Postgres COMMENT / Mermaid prose). State scope and boundary — what it covers, what it deliberately does NOT, and which sibling owns the rest — all of which is derivable from the model itself. Anything you had to read the implementation to learn belongs in @notes, not here."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "summary",
+          "min": 0,
+          "max": 1,
+          "description": "Short single-line SENTENCE (OpenAPI `summary` pattern) — used in index tables, sidebar previews, and AI prompts where the full @description is too long. Distinct from @title, which is a noun label rather than a sentence. When @summary is unset, doc surfaces typically fall back to the first sentence of @description."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "title",
+          "min": 0,
+          "max": 1,
+          "description": "Short single-line human label — a NOUN PHRASE naming the element (e.g. 'Email' for a `field.string email`), never a sentence. What a tab, an index row or a sidebar shows when the name is an identifier rather than a label. See @summary for the one-line sentence form."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "notes",
+          "min": 0,
+          "max": 1,
+          "description": "Internal-only rationale, never emitted to user-facing docs — the slot for what you had to look OUTSIDE the model to learn: evidence, measurements, citations, the control that proved an absence was real, and what breaks if this changes. It is NOT a longer @description, and restating the description here is the failure mode this slot invites. Mechanical test: a sentence belongs in @notes exactly when it would have to change because the IMPLEMENTATION changed while the model did not."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "deprecated",
+          "min": 0,
+          "max": 1,
+          "description": "Text reason for deprecation. Presence ⇒ deprecated. Codegen emits @deprecated / [Obsolete] with this reason."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "replacedBy",
+          "min": 0,
+          "max": 1,
+          "description": "FQN reference to the replacement element. Only meaningful with `deprecated`. Codegen appends 'Replaced by <ref>' to deprecation messages."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "seeAlso",
+          "min": 0,
+          "max": 1,
+          "isArray": true,
+          "description": "External documentation URLs. Codegen emits @see / <seealso href=...>."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "aliases",
+          "min": 0,
+          "max": 1,
+          "isArray": true,
+          "description": "Alternate names for this element. Aids AI authoring disambiguation, search, migration."
+        }
+      ]
+    }
+  ]
+}

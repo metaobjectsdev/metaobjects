@@ -66,7 +66,7 @@ macro_rules! spec {
     ($name:literal) => {
         (
             $name,
-            include_str!(concat!("../../../../spec/metamodel/", $name, ".json")),
+            include_str!(concat!("../data/metamodel/", $name, ".json")),
         )
     };
 }

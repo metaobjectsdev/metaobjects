@@ -1,0 +1,16 @@
+# library/ai/db.yaml — the DB PERSISTENCE layer for metaobjects::ai.
+#
+# Opted into as `"ai/db"`, which IMPLIES `"ai"`: `LlmCall` is declared in model.yaml and
+# this file only re-opens it, so without the core layer the overlay has no target.
+#
+# `LlmCall` is the concrete, table-backed instance of the abstract envelope. An adopter
+# who wants their OWN table (a different name, extra columns, a different id strategy)
+# extends `LlmCallBase` in their own metadata and never opts into this layer at all.
+metadata:
+  package: metaobjects::ai
+  children:
+    - object.entity:
+        name: LlmCall
+        overlay: true
+        children:
+          - source.rdb:      { table: llm_call, role: primary }

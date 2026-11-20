@@ -1,0 +1,71 @@
+{
+  "provider": "metaobjects-core-types",
+  "types": [
+    {
+      "type": "attr",
+      "subType": "base",
+      "dataType": "string",
+      "description": "Abstract base attribute — the polymorphic/unconstrained value-type marker. Stores its value type-preserved (never stringified), accepting any type; used for an untyped attr (e.g. a field's @default, whose value-type follows the owning field's subtype). Not authored directly: a `attr.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document."
+    },
+    {
+      "type": "attr",
+      "subType": "string",
+      "dataType": "string",
+      "description": "A string-valued metadata attribute. Coerces to and validates as text; the default value-type for inline @-syntax attrs (array-of-string is the same subtype with isArray)."
+    },
+    {
+      "type": "attr",
+      "subType": "int",
+      "dataType": "int",
+      "description": "A 32-bit-integer-valued metadata attribute. Coerces to and validates as a number."
+    },
+    {
+      "type": "attr",
+      "subType": "intMap",
+      "dataType": "object",
+      "description": "An object-shaped attribute whose values are all integers (e.g. field.enum's @intValueMap: {memberSymbol: int}). Generic shape check only; a consumer field type layers its own semantic rules (key-set membership, uniqueness) in its own content-rule validation."
+    },
+    {
+      "type": "attr",
+      "subType": "long",
+      "dataType": "long",
+      "description": "A 64-bit-integer-valued metadata attribute. Coerces to and validates as a number."
+    },
+    {
+      "type": "attr",
+      "subType": "double",
+      "dataType": "double",
+      "description": "A double-precision floating-point-valued metadata attribute. Coerces to and validates as a number."
+    },
+    {
+      "type": "attr",
+      "subType": "boolean",
+      "dataType": "boolean",
+      "description": "A boolean-valued metadata attribute. Coerces to and validates as true/false."
+    },
+    {
+      "type": "attr",
+      "subType": "class",
+      "dataType": "string",
+      "description": "A class-/type-reference-valued metadata attribute. String-backed (a fully-qualified class or type name) used by binding facets."
+    },
+    {
+      "type": "attr",
+      "subType": "properties",
+      "dataType": "object",
+      "description": "A key/value map attribute (a bag of arbitrary author-supplied properties). Object-shaped value; the registered escape hatch for author-supplied properties (exempt from the strict-attr check, ADR-0023)."
+    },
+    {
+      "type": "attr",
+      "subType": "filter",
+      "dataType": "object",
+      "description": "A filter-expression-valued metadata attribute. Object-shaped value that desugars a preset filter to the canonical { field: { op: value } } form (scalar→eq, array→in, null→isNull; or/and recurse)."
+    },
+    {
+      "type": "attr",
+      "subType": "expression",
+      "dataType": "object",
+      "description": "A structured expression tree (closed node grammar: field/value refs, comparisons sharing the filter op vocabulary, isNull/isNotNull, and/or/not, coalesce, case, now). Backs origin.computed; a filter object embeds canonically. A { field } ref names one of the projection's own fields (a passthrough, joined or not, an origin.first or another origin.computed — never an aggregate, never itself), else a field of the base entity (rc.19 computed-over-joined). { case: [ { when, then }, ... ], else? } is a searched CASE (each when boolean); with operand: <expr> it is a simple CASE (each when a value compared with operand by equality); every then/else shares one type. { now: \"<ISO-8601 duration>\", startOf? } is the current instant shifted by the duration (rc.19 now), its kind (date, local or instant timestamp) taken from the field it is compared with. rc.21: a { field } ref may also name a scalar origin.aggregate of the projection (read on the grouped row; such a value is not filterable) or, on a projection, a PATH of to-one hops from the base and a field of the entity reached ('customerId.regionId'), joined but not output. { fn } takes a closed, typed set: coalesce, greatest, least, nullif (arguments of one type), lower, upper, btrim (string[, chars]), splitPart (string, delimiter, int), concat (scalars; NULL reads as empty), concatWs (separator, scalars), substring (string, start[, length]), replace (string, from, to), left and right (string, int), length (string to int). { cast: <expr>, as: <field subtype>, dbColumnType? } converts to string, int, long, double, float, decimal, boolean, date, timestamp or uuid, optionally with a text @dbColumnType spelling for a string; an enum casts to an integer only when stored as one (@intValueMap). A cross-field validator's @condition (a CHECK) takes only fields, literals, comparisons, null tests, and/or/not and coalesce. Arithmetic is #159."
+    }
+  ]
+}
