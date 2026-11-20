@@ -630,7 +630,7 @@ for a credential or a `@formExclude` field. The TanStack and Angular grids never
 credential, even when a `layout.dataGrid`'s `@columns` names it, and a `@defaultSortField` naming one gives
 the grid no initial sort. A `@filter` preset over a credential fails `meta gen`, because the server would
 refuse that filter on every request. On a single-table (TPH) base's grid, a column that any subtype marks as
-a credential counts.
+a credential counts. The agent UI page (`agent/ui.md`) lists a grid's columns and default sort on the same terms.
 
 The same rule covers every key a client never sets, in every port, on the plain and the TPH per-subtype
 routes:
@@ -695,6 +695,10 @@ allowlist, whatever `@filterable` or `@sortable` say on it (a filter on a secret
 and its order leaks it): the allowlist is built without it, so a request that names it is refused as any other field
 the allowlist does not hold (`400` `invalid_filter_field` or `invalid_sort`, naming the field). On a single-table (TPH) hierarchy the mark holds for the shared column: a column one subtype marks as a credential is on no allowlist of the base or of any subtype. To return a credential from a route, hand-write that
 route; the generated one will not. Generated forms and the api docs omit both kinds of field as well.
+
+**Known limit:** a credential (`view.password`) declared on a value-object member is not listed, checked or
+stripped. Only an entity's top-level fields count, and stripping does not recurse into nested objects. Declare
+credentials as top-level entity fields.
 
 A served report is covered too. A report column is derived from its `@of` field, and a derived column keeps
 that field's credential mark, so a report that groups by a credential (or takes its `min` or `max`) never

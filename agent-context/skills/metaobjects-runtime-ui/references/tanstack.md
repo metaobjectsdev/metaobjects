@@ -108,7 +108,7 @@ So the minimum to get a grid is a `layout.dataGrid` on the entity:
   // ...fields...
   { "layout.dataGrid": {
       "name": "default",
-      "@columns": ["name", "email", "createdAt"],   // ordered; omit for every field
+      "@columns": ["name", "email", "createdAt"],   // ordered; omit for every field but a credential
       "@pageSize": 25,
       "@defaultSortField": "createdAt",
       "@defaultSortOrder": "desc"

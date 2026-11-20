@@ -10,7 +10,7 @@ TanStack codegen for MetaObjects. Provides `tanstackQuery()` (per-entity `<Entit
 { "layout.dataGrid": { "name": "default", "@columns": ["name", "email"] } }
 ```
 
-`@columns` is an ordered list; omit it to get every field. Each `layout.dataGrid` yields a `<entity><Grid>Columns` + `<entity><Grid>Grid` pair from `tanstackGrid()` and a `use<Entity><Grid>Grid()` from `tanstackGridHook()`.
+`@columns` is an ordered list; omit it to get every field except a credential (`view.password`), which is never a column. Each `layout.dataGrid` yields a `<entity><Grid>Columns` + `<entity><Grid>Grid` pair from `tanstackGrid()` and a `use<Entity><Grid>Grid()` from `tanstackGridHook()`.
 
 ### M:N collection hooks (FR-018)
 

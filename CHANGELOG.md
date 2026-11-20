@@ -1804,11 +1804,13 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
 - **A credential is never a generated grid column, initial sort or filter preset.** The generated
   forms skipped a credential (a field that declares a `view.password`), but the grids did not: a
   `layout.dataGrid` whose `@columns` named one, or that listed no `@columns` at all, emitted a column
-  for it in the TanStack `<Entity>.columns.ts` and the Angular grid component, and a
+  for it in the TanStack `<Entity>.columns.tsx` and the Angular grid component, and a
   `@defaultSortField` naming one became the grid's initial sort in the grid const, the grid hook and
   the Angular grid config. The column is now dropped and the initial sort resolves to none, in every
-  tier; on a single-table (TPH) base's polymorphic grid a subtype-only column, and a column any
-  subtype marks as a credential, counts too. A `@filter` preset over a credential, at any depth of its
+  generated tier; on a single-table (TPH) base's polymorphic grid a subtype-only column, and a column any
+  subtype marks as a credential, counts too. The runtime grid builder (`buildGrid()` in
+  `@metaobjectsdev/runtime-web`) drops a credential the same way, but it sees only the field's own
+  `view.password`, not a TPH sibling's mark, because it has no model root. A `@filter` preset over a credential, at any depth of its
   `and` / `or`, now fails `meta gen` naming the layout and the field rather than being emitted, because
   the server refuses that filter on every request and dropping the clause would silently change which
   rows the grid shows: remove the clause. The agent UI page marks a credential as excluded from the form
