@@ -766,6 +766,11 @@ gate_ts_unit() {
   for p in runtime-web react tanstack angular; do
     ( cd "client/web/packages/$p" && bun test --timeout 30000 ) || return 1
   done
+  # The metadata-driven example (docs/features/metadata-driven-runtime.md): one grid, one
+  # form and one route mount for every entity. It is a workspace member, so the workspace
+  # typecheck covers it, but nothing else runs its suite. Each test opens its own SQLite
+  # file in the scratch directory and removes it.
+  ( cd examples/dynamic-grid && bun test --timeout 30000 ) || return 1
 }
 gate_conf_csharp() {
   # The minimal console logger prints a failing test's message; plain `--verbosity quiet` names the test and nothing else.

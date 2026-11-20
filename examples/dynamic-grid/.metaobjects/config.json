@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "sources": [],
+  "api": {
+    "pagination": { "defaultLimit": 10, "maxLimit": 50 }
+  }
+}

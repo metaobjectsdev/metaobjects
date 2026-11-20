@@ -60,9 +60,9 @@ lives under `templates/`, the directory the `render-helper` codegen generator
 resolves at generation time — not `verify`'s own `prompts/` default. See
 "Gotchas" below.)
 
-`examples/` is **not** part of the Bun workspace (the repo-root
-`package.json` globs only `server/typescript/packages/*` and
-`client/web/packages/*`), so there is no local install step — the CLI's
+`examples/advanced-modeling/` is **not** part of the Bun workspace (the repo-root
+`package.json` globs `server/typescript/packages/*`, `client/web/packages/*` and
+`examples/dynamic-grid`, not this example), so there is no local install step — the CLI's
 config loader resolves the `@metaobjectsdev/*` imports in
 `metaobjects.config.ts` from the CLI's own install regardless of the
 example's `node_modules` (which doesn't exist).

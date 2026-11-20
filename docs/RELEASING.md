@@ -436,7 +436,8 @@ diff explained.
 ## Prerequisites
 
 - The JS/TS **workspace root is the repo root** (`/package.json`), globbing
-  `server/typescript/packages/*` + `client/web/packages/*`. This is what makes `workspace:*`
+  `server/typescript/packages/*` + `client/web/packages/*` (and the private `examples/dynamic-grid`,
+  which publishes nothing). This is what makes `workspace:*`
   resolve uniformly at publish time — don't move it.
 - npm auth as an owner of the `metaobjectsdev` org. The account has 2FA **auth-and-writes**, so for
   an unattended publish use a **Granular/Automation token with the bypass-2FA option**, scoped
