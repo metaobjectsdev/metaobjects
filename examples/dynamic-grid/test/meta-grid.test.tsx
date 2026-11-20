@@ -254,3 +254,21 @@ describe("the row a foreign key points at", () => {
     await waitFor(() => expect(tableRows(view.container).flat()).toContain("Harbor Bakery"));
   });
 });
+
+describe("a model that declares no package", () => {
+  test("still resolves value objects, foreign keys and related lists", async () => {
+    const project = copyProject();
+    project.editModel("  package: demo::workshop\n", "");
+    const other = await openDemo({ projectDir: project.dir });
+    try {
+      const model = await clientModel(inProcess(other.app));
+      expect(model.entity("Customer")?.field("billingAddress")?.valueObject?.name).toBe("Address");
+      expect(model.entity("WorkOrder")?.field("customerId")?.references).toBe("Customer");
+      expect(model.entity("Customer")?.related.map((r) => [r.entity, r.via])).toContainEqual(["WorkOrder", "customerId"]);
+    } finally {
+      cleanup();
+      await other.close();
+      project.remove();
+    }
+  });
+});

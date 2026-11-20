@@ -166,7 +166,8 @@ function readNode(value: unknown): RawNode | undefined {
 /** `demo::workshop::Customer` or `Customer.id` to `Customer`. */
 function shortName(ref: unknown): string | undefined {
   if (typeof ref !== "string" || ref === "") return undefined;
-  const unqualified = ref.slice(ref.lastIndexOf(PACKAGE_SEPARATOR) + (ref.includes(PACKAGE_SEPARATOR) ? PACKAGE_SEPARATOR.length : 0));
+  const packageEnd = ref.lastIndexOf(PACKAGE_SEPARATOR);
+  const unqualified = packageEnd < 0 ? ref : ref.slice(packageEnd + PACKAGE_SEPARATOR.length);
   const member = unqualified.indexOf(CHILD_REF_SEPARATOR);
   return member < 0 ? unqualified : unqualified.slice(0, member);
 }
