@@ -123,9 +123,8 @@ class RulesInertTest {
     }
 
     /**
-     * The api docs surface: every unit page, the index and the agent page. A served report
-     * has a generated API to document (its row, table, list route and allowlist); a
-     * sourceless one has none.
+     * The api docs surface: every unit page, the index and the agent page, rendered for
+     * one variant of the with/without model pair.
      */
     private fun apiDocs(variant: String): Map<String, String> {
         val out = Files.createTempDirectory("rules-inert-docs-")

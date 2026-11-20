@@ -6,8 +6,8 @@ Two models that differ ONLY by the business-rules vocabulary:
   value `DecisionInput` and the view-backed projection `RequestSummary`.
 - `with/meta.purchasing.json`: the same model plus three `transition.action` children on
   `PurchaseRequest.status` and the `api.operational` `Purchasing`, whose three operations
-  (one carrying a `binding.rest`) take those objects as input and output. It is the positive
-  conformance fixture `fixtures/conformance/rules-purchase-request/`.
+  (one carrying a `binding.rest`) take those objects as input and output. It is derived from the
+  positive conformance fixture `fixtures/conformance/rules-purchase-request/`.
 
 1.3.0 registers the vocabulary, validates it at load and checks it in `verify`. The
 generated services and enforcing shells that act on it are later work, so until they land
