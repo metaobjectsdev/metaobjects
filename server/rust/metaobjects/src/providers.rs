@@ -2,8 +2,10 @@
 //!
 //! The metamodel itself is data. Every port reads the same `spec/metamodel/*.json`
 //! provider definitions, so the vocabulary cannot drift between languages; this
-//! module embeds those files at compile time and lowers them exactly as the
-//! TypeScript reference does (`provider-data.ts`, `core-types.ts`).
+//! module embeds byte-identical copies of those files from `data/metamodel/` at
+//! compile time (`tests/vendored_data_parity.rs` holds them to the source) and
+//! lowers them exactly as the TypeScript reference does (`provider-data.ts`,
+//! `core-types.ts`).
 
 use std::collections::HashSet;
 use std::sync::OnceLock;
