@@ -327,7 +327,7 @@ Syntax per port, and the orphan rule both follow:
 `.hashes/` — but nothing writes a manifest until a `gen` succeeds, and a run where
 every file refuses writes none, so there was nothing to commit and the next run refused
 identically. `adopt` breaks that loop: it records what is on disk, writes not one byte of
-output, and leaves exactly one file to commit. Then `gen` again, and the regeneration
+output, and leaves the manifest to commit. Then `gen` again, and the regeneration
 arrives as its own reviewable diff.
 
 **What adopting declares** — say this out loud before running it: that the files you have

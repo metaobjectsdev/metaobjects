@@ -7,8 +7,8 @@
 > un-ignores only `.hashes.json` ignores `.hashes/`, and nothing warns you.
 
 **Changed in:** Maven 8.1.0 (npm, PyPI and NuGet 1.1.0) · **Ports affected:** Java and Kotlin
-**Automatic fix:** the first `mvn metaobjects:generate` run does it; you commit one file per
-module. Decision record:
+**Automatic fix:** the first `mvn metaobjects:generate` run does it; you commit the manifest
+directory in each module. Decision record:
 [ADR-0060](https://github.com/metaobjectsdev/metaobjects/blob/main/spec/decisions/ADR-0060-jvm-codegen-hash-manifest.md).
 
 ## What changed

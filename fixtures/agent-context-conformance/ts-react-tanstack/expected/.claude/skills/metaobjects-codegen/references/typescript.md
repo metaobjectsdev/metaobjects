@@ -323,7 +323,7 @@ A project with NO manifest at all (it predates the manifest being committed) is 
 different case with a different fix: every stale file refuses, and a run where everything
 refuses writes no manifest — so "commit `.hashes/`" has nothing to commit. Run
 `meta gen --baseline=adopt` once: it records the files you have as the merge base and
-writes nothing, leaving exactly one file to commit; the next `meta gen` is then the
+writes nothing, leaving the manifest to commit; the next `meta gen` is then the
 regeneration, as its own reviewable diff. Adopting declares those files to BE generated
 output, so an edit already inside one is part of the base and that regeneration replaces
 it — `--baseline=fresh` + `git checkout` is the sequence that KEEPS an edit.
