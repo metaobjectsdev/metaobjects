@@ -192,4 +192,40 @@ describe("a declared @title reaches the column header", () => {
     const { columns } = buildGrid(obj);
     expect(columns.find((c) => c.field === "firstName")?.header).toBe("Given Name");
   });
+  describe("credential fields (view.password)", () => {
+    const withPin = (grid: unknown) => SUBSCRIBER([
+      { "field.string": { name: "pinHash", children: [{ "view.password": {} }] } },
+      grid,
+    ]);
+
+    test("no @columns: credential is not a column", async () => {
+      const meta = await loadObject(withPin({ "layout.dataGrid": { name: "default" } }), "Subscriber");
+      const { columns } = buildGrid(meta);
+      expect(columns.map((c) => c.field)).toEqual(["id", "firstName", "subscribed", "status"]);
+    });
+
+    test("@columns naming the credential: credential is dropped", async () => {
+      const meta = await loadObject(
+        withPin({ "layout.dataGrid": { name: "default", "@columns": ["firstName", "pinHash"] } }),
+        "Subscriber",
+      );
+      expect(buildGrid(meta).columns.map((c) => c.field)).toEqual(["firstName"]);
+    });
+
+    test("@defaultSortField naming the credential gives no initial sort", async () => {
+      const meta = await loadObject(
+        withPin({ "layout.dataGrid": { name: "default", "@defaultSortField": "pinHash" } }),
+        "Subscriber",
+      );
+      expect(buildGrid(meta).config.defaultSort).toBeUndefined();
+    });
+
+    test("@defaultSortField naming an ordinary field still sorts", async () => {
+      const meta = await loadObject(
+        withPin({ "layout.dataGrid": { name: "default", "@defaultSortField": "firstName" } }),
+        "Subscriber",
+      );
+      expect(buildGrid(meta).config.defaultSort).toEqual({ field: "firstName", order: "asc" });
+    });
+  });
 });
