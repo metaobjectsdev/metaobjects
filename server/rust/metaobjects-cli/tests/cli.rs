@@ -804,3 +804,59 @@ fn an_owned_crate_that_breaks_exits_1_and_its_own_answers_pass_through() {
         assert_eq!(p.run(&["meta", "gen"]).status.code(), Some(code));
     }
 }
+
+/// An order with a lifecycle whose `archived` state nothing reaches.
+const LIFECYCLE_MODEL: &str = r#"{ "metadata.root": { "package": "shop", "children": [
+  { "object.entity": { "name": "Order", "children": [
+    { "source.rdb": { "@table": "orders" } },
+    { "field.long": { "name": "id" } },
+    { "identity.primary": { "name": "pk", "@fields": ["id"] } },
+    { "field.enum": { "name": "status", "@values": ["open", "closed", "archived"], "@default": "open",
+      "children": [
+        { "transition.action": { "name": "close", "@from": ["open"], "@to": "closed", "@public": true } }
+      ] } }
+  ] } }
+] } }"#;
+
+#[test]
+fn verify_runs_the_rules_gate_and_a_setting_decides_whether_a_finding_fails_it() {
+    // A model with no operation and no transition prints nothing about rules.
+    let p = Project::new("rules-silent");
+    p.run(&["meta", "gen"]);
+    let r = p.run(&["meta", "verify"]);
+    assert_eq!(r.status.code(), Some(0), "{}", text(&r.stderr));
+    assert!(!text(&r.stderr).contains("rules:"), "{}", text(&r.stderr));
+
+    // A lifecycle is summarised on every run, and an unreachable state is a warning by default.
+    let p = Project::new("rules");
+    std::fs::write(p.0.join("metaobjects/meta.shop.json"), LIFECYCLE_MODEL).unwrap();
+    ok(&p.run(&["meta", "gen"]));
+    let r = p.run(&["meta", "verify"]);
+    let err = text(&r.stderr);
+    assert_eq!(r.status.code(), Some(0), "a warning never fails: {err}");
+    assert!(
+        err.contains(
+            "cargo meta verify — rules: 0 operation(s), 1 lifecycle(s) with 1 transition(s)."
+        ),
+        "{err}"
+    );
+    assert!(
+        err.contains("WARN_LIFECYCLE_UNREACHABLE_STATE [shop::Order.status]: state \"archived\" of \"status\""),
+        "{err}"
+    );
+    assert!(!err.contains("error(s)"), "{err}");
+
+    // `verify.lifecycle.unreachable: error` turns the same finding into a failure.
+    std::fs::write(
+        p.0.join(".metaobjects/config.json"),
+        r#"{ "schema_version": 1, "verify": { "lifecycle": { "unreachable": "error" } } }"#,
+    )
+    .unwrap();
+    let r = p.run(&["meta", "verify"]);
+    let err = text(&r.stderr);
+    assert_eq!(r.status.code(), Some(1), "{err}");
+    assert!(
+        err.contains("cargo meta verify — rules: 1 error(s)."),
+        "{err}"
+    );
+}

@@ -18,6 +18,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use metaobjects::collection::discover_collection_root;
+use metaobjects::rules_check::Severity;
 use metaobjects::timing::{LoadTimings, ms, render_table};
 use metaobjects_codegen::eject::{self, CopyState, EjectError, EngineSource};
 use metaobjects_codegen::engine::{
@@ -521,6 +522,35 @@ fn verify_lines(r: &VerifyReport) -> (Vec<String>, Vec<String>) {
     (out, err)
 }
 
+/// The rules gate's lines (all on stderr, as the other ports print them): nothing for a
+/// model that declares no operation and no transition, else the summary, every finding and,
+/// when any is an error, the count.
+fn rules_lines(r: &VerifyReport) -> Vec<String> {
+    let Some(s) = r.rules.summary else {
+        return Vec::new();
+    };
+    let mut lines = vec![format!(
+        "{TOOL} verify — rules: {} operation(s), {} lifecycle(s) with {} transition(s).",
+        s.operations, s.lifecycles, s.transitions
+    )];
+    let errors = r.rules.errors().count();
+    // Errors first, then warnings, each in the order the gate found them.
+    for severity in [Severity::Error, Severity::Warn] {
+        for d in r
+            .rules
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity == severity)
+        {
+            lines.push(format!("  {} [{}]: {}", d.code, d.path, d.message));
+        }
+    }
+    if errors > 0 {
+        lines.push(format!("{TOOL} verify — rules: {errors} error(s)."));
+    }
+    lines
+}
+
 fn cmd_verify(
     args: &[String],
     cwd: &Path,
@@ -561,10 +591,17 @@ fn cmd_verify(
             for line in to_err {
                 let _ = writeln!(err, "{line}");
             }
+            for line in rules_lines(&report) {
+                let _ = writeln!(err, "{line}");
+            }
             if s.has("--timings") {
                 print_timings(out, &report.timings);
             }
-            Ok(if report.in_sync() { 0 } else { 1 })
+            Ok(if report.in_sync() && !report.rules_failed() {
+                0
+            } else {
+                1
+            })
         }
         Err(e) => {
             let _ = writeln!(err, "{TOOL} verify failed:\n{e}");

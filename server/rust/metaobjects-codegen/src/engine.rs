@@ -21,8 +21,10 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use metaobjects::errors::MetaError;
+use metaobjects::rules_check::{RulesCheckResult, check_rules};
 use metaobjects::sources::{CONFIG_FILE, DEFAULT_METAOBJECTS_DIR};
 use metaobjects::timing::LoadTimings;
+use metaobjects::validate::util::ObjectIndex;
 
 use crate::fingerprint::{
     self, ABSENT, InputEntry, KIND_CONFIG, KIND_ENGINE, KIND_EXTRA, KIND_FLAG, KIND_GENERATOR,
@@ -710,11 +712,21 @@ pub struct VerifyReport {
     pub timings: LoadTimings,
     pub warnings: Vec<String>,
     pub project_root: PathBuf,
+    /// The business-rules gate (ADR-0066) over the loaded model. It does not depend on
+    /// generated files, so it is part of every `verify`, rendered or not.
+    pub rules: RulesCheckResult,
 }
 
 impl VerifyReport {
+    /// Whether the generated files match the model. The rules gate is separate: see
+    /// [`VerifyReport::rules_failed`].
     pub fn in_sync(&self) -> bool {
         self.drifted.is_empty() && self.missing.is_empty() && self.extra.is_empty()
+    }
+
+    /// Whether the rules gate has an error-severity finding (a warning never fails a run).
+    pub fn rules_failed(&self) -> bool {
+        self.rules.errors().next().is_some()
     }
 }
 
@@ -747,6 +759,7 @@ pub fn verify(
                 missing: Vec::new(),
                 extra: Vec::new(),
                 timings: p.timings,
+                rules: rules_of(&p.loaded),
                 warnings: p.warnings,
                 project_root: p.project_root,
             });
@@ -795,9 +808,22 @@ pub fn verify(
         missing,
         extra,
         timings: p.timings,
+        rules: rules_of(&p.loaded),
         warnings: p.warnings,
         project_root: p.project_root,
     })
+}
+
+/// The rules gate over a loaded project, under the project's own `rules.*` settings.
+fn rules_of(loaded: &LoadedProject) -> RulesCheckResult {
+    let result = &loaded.result;
+    let objects = ObjectIndex::build(&result.tree, result.root);
+    check_rules(
+        &result.tree,
+        result.root,
+        &objects,
+        &loaded.collection.config.rules,
+    )
 }
 
 /// Remove the now-empty directories above `path`, stopping at (and keeping) `stop`.

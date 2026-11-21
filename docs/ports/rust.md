@@ -51,7 +51,7 @@ and the same `git` + `rev` on a `metaobjects` dependency). The candidate log
 |---|---|
 | `cargo meta init [--project <dir>]` | Scaffolds `.metaobjects/config.json`, `.metaobjects/.gitignore` (which keeps `.gen-state/.hashes/` committed), a first `metaobjects/meta.app.yaml` and `metaobjects.config.json`, the list of generators to run (see [Choosing generators](#choosing-generators)). It writes only what is missing, and never adds an empty metadata file to a project that already has metadata. |
 | `cargo meta gen [ENTITY...]` | Generates the crates. It skips the whole run when the model, the project config and the generators are unchanged ([ADR-0064](../../spec/decisions/ADR-0064-skip-codegen-when-nothing-changed.md)), writes only files whose bytes changed, removes a generated file nothing emits any more, and refuses to overwrite or delete a generated file that was edited by hand. It prints what it created, updated and removed, and the crates to re-check. |
-| `cargo meta verify [--codegen] [--full]` | The codegen drift gate: renders in memory, compares with disk, writes nothing, and exits 1 on drift, naming each file. Locally it may answer from the stored skip key; `--full`, or a set `CI` variable, always renders. `--codegen` is the only gate the port ships, so a bare `verify` runs it. `--db`, `--templates` and `--deps` exit 2 with the reason and where that check lives. |
+| `cargo meta verify [--codegen] [--full]` | The codegen drift gate: renders in memory, compares with disk, writes nothing, and exits 1 on drift, naming each file. Locally it may answer from the stored skip key; `--full`, or a set `CI` variable, always renders. A bare `verify` also runs the business-rules gate ([ADR-0066](../../spec/decisions/ADR-0066-business-rules-operations-and-lifecycles.md)) on the loaded model, and prints nothing about it when the model declares no operation and no transition; an error-severity finding (a `rules.permissions.names` of `require`, or `verify.lifecycle.unreachable` of `error`) exits 1. `--db`, `--templates` and `--deps` exit 2 with the reason and where that check lives. |
 | `cargo meta eject <generator>...` | Copies a shipped generator into the project to own. `--undo` takes back copies still identical to the shipped source; `--list` shows what can be ejected and how each owned copy compares. See [Owning a generator](#owning-a-generator). |
 
 `gen` and `verify` share `--project <dir>`, `--out <dir>` (default `generated`), `--generators <a,b>`,
@@ -275,6 +275,7 @@ outright.
 | `source-resolution-conformance` | all 28 cases |
 | `naming-conformance` | all of it |
 | `codegen-skip-conformance` | every case the port can meet, on both columns (what `gen` must do and what a local `verify --codegen` may do), including an edited owned generator and a forced CI verify ([ADR-0064](../../spec/decisions/ADR-0064-skip-codegen-when-nothing-changed.md)). The three it cannot meet (two about templates, one about the three-way merge) are named with their reason in the runner. |
+| `rules-check-conformance` | all 16 cases: the diagnostics (severity, code, node address, message text) and the summary of the `verify` business-rules gate, under each case's `rules` and `verify` settings |
 | `validation-conformance` | every case, through the generated `validate()`: each payload is read into the generated create body by a probe the real compiler builds |
 | `decimal-wire`, `duration-wire` | every vector, against the code the support crate carries |
 | `writer-conformance` | every `core` case of the code writer ([ADR-0063](../../spec/decisions/ADR-0063-generators-own-layout.md)) |
@@ -313,10 +314,8 @@ regeneration, peak memory), so a port's speed can be tracked per feature next to
 
 - **Other generators.** There is no server-side route, ORM or repository generator, no template
   generator and no documentation generator. Projections and reports get no client yet.
-- **Other gates.** `verify --codegen` is the only one. There is no template gate, no requirement gate
-  and no `fmt`. That includes the business-rules checks `verify` runs in the other ports (an unreachable state, a
-  permission name left to derive): the loader refuses a broken operation or lifecycle, and the port reads
-  and validates the `rules` and `verify.lifecycle` settings, but nothing reports on them.
+- **Other gates.** `verify --codegen` and the business-rules gate are the ones it has. There is no
+  template gate, no requirement gate and no `fmt`.
 - **A three-way merge.** A hand-edited generated file is refused by name, as in every port but
   TypeScript; change the model or own the generator instead.
 - **The service tier.** No `ObjectManager`, no persistence drivers and no web adapters.

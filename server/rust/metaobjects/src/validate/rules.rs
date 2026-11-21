@@ -58,7 +58,7 @@ use crate::loader::split_child_tail;
 use crate::node::{NodeId, PACKAGE_SEP, Tree};
 use crate::parser::{TYPE_FIELD, TYPE_OBJECT};
 use crate::validate::field_expr::{condition_message, fields_by_name};
-use crate::validate::{Ctx, Findings};
+use crate::validate::{Ctx, Env, Findings};
 
 pub const ERR_TRANSITION_UNKNOWN_STATE: &str = "ERR_TRANSITION_UNKNOWN_STATE";
 pub const ERR_TRANSITION_NOT_ON_ENTITY: &str = "ERR_TRANSITION_NOT_ON_ENTITY";
@@ -246,7 +246,7 @@ fn label(tree: &Tree, node: NodeId) -> String {
 }
 
 /// A string-array attr read resolving; a bare string is one element.
-fn string_list<'a>(tree: &'a Tree, node: NodeId, attr: &str) -> Vec<&'a str> {
+pub(crate) fn string_list<'a>(tree: &'a Tree, node: NodeId, attr: &str) -> Vec<&'a str> {
     match tree.attr(node, attr) {
         Some(Value::Array(a)) => a.iter().filter_map(Value::as_str).collect(),
         Some(Value::String(s)) => vec![s.as_str()],
@@ -254,20 +254,20 @@ fn string_list<'a>(tree: &'a Tree, node: NodeId, attr: &str) -> Vec<&'a str> {
     }
 }
 
-fn str_attr<'a>(tree: &'a Tree, node: NodeId, attr: &str) -> Option<&'a str> {
+pub(crate) fn str_attr<'a>(tree: &'a Tree, node: NodeId, attr: &str) -> Option<&'a str> {
     tree.attr(node, attr).and_then(Value::as_str)
 }
 
-fn is_true(tree: &Tree, node: NodeId, attr: &str) -> bool {
+pub(crate) fn is_true(tree: &Tree, node: NodeId, attr: &str) -> bool {
     tree.attr(node, attr) == Some(&Value::Bool(true))
 }
 
-fn is_a(tree: &Tree, node: NodeId, type_name: &str, sub_type: &str) -> bool {
+pub(crate) fn is_a(tree: &Tree, node: NodeId, type_name: &str, sub_type: &str) -> bool {
     let n = tree.node(node);
     n.type_name == type_name && n.sub_type == sub_type
 }
 
-fn is_entity(tree: &Tree, node: NodeId) -> bool {
+pub(crate) fn is_entity(tree: &Tree, node: NodeId) -> bool {
     is_a(tree, node, TYPE_OBJECT, SUB_ENTITY)
 }
 
@@ -292,7 +292,7 @@ impl Sink<'_> {
 // ---- lifecycle and target derivation ------------------------------------------------
 
 /// The `transition.action` children of a field, resolving.
-fn transitions_of(tree: &Tree, field: NodeId) -> Vec<NodeId> {
+pub(crate) fn transitions_of(tree: &Tree, field: NodeId) -> Vec<NodeId> {
     tree.children(field)
         .iter()
         .copied()
@@ -301,7 +301,7 @@ fn transitions_of(tree: &Tree, field: NodeId) -> Vec<NodeId> {
 }
 
 /// An entity and every entity it extends, nearest first.
-fn entity_lineage(tree: &Tree, entity: NodeId) -> Vec<NodeId> {
+pub(crate) fn entity_lineage(tree: &Tree, entity: NodeId) -> Vec<NodeId> {
     let mut out = Vec::new();
     let mut cur = Some(entity);
     while let Some(e) = cur.filter(|e| !out.contains(e)) {
@@ -314,7 +314,11 @@ fn entity_lineage(tree: &Tree, entity: NodeId) -> Vec<NodeId> {
 /// The transitions a field gives the entity whose lineage this is: those declared on a
 /// field of the entity itself or of an entity it extends. A transition reached only
 /// through the field's own `extends` of another entity's field is not one.
-fn lifecycle_transitions_of(tree: &Tree, lineage: &[NodeId], field: NodeId) -> Vec<NodeId> {
+pub(crate) fn lifecycle_transitions_of(
+    tree: &Tree,
+    lineage: &[NodeId],
+    field: NodeId,
+) -> Vec<NodeId> {
     transitions_of(tree, field)
         .into_iter()
         .filter(|&t| {
@@ -328,7 +332,7 @@ fn lifecycle_transitions_of(tree: &Tree, lineage: &[NodeId], field: NodeId) -> V
 
 /// Every transition of an object, across all its lifecycles (its enum fields with at
 /// least one transition), in effective field order. Only an `object.entity` has any.
-fn entity_transitions(tree: &Tree, obj: NodeId) -> Vec<NodeId> {
+pub(crate) fn entity_transitions(tree: &Tree, obj: NodeId) -> Vec<NodeId> {
     if !is_entity(tree, obj) {
         return Vec::new();
     }
@@ -342,7 +346,7 @@ fn entity_transitions(tree: &Tree, obj: NodeId) -> Vec<NodeId> {
 }
 
 /// The primary key field names of an entity: its effective `identity.primary` `@fields`.
-fn primary_key_fields(tree: &Tree, entity: NodeId) -> Vec<&str> {
+pub(crate) fn primary_key_fields(tree: &Tree, entity: NodeId) -> Vec<&str> {
     tree.children(entity)
         .iter()
         .copied()
@@ -357,7 +361,7 @@ fn referrer_package_of(tree: &Tree, node: NodeId) -> String {
 }
 
 /// Resolve an object reference written on `node` (owner part only).
-fn resolve_object_on(ctx: &Ctx<'_>, node: NodeId, reference: &str) -> Option<NodeId> {
+pub(crate) fn resolve_object_on(ctx: &Env<'_>, node: NodeId, reference: &str) -> Option<NodeId> {
     ctx.objects.resolve(
         split_child_tail(reference).0,
         &referrer_package_of(ctx.tree, node),
@@ -367,7 +371,7 @@ fn resolve_object_on(ctx: &Ctx<'_>, node: NodeId, reference: &str) -> Option<Nod
 /// The object a member's `extends` names, and the member it names there. `id extends
 /// PurchaseRequest.id` names `PurchaseRequest` even when that entity inherits `id` from
 /// an abstract base, which is where the resolved super node physically lives.
-fn extended_member<'a>(ctx: &Ctx<'a>, member: NodeId) -> Option<(NodeId, &'a str)> {
+fn extended_member<'a>(ctx: &Env<'a>, member: NodeId) -> Option<(NodeId, &'a str)> {
     let tree = ctx.tree;
     let node = tree.node(member);
     let reference = node.super_ref.as_deref()?;
@@ -391,7 +395,7 @@ fn extended_member<'a>(ctx: &Ctx<'a>, member: NodeId) -> Option<(NodeId, &'a str
 /// field of the entity is extended by exactly one field of the value. A value that
 /// borrows part of a composite key, or one key field twice (`fromId` and `toId`), names
 /// no single row of that entity, so it borrows nothing from it.
-fn borrowed_key_entities(ctx: &Ctx<'_>, value: NodeId) -> Vec<NodeId> {
+pub(crate) fn borrowed_key_entities(ctx: &Env<'_>, value: NodeId) -> Vec<NodeId> {
     let tree = ctx.tree;
     let mut counts: Vec<(NodeId, HashMap<&str, usize>)> = Vec::new();
     for &f in tree.children(value).iter() {
@@ -428,7 +432,7 @@ fn borrowed_key_entities(ctx: &Ctx<'_>, value: NodeId) -> Vec<NodeId> {
 
 /// The base entity of a projection: the entity its extended identity names, else the one
 /// entity its extended fields name. `None` when there is none or more than one.
-fn projection_base_entity(ctx: &Ctx<'_>, projection: NodeId) -> Option<NodeId> {
+pub(crate) fn projection_base_entity(ctx: &Env<'_>, projection: NodeId) -> Option<NodeId> {
     let tree = ctx.tree;
     let kids = tree.children(projection);
     let entity_named_by = |member: NodeId| {
@@ -460,7 +464,7 @@ fn projection_base_entity(ctx: &Ctx<'_>, projection: NodeId) -> Option<NodeId> {
 
 /// How an operation's target was derived.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Via {
+pub(crate) enum Via {
     /// The input borrows the target's key.
     Input,
     Output,
@@ -473,7 +477,7 @@ enum Via {
 ///
 /// Whole keys of two entities, part of a key, or one key field borrowed twice derive
 /// nothing from the input.
-fn derive_operation_target(ctx: &Ctx<'_>, op: NodeId) -> Option<(NodeId, Via)> {
+pub(crate) fn derive_operation_target(ctx: &Env<'_>, op: NodeId) -> Option<(NodeId, Via)> {
     let tree = ctx.tree;
     if let Some(input) = str_attr(tree, op, A_INPUT_REF)
         .and_then(|r| resolve_object_on(ctx, op, r))
@@ -495,7 +499,11 @@ fn derive_operation_target(ctx: &Ctx<'_>, op: NodeId) -> Option<(NodeId, Via)> {
 /// Whether the operation addresses one row of its target by key: its input borrows the
 /// target's key, or it is a query with no input and no `@many` whose target comes from
 /// its output (a get by key).
-fn operation_is_keyed(ctx: &Ctx<'_>, op: NodeId, derived: Option<(NodeId, Via)>) -> bool {
+pub(crate) fn operation_is_keyed(
+    ctx: &Env<'_>,
+    op: NodeId,
+    derived: Option<(NodeId, Via)>,
+) -> bool {
     let tree = ctx.tree;
     match derived {
         None => false,
@@ -857,7 +865,7 @@ fn check_operation(ctx: &Ctx<'_>, op: NodeId, sink: &mut Sink<'_>) {
         Some(t) => format!("is an object.{}", tree.node(t).sub_type),
     };
     if let Some(input_ref) = str_attr(tree, op, A_INPUT_REF) {
-        let input = resolve_object_on(ctx, op, input_ref);
+        let input = resolve_object_on(&ctx.env(), op, input_ref);
         if input.is_none_or(|i| tree.node(i).sub_type != SUB_VALUE) {
             sink.add(
                 op,
@@ -871,7 +879,7 @@ fn check_operation(ctx: &Ctx<'_>, op: NodeId, sink: &mut Sink<'_>) {
         }
     }
     if let Some(output_ref) = str_attr(tree, op, A_OUTPUT_REF) {
-        let output = resolve_object_on(ctx, op, output_ref);
+        let output = resolve_object_on(&ctx.env(), op, output_ref);
         let legal = output.is_some_and(|o| {
             [SUB_ENTITY, SUB_PROJECTION, SUB_VALUE].contains(&tree.node(o).sub_type.as_str())
         });
@@ -889,10 +897,10 @@ fn check_operation(ctx: &Ctx<'_>, op: NodeId, sink: &mut Sink<'_>) {
     }
 
     // O2, O3 — the target.
-    let derived = derive_operation_target(ctx, op);
+    let derived = derive_operation_target(&ctx.env(), op);
     let mut target = derived.map(|(entity, _)| entity);
     if let Some(object_ref) = str_attr(tree, op, A_OBJECT_REF) {
-        let declared = resolve_object_on(ctx, op, object_ref);
+        let declared = resolve_object_on(&ctx.env(), op, object_ref);
         let Some(declared) = declared.filter(|&d| tree.node(d).sub_type == SUB_ENTITY) else {
             sink.add(
                 op,
@@ -966,7 +974,7 @@ fn check_operation(ctx: &Ctx<'_>, op: NodeId, sink: &mut Sink<'_>) {
     for (binding, path) in declared_paths(tree, op) {
         let found = placeholders(path);
         let expected = match target {
-            Some(t) if operation_is_keyed(ctx, op, derived) => primary_key_fields(tree, t),
+            Some(t) if operation_is_keyed(&ctx.env(), op, derived) => primary_key_fields(tree, t),
             _ => Vec::new(),
         };
         if sorted(&found) == sorted(&expected) {
@@ -1022,7 +1030,7 @@ fn ref_identity<'a>(ctx: &Ctx<'a>, op: NodeId, attr: &str) -> RefIdentity<'a> {
         None => RefIdentity::Absent,
         Some(v) => v
             .as_str()
-            .and_then(|r| resolve_object_on(ctx, op, r))
+            .and_then(|r| resolve_object_on(&ctx.env(), op, r))
             .map_or(RefIdentity::Raw(v), RefIdentity::Node),
     }
 }

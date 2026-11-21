@@ -74,6 +74,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 today: `registry-conformance` (byte-identical manifest); the metamodel corpus, all 578
 green, with every validation pass the TypeScript loader runs, in the same order, so
 `server/rust/metaobjects/tests/conformance-expected-failures.json` is empty;
+`rules-check-conformance` (all 16 cases, the `verify` business-rules gate);
 `yaml-conformance`, 18 of 19 (the one on `yaml-conformance-expected-failures.json`,
 `yaml-ref-root-escape`, waits for the ADR-0059 root-level `::` reference rules, which are
 reference resolution, not a validation pass); `source-resolution-conformance` (all 28
@@ -786,7 +787,8 @@ transition. The expectations are written from the TypeScript reference
 `server/typescript/packages/cli/test/rules-check-conformance.test.ts`,
 `server/csharp/MetaObjects.Conformance.Tests/RulesCheckConformanceTests.cs`,
 `server/java/metadata/src/test/java/com/metaobjects/conformance/RulesCheckConformanceTest.java`
-and `server/python/tests/conformance/test_rules_check_conformance.py`. Kotlin inherits the Java
+and `server/python/tests/conformance/test_rules_check_conformance.py` and
+`server/rust/metaobjects/tests/rules_check_conformance.rs`. Kotlin inherits the Java
 gate through the shared Maven goal.
 
 ### `fixtures/cube-model/` (46 cases)

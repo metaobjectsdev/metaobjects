@@ -18,6 +18,7 @@ pub mod node;
 pub mod parser;
 pub mod providers;
 pub mod registry;
+pub mod rules_check;
 pub mod serializer;
 pub mod source;
 pub mod sources;

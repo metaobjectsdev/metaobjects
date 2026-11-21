@@ -124,8 +124,9 @@ string_enum!(
 
 /// The business-rules settings (ADR-0066), from the `rules` and `verify` blocks, each
 /// absent key at its default. Every port reads the same keys with the same defaults.
-/// This port validates and keeps them; nothing here reads them yet, because the checks
-/// they tune live in `verify`, which the Rust port does not have.
+/// The rules gate of `cargo meta verify` (`crate::rules_check`) reads them. `create` is the
+/// one nothing here reads: it tunes what a generated create accepts, and no generator
+/// emits one yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RulesSettings {
     pub permission_names: RulesPermissionNames,
