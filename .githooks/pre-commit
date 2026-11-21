@@ -23,7 +23,6 @@ ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
 # shellcheck source=leak-patterns.sh
 . "$ROOT/.githooks/leak-patterns.sh"
 PATTERNS="$LEAK_PATTERNS"
-ALLOW="$LEAK_ALLOW"
 
 # Merge in private-name patterns from a denylist. Source priority:
 #   1) git config hooks.denyListPath  -> point at your private denylist file (kept in a private repo)
@@ -40,7 +39,7 @@ fi
 hits=$(git diff --cached --diff-filter="$LEAK_DIFF_FILTER" -U0 --no-color 2>/dev/null | awk '
   /^\+\+\+ /              { f=$2; sub(/^b\//,"",f); next }
   /^\+/ && !/^\+\+\+/     { if (f !~ /^\.githooks\//) print f "\t" substr($0,2) }
-' | grep -Ei "$PATTERNS" | grep -vEi "$ALLOW")
+' | grep -Ei "$PATTERNS" || true)
 
 # The author/committer identity git would record must not match the denylist either.
 if [ -x "$ROOT/.githooks/identity-scan.sh" ]; then

@@ -220,7 +220,7 @@ describe("identity scan (author and committer vs the private denylist)", () => {
     });
   });
 
-  test("the maintainer's allowed address is not treated as a match", () => {
+  test("no address is exempt: an identity the denylist names is refused", () => {
     const dir = identityFixture();
     writeFileSync(join(tmp, "deny.txt"), "dougmealing\n");
     const r = run(dir, ["staged"], {
@@ -228,6 +228,6 @@ describe("identity scan (author and committer vs the private denylist)", () => {
       GIT_AUTHOR_EMAIL: "doug@dougmealing.com",
       ...good,
     });
-    expect(r.status).toBe(0);
+    expect(r.status).toBe(1);
   });
 });

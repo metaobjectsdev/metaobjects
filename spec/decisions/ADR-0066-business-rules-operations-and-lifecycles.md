@@ -85,9 +85,13 @@ Attributes on operations:
 
 - every operation;
 - every transition that derives a command;
-- in a layered service, every derived CRUD verb, when a setting turns that on.
+- in a generated service, every derived CRUD verb, when an option of the service generator turns
+  that on. Its name is `<package>.<Entity>.<verb>`, and a transition that shares a verb's name on
+  an entity is refused when the model loads. (Designed here; it lands with the service generator,
+  and nothing in 1.3.0 reads it.)
 
-The enforcing shell calls the project's policy with the point's permission name, the actor,
+The enforcing shell calls the project's policy with the point's permission name, the actor (a type
+the app defines, ADR-0067 §7),
 the loaded row and the input, before anything is written. A type would only restate the
 operation. The model adds two facts, the name and `@public`. Who holds a permission is data,
 and what the policy decides is code. *The model names where a decision is needed, never what
@@ -271,7 +275,9 @@ will be the first to act on it, and the documentation says so until they do.
 
 ### 6. What the enforcing shell will guarantee, for every transition
 
-The shells are later work. This is what they are held to:
+The shells are later work: service generators that an app adds (ADR-0067). A project that declares
+a lifecycle and wires no service generator will be told so by `verify`, as an advisory, once that check lands; today's flat
+routes enforce nothing. This is what the shells are held to:
 
 1. Load the row: 404 when it is absent.
 2. Call the permission point: 403 `forbidden` when the policy refuses.
@@ -289,7 +295,7 @@ The shells are later work. This is what they are held to:
 **The guarded update is part of the store-neutral storage contract** (§8). Every store
 driver, including one an adopter writes, will be held to it by a persistence-conformance scenario.
 That scenario does not exist yet: no file under `fixtures/persistence-conformance/` pins the
-guarded update, so until it lands the contract is stated here and implemented, not yet gated.
+guarded update, so until it lands the contract is stated here, not yet implemented or gated.
 
 ### 7. Events and invariants in 1.3.0
 

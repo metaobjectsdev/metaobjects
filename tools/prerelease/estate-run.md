@@ -47,7 +47,17 @@ are in the `case` block of `estate-run.sh`; `--install-cmd`, `--gen-cmd`, `--ver
 
 ## What each candidate adds
 
-**rc.1, "as built".** Every diff must be explained by an item in the CHANGELOG upgrade list
+Nothing is published to a public registry at any candidate. Each candidate carries:
+
+| Candidate | What it carries |
+|---|---|
+| rc.1, "as built" | Main as it stands, a truthful upgrade list, the small fixes and the wording fixes that ship into adopters' repos |
+| rc.2, new output, TypeScript and Python | Formatters out of generation; every TypeScript and Python generator on the writer; page size 50 everywhere; libSQL and the first prunes out of the default install; the REST-standard scenarios; reporting and requirements in packs; the `meta schema` command |
+| rc.3, new output, C#, Java and Kotlin; TypeScript service code | The JVM and .NET ports converted; Rust's layout check; the TypeScript service generators; the Python `ObjectManager` split; the REST standard in Python |
+| rc.4, service code in five ports | Service generators in C#, Java, Kotlin and Python; the REST standard in C#, Java and Kotlin; the docs generators in four ports; Rust's names, contract types and data access |
+| rc.5, close-out | Rust's service code, transport and docs generators; one round of vocabulary changes from the estate reports; the authoring-surface snapshots; anything that slipped |
+
+**rc.1.** Every diff must be explained by an item in the CHANGELOG upgrade list
 ("Upgrading from 1.2.0"). A diff that is not there is a CHANGELOG defect or a bug, and it is
 fixed before rc.2. Watch for:
 
@@ -57,29 +67,45 @@ fixed before rc.2. Watch for:
 - `RESTART WITH` in the first C# EF migration;
 - classes missing on JVM estates whose pom carries `<filters>`;
 - owned generator copies that no longer load;
-- a template that now raises on a misspelt variable.
+- a template that now raises on a misspelt variable;
+- the model must load identically with the rules and view-expression vocabulary in packs.
 
-**rc.2, new output, TypeScript and Python estates.**
+**rc.2.**
 
-- Expect every generated file to change once, in layout only. Check it by formatting the old and
-  the new tree with the estate's own formatter and comparing: what remains must be empty or listed.
-- Count hand-edited generated files. On TypeScript the three-way merge conflicts more than usual,
-  because the base layout changed under every edit. Move edits into hooks or owned generators
-  first where that is possible, and report the count.
-- Owned generator copies from 1.2 must still load and generate.
-- Commit the new hash manifest (`.metaobjects/.gen-state/.hashes/`). The end-of-run restore wipes it,
-  so run with `--keep-linked`, commit the manifest in the estate, then `prerelease-link.sh unlink`.
-- C#, Java and Kotlin estates run the base run only and must see **no** diff against rc.1.
+- **TypeScript and C# estates: find every list call that passes no limit.** It returned every row
+  and now returns 50. Check grids, exports, background jobs and tests. Each one pages, passes a
+  limit, or the project sets `api.pagination`. This is the change most likely to produce a wrong
+  screen without an error.
+- TypeScript and Python estates: expect every generated file to change once, in layout only. Check
+  it by formatting the old and the new tree with the estate's own formatter and comparing: what
+  remains must be empty or listed.
+- TypeScript estates: count hand-edited generated files. The three-way merge conflicts more than
+  usual, because the base layout changed under every edit. Move edits into hooks or owned
+  generators first where that is possible, and report the count.
+- TypeScript estates: owned generator copies from 1.2 must still load and generate. An estate that
+  migrates SQLite through the CLI adds the libSQL driver. An estate that generates trace helpers
+  regenerates and drops the `@metaobjectsdev/ai-runtime` dependency. An estate that uses the Cube
+  export adds the Cube package (when that change lands).
+- Commit the new hash manifest (`.metaobjects/.gen-state/.hashes/`). The end-of-run restore wipes
+  it, so run with `--keep-linked`, commit the manifest in the estate, then
+  `prerelease-link.sh unlink`.
+- C#, Java and Kotlin estates otherwise run the base run only and must see no other diff against rc.1.
+- The model must load identically with reporting and requirements in packs.
 
-**rc.3, new output, C#, Java and Kotlin; TypeScript service code.**
+**rc.3.**
 
 - C#, Java and Kotlin estates: the same one-time layout diff. There was no formatter before, so the
   check is compile plus tests plus the API comparison.
-- TypeScript and Python estates: the base run only, no diff against rc.2.
-- One or two TypeScript estates pilot the service code on one package (the rc.4 steps below),
-  before four ports copy the design.
+- Python estates: `ObjectManager(root, driver)` no longer constructs. Use `ObjectManagerDb`. A
+  hand-written `Repository` takes a predicate tree instead of a flat list.
+- JVM estates: a misspelt generator `<arg>` now fails the build instead of being ignored. A pom
+  that lists the `mustache` generator moves to the `template` generator.
+- C# estates: an unknown top-level config key now fails.
+- TypeScript and Python estates: the base run only, no other diff against rc.2.
+- **One or two TypeScript estates pilot the service code on one package** (the rc.4 steps below).
+  Four ports are about to copy this design, and an estate will find what the shared tests cannot.
 
-**rc.4, service code everywhere.** On every estate:
+**rc.4.** On every estate:
 
 1. Pick one package that has a real status field. Declare its lifecycle (states and transitions),
    one real operation, and its permission points.
@@ -89,8 +115,26 @@ fixed before rc.2. Watch for:
    Supply the actor resolver.
 4. Call the service from one caller that is not HTTP (a job or a test) and confirm it gets the
    same refusals.
-5. Report what the vocabulary could not express. The vocabulary is experimental, and this is the
+5. Set each of the four `rules.*` keys away from its default once and confirm the generated code
+   or `verify` changes as documented.
+6. Report what the vocabulary could not express. The vocabulary is experimental, and this is the
    last point where it can change cheaply.
+
+Also at rc.4:
+
+- Java estates: a hand-written repository implementation takes a predicate tree.
+- C#, Java and Kotlin estates: clients may now send `search` and or/and filters; check client
+  error handling against the named error bodies (`invalid_json`, `invalid_id`).
+- Non-TypeScript estates: regenerate the agent files with the port's own command, with no Node
+  installed on the path, and add the requirements page generator.
+- One non-TypeScript estate that already uses its own migration tool follows that port's native
+  recipe and confirms `meta verify --db` passes.
+
+**rc.5.** The base run, plus rc.4 steps 1 to 4 again on whatever the vocabulary round changed.
+
+**Rust.** There is no Rust estate. The stand-in is an example app in this repository that follows
+the rc.4 steps, built against the candidate commit as a git dependency
+(`docs/features/prerelease.md`, "Rust"). A Rust project the maintainer prefers replaces it.
 
 ## The report
 

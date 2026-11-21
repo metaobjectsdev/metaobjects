@@ -14,9 +14,11 @@ The Rust preview port loads the vocabulary and runs the same loader rules; its `
 codegen drift gate only, so the checks under "What `verify` reports" do not run there
 ([Rust port](../ports/rust.md)).
 A requirement can claim an operation or a transition. Nothing is generated from the vocabulary
-yet: the service shells that enforce these rules at run time are later work (ADR-0067). Until
-they land, a model with this vocabulary generates byte-identical code to the same model
-without it. The design is [ADR-0066](../../spec/decisions/ADR-0066-business-rules-operations-and-lifecycles.md).
+yet: the service shells that enforce these rules at run time are later work (ADR-0067): service
+generators an app adds to its generator list, as it adds any generator. A lifecycle in a project
+that wires none will be advised by `verify` once that check lands; today the flat routes enforce
+nothing and `verify` says nothing about it. Until the shells land, a model with this vocabulary
+generates byte-identical code to the same model without it. The design is [ADR-0066](../../spec/decisions/ADR-0066-business-rules-operations-and-lifecycles.md).
 
 **Experimental.** This vocabulary, its loader rules, its `verify` checks and its settings may
 change in a MINOR, including removals and renames, until generated services run on it in an

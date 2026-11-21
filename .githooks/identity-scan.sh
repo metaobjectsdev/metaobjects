@@ -23,9 +23,9 @@ DENY_FILE="$(git config --get hooks.denyListPath 2>/dev/null || true)"
 PATTERNS=$(grep -vE '^[[:space:]]*(#|$)' "$DENY_FILE" | paste -sd'|' -)
 [ -n "$PATTERNS" ] || exit 0
 
-# 0 when the identity text matches the denylist after the maintainer's allowed address is removed.
+# 0 when the identity text matches the denylist.
 matches() {
-  printf '%s\n' "$1" | tr '[:upper:]' '[:lower:]' | sed -E "s/$LEAK_ALLOW//g" | grep -qEi "$PATTERNS"
+  printf '%s\n' "$1" | tr '[:upper:]' '[:lower:]' | grep -qEi "$PATTERNS"
 }
 
 mode="${1:-}"
