@@ -127,9 +127,8 @@ vocabulary is [ADR-0037](../../spec/decisions/ADR-0037-metamodel-vocabulary-expa
 `origin.aggregate` and `origin.first`, provider `metaobjects-reporting`) and requirements
 (`requirement.*`, provider `metaobjects-requirements`) are packs: each is its own provider, in
 the default bundle of every port, and an embedder can leave it out. A model that uses a left-out
-pack's types gets a loader error naming the unknown type, subtype or attribute. The `verify`
-requirements gate reads the requirement nodes the pack registered, so with that pack left out it
-has nothing to report. `object.report` shows the one thing a pack subtype may borrow from core:
+pack's types gets a loader error naming the unknown type, subtype or attribute. With the
+requirements pack left out, a model with no `requirement.*` node gets an empty `verify` ledger. `object.report` shows the one thing a pack subtype may borrow from core:
 declared with `extendsBase`, it folds in `object.base`, which core registers, and those folded
 attributes stay owned by core. New vocabulary follows the same path: a gate
 (`scripts/check-core-vocabulary-pin.ts`) pins the core provider's types and attributes, so adding
