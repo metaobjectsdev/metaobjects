@@ -1,10 +1,6 @@
 {
   "unconverted": {
-    "MetaObjects.Codegen/Generators/ExpressionIndexesGenerator.cs": "The expression-indexes generator still builds its text with StringBuilder.AppendLine; converts to CsWriter in a later C# lane conversion PR (ADR-0063, spec/code-writer.md), and this entry goes when it does",
     "MetaObjects.Codegen/Generators/RenderHelperGenerator.cs": "The render-helper generator still builds its text with StringBuilder.AppendLine; converts to CsWriter in a later C# lane conversion PR (ADR-0063, spec/code-writer.md), and this entry goes when it does",
-    "MetaObjects.Codegen/Generators/ReportExportGenerator.cs": "The report-export generator still builds its text with StringBuilder.AppendLine; converts to CsWriter in a later C# lane conversion PR (ADR-0063, spec/code-writer.md), and this entry goes when it does",
-    "MetaObjects.Codegen/Generators/RequirementTestsGenerator.cs": "The requirement-tests generator still builds its text with StringBuilder.AppendLine; converts to CsWriter in a later C# lane conversion PR (ADR-0063, spec/code-writer.md), and this entry goes when it does",
-    "MetaObjects.Codegen/Generators/ReverseFinders.cs": "The reverse-finder emitter still builds its text with StringBuilder.AppendLine; converts to CsWriter in a later C# lane conversion PR (ADR-0063, spec/code-writer.md), and this entry goes when it does",
     "MetaObjects.Codegen/Generators/RoutesGenerator.cs": "The routes generator still builds its text with StringBuilder.AppendLine; converts to CsWriter in a later C# lane conversion PR (ADR-0063, spec/code-writer.md), and this entry goes when it does"
   },
   "exempt": {

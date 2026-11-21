@@ -170,7 +170,8 @@ public class ReportExportGeneratorTests
         new ReportExportGenerator().Generate(Ctx(Load(model))).Single(f => f.Path == "ReportExportWriter.g.cs").Content;
 
     // field.duration: the writer of a model with no duration column is the writer from before
-    // durations existed, byte for byte (the hash of that writer for this model, pinned).
+    // durations existed, byte for byte (the hash of that writer for this model, pinned) bar the one
+    // newline the code writer ends every file with, which the hash leaves out.
     [Fact]
     public void The_writer_of_a_model_without_a_duration_column_is_unchanged()
     {
@@ -178,7 +179,7 @@ public class ReportExportGeneratorTests
         Assert.DoesNotContain("TimeSpan ts", writer);
         Assert.DoesNotContain("duration", writer, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("@DURATION", writer);
-        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(writer.Replace("\r\n", "\n"))));
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(writer.Replace("\r\n", "\n").TrimEnd('\n'))));
         Assert.Equal("78913C645BB9D25C334F2285C210D0192510618A63C564AA7833C8AEA4A0B5AF", hash);
     }
 
