@@ -163,7 +163,8 @@ here.**
   the same name and at least one of the two names is derived, the loader reports
   `ERR_TRANSITION_NAME_COLLISION` on the later one. Two equal declared names stay legal: that is a
   shared permission. New fixtures `error-rules-permission-name-op-{dotted,declared}` and
-  `rules-permission-name-package-separator-distinct`.
+  `rules-permission-name-package-separator-distinct`. Java now accepts dotted operation names
+  (`Order.open`), as TypeScript, C# and Python already did.
 - **Python: unions and one-row-per-list-item views are checked at load.** The two must-fail
   projection fixtures (a `@union` whose branches do not line up, and a `@grain` view that breaks
   its rules) now fail in Python as they do in the other ports, and leave the Python

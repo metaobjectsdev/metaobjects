@@ -48,6 +48,9 @@ mean what they appear to mean: a measure of one table in a report over another, 
 
 ## What is registered
 
+They are registered by the `metaobjects-reporting` provider pack, which the default bundle
+composes; an embedder can leave it out ([extending-with-providers.md](extending-with-providers.md)).
+
 Exactly these names, and nothing else:
 
 | Node | Lives on | Attributes |

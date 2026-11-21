@@ -481,8 +481,11 @@ semantics — dotted-path lookup, parent-context fallthrough, falsy/empty-array 
 inverted sections, nested partials, a comment tag beside a partial, standalone-tag whitespace
 stripping (including two standalone tags in a row, a standalone tag at the end of the file and an
 indented standalone tag, which shared docs templates rely on), raw-HTML bypass, trailing-newline preservation, unicode multibyte handling, the derived
-`has` accessor, and the `-last` list-separator accessor; 2 refuse a variable missing from the
-payload, a plain name and a dotted path (`ERR_VAR_NOT_ON_PAYLOAD`, pinned by `expected-error.txt`).
+`has` accessor, and the `-last` list-separator accessor. 2 are error cases: a fixture
+that must refuse carries `expected-error.txt` in place of `expected.txt`, holding the error text
+the render must raise (`render verify failed: ERR_VAR_NOT_ON_PAYLOAD (<name>)`). Every port that runs
+this corpus reads that convention; TypeScript compares the text exactly, and Python, C# and Rust
+require it to appear in the raised message.
 
 ### `fixtures/jinja-render-conformance/` (16) and `fixtures/jinja-verify-conformance/` (31)
 
@@ -490,8 +493,8 @@ Both → [features/templates-and-payloads.md](features/templates-and-payloads.md
 templates section, [ADR-0061](../spec/decisions/ADR-0061-per-port-template-engines.md)). Run by
 Python (jinja2) and TypeScript (nunjucks) only; Java, Kotlin and C# refuse a Jinja body with
 `ERR_TEMPLATE_ENGINE_UNSUPPORTED` instead. The render corpus holds 13 output cases and 3 error
-cases (an include cycle, an unresolved include and a variable missing from the payload), each
-with the same Mustache-path message.
+cases (an include cycle, an unresolved include and a missing variable), each with the same
+Mustache-path message.
 The verify corpus reuses `verify-conformance/`'s `payload.json` field-tree shape; an
 `ERR_TEMPLATE_SYNTAX` finding's path is the parser's own message, so runners compare it as
 empty.

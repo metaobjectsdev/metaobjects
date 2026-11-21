@@ -190,8 +190,9 @@ setting `rules.permissions.names` makes `verify` warn about derived names, or fa
 | B1 | `ERR_BINDING_PATH_MISMATCH` | A `binding.rest` `path` has the wrong placeholders. |
 | B2 | `ERR_BINDING_PATH_MISMATCH` | Two declared bindings of one API have the same method (declared or derived) and the same path, ignoring placeholder names. |
 
-Names are compared without case because each one becomes a command, a permission constant and a
-file, and those collide on a case-folding target.
+Names are compared without case (L5 and O0, L6, O6) because each one becomes a command, a permission
+constant and a file, and those collide on a case-folding target. P3 compares permission names
+exactly, as the policy receives them.
 
 Some refusals come from the registry:
 
