@@ -8,6 +8,7 @@ import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorRegistry;
 import com.metaobjects.generator.kotlin.GeneratorRegistryKt;
 import com.metaobjects.generator.util.GeneratedFileWriter;
+import com.metaobjects.generator.util.HashManifest;
 import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.uri.URIHelper;
@@ -137,6 +138,10 @@ public class GeneratorWritePathTest {
         return a;
     }
 
+    /** Generators keyed off model nodes the fitness corpus does not declare, so they write nothing over it. */
+    private static final List<String> NO_INPUT_IN_CORPUS =
+            List.of("java-trace-helper", "java-requirement-tests", "kotlin-stored-proc", "kotlin-requirement-tests");
+
     /** What each run wrote: the files left on disk, and the paths the writer was asked for. */
     private record Result(Map<Path, byte[]> disk, Set<Path> emitted) {}
 
@@ -177,6 +182,28 @@ public class GeneratorWritePathTest {
                 + "GeneratedFileWriter.write (or writeUnmarked for output that cannot carry the GENERATED marker), so "
                 + "the file is recorded in the hash manifest and unchanged bytes are never rewritten.",
                 List.of(), bypassed);
+
+        Map<String, String> recorded = HashManifest.load(genState);
+        List<Path> unrecorded = new ArrayList<>();
+        for (Path p : first.disk().keySet()) {
+            if (!recorded.containsKey(root.relativize(p).toString().replace('\\', '/'))) unrecorded.add(out.relativize(p));
+        }
+        assertEquals("These files are on disk but the hash manifest has no record of them: a generator that writes "
+                + "through writeIfChanged skips the manifest, so a hand edit to its output is never refused.",
+                List.of(), unrecorded);
+
+        List<String> silent = new ArrayList<>();
+        for (Entry e : entries) {
+            Path dir = out.resolve(e.name());
+            boolean wrote;
+            try (Stream<Path> s = Files.isDirectory(dir) ? Files.walk(dir) : Stream.<Path>empty()) {
+                wrote = s.anyMatch(Files::isRegularFile);
+            }
+            if (!wrote) silent.add(e.name());
+        }
+        assertEquals("The generators that write no file over the fitness corpus changed: a generator newly silent was "
+                + "given wrong args and the gate proves nothing about it; one that now writes belongs out of "
+                + "NO_INPUT_IN_CORPUS.", NO_INPUT_IN_CORPUS, silent);
 
         FileTime old = FileTime.fromMillis(1_000_000_000_000L);
         for (Path p : first.disk().keySet()) Files.setLastModifiedTime(p, old);
