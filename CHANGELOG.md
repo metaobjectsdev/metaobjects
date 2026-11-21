@@ -2008,6 +2008,20 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   only a view can hold (a cast, a function other than `coalesce`, a dotted path). Python-written
   models are unaffected unless they used these nodes, which never loaded.
 
+- **The Java and Kotlin loader accepts every view function and cast, not only `coalesce`.** Java
+  validated only `coalesce` inside a computed expression, so a model using `cast`, `lower`,
+  `concat`, `substring` and the rest of the function set, an `origin.function`, `@union` /
+  `@grain`, or a correlated filter that walks a reference was refused by the JVM ports while
+  TypeScript and C# loaded it. The Java loader now checks them the way TypeScript does (the
+  function arities and parameter kinds, the cast legality table, an int-stored enum cast, the
+  `dbColumnType` text spellings). The five conformance fixtures the Java ledger excused now
+  pass and its list is empty. No Java generator lowers these nodes to a view yet.
+- **Quoted number-like text keeps its quotes in the Java loader.** A quoted value such as
+  `"007"` or `"true"` on a string attribute (`column: "007"`) was read as the integer `7` or the
+  boolean, so the canonical output differed from every other port. Quoted text is text; only an
+  unquoted number or boolean is inferred. The `yaml-quoted-leading-zero` fixture passes in Java
+  and the YAML ledger is empty.
+
 - **A credential is never filterable or sortable, in every port.** A field that declares a
   `view.password` and that a model also marked `@filterable` or `@sortable` was on the generated
   filter and sort allowlists, so a client could learn its value by probing (`filter[pinHash][eq]=...`,

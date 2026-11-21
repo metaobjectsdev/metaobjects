@@ -1468,7 +1468,8 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             }
 
             // Delegate to the base parser — handles type inference + array desugar
-            super.parseInlineAttribute(md, attrName, stringValue);
+            super.parseInlineAttribute(md, attrName, stringValue,
+                rawValue.isJsonPrimitive() && rawValue.getAsJsonPrimitive().isString());
 
             // A bare string is ONE array element, commas included (TS
             // normalizeStringArrayAttr wraps "a,b" as ["a,b"]); the comma-delimited
