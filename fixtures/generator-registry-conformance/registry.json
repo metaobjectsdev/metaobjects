@@ -23,20 +23,6 @@
       "eject": "full",
       "ports": ["typescript", "csharp", "java", "kotlin", "python", "rust"]
     },
-    "rules-names": {
-      "concept": "Per-package rules names (ADR-0067 layer 0): lifecycle states and transitions, derived commands, declared operations, the permissions they ask about and the business errors commands declare. RUST ONLY for now; each other port adds itself with its rules-layer work.",
-      "tier": "native",
-      "layer": "model",
-      "eject": "full",
-      "ports": ["rust"]
-    },
-    "contract-types": {
-      "concept": "Per-package contract types (ADR-0067 layer 1): each declared operation's input, output, business errors and error body, the read shape of a projection it returns, and the wire error contract. On rust an entity's read, create and patch shapes are the entity generator's model crate, which carries no persistence mapping. RUST ONLY for now; each other port adds itself with its rules-layer work.",
-      "tier": "native",
-      "layer": "model",
-      "eject": "full",
-      "ports": ["rust"]
-    },
     "output-prompt": {
       "concept": "Per-template output-format prompt fragment generator.",
       "tier": "native",
@@ -119,18 +105,18 @@
       "ports": ["typescript", "csharp", "kotlin", "python", "java"]
     },
     "rules-names": {
-      "concept": "Business-rules name constants (ADR-0067 layer 0): each lifecycle's states, initial and terminal states and transitions, the permission each derived command and each operation asks for, and the error codes. A layer generator: it acts on the rules vocabulary, so the codegen-noop rules corpus does not hold it.",
+      "concept": "Business-rules name constants (ADR-0067 layer 0): each lifecycle's states, initial and terminal states and transitions, the permission each derived command and each operation asks for, and the error codes. A layer generator: it acts on the rules vocabulary, so the codegen-noop rules corpus does not hold it. On rust they are closed enums in a `<package>_rules` crate, which also names each derived command and declared operation.",
       "tier": "native",
       "layer": "model",
       "eject": "full",
-      "ports": ["typescript", "csharp"]
+      "ports": ["typescript", "csharp", "rust"]
     },
     "contract-types": {
-      "concept": "Contract types with no persistence mapping (ADR-0067 layer 1): each store-backed entity's read, create and update shapes, each projection's read shape, each declared operation's input, output and errors, and the wire error bodies. TypeScript writes the whole layer. C# so far writes each entity's create and update records, which leave out the server-owned members (generated key, @autoSet stamp, readOnly and derived fields, TPH discriminator) and tell an omitted member from an explicit null. The other ports add theirs with their rules-layer work.",
+      "concept": "Contract types with no persistence mapping (ADR-0067 layer 1): each store-backed entity's read, create and update shapes, each projection's read shape, each declared operation's input, output and errors, and the wire error bodies. TypeScript writes the whole layer. C# so far writes each entity's create and update records, which leave out the server-owned members (generated key, @autoSet stamp, readOnly and derived fields, TPH discriminator) and tell an omitted member from an explicit null. On rust an entity's read, create and patch shapes are the entity generator's model crate, which carries no persistence mapping, and this generator writes a `<package>_contract` crate per package with a declared operation: each operation's input, output, business errors and error body, the read shape of a returned projection that is not a served read, and the wire error contract. The other ports add theirs with their rules-layer work.",
       "tier": "native",
       "layer": "model",
       "eject": "full",
-      "ports": ["typescript", "csharp"]
+      "ports": ["typescript", "csharp", "rust"]
     },
     "service": {
       "concept": "The service layer (ADR-0067 layer 4): one module per metadata package, a function per operation, and a factory that binds them to the dependencies passed in. Each store-backed entity gets its derived list, get, create, update and delete; every write runs in one transaction (a savepoint inside a caller's) with the declared write rules (ADR-0045). TypeScript so far, behind its own transport (`service-routes`); the other ports add theirs with their rules-layer work.",

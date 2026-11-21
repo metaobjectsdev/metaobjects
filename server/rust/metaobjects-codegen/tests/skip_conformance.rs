@@ -37,9 +37,9 @@ enum Fit {
 
 fn fit(id: &str) -> Fit {
     match id {
-        "template-and-docs-rerun" => Fit::NotApplicable(
-            "the Rust port has no docs page generator yet",
-        ),
+        "template-and-docs-rerun" => {
+            Fit::NotApplicable("the Rust port has no docs page generator yet")
+        }
         "hand-edit-kept" => Fit::NotApplicable(
             "a hand edit is never kept: with no merge engine, the run refuses the file instead",
         ),
