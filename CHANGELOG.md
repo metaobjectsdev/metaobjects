@@ -25,6 +25,15 @@ here.**
   `{` (the writer drops a blank line after an opener, as it does in every port). A layout check
   with an allowlist that only shrinks keeps new hand-typed layout out of the generator source.
   The shared writer-conformance corpus gains six C# cases.
+- **C#: the DbContext generator writes through the code writer (ADR-0063).** `DbContextGenerator`
+  (the context, its `OnModelCreating` and `ConfigureModelNN` chunks, the enum, map and duration helpers
+  and the design-time services file) builds each file on a `CsWriter`. Output is byte-identical for the
+  737 model fixtures in all four layouts. **An owned or subclassed generator needs a small edit.** The
+  hooks `EmitUsings`, `EmitDbSetDeclarations` and `EmitOnModelCreatingBody` take a `CsWriter` in place of the
+  `StringBuilder`, and `EmitUsings` opens the class body with `w.Open("{")`. The hooks that return
+  text now document their lines as unindented; a line that still carries an indent is accepted, since the
+  writer removes the common margin. A `ContextUsings` line is a `using ...;` directive, printed once in the
+  order given. The layout check's allowlist loses the DbContext generator's entry.
 - **C#: the entity generator writes through the code writer (ADR-0063).** `EntityGenerator` (mapped
   entities, TPH subtypes, abstract shapes, value objects, shared enums and the decimal, duration and
   net-validation helper files) builds each file on a `CsWriter`. Output is unchanged for the 737 model

@@ -9,6 +9,7 @@
 #pragma warning disable CS0618
 using System.Text;
 using MetaObjects.Codegen.Docs;
+using MetaObjects.Codegen.Writer;
 using MetaObjects.Meta;
 using MetaObjects.Persistence.Db;
 using static MetaObjects.Core.Field.FieldConstants;
@@ -90,6 +91,10 @@ public class DbContextGenerator : IGenerator
     /// and mapping. <c>null</c>, the default, accepts every object. See <see cref="GenContext.Narrow"/>.</summary>
     public Func<MetaObject, bool>? Include { get; init; }
 
+    /// <summary>The writer the context files are written through. Override to hand back a subclass
+    /// (a different <c>using</c> order, say); every method of the writer is public or protected.</summary>
+    protected virtual CsWriter NewWriter() => new();
+
     public virtual IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
         ctx = ctx.Narrow(Include);
@@ -120,7 +125,7 @@ public class DbContextGenerator : IGenerator
         }
         ClaimPhysicalAddresses(objects, ctx);
 
-        // OnModelCreating body lines (8-space indented), in a stable order. INVARIANT: each entry is
+        // OnModelCreating body lines, one statement per entry and none indented (the writer indents each at its place), in a stable order. INVARIANT: each entry is
         // one complete C# statement — a guard and the statement it guards are ONE entry — because a
         // large model is split into ConfigureModelNN methods at any entry boundary.
         var modelLines = new List<string>();
@@ -167,7 +172,7 @@ public class DbContextGenerator : IGenerator
             // narrowed --generators selection. Falls back to the bare literal view name
             // (p.DbView, non-null in this branch) otherwise -- exactly what this line
             // emitted before Program A added the constant.
-            modelLines.Add($"        modelBuilder.Entity<{name}>(){noKey}.ToView({CSharpNaming.NameRef(p, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, p.DbView!, qualify: ctx.Config)}{CSharpNaming.ViewSchemaArg(p, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, qualify: ctx.Config)});");
+            modelLines.Add($"modelBuilder.Entity<{name}>(){noKey}.ToView({CSharpNaming.NameRef(p, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, p.DbView!, qualify: ctx.Config)}{CSharpNaming.ViewSchemaArg(p, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, qualify: ctx.Config)});");
             // Enum-typed projection columns persist as their string symbol in the view
             // (string-backed enums, CHECK-constrained varchar/text). Without an explicit
             // string conversion EF defaults to the int-ordinal mapping and reads the text
@@ -188,8 +193,8 @@ public class DbContextGenerator : IGenerator
                     continue;
                 }
                 modelLines.Add(f.ResolvedIsArray()
-                    ? $"        modelBuilder.Entity<{name}>().PrimitiveCollection(x => x.{PropertyName(f)}).ElementType().{conversion};"
-                    : $"        modelBuilder.Entity<{name}>().Property(x => x.{PropertyName(f)}).{conversion};");
+                    ? $"modelBuilder.Entity<{name}>().PrimitiveCollection(x => x.{PropertyName(f)}).ElementType().{conversion};"
+                    : $"modelBuilder.Entity<{name}>().Property(x => x.{PropertyName(f)}).{conversion};");
             }
             // A field.map column on a view needs its jsonb mapping for the SAME reason:
             // EntityGenerator emits the Dictionary property for a projection too, so without
@@ -234,7 +239,7 @@ public class DbContextGenerator : IGenerator
             // build an identity column the model never asked for.
             if (AssignedKeyField(e) is { } assignedKey)
                 modelLines.Add(
-                    $"        modelBuilder.Entity<{owner}>().Property(x => x.{PropertyName(assignedKey)}).ValueGeneratedNever();");
+                    $"modelBuilder.Entity<{owner}>().Property(x => x.{PropertyName(assignedKey)}).ValueGeneratedNever();");
 
             // FR-037 R1 — both non-readWrite modes are excluded from UPDATE, which EF
             // expresses the same way: SetAfterSaveBehavior(Ignore). They differ on INSERT,
@@ -248,7 +253,7 @@ public class DbContextGenerator : IGenerator
             {
                 var prop = PropertyName(f);
                 modelLines.Add(
-                    $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).Metadata.SetAfterSaveBehavior(PropertySaveBehavior.Ignore);");
+                    $"modelBuilder.Entity<{owner}>().Property(x => x.{prop}).Metadata.SetAfterSaveBehavior(PropertySaveBehavior.Ignore);");
             }
 
             // FR-018 M:N — wire a hetero (source != target) navigation as an EF skip
@@ -314,7 +319,7 @@ public class DbContextGenerator : IGenerator
             var replicaRole = wt.ReplicaSource!.Role;
             var viewRef = CSharpNaming.NameRef(
                 wt, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, wt.ReplicaViewName!, replicaRole, ctx.Config);
-            modelLines.Add($"        modelBuilder.Entity<{view}>().ToView({viewRef}{CSharpNaming.ViewSchemaArg(wt, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, replicaRole, ctx.Config)});");
+            modelLines.Add($"modelBuilder.Entity<{view}>().ToView({viewRef}{CSharpNaming.ViewSchemaArg(wt, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, replicaRole, ctx.Config)});");
             // #214 [0] — the read model exposes ALL fields (incl. the derived origin.* fields),
             // so it needs the SAME per-field TYPE converters the write entity gets, or EF Core
             // fails model finalization (a field.uri / @dbColumnType:uuid / decimal-precision /
@@ -362,85 +367,93 @@ public class DbContextGenerator : IGenerator
             ctx.Warn($"{Name}: @sequenceName is not in the EF model ({string.Join(", ", namedSequences)}): EF never names an " +
                 "identity's sequence and Npgsql cannot express it. The database keeps the name it has, and meta migrate uses it.");
 
-        var sb = new StringBuilder();
-        EmitUsings(sb, needsMetadataUsing, ctx);
-        EmitDbSetDeclarations(sb, objects, ctx);
-        EmitOnModelCreatingBody(sb, modelLines, ctx);
+        var w = NewWriter();
+        EmitUsings(w, needsMetadataUsing, ctx);
+        EmitDbSetDeclarations(w, objects, ctx);
+        EmitOnModelCreatingBody(w, modelLines, ctx);
         // The model lines are complete here, so the emitted text decides too: a TPH subtype's own
         // int-backed enum is configured although the subtype is not in `objects`.
         if (NeedsUnmappedEnumHelper(objects, ctx.Root)
             || modelLines.Any(l => l.Contains(UnmappedEnumMemberHelperName + "(", StringComparison.Ordinal)))
-            EmitUnmappedEnumHelper(sb);
+            EmitUnmappedEnumHelper(w);
         if (modelLines.Any(l => l.Contains(UnmappedEnumStoredMemberHelperName + "(", StringComparison.Ordinal)))
-            EmitUnmappedStoredEnumHelper(sb);
+            EmitUnmappedStoredEnumHelper(w);
         // Gated on the EMITTED text, not on a second derivation of it. Every site that uses the
         // helper appends to modelLines (entity, read-only projection, and the flattened-VO member
         // block, which lands here as one OwnedTypeConfig string), and modelLines is complete by
         // now — so this is exact by construction. The predicate it replaces had to hand-mirror
         // three emission sites, and had already been wrong twice: it undercounted them, and it
         // did not model jsonbObjectsOnly suppressing the flattened arm on a read model.
-        if (modelLines.Any(l => l.Contains(MapJsonbHelperName))) EmitMapJsonbHelper(sb);
-        sb.AppendLine("}");
-        if (modelLines.Any(l => l.Contains(DurationIntervalHelperName + "."))) EmitDurationIntervalHelper(sb);
+        if (modelLines.Any(l => l.Contains(MapJsonbHelperName))) EmitMapJsonbHelper(w);
+        w.Close("}");
+        if (modelLines.Any(l => l.Contains(DurationIntervalHelperName + "."))) EmitDurationIntervalHelper(w);
         // The design-time services also scaffold a JSON column's comment (ruling R59).
         identityStart |= IdentityStartOn(ctx) && modelLines.Any(l => l.Contains(JsonColumnCommentAnnotation, StringComparison.Ordinal));
-        if (!identityStart) return [new EmittedFile("AppDbContext.g.cs", sb.ToString())];
+        if (!identityStart) return [new EmittedFile("AppDbContext.g.cs", w.ToString())];
         var contextName = ContextClassName(ctx);
         var services = contextName + DesignTimeServicesSuffix;
-        return [new EmittedFile("AppDbContext.g.cs", sb.ToString()), new EmittedFile($"{services}.g.cs", DesignTimeServicesFile(ctx, contextName, services, restartRisk))];
+        return [new EmittedFile("AppDbContext.g.cs", w.ToString()), new EmittedFile($"{services}.g.cs", DesignTimeServicesFile(ctx, contextName, services, restartRisk))];
     }
 
     /// <summary>
-    /// Extension hook — emits the file header, usings, namespace, and the opening of
+    /// Extension hook — writes the file header, usings, namespace, and the opening of
     /// the <c>public class AppDbContext : DbContext</c> declaration through its primary
     /// constructor and any <see cref="ContextMemberLines"/> (leaving the class body open for
     /// <see cref="EmitDbSetDeclarations"/> + <see cref="EmitOnModelCreatingBody"/>; the caller
-    /// emits the closing <c>}</c>). The shell is assembled from <see cref="ContextNamespace"/>,
+    /// writes the closing <c>}</c>, so an override must open the class with <c>w.Open("{")</c>).
+    /// The shell is assembled from <see cref="ContextNamespace"/>,
     /// <see cref="ContextIsPartial"/>, <see cref="ContextClassName"/>, <see cref="ContextBaseClass"/>
     /// and <see cref="EmitContextConstructor"/>, so changing one of them needs no copy of this body.
     /// <paramref name="needsMetadataUsing"/> is true when a <c>@readOnly</c> field
-    /// requires the <c>Microsoft.EntityFrameworkCore.Metadata</c> import. The default
-    /// body reproduces the inline emission, so default output is byte-identical.
-    /// Override to add usings, a base interface, or class-level attributes.
+    /// requires the <c>Microsoft.EntityFrameworkCore.Metadata</c> import. The writer owns indentation,
+    /// braces and blank lines. Override to add usings, a base interface, or class-level attributes.
     /// </summary>
-    protected virtual void EmitUsings(StringBuilder sb, bool needsMetadataUsing, GenContext ctx)
+    protected virtual void EmitUsings(CsWriter w, bool needsMetadataUsing, GenContext ctx)
     {
-        sb.AppendLine("// <auto-generated/>");
-        sb.AppendLine("// Generated by MetaObjects dbcontext-generator. Do not edit by hand.");
-        sb.AppendLine("#nullable enable");
+        w.GeneratedFileHeader("dbcontext-generator");
         var dbCtxNs = ContextNamespace(ctx);
         _usingSite = (needsMetadataUsing, dbCtxNs);
         try
         {
             foreach (var line in ContextUsings(ctx))
             {
-                sb.AppendLine(line);
+                WriteUsingDirective(w, line);
             }
         }
         finally
         {
             _usingSite = null;
         }
-        sb.AppendLine();
-        sb.AppendLine($"namespace {dbCtxNs};");
-        sb.AppendLine();
+        w.Line($"namespace {dbCtxNs};");
+        w.Blank();
         var name = ContextClassName(ctx);
-        sb.AppendLine($"public {(ContextIsPartial(ctx) ? "partial " : "")}class {name} : {ContextBaseClass(ctx)}");
-        sb.AppendLine("{");
+        w.Line($"public {(ContextIsPartial(ctx) ? "partial " : "")}class {name} : {ContextBaseClass(ctx)}");
+        w.Open("{");
         if (EmitContextConstructor(ctx))
         {
-            sb.AppendLine($"    public {name}(DbContextOptions<{name}> options) : base(options) {{ }}");
-            sb.AppendLine();
+            w.Line($"public {name}(DbContextOptions<{name}> options) : base(options) {{ }}");
+            w.Blank();
         }
         var members = ContextMemberLines(ctx).ToList();
         foreach (var line in members)
         {
-            sb.AppendLine(line);
+            w.Text(line);
         }
         if (members.Count > 0)
         {
-            sb.AppendLine();
+            w.Blank();
         }
+    }
+
+    // A `using X;` / `using static X;` / `using A = B;` line is recorded on the writer, which prints the block
+    // once, in the order named. A line of any other shape is written as a header line, as given.
+    private static void WriteUsingDirective(CsWriter w, string line)
+    {
+        var directive = line.Trim();
+        if (directive.StartsWith("using ", StringComparison.Ordinal) && directive.EndsWith(';'))
+            w.Using(directive["using ".Length..^1]);
+        else
+            w.Header(directive);
     }
 
     // What EmitUsings knows that ContextUsings' signature does not carry: whether a read-only field
@@ -510,7 +523,7 @@ public class DbContextGenerator : IGenerator
     protected virtual bool ContextIsPartial(GenContext ctx) => false;
 
     /// <summary>
-    /// Hook — extra class members, as complete lines (4-space indent included), placed after the
+    /// Hook — extra class members, as complete lines (unindented: the writer indents them), placed after the
     /// constructor and before the <c>DbSet</c> declarations; a blank line follows them when there
     /// are any. Default none. An adopter declares a partial method here
     /// (<c>partial void OnModelCreatingExtensions(ModelBuilder modelBuilder);</c>) that its
@@ -524,20 +537,20 @@ public class DbContextGenerator : IGenerator
     /// <see cref="Generate"/>. The default body reproduces the inline emission, so
     /// default output is byte-identical.
     /// </summary>
-    protected virtual void EmitDbSetDeclarations(StringBuilder sb, IReadOnlyList<MetaObject> objects, GenContext ctx)
+    protected virtual void EmitDbSetDeclarations(CsWriter w, IReadOnlyList<MetaObject> objects, GenContext ctx)
     {
         foreach (var o in objects)
         {
             var name = CSharpNaming.Pascal(o.Name);
-            XmlDocBuilder.AppendTo(sb, o, indent: "    ");
-            sb.AppendLine(DbSetLine(o, ctx));
+            XmlDocBuilder.WriteTo(w, o);
+            w.Text(DbSetLine(o, ctx));
             // #214 — a write-through entity additionally exposes a read-model DbSet mapped to
             // its replica view (reads route here; the derived fields live on the view row).
             if (o.IsWriteThrough())
             {
                 var view = ValueObjectNames.RefOf(o, ctx.Config, CSharpNaming.ViewModelClassName(o));
-                sb.AppendLine($"    /// <summary>Read-model view for write-through entity {name} (reads route here; carries the derived fields).</summary>");
-                sb.AppendLine($"    public DbSet<{view}> {CSharpNaming.ViewDbSetName(o)} {{ get; set; }} = default!;");
+                w.Line($"/// <summary>Read-model view for write-through entity {name} (reads route here; carries the derived fields).</summary>");
+                w.Line($"public DbSet<{view}> {CSharpNaming.ViewDbSetName(o)} {{ get; set; }} = default!;");
             }
         }
     }
@@ -556,7 +569,7 @@ public class DbContextGenerator : IGenerator
     /// limit is emitted as before.</summary>
     public int ModelConfigChunkSize { get; init; } = 200;
 
-    protected virtual void EmitOnModelCreatingBody(StringBuilder sb, IReadOnlyList<string> modelLines, GenContext ctx)
+    protected virtual void EmitOnModelCreatingBody(CsWriter w, IReadOnlyList<string> modelLines, GenContext ctx)
     {
         // Materialized once: a hook may enumerate lazily, and each is asked exactly once per context.
         var preamble = ContextPreambleLines(ctx).ToList();
@@ -565,42 +578,39 @@ public class DbContextGenerator : IGenerator
         {
             return;
         }
-        sb.AppendLine();
-        sb.AppendLine("    protected override void OnModelCreating(ModelBuilder modelBuilder)");
-        sb.AppendLine("    {");
-        // Order is part of the contract: preamble first, the model lines (or the ConfigureModelNN
-        // calls that stand for them) in order, trailer last.
-        foreach (var line in preamble)
+        w.Blank();
+        // A line or entry is written with Text: its common margin is removed and it is indented to its
+        // place, so an entry written with indentation of its own (an older override) still reads right.
+        var split = modelLines.Count > ModelConfigChunkSize;
+        var chunks = split ? modelLines.Chunk(Math.Max(1, ModelConfigChunkSize)).ToList() : [];
+        using (w.Braced("protected override void OnModelCreating(ModelBuilder modelBuilder)"))
         {
-            sb.AppendLine(line);
-        }
-        if (modelLines.Count <= ModelConfigChunkSize)
-        {
-            foreach (var line in modelLines) sb.AppendLine(line);
+            // Order is part of the contract: preamble first, the model lines (or the ConfigureModelNN
+            // calls that stand for them) in order, trailer last.
+            foreach (var line in preamble)
+            {
+                w.Text(line);
+            }
+            if (!split)
+            {
+                foreach (var line in modelLines) w.Text(line);
+            }
+            for (var i = 0; i < chunks.Count; i++)
+            {
+                w.Line($"ConfigureModel{i + 1:D2}(modelBuilder);");
+            }
             foreach (var line in trailer)
             {
-                sb.AppendLine(line);
+                w.Text(line);
             }
-            sb.AppendLine("    }");
-            return;
         }
-        var chunks = modelLines.Chunk(Math.Max(1, ModelConfigChunkSize)).ToList();
         for (var i = 0; i < chunks.Count; i++)
         {
-            sb.AppendLine($"        ConfigureModel{i + 1:D2}(modelBuilder);");
-        }
-        foreach (var line in trailer)
-        {
-            sb.AppendLine(line);
-        }
-        sb.AppendLine("    }");
-        for (var i = 0; i < chunks.Count; i++)
-        {
-            sb.AppendLine();
-            sb.AppendLine($"    private void ConfigureModel{i + 1:D2}(ModelBuilder modelBuilder)");
-            sb.AppendLine("    {");
-            foreach (var line in chunks[i]) sb.AppendLine(line);
-            sb.AppendLine("    }");
+            w.Blank();
+            using (w.Braced($"private void ConfigureModel{i + 1:D2}(ModelBuilder modelBuilder)"))
+            {
+                foreach (var line in chunks[i]) w.Text(line);
+            }
         }
     }
 
@@ -611,7 +621,7 @@ public class DbContextGenerator : IGenerator
     protected virtual string ContextBaseClass(GenContext ctx) => "DbContext";
 
     /// <summary>
-    /// Hook — complete lines (8-space indent included, as <c>modelLines</c> are) placed FIRST in
+    /// Hook — complete lines (unindented, as <c>modelLines</c> are) placed FIRST in
     /// <c>OnModelCreating</c>, before any model configuration or <c>ConfigureModelNN</c> call.
     /// Default none. An adopter returns <c>base.OnModelCreating(modelBuilder);</c> here.
     /// These lines are NOT scanned when the file decides whether it needs the <c>PropertySaveBehavior</c>
@@ -635,14 +645,14 @@ public class DbContextGenerator : IGenerator
     protected virtual bool AlwaysEmitOnModelCreating(GenContext ctx) => false;
 
     /// <summary>
-    /// Hook — the whole <c>DbSet</c> declaration line for an entity (indent included), so an
+    /// Hook — the whole <c>DbSet</c> declaration line for an entity (unindented), so an
     /// override can add <c>virtual</c> or change the name. The XML doc above it is emitted by the
     /// caller. A write-through entity's read-model <c>DbSet</c> is not routed through here.
     /// </summary>
     protected virtual string DbSetLine(MetaObject entity, GenContext ctx)
     {
         var name = ValueObjectNames.Ref(entity, ctx.Config);
-        return $"    public DbSet<{name}> {DbSetPropertyName(entity, ctx)} {{ get; set; }} = default!;";
+        return $"public DbSet<{name}> {DbSetPropertyName(entity, ctx)} {{ get; set; }} = default!;";
     }
 
     /// <summary>
@@ -677,7 +687,7 @@ public class DbContextGenerator : IGenerator
     protected virtual string? DbColumnTypeConfig(string owner, MetaField f)
     {
         var prop = PropertyName(f);
-        var lhs = $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop})";
+        var lhs = $"modelBuilder.Entity<{owner}>().Property(x => x.{prop})";
         return f.DbColumnType switch
         {
             // `v!` is safe even for a nullable `string?` property: EF Core skips
@@ -730,7 +740,7 @@ public class DbContextGenerator : IGenerator
             : null;
 
         var sb = new StringBuilder();
-        sb.Append($"        modelBuilder.Entity<{owner}>().HasDiscriminator(e => e.{discProp})");
+        sb.Append($"modelBuilder.Entity<{owner}>().HasDiscriminator(e => e.{discProp})");
         foreach (var st in tph.Subtypes)
         {
             var subCls = ValueObjectNames.Ref(st.Entity, config);
@@ -899,7 +909,7 @@ public class DbContextGenerator : IGenerator
         {
             return [];
         }
-        var lhs = $"        modelBuilder.Entity<{className}>().Property(x => x.{PropertyName(f)})";
+        var lhs = $"modelBuilder.Entity<{className}>().Property(x => x.{PropertyName(f)})";
         if (DefaultLiteral(className, entity, f, raw, ctx.Config) is { } literal)
         {
             return [$"{lhs}.HasDefaultValue({literal}).HasSentinel({literal});"];
@@ -967,7 +977,7 @@ public class DbContextGenerator : IGenerator
     {
         if (IdentityStartOf(entity) is not { } start) return;
         // One entry, one statement: the guard and its body never split across a chunk boundary.
-        modelLines.Add($"        if (Database.ProviderName == \"{NpgsqlProviderName}\") modelBuilder.Entity<{owner}>().Property(x => x.{PropertyName(start.Field)}).HasAnnotation(" +
+        modelLines.Add($"if (Database.ProviderName == \"{NpgsqlProviderName}\") modelBuilder.Entity<{owner}>().Property(x => x.{PropertyName(start.Field)}).HasAnnotation(" +
             $"\"{NpgsqlIdentityOptionsAnnotation}\", \"'{start.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}', '1', '', '', 'False', '1'\");");
     }
 
@@ -982,7 +992,7 @@ public class DbContextGenerator : IGenerator
     {
         if (entity.DbTable is null) return;
         foreach (var check in CheckConstraints.For(entity, ctx.Config))
-            modelLines.Add($"        modelBuilder.Entity<{owner}>().ToTable(t => t.HasCheckConstraint(\"{CSharpNaming.CSharpStringLiteral(check.Name)}\", " +
+            modelLines.Add($"modelBuilder.Entity<{owner}>().ToTable(t => t.HasCheckConstraint(\"{CSharpNaming.CSharpStringLiteral(check.Name)}\", " +
                 $"\"{CSharpNaming.CSharpStringLiteral(check.Expression)}\"));");
     }
 
@@ -1063,24 +1073,22 @@ public class DbContextGenerator : IGenerator
                 throw new InvalidOperationException($"{ErrDesignTimeReferenceMissing}: {message}");
             if (message is not null) ctx.Warn(message);
         }
-        return $$"""
-            // <auto-generated/>
-            // Generated by MetaObjects db-context. Do not edit by hand.
-            #nullable enable
-            using System;
-            using System.Collections.Generic;
-            using System.Linq;
-            using Microsoft.EntityFrameworkCore;
-            using Microsoft.EntityFrameworkCore.Design;
-            using Microsoft.EntityFrameworkCore.Infrastructure;
-            using Microsoft.EntityFrameworkCore.Metadata;
-            using Microsoft.EntityFrameworkCore.Migrations;
-            using Microsoft.EntityFrameworkCore.Migrations.Operations;
-            using Microsoft.EntityFrameworkCore.Storage;
-            using Microsoft.Extensions.DependencyInjection;
-            {{(assembly is null ? "" : "\n" + reference + "\n")}}
-            namespace {{ns}};
-
+        var w = NewWriter();
+        w.GeneratedFileHeader("db-context");
+        foreach (var used in new[]
+        {
+            "System", "System.Collections.Generic", "System.Linq", "Microsoft.EntityFrameworkCore",
+            "Microsoft.EntityFrameworkCore.Design", "Microsoft.EntityFrameworkCore.Infrastructure",
+            "Microsoft.EntityFrameworkCore.Metadata", "Microsoft.EntityFrameworkCore.Migrations",
+            "Microsoft.EntityFrameworkCore.Migrations.Operations", "Microsoft.EntityFrameworkCore.Storage",
+            "Microsoft.Extensions.DependencyInjection",
+        })
+            w.Using(used);
+        if (assembly is not null) w.Line(reference);
+        w.Blank();
+        w.Line($"namespace {ns};");
+        w.Blank();
+        w.Text($$"""
             /// <summary>Design-time only: a start-only identity change scaffolds as SQL that records the
             /// start and moves the counter forward to it, never back, instead of Npgsql's RESTART; and a
             /// JSON column's comment, which EF 8 cannot carry, scaffolds as COMMENT ON COLUMN. EF runs
@@ -1264,7 +1272,8 @@ public class DbContextGenerator : IGenerator
                 public static DbContextOptionsBuilder<TContext> UseIdentityStartMigrations<TContext>(this DbContextOptionsBuilder<TContext> options)
                     where TContext : DbContext => options;
             }
-            """ + "\n";
+            """);
+        return w.ToString();
     }
 
     /// <summary>
@@ -1277,7 +1286,7 @@ public class DbContextGenerator : IGenerator
         GenContext ctx, bool tableComment = true)
     {
         if (tableComment && entity.Attr(MetaObjects.Core.Documentation.DocumentationConstants.DOC_ATTR_DESCRIPTION) is string { Length: > 0 } table)
-            modelLines.Add($"        modelBuilder.Entity<{owner}>().Metadata.SetComment(\"{CSharpNaming.CSharpStringLiteral(table)}\");");
+            modelLines.Add($"modelBuilder.Entity<{owner}>().Metadata.SetComment(\"{CSharpNaming.CSharpStringLiteral(table)}\");");
         foreach (var f in fields)
         {
             var vo = f.SubType == FIELD_SUBTYPE_OBJECT ? ValueObjectNames.ResolveFieldRef(f, ctx.Root) as MetaObject : null;
@@ -1302,7 +1311,7 @@ public class DbContextGenerator : IGenerator
                     var mapping = MappedAs(owner, PropertyName(f), modelLines);
                     if (mapping == ObjectFieldMapping.Property)
                     {
-                        modelLines.Add($"        modelBuilder.Entity<{owner}>().Metadata.GetProperty(\"{PropertyName(f)}\").SetComment(\"{literal}\");");
+                        modelLines.Add($"modelBuilder.Entity<{owner}>().Metadata.GetProperty(\"{PropertyName(f)}\").SetComment(\"{literal}\");");
                         continue;
                     }
                     if (mapping == ObjectFieldMapping.Unknown)
@@ -1317,13 +1326,13 @@ public class DbContextGenerator : IGenerator
                             "no comment in EF 8, and only a Postgres project's design-time services scaffold one. meta migrate still writes it.");
                         continue;
                     }
-                    modelLines.Add($"        modelBuilder.Entity<{owner}>().Metadata.FindNavigation(\"{PropertyName(f)}\")!.TargetEntityType" +
+                    modelLines.Add($"modelBuilder.Entity<{owner}>().Metadata.FindNavigation(\"{PropertyName(f)}\")!.TargetEntityType" +
                         $".SetAnnotation(\"{JsonColumnCommentAnnotation}\", \"{literal}\");");
                     continue;
                 }
             }
             // GetProperty, not FindProperty?.: a property this generator configures and cannot find is a bug, said loudly.
-            modelLines.Add($"        modelBuilder.Entity<{owner}>().Metadata.GetProperty(\"{PropertyName(f)}\").SetComment(\"{literal}\");");
+            modelLines.Add($"modelBuilder.Entity<{owner}>().Metadata.GetProperty(\"{PropertyName(f)}\").SetComment(\"{literal}\");");
         }
     }
 
@@ -1376,7 +1385,7 @@ public class DbContextGenerator : IGenerator
             // ADR-0039: resolving — @unique may be inherited via extends.
             if (f.Attr(FIELD_ATTR_UNIQUE) is not true || f.ResolvedIsArray()) continue;
             var column = CSharpNaming.Column(f, ctx.Config.ColumnNamingStrategy);
-            modelLines.Add($"        modelBuilder.Entity<{owner}>().HasIndex(x => x.{PropertyName(f)}).IsUnique()" +
+            modelLines.Add($"modelBuilder.Entity<{owner}>().HasIndex(x => x.{PropertyName(f)}).IsUnique()" +
                 $".HasDatabaseName(\"{CSharpNaming.CSharpStringLiteral(ForeignKeyIndexes.StoredName($"{table}_{column}_unique", ctx.Config.Dialect))}\");");
         }
         var nodes = entity.SecondaryIdentities().Select(i => ((MetaData)i, i.Fields, true))
@@ -1402,7 +1411,7 @@ public class DbContextGenerator : IGenerator
             var selector = props.Count == 1 ? $"x => x.{props[0]}" : $"x => new {{ {string.Join(", ", props.Select(p => "x." + p))} }}";
             // The NAMED overload: two indexes over one column list (a partial one beside a plain
             // one) are two EF indexes only when each carries its own name.
-            var line = new StringBuilder($"        modelBuilder.Entity<{owner}>().HasIndex({selector}, {indexName})");
+            var line = new StringBuilder($"modelBuilder.Entity<{owner}>().HasIndex({selector}, {indexName})");
             if (unique) line.Append(".IsUnique()");
             if (node.Attr(DbConstants.IDENTITY_ATTR_WHERE) is string where && where.Trim().Length > 0)
                 line.Append($".HasFilter(\"{CSharpNaming.CSharpStringLiteral(where.Trim())}\")");
@@ -1418,7 +1427,7 @@ public class DbContextGenerator : IGenerator
             if (node.Attr(DbConstants.IDENTITY_ATTR_USING) is string method && method.Trim().Length > 0 && method.Trim() != "btree")
             {
                 // One entry per statement (the modelLines invariant): the guard and its statement are one line.
-                modelLines.Add($"        if (Database.ProviderName == \"{NpgsqlProviderName}\") modelBuilder.Entity<{owner}>().HasIndex({selector}, {indexName})" +
+                modelLines.Add($"if (Database.ProviderName == \"{NpgsqlProviderName}\") modelBuilder.Entity<{owner}>().HasIndex({selector}, {indexName})" +
                     $".HasAnnotation(\"Npgsql:IndexMethod\", \"{CSharpNaming.CSharpStringLiteral(method.Trim())}\");");
             }
         }
@@ -1436,7 +1445,7 @@ public class DbContextGenerator : IGenerator
             var name = $"\"{CSharpNaming.CSharpStringLiteral(index.Name)}\"";
             var props = index.Fields.Select(PropertyName).ToList();
             var selector = props.Count == 1 ? $"x => x.{props[0]}" : $"x => new {{ {string.Join(", ", props.Select(p => "x." + p))} }}";
-            modelLines.Add($"        modelBuilder.Entity<{ValueObjectNames.Ref(index.Owner, ctx.Config)}>().HasIndex({selector}, {name}).HasDatabaseName({name});");
+            modelLines.Add($"modelBuilder.Entity<{ValueObjectNames.Ref(index.Owner, ctx.Config)}>().HasIndex({selector}, {name}).HasDatabaseName({name});");
         }
     }
 
@@ -1548,7 +1557,7 @@ public class DbContextGenerator : IGenerator
         foreach (var f in own.Where(f => !f.ResolvedIsArray() && f.Mutability != MUTABILITY_READ_WRITE))
         {
             lines.Add(
-                $"        modelBuilder.Entity<{cls}>().Property(x => x.{PropertyName(f)}).Metadata.SetAfterSaveBehavior(PropertySaveBehavior.Ignore);");
+                $"modelBuilder.Entity<{cls}>().Property(x => x.{PropertyName(f)}).Metadata.SetAfterSaveBehavior(PropertySaveBehavior.Ignore);");
         }
         // The shared table's comment is the root's; a subtype's own columns carry theirs.
         EmitCommentConfig(cls, subtype, own, lines, ctx, tableComment: false);
@@ -1573,7 +1582,7 @@ public class DbContextGenerator : IGenerator
             || TphPlanBuilder.IsTphMember(parent, ctx.Root))
             return;
         var shapeDeclared = new HashSet<string>(parent.Fields().Select(f => f.Name), StringComparer.Ordinal);
-        var lhs = $"        modelBuilder.Entity<{className}>()";
+        var lhs = $"modelBuilder.Entity<{className}>()";
 
         if (entity.PrimaryIdentity()?.Fields is [var keyName] && shapeDeclared.Contains(keyName)
             && entity.FindField(keyName) is { } keyField)
@@ -1671,7 +1680,7 @@ public class DbContextGenerator : IGenerator
         }
 
         var actions = ReferentialActions.Resolve(entity, reference);
-        return [$"        modelBuilder.Entity<{owner}>().HasOne<{ValueObjectNames.Ref(target, ctx.Config)}>()"
+        return [$"modelBuilder.Entity<{owner}>().HasOne<{ValueObjectNames.Ref(target, ctx.Config)}>()"
              + $".WithMany().HasForeignKey({ForeignKeyExpression("e", props)})"
              + PrincipalKeyCall(reference, target)
              + $"{OnDeleteCall(entity, fkFields, actions.OnDelete, ctx)}"
@@ -1730,7 +1739,7 @@ public class DbContextGenerator : IGenerator
         var navigation = siblings > 0
             ? $"{byFk}?.Name"
             : $"({linq}.Count({toTarget}) == 0 ? null : {linq}.Count({toTarget}) == 1 ? {linq}.First({toTarget}) : ({byFk} ?? throw {ambiguous}))?.Name";
-        return [$"        modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}, b => b.HasOne<{targetRef}>({navigation})"
+        return [$"modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}, b => b.HasOne<{targetRef}>({navigation})"
              + $".WithMany().HasForeignKey({ForeignKeyExpression("e", props)})"
              + PrincipalKeyCall(reference, target)
              + $"{OnDeleteCall(entity, fkFields, actions.OnDelete, ctx)}"
@@ -1898,7 +1907,7 @@ public class DbContextGenerator : IGenerator
         // property instead of the type. The inner parameter cannot reuse the outer `l`/`r` (CS0136),
         // hence `j` — it is the junction being configured on both sides.
         return
-            $"        modelBuilder.Entity<{source}>().HasMany(x => x.{navProp}).WithMany().UsingEntity<{through}>(" +
+            $"modelBuilder.Entity<{source}>().HasMany(x => x.{navProp}).WithMany().UsingEntity<{through}>(" +
             $"l => l.HasOne<{target}>().WithMany().HasForeignKey({ForeignKeyExpression("j", [targetFkProp])}){targetOnDelete}, " +
             $"r => r.HasOne<{source}>().WithMany().HasForeignKey({ForeignKeyExpression("j", [sourceFkProp])}){sourceOnDelete});";
     }
@@ -1931,26 +1940,28 @@ public class DbContextGenerator : IGenerator
     /// rc.21 — the fail-fast helpers a <c>@stringValueMap</c> enum's converters end in, emitted only
     /// when a converter references them (so a model with none is byte-identical).
     /// </summary>
-    private static void EmitUnmappedStoredEnumHelper(StringBuilder sb)
+    private static void EmitUnmappedStoredEnumHelper(CsWriter w)
     {
-        sb.AppendLine();
-        sb.AppendLine("    /// <summary>");
-        sb.AppendLine("    /// A field.enum column with @stringValueMap held a string that maps to no member: the");
-        sb.AppendLine("    /// database holds data the model says is impossible.");
-        sb.AppendLine("    /// </summary>");
-        sb.AppendLine($"    private static T {UnmappedEnumStoredValueHelperName}<T>(string stored, string field) =>");
-        sb.AppendLine("        throw new System.InvalidOperationException(");
-        sb.AppendLine("            $\"field.enum '{field}' read stored value '{stored}' with no member in \" +");
-        sb.AppendLine("            \"@stringValueMap — the database holds a value the model does not describe.\");");
-        sb.AppendLine();
-        sb.AppendLine("    /// <summary>");
-        sb.AppendLine("    /// A field.enum property with @stringValueMap held a value outside @values: it has no");
-        sb.AppendLine("    /// declared stored string, and writing another member's would corrupt the row silently.");
-        sb.AppendLine("    /// </summary>");
-        sb.AppendLine($"    private static string {UnmappedEnumStoredMemberHelperName}(object? value, string field) =>");
-        sb.AppendLine("        throw new System.InvalidOperationException(");
-        sb.AppendLine("            $\"field.enum '{field}' cannot write {value}: it has no stored string in \" +");
-        sb.AppendLine("            \"@stringValueMap — the value is not one of the members the model declares.\");");
+        w.Blank();
+        w.Text($$"""
+            /// <summary>
+            /// A field.enum column with @stringValueMap held a string that maps to no member: the
+            /// database holds data the model says is impossible.
+            /// </summary>
+            private static T {{UnmappedEnumStoredValueHelperName}}<T>(string stored, string field) =>
+                throw new System.InvalidOperationException(
+                    $"field.enum '{field}' read stored value '{stored}' with no member in " +
+                    "@stringValueMap — the database holds a value the model does not describe.");
+
+            /// <summary>
+            /// A field.enum property with @stringValueMap held a value outside @values: it has no
+            /// declared stored string, and writing another member's would corrupt the row silently.
+            /// </summary>
+            private static string {{UnmappedEnumStoredMemberHelperName}}(object? value, string field) =>
+                throw new System.InvalidOperationException(
+                    $"field.enum '{field}' cannot write {value}: it has no stored string in " +
+                    "@stringValueMap — the value is not one of the members the model declares.");
+            """);
     }
 
     /// <summary>
@@ -1958,31 +1969,33 @@ public class DbContextGenerator : IGenerator
     /// in. Emitted only when at least one such converter was generated, so a model with
     /// no <c>@intValueMap</c> produces byte-identical output.
     /// </summary>
-    private static void EmitUnmappedEnumHelper(StringBuilder sb)
+    private static void EmitUnmappedEnumHelper(CsWriter w)
     {
-        sb.AppendLine();
-        sb.AppendLine("    /// <summary>");
-        sb.AppendLine("    /// An int-backed field.enum column held a value that maps to no member: the");
-        sb.AppendLine("    /// database holds data the model says is impossible (a hand-written INSERT, or a");
-        sb.AppendLine("    /// member removed without a migration). Materializing the last member instead");
-        sb.AppendLine("    /// would hand the caller a wrong-but-valid value, silently.");
-        sb.AppendLine("    /// </summary>");
-        sb.AppendLine($"    private static T {UnmappedEnumHelperName}<T>(int stored, string field) =>");
+        w.Blank();
         // Fully qualified: the generated file's usings are a fixed set (EmitUsings), and
         // adding `using System;` there would change byte-identical output for every model.
-        sb.AppendLine("        throw new System.InvalidOperationException(");
-        sb.AppendLine("            $\"field.enum '{field}' read stored value {stored} with no member in \" +");
-        sb.AppendLine("            \"@intValueMap — the database holds a value the model does not describe.\");");
-        sb.AppendLine();
-        sb.AppendLine("    /// <summary>");
-        sb.AppendLine("    /// An int-backed field.enum property held a value outside @values (a cast integer, or");
-        sb.AppendLine("    /// a member the C# enum declares that the metadata does not): it has no declared");
-        sb.AppendLine("    /// integer, and writing some other member's instead would corrupt the row silently.");
-        sb.AppendLine("    /// </summary>");
-        sb.AppendLine($"    private static int {UnmappedEnumMemberHelperName}(object? value, string field) =>");
-        sb.AppendLine("        throw new System.InvalidOperationException(");
-        sb.AppendLine("            $\"field.enum '{field}' cannot write {value}: it has no integer in \" +");
-        sb.AppendLine("            \"@intValueMap — the value is not one of the members the model declares.\");");
+        w.Text($$"""
+            /// <summary>
+            /// An int-backed field.enum column held a value that maps to no member: the
+            /// database holds data the model says is impossible (a hand-written INSERT, or a
+            /// member removed without a migration). Materializing the last member instead
+            /// would hand the caller a wrong-but-valid value, silently.
+            /// </summary>
+            private static T {{UnmappedEnumHelperName}}<T>(int stored, string field) =>
+                throw new System.InvalidOperationException(
+                    $"field.enum '{field}' read stored value {stored} with no member in " +
+                    "@intValueMap — the database holds a value the model does not describe.");
+
+            /// <summary>
+            /// An int-backed field.enum property held a value outside @values (a cast integer, or
+            /// a member the C# enum declares that the metadata does not): it has no declared
+            /// integer, and writing some other member's instead would corrupt the row silently.
+            /// </summary>
+            private static int {{UnmappedEnumMemberHelperName}}(object? value, string field) =>
+                throw new System.InvalidOperationException(
+                    $"field.enum '{field}' cannot write {value}: it has no integer in " +
+                    "@intValueMap — the value is not one of the members the model declares.");
+            """);
     }
 
     /// <summary>
@@ -1992,7 +2005,7 @@ public class DbContextGenerator : IGenerator
     /// a <c>Dictionary&lt;string, V&gt;</c> property and so both need the mapping.
     /// </summary>
     private string MapJsonbConfig(string className, MetaObject owner, MetaField f, GenContext ctx) =>
-        $"        modelBuilder.Entity<{className}>().Property(x => x.{PropertyName(f)})"
+        $"modelBuilder.Entity<{className}>().Property(x => x.{PropertyName(f)})"
             + MapJsonbSuffix(owner, f, ctx) + ";";
 
     /// <summary>
@@ -2080,100 +2093,102 @@ public class DbContextGenerator : IGenerator
     /// untranslated and never invokes the expressions on it, so the lambdas' bodies are
     /// unchanged.</para>
     /// </remarks>
-    private static void EmitMapJsonbHelper(StringBuilder sb)
+    private static void EmitMapJsonbHelper(CsWriter w)
     {
-        sb.AppendLine();
-        sb.AppendLine("    /// <summary>");
-        sb.AppendLine("    /// Shared jsonb (de)serialization for field.map columns. The comparer is required:");
-        sb.AppendLine("    /// EF snapshots a value-converted property by reference, so without it an in-place");
-        sb.AppendLine("    /// edit to the dictionary is never detected and the row is never updated.");
-        sb.AppendLine("    /// </summary>");
-        sb.AppendLine($"    private static class {MapJsonbHelperName}");
-        sb.AppendLine("    {");
-        sb.AppendLine("        private static readonly System.Text.Json.JsonSerializerOptions Options = new()");
-        sb.AppendLine("        {");
-        sb.AppendLine("            Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }");
-        sb.AppendLine("        };");
-        sb.AppendLine();
-        sb.AppendLine("        internal static Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<");
-        sb.AppendLine("            System.Collections.Generic.Dictionary<string, TValue>, string> RequiredConverter<TValue>() => new(");
-        sb.AppendLine("                v => System.Text.Json.JsonSerializer.Serialize(v, Options),");
-        sb.AppendLine("                v => System.Text.Json.JsonSerializer.Deserialize<");
-        sb.AppendLine("                    System.Collections.Generic.Dictionary<string, TValue>>(v, Options)!);");
-        sb.AppendLine();
-        sb.AppendLine("        /// <summary>Same conversion as RequiredConverter, over the NULLABLE dictionary a");
-        sb.AppendLine("        /// non-required map's property carries — keep the two bodies identical. EF Core's");
-        sb.AppendLine("        /// nullability-aware HasConversion checks the converter's model type against the");
-        sb.AppendLine("        /// property's own annotation, so one factory cannot serve both arms.</summary>");
-        sb.AppendLine("        internal static Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<");
-        sb.AppendLine("            System.Collections.Generic.Dictionary<string, TValue>?, string> Converter<TValue>() => new(");
-        sb.AppendLine("                v => System.Text.Json.JsonSerializer.Serialize(v, Options),");
-        sb.AppendLine("                v => System.Text.Json.JsonSerializer.Deserialize<");
-        sb.AppendLine("                    System.Collections.Generic.Dictionary<string, TValue>>(v, Options)!);");
-        sb.AppendLine();
+        w.Blank();
         // A value object that holds a map is stored as ONE document converted whole: EF Core 8 cannot
         // map a Dictionary<string, VO> member inside an owned-JSON type. The same Options serve it, so
         // a decimal member keeps its canonical-string wire form (DecimalWire.Declared on the member).
-        sb.AppendLine("        /// <summary>A whole value-object document (or collection of them) as one jsonb value,");
-        sb.AppendLine("        /// for a value object that holds a map (EF Core 8 cannot own a dictionary inside JSON).</summary>");
-        sb.AppendLine("        internal static Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<TModel, string> ObjectConverter<TModel>() => new(");
-        sb.AppendLine("            v => System.Text.Json.JsonSerializer.Serialize(v, Options),");
-        sb.AppendLine("            v => System.Text.Json.JsonSerializer.Deserialize<TModel>(v, Options)!);");
-        sb.AppendLine();
-        sb.AppendLine("        internal static Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<TModel> ObjectComparer<TModel>() => new(");
-        sb.AppendLine("            (a, b) => System.Text.Json.JsonSerializer.Serialize(a, Options) == System.Text.Json.JsonSerializer.Serialize(b, Options),");
-        sb.AppendLine("            v => System.Text.Json.JsonSerializer.Serialize(v, Options).GetHashCode(),");
-        sb.AppendLine("            v => System.Text.Json.JsonSerializer.Deserialize<TModel>(System.Text.Json.JsonSerializer.Serialize(v, Options), Options)!);");
-        sb.AppendLine();
-        sb.AppendLine("        internal static Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<");
-        sb.AppendLine("            System.Collections.Generic.Dictionary<string, TValue>?> Comparer<TValue>() => new(");
-        sb.AppendLine("                (a, b) => Eq(a, b), v => Hash(v), v => Snap(v));");
-        sb.AppendLine();
-        sb.AppendLine("        /// <summary>Order-INDEPENDENT equality: a dictionary rebuilt in a different key");
-        sb.AppendLine("        /// order holds the same value, and comparing serialized JSON would call it changed");
-        sb.AppendLine("        /// and issue an UPDATE for a row nothing touched. Scalars settle on the default");
-        sb.AppendLine("        /// comparer (no serialization at all); a value-object value falls through to a JSON");
-        sb.AppendLine("        /// compare, since the generated POCO is a class and compares by reference.</summary>");
-        sb.AppendLine("        private static bool Eq<TValue>(");
-        sb.AppendLine("            System.Collections.Generic.Dictionary<string, TValue>? a,");
-        sb.AppendLine("            System.Collections.Generic.Dictionary<string, TValue>? b)");
-        sb.AppendLine("        {");
-        sb.AppendLine("            if (a is null || b is null) return ReferenceEquals(a, b);");
-        sb.AppendLine("            if (a.Count != b.Count) return false;");
-        sb.AppendLine("            foreach (var kv in a)");
-        sb.AppendLine("            {");
-        sb.AppendLine("                if (!b.TryGetValue(kv.Key, out var other)) return false;");
-        sb.AppendLine("                if (System.Collections.Generic.EqualityComparer<TValue>.Default.Equals(kv.Value, other)) continue;");
-        sb.AppendLine("                if (System.Text.Json.JsonSerializer.Serialize(kv.Value, Options)");
-        sb.AppendLine("                    != System.Text.Json.JsonSerializer.Serialize(other, Options)) return false;");
-        sb.AppendLine("            }");
-        sb.AppendLine("            return true;");
-        sb.AppendLine("        }");
-        sb.AppendLine();
-        sb.AppendLine("        /// <summary>Keys and count only — order-independent (XOR), allocation-free, and");
-        sb.AppendLine("        /// stable for a value-object value whose GetHashCode is reference-based. Equal");
-        sb.AppendLine("        /// dictionaries always hash equal, which is all EF requires.</summary>");
-        sb.AppendLine("        private static int Hash<TValue>(System.Collections.Generic.Dictionary<string, TValue>? v)");
-        sb.AppendLine("        {");
-        sb.AppendLine("            if (v is null) return 0;");
-        sb.AppendLine("            var h = v.Count;");
-        sb.AppendLine("            foreach (var k in v.Keys) h ^= k.GetHashCode();");
-        sb.AppendLine("            return h;");
-        sb.AppendLine("        }");
-        sb.AppendLine();
-        sb.AppendLine("        /// <summary>The change-tracking snapshot. A value-object value needs a DEEP copy or");
-        sb.AppendLine("        /// an in-place edit to a nested object mutates the snapshot too and goes undetected;");
-        sb.AppendLine("        /// an immutable scalar only needs the dictionary copied.</summary>");
-        sb.AppendLine("        private static System.Collections.Generic.Dictionary<string, TValue>? Snap<TValue>(");
-        sb.AppendLine("            System.Collections.Generic.Dictionary<string, TValue>? v) =>");
-        sb.AppendLine("            v is null");
-        sb.AppendLine("                ? null");
-        sb.AppendLine("                : typeof(TValue).IsValueType || typeof(TValue) == typeof(string)");
-        sb.AppendLine("                    ? new System.Collections.Generic.Dictionary<string, TValue>(v)");
-        sb.AppendLine("                    : System.Text.Json.JsonSerializer.Deserialize<");
-        sb.AppendLine("                        System.Collections.Generic.Dictionary<string, TValue>>(");
-        sb.AppendLine("                            System.Text.Json.JsonSerializer.Serialize(v, Options), Options)!;");
-        sb.AppendLine("    }");
+        w.Text($$"""
+            /// <summary>
+            /// Shared jsonb (de)serialization for field.map columns. The comparer is required:
+            /// EF snapshots a value-converted property by reference, so without it an in-place
+            /// edit to the dictionary is never detected and the row is never updated.
+            /// </summary>
+            private static class {{MapJsonbHelperName}}
+            {
+                private static readonly System.Text.Json.JsonSerializerOptions Options = new()
+                {
+                    Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+                };
+
+                internal static Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<
+                    System.Collections.Generic.Dictionary<string, TValue>, string> RequiredConverter<TValue>() => new(
+                        v => System.Text.Json.JsonSerializer.Serialize(v, Options),
+                        v => System.Text.Json.JsonSerializer.Deserialize<
+                            System.Collections.Generic.Dictionary<string, TValue>>(v, Options)!);
+
+                /// <summary>Same conversion as RequiredConverter, over the NULLABLE dictionary a
+                /// non-required map's property carries — keep the two bodies identical. EF Core's
+                /// nullability-aware HasConversion checks the converter's model type against the
+                /// property's own annotation, so one factory cannot serve both arms.</summary>
+                internal static Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<
+                    System.Collections.Generic.Dictionary<string, TValue>?, string> Converter<TValue>() => new(
+                        v => System.Text.Json.JsonSerializer.Serialize(v, Options),
+                        v => System.Text.Json.JsonSerializer.Deserialize<
+                            System.Collections.Generic.Dictionary<string, TValue>>(v, Options)!);
+
+                /// <summary>A whole value-object document (or collection of them) as one jsonb value,
+                /// for a value object that holds a map (EF Core 8 cannot own a dictionary inside JSON).</summary>
+                internal static Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<TModel, string> ObjectConverter<TModel>() => new(
+                    v => System.Text.Json.JsonSerializer.Serialize(v, Options),
+                    v => System.Text.Json.JsonSerializer.Deserialize<TModel>(v, Options)!);
+
+                internal static Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<TModel> ObjectComparer<TModel>() => new(
+                    (a, b) => System.Text.Json.JsonSerializer.Serialize(a, Options) == System.Text.Json.JsonSerializer.Serialize(b, Options),
+                    v => System.Text.Json.JsonSerializer.Serialize(v, Options).GetHashCode(),
+                    v => System.Text.Json.JsonSerializer.Deserialize<TModel>(System.Text.Json.JsonSerializer.Serialize(v, Options), Options)!);
+
+                internal static Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<
+                    System.Collections.Generic.Dictionary<string, TValue>?> Comparer<TValue>() => new(
+                        (a, b) => Eq(a, b), v => Hash(v), v => Snap(v));
+
+                /// <summary>Order-INDEPENDENT equality: a dictionary rebuilt in a different key
+                /// order holds the same value, and comparing serialized JSON would call it changed
+                /// and issue an UPDATE for a row nothing touched. Scalars settle on the default
+                /// comparer (no serialization at all); a value-object value falls through to a JSON
+                /// compare, since the generated POCO is a class and compares by reference.</summary>
+                private static bool Eq<TValue>(
+                    System.Collections.Generic.Dictionary<string, TValue>? a,
+                    System.Collections.Generic.Dictionary<string, TValue>? b)
+                {
+                    if (a is null || b is null) return ReferenceEquals(a, b);
+                    if (a.Count != b.Count) return false;
+                    foreach (var kv in a)
+                    {
+                        if (!b.TryGetValue(kv.Key, out var other)) return false;
+                        if (System.Collections.Generic.EqualityComparer<TValue>.Default.Equals(kv.Value, other)) continue;
+                        if (System.Text.Json.JsonSerializer.Serialize(kv.Value, Options)
+                            != System.Text.Json.JsonSerializer.Serialize(other, Options)) return false;
+                    }
+                    return true;
+                }
+
+                /// <summary>Keys and count only — order-independent (XOR), allocation-free, and
+                /// stable for a value-object value whose GetHashCode is reference-based. Equal
+                /// dictionaries always hash equal, which is all EF requires.</summary>
+                private static int Hash<TValue>(System.Collections.Generic.Dictionary<string, TValue>? v)
+                {
+                    if (v is null) return 0;
+                    var h = v.Count;
+                    foreach (var k in v.Keys) h ^= k.GetHashCode();
+                    return h;
+                }
+
+                /// <summary>The change-tracking snapshot. A value-object value needs a DEEP copy or
+                /// an in-place edit to a nested object mutates the snapshot too and goes undetected;
+                /// an immutable scalar only needs the dictionary copied.</summary>
+                private static System.Collections.Generic.Dictionary<string, TValue>? Snap<TValue>(
+                    System.Collections.Generic.Dictionary<string, TValue>? v) =>
+                    v is null
+                        ? null
+                        : typeof(TValue).IsValueType || typeof(TValue) == typeof(string)
+                            ? new System.Collections.Generic.Dictionary<string, TValue>(v)
+                            : System.Text.Json.JsonSerializer.Deserialize<
+                                System.Collections.Generic.Dictionary<string, TValue>>(
+                                    System.Text.Json.JsonSerializer.Serialize(v, Options), Options)!;
+            }
+            """);
     }
 
     /// <summary>
@@ -2397,11 +2412,11 @@ public class DbContextGenerator : IGenerator
                         // symbols (["DRAFT"]) — or as their declared ints — not as int ordinals ([0]).
                         if (f.ResolvedIsArray())
                         {
-                            modelLines.Add($"        modelBuilder.Entity<{className}>().PrimitiveCollection(x => x.{prop}).ElementType().{conversion};");
+                            modelLines.Add($"modelBuilder.Entity<{className}>().PrimitiveCollection(x => x.{prop}).ElementType().{conversion};");
                         }
                         else
                         {
-                            modelLines.Add($"        modelBuilder.Entity<{className}>().Property(x => x.{prop}).{conversion};");
+                            modelLines.Add($"modelBuilder.Entity<{className}>().Property(x => x.{prop}).{conversion};");
                         }
                     }
                 }
@@ -2513,14 +2528,14 @@ public class DbContextGenerator : IGenerator
 
         if (array && CSharpNaming.ScalarFor(f.SubType) is not null)
         {
-            lines.Add($"        modelBuilder.Entity<{owner}>().PrimitiveCollection(x => x.{prop});");
+            lines.Add($"modelBuilder.Entity<{owner}>().PrimitiveCollection(x => x.{prop});");
         }
 
         if (!array && f.SubType == FIELD_SUBTYPE_DECIMAL && f.Precision is not null)
         {
             lines.Add(f.Scale is long sc
-                ? $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasPrecision({f.Precision}, {sc});"
-                : $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasPrecision({f.Precision});");
+                ? $"modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasPrecision({f.Precision}, {sc});"
+                : $"modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasPrecision({f.Precision});");
         }
 
         if (!array && f.SubType == FIELD_SUBTYPE_TIMESTAMP)
@@ -2528,7 +2543,7 @@ public class DbContextGenerator : IGenerator
             var colType = CSharpNaming.IsLocalTime(f)
                 ? "timestamp without time zone"
                 : "timestamp with time zone";
-            lines.Add($"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasColumnType(\"{colType}\");");
+            lines.Add($"modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasColumnType(\"{colType}\");");
         }
 
         // #234: a @lenient field.uri / field.inet is a plain string mapped to a plain `text`
@@ -2540,13 +2555,13 @@ public class DbContextGenerator : IGenerator
             // to compile except under a host's ImplicitUsings — the generated context must be
             // self-contained (this is also on the #214 write-through read-model path now).
             lines.Add(
-                $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasColumnType(\"text\").HasConversion(v => v!.ToString(), v => new System.Uri(v));");
+                $"modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasColumnType(\"text\").HasConversion(v => v!.ToString(), v => new System.Uri(v));");
         }
 
         if (!array && f.SubType == FIELD_SUBTYPE_INET && !CSharpNaming.IsLenientNet(f))
         {
             lines.Add(
-                $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasColumnType(\"inet\");");
+                $"modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasColumnType(\"inet\");");
         }
 
         // field.duration — a System.TimeSpan. Npgsql maps it to the native `interval` (and an array
@@ -2582,8 +2597,17 @@ public class DbContextGenerator : IGenerator
         string className, MetaObject entity, IEnumerable<MetaField> fields, GenContext ctx, List<string> modelLines)
     {
         foreach (var f in fields.Where(f => f.SubType == FIELD_SUBTYPE_DURATION && f.DbColumnType is null))
-            modelLines.Add(string.Join("\n",
-                DurationColumnLines($"modelBuilder.Entity<{className}>()", "x", PropertyName(f), f.ResolvedIsArray(), entity, ctx, "        ")));
+            modelLines.Add(Entry(w => WriteDurationColumn(
+                w, $"modelBuilder.Entity<{className}>()", "x", PropertyName(f), f.ResolvedIsArray(), entity, ctx)));
+    }
+
+    // One model entry written on its own writer, so an entry of several lines carries only the indentation
+    // its lines have relative to its first. OnModelCreating writes each entry at its place.
+    private static string Entry(Action<CsWriter> write)
+    {
+        var entry = new CsWriter();
+        write(entry);
+        return entry.ToString().Trim();
     }
 
     // The provider-dependent mapping of one duration column (a top-level property, or a member of a
@@ -2595,18 +2619,20 @@ public class DbContextGenerator : IGenerator
     //   - any other provider (SQLite, MySQL): a 64-bit count of microseconds in an integer column
     //     (sub-microsecond ticks truncated toward zero; a count past a TimeSpan refused, not
     //     wrapped), which orders and compares as the span does. An array holds the counts.
-    private static IEnumerable<string> DurationColumnLines(
-        string target, string v, string prop, bool isArray, MetaObject owner, GenContext ctx, string indent)
+    private static void WriteDurationColumn(
+        CsWriter w, string target, string v, string prop, bool isArray, MetaObject owner, GenContext ctx)
     {
         var micros = DurationMicrosConverter(owner, ctx);
-        yield return $"{indent}if (Database.ProviderName == \"{NpgsqlProviderName}\")";
-        yield return isArray
-            ? $"{indent}    {target}.PrimitiveCollection({v} => {v}.{prop}).Metadata.SetTypeMapping({DurationIntervalHelperName}.ArrayMapping);"
-            : $"{indent}    {target}.Property({v} => {v}.{prop}).HasColumnType(\"interval\").Metadata.SetTypeMapping({DurationIntervalHelperName}.Mapping);";
-        yield return $"{indent}else";
-        yield return isArray
-            ? $"{indent}    {target}.PrimitiveCollection({v} => {v}.{prop}).ElementType().HasConversion({micros});"
-            : $"{indent}    {target}.Property({v} => {v}.{prop}).HasConversion({micros});";
+        w.Line($"if (Database.ProviderName == \"{NpgsqlProviderName}\")");
+        using (w.Hanging())
+            w.Line(isArray
+                ? $"{target}.PrimitiveCollection({v} => {v}.{prop}).Metadata.SetTypeMapping({DurationIntervalHelperName}.ArrayMapping);"
+                : $"{target}.Property({v} => {v}.{prop}).HasColumnType(\"interval\").Metadata.SetTypeMapping({DurationIntervalHelperName}.Mapping);");
+        w.Line("else");
+        using (w.Hanging())
+            w.Line(isArray
+                ? $"{target}.PrimitiveCollection({v} => {v}.{prop}).ElementType().HasConversion({micros});"
+                : $"{target}.Property({v} => {v}.{prop}).HasConversion({micros});");
     }
 
     // The namespace OWNER's DurationWire is emitted into (owner has a duration field, so it has one).
@@ -2642,136 +2668,137 @@ public class DbContextGenerator : IGenerator
     // optimize`), which re-creates a property's mapping as `<MappingType>.Default.Clone(...)` and
     // refuses a nested or non-public one. DurationIntervalEfCoreTests (integration) gates LINQ,
     // interval arithmetic and a compiled model against a live Postgres.
-    private static void EmitDurationIntervalHelper(StringBuilder sb) => sb.AppendLine(DurationIntervalHelperSource);
-
-    private const string DurationIntervalHelperSource = """
-
-/// <summary>
-/// field.duration on Npgsql: an <c>interval</c> column read through <c>NpgsqlInterval</c>, so a month
-/// or year part, or a day count past what a TimeSpan holds, is refused rather than read wrong.
-/// Npgsql is reached by reflection: a project on another provider needs no Npgsql reference.
-/// </summary>
-internal static class DurationInterval
-{
-    // The Npgsql shape this mapping reads, resolved and checked when the model is built (the
-    // first touch is SetTypeMapping in OnModelCreating, or the first query on a compiled model),
-    // so a missing or changed type fails there, naming what is missing, rather than on a row.
-    internal static readonly global::System.Type IntervalType = Resolve();
-    private static readonly global::System.Reflection.PropertyInfo Months = IntervalType.GetProperty("Months")!;
-    private static readonly global::System.Reflection.PropertyInfo Days = IntervalType.GetProperty("Days")!;
-    private static readonly global::System.Reflection.PropertyInfo Time = IntervalType.GetProperty("Time")!;
-    internal static readonly global::System.Reflection.MethodInfo GetFieldValue =
-        typeof(global::System.Data.Common.DbDataReader).GetMethod(nameof(global::System.Data.Common.DbDataReader.GetFieldValue))!;
-
-    internal static readonly global::Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping Mapping = DurationIntervalMapping.Default;
-    internal static readonly global::Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping ArrayMapping = DurationIntervalArrayMapping.Default;
-
-    private static global::System.Type Resolve()
+    private static void EmitDurationIntervalHelper(CsWriter w)
     {
-        var type = global::System.Type.GetType(IntervalShape.TypeName, throwOnError: false);
-        if (IntervalShape.Problem(type) is { } problem) throw new global::System.InvalidOperationException(problem);
-        return type!;
-    }
-
-    /// <summary>The check of the NpgsqlInterval shape, kept apart from the state above so it can run against any type.</summary>
-    internal static class IntervalShape
-    {
-        internal const string TypeName = "NpgsqlTypes.NpgsqlInterval, Npgsql";
-
-        /// <summary>Null when <paramref name="type"/> has the shape the mapping reads, else a message naming what is missing.</summary>
-        internal static string? Problem(global::System.Type? type)
-        {
-            const string Lead = "field.duration on Npgsql: the generated DurationInterval mapping reads an interval column as " +
-                "NpgsqlTypes.NpgsqlInterval (an Int32 Months, an Int32 Days and an Int64 Time in microseconds; " +
-                "tested with Npgsql 8.0.5), but ";
-            if (type is null) return Lead + "no type NpgsqlTypes.NpgsqlInterval was found in the loaded Npgsql assembly.";
-            var missing = new global::System.Collections.Generic.List<string>();
-            foreach (var (name, want) in new[] { ("Months", typeof(int)), ("Days", typeof(int)), ("Time", typeof(long)) })
+        w.Blank();
+        w.Text("""
+            /// <summary>
+            /// field.duration on Npgsql: an <c>interval</c> column read through <c>NpgsqlInterval</c>, so a month
+            /// or year part, or a day count past what a TimeSpan holds, is refused rather than read wrong.
+            /// Npgsql is reached by reflection: a project on another provider needs no Npgsql reference.
+            /// </summary>
+            internal static class DurationInterval
             {
-                var property = type.GetProperty(name);
-                if (property is null || property.PropertyType != want)
-                    missing.Add(want.Name + " " + name);
+                // The Npgsql shape this mapping reads, resolved and checked when the model is built (the
+                // first touch is SetTypeMapping in OnModelCreating, or the first query on a compiled model),
+                // so a missing or changed type fails there, naming what is missing, rather than on a row.
+                internal static readonly global::System.Type IntervalType = Resolve();
+                private static readonly global::System.Reflection.PropertyInfo Months = IntervalType.GetProperty("Months")!;
+                private static readonly global::System.Reflection.PropertyInfo Days = IntervalType.GetProperty("Days")!;
+                private static readonly global::System.Reflection.PropertyInfo Time = IntervalType.GetProperty("Time")!;
+                internal static readonly global::System.Reflection.MethodInfo GetFieldValue =
+                    typeof(global::System.Data.Common.DbDataReader).GetMethod(nameof(global::System.Data.Common.DbDataReader.GetFieldValue))!;
+
+                internal static readonly global::Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping Mapping = DurationIntervalMapping.Default;
+                internal static readonly global::Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping ArrayMapping = DurationIntervalArrayMapping.Default;
+
+                private static global::System.Type Resolve()
+                {
+                    var type = global::System.Type.GetType(IntervalShape.TypeName, throwOnError: false);
+                    if (IntervalShape.Problem(type) is { } problem) throw new global::System.InvalidOperationException(problem);
+                    return type!;
+                }
+
+                /// <summary>The check of the NpgsqlInterval shape, kept apart from the state above so it can run against any type.</summary>
+                internal static class IntervalShape
+                {
+                    internal const string TypeName = "NpgsqlTypes.NpgsqlInterval, Npgsql";
+
+                    /// <summary>Null when <paramref name="type"/> has the shape the mapping reads, else a message naming what is missing.</summary>
+                    internal static string? Problem(global::System.Type? type)
+                    {
+                        const string Lead = "field.duration on Npgsql: the generated DurationInterval mapping reads an interval column as " +
+                            "NpgsqlTypes.NpgsqlInterval (an Int32 Months, an Int32 Days and an Int64 Time in microseconds; " +
+                            "tested with Npgsql 8.0.5), but ";
+                        if (type is null) return Lead + "no type NpgsqlTypes.NpgsqlInterval was found in the loaded Npgsql assembly.";
+                        var missing = new global::System.Collections.Generic.List<string>();
+                        foreach (var (name, want) in new[] { ("Months", typeof(int)), ("Days", typeof(int)), ("Time", typeof(long)) })
+                        {
+                            var property = type.GetProperty(name);
+                            if (property is null || property.PropertyType != want)
+                                missing.Add(want.Name + " " + name);
+                        }
+                        return missing.Count == 0
+                            ? null
+                            : Lead + type.FullName + " has no " + string.Join(", no ", missing) + " property. Check the Npgsql version the project references.";
+                    }
+                }
+
+                /// <summary>An NpgsqlInterval as a TimeSpan: refused when it has a month or year part, or a span a TimeSpan cannot hold.</summary>
+                public static global::System.TimeSpan FromInterval(object interval)
+                {
+                    if ((int)Months.GetValue(interval)! != 0)
+                        throw new global::System.InvalidCastException("field.duration: the interval has a month or year part, so it is not a fixed-length span");
+                    var days = (int)Days.GetValue(interval)!;
+                    var micros = (long)Time.GetValue(interval)!;
+                    return global::System.TimeSpan.FromTicks(checked(days * global::System.TimeSpan.TicksPerDay + micros * 10));
+                }
+
+                /// <summary>An interval[] (an NpgsqlInterval array) as the list a duration array property holds.</summary>
+                public static global::System.Collections.Generic.IList<global::System.TimeSpan> FromIntervals(object intervals)
+                {
+                    var list = new global::System.Collections.Generic.List<global::System.TimeSpan>();
+                    foreach (var interval in (global::System.Array)intervals) list.Add(FromInterval(interval!));
+                    return list;
+                }
+
+                // A span as Postgres interval input: [-]HH:MM:SS[.f], hours unbounded, no day part. The column
+                // holds microseconds, so sub-microsecond ticks are truncated toward zero.
+                internal static string Literal(global::System.TimeSpan value)
+                {
+                    long micros = value.Ticks / 10;
+                    bool negative = micros < 0;
+                    ulong rest = negative ? (ulong)(-(micros + 1)) + 1UL : (ulong)micros;
+                    ulong frac = rest % 1_000_000UL, s = rest / 1_000_000UL % 60, m = rest / 60_000_000UL % 60, h = rest / 3_600_000_000UL;
+                    var text = h.ToString("00", global::System.Globalization.CultureInfo.InvariantCulture) + ":" + m.ToString("00", global::System.Globalization.CultureInfo.InvariantCulture)
+                        + ":" + s.ToString("00", global::System.Globalization.CultureInfo.InvariantCulture);
+                    if (frac > 0) text += "." + frac.ToString("D6", global::System.Globalization.CultureInfo.InvariantCulture).TrimEnd('0');
+                    return "INTERVAL '" + (negative ? "-" : "") + text + "'";
+                }
             }
-            return missing.Count == 0
-                ? null
-                : Lead + type.FullName + " has no " + string.Join(", no ", missing) + " property. Check the Npgsql version the project references.";
-        }
+
+            /// <summary>The type mapping of a field.duration column on Npgsql (an <c>interval</c>, read through <see cref="DurationInterval"/>).</summary>
+            public sealed class DurationIntervalMapping : global::Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping
+            {
+                public static DurationIntervalMapping Default { get; } = new();
+
+                public DurationIntervalMapping() : base("interval", typeof(global::System.TimeSpan)) { }
+                private DurationIntervalMapping(RelationalTypeMappingParameters parameters) : base(parameters) { }
+                protected override global::Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping Clone(RelationalTypeMappingParameters parameters) => new DurationIntervalMapping(parameters);
+                public override global::System.Reflection.MethodInfo GetDataReaderMethod() => DurationInterval.GetFieldValue.MakeGenericMethod(DurationInterval.IntervalType);
+                public override global::System.Linq.Expressions.Expression CustomizeDataReaderExpression(global::System.Linq.Expressions.Expression expression) =>
+                    global::System.Linq.Expressions.Expression.Call(typeof(DurationInterval).GetMethod(nameof(DurationInterval.FromInterval))!,
+                        global::System.Linq.Expressions.Expression.Convert(expression, typeof(object)));
+                protected override string GenerateNonNullSqlLiteral(object value) => DurationInterval.Literal((global::System.TimeSpan)value);
+            }
+
+            /// <summary>The type mapping of an <c>@isArray</c> field.duration column on Npgsql (an <c>interval[]</c>).</summary>
+            public sealed class DurationIntervalArrayMapping : global::Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping
+            {
+                private static readonly global::Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<global::System.Collections.Generic.IList<global::System.TimeSpan>> ListComparer = new(
+                    (a, b) => a == null ? b == null : b != null && global::System.Linq.Enumerable.SequenceEqual(a, b),
+                    v => global::System.Linq.Enumerable.Aggregate(v, 0, (h, e) => global::System.HashCode.Combine(h, e)),
+                    v => global::System.Linq.Enumerable.ToList(v));
+
+                // After ListComparer: static initializers run in declaration order. The element mapping is the
+                // scalar one, which is what lets EF query the column as a primitive collection (Contains, Count,
+                // Any): a compiled model carries only what the mapping itself names.
+                public static DurationIntervalArrayMapping Default { get; } = new();
+
+                public DurationIntervalArrayMapping() : base(new RelationalTypeMappingParameters(
+                    new CoreTypeMappingParameters(typeof(global::System.Collections.Generic.IList<global::System.TimeSpan>), comparer: ListComparer, keyComparer: ListComparer,
+                        elementMapping: DurationIntervalMapping.Default), "interval[]")) { }
+                private DurationIntervalArrayMapping(RelationalTypeMappingParameters parameters) : base(parameters) { }
+                protected override global::Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping Clone(RelationalTypeMappingParameters parameters) => new DurationIntervalArrayMapping(parameters);
+                public override global::System.Reflection.MethodInfo GetDataReaderMethod() => DurationInterval.GetFieldValue.MakeGenericMethod(DurationInterval.IntervalType.MakeArrayType());
+                public override global::System.Linq.Expressions.Expression CustomizeDataReaderExpression(global::System.Linq.Expressions.Expression expression) =>
+                    global::System.Linq.Expressions.Expression.Call(typeof(DurationInterval).GetMethod(nameof(DurationInterval.FromIntervals))!,
+                        global::System.Linq.Expressions.Expression.Convert(expression, typeof(object)));
+                protected override string GenerateNonNullSqlLiteral(object value) =>
+                    "ARRAY[" + string.Join(",", global::System.Linq.Enumerable.Select((global::System.Collections.Generic.IEnumerable<global::System.TimeSpan>)value, DurationInterval.Literal)) + "]::interval[]";
+            }
+            """);
     }
-
-    /// <summary>An NpgsqlInterval as a TimeSpan: refused when it has a month or year part, or a span a TimeSpan cannot hold.</summary>
-    public static global::System.TimeSpan FromInterval(object interval)
-    {
-        if ((int)Months.GetValue(interval)! != 0)
-            throw new global::System.InvalidCastException("field.duration: the interval has a month or year part, so it is not a fixed-length span");
-        var days = (int)Days.GetValue(interval)!;
-        var micros = (long)Time.GetValue(interval)!;
-        return global::System.TimeSpan.FromTicks(checked(days * global::System.TimeSpan.TicksPerDay + micros * 10));
-    }
-
-    /// <summary>An interval[] (an NpgsqlInterval array) as the list a duration array property holds.</summary>
-    public static global::System.Collections.Generic.IList<global::System.TimeSpan> FromIntervals(object intervals)
-    {
-        var list = new global::System.Collections.Generic.List<global::System.TimeSpan>();
-        foreach (var interval in (global::System.Array)intervals) list.Add(FromInterval(interval!));
-        return list;
-    }
-
-    // A span as Postgres interval input: [-]HH:MM:SS[.f], hours unbounded, no day part. The column
-    // holds microseconds, so sub-microsecond ticks are truncated toward zero.
-    internal static string Literal(global::System.TimeSpan value)
-    {
-        long micros = value.Ticks / 10;
-        bool negative = micros < 0;
-        ulong rest = negative ? (ulong)(-(micros + 1)) + 1UL : (ulong)micros;
-        ulong frac = rest % 1_000_000UL, s = rest / 1_000_000UL % 60, m = rest / 60_000_000UL % 60, h = rest / 3_600_000_000UL;
-        var text = h.ToString("00", global::System.Globalization.CultureInfo.InvariantCulture) + ":" + m.ToString("00", global::System.Globalization.CultureInfo.InvariantCulture)
-            + ":" + s.ToString("00", global::System.Globalization.CultureInfo.InvariantCulture);
-        if (frac > 0) text += "." + frac.ToString("D6", global::System.Globalization.CultureInfo.InvariantCulture).TrimEnd('0');
-        return "INTERVAL '" + (negative ? "-" : "") + text + "'";
-    }
-}
-
-/// <summary>The type mapping of a field.duration column on Npgsql (an <c>interval</c>, read through <see cref="DurationInterval"/>).</summary>
-public sealed class DurationIntervalMapping : global::Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping
-{
-    public static DurationIntervalMapping Default { get; } = new();
-
-    public DurationIntervalMapping() : base("interval", typeof(global::System.TimeSpan)) { }
-    private DurationIntervalMapping(RelationalTypeMappingParameters parameters) : base(parameters) { }
-    protected override global::Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping Clone(RelationalTypeMappingParameters parameters) => new DurationIntervalMapping(parameters);
-    public override global::System.Reflection.MethodInfo GetDataReaderMethod() => DurationInterval.GetFieldValue.MakeGenericMethod(DurationInterval.IntervalType);
-    public override global::System.Linq.Expressions.Expression CustomizeDataReaderExpression(global::System.Linq.Expressions.Expression expression) =>
-        global::System.Linq.Expressions.Expression.Call(typeof(DurationInterval).GetMethod(nameof(DurationInterval.FromInterval))!,
-            global::System.Linq.Expressions.Expression.Convert(expression, typeof(object)));
-    protected override string GenerateNonNullSqlLiteral(object value) => DurationInterval.Literal((global::System.TimeSpan)value);
-}
-
-/// <summary>The type mapping of an <c>@isArray</c> field.duration column on Npgsql (an <c>interval[]</c>).</summary>
-public sealed class DurationIntervalArrayMapping : global::Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping
-{
-    private static readonly global::Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<global::System.Collections.Generic.IList<global::System.TimeSpan>> ListComparer = new(
-        (a, b) => a == null ? b == null : b != null && global::System.Linq.Enumerable.SequenceEqual(a, b),
-        v => global::System.Linq.Enumerable.Aggregate(v, 0, (h, e) => global::System.HashCode.Combine(h, e)),
-        v => global::System.Linq.Enumerable.ToList(v));
-
-    // After ListComparer: static initializers run in declaration order. The element mapping is the
-    // scalar one, which is what lets EF query the column as a primitive collection (Contains, Count,
-    // Any): a compiled model carries only what the mapping itself names.
-    public static DurationIntervalArrayMapping Default { get; } = new();
-
-    public DurationIntervalArrayMapping() : base(new RelationalTypeMappingParameters(
-        new CoreTypeMappingParameters(typeof(global::System.Collections.Generic.IList<global::System.TimeSpan>), comparer: ListComparer, keyComparer: ListComparer,
-            elementMapping: DurationIntervalMapping.Default), "interval[]")) { }
-    private DurationIntervalArrayMapping(RelationalTypeMappingParameters parameters) : base(parameters) { }
-    protected override global::Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping Clone(RelationalTypeMappingParameters parameters) => new DurationIntervalArrayMapping(parameters);
-    public override global::System.Reflection.MethodInfo GetDataReaderMethod() => DurationInterval.GetFieldValue.MakeGenericMethod(DurationInterval.IntervalType.MakeArrayType());
-    public override global::System.Linq.Expressions.Expression CustomizeDataReaderExpression(global::System.Linq.Expressions.Expression expression) =>
-        global::System.Linq.Expressions.Expression.Call(typeof(DurationInterval).GetMethod(nameof(DurationInterval.FromIntervals))!,
-            global::System.Linq.Expressions.Expression.Convert(expression, typeof(object)));
-    protected override string GenerateNonNullSqlLiteral(object value) =>
-        "ARRAY[" + string.Join(",", global::System.Linq.Enumerable.Select((global::System.Collections.Generic.IEnumerable<global::System.TimeSpan>)value, DurationInterval.Literal)) + "]::interval[]";
-}
-""";
 
     // The EF Core provider name Npgsql registers (DbContext.Database.ProviderName).
     private const string NpgsqlProviderName = "Npgsql.EntityFrameworkCore.PostgreSQL";
@@ -2840,18 +2867,18 @@ public sealed class DurationIntervalArrayMapping : global::Microsoft.EntityFrame
             var clr = field.ResolvedIsArray()
                 ? $"System.Collections.Generic.ICollection<{voType}>{modelType}"
                 : voType + modelType;
-            return $"        modelBuilder.Entity<{owner}>().Property(x => x.{nav}).HasColumnName({parentColRef})"
+            return $"modelBuilder.Entity<{owner}>().Property(x => x.{nav}).HasColumnName({parentColRef})"
                 + $".HasColumnType(\"jsonb\").HasConversion({MapJsonbHelperName}.ObjectConverter<{clr}>(), {MapJsonbHelperName}.ObjectComparer<{clr}>());";
         }
         var jsonEnums = JsonEnumConversions(vo, ctx);
         if (field.ResolvedIsArray())
             return jsonEnums.Count == 0
-                ? $"        modelBuilder.Entity<{owner}>().OwnsMany(x => x.{nav}, b => b.ToJson({parentColRef}));"
+                ? $"modelBuilder.Entity<{owner}>().OwnsMany(x => x.{nav}, b => b.ToJson({parentColRef}));"
                 : OwnedJsonBlock("OwnsMany", owner, nav, parentColRef, jsonEnums);
 
         if (field.Storage != STORAGE_FLATTENED)
             return jsonEnums.Count == 0
-                ? $"        modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}, b => b.ToJson({parentColRef}));"
+                ? $"modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}, b => b.ToJson({parentColRef}));"
                 : OwnedJsonBlock("OwnsOne", owner, nav, parentColRef, jsonEnums);
 
         // Each nested member's column is core naming's, whole
@@ -2863,9 +2890,9 @@ public sealed class DurationIntervalArrayMapping : global::Microsoft.EntityFrame
         // rule, so verify's probe of an alternate rule names these columns the way it names
         // every other.
 
-        var sb = new StringBuilder();
-        sb.AppendLine($"        modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}, b =>");
-        sb.AppendLine("        {");
+        var s = new CsWriter();
+        s.Line($"modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}, b =>");
+        s.Open("{");
         // A6 -- NOT converted, on two independent grounds. `vo` (object.value) never
         // carries a source (FR-024 value purity), so it has no <Vo>Names artifact at
         // all — CSharpNaming.ColumnRef would miss on every nf, always. And even with
@@ -2906,7 +2933,7 @@ public sealed class DurationIntervalArrayMapping : global::Microsoft.EntityFrame
                 // An override returning null leaves the member unconverted: no line for it.
                 if (EnumConversionCall(ValueObjectNames.TypeName(vo, ctx.Root), vo, nf, ctx) is { } elementConversion)
                 {
-                    sb.AppendLine($"            b.PrimitiveCollection(p => p.{PropertyName(nf)})"
+                    s.Line($"b.PrimitiveCollection(p => p.{PropertyName(nf)})"
                         + $".HasColumnName(\"{nestedColAny}\").ElementType()"
                         + $".{elementConversion};");
                 }
@@ -2930,7 +2957,7 @@ public sealed class DurationIntervalArrayMapping : global::Microsoft.EntityFrame
                 var clr = nf.ResolvedIsArray()
                     ? $"System.Collections.Generic.ICollection<{nestedType}>{nullable}"
                     : nestedType + nullable;
-                sb.AppendLine($"            b.Property(p => p.{PropertyName(nf)}).HasColumnName(\"{nestedColAny}\")"
+                s.Line($"b.Property(p => p.{PropertyName(nf)}).HasColumnName(\"{nestedColAny}\")"
                     + $".HasColumnType(\"jsonb\").HasConversion({MapJsonbHelperName}.ObjectConverter<{clr}>(), {MapJsonbHelperName}.ObjectComparer<{clr}>());");
                 continue;
             }
@@ -2943,23 +2970,22 @@ public sealed class DurationIntervalArrayMapping : global::Microsoft.EntityFrame
             // default: a column the migration never creates (42703 at the engine).
             if (nf.SubType == FIELD_SUBTYPE_MAP)
             {
-                sb.AppendLine($"            b.Property(p => p.{PropertyName(nf)})"
+                s.Line($"b.Property(p => p.{PropertyName(nf)})"
                     + $".HasColumnName(\"{nestedColAny}\")" + MapJsonbSuffix(vo, nf, ctx) + ";");
                 continue;
             }
 
             // A `field.duration` member: the migration flattens it to an `interval` column on
             // Postgres and an integer microsecond count elsewhere — the same provider-dependent
-            // mapping a top-level duration takes (DurationColumnLines). Without it EF would write
+            // mapping a top-level duration takes (WriteDurationColumn). Without it EF would write
             // its own "01:30:00" text there and fail to read another port's count.
             if (nf.SubType == FIELD_SUBTYPE_DURATION && CSharpNaming.DbColumnTypeClrOverride(nf) is null)
             {
                 var dprop = PropertyName(nf);
-                sb.AppendLine(nf.ResolvedIsArray()
-                    ? $"            b.PrimitiveCollection(p => p.{dprop}).HasColumnName(\"{nestedColAny}\");"
-                    : $"            b.Property(p => p.{dprop}).HasColumnName(\"{nestedColAny}\");");
-                foreach (var line in DurationColumnLines("b", "p", dprop, nf.ResolvedIsArray(), vo, ctx, "            "))
-                    sb.AppendLine(line);
+                s.Line(nf.ResolvedIsArray()
+                    ? $"b.PrimitiveCollection(p => p.{dprop}).HasColumnName(\"{nestedColAny}\");"
+                    : $"b.Property(p => p.{dprop}).HasColumnName(\"{nestedColAny}\");");
+                WriteDurationColumn(s, "b", "p", dprop, nf.ResolvedIsArray(), vo, ctx);
                 continue;
             }
 
@@ -2980,10 +3006,10 @@ public sealed class DurationIntervalArrayMapping : global::Microsoft.EntityFrame
             var conversion = isEnum && EnumConversionCall(ValueObjectNames.TypeName(vo, ctx.Root), vo, nf, ctx) is { } call
                 ? $".{call}"
                 : "";
-            sb.AppendLine($"            b.Property(p => p.{PropertyName(nf)}).HasColumnName(\"{nestedCol}\"){conversion};");
+            s.Line($"b.Property(p => p.{PropertyName(nf)}).HasColumnName(\"{nestedCol}\"){conversion};");
         }
-        sb.Append("        });");
-        return sb.ToString();
+        s.Close("});");
+        return s.ToString().Trim();
     }
 
     /// <summary>
@@ -3019,8 +3045,8 @@ public sealed class DurationIntervalArrayMapping : global::Microsoft.EntityFrame
                 && CSharpNaming.DbColumnTypeClrOverride(nf) is null)
             {
                 lines.Add(CSharpNaming.IsRequired(vo, nf)
-                    ? $"            {builder}.Property(p => p.{prop}).HasConversion(v => v.ToString(\"0.############################\", System.Globalization.CultureInfo.InvariantCulture), s => decimal.Parse(s, System.Globalization.CultureInfo.InvariantCulture));"
-                    : $"            {builder}.Property(p => p.{prop}).HasConversion(v => v == null ? null : v.Value.ToString(\"0.############################\", System.Globalization.CultureInfo.InvariantCulture), s => s == null ? (decimal?)null : decimal.Parse(s, System.Globalization.CultureInfo.InvariantCulture));");
+                    ? $"{builder}.Property(p => p.{prop}).HasConversion(v => v.ToString(\"0.############################\", System.Globalization.CultureInfo.InvariantCulture), s => decimal.Parse(s, System.Globalization.CultureInfo.InvariantCulture));"
+                    : $"{builder}.Property(p => p.{prop}).HasConversion(v => v == null ? null : v.Value.ToString(\"0.############################\", System.Globalization.CultureInfo.InvariantCulture), s => s == null ? (decimal?)null : decimal.Parse(s, System.Globalization.CultureInfo.InvariantCulture));");
                 continue;
             }
             // A duration member of a JSON document is stored as its canonical ISO-8601 string (the
@@ -3029,15 +3055,15 @@ public sealed class DurationIntervalArrayMapping : global::Microsoft.EntityFrame
             {
                 var converter = DurationConverter(vo, ctx);
                 lines.Add(nf.ResolvedIsArray()
-                    ? $"            {builder}.PrimitiveCollection(p => p.{prop}).ElementType().HasConversion({converter});"
-                    : $"            {builder}.Property(p => p.{prop}).HasConversion({converter});");
+                    ? $"{builder}.PrimitiveCollection(p => p.{prop}).ElementType().HasConversion({converter});"
+                    : $"{builder}.Property(p => p.{prop}).HasConversion({converter});");
                 continue;
             }
             if (nf.SubType != FIELD_SUBTYPE_ENUM) continue;
             // ADR-0039: resolving — array-ness is inheritable via extends.
             lines.Add(nf.ResolvedIsArray()
-                ? $"            {builder}.PrimitiveCollection(p => p.{prop}).ElementType().HasConversion<string>();"
-                : $"            {builder}.Property(p => p.{prop}).HasConversion<string>();");
+                ? $"{builder}.PrimitiveCollection(p => p.{prop}).ElementType().HasConversion<string>();"
+                : $"{builder}.Property(p => p.{prop}).HasConversion<string>();");
         }
         return lines;
     }
@@ -3049,12 +3075,12 @@ public sealed class DurationIntervalArrayMapping : global::Microsoft.EntityFrame
     private static string OwnedJsonBlock(
         string ownsCall, string owner, string nav, string parentColRef, List<string> memberLines)
     {
-        var sb = new StringBuilder();
-        sb.AppendLine($"        modelBuilder.Entity<{owner}>().{ownsCall}(x => x.{nav}, b =>");
-        sb.AppendLine("        {");
-        sb.AppendLine($"            b.ToJson({parentColRef});");
-        foreach (var line in memberLines) sb.AppendLine(line);
-        sb.Append("        });");
-        return sb.ToString();
+        var s = new CsWriter();
+        s.Line($"modelBuilder.Entity<{owner}>().{ownsCall}(x => x.{nav}, b =>");
+        s.Open("{");
+        s.Line($"b.ToJson({parentColRef});");
+        foreach (var line in memberLines) s.Line(line);
+        s.Close("});");
+        return s.ToString().Trim();
     }
 }

@@ -496,6 +496,16 @@ where it is written. `ValueObjectMemberAttributes` returns lines with no indent 
 cross-field validators and so needs `IValidatableObject` on its declaration. The hooks are not a stability
 contract; an owned copy ejected with `dotnet meta eject` is yours to change.
 
+`DbContextGenerator` writes on the same writer. Its three file-shape hooks (`EmitUsings`,
+`EmitDbSetDeclarations`, `EmitOnModelCreatingBody`) take the `CsWriter` in place of the `StringBuilder`;
+`EmitUsings` leaves the class body open with `w.Open("{")` and the generator writes the closing `}`. The
+hooks that return text (`ContextUsings`, `ContextMemberLines`, `ContextPreambleLines`,
+`ContextTrailerLines`, `DbSetLine`, `EntityConfigTrailer`, `FieldTypeConfig`, `OwnedTypeConfig` and the
+rest) return lines with no indent: each model entry is one statement, and the writer indents it where it is
+written. An entry that already carries an indent still reads right, because the writer removes an entry's
+common margin before it indents. A `ContextUsings` line is a `using ...;` directive, which the writer
+prints once, in the order given.
+
 **One line at a time.** Each of these is a `protected virtual` hook whose default is the line it
 replaces; override it, call base, and adjust. On `EntityGenerator`: `ValueObjectMemberAttributes`
 (the `[JsonPropertyName]` before each value-object member), `ColumnAttributeArguments` (the
