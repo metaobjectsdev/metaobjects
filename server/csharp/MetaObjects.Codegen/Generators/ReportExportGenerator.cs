@@ -86,9 +86,10 @@ public class ReportExportGenerator : IGenerator
             yield return new EmittedFile(OutputPaths.Of(report, ctx, CSharpNaming.Pascal(report.Name) + "Export.g.cs"), ReportModule(report, ctx));
     }
 
-    private static string Literal(bool b) => b ? "true" : "false";
+    protected static string Literal(bool b) => b ? "true" : "false";
 
-    private string ReportModule(MetaObject report, GenContext ctx)
+    /// <summary>The <c>&lt;Report&gt;Export.g.cs</c> module of one served report: its columns and its two writers.</summary>
+    protected virtual string ReportModule(MetaObject report, GenContext ctx)
     {
         var cls = CSharpNaming.Pascal(report.Name);
         // A credential column (a derived field over a view.password field) is never exported.
@@ -144,16 +145,17 @@ public class ReportExportGenerator : IGenerator
     // field.duration — the duration parts of the shared writer, emitted only when a served report has a
     // duration column, so the writer of a model without one is byte-identical to the one before
     // durations existed. The rule is the generated DurationWire.Format's.
-    private const string DurationDoc = "a duration as its canonical ISO-8601 string, ";
-    private const string DurationCase = "case TimeSpan ts: return new(Duration(ts), false);";
+    protected const string DurationDoc = "a duration as its canonical ISO-8601 string, ";
+    protected const string DurationCase = "case TimeSpan ts: return new(Duration(ts), false);";
 
     // True when a served report has a field.duration column (a TimeSpan cell).
-    private static bool HasDurationColumn(IEnumerable<MetaObject> served) =>
+    protected static bool HasDurationColumn(IEnumerable<MetaObject> served) =>
         served.Any(r => r.Fields().Any(f => f.SubType == FIELD_SUBTYPE_DURATION));
 
     // The shared writer: the C# it holds is full of braces, so it is written as raw interpolated
     // text with `{{ }}` for the few values that vary; the optional duration parts are their own pieces.
-    private string SharedWriter(GenContext ctx, bool durations)
+    /// <summary>The shared <c>ReportExportWriter.g.cs</c>: the CSV and XML writers and the wire form of a cell.</summary>
+    protected virtual string SharedWriter(GenContext ctx, bool durations)
     {
         var w = new CsWriter();
         w.Text($$"""

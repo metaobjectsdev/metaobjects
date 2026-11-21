@@ -23,7 +23,7 @@
 //   - Update accepts BOTH PATCH and PUT (TS reference exposes both; we match).
 //   - 404 responses carry a JSON envelope: { "error": "not_found" }.
 //   - A read-only projection mounts the reads AND every write verb, each answering
-//     405 { "error": "method_not_allowed" } (F22) — see AppendProjectionRejects.
+//     405 { "error": "method_not_allowed" } (F22) — see WriteProjectionRejects.
 //   - A view-backed report (FR-044) is served as a keyless read: the list GET and a 405
 //     on POST, with no /{id} address at all (a report has no identity).
 //
@@ -118,7 +118,7 @@ public class RoutesGenerator : PerEntityGenerator
     // policy to a bare Map* call, and an adopter that doesn't notice ships it open. The XML
     // doc on the mount method is the one place a consumer reads before wiring it into their
     // host, so it says so and shows the fix rather than leaving it to a README nobody opens.
-    private static void AppendUnauthenticatedRoutesDoc(CsWriter w, string cls, bool readOnly)
+    protected virtual void WriteUnauthenticatedRoutesDoc(CsWriter w, string cls, bool readOnly)
     {
         var verbs = readOnly ? "read endpoints" : "endpoints";
         w.Line($"/// <summary>Maps <c>{cls}</c> REST routes. Unauthenticated — see remarks.</summary>");
@@ -155,7 +155,7 @@ public class RoutesGenerator : PerEntityGenerator
     // (that generator's MaxRows) governs instead and the refusal is export_too_large;
     // report_too_large never answers on an export. With no report-export generator wired the
     // emitted text is the same as before export existed.
-    private void AppendReportPaging(CsWriter w, int? exportMaxRows)
+    protected virtual void WriteReportPaging(CsWriter w, int? exportMaxRows)
     {
         var max = ReportMaxRows.ToString(System.Globalization.CultureInfo.InvariantCulture);
         var tooLarge = "Results.BadRequest(new { error = \"report_too_large\", maxRows })";
@@ -197,7 +197,7 @@ public class RoutesGenerator : PerEntityGenerator
     // A report-export download: the rows are fetched exactly as the list route fetches them, then
     // written as CSV or XML by the module the report-export generator emitted for this report. A JSON
     // export is the list route's own body, written by the withCount tail below.
-    private static void AppendReportExportBranch(CsWriter w, string cls, string route)
+    protected virtual void WriteReportExportBranch(CsWriter w, string cls, string route)
     {
         w.Blank();
         w.Line("// Export (report-export): the same rows as a download. withCount with csv or xml was refused above.");
@@ -210,7 +210,7 @@ public class RoutesGenerator : PerEntityGenerator
     // Every type the route file names bare — the entity itself, its value objects (owned and map
     // values) and the targets and junctions of its M:N traversals — so a split-namespace model gets
     // a `using` for each package namespace the home-namespace file reaches into.
-    private static IEnumerable<MetaData> ReferencedTypes(IEnumerable<MetaObject> entities, MetaRoot root)
+    protected static IEnumerable<MetaData> ReferencedTypes(IEnumerable<MetaObject> entities, MetaRoot root)
     {
         foreach (var entity in entities)
         {
@@ -227,7 +227,31 @@ public class RoutesGenerator : PerEntityGenerator
         }
     }
 
-    protected virtual EmittedFile GenerateStandardRoutes(MetaObject entity, GenContext ctx)
+    // The pieces of a routes file, one overridable method each (ADR-0063 item 7): a subclass changes
+    // the piece it wants and keeps the rest. Not a stability contract.
+
+    /// <summary>The writer a routes file is written on.</summary>
+    protected virtual CsWriter NewWriter() => new();
+
+    /// <summary>
+    /// Everything a standard (non-TPH) routes file is written from, worked out once by
+    /// <see cref="PlanStandardRoutes"/> so every piece reads the same answers.
+    /// </summary>
+    protected record StandardRoutesPlan(
+        MetaObject Entity, GenContext Ctx, string Cls, string DbSet, string Route,
+        IReadOnlyList<string> PkFields, string? PkType, string? PkProp,
+        bool IsProjection, bool HasItem, bool Writable, bool WriteThrough, string ReadCls, string ReadDbSet,
+        List<VoField> VoFields, List<MapVoField> MapVoFields, List<AutoSetField> AutoSetFields,
+        List<string> FrozenNavs, List<MetaField> DeniedFields, List<string> Credentials,
+        string TableRef, string PkColumnRef, bool IsReport, int? ExportMaxRows,
+        List<MetaField> SortFieldNodes, List<string> SortFields, HashSet<string> DecimalSortFields, bool SqliteSort)
+    {
+        /// <summary>The generated DbContext's type, as the route handlers name it.</summary>
+        public string ContextType => ValueObjectNames.ContextTypeRef(Ctx.Config);
+    }
+
+    /// <summary>Work out what the standard routes file for <paramref name="entity"/> serves.</summary>
+    protected virtual StandardRoutesPlan PlanStandardRoutes(MetaObject entity, GenContext ctx)
     {
         var cls = CSharpNaming.Pascal(entity.Name);
         var dbSet = CSharpNaming.DbSetName(entity);
@@ -270,7 +294,6 @@ public class RoutesGenerator : PerEntityGenerator
         // (insert stamps all; update stamps onUpdate; the merge loop skips them; an
         // InsertPreserving escape hatch is emitted when any exist).
         var autoSetFields = AutoSetFields(entity, ctx.Config);
-        var autoSetNavs = autoSetFields.Select(a => a.Nav).ToList();
         // FR-037 R1 — readOnly / writeOnce are excluded from the PATCH merge.
         var frozenNavs = FrozenNavs(entity, ctx.Config);
         // #484 — write-denied (@formExclude or credential) keys are ignored on every write; credentials never leave.
@@ -279,7 +302,7 @@ public class RoutesGenerator : PerEntityGenerator
         // Physical table + PK column for the post-save array-null clear (EF OwnsMany ToJson
         // writes [] for a null nav, so a nullable array column is NULLed via raw SQL). Both
         // are C# EXPRESSIONS — the <Entity>Names constant when the names artifact is in this
-        // run, the quoted literal otherwise — spliced into that SQL by AppendArrayNullClears.
+        // run, the quoted literal otherwise — spliced into that SQL by WriteArrayNullClears.
         var tableRef = CSharpNaming.NameRef(entity, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, CSharpNaming.Table(entity), qualify: ctx.Config);
         var pkColumnRef = pkFields.Count == 1 && entity.Fields().FirstOrDefault(f => f.Name == pkFields[0]) is { } pkf
             ? CSharpNaming.ColumnRef(entity, pkf, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, ctx.Config)
@@ -320,9 +343,80 @@ public class RoutesGenerator : PerEntityGenerator
             .ToHashSet(StringComparer.Ordinal);
         bool sqliteSort = sortFields.Any(decimalSortFields.Contains);
 
-        var w = new CsWriter();
+        return new StandardRoutesPlan(
+            entity, ctx, cls, dbSet, route, pkFields, pkType, pkProp,
+            isProjection, hasItem, writable, writeThrough, readCls, readDbSet,
+            voFields, mapVoFields, autoSetFields, frozenNavs, deniedFields, credentials,
+            tableRef, pkColumnRef, isReport, export, sortFieldNodes, sortFields, decimalSortFields, sqliteSort);
+    }
+
+    protected virtual EmittedFile GenerateStandardRoutes(MetaObject entity, GenContext ctx)
+    {
+        var p = PlanStandardRoutes(entity, ctx);
+        var w = NewWriter();
+        WriteFileHeader(w, [entity], entity, ctx, tph: false);
+        w.Line($"public static class {p.Cls}Routes");
+        w.Open("{");
+        // Static sort allowlist (case-insensitive) so the qs ?sort=field:dir
+        // is gated against the entity's scalar fields.
+        WriteSortAllowlist(w, "SortAllowlist", p.SortFieldNodes, ctx.Config);
+        WriteSortDefaultOrder(w, entity, "SortDefaultDesc", ctx.Config);
+        if (p.Writable) WriteKnownFields(w, [entity], ctx.Root);
+        WriteUnauthenticatedRoutesDoc(w, p.Cls, p.IsProjection);
+        w.Line($"public static IEndpointRouteBuilder Map{p.Cls}Routes(this IEndpointRouteBuilder app, string prefix = \"/api\")");
+        w.Open("{");
+        // Refuse to start when the host's serializer contract cannot be read to strip a credential.
+        if (p.Credentials.Count > 0)
+            w.Line($"SerializerKeys.EnsureContract(app.ServiceProvider, new System.Type[] {{ typeof({p.ReadCls}) }}, {NamesLiteral(p.Credentials)});");
+        WriteDecimalRangeGroup(w);
+
+        WriteListRoute(w, p);
+        if (p.HasItem) WriteGetRoute(w, p);
+        if (p.Writable)
+        {
+            WriteCreateRoute(w, p);
+            WriteUpdateRoute(w, p);
+            WriteDeleteRoute(w, p);
+        }
+        else if (p.IsProjection)
+        {
+            WriteProjectionRejects(w, p.Route, p.PkType, p.HasItem, p.IsReport ? "report" : "projection");
+        }
+
+        // FR-018 M:N traversal — GET /<source-plural>/{id}/<relationName> through the
+        // junction. Only on a single-PK source (the route addresses the source by id).
+        // Cross-port contract: source URL segment = pluralized ENTITY name, relation
+        // segment = relationship name.
+        if (p.HasItem)
+            foreach (var nav in M2MNavigationBuilder.For(entity, ctx.Root, ctx.Warn))
+                WriteM2mRoute(w, nav, p.Route, p.PkType!, ctx.Root, ctx.Config);
+
+        w.Blank();
+        w.Line("return mount;");
+        w.Close("}");
+        w.Blank();
+        WriteApplySort(w, p);
+        // Issue #203 — the verbatim-insert escape hatch, only for an entity with @autoSet
+        // fields (writable entities only; a read-only projection has no insert path).
+        if (p.Writable && p.AutoSetFields.Count > 0)
+            WriteInsertPreserving(w, p.Cls, p.DbSet, p.ContextType);
+        WriteOmitResultClass(w, p.Credentials.Count > 0 || (p.HasItem && M2mTargetHasCredentials([entity], ctx.Root, ctx.Config)));
+        w.Close("}");
+
+        return new EmittedFile(OutputPaths.Of(entity, ctx, $"{p.Cls}Routes.g.cs"), w.ToString());
+    }
+
+    /// <summary>
+    /// The generated-file marker, the generator's name, the nullable context, the usings (one per
+    /// package namespace the file reaches into, from <paramref name="referenced"/>) and the
+    /// namespace of <paramref name="home"/>.
+    /// </summary>
+    protected virtual void WriteFileHeader(CsWriter w, IEnumerable<MetaObject> referenced, MetaObject home, GenContext ctx, bool tph)
+    {
         w.Line("// <auto-generated/>");
-        w.Line("// Generated by MetaObjects routes-generator. Do not edit by hand.");
+        w.Line(tph
+            ? "// Generated by MetaObjects routes-generator (TPH). Do not edit by hand."
+            : "// Generated by MetaObjects routes-generator. Do not edit by hand.");
         w.Line("#nullable enable");
         w.Line("using System.Linq;");
         w.Line("using Microsoft.AspNetCore.Builder;");
@@ -331,27 +425,18 @@ public class RoutesGenerator : PerEntityGenerator
         w.Line("using Microsoft.EntityFrameworkCore;");
         w.Line($"using {HelperRuntimeNamespace};");
         if (!ctx.Config.PackageNamespacesFromMetadata)
-            foreach (var u in PackageBindingResolver.HomeUsings(ctx.Config, ReferencedTypes([entity], ctx.Root))) w.Line(u);
+            foreach (var u in PackageBindingResolver.HomeUsings(ctx.Config, ReferencedTypes(referenced, ctx.Root))) w.Line(u);
         w.Blank();
-        w.Line($"namespace {ValueObjectNames.CompanionNamespace(entity, ctx.Config)};");
+        w.Line($"namespace {ValueObjectNames.CompanionNamespace(home, ctx.Config)};");
         w.Blank();
-        w.Line($"public static class {cls}Routes");
-        w.Open("{");
-        // Static sort allowlist (case-insensitive) so the qs ?sort=field:dir
-        // is gated against the entity's scalar fields.
-        AppendSortAllowlist(w, "SortAllowlist", sortFieldNodes, ctx.Config);
-        AppendSortDefaultOrder(w, entity, "SortDefaultDesc", ctx.Config);
-        if (writable) AppendKnownFields(w, [entity], ctx.Root);
-        AppendUnauthenticatedRoutesDoc(w, cls, isProjection);
-        w.Line($"public static IEndpointRouteBuilder Map{cls}Routes(this IEndpointRouteBuilder app, string prefix = \"/api\")");
-        w.Open("{");
-        // Refuse to start when the host's serializer contract cannot be read to strip a credential.
-        if (credentials.Count > 0)
-            w.Line($"SerializerKeys.EnsureContract(app.ServiceProvider, new System.Type[] {{ typeof({readCls}) }}, {NamesLiteral(credentials)});");
-        AppendDecimalRangeGroup(w);
+    }
 
+    /// <summary>The list route: <c>GET /&lt;route&gt;</c> with filter, sort, paging and <c>withCount</c> (and a report's export branch).</summary>
+    protected virtual void WriteListRoute(CsWriter w, StandardRoutesPlan p)
+    {
+        var (cls, route, readCls, readDbSet, credentials, export) = (p.Cls, p.Route, p.ReadCls, p.ReadDbSet, p.Credentials, p.ExportMaxRows);
         // List — honours ?limit / ?offset / ?sort / ?withCount per api-contract.md.
-        w.Line("app.MapGet(prefix + \"/" + route + "\", async (HttpContext http, " + ValueObjectNames.ContextTypeRef(ctx.Config) + " db) =>");
+        w.Line("app.MapGet(prefix + \"/" + route + "\", async (HttpContext http, " + p.ContextType + " db) =>");
         w.Open("{");
         w.Line("var qs = http.Request.Query;");
         if (export is not null)
@@ -363,7 +448,7 @@ public class RoutesGenerator : PerEntityGenerator
         w.Line($"IQueryable<{readCls}> q = db." + readDbSet + ".AsNoTracking();");
         w.Blank();
         w.Line("// Filter: ?filter[<field>][<op>]=<value> against the per-entity allowlist.");
-        var fm = FilterMapArg($"{cls}FilterAllowlist", entity, ctx.Config);
+        var fm = FilterMapArg($"{cls}FilterAllowlist", p.Entity, p.Ctx.Config);
         w.Line($"var filter = EfCoreFilterDispatch.Validate<{readCls}>(FilterParser.Parse(qs, {cls}FilterAllowlist.Fields, {cls}FilterAllowlist.OpsByField){fm});");
         w.Line("if (filter.ErrorEnvelope is not null)");
         // `field` names the rejected filter field — required cross-port on every
@@ -385,21 +470,21 @@ public class RoutesGenerator : PerEntityGenerator
         w.Line("var desc = parts.Length > 1");
         using (w.Hanging()) w.Line("? string.Equals(parts[1], \"desc\", System.StringComparison.OrdinalIgnoreCase)");
         using (w.Hanging()) w.Line(": SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;");
-        if (sqliteSort)
+        if (p.SqliteSort)
             w.Line($"q = ApplySort{cls}(q, resolved, desc, db.Database.ProviderName?.Contains(\"Sqlite\", System.StringComparison.OrdinalIgnoreCase) == true);");
         else
             w.Line($"q = ApplySort{cls}(q, resolved, desc);");
         w.Close("}");
         w.Blank();
-        if (isReport)
+        if (p.IsReport)
         {
-            AppendReportPaging(w, export);
-            if (export is not null) AppendReportExportBranch(w, cls, route);
+            WriteReportPaging(w, export);
+            if (export is not null) WriteReportExportBranch(w, cls, route);
         }
         else
         {
             w.Line("// Pagination: ?offset=N first (skip), then ?limit=N (take).");
-            AppendOffsetLimit(w, ctx.Root.Api.Pagination, "offsetRaw", "offset", "limitRaw", "limit");
+            WriteOffsetLimit(w, p.Ctx.Root.Api.Pagination, "offsetRaw", "offset", "limitRaw", "limit");
             w.Blank();
             w.Line("var rows = await q.ToListAsync();");
         }
@@ -417,127 +502,135 @@ public class RoutesGenerator : PerEntityGenerator
         else
             w.Line($"return format is null ? {OkResult("new { rows, total }", credentials, envelope: true)} : ReportExportHttp.Json(http, \"{route}\", new {{ rows, total }}{ExportOmit(credentials, true)});");
         w.Close("});");
+    }
 
-        if (hasItem)
-        {
-            w.Blank();
-            w.Line("app.MapGet(prefix + \"/" + route + "/{id}\", async (" + pkType + " id, " + ValueObjectNames.ContextTypeRef(ctx.Config) + " db) =>");
-            using (w.Hanging()) w.Line("await db." + readDbSet + ".FindAsync(id) is { } found");
-            using (w.Hanging()) using (w.Hanging()) w.Line("? " + OkResult("found", credentials));
-            using (w.Hanging()) using (w.Hanging()) w.Line(": Results.NotFound(new { error = \"not_found\" }));");
-        }
-
-        if (writable)
-        {
-            // FR-036 #4 — @required-key presence set (the non-PK @required fields whose keys
-            // must be PRESENT + non-null on a create body). A @required VALUE-TYPE field (e.g.
-            // field.timestamp → non-nullable DateTimeOffset) binds to a CLR default when
-            // omitted, invisible to [Required], so the create handler checks raw-JSON presence.
-            var requiredKeys = RequiredCreateKeys(entity, f => pkFields.Contains(f.Name));
-            w.Blank();
-            // #214 — a write-through create binds the derived-FREE WRITE entity, persists to
-            // the table, then RE-READS the row through the replica view by PK so the returned
-            // body carries the derived (view-computed) fields (read-your-writes).
-            AppendCreateHandler(w, "/" + route, cls, ValueObjectNames.ContextTypeRef(ctx.Config), dbSet, requiredKeys,
-                CreatedResult("prefix + \"/" + route + "\"", "input", credentials), voFields, mapVoFields, autoSetFields,
-                writeThrough ? (readDbSet, pkProp!, route) : null,
-                deniedFields.Select(f => CSharpNaming.PropertyName(f, ctx.Config)).ToList(), credentials,
-                ServerOwnedCreateResets(entity, ctx.Root, ctx.Config), ctx.Root, RequiredReadOnlyProps(entity, ctx.Config));
-
-            // PATCH + PUT share the same handler — TS reference exposes both verbs, and both
-            // return the updated row (HTTP 200), matching the cross-port api-contract.
-            //
-            // A PARTIAL merge of the JSON body, NOT a full-row overwrite. The previous
-            // implementation bound the body into a `cls input` and called
-            // `CurrentValues.SetValues(input)` — but a field ABSENT from a PATCH body
-            // deserializes to its CLR default (0 / null / false / DateTime.MinValue), and
-            // SetValues then wrote those defaults over the live row. A `PATCH {"name":"x"}`
-            // on a wide entity silently DESTROYED every other column. So enumerate the JSON
-            // that was actually sent and set only those properties — the same present-field
-            // merge the TPH per-subtype handler already uses. The PK stays route-authoritative.
-            //
-            // FR-035 PATCH-2 tristate: an OMITTED field is untouched; an explicit null
-            // CLEARS a nullable column; an explicit null on a NOT-NULL (@required) column
-            // is a 400. The per-key merge (shared with the TPH per-subtype handler) is
-            // emitted by AppendPartialMergeLoop.
-            w.Blank();
-            w.Line("async System.Threading.Tasks.Task<IResult> Update" + cls + "(" + pkType + " id, HttpContext http, " + ValueObjectNames.ContextTypeRef(ctx.Config) + " db)");
-            w.Open("{");
-            w.Line("var existing = await db." + dbSet + ".FindAsync(id);");
-            w.Line("if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
-            w.Line("System.Text.Json.JsonDocument body;");
-            w.Line("try { body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }");
-            w.Line("catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }");
-            w.Line("using var bodyScope = body;");
-            w.Line("if (body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object) return ValidationIssues.Unreadable();");
-            AppendUnknownFieldsCheck(w, ctx.Root, "body");
-            w.Line("// Deserialize each value with the app's CONFIGURED JSON options, not defaults —");
-            w.Line("// a field.timestamp binds to DateTimeOffset via a custom converter registered on");
-            w.Line("// ConfigureHttpJsonOptions, and default options cannot read the wire format, throwing 500.");
-            w.Line("var jsonOpts = ((Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>)");
-            using (w.Hanging()) w.Line("http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)");
-            using (w.Hanging()) w.Line(".Value.SerializerOptions;");
-            w.Line("var entry = db.Entry(existing);");
-            AppendUpdateAutoSet(w, autoSetFields);
-            AppendPartialMergeLoop(w, null, voFields, mapVoFields, autoSetNavs, frozenNavs, HasDecimalField(entity),
-                deniedFields.SelectMany(f => WireKeys(f, ctx.Config)).ToList(), deniedFields.Select(f => CSharpNaming.PropertyName(f, ctx.Config)).ToList(), HasIsoDurationField(entity, ctx.Root));
-            AppendSaveChanges(w);
-            AppendArrayNullClears(w, voFields, tableRef, pkColumnRef);
-            // #214 — writes target the table; for a write-through entity re-read the row
-            // through the replica view by PK so the returned body carries the derived fields.
-            if (writeThrough)
-            {
-                w.Line($"var __view = await db.{readDbSet}.FindAsync(id);");
-                // #214 [2] — a @kind:materializedView (unrefreshed) or filtered replica view may
-                // not surface the just-written row; fall back to the write entity so the body is
-                // never null (degraded — missing only the derived fields; matches the Python port).
-                w.Line($"return {OkResult("(object?)__view ?? existing", credentials)};");
-            }
-            else
-            {
-                w.Line($"return {OkResult("existing", credentials)};");
-            }
-            w.Close("}");
-            w.Line("app.MapPatch(prefix + \"/" + route + "/{id}\", Update" + cls + ");");
-            w.Line("app.MapPut(prefix + \"/" + route + "/{id}\", Update" + cls + ");");
-            w.Blank();
-            w.Line("app.MapDelete(prefix + \"/" + route + "/{id}\", async (" + pkType + " id, " + ValueObjectNames.ContextTypeRef(ctx.Config) + " db) =>");
-            w.Open("{");
-            w.Line("var existing = await db." + dbSet + ".FindAsync(id);");
-            w.Line("if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
-            w.Line("db." + dbSet + ".Remove(existing);");
-            AppendSaveChanges(w);
-            w.Line("return Results.NoContent();");
-            w.Close("});");
-        }
-        else if (isProjection)
-        {
-            AppendProjectionRejects(w, route, pkType, hasItem, isReport ? "report" : "projection");
-        }
-
-        // FR-018 M:N traversal — GET /<source-plural>/{id}/<relationName> through the
-        // junction. Only on a single-PK source (the route addresses the source by id).
-        // Cross-port contract: source URL segment = pluralized ENTITY name, relation
-        // segment = relationship name.
-        if (hasItem)
-            foreach (var nav in M2MNavigationBuilder.For(entity, ctx.Root, ctx.Warn))
-                AppendM2mRoute(w, nav, route, pkType!, ctx.Root, ctx.Config);
-
+    /// <summary>The item route: <c>GET /&lt;route&gt;/{id}</c>, 404 <c>not_found</c> when absent.</summary>
+    protected virtual void WriteGetRoute(CsWriter w, StandardRoutesPlan p)
+    {
         w.Blank();
-        w.Line("return mount;");
+        w.Line("app.MapGet(prefix + \"/" + p.Route + "/{id}\", async (" + p.PkType + " id, " + p.ContextType + " db) =>");
+        using (w.Hanging()) w.Line("await db." + p.ReadDbSet + ".FindAsync(id) is { } found");
+        using (w.Hanging()) using (w.Hanging()) w.Line("? " + OkResult("found", p.Credentials));
+        using (w.Hanging()) using (w.Hanging()) w.Line(": Results.NotFound(new { error = \"not_found\" }));");
+    }
+
+    /// <summary>The create route: <c>POST /&lt;route&gt;</c> (see <see cref="WriteCreateHandler"/>).</summary>
+    protected virtual void WriteCreateRoute(CsWriter w, StandardRoutesPlan p)
+    {
+        var (entity, ctx) = (p.Entity, p.Ctx);
+        // FR-036 #4 — @required-key presence set (the non-PK @required fields whose keys
+        // must be PRESENT + non-null on a create body). A @required VALUE-TYPE field (e.g.
+        // field.timestamp → non-nullable DateTimeOffset) binds to a CLR default when
+        // omitted, invisible to [Required], so the create handler checks raw-JSON presence.
+        var requiredKeys = RequiredCreateKeys(entity, f => p.PkFields.Contains(f.Name));
+        w.Blank();
+        // #214 — a write-through create binds the derived-FREE WRITE entity, persists to
+        // the table, then RE-READS the row through the replica view by PK so the returned
+        // body carries the derived (view-computed) fields (read-your-writes).
+        WriteCreateHandler(w, "/" + p.Route, p.Cls, p.ContextType, p.DbSet, requiredKeys,
+            CreatedResult("prefix + \"/" + p.Route + "\"", "input", p.Credentials), p.VoFields, p.MapVoFields, p.AutoSetFields,
+            p.WriteThrough ? (p.ReadDbSet, p.PkProp!, p.Route) : null,
+            p.DeniedFields.Select(f => CSharpNaming.PropertyName(f, ctx.Config)).ToList(), p.Credentials,
+            ServerOwnedCreateResets(entity, ctx.Root, ctx.Config), ctx.Root, RequiredReadOnlyProps(entity, ctx.Config));
+    }
+
+    /// <summary>
+    /// The update handler and its two mounts, <c>PATCH</c> and <c>PUT /&lt;route&gt;/{id}</c>: a
+    /// partial merge of the JSON body.
+    /// </summary>
+    protected virtual void WriteUpdateRoute(CsWriter w, StandardRoutesPlan p)
+    {
+        var (entity, ctx, cls, dbSet, credentials) = (p.Entity, p.Ctx, p.Cls, p.DbSet, p.Credentials);
+        // PATCH + PUT share the same handler — TS reference exposes both verbs, and both
+        // return the updated row (HTTP 200), matching the cross-port api-contract.
+        //
+        // A PARTIAL merge of the JSON body, NOT a full-row overwrite. The previous
+        // implementation bound the body into a `cls input` and called
+        // `CurrentValues.SetValues(input)` — but a field ABSENT from a PATCH body
+        // deserializes to its CLR default (0 / null / false / DateTime.MinValue), and
+        // SetValues then wrote those defaults over the live row. A `PATCH {"name":"x"}`
+        // on a wide entity silently DESTROYED every other column. So enumerate the JSON
+        // that was actually sent and set only those properties — the same present-field
+        // merge the TPH per-subtype handler already uses. The PK stays route-authoritative.
+        //
+        // FR-035 PATCH-2 tristate: an OMITTED field is untouched; an explicit null
+        // CLEARS a nullable column; an explicit null on a NOT-NULL (@required) column
+        // is a 400. The per-key merge (shared with the TPH per-subtype handler) is
+        // emitted by WritePartialMergeLoop.
+        w.Blank();
+        w.Line("async System.Threading.Tasks.Task<IResult> Update" + cls + "(" + p.PkType + " id, HttpContext http, " + p.ContextType + " db)");
+        w.Open("{");
+        w.Line("var existing = await db." + dbSet + ".FindAsync(id);");
+        w.Line("if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
+        w.Line("System.Text.Json.JsonDocument body;");
+        w.Line("try { body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }");
+        w.Line("catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }");
+        w.Line("using var bodyScope = body;");
+        w.Line("if (body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object) return ValidationIssues.Unreadable();");
+        WriteUnknownFieldsCheck(w, ctx.Root, "body");
+        w.Line("// Deserialize each value with the app's CONFIGURED JSON options, not defaults —");
+        w.Line("// a field.timestamp binds to DateTimeOffset via a custom converter registered on");
+        w.Line("// ConfigureHttpJsonOptions, and default options cannot read the wire format, throwing 500.");
+        w.Line("var jsonOpts = ((Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>)");
+        using (w.Hanging()) w.Line("http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)");
+        using (w.Hanging()) w.Line(".Value.SerializerOptions;");
+        w.Line("var entry = db.Entry(existing);");
+        WriteUpdateAutoSet(w, p.AutoSetFields);
+        WritePartialMergeLoop(w, null, p.VoFields, p.MapVoFields, p.AutoSetFields.Select(a => a.Nav).ToList(), p.FrozenNavs, HasDecimalField(entity),
+            p.DeniedFields.SelectMany(f => WireKeys(f, ctx.Config)).ToList(), p.DeniedFields.Select(f => CSharpNaming.PropertyName(f, ctx.Config)).ToList(), HasIsoDurationField(entity, ctx.Root));
+        WriteSaveChanges(w);
+        WriteArrayNullClears(w, p.VoFields, p.TableRef, p.PkColumnRef);
+        // #214 — writes target the table; for a write-through entity re-read the row
+        // through the replica view by PK so the returned body carries the derived fields.
+        if (p.WriteThrough)
+        {
+            w.Line($"var __view = await db.{p.ReadDbSet}.FindAsync(id);");
+            // #214 [2] — a @kind:materializedView (unrefreshed) or filtered replica view may
+            // not surface the just-written row; fall back to the write entity so the body is
+            // never null (degraded — missing only the derived fields; matches the Python port).
+            w.Line($"return {OkResult("(object?)__view ?? existing", credentials)};");
+        }
+        else
+        {
+            w.Line($"return {OkResult("existing", credentials)};");
+        }
         w.Close("}");
+        w.Line("app.MapPatch(prefix + \"/" + p.Route + "/{id}\", Update" + cls + ");");
+        w.Line("app.MapPut(prefix + \"/" + p.Route + "/{id}\", Update" + cls + ");");
+    }
+
+    /// <summary>The delete route: <c>DELETE /&lt;route&gt;/{id}</c>, 204 on success, 404 <c>not_found</c> when absent.</summary>
+    protected virtual void WriteDeleteRoute(CsWriter w, StandardRoutesPlan p)
+    {
         w.Blank();
+        w.Line("app.MapDelete(prefix + \"/" + p.Route + "/{id}\", async (" + p.PkType + " id, " + p.ContextType + " db) =>");
+        w.Open("{");
+        w.Line("var existing = await db." + p.DbSet + ".FindAsync(id);");
+        w.Line("if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
+        w.Line("db." + p.DbSet + ".Remove(existing);");
+        WriteSaveChanges(w);
+        w.Line("return Results.NoContent();");
+        w.Close("});");
+    }
+
+    /// <summary>
+    /// The sort dispatch, <c>ApplySort&lt;Cls&gt;</c>: each allowlisted property name to an
+    /// <c>IOrderedQueryable</c> through <c>EF.Property</c>.
+    /// </summary>
+    protected virtual void WriteApplySort(CsWriter w, StandardRoutesPlan p)
+    {
+        var readCls = p.ReadCls;
         // Allowlisted property name → IOrderedQueryable dispatch via EF.Property.
         // Reflection-free at runtime; EF Core translates EF.Property(x, "<Name>")
         // into the column reference at SQL generation.
-        w.Line($"private static IOrderedQueryable<{readCls}> ApplySort{cls}(IQueryable<{readCls}> q, string field, bool desc{(sqliteSort ? ", bool sqlite" : "")})");
+        w.Line($"private static IOrderedQueryable<{readCls}> ApplySort{p.Cls}(IQueryable<{readCls}> q, string field, bool desc{(p.SqliteSort ? ", bool sqlite" : "")})");
         w.Open("{");
         w.Line("return field switch");
         w.Open("{");
-        foreach (var name in sortFields)
+        foreach (var name in p.SortFields)
         {
             var exact = NullsLargestSort("q", $"EF.Property<object>(x!, \"{name}\")");
-            if (decimalSortFields.Contains(name))
+            if (p.DecimalSortFields.Contains(name))
                 w.Line($"\"{name}\" => sqlite ? ({NullsLargestSort("q", $"(double?)EF.Property<decimal?>(x!, \"{name}\")")}) : ({exact}),");
             else
                 w.Line($"\"{name}\" => {exact},");
@@ -545,14 +638,6 @@ public class RoutesGenerator : PerEntityGenerator
         w.Line("_ => (IOrderedQueryable<" + readCls + ">)q.OrderBy(x => 0),");
         w.Close("};");
         w.Close("}");
-        // Issue #203 — the verbatim-insert escape hatch, only for an entity with @autoSet
-        // fields (writable entities only; a read-only projection has no insert path).
-        if (writable && autoSetFields.Count > 0)
-            AppendInsertPreserving(w, cls, dbSet, ValueObjectNames.ContextTypeRef(ctx.Config));
-        AppendOmitResultClass(w, credentials.Count > 0 || (hasItem && M2mTargetHasCredentials([entity], ctx.Root, ctx.Config)));
-        w.Close("}");
-
-        return new EmittedFile(OutputPaths.Of(entity, ctx, $"{cls}Routes.g.cs"), w.ToString());
     }
 
     // F22 — the write verbs on a read-only projection, each answering the cross-port
@@ -572,20 +657,20 @@ public class RoutesGenerator : PerEntityGenerator
     //
     // A view-backed report (FR-044) takes the keyless arm: POST only. `noun` is what the
     // free-prose message calls the resource ("projection" or "report").
-    private static void AppendProjectionRejects(CsWriter w, string route, string? pkType, bool hasItem, string noun)
+    protected virtual void WriteProjectionRejects(CsWriter w, string route, string? pkType, bool hasItem, string noun)
     {
         w.Blank();
-        AppendReject(w, "MapPost", "/" + route, "POST", null, noun);
+        WriteReject(w, "MapPost", "/" + route, "POST", null, noun);
         if (!hasItem) return;
-        AppendReject(w, "MapPatch", "/" + route + "/{id}", "PATCH", pkType, noun);
-        AppendReject(w, "MapPut", "/" + route + "/{id}", "PUT", pkType, noun);
-        AppendReject(w, "MapDelete", "/" + route + "/{id}", "DELETE", pkType, noun);
+        WriteReject(w, "MapPatch", "/" + route + "/{id}", "PATCH", pkType, noun);
+        WriteReject(w, "MapPut", "/" + route + "/{id}", "PUT", pkType, noun);
+        WriteReject(w, "MapDelete", "/" + route + "/{id}", "DELETE", pkType, noun);
     }
 
     // The item handlers take the route's `id` even though they ignore it: a typed
     // parameter makes an unparsable id a 404 from routing rather than a 405 claiming
     // the write was refused on a row that could never have been addressed.
-    private static void AppendReject(CsWriter w, string map, string path, string verb, string? pkType, string noun)
+    protected virtual void WriteReject(CsWriter w, string map, string path, string verb, string? pkType, string noun)
     {
         var parms = pkType is null ? "()" : "(" + pkType + " id)";
         w.Line("app." + map + "(prefix + \"" + path + "\", " + parms + " =>");
@@ -604,7 +689,25 @@ public class RoutesGenerator : PerEntityGenerator
     //
     // The base path (auths) is the pluralized base ENTITY name lowercased. ASP.NET routes
     // the static /auths/<segment> ahead of the parametric /auths/{id}, so they coexist.
-    protected virtual EmittedFile GenerateTphRoutes(MetaObject baseEntity, TphPlan tph, GenContext ctx)
+    /// <summary>
+    /// Everything a TPH base's routes file is written from, worked out once by
+    /// <see cref="PlanTphRoutes"/> so every piece reads the same answers.
+    /// </summary>
+    protected record TphRoutesPlan(
+        MetaObject BaseEntity, TphPlan Tph, GenContext Ctx, string BaseCls, string DbSet, string BaseRoute,
+        string? PkType, string? PkProp, bool HasItem, string DiscProp, MetaField? DiscField,
+        List<string> BaseCredentials, HashSet<string> HierarchyCredentials,
+        List<MetaField> SortFieldNodes, List<string> SortFields)
+    {
+        /// <summary>The generated DbContext's type, as the route handlers name it.</summary>
+        public string ContextType => ValueObjectNames.ContextTypeRef(Ctx.Config);
+
+        /// <summary>The base followed by every concrete subtype.</summary>
+        public List<MetaObject> Hierarchy => Tph.Subtypes.Select(st => st.Entity).Prepend(BaseEntity).ToList();
+    }
+
+    /// <summary>Work out what the routes file for the TPH base <paramref name="baseEntity"/> serves.</summary>
+    protected virtual TphRoutesPlan PlanTphRoutes(MetaObject baseEntity, TphPlan tph, GenContext ctx)
     {
         var baseCls = CSharpNaming.Pascal(baseEntity.Name);
         var dbSet = CSharpNaming.DbSetName(baseEntity);
@@ -636,29 +739,25 @@ public class RoutesGenerator : PerEntityGenerator
             .ToList();
         var sortFields = sortFieldNodes.Select(f => CSharpNaming.PropertyName(f, ctx.Config)).ToList();
 
-        var w = new CsWriter();
-        w.Line("// <auto-generated/>");
-        w.Line("// Generated by MetaObjects routes-generator (TPH). Do not edit by hand.");
-        w.Line("#nullable enable");
-        w.Line("using System.Linq;");
-        w.Line("using Microsoft.AspNetCore.Builder;");
-        w.Line("using Microsoft.AspNetCore.Http;");
-        w.Line("using Microsoft.AspNetCore.Routing;");
-        w.Line("using Microsoft.EntityFrameworkCore;");
-        w.Line($"using {HelperRuntimeNamespace};");
-        if (!ctx.Config.PackageNamespacesFromMetadata)
-            foreach (var u in PackageBindingResolver.HomeUsings(ctx.Config, ReferencedTypes(tph.Subtypes.Select(st => st.Entity).Prepend(baseEntity), ctx.Root))) w.Line(u);
-        w.Blank();
-        w.Line($"namespace {ValueObjectNames.CompanionNamespace(baseEntity, ctx.Config)};");
-        w.Blank();
+        return new TphRoutesPlan(baseEntity, tph, ctx, baseCls, dbSet, baseRoute, pkType, pkProp, hasItem,
+            discProp, discField, baseCredentials, hierarchyCredentials, sortFieldNodes, sortFields);
+    }
+
+    protected virtual EmittedFile GenerateTphRoutes(MetaObject baseEntity, TphPlan tph, GenContext ctx)
+    {
+        var p = PlanTphRoutes(baseEntity, tph, ctx);
+        var baseCls = p.BaseCls;
+
+        var w = NewWriter();
+        WriteFileHeader(w, p.Hierarchy, baseEntity, ctx, tph: true);
         w.Line($"public static class {baseCls}Routes");
         w.Open("{");
 
         // Polymorphic sort allowlist over the base scalar columns.
-        AppendSortAllowlist(w, "SortAllowlist", sortFieldNodes, ctx.Config);
-        AppendSortDefaultOrder(w, baseEntity, "SortDefaultDesc", ctx.Config);
+        WriteSortAllowlist(w, "SortAllowlist", p.SortFieldNodes, ctx.Config);
+        WriteSortDefaultOrder(w, baseEntity, "SortDefaultDesc", ctx.Config);
         // One known set for the whole hierarchy: a sibling subtype's column is declared, so it is not unknown.
-        AppendKnownFields(w, tph.Subtypes.Select(st => st.Entity).Prepend(baseEntity), ctx.Root);
+        WriteKnownFields(w, p.Hierarchy, ctx.Root);
 
         // Per-subtype sort allowlists (case-insensitive) over each subtype's EFFECTIVE
         // scalar fields (inherited base + own). The per-subtype list resolves the qs
@@ -669,28 +768,71 @@ public class RoutesGenerator : PerEntityGenerator
         {
             var subClsName = CSharpNaming.Pascal(st.Entity.Name);
             var subSortFields = st.Entity.Fields()
-                .Where(f => CSharpNaming.ScalarFor(f.SubType) is not null && !f.ResolvedIsArray() && !hierarchyCredentials.Contains(f.Name))
+                .Where(f => CSharpNaming.ScalarFor(f.SubType) is not null && !f.ResolvedIsArray() && !p.HierarchyCredentials.Contains(f.Name))
                 .ToList();
-            AppendSortAllowlist(w, $"{subClsName}SortAllowlist", subSortFields, ctx.Config);
-            AppendSortDefaultOrder(w, st.Entity, $"{subClsName}SortDefaultDesc", ctx.Config);
+            WriteSortAllowlist(w, $"{subClsName}SortAllowlist", subSortFields, ctx.Config);
+            WriteSortDefaultOrder(w, st.Entity, $"{subClsName}SortDefaultDesc", ctx.Config);
         }
 
-        AppendUnauthenticatedRoutesDoc(w, baseCls, readOnly: false);
+        WriteUnauthenticatedRoutesDoc(w, baseCls, readOnly: false);
         w.Line($"public static IEndpointRouteBuilder Map{baseCls}Routes(this IEndpointRouteBuilder app, string prefix = \"/api\")");
         w.Open("{");
-        if (baseCredentials.Count > 0)
+        if (p.BaseCredentials.Count > 0)
         {
             var credTypes = new[] { baseCls }.Concat(tph.Subtypes.Select(st => ValueObjectNames.TypeRef(st.Entity, ctx.Root, ctx.Config, ValueObjectNames.Namespace(baseEntity, ctx.Config))));
-            w.Line($"SerializerKeys.EnsureContract(app.ServiceProvider, new System.Type[] {{ {string.Join(", ", credTypes.Select(t => $"typeof({t})"))} }}, {NamesLiteral(baseCredentials)});");
+            w.Line($"SerializerKeys.EnsureContract(app.ServiceProvider, new System.Type[] {{ {string.Join(", ", credTypes.Select(t => $"typeof({t})"))} }}, {NamesLiteral(p.BaseCredentials)});");
         }
-        AppendDecimalRangeGroup(w);
+        WriteDecimalRangeGroup(w);
 
-        // --- Polymorphic list: GET /<base> (union of all subtypes; each row carries its discriminator) ---
-        w.Line("app.MapGet(prefix + \"/" + baseRoute + "\", async (HttpContext http, " + ValueObjectNames.ContextTypeRef(ctx.Config) + " db) =>");
+        WriteTphListRoute(w, p);
+
+        if (p.HasItem)
+        {
+            WriteTphGetRoute(w, p);
+
+            // FW-8 — M:N traversal declared on the BASE: every row of the shared table
+            // is a legitimate source (rule a in the cross-port contract — the independent
+            // oracle's expectedRoutes walks every SERVED object's RESOLVED relationships,
+            // and the base is itself a served object), so the mount is byte-identical to
+            // a vanilla entity's traversal at the base route. Mirrors TS
+            // renderTphRoutesFile's baseM2mMounts.
+            foreach (var nav in M2MNavigationBuilder.For(baseEntity, ctx.Root, ctx.Warn))
+                WriteM2mRoute(w, nav, p.BaseRoute, p.PkType!, ctx.Root, ctx.Config);
+
+            // --- Per-subtype CRUD sets ---
+            var hierarchy = p.Hierarchy;
+            foreach (var st in tph.Subtypes)
+                WriteTphSubtypeRoutes(w, st, hierarchy, ctx.Root, ctx.Config, p.BaseRoute, baseCls, p.DbSet, p.PkType!, p.PkProp!, p.DiscProp, p.DiscField, ctx.Warn);
+        }
+
+        w.Blank();
+        w.Line("return mount;");
+        w.Close("}");
+        w.Blank();
+
+        WriteTphApplySort(w, p);
+        // Issue #203 — a verbatim-insert escape hatch per subtype that declares @autoSet
+        // fields (overloaded by the subtype parameter type; the discriminator is injected by
+        // EF via the subtype CLR type on Add). Only when the subtype has @autoSet columns.
+        if (p.HasItem)
+            foreach (var st in tph.Subtypes)
+                if (AutoSetFields(st.Entity, ctx.Config).Count > 0)
+                    WriteInsertPreserving(w, ValueObjectNames.TypeRef(st.Entity, ctx.Root, ctx.Config, ValueObjectNames.Namespace(baseEntity, ctx.Config)), p.DbSet, p.ContextType);
+        WriteOmitResultClass(w, p.BaseCredentials.Count > 0 || (p.HasItem && M2mTargetHasCredentials(p.Hierarchy, ctx.Root, ctx.Config)));
+        w.Close("}");
+
+        return new EmittedFile(OutputPaths.Of(baseEntity, ctx, $"{baseCls}Routes.g.cs"), w.ToString());
+    }
+
+    /// <summary>The polymorphic list, <c>GET /&lt;base&gt;</c>: the union of all subtypes, each row carrying its discriminator.</summary>
+    protected virtual void WriteTphListRoute(CsWriter w, TphRoutesPlan p)
+    {
+        var (baseCls, dbSet, ctx) = (p.BaseCls, p.DbSet, p.Ctx);
+        w.Line("app.MapGet(prefix + \"/" + p.BaseRoute + "\", async (HttpContext http, " + p.ContextType + " db) =>");
         w.Open("{");
         w.Line("var qs = http.Request.Query;");
         w.Line($"IQueryable<{baseCls}> q = db.{dbSet}.AsNoTracking();");
-        var fmB = FilterMapArg($"{baseCls}FilterAllowlist", baseEntity, ctx.Config);
+        var fmB = FilterMapArg($"{baseCls}FilterAllowlist", p.BaseEntity, ctx.Config);
         w.Line($"var filter = EfCoreFilterDispatch.Validate<{baseCls}>(FilterParser.Parse(qs, {baseCls}FilterAllowlist.Fields, {baseCls}FilterAllowlist.OpsByField){fmB});");
         w.Line("if (filter.ErrorEnvelope is not null) return Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field });");
         w.Line($"q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates{fmB});");
@@ -703,64 +845,37 @@ public class RoutesGenerator : PerEntityGenerator
         using (w.Hanging()) w.Line(": SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;");
         w.Line("q = ApplySort(q, resolved, desc);");
         w.Close("}");
-        AppendOffsetLimit(w, ctx.Root.Api.Pagination, "offRaw", "off", "limRaw", "lim");
+        WriteOffsetLimit(w, ctx.Root.Api.Pagination, "offRaw", "off", "limRaw", "lim");
         w.Line("var rows = await q.ToListAsync();");
         w.Line("var withCount = qs.TryGetValue(\"withCount\", out var wc) && (wc == \"1\" || string.Equals(wc, \"true\", System.StringComparison.OrdinalIgnoreCase));");
-        w.Line($"if (!withCount) return {OkResult("rows", baseCredentials)};");
+        w.Line($"if (!withCount) return {OkResult("rows", p.BaseCredentials)};");
         w.Line($"var total = await EfCoreFilterDispatch.ApplyFilter(db.{dbSet}.AsNoTracking(), filter.Predicates{fmB}).CountAsync();");
-        w.Line($"return {OkResult("new { rows, total }", baseCredentials, envelope: true)};");
+        w.Line($"return {OkResult("new { rows, total }", p.BaseCredentials, envelope: true)};");
         w.Close("});");
+    }
 
-        if (hasItem)
-        {
-            // --- Polymorphic get: GET /<base>/{id} (one row of whatever subtype) ---
-            w.Blank();
-            w.Line("app.MapGet(prefix + \"/" + baseRoute + "/{id}\", async (" + pkType + " id, " + ValueObjectNames.ContextTypeRef(ctx.Config) + " db) =>");
-            using (w.Hanging()) w.Line($"await db.{dbSet}.AsNoTracking().FirstOrDefaultAsync(x => x.{pkProp} == id) is {{ }} found");
-            using (w.Hanging()) using (w.Hanging()) w.Line("? " + OkResult("found", baseCredentials));
-            using (w.Hanging()) using (w.Hanging()) w.Line(": Results.NotFound(new { error = \"not_found\" }));");
-
-            // FW-8 — M:N traversal declared on the BASE: every row of the shared table
-            // is a legitimate source (rule a in the cross-port contract — the independent
-            // oracle's expectedRoutes walks every SERVED object's RESOLVED relationships,
-            // and the base is itself a served object), so the mount is byte-identical to
-            // a vanilla entity's traversal at the base route. Mirrors TS
-            // renderTphRoutesFile's baseM2mMounts.
-            foreach (var nav in M2MNavigationBuilder.For(baseEntity, ctx.Root, ctx.Warn))
-                AppendM2mRoute(w, nav, baseRoute, pkType!, ctx.Root, ctx.Config);
-
-            // --- Per-subtype CRUD sets ---
-            var hierarchy = tph.Subtypes.Select(s => s.Entity).Prepend(baseEntity).ToList();
-            foreach (var st in tph.Subtypes)
-                AppendTphSubtypeRoutes(w, st, hierarchy, ctx.Root, ctx.Config, baseRoute, baseCls, dbSet, pkType!, pkProp!, discProp, discField, ctx.Warn);
-        }
-
+    /// <summary>The polymorphic item route, <c>GET /&lt;base&gt;/{id}</c>: one row of whatever subtype.</summary>
+    protected virtual void WriteTphGetRoute(CsWriter w, TphRoutesPlan p)
+    {
         w.Blank();
-        w.Line("return mount;");
-        w.Close("}");
-        w.Blank();
+        w.Line("app.MapGet(prefix + \"/" + p.BaseRoute + "/{id}\", async (" + p.PkType + " id, " + p.ContextType + " db) =>");
+        using (w.Hanging()) w.Line($"await db.{p.DbSet}.AsNoTracking().FirstOrDefaultAsync(x => x.{p.PkProp} == id) is {{ }} found");
+        using (w.Hanging()) using (w.Hanging()) w.Line("? " + OkResult("found", p.BaseCredentials));
+        using (w.Hanging()) using (w.Hanging()) w.Line(": Results.NotFound(new { error = \"not_found\" }));");
+    }
 
-        // Polymorphic sort dispatch over base scalar columns (reflection-free via EF.Property).
-        w.Line($"private static IOrderedQueryable<{baseCls}> ApplySort(IQueryable<{baseCls}> q, string field, bool desc)");
+    /// <summary>The polymorphic sort dispatch over the base's scalar columns (reflection-free, through <c>EF.Property</c>).</summary>
+    protected virtual void WriteTphApplySort(CsWriter w, TphRoutesPlan p)
+    {
+        w.Line($"private static IOrderedQueryable<{p.BaseCls}> ApplySort(IQueryable<{p.BaseCls}> q, string field, bool desc)");
         w.Open("{");
         w.Line("return field switch");
         w.Open("{");
-        foreach (var name in sortFields)
+        foreach (var name in p.SortFields)
             w.Line($"\"{name}\" => {NullsLargestSort("q", $"EF.Property<object>(x!, \"{name}\")")},");
-        w.Line("_ => (IOrderedQueryable<" + baseCls + ">)q.OrderBy(x => 0),");
+        w.Line("_ => (IOrderedQueryable<" + p.BaseCls + ">)q.OrderBy(x => 0),");
         w.Close("};");
         w.Close("}");
-        // Issue #203 — a verbatim-insert escape hatch per subtype that declares @autoSet
-        // fields (overloaded by the subtype parameter type; the discriminator is injected by
-        // EF via the subtype CLR type on Add). Only when the subtype has @autoSet columns.
-        if (hasItem)
-            foreach (var st in tph.Subtypes)
-                if (AutoSetFields(st.Entity, ctx.Config).Count > 0)
-                    AppendInsertPreserving(w, ValueObjectNames.TypeRef(st.Entity, ctx.Root, ctx.Config, ValueObjectNames.Namespace(baseEntity, ctx.Config)), dbSet, ValueObjectNames.ContextTypeRef(ctx.Config));
-        AppendOmitResultClass(w, baseCredentials.Count > 0 || (hasItem && M2mTargetHasCredentials(tph.Subtypes.Select(st => st.Entity).Prepend(baseEntity), ctx.Root, ctx.Config)));
-        w.Close("}");
-
-        return new EmittedFile(OutputPaths.Of(baseEntity, ctx, $"{baseCls}Routes.g.cs"), w.ToString());
     }
 
     // FR-036 #4 — the wire keys of the @required fields whose keys must be PRESENT (and
@@ -770,7 +885,7 @@ public class RoutesGenerator : PerEntityGenerator
     // supplies the exclusion for the PK (server-/route-assigned) and, for a TPH subtype, the
     // (EF-injected) discriminator. Returns the camelCase field names — matched case-insensitively
     // against the raw JSON keys, so a camelCase wire key resolves to its PascalCase property.
-    private static List<string> RequiredCreateKeys(MetaObject obj, Func<MetaField, bool> isPkOrDisc) =>
+    protected static List<string> RequiredCreateKeys(MetaObject obj, Func<MetaField, bool> isPkOrDisc) =>
         obj.Fields()
             // Issue #203 — an @autoSet field is server-filled (the CRUD stamps now() on
             // insert), so it is OPTIONAL on the create body even when @required. Matching
@@ -793,7 +908,7 @@ public class RoutesGenerator : PerEntityGenerator
     // set them (private setter), so their [Required] describes the stored row, not the create
     // body: the create validation ignores a violation that names only these members, as Java's
     // SERVER_OWNED_ON_CREATE filter does. Empty for nearly every model → byte-identical output.
-    private static List<string> RequiredReadOnlyProps(MetaObject obj, GenConfig config) =>
+    protected static List<string> RequiredReadOnlyProps(MetaObject obj, GenConfig config) =>
         obj.Fields()
             .Where(f => f.IsRequired && f.IsReadOnlyMutability && !f.IsDerived())
             .Select(f => CSharpNaming.PropertyName(f, config))
@@ -804,7 +919,7 @@ public class RoutesGenerator : PerEntityGenerator
     // COLUMN's temporal CLR type (generalizes beyond DateTimeOffset). OnUpdate columns
     // are stamped on both insert and update; onCreate columns are stamped on insert only
     // (never rewritten on update — the write-once created-at contract).
-    private sealed record AutoSetField(string Nav, string NowExpr, bool OnUpdate);
+    protected record AutoSetField(string Nav, string NowExpr, bool OnUpdate);
 
     // The @autoSet fields (effective — inherited @autoSet resolves) whose CLR type is a
     // temporal that has a now() form. A non-temporal @autoSet field (not expected per the
@@ -820,7 +935,7 @@ public class RoutesGenerator : PerEntityGenerator
     /// echoed in the RESPONSE even where EF omitted the column from the UPDATE. Skipping
     /// the key here is what makes the response and the row agree.</para>
     /// </summary>
-    private static List<string> FrozenNavs(MetaObject entity, GenConfig config) =>
+    protected static List<string> FrozenNavs(MetaObject entity, GenConfig config) =>
         entity.Fields()
             .Where(f => f.Mutability != MetaObjects.Core.Field.FieldConstants.MUTABILITY_READ_WRITE)
             .Select(f => CSharpNaming.PropertyName(f, config))
@@ -832,17 +947,17 @@ public class RoutesGenerator : PerEntityGenerator
 
     // #484 — write-denied: the generated create / PATCH / PUT IGNORE the key (never a 400): the
     // effective @formExclude (resolving) or a credential.
-    private static bool IsApiWriteDenied(MetaField f) =>
+    protected static bool IsApiWriteDenied(MetaField f) =>
         f.Attr(FIELD_ATTR_FORM_EXCLUDE) is true || IsCredentialField(f);
 
-    private static List<MetaField> WriteDeniedFields(MetaObject entity) =>
+    protected static List<MetaField> WriteDeniedFields(MetaObject entity) =>
         entity.Fields().Where(IsApiWriteDenied).ToList();
 
     /// <summary>
     /// An entity's credential names plus, for a TPH base, those of every subtype: its rows are
     /// shared-table rows of every subtype (#484).
     /// </summary>
-    private static List<string> TphUnionCredentialNames(MetaObject entity, MetaRoot root, GenConfig config) =>
+    protected static List<string> TphUnionCredentialNames(MetaObject entity, MetaRoot root, GenConfig config) =>
         CredentialNames(entity, config)
             .Concat(TphPlanBuilder.For(entity, root) is { } tph
                 ? tph.Subtypes.SelectMany(st => CredentialNames(st.Entity, config))
@@ -854,7 +969,7 @@ public class RoutesGenerator : PerEntityGenerator
     /// its <paramref name="hierarchy"/> (the base and every subtype): a single-table column declared
     /// by several subtypes is one column (#484).
     /// </summary>
-    private static List<MetaField> HierarchyMarkedFields(
+    protected static List<MetaField> HierarchyMarkedFields(
         MetaObject subtype, IEnumerable<MetaObject> hierarchy, Func<MetaField, bool> isMarked)
     {
         var marked = hierarchy.SelectMany(o => o.Fields()).Where(isMarked)
@@ -867,23 +982,23 @@ public class RoutesGenerator : PerEntityGenerator
     // host's naming policy applied to the resolved name). Credential stripping and the PATCH
     // deny and value-object arms match on both, so a renamed property cannot escape them. Without
     // a rename the two differ at most by case and the list is the field name alone.
-    private static List<string> WireKeys(MetaField f, GenConfig config) =>
+    protected static List<string> WireKeys(MetaField f, GenConfig config) =>
         new[] { f.Name, CSharpNaming.PropertyName(f, config) }
             .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
     // The CLR property names of an entity's credentials. The JSON key each is written under is not
     // derived here: the generated result asks the host's serializer (SerializerKeys.StripBody).
-    private static List<string> CredentialNames(MetaObject entity, GenConfig config) =>
+    protected static List<string> CredentialNames(MetaObject entity, GenConfig config) =>
         entity.Fields().Where(IsCredentialField).SelectMany(f => CredentialSpellings(f, config)).ToList();
 
     // The CLR property first (what the serializer's contract is matched on), then the field name: the
     // normalized-spelling backstop in SerializerKeys.Strip also removes a key that spells it. Equal
     // ignoring case when no resolver renames, so the list is then the one CLR name.
-    private static IEnumerable<string> CredentialSpellings(MetaField f, GenConfig config) =>
+    protected static IEnumerable<string> CredentialSpellings(MetaField f, GenConfig config) =>
         new[] { CSharpNaming.PropertyName(f, config), f.Name }.Distinct(StringComparer.OrdinalIgnoreCase);
 
     // `string.Equals(prop.Name, "a", ...) || string.Equals(prop.Name, "b", ...)` over the keys.
-    private static string KeyMatch(IEnumerable<string> keys) =>
+    protected static string KeyMatch(IEnumerable<string> keys) =>
         string.Join(" || ", keys.Select(k => $"string.Equals(prop.Name, \"{k}\", System.StringComparison.OrdinalIgnoreCase)"));
 
     // A sort allowlist (case-insensitive): `TryGetValue(key, out var resolved)` gives the CLR property to
@@ -891,7 +1006,7 @@ public class RoutesGenerator : PerEntityGenerator
     // ignoring case), as ever. When a resolver renamed a property beyond case it is a map that accepts the
     // field name too, so `?sort=` takes the same key as `?filter[...]` (which keys on the field name)
     // and the property name a client may have read from a response.
-    private static void AppendSortAllowlist(CsWriter w, string name, IReadOnlyList<MetaField> fields, GenConfig config)
+    protected virtual void WriteSortAllowlist(CsWriter w, string name, IReadOnlyList<MetaField> fields, GenConfig config)
     {
         var pairs = fields.Select(f => (Field: f.Name, Prop: CSharpNaming.PropertyName(f, config))).ToList();
         if (pairs.All(p => string.Equals(p.Field, p.Prop, StringComparison.OrdinalIgnoreCase)))
@@ -915,35 +1030,35 @@ public class RoutesGenerator : PerEntityGenerator
 
     // The extra argument that hands the filter dispatch the allowlist's field-to-property map: only
     // when a resolver renamed a property beyond case (the allowlist emits the map on the same test).
-    private static string FilterMapArg(string allowlistRef, MetaObject entity, GenConfig config) =>
+    protected static string FilterMapArg(string allowlistRef, MetaObject entity, GenConfig config) =>
         CSharpNaming.RenamedProperties(entity, config).Count > 0 ? $", {allowlistRef}.PropertyByField" : "";
 
     // A C# string[] expression of the names, spliced into the credential-omitting result.
-    private static string NamesLiteral(IEnumerable<string> names) =>
+    protected static string NamesLiteral(IEnumerable<string> names) =>
         "new string[] { " + string.Join(", ", names.Select(n => "\"" + n + "\"")) + " }";
 
     // The ok / created result for a body that may carry credentials: byte-identical `Results.*`
-    // when there are none, else the nested CredentialOmittingResult (emitted by AppendOmitResultClass).
-    private static string OkResult(string value, IReadOnlyList<string> credentials, bool envelope = false) =>
+    // when there are none, else the nested CredentialOmittingResult (emitted by WriteOmitResultClass).
+    protected static string OkResult(string value, IReadOnlyList<string> credentials, bool envelope = false) =>
         credentials.Count == 0
             ? $"Results.Ok({value})"
             : $"(IResult)new CredentialOmittingResult({value}, {NamesLiteral(credentials)}{(envelope ? ", envelope: true" : "")})";
 
     // The credential arguments of a JSON report export (ReportExportHttp.Json), "" without a credential.
-    private static string ExportOmit(IReadOnlyList<string> credentials, bool envelope) =>
+    protected static string ExportOmit(IReadOnlyList<string> credentials, bool envelope) =>
         credentials.Count == 0 ? "" : $", {NamesLiteral(credentials)}{(envelope ? ", envelope: true" : "")}";
 
-    private static string CreatedResult(string location, string value, IReadOnlyList<string> credentials) =>
+    protected static string CreatedResult(string location, string value, IReadOnlyList<string> credentials) =>
         credentials.Count == 0
             ? $"Results.Created({location}, {value})"
             : $"(IResult)new CredentialOmittingResult({value}, {NamesLiteral(credentials)}, status: 201, location: {location})";
 
     // True when any M:N traversal mounted for these sources returns rows of a target that carries a credential.
-    private static bool M2mTargetHasCredentials(IEnumerable<MetaObject> sources, MetaRoot root, GenConfig config) =>
+    protected static bool M2mTargetHasCredentials(IEnumerable<MetaObject> sources, MetaRoot root, GenConfig config) =>
         sources.Any(src => M2MNavigationBuilder.For(src, root).Any(nav => TphUnionCredentialNames(nav.Target, root, config).Count > 0));
 
     // Emitted only into a routes class that uses it (never for a model without a credential).
-    private static void AppendOmitResultClass(CsWriter w, bool used)
+    protected virtual void WriteOmitResultClass(CsWriter w, bool used)
     {
         if (!used) return;
         w.Blank();
@@ -973,7 +1088,7 @@ public class RoutesGenerator : PerEntityGenerator
         w.Close("}");
     }
 
-    private static List<AutoSetField> AutoSetFields(MetaObject entity, GenConfig config)
+    protected static List<AutoSetField> AutoSetFields(MetaObject entity, GenConfig config)
     {
         var list = new List<AutoSetField>();
         foreach (var f in entity.Fields())
@@ -992,7 +1107,7 @@ public class RoutesGenerator : PerEntityGenerator
     // (ADR-0036 Wave 2: field.timestamp is DateTimeOffset, or DateTime under @localTime;
     // field.date → DateOnly; field.time → TimeOnly). Fully qualified so no extra using is
     // needed. Returns null for a non-temporal field.
-    private static string? NowExprFor(MetaField field) =>
+    protected static string? NowExprFor(MetaField field) =>
         CSharpNaming.ScalarForField(field) switch
         {
             "DateTimeOffset" => "System.DateTimeOffset.UtcNow",
@@ -1011,7 +1126,7 @@ public class RoutesGenerator : PerEntityGenerator
     // is in the run, the quoted literal otherwise (CSharpNaming.ColumnRef's contract) — for
     // splicing into the post-save null-clear SQL; IsArray / Required drive the merge semantics
     // (present-null: a nullable single/array clears, a @required column 400s).
-    private sealed record VoField(
+    protected record VoField(
         IReadOnlyList<string> WireKeys, string WireName, string Nav, string DeserType, string JsonColumnRef, bool IsArray, bool Required);
 
     // #362 — the `field.map @objectRef` columns, deliberately NOT folded into VoField.
@@ -1020,14 +1135,14 @@ public class RoutesGenerator : PerEntityGenerator
     // with a jsonb converter and none of that applies. What it DOES share is the nested
     // value-object graph, which the create and PATCH paths must validate — before this the
     // map reached neither, so its values were written unchecked on every write path.
-    private sealed record MapVoField(IReadOnlyList<string> WireKeys, string WireName, string Nav, string DeserType);
+    protected record MapVoField(IReadOnlyList<string> WireKeys, string WireName, string Nav, string DeserType);
 
     // A value object named from the routes file: bare in the earlier layout, global::-qualified
     // when package namespaces are on.
-    private static string VoTypeRef(MetaData target, MetaRoot root, GenConfig config) =>
+    protected static string VoTypeRef(MetaData target, MetaRoot root, GenConfig config) =>
         config.PackageNamespacesFromMetadata ? ValueObjectNames.GlobalRef(target, config) : ValueObjectNames.TypeName(target, root);
 
-    private static List<MapVoField> MapValueObjectFields(MetaObject entity, MetaRoot root, GenConfig config)
+    protected static List<MapVoField> MapValueObjectFields(MetaObject entity, MetaRoot root, GenConfig config)
     {
         var list = new List<MapVoField>();
         foreach (var f in entity.Fields())
@@ -1044,7 +1159,7 @@ public class RoutesGenerator : PerEntityGenerator
         return list;
     }
 
-    private static List<VoField> ValueObjectFields(MetaObject entity, MetaRoot root, ColumnNamingStrategy strategy, bool includeNames, GenConfig config)
+    protected static List<VoField> ValueObjectFields(MetaObject entity, MetaRoot root, ColumnNamingStrategy strategy, bool includeNames, GenConfig config)
     {
         var list = new List<VoField>();
         foreach (var f in entity.Fields())
@@ -1078,7 +1193,7 @@ public class RoutesGenerator : PerEntityGenerator
     // routes class. Null under `drop` (nothing is emitted and no handler checks): the constant's name otherwise.
     private const string KnownFieldsConst = "KnownFields";
 
-    private static void AppendKnownFields(CsWriter w, IEnumerable<MetaObject> objects, MetaRoot root)
+    protected virtual void WriteKnownFields(CsWriter w, IEnumerable<MetaObject> objects, MetaRoot root)
     {
         if (root.Api.UnknownFields != UnknownFieldsMode.Reject) return;
         var names = objects.SelectMany(o => o.Fields()).Select(f => f.Name)
@@ -1092,7 +1207,7 @@ public class RoutesGenerator : PerEntityGenerator
     }
 
     // The unknown-field refusal, before any validation of the body. `bodyVar` is the parsed JsonDocument.
-    private static void AppendUnknownFieldsCheck(CsWriter w, MetaRoot root, string bodyVar)
+    protected virtual void WriteUnknownFieldsCheck(CsWriter w, MetaRoot root, string bodyVar)
     {
         if (root.Api.UnknownFields != UnknownFieldsMode.Reject) return;
         // `http` carries the app's JSON options: a key the binder matches case-insensitively is declared.
@@ -1101,7 +1216,7 @@ public class RoutesGenerator : PerEntityGenerator
 
     // The offset + limit lines of a list route. Without `api.pagination` they are exactly what they always
     // were; with it, no limit takes defaultLimit and one above maxLimit is 400 limit_too_large.
-    private static void AppendOffsetLimit(CsWriter w, ApiPagination? page, string offRaw, string off, string limRaw, string lim)
+    protected virtual void WriteOffsetLimit(CsWriter w, ApiPagination? page, string offRaw, string off, string limRaw, string lim)
     {
         if (page is not null)
         {
@@ -1132,7 +1247,7 @@ public class RoutesGenerator : PerEntityGenerator
         w.Line($"q = q.Take(__take);");
     }
 
-    private static void AppendCreateHandler(
+    protected virtual void WriteCreateHandler(
         CsWriter w, string mapPath, string cls, string ctxType, string dbSet,
         IReadOnlyList<string> requiredKeys, string createdExpr, IReadOnlyList<VoField> voFields,
         IReadOnlyList<MapVoField> mapVoFields,
@@ -1149,14 +1264,14 @@ public class RoutesGenerator : PerEntityGenerator
         // {error:"validation", issues:[...]} envelope), so the handler reads the body itself and collects them.
         w.Line($"app.MapPost(prefix + \"{mapPath}\", async (HttpContext http, {ctxType} db) =>");
         w.Open("{");
-        AppendJsonOptsLocal(w);
+        WriteJsonOptsLocal(w);
         w.Line("System.Text.Json.JsonDocument __body;");
         w.Line("try { __body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }");
         w.Line("catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }");
         w.Line("using var __bodyScope = __body;");
         w.Line("if (__body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)");
         using (w.Hanging()) w.Line("return ValidationIssues.Unreadable();");
-        if (root is not null) AppendUnknownFieldsCheck(w, root, "__body");
+        if (root is not null) WriteUnknownFieldsCheck(w, root, "__body");
         w.Line("var __issues = new ValidationIssues();");
         // FR-036 #4 — @required-key presence: an omitted key OR an explicit null on a @required
         // field → 400, matching the JVM/Python "missing @required → 400" contract. Case-insensitive
@@ -1175,13 +1290,13 @@ public class RoutesGenerator : PerEntityGenerator
         w.Line("try { input = System.Text.Json.JsonSerializer.Deserialize<" + cls + ">(__body.RootElement.GetRawText(), jsonOpts); }");
         w.Line("catch (System.Exception __e) { __issues.AddReadFailure(__e, typeof(" + cls + ")); }");
         w.Line("if (input is null) return __issues.Any ? __issues.ToResult() : ValidationIssues.Unreadable();");
-        AppendCreateServerOwned(w, serverOwned);
-        AppendCreateIgnoreDenied(w, deniedNavs);
-        AppendCreateValidation(w, readOnlyRequired);
-        AppendCreateVoValidation(w, voFields, mapVoFields);
+        WriteCreateServerOwned(w, serverOwned);
+        WriteCreateIgnoreDenied(w, deniedNavs);
+        WriteCreateValidation(w, readOnlyRequired);
+        WriteCreateVoValidation(w, voFields, mapVoFields);
         w.Line("if (__issues.Any) return __issues.ToResult();");
-        AppendCreateAutoSet(w, autoSetFields);
-        AppendCreatePersist(w, dbSet, createdExpr, reRead, credentials ?? []);
+        WriteCreateAutoSet(w, autoSetFields);
+        WriteCreatePersist(w, dbSet, createdExpr, reRead, credentials ?? []);
         w.Close("});");
     }
 
@@ -1190,13 +1305,13 @@ public class RoutesGenerator : PerEntityGenerator
     // <paramref name="createdExpr"/>. For a write-through entity (#214) <paramref name="reRead"/>
     // is set: the row is read back THROUGH the replica view by PK so the returned body
     // carries the derived (view-computed) fields. Assumes `input` + `db` are in scope.
-    private static void AppendCreatePersist(
+    protected virtual void WriteCreatePersist(
         CsWriter w, string dbSet, string createdExpr,
         (string ReadDbSet, string PkProp, string Route)? reRead,
         IReadOnlyList<string> credentials)
     {
         w.Line($"db.{dbSet}.Add(input);");
-        AppendSaveChanges(w);
+        WriteSaveChanges(w);
         if (reRead is { } rr)
         {
             w.Line($"var __created = await db.{rr.ReadDbSet}.FindAsync(input.{rr.PkProp});");
@@ -1220,14 +1335,14 @@ public class RoutesGenerator : PerEntityGenerator
     //   - M:N navigation collections: emptied, else `Add` would insert a client-sent related graph.
     // A readOnly field needs no line here: the entity declares it with a private setter, which
     // System.Text.Json never binds (EntityGenerator.SetterFor).
-    private static void AppendCreateServerOwned(CsWriter w, IReadOnlyList<string>? statements)
+    protected virtual void WriteCreateServerOwned(CsWriter w, IReadOnlyList<string>? statements)
     {
         if (statements is null || statements.Count == 0) return;
         w.Line("// Server-owned: a generated key, the TPH discriminator and M:N navigations are not settable by the client; the value is ignored.");
         foreach (var st in statements) w.Line("" + st);
     }
 
-    // The reset statements AppendCreateServerOwned emits for one entity (empty when it has none, so an
+    // The reset statements WriteCreateServerOwned emits for one entity (empty when it has none, so an
     // entity with an assigned key, no navigation and no discriminator keeps its output byte-identical).
     // A TPH subtype class declares no M:N property of its own — the navigations it carries are its
     // discriminator base class's — so a subtype route passes that base as navOwner. The key and
@@ -1237,7 +1352,7 @@ public class RoutesGenerator : PerEntityGenerator
     // The M:N element type is spelled through ValueObjectNames.TypeRef from the routes file's own
     // namespace (a generated type's namespace is its metadata package), and the List is
     // global::-qualified, as every other emitted System reference here is.
-    private static List<string> ServerOwnedCreateResets(
+    protected static List<string> ServerOwnedCreateResets(
         MetaObject entity, MetaRoot root, GenConfig config, MetaField? discField = null, MetaObject? navOwner = null)
     {
         var list = new List<string>();
@@ -1260,7 +1375,7 @@ public class RoutesGenerator : PerEntityGenerator
 
     // #484 — a write-denied key (@formExclude or credential) on a create body is IGNORED, never
     // rejected: the bound value is reset to the CLR default (unset / null) before validation.
-    private static void AppendCreateIgnoreDenied(CsWriter w, IReadOnlyList<string>? deniedNavs)
+    protected virtual void WriteCreateIgnoreDenied(CsWriter w, IReadOnlyList<string>? deniedNavs)
     {
         if (deniedNavs is null || deniedNavs.Count == 0) return;
         w.Line("// @formExclude / credential: not settable through the generated create; the value is ignored.");
@@ -1272,7 +1387,7 @@ public class RoutesGenerator : PerEntityGenerator
     // insert, overriding whatever the client sent (the model's value is ignored, so a
     // fresh row's updated-at equals its created-at). Emits nothing when the entity has no
     // @autoSet field. Assumes the bound local `input` is in scope.
-    private static void AppendCreateAutoSet(CsWriter w, IReadOnlyList<AutoSetField> autoSetFields)
+    protected virtual void WriteCreateAutoSet(CsWriter w, IReadOnlyList<AutoSetField> autoSetFields)
     {
         foreach (var a in autoSetFields)
             w.Line($"input.{a.Nav} = {a.NowExpr};");
@@ -1283,7 +1398,7 @@ public class RoutesGenerator : PerEntityGenerator
     // are NOT stamped — they are never rewritten (the write-once created-at contract). The
     // merge loop skips every @autoSet column, so this assignment is authoritative. Assumes
     // the tracked entity local `existing` is in scope.
-    private static void AppendUpdateAutoSet(CsWriter w, IReadOnlyList<AutoSetField> autoSetFields)
+    protected virtual void WriteUpdateAutoSet(CsWriter w, IReadOnlyList<AutoSetField> autoSetFields)
     {
         foreach (var a in autoSetFields)
             if (a.OnUpdate)
@@ -1295,7 +1410,7 @@ public class RoutesGenerator : PerEntityGenerator
     // written verbatim), for import / restore / replication paths that must keep the
     // original timestamps. Emitted only for an entity that declares @autoSet fields (else
     // there is nothing to preserve — the normal POST already writes every column verbatim).
-    private static void AppendInsertPreserving(CsWriter w, string cls, string dbSet, string ctxType)
+    protected virtual void WriteInsertPreserving(CsWriter w, string cls, string dbSet, string ctxType)
     {
         w.Blank();
         w.Line("/// <summary>Escape hatch: insert without @autoSet stamping (created-at/updated-at");
@@ -1318,7 +1433,7 @@ public class RoutesGenerator : PerEntityGenerator
     // names artifact is in this run (the string stays a compile-time constant, concatenated),
     // the bare literals otherwise (ADR-0034's documented fallback, byte-identical to before).
     // Emits nothing when the entity has no nullable array-of-VO column.
-    private static void AppendArrayNullClears(
+    protected virtual void WriteArrayNullClears(
         CsWriter w, IReadOnlyList<VoField> voFields, string tableRef, string pkColumnRef)
     {
         for (int i = 0; i < voFields.Count; i++)
@@ -1335,16 +1450,16 @@ public class RoutesGenerator : PerEntityGenerator
     // surrounding text, so the literal arm emits the single string it always did; a constant
     // reference closes the literal, concatenates, and reopens it — every piece is a compile-time
     // constant, so the whole expression still is one.
-    private static string SqlSplice(string nameExpr) =>
+    protected static string SqlSplice(string nameExpr) =>
         nameExpr.StartsWith('"') ? nameExpr[1..^1] : $"\" + {nameExpr} + \"";
 
     // Program D — validate each present value-object column on CREATE. The top-level
-    // TryValidateObject (AppendCreateValidation) does NOT recurse into an owned-nav VO, so a
+    // TryValidateObject (WriteCreateValidation) does NOT recurse into an owned-nav VO, so a
     // nested-constraint violation (e.g. a VO string member over @maxLength) would slip through.
     // ValueObjectValidator.Validate runs the VO's own DataAnnotations per element + recurses
     // into nested VO members; a null nav is vacuously valid (a missing required VO column is
     // already caught by the @required-key presence check). Assumes `input` is in scope.
-    private static void AppendCreateVoValidation(
+    protected virtual void WriteCreateVoValidation(
         CsWriter w, IReadOnlyList<VoField> voFields, IReadOnlyList<MapVoField> mapVoFields)
     {
         foreach (var vf in voFields)
@@ -1370,7 +1485,7 @@ public class RoutesGenerator : PerEntityGenerator
     // is emitted into its namespace).
     // A decimal reached through a value-object column counts too: its member is bound from the body
     // with the same exact-read rule, so the same {error:"validation"} envelope must answer a refusal.
-    private static bool HasDecimalField(MetaObject entity, HashSet<MetaObject>? seen = null)
+    protected static bool HasDecimalField(MetaObject entity, HashSet<MetaObject>? seen = null)
     {
         seen ??= [];
         if (!seen.Add(entity)) return false;
@@ -1389,16 +1504,16 @@ public class RoutesGenerator : PerEntityGenerator
     // {error:"validation"} envelope, and the PATCH merge reads the wire form explicitly.
     // Only under `wire.durations: iso`: the native form is System.Text.Json's own, so the default
     // binder and PATCH deserialization already read it and no duration arm is emitted.
-    private static bool HasIsoDurationField(MetaObject entity, MetaRoot root) =>
+    protected static bool HasIsoDurationField(MetaObject entity, MetaRoot root) =>
         WireFormat.Of(root).Durations == DurationWireForm.Iso && entity.Fields().Any(f => f.SubType == FIELD_SUBTYPE_DURATION && CSharpNaming.DbColumnTypeClrOverride(f) is null);
 
-    private static void AppendDecimalRangeGroup(CsWriter w)
+    protected virtual void WriteDecimalRangeGroup(CsWriter w)
         {
             w.Line("IEndpointRouteBuilder mount = app;");
             w.Line("app = app.MapGroup(string.Empty).AddEndpointFilter(new DecimalRangeEndpointFilter());");
         }
 
-    private static void AppendJsonOptsLocal(CsWriter w)
+    protected virtual void WriteJsonOptsLocal(CsWriter w)
     {
         w.Line("var jsonOpts = ((Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>)");
         using (w.Hanging()) w.Line("http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)");
@@ -1413,7 +1528,7 @@ public class RoutesGenerator : PerEntityGenerator
     // DataAnnotations on its own). Assumes the bound local `input` is in scope.
     // A violation naming only a @required readOnly member (<paramref name="readOnlyRequired"/>)
     // is ignored: the client cannot set that member, so it cannot satisfy the rule.
-    private static void AppendCreateValidation(CsWriter w, IReadOnlyList<string>? readOnlyRequired = null)
+    protected virtual void WriteCreateValidation(CsWriter w, IReadOnlyList<string>? readOnlyRequired = null)
     {
         if (readOnlyRequired is null || readOnlyRequired.Count == 0)
         {
@@ -1431,7 +1546,7 @@ public class RoutesGenerator : PerEntityGenerator
     // the TPH discriminator when `discProp` is non-null — is never written. Assumes the
     // locals `body` (JsonDocument), `existing` (the entity instance), `entry` (EntityEntry)
     // and `jsonOpts` are in scope.
-    private static void AppendPartialMergeLoop(
+    protected virtual void WritePartialMergeLoop(
         CsWriter w, string? discProp, IReadOnlyList<VoField> voFields,
         IReadOnlyList<MapVoField> mapVoFields,
         IReadOnlyList<string> autoSetNavs, IReadOnlyList<string> frozenNavs, bool hasDecimal,
@@ -1440,7 +1555,7 @@ public class RoutesGenerator : PerEntityGenerator
         // A nullable array-of-VO column that a request clears to null (present-null) can NOT be
         // NULLed by an owned-nav assignment — EF OwnsMany(...).ToJson writes `[]` for a null
         // collection nav, not SQL NULL. Track it via a flag + a post-save raw UPDATE
-        // (AppendArrayNullClears). Declared before the loop so the post-save clears see it.
+        // (WriteArrayNullClears). Declared before the loop so the post-save clears see it.
         for (int i = 0; i < voFields.Count; i++)
             if (voFields[i].IsArray && !voFields[i].Required)
                 w.Line($"var __clearVo{i} = false;");
@@ -1632,7 +1747,7 @@ public class RoutesGenerator : PerEntityGenerator
     // via db.<DbSet>.OfType<Sub>(); cross-subtype ids are invisible (404). Create binds the
     // subtype CLR type (discriminator injected by EF on Add); update is a partial merge
     // that never touches the PK or the discriminator.
-    private static void AppendTphSubtypeRoutes(
+    protected virtual void WriteTphSubtypeRoutes(
         CsWriter w, TphSubtypePlan st, IReadOnlyList<MetaObject> hierarchy, MetaRoot root, GenConfig config, string baseRoute, string baseCls, string dbSet,
         string pkType, string pkProp, string discProp, MetaField? discField, Action<string> onWarn)
     {
@@ -1678,7 +1793,7 @@ public class RoutesGenerator : PerEntityGenerator
         using (w.Hanging()) w.Line($": {subCls}SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;");
         w.Line("q = " + NullsLargestSort("q", "EF.Property<object>(x!, resolved)") + ";");
         w.Close("}");
-        AppendOffsetLimit(w, root.Api.Pagination, "offRaw", "off", "limRaw", "lim");
+        WriteOffsetLimit(w, root.Api.Pagination, "offRaw", "off", "limRaw", "lim");
         w.Line("var rows = await q.ToListAsync();");
         w.Line("var withCount = qs.TryGetValue(\"withCount\", out var wc) && (wc == \"1\" || string.Equals(wc, \"true\", System.StringComparison.OrdinalIgnoreCase));");
         w.Line($"if (!withCount) return {OkResult("rows", credentials)};");
@@ -1705,7 +1820,7 @@ public class RoutesGenerator : PerEntityGenerator
         });
         w.Blank();
         // VO columns on a TPH subtype are out of scope (Program D §6) — no typed arms.
-        AppendCreateHandler(w, "/" + subRoute, subType, ValueObjectNames.ContextTypeRef(config), dbSet, requiredKeys,
+        WriteCreateHandler(w, "/" + subRoute, subType, ValueObjectNames.ContextTypeRef(config), dbSet, requiredKeys,
             CreatedResult("prefix + \"/" + subRoute + "/\" + input." + pkProp, "input", credentials), [], mapVoFields, autoSetFields,
             deniedNavs: deniedFields.Select(f => CSharpNaming.PropertyName(f, config)).ToList(), credentials: credentials,
             serverOwned: ServerOwnedCreateResets(st.Entity, root, config, discField, hierarchy[0]), root: root,
@@ -1723,19 +1838,19 @@ public class RoutesGenerator : PerEntityGenerator
         w.Line("catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }");
         w.Line("using var bodyScope = body;");
         w.Line("if (body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object) return ValidationIssues.Unreadable();");
-        AppendUnknownFieldsCheck(w, root, "body");
+        WriteUnknownFieldsCheck(w, root, "body");
         w.Line("// Configured JSON options (not defaults) so a custom converter — e.g. the");
         w.Line("// field.timestamp DateTimeOffset converter — is honored; defaults throw 500 on it.");
         w.Line("var jsonOpts = ((Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>)");
         using (w.Hanging()) w.Line("http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)");
         using (w.Hanging()) w.Line(".Value.SerializerOptions;");
         w.Line("var entry = db.Entry(existing);");
-        AppendUpdateAutoSet(w, autoSetFields);
+        WriteUpdateAutoSet(w, autoSetFields);
         // ADR-0045 + the 0.19.4 lesson: TPH is a SEPARATE code path per port, so the
         // per-subtype merge states the same exclusion rather than inheriting it.
-        AppendPartialMergeLoop(w, discProp, [], mapVoFields, autoSetNavs, frozenNavs, HasDecimalField(st.Entity),
+        WritePartialMergeLoop(w, discProp, [], mapVoFields, autoSetNavs, frozenNavs, HasDecimalField(st.Entity),
             deniedFields.SelectMany(f => WireKeys(f, config)).ToList(), deniedFields.Select(f => CSharpNaming.PropertyName(f, config)).ToList(), HasIsoDurationField(st.Entity, root));
-        AppendSaveChanges(w);
+        WriteSaveChanges(w);
         w.Line($"return {OkResult("existing", credentials)};");
         w.Close("}");
         w.Line("app.MapPatch(prefix + \"/" + subRoute + "/{id}\", Update" + subCls + ");");
@@ -1748,7 +1863,7 @@ public class RoutesGenerator : PerEntityGenerator
         w.Line($"var existing = await db.{dbSet}.OfType<{subType}>().FirstOrDefaultAsync(x => x.{pkProp} == id);");
         w.Line("if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
         w.Line($"db.{dbSet}.Remove(existing);");
-        AppendSaveChanges(w);
+        WriteSaveChanges(w);
         w.Line("return Results.NoContent();");
         w.Close("});");
 
@@ -1762,7 +1877,7 @@ public class RoutesGenerator : PerEntityGenerator
         // segment in the URL would be decorative (rule c).
         var sourceScope = new TphM2mSourceScope(dbSet, subType, pkProp);
         foreach (var nav in M2MNavigationBuilder.For(st.Entity, root, onWarn))
-            AppendM2mRoute(w, nav, subRoute, pkType, root, config, sourceScope);
+            WriteM2mRoute(w, nav, subRoute, pkType, root, config, sourceScope);
     }
 
     /// <summary>
@@ -1783,7 +1898,7 @@ public class RoutesGenerator : PerEntityGenerator
     /// kind, identical on both ports.
     /// </para>
     /// </summary>
-    private static void AppendSaveChanges(CsWriter w)
+    protected virtual void WriteSaveChanges(CsWriter w)
     {
         w.Line("try { await db.SaveChangesAsync(); }");
         w.Line("catch (System.Exception __saveError)");
@@ -1797,7 +1912,7 @@ public class RoutesGenerator : PerEntityGenerator
     }
 
     // A junction/target column's CLR property, through the same resolver its entity class used.
-    private static string JunctionProperty(MetaObject owner, string fieldName, GenConfig config) =>
+    protected static string JunctionProperty(MetaObject owner, string fieldName, GenConfig config) =>
         owner.FindField(fieldName) is { } f ? CSharpNaming.PropertyName(f, config) : CSharpNaming.Pascal(fieldName);
 
     // Emit the M:N traversal handler for one navigation. The junction + target are
@@ -1820,7 +1935,7 @@ public class RoutesGenerator : PerEntityGenerator
     // junction FK still addresses the shared base table, so a sibling subtype's id would
     // traverse it just as well and the segment would be decorative (rule c in the
     // cross-port contract; mirrors TS mount-m2m.ts's `sourceDiscriminator` Stage 0).
-    private static void AppendM2mRoute(
+    protected virtual void WriteM2mRoute(
         CsWriter w, M2MNavigation nav, string sourceRoute, string pkType, MetaRoot root,
         GenConfig config, TphM2mSourceScope? sourceScope = null)
     {
@@ -1889,11 +2004,11 @@ public class RoutesGenerator : PerEntityGenerator
     /// property. Mirrors TS mount-m2m.ts's <c>sourceDiscriminator</c> option — this is
     /// the codegen-time descriptor for that runtime check.
     /// </summary>
-    private sealed record TphM2mSourceScope(string DbSet, string SubtypeClass, string PkProp);
+    protected record TphM2mSourceScope(string DbSet, string SubtypeClass, string PkProp);
 
     // The CLR type of the junction FK columns (and thus the related-id key). Both
     // junction references point at same-typed PKs; use the source FK field's subtype.
-    private static string JunctionFkType(M2MNavigation nav)
+    protected static string JunctionFkType(M2MNavigation nav)
     {
         var fkField = nav.Junction.FindField(nav.SourceField);
         return fkField is not null ? CSharpNaming.ScalarFor(fkField.SubType) ?? "long" : "long";
@@ -1911,7 +2026,7 @@ public class RoutesGenerator : PerEntityGenerator
     /// default into its map. <c>Attr()</c> is the RESOLVING accessor (ADR-0039), so an
     /// order inherited via <c>extends</c> is honoured.
     /// </remarks>
-    private static void AppendSortDefaultOrder(CsWriter w, MetaObject owner, string constName, GenConfig config)
+    protected virtual void WriteSortDefaultOrder(CsWriter w, MetaObject owner, string constName, GenConfig config)
     {
         w.Line($"private static readonly System.Collections.Generic.Dictionary<string, bool> {constName} = new(System.StringComparer.OrdinalIgnoreCase)");
         w.Open("{");
@@ -1933,6 +2048,6 @@ public class RoutesGenerator : PerEntityGenerator
     /// would otherwise put them first on ASC). A leading `col == null` key says it in a way
     /// every EF Core provider translates, where `NULLS LAST` is not portable.
     /// </summary>
-    private static string NullsLargestSort(string query, string column) =>
+    protected static string NullsLargestSort(string query, string column) =>
         $"desc ? {query}.OrderByDescending(x => {column} == null).ThenByDescending(x => {column}) : {query}.OrderBy(x => {column} == null).ThenBy(x => {column})";
 }

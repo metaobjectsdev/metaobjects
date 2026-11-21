@@ -137,7 +137,7 @@ public sealed class MapValueObjectWriteBehaviorGeneratedServerTest
 
     // #362 — this test used to PIN the defect: it asserted 201, documenting that a
     // field.map @objectRef's nested value objects were written unvalidated because
-    // RoutesGenerator.ValueObjectFields (the source AppendCreateVoValidation walked) admits
+    // RoutesGenerator.ValueObjectFields (the source WriteCreateVoValidation walked) admits
     // only field.object, so a map never reached the recursively-validating VO arms. Two
     // changes closed it — MapValueObjectFields feeds the map columns to the same validation,
     // and ValueObjectValidator unwraps an IDictionary to its Values (a Dictionary previously

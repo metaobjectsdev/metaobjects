@@ -13,7 +13,7 @@ using MetaObjects.Codegen.ApiDocs;
 
 namespace MetaObjects.Codegen.Generators;
 
-public sealed class ApiDocsGenerator : IGenerator
+public class ApiDocsGenerator : IGenerator
 {
     /// <summary>The api-surface subdirectory of the cross-port docs contract.</summary>
     public const string DefaultApiSubDir = "api/csharp";
@@ -38,8 +38,8 @@ public sealed class ApiDocsGenerator : IGenerator
 
     public IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
-        var model = new CSharpApiModelBuilder(ctx.Config, ctx.Applicability).Build(ctx.Root, ProjectName);
-        var renderer = new CSharpApiDocsRenderer();
+        var model = BuildModel(ctx);
+        var renderer = NewRenderer();
         const DocsPaths.Layout layout = DocsPaths.Layout.Package;
         // Refused before anything is yielded: two pages that are one file must not half-write.
         DocsPaths.AssertNoDuplicateDocPaths(model.Units.Select(u => (
@@ -58,5 +58,15 @@ public sealed class ApiDocsGenerator : IGenerator
         yield return Page("AGENT-API.md", renderer.RenderAgentApi(model));
     }
 
-    private EmittedFile Page(string pagePath, string content) => new(ApiSubDir + "/" + pagePath, content);
+    // The pieces, one overridable method each (ADR-0063 item 7). Not a stability contract.
+
+    /// <summary>The page model the pages are rendered from.</summary>
+    protected virtual CSharpApiModel BuildModel(GenContext ctx) =>
+        new CSharpApiModelBuilder(ctx.Config, ctx.Applicability).Build(ctx.Root, ProjectName);
+
+    /// <summary>The renderer that turns the page model into Markdown.</summary>
+    protected virtual CSharpApiDocsRenderer NewRenderer() => new();
+
+    /// <summary>One page, under <see cref="ApiSubDir"/>.</summary>
+    protected virtual EmittedFile Page(string pagePath, string content) => new(ApiSubDir + "/" + pagePath, content);
 }

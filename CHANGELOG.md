@@ -10,6 +10,21 @@ here.**
 
 ## [Unreleased]
 
+- **C#: an unchanged file is never rewritten.** `dotnet meta gen` already left identical output alone
+  when the project keeps a hash manifest. It now does the same on the path with no manifest (output
+  written outside the project, or a program that runs the generators with no state directory), which
+  reports the file `unchanged` instead of `written`. `dotnet meta eject --force` compares each copy
+  (the generator, its emitters and the helper runtime) before writing it and reports one that already
+  matches the reference as `[unchanged]`. The gen fingerprint is rewritten only when it changes.
+- **C#: the routes, expression-indexes, report-export, requirement-tests, shared-model and api-docs
+  generators are built from overridable pieces (ADR-0063 item 7).** The routes generator works out
+  what a file serves once (`PlanStandardRoutes`, `PlanTphRoutes`) and writes it from one
+  `protected virtual` method per piece: the file header, the list, item, create, update and delete
+  routes, the M:N traversals, the TPH polymorphic list and item routes, the sort dispatch and the
+  helper members. Its `Append*` helpers are renamed `Write*` and are `protected virtual`; its other
+  helpers and records are `protected`. The other generators follow the same rule, and `ApiDocsGenerator`
+  is no longer sealed. A subclass overrides the piece it wants and keeps the rest. Output is
+  byte-identical. These methods are not a stability contract.
 - **C#: a `@sequenceStart` whose migrations project lacks the design-time services line is a generation
   error.** When `dotnet meta gen` can see the context's `ModelSnapshot.cs` in another project and that
   project does not carry `[assembly: DesignTimeServicesReference]`, the next `dotnet ef migrations add`

@@ -1,7 +1,7 @@
 // TphM2mRoutesTests — FW-8: M:N traversal inside a TPH hierarchy (C# port).
 //
 // A TPH base's routes generator never consulted M2MNavigationBuilder at all — neither
-// GenerateTphRoutes (the base + per-subtype CRUD emitter) nor AppendTphSubtypeRoutes
+// GenerateTphRoutes (the base + per-subtype CRUD emitter) nor WriteTphSubtypeRoutes
 // asked the relation map a single question — so every many-to-many navigation declared
 // anywhere in a TPH hierarchy vanished from the generated API. Nothing failed: a route
 // that is never mounted is an ABSENCE, not a compile error, which is why the existing

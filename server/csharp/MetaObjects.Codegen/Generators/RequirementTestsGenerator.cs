@@ -48,10 +48,10 @@ public class RequirementTestsGenerator : IGenerator
     public const string ErrWitnessKeyCollision = "ERR_REQUIREMENT_WITNESS_KEY_COLLISION";
 
     /// <summary>How many uncovered requirements to name before "and N more".</summary>
-    private const int MaxNamedUncovered = 5;
+    protected const int MaxNamedUncovered = 5;
 
-    private const string SkipPlanned = "planned - not built yet";
-    private const string SkipRetired = "retired - the capability was deliberately removed; assert it stays removed";
+    protected const string SkipPlanned = "planned - not built yet";
+    protected const string SkipRetired = "retired - the capability was deliberately removed; assert it stays removed";
 
     public string Name => "requirement-tests";
 
@@ -96,7 +96,7 @@ public class RequirementTestsGenerator : IGenerator
     public bool WarnUncovered { get; init; } = true;
 
     /// <summary>One test to write: its identity and the data its rendering is built from.</summary>
-    private sealed record Planned(RequirementTestIdentity Identity, RequirementTestArgs Args);
+    protected record Planned(RequirementTestIdentity Identity, RequirementTestArgs Args);
 
     public IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
@@ -145,14 +145,14 @@ public class RequirementTestsGenerator : IGenerator
     /// message can say the name as it was written, and the spelling that is emitted as code, where a segment that
     /// is a C# keyword is escaped with <c>@</c>.
     /// </summary>
-    private sealed record DottedName(IReadOnlyList<string> Segments)
+    protected record DottedName(IReadOnlyList<string> Segments)
     {
         public string Plain => string.Join('.', Segments);
 
         public string Code => string.Join('.', Segments.Select(s => Keywords.Contains(s) ? "@" + s : s));
     }
 
-    private const string GlobalPrefix = "global::";
+    protected const string GlobalPrefix = "global::";
 
     /// <summary>
     /// Parse an option that names a namespace or a class. Each segment must be a legal C# identifier (non-ASCII
@@ -160,7 +160,7 @@ public class RequirementTestsGenerator : IGenerator
     /// on a namespace, which cannot carry one, and accepted and removed on a class, since the generator emits
     /// <c>global::</c> itself.
     /// </summary>
-    private static DottedName ParsedName(string option, string value, bool allowGlobal)
+    protected static DottedName ParsedName(string option, string value, bool allowGlobal)
     {
         var text = value.Trim();
         if (text.StartsWith(GlobalPrefix, StringComparison.Ordinal))
@@ -184,7 +184,7 @@ public class RequirementTestsGenerator : IGenerator
     /// connector punctuation and formatting characters (ECMA-334, "Identifiers"). The check is by Unicode category,
     /// so a legal non-ASCII name is accepted.
     /// </summary>
-    private static bool IsIdentifier(string s)
+    protected static bool IsIdentifier(string s)
     {
         if (s.Length == 0) return false;
         for (var i = 0; i < s.Length; i += char.IsSurrogatePair(s, i) ? 2 : 1)
@@ -202,7 +202,7 @@ public class RequirementTestsGenerator : IGenerator
     }
 
     /// <summary>The C# keywords: a segment spelt like one is escaped with <c>@</c> where it is emitted.</summary>
-    private static readonly HashSet<string> Keywords = new(StringComparer.Ordinal)
+    protected static readonly HashSet<string> Keywords = new(StringComparer.Ordinal)
     {
         "abstract", "as", "base", "bool", "break", "byte", "case", "catch", "char", "checked", "class", "const",
         "continue", "decimal", "default", "delegate", "do", "double", "else", "enum", "event", "explicit", "extern",
@@ -217,7 +217,7 @@ public class RequirementTestsGenerator : IGenerator
     // planning
     // ------------------------------------------------------------------
 
-    private static RequirementTestArgs ArgsFor(
+    protected static RequirementTestArgs ArgsFor(
         MetaRequirement node, RequirementTestIdentity identity, IReadOnlyList<ResolvedClaim> targets) =>
         new(
             identity,
@@ -228,11 +228,11 @@ public class RequirementTestsGenerator : IGenerator
             node.TrackedBy);
 
     /// <summary><c>root</c> for the empty package, otherwise the package with each run of non-ASCII-alphanumerics as one underscore.</summary>
-    private static string PackageKey(string package) =>
+    protected static string PackageKey(string package) =>
         package.Length == 0 ? "root" : RequirementTestIdentities.Mangle(package);
 
     /// <summary>Two tests with one witness key cannot be told apart by a witness: refuse, naming both.</summary>
-    private static void RefuseCollisions(List<Planned> planned)
+    protected static void RefuseCollisions(List<Planned> planned)
     {
         var pairs = RequirementTestIdentities.WitnessKeyCollisions(planned.Select(p => p.Identity));
         if (pairs.Count == 0) return;
@@ -246,7 +246,7 @@ public class RequirementTestsGenerator : IGenerator
         throw new InvalidOperationException(w.ToString().TrimEnd());
     }
 
-    private static string UncoveredWarning(IReadOnlyList<string> uncovered)
+    protected static string UncoveredWarning(IReadOnlyList<string> uncovered)
     {
         var shown = string.Join(", ", uncovered.Take(MaxNamedUncovered));
         var more = uncovered.Count > MaxNamedUncovered
@@ -261,10 +261,10 @@ public class RequirementTestsGenerator : IGenerator
     // ------------------------------------------------------------------
 
     // The two header comment lines of both files of a pair.
-    private const string HeaderGenerated = "// <auto-generated/>";
-    private const string HeaderRewritten = "// GENERATED by metaobjects (requirement-tests). DO NOT EDIT: this file is rewritten whole.";
+    protected const string HeaderGenerated = "// <auto-generated/>";
+    protected const string HeaderRewritten = "// GENERATED by metaobjects (requirement-tests). DO NOT EDIT: this file is rewritten whole.";
 
-    private static string WitnessInterface(DottedName testNamespace, string name, DottedName witnessClass, List<Planned> tests)
+    protected virtual string WitnessInterface(DottedName testNamespace, string name, DottedName witnessClass, List<Planned> tests)
     {
         // A real member shows the shape; with none (every test skipped) the pattern stands in for a name.
         var example = tests.FirstOrDefault(t => t.Identity.Skip is null)?.Identity.WitnessKey ?? "req_<address>__<unit>";
@@ -294,7 +294,7 @@ public class RequirementTestsGenerator : IGenerator
         return w.ToString();
     }
 
-    private static string TestClass(
+    protected virtual string TestClass(
         DottedName testNamespace, string name, string witnesses, DottedName witnessClass, List<Planned> tests, IRequirementTestRenderer? renderer)
     {
         var w = new CsWriter();
@@ -335,7 +335,7 @@ public class RequirementTestsGenerator : IGenerator
     }
 
     /// <summary>The default rendering of one test: its comments, then a <c>[Fact]</c> calling the witness.</summary>
-    private static string DefaultTest(Planned p)
+    protected virtual string DefaultTest(Planned p)
     {
         var id = p.Identity;
         var w = new CsWriter();
@@ -354,7 +354,7 @@ public class RequirementTestsGenerator : IGenerator
         return w.ToString();
     }
 
-    private static string SkipReason(string skip) => skip switch
+    protected static string SkipReason(string skip) => skip switch
     {
         RequirementConstants.REQUIREMENT_STATUS_PLANNED => SkipPlanned,
         RequirementConstants.REQUIREMENT_STATUS_RETIRED => SkipRetired,
@@ -362,7 +362,7 @@ public class RequirementTestsGenerator : IGenerator
     };
 
     /// <summary>The comment block above a test: id, statement, counterexample, status, claims, digest.</summary>
-    private static void WriteTestComments(CsWriter w, RequirementTestArgs a)
+    protected virtual void WriteTestComments(CsWriter w, RequirementTestArgs a)
     {
         var id = a.Identity;
         var claims = a.Targets.Count == 0
@@ -381,19 +381,19 @@ public class RequirementTestsGenerator : IGenerator
     // ------------------------------------------------------------------
 
     // A C# line ends at a line feed, a carriage return, a CR LF pair, or U+0085, U+2028 or U+2029.
-    private static readonly Regex LineTerminator = new Regex("\r\n|[\r\n\u0085\u2028\u2029]", RegexOptions.CultureInvariant);
+    protected static readonly Regex LineTerminator = new Regex("\r\n|[\r\n\u0085\u2028\u2029]", RegexOptions.CultureInvariant);
 
     /// <summary>
     /// One <c>//</c> marker per line: every line terminator of the language splits, so none can end the comment
     /// early and leave the rest of the prose as code. <c>*</c><c>/</c> is broken as <c>* /</c> by contract. C# does
     /// not process a Unicode escape inside a comment, so <c>\u000a</c> stays as written.
     /// </summary>
-    private static void WriteComment(CsWriter w, string text)
+    protected static void WriteComment(CsWriter w, string text)
     {
         foreach (var line in LineTerminator.Split(text)) w.Line("// " + CommentText(line));
     }
 
-    private static string CommentText(string line) => line.Replace("*/", "* /", StringComparison.Ordinal);
+    protected static string CommentText(string line) => line.Replace("*/", "* /", StringComparison.Ordinal);
 
     /// <summary>
     /// The text of a regular string literal. Every control character, and the three line terminators beyond
@@ -401,10 +401,10 @@ public class RequirementTestsGenerator : IGenerator
     /// no UTF-8 spelling and would not survive being written to the file.
     /// </summary>
     // The two line terminators a literal spells as escapes, named so the source types no line break.
-    private const char LineFeed = (char)0x0A;
-    private const char CarriageReturn = (char)0x0D;
+    protected const char LineFeed = (char)0x0A;
+    protected const char CarriageReturn = (char)0x0D;
 
-    private static string StringLiteral(string s)
+    protected static string StringLiteral(string s)
     {
         var sb = new StringBuilder();
         for (var i = 0; i < s.Length; i++)
