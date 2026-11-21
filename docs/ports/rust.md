@@ -31,7 +31,8 @@ The loader is the `metaobjects` crate, and the workspace at `server/rust/` adds 
 | Reply parser | `metaobjects_render::extract::extract` reads a typed answer out of a model's reply (FR-010, FR-011): fences, prose, comments, trailing commas and cut-off values tolerated, every declared field classified (`EXTRACTED`, `DEFAULTED`, `LOST_OPTIONAL`, `LOST_REQUIRED`, `MALFORMED`) and coerced to its kind, under a `STRICT`, `NORMAL` or `LOOSE` tolerance. `metaobjects_render::prompt::render_output_format` writes the output-format fragment that asks for that answer, in the `guide`, `inline` and `exampleOnly` styles. |
 | Frozen tree | The loader freezes the tree when it finishes. A frozen tree memoizes its resolved reads (effective children, attributes and array-ness), so many readers can share one. |
 | Timings | Every load records how long each phase and each validation pass took (`LoadResult::timings`). |
-| Code generation (`cargo meta`) | The run engine, six generators (`entity`, `client`, `commands`, `render-helper`, `output-parser`, `output-prompt`), the codegen and template drift gates and `eject`. See [The command](#the-command-cargo-meta) and [What `gen` writes](#what-gen-writes) below. |
+| Report shapes | `metaobjects::report_shape::report_shape` derives an `object.report`'s fields (FR-044 Table B, with Table C's `required`): each dimension and measure, its subtype, and the `@of` field it takes its type from. It byte-matches `fixtures/persistence-conformance/report-shapes.json`, as every port does. |
+| Code generation (`cargo meta`) | The run engine, nine generators (`entity`, `rules-names`, `contract-types`, `repository`, `client`, `commands`, `render-helper`, `output-parser`, `output-prompt`), the codegen and template drift gates and `eject`. See [The command](#the-command-cargo-meta) and [What `gen` writes](#what-gen-writes) below. |
 
 ## The command: `cargo meta`
 
@@ -138,6 +139,7 @@ under, so `cargo fmt` over the output changes nothing.
 | In the model | In Rust |
 |---|---|
 | a concrete `object.entity` or `object.value` | a `pub struct` with every effective field (inherited ones included), `serde` derives |
+| a served read: a concrete `object.projection` or `object.report` whose read source is a view | a read-only `pub struct`, with no create or patch body. A report's members are its dimensions, then its measures, each typed as FR-044 Table B derives it (a dimension and a `min`/`max` as their `@of` field, a `count` as `i64`, a ratio as `Decimal`, a `sum` of an int as `i64`) and an `Option` unless Table C says the column is never null |
 | an entity | also `<Name>Create` (what a caller sends: no generated key, no read-only or derived member) and `<Name>Patch` (every member optional; a nullable member tells "set to null" from "leave alone") |
 | a `field.enum` | a `pub enum` that serializes as the member symbols |
 | a field that is not `@required` | `Option<T>`; an array is `Vec<T>`; a `field.map` is `BTreeMap<String, V>` |
@@ -202,7 +204,7 @@ The transport is `reqwest` with its default features plus `json` and `query`, wr
 `meta_client` crate. A project that wants another HTTP stack or TLS backend changes that one crate,
 which it owns.
 
-Not generated yet: clients for `object.projection` and `object.report` routes.
+Not generated yet: clients (and commands) for `object.projection` and `object.report` routes. No Rust transport serves them yet, so they wait for it.
 
 ### `commands`: command-line commands over the client
 
@@ -317,7 +319,7 @@ changes nothing for a model without rules.
 operation, `<Op>Input` and `<Op>Output` (the model's own types, a `Vec` for `@many`),
 `<Op>BusinessError` (its declared `@errors`, or `NoBusinessError`) and `<Op>Error`, the error body
 whose code is a fixed one or one of its own. A projection an operation returns gets its read shape
-in that crate. The shared `meta_contract` crate holds the wire error contract: `ErrorCode` with
+in that crate, unless it is view-backed: then it is the model crate's, and the operation names that. The shared `meta_contract` crate holds the wire error contract: `ErrorCode` with
 each code's HTTP status, `ErrorBody`, `ValidationErrorBody` and `ConstraintViolationBody`. An
 entity's read, create and patch shapes, with `validate()`, are the model crate's; it carries no
 persistence mapping, so it already is the contract.
@@ -334,15 +336,16 @@ match body.error {
 ### `repository`: data access on sqlx
 
 `repository` ([ADR-0067](../../spec/decisions/ADR-0067-layering-and-the-service-seam.md) layer 3)
-writes a `<package>_store` crate with a module per entity that has a source. Each module has
-`TABLE`, the entity's physical mapping (table, schema, key, and each field's column and storage
+writes a `<package>_store` crate with a module per entity that has a source, and per served read
+(a view-backed projection or report). Each module has `TABLE`, the physical mapping (table, schema, key, and each field's column and storage
 kind, under the project's `naming` strategies and every `@table`/`@column`), and typed functions
 over it:
 
 - `list(c, &Query)` (a `Filter` of the nine operators, sort and paging), `count(c, Option<&Filter>)`
-  and `get(c, id)`;
+  and `get(c, id)`, which a report (it has no key) does not get;
 - `create(c, &XCreate)`, `update(c, id, &XPatch)` (`None` when there was no row) and
-  `delete(c, id)` (`false` when there was none), for an entity whose source is writable;
+  `delete(c, id)` (`false` when there was none), for an entity whose source is writable. A
+  projection and a report are read only;
 - per lifecycle (ADR-0066), the guarded update `transition_<field>(c, id, from, to)`: one
   `UPDATE ... WHERE key = id AND state IN (from)`, `false` when no row matched because it is gone
   or another writer moved it first. It decides nothing: which move is legal, and who may make it,
@@ -371,15 +374,19 @@ if !order::transition_status(&mut c, id, &[OrderStatus::New], OrderStatus::InFli
 }
 ```
 
+A view decides its own column types (`AVG` of an integer is `NUMERIC` on Postgres), so a served
+read's numbers are read through a cast to their field's type, and a report's column is its derived
+field's name under the project's column strategy.
+
 Not stored yet: a `@storage: flattened` field is refused at generation (`ERR_UNSUPPORTED`), and
-projections, reports and many-to-many traversal get no store functions.
+many-to-many traversal gets no store function.
 
 The store is held to the shared persistence corpus (`fixtures/persistence-conformance`):
 `tests/persistence_conformance.rs` generates the corpus model, starts a throwaway Postgres
 (`docker run --rm` on a tmpfs, removed when the test ends; without docker the test says so and
 passes), and runs every scenario through the generated functions, normalized as
-`normalization.md` says. The scenarios it does not run yet (many-to-many, projections and
-reports) are on a ledger in that file, which only shrinks. `tests/repository.rs` runs the same
+`normalization.md` says. The scenarios it does not run yet (the three many-to-many ones) are
+on a ledger in that file, which only shrinks. `tests/repository.rs` runs the same
 rows on SQLite in memory, and the guarded update on the rules model.
 
 ### Owning a generator
@@ -493,8 +500,8 @@ regeneration, peak memory), so a port's speed can be tracked per feature next to
 ## What does not exist yet
 
 - **Other generators.** There is no server-side route or service generator and no
-  documentation generator. The store has no functions for projections, reports or many-to-many
-  traversal yet. Projections and reports get no client yet, and a template over a
+  documentation generator. The store has no many-to-many traversal yet. Projections and reports
+  get no client or commands yet, and a template over a
   sourceless `object.projection` payload gets no render function.
 - **Other gates.** `verify --codegen`, `verify --templates` and the business-rules gate are the ones
   it has. There is no requirement gate and no `fmt`.

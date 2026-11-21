@@ -30,8 +30,11 @@
 //! database is there. The functions take any `meta_store::Conn`: a `PgConnection`, a
 //! `SqliteConnection`, or a transaction on either (`&mut *tx`).
 //!
-//! Not generated yet: stores for projections and reports, many-to-many traversal, and
-//! `@storage: flattened` value objects (an entity with one is refused by name).
+//! A served read (a concrete projection or report whose read source is a view) gets the same
+//! module, read only: `TABLE`, `list`, `count`, and `get` when it has a single key.
+//!
+//! Not generated yet: many-to-many traversal, and `@storage: flattened` value objects (an entity
+//! with one is refused by name).
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -317,10 +320,11 @@ fn stored_entity(
     for f in &s.fields {
         let what = format!("{}.{}", s.name, f.wire);
         // A derived field is computed on read by a projection; an entity stores none.
-        if tree
-            .children(f.node)
-            .iter()
-            .any(|&c| tree.node(c).type_name == TYPE_ORIGIN)
+        if s.is_entity
+            && tree
+                .children(f.node)
+                .iter()
+                .any(|&c| tree.node(c).type_name == TYPE_ORIGIN)
         {
             continue;
         }
@@ -339,7 +343,15 @@ fn stored_entity(
             .map(str::to_string);
         columns.push(ColumnPlan {
             field: f.wire.clone(),
-            column: resolve_column_name(tree, f.node, naming).map_err(fail)?,
+            // A report's column is its derived field's name, cased by the column strategy.
+            column: if s.is_report {
+                naming
+                    .registry
+                    .apply_column_naming_strategy(&f.wire, &naming.naming.columns)
+                    .map_err(fail)?
+            } else {
+                resolve_column_name(tree, f.node, naming).map_err(fail)?
+            },
             kind,
             array,
             map,
@@ -425,7 +437,7 @@ pub fn render<P: RepositoryParts + ?Sized>(
         if selected.as_ref().is_some_and(|sel| !sel.contains(cname)) {
             continue;
         }
-        let served: Vec<&StructPlan> = plan.served(c).collect();
+        let served: Vec<&StructPlan> = plan.stored(c).collect();
         if served.is_empty() {
             continue;
         }
@@ -433,7 +445,7 @@ pub fn render<P: RepositoryParts + ?Sized>(
         let mut deps: BTreeSet<String> = BTreeSet::from([cname.to_string()]);
         let mut modules = Vec::new();
         for s in served {
-            let route = s.route.as_ref().expect("a served entity has a route");
+            let route = s.route.as_ref().expect("a stored object has a route");
             let e = stored_entity(tree, &naming, s, route, &lifecycles)?;
             for f in &s.fields {
                 if let Some(t) = f.ty.type_ref() {

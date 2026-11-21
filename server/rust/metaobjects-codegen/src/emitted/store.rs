@@ -422,10 +422,15 @@ fn logical_pg_type(c: &Column) -> String {
 }
 
 /// What a SELECT reads for a column: on Postgres an exact decimal and a uuid as text, an
-/// address without its netmask, and a column of its own SQL type as the type of its kind.
-fn read_expr(engine: Engine, c: &Column) -> String {
+/// address without its netmask, and a column of its own SQL type as the type of its kind. A
+/// view's number is read as the type of its kind too, because the view's SQL decides its
+/// column's type (`AVG` of an integer is `NUMERIC` on Postgres).
+fn read_expr(engine: Engine, table: &Table, c: &Column) -> String {
     let col = quote(c.column);
-    if engine == Engine::Postgres && c.stored_as.is_some() {
+    let view_number = !table.writable
+        && !c.array
+        && matches!(c.kind, Kind::Int | Kind::Long | Kind::Double | Kind::Float);
+    if engine == Engine::Postgres && (c.stored_as.is_some() || view_number) {
         return format!("CAST({col} AS {})", logical_pg_type(c));
     }
     match (engine, c.kind, c.array) {
@@ -437,7 +442,7 @@ fn read_expr(engine: Engine, c: &Column) -> String {
 }
 
 fn select_list(engine: Engine, table: &Table) -> String {
-    table.columns.iter().map(|c| read_expr(engine, c)).collect::<Vec<_>>().join(", ")
+    table.columns.iter().map(|c| read_expr(engine, table, c)).collect::<Vec<_>>().join(", ")
 }
 
 // ---- binding a JSON value ----------------------------------------------------------------

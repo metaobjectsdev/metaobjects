@@ -29,41 +29,12 @@ use common::{Scratch, assert_builds, assert_pinned, cargo, generate_all, generat
 const CORPUS: &str = "../../../fixtures/persistence-conformance";
 
 const M2N: &str = "op: relate (many-to-many traversal) has no store function yet";
-const PROJECTION: &str = "a projection gets no store functions yet";
-const REPORT: &str = "a view-backed report gets no store functions yet";
 
 /// Scenarios not run yet, with what is missing. Shrink-only.
 const LEDGER: &[(&str, &str)] = &[
     ("m2n-directed-self-join", M2N),
     ("m2n-hetero", M2N),
     ("m2n-symmetric-self-join", M2N),
-    ("projection-aggregate", PROJECTION),
-    ("projection-aggregates", PROJECTION),
-    ("projection-passthrough", PROJECTION),
-    ("report-all-types-breakdown", REPORT),
-    ("report-boolean-measures", REPORT),
-    ("report-boolean-spine", REPORT),
-    ("report-decimal-exact", REPORT),
-    ("report-decimal-exact-15", REPORT),
-    ("report-default-empty", REPORT),
-    ("report-filter-operators", REPORT),
-    ("report-grouped-measures", REPORT),
-    ("report-measure-filters", REPORT),
-    ("report-multi-hop", REPORT),
-    ("report-negative-default", REPORT),
-    ("report-numeric-types", REPORT),
-    ("report-relative-date", REPORT),
-    ("report-self-reference", REPORT),
-    ("report-spine-scoped", REPORT),
-    ("report-spine-zero-rows", REPORT),
-    ("report-time-grains", REPORT),
-    ("report-time-grains-extended", REPORT),
-    ("report-time-hour-and-date", REPORT),
-    ("report-time-min-max", REPORT),
-    ("report-totals", REPORT),
-    ("report-totals-empty", REPORT),
-    ("report-tph-base-filter", REPORT),
-    ("report-via-redeclared-field", REPORT),
 ];
 
 fn corpus() -> PathBuf {
@@ -282,10 +253,25 @@ fn body<B: DeserializeOwned>(t: &Table, v: Option<&Value>) -> Result<B, String> 
 
 /// The normalized wire form of one row (normalization.md): a 64-bit integer and a float become
 /// strings, the plain decimal of the float; the other kinds are already in their wire form.
+thread_local! {
+    /// The SQL type of each `table.column`, from `information_schema`: normalization.md is by
+    /// the column's type, which for a view's aggregate is not always the field's (MIN of an
+    /// INTEGER column is an INTEGER even on a `field.long`).
+    static SQL_TYPES: std::cell::RefCell<std::collections::HashMap<String, String>> =
+        Default::default();
+}
+
+fn sql_type(t: &Table, column: &str) -> Option<String> {
+    SQL_TYPES.with(|m| m.borrow().get(&format!("{}.{column}", t.name)).cloned())
+}
+
 fn row(t: &Table, v: Value) -> Value {
     let Value::Object(mut map) = v else { return v };
     for (k, v) in map.iter_mut() {
         let Ok(column) = t.column(k) else { continue };
+        if matches!(sql_type(t, column.column).as_deref(), Some("integer" | "smallint")) {
+            continue;
+        }
         // normalization.md is by SQL type: a jsonb column reads as JSON.
         if column.stored_as == Some("jsonb") {
             if let Some(parsed) = v.as_str().and_then(|x| serde_json::from_str(x).ok()) {
@@ -321,13 +307,18 @@ fn out<T: serde::Serialize>(t: &Table, v: T) -> Value {
     }
 }
 
+/// The one value of a `by`: `{ id: 1 }`, or a projection's `{ programId: 1 }`.
+fn by(s: &Value) -> &Value {
+    s["by"].as_object().and_then(|m| m.values().next()).unwrap_or(&Value::Null)
+}
+
 fn key_i64(s: &Value) -> Result<i64, String> {
-    let id = &s["by"]["id"];
+    let id = by(s);
     id.as_i64().or_else(|| id.as_str().and_then(|x| x.parse().ok())).ok_or("no integer id".into())
 }
 
 fn key_str(s: &Value) -> Result<String, String> {
-    let id = &s["by"]["id"];
+    let id = by(s);
     Ok(id.as_str().map(str::to_string).unwrap_or_else(|| id.to_string()))
 }
 
@@ -357,6 +348,16 @@ macro_rules! create {
 }
 
 macro_rules! entity {
+    ($c:expr, $s:expr, $m:ident, read $(, $k:tt)?) => {{
+        use fitness_store::$m as st;
+        let t = &st::TABLE;
+        match $s["op"].as_str().unwrap() {
+            "list" => Ok(out(t, st::list($c, &query($s)?).await.map_err(e)?)),
+            "count" => Ok(json!(st::count($c, filter($s)?.as_ref()).await.map_err(e)?)),
+            $("get" => Ok(out(t, st::get($c, key!($k, $s)).await.map_err(e)?)),)?
+            op => Err(format!("{op} on a read model")),
+        }
+    }};
     ($c:expr, $s:expr, $m:ident, $row:ident, $create:ident, nokey) => {{
         use fitness_store::$m as st;
         let t = &st::TABLE;
@@ -421,6 +422,18 @@ async fn main() {
         sqlx::raw_sql(&format!("CREATE DATABASE {db}")).execute(&mut admin).await.unwrap();
         let mut c = PgConnection::connect(&format!("{url}/{db}")).await.unwrap();
         sqlx::raw_sql(&schema).execute(&mut c).await.unwrap();
+        if n == 0 {
+            let types: Vec<(String, String, String)> = sqlx::query_as(
+                "SELECT table_name::text, column_name::text, data_type::text FROM information_schema.columns WHERE table_schema = 'public'",
+            )
+            .fetch_all(&mut c)
+            .await
+            .unwrap();
+            SQL_TYPES.with(|m| {
+                m.borrow_mut()
+                    .extend(types.into_iter().map(|(t, col, ty)| (format!("{t}.{col}"), ty)))
+            });
+        }
         let seeded = match scenario.get("seed-data").and_then(Value::as_str) {
             Some(seed) => sqlx::raw_sql(seed).execute(&mut c).await.map(|_| ()).map_err(|x| x.to_string()),
             None => Ok(()),
@@ -469,6 +482,13 @@ fn entity_arms(store: &Path) -> String {
                 "i64"
             }
         });
+        if text.contains("writable: false") {
+            let key = key.map(|k| format!(", {k}")).unwrap_or_default();
+            arms.push_str(&format!(
+                "        \"{object}\" => entity!(c, s, {module}, read{key}),\n"
+            ));
+            continue;
+        }
         let tail = match key {
             Some(k) => format!("{object}Patch, {k}"),
             None => "nokey".into(),

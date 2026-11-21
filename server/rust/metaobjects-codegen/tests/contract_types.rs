@@ -26,7 +26,8 @@ fn project(tag: &str, variant: &str) -> Scratch {
     Scratch::project(tag, &[(&format!("metaobjects/{MODEL_FILE}"), &model)])
 }
 
-const PROBE_DEPENDENCIES: &str = "acme_purchasing_contract = { path = \"../out/acme_purchasing_contract\" }\n\
+const PROBE_DEPENDENCIES: &str = "acme_purchasing = { path = \"../out/acme_purchasing\" }\n\
+    acme_purchasing_contract = { path = \"../out/acme_purchasing_contract\" }\n\
     meta_contract = { path = \"../out/meta_contract\" }\n\
     serde_json = \"1\"\n";
 
@@ -44,6 +45,8 @@ fn main() {
 
     let rows: OpenRequestsOutput = serde_json::from_str(r#"[{"id": 1, "title": "Desk"}, {"id": 2}]"#).unwrap();
     println!("rows {} {:?}", rows.len(), rows[0].title);
+    // A view-backed projection's read shape is the model crate's, not a second copy.
+    let _: &acme_purchasing::RequestSummary = &rows[0];
     let one: RequestSummaryOutput = serde_json::from_str(r#"{"id": 3, "title": "Chair"}"#).unwrap();
     println!("one {}", one.id);
 

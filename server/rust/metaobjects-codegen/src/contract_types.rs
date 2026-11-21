@@ -19,9 +19,9 @@
 //! `PlaceOrderOutput`, the `@outputRef` object (a `Vec` of it when `@many`);
 //! `PlaceOrderBusinessError`, the codes its body may return (`@errors`), serialized as the code;
 //! and `PlaceOrderError`, the error body it answers with, whose code is a fixed one or a business
-//! one. A projection's read shape is the struct the entity generator writes for an object, in the
-//! contract crate because the model crate holds entities and value objects only. A model that
-//! declares no operation gets nothing from this generator.
+//! one. A projection's read shape is the struct the entity generator writes for an object: a
+//! view-backed projection is a served read, which the model crate already holds, and any other is
+//! written here. A model that declares no operation gets nothing from this generator.
 //!
 //! Which operations and what they resolve to come from the engine walk
 //! ([`metaobjects::rules_names::rules_names_of`] and the model's own references), so an owned
@@ -39,6 +39,7 @@ use metaobjects_codegen::generator::{
 use metaobjects_codegen::names::{PRELUDE_TYPES, crate_name, literal, type_ident};
 use metaobjects_codegen::plan::{
     CONTRACT_CRATE, EnumPlan, FieldPlan, NullMembers, Plan, SUPPORT_CRATE, StructPlan, Ty,
+    is_served_read,
 };
 use metaobjects_codegen::writer::{
     CodeWriter, Manifest, RUSTFMT_TOML, file, fixed, item, list, sibling_dep, toml_string,
@@ -211,6 +212,8 @@ pub fn render<P: ContractTypesParts + ?Sized>(
             if let Some(out) = index.ref_target(tree, o.node, ATTR_OUTPUT_REF)
                 && tree.node(out).sub_type == SUB_PROJECTION
                 && !tree.node(out).is_abstract
+                // A served projection's read shape is in its model crate already.
+                && !is_served_read(tree, out)
             {
                 shapes.insert(out);
             }

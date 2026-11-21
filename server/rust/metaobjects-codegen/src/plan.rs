@@ -15,10 +15,11 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use metaobjects::collection::Collection;
 use metaobjects::naming::{
     NamingCtx, NamingRegistry, collection_segment, emits_instance_artifacts, is_tph_subtype,
-    primary_rdb_source, source_is_read_only,
+    primary_rdb_source, source_effective_kind, source_is_read_only, source_role,
 };
 use metaobjects::node::{NodeId, PACKAGE_SEP, Tree};
-use metaobjects::validate::util::{ObjectIndex, ops_for_field};
+use metaobjects::report_shape::report_shape;
+use metaobjects::validate::util::{ObjectIndex, ops_for_field, ops_for_subtype};
 use serde_json::Value;
 
 use crate::emitted::pattern::Pattern;
@@ -58,6 +59,10 @@ const VIEW_PASSWORD: &str = "password";
 const OBJECT_ENTITY: &str = "entity";
 const OBJECT_VALUE: &str = "value";
 const OBJECT_PROJECTION: &str = "projection";
+const OBJECT_REPORT: &str = "report";
+const TYPE_SOURCE: &str = "source";
+const SOURCE_KIND_VIEW: &str = "view";
+const SOURCE_ROLE_PRIMARY: &str = "primary";
 const IDENTITY_PRIMARY: &str = "primary";
 const ATTR_DESCRIPTION: &str = "description";
 const ATTR_VALUES: &str = "values";
@@ -485,6 +490,12 @@ pub struct StructPlan {
     pub name: String,
     pub doc: Option<String>,
     pub is_entity: bool,
+    /// A served read (ADR-0028, FR-044 Plan 3): a concrete projection or report whose read
+    /// source is a view. It is listed (and, with a single key, read by it) and never written.
+    pub served_read: bool,
+    /// An `object.report`: its fields are derived from its dimensions and measures (FR-044
+    /// Table B), and each is the view's column of its own name.
+    pub is_report: bool,
     pub fields: Vec<FieldPlan>,
     pub enums: Vec<EnumPlan>,
     /// Rules across the members of the create body, each already lowered.
@@ -858,8 +869,8 @@ impl Plan {
     /// The plan with the concrete `object.projection`s in `projections` planned too, each as a
     /// read shape in its package's crate named `<package crate><suffix>`: the crate of the
     /// generator that writes it (the contract types). A projection has no create or patch body.
-    /// The plan the other generators read ([`Plan::of`]) has no projections, so planning them
-    /// moves none of their output.
+    /// A served read (see [`is_served_read`]) is in every plan, in its model crate, so it is
+    /// never planned a second time here.
     pub fn with_projections(
         ctx: &GenContext<'_>,
         suffix: &str,
@@ -886,8 +897,10 @@ impl Plan {
         for &id in tree.own_children(root) {
             let n = tree.node(id);
             let projection = n.sub_type == OBJECT_PROJECTION;
+            let served_read = n.type_name == TYPE_OBJECT && is_served_read(tree, id);
             if n.type_name != TYPE_OBJECT
                 || !(matches!(n.sub_type.as_str(), OBJECT_ENTITY | OBJECT_VALUE)
+                    || served_read
                     || (projection && projections.is_some_and(|(_, set)| set.contains(&id))))
                 || n.is_abstract
             {
@@ -895,7 +908,9 @@ impl Plan {
             }
             let pkg = tree.effective_package(id);
             let crate_name = match projections {
-                Some((suffix, _)) if projection => format!("{}{suffix}", crate_name(&pkg)),
+                Some((suffix, _)) if projection && !served_read => {
+                    format!("{}{suffix}", crate_name(&pkg))
+                }
                 _ => crate_name(&pkg),
             };
             by_node.insert(id, structs.len());
@@ -907,6 +922,8 @@ impl Plan {
                 name: n.name.clone(),
                 doc: str_attr(tree, id, ATTR_DESCRIPTION).map(str::to_string),
                 is_entity: n.sub_type == OBJECT_ENTITY,
+                served_read,
+                is_report: n.sub_type == OBJECT_REPORT,
                 fields: Vec::new(),
                 enums: Vec::new(),
                 cross: Vec::new(),
@@ -1119,6 +1136,17 @@ impl Plan {
             structs[i].enums = enums;
         }
 
+        // A report's fields come from its shape, each typed like the field it carries the type
+        // of (planned above, on the entity that has it) or by its subtype alone.
+        for i in 0..structs.len() {
+            if !structs[i].is_report {
+                continue;
+            }
+            let fields = report_fields(tree, &index, &structs, i)?;
+            check_fields(&structs[i].key, &fields)?;
+            structs[i].fields = fields;
+        }
+
         // Shared enums are materialized once, in their declaration's package, and only when a
         // field consumes them.
         for (&decl, target) in &shared {
@@ -1167,6 +1195,28 @@ impl Plan {
         let fail = |e: metaobjects::errors::MetaError| unsupported(e.to_string());
         for i in 0..self.structs.len() {
             let s = &self.structs[i];
+            if s.served_read {
+                let path = collection_segment(tree, s.node, &ctx).map_err(fail)?;
+                let keys: Vec<usize> = (0..s.fields.len())
+                    .filter(|&k| s.fields[k].primary)
+                    .collect();
+                let key = match keys.as_slice() {
+                    [only]
+                        if !s.fields[*only].array
+                            && matches!(s.fields[*only].ty, Ty::Str | Ty::Prim("i32" | "i64")) =>
+                    {
+                        Some(*only)
+                    }
+                    _ => None,
+                };
+                self.structs[i].route = Some(Route {
+                    path,
+                    read_only: true,
+                    key,
+                    traversals: Vec::new(),
+                });
+                continue;
+            }
             if !s.is_entity || !emits_instance_artifacts(tree, s.node) {
                 continue;
             }
@@ -1523,13 +1573,125 @@ impl Plan {
         Ok(Some(chosen))
     }
 
-    /// The served entities of a model crate, in model order.
+    /// The served entities of a model crate, in model order: what the client and the
+    /// command line reach. A served read (a projection or a report) is not one of them yet,
+    /// because no Rust transport serves it (it is on the API ledger, `docs/ports/rust.md`).
     pub fn served<'a>(&'a self, c: &'a CratePlan) -> impl Iterator<Item = &'a StructPlan> {
+        self.stored(c).filter(|s| !s.served_read)
+    }
+
+    /// The stored objects of a model crate, in model order: the served entities and the
+    /// served reads, each with the store functions of its route.
+    pub fn stored<'a>(&'a self, c: &'a CratePlan) -> impl Iterator<Item = &'a StructPlan> {
         c.structs
             .iter()
             .map(|&i| &self.structs[i])
             .filter(|s| s.route.is_some())
     }
+}
+
+// ---- served reads ------------------------------------------------------------------------
+
+/// A concrete `object.projection` or `object.report` whose read source is a view: its own
+/// read-only source with `@role: primary`, else its first own read-only source. Every port's
+/// generators serve exactly these (`servedReport` in TypeScript, and its projection twin).
+pub fn is_served_read(tree: &Tree, obj: NodeId) -> bool {
+    let n = tree.node(obj);
+    if n.is_abstract || !matches!(n.sub_type.as_str(), OBJECT_PROJECTION | OBJECT_REPORT) {
+        return false;
+    }
+    // ADR-0039 sanctioned own: a read model's source is the one it declares itself.
+    let read_only: Vec<NodeId> = tree
+        .own_children(obj)
+        .iter()
+        .copied()
+        .filter(|&c| tree.node(c).type_name == TYPE_SOURCE && source_is_read_only(tree, c))
+        .collect();
+    read_only
+        .iter()
+        .copied()
+        .find(|&s| source_role(tree, s) == SOURCE_ROLE_PRIMARY)
+        .or_else(|| read_only.first().copied())
+        .is_some_and(|s| source_effective_kind(tree, s) == SOURCE_KIND_VIEW)
+}
+
+/// The fields of the report at `structs[at]`, from its shape (FR-044 Table B and C). A
+/// field that carries the type of an `@of` field copies that field's plan; any other is the
+/// scalar of its subtype. Every field may be filtered by its subtype's band and sorted, and
+/// none is written.
+fn report_fields(
+    tree: &Tree,
+    index: &ObjectIndex,
+    structs: &[StructPlan],
+    at: usize,
+) -> Result<Vec<FieldPlan>, GenError> {
+    let report = &structs[at];
+    let shape = report_shape(tree, index, report.node).map_err(unsupported)?;
+    let mut out = Vec::new();
+    for f in shape.fields {
+        let what = format!("{}.{}", report.key, f.name);
+        let copied = f.type_source.and_then(|ts| {
+            structs
+                .iter()
+                .flat_map(|s| s.fields.iter())
+                .find(|p| p.node == ts)
+                .cloned()
+        });
+        let mut plan = match copied {
+            Some(p) => p,
+            None => {
+                let kind = Kind::of(&f.sub_type).ok_or_else(|| {
+                    unsupported(format!(
+                        "{what} has the subtype {}, which has no Rust mapping",
+                        f.sub_type
+                    ))
+                })?;
+                let ty = scalar(kind, false).ok_or_else(|| {
+                    unsupported(format!(
+                        "{what} carries the type of a field the Rust generators do not plan"
+                    ))
+                })?;
+                FieldPlan {
+                    node: f.type_source.unwrap_or(report.node),
+                    wire: String::new(),
+                    ident: String::new(),
+                    ty,
+                    kind,
+                    array: false,
+                    optional: true,
+                    boxed: false,
+                    doc: None,
+                    required: false,
+                    primary: false,
+                    credential: false,
+                    local_time: false,
+                    create: Presence::Absent,
+                    patch: false,
+                    rules: Rules::default(),
+                    filter_ops: Vec::new(),
+                    sortable: false,
+                }
+            }
+        };
+        plan.wire = f.name.clone();
+        plan.ident = field_ident(&f.name);
+        plan.optional = !f.required;
+        plan.required = f.required;
+        plan.primary = false;
+        plan.credential = false;
+        plan.doc = None;
+        plan.create = Presence::Absent;
+        plan.patch = false;
+        plan.rules = Rules::default();
+        plan.filter_ops = if matches!(plan.kind, Kind::Object | Kind::Map) {
+            Vec::new()
+        } else {
+            ops_for_subtype(&f.sub_type).to_vec()
+        };
+        plan.sortable = true;
+        out.push(plan);
+    }
+    Ok(out)
 }
 
 // ---- rules across members --------------------------------------------------------------

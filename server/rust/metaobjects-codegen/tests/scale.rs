@@ -31,8 +31,9 @@ const ROOT_PACKAGE: &str = "\"package\": \"fitness\"";
 /// The crates every run writes once, however large the model.
 const SHARED: &[&str] = &["meta_support", "meta_client", "meta_cli", "meta_store"];
 
-/// The generated output for ONE copy of the fitness model, shared crates left out.
-const BUDGET_BYTES: usize = 340_000;
+/// The generated output for ONE copy of the fitness model, shared crates left out. Its 25
+/// reports and 3 projections are each a model type and a store module (about 2 KB apiece).
+const BUDGET_BYTES: usize = 400_000;
 /// The longest generated file for the fitness model, in lines.
 const BUDGET_LONGEST_FILE: usize = 500;
 const CEILING_GEN: Duration = Duration::from_secs(120);
