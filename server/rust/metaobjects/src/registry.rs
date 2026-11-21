@@ -322,7 +322,11 @@ impl TypeRegistry {
                 .map(|b| b.attributes.iter().map(|a| a.name.clone()).collect())
                 .unwrap_or_default()
         };
-        for attr in def.attributes.iter().filter(|a| !base_names.contains(&a.name)) {
+        for attr in def
+            .attributes
+            .iter()
+            .filter(|a| !base_names.contains(&a.name))
+        {
             self.check_attr_ownership(&def.type_name, &def.sub_type, &attr.name)?;
         }
         let (type_name, sub_type) = (def.type_name.clone(), def.sub_type.clone());
