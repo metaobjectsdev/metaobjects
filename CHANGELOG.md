@@ -154,8 +154,8 @@ here.**
 - **A template that names a variable the payload lacks fails to render, in every render path.**
   Mustache and Jinja raise `render verify failed: ERR_VAR_NOT_ON_PAYLOAD (<name>)` for a missing
   variable or dotted path, where they used to render it empty. A variable that is present and null
-  still renders empty. Render fixtures may now carry `expected-error.txt` in place of
-  `expected.txt`.
+  still renders empty. The Rust `metaobjects-render` crate raises it too, so all six renderers
+  agree. Render fixtures may now carry `expected-error.txt` in place of `expected.txt`.
 - **Business rules: two operations or transitions whose permission names come out equal are
   refused (rule P3).** A permission name is the declared `@permission`, or else the derived
   `<package>.<path>`, compared exactly as the policy receives it, so `p::Order.open` and

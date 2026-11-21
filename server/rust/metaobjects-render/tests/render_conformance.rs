@@ -1,7 +1,9 @@
 //! The shared render corpus (`fixtures/render-conformance/`): the same template, payload,
 //! partials and format give the same bytes in every port.
 //!
-//! Each case directory holds `template.mustache`, `payload.json`, `expected.txt`, an
+//! Each case directory holds `template.mustache`, `payload.json`, either `expected.txt`
+//! (byte-identical output) or `expected-error.txt` (the render must fail, with a message
+//! containing the file's trimmed text), an
 //! optional `meta.json` (`format`, `maxChars`) and optional `partials/<name>.mustache`,
 //! referenced as `{{> partials/<name>}}`. A sub-corpus with no `template.mustache` of its
 //! own (`template-generator/`, which drives the codegen `template` generator) has its own
@@ -26,7 +28,10 @@ fn run_case(dir: &Path) -> Result<(), String> {
     let template = read(&dir.join("template.mustache"));
     let payload: Value = serde_json::from_str(&read(&dir.join("payload.json")))
         .map_err(|e| format!("payload.json: {e}"))?;
-    let expected = read(&dir.join("expected.txt"));
+    let error_path = dir.join("expected-error.txt");
+    let expected_error = error_path
+        .is_file()
+        .then(|| read(&error_path).trim().to_string());
     let meta: Value = if dir.join("meta.json").is_file() {
         serde_json::from_str(&read(&dir.join("meta.json"))).map_err(|e| e.to_string())?
     } else {
@@ -49,12 +54,24 @@ fn run_case(dir: &Path) -> Result<(), String> {
         }
     }
     let provider = InMemoryProvider::new(partials);
-    let actual = render(
+    let result = render(
         &RenderRequest::new(Body::Inline(&template), &payload, &provider)
             .format(format)
             .max_chars(max_chars),
-    )
-    .map_err(|e| e.to_string())?;
+    );
+    if let Some(wanted) = expected_error {
+        return match result {
+            Err(e) if e.to_string().contains(&wanted) => Ok(()),
+            Err(e) => Err(format!(
+                "expected an error containing {wanted:?}\n  actual   {e}"
+            )),
+            Ok(out) => Err(format!(
+                "expected an error containing {wanted:?}\n  rendered {out:?}"
+            )),
+        };
+    }
+    let expected = read(&dir.join("expected.txt"));
+    let actual = result.map_err(|e| e.to_string())?;
     if actual == expected {
         Ok(())
     } else {

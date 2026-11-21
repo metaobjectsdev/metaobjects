@@ -719,8 +719,8 @@ body (Python and TypeScript) is checked the same way; see
 **A variable the payload lacks fails at render time, on every render path.** Text edited or
 served after codegen that names a variable the payload lacks (`{{nmae}}` for `name`) raises
 `ERR_VAR_NOT_ON_PAYLOAD` instead of rendering as an empty string. The engine's `render()` raises
-it for a Mustache body in TypeScript, C#, Java (and so Kotlin) and Python, and for a Jinja body in
-TypeScript and Python. A present `null` still renders empty, and a section over an absent name
+it for a Mustache body in TypeScript, C#, Java (and so Kotlin), Python and Rust (the
+`metaobjects-render` crate), and for a Jinja body in TypeScript and Python. A present `null` still renders empty, and a section over an absent name
 still renders nothing. The generated render helpers (the `template.output` helper and the
 `template.prompt` handle, in all five ports) carry the payload's field tree, so the same miss is
 caught in text served after codegen. Passing the field tree to the engine (`verify` in TypeScript,
