@@ -1,16 +1,34 @@
 // Biome's WebAssembly build is ~14 MB of module that only the owned-copy comparison uses.
-// A static import would load it for every `meta` command, so the import stays dynamic.
+// Importing owned-copy must not load it; the first canonicalLines call must.
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { canonicalLines } from "../src/lib/owned-copy.js";
 
+const probe = `
+import { plugin } from "bun";
+const resolved = [];
+plugin({
+  name: "biome-probe",
+  setup(build) {
+    build.onResolve({ filter: /@biomejs/ }, (args) => {
+      resolved.push(args.path);
+      return undefined;
+    });
+  },
+});
+const { canonicalLines } = await import(${JSON.stringify(join(import.meta.dir, "..", "src", "lib", "owned-copy.ts"))});
+const afterImport = resolved.length;
+await canonicalLines("const x = {a:1};\\n");
+console.log(JSON.stringify({ afterImport, afterCall: resolved.length }));
+`;
+
 describe("owned-copy loads Biome on first use", () => {
-  test("no value import of the Biome package at module level", () => {
-    const source = readFileSync(join(import.meta.dir, "..", "src", "lib", "owned-copy.ts"), "utf8");
-    const valueImports = source.split("\n").filter((l) => /^import\s/.test(l) && !/^import\s+type\s/.test(l) && l.includes("@biomejs"));
-    expect(valueImports).toEqual([]);
-    expect(source).toContain('import("@biomejs/js-api")');
+  test("importing the module does not load Biome; the first comparison does", () => {
+    const run = Bun.spawnSync([process.execPath, "-e", probe], { cwd: join(import.meta.dir, "..") });
+    expect(run.exitCode).toBe(0);
+    const { afterImport, afterCall } = JSON.parse(run.stdout.toString().trim().split("\n").pop() ?? "{}");
+    expect(afterImport).toBe(0);
+    expect(afterCall).toBeGreaterThan(0);
   });
 
   test("a comparison still formats, so the lazy load works", async () => {
