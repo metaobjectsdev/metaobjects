@@ -10,6 +10,17 @@ here.**
 
 ## [Unreleased]
 
+- **react: `<ImageUpload>` moves to `@metaobjectsdev/react/image-upload`, and `react-easy-crop`
+  becomes an optional peer (breaking).** `ImageUpload` and `cropToBlob` leave the package root
+  for the new subpath, and the generated form imports them from there, so a project with no
+  `view.image` field no longer installs the crop library at all. A project with one adds
+  `react-easy-crop` (`>=6.2.3 <7.0.0`) to its dependencies. The adapter provider stays on the
+  root. Regenerate, and move any hand-written import:
+  [docs/features/migrations/react-image-upload-subpath.md](docs/features/migrations/react-image-upload-subpath.md).
+- **The empty `@metaobjectsdev/forge` package is removed.** It was private, exported nothing and
+  had no importer. The forge vocabulary (`decision`, `principle`, `convention`, `glossary`,
+  `failure` and the `@forge*` attributes) is unchanged: `@metaobjectsdev/sdk` ships it as
+  `forgeTypesProvider`, and `FORGE-METADATA.md` now says so.
 - **cli: `meta schema` prints the expected schema, read-only.** `meta schema --dialect
   postgres|sqlite|d1` prints the `CREATE` statements `meta migrate` would write for an empty
   database, views included; `--as json` prints the neutral JSON document instead, the format

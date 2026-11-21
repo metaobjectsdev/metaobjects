@@ -45,7 +45,7 @@
     "sourceNode": "acme::learn::Lesson"
   },
   "src/generated/Program.form.tsx": {
-    "hash": "42056db5d322bb03e0fc00a197357061854d5a4fb3a304a2e8e04c8fc3689b6f",
+    "hash": "16c15c97549faffb320e0d10e8588d86751cf4580eda591d6b7ce0cf7ce42a02",
     "generatedBy": "form-file",
     "sourceNode": "acme::learn::Program"
   },

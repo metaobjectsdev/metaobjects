@@ -128,9 +128,9 @@ describe("form controls — view.image dispatch", () => {
     const { root, doc } = await loadModel();
     const out = renderFormFile(doc, ctxFor(root));
     expect(out).toContain('import { Controller } from "react-hook-form"');
-    // Specifically the ImageUpload specifier, not just any "@metaobjectsdev/react"
-    // import — useEntityForm's import from the same package is unconditional.
-    expect(out).toContain('import { ImageUpload } from "@metaobjectsdev/react"');
+    // The ImageUpload specifier, on its own subpath because react-easy-crop is an optional
+    // peer; useEntityForm still comes from the package root, unconditionally.
+    expect(out).toContain('import { ImageUpload } from "@metaobjectsdev/react/image-upload"');
     expect(out).toMatch(/from "@metaobjectsdev\/react"/);
   });
 
