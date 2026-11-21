@@ -1161,7 +1161,11 @@ fn check_permission_names(ctx: &Ctx<'_>, top_level: &[NodeId], sink: &mut Sink<'
         if !is_entity(tree, entity) || tree.node(entity).is_abstract {
             continue;
         }
-        if !tree.children(entity).iter().any(|&c| tree.node(c).type_name == T_SOURCE) {
+        if !tree
+            .children(entity)
+            .iter()
+            .any(|&c| tree.node(c).type_name == T_SOURCE)
+        {
             continue;
         }
         let ename = tree.node(entity).name.clone();
