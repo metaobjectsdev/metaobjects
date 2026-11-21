@@ -155,6 +155,13 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   project that lints generated code with Biome adds its own ignore. `formatTs` is still exported from
   `@metaobjectsdev/codegen-ts` and now returns its input unchanged, so a generator ejected in 1.2
   keeps loading and running. Run your formatter over the generated tree if you want your layout.
+- **`drizzle-orm` and `zod` are optional peers of `@metaobjectsdev/codegen-ts`.** Installing the
+  CLI no longer installs the ORM (about 17 MB); only the code `meta gen` writes imports it. A
+  project installs both when it takes a generator that writes code importing them: `meta eject`
+  and `meta gen --list` print the install set. A project that relied on the CLI pulling them in
+  adds `drizzle-orm` and `zod` to its own `package.json`. A check installs the packed CLI, fails
+  when the ORM or a formatter comes back, and holds the install to a size budget that only moves
+  down (`scripts/check-install-size.mjs`, in the full CI run).
 - **`metamodelVersion` is `1.3`.** Upgrade every port together.
 
 ### Security

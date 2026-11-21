@@ -244,6 +244,10 @@
         "drizzle-orm": ">=0.38.0 <1.0.0",
         "zod": ">=3.23.0 <5.0.0",
       },
+      "optionalPeers": [
+        "drizzle-orm",
+        "zod",
+      ],
     },
     "server/typescript/packages/codegen-ts-angular": {
       "name": "@metaobjectsdev/codegen-ts-angular",
