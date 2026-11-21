@@ -1,0 +1,15 @@
+{
+  "description": "One simple name imported from two types is an error, not a silent shadow.",
+  "dialect": "java",
+  "ops": [
+    [
+      "use",
+      "java.util.Date"
+    ],
+    [
+      "use",
+      "java.sql.Date"
+    ]
+  ],
+  "error": "ERR_WRITER_IMPORT_CONFLICT"
+}

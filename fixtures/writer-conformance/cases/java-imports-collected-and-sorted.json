@@ -1,0 +1,50 @@
+{
+  "description": "Imports print in code-unit order, one per line, after the package line. Static imports come first, then a blank line, then the others. A name used twice is imported once.",
+  "dialect": "java",
+  "ops": [
+    [
+      "package",
+      "com.acme"
+    ],
+    [
+      "use",
+      "java.util.Map"
+    ],
+    [
+      "use",
+      "com.acme.other.Zed"
+    ],
+    [
+      "useStatic",
+      "org.junit.Assert.assertEquals"
+    ],
+    [
+      "use",
+      "java.util.List"
+    ],
+    [
+      "use",
+      "java.util.List"
+    ],
+    [
+      "useStatic",
+      "java.util.Objects.requireNonNull"
+    ],
+    [
+      "line",
+      "class A {}"
+    ]
+  ],
+  "expected": [
+    "package com.acme;",
+    "",
+    "import static java.util.Objects.requireNonNull;",
+    "import static org.junit.Assert.assertEquals;",
+    "",
+    "import com.acme.other.Zed;",
+    "import java.util.List;",
+    "import java.util.Map;",
+    "",
+    "class A {}"
+  ]
+}

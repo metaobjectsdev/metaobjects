@@ -1,0 +1,19 @@
+{
+  "description": "A nested type is imported as written and used by its last segment.",
+  "dialect": "java",
+  "ops": [
+    [
+      "use",
+      "java.util.Map.Entry"
+    ],
+    [
+      "line",
+      "class A {}"
+    ]
+  ],
+  "expected": [
+    "import java.util.Map.Entry;",
+    "",
+    "class A {}"
+  ]
+}

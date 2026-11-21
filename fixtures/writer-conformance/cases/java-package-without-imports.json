@@ -1,0 +1,19 @@
+{
+  "description": "A file with a package line and no imports has no import block.",
+  "dialect": "java",
+  "ops": [
+    [
+      "package",
+      "com.acme.api"
+    ],
+    [
+      "line",
+      "interface A {}"
+    ]
+  ],
+  "expected": [
+    "package com.acme.api;",
+    "",
+    "interface A {}"
+  ]
+}

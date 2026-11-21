@@ -1,0 +1,33 @@
+{
+  "description": "A type in java.lang or in the file's own package is written by its simple name and imports nothing, whichever order the package and the types were named in.",
+  "dialect": "java",
+  "ops": [
+    [
+      "use",
+      "java.lang.String"
+    ],
+    [
+      "use",
+      "com.acme.Sibling"
+    ],
+    [
+      "use",
+      "java.util.UUID"
+    ],
+    [
+      "package",
+      "com.acme"
+    ],
+    [
+      "line",
+      "class A {}"
+    ]
+  ],
+  "expected": [
+    "package com.acme;",
+    "",
+    "import java.util.UUID;",
+    "",
+    "class A {}"
+  ]
+}

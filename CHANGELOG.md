@@ -990,6 +990,15 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   the new `fixtures/writer-conformance/` corpus. No shipped generator uses the writer yet, so
   generated output does not change in this release.
 
+- **A code writer for Java generators: `CodeWriter` and `JavaWriter` in `metaobjects-codegen-base`**
+  (ADR-0063). The same contract as the TypeScript writer: `JavaWriter` collects imports while the
+  body is written (`use("java.util.List")` returns the name to write), skips `java.lang` and
+  same-package types, prints static imports first, writes Javadoc, and breaks a call that does not
+  fit 120 columns with no trailing comma. `block` is a `try`-with-resources scope. It runs the
+  shared `core` cases and nine new `java` cases, and a layout ratchet (a `javac` parse-tree test
+  with a written, shrink-only allowlist) now holds Java generator source to it. No shipped Java
+  generator uses the writer yet, so generated output does not change in this release.
+
 - **Select objects to regenerate in every port.** C# `dotnet meta gen --entities A,B` (and
   `verify --codegen --entities`) and, for Java and Kotlin, `mvn metaobjects:generate
   -Dmeta.entities=A,B` regenerate only the named objects' files, like TypeScript's
