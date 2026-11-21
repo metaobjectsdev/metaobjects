@@ -24,7 +24,7 @@ import metaobjects.core_types  # noqa: F401  — side-effect: registers attr cla
 from metaobjects import load_string
 from metaobjects.codegen.generators.entity_model import render_entity_model
 from metaobjects.meta.core.object.meta_object import MetaObject
-from metaobjects.runtime import ObjectManager, PostgresDriver
+from metaobjects.runtime import ObjectManagerDb, PostgresDriver
 
 from .postgres_container import PostgresContainer
 
@@ -90,7 +90,7 @@ def _setting_model() -> Any:
 
 
 @pytest.fixture
-def pg() -> Iterator[tuple[ObjectManager, Any]]:
+def pg() -> Iterator[tuple[ObjectManagerDb, Any]]:
     with PostgresContainer() as container:
         info = container.info()
         with closing(pg8000.connect(
@@ -100,7 +100,7 @@ def pg() -> Iterator[tuple[ObjectManager, Any]]:
             cur = conn.cursor()
             cur.execute(_DDL)
             conn.commit()
-            yield ObjectManager(_root(), PostgresDriver(conn)), conn
+            yield ObjectManagerDb(_root(), PostgresDriver(conn)), conn
 
 
 def _raw(conn: Any, title: str) -> tuple[Any, ...]:
@@ -115,21 +115,21 @@ def test_a_model_built_without_the_enum_holds_its_default() -> None:
     assert [getattr(model, f) for f in _FIELDS] == ["MANUAL", "MANUAL", "HIGH", "HIGH", "HIGH", "HIGH"]
 
 
-def test_a_create_that_omits_the_enum_stores_its_default(pg: tuple[ObjectManager, Any]) -> None:
+def test_a_create_that_omits_the_enum_stores_its_default(pg: tuple[ObjectManagerDb, Any]) -> None:
     om, conn = pg
     created = om.create("Setting", {"title": "omitted"})
     assert _raw(conn, "omitted") == _DEFAULTED
     assert created["band"] == "HIGH"
 
 
-def test_a_model_built_without_the_enum_is_stored_as_its_default(pg: tuple[ObjectManager, Any]) -> None:
+def test_a_model_built_without_the_enum_is_stored_as_its_default(pg: tuple[ObjectManagerDb, Any]) -> None:
     om, conn = pg
     model = _setting_model()(title="model")
     om.create("Setting", model.model_dump(mode="json", exclude={"id"}))
     assert _raw(conn, "model") == _DEFAULTED
 
 
-def test_an_explicit_first_member_and_null_are_stored_as_set(pg: tuple[ObjectManager, Any]) -> None:
+def test_an_explicit_first_member_and_null_are_stored_as_set(pg: tuple[ObjectManagerDb, Any]) -> None:
     om, conn = pg
     om.create("Setting", {"title": "set", "mode": "AUTO", "optMode": None, "rank": "LOW",
                           "optRank": None, "band": "LOW", "optBand": None})

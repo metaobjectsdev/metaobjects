@@ -23,7 +23,7 @@ nothing else. A project with no config generates nothing and is told so.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml  # type: ignore[import-untyped]  # PyYAML ships no type stubs
@@ -70,8 +70,9 @@ LEGACY_DOCS_KEY = "docs"
 TARGET_KEYS: tuple[str, ...] = ("outDir", "generators", "entities", "templateSpec")
 
 #: Every key a mapping entry of a target's ``generators`` list may carry: the generator's
-#: name and its ``handEdits`` setting. Same contract as above.
-GENERATOR_ENTRY_KEYS: tuple[str, ...] = ("name", "handEdits")
+#: name, its ``handEdits`` setting, the ``packages`` and ``entities`` it is limited to, and its
+#: ``options``. Same contract as above.
+GENERATOR_ENTRY_KEYS: tuple[str, ...] = ("name", "handEdits", "packages", "entities", "options")
 
 #: The values ``handEdits`` accepts, the same in every port. ``keep`` (the default) refuses
 #: a generated file edited by hand, and an edited file no generator emits any more;
@@ -124,6 +125,29 @@ class ConfigError(ValueError):
 
 
 @dataclass(frozen=True)
+class GeneratorSettings:
+    """What a ``generators`` entry written as a mapping says about ONE generator, beyond its name.
+
+    ``packages`` and ``entities`` limit what THIS generator emits for, inside the target's own
+    ``entities`` (a name outside the target is outside both). ``options`` are the generator's
+    own settings, in the camelCase this file uses for every key; they reach the generator as
+    snake_case keyword arguments, and a name the generator does not take is refused when the
+    generator is built (here only the SHAPE is checked: this loader never imports the engine).
+    """
+
+    #: Metadata packages (``acme::sales``) the generator emits for; ``None`` => every package.
+    packages: tuple[str, ...] | None = None
+    #: Short object names the generator emits for; ``None`` => every object in the target.
+    entities: tuple[str, ...] | None = None
+    #: The generator's own settings, as written.
+    options: dict[str, object] = field(default_factory=dict)
+
+    @property
+    def selects(self) -> bool:
+        return self.packages is not None or self.entities is not None
+
+
+@dataclass(frozen=True)
 class TargetConfig:
     """One named run-spec: where to write + which generators/entities to run.
 
@@ -148,6 +172,9 @@ class TargetConfig:
     #: The ``generators`` entries (as written in ``generators``) declared with
     #: ``handEdits: overwrite``. Every other entry keeps hand edits.
     overwrite_hand_edits: frozenset[str] = frozenset()
+    #: Per generator entry, by the entry's name: its ``packages`` / ``entities`` / ``options``.
+    #: An entry written as a bare name, or with none of the three, has no row.
+    generator_settings: dict[str, GeneratorSettings] = field(default_factory=dict)
     #: ``gen --entities``: the entities this RUN writes, within ``entities``. Never read
     #: from the file. ``entities`` stays the target's model, so a whole-model file (shared
     #: enums, the duration codec, the report writers) still renders from all of it.
@@ -275,20 +302,51 @@ def _require_str_list(value: object, ctx: str) -> list[str]:
     return list(value)
 
 
-def _parse_generator_entries(value: object, ctx: str) -> tuple[list[str], frozenset[str]]:
-    """A target's ``generators``: each entry a name, or a mapping ``{name, handEdits}``.
+def _parse_name_list(value: object, ctx: str, key: str) -> tuple[str, ...]:
+    if (
+        not isinstance(value, list) or not value
+        or not all(isinstance(x, str) and x for x in value)
+    ):
+        raise ConfigError(f"{ctx}: '{key}' must be a non-empty list of non-empty strings.")
+    return tuple(dict.fromkeys(value))
 
-    Returns the names in order and the ones declared ``handEdits: overwrite``."""
+
+def _parse_generator_options(value: object, ctx: str) -> dict[str, object]:
+    if not isinstance(value, dict) or not all(isinstance(k, str) and k for k in value):
+        raise ConfigError(f"{ctx}: 'options' must be a mapping of option name to value.")
+    return dict(value)
+
+
+def _parse_generator_entries(
+    value: object, ctx: str
+) -> tuple[list[str], frozenset[str], dict[str, GeneratorSettings]]:
+    """A target's ``generators``: each entry a name, or a mapping
+    ``{name, handEdits, packages, entities, options}``.
+
+    Returns the names in order, the ones declared ``handEdits: overwrite``, and the
+    per-generator settings of each entry that carries any."""
     if not isinstance(value, list):
-        raise ConfigError(f"{ctx} must be a list of generator names or {{name, handEdits}} mappings.")
+        raise ConfigError(f"{ctx} must be a list of generator names or {{name, ...}} mappings.")
     names: list[str] = []
     overwrite: set[str] = set()
+    settings: dict[str, GeneratorSettings] = {}
+    configured: set[str] = set()
+
+    def reject_repeat(name: str, carries: bool) -> None:
+        if name in names and (carries or name in configured):
+            raise ConfigError(
+                f"{ctx}: generator {name!r} is listed twice and one entry carries "
+                f"packages, entities, options or handEdits; settings are per generator name, "
+                f"so merge them into one entry."
+            )
+
     for entry in value:
         if isinstance(entry, str):
+            reject_repeat(entry, False)
             names.append(entry)
             continue
         if not isinstance(entry, dict):
-            raise ConfigError(f"{ctx}: each entry must be a generator name or a {{name, handEdits}} mapping.")
+            raise ConfigError(f"{ctx}: each entry must be a generator name or a {{name, ...}} mapping.")
         _reject_unknown_keys(entry, GENERATOR_ENTRY_KEYS, ctx)
         name = entry.get("name")
         if not isinstance(name, str) or not name:
@@ -299,10 +357,23 @@ def _parse_generator_entries(value: object, ctx: str) -> tuple[list[str], frozen
                 f"{ctx}: entry {name!r} has handEdits {hand_edits!r}; expected one of "
                 f"{', '.join(HAND_EDITS_VALUES)}."
             )
+        entry_ctx = f"{ctx}: entry {name!r}"
+        packages = _parse_name_list(entry["packages"], entry_ctx, "packages") if "packages" in entry else None
+        entities = _parse_name_list(entry["entities"], entry_ctx, "entities") if "entities" in entry else None
+        options = _parse_generator_options(entry["options"], entry_ctx) if "options" in entry else {}
+        carries = (
+            packages is not None or entities is not None or bool(options)
+            or hand_edits == HAND_EDITS_OVERWRITE
+        )
+        reject_repeat(name, carries)
         names.append(name)
+        if carries:
+            configured.add(name)
         if hand_edits == HAND_EDITS_OVERWRITE:
             overwrite.add(name)
-    return names, frozenset(overwrite)
+        if packages is not None or entities is not None or options:
+            settings[name] = GeneratorSettings(packages=packages, entities=entities, options=options)
+    return names, frozenset(overwrite), settings
 
 
 def _parse_requirement_tests(raw: object, ctx: str) -> RequirementTestsConfig:
@@ -454,8 +525,9 @@ def load_project_config(path: Path) -> ProjectConfig:
             raise ConfigError(f"{ctx} must declare a non-empty 'outDir' string.")
         generators = spec.get("generators")
         overwrite_hand_edits: frozenset[str] = frozenset()
+        generator_settings: dict[str, GeneratorSettings] = {}
         if generators is not None:
-            generators, overwrite_hand_edits = _parse_generator_entries(
+            generators, overwrite_hand_edits, generator_settings = _parse_generator_entries(
                 generators, f"{ctx} 'generators'")
         entities = spec.get("entities")
         if entities is not None:
@@ -467,6 +539,7 @@ def load_project_config(path: Path) -> ProjectConfig:
             TargetConfig(
                 name=str(name), out_dir=out_dir, generators=generators, entities=entities,
                 template_spec=template_spec, overwrite_hand_edits=overwrite_hand_edits,
+                generator_settings=generator_settings,
             )
         )
 

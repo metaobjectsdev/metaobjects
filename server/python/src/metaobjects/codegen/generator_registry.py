@@ -20,9 +20,10 @@ entries whose ``ports`` array includes ``python``. All Python entries are
 """
 from __future__ import annotations
 
+import re
 import tempfile
-from dataclasses import dataclass
-from typing import Callable
+from dataclasses import dataclass, field
+from typing import Callable, Mapping
 
 from metaobjects.codegen.generator import Generator
 from metaobjects.codegen.project_config import DEFAULT_REQUIREMENT_WITNESS_MODULE, ApiDocsConfig
@@ -51,6 +52,7 @@ from metaobjects.codegen.generators.router_generator import (
     RUNTIME_MODULES as _ROUTER_RUNTIME,
     router_generator,
 )
+from metaobjects.codegen.generators.shared_model_generator import shared_model_generator
 from metaobjects.codegen.generators.template_generator import template_generator
 from metaobjects.codegen.generators.trace_helper_generator import trace_helper_generator
 from metaobjects.render.verify import InMemoryProvider
@@ -73,6 +75,92 @@ GENERATOR_LAYERS: tuple[str, ...] = (
 )
 
 GeneratorLayer = str  # one of GENERATOR_LAYERS
+
+
+@dataclass(frozen=True)
+class GeneratorOption:
+    """One setting a packaged generator takes in ``options:`` on its ``generators`` entry.
+
+    ``name`` is the camelCase key the config file uses (every key in that file is camelCase);
+    the generator receives it as the snake_case keyword argument :attr:`kwarg`. ``kind`` is
+    ``integer``, ``boolean``, ``string`` or ``stringList`` (a list of non-empty strings);
+    ``choices`` closes a string, ``minimum`` bounds an integer."""
+
+    name: str
+    kind: str
+    description: str
+    choices: tuple[str, ...] | None = None
+    minimum: int | None = None
+    #: A generator that cannot run without it: ``resolve_options`` refuses an entry that
+    #: leaves it out, naming it, instead of the run failing (or doing nothing) later.
+    required: bool = False
+
+    @property
+    def kwarg(self) -> str:
+        return snake_case_option(self.name)
+
+    def coerce(self, value: object) -> tuple[object, str | None]:
+        """``(value, None)`` when ``value`` is acceptable, else ``(None, why)``."""
+        if self.kind == "boolean":
+            if isinstance(value, bool):
+                return value, None
+            return None, "must be true or false"
+        if self.kind == "integer":
+            if isinstance(value, bool) or not isinstance(value, int):
+                return None, "must be a whole number"
+            if self.minimum is not None and value < self.minimum:
+                return None, f"must be at least {self.minimum}"
+            return value, None
+        if self.kind == "stringList":
+            if (
+                not isinstance(value, list)
+                or not all(isinstance(v, str) and v for v in value)
+            ):
+                return None, "must be a list of non-empty strings"
+            if self.required and not value:
+                return None, "must list at least one name"
+            return tuple(value), None
+        if not isinstance(value, str) or not value:
+            return None, "must be a non-empty string"
+        if self.choices is not None and value not in self.choices:
+            return None, f"must be one of {', '.join(self.choices)}"
+        return value, None
+
+
+_CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])([A-Z])")
+
+
+def snake_case_option(name: str) -> str:
+    """``maxRows`` -> ``max_rows``: how an option key of the config file becomes the keyword
+    argument a generator takes. A key with no capital is returned as it is."""
+    return _CAMEL_BOUNDARY.sub(r"_\1", name).lower()
+
+
+def resolve_options(
+    generator: str, accepted: tuple[GeneratorOption, ...], raw: Mapping[str, object]
+) -> tuple[dict[str, object], list[str]]:
+    """Check a ``generators`` entry's ``options`` against what the packaged generator takes.
+
+    Returns ``(keyword arguments, errors)``. A name the generator does not take is an error
+    that lists the names it does, so a misspelling names its own fix."""
+    errors: list[str] = []
+    known = {o.name: o for o in accepted}
+    kwargs: dict[str, object] = {}
+    for key, value in raw.items():
+        option = known.get(key)
+        if option is None:
+            takes = ", ".join(sorted(known)) if known else "none"
+            errors.append(f"generator {generator!r} takes no option {key!r}; options: {takes}")
+            continue
+        coerced, why = option.coerce(value)
+        if why is not None:
+            errors.append(f"generator {generator!r} option {key!r} {why}, got {value!r}")
+            continue
+        kwargs[option.kwarg] = coerced
+    for option in accepted:
+        if option.required and option.name not in raw:
+            errors.append(f"generator {generator!r} needs the option {option.name!r}: {option.description}")
+    return kwargs, errors
 
 
 @dataclass(frozen=True)
@@ -115,6 +203,21 @@ class GeneratorBuildContext:
     #: The ``apiDocs`` block of ``metaobjects.config.yaml``. ``None`` = no block (or
     #: ``--list``): the ``api-docs`` generator uses its defaults.
     api_docs: ApiDocsConfig | None = None
+    #: The ``options`` of the ``generators`` entry being built, already checked and renamed to
+    #: the keyword arguments the generator takes (``maxRows`` -> ``max_rows``). Empty when the
+    #: entry has none, and for ``--list``. A team's own factory that takes this context reads
+    #: the entry's options here exactly as written.
+    options: Mapping[str, object] = field(default_factory=dict)
+    #: The project directory (the one holding ``.metaobjects/``), absolute. ``None`` for
+    #: ``--list``. A generator that reads a file the model does not name (the shared-model
+    #: publisher's ``files`` and version) resolves it here.
+    project_root: str | None = None
+    #: The project's OWN metadata files, absolute (never a dependency's artifact). ``None``
+    #: for ``--list``. The shared-model publisher's default ``files``.
+    source_files: tuple[str, ...] | None = None
+    #: The consumer providers the run loaded the project with (``providers:`` of the config and
+    #: ``--provider``), so a generator that loads files of its own sees the same vocabulary.
+    providers: tuple[object, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -138,6 +241,9 @@ class GeneratorEntry:
     #: Not gated cross-port (the manifest carries no such column); surfaced by ``--list``
     #: and warned about by :func:`unsatisfied_requires`.
     requires: tuple[str, ...] = ()
+    #: The settings an ``options:`` mapping on this generator's ``generators`` entry may carry.
+    #: A generator that lists none refuses any.
+    options: tuple[GeneratorOption, ...] = ()
     #: The packaged factory an adopter copies with ``metaobjects eject`` (ADR-0034
     #: Amendment 3). Its module is the file copied; its name is the ``module:symbol``
     #: symbol the copy is wired by. ``None`` = not ejectable (the ``template`` primitive
@@ -245,7 +351,13 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         description="Per-entity REST endpoint surface (controllers / routes / router).",
         tier="native",
         layer="api",
-        factory=lambda _ctx: router_generator(),
+        factory=lambda ctx: router_generator(**ctx.options),
+        options=(
+            GeneratorOption(
+                "reportMaxRows", "integer", minimum=1,
+                description="The row cap of a served report's list route.",
+            ),
+        ),
         # The router imports <Entity>Create/Patch from the entity module and the
         # FIELDS/OPS constants from <entity>_filter_allowlist; without either the
         # generated package fails at import (ModuleNotFoundError).
@@ -262,8 +374,37 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         ),
         tier="native",
         layer="api",
-        factory=lambda _ctx: report_export_generator(),
+        factory=lambda ctx: report_export_generator(**ctx.options),
+        options=(
+            GeneratorOption(
+                "maxRows", "integer", minimum=1,
+                description="The most rows one export holds (default 100000).",
+            ),
+            GeneratorOption(
+                "xmlNulls", "string", choices=("empty", "nil"),
+                description="How XML writes a null: an empty element, or xsi:nil.",
+            ),
+            GeneratorOption(
+                "csvBom", "boolean", description="Start a CSV with a byte order mark (default false).",
+            ),
+        ),
         source=report_export_generator,
+    ),
+    "shared-model": GeneratorEntry(
+        name="shared-model",
+        description="A publisher's flattened shared-model artifact plus the manifest that pins it, for a consumer's `deps sync` (FR-023).",
+        tier="native",
+        layer="capability",
+        factory=shared_model_generator,
+        options=(
+            GeneratorOption("name", "string", required=True, description="The dependency key a consumer syncs under; also the artifact's basename."),
+            GeneratorOption("include", "stringList", required=True, description="Scope patterns of the top-level nodes to publish, e.g. acme::common::**."),
+            GeneratorOption("exclude", "stringList", description="Scope patterns removed from the selection after include."),
+            GeneratorOption("requirements", "boolean", description="Also publish the selected requirement.* nodes (default false)."),
+            GeneratorOption("files", "stringList", description="Which of the project's metadata files may contribute, relative to the project root (default: all of them)."),
+            GeneratorOption("version", "string", description="The published version (default: the nearest pyproject.toml or package.json version)."),
+        ),
+        source=shared_model_generator,
     ),
     "output-parser": GeneratorEntry(
         name="output-parser",

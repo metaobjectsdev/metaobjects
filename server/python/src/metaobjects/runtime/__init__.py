@@ -1,14 +1,15 @@
-"""Minimal runtime persistence layer — ObjectManager + Postgres driver.
+"""Runtime persistence layer — the abstract ``ObjectManager`` and ``ObjectManagerDb``.
 
-Cross-port shape mirrors TS runtime-ts and Java ObjectManagerDB: method-based
-query API (`find_by_id` / `find_many` / `count`) that translates a Filter dict
-into parameterized SQL via a pluggable driver. The corpus query scenarios
-exercise eq/ne/gt/gte/lt/lte/in/like/isNull operators + the top-level `and:`
-combinator + asc/desc sort + limit/offset.
+Cross-port shape mirrors Java ``ObjectManager`` / ``ObjectManagerDB``: ``ObjectManager`` is the
+store-neutral contract (method-based API, listeners, transactions); ``ObjectManagerDb`` is the
+DB-API implementation that translates a Filter dict into parameterized SQL via a driver
+(Postgres, SQLite, MySQL). The corpus query scenarios exercise eq/ne/gt/gte/lt/lte/in/like/isNull
+operators + the top-level `and:` combinator + asc/desc sort + limit/offset.
 """
 from .dialect import MYSQL, POSTGRES, SQLITE, Dialect
-from .drivers import MySqlDriver, SqliteDriver
-from .object_manager import DbApiDriver, Filter, ObjectManager, PostgresDriver
+from .drivers import DbApiDriver, MySqlDriver, PostgresDriver, SelectResult, SqliteDriver
+from .object_manager import Filter, ObjectManager, PersistenceListener
+from .object_manager_db import ObjectManagerDb
 from .validator_runner import ValidationFailure, ValidationResult, run_validators
 from .llm_recorder import (
     STATUS_ERROR,
@@ -34,6 +35,9 @@ __all__ = [
     "SQLITE",
     "SqliteDriver",
     "ObjectManager",
+    "ObjectManagerDb",
+    "PersistenceListener",
+    "SelectResult",
     "PostgresDriver",
     "ValidationFailure",
     "ValidationResult",

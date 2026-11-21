@@ -1038,6 +1038,56 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   with a written, shrink-only allowlist) now holds Java generator source to it. No shipped Java
   generator uses the writer yet, so generated output does not change in this release.
 
+- **A code writer for Python generators: `CodeWriter` and `PyWriter` in `metaobjects.codegen.writer`**
+  (ADR-0063). The Python port of the writer contract in `spec/code-writer.md`: the language-neutral
+  core (lines, blocks, blank-line requests, snippets, fit-or-break lists), run against the shared
+  `core` cases of `fixtures/writer-conformance/`, plus a Python dialect with its own eleven cases (imports
+  collected and sorted as `__future__`, absolute, relative; docstrings; suites that end by dedenting;
+  `gap()` for the two blank lines between top-level definitions). It is on the engine surface an
+  ejected generator may import (`eject.engineSurface.python.engine`). A layout check
+  (`tests/codegen/test_layout_ratchet.py`) parses generator source with `ast` and fails on a string
+  holding a line break, a string that starts with indentation, a join on a newline or an indentation
+  built by repeating a space; every file that still types its layout is on an allowlist that only
+  shrinks. The `output-prompt`, `report-export` and `filter-allowlist` generators now write through it
+  and no longer call `ruff`; the others convert one at a time, and `ruff_format` stays exported for
+  owned generators that call it.
+
+- **Python publishes a shared model (FR-023).** A `shared-model` generator, wired in
+  `metaobjects.config.yaml` like any other (`metaobjects gen --list` names its options), writes
+  `<name>.metaobjects.json` and `metaobjects.pkg.json` for a consumer's `deps sync`: `name` and
+  `include` (required), `exclude`, `requirements`, `files` (relative to the project root; default
+  every metadata file of the project) and `version` (default: the nearest `pyproject.toml` or
+  `package.json` version, a declared input of the run). It was TypeScript, Java, Kotlin and C#
+  only, so a Python project ran a TypeScript generator for it. The bytes are the other ports': the
+  Python test runs all 15 cases of `fixtures/shared-model-conformance/` (nine publish, six
+  refusal), where it ran only the nine documents before. The engine is `metaobjects.shared_model`
+  (`build_shared_model`, `render_shared_model_files`, `SharedModelError` carrying the refusal
+  reason). A `generators` entry's `options` also gain a list kind, for `include`, `exclude` and
+  `files`.
+- **Python: the `ObjectManager` splits into an abstract `ObjectManager` and a concrete
+  `ObjectManagerDb` (breaking).** `ObjectManager(root, driver)` no longer constructs: it raises a
+  `TypeError` naming `ObjectManagerDb(root, driver)`, and there is no shim. `ObjectManager` is
+  now the store-neutral contract (the Java `ObjectManager` / `ObjectManagerDB` shape) that
+  generated and hand-written code can be typed against; `ObjectManagerDb` is the DB-API
+  implementation on Postgres, SQLite and MySQL, with the same SQL and the same rows as before.
+  New with the split: `with om.transaction():` (every write in the block commits together or
+  rolls back together; a nested block joins the outer one), persistence listeners
+  (`om.add_listener(PersistenceListener)`, before and after each create, update and delete), and
+  `metaobjects.runtime.values`, the write and read value codecs as a public module. The drivers
+  (`DbApiDriver`, `PostgresDriver`, `SqliteDriver`, `MySqlDriver`) now live in
+  `metaobjects.runtime.drivers` and keep their `metaobjects.runtime` exports. Upgrade note:
+  [docs/features/migrations/python-object-manager-split.md](docs/features/migrations/python-object-manager-split.md).
+- **Python: per-generator package and entity selection and generator options in
+  `metaobjects.config.yaml`.** A `generators` entry written as a mapping now takes `packages`,
+  `entities` and `options` beside `name` and `handEdits`. `packages` and `entities` limit that one
+  generator to part of its target; `options` hands the generator its own settings, in camelCase,
+  as snake_case keyword arguments. They work for a packaged generator (`report-export` takes
+  `maxRows`, `xmlNulls` and `csvBom`; `routes` takes `reportMaxRows`; `metaobjects gen --list` names
+  them) and for a team's own `module:symbol` one, whose factory or class receives them (or, if it
+  takes the build context, reads `ctx.options`). A package or entity the target does not hold, an
+  option a generator does not take, and options on a generator instance are refused with a message
+  that lists what is accepted, never ignored. `metaobjects-config.schema.json` carries the keys.
+
 - **Select objects to regenerate in every port.** C# `dotnet meta gen --entities A,B` (and
   `verify --codegen --entities`) and, for Java and Kotlin, `mvn metaobjects:generate
   -Dmeta.entities=A,B` regenerate only the named objects' files, like TypeScript's
@@ -1897,6 +1947,15 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   is kept: the services wrap it. The `.csproj` the name is read from is an input of `dotnet meta
   gen`'s skip key (ADR-0064), so renaming the assembly renders again.
 
+- **Python: the `output-prompt`, `report-export` and `filter-allowlist` generators lay out their own
+  output** (ADR-0063). The bytes no longer depend on whether `ruff` is installed or on its version.
+  The files read the same, with these differences: a module docstring closes on its own line, a
+  broken call or set literal ends with a trailing comma, `import x` lines come before `from x import`
+  lines in a section, and a literal that fits 88 columns stays on one line. If you subclass
+  `FilterAllowlistGenerator`, `_emit_constants` now writes onto a `PyWriter` it is handed instead of
+  returning source lines; an override of `OutputPromptGenerator._emit_format_spec` may return text or
+  a writer piece.
+
 ### Deprecated
 
 - **C#: `ValueObjectNames.Names(root)`.** A value object is never renamed, so it now returns the
@@ -1904,6 +1963,16 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   the TypeScript and Python shims. Use `ValueObjectNames.TypeName(obj, root)`.
 
 ### Fixed
+
+- **Python: an `origin.computed` `@expr` and a validator `@condition` accept every expression
+  function and the `cast` node.** The Python loader knew only `coalesce`, so a projection that used
+  `lower`, `greatest`, `splitPart`, `concat`, `nullif`, `length` or `{ cast, as }` was refused with
+  `ERR_UNKNOWN_EXPR_NODE` while the TypeScript, C#, Java and Kotlin loaders accepted it. It now
+  validates the same fifteen functions (arity, parameter kinds, result type), checks a cast
+  against the same table of what can become what (an enum stored as an integer casts to `int`, an
+  object never casts, a boolean casts only to `int`), and refuses in a CHECK `@condition` anything
+  only a view can hold (a cast, a function other than `coalesce`, a dotted path). Python-written
+  models are unaffected unless they used these nodes, which never loaded.
 
 - **A credential is never filterable or sortable, in every port.** A field that declares a
   `view.password` and that a model also marked `@filterable` or `@sortable` was on the generated

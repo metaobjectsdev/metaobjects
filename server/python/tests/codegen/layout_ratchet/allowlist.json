@@ -1,0 +1,23 @@
+{
+  "$comment": "The Python layout ratchet's allowlist (ADR-0063). `unconverted`: generator source that still types its own layout; each entry names what it emits and the writer change that converts it, and is removed when that change lands (the test fails while a converted file keeps its entry). `exempt`: source that writes text which is not generated code; each says why. Neither list may grow: test_layout_ratchet.py compares it with the copy at the branch's merge base. Paths are relative to src/metaobjects/codegen.",
+  "unconverted": {
+    "generators/entity_model.py": "Types its own layout into emitted Python; converts with the Python writer PR for this generator (ADR-0063). Entity model: W-PY-2.",
+    "generators/extractor_generator.py": "Types its own layout into emitted Python; converts with the Python writer PR for this generator (ADR-0063). Extractor tier.",
+    "generators/names_generator.py": "Types its own layout into emitted Python; converts with the Python writer PR for this generator (ADR-0063). Names tier.",
+    "generators/output_parser_generator.py": "Types its own layout into emitted Python; converts with the Python writer PR for this generator (ADR-0063). Output parser tier.",
+    "generators/render_helper_generator.py": "Types its own layout into emitted Python; converts with the Python writer PR for this generator (ADR-0063). Render helper tier.",
+    "generators/requirement_tests_generator.py": "Types its own layout into emitted Python; converts with the Python writer PR for this generator (ADR-0063). Requirement tests tier.",
+    "generators/router_generator.py": "Types its own layout into emitted Python; converts with the Python writer PR for this generator (ADR-0063). Router (2,409 lines, its own PR): W-PY-3.",
+    "generators/trace_helper_generator.py": "Types its own layout into emitted Python; converts with the Python writer PR for this generator (ADR-0063). Trace helper tier.",
+    "runtime/api_docs_renderer.py": "Renders the API docs page text with typed line breaks; converts with the docs-emitter slice of the writer work (ADR-0063).",
+    "runtime/extract_delegate_emitter.py": "Types its own layout into emitted Python; converts with the Python writer PR for this generator (ADR-0063). Extract delegate tier.",
+    "runtime/extract_schema_emitter.py": "Types the all-nullable mirror dataclass as indented source lines that the unconverted extractor and output parser generators splice in; converts with them (ADR-0063)."
+  },
+  "exempt": {
+    "eject.py": "Writes the lines `eject` prints to the terminal (what was copied, kept or removed); it is a message for people, not generated code.",
+    "model_key.py": "Joins lines into the text a hash is taken over; the text is never written to a file, so its separator is not layout.",
+    "overwrite_policy.py": "Writes the hash manifest (JSON) and re-joins hand-edited lines for a three-way merge; neither is generated source code.",
+    "requirement_walk.py": "Builds the digest input a requirement hash is taken over; the text is never written to a file, so its line breaks are not layout.",
+    "skip.py": "Hashes the skip list and writes its one-per-line manifest file; the manifest is data, not generated source code."
+  }
+}

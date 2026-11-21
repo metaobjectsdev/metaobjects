@@ -1,13 +1,13 @@
 """SP-D Unit 4 — runtime return-type gate (Python port).
 
-Pins ADR-0019: the ``ObjectManager`` runtime returns NATIVE, in-process Python
+Pins ADR-0019: the ``ObjectManagerDb`` runtime returns NATIVE, in-process Python
 types from its query path — NOT canonicalized wire-strings. Wire
 canonicalization (the ``normalization.py`` forms) is a boundary concern applied
 by the persistence runner, never inside the runtime. Unit 3 moved
-``_coerce_for_contract`` out of ``ObjectManager`` into the runner, so the
+``_coerce_for_contract`` out of ``ObjectManagerDb`` into the runner, so the
 runtime now hands back pg8000's own native types.
 
-This reads the dict ``ObjectManager.find_by_id`` returns BEFORE any
+This reads the dict ``ObjectManagerDb.find_by_id`` returns BEFORE any
 normalization and asserts each native type:
 
 - ``Measurement.id`` (BIGINT)         → ``int``       (a native integer).
@@ -30,7 +30,7 @@ import pg8000.dbapi as pg8000
 
 from metaobjects import load_directory
 from metaobjects.naming import attach_naming
-from metaobjects.runtime import ObjectManager, PostgresDriver
+from metaobjects.runtime import ObjectManagerDb, PostgresDriver
 
 from .postgres_container import PostgresContainer
 from .query_runner import _apply_schema_artifact, SCHEMA_ARTIFACT_FILE
@@ -87,7 +87,7 @@ def test_runtime_returns_native_types_not_wire_strings() -> None:
         with closing(pg8000.connect(
             host=info.host, port=info.port, user=info.user, password=info.password, database=info.database,
         )) as conn:
-            om = ObjectManager(root, PostgresDriver(conn))
+            om = ObjectManagerDb(root, PostgresDriver(conn))
 
             # --- Measurement: native integer + native exact decimal ---------------
             m = om.find_by_id("Measurement", 1)

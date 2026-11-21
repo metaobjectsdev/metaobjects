@@ -50,7 +50,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/source-resolution-conformance/`](../fixtures/source-resolution-conformance/) | 28 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/scope-conformance/`](../fixtures/scope-conformance/) | 10 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/dependency-conformance/`](../fixtures/dependency-conformance/) | 47 cases (36 resolution, 7 of them with a ledger arm, + 11 check) + 32 transport cases | ✓ (reference implementation; all four arms) | ✓ (resolution arm, all 36, ledger included; check arm, all 11) | inherits via Java | ✓ (resolution arm, all 36, ledger included; check arm, all 11, as `verify --deps`) | ✓ (resolution arm, all 36 identically, ledger included; check arm, all 11, as `deps check` and `verify --deps`; the transport arm is Node-only) |
-| [`fixtures/shared-model-conformance/`](../fixtures/shared-model-conformance/) | 15 cases (9 publish + 6 refusal) | ✓ (reference implementation) | ✓ (all 15; `SharedModelConformanceTest`) | inherits via Java (`KotlinSharedModelGeneratorTest` pins the generator) | ✓ (all 15; `SharedModelConformanceTests`) | ✓ (serializer arm: the 9 publish cases' document bytes; no publisher) |
+| [`fixtures/shared-model-conformance/`](../fixtures/shared-model-conformance/) | 15 cases (9 publish + 6 refusal) | ✓ (reference implementation) | ✓ (all 15; `SharedModelConformanceTest`) | inherits via Java (`KotlinSharedModelGeneratorTest` pins the generator) | ✓ (all 15; `SharedModelConformanceTests`) | ✓ (all 15; `test_shared_model_conformance.py`) |
 | [`fixtures/agent-context-conformance/`](../fixtures/agent-context-conformance/) | 5 | ✓ (the emitter is TS-owned) | — | — | — | — |
 | [`fixtures/metamodel-docs/`](../fixtures/metamodel-docs/) | 1 | ✓ (docs emit is TS-owned) | — | — | — | — |
 | [`fixtures/fmt-conformance/`](../fixtures/fmt-conformance/) (#304 — `meta fmt`) | 13 | ✓ (reference) | ✓ | inherits via Java | ✓ | ✓ |
@@ -66,7 +66,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/codegen-skip-conformance/`](../fixtures/codegen-skip-conformance/) (when `gen` may skip and what a local `verify --codegen` may answer, ADR-0064) | one case table in `cases.json`, plus the manifest layout vectors in `manifests.json` (ADR-0064 Amendment 1) | ✓ | ✓ | ✓ (through the Java runner) | ✓ | ✓ |
 | [`fixtures/codegen-noop/`](../fixtures/codegen-noop/) (vocabulary with no lowering yet: FR-044 reporting, what is lowered and what stays inert; ADR-0066 business rules, inert everywhere) | 2 model pairs (`reporting/` and `rules/`, each `with` vs `without`) | ✓ (codegen + migrate) | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/cube-model/`](../fixtures/cube-model/) (FR-044 Plan 4 — the `cube-model` generator's golden Cube files, plus the canonical model's golden) | 46 cases (36 trees + 10 errors) + 1 canonical golden | ✓ (the exporter is TypeScript-only, spec R6; its `cube` lane also loads the files into a real Cube) | — | — | — | — |
-| [`fixtures/writer-conformance/`](../fixtures/writer-conformance/) (ADR-0063 — the code writer generators write through) | 50 cases (31 core + 10 TypeScript + 9 Java) | ✓ (the first writer; core and TypeScript dialect) | ✓ (core and Java dialect; `JavaWriter` in `codegen-base`) | — (writer not built yet) | — (writer not built yet) | — (writer not built yet) |
+| [`fixtures/writer-conformance/`](../fixtures/writer-conformance/) (ADR-0063 — the code writer generators write through) | 61 cases (31 core + 10 TypeScript + 9 Java + 11 Python) | ✓ (the first writer; core and TypeScript dialect) | ✓ (core and Java dialect; `JavaWriter` in `codegen-base`) | — (writer not built yet) | — (writer not built yet) | ✓ (core and Python dialect) |
 | [`fixtures/contract-conformance/`](../fixtures/contract-conformance/) (FR-022 — the `contract-schema` and `openapi` generators' golden trees and refusals) | 19 cases (14 trees + 5 errors) | ✓ (one neutral engine, ADR-0034 Amendment 10; the generated API lanes also hold real traffic to the documents) | — | — | — | — |
 | [`fixtures/explorer-conformance/`](../fixtures/explorer-conformance/) (the `explorer.json` data spine: `meta export --effective` + `meta verify --format json` + the generated-file manifest in, one explorer document out) | 1 case (`shop`) | ✓ (the builder is TypeScript, and reads only port-neutral inputs) | — | — | — | — |
 
@@ -668,9 +668,8 @@ unless `requirements` is set, and the order of `files` does not change the bytes
 the manifest records the toolchain's `metamodelVersion`, so they do not move with it.
 
 **TypeScript runs all 15**, in `codegen-ts/test/shared-model-conformance.test.ts`. **Python runs
-the serializer arm**: for each publish case it loads `files`, takes the nodes the pinned manifest
-lists, and `serialize_shared_document` must reproduce the artifact byte for byte (and the sha256
-the manifest records). Python has no publisher, so selection and the refusals are TypeScript's.
+all 15**, in `tests/conformance/test_shared_model_conformance.py`, against `metaobjects.shared_model`,
+the engine its `shared-model` generator calls.
 **Java runs all 15**, in `metadata`'s `SharedModelConformanceTest` against the `SharedModel` engine
 the `shared-model` generator calls; **Kotlin** runs through that same engine and Maven goals and adds
 only `KotlinSharedModelGeneratorTest`. **C# runs all 15**, in `SharedModelConformanceTests`.

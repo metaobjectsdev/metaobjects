@@ -4,8 +4,9 @@
 
 **Accepted** (2026-11-14). Registers no vocabulary: `metamodelVersion` does not move. It sets
 how every port's generators produce text. This decision ships the TypeScript writer, the shared
-writer contract and corpus, and the test that holds generator source to the rule. It converts no
-generator and changes no generated output. Each generator is converted in its own later change.
+writer contract and corpus, and the test that holds generator source to the rule. It converted no
+generator and changed no generated output. Each generator is converted in its own later change;
+the Python writer and its first conversions are in [The Python writer](#the-python-writer).
 
 ## Context
 
@@ -111,6 +112,18 @@ symbols join the file's import block, and a multi-line fragment is re-indented b
 `w.code(fragment)`. A generator can therefore move to the writer one function at a time while the
 sections it has not converted still return `Code`. A `Code` built by a different physical copy of
 those primitives cannot be read, so it is refused rather than written without its imports.
+
+## The Python writer
+
+`CodeWriter` and `PyWriter` (`server/python/src/metaobjects/codegen/writer/`) are exported as
+`metaobjects.codegen.writer` and listed in `eject.engineSurface.python`. Python lays out at
+**88 columns** with a four-space indent and a trailing comma in broken lists. Its runner is
+`server/python/tests/codegen/test_writer_conformance.py`. The `output-prompt`, `report-export` and
+`filter-allowlist` generators write through it and no longer call `ruff`. Every other Python
+generator still types its own layout: `tests/codegen/layout_ratchet/allowlist.json` lists those
+files, the layout check (`tests/codegen/test_layout_ratchet.py`) fails on any new one, and an entry
+is removed when its generator converts, so the list only shrinks. The dialect contract is in
+[`spec/code-writer.md`](../code-writer.md).
 
 ## Consequences
 

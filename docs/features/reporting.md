@@ -608,7 +608,7 @@ A measure with no `@of` must declare a `@filter` or a `@segment` (rule M0); ever
 |---|---|
 | TypeScript | `ObjectManager` reads a view-backed report through a detached read model: `list` and `count`, with filter, sort and limit on the derived fields. |
 | Java | OMDB, the same read. |
-| Python | `ObjectManager`, the same read. |
+| Python | `ObjectManagerDb`, the same read. |
 | C# | codegen writes a keyless EF Core row class per view-backed report and maps it with `HasNoKey().ToView(...)` plus a `DbSet`. |
 | Kotlin | codegen writes an Exposed table object per view-backed report. |
 
@@ -656,7 +656,7 @@ same default everywhere, set where each port sets its other generator options:
 | TypeScript | `routesFile({ reportMaxRows: 500 })` (and `routesFileHono`), or `reportMaxRows` on `mountReadOnlyCrudRoutes` in an owned routes file |
 | C# | `new RoutesGenerator { ReportMaxRows = 500 }` |
 | Java, Kotlin | the `reportMaxRows` generator arg (`<reportMaxRows>500</reportMaxRows>` in the plugin's `<args>`) |
-| Python | `router_generator(report_max_rows=500)` |
+| Python | `RouterGenerator(report_max_rows=500)`, or `options: {reportMaxRows: 500}` on the `routes` entry in `metaobjects.config.yaml` |
 
 A page bound that is not usable is refused, never ignored: `limit` below 1, a negative `offset` or
 a value that is not an integer answers `400 { "error": "pagination.invalid_value", "param": ... }`,
@@ -805,7 +805,7 @@ Postgres and MySQL, which hold the declared precision, and its `-15` twin everyw
 | C# (EF Core) | ✓ | ✓ | ✓ (Pomelo) | n/a |
 | Kotlin (Exposed) | ✓ | ✓ | ✓ | n/a |
 | Java (OMDB) | ✓ | ✓ | ✓ | n/a |
-| Python (`ObjectManager`) | ✓ (pg8000) | ✓ (`sqlite3`) | ✓ (PyMySQL) | n/a |
+| Python (`ObjectManagerDb`) | ✓ (pg8000) | ✓ (`sqlite3`) | ✓ (PyMySQL) | n/a |
 
 Each engine reads the artifact TypeScript produced for it: `canonical/schema.sqlite.sql` is
 the output of `meta migrate --dialect sqlite`, and `canonical/schema.mysql.sql` is the

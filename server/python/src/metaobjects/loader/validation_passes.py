@@ -1246,6 +1246,67 @@ EXPR_CASE_ELSE = "else"
 EXPR_CASE_OPERAND = "operand"
 EXPR_NOW = FILTER_RELATIVE_NOW
 EXPR_NOW_START_OF = FILTER_RELATIVE_START_OF
+# { cast: <expr>, as: "<field subtype>", dbColumnType?: "<text spelling>" }.
+EXPR_CAST = "cast"
+EXPR_CAST_AS = "as"
+EXPR_CAST_DB_COLUMN_TYPE = "dbColumnType"
+# The closed, typed function set beside coalesce. Mirrors the TS EXPR_FN_*.
+EXPR_FN_GREATEST = "greatest"
+EXPR_FN_LEAST = "least"
+EXPR_FN_NULLIF = "nullif"
+EXPR_FN_LOWER = "lower"
+EXPR_FN_UPPER = "upper"
+EXPR_FN_BTRIM = "btrim"
+EXPR_FN_SPLIT_PART = "splitPart"
+EXPR_FN_CONCAT = "concat"
+EXPR_FN_CONCAT_WS = "concatWs"
+EXPR_FN_SUBSTRING = "substring"
+EXPR_FN_REPLACE = "replace"
+EXPR_FN_LEFT = "left"
+EXPR_FN_RIGHT = "right"
+EXPR_FN_LENGTH = "length"
+
+
+class ExprFnSignature(NamedTuple):
+    """One expression function's signature: its arity, each parameter's kind (the last one
+    repeats), and its result. A parameter kind is ``string``, ``int``, ``scalar`` (any scalar) or
+    ``same`` (the type every ``same`` parameter shares). ``max_args`` is None for a variadic."""
+
+    min_args: int
+    max_args: int | None
+    params: tuple[str, ...]
+    result: str  # "string" | "int" | "same"
+    ordered: bool = False  # the "same" type must be orderable (greatest / least)
+
+
+# Every expression function, by name. A closed set, never free SQL; each lowers to the dialect's
+# own function in the view emitter. Mirrors the TS EXPR_FUNCTIONS.
+EXPR_FUNCTIONS: dict[str, ExprFnSignature] = {
+    EXPR_FN_COALESCE: ExprFnSignature(1, None, ("same",), "same"),
+    EXPR_FN_GREATEST: ExprFnSignature(1, None, ("same",), "same", True),
+    EXPR_FN_LEAST: ExprFnSignature(1, None, ("same",), "same", True),
+    EXPR_FN_NULLIF: ExprFnSignature(2, 2, ("same", "same"), "same"),
+    EXPR_FN_LOWER: ExprFnSignature(1, 1, ("string",), "string"),
+    EXPR_FN_UPPER: ExprFnSignature(1, 1, ("string",), "string"),
+    EXPR_FN_BTRIM: ExprFnSignature(1, 2, ("string", "string"), "string"),
+    EXPR_FN_SPLIT_PART: ExprFnSignature(3, 3, ("string", "string", "int"), "string"),
+    EXPR_FN_CONCAT: ExprFnSignature(1, None, ("scalar",), "string"),
+    EXPR_FN_CONCAT_WS: ExprFnSignature(2, None, ("string", "scalar"), "string"),
+    EXPR_FN_SUBSTRING: ExprFnSignature(2, 3, ("string", "int", "int"), "string"),
+    EXPR_FN_REPLACE: ExprFnSignature(3, 3, ("string", "string", "string"), "string"),
+    EXPR_FN_LEFT: ExprFnSignature(2, 2, ("string", "int"), "string"),
+    EXPR_FN_RIGHT: ExprFnSignature(2, 2, ("string", "int"), "string"),
+    EXPR_FN_LENGTH: ExprFnSignature(1, 1, ("string",), "int"),
+}
+
+# The field subtypes a cast may name in ``as``.
+EXPR_CAST_TARGETS: tuple[str, ...] = (
+    FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE,
+    FIELD_SUBTYPE_FLOAT, FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_DATE,
+    FIELD_SUBTYPE_TIMESTAMP, FIELD_SUBTYPE_UUID,
+)
+_EXPR_NON_SCALAR_SUBTYPES: frozenset[str] = frozenset({FIELD_SUBTYPE_OBJECT, FIELD_SUBTYPE_MAP})
+_EXPR_INTEGER_SUBTYPES: frozenset[str] = frozenset({FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG})
 
 # Filter-op / compose names shared with the filter vocabulary (see query-constants.ts).
 _FILTER_OP_EQ = "eq"
@@ -1277,6 +1338,75 @@ _EXPR_NUMERIC_SUBTYPES: frozenset[str] = frozenset({
     FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
     FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_CURRENCY,
 })
+
+
+def cast_problem(from_type: str | None, to: str, int_stored_enum: bool) -> str | None:
+    """Why a value of ``from_type`` cannot be cast to ``to``, or None when it can.
+    ``int_stored_enum`` is whether the operand is an enum field stored as an integer
+    (``@intValueMap``). The same table in every port: a cast never makes a value of a kind the
+    source cannot hold. Mirrors the TS castProblem."""
+    if from_type is None:
+        return None  # a null literal casts to anything
+    if from_type in _EXPR_NON_SCALAR_SUBTYPES:
+        return f"a field.{from_type} value cannot be cast"
+    if from_type == to:
+        return None
+    if from_type == FIELD_SUBTYPE_ENUM:
+        if to == FIELD_SUBTYPE_STRING:
+            return (
+                "an int-stored enum (@intValueMap) cast to string gives its integer, not its "
+                "member; cast it to int"
+            ) if int_stored_enum else None
+        if to in _EXPR_INTEGER_SUBTYPES:
+            return None if int_stored_enum else (
+                "only an enum stored as an integer (@intValueMap) can be cast to a number"
+            )
+        return f"an enum cannot be cast to {to}"
+    if to == FIELD_SUBTYPE_STRING or from_type == FIELD_SUBTYPE_STRING:
+        return None  # anything prints; the database parses a string
+    # Postgres casts a boolean only to and from integer (int4), so those are the only number casts.
+    if to in _EXPR_NUMERIC_SUBTYPES:
+        if from_type == FIELD_SUBTYPE_BOOLEAN:
+            return None if to == FIELD_SUBTYPE_INT else f"a boolean casts only to int, not {to}"
+        return None if from_type in _EXPR_NUMERIC_SUBTYPES else f"a {from_type} cannot be cast to {to}"
+    if to == FIELD_SUBTYPE_BOOLEAN:
+        return None if from_type == FIELD_SUBTYPE_INT else (
+            f"a {from_type} cannot be cast to boolean; only an int can"
+        )
+    if to in (FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIMESTAMP):
+        return None if from_type in (FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIMESTAMP) else (
+            f"a {from_type} cannot be cast to {to}"
+        )
+    return f"a {from_type} cannot be cast to {to}"
+
+
+def expr_view_only_node(node: object) -> str | None:
+    """What in an expression tree only a view can hold (a cast, a case, ``now``, a function other
+    than coalesce, a dotted path), or None: the CHECK-condition subset. Mirrors TS exprViewOnlyNode."""
+    if not isinstance(node, dict):
+        return None
+    if EXPR_CAST in node:
+        return EXPR_CAST
+    if EXPR_CASE in node:
+        return EXPR_CASE
+    if EXPR_NOW in node:
+        return EXPR_NOW
+    if "fn" in node and node["fn"] != EXPR_FN_COALESCE:
+        return str(node["fn"])
+    field = node.get("field")
+    if isinstance(field, str) and "." in field:
+        return f'the path "{field}"'
+    for key in ("left", "right", "arg"):
+        hit = expr_view_only_node(node.get(key))
+        if hit is not None:
+            return hit
+    args = node.get("args")
+    if isinstance(args, list):
+        for a in args:
+            hit = expr_view_only_node(a)
+            if hit is not None:
+                return hit
+    return None
 
 
 def validate_expr_node(node: object) -> list[str]:
@@ -1332,13 +1462,40 @@ def validate_expr_node(node: object) -> list[str]:
         if EXPR_CASE_OPERAND in node:
             errs.extend(validate_expr_node(node[EXPR_CASE_OPERAND]))
         return errs
+    if EXPR_CAST in node:
+        extra = [k for k in node if k not in (EXPR_CAST, EXPR_CAST_AS, EXPR_CAST_DB_COLUMN_TYPE)]
+        if extra:
+            return [
+                f"expression '{EXPR_CAST}' takes only '{EXPR_CAST_AS}' and "
+                f"'{EXPR_CAST_DB_COLUMN_TYPE}' beside it, not {', '.join(extra)}"
+            ]
+        to = node.get(EXPR_CAST_AS)
+        if not isinstance(to, str) or to not in EXPR_CAST_TARGETS:
+            return [f"'{EXPR_CAST}' requires '{EXPR_CAST_AS}': one of {', '.join(EXPR_CAST_TARGETS)}"]
+        if EXPR_CAST_DB_COLUMN_TYPE in node:
+            spelling = node[EXPR_CAST_DB_COLUMN_TYPE]
+            parsed = parse_db_column_type(spelling) if isinstance(spelling, str) else None
+            if parsed is None or parsed[0] in ("uuid", "jsonb") or to != FIELD_SUBTYPE_STRING:
+                return [
+                    f"'{EXPR_CAST}' '{EXPR_CAST_DB_COLUMN_TYPE}' is a text spelling of @dbColumnType "
+                    "(text, varchar, character varying, varchar(n), character varying(n), "
+                    f"character(n)) with '{EXPR_CAST_AS}: {FIELD_SUBTYPE_STRING}'"
+                ]
+        return validate_expr_node(node[EXPR_CAST])
     if "fn" in node:
-        if node["fn"] != EXPR_FN_COALESCE:
-            return [f"unknown expression fn '{node['fn']}'"]
+        name = node["fn"]
+        sig = EXPR_FUNCTIONS.get(name) if isinstance(name, str) else None
+        if sig is None:
+            return [f"unknown expression fn '{name}'"]
         args = node.get("args")
-        if isinstance(args, list) and len(args) >= 1:
-            return [m for a in args for m in validate_expr_node(a)]
-        return [f"'{EXPR_FN_COALESCE}' requires a non-empty args array"]
+        if not isinstance(args, list) or len(args) < max(sig.min_args, 1):
+            return [
+                f"'{name}' requires a non-empty args array" if sig.min_args <= 1
+                else f"'{name}' requires at least {sig.min_args} args"
+            ]
+        if sig.max_args is not None and len(args) > sig.max_args:
+            return [f"'{name}' takes at most {sig.max_args} args, got {len(args)}"]
+        return [m for a in args for m in validate_expr_node(a)]
     if "op" in node:
         op = node["op"]
         if not isinstance(op, str):
@@ -1357,7 +1514,7 @@ def validate_expr_node(node: object) -> list[str]:
                 return [m for a in args for m in validate_expr_node(a)]
             return [f"op '{op}' requires a non-empty args array"]
         return [f"unknown expression op '{op}'"]
-    return ["expression node must be one of {field}, {value}, {op,…}, {fn,…}, {case,…}, {now}"]
+    return ["expression node must be one of {field}, {value}, {op,…}, {fn,…}, {case,…}, {now}, {cast,…}"]
 
 
 def _literal_type(v: object) -> str | None:
@@ -1411,13 +1568,16 @@ class InferResult(NamedTuple):
 
 
 def infer_expr_type(
-    node: object, resolve_field: Callable[[str], str | None]
+    node: object,
+    resolve_field: Callable[[str], str | None],
+    is_int_stored_enum: Callable[[str], bool] = lambda _name: False,
 ) -> InferResult:
     """Bottom-up type inference for a computed expression. ``resolve_field(name)``
     returns the subType of a base-entity field ref (None = unresolvable). Comparisons /
     null-tests / logic → boolean; a field ref → its subType; coalesce → the unified arg
     subType. Also enforces per-operand op legality against the same bands filters use.
-    Mirrors the TS inferExprType."""
+    ``is_int_stored_enum(name)`` is whether a ``{field}`` names an enum stored as an integer
+    (``@intValueMap``), which a cast needs. Mirrors the TS inferExprType."""
     structural = validate_expr_node(node)
     if structural:
         return InferResult(None, structural)
@@ -1438,13 +1598,13 @@ def infer_expr_type(
         return InferResult(FIELD_SUBTYPE_TIMESTAMP, [])
     if EXPR_CASE in n:
         errors: list[str] = []
-        operand = infer_expr_type(n[EXPR_CASE_OPERAND], resolve_field) if EXPR_CASE_OPERAND in n else None
+        operand = infer_expr_type(n[EXPR_CASE_OPERAND], resolve_field, is_int_stored_enum) if EXPR_CASE_OPERAND in n else None
         if operand is not None:
             errors.extend(operand.errors)
         results: list[str | None] = []
         result_nodes: list[object] = []
         for arm in n[EXPR_CASE]:
-            w = infer_expr_type(arm[EXPR_CASE_WHEN], resolve_field)
+            w = infer_expr_type(arm[EXPR_CASE_WHEN], resolve_field, is_int_stored_enum)
             errors.extend(w.errors)
             if operand is None and w.type is not None and w.type != FIELD_SUBTYPE_BOOLEAN:
                 errors.append(f"a searched '{EXPR_CASE}' needs a boolean '{EXPR_CASE_WHEN}', got {w.type}")
@@ -1456,12 +1616,12 @@ def infer_expr_type(
                     f"a simple '{EXPR_CASE}' compares its {operand.type} '{EXPR_CASE_OPERAND}' "
                     f"with a {w.type} '{EXPR_CASE_WHEN}'"
                 )
-            t = infer_expr_type(arm[EXPR_CASE_THEN], resolve_field)
+            t = infer_expr_type(arm[EXPR_CASE_THEN], resolve_field, is_int_stored_enum)
             errors.extend(t.errors)
             results.append(t.type)
             result_nodes.append(arm[EXPR_CASE_THEN])
         if EXPR_CASE_ELSE in n:
-            e = infer_expr_type(n[EXPR_CASE_ELSE], resolve_field)
+            e = infer_expr_type(n[EXPR_CASE_ELSE], resolve_field, is_int_stored_enum)
             errors.extend(e.errors)
             results.append(e.type)
             result_nodes.append(n[EXPR_CASE_ELSE])
@@ -1470,29 +1630,70 @@ def infer_expr_type(
             errors.append(f"'{EXPR_CASE}' results have differing types ({', '.join(differing)})")
         return InferResult(unified, errors)
 
-    if "fn" in n:  # coalesce
-        arg_results = [infer_expr_type(a, resolve_field) for a in n["args"]]
+    if EXPR_CAST in n:
+        inner = n[EXPR_CAST]
+        operand = infer_expr_type(inner, resolve_field, is_int_stored_enum)
+        to = n[EXPR_CAST_AS]
+        field_ref = inner.get("field") if isinstance(inner, dict) else None
+        problem = cast_problem(
+            operand.type, to, isinstance(field_ref, str) and is_int_stored_enum(field_ref)
+        )
+        return InferResult(
+            to, operand.errors if problem is None else [*operand.errors, f"'{EXPR_CAST}': {problem}"]
+        )
+    if "fn" in n:
+        name = n["fn"]
+        sig = EXPR_FUNCTIONS[name]
+        args = n["args"]
+        arg_results = [infer_expr_type(a, resolve_field, is_int_stored_enum) for a in args]
         errors = [e for r in arg_results for e in r.errors]
-        unified, differing = _unify_types(n["args"], [r.type for r in arg_results])
+        same: list[str | None] = []
+        same_nodes: list[object] = []
+        for i, a in enumerate(arg_results):
+            kind = sig.params[min(i, len(sig.params) - 1)]
+            if a.type is None:
+                continue  # a null literal fits any parameter
+            if kind == "same":
+                same.append(a.type)
+                same_nodes.append(args[i])
+            elif kind == "string" and a.type != FIELD_SUBTYPE_STRING:
+                errors.append(f"'{name}' argument {i + 1} must be a string, got {a.type}")
+            elif kind == "int" and a.type != FIELD_SUBTYPE_INT:
+                # Postgres resolves these functions over int4 only (no implicit bigint -> int for a call).
+                hint = f"; cast it ({{ cast: <expr>, as: int }})" if a.type == FIELD_SUBTYPE_LONG else ""
+                errors.append(f"'{name}' argument {i + 1} must be an int, got {a.type}{hint}")
+            elif kind == "scalar" and a.type in _EXPR_NON_SCALAR_SUBTYPES:
+                errors.append(f"'{name}' argument {i + 1} must be a scalar, got {a.type}")
+        # Adaptable literals (an int literal beside a decimal) fit the typed anchor.
+        unified, differing = _unify_types(same_nodes, same)
         if differing is not None:
-            errors.append(f"'{EXPR_FN_COALESCE}' arguments have differing types ({', '.join(differing)})")
-        return InferResult(unified, errors)
+            errors.append(f"'{name}' arguments have differing types ({', '.join(differing)})")
+        if sig.ordered and unified is not None and (
+            unified == FIELD_SUBTYPE_BOOLEAN or unified in _EXPR_NON_SCALAR_SUBTYPES
+        ):
+            errors.append(f"'{name}' needs ordered arguments, got {unified}")
+        result = (
+            unified if sig.result == "same"
+            else FIELD_SUBTYPE_INT if sig.result == "int"
+            else FIELD_SUBTYPE_STRING
+        )
+        return InferResult(result, errors)
 
     op = n["op"]
     if op in _COMPARISON_OPS:
-        left = infer_expr_type(n["left"], resolve_field)
-        right = infer_expr_type(n["right"], resolve_field)
+        left = infer_expr_type(n["left"], resolve_field, is_int_stored_enum)
+        right = infer_expr_type(n["right"], resolve_field, is_int_stored_enum)
         errors = [*left.errors, *right.errors]
         if left.type is not None and op not in ops_for_subtype(left.type):
             errors.append(f"op '{op}' is not legal for a {left.type} operand")
         return InferResult(FIELD_SUBTYPE_BOOLEAN, errors)
     if op in _NULL_OPS:
-        return InferResult(FIELD_SUBTYPE_BOOLEAN, infer_expr_type(n["arg"], resolve_field).errors)
+        return InferResult(FIELD_SUBTYPE_BOOLEAN, infer_expr_type(n["arg"], resolve_field, is_int_stored_enum).errors)
     if op == EXPR_OP_NOT or op in _VARIADIC_LOGIC_OPS:
         kids = [n["arg"]] if op == EXPR_OP_NOT else n["args"]
         errors = []
         for k in kids:
-            kt = infer_expr_type(k, resolve_field)
+            kt = infer_expr_type(k, resolve_field, is_int_stored_enum)
             errors.extend(kt.errors)
             if kt.type is not None and kt.type != FIELD_SUBTYPE_BOOLEAN:
                 errors.append(f"op '{op}' requires boolean operands, got {kt.type}")
@@ -3002,7 +3203,26 @@ def _validate_origin_paths(
                             ErrorCode.ERR_INVALID_ORIGIN, envelope=src))
                     continue
 
-                inferred = infer_expr_type(expr, _resolve_field)
+                def _is_int_stored_enum(
+                    name: str, _base: MetaData = base, _obj: MetaData = obj, _self: str = node.name
+                ) -> bool:
+                    # A cast needs it: an enum stored as an integer (@intValueMap), resolved as the
+                    # inference resolved the ref (the projection's own field first, else a base field).
+                    target = None
+                    if _obj is not _base and name != _self:
+                        target = next(
+                            (o for o in _obj.children() if o.type == TYPE_FIELD and o.name == name), None
+                        )
+                    if target is None:
+                        target = next(
+                            (f for f in _base.children() if f.type == TYPE_FIELD and f.name == name), None
+                        )
+                    return (
+                        target is not None and target.sub_type == FIELD_SUBTYPE_ENUM
+                        and target.attrs().get(FIELD_ATTR_INT_VALUE_MAP) is not None
+                    )
+
+                inferred = infer_expr_type(expr, _resolve_field, _is_int_stored_enum)
                 if inferred.errors:
                     for m in inferred.errors:
                         errors.append(MetaError(
@@ -4409,7 +4629,7 @@ def _expr_nodes(node: object, out: list[dict[str, Any]] | None = None) -> list[d
     if not isinstance(node, dict):
         return out
     out.append(node)
-    for key in ("left", "right", "arg", EXPR_CASE_OPERAND, EXPR_CASE_ELSE):
+    for key in ("left", "right", "arg", EXPR_CAST, EXPR_CASE_OPERAND, EXPR_CASE_ELSE):
         _expr_nodes(node.get(key), out)
     args = node.get("args")
     if isinstance(args, list):
@@ -4495,6 +4715,15 @@ def _condition_problem(condition: object, obj: MetaData) -> str | None:
                 f"is not a valid expression: a condition takes no '{kind}' node, "
                 f"since a CHECK can hold neither a CASE nor the current time."
             )
+    # A CHECK holds the condition's SQL, rendered by every port's CHECK emitter, which takes fields,
+    # literals, comparisons, null tests, and / or / not and coalesce. The rest of the expression
+    # grammar (case, now, cast, the other functions, paths) is for views only.
+    view_only = expr_view_only_node(condition)
+    if view_only is not None:
+        return (
+            f"uses {view_only}, which a CHECK condition cannot hold: it takes fields, literals, "
+            "comparisons, null tests, and / or / not, and coalesce."
+        )
     fields = {f.name: f for f in obj.fields()}
     inferred = infer_expr_type(
         condition, lambda name: fields[name].sub_type if name in fields else None

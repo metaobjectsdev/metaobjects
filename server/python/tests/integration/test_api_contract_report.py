@@ -4,7 +4,7 @@ Drives ``fixtures/api-contract-conformance/report/`` against the GENERATED route
 served reports (the deployed artifact), on a REAL database: the corpus' TypeScript-produced
 ``schema.<engine>.sql`` (four tables and nine views) is executed verbatim on Postgres, SQLite
 and MySQL 8.4, the base tables are seeded from ``seed.json``, and the repository behind each
-generated consumer seam is the adopter-owned ``ObjectManager`` implementation reading the
+generated consumer seam is the adopter-owned ``ObjectManagerDb`` implementation reading the
 real view. Every scenario runs on every engine.
 
 Generated lane only, by design -- see the corpus README. The thing under test is whether

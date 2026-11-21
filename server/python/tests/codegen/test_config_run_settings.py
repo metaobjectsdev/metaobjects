@@ -5,7 +5,7 @@ unrelated and stays declared once in ``metaobjects.config.yaml``.
 Through 1.1.0's release candidates the column naming was a flag, then briefly a
 ``columnNaming`` key in ``metaobjects.config.yaml`` — that key never shipped and is
 refused outright (ADR-0058 Decision 4), same as the ``--column-naming`` flag and
-``ObjectManager(column_naming=...)``. The migration guide replaced a script's
+``ObjectManagerDb(column_naming=...)``. The migration guide replaced a script's
 ``metaobjects gen <dir> --out ... --generators ...`` with a plain ``metaobjects gen``
 once the config declared the generator list, and that plain run used this port's old
 default, ``literal``: it rewrote every ``*_names.py`` with camelCase column names the

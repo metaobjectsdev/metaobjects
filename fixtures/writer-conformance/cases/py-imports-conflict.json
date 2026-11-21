@@ -1,0 +1,17 @@
+{
+  "description": "One local name imported from two modules is an error, not a silent shadow.",
+  "dialect": "python",
+  "ops": [
+    [
+      "use",
+      "Row",
+      "a"
+    ],
+    [
+      "use",
+      "Row",
+      "b"
+    ]
+  ],
+  "error": "ERR_WRITER_IMPORT_CONFLICT"
+}

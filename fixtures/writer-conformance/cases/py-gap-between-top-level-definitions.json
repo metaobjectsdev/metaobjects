@@ -1,0 +1,52 @@
+{
+  "description": "gap() asks for two blank lines; a dedent keeps a pending request, so the gap survives the end of a suite. blank() after a gap does not shrink it.",
+  "dialect": "python",
+  "ops": [
+    [
+      "open",
+      "def a():"
+    ],
+    [
+      "line",
+      "pass"
+    ],
+    [
+      "dedent"
+    ],
+    [
+      "gap"
+    ],
+    [
+      "open",
+      "def b():"
+    ],
+    [
+      "line",
+      "pass"
+    ],
+    [
+      "dedent"
+    ],
+    [
+      "gap"
+    ],
+    [
+      "blank"
+    ],
+    [
+      "line",
+      "c = 1"
+    ]
+  ],
+  "expected": [
+    "def a():",
+    "    pass",
+    "",
+    "",
+    "def b():",
+    "    pass",
+    "",
+    "",
+    "c = 1"
+  ]
+}

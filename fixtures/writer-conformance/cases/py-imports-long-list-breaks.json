@@ -1,0 +1,46 @@
+{
+  "description": "An import line past 88 columns breaks into a parenthesised list, one name per line with a trailing comma; one name never breaks.",
+  "dialect": "python",
+  "ops": [
+    [
+      "line",
+      "x = 1"
+    ],
+    [
+      "use",
+      "AlphaAlphaAlpha",
+      "a_rather_long_module_name.with.a.long.path"
+    ],
+    [
+      "use",
+      "BetaBetaBeta",
+      "a_rather_long_module_name.with.a.long.path"
+    ],
+    [
+      "use",
+      "GammaGammaGamma",
+      "a_rather_long_module_name.with.a.long.path"
+    ],
+    [
+      "use",
+      "DeltaDeltaDelta",
+      "a_rather_long_module_name.with.a.long.path"
+    ],
+    [
+      "use",
+      "Only",
+      "another_rather_long_module_name.with.a.long.path.that.is.even.longer.than.the.first.one"
+    ]
+  ],
+  "expected": [
+    "from a_rather_long_module_name.with.a.long.path import (",
+    "    AlphaAlphaAlpha,",
+    "    BetaBetaBeta,",
+    "    DeltaDeltaDelta,",
+    "    GammaGammaGamma,",
+    ")",
+    "from another_rather_long_module_name.with.a.long.path.that.is.even.longer.than.the.first.one import Only",
+    "",
+    "x = 1"
+  ]
+}

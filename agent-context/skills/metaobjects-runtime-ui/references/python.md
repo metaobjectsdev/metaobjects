@@ -1,33 +1,40 @@
 # Python server runtime
 
-The Python runtime tier is the **`metaobjects.runtime.ObjectManager`** — a
+The Python runtime tier is **`metaobjects.runtime.ObjectManagerDb`** — a
 metadata-driven query/CRUD engine that reads the same metadata at runtime and drives
-persistence with no per-entity ORM boilerplate. It is the cross-port analog of Java's
-OMDB: a method-based API (`find_by_id` / `find_many` / `count` / `create` / `update` /
+persistence with no per-entity ORM boilerplate. It is the DB-API implementation of the
+abstract `ObjectManager` contract and the cross-port analog of Java's `ObjectManagerDB`
+(OMDB): a method-based API (`find_by_id` / `find_many` / `count` / `create` / `update` /
 `delete` / `relate`) that compiles a Filter dict to parameterized SQL and runs it via a
 pluggable driver. It is **pure data-access** (CRUD / query / codec); schema is owned by
 the Node `meta` migration tool, not the runtime.
 
 ## Contents
-- Construct an `ObjectManager`
+- Construct an `ObjectManagerDb`
 - CRUD + query
 - Return-type contract
 - Serving the REST contract
 - Physical names in your repository implementation
 
-## Construct an `ObjectManager`
+## Construct an `ObjectManagerDb`
 
-`ObjectManager(root, driver)` takes a loaded metadata `root` plus a `PostgresDriver`
-wrapping any DB-API 2 connection (pg8000 / psycopg):
+`ObjectManagerDb(root, driver)` takes a loaded metadata `root` plus a driver
+(`PostgresDriver`, `SqliteDriver` or `MySqlDriver`) wrapping any DB-API 2 connection
+(pg8000 / psycopg for Postgres). `ObjectManager` is the abstract contract: constructing it
+raises a `TypeError` naming `ObjectManagerDb`, so annotate hand-written code that only calls
+the methods with `ObjectManager` and construct `ObjectManagerDb`:
 
 ```python
 import pg8000
 from metaobjects import load_directory
-from metaobjects.runtime import ObjectManager, PostgresDriver
+from metaobjects.runtime import ObjectManagerDb, PostgresDriver
 
 result = load_directory("metaobjects")     # same canonical JSON every port reads
 conn = pg8000.connect(...)                 # any DB-API 2 connection
-om = ObjectManager(result.root, PostgresDriver(conn))
+om = ObjectManagerDb(result.root, PostgresDriver(conn))
+
+with om.transaction():                     # one commit for every write in the block
+    om.create("Author", {"name": "Ada"})   # a raise inside rolls all of it back
 ```
 
 ## CRUD + query

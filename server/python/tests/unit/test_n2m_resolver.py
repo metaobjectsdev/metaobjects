@@ -13,8 +13,8 @@ from typing import Any
 
 from metaobjects import load_directory
 from metaobjects.naming import attach_naming
-from metaobjects.runtime import ObjectManager
-from metaobjects.runtime.object_manager import SelectResult
+from metaobjects.runtime import ObjectManagerDb
+from metaobjects.runtime.drivers import SelectResult
 
 
 def _corpus_canonical() -> Path:
@@ -45,7 +45,7 @@ class FakeDriver:
         return None
 
 
-def _om(responses: list[tuple[str, list[dict[str, Any]]]]) -> tuple[ObjectManager, FakeDriver]:
+def _om(responses: list[tuple[str, list[dict[str, Any]]]]) -> tuple[ObjectManagerDb, FakeDriver]:
     result = load_directory(_corpus_canonical())
     # ADR-0058 — the corpus's project (the canonical dir's PARENT) pins
     # `naming: {columns: literal}` in its `.metaobjects/config.json`; `load_directory`
@@ -54,7 +54,7 @@ def _om(responses: list[tuple[str, list[dict[str, Any]]]]) -> tuple[ObjectManage
     # do not match.
     root = attach_naming(result.root, _corpus_canonical().parent)
     driver = FakeDriver(responses)
-    return ObjectManager(root, driver), driver  # type: ignore[arg-type]
+    return ObjectManagerDb(root, driver), driver  # type: ignore[arg-type]
 
 
 # --- Hetero (Post —tags→ Tag through PostTag) -------------------------------

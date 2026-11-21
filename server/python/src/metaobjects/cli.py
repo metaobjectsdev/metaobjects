@@ -64,7 +64,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 from metaobjects import MetaDataLoader
 from metaobjects.errors import ErrorCode, MetaError, ParseError
@@ -126,11 +126,17 @@ from metaobjects.codegen.overwrite_policy import (
 from metaobjects.codegen.project_config import (
     CONFIG_FILENAME,
     ConfigError,
+    GeneratorSettings,
     ProjectConfig,
     TargetConfig,
     load_project_config,
 )
-from metaobjects.codegen.generator import Generator, generator_cacheable, generator_extra_inputs
+from metaobjects.codegen.generator import (
+    Generator,
+    SelectedGenerator,
+    generator_cacheable,
+    generator_extra_inputs,
+)
 from metaobjects.codegen import model_key, skip
 from metaobjects.codegen.generators.entity_model import entity_model
 from metaobjects.codegen.generators.extractor_generator import extractor_generator
@@ -151,6 +157,7 @@ from metaobjects.codegen.generator_registry import (
     RequirementTestsOptions,
     get_generator,
     list_generators,
+    resolve_options,
     unsatisfied_requires,
 )
 from metaobjects.codegen.project_import import import_project_symbol
@@ -160,7 +167,7 @@ from metaobjects.codegen import eject as owned
 from metaobjects.codegen.generators.render_helper_generator import (
     _derive_payload_field_tree,
 )
-from metaobjects.codegen.value_objects import bound_payload_vo
+from metaobjects.codegen.value_objects import bound_payload_vo, pkg_of
 from metaobjects.meta.template import template_constants as tc
 from metaobjects.naming import (
     COLUMN_NAMING_STRATEGIES,
@@ -803,6 +810,24 @@ def _refuse_column_naming_flag(args: argparse.Namespace) -> str | None:
     return "error: " + removed_naming_source_message("--column-naming", flag)
 
 
+def _build_context_for_project(
+    template_root: str,
+    config: ProjectConfig,
+    collection: Collection,
+    providers: list[object],
+) -> GeneratorBuildContext:
+    """The context every generator factory of ``gen`` and ``verify --codegen`` is built with:
+    the template root, the project's directory and its own metadata files (never a dependency's
+    artifact), and the consumer providers the run loaded the model with. One definition, so the
+    two commands build a generator identically."""
+    return GeneratorBuildContext(
+        template_root,
+        project_root=str(project_root_for(config.metadata_dir())),
+        source_files=tuple(str(p) for p in collection.own_files),
+        providers=tuple(providers),
+    )
+
+
 def _template_root_for_config(args: argparse.Namespace, config: ProjectConfig) -> tuple[str, str | None]:
     """``(template root, refusal)`` for a config-driven run: ``templates`` in the config, else
     :func:`_template_root_for`. A ``--templates`` (``gen``) or ``--prompts`` (``verify``) that
@@ -823,6 +848,7 @@ def _template_root_for_config(args: argparse.Namespace, config: ProjectConfig) -
 
 def _resolve_generators(
     names: str, ctx: GeneratorBuildContext | None = None, owned_root: Path | None = None,
+    settings: Mapping[str, GeneratorSettings] | None = None,
 ) -> tuple[list[Generator], list[str]]:
     """Resolve a comma-separated list of STABLE generator names via the registry.
 
@@ -838,17 +864,24 @@ def _resolve_generators(
     absent entirely: the registry hardcoded ``template_root="templates"``, so
     ``--templates`` reached the template-spec pass and nothing else, and selecting
     ``render-helper`` read a directory the user had never named.
+
+    *settings* is a target's ``generator_settings``: an entry's ``options`` are checked against
+    what the generator takes and reach its factory, packaged or owned. An option it does not
+    take is an error, not a silent drop.
     """
     if ctx is None:
         ctx = GeneratorBuildContext()
+    settings = settings or {}
     requested = [n.strip() for n in names.split(",") if n.strip()]
     gens: list[Generator] = []
     errors: list[str] = []
     selected: list[str] = []
     for n in requested:
         entry = get_generator(n)
+        raw_options = settings[n].options if n in settings else {}
         if entry is None and (":" in n or "." in n):
-            gen, err = owned.build_owned(n, owned_root or Path.cwd(), ctx)
+            gen, err = owned.build_owned(
+                n, owned_root or Path.cwd(), dataclasses.replace(ctx, options=raw_options))
             if err is not None:
                 errors.append(err)
                 continue
@@ -859,7 +892,11 @@ def _resolve_generators(
             known = ", ".join(sorted(GENERATOR_REGISTRY))
             errors.append(f"unknown generator {n!r}; known: {known}")
             continue
-        gens.append(entry.factory(ctx))
+        kwargs, option_errors = resolve_options(n, entry.options, raw_options)
+        if option_errors:
+            errors.extend(option_errors)
+            continue
+        gens.append(entry.factory(dataclasses.replace(ctx, options=kwargs)))
         selected.append(n)
     if not errors and not gens:
         errors.append("no generators selected (empty --generators list)")
@@ -867,6 +904,81 @@ def _resolve_generators(
         for warning in unsatisfied_requires(selected):
             print(f"warning: {warning}", file=sys.stderr)
     return gens, errors
+
+
+def _apply_generator_selection(
+    gens: list[Generator], target: TargetConfig, root: MetaData,
+) -> tuple[list[Generator], list[str]]:
+    """Limit each generator to the ``packages`` / ``entities`` its entry declares.
+
+    ``gens`` is in the order of ``target.generators`` (one generator per entry). A name that
+    matches nothing in the model is refused, the way an unknown option is: a typo here would
+    otherwise drop a generator's output and the run would still report success."""
+    if not target.generator_settings:
+        return gens, []
+    # ADR-0039 sanctioned own: top-level object scan on the loader ROOT (never extended).
+    objects = [
+        c for c in root.own_children() if c.type == TYPE_OBJECT and isinstance(c, MetaObject)
+    ]
+    in_target = [o for o in objects if target.entities is None or o.name in target.entities]
+    known_entities = {o.name for o in in_target}
+    known_packages = {pkg_of(o) for o in in_target}
+    out: list[Generator] = []
+    errors: list[str] = []
+    for gen, token in zip(gens, target.generators or []):
+        picked = target.generator_settings.get(token)
+        if picked is None or not picked.selects:
+            out.append(gen)
+            continue
+        missing_entities = sorted(set(picked.entities or ()) - known_entities)
+        missing_packages = sorted(set(picked.packages or ()) - known_packages)
+        if missing_entities:
+            errors.append(
+                f"generator {token!r}: entities {missing_entities} name no object in this target; "
+                f"it declares {sorted(known_entities)}"
+            )
+        if missing_packages:
+            errors.append(
+                f"generator {token!r}: packages {missing_packages} hold no object in this target; "
+                f"it has {sorted(known_packages)}"
+            )
+        if missing_entities or missing_packages:
+            continue
+        out.append(SelectedGenerator(
+            gen,
+            frozenset(picked.packages) if picked.packages is not None else None,
+            frozenset(picked.entities) if picked.entities is not None else None,
+        ))
+    if not errors:
+        errors.extend(_unmet_requires_by_selection(out, target.generators or [], in_target))
+    return out, errors
+
+
+def _unmet_requires_by_selection(
+    gens: list[Generator], tokens: list[str], objects: list[MetaObject],
+) -> list[str]:
+    """One error per generator that covers an object a generator it ``requires`` is selected away from.
+
+    ``routes`` imports the filter allowlist of every object it routes; limit ``filter-allowlist``
+    to one entity and the other routers import a module nobody wrote, which ``gen`` would only
+    show as an ImportError in the generated package."""
+    errors: list[str] = []
+    for gen, token in zip(gens, tokens):
+        entry = get_generator(token)
+        if entry is None:
+            continue
+        inner_filter = getattr(gen, "filter", None)
+        covered = [o for o in objects if not callable(inner_filter) or inner_filter(o)]
+        for dep, dep_token in zip(gens, tokens):
+            if dep_token not in entry.requires or not isinstance(dep, SelectedGenerator):
+                continue
+            gap = sorted(o.name for o in covered if not dep.selects(o))
+            if gap:
+                errors.append(
+                    f"generator {token!r} requires {dep_token!r}, which is limited away from "
+                    f"{gap}; limit {token!r} to the same packages/entities, or lift the limit"
+                )
+    return errors
 
 
 def _parse_entities(value: str | None) -> list[str] | None:
@@ -1190,6 +1302,8 @@ def _cmd_list(_args: argparse.Namespace) -> int:
         if verdict is not None:
             for path, status in verdict[1]:
                 print(f"    runtime {path.as_posix()}  [{status}]")
+        for option in entry.options:
+            print(f"    option {option.name}: {option.description}")
     for path, status in owned.runtime_status(root):
         print(f"runtime {path.as_posix()} [owned — {status}]")
     return 0
@@ -1674,9 +1788,14 @@ def _run_gen_targets(
             continue
         if t.generators:
             gens, gen_errors = _resolve_generators(
-                ",".join(t.generators), ctx, owned_root=config.config_dir)
+                ",".join(t.generators), ctx, owned_root=config.config_dir,
+                settings=t.generator_settings)
             if gen_errors:
                 errors.extend(f"target '{t.name}': {m}" for m in gen_errors)
+                continue
+            gens, select_errors = _apply_generator_selection(gens, t, root)
+            if select_errors:
+                errors.extend(f"target '{t.name}': {m}" for m in select_errors)
                 continue
             overwrite = frozenset(
                 g.name for g, tok in zip(gens, t.generators) if tok in t.overwrite_hand_edits
@@ -2085,7 +2204,7 @@ def _cmd_gen_config_run(args: argparse.Namespace, state: _SkipState) -> int:
             refused_out=refused,
             select=collection.in_scope,
             in_ledger=collection.in_ledger,
-            build_ctx=GeneratorBuildContext(template_root),
+            build_ctx=_build_context_for_project(template_root, config, collection, providers),
             column_naming=column_naming,
             selection=selection,
             targeted_out=targeted,
@@ -2511,7 +2630,7 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
         regen = dict(
             select=collection.in_scope,
             in_ledger=collection.in_ledger,
-            build_ctx=GeneratorBuildContext(template_root),
+            build_ctx=_build_context_for_project(template_root, config, collection, providers),
             # R31: the `names` generator's constants are strategy-dependent, so the regen
             # must use the strategy `gen` wrote with, or every constant reads as drift.
             column_naming=naming,

@@ -16,7 +16,7 @@ outright. Measured on the fixture below before the fix:
     primary_rdb_source: None
 
 `primary_rdb_source` reads `children()`, so the cost was not cosmetic: no table for the
-router or the filter allowlist, no names module, and `ObjectManager` falling through to
+router or the filter allowlist, no names module, and `ObjectManagerDb` falling through to
 the replica view.
 
 THE APPEND QUEUE WAS ONLY HALF THE FIX, AND THIS FILE SAID OTHERWISE. It claimed

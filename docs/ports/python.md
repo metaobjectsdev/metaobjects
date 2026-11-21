@@ -246,6 +246,16 @@ row-model field that can be null is `T | None = None`; a measure with `@default`
 report with no view source, or an abstract one, generates nothing. The contract is in
 [reporting](../features/reporting.md#how-a-report-is-served).
 
+**Publishing a shared model.** The `shared-model` generator (FR-023) writes `<name>.metaobjects.json`
+and `metaobjects.pkg.json` for a consumer's `deps sync`, byte-identical to the other ports' and gated
+by `fixtures/shared-model-conformance/` (all 15 cases). Options on its `generators` entry: `name`,
+`include` (required), `exclude`, `requirements`, `files` (relative to the project root; default every
+metadata file of the project) and `version` (default: the nearest `pyproject.toml` or `package.json`
+version, recorded as a declared input so bumping it regenerates). The engine is
+`metaobjects.shared_model` (`build_shared_model`, `render_shared_model_files`); a selection that is
+empty, not closed or needs non-core vocabulary raises `SharedModelError` and fails the run. See
+[metadata-dependencies.md](../features/metadata-dependencies.md#publishing-a-dependency-sharedmodelfile).
+
 **Report export.** Add the standalone `report-export` generator to a target and the served
 report's list route answers `?format=csv|json|xml` ([contract](../features/api-contract.md#report-export)).
 It writes one shared `report_export_writer.py` (standard library only: `csv` quoting by hand,
@@ -770,7 +780,7 @@ that file's root package, so `package` on such a node is already the full
 
 A `field.enum` with `@intValueMap` (own or inherited from a shared abstract enum) is stored as its
 declared integers while `ObjectManager` callers pass and receive member symbols. The codec in
-`metaobjects.runtime.object_manager` encodes on every write and on filter operands, and decodes on
+`metaobjects.runtime.values` (called by `ObjectManagerDb`) encodes on every write and on filter operands, and decodes on
 every read. On an `isArray: true` field it does this for each element. On Postgres the array is an
 `integer[]` holding the ints in order: `["PUBLISHED", "DRAFT"]` is stored as `{5,0}`. An empty
 array stays empty, a null array stays null, and a null element stays a null element. An int that
@@ -1057,6 +1067,7 @@ import lines are stable.
 | Entities + fields | Yes |
 | Relationships + FK | Loader-level yes; relationship-navigation codegen is on the roadmap |
 | Source kinds (table / view / storedProc) | Loader-level yes; codegen for non-`table` kinds is in progress |
+| View expression functions (projection and report views) | Partial: the loader accepts the view functions and the cast node. Not yet: a dotted path in `origin.computed` `@expr`, a scalar `origin.aggregate` on a computed field, a path operand in `origin.first` `@filter`, `origin.passthrough` through a path, and a derived field on an entity with a read source. The `projection-view-vocabulary-rc21` fixture stays in the ledger |
 | `field.currency` / `field.enum` / `field.object` + `@storage` | Loader-level yes; codegen for `field.object` `flattened` storage is in progress |
 | Templates + render (FR-004) | Yes (`metaobjects.render`; Mustache, and Jinja with the `jinja` extra) |
 | Payload-VO codegen | Yes — the `entity` generator's model for each value object IS the payload type (ADR-0056); no separate payload generator |
@@ -1067,7 +1078,7 @@ import lines are stable.
 | API reference docs | Yes — `api-docs` in a target's `generators`, options in the top-level `apiDocs` block (`apiSubDir`, `projectName`, `modelBaseUrl`); `metaobjects docs` was removed in 1.1.0 ([migration](../features/migrations/docs-are-generators.md#python)) |
 | Requirement gate + requirement tests | Yes (`metaobjects verify`, on every run; `requirement-tests` emits pytest and is ejectable) |
 | Business-rules gate (ADR-0066, experimental) | Yes (`metaobjects verify`, on every run; see [business rules](../features/business-rules.md)) |
-| Runtime metadata | Yes (`metaobjects.runtime.ObjectManager` — DB-API 2 drivers: Postgres via pg8000/psycopg, `SqliteDriver` over the standard library's `sqlite3`, `MySqlDriver` over PyMySQL with the `mysql` extra) + loader API + render engine |
+| Runtime metadata | Yes (`metaobjects.runtime.ObjectManagerDb` — DB-API 2 drivers: Postgres via pg8000/psycopg, `SqliteDriver` over the standard library's `sqlite3`, `MySqlDriver` over PyMySQL with the `mysql` extra) + loader API + render engine |
 
 ## Conformance status (as of 2026-05-27)
 

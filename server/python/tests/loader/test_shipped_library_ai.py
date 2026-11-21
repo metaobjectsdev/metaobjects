@@ -290,7 +290,7 @@ def test_the_trace_helper_generator_fires_off_the_SHIPPED_base(
     row = captured[0]
 
     # The typed columns are the whole point of the feature — and every key the
-    # helper writes must be a field the entity declares, or ObjectManager raises
+    # helper writes must be a field the entity declares, or ObjectManagerDb raises
     # "no field '<name>' in metadata" on insert.
     assert row["voResponse"] == {"greeting": "hello"}
     assert row["voRequest"] == {"prompt": "say hi"}

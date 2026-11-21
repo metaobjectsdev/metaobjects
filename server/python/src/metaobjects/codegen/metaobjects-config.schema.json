@@ -108,12 +108,28 @@
                       "enum": ["keep", "overwrite"],
                       "default": "keep",
                       "description": "What a hand edit to this generator's output gets. keep (the default) refuses the edited file, and an edited file no generator emits any more. overwrite regenerates over the edit and deletes such an orphan, naming each one."
+                    },
+                    "packages": {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": { "type": "string", "minLength": 1 },
+                      "description": "Metadata packages (e.g. \"acme::sales\") this generator emits for. Omit for every package in the target. A package the target holds no object of is refused."
+                    },
+                    "entities": {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": { "type": "string", "minLength": 1 },
+                      "description": "Short object names this generator emits for, inside the target's own `entities`. Omit for every object. A name the target does not hold is refused."
+                    },
+                    "options": {
+                      "type": "object",
+                      "description": "The generator's own settings, in camelCase; a generator receives them as snake_case keyword arguments (maxRows -> max_rows). A setting the generator does not take is refused. `metaobjects gen --list` names each packaged generator's."
                     }
                   }
                 }
               ]
             },
-            "description": "Generators to run: stable names (see `metaobjects gen --list`), or {name, handEdits} mappings. Required: there is no default suite, so a target that names none generates nothing and `verify --codegen` checks nothing."
+            "description": "Generators to run: stable names (see `metaobjects gen --list`), or {name, handEdits, packages, entities, options} mappings. Required: there is no default suite, so a target that names none generates nothing and `verify --codegen` checks nothing."
           },
           "entities": {
             "type": "array",
