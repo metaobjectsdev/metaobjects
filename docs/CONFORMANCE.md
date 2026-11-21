@@ -484,7 +484,7 @@ indented standalone tag, which shared docs templates rely on), raw-HTML bypass, 
 `has` accessor, and the `-last` list-separator accessor. 2 are error cases: a fixture
 that must refuse carries `expected-error.txt` in place of `expected.txt`, holding the error text
 the render must raise (`render verify failed: ERR_VAR_NOT_ON_PAYLOAD (<name>)`). Every port that runs
-this corpus reads that convention; TypeScript compares the text exactly, and Python, C# and Rust
+this corpus reads that convention; TypeScript compares the text exactly, and Java, Python, C# and Rust
 require it to appear in the raised message.
 
 ### `fixtures/jinja-render-conformance/` (16) and `fixtures/jinja-verify-conformance/` (31)
