@@ -1,0 +1,187 @@
+name: guarded-update
+description: |
+  The guarded update (ADR-0066 §6 step 5, §8): the store-neutral write a lifecycle transition
+  makes. One statement sets the state field to `to` where the key matches, the state is one of
+  `from`, and the transition's `@condition` (when it has one) holds:
+
+    UPDATE ... SET <state> = :to WHERE <key> = :id AND <state> IN (:from) [AND <condition>]
+
+  `op: guardedUpdate` answers whether a row matched the guard (true or false), and a follow-up
+  `op: get` or `op: count` reads what was written. A guard that matches no row writes nothing: a
+  row in another state, a row whose condition fails, a missing row, and the second of two moves
+  out of the same state all answer false and leave the row as it was.
+
+  `guard.condition` is a node of the `@condition` grammar (attr.expression's CHECK subset: fields,
+  literals, comparisons, null tests, and, or, not and coalesce), over the entity's FIELD names. A
+  literal compared with a field is written in the form that field's column stores, and so is each
+  `from` and `to` member: `AllTypes.intEnumVal` is an int-backed enum, so `DRAFT` is stored as 0
+  and `PUBLISHED` as 5, while the wire value stays the member symbol.
+
+  Every store driver is held to this, including one an adopter writes. The TypeScript runner
+  drives `ObjectManager.guardedUpdate`; each other port runs it with its own guarded update.
+seed-data: |
+  INSERT INTO "programs" ("id", "title", "priceCents", "status", "created_ts") VALUES
+    (1, 'Draft A', 4999, 'DRAFT', '2026-05-01T10:00:00'),
+    (2, 'Free draft', 0, 'DRAFT', '2026-05-02T10:00:00'),
+    (3, 'Live', 1500, 'PUBLISHED', '2026-05-03T10:00:00'),
+    (4, 'Old', 100, 'ARCHIVED', '2026-05-04T10:00:00');
+  INSERT INTO "all_types" (
+    "id", "sVal", "iVal", "lVal", "dVal", "fVal", "decVal", "bVal",
+    "dateVal", "timeVal", "tsVal", "tsTzVal", "moneyVal", "enumVal", "intEnumVal", "uuidVal",
+    "uriVal", "inetVal", "inet6Val", "settings"
+  ) VALUES
+  (
+    '33333333-3333-4333-8333-333333333331',
+    'small', 1, 2, 0.5, 0.5, 1.5, true,
+    '2020-01-01', '00:00:00', '2020-01-01T00:00:00', '2020-01-01T00:00:00Z',
+    100, 'LOW', 0, '11111111-1111-4111-8111-111111111111',
+    'urn:example:one', '10.0.0.1', 'fe80::1', '{}'
+  ),
+  (
+    '33333333-3333-4333-8333-333333333332',
+    'large', 9, 2, 0.5, 0.5, 1.5, false,
+    '2020-01-01', '00:00:00', '2020-01-01T00:00:00', '2020-01-01T00:00:00Z',
+    100, 'HIGH', 0, '11111111-1111-4111-8111-111111111112',
+    'urn:example:two', '10.0.0.2', 'fe80::2', '{}'
+  );
+queries:
+  # --- the state guard -----------------------------------------------------------------------
+  - name: move-from-the-from-state
+    op: guardedUpdate
+    entity: Program
+    by: { id: 1 }
+    guard: { field: status, from: [DRAFT], to: PUBLISHED }
+    expect: true
+
+  - name: the-move-is-written
+    op: get
+    entity: Program
+    by: { id: 1 }
+    expect: { id: "1", title: "Draft A", priceCents: "4999", status: "PUBLISHED", createdAt: "2026-05-01T10:00:00" }
+
+  - name: the-second-move-out-of-the-same-state-matches-nothing
+    op: guardedUpdate
+    entity: Program
+    by: { id: 1 }
+    guard: { field: status, from: [DRAFT], to: ARCHIVED }
+    expect: false
+
+  - name: the-row-keeps-the-first-move
+    op: get
+    entity: Program
+    by: { id: 1 }
+    expect: { id: "1", title: "Draft A", priceCents: "4999", status: "PUBLISHED", createdAt: "2026-05-01T10:00:00" }
+
+  - name: any-of-several-from-states
+    op: guardedUpdate
+    entity: Program
+    by: { id: 3 }
+    guard: { field: status, from: [DRAFT, PUBLISHED], to: ARCHIVED }
+    expect: true
+
+  - name: a-row-in-no-from-state-matches-nothing
+    op: guardedUpdate
+    entity: Program
+    by: { id: 4 }
+    guard: { field: status, from: [DRAFT, PUBLISHED], to: ARCHIVED }
+    expect: false
+
+  - name: a-missing-row-matches-nothing
+    op: guardedUpdate
+    entity: Program
+    by: { id: 999 }
+    guard: { field: status, from: [DRAFT], to: PUBLISHED }
+    expect: false
+
+  # --- the condition -------------------------------------------------------------------------
+  - name: a-failing-condition-matches-nothing
+    op: guardedUpdate
+    entity: Program
+    by: { id: 2 }
+    guard:
+      field: status
+      from: [DRAFT]
+      to: PUBLISHED
+      condition: { op: gt, left: { field: priceCents }, right: { value: 0 } }
+    expect: false
+
+  - name: the-row-stays-in-its-state
+    op: get
+    entity: Program
+    by: { id: 2 }
+    expect: { id: "2", title: "Free draft", priceCents: "0", status: "DRAFT", createdAt: "2026-05-02T10:00:00" }
+
+  - name: or-and-not-in-a-condition
+    op: guardedUpdate
+    entity: Program
+    by: { id: 2 }
+    guard:
+      field: status
+      from: [DRAFT]
+      to: PUBLISHED
+      condition:
+        op: and
+        args:
+          - op: or
+            args:
+              - { op: gt, left: { field: priceCents }, right: { value: 0 } }
+              - { op: eq, left: { field: title }, right: { value: "Free draft" } }
+          - op: not
+            arg: { op: isNull, arg: { field: title } }
+    expect: true
+
+  - name: only-the-guarded-rows-moved
+    op: count
+    entity: Program
+    filter: { status: { eq: PUBLISHED } }
+    expect: 2
+
+  # --- an int-backed state, a field compared with a field, and coalesce ------------------------
+  - name: a-field-compared-with-a-field-fails
+    op: guardedUpdate
+    entity: AllTypes
+    by: { id: "33333333-3333-4333-8333-333333333332" }
+    guard:
+      field: intEnumVal
+      from: [DRAFT]
+      to: PUBLISHED
+      condition: { op: lte, left: { field: iVal }, right: { field: lVal } }
+    expect: false
+
+  - name: a-field-compared-with-a-field-holds
+    op: guardedUpdate
+    entity: AllTypes
+    by: { id: "33333333-3333-4333-8333-333333333331" }
+    guard:
+      field: intEnumVal
+      from: [DRAFT]
+      to: PUBLISHED
+      condition: { op: lte, left: { field: iVal }, right: { field: lVal } }
+    expect: true
+
+  - name: an-int-backed-state-is-compared-and-written-as-its-integer
+    op: count
+    entity: AllTypes
+    filter: { intEnumVal: { eq: PUBLISHED } }
+    expect: 1
+
+  - name: coalesce-and-an-enum-literal-in-a-condition
+    op: guardedUpdate
+    entity: AllTypes
+    by: { id: "33333333-3333-4333-8333-333333333332" }
+    guard:
+      field: intEnumVal
+      from: [DRAFT]
+      to: ARCHIVED
+      condition:
+        op: and
+        args:
+          - { op: eq, left: { fn: coalesce, args: [{ field: sVal }, { value: "none" }] }, right: { value: "large" } }
+          - { op: eq, left: { field: enumVal }, right: { value: HIGH } }
+    expect: true
+
+  - name: the-other-row-kept-its-state
+    op: count
+    entity: AllTypes
+    filter: { intEnumVal: { eq: ARCHIVED } }
+    expect: 1

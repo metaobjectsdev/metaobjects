@@ -1,6 +1,6 @@
 import type {
   PersistenceDriver, SelectSpec, CountSpec, InsertSpec, InsertManySpec,
-  UpdateSpec, UpdateManySpec, DeleteSpec, DeleteManySpec, WhereClause, Row,
+  UpdateSpec, UpdateManySpec, DeleteSpec, DeleteManySpec, WhereClause, Row, CompareOp, Operand,
 } from "../persistence-driver.js";
 import { ConstraintViolationError } from "../errors.js";
 import { parseDurationLiteral } from "../duration-wire.js";
@@ -196,6 +196,16 @@ function pkKey(row: Row, pkFields: string[]): string {
 
 function matchesWhere(row: Row, where?: WhereClause): boolean {
   if (!where) return true;
+  return truth(row, where) === true;
+}
+
+/**
+ * SQL's three-valued truth of `where` on `row`: null is unknown. A comparison with a NULL operand
+ * is unknown, NOT keeps unknown unknown, AND is false if any part is false, OR true if any is
+ * true, and only a true row matches — so a negated guard condition never matches a NULL row, as
+ * on a real engine. The column-and-value kinds keep their historical two-valued answers.
+ */
+function truth(row: Row, where: WhereClause): boolean | null {
   switch (where.kind) {
     case "eq":
       return sameValue(row[where.column], where.value);
@@ -222,15 +232,47 @@ function matchesWhere(row: Row, where?: WhereClause): boolean {
       const isNull = row[where.column] === null || row[where.column] === undefined;
       return where.not ? !isNull : isNull;
     }
-    case "and":
-      return where.clauses.every((c) => matchesWhere(row, c));
-    case "or":
-      return where.clauses.some((c) => matchesWhere(row, c));
+    case "and": {
+      const parts = where.clauses.map((c) => truth(row, c));
+      return parts.includes(false) ? false : parts.includes(null) ? null : true;
+    }
+    case "or": {
+      const parts = where.clauses.map((c) => truth(row, c));
+      return parts.includes(true) ? true : parts.includes(null) ? null : false;
+    }
+    case "not": {
+      const t = truth(row, where.clause);
+      return t === null ? null : !t;
+    }
+    case "compare": {
+      const a = operandValue(row, where.left);
+      const b = operandValue(row, where.right);
+      if (a === null || b === null) return null;
+      if (where.op === "eq") return sameValue(a, b);
+      if (where.op === "ne") return !sameValue(a, b);
+      const c = compareValues(a, b);
+      return where.op === "gt" ? c > 0 : where.op === "gte" ? c >= 0 : where.op === "lt" ? c < 0 : c <= 0;
+    }
+    case "nullTest": {
+      const isNull = operandValue(row, where.operand) === null;
+      return where.not ? !isNull : isNull;
+    }
     default: {
       const exhaustive: never = where;
       throw new Error(`Unhandled WhereClause kind: ${JSON.stringify(exhaustive)}`);
     }
   }
+}
+
+/** An operand's value on `row`; NULL (and an absent column) is null. */
+function operandValue(row: Row, o: Operand): unknown {
+  if ("column" in o) return row[o.column] ?? null;
+  if ("value" in o) return o.value;
+  for (const x of o.coalesce) {
+    const v = operandValue(row, x);
+    if (v !== null) return v;
+  }
+  return null;
 }
 
 // Sort order: nulls are larger than any value, as in the SQL drivers (ASC last, DESC first).

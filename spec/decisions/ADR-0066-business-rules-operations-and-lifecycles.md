@@ -294,8 +294,12 @@ routes enforce nothing. This is what the shells are held to:
 
 **The guarded update is part of the store-neutral storage contract** (§8). Every store
 driver, including one an adopter writes, will be held to it by a persistence-conformance scenario.
-That scenario does not exist yet: no file under `fixtures/persistence-conformance/` pins the
-guarded update, so until it lands the contract is stated here, not yet implemented or gated.
+That scenario is `fixtures/persistence-conformance/queries/guarded-update.yaml` (`op:
+guardedUpdate`): the state guard, a failing condition, a missing row, the second of two moves, and
+a condition with a field compared with a field, `not`, `coalesce` and an int-backed state. The
+TypeScript runtime implements it as `ObjectManager.guardedUpdate` on every bundled
+`PersistenceDriver` and runs the scenario; the C#, Java, Kotlin and Python runners defer it by name
+until each port builds its own guarded update in 1.3.0.
 
 ### 7. Events and invariants in 1.3.0
 

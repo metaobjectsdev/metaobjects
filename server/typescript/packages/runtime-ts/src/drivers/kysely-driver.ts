@@ -1,7 +1,7 @@
 import type { Kysely, ExpressionBuilder, SelectQueryBuilder, Expression, SqlBool } from "kysely";
 import type {
   PersistenceDriver, SelectSpec, CountSpec, InsertSpec, InsertManySpec,
-  UpdateSpec, UpdateManySpec, DeleteSpec, DeleteManySpec, WhereClause, Row,
+  UpdateSpec, UpdateManySpec, DeleteSpec, DeleteManySpec, WhereClause, Row, CompareOp, Operand,
 } from "../persistence-driver.js";
 import { ConstraintViolationError } from "../errors.js";
 import { likePatternToGlob } from "../drizzle-fastify/list-query.js";
@@ -222,11 +222,23 @@ function buildExpression(eb: AnyExprBuilder, w: WhereClause, dialect: KyselyDial
     case "isNull": return w.not ? eb(w.column, "is not", null) : eb(w.column, "is", null);
     case "and": return eb.and(w.clauses.map((c: WhereClause) => buildExpression(eb, c, dialect)));
     case "or": return eb.or(w.clauses.map((c: WhereClause) => buildExpression(eb, c, dialect)));
+    case "not": return eb.not(buildExpression(eb, w.clause, dialect));
+    case "compare": return eb(kyselyOperand(eb, w.left), KYSELY_COMPARE[w.op], kyselyOperand(eb, w.right));
+    case "nullTest": return eb(kyselyOperand(eb, w.operand), w.not ? "is not" : "is", null);
     default: {
       const exhaustive: never = w;
       throw new Error(`Unhandled WhereClause kind: ${JSON.stringify(exhaustive)}`);
     }
   }
+}
+
+const KYSELY_COMPARE = { eq: "=", ne: "<>", gt: ">", gte: ">=", lt: "<", lte: "<=" } as const satisfies Record<CompareOp, string>;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function kyselyOperand(eb: AnyExprBuilder, o: Operand): any {
+  if ("column" in o) return eb.ref(o.column);
+  if ("value" in o) return eb.val(o.value);
+  return eb.fn("coalesce", o.coalesce.map((x) => kyselyOperand(eb, x)));
 }
 
 function applyOrderLimit(

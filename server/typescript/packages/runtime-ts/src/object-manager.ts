@@ -4,7 +4,7 @@ import {
   TYPE_OBJECT, TYPE_FIELD,
   OBJECT_SUBTYPE_REPORT,
   isMetaObject, isMetaRoot, isReadOnlySource, reportReadModel,
-  FIELD_SUBTYPE_INT,
+  FIELD_SUBTYPE_INT, FIELD_SUBTYPE_ENUM, FIELD_ATTR_VALUES,
   FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT, FIELD_SUBTYPE_DECIMAL,
 } from "@metaobjectsdev/metadata";
 import type {
@@ -12,9 +12,9 @@ import type {
   InsertManySpec, UpdateManySpec, DeleteManySpec,
 } from "./persistence-driver.js";
 import {
-  buildSelectSpec, buildCountSpec, buildInsertSpec, buildUpdateSpec, buildDeleteSpec,
+  buildSelectSpec, buildCountSpec, buildInsertSpec, buildUpdateSpec, buildDeleteSpec, buildGuardedUpdateSpec,
   resolvePkFields, compileFilter, primaryKeyColumns, tableTarget,
-  type Filter, type QueryOpts, type DiscriminatorScope,
+  type Filter, type QueryOpts, type DiscriminatorScope, type TransitionGuard,
 } from "./query-builder.js";
 import { tphSubtypeOf, type TphSubtype } from "./tph.js";
 import {
@@ -247,6 +247,50 @@ export class ObjectManager {
       return null;
     }
     return this.toJsRow(entity, dbRow);
+  }
+
+  /**
+   * The guarded update (ADR-0066 §6 step 5): move the row keyed `id` to `guard.to` in ONE
+   * statement, only when its `guard.field` is one of `guard.from` and `guard.condition` holds.
+   * Answers the row as written, or null when the guard matched nothing — a row in another state,
+   * a failing condition, a missing row, or the loser of two concurrent moves. Null is the
+   * shell's 409, never a not-found, so `ifMissing` does not apply.
+   */
+  async guardedUpdate(entityName: string, id: unknown, guard: TransitionGuard, opts: Pick<WriteOpts, "tx"> = {}): Promise<Row | null> {
+    const entity = this.requireIdentified(entityName, "update");
+    const driver = opts.tx ?? this.driver;
+    if (guard.from.length === 0) {
+      throw new MetadataError(`guardedUpdate on ${entityName}.${guard.field}: 'from' names no state`, { entity: entityName });
+    }
+    // ADR-0039: effective children — the state field may be inherited through extends.
+    const state = entity.children().find((c) => c.type === TYPE_FIELD && c.name === guard.field);
+    if (state === undefined) {
+      throw new MetadataError(`guardedUpdate on ${entityName}: no field '${guard.field}'`, { entity: entityName });
+    }
+    if (state.subType === FIELD_SUBTYPE_ENUM) {
+      // A lifecycle's states are its enum's members; a symbol outside them is a broken guard, not
+      // a guard that happens to match nothing (an unmapped symbol would otherwise be written raw).
+      const members = state.attr(FIELD_ATTR_VALUES);
+      const known = new Set(Array.isArray(members) ? members.map(String) : []);
+      const stray = [...guard.from, guard.to].filter((s) => !known.has(s));
+      if (stray.length > 0) {
+        throw new MetadataError(
+          `guardedUpdate on ${entityName}.${guard.field}: ${stray.map((s) => JSON.stringify(s)).join(", ")} is not a member of its @values`,
+          { entity: entityName },
+        );
+      }
+    }
+    const write = { [guard.field]: guard.to };
+    const validation = runValidators(entity, write, { partial: true });
+    if (!validation.ok) {
+      throw new ValidationError(formatValidationMessage(entityName, validation.errors), { entity: entityName, errors: validation.errors });
+    }
+    const coerced = coerceRowOnWrite(entity, write, driver.dialect);
+    const spec = buildGuardedUpdateSpec(
+      entity, coerced, this.coerceIdArg(entity, id), guard, this.columnNamingStrategy, this.tphScope(entity), driver.dialect,
+    );
+    const dbRow = await driver.update(spec);
+    return dbRow === null ? null : this.toJsRow(entity, dbRow);
   }
 
   async delete(entityName: string, id: unknown, opts: WriteOpts = {}): Promise<boolean> {

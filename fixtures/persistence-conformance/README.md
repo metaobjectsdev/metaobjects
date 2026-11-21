@@ -235,12 +235,13 @@ TS: `om.findMany(entityName, filter, opts)`).
 
 | field      | type                                        | notes |
 |------------|---------------------------------------------|-------|
-| `op`       | `list \| get \| count \| relate \| create \| update \| delete \| roundtrip`| required |
+| `op`       | `list \| get \| count \| relate \| create \| update \| delete \| roundtrip \| guardedUpdate`| required |
 | `entity`   | string                                      | metadata name (Program, ProgramStat, …) |
-| `by`       | `{ id: scalar }`                            | required for `op: get`, `op: relate`, `op: update`, `op: delete` (the record key) |
+| `by`       | `{ id: scalar }`                            | required for `op: get`, `op: relate`, `op: update`, `op: delete`, `op: guardedUpdate` (the record key) |
 | `data`     | row object                                  | required for `op: create` / `op: update` (the row payload to write) |
 | `relation` | string                                      | required for `op: relate`; the relationship name to traverse |
 | `insert`   | row (field → value)                         | required for `op: roundtrip`; the row to WRITE through the runtime |
+| `guard`    | `{ field, from, to, condition? }`           | required for `op: guardedUpdate`; the state field, the states it may be in, the state written, and an optional `@condition` node |
 | `filter`   | filter object (below)                       | optional; same vocabulary as Project D |
 | `sort`     | `[{ field, dir }]`                          | optional; `dir` ∈ `asc | desc` |
 | `limit`    | integer                                     | optional |
@@ -349,6 +350,33 @@ native-uuid-write.
 > When adding a port, implement the verb (insert-via-ORM → read-back-by-PK →
 > normalize → assert, PK excluded), then run these scenarios green; do not
 > delete them.
+
+### `op: guardedUpdate` — the lifecycle transition's write (ADR-0066 §6)
+
+`guardedUpdate` makes the one statement a transition writes, through the port's
+runtime or generated data access:
+
+```
+UPDATE … SET <field> = :to WHERE <key> = :id AND <field> IN (:from) [AND <condition>]
+```
+
+`guard.from` and `guard.to` are member SYMBOLS of the state field, and
+`guard.condition` is a node of the `@condition` grammar (attr.expression's CHECK
+subset: `field`, `value`, the six comparisons, `isNull` / `isNotNull`, `and` / `or`
+/ `not`, and `coalesce`) over the entity's FIELD names. Every symbol and every
+literal compared with a field is stored in that field's column form, so an
+int-backed enum (`AllTypes.intEnumVal`) is guarded and written as its integer.
+`expect` is the **boolean** answer: `true` when a row matched the guard and was
+moved, `false` when none did (a row in another state, a failing condition, a
+missing row, or the second of two moves out of the same state). A false move
+writes nothing; prove it with a follow-up `op: get` or `op: count`.
+
+`guarded-update.yaml` is the scenario. Every store driver is held to it, including
+one an adopter writes: a NULL operand in a condition matches nothing, as SQL's
+three-valued logic says. The TypeScript runner drives
+`ObjectManager.guardedUpdate`, on every `PersistenceDriver`. C#, Java, Kotlin and
+Python defer it by name, with the 1.3.0 row that builds each one's guarded update
+(L-CS-2, L-JV-2, L-KT-2, L-PY-2), and run it once that lands.
 
 ### `op: relate` — relationship traversal (M:N)
 

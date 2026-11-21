@@ -32,7 +32,9 @@ from .scenarios import QueryScenario, find_corpus_root, load_queries
 # inject/scope/strip. FR-017 Tier-4: the Python runtime now ships TPH support
 # (ObjectManagerDb discriminator inject/scope/strip + runtime/tph.py), so the
 # ``tph-*`` scenarios run green and are no longer skipped.
-EXPECTED_FAILURES: dict[str, str] = {}
+EXPECTED_FAILURES: dict[str, str] = {
+    "guarded-update": "op: guardedUpdate: the Python guarded update is not built yet (1.3.0 row L-PY-2)",
+}
 
 # The same, for one engine only: (engine, scenario name) -> reason. The Python runtime's
 # SQLite and MySQL dialects bind no list parameter (``runtime/dialect.py`` encode_param has

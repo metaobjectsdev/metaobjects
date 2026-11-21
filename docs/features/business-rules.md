@@ -17,7 +17,9 @@ the vocabulary. The layer generators of ADR-0067 do, and an app adds them to its
 it adds any generator. The first is `rules-names`, which writes the states, transitions,
 permissions and error codes as constants, in TypeScript (see
 [The names layer](#the-names-layer-typescript)) and C#; C# also ships `contract-types`, which writes
-each entity's create and update records ([C# port](../ports/csharp.md)). The service shells that
+each entity's create and update records ([C# port](../ports/csharp.md)). The TypeScript runtime makes the
+guarded update a transition writes, `ObjectManager.guardedUpdate`, held to the shared
+persistence scenario `guarded-update.yaml`. The service shells that
 enforce these rules at run time are later work. A lifecycle in a project
 that wires none will be advised by `verify` once that check lands; today the flat routes enforce
 nothing and `verify` says nothing about it. Every flat generator writes byte-identical code for

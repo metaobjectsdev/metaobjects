@@ -15,7 +15,9 @@ public final class Scenarios {
      * blocks it. A runner aborts (skips) a listed scenario instead of failing it; every other
      * scenario under {@code queries/} runs, so a new fixture auto-runs or auto-fails.
      */
-    public static final Map<String, String> DEFERRED = Map.of();
+    public static final Map<String, String> DEFERRED = Map.of(
+        "guarded-update",
+        "op: guardedUpdate: the guarded update on OMDB is not built yet (1.3.0 row L-JV-2)");
 
     public record SortSpec(String field, String dir) {}
 

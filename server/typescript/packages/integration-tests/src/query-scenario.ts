@@ -15,7 +15,7 @@
 import { ObjectManager, type Filter } from "@metaobjectsdev/runtime-ts";
 import { kyselyDriver } from "@metaobjectsdev/runtime-ts/drivers";
 import {
-  type MetaRoot,
+  type ExprNode, type MetaRoot,
   TYPE_OBJECT, TYPE_IDENTITY, TYPE_FIELD, FIELD_SUBTYPE_DECIMAL,
   IDENTITY_SUBTYPE_PRIMARY, IDENTITY_ATTR_FIELDS,
 } from "@metaobjectsdev/metadata";
@@ -121,7 +121,7 @@ const DECIMAL_CANONICAL_RE = /^-?(0|[1-9][0-9]*)(\.[0-9]*[1-9])?$/;
  * the canonical spelling the runtime owes the wire.
  */
 function assertDecimalsTyped(scenarioPath: string, spec: QuerySpec, actual: unknown, root: MetaRoot, engine: string): void {
-  if (spec.op === "count" || spec.op === "delete" || actual === null || actual === undefined) return;
+  if (spec.op === "count" || spec.op === "delete" || spec.op === "guardedUpdate" || actual === null || actual === undefined) return;
   const rows = (Array.isArray(actual) ? actual : [actual]) as Record<string, unknown>[];
   const names = decimalFieldNames(root, spec.entity);
   if (names.length === 0) return;
@@ -196,6 +196,18 @@ async function execute(om: ObjectManager, root: MetaRoot, spec: QuerySpec): Prom
   }
   if (spec.op === "count") {
     return await om.count(spec.entity, filter);
+  }
+  if (spec.op === "guardedUpdate") {
+    if (!spec.by) throw new Error(`${spec.name}: op:guardedUpdate requires 'by' (the record key)`);
+    if (!spec.guard) throw new Error(`${spec.name}: op:guardedUpdate requires 'guard'`);
+    const ids = Object.values(spec.by);
+    if (ids.length !== 1) throw new Error(`${spec.name}: op:guardedUpdate supports single-field 'by' only`);
+    const { field, from, to, condition } = spec.guard;
+    // Answers whether a row matched the guard; a follow-up get or count reads what was written.
+    const row = await om.guardedUpdate(spec.entity, ids[0], {
+      field, from, to, ...(condition === null ? {} : { condition: condition as ExprNode }),
+    });
+    return row !== null;
   }
   if (spec.op === "relate") {
     if (!spec.by) throw new Error(`${spec.name}: op:relate requires 'by' (the source record key)`);
@@ -289,7 +301,7 @@ function canonicalizeExpected(expect: unknown, op: QuerySpec["op"]): string {
     return String(n);
   }
   // `delete` returns a boolean outcome (true = a row was deleted).
-  if (op === "delete") return String(expect === true);
+  if (op === "delete" || op === "guardedUpdate") return String(expect === true);
   // `relate` (M:N navigation) is a SET — order is not part of the contract, so
   // sort both sides for a deterministic, port-agnostic comparison. `list` keeps
   // its order (the scenario pins it via `sort:`).
@@ -299,7 +311,7 @@ function canonicalizeExpected(expect: unknown, op: QuerySpec["op"]): string {
 
 function canonicalizeActual(actual: unknown, op: QuerySpec["op"]): string {
   if (op === "count") return String(actual);
-  if (op === "delete") return String(actual === true);
+  if (op === "delete" || op === "guardedUpdate") return String(actual === true);
   if (op === "relate") {
     const rows = (Array.isArray(actual) ? actual : actual == null ? [] : [actual]) as Record<string, unknown>[];
     return canonicalRowSet(rows.map(normalizeRow));

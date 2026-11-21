@@ -99,6 +99,18 @@ here.**
   cannot disagree. The loaded root carries the `rules` settings (`rulesSettings`). C# ships its own
   `rules-names`; the other ports add theirs with their rules-layer work. No existing generator's output
   moves (`fixtures/codegen-noop/rules`).
+- **runtime-ts: the guarded update (ADR-0066 §6 step 5), and the shared scenario that holds every
+  store driver to it.** `ObjectManager.guardedUpdate(entity, id, { field, from, to, condition? })`
+  makes a lifecycle transition's write in one statement — `UPDATE … SET <state> = :to WHERE <key>
+  = :id AND <state> IN (:from) [AND <condition>]`, TPH-scoped — and answers the row, or `null`
+  when the guard matched nothing. The `@condition` (attr.expression's CHECK subset) compiles to
+  the driver contract, which gains three `WhereClause` kinds: `compare` (two operands, each a
+  column, a literal or a `coalesce`), `nullTest` over any operand, and `not`. A driver an adopter
+  wrote must handle them; the bundled Kysely, Drizzle and in-memory drivers do, the in-memory one
+  with SQL's three-valued logic. Guard symbols must be members of the state enum, and each symbol
+  and condition literal is stored in its column's form (an int-backed enum as its integer). The
+  persistence corpus gains `op: guardedUpdate` and `queries/guarded-update.yaml`; TypeScript runs
+  it, and C#, Java, Kotlin and Python defer it by name until each builds its own.
 - **The REST standard's list handling is part of the cross-port contract.** `?search`,
   `filter[or]` / `filter[and]`, the nesting cap, the bare-field and leading-`%` refusals, the
   filter-value format check, and the `invalid_json`, `invalid_id`, `pagination.invalid_value` and
