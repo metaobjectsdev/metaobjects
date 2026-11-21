@@ -108,6 +108,11 @@ export interface ScopedExpectedSchema {
    * and checks foreign keys only with `PRAGMA foreign_keys` on, so they are reported, not refused.
    */
   unenforcedFkTargetViolations?: FkTargetViolation[];
+  /**
+   * Set with `unenforcedFkTargetViolations` when the reason they are not refused is the project's
+   * `migrate.foreignKeyTargets: "warn"`, so the report names the setting rather than the dialect.
+   */
+  fkTargetsAllowed?: true;
 }
 
 /**
@@ -354,7 +359,14 @@ export function scopeExpectedSchema(
 function withFkTargetVerdict(built: ExpectedSchemaWithProvenance, scoped: ScopedExpectedSchema): ScopedExpectedSchema {
   const violations = built.fkTargetViolations ?? [];
   if (violations.length === 0) return scoped;
-  if (built.fkTargetsUnenforced !== undefined) return { ...scoped, unenforcedFkTargetViolations: violations };
+  if (built.fkTargetsUnenforced !== undefined) {
+    return {
+      ...scoped,
+      unenforcedFkTargetViolations: violations,
+      // The setting is named when it is set, even on SQLite, where the dialect would not refuse either.
+      ...(built.fkTargetsAllowed !== undefined ? { fkTargetsAllowed: true as const } : {}),
+    };
+  }
   const governedTables = new Set(scoped.snapshot.tables.map(qualifiedDbName));
   const governed = violations.filter((v) => governedTables.has(v.table));
   if (governed.length > 0) throw new FkTargetNotUniqueError(governed);

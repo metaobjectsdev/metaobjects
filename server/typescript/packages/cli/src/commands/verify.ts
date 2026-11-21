@@ -1525,7 +1525,7 @@ export async function verifyCommand(
         return 1;
       }
 
-      warnUnenforcedFkTargets("verify", driftResult.unenforcedFkTargetViolations);
+      warnUnenforcedFkTargets("verify", driftResult.unenforcedFkTargetViolations, driftResult.fkTargetsAllowed !== undefined);
 
       if (driftResult.exprCanonPath !== undefined) {
         say(describeExprCanonPath(driftResult.exprCanonPath, driftResult.shadowUnavailable));
@@ -2442,5 +2442,6 @@ function buildVerifyPayload(input: {
 function refuseFkTarget(err: Error): number {
   log.error(`verify: ${err.message}`);
   log.error("verify: declare an identity.secondary on the target entity with exactly the referenced fields, or reference its primary key");
+  log.error("verify: if the database already holds a unique index there that the metadata does not declare, set migrate.foreignKeyTargets to \"warn\" in .metaobjects/config.json");
   return 1;
 }

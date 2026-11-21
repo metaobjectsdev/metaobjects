@@ -9,6 +9,7 @@ import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pg from "pg";
+import { snapshotPath, writeSnapshot } from "@metaobjectsdev/migrate-ts";
 import { migrateCommand } from "../src/commands/migrate.js";
 import { log } from "../src/lib/log.js";
 
@@ -82,6 +83,42 @@ describe("meta migrate on SQLite: an FK to a non-unique target is warned, not re
     expect(text).toContain("PRAGMA foreign_keys");
     expect(text).not.toContain("unexpected error");
     expect(text).toContain('CREATE TABLE "visits"');
+  });
+});
+
+/** A project whose committed snapshot is empty: the default `meta migrate` reads it and no database. */
+async function offlineProject(migrate: Record<string, unknown>): Promise<string> {
+  const root = await project(migrate);
+  await writeSnapshot(snapshotPath(join(root, ".metaobjects", "migrations"), "postgres"), { tables: [], views: [] });
+  return root;
+}
+
+describe("meta migrate offline on Postgres: the refusal has an off switch (migrate.foreignKeyTargets)", () => {
+  test("refused by default, and the refusal names the setting", async () => {
+    const root = await offlineProject({ dialect: "postgres" });
+    const code = await migrateCommand(["--dry-run"], root);
+
+    const text = out.join("\n");
+    expect(code).toBe(1);
+    expect(text).toContain('reference "ref_person" targets [code] on "Person"');
+    expect(text).toContain("migrate.foreignKeyTargets");
+    expect(text).not.toContain("CREATE TABLE");
+  });
+
+  test('"warn" reports the reference, names the setting, and plans the migration', async () => {
+    const root = await offlineProject({ dialect: "postgres", foreignKeyTargets: "warn" });
+    const code = await migrateCommand(["--dry-run"], root);
+
+    const text = out.join("\n");
+    expect(code).toBe(0);
+    expect(text).toContain('reference "ref_person" targets [code] on "Person"');
+    expect(text).toContain('migrate.foreignKeyTargets is "warn"');
+    expect(text).toContain('CREATE TABLE "visits"');
+  });
+
+  test("an unknown value is a config error, not a silent refuse", async () => {
+    const root = await offlineProject({ dialect: "postgres", foreignKeyTargets: "ignore" });
+    expect(await migrateCommand(["--dry-run"], root)).toBe(2);
   });
 });
 

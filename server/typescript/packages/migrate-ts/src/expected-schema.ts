@@ -151,13 +151,21 @@ export interface BuildExpectedSchemaOptions {
    * the `efcore` preset every foreign key is already indexed and this adds nothing.
    */
   foreignKeyIndexes?: boolean | undefined;
+  /**
+   * What to do with a foreign key whose target columns are not a unique key of the table it
+   * references. `refuse` (absent = `refuse`) throws {@link FkTargetNotUniqueError}; `warn` reports
+   * the violations and builds the schema anyway, as SQLite always does, for a database whose
+   * unique index on the target is hand-made and not declared in the metadata.
+   * `migrate.foreignKeyTargets` in `.metaobjects/config.json`.
+   */
+  foreignKeyTargets?: "refuse" | "warn" | undefined;
 }
 
 /**
  * The project settings an expected-schema build takes, which every path that builds one
  * (migrate, drift, the offline plan, a baseline) passes through unchanged so they agree.
  */
-export type SchemaBuildSettings = Pick<BuildExpectedSchemaOptions, "conventions" | "skipRedundantChecks" | "foreignKeyIndexes">;
+export type SchemaBuildSettings = Pick<BuildExpectedSchemaOptions, "conventions" | "skipRedundantChecks" | "foreignKeyIndexes" | "foreignKeyTargets">;
 
 /**
  * A view as the caller (codegen-ts `buildProjectionViews`) produces it — structurally
@@ -208,6 +216,12 @@ export interface ExpectedSchemaWithProvenance {
    * a write with enforcement on fails. The violations are then reported, never refused.
    */
   fkTargetsUnenforced?: true;
+  /**
+   * Set when the project's `migrate.foreignKeyTargets` is `warn` and there are violations: they are
+   * reported, never refused, on any dialect. Always set together with `fkTargetsUnenforced`, so
+   * every refusal site that honours that flag honours this one; it only changes what the report says.
+   */
+  fkTargetsAllowed?: true;
   /**
    * The indexes the schema carries because a table has foreign keys — added by the conventions
    * (`efcore`) or by `foreignKeyIndexes` — keyed by the table's qualified name. A generator that
@@ -516,6 +530,9 @@ export function buildExpectedSchemaWithProvenance(
     ...(fkTargetViolations.length > 0 ? { fkTargetViolations } : {}),
     // D1 always enforces foreign keys; plain SQLite only with the pragma on.
     ...(fkTargetViolations.length > 0 && opts?.dialect === DIALECT_SQLITE ? { fkTargetsUnenforced: true as const } : {}),
+    ...(fkTargetViolations.length > 0 && opts?.foreignKeyTargets === "warn"
+      ? { fkTargetsUnenforced: true as const, fkTargetsAllowed: true as const }
+      : {}),
   };
 }
 

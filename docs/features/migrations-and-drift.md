@@ -635,6 +635,28 @@ foreign key nothing leads with, named `<table>_<columns>_idx`) or leave the opti
 otherwise the C# DbContext or Kotlin Exposed tables may declare an index `meta migrate` did not
 create.
 
+## A foreign key onto a non-unique target: `migrate.foreignKeyTargets`
+
+A foreign key must reference columns its target table holds unique: the primary key, a plain
+`identity.secondary` (no `@where`, no `@expr`) or a single `@unique` field. Postgres refuses any other
+foreign key when it is applied, after earlier statements have already run, so `meta migrate` and
+`meta verify --db` stop first and list every offending reference at once.
+
+Some databases hold the unique index by hand, in a form the metadata does not declare. For those,
+`migrate.foreignKeyTargets` turns the refusal into a report:
+
+```json
+{ "schema_version": 1, "migrate": { "foreignKeyTargets": "warn" } }
+```
+
+`"refuse"` is the default. With `"warn"`, each such reference is printed as a warning, naming the
+reference, its target and the fix, and the run goes on and still emits the foreign key. The database
+then decides: Postgres refuses the foreign key at apply time unless a unique index it already holds
+covers the target. Declaring the unique key on the target entity makes the warning go away and keeps
+the model honest, so prefer it when the index is yours to declare. SQLite reports the same references
+whatever this says, because it accepts the table and checks foreign keys only with `PRAGMA
+foreign_keys` on.
+
 ## How CHECK constraints and expression indexes are compared
 
 Postgres rewrites an expression before it stores it (`"k" IN ('x')` becomes `k = 'x'::text`,

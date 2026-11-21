@@ -19,6 +19,8 @@ export interface SchemaBuildOptions {
   skipRedundantChecks: boolean;
   /** `migrate.foreignKeyIndexes`: index every foreign key nothing else indexes. */
   foreignKeyIndexes: boolean;
+  /** `migrate.foreignKeyTargets`: `warn` reports a foreign key onto a non-unique target instead of refusing it. */
+  foreignKeyTargets: "refuse" | "warn";
 }
 
 /**
@@ -28,13 +30,14 @@ export interface SchemaBuildOptions {
  * member (`isUnknownSchemaConventionsError` recognises both).
  */
 export function schemaBuildOptions(
-  collection: Pick<Collection, "schemaConventions" | "skipRedundantChecks" | "foreignKeyIndexes">,
+  collection: Pick<Collection, "schemaConventions" | "skipRedundantChecks" | "foreignKeyIndexes" | "foreignKeyTargets">,
   tsConfig: Pick<MetaobjectsGenConfig, "schemaConventions"> | undefined,
 ): SchemaBuildOptions {
   return {
     conventions: resolveSchemaConventions(tsConfig?.schemaConventions ?? collection.schemaConventions),
     skipRedundantChecks: collection.skipRedundantChecks,
     foreignKeyIndexes: collection.foreignKeyIndexes,
+    foreignKeyTargets: collection.foreignKeyTargets,
   };
 }
 
@@ -45,7 +48,7 @@ export function schemaBuildOptions(
  * refuse the same config with exit 2.
  */
 export function schemaBuildOptionsOrWarn(
-  collection: Pick<Collection, "schemaConventions" | "skipRedundantChecks" | "foreignKeyIndexes">,
+  collection: Pick<Collection, "schemaConventions" | "skipRedundantChecks" | "foreignKeyIndexes" | "foreignKeyTargets">,
   tsConfig: Pick<MetaobjectsGenConfig, "schemaConventions"> | undefined,
   warn: (message: string) => void,
 ): SchemaBuildOptions | undefined {

@@ -118,6 +118,12 @@ const MigrateBlock = z.object({
    *  `meta migrate` and by every generator that maps indexes (Drizzle, Prisma, EF Core,
    *  Exposed); `meta init` writes it on for a new project. */
   foreignKeyIndexes: z.boolean(),
+  /** What `meta migrate` and `meta verify --db` do with a foreign key whose target columns are not
+   *  a unique key of the table they reference. `refuse` (the default) stops the run, naming every
+   *  such reference; `warn` reports them and carries on, for a database whose unique index on the
+   *  target was made by hand and is not declared in the metadata. The database is then the judge:
+   *  Postgres refuses the foreign key at apply time if no unique index backs it. */
+  foreignKeyTargets: z.enum(["refuse", "warn"]),
 // .strict() for the same reason as the top level and the source arms below, and
 // with sharper teeth here: `{ migrate: { scopee: [...], dialect: "postgres" } }`
 // used to parse to `{ dialect: "postgres" }`, so a typo'd `scope` key meant

@@ -165,7 +165,14 @@ public sealed class IdentityStartDialectTests
         Run("postgres", assembly: assembly, outDir: Path.Combine(repo, "Acme.Data", "Generated")).Warnings
             .Where(w => w.Contains("DesignTimeServicesReference")).ToList();
 
-    // The check errs toward warning — a false all-clear is a silent RESTART.
+    /// <summary>The generation error a context whose migrations provably lack the line gets: its message.</summary>
+    private static string MissingLineError(string repo, string? assembly = null) =>
+        Assert.Throws<InvalidOperationException>(() =>
+            Run("postgres", assembly: assembly, outDir: Path.Combine(repo, "Acme.Data", "Generated"))).Message;
+
+    // The check errs toward warning for what it cannot prove — a false all-clear is a silent RESTART —
+    // and toward an error for what it can: a start declared while the migrations project provably lacks
+    // the line is a RESTART waiting for the next `dotnet ef migrations add`.
 
     [Fact]
     public void A_stale_snapshot_copy_in_the_contexts_project_does_not_hide_migrations_elsewhere()
@@ -176,8 +183,7 @@ public sealed class IdentityStartDialectTests
             var stale = Path.Combine(repo, "Acme.Data", "Old");
             Directory.CreateDirectory(stale);
             File.WriteAllText(Path.Combine(stale, "AppDbContextModelSnapshot.cs"), Snapshot("Acme"));
-            var warning = Assert.Single(DesignTimeWarnings(repo));
-            Assert.Contains("Acme.Migrations.csproj", warning);
+            Assert.Contains("Acme.Migrations.csproj", MissingLineError(repo));
         }
         finally { Directory.Delete(repo, recursive: true); }
     }
@@ -211,7 +217,7 @@ public sealed class IdentityStartDialectTests
     public void A_line_in_a_comment_or_an_if_block_is_not_carried(string source)
     {
         var repo = Repo(snapshotIn: "Acme.Migrations", migrationsSource: source);
-        try { Assert.Contains("Acme.Migrations.csproj", Assert.Single(DesignTimeWarnings(repo))); }
+        try { Assert.Contains("Acme.Migrations.csproj", MissingLineError(repo)); }
         finally { Directory.Delete(repo, recursive: true); }
     }
 
@@ -219,7 +225,7 @@ public sealed class IdentityStartDialectTests
     public void A_line_naming_another_assembly_is_not_carried()
     {
         var repo = Repo(snapshotIn: "Acme.Migrations", migrationsSource: Line.Replace(", Acme.Data\"", ", Acme.OldData\"") + "\n");
-        try { Assert.Contains("Acme.Migrations.csproj", Assert.Single(DesignTimeWarnings(repo, assembly: "Acme.Data"))); }
+        try { Assert.Contains("Acme.Migrations.csproj", MissingLineError(repo, assembly: "Acme.Data")); }
         finally { Directory.Delete(repo, recursive: true); }
     }
 
@@ -240,15 +246,33 @@ public sealed class IdentityStartDialectTests
     }
 
     [Fact]
-    public void Migrations_in_another_project_without_the_line_warn_with_the_line_and_the_project()
+    public void Migrations_in_another_project_without_the_line_are_an_error_naming_the_line_and_the_project()
     {
         var repo = Repo(snapshotIn: "Acme.Migrations");
         try
         {
-            var warning = Assert.Single(DesignTimeWarnings(repo));
+            var error = MissingLineError(repo);
+            Assert.StartsWith(DbContextGenerator.ErrDesignTimeReferenceMissing + ":", error);
+            Assert.Contains(Line, error);
+            Assert.Contains("Acme.Migrations.csproj", error);
+            Assert.Contains("RESTART", error);
+        }
+        finally { Directory.Delete(repo, recursive: true); }
+    }
+
+    // The error is for a project that declares a start. A Postgres project with an increment key and no
+    // @sequenceStart has nothing to restart until it adds one, so the missing line stays a warning.
+    [Fact]
+    public void Migrations_in_another_project_without_the_line_warn_when_no_start_is_declared()
+    {
+        var repo = Repo(snapshotIn: "Acme.Migrations");
+        try
+        {
+            var model = Model.Replace(", \"@sequenceStart\": 100", "");
+            var (_, warnings) = Run("postgres", model, outDir: Path.Combine(repo, "Acme.Data", "Generated"));
+            var warning = Assert.Single(warnings.Where(w => w.Contains("DesignTimeServicesReference")));
             Assert.Contains(Line, warning);
             Assert.Contains("Acme.Migrations.csproj", warning);
-            Assert.Contains("RESTART", warning);
         }
         finally { Directory.Delete(repo, recursive: true); }
     }
