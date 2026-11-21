@@ -331,13 +331,15 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             emitPortableSupportFile(pkg, outRoot)
         }
 
-        // Pass 3f: ONE shared `MetaDurationColumnType.kt` per package that has a `field.duration` column.
+        // Pass 3g: ONE shared `MetaIntEnumArrayColumnType.kt` per package that has an int-backed
+        // `field.enum` array column.
         for (pkg in packagesNeedingIntEnumArrayHelper) {
             emitSupportFile(
                 pkg, outRoot, INT_ENUM_ARRAY_SUPPORT_FILE_NAME,
                 intEnumArraySupportFileImports(exposedApi()), intEnumArraySupportBlock(exposedApi()),
             )
         }
+        // Pass 3f: ONE shared `MetaDurationColumnType.kt` per package that has a `field.duration` column.
         for (pkg in packagesNeedingDurationHelper) {
             emitDurationSupportFile(pkg, outRoot)
         }
