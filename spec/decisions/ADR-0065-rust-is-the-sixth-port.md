@@ -33,17 +33,18 @@ five".
    (byte-identical) and the shared metamodel corpus.
 
 2. **Layout.** `server/rust/` is one Cargo workspace with a pinned toolchain
-   (`rust-toolchain.toml`). Three crates, each with code: `metaobjects` (node model, registry,
-   providers, loader, serializer), `metaobjects-codegen` (the run engine and the generators) and
-   `metaobjects-cli` (the `cargo-meta` binary). The workspace carries no empty placeholder crates;
-   a crate joins it with its first code.
+   (`rust-toolchain.toml`). Four crates, each with code: `metaobjects` (node model, registry,
+   providers, loader, serializer), `metaobjects-codegen` (the run engine and the generators),
+   `metaobjects-cli` (the `cargo-meta` binary) and `metaobjects-render` (prompt render, the reply
+   parser and the output-format fragment, over the `mustache-ng` crate). The workspace carries no
+   empty placeholder crates; a crate joins it with its first code.
 
 3. **The command is `cargo meta`.** It is a Cargo subcommand (a `cargo-meta` binary), the way the
    other build-tool-hosted ports spell theirs (`dotnet meta`, `mvn metaobjects:...`). A bare `meta`
    stays the Node schema CLI's.
 
 4. **Publishable crates on the shared version line.** *(Rewritten by Amendment 3; the first
-   version of this decision kept the port unpublished, on its own `0.x` line.)* The three crates
+   version of this decision kept the port unpublished, on its own `0.x` line.)* The four crates
    carry the packaging metadata crates.io needs, and the lane proves they package. Publishing is a
    separate step that waits for the owner's go, and joins the convergent-publishing rule
    (ADR-0035 Amendment 1) as a fifth registry on the version line the other four share.

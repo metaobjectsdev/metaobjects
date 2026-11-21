@@ -14,7 +14,8 @@
     "java": "server/java/render/src/main/java/com/metaobjects/render/extract/FieldKind.java",
     "csharp": "server/csharp/MetaObjects.Render/Extract/FieldKind.cs",
     "typescript": "server/typescript/packages/render/src/extract/types.ts",
-    "python": "server/python/src/metaobjects/render/extract/types.py"
+    "python": "server/python/src/metaobjects/render/extract/types.py",
+    "rust": "server/rust/metaobjects-render/src/extract/types.rs"
   },
   "kotlinReusesJava": true,
   "$kotlinNote": "Kotlin ships no extract engine of its own — metadata-ktx drives the shared Java one, so there is no Kotlin FieldKind to check and adding one would itself be the drift.",

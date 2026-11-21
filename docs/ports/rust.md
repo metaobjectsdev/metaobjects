@@ -5,7 +5,7 @@ It reads a project, validates it, serializes it and generates code from it, and 
 same shared conformance corpora as the other five ports. Its command, `cargo meta`, runs the whole
 codegen loop on a JSON or YAML model: `init`, `gen`, `verify --codegen` and `eject`. Three generators
 ship: `entity`, `client` and `commands`, and a project chooses which of them run in
-`metaobjects.config.json`. The three crates are **ready to publish but not published**: they package and
+`metaobjects.config.json`. The four crates are **ready to publish but not published**: they package and
 build from their packages (a `cargo publish --dry-run` runs in the `rust` lane), and there is no release
 on crates.io yet, so there is nothing to `cargo add` or `cargo install` from a registry. You work from a
 checkout of this repository until the first release.
@@ -16,8 +16,8 @@ decisions behind the port (why Rust, the layout, the conformance rules), read th
 ## What works today
 
 The loader is the `metaobjects` crate, and the workspace at `server/rust/` adds the codegen crate
-(`metaobjects-codegen`, the run engine and generator) and the CLI crate (`metaobjects-cli`, the
-`cargo-meta` binary). What each area does:
+(`metaobjects-codegen`, the run engine and generator), the CLI crate (`metaobjects-cli`, the
+`cargo-meta` binary) and the prompt crate (`metaobjects-render`, render and the reply parser). What each area does:
 
 | Area | What it does |
 |---|---|
@@ -27,6 +27,8 @@ The loader is the `metaobjects` crate, and the workspace at `server/rust/` adds 
 | Registry | The type registry and the built-in providers. It is strict and sealed after bootstrap, with the same `ERR_*` codes as the other ports. |
 | Validation | All 41 validation passes the TypeScript loader runs, in the same order, the business-rules pass among them (operations, permission names and lifecycles, [ADR-0066](../../spec/decisions/ADR-0066-business-rules-operations-and-lifecycles.md)). The ordered list is `PASSES` in `server/rust/metaobjects/src/validate/mod.rs`. |
 | Serializer | The canonical serializer. A tree it loads serializes to the same bytes the other ports write. |
+| Prompt rendering | `metaobjects_render::render` renders a `template.*` body over a JSON payload as every port does: partials expanded ahead of time, each `{{value}}` escaped for the template's format (`text`, `markdown`, `html`, `xml`, `csv`, `spreadsheet`, `json`), derived `has<Field>` and `-last` accessors, and a fail-closed `maxChars` budget. The Mustache engine underneath is the `mustache-ng` crate. |
+| Reply parser | `metaobjects_render::extract::extract` reads a typed answer out of a model's reply (FR-010, FR-011): fences, prose, comments, trailing commas and cut-off values tolerated, every declared field classified (`EXTRACTED`, `DEFAULTED`, `LOST_OPTIONAL`, `LOST_REQUIRED`, `MALFORMED`) and coerced to its kind, under a `STRICT`, `NORMAL` or `LOOSE` tolerance. `metaobjects_render::prompt::render_output_format` writes the output-format fragment that asks for that answer, in the `guide`, `inline` and `exampleOnly` styles. |
 | Frozen tree | The loader freezes the tree when it finishes. A frozen tree memoizes its resolved reads (effective children, attributes and array-ness), so many readers can share one. |
 | Timings | Every load records how long each phase and each validation pass took (`LoadResult::timings`). |
 | Code generation (`cargo meta`) | The run engine, three generators (`entity`, `client`, `commands`), the codegen drift gate and `eject`. See [The command](#the-command-cargo-meta) and [What `gen` writes](#what-gen-writes) below. |
@@ -52,7 +54,7 @@ and the same `git` + `rev` on a `metaobjects` dependency). The candidate log
 | `cargo meta init [--project <dir>]` | Scaffolds `.metaobjects/config.json`, `.metaobjects/.gitignore` (which keeps `.gen-state/.hashes/` committed), a first `metaobjects/meta.app.yaml` and `metaobjects.config.json`, the list of generators to run (see [Choosing generators](#choosing-generators)). It writes only what is missing, and never adds an empty metadata file to a project that already has metadata. |
 | `cargo meta gen [ENTITY...]` | Generates the crates. It skips the whole run when the model, the project config and the generators are unchanged ([ADR-0064](../../spec/decisions/ADR-0064-skip-codegen-when-nothing-changed.md)), writes only files whose bytes changed, removes a generated file nothing emits any more, and refuses to overwrite or delete a generated file that was edited by hand. It prints what it created, updated and removed, and the crates to re-check. |
 | `cargo meta verify [--codegen] [--full]` | The codegen drift gate: renders in memory, compares with disk, writes nothing, and exits 1 on drift, naming each file. Locally it may answer from the stored skip key; `--full`, or a set `CI` variable, always renders. `--codegen` runs that gate alone. A bare `verify` also runs the business-rules gate ([ADR-0066](../../spec/decisions/ADR-0066-business-rules-operations-and-lifecycles.md)) on the loaded model, and prints nothing about it when the model declares no operation and no transition; an error-severity finding (a `rules.permissions.names` of `require`, or `verify.lifecycle.unreachable` of `error`) exits 1. `--db`, `--templates` and `--deps` exit 2 with the reason and where that check lives. |
-| `cargo meta eject <generator>...` | Copies a shipped generator into the project to own. `--undo` takes back copies still identical to the shipped source; `--list` shows what can be ejected and how each owned copy compares. See [Owning a generator](#owning-a-generator). |
+| `cargo meta eject <generator>...` | Copies a shipped generator into the project to own. An existing copy is refused; `--force` replaces it with the reference, and leaves a copy that already matches untouched. `--undo` takes back copies still identical to the shipped source; `--list` shows what can be ejected and how each owned copy compares. See [Owning a generator](#owning-a-generator). |
 
 `gen` and `verify` share `--project <dir>`, `--out <dir>` (default `generated`), `--generators <a,b>`,
 `--strict` and `--timings`. `gen` adds `--force` and `--list`. `cargo meta --help` is the reference.
@@ -280,6 +282,9 @@ outright.
 | `decimal-wire`, `duration-wire` | every vector, against the code the support crate carries |
 | `writer-conformance` | every `core` case of the code writer ([ADR-0063](../../spec/decisions/ADR-0063-generators-own-layout.md)) |
 | `generator-registry-conformance` | the shipped generators are exactly the registry's `rust` entries, with its tier and layer, and the eject contract's census, completeness and depth hold (ADR-0034 Amendment 8) |
+| `render-conformance` | every case, byte-identical, through `metaobjects_render::render` (the Mustache engine underneath is `mustache-ng`) |
+| `extract-conformance` | all 58 cases, through `metaobjects_render::extract::extract` |
+| `output-prompt-conformance` | all 17 cases in all three `@promptStyle` styles, with the extract round trip, through `metaobjects_render::prompt::render_output_format` |
 
 Two gates have no corpus of their own:
 
@@ -296,8 +301,8 @@ Two gates have no corpus of their own:
   a slow machine.
 
 Rust is not yet a column in the [per-corpus table](../CONFORMANCE.md#per-corpus-totals); it joins
-when the port runs the render, persistence and API-contract corpora. The other corpora (render, persistence, API contract) need code the
-port does not have yet.
+when the port runs the persistence and API-contract corpora, which need a service tier the port does
+not have yet. It runs the render, extract and output-format corpora today.
 
 ### Load benchmark
 
@@ -319,7 +324,9 @@ regeneration, peak memory), so a port's speed can be tracked per feature next to
 - **A three-way merge.** A hand-edited generated file is refused by name, as in every port but
   TypeScript; change the model or own the generator instead.
 - **The service tier.** No `ObjectManager`, no persistence drivers and no web adapters.
-- **Templates and prompts.** No render engine, no payload value objects and no output parser.
+- **Prompt codegen.** The render engine and the reply parser exist as a library; no generator yet
+  writes a template's payload type or its response parser from the model, and there is no template
+  gate in `verify`.
 - **Publication.** The crates are publishable and the lane proves they package (`cargo publish
   --dry-run`), but nothing is published: there is no crates.io release yet, and publishing waits for
   the owner's go ([ADR-0065](../../spec/decisions/ADR-0065-rust-is-the-sixth-port.md) Amendment 3).

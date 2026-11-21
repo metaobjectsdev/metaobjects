@@ -1,7 +1,7 @@
 # output-prompt-conformance
 
 Pins the FR-010 output-format prompt fragment (`OutputFormatRenderer`) byte-identically
-across all five ports. Each case directory holds:
+across all six ports. Each case directory holds:
 
 - `spec.json` — a unified field descriptor (the cross-port oracle input).
 - `expected.guide.txt`, `expected.inline.txt`, `expected.exampleOnly.txt` — byte-exact

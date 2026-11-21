@@ -473,13 +473,21 @@ pub fn eject(
     let mut lines = Vec::new();
     for r in &wanted {
         let rel = r.owned_path();
-        let replaced = project_root.join(&rel).exists();
-        write_new(&project_root.join(&rel), r.source)?;
-        lines.push(format!(
-            "ejected {} -> {rel} [{}]",
-            r.name,
-            if replaced { "replaced" } else { "created" }
-        ));
+        let path = project_root.join(&rel);
+        // A forced copy that already matches the reference byte for byte is not rewritten:
+        // an unchanged file keeps its bytes and its timestamp, as in every write path.
+        let outcome = match std::fs::read(&path) {
+            Ok(bytes) if bytes == r.source.as_bytes() => "unchanged",
+            Ok(_) => {
+                write_new(&path, r.source)?;
+                "replaced"
+            }
+            Err(_) => {
+                write_new(&path, r.source)?;
+                "created"
+            }
+        };
+        lines.push(format!("ejected {} -> {rel} [{outcome}]", r.name));
     }
 
     let manifest = project_root.join(OWNED_MANIFEST);

@@ -83,7 +83,9 @@ cases); `naming-conformance` (all of it); `codegen-skip-conformance` (ADR-0064),
 about templates and one about the three-way merge, are named with their reason in its
 runner); `validation-conformance`, every case, through the generated `validate()`;
 `decimal-wire` and `duration-wire`, every vector, against the code the generated support
-crate carries; the `core` cases of `writer-conformance` (ADR-0063); and
+crate carries; `render-conformance`, every case byte-identical, `extract-conformance`, all 58
+cases, and `output-prompt-conformance`, all 17 in all three styles with the round trip, in the
+`metaobjects-render` crate; the `core` cases of `writer-conformance` (ADR-0063); and
 `generator-registry-conformance`, with the eject contract's census, completeness and depth
 (ADR-0034 Amendment 8). It also runs the codegen-compile gate (below) with every shipped
 generator, and a scale gate over twenty copies of the fitness model. The ledgers above may
@@ -91,7 +93,7 @@ only shrink; the corpora without one assert each case outright. A new
 fixture that fails in Rust and is not on the ledger prints a warning and does not fail the
 lane; it becomes a hard failure when ADR-0065 turns the warning off. A regression
 still fails: the ledger's `minPassing` (578) is the number of fixtures known to pass, and the
-run fails when fewer do. The column joins this table when the port runs the render, persistence and API-contract corpora.
+run fails when fewer do. The column joins this table when the port runs the persistence and API-contract corpora.
 
 A ✓ means the port runs the corpus green; an explicit `n / m` is used where a port
 carries a ledgered divergence. The ledgered YAML fixtures are documented divergences (see the
@@ -416,7 +418,7 @@ Per-port runners + commands:
 | Kotlin | `cd server/java && mvn -pl codegen-kotlin test` (snapshot suite) | `mvn -f server/java/integration-tests-kotlin/pom.xml test` (needs Docker) | `mvn -f server/java/integration-tests-kotlin/pom.xml test -Dtest=ApiContractConformanceTest` (needs Docker) |
 | C# | `dotnet test` (per project) | `scripts/integration-test.sh csharp` (needs Docker) | `dotnet test server/csharp/MetaObjects.IntegrationTests/MetaObjects.IntegrationTests.csproj --filter "FullyQualifiedName~ApiContractConformanceTest"` (needs Docker) |
 | Python | `pytest` (per package) | `scripts/integration-test.sh python` (needs Docker) | `cd server/python && uv run --extra integration pytest tests/integration/test_api_contract.py` (needs Docker) |
-| Rust | `cd server/rust && cargo test` (registry, metamodel, YAML, source-resolution, naming, skip, validation, wire-vector, writer and generator-registry corpora; the codegen-compile and scale gates, which run `cargo check` on generated crates and drive the generated client over HTTP against a local stub) | — | — |
+| Rust | `cd server/rust && cargo test` (registry, metamodel, YAML, source-resolution, naming, skip, validation, wire-vector, writer, generator-registry, render, extract and output-prompt corpora; the codegen-compile and scale gates, which run `cargo check` on generated crates and drive the generated client over HTTP against a local stub) | — | — |
 
 The `persistence-conformance` corpus is intentionally **on-demand** — none of the
 unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.

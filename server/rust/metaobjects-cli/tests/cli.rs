@@ -617,6 +617,25 @@ fn eject_copies_the_generator_never_overwrites_and_undo_takes_back_only_identica
             .contains("pub struct EntityGenerator")
     );
 
+    // --force over a copy that already matches the reference compares and writes nothing:
+    // the file keeps an old modified time it would lose to a rewrite.
+    let copy = p.0.join("codegen/generators/entity.rs");
+    let old = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000);
+    std::fs::File::options()
+        .write(true)
+        .open(&copy)
+        .and_then(|f| f.set_modified(old))
+        .expect("set mtime");
+    let out = ok(&p.run(&["meta", "eject", "entity", "--force"]));
+    assert!(out.contains("[unchanged]"), "{out}");
+    assert_eq!(
+        std::fs::metadata(&copy)
+            .and_then(|m| m.modified())
+            .expect("mtime"),
+        old,
+        "an identical copy is not rewritten"
+    );
+
     // Undo: a copy that differs is refused by name; an identical one is removed.
     p.write("codegen/generators/entity.rs", "// edited\n");
     let r = p.run(&["meta", "eject", "--undo", "entity"]);

@@ -1,0 +1,24 @@
+[package]
+name = "metaobjects-render"
+description = "MetaObjects prompt rendering for Rust: deterministic, format-escaped Mustache render over a typed payload."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+readme = "README.md"
+keywords = ["metadata", "prompt", "mustache", "template", "llm"]
+categories = ["template-engine", "text-processing"]
+
+[dependencies]
+# The maintained fork of the `mustache` crate (MIT/Apache-2.0). Its library name is
+# still `mustache`, so the code says `use mustache::`.
+mustache-ng = "0.10.0"
+serde_json.workspace = true
+serde.workspace = true
+indexmap.workspace = true
+
+[lints]
+workspace = true
