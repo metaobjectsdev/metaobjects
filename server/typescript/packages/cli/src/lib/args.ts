@@ -238,6 +238,40 @@ export function parseExportArgs(argv: string[]): ExportFlags {
 }
 
 // ---------------------------------------------------------------------------
+// schema flags (1.3.0 T3)
+// ---------------------------------------------------------------------------
+
+export interface SchemaFlags {
+  /** postgres | sqlite | d1; undefined takes `migrate.dialect` from `.metaobjects/config.json`. */
+  dialect: string | undefined;
+  /** `ddl` (the default) or `json`, the neutral document in the snapshot format. */
+  as: string;
+  out: string | undefined;
+}
+
+/** The flag table `parseSchemaArgs` parses. Exported so the help text can be gated against it. */
+export const SCHEMA_OPTIONS = {
+  dialect: { type: "string" },
+  as: { type: "string", default: "ddl" },
+  out: { type: "string" },
+} as const;
+
+export const SCHEMA_OUTPUTS = ["ddl", "json"] as const;
+
+export function parseSchemaArgs(argv: string[]): SchemaFlags {
+  const { values } = parseCommandArgs("schema", {
+    args: argv,
+    options: SCHEMA_OPTIONS,
+    strict: true,
+    allowPositionals: false,
+  });
+  if (!(SCHEMA_OUTPUTS as readonly string[]).includes(values.as)) {
+    throw new Error(`--as takes ${SCHEMA_OUTPUTS.join(" or ")}, not '${values.as}'`);
+  }
+  return { dialect: values.dialect, as: values.as, out: values.out };
+}
+
+// ---------------------------------------------------------------------------
 // fmt flags (#304)
 // ---------------------------------------------------------------------------
 

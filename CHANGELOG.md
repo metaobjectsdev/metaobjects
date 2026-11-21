@@ -10,6 +10,13 @@ here.**
 
 ## [Unreleased]
 
+- **cli: `meta schema` prints the expected schema, read-only.** `meta schema --dialect
+  postgres|sqlite|d1` prints the `CREATE` statements `meta migrate` would write for an empty
+  database, views included; `--as json` prints the neutral JSON document instead, the format
+  `meta migrate` commits as its snapshot, now described in `docs/features/schema-snapshot-format.md`.
+  It builds the schema the way `meta migrate` does (conventions, `migrate.scope`, the dependency
+  exclusion) and reads no database and no snapshot, so a native migration tool can start from it.
+  The dialect defaults to `migrate.dialect`, then to the `dialect` in `metaobjects.config.ts`.
 - **C#: an unchanged file is never rewritten.** `dotnet meta gen` already left identical output alone
   when the project keeps a hash manifest. It now does the same on the path with no manifest (output
   written outside the project, or a program that runs the generators with no state directory), which

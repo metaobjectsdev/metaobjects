@@ -49,6 +49,7 @@ COMMANDS:
   verify                Drift gate — subverbs: --templates / --db / --codegen / --deps (bare = --codegen --templates)
   upgrade               Rewrite retired metadata vocabulary (previews; --apply writes)
   prompt-snapshot       Snapshot rendered template.* output; --check gates drift
+  schema                Print the expected schema: DDL for a dialect, or --as json for the neutral document
   migrate               Diff metadata vs live DB; emit migration SQL files
   --version, -v, -V     Print version
   --help, -h            Print this help
@@ -470,6 +471,30 @@ an identity.reference whose @fields names a field the object does not have
 than once in one object's children list. Both load with no error. Warnings only —
 it can never fail the build. Opt out with --no-field-lint or META_NO_FIELD_LINT=1.
 `,
+  schema: `meta schema — print the schema the metadata expects, changing nothing
+
+USAGE:
+  meta schema [flags]
+
+Builds the expected schema exactly as 'meta migrate' does (the same conventions,
+migrate.scope and dependency exclusions, and the views projections and reports
+declare) and prints it. It reads no database and no snapshot, and writes nothing
+unless --out is given. The expected schema is the contract: a native migration
+tool (EF Core, Flyway, Liquibase, Alembic, sqlx) can take this output as its
+starting point, and 'meta migrate' is one way to apply it, not the only one.
+
+FLAGS:
+  --dialect <name>      postgres | sqlite | d1 (default: migrate.dialect in
+                        .metaobjects/config.json, else the dialect in
+                        metaobjects.config.ts). The DDL and the column types in the
+                        JSON document are both dialect-specific.
+  --as <ddl|json>       ddl (default) prints CREATE statements; json prints the
+                        neutral document, the snapshot format 'meta migrate'
+                        commits (formatVersion 4,
+                        docs/features/schema-snapshot-format.md)
+  --out <file>          Write to a file instead of stdout
+  --help, -h            Print this help
+`,
   export: `meta export — flatten loaded metadata to one canonical JSON artifact
 
 USAGE:
@@ -801,6 +826,10 @@ export async function run(argv: string[]): Promise<number> {
     case "prompt-snapshot": {
       const { promptSnapshotCommand } = await import("./commands/prompt-snapshot.js");
       return promptSnapshotCommand(rest, cwd);
+    }
+    case "schema": {
+      const { schemaCommand } = await import("./commands/schema.js");
+      return schemaCommand(rest, cwd);
     }
     case "migrate": {
       const { migrateCommand } = await import("./commands/migrate.js");
