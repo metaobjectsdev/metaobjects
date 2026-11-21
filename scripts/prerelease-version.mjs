@@ -122,6 +122,17 @@ export function candidateLogRow({ candidate, commit, dirty, date, registries }) 
   return `| ${candidate} | \`${commit.slice(0, 12)}${dirty ? "+dirty" : ""}\` | ${day} | ${registries.join(", ")} |\n`;
 }
 
+/**
+ * The registries a run names in its log row. `published` finished, `started` began a publish call,
+ * `only` is the ordered selection the run was asked for. One that started and did not finish was
+ * cut short, and its candidate number is burned there; one never started is reported as stopped before.
+ */
+export function candidateRegistries({ published, started, only }) {
+  const cutShort = started.filter((p) => !published.includes(p)).map((p) => `${p} (cut short)`);
+  const stopped = only.filter((p) => !started.includes(p));
+  return [...published, ...cutShort, ...(stopped.length ? [`stopped before ${stopped.join(", ")}`] : [])];
+}
+
 /** Append `row` to the log at `path`, creating it with its header when it does not exist. */
 export function appendCandidateLog(path, row) {
   if (!existsSync(path)) {

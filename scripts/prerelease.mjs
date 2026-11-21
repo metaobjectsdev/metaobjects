@@ -65,7 +65,7 @@ import { join } from "node:path";
 import { mavenVersion } from "./maven-coordinate.mjs";
 import { TIER_ORDER } from "./publish-set.mjs";
 import {
-  appendCandidateLog, candidateLogRow, changelogVersions, collectPages, decideBase, installRestoreHandlers, releasedVersion, run as runStep,
+  appendCandidateLog, candidateLogRow, candidateRegistries, changelogVersions, collectPages, decideBase, installRestoreHandlers, releasedVersion, run as runStep,
 } from "./prerelease-version.mjs";
 
 const argv = process.argv.slice(2);
@@ -315,12 +315,10 @@ const restore = () => {
 let recorded = false;
 const recordCandidate = () => {
   if (recorded || DRY || !started.length) return; recorded = true;
-  const cutShort = started.filter((p) => !published.includes(p)).map((p) => `${p} (cut short)`);
-  const stopped = ONLY.filter((p) => !started.includes(p));
   try {
     appendCandidateLog(join(ROOT, CANDIDATE_LOG), candidateLogRow({
       candidate: CANON, commit: sh("git rev-parse HEAD").trim(), dirty: builtFromDirtyTree, date: new Date(),
-      registries: [...published, ...cutShort, ...(stopped.length ? [`stopped before ${stopped.join(", ")}`] : [])],
+      registries: candidateRegistries({ published, started, only: ONLY }),
     }));
     console.log(`recorded ${CANON} in ${CANDIDATE_LOG} — commit that line`);
   } catch (e) { console.error(`could not record ${CANON} in ${CANDIDATE_LOG}: ${e.message}`); }

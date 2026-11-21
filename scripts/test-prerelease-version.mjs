@@ -19,7 +19,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
-  CANDIDATE_LOG_HEADER, appendCandidateLog, candidateLogRow, changelogVersions, collectPages, decideBase,
+  CANDIDATE_LOG_HEADER, appendCandidateLog, candidateLogRow, candidateRegistries, changelogVersions, collectPages, decideBase,
   latestReleaseTag, releasedVersion, run,
 } from "./prerelease-version.mjs";
 
@@ -191,6 +191,21 @@ await test("the candidate log is created with its header once and then only appe
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+await test("a registry cut short mid-publish is named in the row, and later ones as stopped before", () => {
+  // npm began and never finished (package k of 14 failed): the number is burned there.
+  assert.deepEqual(candidateRegistries({ published: [], started: ["npm"], only: ["npm", "python", "csharp", "java"] }),
+    ["npm (cut short)", "stopped before python, csharp, java"]);
+  // npm done, python cut short.
+  assert.deepEqual(candidateRegistries({ published: ["npm"], started: ["npm", "python"], only: ["npm", "python", "java"] }),
+    ["npm", "python (cut short)", "stopped before java"]);
+  // A clean full run has no qualifier.
+  assert.deepEqual(candidateRegistries({ published: ["npm", "java"], started: ["npm", "java"], only: ["npm", "java"] }), ["npm", "java"]);
+  // A cut-short npm still yields a row a Rust consumer can pin.
+  const sha = "0123456789abcdef0123456789abcdef01234567";
+  const registries = candidateRegistries({ published: [], started: ["npm"], only: ["npm"] });
+  assert.match(candidateLogRow({ candidate: "1.3.0-rc.1", commit: sha, dirty: false, date: new Date(0), registries }), /npm \(cut short\) \|\n$/);
 });
 
 if (fails) { console.error(`${fails} failure(s)`); process.exit(1); }
