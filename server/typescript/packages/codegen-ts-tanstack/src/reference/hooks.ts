@@ -25,7 +25,6 @@ import {
   perEntity,
   type Generator,
   type GeneratorFactory,
-  formatTs,
   entityOutputPath,
   servesClientHooks,
   withClientDirective,
@@ -95,18 +94,18 @@ export const tanstackQuery = function tanstackQuery(opts?: TanstackQueryOpts): G
       const metaFile = {
         path: entityOutputPath(ctx.renderContext.outputLayout, pkg,
           entityMetaFileName(entity.name)),
-        content: await formatTs(renderEntityMetaFile(
+        content: renderEntityMetaFile(
           entity,
           ctx.renderContext.apiPrefix,
           namesConstArg(metaNames),
-        )),
+        ),
       };
       return [metaFile, {
         path: entityOutputPath(ctx.renderContext.outputLayout, pkg, `${entity.name}.hooks.ts`),
-        // Outside formatTs deliberately: the directive must stay the module's first
-        // token, and a formatter is entitled to move a leading string expression.
+        // The directive must stay the module's first
+        // token; an adopter's formatter keeps a leading string expression where it is.
         content: withClientDirective(
-          await formatTs(renderHooksFile(entity, ctx.renderContext)),
+          renderHooksFile(entity, ctx.renderContext),
           ctx.renderContext.clientDirective,
         ),
       }];

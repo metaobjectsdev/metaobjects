@@ -7,28 +7,12 @@ import type { z } from "zod";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 type Db = PgDatabase<PgQueryResultHKT, Record<string, unknown>>;
 
-import {
-  type Program,
-  ProgramInsertSchema,
-  type ProgramPatch,
-  programs,
-  ProgramUpdateSchema,
-} from "./Program";
-export async function findProgramById(
-  db: Db,
-  id: number,
-): Promise<Program | null> {
-  const [program] = await db
-    .select()
-    .from(programs)
-    .where(eq(programs.id, id))
-    .limit(1);
+import { type Program, ProgramInsertSchema, type ProgramPatch, programs, ProgramUpdateSchema } from "./Program";
+export async function findProgramById(db: Db, id: number): Promise<Program | null> {
+  const [program] = await db.select().from(programs).where(eq(programs.id, id)).limit(1);
   return program ?? null;
 }
-export async function listPrograms(
-  db: Db,
-  opts?: { limit?: number; offset?: number },
-): Promise<Program[]> {
+export async function listPrograms(db: Db, opts?: { limit?: number; offset?: number }): Promise<Program[]> {
   let q = db.select().from(programs).$dynamic();
   if (opts?.limit !== undefined) {
     q = q.limit(opts.limit);
@@ -38,38 +22,24 @@ export async function listPrograms(
   }
   return q;
 }
-export async function createProgram(
-  db: Db,
-  data: z.input<typeof ProgramInsertSchema>,
-): Promise<Program> {
+export async function createProgram(db: Db, data: z.input<typeof ProgramInsertSchema>): Promise<Program> {
   const validated = ProgramInsertSchema.parse(data);
   const [program] = await db.insert(programs).values(validated).returning();
   return program!;
 }
-export async function updateProgram(
-  db: Db,
-  id: number,
-  patch: ProgramPatch,
-): Promise<Program | null> {
+export async function updateProgram(db: Db, id: number, patch: ProgramPatch): Promise<Program | null> {
   const validated = ProgramUpdateSchema.parse(patch);
   // PATCH-5: an empty patch is a no-op — return the current row rather than let
   // Drizzle throw on an empty SET clause.
   if (Object.keys(validated).length === 0) {
     return findProgramById(db, id);
   }
-  const [program] = await db
-    .update(programs)
-    .set(validated)
-    .where(eq(programs.id, id))
-    .returning();
+  const [program] = await db.update(programs).set(validated).where(eq(programs.id, id)).returning();
   return program ?? null;
 }
 export async function deleteProgramById(db: Db, id: number): Promise<boolean> {
   // Use .returning() unconditionally — supported on SQLite ≥3.35 (covers D1, libsql/Turso)
   // and Postgres. Result is an array of deleted rows; presence implies success.
-  const deleted = await db
-    .delete(programs)
-    .where(eq(programs.id, id))
-    .returning();
+  const deleted = await db.delete(programs).where(eq(programs.id, id)).returning();
   return deleted.length > 0;
 }

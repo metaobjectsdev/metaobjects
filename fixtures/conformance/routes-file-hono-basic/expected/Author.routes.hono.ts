@@ -30,11 +30,7 @@ import type { Hono } from "hono";
  * mount. Hand-write those verbs and narrow this file with
  * routesFileHono({ expose: ["list", "get"] }) rather than mounting them open.
  */
-// biome-ignore lint/suspicious/noExplicitAny: consumer-defined Hono bindings/variables
-export function registerAuthorRoutes(
-  app: Hono<any, any, any>,
-  deps: { db: unknown },
-): void {
+export function registerAuthorRoutes(app: Hono<any, any, any>, deps: { db: unknown }): void {
   mountCrudRoutes({
     app,
     path: Author.$path,

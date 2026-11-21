@@ -5,34 +5,14 @@ import { eq } from "drizzle-orm";
 import type { z } from "zod";
 
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
-type Db = BaseSQLiteDatabase<
-  "sync" | "async",
-  unknown,
-  Record<string, unknown>
->;
+type Db = BaseSQLiteDatabase<"sync" | "async", unknown, Record<string, unknown>>;
 
-import {
-  type Customer,
-  CustomerInsertSchema,
-  type CustomerPatch,
-  customers,
-  CustomerUpdateSchema,
-} from "./Customer";
-export async function findCustomerById(
-  db: Db,
-  id: number,
-): Promise<Customer | null> {
-  const [customer] = await db
-    .select()
-    .from(customers)
-    .where(eq(customers.id, id))
-    .limit(1);
+import { type Customer, CustomerInsertSchema, type CustomerPatch, customers, CustomerUpdateSchema } from "./Customer";
+export async function findCustomerById(db: Db, id: number): Promise<Customer | null> {
+  const [customer] = await db.select().from(customers).where(eq(customers.id, id)).limit(1);
   return customer ?? null;
 }
-export async function listCustomers(
-  db: Db,
-  opts?: { limit?: number; offset?: number },
-): Promise<Customer[]> {
+export async function listCustomers(db: Db, opts?: { limit?: number; offset?: number }): Promise<Customer[]> {
   let q = db.select().from(customers).$dynamic();
   if (opts?.limit !== undefined) {
     q = q.limit(opts.limit);
@@ -42,38 +22,24 @@ export async function listCustomers(
   }
   return q;
 }
-export async function createCustomer(
-  db: Db,
-  data: z.input<typeof CustomerInsertSchema>,
-): Promise<Customer> {
+export async function createCustomer(db: Db, data: z.input<typeof CustomerInsertSchema>): Promise<Customer> {
   const validated = CustomerInsertSchema.parse(data);
   const [customer] = await db.insert(customers).values(validated).returning();
   return customer!;
 }
-export async function updateCustomer(
-  db: Db,
-  id: number,
-  patch: CustomerPatch,
-): Promise<Customer | null> {
+export async function updateCustomer(db: Db, id: number, patch: CustomerPatch): Promise<Customer | null> {
   const validated = CustomerUpdateSchema.parse(patch);
   // PATCH-5: an empty patch is a no-op — return the current row rather than let
   // Drizzle throw on an empty SET clause.
   if (Object.keys(validated).length === 0) {
     return findCustomerById(db, id);
   }
-  const [customer] = await db
-    .update(customers)
-    .set(validated)
-    .where(eq(customers.id, id))
-    .returning();
+  const [customer] = await db.update(customers).set(validated).where(eq(customers.id, id)).returning();
   return customer ?? null;
 }
 export async function deleteCustomerById(db: Db, id: number): Promise<boolean> {
   // Use .returning() unconditionally — supported on SQLite ≥3.35 (covers D1, libsql/Turso)
   // and Postgres. Result is an array of deleted rows; presence implies success.
-  const deleted = await db
-    .delete(customers)
-    .where(eq(customers.id, id))
-    .returning();
+  const deleted = await db.delete(customers).where(eq(customers.id, id)).returning();
   return deleted.length > 0;
 }

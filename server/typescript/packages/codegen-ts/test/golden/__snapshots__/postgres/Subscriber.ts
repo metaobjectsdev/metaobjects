@@ -2,26 +2,16 @@
 // Source metadata: Subscriber (Subscriber)
 // Extend in your own module (e.g. Subscriber.extra.ts) — nothing imports it for you.
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
-import {
-  bigint,
-  boolean,
-  pgTable,
-  timestamp,
-  varchar,
-} from "drizzle-orm/pg-core";
+import { bigint, boolean, pgTable, timestamp, varchar } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
 export const subscribers = pgTable("subscribers", {
-  id: bigint("id", { mode: "number" })
-    .primaryKey()
-    .generatedByDefaultAsIdentity(),
+  id: bigint("id", { mode: "number" }).primaryKey().generatedByDefaultAsIdentity(),
   email: varchar("email", { length: 255 }).notNull().unique(),
   firstName: varchar("first_name", { length: 100 }).notNull(),
   lastName: varchar("last_name", { length: 100 }),
   subscribed: boolean("subscribed").notNull().default(true),
-  createdAt: timestamp("created_at", { mode: "string", withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("created_at", { mode: "string", withTimezone: true }).notNull().defaultNow(),
 });
 export type Subscriber = InferSelectModel<typeof subscribers>;
 export type SubscriberInsert = InferInsertModel<typeof subscribers>;
@@ -33,10 +23,8 @@ function utcIsoTimestamp(v: string): string {
   if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(v)) {
     return v;
   }
-  const m =
-    /^(\d{4}-\d{2}-\d{2})(?:[Tt ](\d{2}:\d{2})(?::(\d{2})(?:\.(\d+))?)?(?:([Zz])|([+-]\d{2}):?(\d{2})?)?)?$/.exec(
-      v,
-    );
+  const m = /^(\d{4}-\d{2}-\d{2})(?:[Tt ](\d{2}:\d{2})(?::(\d{2})(?:\.(\d+))?)?(?:([Zz])|([+-]\d{2}):?(\d{2})?)?)?$/
+    .exec(v);
   if (m === null) {
     return v;
   }
@@ -45,9 +33,7 @@ function utcIsoTimestamp(v: string): string {
       m[6] === undefined ? "Z" : `${m[6]}:${m[7] ?? "00"}`
     }`,
   );
-  return Number.isNaN(t)
-    ? v
-    : new Date(t).toISOString().replace(/\.?0+Z$/, "Z");
+  return Number.isNaN(t) ? v : new Date(t).toISOString().replace(/\.?0+Z$/, "Z");
 }
 
 export const SubscriberInsertSchema = z.object({
@@ -55,14 +41,10 @@ export const SubscriberInsertSchema = z.object({
   firstName: z.string().min(1).max(100),
   lastName: z.string().max(100).optional(),
   subscribed: z.boolean().optional(),
-  createdAt: z
-    .string()
-    .regex(
-      /^(?:\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2[0-8]))|(?:\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/,
-      "must be an ISO 8601 timestamp (YYYY-MM-DD[THH:MM[:SS[.fff]]][Z|±HH:MM])",
-    )
-    .transform(utcIsoTimestamp)
-    .optional(),
+  createdAt: z.string().regex(
+    /^(?:\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2[0-8]))|(?:\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/,
+    "must be an ISO 8601 timestamp (YYYY-MM-DD[THH:MM[:SS[.fff]]][Z|±HH:MM])",
+  ).transform(utcIsoTimestamp).optional(),
 });
 
 export const SubscriberUpdateSchema = z.object({
@@ -70,14 +52,10 @@ export const SubscriberUpdateSchema = z.object({
   firstName: z.string().min(1).max(100).optional(),
   lastName: z.string().max(100).optional().nullable(),
   subscribed: z.boolean().optional(),
-  createdAt: z
-    .string()
-    .regex(
-      /^(?:\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2[0-8]))|(?:\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/,
-      "must be an ISO 8601 timestamp (YYYY-MM-DD[THH:MM[:SS[.fff]]][Z|±HH:MM])",
-    )
-    .transform(utcIsoTimestamp)
-    .optional(),
+  createdAt: z.string().regex(
+    /^(?:\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2[0-8]))|(?:\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/,
+    "must be an ISO 8601 timestamp (YYYY-MM-DD[THH:MM[:SS[.fff]]][Z|±HH:MM])",
+  ).transform(utcIsoTimestamp).optional(),
 });
 
 /** Typed create shape for Subscriber: the insert schema's INPUT (pre-transform) type. A
@@ -120,10 +98,7 @@ export const Subscriber = {
     label: "Email",
     view: "text",
     htmlType: "text",
-    rules: {
-      required: "Email is required",
-      maxLength: { value: 255, message: "Must be 255 characters or fewer" },
-    },
+    rules: { required: "Email is required", maxLength: { value: 255, message: "Must be 255 characters or fewer" } },
   },
   firstName: {
     name: "firstName",
@@ -140,9 +115,7 @@ export const Subscriber = {
     label: "Last Name",
     view: "text",
     htmlType: "text",
-    rules: {
-      maxLength: { value: 100, message: "Must be 100 characters or fewer" },
-    },
+    rules: { maxLength: { value: 100, message: "Must be 100 characters or fewer" } },
   },
   subscribed: {
     name: "subscribed",

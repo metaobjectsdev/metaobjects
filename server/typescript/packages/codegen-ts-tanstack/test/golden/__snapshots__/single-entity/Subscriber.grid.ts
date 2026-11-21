@@ -5,21 +5,12 @@ import { Subscriber } from "./Subscriber.meta";
 import { buildFilterQs } from "@metaobjectsdev/runtime-web";
 import { useEntityPathFetcher } from "@metaobjectsdev/tanstack";
 import { useQuery } from "@tanstack/react-query";
-import type {
-  ColumnFiltersState,
-  PaginationState,
-  SortingState,
-} from "@tanstack/react-table";
+import type { ColumnFiltersState, PaginationState, SortingState } from "@tanstack/react-table";
 import { useMemo, useState } from "react";
 
 export function useSubscriberDefaultGrid() {
-  const [sorting, setSorting] = useState<SortingState>([
-    { id: "createdAt", desc: true },
-  ]);
-  const [pagination, setPagination] = useState<PaginationState>({
-    pageIndex: 0,
-    pageSize: 25,
-  });
+  const [sorting, setSorting] = useState<SortingState>([{ id: "createdAt", desc: true }]);
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 25 });
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [search, setSearch] = useState<string>("");
 
@@ -31,9 +22,7 @@ export function useSubscriberDefaultGrid() {
       filterObj[f.id] = f.value as unknown;
     }
     const sortEntry = sorting[0];
-    const sort = sortEntry
-      ? `${sortEntry.id}:${sortEntry.desc ? "desc" : "asc"}`
-      : undefined;
+    const sort = sortEntry ? `${sortEntry.id}:${sortEntry.desc ? "desc" : "asc"}` : undefined;
     return buildFilterQs({
       ...filterObj,
       ...(sort !== undefined ? { sort } : {}),
@@ -46,10 +35,7 @@ export function useSubscriberDefaultGrid() {
 
   const query = useQuery<{ rows: SubscriberRow[]; total: number }>({
     queryKey: ["subscriber", "grid", "default", qs],
-    queryFn: () =>
-      fetcher<{ rows: SubscriberRow[]; total: number }>(
-        `${Subscriber.$path}?${qs}`,
-      ),
+    queryFn: () => fetcher<{ rows: SubscriberRow[]; total: number }>(`${Subscriber.$path}?${qs}`),
   });
 
   return {

@@ -2,7 +2,6 @@ import type { MetaObject } from "@metaobjectsdev/metadata";
 import { perEntity, type EmittedFile, type GenContext, type Generator, type GeneratorFactory } from "../generator.js";
 import { renderEntityFile } from "../templates/entity-file.js";
 import { renderSharedEnumsFile, SHARED_ENUMS_BASENAME } from "../templates/enums-file.js";
-import { formatTs } from "../format.js";
 import { DEFAULT_OUTPUT_LAYOUT, entityOutputPath } from "../import-path.js";
 import { isAbstract } from "../instance-artifacts.js";
 import { effectivePackage } from "../docs-paths.js";
@@ -45,7 +44,7 @@ export const entityFile = function entityFile(opts?: EntityFileOpts): Generator 
     claimModuleNames(ctx, entity);
     return {
       path: entityOutputPath(ctx.config.outputLayout ?? DEFAULT_OUTPUT_LAYOUT, effectivePackage(entity), `${entity.name}.ts`),
-      content: await formatTs(renderEntityFile(entity, ctx.renderContext, { allowlists })),
+      content: renderEntityFile(entity, ctx.renderContext, { allowlists }),
     };
   });
 
@@ -67,7 +66,7 @@ export const entityFile = function entityFile(opts?: EntityFileOpts): Generator 
       if (sharedEnums !== null) {
         files.push({
           path: `${SHARED_ENUMS_BASENAME}.ts`,
-          content: await formatTs(sharedEnums),
+          content: sharedEnums,
         });
       }
       return files;

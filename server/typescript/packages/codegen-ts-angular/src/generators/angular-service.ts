@@ -3,7 +3,6 @@ import {
   perEntity,
   type Generator,
   type GeneratorFactory,
-  formatTs,
   entityOutputPath,
   servesClientTier,
   effectivePackage,
@@ -45,7 +44,7 @@ export const angularServiceFile = function angularServiceFile(
       }
       return {
         path: entityOutputPath(ctx.renderContext.outputLayout, effectivePackage(entity), `${entity.name}.service.ts`),
-        content: await formatTs(renderServiceFile(entity, ctx.renderContext)),
+        content: renderServiceFile(entity, ctx.renderContext),
       };
     }),
   };

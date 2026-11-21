@@ -14,21 +14,11 @@ import {
   subscribers,
   SubscriberUpdateSchema,
 } from "./Subscriber";
-export async function findSubscriberById(
-  db: Db,
-  id: number,
-): Promise<Subscriber | null> {
-  const [subscriber] = await db
-    .select()
-    .from(subscribers)
-    .where(eq(subscribers.id, id))
-    .limit(1);
+export async function findSubscriberById(db: Db, id: number): Promise<Subscriber | null> {
+  const [subscriber] = await db.select().from(subscribers).where(eq(subscribers.id, id)).limit(1);
   return subscriber ?? null;
 }
-export async function listSubscribers(
-  db: Db,
-  opts?: { limit?: number; offset?: number },
-): Promise<Subscriber[]> {
+export async function listSubscribers(db: Db, opts?: { limit?: number; offset?: number }): Promise<Subscriber[]> {
   let q = db.select().from(subscribers).$dynamic();
   if (opts?.limit !== undefined) {
     q = q.limit(opts.limit);
@@ -38,44 +28,24 @@ export async function listSubscribers(
   }
   return q;
 }
-export async function createSubscriber(
-  db: Db,
-  data: z.input<typeof SubscriberInsertSchema>,
-): Promise<Subscriber> {
+export async function createSubscriber(db: Db, data: z.input<typeof SubscriberInsertSchema>): Promise<Subscriber> {
   const validated = SubscriberInsertSchema.parse(data);
-  const [subscriber] = await db
-    .insert(subscribers)
-    .values(validated)
-    .returning();
+  const [subscriber] = await db.insert(subscribers).values(validated).returning();
   return subscriber!;
 }
-export async function updateSubscriber(
-  db: Db,
-  id: number,
-  patch: SubscriberPatch,
-): Promise<Subscriber | null> {
+export async function updateSubscriber(db: Db, id: number, patch: SubscriberPatch): Promise<Subscriber | null> {
   const validated = SubscriberUpdateSchema.parse(patch);
   // PATCH-5: an empty patch is a no-op — return the current row rather than let
   // Drizzle throw on an empty SET clause.
   if (Object.keys(validated).length === 0) {
     return findSubscriberById(db, id);
   }
-  const [subscriber] = await db
-    .update(subscribers)
-    .set(validated)
-    .where(eq(subscribers.id, id))
-    .returning();
+  const [subscriber] = await db.update(subscribers).set(validated).where(eq(subscribers.id, id)).returning();
   return subscriber ?? null;
 }
-export async function deleteSubscriberById(
-  db: Db,
-  id: number,
-): Promise<boolean> {
+export async function deleteSubscriberById(db: Db, id: number): Promise<boolean> {
   // Use .returning() unconditionally — supported on SQLite ≥3.35 (covers D1, libsql/Turso)
   // and Postgres. Result is an array of deleted rows; presence implies success.
-  const deleted = await db
-    .delete(subscribers)
-    .where(eq(subscribers.id, id))
-    .returning();
+  const deleted = await db.delete(subscribers).where(eq(subscribers.id, id)).returning();
   return deleted.length > 0;
 }

@@ -145,6 +145,16 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   integer.
 - **C# and Java: a names class no longer extends its base's** when that would make a base constant
   that is not a column of its own table reachable through it. It is emitted complete instead.
+- **TypeScript generation runs no formatter.** `meta gen` used to pass every generated `.ts` file
+  through Biome after the template had laid it out; it no longer does, so `@metaobjectsdev/codegen-ts`
+  no longer depends on `@biomejs/js-api` or `@biomejs/wasm-nodejs`. Each file keeps the layout its
+  generator writes (the ts-poet printer's 120 columns, where a template used it), so the **first
+  `meta gen` rewrites most generated files once, in layout only**; a hand edit in a generated
+  file meets the three-way merge against a base with the new layout. The Hono routes no longer
+  carry a `// biome-ignore` line above `registerAllRoutes` and each `mount...Routes` function; a
+  project that lints generated code with Biome adds its own ignore. `formatTs` is still exported from
+  `@metaobjectsdev/codegen-ts` and now returns its input unchanged, so a generator ejected in 1.2
+  keeps loading and running. Run your formatter over the generated tree if you want your layout.
 - **`metamodelVersion` is `1.3`.** Upgrade every port together.
 
 ### Security
@@ -1710,7 +1720,7 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
 - **`@metaobjectsdev/cli` no longer installs the native Biome binary.** `codegen-ts-react`,
   `codegen-ts-tanstack` and the source-only `codegen-ts-angular` declared `@biomejs/biome` as a
   peer dependency, which npm installs automatically, so every CLI install carried the ~94 MB
-  `@biomejs/cli-<platform>` binary that nothing runs: codegen formats through the WebAssembly
+  `@biomejs/cli-<platform>` binary that nothing runs: the CLI used the WebAssembly
   build (`@biomejs/wasm-nodejs`). The peer is gone (it stays a devDependency for this repo's own
   lint gate), and a fresh npm install of the CLI drops from 245 MB to 151 MB of `node_modules`.
   `scripts/check-peer-ranges.ts` now fails a publishable package that requires `@biomejs/biome`

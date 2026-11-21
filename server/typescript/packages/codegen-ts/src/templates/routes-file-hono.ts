@@ -135,7 +135,6 @@ import {
  * ${runtimeSpec}.
 ${authSeamJsDoc({ framework: "hono", handlerName, mountPathExpr: authPathExpr, narrowable: false })}
  */
-// biome-ignore lint/suspicious/noExplicitAny: consumer-defined Hono bindings/variables
 export function ${handlerName}(app: ${HonoSym}<any, any, any>, deps: { db: unknown }): void {
   ${mountReadOnlyCrudRoutesSym}({
     app,
@@ -190,7 +189,6 @@ import {
  * (auth, side effects, etc.).
 ${authSeamJsDoc({ framework: "hono", handlerName, mountPathExpr: authPathExpr, narrowable: true })}
  */
-// biome-ignore lint/suspicious/noExplicitAny: consumer-defined Hono bindings/variables
 export function ${handlerName}(app: ${HonoSym}<any, any, any>, deps: { db: unknown }): void {
   ${mountCrudRoutesSym}({
     app,

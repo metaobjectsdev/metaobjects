@@ -3,7 +3,6 @@ import { perEntity, type Generator, type GeneratorFactory } from "../generator.j
 import { renderRoutesFileHono } from "../templates/routes-file-hono.js";
 import { servesReadApi } from "../api-surface.js";
 import { renderRoutesIndex, routesIndexFileName } from "../templates/routes-index.js";
-import { formatTs } from "../format.js";
 import { DEFAULT_OUTPUT_LAYOUT, entityOutputPath } from "../import-path.js";
 import { isTphSubtype } from "../tph.js";
 import { resolveExpose, type ExposeOption } from "../routes-expose.js";
@@ -105,7 +104,7 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
       if (matched.length === 0 || !ctx.renderContext) return files;
       return [...files, {
         path: routesIndexFileName("hono"),
-        content: await formatTs(renderRoutesIndex(matched, ctx.renderContext, "hono")),
+        content: renderRoutesIndex(matched, ctx.renderContext, "hono"),
       }];
     },
   };
@@ -120,7 +119,7 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
           effectivePackage(entity),
           `${entity.name}.routes.hono.ts`,
         ),
-        content: await formatTs(renderRoutesFileHono(entity, ctx.renderContext, resolveExpose(entity, opts?.expose), opts?.reportMaxRows)),
+        content: renderRoutesFileHono(entity, ctx.renderContext, resolveExpose(entity, opts?.expose), opts?.reportMaxRows),
       };
   });
   if (opts?.target) {

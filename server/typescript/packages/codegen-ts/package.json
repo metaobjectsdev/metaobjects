@@ -143,8 +143,6 @@
     "@metaobjectsdev/docs-site": "workspace:*",
     "@metaobjectsdev/render": "workspace:*",
     "@metaobjectsdev/migrate-ts": "workspace:*",
-    "@biomejs/js-api": "^0.7.0",
-    "@biomejs/wasm-nodejs": "^1.9.4",
     "@toon-format/toon": "^2.3.0",
     "@dprint/formatter": "^0.6.0",
     "@dprint/typescript": "0.87.1"

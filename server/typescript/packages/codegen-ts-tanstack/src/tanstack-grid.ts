@@ -1,5 +1,5 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
-import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath, servesClientTier, isTphSubtype,
+import { perEntity, type Generator, type GeneratorFactory, entityOutputPath, servesClientTier, isTphSubtype,
   withClientDirective,
   effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
@@ -64,7 +64,7 @@ export const tanstackGrid = function tanstackGrid(opts?: TanstackGridOpts): Gene
     return {
       path: entityOutputPath(ctx.renderContext.outputLayout, effectivePackage(entity), `${entity.name}.columns.tsx`),
       content: withClientDirective(
-        await formatTs(renderColumnsFile(entity, ctx.renderContext)),
+        renderColumnsFile(entity, ctx.renderContext),
         ctx.renderContext.clientDirective,
       ),
     };

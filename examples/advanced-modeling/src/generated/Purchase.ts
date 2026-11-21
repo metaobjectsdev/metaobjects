@@ -2,41 +2,17 @@
 // Source metadata: Purchase (Purchase)
 // Extend in your own module (e.g. Purchase.extra.ts) — nothing imports it for you.
 import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
-import {
-  type AnyPgColumn,
-  bigint,
-  check,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { type AnyPgColumn, bigint, check, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import { programs } from "./Program";
 
-export const purchases = pgTable(
-  "purchases",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    programId: uuid("program_id")
-      .notNull()
-      .references((): AnyPgColumn => programs.id),
-    amountCents: bigint("amount_cents", { mode: "number" }),
-    status: text("status", {
-      enum: ["pending", "completed", "refunded"] as const,
-    }),
-    purchasedAt: timestamp("purchased_at", {
-      mode: "string",
-      withTimezone: true,
-    }),
-  },
-  (table) => [
-    check(
-      "purchases_status_chk",
-      sql`status IN ('pending', 'completed', 'refunded')`,
-    ),
-  ],
-);
+export const purchases = pgTable("purchases", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  programId: uuid("program_id").notNull().references((): AnyPgColumn => programs.id),
+  amountCents: bigint("amount_cents", { mode: "number" }),
+  status: text("status", { enum: ["pending", "completed", "refunded"] as const }),
+  purchasedAt: timestamp("purchased_at", { mode: "string", withTimezone: true }),
+}, (table) => [check("purchases_status_chk", sql`status IN ('pending', 'completed', 'refunded')`)]);
 export type Purchase = InferSelectModel<typeof purchases>;
 export type PurchaseInsert = InferInsertModel<typeof purchases>;
 export type PurchaseUpdate = Partial<PurchaseInsert>;
@@ -49,10 +25,8 @@ function utcIsoTimestamp(v: string): string {
   if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(v)) {
     return v;
   }
-  const m =
-    /^(\d{4}-\d{2}-\d{2})(?:[Tt ](\d{2}:\d{2})(?::(\d{2})(?:\.(\d+))?)?(?:([Zz])|([+-]\d{2}):?(\d{2})?)?)?$/.exec(
-      v,
-    );
+  const m = /^(\d{4}-\d{2}-\d{2})(?:[Tt ](\d{2}:\d{2})(?::(\d{2})(?:\.(\d+))?)?(?:([Zz])|([+-]\d{2}):?(\d{2})?)?)?$/
+    .exec(v);
   if (m === null) {
     return v;
   }
@@ -61,49 +35,33 @@ function utcIsoTimestamp(v: string): string {
       m[6] === undefined ? "Z" : `${m[6]}:${m[7] ?? "00"}`
     }`,
   );
-  return Number.isNaN(t)
-    ? v
-    : new Date(t).toISOString().replace(/\.?0+Z$/, "Z");
+  return Number.isNaN(t) ? v : new Date(t).toISOString().replace(/\.?0+Z$/, "Z");
 }
 
 export const PurchaseInsertSchema = z.object({
-  programId: z
-    .string()
-    .regex(
-      /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
-      "Invalid uuid",
-    ),
+  programId: z.string().regex(
+    /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
+    "Invalid uuid",
+  ),
   amountCents: z.number().int().optional(),
   status: z.enum(["pending", "completed", "refunded"]).optional(),
-  purchasedAt: z
-    .string()
-    .regex(
-      /^(?:\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2[0-8]))|(?:\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/,
-      "must be an ISO 8601 timestamp (YYYY-MM-DD[THH:MM[:SS[.fff]]][Z|±HH:MM])",
-    )
-    .transform(utcIsoTimestamp)
-    .optional(),
+  purchasedAt: z.string().regex(
+    /^(?:\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2[0-8]))|(?:\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/,
+    "must be an ISO 8601 timestamp (YYYY-MM-DD[THH:MM[:SS[.fff]]][Z|±HH:MM])",
+  ).transform(utcIsoTimestamp).optional(),
 });
 
 export const PurchaseUpdateSchema = z.object({
-  programId: z
-    .string()
-    .regex(
-      /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
-      "Invalid uuid",
-    )
-    .optional(),
+  programId: z.string().regex(
+    /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
+    "Invalid uuid",
+  ).optional(),
   amountCents: z.number().int().optional().nullable(),
   status: z.enum(["pending", "completed", "refunded"]).optional().nullable(),
-  purchasedAt: z
-    .string()
-    .regex(
-      /^(?:\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2[0-8]))|(?:\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/,
-      "must be an ISO 8601 timestamp (YYYY-MM-DD[THH:MM[:SS[.fff]]][Z|±HH:MM])",
-    )
-    .transform(utcIsoTimestamp)
-    .optional()
-    .nullable(),
+  purchasedAt: z.string().regex(
+    /^(?:\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2[0-8]))|(?:\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/,
+    "must be an ISO 8601 timestamp (YYYY-MM-DD[THH:MM[:SS[.fff]]][Z|±HH:MM])",
+  ).transform(utcIsoTimestamp).optional().nullable(),
 });
 
 /** Typed create shape for Purchase: the insert schema's INPUT (pre-transform) type. A
@@ -148,25 +106,9 @@ export const Purchase = {
     htmlType: "text",
     rules: { required: "Program Id is required" },
   },
-  amountCents: {
-    name: "amountCents",
-    label: "Amount Cents",
-    view: "currency",
-    currency: "USD",
-    locale: "en-US",
-  },
-  status: {
-    name: "status",
-    label: "Status",
-    view: "dropdown",
-    options: ["pending", "completed", "refunded"] as const,
-  },
-  purchasedAt: {
-    name: "purchasedAt",
-    label: "Purchased At",
-    view: "date",
-    htmlType: "datetime-local",
-  },
+  amountCents: { name: "amountCents", label: "Amount Cents", view: "currency", currency: "USD", locale: "en-US" },
+  status: { name: "status", label: "Status", view: "dropdown", options: ["pending", "completed", "refunded"] as const },
+  purchasedAt: { name: "purchasedAt", label: "Purchased At", view: "date", htmlType: "datetime-local" },
 } as const;
 import type { FilterAllowlist } from "../../codegen/runtime/drizzle-fastify/filter-allowlist";
 

@@ -24,7 +24,6 @@ import {
   type ExtStyle,
   type ResolvedTarget,
   barrelModuleSpecifier,
-  formatTs,
   GENERATED_HEADER,
   GENERATED_EDIT_NOTE,
   effectivePackage,
@@ -66,14 +65,12 @@ export const barrel = function barrel(opts?: BarrelOpts): Generator {
       for (const e of entities) claimBarrelNames(ctx, e);
       return {
         path: "index.ts",
-        content: await formatTs(
-          renderBarrel(
+        content: renderBarrel(
             entities.map((e) => ({ name: e.name, package: effectivePackage(e) })),
             rc.extStyle,
             rc.selfTarget,
             rc.entityModuleTarget,
           ),
-        ),
       };
     }),
   };

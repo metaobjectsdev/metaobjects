@@ -1,50 +1,17 @@
-// Biome formatter integration. Used by generate() to format rendered TS before write.
-// Per design §11: format errors are warnings, not throws.
-
-import { Biome, Distribution } from "@biomejs/js-api";
-
-// Cache the Promise (not the resolved instance) so concurrent first calls
-// share the same in-flight Biome.create() rather than racing to spawn two.
-let _biomePromise: Promise<Biome> | undefined;
-
-function getBiome(): Promise<Biome> {
-  if (!_biomePromise) {
-    _biomePromise = Biome.create({ distribution: Distribution.NODE }).then((biome) => {
-      biome.applyConfiguration({
-        formatter: { enabled: true, indentStyle: "space", indentWidth: 2 },
-        javascript: { formatter: { quoteStyle: "double", semicolons: "always" } },
-      });
-      return biome;
-    });
-  }
-  return _biomePromise;
-}
+// `formatTs` is a no-op kept only so an owned 1.2 generator copy still loads.
+//
+// Until 1.3.0 every reference generator piped its rendered text through Biome before it
+// was written. Generation no longer runs a formatter: each generator writes the layout it
+// means (the templates and `TsWriter`), and the adopter's own formatter owns the rest. A
+// generator copied out with `meta eject` in 1.2 imports this name from the package entry,
+// so the export stays and returns its input unchanged. A copy that wants a formatter calls
+// the one it already depends on.
 
 /**
- * Summarize Biome diagnostics into a single human-readable line, without
- * dumping the raw diagnostic objects (which produce "[Object ...]" /
- * "source: null" noise when stringified by console).
+ * Returns `content` unchanged.
+ *
+ * @deprecated Generation runs no formatter. A generator that wants one calls its own.
  */
-function summarizeDiagnostics(diagnostics: ReadonlyArray<unknown>): string {
-  const count = diagnostics.length;
-  const first = diagnostics[0] as { description?: string; message?: string } | undefined;
-  const firstMsg = first?.description ?? first?.message ?? "(no description)";
-  return count === 1
-    ? `1 diagnostic: ${firstMsg}`
-    : `${count} diagnostics; first: ${firstMsg}`;
-}
-
 export async function formatTs(content: string): Promise<string> {
-  try {
-    const biome = await getBiome();
-    const result = biome.formatContent(content, { filePath: "in-memory.ts" });
-    if (result.diagnostics.length > 0) {
-      console.warn(`[codegen-ts] Biome formatter: ${summarizeDiagnostics(result.diagnostics)}`);
-      return content;
-    }
-    return result.content;
-  } catch (err) {
-    console.warn(`[codegen-ts] Biome formatter error: ${(err as Error).message}`);
-    return content;
-  }
+  return content;
 }

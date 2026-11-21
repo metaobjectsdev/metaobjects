@@ -33,8 +33,8 @@
  * declaration lands it in every `@metaobjectsdev/cli` install:
  *
  *   - the native Biome formatter (`@biomejs/biome`, which pulls a ~94 MB per-platform
- *     `@biomejs/cli-*` binary). Codegen formats through the WebAssembly build
- *     (`@biomejs/wasm-nodejs` + `@biomejs/js-api`, see `codegen-ts/src/format.ts`).
+ *     `@biomejs/cli-*` binary). Generation runs no formatter; the CLI's owned-copy
+ *     comparison uses the WebAssembly build (`@biomejs/wasm-nodejs` + `@biomejs/js-api`).
  *   - `dprint-node` (~25 MB: all seven platform binaries in one package) and `ts-poet`,
  *     which `require`s it on load. codegen-ts vendors the printer (`codegen-ts/src/poet.ts`)
  *     and runs dprint as WebAssembly (`@dprint/typescript`).

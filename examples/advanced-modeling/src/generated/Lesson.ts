@@ -2,21 +2,13 @@
 // Source metadata: Lesson (Lesson)
 // Extend in your own module (e.g. Lesson.extra.ts) — nothing imports it for you.
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
-import {
-  type AnyPgColumn,
-  integer,
-  pgTable,
-  uuid,
-  varchar,
-} from "drizzle-orm/pg-core";
+import { type AnyPgColumn, integer, pgTable, uuid, varchar } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import { programs } from "./Program";
 
 export const lessons = pgTable("lessons", {
   id: uuid("id").primaryKey().defaultRandom(),
-  programId: uuid("program_id")
-    .notNull()
-    .references((): AnyPgColumn => programs.id),
+  programId: uuid("program_id").notNull().references((): AnyPgColumn => programs.id),
   title: varchar("title", { length: 200 }).notNull(),
   position: integer("position").notNull(),
 });
@@ -24,24 +16,19 @@ export type Lesson = InferSelectModel<typeof lessons>;
 export type LessonInsert = InferInsertModel<typeof lessons>;
 export type LessonUpdate = Partial<LessonInsert>;
 export const LessonInsertSchema = z.object({
-  programId: z
-    .string()
-    .regex(
-      /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
-      "Invalid uuid",
-    ),
+  programId: z.string().regex(
+    /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
+    "Invalid uuid",
+  ),
   title: z.string().min(1).max(200),
   position: z.number().int(),
 });
 
 export const LessonUpdateSchema = z.object({
-  programId: z
-    .string()
-    .regex(
-      /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
-      "Invalid uuid",
-    )
-    .optional(),
+  programId: z.string().regex(
+    /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
+    "Invalid uuid",
+  ).optional(),
   title: z.string().min(1).max(200).optional(),
   position: z.number().int().optional(),
 });
@@ -93,10 +80,7 @@ export const Lesson = {
     label: "Title",
     view: "text",
     htmlType: "text",
-    rules: {
-      required: "Title is required",
-      maxLength: { value: 200, message: "Must be 200 characters or fewer" },
-    },
+    rules: { required: "Title is required", maxLength: { value: 200, message: "Must be 200 characters or fewer" } },
   },
   position: {
     name: "position",

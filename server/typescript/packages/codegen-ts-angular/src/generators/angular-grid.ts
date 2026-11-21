@@ -4,7 +4,6 @@ import {
   perEntity,
   type Generator,
   type GeneratorFactory,
-  formatTs,
   entityOutputPath,
   servesClientTier,
   effectivePackage,
@@ -52,7 +51,7 @@ export const angularGridFile = function angularGridFile(
       }
       return {
         path: entityOutputPath(ctx.renderContext.outputLayout, effectivePackage(entity), `${entity.name}.grid.component.ts`),
-        content: await formatTs(renderGridFile(entity, ctx.renderContext)),
+        content: renderGridFile(entity, ctx.renderContext),
       };
     }),
   };

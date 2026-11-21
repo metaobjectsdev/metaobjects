@@ -5,31 +5,14 @@ import { eq, inArray } from "drizzle-orm";
 import type { z } from "zod";
 
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
-type Db = BaseSQLiteDatabase<
-  "sync" | "async",
-  unknown,
-  Record<string, unknown>
->;
+type Db = BaseSQLiteDatabase<"sync" | "async", unknown, Record<string, unknown>>;
 
-import {
-  type Order,
-  OrderInsertSchema,
-  type OrderPatch,
-  orders,
-  OrderUpdateSchema,
-} from "./Order";
+import { type Order, OrderInsertSchema, type OrderPatch, orders, OrderUpdateSchema } from "./Order";
 export async function findOrderById(db: Db, id: number): Promise<Order | null> {
-  const [order] = await db
-    .select()
-    .from(orders)
-    .where(eq(orders.id, id))
-    .limit(1);
+  const [order] = await db.select().from(orders).where(eq(orders.id, id)).limit(1);
   return order ?? null;
 }
-export async function listOrders(
-  db: Db,
-  opts?: { limit?: number; offset?: number },
-): Promise<Order[]> {
+export async function listOrders(db: Db, opts?: { limit?: number; offset?: number }): Promise<Order[]> {
   let q = db.select().from(orders).$dynamic();
   if (opts?.limit !== undefined) {
     q = q.limit(opts.limit);
@@ -39,30 +22,19 @@ export async function listOrders(
   }
   return q;
 }
-export async function createOrder(
-  db: Db,
-  data: z.input<typeof OrderInsertSchema>,
-): Promise<Order> {
+export async function createOrder(db: Db, data: z.input<typeof OrderInsertSchema>): Promise<Order> {
   const validated = OrderInsertSchema.parse(data);
   const [order] = await db.insert(orders).values(validated).returning();
   return order!;
 }
-export async function updateOrder(
-  db: Db,
-  id: number,
-  patch: OrderPatch,
-): Promise<Order | null> {
+export async function updateOrder(db: Db, id: number, patch: OrderPatch): Promise<Order | null> {
   const validated = OrderUpdateSchema.parse(patch);
   // PATCH-5: an empty patch is a no-op — return the current row rather than let
   // Drizzle throw on an empty SET clause.
   if (Object.keys(validated).length === 0) {
     return findOrderById(db, id);
   }
-  const [order] = await db
-    .update(orders)
-    .set(validated)
-    .where(eq(orders.id, id))
-    .returning();
+  const [order] = await db.update(orders).set(validated).where(eq(orders.id, id)).returning();
   return order ?? null;
 }
 export async function deleteOrderById(db: Db, id: number): Promise<boolean> {
@@ -71,36 +43,21 @@ export async function deleteOrderById(db: Db, id: number): Promise<boolean> {
   const deleted = await db.delete(orders).where(eq(orders.id, id)).returning();
   return deleted.length > 0;
 }
-export async function findOrdersByCustomer(
-  db: Db,
-  customerId: number,
-): Promise<Order[]> {
+export async function findOrdersByCustomer(db: Db, customerId: number): Promise<Order[]> {
   return db.select().from(orders).where(eq(orders.customerId, customerId));
 }
 
-export async function findOrdersByCustomerIn(
-  db: Db,
-  customerIds: number[],
-): Promise<Order[]> {
+export async function findOrdersByCustomerIn(db: Db, customerIds: number[]): Promise<Order[]> {
   if (customerIds.length === 0) {
     return [];
   }
-  return db
-    .select()
-    .from(orders)
-    .where(inArray(orders.customerId, customerIds));
+  return db.select().from(orders).where(inArray(orders.customerId, customerIds));
 }
-export async function findOrdersByProduct(
-  db: Db,
-  productId: number,
-): Promise<Order[]> {
+export async function findOrdersByProduct(db: Db, productId: number): Promise<Order[]> {
   return db.select().from(orders).where(eq(orders.productId, productId));
 }
 
-export async function findOrdersByProductIn(
-  db: Db,
-  productIds: number[],
-): Promise<Order[]> {
+export async function findOrdersByProductIn(db: Db, productIds: number[]): Promise<Order[]> {
   if (productIds.length === 0) {
     return [];
   }

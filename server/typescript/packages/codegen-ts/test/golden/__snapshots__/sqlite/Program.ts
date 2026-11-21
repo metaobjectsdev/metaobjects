@@ -11,12 +11,8 @@ export const programs = sqliteTable("programs", {
   title: text("title").notNull(),
   description: text("description"),
   priceCents: integer("price_cents").notNull(),
-  isPublished: integer("is_published", { mode: "boolean" })
-    .notNull()
-    .default(false),
-  createdAt: text("created_at")
-    .notNull()
-    .default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ','now'))`),
+  isPublished: integer("is_published", { mode: "boolean" }).notNull().default(false),
+  createdAt: text("created_at").notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ','now'))`),
 });
 export type Program = InferSelectModel<typeof programs>;
 export type ProgramInsert = InferInsertModel<typeof programs>;
@@ -28,10 +24,8 @@ function utcIsoTimestamp(v: string): string {
   if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(v)) {
     return v;
   }
-  const m =
-    /^(\d{4}-\d{2}-\d{2})(?:[Tt ](\d{2}:\d{2})(?::(\d{2})(?:\.(\d+))?)?(?:([Zz])|([+-]\d{2}):?(\d{2})?)?)?$/.exec(
-      v,
-    );
+  const m = /^(\d{4}-\d{2}-\d{2})(?:[Tt ](\d{2}:\d{2})(?::(\d{2})(?:\.(\d+))?)?(?:([Zz])|([+-]\d{2}):?(\d{2})?)?)?$/
+    .exec(v);
   if (m === null) {
     return v;
   }
@@ -40,9 +34,7 @@ function utcIsoTimestamp(v: string): string {
       m[6] === undefined ? "Z" : `${m[6]}:${m[7] ?? "00"}`
     }`,
   );
-  return Number.isNaN(t)
-    ? v
-    : new Date(t).toISOString().replace(/\.?0+Z$/, "Z");
+  return Number.isNaN(t) ? v : new Date(t).toISOString().replace(/\.?0+Z$/, "Z");
 }
 
 export const ProgramInsertSchema = z.object({
@@ -51,14 +43,10 @@ export const ProgramInsertSchema = z.object({
   description: z.string().optional(),
   priceCents: z.number().int(),
   isPublished: z.boolean().optional(),
-  createdAt: z
-    .string()
-    .regex(
-      /^(?:\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2[0-8]))|(?:\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/,
-      "must be an ISO 8601 timestamp (YYYY-MM-DD[THH:MM[:SS[.fff]]][Z|±HH:MM])",
-    )
-    .transform(utcIsoTimestamp)
-    .optional(),
+  createdAt: z.string().regex(
+    /^(?:\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2[0-8]))|(?:\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/,
+    "must be an ISO 8601 timestamp (YYYY-MM-DD[THH:MM[:SS[.fff]]][Z|±HH:MM])",
+  ).transform(utcIsoTimestamp).optional(),
 });
 
 export const ProgramUpdateSchema = z.object({
@@ -67,14 +55,10 @@ export const ProgramUpdateSchema = z.object({
   description: z.string().optional().nullable(),
   priceCents: z.number().int().optional(),
   isPublished: z.boolean().optional(),
-  createdAt: z
-    .string()
-    .regex(
-      /^(?:\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2[0-8]))|(?:\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/,
-      "must be an ISO 8601 timestamp (YYYY-MM-DD[THH:MM[:SS[.fff]]][Z|±HH:MM])",
-    )
-    .transform(utcIsoTimestamp)
-    .optional(),
+  createdAt: z.string().regex(
+    /^(?:\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2[0-8]))|(?:\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/,
+    "must be an ISO 8601 timestamp (YYYY-MM-DD[THH:MM[:SS[.fff]]][Z|±HH:MM])",
+  ).transform(utcIsoTimestamp).optional(),
 });
 
 /** Typed create shape for Program: the insert schema's INPUT (pre-transform) type. A
@@ -117,27 +101,16 @@ export const Program = {
     label: "Slug",
     view: "text",
     htmlType: "text",
-    rules: {
-      required: "Slug is required",
-      maxLength: { value: 100, message: "Must be 100 characters or fewer" },
-    },
+    rules: { required: "Slug is required", maxLength: { value: 100, message: "Must be 100 characters or fewer" } },
   },
   title: {
     name: "title",
     label: "Title",
     view: "text",
     htmlType: "text",
-    rules: {
-      required: "Title is required",
-      maxLength: { value: 200, message: "Must be 200 characters or fewer" },
-    },
+    rules: { required: "Title is required", maxLength: { value: 200, message: "Must be 200 characters or fewer" } },
   },
-  description: {
-    name: "description",
-    label: "Description",
-    view: "text",
-    htmlType: "text",
-  },
+  description: { name: "description", label: "Description", view: "text", htmlType: "text" },
   priceCents: {
     name: "priceCents",
     label: "Price Cents",

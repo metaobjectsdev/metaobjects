@@ -1,5 +1,5 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
-import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath, entityMetaFileName, renderEntityMetaFile, servesClientTier, isTphSubtype,
+import { perEntity, type Generator, type GeneratorFactory, entityOutputPath, entityMetaFileName, renderEntityMetaFile, servesClientTier, isTphSubtype,
   withClientDirective, namesRef, namesConstArg,
   effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
@@ -86,11 +86,11 @@ export const tanstackGridHook = function tanstackGridHook(opts?: TanstackGridHoo
     return [{
       path: entityOutputPath(ctx.renderContext.outputLayout, pkg,
         entityMetaFileName(entity.name)),
-      content: await formatTs(renderEntityMetaFile(
+      content: renderEntityMetaFile(
         entity,
         ctx.renderContext.apiPrefix,
         namesConstArg(metaNames),
-      )),
+      ),
     }, {
       path: entityOutputPath(
         ctx.renderContext.outputLayout,
@@ -98,7 +98,7 @@ export const tanstackGridHook = function tanstackGridHook(opts?: TanstackGridHoo
         `${entity.name}.grid.ts`,
       ),
       content: withClientDirective(
-        await formatTs(renderGridHookFile(entity, ctx.renderContext)),
+        renderGridHookFile(entity, ctx.renderContext),
         ctx.renderContext.clientDirective,
       ),
     }];

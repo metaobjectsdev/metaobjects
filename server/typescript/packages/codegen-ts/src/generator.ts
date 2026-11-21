@@ -14,7 +14,7 @@ export interface EmittedFile {
   path: string;
   /** The file's final contents, in any format — TypeScript, JSON, YAML, SQL, Markdown.
    *  The runner writes it as given: it neither formats it nor adds a header, so a
-   *  generator that wants either does it itself (`formatTs`, `GENERATED_HEADER`). */
+   *  generator that wants a header does it itself (`GENERATED_HEADER`). */
   content: string;
   /** Set by the runner from generator.name — generators should not set this. */
   generatedBy?: string;

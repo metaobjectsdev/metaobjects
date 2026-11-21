@@ -14,21 +14,11 @@ import {
   workoutEvents,
   WorkoutEventUpdateSchema,
 } from "./WorkoutEvent";
-export async function findWorkoutEventById(
-  db: Db,
-  id: number,
-): Promise<WorkoutEvent | null> {
-  const [workoutEvent] = await db
-    .select()
-    .from(workoutEvents)
-    .where(eq(workoutEvents.id, id))
-    .limit(1);
+export async function findWorkoutEventById(db: Db, id: number): Promise<WorkoutEvent | null> {
+  const [workoutEvent] = await db.select().from(workoutEvents).where(eq(workoutEvents.id, id)).limit(1);
   return workoutEvent ?? null;
 }
-export async function listWorkoutEvents(
-  db: Db,
-  opts?: { limit?: number; offset?: number },
-): Promise<WorkoutEvent[]> {
+export async function listWorkoutEvents(db: Db, opts?: { limit?: number; offset?: number }): Promise<WorkoutEvent[]> {
   let q = db.select().from(workoutEvents).$dynamic();
   if (opts?.limit !== undefined) {
     q = q.limit(opts.limit);
@@ -43,83 +33,42 @@ export async function createWorkoutEvent(
   data: z.input<typeof WorkoutEventInsertSchema>,
 ): Promise<WorkoutEvent> {
   const validated = WorkoutEventInsertSchema.parse(data);
-  const [workoutEvent] = await db
-    .insert(workoutEvents)
-    .values(validated)
-    .returning();
+  const [workoutEvent] = await db.insert(workoutEvents).values(validated).returning();
   return workoutEvent!;
 }
-export async function updateWorkoutEvent(
-  db: Db,
-  id: number,
-  patch: WorkoutEventPatch,
-): Promise<WorkoutEvent | null> {
+export async function updateWorkoutEvent(db: Db, id: number, patch: WorkoutEventPatch): Promise<WorkoutEvent | null> {
   const validated = WorkoutEventUpdateSchema.parse(patch);
   // PATCH-5: an empty patch is a no-op — return the current row rather than let
   // Drizzle throw on an empty SET clause.
   if (Object.keys(validated).length === 0) {
     return findWorkoutEventById(db, id);
   }
-  const [workoutEvent] = await db
-    .update(workoutEvents)
-    .set(validated)
-    .where(eq(workoutEvents.id, id))
-    .returning();
+  const [workoutEvent] = await db.update(workoutEvents).set(validated).where(eq(workoutEvents.id, id)).returning();
   return workoutEvent ?? null;
 }
-export async function deleteWorkoutEventById(
-  db: Db,
-  id: number,
-): Promise<boolean> {
+export async function deleteWorkoutEventById(db: Db, id: number): Promise<boolean> {
   // Use .returning() unconditionally — supported on SQLite ≥3.35 (covers D1, libsql/Turso)
   // and Postgres. Result is an array of deleted rows; presence implies success.
-  const deleted = await db
-    .delete(workoutEvents)
-    .where(eq(workoutEvents.id, id))
-    .returning();
+  const deleted = await db.delete(workoutEvents).where(eq(workoutEvents.id, id)).returning();
   return deleted.length > 0;
 }
-export async function findWorkoutEventsBySubscriber(
-  db: Db,
-  subscriberId: number,
-): Promise<WorkoutEvent[]> {
-  return db
-    .select()
-    .from(workoutEvents)
-    .where(eq(workoutEvents.subscriberId, subscriberId));
+export async function findWorkoutEventsBySubscriber(db: Db, subscriberId: number): Promise<WorkoutEvent[]> {
+  return db.select().from(workoutEvents).where(eq(workoutEvents.subscriberId, subscriberId));
 }
 
-export async function findWorkoutEventsBySubscriberIn(
-  db: Db,
-  subscriberIds: number[],
-): Promise<WorkoutEvent[]> {
+export async function findWorkoutEventsBySubscriberIn(db: Db, subscriberIds: number[]): Promise<WorkoutEvent[]> {
   if (subscriberIds.length === 0) {
     return [];
   }
-  return db
-    .select()
-    .from(workoutEvents)
-    .where(inArray(workoutEvents.subscriberId, subscriberIds));
+  return db.select().from(workoutEvents).where(inArray(workoutEvents.subscriberId, subscriberIds));
 }
-export async function findWorkoutEventsByWorkout(
-  db: Db,
-  workoutId: number,
-): Promise<WorkoutEvent[]> {
-  return db
-    .select()
-    .from(workoutEvents)
-    .where(eq(workoutEvents.workoutId, workoutId));
+export async function findWorkoutEventsByWorkout(db: Db, workoutId: number): Promise<WorkoutEvent[]> {
+  return db.select().from(workoutEvents).where(eq(workoutEvents.workoutId, workoutId));
 }
 
-export async function findWorkoutEventsByWorkoutIn(
-  db: Db,
-  workoutIds: number[],
-): Promise<WorkoutEvent[]> {
+export async function findWorkoutEventsByWorkoutIn(db: Db, workoutIds: number[]): Promise<WorkoutEvent[]> {
   if (workoutIds.length === 0) {
     return [];
   }
-  return db
-    .select()
-    .from(workoutEvents)
-    .where(inArray(workoutEvents.workoutId, workoutIds));
+  return db.select().from(workoutEvents).where(inArray(workoutEvents.workoutId, workoutIds));
 }

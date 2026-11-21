@@ -22,12 +22,7 @@ export const AuthorInsertSchema = z.object({
 
 export const AuthorUpdateSchema = z.object({
   name: z.string().min(1).max(120).optional(),
-  email: z
-    .string()
-    .min(1)
-    .max(320)
-    .regex(new RegExp("^(?:[^@]+@[^@]+)$"))
-    .optional(),
+  email: z.string().min(1).max(320).regex(new RegExp("^(?:[^@]+@[^@]+)$")).optional(),
   bio: z.string().max(500).optional().nullable(),
 });
 
@@ -71,10 +66,7 @@ export const Author = {
     label: "Name",
     view: "text",
     htmlType: "text",
-    rules: {
-      required: "Name is required",
-      maxLength: { value: 120, message: "Must be 120 characters or fewer" },
-    },
+    rules: { required: "Name is required", maxLength: { value: 120, message: "Must be 120 characters or fewer" } },
   },
   email: {
     name: "email",

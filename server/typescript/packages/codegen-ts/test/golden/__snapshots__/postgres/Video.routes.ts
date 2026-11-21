@@ -2,14 +2,7 @@
 // Source metadata: Video (Video)
 // Extend in your own module (e.g. Video.extra.ts) — nothing imports it for you.
 import { db } from "~/server/db";
-import {
-  Video,
-  VideoFilterAllowlist,
-  VideoInsertSchema,
-  videos,
-  VideoSortAllowlist,
-  VideoUpdateSchema,
-} from "./Video";
+import { Video, VideoFilterAllowlist, VideoInsertSchema, videos, VideoSortAllowlist, VideoUpdateSchema } from "./Video";
 import { mountCrudRoutes } from "@metaobjectsdev/runtime-ts/drizzle-fastify";
 import type { FastifyInstance } from "fastify";
 

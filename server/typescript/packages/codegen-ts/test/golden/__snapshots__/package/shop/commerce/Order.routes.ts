@@ -2,14 +2,7 @@
 // Source metadata: Order (shop::commerce::Order)
 // Extend in your own module (e.g. Order.extra.ts) — nothing imports it for you.
 import { db } from "../../../db";
-import {
-  Order,
-  OrderFilterAllowlist,
-  OrderInsertSchema,
-  orders,
-  OrderSortAllowlist,
-  OrderUpdateSchema,
-} from "./Order";
+import { Order, OrderFilterAllowlist, OrderInsertSchema, orders, OrderSortAllowlist, OrderUpdateSchema } from "./Order";
 import { mountCrudRoutes } from "@metaobjectsdev/runtime-ts/drizzle-fastify";
 import type { FastifyInstance } from "fastify";
 

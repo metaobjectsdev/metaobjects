@@ -7,28 +7,12 @@ import type { z } from "zod";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 type Db = PgDatabase<PgQueryResultHKT, Record<string, unknown>>;
 
-import {
-  type Purchase,
-  PurchaseInsertSchema,
-  type PurchasePatch,
-  purchases,
-  PurchaseUpdateSchema,
-} from "./Purchase";
-export async function findPurchaseById(
-  db: Db,
-  id: string,
-): Promise<Purchase | null> {
-  const [purchase] = await db
-    .select()
-    .from(purchases)
-    .where(eq(purchases.id, id))
-    .limit(1);
+import { type Purchase, PurchaseInsertSchema, type PurchasePatch, purchases, PurchaseUpdateSchema } from "./Purchase";
+export async function findPurchaseById(db: Db, id: string): Promise<Purchase | null> {
+  const [purchase] = await db.select().from(purchases).where(eq(purchases.id, id)).limit(1);
   return purchase ?? null;
 }
-export async function listPurchases(
-  db: Db,
-  opts?: { limit?: number; offset?: number },
-): Promise<Purchase[]> {
+export async function listPurchases(db: Db, opts?: { limit?: number; offset?: number }): Promise<Purchase[]> {
   let q = db.select().from(purchases).$dynamic();
   if (opts?.limit !== undefined) {
     q = q.limit(opts.limit);
@@ -38,57 +22,34 @@ export async function listPurchases(
   }
   return q;
 }
-export async function createPurchase(
-  db: Db,
-  data: z.input<typeof PurchaseInsertSchema>,
-): Promise<Purchase> {
+export async function createPurchase(db: Db, data: z.input<typeof PurchaseInsertSchema>): Promise<Purchase> {
   const validated = PurchaseInsertSchema.parse(data);
   const [purchase] = await db.insert(purchases).values(validated).returning();
   return purchase!;
 }
-export async function updatePurchase(
-  db: Db,
-  id: string,
-  patch: PurchasePatch,
-): Promise<Purchase | null> {
+export async function updatePurchase(db: Db, id: string, patch: PurchasePatch): Promise<Purchase | null> {
   const validated = PurchaseUpdateSchema.parse(patch);
   // PATCH-5: an empty patch is a no-op — return the current row rather than let
   // Drizzle throw on an empty SET clause.
   if (Object.keys(validated).length === 0) {
     return findPurchaseById(db, id);
   }
-  const [purchase] = await db
-    .update(purchases)
-    .set(validated)
-    .where(eq(purchases.id, id))
-    .returning();
+  const [purchase] = await db.update(purchases).set(validated).where(eq(purchases.id, id)).returning();
   return purchase ?? null;
 }
 export async function deletePurchaseById(db: Db, id: string): Promise<boolean> {
   // Use .returning() unconditionally — supported on SQLite ≥3.35 (covers D1, libsql/Turso)
   // and Postgres. Result is an array of deleted rows; presence implies success.
-  const deleted = await db
-    .delete(purchases)
-    .where(eq(purchases.id, id))
-    .returning();
+  const deleted = await db.delete(purchases).where(eq(purchases.id, id)).returning();
   return deleted.length > 0;
 }
-export async function findPurchasesByProgram(
-  db: Db,
-  programId: string,
-): Promise<Purchase[]> {
+export async function findPurchasesByProgram(db: Db, programId: string): Promise<Purchase[]> {
   return db.select().from(purchases).where(eq(purchases.programId, programId));
 }
 
-export async function findPurchasesByProgramIn(
-  db: Db,
-  programIds: string[],
-): Promise<Purchase[]> {
+export async function findPurchasesByProgramIn(db: Db, programIds: string[]): Promise<Purchase[]> {
   if (programIds.length === 0) {
     return [];
   }
-  return db
-    .select()
-    .from(purchases)
-    .where(inArray(purchases.programId, programIds));
+  return db.select().from(purchases).where(inArray(purchases.programId, programIds));
 }

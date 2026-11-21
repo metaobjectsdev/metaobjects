@@ -2,7 +2,6 @@ import type { MetaObject } from "@metaobjectsdev/metadata";
 import type { Generator, GenContext, EmittedFile } from "../generator.js";
 import { DEFAULT_OUTPUT_LAYOUT, entityOutputPath } from "../import-path.js";
 import { effectivePackage } from "../docs-paths.js";
-import { formatTs } from "../format.js";
 import { isReport } from "../source-detect.js";
 import {
   DEFAULT_EXPORT_MAX_ROWS, DEFAULT_XML_NULLS, EXPORT_WRITERS_BASENAME,
@@ -58,14 +57,14 @@ export function reportExport(opts?: ReportExportOpts): Generator {
       const reports = ctx.entities.filter(ctx.matches).filter(isReport);
       if (reports.length === 0) return [];
       const out: EmittedFile[] = [
-        { path: `${EXPORT_WRITERS_BASENAME}.ts`, content: await formatTs(renderExportWriters(emit)) },
+        { path: `${EXPORT_WRITERS_BASENAME}.ts`, content: renderExportWriters(emit) },
       ];
       // One module per report `meta gen <Entity>` named; the writers above serve them all.
       for (const report of reports.filter((r) => ctx.selected?.(r) ?? true)) {
         const pkg = effectivePackage(report);
         out.push({
           path: entityOutputPath(layout, pkg, `${report.name}.export.ts`),
-          content: await formatTs(renderReportExportModule(report, { selfTarget, pkg, extStyle }, emit)),
+          content: renderReportExportModule(report, { selfTarget, pkg, extStyle }, emit),
         });
       }
       return out;

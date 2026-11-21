@@ -35,27 +35,18 @@ import { mountCrudRoutes } from "../../codegen/runtime/drizzle-fastify/index";
  * routesFile({ expose: ["list", "get"] }) rather than mounting them open.
  */
 export async function purchaseRoutes(fastify: FastifyInstance) {
-  await fastify.register(
-    async (instance) => {
-      mountCrudRoutes({
-        fastify: instance,
-        path: Purchase.$path,
-        db,
-        table: purchases,
-        insertSchema: PurchaseInsertSchema,
-        updateSchema: PurchaseUpdateSchema,
-        filterAllowlist: PurchaseFilterAllowlist,
-        sortAllowlist: PurchaseSortAllowlist,
-        dialect: "postgres",
-        knownFields: [
-          "id",
-          "programId",
-          "amountCents",
-          "status",
-          "purchasedAt",
-        ],
-      });
-    },
-    { prefix: "/api" },
-  );
+  await fastify.register(async (instance) => {
+    mountCrudRoutes({
+      fastify: instance,
+      path: Purchase.$path,
+      db,
+      table: purchases,
+      insertSchema: PurchaseInsertSchema,
+      updateSchema: PurchaseUpdateSchema,
+      filterAllowlist: PurchaseFilterAllowlist,
+      sortAllowlist: PurchaseSortAllowlist,
+      dialect: "postgres",
+      knownFields: ["id", "programId", "amountCents", "status", "purchasedAt"],
+    });
+  }, { prefix: "/api" });
 }

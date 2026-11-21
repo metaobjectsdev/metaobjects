@@ -112,6 +112,7 @@ export { CodegenError } from "./errors.js";
 export { GENERATED_HEADER, GENERATED_EDIT_NOTE, NAMES_FILE_SUFFIX, DEFAULT_OUT_DIR, RETIRED_CODEGEN_ATTRS, sidecarLine, type RetiredCodegenAttr } from "./constants.js";
 export { warnRetiredCodegenAttrs } from "./retired-codegen-attrs.js";
 
+// Kept so a generator copied out in 1.2 still loads; generation runs no formatter (format.ts).
 export { formatTs } from "./format.js";
 
 export { pluralize, columnNameFromField, tableNameFromEntity, viewNameFromProjection, routesHandlerName, hookListNameSegment } from "./naming.js";
