@@ -702,6 +702,22 @@ commit on it is an ancestor of `main`. Step 0 checks this and `release.mjs` refu
 until it holds; a fix that exists only on the maintenance branch would otherwise be missing
 from the new line.
 
+**A squash forward-port does not satisfy that check.** Re-landing a fix on `main` as a squashed
+PR copies the change but not the commit, so the maintenance commit stays "not an ancestor of
+`main`" and Step 0 keeps refusing. After the fixes are confirmed present on `main` (by their
+tests, not by the commit messages), record the branch as merged with an ancestry-only merge:
+
+```bash
+git checkout -b chore/record-release-1.2-merged origin/main
+git merge -s ours --no-ff origin/release/1.2     # records ancestry; changes no file
+```
+
+Open that as a PR and **merge it with a merge commit, never squash or rebase**: either one
+discards the second parent, and the ancestry this exists to record is gone. Check afterwards
+that `git rev-list --count origin/main..origin/release/1.2` prints `0`. Use `-s ours`, not a
+plain merge: the maintenance branch carries release version bumps and a site payload that must
+never reach `main`.
+
 ## Isolated patch (one package)
 
 If only one package changed (e.g. a `cli` bugfix), bump just that package, `rm bun.lock && bun
