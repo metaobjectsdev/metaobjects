@@ -25,6 +25,10 @@ const COMMENT_CLOSE: &str = "-->";
 const CDATA_OPEN: &str = "<![CDATA[";
 const CDATA_CLOSE: &str = "]]>";
 
+/// Deepest element nesting the reader follows; below it the content is text, as in the JSON
+/// reader, so a runaway reply cannot overflow the stack.
+const MAX_DEPTH: usize = 100;
+
 fn is_name_start(b: u8) -> bool {
     b.is_ascii_alphabetic() || b == b'_'
 }
@@ -279,7 +283,7 @@ pub fn read(raw_span: &str, ci: bool) -> IndexMap<String, Raw> {
         Some(root_end) if root_end > gt => root_end,
         _ => span.len(),
     };
-    parse_children(&span[gt + 1..inner_end], ci, &mut out, None, false);
+    parse_children(&span[gt + 1..inner_end], ci, &mut out, None, false, 0);
     out
 }
 
@@ -290,7 +294,7 @@ pub fn read_rootless(text: &str, ci: bool) -> IndexMap<String, Raw> {
     if text.trim().is_empty() {
         return out;
     }
-    parse_children(&prepare(text), ci, &mut out, None, false);
+    parse_children(&prepare(text), ci, &mut out, None, false, 0);
     out
 }
 
@@ -304,6 +308,7 @@ fn parse_children(
     out: &mut IndexMap<String, Raw>,
     mut loose: Option<&mut Vec<String>>,
     literal_unclosed: bool,
+    depth: usize,
 ) {
     let b = inner.as_bytes();
     let mut pos = 0;
@@ -370,7 +375,7 @@ fn parse_children(
             next = e;
         }
         let content = &inner[content_start..content_end];
-        accumulate(out, key, combine(attrs, content, ci, close.is_some()));
+        accumulate(out, key, combine(attrs, content, ci, close.is_some(), depth));
         pos = next;
         scan = next;
     }
@@ -391,11 +396,17 @@ fn find_stray_close(inner: &str, from: usize, to: usize, ci: bool) -> Option<(us
     }
 }
 
-fn combine(attrs: IndexMap<String, Raw>, content: &str, ci: bool, closed: bool) -> Raw {
-    if content.contains('<') {
+fn combine(
+    attrs: IndexMap<String, Raw>,
+    content: &str,
+    ci: bool,
+    closed: bool,
+    depth: usize,
+) -> Raw {
+    if depth < MAX_DEPTH && content.contains('<') {
         let mut nested = IndexMap::new();
         let mut loose = Vec::new();
-        parse_children(content, ci, &mut nested, Some(&mut loose), closed);
+        parse_children(content, ci, &mut nested, Some(&mut loose), closed, depth + 1);
         if !nested.is_empty() {
             let mut merged = attrs;
             for (k, v) in nested {
@@ -531,6 +542,20 @@ mod tests {
     fn cdata_and_comments() {
         let m = read("<r><!-- <a>no</a> --><a><![CDATA[x<y]]></a></r>", true);
         assert_eq!(m["a"], s("x<y"));
+    }
+
+    #[test]
+    fn deep_nesting_returns_without_overflow() {
+        let reply = format!("<r>{}", "<a>".repeat(50_000));
+        let m = read(&reply, true);
+        let mut v = &m["a"];
+        let mut levels = 1;
+        while let Raw::Map(inner) = v {
+            v = &inner["a"];
+            levels += 1;
+        }
+        assert!(levels <= MAX_DEPTH + 1);
+        assert!(matches!(v, Raw::Str(t) if t.starts_with("<a>")));
     }
 
     #[test]
