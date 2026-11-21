@@ -100,7 +100,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "metaobjects"
-version = "0.1.0"
+version = "1.3.0"
 dependencies = [
  "indexmap",
  "saphyr",
@@ -109,7 +109,7 @@ dependencies = [
 
 [[package]]
 name = "metaobjects-cli"
-version = "0.1.0"
+version = "1.3.0"
 dependencies = [
  "metaobjects",
  "metaobjects-codegen",
@@ -118,17 +118,20 @@ dependencies = [
 
 [[package]]
 name = "metaobjects-codegen"
-version = "0.1.0"
+version = "1.3.0"
 dependencies = [
  "indexmap",
  "metaobjects",
+ "metaobjects-render",
+ "proc-macro2",
  "serde",
  "serde_json",
+ "syn",
 ]
 
 [[package]]
 name = "metaobjects-render"
-version = "0.1.0"
+version = "1.3.0"
 dependencies = [
  "indexmap",
  "mustache-ng",
@@ -230,6 +233,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba"
 dependencies = [
  "serde_core",
+ "serde_derive",
 ]
 
 [[package]]

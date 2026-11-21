@@ -206,6 +206,28 @@ Case `dialect` is `csharp`. The defaults are four-space indent, width 120 and a 
   writes nothing, and indents the lines written inside it by one level. A block opened inside it
   must be closed inside it.
 
+## Rust dialect (`CodeWriter`)
+
+Case `dialect` is `rust`. The defaults are four-space indent, width 100 and a trailing comma:
+rustfmt's. The Rust writer is one type, the core plus these methods. Generated Rust is held to
+rustfmt under the `rustfmt.toml` every generated crate carries (`use_small_heuristics = "Max"`,
+`short_array_element_width_threshold = 0`), so each rule below is rustfmt's under those
+settings, and every `rust` case's expected output is a rustfmt fixed point under them.
+
+- **`use_list(path, names)`** writes `use path::{a, b};` when it fits and `use path::a;` for one
+  name. Otherwise it writes `use path::{`, fills the names onto lines one level in (each
+  followed by a comma, as many to a line as fit) and `};`. Imports are not collected or
+  sorted: a generator writes them in rustfmt's order (`std` and `crate` paths among the rest, in
+  code-point order).
+- **`doc(text)`** writes an author's text as `///` lines, one per line of the text, a bare `///`
+  for an empty line, never re-wrapped. **`prose(text)`** writes text the generator composed:
+  each line of the text is a paragraph, wrapped at a word boundary so no line passes the width.
+  **`doc_break()`** writes the bare `///` between two paragraphs.
+- **`assign(head, rhs)`** writes `head rhs` when it fits. Otherwise, when the right-hand side
+  fits alone on the next line one level in, it writes the head and then the right-hand side
+  there, an array as well as a call. Otherwise it keeps the right-hand side on the head's line
+  and breaks its last list.
+
 ## Extension by subclassing
 
 A writer and the generators built on it are meant to be extended in place
@@ -248,7 +270,8 @@ Each case in `fixtures/writer-conformance/cases/` is one JSON file:
   `useDefault`, `useNamespace` and `useSideEffect` (name, then module; `useSideEffect` takes
   only the module), `header` and `doc` (lines). The Python ops are `use` (name, module), `useAs` (name, module,
   alias), `useModule` (module, optional alias), `useFuture` (optional name), `header` and `doc`
-  (lines), `dedent` and `gap`.
+  (lines), `dedent` and `gap`. The Rust ops are `use` (path, then names), `doc` and `prose`
+  (text), `docBreak` and `assign` (head, then parts).
 - A part is a string, a list (`{"list": {"open", "items", "close", "pad"?}}`, where items are
   parts) or an array of parts, which are concatenated.
 - `expected` is the output's lines. The file is those lines joined with `\n` plus a final `\n`,

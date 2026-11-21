@@ -22,6 +22,7 @@ use serde_json::Value;
 use crate::accessors::with_derived_accessors;
 use crate::escapers::{self, FORMAT_TEXT};
 use crate::tags::{self, TagKind};
+use crate::verify::{self, PayloadField, VerifyOptions};
 
 /// How deep partials may nest before the render fails.
 pub const MAX_DEPTH: usize = 32;
@@ -98,6 +99,10 @@ pub struct RenderRequest<'a> {
     pub format: &'a str,
     /// A fail-closed output budget in characters.
     pub max_chars: Option<usize>,
+    /// The payload's field tree. When it is given the body (and its partials) is checked
+    /// against it before anything renders, and a variable not on the payload fails the
+    /// render instead of rendering blank.
+    pub verify: Option<&'a [PayloadField]>,
 }
 
 impl<'a> RenderRequest<'a> {
@@ -110,6 +115,7 @@ impl<'a> RenderRequest<'a> {
             provider,
             format: FORMAT_TEXT,
             max_chars: None,
+            verify: None,
         }
     }
 
@@ -124,6 +130,13 @@ impl<'a> RenderRequest<'a> {
     #[must_use]
     pub fn max_chars(mut self, max_chars: Option<usize>) -> Self {
         self.max_chars = max_chars;
+        self
+    }
+
+    /// The same request, checked against the payload's field tree before it renders.
+    #[must_use]
+    pub fn verify(mut self, fields: &'a [PayloadField]) -> Self {
+        self.verify = Some(fields);
         self
     }
 }
@@ -148,6 +161,9 @@ pub fn render(request: &RenderRequest<'_>) -> Result<String, RenderError> {
             }
         }
     };
+    if let Some(fields) = request.verify {
+        check_payload(&body, fields, request.provider)?;
+    }
     let expanded = pre_expand_partials(&body, request.provider, &mut Vec::new())?;
     let source = mark_escaped_tags(&expanded, request.format)?;
     let payload = with_derived_accessors(request.payload);
@@ -180,7 +196,74 @@ pub fn render_serialize<T: Serialize>(
         provider,
         format,
         max_chars,
+        verify: None,
     })
+}
+
+/// One rendered part of a generated render helper: the body it names, the format it is
+/// escaped for, its budget, and the payload field tree it is checked against.
+#[derive(Debug, Clone, Copy)]
+pub struct Part<'a> {
+    pub reference: &'a str,
+    pub format: &'a str,
+    pub max_chars: Option<usize>,
+    pub fields: &'a [PayloadField],
+}
+
+/// Render one [`Part`] over a serializable payload. This is the call a generated render
+/// helper makes: the body is checked against the payload's field tree first, so a template
+/// edited (or served by another provider) since the helper was generated fails here rather
+/// than rendering a blank where a field used to be.
+///
+/// # Errors
+/// The payload does not serialize, the body names a variable the payload lacks, or anything
+/// [`render`] refuses.
+pub fn render_part<T: Serialize>(
+    payload: &T,
+    provider: &dyn Provider,
+    part: &Part<'_>,
+) -> Result<String, RenderError> {
+    let value = serde_json::to_value(payload)
+        .map_err(|e| RenderError(format!("payload does not serialize: {e}")))?;
+    render(&RenderRequest {
+        body: Body::Ref(part.reference),
+        payload: &value,
+        provider,
+        format: part.format,
+        max_chars: part.max_chars,
+        verify: Some(part.fields),
+    })
+}
+
+/// What an `email` template renders to: the subject and HTML body always, the text body
+/// when the template declares one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmailDocument {
+    pub subject: String,
+    pub html_body: String,
+    pub text_body: Option<String>,
+}
+
+/// The run-time drift check: every finding but an unused required slot (a warning) fails.
+fn check_payload(
+    body: &str,
+    fields: &[PayloadField],
+    provider: &dyn Provider,
+) -> Result<(), RenderError> {
+    let options = VerifyOptions {
+        provider: Some(provider),
+        ..VerifyOptions::default()
+    };
+    let drift: Vec<String> = verify::verify(body, fields, &options)
+        .into_iter()
+        .filter(|e| e.code != verify::ERR_REQUIRED_SLOT_UNUSED)
+        .map(|e| format!("{} ({})", e.code, e.path))
+        .collect();
+    if drift.is_empty() {
+        Ok(())
+    } else {
+        err(format!("render verify failed: {}", drift.join(", ")))
+    }
 }
 
 fn check_budget(out: String, max_chars: Option<usize>) -> Result<String, RenderError> {

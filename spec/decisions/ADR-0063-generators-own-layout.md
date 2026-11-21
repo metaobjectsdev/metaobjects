@@ -171,3 +171,32 @@ The ratchet is a Roslyn walk over the source of each generator, as item 6 requir
 `allowlist.json` has an `unconverted` section, which is empty: no generator source types layout by hand. Its `exempt` section names the non-generator files the rule does not cover, each
 with a reason. Those entries only shrink, and a new generator that types layout by hand fails the
 ratchet.
+
+## Amendment (2026-11-21, Rust): the Rust layout ratchet and dialect cases
+
+The Rust port has written through `CodeWriter` (`server/rust/metaobjects-codegen/src/writer.rs`)
+since it landed. It now has its layout ratchet and its dialect cases. Decisions 1 to 7 apply
+unchanged. Rust lays out at **100 columns** with a four-space indent and a trailing comma in broken
+lists, as rustfmt does. The dialect is in [`spec/code-writer.md`](../code-writer.md), the Rust
+dialect section. Its `rust` cases are rustfmt fixed points, because generated Rust is held to
+rustfmt.
+
+The ratchet (`server/rust/metaobjects-codegen/tests/layout_ratchet.rs`) walks each source file's
+syntax tree with `syn`, as item 6 requires. Its scope is a rule: every file under the crate's
+`src/` except the writer. That rule covers the fixed text in `src/emitted/` as well as the
+generators. Its `allowlist.json` has an `unconverted` section, which is empty: no generator types
+layout by hand. The `Cargo.toml` and `main.rs` that `eject` scaffolds go through the writer's
+`Manifest` and `CodeWriter`. Its `exempt` section names the files that write text other than
+generated code, such as terminal messages, hash input and JSON, each with a reason. The list
+only shrinks, which the test checks against the branch's merge base.
+
+
+Rust has no subclassing, so item 7 takes Rust's form. Each shipped generator has a parts trait
+(`EntityParts`, `ClientParts`, `CommandsParts`, `RenderHelperParts`, `OutputParserParts`,
+`OutputPromptParts`) with one default method per output piece. Each default calls the shipped
+piece, which is a public function of the same name. The generator implements the trait with no
+overrides, and its `generate` returns `self.render(ctx)`. An adopter's generator implements the
+same trait, overrides one method and keeps every other piece. The traits make no stability promise.
+Generator options take a generator's constructor's place: an entry in `metaobjects.config.json`
+may carry `options`, and `Generator::configure` returns the configured generator or refuses an
+unknown key with `ERR_UNKNOWN_GENERATOR_OPTION`. The shipped generators take no options.

@@ -14,20 +14,23 @@
 >   first, see the Java procedure). One route per version, never both.
 > - **NuGet** → keyless OIDC via the `publish-csharp.yml` workflow: `gh workflow run
 >   publish-csharp.yml` (or push a `csharp-v<version>` tag).
+> - **crates.io** → `scripts/release.mjs` publishes the four Rust crates after npm, behind the
+>   same confirm, with the token `cargo login` stores. See
+>   [Releasing the Rust crates to crates.io](#releasing-the-rust-crates-to-cratesio).
 >
 > Run network commands via the sandbox-disabled shell. **Publish what changed; converge the
 > number when you do (standing policy since 0.24.5, replacing the version-parity rule of
 > 0.20.13):** a registry publishes only when it has a changed product file, and when it does it
 > adopts the **current shared `minor.patch`** — skipping the numbers it sat out. npm / PyPI /
-> NuGet on `<M>.<m>.<p>`, Maven on `<M+7>.<m>.<p>` — only the MAJOR differs, and the offset is
+> NuGet / crates.io on `<M>.<m>.<p>`, Maven on `<M+7>.<m>.<p>` — only the MAJOR differs, and the offset is
 > permanent (`scripts/maven-coordinate.mjs` is the single derivation; every script imports it).
 > Concretely: npm `0.25.0` is Maven `7.25.0`, and npm `1.0.0` is Maven **`8.0.0`**. Do not type
 > a literal `7.` anywhere — at the 1.0 cut it asks Central for a version BELOW the last release.
 > Two carve-outs: the **13 npm packages still move atomically with each other** (they
 > cross-depend — that is intra-npm lockstep and it is unchanged), and a change to
-> `expected-registry.json` / `metamodelVersion` **forces all four**, because that is the
+> `expected-registry.json` / `metamodelVersion` **forces all five**, because that is the
 > cross-port contract — whatever the release's level, so a vocabulary-adding PATCH publishes
-> all four too (ADR-0035 Amendment 5). The rest of this doc is the per-registry procedure.
+> all five too (ADR-0035 Amendment 5). The rest of this doc is the per-registry procedure.
 
 ## Step 0 (all registries): scan for unmerged work before you cut
 
@@ -295,7 +298,7 @@ what they render is generator output and does not.)
 | Wire-contract / conformance behavior change of already-valid deployments | FR-036 enforcement | **MINOR**, loud notice (pre-1.0 MINOR *is* the breaking slot) | **`metamodelVersion` MAJOR** (Metamodel 2.0) + package MINOR — see the two-contracts rule below |
 | Wire behavior fixed to match the documented/conformance contract | 0.19.1 `@min` clamp | PATCH | PATCH |
 | No changed product file in a port | PyPI/NuGet/Maven at 0.24.4 while npm cuts 0.24.5 | **Do not publish that registry.** It sits the release out and keeps its current version. When it next has a changed file it adopts the shared `minor.patch` then current, skipping the numbers between (publish-what-changed policy, standing since 0.24.5) | same |
-| A change to `expected-registry.json` / `metamodelVersion` | any vocabulary move, at any release level — a vocabulary-adding PATCH included | **All four registries publish**, changed file or not — the metamodel is the cross-port contract and every port byte-matches the manifest | same |
+| A change to `expected-registry.json` / `metamodelVersion` | any vocabulary move, at any release level — a vocabulary-adding PATCH included | **All five registries publish** (npm, PyPI, NuGet, Maven Central, crates.io), changed file or not — the metamodel is the cross-port contract and every port byte-matches the manifest | same |
 
 ### The two-contracts rule (post-1.0; ADR-0035 Amendment 2)
 
@@ -903,6 +906,52 @@ Project `metaobjects` → **Settings → Publishing → Add a new GitHub publish
    0; the workflow runs the same gate), then `UV_PUBLISH_TOKEN=<a PyPI API token> uv publish
    dist/*` from `server/python`, and then do not push a `python-v*` tag for that version.
 4. **Verify:** `curl -s https://pypi.org/pypi/metaobjects/json | python3 -c "import sys,json;print(json.load(sys.stdin)['info']['version'])"`.
+
+# Releasing the Rust crates to crates.io
+
+The four Rust crates ([ADR-0065](../spec/decisions/ADR-0065-rust-is-the-sixth-port.md)
+Amendment 3) ship to crates.io on the shared `<M>.<m>.<p>` line, from one workspace version
+(`[workspace.package]` in [`server/rust/Cargo.toml`](../server/rust/Cargo.toml)):
+
+| Crate | What it is |
+|---|---|
+| `metaobjects` | the loader, registry and canonical serializer |
+| `metaobjects-render` | prompt render, the reply parser and the output-format fragment |
+| `metaobjects-codegen` | the run engine and the shipped generators |
+| `metaobjects-cli` | the `cargo-meta` binary (`cargo meta`) |
+
+**`scripts/release.mjs` publishes them; there is no separate procedure.** The rules it applies
+live in [`scripts/lib/rust-release.mjs`](../scripts/lib/rust-release.mjs) and are tested by
+`scripts/test-rust-release.mjs` (the `gates` lane runs it):
+
+1. **Whether they ship.** Publish what changed: the crates publish when a file they ship (a
+   crate's sources, data, build script or manifest, or the workspace manifest and lockfile,
+   but not tests, examples, benches or baselines) changed since the newest `rust-v*` tag, and
+   always when `expected-registry.json` moved. With no `rust-v*` tag they have never shipped,
+   and the cut publishes them. `--crates=publish` or `--crates=skip` overrides the decision;
+   the preflight prints the reason either way.
+2. **Preflight**, with npm's, before anything is bumped: a crates.io token (from `cargo login`
+   or `CARGO_REGISTRY_TOKEN`), and the version free on every crate. crates.io versions are
+   permanent: a yank hides a version from new resolutions and does not free its number.
+3. **Bump**: the workspace version and every sibling crate's version requirement move to the
+   release's, then `cargo update --workspace` updates the lockfile. The commit carries them
+   with npm's.
+4. **Pack-verify**: `cargo publish --dry-run --workspace` packages each crate and builds it
+   against its siblings' tarballs, so a crate that builds only from a path in the checkout
+   fails before the confirm.
+5. **Publish**, after npm: `cargo publish -p <crate>` in dependency order (`metaobjects`,
+   `metaobjects-render`, `metaobjects-codegen`, `metaobjects-cli`). cargo waits for each crate
+   to reach the index before it returns, so the next one resolves it.
+6. **Tag** `rust-v<version>` with the other ports' tags, before `finish-release.mjs`. The next
+   cut compares against it.
+
+The generated prompt crates name `metaobjects-render` by this release's major and minor
+(`metaobjects_render::REQUIREMENT`), so code generated by 1.3.x needs a 1.3 or later render
+crate and never resolves to an older one.
+
+**Nothing is published without the owner's go.** That holds for crates.io as for every
+registry. A crate name is reserved only by publishing it, and the CLI's package name is
+`metaobjects-cli` because `cargo-meta` is held by an unrelated crate.
 
 # Releasing the Java/Kotlin modules to Maven Central
 

@@ -298,6 +298,24 @@ pub const OWNED_MAIN: &str = "codegen/main.rs";
 
 /// Everything a run knows before it renders: the loaded model, where the files go, the
 /// manifest and the skip key.
+/// A generator the run applies: one the host offered, or the one an entry's options
+/// constructed in its place.
+enum Selected<'g> {
+    Offered(&'g dyn Generator),
+    Configured(Box<dyn Generator>),
+}
+
+impl<'g> std::ops::Deref for Selected<'g> {
+    type Target = dyn Generator + 'g;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Selected::Offered(g) => *g,
+            Selected::Configured(g) => g.as_ref(),
+        }
+    }
+}
+
 struct Prepared<'g> {
     loaded: LoadedProject,
     project_root: PathBuf,
@@ -305,7 +323,7 @@ struct Prepared<'g> {
     out_rel: String,
     gen_state: PathBuf,
     manifest: HashManifest,
-    selected: Vec<&'g dyn Generator>,
+    selected: Vec<Selected<'g>>,
     cacheable: bool,
     key: String,
     stored: Option<StoredFingerprint>,
@@ -366,7 +384,8 @@ fn prepare<'g>(
     let start = Instant::now();
     // The project's own list narrows what the host offers; `--generators` narrows it again,
     // but only within the list, so a flag never runs what the project left out.
-    let listed = generator_list::read(&project_root).map_err(RunError::GeneratorList)?;
+    let entries = generator_list::read(&project_root).map_err(RunError::GeneratorList)?;
+    let listed = entries.as_deref().map(generator_list::names);
     if let Some(names) = &listed {
         let available: Vec<&str> = generators.iter().map(|g| g.name()).collect();
         generator_list::check(names, &available).map_err(RunError::GeneratorList)?;
@@ -380,20 +399,35 @@ fn prepare<'g>(
             listed.join(", ")
         )));
     }
-    let selected: Vec<&dyn Generator> = generators
-        .iter()
-        .map(AsRef::as_ref)
-        .filter(|g| {
-            listed
-                .as_ref()
-                .is_none_or(|l| l.iter().any(|n| n == g.name()))
-        })
-        .filter(|g| {
-            opts.generators
-                .as_ref()
-                .is_none_or(|names| names.iter().any(|n| n == g.name()))
-        })
-        .collect();
+    // An entry with options constructs its generator from them, and that one runs in the
+    // offered generator's place; a generator refuses an option it does not take.
+    let mut selected: Vec<Selected<'g>> = Vec::with_capacity(generators.len());
+    for g in generators {
+        let in_list = listed
+            .as_ref()
+            .is_none_or(|l| l.iter().any(|n| n == g.name()));
+        let flagged = opts
+            .generators
+            .as_ref()
+            .is_none_or(|names| names.iter().any(|n| n == g.name()));
+        if !in_list {
+            continue;
+        }
+        let options = entries
+            .as_deref()
+            .and_then(|es| es.iter().find(|e| e.name == g.name()))
+            .map(|e| &e.options)
+            .filter(|o| !o.is_empty());
+        // Every listed entry's options are checked, even on a run `--generators` narrows, so
+        // a misspelt option fails the first run rather than the first one that includes it.
+        let chosen = match options {
+            Some(o) => Selected::Configured(g.configure(o).map_err(RunError::Generator)?),
+            None => Selected::Offered(g.as_ref()),
+        };
+        if flagged {
+            selected.push(chosen);
+        }
+    }
     let out_dir = normalize(&if opts.out_dir.is_absolute() {
         opts.out_dir.clone()
     } else {

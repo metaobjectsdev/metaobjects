@@ -1,0 +1,34 @@
+{
+  "description": "When the right-hand side fits on neither line, `assign` keeps it on the head's line and breaks its last list.",
+  "dialect": "rust",
+  "ops": [
+    [
+      "assign",
+      "pub static FIELDS: &[PayloadField] =",
+      [
+        "&",
+        {
+          "list": {
+            "open": "[",
+            "items": [
+              "PayloadField::scalar(\"field_number_00\")",
+              "PayloadField::scalar(\"field_number_01\")",
+              "PayloadField::scalar(\"field_number_02\")",
+              "PayloadField::scalar(\"field_number_03\")"
+            ],
+            "close": "]"
+          }
+        },
+        ";"
+      ]
+    ]
+  ],
+  "expected": [
+    "pub static FIELDS: &[PayloadField] = &[",
+    "    PayloadField::scalar(\"field_number_00\"),",
+    "    PayloadField::scalar(\"field_number_01\"),",
+    "    PayloadField::scalar(\"field_number_02\"),",
+    "    PayloadField::scalar(\"field_number_03\"),",
+    "];"
+  ]
+}

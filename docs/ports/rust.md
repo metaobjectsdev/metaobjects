@@ -31,7 +31,7 @@ The loader is the `metaobjects` crate, and the workspace at `server/rust/` adds 
 | Reply parser | `metaobjects_render::extract::extract` reads a typed answer out of a model's reply (FR-010, FR-011): fences, prose, comments, trailing commas and cut-off values tolerated, every declared field classified (`EXTRACTED`, `DEFAULTED`, `LOST_OPTIONAL`, `LOST_REQUIRED`, `MALFORMED`) and coerced to its kind, under a `STRICT`, `NORMAL` or `LOOSE` tolerance. `metaobjects_render::prompt::render_output_format` writes the output-format fragment that asks for that answer, in the `guide`, `inline` and `exampleOnly` styles. |
 | Frozen tree | The loader freezes the tree when it finishes. A frozen tree memoizes its resolved reads (effective children, attributes and array-ness), so many readers can share one. |
 | Timings | Every load records how long each phase and each validation pass took (`LoadResult::timings`). |
-| Code generation (`cargo meta`) | The run engine, three generators (`entity`, `client`, `commands`), the codegen drift gate and `eject`. See [The command](#the-command-cargo-meta) and [What `gen` writes](#what-gen-writes) below. |
+| Code generation (`cargo meta`) | The run engine, six generators (`entity`, `client`, `commands`, `render-helper`, `output-parser`, `output-prompt`), the codegen and template drift gates and `eject`. See [The command](#the-command-cargo-meta) and [What `gen` writes](#what-gen-writes) below. |
 
 ## The command: `cargo meta`
 
@@ -53,7 +53,8 @@ and the same `git` + `rev` on a `metaobjects` dependency). The candidate log
 |---|---|
 | `cargo meta init [--project <dir>]` | Scaffolds `.metaobjects/config.json`, `.metaobjects/.gitignore` (which keeps `.gen-state/.hashes/` committed), a first `metaobjects/meta.app.yaml` and `metaobjects.config.json`, the list of generators to run (see [Choosing generators](#choosing-generators)). It writes only what is missing, and never adds an empty metadata file to a project that already has metadata. |
 | `cargo meta gen [ENTITY...]` | Generates the crates. It skips the whole run when the model, the project config and the generators are unchanged ([ADR-0064](../../spec/decisions/ADR-0064-skip-codegen-when-nothing-changed.md)), writes only files whose bytes changed, removes a generated file nothing emits any more, and refuses to overwrite or delete a generated file that was edited by hand. It prints what it created, updated and removed, and the crates to re-check. |
-| `cargo meta verify [--codegen] [--full]` | The codegen drift gate: renders in memory, compares with disk, writes nothing, and exits 1 on drift, naming each file. Locally it may answer from the stored skip key; `--full`, or a set `CI` variable, always renders. `--codegen` runs that gate alone. A bare `verify` also runs the business-rules gate ([ADR-0066](../../spec/decisions/ADR-0066-business-rules-operations-and-lifecycles.md)) on the loaded model, and prints nothing about it when the model declares no operation and no transition; an error-severity finding (a `rules.permissions.names` of `require`, or `verify.lifecycle.unreachable` of `error`) exits 1. `--db`, `--templates` and `--deps` exit 2 with the reason and where that check lives. |
+| `cargo meta verify [--codegen] [--full]` | The codegen drift gate: renders in memory, compares with disk, writes nothing, and exits 1 on drift, naming each file. Locally it may answer from the stored skip key; `--full`, or a set `CI` variable, always renders. `--codegen` runs that gate alone. A bare `verify` also runs the business-rules gate ([ADR-0066](../../spec/decisions/ADR-0066-business-rules-operations-and-lifecycles.md)) on the loaded model, and prints nothing about it when the model declares no operation and no transition; an error-severity finding (a `rules.permissions.names` of `require`, or `verify.lifecycle.unreachable` of `error`) exits 1. `--db` and `--deps` exit 2 with the reason and where that check lives. |
+| `cargo meta verify --templates` | The template gate alone: every `template.*` body, read from the project's `prompts/` (else `templates/`), checked against its payload's field tree, the same check `gen` makes before it writes a render helper. Exits 1 on drift, naming the template, the file and the tag. |
 | `cargo meta eject <generator>...` | Copies a shipped generator into the project to own. An existing copy is refused; `--force` replaces it with the reference, and leaves a copy that already matches untouched. `--undo` takes back copies still identical to the shipped source; `--list` shows what can be ejected and how each owned copy compares. See [Owning a generator](#owning-a-generator). |
 
 `gen` and `verify` share `--project <dir>`, `--out <dir>` (default `generated`), `--generators <a,b>`,
@@ -67,14 +68,18 @@ other ports choose theirs (`metaobjects.config.ts`, `codegen/Generators.cs`, the
 running one, and no eject is needed:
 
 ```json
-{ "generators": ["entity", "client", "commands"] }
+{ "generators": ["entity", "client", "commands", "render-helper", "output-parser", "output-prompt"] }
 ```
 
-The file takes that one key and no options: a layer is only a generator, so there are no layer settings.
-A project with no such file runs every generator. A generator that leaves the list has its files removed
+The file takes that one key: a layer is only a generator, so there are no layer settings. An entry is a
+name, or `{"name": "<generator>", "options": {...}}` for a generator that takes options; the
+generator's `configure` reads them and refuses a key it does not know (`ERR_UNKNOWN_GENERATOR_OPTION`,
+naming the options it takes). The shipped generators take none, so any option given to one fails the
+run, also a run `--generators` narrows to other generators. A project with no such file runs every
+generator. A generator that leaves the list has its files removed
 on the next `gen` (a file somebody edited is refused by name instead), and the run fails, naming the
 file, for a name nothing offers, a duplicate, an unknown key, or a generator listed without one it
-builds on (`client` needs `entity`; `commands` needs both). `cargo meta gen --list` shows each generator
+builds on (`client`, `render-helper` and `output-parser` need `entity`; `commands` needs `entity` and `client`). `cargo meta gen --list` shows each generator
 as `[configured]` or `[not configured]`, and `--generators` narrows one run to some of the list.
 
 **Exit codes** are the ones every port's tool uses: 0 success, 1 the run failed (a model that does not
@@ -97,14 +102,21 @@ generated/
   shop/           entity     the model: structs, enums, create and patch bodies, validate()
   shop_client/    client     a typed HTTP client and list query per served entity
   shop_cli/       commands   clap commands over the client
+  shop_prompts/   render-helper   a typed render function per template (when the package has templates)
+  shop_parsers/   output-parser   a strict parse and a tolerant extract per responding prompt
+  shop_formats/   output-prompt   the output-format fragment per responding prompt
   meta_support/   entity     exact decimals, durations, patch helpers, the validation checks
   meta_client/    client     the HTTP transport (reqwest), errors, the query builder
   meta_cli/       commands   what a command uses to build a body and a query
 ```
 
 The generated crates depend on each other by path and on ordinary crates.io crates (`serde`,
-`serde_json`, `reqwest`, `clap`). **They import nothing from MetaObjects**: the shared code is written
-into the three `meta_*` crates as source you can read and change. Add the crates you want to your
+`serde_json`, `reqwest`, `clap`). **The model, client and command crates import nothing from
+MetaObjects**: the shared code is written into the three `meta_*` crates as source you can read and
+change. The three prompt-tier crates import `metaobjects-render`, an ordinary Apache-2.0 library (the
+render engine and the reply parser), as every port's prompt tier imports its render package. It is not
+on crates.io yet, so until it is, point a `[patch.crates-io]` entry at a checkout's
+`server/rust/metaobjects-render`. Add the crates you want to your
 workspace as path dependencies:
 
 ```toml
@@ -224,6 +236,61 @@ refused, not dropped.
 `commands` with `rust` as their only port, so the difference is stated in the one place every port
 checks itself against, not left to be discovered.
 
+### `render-helper`: a render function per template
+
+For each `template.output` and `template.prompt` the generator writes a typed function in a
+`<package>_prompts` crate. A document template (the default `@kind`, and every prompt) gets
+`render_<name>(&payload, &provider) -> Result<String, RenderError>`, escaped for its `@format` and held
+to its `@maxChars`. An email template gets one returning an `EmailDocument`: the subject and the text
+body rendered as text, the HTML body as HTML. The payload is the value object's own struct from the
+`entity` crate ([ADR-0056](../../spec/decisions/ADR-0056-value-object-types-are-generated-once.md)).
+
+```rust
+use metaobjects_render::FilesystemProvider;
+
+let provider = FilesystemProvider::new("prompts");
+let text = shop_prompts::render_order_summary(&summary, &provider)?;
+```
+
+**The drift gate runs when you generate.** Each body is read from the project's template directory
+(`prompts/` when it exists, else `templates/`) and checked against the payload's fields, nested value
+objects included. A variable the payload does not have fails `cargo meta gen` with
+`ERR_VAR_NOT_ON_PAYLOAD`, naming the template, the reference and the variable. The field tree is also
+written into the function, and every render checks the body again, so a body edited after generation,
+or served by another provider, fails the render instead of rendering a blank. A body is an input of
+the generator: editing one regenerates the crate even when the model did not change.
+
+### `output-parser` and `output-prompt`: the reply to a prompt
+
+A `template.prompt` with `@responseRef` names the value object its answer is read into
+([ADR-0052](../../spec/decisions/ADR-0052-template-direction-outbound-vs-inbound.md)). `output-parser` writes, in a
+`<package>_parsers` crate:
+
+- `parse_<name>(text) -> Result<T, serde_json::Error>`, the strict parse: the reply must be exactly
+  the JSON of a `T`. A prompt whose `@responseFormat` is `xml` has none
+  ([ADR-0053](../../spec/decisions/ADR-0053-inbound-response-format.md)).
+- `extract_<name>(text, &opts) -> Extracted<T>`, the tolerant read of a raw model reply. It never
+  fails: `value` is the answer when the extracted fields make a complete `T`, and `outcome.report`
+  classifies every field either way.
+- `<name>_schema()`, the extract descriptor both read with, derived from the response object as every
+  port derives it: nested value objects, numeric ranges and element counts from the field's
+  validators, `@enumAlias`, `@coerceDefault`, `@default`, `@normalize` and `@xmlText`.
+
+`output-prompt` writes, in a `<package>_formats` crate, `render_<name>_format(&overrides) -> String`:
+the part of the prompt that tells the model how to shape its answer, in the reply's syntax and the
+prompt's `@promptStyle` (`guide`, `inline` or `exampleOnly`), with each field's `@example`,
+`@instruction` and `@enumDoc`. Its root is the response object's name, the root the parser looks for.
+
+```rust
+let fragment = shop_formats::render_judge_format(&PromptOverrides::default());
+let reply = call_the_model(&format!("{prompt}\n\n{fragment}"))?;
+let got = shop_parsers::extract_judge(&reply, &ExtractOptions::default());
+match got.value {
+    Some(verdict) => use_it(verdict),
+    None => log_the_report(&got.outcome.report),
+}
+```
+
 ### Owning a generator
 
 A generator is a reference helper
@@ -245,6 +312,14 @@ writes (the transport, the command helpers) is inside the generator, so an owned
 transport too. Every file in `codegen/` is an input of the skip key, whether `eject` wrote it or you
 added it (a module beside the generator list, say), so editing any of them regenerates. Only the
 crate's build directory (`codegen/target`) and its `Cargo.lock` are left out.
+
+An owned generator need not be a copy. Each shipped generator has a parts trait (`EntityParts`,
+`ClientParts`, `CommandsParts`, `RenderHelperParts`, `OutputParserParts`, `OutputPromptParts`) with
+one default method per piece of its output (a crate's manifest, its `lib.rs`, one entity's file, one
+item), and a generator of your own implements it, overrides the piece it changes and returns
+`self.render(ctx)` from `generate`; every other file is the shipped generator's, byte for byte. An
+override can call the shipped piece, a public function of the same module and name. The traits carry
+the same no-stability caveat as the rest of the engine API (ADR-0063 item 7).
 
 `cargo meta gen --list` shows each owned copy as `identical`, or as `DIFFERS` with how many shipped
 lines it lacks and how many are its own.
@@ -276,17 +351,20 @@ outright.
 | `yaml-conformance` | 18 of 19. The one on the ledger, `yaml-ref-root-escape`, waits for the root-level `::` reference rules of [ADR-0059](../../spec/decisions/ADR-0059-references-resolve-once-after-the-tree.md), which are reference resolution, not a validation pass. |
 | `source-resolution-conformance` | all 28 cases |
 | `naming-conformance` | all of it |
-| `codegen-skip-conformance` | every case the port can meet, on both columns (what `gen` must do and what a local `verify --codegen` may do), including an edited owned generator and a forced CI verify ([ADR-0064](../../spec/decisions/ADR-0064-skip-codegen-when-nothing-changed.md)). The three it cannot meet (two about templates, one about the three-way merge) are named with their reason in the runner. |
+| `codegen-skip-conformance` | every case the port can meet, on both columns (what `gen` must do and what a local `verify --codegen` may do), including an edited owned generator and a forced CI verify ([ADR-0064](../../spec/decisions/ADR-0064-skip-codegen-when-nothing-changed.md)). The one it cannot meet, about the three-way merge, is named with its reason in the runner; the template cases (a body edited, a body added) run. |
 | `rules-check-conformance` | all 16 cases: the diagnostics (severity, code, node address, message text) and the summary of the `verify` business-rules gate, under each case's `rules` and `verify` settings |
 | `validation-conformance` | every case, through the generated `validate()`: each payload is read into the generated create body by a probe the real compiler builds |
 | `decimal-wire`, `duration-wire` | every vector, against the code the support crate carries |
-| `writer-conformance` | every `core` case of the code writer ([ADR-0063](../../spec/decisions/ADR-0063-generators-own-layout.md)) |
+| `writer-conformance` | every `core` and `rust` case of the code writer ([ADR-0063](../../spec/decisions/ADR-0063-generators-own-layout.md)); each `rust` case is a rustfmt fixed point |
+| `render-conformance` | every case, through `metaobjects_render::render`: escaping per format, partials, `has<Field>` and `-last`, the `maxChars` budget |
+| `template-output-render-conformance` | the welcome page and email, the nested payload and the cross-package payloads, rendered through generated `render-helper` crates that a probe builds; the drift cases fail `gen`, and a body edited after generation fails the render |
+| `verify-conformance` | all 45 cases through `cargo meta verify --templates`'s check. Two (`verify-set-delimiter-clean`, `verify-set-delimiter-drift`) carry a Rust expectation file, as other ports' files do where their engine reads a set-delimiter tag differently. |
 | `generator-registry-conformance` | the shipped generators are exactly the registry's `rust` entries, with its tier and layer, and the eject contract's census, completeness and depth hold (ADR-0034 Amendment 8) |
 | `render-conformance` | every case, byte-identical, through `metaobjects_render::render` (the Mustache engine underneath is `mustache-ng`) |
 | `extract-conformance` | all 58 cases, through `metaobjects_render::extract::extract` |
 | `output-prompt-conformance` | all 17 cases in all three `@promptStyle` styles, with the extract round trip, through `metaobjects_render::prompt::render_output_format` |
 
-Two gates have no corpus of their own:
+Three gates have no corpus of their own:
 
 - **The codegen-compile gate.** The small two-package model and the public fitness model are generated
   by every shipped generator, each into a scratch Cargo workspace that `cargo check` builds and
@@ -296,9 +374,15 @@ Two gates have no corpus of their own:
   when cargo needed a package that lockfile does not name.
 - **The scale gate.** Twenty copies of the fitness model, each its own package: the output must be
   exactly twenty times one copy's files and no more than twenty times its bytes, one copy's output has
-  a byte budget and a longest-file budget, and all sixty-three crates must build. The times are
+  a byte budget and a longest-file budget, and all hundred and twenty-three crates must build. The times are
   printed; their ceilings are set far above a normal run and catch a step that stopped scaling, not
   a slow machine.
+- **The layout ratchet** (ADR-0063 item 6, `metaobjects-codegen/tests/layout_ratchet.rs`). It parses
+  every source file under `metaobjects-codegen/src/` except the writer, which covers the generators and
+  the fixed text in `emitted/`, and it fails on a line break or an indentation run typed outside the
+  writer. `tests/layout_ratchet/allowlist.json` names the files that write something other than
+  generated code (terminal messages, hash input, JSON), each with a reason. The list only shrinks: the
+  test compares it with the copy at the branch's merge base.
 
 Rust is not yet a column in the [per-corpus table](../CONFORMANCE.md#per-corpus-totals); it joins
 when the port runs the persistence and API-contract corpora, which need a service tier the port does
@@ -317,16 +401,14 @@ regeneration, peak memory), so a port's speed can be tracked per feature next to
 
 ## What does not exist yet
 
-- **Other generators.** There is no server-side route, ORM or repository generator, no template
-  generator and no documentation generator. Projections and reports get no client yet.
-- **Other gates.** `verify --codegen` and the business-rules gate are the ones it has. There is no
-  template gate, no requirement gate and no `fmt`.
+- **Other generators.** There is no server-side route, ORM or repository generator and no
+  documentation generator. Projections and reports get no client yet, and a template over a
+  sourceless `object.projection` payload gets no render function.
+- **Other gates.** `verify --codegen`, `verify --templates` and the business-rules gate are the ones
+  it has. There is no requirement gate and no `fmt`.
 - **A three-way merge.** A hand-edited generated file is refused by name, as in every port but
   TypeScript; change the model or own the generator instead.
 - **The service tier.** No `ObjectManager`, no persistence drivers and no web adapters.
-- **Prompt codegen.** The render engine and the reply parser exist as a library; no generator yet
-  writes a template's payload type or its response parser from the model, and there is no template
-  gate in `verify`.
 - **Publication.** The crates are publishable and the lane proves they package (`cargo publish
   --dry-run`), but nothing is published: there is no crates.io release yet, and publishing waits for
   the owner's go ([ADR-0065](../../spec/decisions/ADR-0065-rust-is-the-sixth-port.md) Amendment 3).

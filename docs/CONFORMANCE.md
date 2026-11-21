@@ -81,13 +81,15 @@ green, with every validation pass the TypeScript loader runs, in the same order,
 `yaml-ref-root-escape`, waits for the ADR-0059 root-level `::` reference rules, which are
 reference resolution, not a validation pass); `source-resolution-conformance` (all 28
 cases); `naming-conformance` (all of it); `codegen-skip-conformance` (ADR-0064), on both its
-`gen` and its `verify` columns, for every case the port can meet (the three it cannot, two
-about templates and one about the three-way merge, are named with their reason in its
-runner); `validation-conformance`, every case, through the generated `validate()`;
+`gen` and its `verify` columns, for every case the port can meet, the template cases among
+them (the one it cannot, about the three-way merge, is named with its reason in its runner); `validation-conformance`, every case, through the generated `validate()`;
 `decimal-wire` and `duration-wire`, every vector, against the code the generated support
 crate carries; `render-conformance`, every case byte-identical, `extract-conformance`, all 58
 cases, and `output-prompt-conformance`, all 17 in all three styles with the round trip, in the
-`metaobjects-render` crate; the `core` cases of `writer-conformance` (ADR-0063); and
+`metaobjects-render` crate; `template-output-render-conformance`, through generated
+`render-helper` crates a probe builds; `verify-conformance`, all 45 cases through
+`cargo meta verify --templates` (two set-delimiter cases carry a `.rust.json` expectation);
+the `core` cases of `writer-conformance` (ADR-0063); and
 `generator-registry-conformance`, with the eject contract's census, completeness and depth
 (ADR-0034 Amendment 8). It also runs the codegen-compile gate (below) with every shipped
 generator, and a scale gate over twenty copies of the fitness model. The ledgers above may
@@ -253,7 +255,7 @@ Amendment 8). A gate, not a corpus: it has no fixtures of its own, and reads
   and emits what the packaged generator emits (depth). TypeScript:
   `cli/test/eject-contract.test.ts`. C#: `EjectContractTests`. Java: `EjectContractTest` in
   `maven-plugin`. Kotlin: `EjectContractTest` in `codegen-kotlin`. Python:
-  `tests/conformance/test_eject_contract.py`. Rust holds its three generators to
+  `tests/conformance/test_eject_contract.py`. Rust holds its six generators to
   the same assertions: census, completeness and the reference scan in
   `metaobjects-codegen/tests/generator_registry.rs`, and the ejected-alone build in
   `metaobjects-cli/tests/cli.rs`.
@@ -347,7 +349,9 @@ manifest contains without moving these boundaries.
   never executes.
 - *Rust runs it too*, with `cargo check` and `rustfmt --check`, over every
   generator it ships: it has no framework-bound route tier to exclude, and its generated
-  client and commands are driven over HTTP against a local stub in the same test.
+  client and commands are driven over HTTP against a local stub in the same test. The
+  generated prompt, parser and format crates build against the workspace's own
+  `metaobjects-render`.
 - *Every port excludes its framework-bound route tier* — TS `routesFile`, C#
   `RoutesGenerator`, Java `SpringControllerGenerator`, Kotlin
   `KotlinSpringControllerGenerator`. Those imports are not on an in-memory compile's
@@ -421,7 +425,7 @@ Per-port runners + commands:
 | Kotlin | `cd server/java && mvn -pl codegen-kotlin test` (snapshot suite) | `mvn -f server/java/integration-tests-kotlin/pom.xml test` (needs Docker) | `mvn -f server/java/integration-tests-kotlin/pom.xml test -Dtest=ApiContractConformanceTest` (needs Docker) |
 | C# | `dotnet test` (per project) | `scripts/integration-test.sh csharp` (needs Docker) | `dotnet test server/csharp/MetaObjects.IntegrationTests/MetaObjects.IntegrationTests.csproj --filter "FullyQualifiedName~ApiContractConformanceTest"` (needs Docker) |
 | Python | `pytest` (per package) | `scripts/integration-test.sh python` (needs Docker) | `cd server/python && uv run --extra integration pytest tests/integration/test_api_contract.py` (needs Docker) |
-| Rust | `cd server/rust && cargo test` (registry, metamodel, YAML, source-resolution, naming, skip, validation, wire-vector, writer, generator-registry, render, extract and output-prompt corpora; the codegen-compile and scale gates, which run `cargo check` on generated crates and drive the generated client over HTTP against a local stub) | — | — |
+| Rust | `cd server/rust && cargo test` (registry, metamodel, YAML, source-resolution, naming, skip, validation, wire-vector, writer, generator-registry, render, extract, output-prompt, template-output-render and verify corpora; the codegen-compile and scale gates, which run `cargo check` on generated crates and drive the generated client over HTTP against a local stub) | — | — |
 
 The `persistence-conformance` corpus is intentionally **on-demand** — none of the
 unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.

@@ -53,11 +53,15 @@ impl Project {
             .current_dir(&self.0)
             // The suite's own environment must not decide what a test sees.
             .env_remove("CI")
-            // An owned generator crate is a real cargo build: keep it in the workspace's
-            // target directory so the engine builds once across runs, and unoptimized.
+            // An owned generator crate is a real cargo build: keep it under the target
+            // directory the suite was built into (the workspace's unless one was chosen), so
+            // the engine builds once across runs, and unoptimized.
             .env(
                 "CARGO_TARGET_DIR",
-                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../target/owned-check"),
+                std::env::var_os("CARGO_TARGET_DIR")
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../target"))
+                    .join("owned-check"),
             )
             .env("CARGO_PROFILE_DEV_OPT_LEVEL", "0")
             .env_remove("CARGO_ENCODED_RUSTFLAGS")
@@ -255,14 +259,21 @@ fn init_writes_the_generator_list_and_gen_list_shows_it_against_what_is_availabl
     let list: serde_json::Value = serde_json::from_str(&p.read("metaobjects.config.json")).unwrap();
     assert_eq!(
         list["generators"],
-        serde_json::json!(["entity", "client", "commands"])
+        serde_json::json!([
+            "entity",
+            "client",
+            "commands",
+            "render-helper",
+            "output-parser",
+            "output-prompt"
+        ])
     );
     let out = ok(&p.run(&["meta", "gen", "--list"]));
     assert!(
-        out.contains("metaobjects.config.json runs: entity, client, commands"),
+        out.contains("metaobjects.config.json runs: entity, client, commands, render-helper, output-parser, output-prompt"),
         "{out}"
     );
-    assert_eq!(out.matches("[configured]").count(), 3, "{out}");
+    assert_eq!(out.matches("[configured]").count(), 6, "{out}");
     // An edited list is never overwritten by a second init.
     p.write(
         "metaobjects.config.json",
@@ -275,7 +286,7 @@ fn init_writes_the_generator_list_and_gen_list_shows_it_against_what_is_availabl
     );
     let out = ok(&p.run(&["meta", "gen", "--list"]));
     assert!(out.contains("runs: entity\n"), "{out}");
-    assert_eq!(out.matches("[not configured]").count(), 2, "{out}");
+    assert_eq!(out.matches("[not configured]").count(), 5, "{out}");
 }
 
 #[test]
@@ -473,7 +484,14 @@ fn an_object_that_goes_away_has_its_files_removed_unless_one_was_edited() {
 fn gen_list_names_the_generators_and_how_an_owned_copy_compares() {
     let p = Project::new("list");
     let out = ok(&p.run(&["meta", "gen", "--list"]));
-    for name in ["entity", "client", "commands"] {
+    for name in [
+        "entity",
+        "client",
+        "commands",
+        "render-helper",
+        "output-parser",
+        "output-prompt",
+    ] {
         assert!(
             out.lines().any(|l| l.starts_with(&format!("{name} - "))),
             "{out}"
@@ -570,7 +588,7 @@ fn eject_copies_the_generator_never_overwrites_and_undo_takes_back_only_identica
     assert_eq!(r.status.code(), Some(2));
     assert!(
         text(&r.stderr).contains(
-            "unknown or non-ejectable generator(s): nope; ejectable: entity, client, commands"
+            "unknown or non-ejectable generator(s): nope; ejectable: entity, client, commands, render-helper, output-parser, output-prompt"
         ),
         "{}",
         text(&r.stderr)
@@ -886,5 +904,41 @@ fn verify_runs_the_rules_gate_and_a_setting_decides_whether_a_finding_fails_it()
     assert!(
         !err.contains("rules:") && !err.contains("WARN_LIFECYCLE"),
         "{err}"
+    );
+}
+
+#[test]
+fn verify_templates_checks_every_body_against_its_payload() {
+    let p = Project::new("verify-templates");
+    p.write(
+        "metaobjects/meta.ai.json",
+        r#"{ "metadata.root": { "package": "ai", "children": [
+  { "object.value": { "name": "Welcome", "children": [ { "field.string": { "name": "name" } } ] } },
+  { "template.output": { "name": "WelcomePage", "@kind": "document", "@payloadRef": "Welcome", "@textRef": "pages/welcome" } }
+] } }"#,
+    );
+    p.write("templates/pages/welcome.mustache", "Hello {{name}}");
+    let out = ok(&p.run(&["meta", "verify", "--templates"]));
+    assert!(out.contains("1 template ref(s) clean"), "{out}");
+
+    // A tag the payload does not have is drift, named down to the tag.
+    p.write("templates/pages/welcome.mustache", "Hello {{nmae}}");
+    let r = p.run(&["meta", "verify", "--templates"]);
+    assert_eq!(r.status.code(), Some(1));
+    let err = text(&r.stderr);
+    assert!(
+        err.contains("[WelcomePage] ref 'pages/welcome'")
+            && err.contains("ERR_VAR_NOT_ON_PAYLOAD: nmae"),
+        "{err}"
+    );
+
+    // A body that is not there is drift too, and `prompts/` wins over `templates/`.
+    std::fs::create_dir_all(p.0.join("prompts")).unwrap();
+    let r = p.run(&["meta", "verify", "--templates"]);
+    assert_eq!(r.status.code(), Some(1));
+    assert!(
+        text(&r.stderr).contains("missing template"),
+        "{}",
+        text(&r.stderr)
     );
 }

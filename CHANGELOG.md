@@ -900,6 +900,35 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   to build and test it, and the scope of `cargo meta`; the crates.io name `cargo-meta` is
   held by an unrelated crate, so the CLI crate will publish under another name that installs a
   `cargo-meta` binary (a plan, not a promise). Nothing is published.
+- **Rust port's prompt tier: `render-helper`, `output-parser` and `output-prompt`.** A new
+  `metaobjects-render` crate renders a declared prompt, reads a reply (the strict JSON parse and the
+  tolerant `extract`) and writes the output-format fragment, held to the render, template-output
+  and extract corpora. The three generators write a crate each beside the model crate:
+  `<package>_prompts` (a typed render function per prompt), `<package>_parsers` (`parse_<prompt>`
+  for a JSON reply, `extract_<prompt>` for any, and the extract schema) and `<package>_formats`
+  (the fragment and its descriptor), for every prompt with a `@responseRef` (ADR-0052). `cargo meta
+  verify --templates` checks prompt bodies against their payloads, and `eject` copies all three.
+  The generated crates depend on `metaobjects-render` at this release's major and minor.
+- **The Rust crates join the release path (ADR-0065 Amendment 3).** The workspace version moves to
+  the shared line (1.3.0), and `scripts/release.mjs` publishes the four crates to crates.io after
+  npm, behind the same confirm, in dependency order, when a file they ship changed since the last
+  `rust-v*` tag (or they never shipped, or `expected-registry.json` moved); `--crates=publish|skip`
+  overrides. Its preflight checks the crates.io token and that the version is free before anything
+  is bumped. `docs/RELEASING.md` names crates.io as the fifth registry. Nothing is published.
+- **Rust generators own their layout, take options and expose their parts (ADR-0063).** A
+  layout ratchet (`tests/layout_ratchet.rs`) parses every generator source with `syn` and fails
+  on a hand-typed line break or indentation run; its allowlist can only shrink, and it starts
+  empty but for six files whose strings are not generated code. Nine `rust` writer-conformance
+  cases pin the dialect (`use_list`, `doc`, `prose`, `doc_break`, `assign`), each a rustfmt fixed
+  point under the generated crates' `rustfmt.toml`. An entry in `metaobjects.config.json`'s
+  `generators` may now be `{"name": ..., "options": {...}}`: `Generator::configure` receives the
+  options, and the shipped generators take none and refuse any key with
+  `ERR_UNKNOWN_GENERATOR_OPTION`, also on a run `--generators` narrows. Each shipped generator
+  has a `*Parts` trait (`EntityParts`, `ClientParts`, `CommandsParts`, `RenderHelperParts`,
+  `OutputParserParts`, `OutputPromptParts`) with one default method per output piece, so an owned
+  generator overrides one piece and keeps the rest. Generated output is byte-identical but for
+  one fix: `assign` now moves an array right-hand side to the next line when that is where
+  rustfmt puts it under those settings.
 - **Example and write-up: metadata-driven grids, forms and routes in TypeScript.**
   `examples/dynamic-grid/` serves and renders every entity of a model from the loaded
   metadata: one grid component and one form component that take an entity name and read the

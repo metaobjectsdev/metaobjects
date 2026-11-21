@@ -13,8 +13,8 @@
 mod common;
 
 use common::{
-    FITNESS, Scratch, assert_builds, assert_formatted, assert_pinned, generate_all,
-    generated_workspace, run_probe, shop_files,
+    Scratch, assert_builds, assert_formatted, assert_pinned, generate_all, generated_workspace,
+    run_probe, shop_files,
 };
 
 const PROBE_DEPENDENCIES: &str = "shop = { path = \"../out/shop\" }\n\
@@ -355,14 +355,12 @@ fn generated_crates_compile_are_formatted_and_round_trip_through_serde() {
 #[test]
 fn the_fitness_model_compiles_and_is_formatted() {
     // The model every port's codegen-compile gate generates from (docs/CONFORMANCE.md).
-    let fitness = Scratch::project(
-        "compile-fitness",
-        &[("metaobjects/meta.fitness.json", FITNESS)],
-    );
+    let fitness = Scratch::project("compile-fitness", &common::FITNESS_PROJECT);
     generate_all(&fitness, &[]);
     let ws = generated_workspace("compile-fitness-ws", &fitness, None);
     assert_formatted(&ws);
     assert_builds(&ws, "the fitness model");
+    assert_pinned(&ws);
     assert_pinned(&ws);
 }
 

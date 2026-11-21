@@ -1,8 +1,8 @@
-//! Source the `entity` generator writes verbatim into the generated support crate.
+//! Source the generators write verbatim into generated crates.
 //!
 //! The three modules are real code here, compiled and tested with the engine (the shared
 //! `decimal-wire` and `duration-wire` vectors and the validation corpus run against them
-//! directly), and the generator emits the same bytes as `meta_support/src/`. The generated
+//! directly), and the `entity` generator emits the same bytes as `meta_support/src/`. The generated
 //! crates therefore carry their wire types and validation checks as their own source and
 //! depend on nothing from MetaObjects.
 //!
@@ -22,3 +22,12 @@ pub const PATTERN_RS: &str = include_str!("pattern.rs");
 pub const VALIDATION_RS: &str = include_str!("validation.rs");
 /// The text of `src/wire.rs` in a generated crate.
 pub const WIRE_RS: &str = include_str!("wire.rs");
+
+// Two more files are fixed text a generator writes whole but are not compiled here: they are
+// written for the dependencies of the crate they land in (`reqwest` for the transport), which
+// this crate does not have. The compile gate builds them in a generated workspace.
+
+/// The text of `meta_client/src/lib.rs`, the transport the `client` generator's crates share.
+pub const CLIENT_TRANSPORT_RS: &str = include_str!("client_transport.rs");
+/// The text of `meta_cli/src/lib.rs`, the helpers the `commands` generator's crates share.
+pub const COMMAND_HELPERS_RS: &str = include_str!("command_helpers.rs");

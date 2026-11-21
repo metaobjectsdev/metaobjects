@@ -81,6 +81,34 @@ pub const ERR_UNSUPPORTED: &str = "ERR_RUST_UNSUPPORTED";
 pub const ERR_CRATE_CYCLE: &str = "ERR_CRATE_CYCLE";
 /// The output directory is not inside the project.
 pub const ERR_OUT_DIR: &str = "ERR_OUT_DIR_OUTSIDE_PROJECT";
+/// A project gave a generator an option it does not take.
+pub const ERR_UNKNOWN_OPTION: &str = "ERR_UNKNOWN_GENERATOR_OPTION";
+
+/// The options a project wrote for one generator in `metaobjects.config.json`.
+pub type Options = serde_json::Map<String, serde_json::Value>;
+
+/// The refusal for options `generator` does not take, naming each one and what it takes
+/// (`known`, empty for a generator that takes none). A generator's
+/// [`Generator::configure`] returns it for any key outside `known`.
+pub fn unknown_options(generator: &str, options: &Options, known: &[&str]) -> GenError {
+    let unknown: Vec<String> = options
+        .keys()
+        .filter(|k| !known.contains(&k.as_str()))
+        .map(|k| format!("\"{k}\""))
+        .collect();
+    let takes = if known.is_empty() {
+        "it takes no options".to_string()
+    } else {
+        format!("it takes: {}", known.join(", "))
+    };
+    GenError::new(
+        ERR_UNKNOWN_OPTION,
+        format!(
+            "the generator {generator} has no option {}; {takes}",
+            unknown.join(", ")
+        ),
+    )
+}
 
 /// A code generator the run engine can drive.
 pub trait Generator {
@@ -105,6 +133,18 @@ pub trait Generator {
     /// is hashed whole). Their content is part of the skip key.
     fn extra_inputs(&self) -> Vec<String> {
         Vec::new()
+    }
+
+    /// This generator built with the options a project wrote for it in
+    /// `metaobjects.config.json` (`{"name": "client", "options": {...}}`). Options go through a
+    /// generator's constructor: a generator that takes options overrides this to construct
+    /// itself from them, and refuses any key it does not know with [`unknown_options`]. The
+    /// default takes none and refuses every key, so a misspelt option fails the run instead
+    /// of being ignored. The engine calls it only for an entry that has options, and the
+    /// generator it returns runs in this one's place (its [`Generator::identity`] should
+    /// carry the options, since they can change what it emits).
+    fn configure(&self, options: &Options) -> Result<Box<dyn Generator>, GenError> {
+        Err(unknown_options(self.name(), options, &[]))
     }
 
     /// Produce the generator's files for the loaded model.

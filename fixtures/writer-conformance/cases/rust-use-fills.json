@@ -1,0 +1,30 @@
+{
+  "description": "A `use` past 100 columns breaks after the brace and fills the names onto lines one level in, each followed by a comma, as many to a line as fit, then `};` on its own line.",
+  "dialect": "rust",
+  "ops": [
+    [
+      "use",
+      "metaobjects_render::extract",
+      "Name00",
+      "Name01",
+      "Name02",
+      "Name03",
+      "Name04",
+      "Name05",
+      "Name06",
+      "Name07",
+      "Name08",
+      "Name09",
+      "Name10",
+      "Name11",
+      "Name12",
+      "Name13"
+    ]
+  ],
+  "expected": [
+    "use metaobjects_render::extract::{",
+    "    Name00, Name01, Name02, Name03, Name04, Name05, Name06, Name07, Name08, Name09, Name10, Name11,",
+    "    Name12, Name13,",
+    "};"
+  ]
+}

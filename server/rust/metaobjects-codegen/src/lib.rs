@@ -23,9 +23,13 @@ pub mod fingerprint;
 pub mod generator;
 pub mod generator_list;
 pub mod hashes;
+pub mod inbound;
 pub mod names;
+pub mod output_parser;
+pub mod output_prompt;
 pub mod plan;
 pub mod project;
+pub mod render_helper;
 pub mod sha256;
 pub mod writer;
 
@@ -37,6 +41,12 @@ pub use engine::{
 };
 pub use entity::EntityGenerator;
 pub use generator::{EmittedFile, GenContext, GenError, Generator};
+/// The prompt render crate the `render-helper` generator checks templates with, so an owned
+/// copy of it names `metaobjects_codegen::render` and needs no dependency of its own.
+pub use metaobjects_render as render;
+pub use output_parser::OutputParserGenerator;
+pub use output_prompt::OutputPromptGenerator;
+pub use render_helper::{RenderHelperGenerator, TemplateCheck, check_templates};
 
 /// The generators `cargo meta gen` runs when the project owns none, in the order they run.
 pub fn shipped_generators() -> Vec<Box<dyn Generator>> {
@@ -44,5 +54,8 @@ pub fn shipped_generators() -> Vec<Box<dyn Generator>> {
         Box::new(EntityGenerator),
         Box::new(ClientGenerator),
         Box::new(CommandsGenerator),
+        Box::new(RenderHelperGenerator),
+        Box::new(OutputParserGenerator),
+        Box::new(OutputPromptGenerator),
     ]
 }

@@ -11,7 +11,7 @@
 //! - **Size is budgeted.** The output for one copy has a byte budget and a longest-file
 //!   budget. Generated code is read in review and compiled on every build, so growth in it is
 //!   a cost someone must decide to pay: raise the number in the change that needs it.
-//! - **It builds.** `cargo check` accepts all sixty-three crates, every file is in rustfmt's
+//! - **It builds.** `cargo check` accepts all hundred and twenty-three crates, every file is in rustfmt's
 //!   form, and the time each step took is printed. The times have a ceiling far above a
 //!   normal run, there to catch a step that stopped scaling, not to measure the machine.
 
@@ -90,7 +90,7 @@ fn bytes<'a>(files: impl Iterator<Item = (&'a String, &'a String)>) -> usize {
 
 #[test]
 fn twenty_copies_of_the_fitness_model_grow_linearly_stay_in_budget_and_build() {
-    let one = Scratch::project("scale-one", &[("metaobjects/meta.fitness.json", FITNESS)]);
+    let one = Scratch::project("scale-one", &common::FITNESS_PROJECT);
     generate_all(&one, &[]);
     let one_out = output(&one);
     let (one_files, one_bytes) = (per_package(&one_out).count(), bytes(per_package(&one_out)));
@@ -103,9 +103,11 @@ fn twenty_copies_of_the_fitness_model_grow_linearly_stay_in_budget_and_build() {
             )
         })
         .collect();
+    // Every copy's prompt names the same body.
     let files: Vec<(&str, &str)> = texts
         .iter()
         .map(|(p, t)| (p.as_str(), t.as_str()))
+        .chain([common::FITNESS_PROJECT[1]])
         .collect();
     let many = Scratch::project("scale-many", &files);
     let started = Instant::now();

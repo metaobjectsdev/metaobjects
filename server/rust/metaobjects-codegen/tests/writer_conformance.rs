@@ -1,7 +1,9 @@
-//! The shared code-writer corpus (`fixtures/writer-conformance/`, ADR-0063), dialect `core`.
+//! The shared code-writer corpus (`fixtures/writer-conformance/`, ADR-0063), dialects `core`
+//! and `rust`.
 //!
-//! Every port's writer runs these cases; a case of another dialect (`typescript`) belongs to
-//! that port's writer and is skipped here by name.
+//! Every port's writer runs the `core` cases; the `rust` cases pin this port's dialect (the
+//! rustfmt rules for `use` lists, doc comments and assignments). A case of another dialect
+//! (`typescript`, `python`, ...) belongs to that port's writer and is skipped here by name.
 
 use std::path::PathBuf;
 
@@ -9,6 +11,7 @@ use metaobjects_codegen::writer::{CodeWriter, List, Piece, WriterOptions};
 use serde_json::Value;
 
 const DIALECT_CORE: &str = "core";
+const DIALECT_RUST: &str = "rust";
 
 fn cases_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../fixtures/writer-conformance/cases")
@@ -44,12 +47,16 @@ fn parts(args: &[Value]) -> Piece {
 }
 
 fn run_case(case: &Value) -> Result<String, metaobjects_codegen::writer::WriterError> {
-    let o = &case["options"];
-    let mut w = CodeWriter::with_options(WriterOptions {
-        indent: o["indent"].as_str().expect("options.indent").to_string(),
-        width: usize::try_from(o["width"].as_u64().expect("options.width")).unwrap(),
-        trailing_comma: o["trailingComma"].as_bool().expect("options.trailingComma"),
-    });
+    // A `core` case states every option; a dialect case takes the dialect's defaults.
+    let mut w = match case.get("options") {
+        Some(o) => CodeWriter::with_options(WriterOptions {
+            indent: o["indent"].as_str().expect("options.indent").to_string(),
+            width: usize::try_from(o["width"].as_u64().expect("options.width")).unwrap(),
+            trailing_comma: o["trailingComma"].as_bool().expect("options.trailingComma"),
+        }),
+        None => CodeWriter::new(),
+    };
+    let text = |v: &Value| v.as_str().expect("a text argument").to_string();
     for op in case["ops"].as_array().expect("ops") {
         let op = op.as_array().expect("an op is an array");
         let name = op[0].as_str().expect("op name");
@@ -70,6 +77,23 @@ fn run_case(case: &Value) -> Result<String, metaobjects_codegen::writer::WriterE
             "text" => {
                 w.text(args[0].as_str().expect("text snippet"));
             }
+            "use" => {
+                let names: Vec<String> = args[1..].iter().map(text).collect();
+                let names: Vec<&str> = names.iter().map(String::as_str).collect();
+                w.use_list(&text(&args[0]), &names);
+            }
+            "doc" => {
+                w.doc(&text(&args[0]));
+            }
+            "prose" => {
+                w.prose(&text(&args[0]));
+            }
+            "docBreak" => {
+                w.doc_break();
+            }
+            "assign" => {
+                w.assign(&text(&args[0]), parts(&args[1..]));
+            }
             other => panic!("unknown op {other}"),
         }
     }
@@ -78,6 +102,15 @@ fn run_case(case: &Value) -> Result<String, metaobjects_codegen::writer::WriterE
 
 #[test]
 fn every_core_case_passes() {
+    run_dialect(DIALECT_CORE);
+}
+
+#[test]
+fn every_rust_case_passes() {
+    run_dialect(DIALECT_RUST);
+}
+
+fn run_dialect(dialect: &str) {
     let mut names: Vec<PathBuf> = std::fs::read_dir(cases_dir())
         .expect("the writer-conformance cases directory")
         .filter_map(Result::ok)
@@ -90,7 +123,7 @@ fn every_core_case_passes() {
     for path in names {
         let case: Value =
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).expect("case JSON");
-        if case["dialect"].as_str() != Some(DIALECT_CORE) {
+        if case["dialect"].as_str() != Some(dialect) {
             continue;
         }
         ran += 1;
@@ -129,6 +162,6 @@ fn every_core_case_passes() {
             Err(e) => failures.push(format!("{name}: unexpected {e}")),
         }
     }
-    assert!(ran > 0, "no core case found");
+    assert!(ran > 0, "no {dialect} case found");
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }

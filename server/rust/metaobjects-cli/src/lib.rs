@@ -25,7 +25,8 @@ use metaobjects_codegen::engine::{
     ChangeKind, OWNED_MANIFEST, Outcome, RunError, RunOptions, RunReport, VerifyReport,
 };
 use metaobjects_codegen::generator_list::{self, GENERATOR_LIST_FILE};
-use metaobjects_codegen::{Generator, run, shipped_generators, verify};
+use metaobjects_codegen::project::load_project;
+use metaobjects_codegen::{Generator, check_templates, run, shipped_generators, verify};
 
 /// The tool's name in messages.
 const TOOL: &str = "cargo meta";
@@ -37,6 +38,7 @@ USAGE:
     cargo meta init   [--project <dir>]
     cargo meta gen    [OPTIONS] [ENTITY...]
     cargo meta verify [--codegen] [--full] [OPTIONS]
+    cargo meta verify --templates [--project <dir>] [--strict]
     cargo meta eject  <generator>... [--force] [--engine <source>]
     cargo meta eject  --undo [<generator>...] [--force]
     cargo meta eject  --list
@@ -74,6 +76,9 @@ OPTIONS (gen):
 OPTIONS (verify):
     --codegen            The generated-code gate only: no business-rules gate. A bare
                          `verify` runs both.
+    --templates          The template gate only: every template body (read from the
+                         project's prompts/, else templates/) against its payload's
+                         fields. Exits 1 on drift, naming the template, the file and the tag.
     --full               Render and compare even when a local run could answer from the
                          stored key. Always on when CI is set.
 
@@ -359,7 +364,7 @@ fn list_generators(
     generators: &[Box<dyn Generator>],
 ) -> i32 {
     let listed = match generator_list::read(root) {
-        Ok(listed) => listed,
+        Ok(listed) => listed.as_deref().map(generator_list::names),
         Err(e) => {
             let _ = writeln!(err, "{TOOL}: {e}");
             return 1;
@@ -569,15 +574,13 @@ fn cmd_verify(
             "`{TOOL} verify --db` does not exist: checking a schema against a live database is the Node `meta` command's for every server language (`meta verify --db`, ADR-0015)."
         )));
     }
-    if s.has("--templates") {
-        return Err(Usage(format!(
-            "`{TOOL} verify --templates` does not exist yet: the Rust port ships no prompt or template generator, so it has no template gate. `{TOOL} verify --codegen` is the generated-code gate."
-        )));
-    }
     if s.has("--deps") {
         return Err(Usage(format!(
             "`{TOOL} verify --deps` does not exist: metadata dependencies are resolved and checked by the Node `meta` command (`meta deps check`)."
         )));
+    }
+    if s.has("--templates") {
+        return Ok(verify_templates(&s, cwd, out, err));
     }
     let mut options = run_options(&s, cwd, generators)?;
     options.force = s.has("--full") || ci_forces_render(std::env::var_os("CI"));
@@ -610,6 +613,43 @@ fn cmd_verify(
             let _ = writeln!(err, "{TOOL} verify failed:\n{e}");
             Ok(1)
         }
+    }
+}
+
+/// `verify --templates`: every template body against its payload, read from the project's
+/// `prompts/` (or `templates/`) directory, the check `gen` makes before it writes a render
+/// helper. 0 clean, 1 drift or a model that does not load.
+fn verify_templates(s: &Split, cwd: &Path, out: &mut dyn Write, err: &mut dyn Write) -> i32 {
+    let explicit = s.value("--project").map(|d| cwd.join(d));
+    let loaded = match load_project(cwd, explicit.as_deref(), s.has("--strict")) {
+        Ok(l) => l,
+        Err(errors) => {
+            let _ = writeln!(err, "{TOOL} verify --templates: the model did not load:");
+            for e in errors {
+                let _ = writeln!(err, "  {e}");
+            }
+            return 1;
+        }
+    };
+    let r = &loaded.result;
+    let check = check_templates(&r.tree, r.root, &loaded.collection.config_dir);
+    for e in &check.errors {
+        let _ = writeln!(err, "error: {e}");
+    }
+    if check.errors.is_empty() {
+        let _ = writeln!(
+            out,
+            "{TOOL} verify --templates: {} template ref(s) clean.",
+            check.checked
+        );
+        0
+    } else {
+        let _ = writeln!(
+            err,
+            "{TOOL} verify --templates: {} drift error(s).",
+            check.errors.len()
+        );
+        1
     }
 }
 
@@ -972,7 +1012,6 @@ mod tests {
         let (code, _, err) = run_cli(&["meta", "verify", "--db"]);
         assert_eq!(code, 2);
         assert!(err.contains("meta verify --db"), "{err}");
-        assert_eq!(run_cli(&["meta", "verify", "--templates"]).0, 2);
         assert_eq!(run_cli(&["meta", "verify", "--deps"]).0, 2);
     }
 

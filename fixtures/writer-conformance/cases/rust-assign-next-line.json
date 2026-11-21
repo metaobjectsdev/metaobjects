@@ -1,0 +1,47 @@
+{
+  "description": "When `head rhs` does not fit but the right-hand side alone fits one level in, `assign` writes the head and then the right-hand side on the next line, an array as well as a call, as rustfmt does under the generated crates' settings.",
+  "dialect": "rust",
+  "ops": [
+    [
+      "assign",
+      "pub static A_RATHER_LONG_STATIC_NAME_FOR_THE_FIELDS_HERE: PayloadField =",
+      [
+        "PayloadField::scalar",
+        {
+          "list": {
+            "open": "(",
+            "items": [
+              "\"first_name\""
+            ],
+            "close": ")"
+          }
+        },
+        ";"
+      ]
+    ],
+    [
+      "assign",
+      "pub static A_RATHER_LONG_STATIC_NAME_FOR_THE_FIELDS: &[PayloadField] =",
+      [
+        "&",
+        {
+          "list": {
+            "open": "[",
+            "items": [
+              "PayloadField::scalar(\"first_name\")",
+              "PayloadField::scalar(\"surname\")"
+            ],
+            "close": "]"
+          }
+        },
+        ";"
+      ]
+    ]
+  ],
+  "expected": [
+    "pub static A_RATHER_LONG_STATIC_NAME_FOR_THE_FIELDS_HERE: PayloadField =",
+    "    PayloadField::scalar(\"first_name\");",
+    "pub static A_RATHER_LONG_STATIC_NAME_FOR_THE_FIELDS: &[PayloadField] =",
+    "    &[PayloadField::scalar(\"first_name\"), PayloadField::scalar(\"surname\")];"
+  ]
+}

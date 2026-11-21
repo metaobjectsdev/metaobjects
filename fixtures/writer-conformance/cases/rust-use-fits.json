@@ -1,0 +1,21 @@
+{
+  "description": "A `use` of several names that fits is one line with the names in braces; a `use` of one name has no braces.",
+  "dialect": "rust",
+  "ops": [
+    [
+      "use",
+      "serde",
+      "Serialize"
+    ],
+    [
+      "use",
+      "std::collections",
+      "BTreeMap",
+      "HashMap"
+    ]
+  ],
+  "expected": [
+    "use serde::Serialize;",
+    "use std::collections::{BTreeMap, HashMap};"
+  ]
+}

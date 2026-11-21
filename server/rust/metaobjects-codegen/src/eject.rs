@@ -28,6 +28,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use metaobjects_codegen::engine::{OWNED_GENERATORS_DIR, OWNED_MAIN, OWNED_MANIFEST};
+use metaobjects_codegen::writer::{CodeWriter, Manifest, toml_string};
 
 /// A shipped generator `eject` can hand over.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,6 +103,41 @@ pub const REFERENCES: &[Reference] = &[
         summary: "command crates, one per package with served entities: clap commands \
                   over the client (needs entity and client; Rust only)",
         source: include_str!("commands.rs"),
+    },
+    Reference {
+        name: "render-helper",
+        tier: "native",
+        layer: "capability",
+        module: "render_helper",
+        type_name: "RenderHelperGenerator",
+        needs: &["entity"],
+        summary: "prompt crates, one per package with templates: a typed render function per \
+                  template.output and template.prompt, drift-checked against its payload at \
+                  build time (needs entity)",
+        source: include_str!("render_helper.rs"),
+    },
+    Reference {
+        name: "output-parser",
+        tier: "native",
+        layer: "capability",
+        module: "output_parser",
+        type_name: "OutputParserGenerator",
+        needs: &["entity"],
+        summary: "parser crates, one per package with responding prompts: a strict parse and a \
+                  tolerant extract of each template.prompt's reply into its @responseRef type \
+                  (needs entity)",
+        source: include_str!("output_parser.rs"),
+    },
+    Reference {
+        name: "output-prompt",
+        tier: "native",
+        layer: "capability",
+        module: "output_prompt",
+        type_name: "OutputPromptGenerator",
+        needs: &[],
+        summary: "format crates, one per package with responding prompts: the output-format \
+                  fragment that tells a model how to shape its answer",
+        source: include_str!("output_prompt.rs"),
     },
 ];
 
@@ -310,10 +346,10 @@ impl EngineSource {
         }
     }
 
-    /// The dependency line for one engine crate, as written in `codegen/Cargo.toml`.
-    fn dependency(&self, name: &str) -> String {
+    /// The requirement on one engine crate, as written in `codegen/Cargo.toml`.
+    fn requirement(&self, name: &str) -> String {
         match self {
-            EngineSource::Registry => format!("{name} = \"={}\"", env!("CARGO_PKG_VERSION")),
+            EngineSource::Registry => toml_string(&format!("={}", env!("CARGO_PKG_VERSION"))),
             EngineSource::Path(root) => {
                 // `codegen/Cargo.toml` sits one directory below the project root.
                 let base = if root.is_absolute() {
@@ -321,116 +357,120 @@ impl EngineSource {
                 } else {
                     Path::new("..").join(root)
                 };
-                format!("{name} = {{ path = {} }}", toml_string(&base.join(name)))
+                format!("{{ path = {} }}", toml_path(&base.join(name)))
             }
             EngineSource::Git { url, rev } => match rev {
-                Some(r) => format!(
-                    "{name} = {{ git = {}, rev = {} }}",
-                    toml_str(url),
-                    toml_str(r)
-                ),
-                None => format!("{name} = {{ git = {} }}", toml_str(url)),
+                Some(r) => format!("{{ git = {}, rev = {} }}", toml_string(url), toml_string(r)),
+                None => format!("{{ git = {} }}", toml_string(url)),
             },
         }
     }
 
-    fn note(&self) -> &'static str {
+    /// The comment above the engine dependencies, one line each.
+    fn note(&self) -> &'static [&'static str] {
         match self {
-            EngineSource::Registry => {
-                "# The engine is the crates.io release this project ejected from, pinned exactly: an\n\
-                 # owned copy is that release's source. Upgrade the three versions together, then\n\
-                 # compare each copy with `cargo meta gen --list`. To build against a checkout or a\n\
-                 # git revision instead, replace each line with `{ path = \"...\" }` or\n\
-                 # `{ git = \"...\", rev = \"...\" }`, or eject with `--engine`.\n"
-            }
-            EngineSource::Path(_) => {
-                "# The engine is a checkout of the repository's `server/rust`. Change the three paths\n\
-                 # if it moves, or point them at a git revision or a crates.io release.\n"
-            }
-            EngineSource::Git { .. } => {
-                "# The engine is a git revision of the repository. Change the three entries to move to\n\
-                 # another revision, a checkout (`path`) or a crates.io release.\n"
-            }
+            EngineSource::Registry => &[
+                "The engine is the crates.io release this project ejected from, pinned exactly: an",
+                "owned copy is that release's source. Upgrade the three versions together, then",
+                "compare each copy with `cargo meta gen --list`. To build against a checkout or a",
+                "git revision instead, replace each line with `{ path = \"...\" }` or",
+                "`{ git = \"...\", rev = \"...\" }`, or eject with `--engine`.",
+            ],
+            EngineSource::Path(_) => &[
+                "The engine is a checkout of the repository's `server/rust`. Change the three paths",
+                "if it moves, or point them at a git revision or a crates.io release.",
+            ],
+            EngineSource::Git { .. } => &[
+                "The engine is a git revision of the repository. Change the three entries to move to",
+                "another revision, a checkout (`path`) or a crates.io release.",
+            ],
         }
     }
 }
 
-/// A string as a TOML basic string.
-fn toml_str(text: &str) -> String {
-    format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""))
-}
-
-/// A path as a TOML basic string.
-fn toml_string(path: &Path) -> String {
-    let text = path.to_string_lossy().replace('\\', "/");
-    toml_str(&text)
+/// A path as a TOML basic string, with `/` separators on every platform.
+fn toml_path(path: &Path) -> String {
+    toml_string(&path.to_string_lossy().replace('\\', "/"))
 }
 
 /// The owned crate's manifest, with the engine from `engine`.
 pub fn scaffold_manifest(engine: &EngineSource) -> String {
-    format!(
-        "# The generators this project owns (`cargo meta eject`). This crate is yours.\n\
-         # `cargo meta gen` and `cargo meta verify` build and run it while it exists.\n\
-         [package]\n\
-         name = \"codegen\"\n\
-         version = \"0.0.0\"\n\
-         edition = \"2024\"\n\
-         publish = false\n\
-         \n\
-         [[bin]]\n\
-         name = \"codegen\"\n\
-         path = \"main.rs\"\n\
-         \n\
-         {}\
-         [dependencies]\n\
-         {}\n\
-         {}\n\
-         {}\n\
-         # What the shipped generators themselves import. Add your own beside it.\n\
-         serde_json = {{ version = \"1\", features = [\"preserve_order\"] }}\n\
-         \n\
-         # The generators run on every `cargo meta gen`: build them optimized, once.\n\
-         [profile.dev]\n\
-         opt-level = 2\n\
-         debug = false\n\
-         \n\
-         # Its own workspace, so an enclosing one neither claims nor rejects it.\n\
-         [workspace]\n",
-        engine.note(),
-        engine.dependency("metaobjects"),
-        engine.dependency("metaobjects-cli"),
-        engine.dependency("metaobjects-codegen"),
-    )
+    let mut m = Manifest::new();
+    m.comment("The generators this project owns (`cargo meta eject`). This crate is yours.");
+    m.comment("`cargo meta gen` and `cargo meta verify` build and run it while it exists.");
+    m.table("package");
+    m.entry("name", &toml_string("codegen"));
+    m.entry("version", &toml_string("0.0.0"));
+    m.entry("edition", &toml_string("2024"));
+    m.entry("publish", "false");
+    m.blank().table("[bin]");
+    m.entry("name", &toml_string("codegen"));
+    m.entry("path", &toml_string("main.rs"));
+    m.blank();
+    for line in engine.note() {
+        m.comment(line);
+    }
+    m.table("dependencies");
+    for name in ["metaobjects", "metaobjects-cli", "metaobjects-codegen"] {
+        m.entry(name, &engine.requirement(name));
+    }
+    m.comment("What the shipped generators themselves import. Add your own beside it.");
+    m.entry(
+        "serde_json",
+        r#"{ version = "1", features = ["preserve_order"] }"#,
+    );
+    m.blank()
+        .comment("The generators run on every `cargo meta gen`: build them optimized, once.");
+    m.table("profile.dev");
+    m.entry("opt-level", "2");
+    m.entry("debug", "false");
+    m.blank()
+        .comment("Its own workspace, so an enclosing one neither claims nor rejects it.");
+    m.table("workspace");
+    m.finish()
 }
 
 /// The owned crate's generator list, with `owned` taken from `generators/` and every other
 /// generator shipped.
 pub fn scaffold_main(owned: &[&Reference]) -> String {
-    let mut out = String::from(
-        "//! The generators `cargo meta gen` and `cargo meta verify` run for this project.\n\
-         //!\n\
-         //! This file is yours. Each module under `generators/` is a copy `cargo meta eject` made\n\
-         //! of the shipped generator of that name; edit it freely. Keep each generator in the\n\
-         //! list once: its owned copy or the shipped one, never both (they write the same files).\n\
-         \n\
-         use metaobjects_codegen::Generator;\n\
-         \n\
-         mod generators {\n",
+    let mut w = CodeWriter::new();
+    w.line("//! The generators `cargo meta gen` and `cargo meta verify` run for this project.");
+    w.line("//!");
+    w.line(
+        "//! This file is yours. Each module under `generators/` is a copy `cargo meta eject` made",
     );
-    for r in owned {
-        out.push_str(&format!("    pub mod {};\n", r.module));
-    }
-    out.push_str("}\n\nfn main() {\n    let generators: Vec<Box<dyn Generator>> = vec![\n");
-    for r in REFERENCES {
-        let entry = if owned.contains(&r) {
-            r.owned_entry()
-        } else {
-            r.shipped_entry()
-        };
-        out.push_str(&format!("        {entry},\n"));
-    }
-    out.push_str("    ];\n    std::process::exit(metaobjects_cli::owned_main(generators));\n}\n");
-    out
+    w.line("//! of the shipped generator of that name; edit it freely. Keep each generator in the");
+    w.line(
+        "//! list once: its owned copy or the shipped one, never both (they write the same files).",
+    );
+    w.blank();
+    w.line("use metaobjects_codegen::Generator;");
+    w.blank();
+    w.block("mod generators {", |w| {
+        for r in owned {
+            w.line(format!("pub mod {};", r.module));
+        }
+    });
+    w.blank();
+    w.block("fn main() {", |w| {
+        w.block_with(
+            "let generators: Vec<Box<dyn Generator>> = vec![",
+            "];",
+            |w| {
+                for r in REFERENCES {
+                    let entry = if owned.contains(&r) {
+                        r.owned_entry()
+                    } else {
+                        r.shipped_entry()
+                    };
+                    w.line(format!("{entry},"));
+                }
+            },
+        );
+        w.line("std::process::exit(metaobjects_cli::owned_main(generators));");
+    });
+    w.finish()
+        .expect("the owned main.rs closes every block it opens")
 }
 
 fn write_new(path: &Path, text: &str) -> Result<(), EjectError> {
