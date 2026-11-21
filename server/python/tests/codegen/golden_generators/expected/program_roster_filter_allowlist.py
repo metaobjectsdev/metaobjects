@@ -4,7 +4,8 @@
 """GENERATED — per-entity FR-009 filter allowlist for ProgramRoster.
 
 PROGRAMROSTER_FILTER_FIELDS lists the filterable field names; PROGRAMROSTER_FILTER_OPS_BY_FIELD
-constrains the operator vocabulary for each field by its subtype."""
+constrains the operator vocabulary for each field by its subtype.
+"""
 
 from __future__ import annotations
 
@@ -17,7 +18,7 @@ PROGRAMROSTER_FILTER_FIELDS: frozenset[str] = frozenset(
         "totalMinutesOrZero",
         "longShare",
         "longShareOrZero",
-    }
+    },
 )
 
 PROGRAMROSTER_FILTER_OPS_BY_FIELD: dict[str, frozenset[str]] = {
@@ -26,10 +27,10 @@ PROGRAMROSTER_FILTER_OPS_BY_FIELD: dict[str, frozenset[str]] = {
     "weeks": frozenset({"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"}),
     "totalMinutes": frozenset({"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"}),
     "totalMinutesOrZero": frozenset(
-        {"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"}
+        {"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"},
     ),
     "longShare": frozenset({"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"}),
     "longShareOrZero": frozenset(
-        {"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"}
+        {"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"},
     ),
 }

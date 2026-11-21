@@ -59,13 +59,15 @@ function run(c: WriterCase): string {
 }
 
 const files = readdirSync(CASES).filter((f) => f.endsWith(".json")).sort();
+// A case of another port's dialect (such as `python`) belongs to that port's runner.
+const ownCases = files.filter((f) => (JSON.parse(readFileSync(join(CASES, f), "utf8")) as WriterCase).dialect !== "python");
 
 describe("writer conformance", () => {
   test("the corpus is present", () => {
     expect(files.length).toBeGreaterThanOrEqual(25);
   });
 
-  for (const file of files) {
+  for (const file of ownCases) {
     const c = JSON.parse(readFileSync(join(CASES, file), "utf8")) as WriterCase;
     // A case of another port's dialect (`java`, ...) belongs to that port's writer.
     if (c.dialect !== "core" && c.dialect !== "typescript") continue;

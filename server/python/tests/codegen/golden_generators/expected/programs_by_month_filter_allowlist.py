@@ -4,17 +4,13 @@
 """GENERATED — per-entity FR-009 filter allowlist for ProgramsByMonth.
 
 PROGRAMSBYMONTH_FILTER_FIELDS lists the filterable field names; PROGRAMSBYMONTH_FILTER_OPS_BY_FIELD
-constrains the operator vocabulary for each field by its subtype."""
+constrains the operator vocabulary for each field by its subtype.
+"""
 
 from __future__ import annotations
 
 PROGRAMSBYMONTH_FILTER_FIELDS: frozenset[str] = frozenset(
-    {
-        "createdAtMonth",
-        "status",
-        "programs",
-        "listValue",
-    }
+    {"createdAtMonth", "status", "programs", "listValue"},
 )
 
 PROGRAMSBYMONTH_FILTER_OPS_BY_FIELD: dict[str, frozenset[str]] = {

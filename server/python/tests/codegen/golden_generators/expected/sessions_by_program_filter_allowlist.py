@@ -4,17 +4,13 @@
 """GENERATED — per-entity FR-009 filter allowlist for SessionsByProgram.
 
 SESSIONSBYPROGRAM_FILTER_FIELDS lists the filterable field names; SESSIONSBYPROGRAM_FILTER_OPS_BY_FIELD
-constrains the operator vocabulary for each field by its subtype."""
+constrains the operator vocabulary for each field by its subtype.
+"""
 
 from __future__ import annotations
 
 SESSIONSBYPROGRAM_FILTER_FIELDS: frozenset[str] = frozenset(
-    {
-        "programTitle",
-        "weekKey",
-        "sessions",
-        "sessionMinutes",
-    }
+    {"programTitle", "weekKey", "sessions", "sessionMinutes"},
 )
 
 SESSIONSBYPROGRAM_FILTER_OPS_BY_FIELD: dict[str, frozenset[str]] = {

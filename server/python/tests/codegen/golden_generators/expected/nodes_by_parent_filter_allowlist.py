@@ -4,16 +4,12 @@
 """GENERATED — per-entity FR-009 filter allowlist for NodesByParent.
 
 NODESBYPARENT_FILTER_FIELDS lists the filterable field names; NODESBYPARENT_FILTER_OPS_BY_FIELD
-constrains the operator vocabulary for each field by its subtype."""
+constrains the operator vocabulary for each field by its subtype.
+"""
 
 from __future__ import annotations
 
-NODESBYPARENT_FILTER_FIELDS: frozenset[str] = frozenset(
-    {
-        "parentLabel",
-        "nodes",
-    }
-)
+NODESBYPARENT_FILTER_FIELDS: frozenset[str] = frozenset({"parentLabel", "nodes"})
 
 NODESBYPARENT_FILTER_OPS_BY_FIELD: dict[str, frozenset[str]] = {
     "parentLabel": frozenset({"eq", "ne", "in", "like", "isNull"}),

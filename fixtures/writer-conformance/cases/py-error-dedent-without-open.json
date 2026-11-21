@@ -1,0 +1,14 @@
+{
+  "description": "A dedent with no suite open is an unbalanced close.",
+  "dialect": "python",
+  "ops": [
+    [
+      "line",
+      "x = 1"
+    ],
+    [
+      "dedent"
+    ]
+  ],
+  "error": "ERR_WRITER_UNBALANCED_CLOSE"
+}

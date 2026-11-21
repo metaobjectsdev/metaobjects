@@ -4,7 +4,8 @@
 """GENERATED — per-entity FR-009 filter allowlist for AllTypes.
 
 ALLTYPES_FILTER_FIELDS lists the filterable field names; ALLTYPES_FILTER_OPS_BY_FIELD
-constrains the operator vocabulary for each field by its subtype."""
+constrains the operator vocabulary for each field by its subtype.
+"""
 
 from __future__ import annotations
 

@@ -1,0 +1,18 @@
+{
+  "description": "A suite still open when the file is finished ends there: Python needs no closing token.",
+  "dialect": "python",
+  "ops": [
+    [
+      "open",
+      "def f():"
+    ],
+    [
+      "line",
+      "pass"
+    ]
+  ],
+  "expected": [
+    "def f():",
+    "    pass"
+  ]
+}

@@ -4,16 +4,12 @@
 """GENERATED — per-entity FR-009 filter allowlist for ProgramsByWeek.
 
 PROGRAMSBYWEEK_FILTER_FIELDS lists the filterable field names; PROGRAMSBYWEEK_FILTER_OPS_BY_FIELD
-constrains the operator vocabulary for each field by its subtype."""
+constrains the operator vocabulary for each field by its subtype.
+"""
 
 from __future__ import annotations
 
-PROGRAMSBYWEEK_FILTER_FIELDS: frozenset[str] = frozenset(
-    {
-        "createdAtWeek",
-        "programs",
-    }
-)
+PROGRAMSBYWEEK_FILTER_FIELDS: frozenset[str] = frozenset({"createdAtWeek", "programs"})
 
 PROGRAMSBYWEEK_FILTER_OPS_BY_FIELD: dict[str, frozenset[str]] = {
     "createdAtWeek": frozenset({"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"}),

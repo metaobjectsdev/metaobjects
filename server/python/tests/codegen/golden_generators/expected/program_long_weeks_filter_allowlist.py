@@ -4,22 +4,19 @@
 """GENERATED — per-entity FR-009 filter allowlist for ProgramLongWeeks.
 
 PROGRAMLONGWEEKS_FILTER_FIELDS lists the filterable field names; PROGRAMLONGWEEKS_FILTER_OPS_BY_FIELD
-constrains the operator vocabulary for each field by its subtype."""
+constrains the operator vocabulary for each field by its subtype.
+"""
 
 from __future__ import annotations
 
 PROGRAMLONGWEEKS_FILTER_FIELDS: frozenset[str] = frozenset(
-    {
-        "programKey",
-        "weeks",
-        "totalMinutesOrZero",
-    }
+    {"programKey", "weeks", "totalMinutesOrZero"},
 )
 
 PROGRAMLONGWEEKS_FILTER_OPS_BY_FIELD: dict[str, frozenset[str]] = {
     "programKey": frozenset({"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"}),
     "weeks": frozenset({"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"}),
     "totalMinutesOrZero": frozenset(
-        {"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"}
+        {"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"},
     ),
 }

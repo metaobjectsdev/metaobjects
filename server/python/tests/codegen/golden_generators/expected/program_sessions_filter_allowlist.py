@@ -4,7 +4,8 @@
 """GENERATED — per-entity FR-009 filter allowlist for ProgramSessions.
 
 PROGRAMSESSIONS_FILTER_FIELDS lists the filterable field names; PROGRAMSESSIONS_FILTER_OPS_BY_FIELD
-constrains the operator vocabulary for each field by its subtype."""
+constrains the operator vocabulary for each field by its subtype.
+"""
 
 from __future__ import annotations
 
@@ -15,7 +16,7 @@ PROGRAMSESSIONS_FILTER_FIELDS: frozenset[str] = frozenset(
         "sessions",
         "sessionMinutes",
         "sessionMinutesOrZero",
-    }
+    },
 )
 
 PROGRAMSESSIONS_FILTER_OPS_BY_FIELD: dict[str, frozenset[str]] = {
@@ -24,6 +25,6 @@ PROGRAMSESSIONS_FILTER_OPS_BY_FIELD: dict[str, frozenset[str]] = {
     "sessions": frozenset({"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"}),
     "sessionMinutes": frozenset({"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"}),
     "sessionMinutesOrZero": frozenset(
-        {"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"}
+        {"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"},
     ),
 }
