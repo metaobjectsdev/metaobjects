@@ -143,7 +143,9 @@ here.**
   leading `// GENERATED` comment besides sorted imports. The filter-allowlist, response-format and
   render-helper generators follow: the allowlist output is unchanged, and the other two gain the
   same blank after the leading comment, sorted imports and no blank after the class opener.
-  `SpringNaming.packageHeader` is removed; the writer's `packageName` replaces it.
+  `SpringNaming.packageHeader` is removed; the writer's `packageName` replaces it. The LLM-trace
+  helper and the `requirement-tests` generator follow with the same layout changes, and the
+  witness-key collision error now lists its colliding pairs on one line, separated by `; `.
 
   With no sort, the `ObjectManager` mount now orders by the primary key. The `ObjectManager`
   `Filter` gains `$or` and a case-insensitive `$ilike`, and the class gains `keyFields()` and
