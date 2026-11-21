@@ -232,16 +232,25 @@ step_passed() { # step_passed "<name>" — true when a step of that name has PAS
   cat "$CI_TMP"/*.tsv 2>/dev/null | awk -F'\t' -v n="$1" '$1 == "PASS" && $3 == n { f = 1 } END { exit !f }'
 }
 
-# Every Maven call a gate makes — here and in the scripts it spawns (integration-test.sh,
-# fatjar-smoke.sh) — resolves and INSTALLS into a CI-owned local repository, never the
-# developer's ~/.m2. The Java lanes `mvn install` the tree at the CURRENT version, and on the
-# shared ~/.m2 that silently replaced what Maven Central published under that number: an
-# estate pinned to the current release, or a showcase regen resolving the plugin by version,
-# then built against unreleased main (found cutting 1.0.2 — the "8.0.1" codegen-kotlin jar held
-# a builder 8.0.1 never shipped). MAVEN_ARGS (Maven 3.9+) reaches every `mvn`, spawned
-# scripts included, without touching a call site. The repository persists between runs, so
-# only the first run downloads. Override with METAOBJECTS_CI_M2_REPO.
-export MAVEN_ARGS="${MAVEN_ARGS:+$MAVEN_ARGS }-Dmaven.repo.local=${METAOBJECTS_CI_M2_REPO:-$HOME/.m2-ci/repository}"
+# No Maven call a gate makes — here or in the scripts it spawns (integration-test.sh,
+# regen-showcase.ts) — writes a repository anyone else reads: not ~/.m2, and not the shared
+# ~/.m2-ci this script once installed into. Every worktree builds the same unreleased version,
+# so a shared install silently replaced what other checkouts resolved under that number (found
+# cutting 1.0.2, when the "8.0.1" codegen-kotlin jar held a builder 8.0.1 never shipped, and
+# again in 1.3.0, when branch-built 8.3.0 jars in ~/.m2 had other lanes testing code they did
+# not have). So the conformance and reactor gates are reactor builds that install nothing
+# (`mvn -pl X -am test`, `mvn verify`), and the one step that needs installed artifacts — the
+# out-of-reactor JVM integration modules — installs into THIS run's private repository: a
+# small head under $DEV_SCRATCH in front of the shared cache, which is read only
+# (scripts/lib/maven-private-repo.sh). ci_cleanup deletes the head. MAVEN_ARGS (Maven 3.9+)
+# carries it to every `mvn`, spawned scripts included, without touching a call site.
+# Override the cache with METAOBJECTS_CI_M2_REPO; METAOBJECTS_CI_M2_RUN_REPO names a head to
+# keep (an ephemeral hosted runner passes ~/.m2/repository so setup-java can cache it).
+# shellcheck source=scripts/lib/maven-private-repo.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/maven-private-repo.sh"
+mo_maven_private_repo
+CI_M2_OWNED="$MO_M2_OWNED"
+trap 'rm -rf "$CI_TMP" ${CI_M2_OWNED:+"$CI_M2_OWNED"}' EXIT  # replaced by ci_cleanup below
 
 # bun exits 1 when an OPTIONAL native dep fails its install script (the
 # ssh2/cpu-features chain needs node-gyp on the machine — `npm i -g node-gyp`
@@ -800,14 +809,23 @@ gate_conf_csharp() {
 # eject goal and the only one that sees every codegen module, so that module is built here
 # for the one test. Kotlin's runs in its own lane below.
 gate_conf_java() {
+  # ONE reactor build, so every module tests against this tree's upstream modules and nothing
+  # is installed. Names are fully qualified: the same simple name exists in more than one
+  # module (ObjectModelConformanceTest is in metadata and codegen-kotlin).
+  local t=com.metaobjects tests
+  tests="$t.conformance.ConformanceTest,$t.conformance.YamlConformanceTest"
+  tests+=",$t.object.ObjectModelConformanceTest,$t.registry.RegistryManifestConformanceTest"
+  tests+=",$t.render.RenderCrossPortReportTest,$t.render.VerifyConformanceTest"
+  tests+=",$t.render.extract.ExtractConformanceTest,$t.render.prompt.OutputPromptConformanceTest"
+  tests+=",$t.generator.util.GeneratedFileWriterTest,$t.generator.direct.object.JavaCodegenWriteGuardTest"
+  tests+=",$t.generator.direct.object.JavaAccessorNameCollisionTest"
+  tests+=",$t.generator.spring.ValidationConformanceTest,$t.generator.GeneratorRegistryConformanceTest"
+  tests+=",$t.generator.spring.NoMagicPhysicalNamesTest,$t.generator.spring.CodegenCompileConformanceTest"
+  tests+=",$t.generator.spring.IllegalRecordComponentNameTest,$t.generator.spring.SpringIllegalNameCompileRunTest"
+  tests+=",$t.mojo.EjectContractTest"
   ( cd server/java \
-      && mvn -pl metadata,render,codegen-base,codegen-spring -am install -DskipTests -q \
-      && mvn -pl metadata test -Dtest='ConformanceTest,YamlConformanceTest,ObjectModelConformanceTest,RegistryManifestConformanceTest' -q \
-      && mvn -pl render test -Dtest='RenderCrossPortReportTest,VerifyConformanceTest,ExtractConformanceTest,OutputPromptConformanceTest' -q \
-      && mvn -pl codegen-base test -Dtest='GeneratedFileWriterTest,JavaCodegenWriteGuardTest,JavaAccessorNameCollisionTest' -q \
-      && mvn -pl codegen-spring test -Dtest='ValidationConformanceTest,GeneratorRegistryConformanceTest,NoMagicPhysicalNamesTest,CodegenCompileConformanceTest,IllegalRecordComponentNameTest,SpringIllegalNameCompileRunTest' -q \
-      && mvn -pl maven-plugin -am install -DskipTests -q \
-      && mvn -pl maven-plugin test -Dtest='EjectContractTest' -q )
+      && mvn -pl metadata,render,codegen-base,codegen-spring,maven-plugin -am test -q \
+           -Dsurefire.failIfNoSpecifiedTests=false -Dtest="$tests" )
 }
 gate_conf_python() {
   # FULL suite, not cherry-picked paths. Until 2026-07-19 this ran only
@@ -878,9 +896,11 @@ gate_rust_gen_bench() {
   cargo run --release --locked -q -p metaobjects-codegen --example gen_bench -- 20 9
 }
 gate_conf_kotlin() {
+  # A reactor build, like gate_conf_java: nothing installed, every name fully qualified.
+  local k=com.metaobjects.generator.kotlin
   ( cd server/java \
-      && mvn -pl codegen-kotlin -am install -DskipTests -q \
-      && mvn -pl codegen-kotlin test -Dtest='ObjectModelConformanceTest,OutputPromptConformanceTest,ValidationConformanceTest,GeneratorRegistryConformanceTest,RegistryManifestConformanceTest,NoMagicPhysicalNamesTest,CodegenCompileConformanceTest,EjectContractTest' -q )
+      && mvn -pl codegen-kotlin -am test -q -Dsurefire.failIfNoSpecifiedTests=false \
+           -Dtest="$k.ObjectModelConformanceTest,$k.OutputPromptConformanceTest,$k.ValidationConformanceTest,$k.GeneratorRegistryConformanceTest,$k.RegistryManifestConformanceTest,$k.NoMagicPhysicalNamesTest,$k.CodegenCompileConformanceTest,$k.EjectContractTest" )
 }
 
 # ── conformance.yml — full reactor + drift/mutation gates ─────────────────────
@@ -892,11 +912,13 @@ gate_conf_kotlin() {
 gate_java_reactor() {
   local jacoco="-Djacoco.skip=true"
   [ "${MO_CI_JACOCO:-0}" = "1" ] && jacoco=""
-  ( cd server/java && mvn -q clean install $jacoco )
+  ( cd server/java && mvn -q clean verify $jacoco )
 }
-# The full run's JVM integration lanes need the reactor installed and must not install it
-# themselves (two concurrent `mvn install`s clobber the shared module jars). When the reactor
-# step is not selected — `--integration-only` — this installs it without its tests.
+# The full run's JVM integration modules live outside the reactor, so they — alone — need
+# the tree installed. This installs it without tests into THIS run's private repository
+# (MAVEN_ARGS, above), never a shared one, and only the java lane runs it: the two JVM
+# integration lanes read it side by side, and installing there too would race them over
+# the same jars. No `clean`: it reuses the reactor step's compiled classes.
 gate_java_install() { ( cd server/java && mvn -q -DskipTests -Djacoco.skip=true install ); }
 # ── The mutation (completeness) gate: two scopes over ONE file list ───────────
 # Stryker mutates the files listed in `mutate` in server/typescript/packages/metadata/
@@ -1231,8 +1253,9 @@ run_integration_for() { # run_integration_for "<label>" <runner...>
 #     run — MO_CI_WORKSPACE_BUILT tells gate_ts_unit and integration-test.sh it is built;
 #   * the drift gates rewrite tracked files (then diff them), so they run before the fork too;
 #   * every `mvn install` and every `dotnet build` of the working tree has ONE owner: the java
-#     lane installs the reactor, the two JVM integration lanes only read the installed jars
-#     (MO_CI_JAVA_INSTALLED skips their own install), and the showcase lane — which builds
+#     lane installs the reactor into this run's private Maven repository, the two JVM
+#     integration lanes only read those jars (MO_CI_JAVA_INSTALLED skips their own
+#     install), and the showcase lane — which builds
 #     both trees again — waits for the java and csharp lanes;
 #   * databases: every integration helper creates a uniquely named database per scenario on
 #     the sidecar, or starts its own container on a random host port. Only the lanes that run
@@ -1299,7 +1322,7 @@ kill_tree() { local c; for c in $(pgrep -P "$1" 2>/dev/null); do kill_tree "$c";
 ci_cleanup() {
   local p; for p in "${LANE_PID[@]:-}"; do [ -n "$p" ] && kill -0 "$p" 2>/dev/null && kill_tree "$p"; done
   stop_pg_sidecar
-  rm -rf "$CI_TMP"
+  rm -rf "$CI_TMP" ${CI_M2_OWNED:+"$CI_M2_OWNED"}
 }
 trap ci_cleanup EXIT
 trap 'exit 130' INT TERM
@@ -1405,12 +1428,10 @@ lane_python() {
 lane_java() {
   if want java; then
     echo "  (conformance: java / kotlin run inside java-reactor — every class they name is in a reactor module)"
-    step_if mvn "java-reactor (install)" gate_java_reactor
-    # A red reactor stops installing at the first failing module, which would leave the two
-    # integration lanes nothing to run against. Install the rest without tests, HERE, so
-    # they still give their own verdict and nobody else writes the jars.
-    if [ "${MO_CI_LIST_ONLY:-0}" != "1" ] && integ_ready && have mvn \
-       && ! step_passed "java-reactor (install)"; then
+    step_if mvn "java-reactor" gate_java_reactor
+    # The reactor installs nothing, so the integration lanes get their jars HERE, whether
+    # the reactor passed or not: a red module still leaves them their own verdict.
+    if [ "${MO_CI_LIST_ONLY:-0}" != "1" ] && integ_ready && have mvn; then
       step "java install (for integration)" gate_java_install
     fi
   elif integ_ready; then
@@ -1419,11 +1440,11 @@ lane_java() {
 }
 lane_jvm_integ() { # lane_jvm_integ <java|kotlin>
   integ_ready || return 0
-  # The java lane installed the jars (reactor, else a test-less install) unless even that
-  # failed to compile. Installing here instead would race the other JVM integration lane
-  # over the same jars. Without mvn at all the step runs and fails, as it always has.
+  # The java lane installed the jars into this run's private repository unless that failed
+  # to compile. Installing here instead would race the other JVM integration lane over the
+  # same jars. Without mvn at all the step runs and fails, as it always has.
   if [ "${MO_CI_LIST_ONLY:-0}" != "1" ] && have mvn \
-     && ! step_passed "java-reactor (install)" && ! step_passed "java install (for integration)"; then
+     && ! step_passed "java install (for integration)"; then
     echo "  ✖ integration-tests ($1) not run: server/java did not install (see lane java)" >&2
     record FAIL 0 "integration-tests ($1) — not run: server/java did not install"
     return 0
@@ -1436,9 +1457,9 @@ lane_jvm_integ() { # lane_jvm_integ <java|kotlin>
 }
 lane_java_integ() { lane_jvm_integ java; }
 lane_kotlin_integ() { lane_jvm_integ kotlin; }
-# After java and csharp: its JVM leg runs `mvn install` of server/java, but into a TEMP local
-# repository (regen-showcase.ts, jvmRepository), so the jars the JVM integration lanes read
-# from ~/.m2 are never rewritten; its C# leg builds MetaObjects.Codegen, which only the
+# After java and csharp: its JVM leg runs `mvn install` of server/java, but into its own TEMP
+# local repository (regen-showcase.ts, jvmRepository), so the jars the JVM integration lanes
+# read from this run's repository are never rewritten; its C# leg builds MetaObjects.Codegen, which only the
 # finished csharp lane uses. Every other output goes to a pristine temp copy (--check).
 lane_showcase() { want gates && run_showcase; return 0; }
 
@@ -1508,7 +1529,7 @@ run_ts_serial_steps() {
 run_csharp_steps()  { if want csharp; then step_if dotnet "conformance: csharp" gate_conf_csharp; fi; }
 run_python_steps()  { if want python; then step_if uv "conformance: python" gate_conf_python; fi; }
 run_rust_steps()    { if want rust; then step_if cargo "conformance: rust" gate_conf_rust; fi; }
-run_java_reactor_steps() { if want_any java java-slow; then step_if mvn "java-reactor (install)" gate_java_reactor; fi; }
+run_java_reactor_steps() { if want_any java java-slow; then step_if mvn "java-reactor" gate_java_reactor; fi; }
 
 # ── --affected, several ports: run their lanes side by side ───────────────────
 # Run one after another, a change touching every port would take the SUM of the ports'

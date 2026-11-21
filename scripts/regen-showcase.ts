@@ -229,22 +229,32 @@ const PORTS: Port[] = [
 
 /** The `-Dmaven.repo.local=` token in a `MAVEN_ARGS` value, if any. */
 const REPO_LOCAL_ARG = /(?:^|\s)-Dmaven\.repo\.local=(\S+)/;
+/** The `-Dmaven.repo.local.tail=` token in a `MAVEN_ARGS` value, if any. */
+const REPO_TAIL_ARG = /(?:^|\s)-Dmaven\.repo\.local\.tail=(\S+)/;
 
 /**
  * A throwaway local Maven repository holding this tree's reactor, freshly installed.
  *
  * The head repository is empty apart from that install, so the plugin version the showcase
  * pom names resolves to the code in this checkout and nothing else. Its tail is the
- * repository you normally use (the one `MAVEN_ARGS` names, else `~/.m2/repository`), read
+ * repositories you normally use (the one `MAVEN_ARGS` names, else `~/.m2/repository`, then
+ * any tail `MAVEN_ARGS` already chains — scripts/ci-local.sh's read-only shared cache), read
  * only, so third-party artifacts are not downloaded again. `MAVEN_ARGS` is passed on without
- * its own `-Dmaven.repo.local`, which would otherwise compete with ours.
+ * its own `-Dmaven.repo.local` and tail, which would otherwise compete with ours. The head
+ * goes under `$DEV_SCRATCH` (RAM) when it is set.
  */
 function jvmRepository(): { args: string[]; env: NodeJS.ProcessEnv; cleanup(): void } {
   const mavenArgs = process.env.MAVEN_ARGS ?? "";
-  const tail = REPO_LOCAL_ARG.exec(mavenArgs)?.[1] ?? join(homedir(), ".m2", "repository");
-  const head = mkdtempSync(join(tmpdir(), "showcase-m2-"));
+  const tail = [
+    REPO_LOCAL_ARG.exec(mavenArgs)?.[1] ?? join(homedir(), ".m2", "repository"),
+    ...(REPO_TAIL_ARG.exec(mavenArgs)?.[1]?.split(",") ?? []),
+  ].join(",");
+  const head = mkdtempSync(join(process.env.DEV_SCRATCH || tmpdir(), "showcase-m2-"));
   const args = [`-Dmaven.repo.local=${head}`, `-Dmaven.repo.local.tail=${tail}`];
-  const env = { ...process.env, MAVEN_ARGS: mavenArgs.replace(REPO_LOCAL_ARG, " ").trim() };
+  const env = {
+    ...process.env,
+    MAVEN_ARGS: mavenArgs.replace(REPO_TAIL_ARG, " ").replace(REPO_LOCAL_ARG, " ").trim(),
+  };
   try {
     run(["mvn", "-q", "-B", "-DskipTests", "install", ...args], { cwd: join(REPO, "server", "java"), env });
   } catch (e) {

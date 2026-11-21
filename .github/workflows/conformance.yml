@@ -20,13 +20,15 @@ name: conformance
 #   ts-fast   — workspace build + typecheck, TS conformance, completeness (mutation) gate
 #               (the FULL pass here: MO_CI_MUTATION_SCOPE=full on that job)
 #   csharp / java-fast (java + kotlin) / python — each port's conformance corpora
-#   java-reactor — full-reactor `mvn clean install`, tests on (`--only java-slow`)
-# The Java lanes point the script's Maven repository at ~/.m2/repository so setup-java's
-# maven cache applies; the script's own default (~/.m2-ci) protects a developer's ~/.m2,
-# which an ephemeral hosted runner does not have.
+#   java-reactor — full-reactor `mvn clean verify`, tests on (`--only java-slow`)
+# The Java lanes make ~/.m2/repository the script's per-run Maven repository
+# (METAOBJECTS_CI_M2_RUN_REPO) so setup-java's maven cache applies. That is safe only because
+# a hosted runner is ephemeral: the script's own default is a private repository under
+# $DEV_SCRATCH in front of a read-only shared cache, so a developer's or a self-hosted
+# runner's shared repository is never written (scripts/lib/maven-private-repo.sh).
 #
 # WHY A SCHEDULE, given local-ci already runs nightly: local-ci's `java-slow` lane runs
-# the same full reactor (`gate_java_reactor`, `mvn clean install`) — so "it does not run
+# the same full reactor (`gate_java_reactor`, `mvn clean verify`) — so "it does not run
 # the reactor" is NOT the gap. The gap is environmental, and it is measured. Two Java
 # test defects (a test asserting on an NPE message HotSpot's fast-throw is entitled to
 # stop producing once the path is hot; two test classes sharing files with nothing
@@ -134,7 +136,7 @@ jobs:
           # changed ones ts-fast mutates elsewhere (see gate_completeness_diff).
           MO_CI_MUTATION_SCOPE: full
         run: |
-          METAOBJECTS_CI_M2_REPO="$HOME/.m2/repository" \
+          METAOBJECTS_CI_M2_RUN_REPO="$HOME/.m2/repository" \
             scripts/ci-local.sh --only "$LANE" --no-integration --strict-toolchains
 
   java-reactor:
@@ -157,5 +159,5 @@ jobs:
         env:
           MO_CI_JACOCO: '1'
         run: |
-          METAOBJECTS_CI_M2_REPO="$HOME/.m2/repository" \
+          METAOBJECTS_CI_M2_RUN_REPO="$HOME/.m2/repository" \
             scripts/ci-local.sh --only java-slow --no-integration --strict-toolchains

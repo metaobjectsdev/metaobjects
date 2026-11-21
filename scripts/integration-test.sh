@@ -40,6 +40,15 @@ cd "$REPO_ROOT"
 WHICH=${1:-all}
 FAIL=0
 
+# The JVM runners install this tree (at the unreleased version) for their out-of-reactor
+# modules. Run alone, that install goes to a private repository in front of a read-only
+# shared cache, never ~/.m2 (scripts/lib/maven-private-repo.sh); under scripts/ci-local.sh,
+# MAVEN_ARGS already names that run's repository and this changes nothing.
+# shellcheck source=scripts/lib/maven-private-repo.sh
+. "$REPO_ROOT/scripts/lib/maven-private-repo.sh"
+mo_maven_private_repo
+trap '[ -z "$MO_M2_OWNED" ] || rm -rf "$MO_M2_OWNED"' EXIT
+
 if ! docker info >/dev/null 2>&1; then
   echo "error: docker daemon is not reachable. Start docker and try again." >&2
   exit 2
@@ -114,7 +123,7 @@ run_java() {
   echo "==> Java persistence conformance"
   # integration-tests is EXCLUDED from the parent reactor (docker-only), so its
   # <version>-SNAPSHOT module dependencies are not on Maven Central — install them to
-  # the local .m2 first (SERIALLY; a parallel -T build clobbers the shared render jar).
+  # this run's private repository first (SERIALLY; a parallel -T build clobbers the render jar).
   # Without this a fresh CI checkout fails with
   # "Could not find artifact com.metaobjects:metaobjects-metadata:jar:<v>-SNAPSHOT".
   #
@@ -152,10 +161,10 @@ run_cube() {
 
 run_kotlin() {
   echo "==> Kotlin persistence conformance"
-  # See run_java: install the SNAPSHOT module deps to .m2 (serially) before the
+  # See run_java: install the SNAPSHOT module deps (serially, privately) before the
   # docker-only integration-tests-kotlin module (also excluded from the reactor).
   # Every metaobjects-* artifact either out-of-reactor module below depends on is
-  # listed, so a standalone `kotlin` run resolves from an .m2 that has none of them:
+  # listed, so a standalone `kotlin` run resolves from a repository that has none of them:
   # integration-tests-kotlin needs core-spring and om beside codegen-kotlin, and
   # codegen-kotlin-exposed1x-check needs metadata-ktx.
   ( cd server/java \

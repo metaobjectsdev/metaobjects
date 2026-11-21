@@ -17,7 +17,15 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 JAVA_DIR="$REPO_ROOT/server/java"
 SMOKE_DIR="$JAVA_DIR/fatjar-smoke"
 
-echo "==> Installing metaobjects-metadata snapshot to the local repository"
+# The smoke app resolves metaobjects-metadata at this tree's (unreleased) version, so it is
+# installed — into a private repository in front of a read-only shared cache, never ~/.m2
+# (scripts/lib/maven-private-repo.sh), deleted on exit.
+# shellcheck source=scripts/lib/maven-private-repo.sh
+. "$REPO_ROOT/scripts/lib/maven-private-repo.sh"
+mo_maven_private_repo
+trap '[ -z "$MO_M2_OWNED" ] || rm -rf "$MO_M2_OWNED"' EXIT
+
+echo "==> Installing metaobjects-metadata snapshot to a private local repository"
 mvn -q -f "$JAVA_DIR/pom.xml" -pl metadata -am install -DskipTests
 
 echo "==> Packaging the fat-jar smoke application"
