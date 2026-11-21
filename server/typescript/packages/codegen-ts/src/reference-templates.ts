@@ -18,6 +18,9 @@ export const REFERENCE_GENERATOR_NAMES = [
   // The rules names (ADR-0067 layer 0): the file's shape is the adopter's, while the walk that
   // derives states, commands and permission names stays engine, shared with `meta verify`.
   "rules-names",
+  // The contract types (ADR-0067 layer 1): the modules' shape is the adopter's, while which objects,
+  // values and operations are covered stays the engine walk.
+  "contract-types",
   // The report export (`?format=csv|json|xml` on a served report): which reports get a module, the
   // column list and the CSV/XML writers, handed over as one file.
   "report-export",

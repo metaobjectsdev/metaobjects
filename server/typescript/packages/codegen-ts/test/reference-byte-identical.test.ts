@@ -24,6 +24,8 @@ import { barrel as refBarrel } from "../src/reference/barrel.js";
 import { namesFile as refNames } from "../src/reference/names.js";
 import { rulesNamesFile as builtinRulesNames } from "../src/generators/rules-names-file.js";
 import { rulesNamesFile as refRulesNames } from "../src/reference/rules-names.js";
+import { contractTypes as builtinContractTypes } from "../src/generators/contract-types-file.js";
+import { contractTypes as refContractTypes } from "../src/reference/contract-types.js";
 import { reportExport as builtinReportExport } from "../src/generators/report-export-file.js";
 import { reportExport as refReportExport } from "../src/reference/report-export.js";
 import { promptRender as builtinPromptRender } from "../src/generators/prompt-render-file.js";
@@ -183,6 +185,7 @@ const PAIRS: Record<ReferenceGeneratorName, { builtin: () => Generator; ref: () 
   // Emits nothing over the entity-shaped fixtures (none declares a lifecycle or an operation);
   // test/rules-names.test.ts runs both over a rules model.
   "rules-names": { builtin: builtinRulesNames, ref: refRulesNames },
+  "contract-types": { builtin: builtinContractTypes, ref: refContractTypes },
   // Emits nothing over the entity-shaped fixtures (none declares a served report); the
   // describe after the route-composition one runs the pair, with the routes, over the report corpus.
   "report-export": { builtin: builtinReportExport, ref: refReportExport },

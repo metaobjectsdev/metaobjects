@@ -738,6 +738,17 @@ commands derived from unclaimed transitions (`<Entity>Commands`), the declared `
 `generators` or `meta eject rules-names`. The derivations are the ones `meta verify`'s rules gate
 checks. See [Business rules](../features/business-rules.md#the-names-layer-typescript).
 
+### `*.contract.ts` — the contract types, with no persistence mapping
+
+`contractTypes()` (stable name `contract-types`) is the second rules layer of ADR-0067. It writes
+`<Entity>.contract.ts` (read, create and update shapes, as Zod schemas and their types),
+`<Projection>.contract.ts` (the read shape), the value modules they reach (the entity generator's,
+byte for byte), `<pkg path>/operations.contract.ts` per package that declares operations (each
+operation's input, output and errors) and `errors.contract.ts` (the wire error bodies). Every module
+imports `zod` only. It is not scaffolded; add it to `generators` or `meta eject contract-types`,
+and give it its own `target` to put the layer in a package the transport and clients share. See
+[Business rules](../features/business-rules.md#the-contract-types-layer-typescript).
+
 ### Prove it works
 
 Boot the server:

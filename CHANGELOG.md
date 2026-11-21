@@ -99,6 +99,15 @@ here.**
   cannot disagree. The loaded root carries the `rules` settings (`rulesSettings`). C# ships its own
   `rules-names`; the other ports add theirs with their rules-layer work. No existing generator's output
   moves (`fixtures/codegen-noop/rules`).
+- **codegen-ts: the contract types layer (ADR-0067 layer 1).** A new generator, `contract-types`
+  (`contractTypes()`, ejectable), writes the shapes a caller and a service exchange with no
+  persistence mapping: `<Entity>.contract.ts` (the read schema and type, the create and update
+  schemas, the typed create and patch), `<Projection>.contract.ts` (the read shape), the value
+  modules they reach, `<pkg path>/operations.contract.ts` (each declared operation's input, output
+  and errors) and `errors.contract.ts` (the wire codes, their statuses and the error bodies). Each
+  module imports `zod` only. The field schemas are the entity generator's own renderers, and an
+  entity's contract read type is held equal to the entity file's on every dialect. TypeScript only
+  for now. No existing generator's output moves.
 - **runtime-ts: the guarded update (ADR-0066 §6 step 5), and the shared scenario that holds every
   store driver to it.** `ObjectManager.guardedUpdate(entity, id, { field, from, to, condition? })`
   makes a lifecycle transition's write in one statement — `UPDATE … SET <state> = :to WHERE <key>

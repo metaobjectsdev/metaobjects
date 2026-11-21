@@ -31,6 +31,7 @@ export const ENGINE_MODULES: readonly string[] = [
   "codegen-ts/src/client-directive.ts",
   "codegen-ts/src/column-mapper.ts",
   "codegen-ts/src/constants.ts",
+  "codegen-ts/src/contract-walk.ts",
   "codegen-ts/src/dialect-module.ts",
   "codegen-ts/src/docs-paths.ts",
   "codegen-ts/src/docs-run.ts",

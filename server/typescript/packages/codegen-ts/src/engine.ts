@@ -54,6 +54,7 @@ export * from "./render-engine/framework-provider.js";
 export * from "./requirement-walk.js";
 export * from "./routes-expose.js";
 export * from "./rules-walk.js";
+export * from "./contract-walk.js";
 export * from "./source-detect.js";
 export * from "./templates/entity-ui-descriptor.js";
 export * from "./templates/find-inbound.js";

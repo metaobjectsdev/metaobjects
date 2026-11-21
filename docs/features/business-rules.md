@@ -16,8 +16,10 @@ A requirement can claim an operation or a transition. The flat generators genera
 the vocabulary. The layer generators of ADR-0067 do, and an app adds them to its generator list as
 it adds any generator. The first is `rules-names`, which writes the states, transitions,
 permissions and error codes as constants, in TypeScript (see
-[The names layer](#the-names-layer-typescript)) and C#; C# also ships `contract-types`, which writes
-each entity's create and update records ([C# port](../ports/csharp.md)). The TypeScript runtime makes the
+[The names layer](#the-names-layer-typescript)) and C#. The second is `contract-types`: in
+TypeScript it writes the shapes and errors an operation takes and returns (see
+[The contract types layer](#the-contract-types-layer-typescript)), and in C# so far each
+entity's create and update records ([C# port](../ports/csharp.md)). The TypeScript runtime makes the
 guarded update a transition writes, `ObjectManager.guardedUpdate`, held to the shared
 persistence scenario `guarded-update.yaml`. The service shells that
 enforce these rules at run time are later work. A lifecycle in a project
@@ -291,6 +293,48 @@ is derived (the terminal states, which transitions get a command under `rules.li
 each derived permission name) comes from the same functions `verify`'s rules gate uses, so the
 constant and a `verify` message name the same thing. The file ends in `.names.ts`, so
 `meta verify --codegen` treats a hand edit in it as drift, as it does for `<Entity>.names.ts`.
+
+## The contract types layer (TypeScript)
+
+`contractTypes()` (stable name `contract-types`, ejectable) writes the shapes a caller and a
+service exchange, with no persistence mapping in them, so a transport, a client or a job can import
+them without the ORM. Each module imports `zod` and nothing else. Beside where the entity generator
+writes `<Name>.ts`, it writes:
+
+- `<Entity>.contract.ts` for each store-backed entity: the read schema and type (`<Entity>Schema`,
+  `<Entity>`, a row as the store returns it), the create and update schemas with their validation
+  (`<Entity>InsertSchema`, `<Entity>UpdateSchema`) and the typed `<Entity>Create` and
+  `<Entity>Patch`. A TPH subtype's read schema pins its discriminator, and a TPH base's read type
+  is the union of its subtypes';
+- `<Projection>.contract.ts` for each projection: its read schema and type, and nothing a caller
+  sends;
+- the value module of each value object those shapes or an operation reach, byte for byte the
+  entity generator's, so the two collapse into one file when both run;
+- `<pkg path>/operations.contract.ts` for each package that declares operations, under the
+  package's directory in either layout;
+- `errors.contract.ts` at the target root: the wire error bodies.
+
+For the example's `decide` command and its queries:
+
+```ts
+/** `decide` (command). */
+export const DecideInputSchema = DecisionInputInsertSchema;
+export type DecideInput = z.input<typeof DecisionInputInsertSchema>;
+export type DecideBusinessError = "over_budget" | "already_decided";
+export type DecideError = ErrorBody<ShellErrorCode | ContractErrorCode | DecideBusinessError>;
+
+/** `openRequests` (query). */
+export type OpenRequestsOutput = readonly RequestSummary[];
+export type OpenRequestsBusinessError = never;
+export type OpenRequestsError = ErrorBody<ShellErrorCode | ContractErrorCode | OpenRequestsBusinessError>;
+```
+
+`errors.contract.ts` carries the shell's codes (`ShellErrorCodes`) and the API contract's
+(`ContractErrorCodes`), the HTTP status of each fixed code (`ErrorStatus`), and the bodies:
+`ErrorBody`, `ValidationErrorBody` with its `issues`, and `ConstraintViolationBody` with its
+`constraint` kind (see [API contract](api-contract.md)). It gives no status for a business error a
+command declares; that is the service shell's to answer. A key a derived command or a keyed query
+takes is not here either: the service generator decides its parameters.
 
 ## Requirements can claim operations and transitions
 

@@ -90,9 +90,15 @@ async function emit(metadata: MetaRoot, generators: Generator[]): Promise<Record
 }
 
 const DOCS_SITE = "docs-site";
-/** The ADR-0067 rules-layer generators, and the files each writes for the with-model. */
+/** The ADR-0067 rules-layer generators, and the files the vocabulary ADDS to each one's output. */
 const RULES_LAYER: Record<string, string[]> = {
   "rules-names": ["src/generated/acme/purchasing/rules.names.ts"],
+  // Its entity contracts and error bodies do not depend on the vocabulary; the operations do, and
+  // so does the value object only an operation reaches.
+  "contract-types": [
+    "src/generated/DecisionInput.ts",
+    "src/generated/acme/purchasing/operations.contract.ts",
+  ],
 };
 
 let withRules: MetaRoot;
@@ -122,9 +128,13 @@ describe("ADR-0066 the business-rules vocabulary is inert in every generator and
   }
 
   for (const [name, files] of Object.entries(RULES_LAYER)) {
-    test(`rules-layer generator "${name}" writes nothing without the vocabulary, and only its own files with it`, async () => {
-      expect(await emit(withoutRules, [catalog[name]!.factory()])).toEqual({});
-      expect(Object.keys(await emit(withRules, [catalog[name]!.factory()])).sort()).toEqual(files);
+    test(`rules-layer generator "${name}" adds only its own files for the vocabulary, and moves none`, async () => {
+      const expected = await emit(withoutRules, [catalog[name]!.factory()]);
+      const actual = await emit(withRules, [catalog[name]!.factory()]);
+      expect(expected["<threw>"]).toBeUndefined();
+      expect(Object.keys(actual).filter((p) => !(p in expected)).sort()).toEqual(files);
+      for (const p of files) delete actual[p];
+      expect(actual).toEqual(expected);
     });
   }
 
@@ -160,8 +170,9 @@ describe("ADR-0066 the business-rules vocabulary is inert in every generator and
     const actual = await emit(withRules, runnable.map((f) => f()));
     expect(expected["<threw>"]).toBeUndefined();
     expect(Object.keys(expected).length).toBeGreaterThan(10);
-    // The rules layers add their own files beside the rest, and move none of them.
-    const added = Object.values(RULES_LAYER).flat();
+    // The rules layers add their own files beside the rest, and move none of them. A value module
+    // the contract layer writes for an operation is the entity generator's, already in both runs.
+    const added = Object.values(RULES_LAYER).flat().filter((p) => !(p in expected));
     expect(Object.keys(actual).filter((p) => !(p in expected)).sort()).toEqual([...added].sort());
     for (const p of added) delete actual[p];
     expect(actual).toEqual(expected);

@@ -23,6 +23,7 @@ const EXPECTED_NATIVE = [
   "barrel",
   "names",
   "rules-names",
+  "contract-types",
   "report-export",
   "prompt-render",
   "output-parser",
