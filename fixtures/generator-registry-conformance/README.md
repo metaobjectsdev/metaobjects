@@ -32,7 +32,7 @@ to make the choice cheap, and `layer` is the axis it is cheap along.
 
 | layer | members | chosen by |
 |---|---|---|
-| `model` | entity, names, barrel, dto, value-object | app shape |
+| `model` | entity, names, rules-names, barrel, dto, value-object | app shape |
 | `persistence` | queries, prisma-schema, db-context, repository, exposed-table, relations, stored-proc | app shape |
 | `api` | routes, routes-hono, filter-allowlist, validator, spring-config, contract-schema, openapi | app shape |
 | `client` | form, hooks, grid, grid-hook, client, commands | app shape |
@@ -121,6 +121,10 @@ reqwest client for the REST surface the other ports' `routes` serve) and `comman
 port that adopts either name adds itself to that entry's `ports`; the name is then
 shared like the others. (`payload` was one until ADR-0056 removed it: a value
 object's type now comes from the value-object generator, so the template tier declares none.)
+
+One name is **TypeScript-only for now**: `rules-names`, the first rules layer of ADR-0067 (the
+names of a package's lifecycle states, transitions, commands, operations, permissions and
+business errors). Each other port adds itself to its `ports` with its own rules-layer work.
 
 ## Changing the surface
 

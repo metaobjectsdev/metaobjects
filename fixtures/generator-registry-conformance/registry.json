@@ -109,7 +109,7 @@
       "tier": "native",
       "layer": "model",
       "eject": "full",
-      "ports": ["csharp"]
+      "ports": ["typescript", "csharp"]
     },
     "contract-types": {
       "concept": "Per-entity create and update records (ADR-0067 layer 1): the members a client sends to create a row and may change on update, with the entity's validation; the server-owned members (generated key, @autoSet stamp, readOnly and derived fields, TPH discriminator) are on neither, and the update record tells an omitted member from an explicit null.",
@@ -428,6 +428,7 @@
           "codegen-ts/src/render-engine/framework-provider.ts",
           "codegen-ts/src/requirement-walk.ts",
           "codegen-ts/src/routes-expose.ts",
+          "codegen-ts/src/rules-walk.ts",
           "codegen-ts/src/source-detect.ts",
           "codegen-ts/src/templates/entity-ui-descriptor.ts",
           "codegen-ts/src/templates/find-inbound.ts",

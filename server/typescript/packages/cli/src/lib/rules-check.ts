@@ -36,21 +36,20 @@
 // target: a command acting on an abstract base claims the inherited transition of each child.
 
 import {
-  TYPE_API,
-  TYPE_OBJECT,
-  TYPE_OPERATION,
-  OBJECT_SUBTYPE_ENTITY,
   OPERATION_ATTR_PERMISSION,
   OPERATION_ATTR_PUBLIC,
-  OPERATION_ATTR_TRANSITIONS,
-  OPERATION_SUBTYPE_COMMAND,
   PACKAGE_SEPARATOR,
+  claimedTransitions,
+  claimsOn,
+  commandEntities,
+  derivedPermissionName,
+  derivesCommand,
   effectivePackageOf,
-  entityLineage,
   entityTransitions,
-  lifecycleIsLive,
   lifecyclesOf,
-  operationTarget,
+  modelEntities,
+  modelOperations,
+  needsPermissionName,
   reachableStates,
   terminalStates,
   topLevelNodeOf,
@@ -97,33 +96,11 @@ export function rulesAddress(node: MetaData): string {
   return pkg === "" ? parts.join(".") : `${pkg}${PACKAGE_SEPARATOR}${parts.join(".")}`;
 }
 
-/** The permission name a node gets when it declares none, `<package>.<path>`: the path is
- *  `<operation>` for a declared operation and `<Entity>.<transition>` for a transition's derived
- *  command, so two entities' transitions of one name ask about different permissions. */
-function derivedPermissionName(owner: MetaData, path: string): string {
-  const pkg = effectivePackageOf(topLevelNodeOf(owner));
-  return pkg === "" ? path : `${pkg}.${path}`;
-}
-
-function needsPermissionName(node: MetaData): boolean {
-  return node.attr(OPERATION_ATTR_PERMISSION) === undefined && node.attr(OPERATION_ATTR_PUBLIC) !== true;
-}
-
-function entities(root: MetaData): MetaData[] {
-  return root.children().filter((c) => c.type === TYPE_OBJECT && c.subType === OBJECT_SUBTYPE_ENTITY);
-}
-
-function operations(root: MetaData): MetaData[] {
-  return root.children()
-    .filter((c) => c.type === TYPE_API)
-    .flatMap((api) => api.children().filter((c) => c.type === TYPE_OPERATION));
-}
-
 /** Every lifecycle of the model, once per declaring field, in model order. */
 function declaredLifecycles(root: MetaData): Lifecycle[] {
   const seen = new Set<MetaData>();
   const out: Lifecycle[] = [];
-  for (const entity of entities(root)) {
+  for (const entity of modelEntities(root)) {
     for (const l of lifecyclesOf(entity)) {
       if (seen.has(l.field)) continue;
       seen.add(l.field);
@@ -184,49 +161,6 @@ function checkLifecycle(l: Lifecycle, settings: RulesSettings, out: Diagnostic[]
   }
 }
 
-/** One command's claim on a transition node, made for its target entity. */
-interface Claim {
-  readonly target: MetaData;
-  readonly op: MetaData;
-}
-
-/** Each transition node the declared commands claim, with the claims on it in model order. */
-function claimedTransitions(root: MetaData): Map<MetaData, Claim[]> {
-  const claimed = new Map<MetaData, Claim[]>();
-  for (const op of operations(root)) {
-    if (op.subType !== OPERATION_SUBTYPE_COMMAND) continue;
-    const target = operationTarget(op);
-    if (target === undefined) continue;
-    const raw = op.attr(OPERATION_ATTR_TRANSITIONS);
-    const names = new Set(Array.isArray(raw) ? raw.filter((x): x is string => typeof x === "string") : []);
-    for (const t of entityTransitions(target)) {
-      if (!names.has(t.name)) continue;
-      const claims = claimed.get(t) ?? [];
-      claims.push({ target, op });
-      claimed.set(t, claims);
-    }
-  }
-  return claimed;
-}
-
-/** The claims that cover transition `t` on `entity`: those made for the entity or an entity it extends. */
-function claimsOn(claimed: Map<MetaData, Claim[]>, entity: MetaData, t: MetaData): Claim[] {
-  const lineage = entityLineage(entity);
-  return (claimed.get(t) ?? []).filter((c) => lineage.includes(c.target));
-}
-
-/** Whether `t`, carried by `entity`, derives a command of its own under the setting. */
-function derivesCommand(claimed: Map<MetaData, Claim[]>, settings: RulesSettings, entity: MetaData, t: MetaData): boolean {
-  if (settings.lifecycleCommands === "none") return false;
-  if (settings.lifecycleCommands === "all") return true;
-  return claimsOn(claimed, entity, t).length === 0;
-}
-
-/** The entities a transition can derive a command on: concrete, with a source. */
-function commandEntities(root: MetaData): MetaData[] {
-  return entities(root).filter((e) => !e.isAbstract && lifecycleIsLive(e));
-}
-
 /** A transition's @permission or @public is read only by the command derived from it. One that
  *  derives no command for any entity carrying it declares an attribute nothing reads. A transition
  *  carried only by entities with no source is inert, not shadowed: it is not reported. */
@@ -284,7 +218,7 @@ function checkPermissionNames(root: MetaData, settings: RulesSettings, out: Diag
     }
   }
 
-  for (const op of operations(root)) {
+  for (const op of modelOperations(root)) {
     if (!needsPermissionName(op)) continue;
     out.push({
       severity,
@@ -300,7 +234,7 @@ function checkPermissionNames(root: MetaData, settings: RulesSettings, out: Diag
 /** The rules gate over a loaded model. */
 export function checkRules(root: MetaData, settings: RulesSettings): RulesCheckResult {
   const lifecycles = declaredLifecycles(root);
-  const ops = operations(root);
+  const ops = modelOperations(root);
   if (lifecycles.length === 0 && ops.length === 0) return { diagnostics: [], summary: undefined };
 
   const diagnostics: Diagnostic[] = [];

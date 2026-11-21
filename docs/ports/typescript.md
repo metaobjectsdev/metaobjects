@@ -727,6 +727,17 @@ file and take `db` as an explicit first argument — useful directly in request
 handlers, tests, or any runtime where a module singleton doesn't fit (see the
 recipe above).
 
+### `rules.names.ts` — the business-rules names, as constants
+
+`rulesNamesFile()` (stable name `rules-names`) is the first rules layer of ADR-0067. It writes one
+`rules.names.ts` per metadata package that declares a lifecycle or an operation, under the
+package's directory in either layout: each lifecycle's states, initial and terminal states and
+transitions (`<Entity><Field>Lifecycle`, with `<Entity><Field>State` and `…Transition` unions), the
+commands derived from unclaimed transitions (`<Entity>Commands`), the declared `Operations`, every
+`Permission` the package asks about and its `BusinessError` codes. It is not scaffolded; add it to
+`generators` or `meta eject rules-names`. The derivations are the ones `meta verify`'s rules gate
+checks. See [Business rules](../features/business-rules.md#the-names-layer-typescript).
+
 ### Prove it works
 
 Boot the server:

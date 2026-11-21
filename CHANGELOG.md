@@ -88,6 +88,17 @@ here.**
   because a newer MetaObjects may have written it, but each one is now named once on standard error
   with the known keys, in the words TypeScript uses. A key inside a block C# owns (`csharp`,
   `naming`, `wire` and the rest) is refused as before.
+- **codegen-ts: the rules names layer (ADR-0067 layer 0).** A new generator, `rules-names`
+  (`rulesNamesFile()`, ejectable), writes one `rules.names.ts` per metadata package that declares
+  a lifecycle or an operation: each lifecycle's states, initial and terminal states and
+  transitions, the commands derived from unclaimed transitions, the declared operations, every
+  permission the package asks about and the business errors its commands declare, as `as const`
+  values with literal-union types. The derivations move into `@metaobjectsdev/metadata`
+  (`derivedCommandsOf`, `operationPermission`, `commandPermission`, `claimedTransitions`, ...), and
+  `meta verify`'s rules gate now calls the same functions, so a constant and a verify message
+  cannot disagree. The loaded root carries the `rules` settings (`rulesSettings`). C# ships its own
+  `rules-names`; the other ports add theirs with their rules-layer work. No existing generator's output
+  moves (`fixtures/codegen-noop/rules`).
 - **The REST standard's list handling is part of the cross-port contract.** `?search`,
   `filter[or]` / `filter[and]`, the nesting cap, the bare-field and leading-`%` refusals, the
   filter-value format check, and the `invalid_json`, `invalid_id`, `pagination.invalid_value` and

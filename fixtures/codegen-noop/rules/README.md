@@ -20,6 +20,10 @@ the two models produce the same output everywhere:
   lists the `api`, `operation`, `binding` and `transition` nodes as well. Its other output
   is byte-identical, and its payload gains only lines of those four types.
 
+The generators of the rules layers themselves (ADR-0067) are the other exception: reading this
+vocabulary is their job. Each writes nothing for `without/` and only files of its own for
+`with/`, so it adds files and moves none. Today that is TypeScript's `rules-names`.
+
 A generator that started reading an operation or a transition by accident would emit
 something half-built; these tests are what notice:
 

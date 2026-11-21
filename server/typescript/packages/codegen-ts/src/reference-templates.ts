@@ -15,6 +15,9 @@ import { fileURLToPath } from "node:url";
 /** Basenames (no extension) of the copyable reference generators shipped in `src/reference/`. */
 export const REFERENCE_GENERATOR_NAMES = [
   "entity", "queries", "routes", "routes-hono", "barrel", "names",
+  // The rules names (ADR-0067 layer 0): the file's shape is the adopter's, while the walk that
+  // derives states, commands and permission names stays engine, shared with `meta verify`.
+  "rules-names",
   // The report export (`?format=csv|json|xml` on a served report): which reports get a module, the
   // column list and the CSV/XML writers, handed over as one file.
   "report-export",

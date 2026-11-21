@@ -14,9 +14,10 @@ The Rust port loads the vocabulary and runs the same loader rules, and its `veri
 same rules gate, held to `fixtures/rules-check-conformance/` ([Rust port](../ports/rust.md)).
 A requirement can claim an operation or a transition. The flat generators generate nothing from
 the vocabulary. The layer generators of ADR-0067 do, and an app adds them to its generator list as
-it adds any generator. The first are C#'s `rules-names`, which writes the states, transitions,
-permissions and error codes as constants, and `contract-types`, which writes each entity's create
-and update records ([C# port](../ports/csharp.md)). The service shells that
+it adds any generator. The first is `rules-names`, which writes the states, transitions,
+permissions and error codes as constants, in TypeScript (see
+[The names layer](#the-names-layer-typescript)) and C#; C# also ships `contract-types`, which writes
+each entity's create and update records ([C# port](../ports/csharp.md)). The service shells that
 enforce these rules at run time are later work. A lifecycle in a project
 that wires none will be advised by `verify` once that check lands; today the flat routes enforce
 nothing and `verify` says nothing about it. Every flat generator writes byte-identical code for
@@ -244,6 +245,50 @@ setting behaves as it does today.
   "verify": { "lifecycle": { "unreachable": "warn" } }
 }
 ```
+
+## The names layer (TypeScript)
+
+`rulesNamesFile()` (stable name `rules-names`, ejectable like any reference generator) writes one
+`rules.names.ts` per metadata package that declares a lifecycle or an operation, under the
+package's directory (`acme/purchasing/rules.names.ts`) in either output layout. A package without
+the vocabulary gets no file. Hand-written code (a command body, a policy, a grant table) imports
+these instead of writing a state, a transition, a permission or an error code as a string, so a
+rename in the model stops it compiling:
+
+```ts
+export const PurchaseRequestStatusLifecycle = {
+  field: "status",
+  states: ["draft", "submitted", "approved", "rejected"],
+  initial: "draft",
+  terminal: ["approved", "rejected"],
+  transitions: {
+    submit: { from: ["draft"], to: "submitted" },
+    approve: { from: ["submitted"], to: "approved" },
+    reject: { from: ["submitted"], to: "rejected" },
+  },
+} as const;
+export type PurchaseRequestStatusState = (typeof PurchaseRequestStatusLifecycle.states)[number];
+export type PurchaseRequestStatusTransition = keyof typeof PurchaseRequestStatusLifecycle.transitions;
+
+export const PurchaseRequestCommands = {
+  submit: { lifecycle: "status", permission: "acme::purchasing.PurchaseRequest.submit" },
+} as const;
+
+export const Operations = {
+  decide: { kind: "command", permission: "purchasing.decide", transitions: ["approve", "reject"], errors: ["over_budget", "already_decided"] },
+  openRequests: { kind: "query", public: true },
+} as const;
+
+export const Permissions = ["acme::purchasing.PurchaseRequest.submit", "purchasing.decide"] as const;
+export type Permission = (typeof Permissions)[number];
+export const BusinessErrors = ["already_decided", "over_budget"] as const;
+```
+
+The file also carries `ShellErrors`, the codes the enforcing shell answers with on its own. What
+is derived (the terminal states, which transitions get a command under `rules.lifecycle.commands`,
+each derived permission name) comes from the same functions `verify`'s rules gate uses, so the
+constant and a `verify` message name the same thing. The file ends in `.names.ts`, so
+`meta verify --codegen` treats a hand edit in it as drift, as it does for `<Entity>.names.ts`.
 
 ## Requirements can claim operations and transitions
 
