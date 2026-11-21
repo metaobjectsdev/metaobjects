@@ -20,7 +20,10 @@
 #      checked by content and by modification time.
 #   4. Runs the drift gate (verify --codegen), the build, the tests and any --db-cmd. A command
 #      you do not pass is reported as skipped, never as passed.
-#   5. Unlinks (unless --keep-linked), however the run ended.
+#   5. Puts the estate back as it found it (unless --keep-linked), however the run ended: unlink,
+#      then `git reset --hard` to the commit it started on and `git clean -fd`. That is safe only
+#      because step 1 required a clean tree, and it is why a dirty tree is refused. Ignored files
+#      (node_modules, .venv, bin, obj) stay as the candidate installed them: reinstall afterwards.
 #
 # Each estate passes its own build, test and database commands; the generation and install
 # defaults below are the port's documented ones. Rust has no estate path: pin a commit
@@ -50,7 +53,7 @@ while [ $# -gt 0 ]; do
     --db-cmd)       DB_CMDS+=("$2"); shift 2 ;;
     --keep-linked)  KEEP=1; shift ;;
     --no-link)      NOLINK=1; shift ;;
-    -h|--help)      sed -n '2,31p' "$0"; exit 0 ;;
+    -h|--help)      sed -n '2,30p' "$0"; exit 0 ;;
     *) die "unknown option: $1" ;;
   esac
 done
@@ -103,12 +106,16 @@ esac
 WORK="$(mktemp -d "${DEV_SCRATCH:-${TMPDIR:-/tmp}}/estate-run.XXXXXX")"
 ROWS="$WORK/rows"; DETAIL="$WORK/detail"; : > "$ROWS"; : > "$DETAIL"
 FAILED=0; LINKED=0; STARTED="$(date +%s)"
+START_HEAD="$(git -C "$PROJECT" rev-parse HEAD)"
 
 cleanup() {
   local code=$?
   if [ "$LINKED" = 1 ] && [ "$KEEP" = 0 ]; then
     "$HERE/prerelease-link.sh" unlink --project "$PROJECT" >"$WORK/unlink.log" 2>&1 \
-      && echo "unlinked $PROJECT" >&2 || { echo "! unlink failed:" >&2; cat "$WORK/unlink.log" >&2; }
+      || { echo "! unlink failed:" >&2; cat "$WORK/unlink.log" >&2; }
+    # unlink repins to the public latest; the estate goes back to the commit it started on instead.
+    git -C "$PROJECT" reset -q --hard "$START_HEAD" && git -C "$PROJECT" clean -qfd \
+      && echo "restored $PROJECT to ${START_HEAD:0:12}" >&2 || echo "! could not restore $PROJECT to $START_HEAD" >&2
   fi
   rm -rf "$WORK"
   exit "$code"
@@ -160,19 +167,36 @@ fi
 
 step "install (clean)" "$INSTALL_CMD" || finish
 ( cd "$PROJECT" && bash -c "$VERSIONS_CMD" ) > "$WORK/versions.txt" 2>&1
-if grep -qF -- "$EXPECT" "$WORK/versions.txt"; then row "installed version is $EXPECT" "passed" 0
-else row "installed version is $EXPECT" "**FAILED** (not in the read-back)" 0; fail_detail "installed version" "$WORK/versions.txt"; FAILED=1; finish; fi
+# Every line that names a MetaObjects package must carry exactly the candidate (not rc.10 for rc.1,
+# not a package left on the release), and at least one must.
+VCOUNT="$(grep -ci 'metaobjects' "$WORK/versions.txt")"
+STALE="$(grep -i 'metaobjects' "$WORK/versions.txt" | grep -vE -- "(^|[^0-9A-Za-z.+-])${EXPECT//./\\.}([^0-9A-Za-z.+-]|$)")"
+if [ "$VCOUNT" -gt 0 ] && [ -z "$STALE" ]; then row "installed version is $EXPECT" "passed ($VCOUNT lines)" 0
+else
+  row "installed version is $EXPECT" "**FAILED** (${VCOUNT} package lines, $(printf '%s' "$STALE" | grep -c .) not on the candidate)" 0
+  fail_detail "installed version" "$WORK/versions.txt"; FAILED=1; finish
+fi
 
 # ── 2. regenerate; list what changed; regenerate again and expect nothing ─────────────
+# "Changed by regeneration" is what the first gen changed beyond what link and install already
+# did (the repinned manifests, the lockfile): each dirty path with a hash of its content.
+dirtymap() {
+  git -C "$PROJECT" status --porcelain --untracked-files=all | while IFS= read -r l; do
+    f="${l:3}"; f="${f##* -> }"
+    printf '%s %s\n' "$l" "$( [ -f "$PROJECT/$f" ] && sha256sum < "$PROJECT/$f" | cut -c1-16 || echo gone)"
+  done
+}
+dirtymap | sort > "$WORK/base.txt"
 step "gen (first run)" "$GEN_CMD" || finish
-git -C "$PROJECT" status --porcelain --untracked-files=all > "$WORK/changed.txt"
+dirtymap | sort > "$WORK/after.txt"
+comm -13 "$WORK/base.txt" "$WORK/after.txt" | sed 's/ [0-9a-f]\{16\}$//; s/ gone$//' > "$WORK/changed.txt"
 row "files changed by the first gen" "$(wc -l < "$WORK/changed.txt")" 0
 
-snapshot() { { git -C "$PROJECT" status --porcelain --untracked-files=all; git -C "$PROJECT" diff | sha256sum
-               git -C "$PROJECT" ls-files -co --exclude-standard -z | xargs -0 -r -I{} sha256sum "$PROJECT/{}" 2>/dev/null; } | sha256sum; }
+snapshot() { dirtymap | sha256sum; }
+INSTALLED='(^|/)(node_modules|\.venv|bin|obj|target)/'
 BEFORE="$(snapshot)"; MARK="$WORK/mark"; touch "$MARK"; sleep 1
 step "gen (second run)" "$GEN_CMD" || finish
-REWRITTEN="$(cd "$PROJECT" && git ls-files -co --exclude-standard | while IFS= read -r f; do [ "$f" -nt "$MARK" ] && echo "$f"; done)"
+REWRITTEN="$(cd "$PROJECT" && git ls-files -co --exclude-standard | grep -vE "$INSTALLED" | while IFS= read -r f; do [ "$f" -nt "$MARK" ] && echo "$f"; done)"
 if [ "$(snapshot)" = "$BEFORE" ] && [ -z "$REWRITTEN" ]; then row "second gen writes zero files" "passed" 0
 else
   row "second gen writes zero files" "**FAILED**" 0

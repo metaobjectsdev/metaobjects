@@ -278,6 +278,12 @@ const VERSION_FILES = [
 const dirty = sh(`git status --porcelain -- ${VERSION_FILES.map((f) => `'${f}'`).join(" ")}`).trim();
 if (dirty) die(`version-bearing files are dirty — commit or stash first:\n${dirty}`);
 ok("version-bearing files clean");
+// Whether the tree the candidate is built from has uncommitted work, taken now, before any
+// version edit and before restore(). New untracked files count; the candidate log itself does not.
+const CANDIDATE_LOG = "tools/prerelease/candidates.md";
+const builtFromDirtyTree = sh("git status --porcelain --untracked-files=all").split("\n")
+  .some((l) => l.trim() && l.slice(3) !== CANDIDATE_LOG);
+const published = [];  // registries this run actually published to, in order
 // The tracked files those same pathspecs cover — restore() may only revert files whose
 // pre-run cleanliness this gate actually verified.
 const covered = new Set(
@@ -300,7 +306,24 @@ const restore = () => {
   if (!touched.length) return;
   try { sh(`git checkout -- ${touched.map((f) => `'${f}'`).join(" ")}`); } catch {}
 };
-installRestoreHandlers(restore);
+// The repository's record of which commit each candidate was built from. It is written however the
+// run ends, because a run that stops after one registry has still burned the candidate number
+// there, and a Rust consumer pins the commit this row names. Written after restore(), so the
+// entry is the only change the run leaves behind.
+let recorded = false;
+const recordCandidate = () => {
+  if (recorded || DRY || !published.length) return; recorded = true;
+  const stopped = ONLY.filter((p) => !published.includes(p));
+  try {
+    appendCandidateLog(join(ROOT, CANDIDATE_LOG), candidateLogRow({
+      candidate: CANON, commit: sh("git rev-parse HEAD").trim(), dirty: builtFromDirtyTree, date: new Date(),
+      registries: stopped.length ? [...published, `stopped before ${stopped.join(", ")}`] : published,
+    }));
+    console.log(`recorded ${CANON} in ${CANDIDATE_LOG} — commit that line`);
+  } catch (e) { console.error(`could not record ${CANON} in ${CANDIDATE_LOG}: ${e.message}`); }
+};
+const restoreAndRecord = () => { restore(); recordCandidate(); };
+installRestoreHandlers(restoreAndRecord);
 
 const scratch = (name) => { const d = join(SCRATCH, name); rmSync(d, { recursive: true, force: true }); mkdirSync(d, { recursive: true }); return d; };
 // Kept between runs (so Maven does not re-download the world every time) and deliberately
@@ -355,6 +378,7 @@ if (wants("npm")) {
     info(`published ${pkg.short}@${V.npm}`);
   }
   ok(DRY ? "npm: dry run, nothing published" : `npm: ${ordered.length} packages @ ${V.npm} (dist-tag prerelease)`);
+  if (!DRY) published.push("npm");
 }
 
 // ── python ────────────────────────────────────────────────────────────────────────────
@@ -369,6 +393,7 @@ if (wants("python")) {
     await run(`cd server/python && uv publish --publish-url "${PYPI_URL}" --username "${OWNER}" --password "${TOKEN}" ${dist}/*`);
     ok(`python: metaobjects ${V.pypi} → ${expectedHost}`);
   } else ok("python: dry run, nothing published");
+  if (!DRY) published.push("python");
 }
 
 // ── csharp ────────────────────────────────────────────────────────────────────────────
@@ -383,6 +408,7 @@ if (wants("csharp")) {
     await run(`dotnet nuget push "${out}/*.nupkg" --source "${NUGET_SRC}" --api-key "${TOKEN}"`);
     ok(`csharp: 4 packages @ ${V.nuget} → ${expectedHost}`);
   } else ok("csharp: dry run, nothing published");
+  if (!DRY) published.push("csharp");
 }
 
 // ── java / kotlin ─────────────────────────────────────────────────────────────────────
@@ -415,22 +441,10 @@ if (wants("java")) {
      ` -DaltDeploymentRepository="mo-prerelease::${MAVEN_URL}"`,
      { stdio: "inherit" });
   ok(DRY ? "java: dry run, built (package), nothing deployed" : `java: reactor @ ${V.maven} → ${expectedHost}`);
+  if (!DRY) published.push("java");
 }
 
-restore();
-if (!DRY) {
-  // The repository's record of which commit each candidate was built from. Appended after the
-  // version declarations are restored, so the entry is the only change this run leaves behind.
-  const logPath = join(ROOT, "tools/prerelease/candidates.md");
-  const LOG = "tools/prerelease/candidates.md";
-  const dirtyOther = sh("git status --porcelain --untracked-files=no").split("\n")
-    .filter((l) => l.trim() && !l.endsWith(LOG)).length > 0;
-  appendCandidateLog(logPath, candidateLogRow({
-    candidate: CANON, commit: sh("git rev-parse HEAD").trim(), dirty: dirtyOther,
-    date: new Date(), registries: ONLY,
-  }));
-  ok(`recorded ${CANON} in ${LOG} — commit that line`);
-}
+restoreAndRecord();
 if (DRY) {
   console.log(`\n\x1b[32m\x1b[1m✔ dry run of ${CANON} passed; nothing was published.\x1b[0m\n`);
 } else {
