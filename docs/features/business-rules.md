@@ -10,6 +10,8 @@ The model never says *how* an operation works. That is code. The model says wher
 is needed, which moves are legal, and what a command may return, so all three can be checked.
 
 **What 1.3.0 ships.** The vocabulary, checked when it loads and by `verify`, in all five ports.
+It is a provider pack, composed by default: see
+[Where vocabulary lives](extending-with-providers.md#where-vocabulary-lives).
 The Rust port loads the vocabulary and runs the same loader rules, and its `verify` runs the
 same rules gate, held to `fixtures/rules-check-conformance/` ([Rust port](../ports/rust.md)).
 A requirement can claim an operation or a transition. Nothing is generated from the vocabulary

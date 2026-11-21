@@ -48,8 +48,9 @@ mean what they appear to mean: a measure of one table in a report over another, 
 
 ## What is registered
 
-They are registered by the `metaobjects-reporting` provider pack, which the default bundle
-composes; an embedder can leave it out ([extending-with-providers.md](extending-with-providers.md)).
+They are a provider pack, composed by default and removable by an embedder; the pack's
+identity and what leaving it out does are in
+[Where vocabulary lives](extending-with-providers.md#where-vocabulary-lives).
 
 Exactly these names, and nothing else:
 
