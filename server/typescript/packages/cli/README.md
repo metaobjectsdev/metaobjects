@@ -12,7 +12,8 @@ The MetaObjects CLI — scaffolds `metaobjects/` + `.metaobjects/`, runs codegen
 bun add -D @metaobjectsdev/cli
 ```
 
-The SQLite/Turso driver (`@libsql/kysely-libsql`) ships as a direct dependency — `meta migrate` against a `sqlite`/`libsql` URL works out of the box. Postgres remains an optional peer (install only if you target Postgres):
+The SQLite/Turso driver (`@libsql/kysely-libsql`) is an optional peer, because it carries a native binary per platform and libc: `meta init` adds it to a SQLite project's `package.json` (run your package manager's install afterwards), and a project that skipped `init` adds it itself. Without it, `meta migrate` against a `sqlite`/`libsql` URL stops with the install command for your package manager. Postgres is an optional peer too (install only if you target Postgres):
+- SQLite on Node: `bun add -D @libsql/kysely-libsql`
 - Postgres: `bun add -D pg`
 
 If a required driver is ever missing, the CLI prints an install command matching your project's package manager (npm / pnpm / yarn / bun, detected from the lockfile).
@@ -44,7 +45,7 @@ bun build ./bin/meta.ts --compile --target=bun-windows-x64 --outfile dist/meta-w
 
 ### SQLite driver inside the binary
 
-The standalone binary uses Bun's built-in **`bun:sqlite`** for the `sqlite` dialect (it ships inside the embedded Bun runtime). The npm/Node distribution uses the bundled `@libsql/kysely-libsql` dependency. This is automatic — the same `--db file:./app.db --dialect sqlite` flags work in both. (Postgres in the standalone binary still requires the `pg` peer to be resolvable, because `pg` is a native module that `--compile` cannot embed; sqlite is the fully self-contained path.)
+The standalone binary uses Bun's built-in **`bun:sqlite`** for the `sqlite` dialect (it ships inside the embedded Bun runtime). The npm/Node distribution uses the `@libsql/kysely-libsql` driver your project declares. This is automatic — the same `--db file:./app.db --dialect sqlite` flags work in both. (Postgres in the standalone binary still requires the `pg` peer to be resolvable, because `pg` is a native module that `--compile` cannot embed; sqlite is the fully self-contained path.)
 
 Run schema ops from the compiled binary:
 

@@ -49,6 +49,8 @@ const FORBIDDEN = {
   "@biomejs/biome": "generation runs no formatter; the CLI compares owned copies through the WebAssembly build",
   "dprint-node": "seven native binaries; codegen-ts runs dprint as WebAssembly",
   "ts-poet": "requires dprint-node on load; codegen-ts vendors the printer",
+  "@libsql/kysely-libsql": "an optional peer: a SQLite project declares it (`meta init` does), because it carries a native binary per platform and libc",
+  "libsql": "the native SQLite binding behind @libsql/kysely-libsql, installed only with it",
 };
 
 const update = process.argv.includes("--update");

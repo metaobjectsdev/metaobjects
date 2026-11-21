@@ -162,6 +162,14 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   adds `drizzle-orm` and `zod` to its own `package.json`. A check installs the packed CLI, fails
   when the ORM or a formatter comes back, and holds the install to a size budget that only moves
   down (`scripts/check-install-size.mjs`, in the full CI run).
+- **The SQLite driver is no longer installed with the CLI.** `@libsql/kysely-libsql` is an
+  optional peer of `@metaobjectsdev/cli`: it brought its own HTTP client, a polyfill and a native
+  binary for each libc (about 28 MB), which a Postgres or D1 project never used. `meta init`
+  now adds it to the `dependencies` of a SQLite project (the default dialect) and says so; a
+  project that already ran `init` adds it with its package manager. Without it, `meta migrate` and
+  `meta verify --db` against a SQLite URL stop with the install command. Postgres, MySQL and D1
+  projects install nothing new. With the ORM and the formatter gone as well, installing the CLI is
+  about 51 MB.
 - **`metamodelVersion` is `1.3`.** Upgrade every port together.
 
 ### Security
