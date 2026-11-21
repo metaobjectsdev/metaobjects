@@ -77,8 +77,8 @@ The requirements pages and the agent schema and requirements pages follow the sa
 `requirementsLedgerData`, `requirementsToonData`, `agentRequirementsPageData` and
 `agentSchemaPageData` (exported from `@metaobjectsdev/codegen-ts`) return finished cells and
 lines, and `templates/requirements/*.mustache` and `templates/agent/*.mustache` lay them out.
-`fixtures/docs-page-conformance/` pins each page's data and bytes for every port, and its
-README states what the model-only schema page (`physical: false`, the page a port without
+`fixtures/docs-page-conformance/` pins each page's data and bytes for the TypeScript builders
+(the other ports' status is in [CONFORMANCE.md](../CONFORMANCE.md)), and its README states what the model-only schema page (`physical: false`, the page a port without
 the expected schema writes) leaves out.
 
 ### Neutral structural shapes → `EntityTemplateData` / `PackageTemplateData` / `ModelTemplateData`

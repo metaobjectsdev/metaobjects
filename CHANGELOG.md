@@ -10,6 +10,11 @@ here.**
 
 ## [Unreleased]
 
+- **Java: a standalone `{{! comment }}` line leaves no blank line.** mustache.java kept the line break
+  after a standalone comment tag, so a Java render had one extra blank line where TypeScript, C# and
+  Python had none. `Renderer` now strips standalone comment lines before mustache.java parses them. A
+  template with such a line renders differently in Java, so a prompt body with one changes bytes (and
+  its prompt-cache prefix) on upgrade. The `render-standalone-*` fixtures pin the whitespace rules.
 - **C#: an unchanged file is never rewritten.** `dotnet meta gen` already left identical output alone
   when the project keeps a hash manifest. It now does the same on the path with no manifest (output
   written outside the project, or a program that runs the generators with no state directory), which

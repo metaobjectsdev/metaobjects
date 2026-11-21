@@ -302,8 +302,8 @@ wins over the packaged one. The requirements and agent pages work the same way:
 `templates/requirements/requirements.md.mustache` and `requirements.toon.mustache`
 (`requirementsFile({ templates })`), and `templates/agent/schema.md.mustache` and
 `requirements.md.mustache` (`agentDocsFile({ templates })`; its embedded ledger is the
-`requirements/requirements.md` template). Every port renders these same templates from the
-same data, pinned in `fixtures/docs-page-conformance/`.
+`requirements/requirements.md` template). The templates and the data they are fed are pinned in
+`fixtures/docs-page-conformance/`; which ports run that corpus is in [CONFORMANCE.md](../CONFORMANCE.md).
 
 ### The docs site: `meta eject docs-site` copies the theme
 

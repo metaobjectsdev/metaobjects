@@ -163,7 +163,8 @@ single character) are the only wildcards, there is no `%`-wrapping and no
 case folding — identically on every port and every engine. Engines whose
 native LIKE is not case-sensitive are lowered around, not deferred to: on
 SQLite/D1 (whose built-in LIKE folds ASCII case) the TS runtime lowers
-`like` to GLOB with an exactly-translated pattern. Case-insensitive
+`like` to GLOB with an exactly-translated pattern; on MySQL, whose LIKE follows the column's
+collation, it compares the binary value. Case-insensitive
 matching is deliberately NOT in the operator vocabulary (FR-009 §7 /
 ADR-0036 reserve `ilike` as a future additive operator, gated on real
 consumer demand); until then, normalize case in the data or the pattern —
@@ -209,7 +210,7 @@ route, not metamodel semantics.
 
 The **`in`-list size cap** (reject an `in` list longer than 100 → HTTP 400) is a
 safety limit, not a feature, and every port enforces it: TypeScript
-(`DEFAULT_MAX_IN_LIST` in the `runtime-ts` filter parser), Python (`MAX_IN_LIST`),
+(`DEFAULT_MAX_IN_LIST` in the `runtime-ts` list parser), Python (`MAX_IN_LIST`),
 Java (`FilterParser.MAX_IN_LIST`), C# (`FilterParser.MaxInList`) and Kotlin (a generated
 file-private constant that matches the TypeScript default).
 
@@ -922,9 +923,9 @@ async def delete_author(id: int) -> None:
 ```
 
 The filter-parser implementation is the bulk of the work; the route
-shapes themselves are trivial. The TS `parseFilterParams` (in
-`@metaobjectsdev/runtime-ts/drizzle-fastify`) is the reference — port it
-into your framework's idiomatic query-builder, gated by the generated
+shapes themselves are trivial. The TS `parseListQuery` (in `@metaobjectsdev/runtime-ts`) is the
+reference for the parse, and `fixtures/list-query-conformance/` pins its answers. Port it, then
+compile the parsed query into your framework's idiomatic query-builder, gated by the generated
 `<Entity>FilterAllowlist`.
 
 ## Future direction

@@ -200,8 +200,8 @@ openApiFile({
 
 - The `default` keyword: a default belongs to the database or to `@autoSet`, and is not on the wire.
 - `readOnly` and `writeOnly`: the shapes are separate.
-- The TypeScript-only `search`, `filter[or]` and `filter[and]` extensions: the document states the
-  cross-port contract ([api-contract.md](api-contract.md)).
+- `search`, `filter[or]` and `filter[and]`: they are part of the list contract since 1.3.0
+  ([api-contract.md](api-contract.md)), but this document does not describe them yet.
 - 405 answers as operations: a verb a read-only surface does not serve is absent from the document,
   and the surface's operations say so in prose.
 - Routes you wrote by hand. Eject `openapi` and add them in `buildOpenApiDocument` if you want them
