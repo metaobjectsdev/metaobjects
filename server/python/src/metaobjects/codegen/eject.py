@@ -49,6 +49,7 @@ from metaobjects.codegen.generator_registry import (
     GENERATOR_REGISTRY,
     GeneratorBuildContext,
     GeneratorEntry,
+    snake_case_option,
 )
 from metaobjects.codegen.project_import import import_project_symbol
 
@@ -372,15 +373,39 @@ def build_owned(spec: str, root: Path, ctx: GeneratorBuildContext) -> tuple[Gene
         required = [p for p in params.values()
                     if p.default is inspect.Parameter.empty
                     and p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
+        # `options:` on the entry reach a factory as keyword arguments (camelCase key ->
+        # snake_case name). A factory that takes the build context reads them from
+        # `ctx.options` as written instead; one that takes neither is refused the options.
+        takes_ctx = len(required) == 1 and "template_root" not in params
+        kwargs: dict[str, object] = {}
+        if ctx.options and not takes_ctx:
+            kwargs = {snake_case_option(k): v for k, v in ctx.options.items()}
+            if not any(p.kind is p.VAR_KEYWORD for p in params.values()):
+                named = {
+                    n for n, p in params.items()
+                    if p.kind in (p.POSITIONAL_OR_KEYWORD, p.KEYWORD_ONLY)
+                }
+                unknown = sorted(k for k in ctx.options if snake_case_option(k) not in named)
+                if unknown:
+                    takes = ", ".join(sorted(named)) or "none"
+                    return None, (
+                        f"generator {spec!r}: {symbol}() takes no option(s) "
+                        f"{', '.join(repr(k) for k in unknown)}; it takes: {takes}"
+                    )
         try:
             if "template_root" in params:
-                obj = obj(template_root=ctx.template_root or tempfile.gettempdir())
-            elif len(required) == 1:
+                obj = obj(template_root=ctx.template_root or tempfile.gettempdir(), **kwargs)
+            elif takes_ctx:
                 obj = obj(ctx)
             else:
-                obj = obj()
+                obj = obj(**kwargs)
         except Exception as exc:
             return None, f"generator {spec!r}: factory {symbol}() raised: {exc}"
+    elif ctx.options:
+        return None, (
+            f"generator {spec!r}: {symbol!r} is a generator instance, which takes no options; "
+            "make it a factory or a class so the options reach it"
+        )
     if not hasattr(obj, "generate") or not hasattr(obj, "name"):
         return None, f"generator {spec!r}: {symbol!r} is not a generator (needs name and generate)"
     return obj, None

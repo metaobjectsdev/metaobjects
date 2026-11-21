@@ -20,9 +20,10 @@ entries whose ``ports`` array includes ``python``. All Python entries are
 """
 from __future__ import annotations
 
+import re
 import tempfile
-from dataclasses import dataclass
-from typing import Callable
+from dataclasses import dataclass, field
+from typing import Callable, Mapping
 
 from metaobjects.codegen.generator import Generator
 from metaobjects.codegen.project_config import DEFAULT_REQUIREMENT_WITNESS_MODULE, ApiDocsConfig
@@ -76,6 +77,77 @@ GeneratorLayer = str  # one of GENERATOR_LAYERS
 
 
 @dataclass(frozen=True)
+class GeneratorOption:
+    """One setting a packaged generator takes in ``options:`` on its ``generators`` entry.
+
+    ``name`` is the camelCase key the config file uses (every key in that file is camelCase);
+    the generator receives it as the snake_case keyword argument :attr:`kwarg`. ``kind`` is
+    ``integer``, ``boolean`` or ``string``; ``choices`` closes a string, ``minimum`` bounds an
+    integer."""
+
+    name: str
+    kind: str
+    description: str
+    choices: tuple[str, ...] | None = None
+    minimum: int | None = None
+
+    @property
+    def kwarg(self) -> str:
+        return snake_case_option(self.name)
+
+    def coerce(self, value: object) -> tuple[object, str | None]:
+        """``(value, None)`` when ``value`` is acceptable, else ``(None, why)``."""
+        if self.kind == "boolean":
+            if isinstance(value, bool):
+                return value, None
+            return None, "must be true or false"
+        if self.kind == "integer":
+            if isinstance(value, bool) or not isinstance(value, int):
+                return None, "must be a whole number"
+            if self.minimum is not None and value < self.minimum:
+                return None, f"must be at least {self.minimum}"
+            return value, None
+        if not isinstance(value, str) or not value:
+            return None, "must be a non-empty string"
+        if self.choices is not None and value not in self.choices:
+            return None, f"must be one of {', '.join(self.choices)}"
+        return value, None
+
+
+_CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])([A-Z])")
+
+
+def snake_case_option(name: str) -> str:
+    """``maxRows`` -> ``max_rows``: how an option key of the config file becomes the keyword
+    argument a generator takes. A key with no capital is returned as it is."""
+    return _CAMEL_BOUNDARY.sub(r"_\1", name).lower()
+
+
+def resolve_options(
+    generator: str, accepted: tuple[GeneratorOption, ...], raw: Mapping[str, object]
+) -> tuple[dict[str, object], list[str]]:
+    """Check a ``generators`` entry's ``options`` against what the packaged generator takes.
+
+    Returns ``(keyword arguments, errors)``. A name the generator does not take is an error
+    that lists the names it does, so a misspelling names its own fix."""
+    errors: list[str] = []
+    known = {o.name: o for o in accepted}
+    kwargs: dict[str, object] = {}
+    for key, value in raw.items():
+        option = known.get(key)
+        if option is None:
+            takes = ", ".join(sorted(known)) if known else "none"
+            errors.append(f"generator {generator!r} takes no option {key!r}; options: {takes}")
+            continue
+        coerced, why = option.coerce(value)
+        if why is not None:
+            errors.append(f"generator {generator!r} option {key!r} {why}, got {value!r}")
+            continue
+        kwargs[option.kwarg] = coerced
+    return kwargs, errors
+
+
+@dataclass(frozen=True)
 class RequirementTestsOptions:
     """The ``requirementTests`` config block, RESOLVED: ``renderer`` and ``filter`` are the
     callables their ``module:symbol`` strings named. The CLI resolves them against the config
@@ -115,6 +187,11 @@ class GeneratorBuildContext:
     #: The ``apiDocs`` block of ``metaobjects.config.yaml``. ``None`` = no block (or
     #: ``--list``): the ``api-docs`` generator uses its defaults.
     api_docs: ApiDocsConfig | None = None
+    #: The ``options`` of the ``generators`` entry being built, already checked and renamed to
+    #: the keyword arguments the generator takes (``maxRows`` -> ``max_rows``). Empty when the
+    #: entry has none, and for ``--list``. A team's own factory that takes this context reads
+    #: the entry's options here exactly as written.
+    options: Mapping[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -138,6 +215,9 @@ class GeneratorEntry:
     #: Not gated cross-port (the manifest carries no such column); surfaced by ``--list``
     #: and warned about by :func:`unsatisfied_requires`.
     requires: tuple[str, ...] = ()
+    #: The settings an ``options:`` mapping on this generator's ``generators`` entry may carry.
+    #: A generator that lists none refuses any.
+    options: tuple[GeneratorOption, ...] = ()
     #: The packaged factory an adopter copies with ``metaobjects eject`` (ADR-0034
     #: Amendment 3). Its module is the file copied; its name is the ``module:symbol``
     #: symbol the copy is wired by. ``None`` = not ejectable (the ``template`` primitive
@@ -245,7 +325,13 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         description="Per-entity REST endpoint surface (controllers / routes / router).",
         tier="native",
         layer="api",
-        factory=lambda _ctx: router_generator(),
+        factory=lambda ctx: router_generator(**ctx.options),
+        options=(
+            GeneratorOption(
+                "reportMaxRows", "integer", minimum=1,
+                description="The row cap of a served report's list route.",
+            ),
+        ),
         # The router imports <Entity>Create/Patch from the entity module and the
         # FIELDS/OPS constants from <entity>_filter_allowlist; without either the
         # generated package fails at import (ModuleNotFoundError).
@@ -262,7 +348,20 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         ),
         tier="native",
         layer="api",
-        factory=lambda _ctx: report_export_generator(),
+        factory=lambda ctx: report_export_generator(**ctx.options),
+        options=(
+            GeneratorOption(
+                "maxRows", "integer", minimum=1,
+                description="The most rows one export holds (default 100000).",
+            ),
+            GeneratorOption(
+                "xmlNulls", "string", choices=("empty", "nil"),
+                description="How XML writes a null: an empty element, or xsi:nil.",
+            ),
+            GeneratorOption(
+                "csvBom", "boolean", description="Start a CSV with a byte order mark (default false).",
+            ),
+        ),
         source=report_export_generator,
     ),
     "output-parser": GeneratorEntry(

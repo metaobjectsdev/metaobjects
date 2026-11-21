@@ -476,7 +476,13 @@ targets:
                                  # or an owned copy as "module:symbol". Nothing runs that is not listed.
   admin:
     outDir: src/generated/admin
-    generators: [entity]
+    generators:
+      - entity
+      - name: filter-allowlist   # an entry may be a mapping: a generator limited to part of the target
+        packages: [shop::catalog]
+        entities: [Book]
+      - name: report-export      # and given its own settings
+        options: {maxRows: 5000, xmlNulls: nil, csvBom: true}
     entities: [Author, Book]     # optional allowlist; omit = every entity
   docs:
     outDir: docs/python          # a directory of its own: another port's pages here read as drift
@@ -489,6 +495,21 @@ targets:
   `--target <name>` scopes the run to a single target; `--generators <names>` narrows it to
   the declared entries named (an owned entry matches its registry name too) and refuses a
   name no target declares. A target whose `generators` is empty writes nothing and says so.
+- **A `generators` entry may be a mapping** `{name, handEdits, packages, entities, options}`:
+  - `packages` (metadata packages such as `shop::catalog`) and `entities` (short object names)
+    limit that one generator to part of the target, inside the target's own `entities`. The
+    selection narrows what the generator is given, so a whole-model file it writes (shared enums,
+    a report writer) is built from the selected objects only. A name the target holds no object
+    for is refused, not skipped: a typo there would otherwise drop the generator's output and
+    the run would still report success.
+  - `options` are the generator's own settings, keyed in the camelCase every key in this file
+    uses (`maxRows`) and handed to the generator as snake_case keyword arguments (`max_rows`).
+    `metaobjects gen --list` names the options each packaged generator takes (`report-export`:
+    `maxRows`, `xmlNulls`, `csvBom`; `routes`: `reportMaxRows`); an option a generator does not
+    take is refused and the message lists the ones it does. A team's own generator (`module:symbol`)
+    gets them the same way: as keyword arguments to its factory or class (a `**options` factory
+    takes any), or, for a factory that takes the build context, as `ctx.options`, exactly as
+    written. A factory that takes none, and a ready-made generator instance, refuse them.
 - **`metaobjects verify --codegen`** — also run by bare `verify`, which adds `--templates`
   (see above) — regenerates the same list in memory (the exact `gen`
   pipeline, including the cross-target duplicate-output-path guard) and diffs each **unique
