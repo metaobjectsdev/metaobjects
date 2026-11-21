@@ -1067,6 +1067,7 @@ import lines are stable.
 | Entities + fields | Yes |
 | Relationships + FK | Loader-level yes; relationship-navigation codegen is on the roadmap |
 | Source kinds (table / view / storedProc) | Loader-level yes; codegen for non-`table` kinds is in progress |
+| View expression functions (projection and report views) | Partial: the loader accepts the view functions and the cast node. Not yet: a dotted path in `origin.computed` `@expr`, a scalar `origin.aggregate` on a computed field, a path operand in `origin.first` `@filter`, `origin.passthrough` through a path, and a derived field on an entity with a read source. The `projection-view-vocabulary-rc21` fixture stays in the ledger |
 | `field.currency` / `field.enum` / `field.object` + `@storage` | Loader-level yes; codegen for `field.object` `flattened` storage is in progress |
 | Templates + render (FR-004) | Yes (`metaobjects.render`; Mustache, and Jinja with the `jinja` extra) |
 | Payload-VO codegen | Yes — the `entity` generator's model for each value object IS the payload type (ADR-0056); no separate payload generator |
