@@ -32,7 +32,6 @@ here.**
   exactly the reference content is left alone and reported as identical, with or without `force`.
   The codegen fingerprint, `metaobjects:fmt` and `metaobjects:init` also compare before they write.
 
-||||||| parent of 10fffac63 (feat: move reporting and requirements into their own provider packs; raise on missing template variables; refuse permission-name collisions)
 - **Reporting and requirements are vocabulary packs, out of core.** The reporting vocabulary
   (`object.report`, `dimension.*`, `measure.*` including `measure.derived` and its `@expr`,
   `segment.filter`, the entity's dimension, measure and segment children and `@segment` on
