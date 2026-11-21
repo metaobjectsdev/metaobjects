@@ -3,7 +3,9 @@ request helper, the ``report-export`` generator, and the rule that the router gr
 ``?format=`` branch only when that generator is in the run."""
 from __future__ import annotations
 
+import importlib
 import importlib.util
+import json
 import shutil
 import sys
 import tempfile
@@ -128,9 +130,12 @@ def test_request_helper() -> None:
 # --- generator + router wiring ---------------------------------------------------------
 
 
-def _gen(names: set[str], **export_opts) -> dict[str, str]:
+def _gen(names: set[str], meta: str | None = None, **export_opts) -> dict[str, str]:
     tmp = Path(tempfile.mkdtemp(prefix="report-export-"))
-    shutil.copy(_CORPUS / "meta.json", tmp / "meta.json")
+    if meta is None:
+        shutil.copy(_CORPUS / "meta.json", tmp / "meta.json")
+    else:
+        (tmp / "meta.json").write_text(meta, encoding="utf-8")
     result = MetaDataLoader.from_directory(str(tmp))
     assert not result.errors
     gens = [
@@ -170,3 +175,32 @@ def test_wired_emits_one_writer_and_one_module_per_served_report() -> None:
     # only a served report's router changes; the entity (writable) routers are untouched
     assert files["invoice_status_totals_router.py"] != unwired["invoice_status_totals_router.py"]
     assert files["invoice_router.py"] == unwired["invoice_router.py"]
+
+
+def test_a_report_with_one_exported_column_still_exports() -> None:
+    model = json.loads((_CORPUS / "meta.json").read_text(encoding="utf-8"))
+
+    def drop_dimensions(node: object) -> None:
+        if isinstance(node, dict):
+            if node.get("name") == "ReadingLog":
+                node.pop("@dimensions", None)
+            for v in node.values():
+                drop_dimensions(v)
+        elif isinstance(node, list):
+            for v in node:
+                drop_dimensions(v)
+
+    drop_dimensions(model)
+    files = _gen(_BASE | {"report-export"}, meta=json.dumps(model))
+    pkg = Path(tempfile.mkdtemp()) / f"pkg_{uuid.uuid4().hex}"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text("", encoding="utf-8")
+    for name in ("report_export_writer.py", "reading_log_export.py"):
+        (pkg / name).write_text(files[name], encoding="utf-8")
+    sys.path.insert(0, str(pkg.parent))
+    try:
+        mod = importlib.import_module(f"{pkg.name}.reading_log_export")
+    finally:
+        sys.path.remove(str(pkg.parent))
+    assert [c.name for c in mod.EXPORT_COLUMNS] == ["readings"]
+    assert mod.export_csv([{"readings": 3}]).splitlines() == ["readings", "3"]
