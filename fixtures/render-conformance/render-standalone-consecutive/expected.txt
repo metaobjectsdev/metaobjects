@@ -1,0 +1,9 @@
+open-open:
+both
+close-then-open:
+- a
+- b
+fallback
+three-in-a-row:
+deep
+end

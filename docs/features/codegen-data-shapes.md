@@ -73,6 +73,14 @@ trivial and cross-port walkers don't have to re-derive the rules.
 file into your project; the project's `templates/` directory takes precedence
 over the framework defaults. Same for any partial under `templates/docs/`.
 
+The requirements pages and the agent schema and requirements pages follow the same split:
+`requirementsLedgerData`, `requirementsToonData`, `agentRequirementsPageData` and
+`agentSchemaPageData` (exported from `@metaobjectsdev/codegen-ts`) return finished cells and
+lines, and `templates/requirements/*.mustache` and `templates/agent/*.mustache` lay them out.
+`fixtures/docs-page-conformance/` pins each page's data and bytes for every port, and its
+README states what the model-only schema page (`physical: false`, the page a port without
+the expected schema writes) leaves out.
+
 ### Neutral structural shapes → `EntityTemplateData` / `PackageTemplateData` / `ModelTemplateData`
 
 The declarative template scopes (`scope: "perEntity" | "perPackage" | "perModel"`

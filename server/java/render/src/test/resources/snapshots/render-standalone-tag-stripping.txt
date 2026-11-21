@@ -12,7 +12,6 @@ end-list
 list-inline: [a,b,]
 
 comment-standalone:
-
 after-comment
 
 partial-standalone:

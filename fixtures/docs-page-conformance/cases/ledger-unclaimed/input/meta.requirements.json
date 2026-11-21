@@ -1,0 +1,17 @@
+{
+  "metadata.root": {
+    "package": "acme::caps",
+    "children": [
+      {
+        "requirement.functional": {
+          "name": "ExportsAreResumable",
+          "@level": 4,
+          "@status": "planned",
+          "@statement": "true",
+          "@counterexample": "A 2 GB export that restarts from zero after a dropped connection",
+          "@disposition": "deferred"
+        }
+      }
+    ]
+  }
+}

@@ -279,7 +279,7 @@ describe("agent/schema.md", () => {
   // for that shape. `@where`, `@expr` and `@using` were all already rendered; `orders` was the
   // one member of the set the input type never carried.
   test("a DESC index says desc — the ordering is not decoration", async () => {
-    const page = renderAgentSchemaPage(input({
+    const page = renderAgentSchemaPage(await load(MODEL), input({
       tables: [{
         name: "wake_events",
         columns: [column("id", { identity: "increment" }), column("ts"), column("device_id")],
@@ -290,7 +290,7 @@ describe("agent/schema.md", () => {
         ],
         foreignKeys: [], checks: [], primaryKey: ["id"],
       }],
-    }), { declaredBy: new Map(), viewLineage: new Map(), relationships: [], enums: [] });
+    }), "snake_case");
     expect(page).toContain("`ts` desc");
     // Mixed directions are per-COLUMN: `(device_id ASC, ts DESC)` is a different index from
     // `(device_id, ts)`, and a reader deciding whether it serves their ORDER BY needs that.
@@ -385,13 +385,8 @@ describe("agent/schema.md", () => {
     expect(files.has("agent/requirements.md")).toBe(true);
   });
 
-  test("renders nothing at all for an empty schema", () => {
-    expect(renderAgentSchemaPage(input({ tables: [], views: [] }), {
-      declaredBy: new Map(),
-      viewLineage: new Map(),
-      relationships: [],
-      enums: [],
-    })).toBe("");
+  test("renders nothing at all for an empty schema", async () => {
+    expect(renderAgentSchemaPage(await load(MODEL), input({ tables: [], views: [] }), "snake_case")).toBe("");
   });
 });
 
@@ -627,27 +622,44 @@ describe("agent/schema.md — the claims it makes about the model", () => {
     expect(page).not.toContain("report");
   });
 
-  test("the Views intro names a report's dimensions and measures once a report view is on the page", () => {
-    const fleet = fleetSchema();
-    const base = {
-      ...fleet,
-      views: [{ name: "v_store_totals" }, { name: "v_owner_summary" }],
-      provenance: new Map([
-        ...fleet.provenance,
-        ["public.v_store_totals", "acme::shop::StoreTotals"],
-      ]),
-    };
-    const withReport = renderAgentSchemaPage(base, {
-      declaredBy: new Map(), viewLineage: new Map(), relationships: [], enums: [],
-      reportViews: new Set(["public.v_store_totals"]),
+  test("the Views intro names a report's dimensions and measures once a report view is on the page", async () => {
+    // The report's view is on the page, so the intro names reports too. The SAME schema
+    // against a model without the report keeps the pre-report sentence: the wording keys on
+    // a view-backed `object.report` owning one of the page's views, read from the model.
+    const billing = (withReport: boolean) => ({
+      "metadata.root": {
+        package: "acme::billing",
+        children: [
+          { "object.entity": { name: "Invoice", children: [
+            { "source.rdb": { "@table": "invoices" } },
+            { "field.long": { name: "id" } },
+            { "field.string": { name: "status" } },
+            { "identity.primary": { name: "id", "@fields": ["id"] } },
+            { "dimension.attribute": { name: "invoiceStatus", "@of": "Invoice.status" } },
+            { "measure.aggregate": { name: "invoiceCount", "@agg": "count", "@of": "Invoice.id" } },
+          ] } },
+          ...(withReport
+            ? [{ "object.report": { name: "StatusTotals", "@from": "Invoice",
+                "@dimensions": ["invoiceStatus"], "@measures": ["invoiceCount"],
+                children: [{ "source.rdb": { "@kind": "view", "@view": "v_status_totals" } }] } }]
+            : []),
+        ],
+      },
     });
+    const schema: AgentSchemaInput = {
+      dialect: "postgres",
+      tables: [],
+      views: [{ name: "v_status_totals" }],
+      provenance: new Map([["public.v_status_totals", "acme::billing::StatusTotals"]]),
+      columnType: () => "TEXT",
+      qualify: (o) => `${o.schema ?? "public"}.${o.name}`,
+    };
+    const withReport = renderAgentSchemaPage(await load(billing(true)), schema, "snake_case");
     expect(withReport).toContain(
       "A view is generated from its projection's `origin.*` children or its report's dimensions and measures — " +
         "it is derived, never hand-written. ",
     );
-    const without = renderAgentSchemaPage(base, {
-      declaredBy: new Map(), viewLineage: new Map(), relationships: [], enums: [], reportViews: new Set(),
-    });
+    const without = renderAgentSchemaPage(await load(billing(false)), schema, "snake_case");
     expect(without).toContain("A view is generated from its projection's `origin.*` children — it is derived, never hand-written. ");
     expect(without).not.toContain("report's");
   });

@@ -1,6 +1,6 @@
 # Conformance coverage
 
-The MetaObjects standard ships **43 shared conformance corpora** under
+The MetaObjects standard ships **44 shared conformance corpora** under
 [`fixtures/`](../fixtures/). Every port runs every corpus that is *applicable to
 it* and asserts the same expected behaviour against the same fixtures. **This page
 is the inverse index**: fixture → feature doc + per-port pass status, and it is the
@@ -30,7 +30,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 19 | 19 / 19 | 19 / 19 | inherits via Java | 18 / 19 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 19 / 19 |
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 45 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/verify-strict-conformance/`](../fixtures/verify-strict-conformance/) | 1 | ✓ | — | — | — | ✓ |
-| [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 18 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
+| [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 21 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/jinja-render-conformance/`](../fixtures/jinja-render-conformance/) (ADR-0061 — Jinja bodies render the same in jinja2 and nunjucks) | 15 | ✓ (nunjucks) | refuses Jinja (`ERR_TEMPLATE_ENGINE_UNSUPPORTED`) | refuses, via Java | refuses Jinja (`ERR_TEMPLATE_ENGINE_UNSUPPORTED`) | ✓ (jinja2) |
 | [`fixtures/jinja-verify-conformance/`](../fixtures/jinja-verify-conformance/) (ADR-0061 — the payload check over a Jinja body) | 31 | ✓ | refuses Jinja | refuses, via Java | refuses Jinja | ✓ |
 | [`fixtures/extract-conformance/`](../fixtures/extract-conformance/) | 58 | ✓ | ✓ | inherits the shared JVM engine | ✓ | ✓ |
@@ -52,6 +52,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/dependency-conformance/`](../fixtures/dependency-conformance/) | 47 cases (36 resolution, 7 of them with a ledger arm, + 11 check) + 32 transport cases | ✓ (reference implementation; all four arms) | ✓ (resolution arm, all 36, ledger included; check arm, all 11) | inherits via Java | ✓ (resolution arm, all 36, ledger included; check arm, all 11, as `verify --deps`) | ✓ (resolution arm, all 36 identically, ledger included; check arm, all 11, as `deps check` and `verify --deps`; the transport arm is Node-only) |
 | [`fixtures/shared-model-conformance/`](../fixtures/shared-model-conformance/) | 15 cases (9 publish + 6 refusal) | ✓ (reference implementation) | ✓ (all 15; `SharedModelConformanceTest`) | inherits via Java (`KotlinSharedModelGeneratorTest` pins the generator) | ✓ (all 15; `SharedModelConformanceTests`) | ✓ (all 15; `test_shared_model_conformance.py`) |
 | [`fixtures/agent-context-conformance/`](../fixtures/agent-context-conformance/) | 5 | ✓ (the emitter is TS-owned) | — | — | — | — |
+| [`fixtures/docs-page-conformance/`](../fixtures/docs-page-conformance/) (the requirements pages and the model-only schema page: each page's data and bytes) | 4 cases | ✓ (reference; the source of the expected bytes) | planned | planned (through Java) | planned | planned |
 | [`fixtures/metamodel-docs/`](../fixtures/metamodel-docs/) | 1 | ✓ (docs emit is TS-owned) | — | — | — | — |
 | [`fixtures/fmt-conformance/`](../fixtures/fmt-conformance/) (#304 — `meta fmt`) | 13 | ✓ (reference) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/field-lint-conformance/`](../fixtures/field-lint-conformance/) (the `verify` field authoring lint) | 15 | ✓ (reference) | ✓ | inherits via Java | ✓ | ✓ |
@@ -466,14 +467,15 @@ on a reporting measure, etc.) and 7 `error-yaml-*` fixtures that pin the
 YAML 1.1 coercion guards (bool / null / hex in string contexts; numeric in enum
 contexts; reserved-as-attr).
 
-### `fixtures/render-conformance/` (18)
+### `fixtures/render-conformance/` (21)
 
-All 18 fixtures → [features/templates-and-payloads.md](features/templates-and-payloads.md)
+All 21 fixtures → [features/templates-and-payloads.md](features/templates-and-payloads.md)
 (render engine output section). 5 are end-to-end shape and escape examples (prompt / email /
-spreadsheet / CSV-injection escape / CSV numeric-literal exemption); 13 pin Mustache-engine
+spreadsheet / CSV-injection escape / CSV numeric-literal exemption); 16 pin Mustache-engine
 semantics — dotted-path lookup, parent-context fallthrough, falsy/empty-array section behavior,
 inverted sections, nested partials, a comment tag beside a partial, standalone-tag whitespace
-stripping, raw-HTML bypass, trailing-newline preservation, unicode multibyte handling, the derived
+stripping (including two standalone tags in a row, a standalone tag at the end of the file and an
+indented standalone tag, which shared docs templates rely on), raw-HTML bypass, trailing-newline preservation, unicode multibyte handling, the derived
 `has` accessor, and the `-last` list-separator accessor.
 
 ### `fixtures/jinja-render-conformance/` (15) and `fixtures/jinja-verify-conformance/` (31)
@@ -754,6 +756,19 @@ a port that disagrees with one is wrong. The case list, and what each pins, is i
 (Kotlin inherits it, through the shared Maven goal) and
 `server/csharp/MetaObjects.Conformance.Tests/RequirementCheckConformanceTests.cs`.
 
+### `fixtures/docs-page-conformance/` (4 cases)
+
+All 4 cases → [features/requirements.md](features/requirements.md) (the documentation
+surfaces) and [features/templates-and-payloads.md](features/templates-and-payloads.md) (the
+shared templates). Each case is a model under `input/` and, under `expected/`, every page it
+yields (`requirements.md`, `requirements.toon`, `agent/requirements.md`, the model-only
+`agent/schema.md`) plus the data each page's shared template is fed. The TypeScript
+builders are the source of the expected bytes. The corpus README writes down what a
+non-TypeScript schema page contains and what it leaves out.
+
+**Held to it:** `server/typescript/packages/cli/test/docs-page-conformance.test.ts`. The
+other ports' page generators are planned.
+
 ### `fixtures/requirement-test-identity-conformance/` (27 cases)
 
 All 27 cases → [features/requirements.md](features/requirements.md) ("Generated
@@ -826,7 +841,7 @@ JSON and verify payload feeds it unchanged.
 ## Orphaned fixtures (tested but not yet documented)
 
 The fixtures in the nine corpora mapped above (metamodel 578 + yaml 19 + verify 45
-+ render 18 + persistence 67 + api-contract 141 + source-resolution 28 + scope 10 +
++ render 21 + persistence 67 + api-contract 141 + source-resolution 28 + scope 10 +
 dependency 47) each map to a feature doc, and so do the two requirement corpora, `rules-check-conformance`, `shared-model-conformance`, the
 `cube-model` corpus and `explorer-conformance`, whose case lists live in their own READMEs. None are orphaned today. The remaining
 corpora in the totals table gate tooling contracts (registry manifests, provider

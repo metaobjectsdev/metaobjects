@@ -1,0 +1,13 @@
+{
+  "embedded": false,
+  "count": 1,
+  "plural": "",
+  "entries": [
+    {
+      "heading": "## ExportsAreResumable",
+      "facts": "`functional` · **L4** · status: `planned` · disposition: `deferred`",
+      "statement": "true",
+      "counterexample": "**Counterexample:** A 2 GB export that restarts from zero after a dropped connection"
+    }
+  ]
+}

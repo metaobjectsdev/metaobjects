@@ -12,7 +12,11 @@ removed. This table is the source of truth for that ledger.
 
 | Fixture | Drift type | Notes |
 |---|---|---|
-| render-standalone-tag-stripping | trailing newline after `{{! comment }}` | Mustache.java does NOT apply the standalone-line whitespace strip rule to comments — it leaves the trailing newline. TS (`mustache.js`), C# (Stubble), and Python (purpose-built interpreter) all strip it. Symptom: one extra blank line after the comment-standalone block. Same fixture's `{{#section}}`, `{{>partial}}`, etc. standalone-strip correctly in Java. |
+
+No fixture drifts today. The last row, `render-standalone-tag-stripping` (mustache.java left the line
+break after a standalone `{{! comment }}`), was closed by stripping standalone comment lines in
+`Renderer` before mustache.java parses (`MustacheTags.withoutStandaloneComments`); the
+`render-standalone-consecutive` and `render-standalone-indented` fixtures hold it.
 
 When you find a drift in `RenderCrossPortReportTest` output:
 1. Decide if it's worth fixing (most aren't — see FR-004 Java spec §6.4).
