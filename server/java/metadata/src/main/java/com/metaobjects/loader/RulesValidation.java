@@ -441,8 +441,8 @@ final class RulesValidation {
      * P3: two permission points ask the policy about one permission name, and at least one of the two
      * names is derived. Points are every non-public operation and every transition of a live concrete
      * entity (a transition derives a command each). A name is the node's {@code @permission}, else
-     * {@code <package>.<path>} (the path is the operation name, or {@code Entity.transition}); {@code ::}
-     * and {@code .} both separate segments so they compare equal. Compared case-sensitively. Transitions
+     * {@code <package>.<path>} (the path is the operation name, or {@code Entity.transition}); the name is
+     * compared exactly, so {@code ::} and {@code .} are different and never equal. Compared case-sensitively. Transitions
      * register first, so the error lands on the operation when an operation meets a transition. Two
      * DECLARED values may be equal: that sharing is the point.
      */
