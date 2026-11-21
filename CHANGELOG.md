@@ -10,6 +10,14 @@ here.**
 
 ## [Unreleased]
 
+- **C#: `dotnet meta verify` runs the three model authoring lints.** The overlay lint
+  (`WARN_OVERLAY_IMPLICIT`), the node-name lint (`WARN_NAME_SURROUNDING_WHITESPACE`,
+  `WARN_NAME_INTERNAL_WHITESPACE`) and the deprecated-reference lint (`WARN_DEPRECATED_REFERENCE`)
+  now print on every `dotnet meta verify`, as they do in Node `meta verify`, before the field lint.
+  They are advisory, never change the exit code, and are muted by `--no-overlay-lint`,
+  `--no-name-lint` and `--no-deprecation-lint`, or by `META_NO_OVERLAY_LINT=1`,
+  `META_NO_NAME_LINT=1` and `META_NO_DEPRECATION_LINT=1`. C# runs the shared
+  `fixtures/model-lint-conformance/` corpus.
 - **C#: an unchanged file is never rewritten.** `dotnet meta gen` already left identical output alone
   when the project keeps a hash manifest. It now does the same on the path with no manifest (output
   written outside the project, or a program that runs the generators with no state directory), which

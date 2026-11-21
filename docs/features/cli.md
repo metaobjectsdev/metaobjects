@@ -128,6 +128,10 @@ Rules of the contract:
   `deprecated` inherited through the TARGET's own `extends` chain still counts. Advisory
   only, appears as `deprecations` in `--format json|toon`, and is muted with
   `--no-deprecation-lint` or `META_NO_DEPRECATION_LINT=1`.
+- **The three lints above also run in `dotnet meta verify`**, with the same flags and
+  environment variables, printed as text on stderr in the same order (overlays, names,
+  deprecations), before the field lint. The codes, addresses and message text are gated by
+  [`fixtures/model-lint-conformance/`](../../fixtures/model-lint-conformance/README.md).
 - **The field authoring lint runs on every `verify`, in every port.** It reports two
   mistakes that load with no error. `WARN_REFERENCE_FIELD_NOT_FOUND` flags an
   `identity.reference` whose `@fields` names a field the object does not have; a field

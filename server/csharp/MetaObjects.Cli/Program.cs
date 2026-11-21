@@ -388,7 +388,7 @@ static int RunVerify(string[] rest)
     string? entitiesCsv = null;
     string? templateRoot = null;
     string? columnNamingRaw = null;
-    bool templates = false, codegen = false, deps = false, db = false, lax = false, noFieldLint = false, requireImplementers = false, full = false;
+    bool templates = false, codegen = false, deps = false, db = false, lax = false, noFieldLint = false, noOverlayLint = false, noNameLint = false, noDeprecationLint = false, requireImplementers = false, full = false;
 
     for (int i = 0; i < rest.Length; i++)
     {
@@ -421,6 +421,9 @@ static int RunVerify(string[] rest)
         // Mutes the advisory field AUTHORING lint (FieldLint) — never a gate, so this
         // changes what is printed and nothing else. META_NO_FIELD_LINT=1 does the same.
         else if (a == "--no-field-lint") noFieldLint = true;
+        else if (a == "--no-overlay-lint") noOverlayLint = true;
+        else if (a == "--no-name-lint") noNameLint = true;
+        else if (a == "--no-deprecation-lint") noDeprecationLint = true;
         // Raises WARN_REQUIREMENT_NOTHING_IMPLEMENTS to an error (ADR-0057) — for a project whose
         // ledger has caught up with its links. META_REQUIRE_IMPLEMENTERS=1 does the same.
         else if (a == "--require-implementers") requireImplementers = true;
@@ -667,6 +670,16 @@ static int RunVerify(string[] rest)
     // line and no exit-code change. Its errors fold into the exit code like any other gate's.
     var rulesExit = VerifyCommand.RunRulesGate(opts, Console.Error);
 
+    // The model AUTHORING lints — an unflagged cross-file redeclaration, whitespace in a node name,
+    // a reference to a deprecated node. Printed before the field lint, in the Node `meta verify`
+    // order. A finding names a file relative to an explicit metadata directory, else the project root.
+    // Warnings ONLY, never the exit code.
+    ModelLints.RunAdvisory(
+        resolvedMeta,
+        metadataDir is not null ? Path.GetFullPath(metadataDir) : Directory.GetCurrentDirectory(),
+        ModelLints.Selection.From(noOverlayLint, noNameLint, noDeprecationLint),
+        Console.Error);
+
     // The field AUTHORING lint — a reference identity over a field the object lacks, a
     // field name declared twice in one children list. Both load clean on every port. Runs
     // on every `verify`, whichever gates were selected; warnings ONLY, never the exit code.
@@ -734,7 +747,7 @@ partial class Program
     static readonly string[] GenBoolFlags = ["--list", "--emit-abstract-shapes", "--strict", "--force"];
     static readonly string[] VerifyValueFlags =
         ["--prompts", "--out", "--namespace", "--generators", "--template-root", "--column-naming", "--entities"];
-    static readonly string[] VerifyBoolFlags = ["--templates", "--codegen", "--deps", "--db", "--lax", "--no-field-lint", "--require-implementers", "--full"];
+    static readonly string[] VerifyBoolFlags = ["--templates", "--codegen", "--deps", "--db", "--lax", "--no-field-lint", "--no-overlay-lint", "--no-name-lint", "--no-deprecation-lint", "--require-implementers", "--full"];
 
     /// <summary>Each command's usage, printed by <c>dotnet meta &lt;command&gt; --help</c>.</summary>
     static readonly Dictionary<string, string> CommandUsage = new()
@@ -754,7 +767,7 @@ partial class Program
                   "  column/table naming: \"naming\" in .metaobjects/config.json (ADR-0058), not a flag here",
         ["init"] = "usage: dotnet meta init [--root <dir>] [--with-docs]\n" +
                   "  --with-docs lists the api-docs generator in codegen/Generators.cs (written to docs/csharp)",
-        ["verify"] = "usage: dotnet meta verify <metadataDir> [--templates [--prompts <dir>]] [--codegen --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--entities <A,B>] [--template-root <dir>]] [--deps] [--db] [--lax] [--no-field-lint] [--require-implementers] [--full]\n" +
+        ["verify"] = "usage: dotnet meta verify <metadataDir> [--templates [--prompts <dir>]] [--codegen --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--entities <A,B>] [--template-root <dir>]] [--deps] [--db] [--lax] [--no-field-lint] [--no-overlay-lint] [--no-name-lint] [--no-deprecation-lint] [--require-implementers] [--full]\n" +
                     "  --full: render and compare even when a local run could answer from the stored key (CI always renders)",
         ["fmt"] = "usage: dotnet meta fmt [<metadataDir>] [--check]",
         ["eject"] = "usage: dotnet meta eject <name>... [--force] [--root <dir>]\n" +
