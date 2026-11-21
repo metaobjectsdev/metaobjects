@@ -1,0 +1,47 @@
+{
+  "description": "A double quote at the end of a one-line docstring is escaped, so it does not join the closing quotes. In a block the closing quotes are on their own line, so the text is left as it is.",
+  "dialect": "python",
+  "ops": [
+    [
+      "open",
+      "def f():"
+    ],
+    [
+      "doc",
+      "Says \"hi\""
+    ],
+    [
+      "line",
+      "pass"
+    ],
+    [
+      "dedent"
+    ],
+    [
+      "open",
+      "def g():"
+    ],
+    [
+      "doc",
+      "First.",
+      "Ends with a quote\""
+    ],
+    [
+      "line",
+      "pass"
+    ],
+    [
+      "dedent"
+    ]
+  ],
+  "expected": [
+    "def f():",
+    "    \"\"\"Says \"hi\\\"\"\"\"",
+    "    pass",
+    "def g():",
+    "    \"\"\"First.",
+    "    Ends with a quote\"",
+    "    \"\"\"",
+    "    pass"
+  ]
+}

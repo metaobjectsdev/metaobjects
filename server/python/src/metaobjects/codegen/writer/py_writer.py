@@ -128,7 +128,8 @@ class PyWriter(CodeWriter):
     def doc(self, *lines: str) -> "PyWriter":
         """A docstring at the current indent: one line when it fits, otherwise a block with
         the closing quotes on their own line. An empty entry is a blank line. A backslash is
-        written as ``\\\\`` and ``\"\"\"`` in the text is escaped."""
+        written as ``\\\\`` and ``\"\"\"`` in the text is escaped, and so is a double quote that
+        would end a one-line docstring."""
         for ln in self._doc_lines(lines, len(self._prefix())):
             self.line(ln)
         return self
@@ -143,9 +144,17 @@ class PyWriter(CodeWriter):
         if not lines:
             return []
         safe = [ln.replace("\\", "\\\\").replace('"""', '\\"\\"\\"') for ln in lines]
-        one = f'"""{safe[0]}"""'
-        if len(safe) == 1 and depth + len(one) <= self.width:
-            return [one]
+        if len(safe) == 1:
+            # On one line the closing quotes follow the text directly, so a double quote at
+            # the end of the text would join them (four quotes in a row end the string early
+            # and leave a stray one). Escape the trailing run.
+            text = lines[0]
+            tail = len(text) - len(text.rstrip('"'))
+            body = text[: len(text) - tail] if tail else text
+            body = body.replace("\\", "\\\\").replace('"""', '\\"\\"\\"')
+            one = f'"""{body}' + '\\"' * tail + '"""'
+            if depth + len(one) <= self.width:
+                return [one]
         return [f'"""{safe[0]}', *safe[1:], '"""']
 
     # ── output ───────────────────────────────────────────────────────────────────────

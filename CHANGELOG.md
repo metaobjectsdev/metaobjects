@@ -1041,7 +1041,7 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
 - **A code writer for Python generators: `CodeWriter` and `PyWriter` in `metaobjects.codegen.writer`**
   (ADR-0063). The Python port of the writer contract in `spec/code-writer.md`: the language-neutral
   core (lines, blocks, blank-line requests, snippets, fit-or-break lists), run against the shared
-  `core` cases of `fixtures/writer-conformance/`, plus a Python dialect with its own ten cases (imports
+  `core` cases of `fixtures/writer-conformance/`, plus a Python dialect with its own eleven cases (imports
   collected and sorted as `__future__`, absolute, relative; docstrings; suites that end by dedenting;
   `gap()` for the two blank lines between top-level definitions). It is on the engine surface an
   ejected generator may import (`eject.engineSurface.python.engine`). A layout check

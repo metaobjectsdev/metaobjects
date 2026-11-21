@@ -178,7 +178,8 @@ Defaults: four-space indent, 88 columns, a trailing comma on a broken list.
 - **`doc(lines...)`** writes `"""text"""` when there is one entry and it fits. Otherwise it
   writes the opening quotes with the first entry, each further entry on its own line (an
   empty entry is a blank line) and the closing quotes on their own line. A backslash is
-  written as `\\` and `"""` as `\"\"\"`.
+  written as `\\` and `"""` as `\"\"\"`. On one line, a double quote at the end of
+  the text is written `\"`, so it cannot join the closing quotes.
 - Helpers: `str_lit` (a double-quoted string literal), `call`, `seq`, `mapping` and `kwarg`.
 
 ## Extension by subclassing
