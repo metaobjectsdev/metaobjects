@@ -373,7 +373,8 @@ public class EntityGenerator : IGenerator
         // shape, which declares no Validate, and every property it carries is present on this
         // class (own or inherited through the base chain), so every effective rule is emitted here.
         var validate = isProjection ? null : PlanCrossFieldValidate(entity, validatingBase: null);
-        EmitClassHeader(w, entity, className, isProjection, pkFields, validatable: validate is not null, ctx);
+        EmitClassHeader(w, entity, className, isProjection, pkFields, ctx);
+        if (validate is not null) w.AddBaseType("IValidatableObject");
         using (w.Block("{"))
         {
             // Nested enum declarations (before the class properties, as C# enum members
@@ -459,7 +460,7 @@ public class EntityGenerator : IGenerator
     // trailing `{` — the caller does.
     protected virtual void EmitClassHeader(
         CsWriter w, MetaObject entity, string className, bool isProjection,
-        IReadOnlyList<string> pkFields, bool validatable, GenContext ctx)
+        IReadOnlyList<string> pkFields, GenContext ctx)
     {
         // XML doc + [Obsolete] FIRST — XML doc-extraction tools (docfx,
         // Sandcastle, IDE hover-doc) require the doc comment to immediately
@@ -513,7 +514,7 @@ public class EntityGenerator : IGenerator
         // through the single overridable seam shared by all four emitted class kinds, so an
         // adopter's `partial`/marker-interface override applies uniformly. The EF mapping
         // attrs ([Table]/[PrimaryKey]) above stay here — they are mapped-entity-only.
-        EmitClassDeclarationLine(w, entity, className, ClassDeclarationKind.MappedEntity, validatable, ctx);
+        EmitClassDeclarationLine(w, entity, className, ClassDeclarationKind.MappedEntity, ctx);
     }
 
     /// <summary>
@@ -561,7 +562,7 @@ public class EntityGenerator : IGenerator
     // body reproduces exactly the inline emission per kind, so default output is byte-identical.
     // Implementations MUST NOT emit the trailing `{` — the caller does. (ADR-0002, open-closed.)
     protected virtual void EmitClassDeclarationLine(
-        CsWriter w, MetaObject entity, string className, ClassDeclarationKind kind, bool validatable, GenContext ctx)
+        CsWriter w, MetaObject entity, string className, ClassDeclarationKind kind, GenContext ctx)
     {
         switch (kind)
         {
@@ -572,7 +573,7 @@ public class EntityGenerator : IGenerator
                 // HasValue<Base>(...) fails model validation ("has a discriminator property,
                 // but does not have a discriminator value configured").
                 var classKeyword = TphPlanBuilder.IsTphDiscriminatorBase(entity, ctx.Root) ? "abstract class" : "class";
-                w.Line(WithValidatable($"public {classKeyword} {className}{MappedBaseClause(entity, ctx)}", validatable));
+                w.Line($"public {classKeyword} {className}{MappedBaseClause(entity, ctx)}");
                 break;
             case ClassDeclarationKind.TphSubtype:
                 // Extend the nearest ancestor that actually GETS EMITTED as a class — the
@@ -591,7 +592,7 @@ public class EntityGenerator : IGenerator
                 // drop them instead of merely failing to compile).
                 var baseClass = ValueObjectNames.Ref(EmittedTphAncestor(entity, ctx), ctx.Config);
                 var tphKeyword = InstanceArtifacts.IsAbstract(entity) ? "abstract class" : "class";
-                w.Line(WithValidatable($"public {tphKeyword} {className} : {baseClass}", validatable));
+                w.Line($"public {tphKeyword} {className} : {baseClass}");
                 break;
             case ClassDeclarationKind.AbstractShape:
                 w.Line($"public abstract class {className}{MappedBaseClause(entity, ctx)}");
@@ -601,14 +602,6 @@ public class EntityGenerator : IGenerator
                 break;
         }
     }
-
-    // `, IValidatableObject` (or ` : IValidatableObject` on a declaration with no base list) when the
-    // class carries cross-field validators. The caller says so with `validatable`; a declaration seam
-    // that writes its own line applies this itself.
-    protected static string WithValidatable(string declaration, bool validatable) =>
-        !validatable
-            ? declaration
-            : declaration + (declaration.Contains(" : ", StringComparison.Ordinal) ? ", IValidatableObject" : " : IValidatableObject");
 
     // ` : Base` when this non-TPH entity or abstract shape extends an emitted abstract shape
     // (DirectMappedParent), else empty. The member loops skip the fields that base carries,
@@ -689,8 +682,8 @@ public class EntityGenerator : IGenerator
 
         XmlDocBuilder.WriteTo(w, entity);
         EmitClassAttributes(w, entity, className, ClassDeclarationKind.TphSubtype, ctx);
-        EmitClassDeclarationLine(w, entity, className, ClassDeclarationKind.TphSubtype,
-            validatable: validate is not null && validatingBase is null, ctx);
+        EmitClassDeclarationLine(w, entity, className, ClassDeclarationKind.TphSubtype, ctx);
+        if (validate is not null && validatingBase is null) w.AddBaseType("IValidatableObject");
         using (w.Block("{"))
         {
             // Subtype-only enum declarations (an enum field declared on the subtype, not the base).
@@ -903,7 +896,7 @@ public class EntityGenerator : IGenerator
 
         XmlDocBuilder.WriteTo(w, entity);
         EmitClassAttributes(w, entity, className, ClassDeclarationKind.AbstractShape, ctx);
-        EmitClassDeclarationLine(w, entity, className, ClassDeclarationKind.AbstractShape, validatable: false, ctx);
+        EmitClassDeclarationLine(w, entity, className, ClassDeclarationKind.AbstractShape, ctx);
         using (w.Block("{"))
         {
             foreach (var decl in CollectEnumDecls(entity))
@@ -969,7 +962,7 @@ public class EntityGenerator : IGenerator
         w.Blank();
         XmlDocBuilder.WriteTo(w, vo);
         EmitClassAttributes(w, vo, className, ClassDeclarationKind.ValueObject, ctx);
-        EmitClassDeclarationLine(w, vo, className, ClassDeclarationKind.ValueObject, validatable: false, ctx);
+        EmitClassDeclarationLine(w, vo, className, ClassDeclarationKind.ValueObject, ctx);
         using (w.Block("{"))
         {
             foreach (var decl in CollectEnumDecls(vo))

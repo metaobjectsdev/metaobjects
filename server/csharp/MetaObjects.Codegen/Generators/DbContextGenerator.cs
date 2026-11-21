@@ -134,7 +134,7 @@ public class DbContextGenerator : IGenerator
         // relationships and re-derives the junction FK columns on every call, and both the
         // junction map below and the per-entity UsingEntity emission need the same answer.
         // Self-joins are excluded here, in one place rather than two: their navigation is
-        // [NotMapped] (route-traversed — see EntityGenerator.M2mNavProperty), so they get
+        // [NotMapped] (route-traversed — see EntityGenerator.WriteM2mNavProperty), so they get
         // NO UsingEntity call and the junction's own references are the only thing that
         // can carry their actions.
         var m2mNavs = new Dictionary<MetaObject, List<M2MNavigation>>();
@@ -262,7 +262,7 @@ public class DbContextGenerator : IGenerator
             //       l => l.HasOne<Target>().WithMany().HasForeignKey("<TargetFkProp>"),
             //       r => r.HasOne<Source>().WithMany().HasForeignKey("<SourceFkProp>"));
             // Self-joins (directed/symmetric) are [NotMapped] (route-traversed) — see
-            // EntityGenerator.M2mNavProperty — so they are skipped here.
+            // EntityGenerator.WriteM2mNavProperty — so they are skipped here.
             // Self-joins are already excluded from m2mNavs (see above).
             foreach (var nav in m2mNavs[e])
                 modelLines.Add(UsingEntityConfig(nav, ctx));

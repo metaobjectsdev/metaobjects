@@ -79,10 +79,10 @@ public class EntityGeneratorRound2Tests
     private sealed class DeclMarkerGenerator : EntityGenerator
     {
         protected override void EmitClassDeclarationLine(
-            CsWriter w, MetaObject entity, string className, ClassDeclarationKind kind, bool validatable, GenContext ctx)
+            CsWriter w, MetaObject entity, string className, ClassDeclarationKind kind, GenContext ctx)
         {
             w.Line("// adopter-decl");
-            base.EmitClassDeclarationLine(w, entity, className, kind, validatable, ctx);
+            base.EmitClassDeclarationLine(w, entity, className, kind, ctx);
         }
     }
 

@@ -51,13 +51,17 @@ here.**
   doc line has no trailing space. **An owned or subclassed generator needs a small edit.** The hooks
   `EmitClassHeader`, `EmitClassAttributes`, `EmitClassDeclarationLine`, `EmitPropertyAttributes`,
   `EmitFileUsings` and `EmitClassBodyTrailer` take a `CsWriter` in place of the `StringBuilder`, and write
-  lines with `w.Line(...)` or `w.Using(...)`, with no typed indentation. `EmitClassHeader` and
-  `EmitClassDeclarationLine` also receive `validatable`. The property emitters are renamed
+  lines with `w.Line(...)` or `w.Using(...)`, with no typed indentation. The base class still adds
+  `IValidatableObject` to the declaration line an override wrote. The property emitters are renamed
   `WriteScalarProperty`, `WriteEnumProperty`, `WriteObjectNavProperty`, `WriteMapProperty` and the
   `WriteTphSubtype*Property` pair, and the validator-attribute writers `Write*ValidatorAttributes`.
   `ValueObjectMemberAttributes` returns lines with no indent (it used to return four spaces of it).
-  `XmlDocBuilder.WriteTo(writer, node)` is the writer form of `AppendTo`. The layout check no longer
-  lists `EntityGenerator.cs` as unconverted.
+  `XmlDocBuilder.WriteTo(writer, node)` is the writer form of `AppendTo`. The public statics
+  `EntityGenerator.M2mNavProperty` and `ExtractDelegateEmitter.DelegatingMembers`, which returned a
+  string, are now `WriteM2mNavProperty(CsWriter, ...)` and `WriteDelegatingMembers(CsWriter, ...)`,
+  returning void. `NamesGenerator.Member` and `MemberGroups` are now protected. A flat-layout shared-enum
+  file that holds two or more namespaces no longer ends with an extra blank line. The layout check no
+  longer lists `EntityGenerator.cs` as unconverted.
 - **`migrate.foreignKeyTargets: "warn"` turns the refusal of a foreign key onto a non-unique target into
   a report.** For a database whose unique index on the target is hand-made and not declared in the
   metadata. The default, `"refuse"`, is the 1.3.0 behavior; the refusal's hint now names the setting. See

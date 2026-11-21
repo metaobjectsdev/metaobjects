@@ -72,6 +72,16 @@ public class CsWriter : CodeWriter
         public void Dispose() { if (_done) return; _done = true; onDispose(); }
     }
 
+    /// <summary>Add <paramref name="type"/> to the base list of the declaration line just written:
+    /// <c>, type</c> when it already has one, else <c> : type</c>.</summary>
+    public CsWriter AddBaseType(string type)
+    {
+        var last = Out.Count - 1;
+        if (last < 0) throw new InvalidOperationException("AddBaseType before any line was written");
+        Out[last] += Out[last].Contains(" : ", StringComparison.Ordinal) ? ", " + type : " : " + type;
+        return this;
+    }
+
     /// <summary>Record <c>using ns;</c>. Naming the same namespace twice prints it once.</summary>
     public CsWriter Using(string ns) => AddUsing($"using {ns};");
 

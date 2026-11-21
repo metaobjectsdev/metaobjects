@@ -51,7 +51,7 @@ public class EntityGeneratorExtensibilityTests
     {
         protected override void EmitClassHeader(
             CsWriter w, MetaObject entity, string className, bool isProjection,
-            IReadOnlyList<string> pkFields, bool validatable, GenContext ctx)
+            IReadOnlyList<string> pkFields, GenContext ctx)
         {
             if (!isProjection)
                 w.Line($"[Table(\"{CSharpNaming.Table(entity)}\")]");
@@ -78,6 +78,22 @@ public class EntityGeneratorExtensibilityTests
         Assert.Contains("public partial class Subscriber : IAdopterEntity", src);
         // The default `public class Subscriber` header must NOT appear.
         Assert.DoesNotContain("public class Subscriber\n", src);
+    }
+
+    // An entity with a cross-field validator needs IValidatableObject, or DataAnnotations never runs
+    // Validate(). A header override that wrote its own declaration must not lose it.
+    [Fact]
+    public void A_header_override_still_gets_IValidatableObject_when_the_entity_has_a_cross_field_validator()
+    {
+        var model = Model.Replace(
+            "{ \"identity.primary\": { \"@fields\": \"id\" } }",
+            "{ \"identity.primary\": { \"@fields\": \"id\" } },\n        { \"validator.atLeastOne\": { \"name\": \"r\", \"@fields\": [\"email\", \"subscribed\"] } }");
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(model, id: "ext.json")]);
+        Assert.Empty(r.Errors);
+        var src = Assert.Single(new PartialEntityGenerator().Generate(Ctx(r.Root))).Content;
+
+        Assert.Contains("public partial class Subscriber : IAdopterEntity, IValidatableObject\n", src);
+        Assert.Contains("IEnumerable<ValidationResult> Validate(", src);
     }
 
     [Fact]
