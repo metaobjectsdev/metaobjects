@@ -25,6 +25,21 @@ here.**
   `{` (the writer drops a blank line after an opener, as it does in every port). A layout check
   with an allowlist that only shrinks keeps new hand-typed layout out of the generator source.
   The shared writer-conformance corpus gains six C# cases.
+- **C#: the entity generator writes through the code writer (ADR-0063).** `EntityGenerator` (mapped
+  entities, TPH subtypes, abstract shapes, value objects, shared enums and the decimal, duration and
+  net-validation helper files) builds each file on a `CsWriter`. Output is unchanged for the 737 model
+  fixtures in all four layouts except three layout details the writer owns: a class with no members
+  has no blank line between its braces, a blank line before a closing `}` is dropped, and a `///`
+  doc line has no trailing space. **An owned or subclassed generator needs a small edit.** The hooks
+  `EmitClassHeader`, `EmitClassAttributes`, `EmitClassDeclarationLine`, `EmitPropertyAttributes`,
+  `EmitFileUsings` and `EmitClassBodyTrailer` take a `CsWriter` in place of the `StringBuilder`, and write
+  lines with `w.Line(...)` or `w.Using(...)`, with no typed indentation. `EmitClassHeader` and
+  `EmitClassDeclarationLine` also receive `validatable`. The property emitters are renamed
+  `WriteScalarProperty`, `WriteEnumProperty`, `WriteObjectNavProperty`, `WriteMapProperty` and the
+  `WriteTphSubtype*Property` pair, and the validator-attribute writers `Write*ValidatorAttributes`.
+  `ValueObjectMemberAttributes` returns lines with no indent (it used to return four spaces of it).
+  `XmlDocBuilder.WriteTo(writer, node)` is the writer form of `AppendTo`. The layout check no longer
+  lists `EntityGenerator.cs` as unconverted.
 - **`migrate.foreignKeyTargets: "warn"` turns the refusal of a foreign key onto a non-unique target into
   a report.** For a database whose unique index on the target is hand-made and not declared in the
   metadata. The default, `"refuse"`, is the 1.3.0 behavior; the refusal's hint now names the setting. See

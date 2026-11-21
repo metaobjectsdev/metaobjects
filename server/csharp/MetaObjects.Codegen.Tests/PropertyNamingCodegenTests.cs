@@ -6,6 +6,7 @@
 // declared one name and a context that configured another: a generated tree that does not
 // compile. GenConfig.PropertyNaming is the one resolver; both generators' hooks default to it.
 
+using MetaObjects.Codegen.Writer;
 using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -207,10 +208,10 @@ public class PropertyNamingCodegenTests
     private sealed class MarkedEntities : EntityGenerator
     {
         protected override void EmitClassAttributes(
-            StringBuilder sb, MetaObject entity, string className, ClassDeclarationKind kind, GenContext ctx)
+            CsWriter w, MetaObject entity, string className, ClassDeclarationKind kind, GenContext ctx)
         {
             if (kind is ClassDeclarationKind.MappedEntity or ClassDeclarationKind.TphSubtype)
-                sb.AppendLine("[global::System.Serializable]");
+                w.Line("[global::System.Serializable]");
         }
     }
 

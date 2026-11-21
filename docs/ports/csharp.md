@@ -481,10 +481,20 @@ so the declaration and every reference agree. The hooks `EntityGenerator.Propert
 `DbContextGenerator.PropertyName` default to it; a subclass that overrides one must override the
 other the same way. The routes generator, the filter map and the credential stripping read the same resolver, and a hook that disagrees with it is refused.
 
-**Class attributes.** `EntityGenerator.EmitClassAttributes(sb, entity, className, kind, ctx)` is
+**Class attributes.** `EntityGenerator.EmitClassAttributes(w, entity, className, kind, ctx)` (`w` is the `CsWriter`) is
 called for every class it emits (mapped entity, TPH subtype, abstract shape, value object), after
 the framework's own attributes and right before the declaration line. Override it to add an
 attribute without re-implementing `EmitClassHeader`.
+
+**The writer owns layout (ADR-0063).** `EntityGenerator` writes every file on a
+`MetaObjects.Codegen.Writer.CsWriter`, and its hooks (`EmitClassHeader`, `EmitClassAttributes`,
+`EmitClassDeclarationLine`, `EmitPropertyAttributes`, `EmitFileUsings`, `EmitClassBodyTrailer`)
+take that writer instead of a `StringBuilder`. A hook writes complete lines with `w.Line(...)` or a
+`using` with `w.Using(...)` and never types an indent or a line break: the writer indents the line to
+where it is written. `ValueObjectMemberAttributes` returns lines with no indent for the same reason.
+`EmitClassHeader` and `EmitClassDeclarationLine` also receive `validatable`, true when the class carries
+cross-field validators and so needs `IValidatableObject` on its declaration. The hooks are not a stability
+contract; an owned copy ejected with `dotnet meta eject` is yours to change.
 
 **One line at a time.** Each of these is a `protected virtual` hook whose default is the line it
 replaces; override it, call base, and adjust. On `EntityGenerator`: `ValueObjectMemberAttributes`

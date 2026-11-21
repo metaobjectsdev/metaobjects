@@ -8,6 +8,7 @@
 // drift gate is the strong enforcer of that; these tests assert the override seams
 // work and the base is unchanged for the same input.
 
+using MetaObjects.Codegen.Writer;
 using System.Text;
 using MetaObjects.Codegen;
 using MetaObjects.Codegen.Generators;
@@ -49,12 +50,12 @@ public class EntityGeneratorExtensibilityTests
     private sealed class PartialEntityGenerator : EntityGenerator
     {
         protected override void EmitClassHeader(
-            StringBuilder sb, MetaObject entity, string className, bool isProjection,
-            IReadOnlyList<string> pkFields, GenContext ctx)
+            CsWriter w, MetaObject entity, string className, bool isProjection,
+            IReadOnlyList<string> pkFields, bool validatable, GenContext ctx)
         {
             if (!isProjection)
-                sb.AppendLine($"[Table(\"{CSharpNaming.Table(entity)}\")]");
-            sb.AppendLine($"public partial class {className} : IAdopterEntity");
+                w.Line($"[Table(\"{CSharpNaming.Table(entity)}\")]");
+            w.Line($"public partial class {className} : IAdopterEntity");
         }
     }
 
@@ -62,9 +63,9 @@ public class EntityGeneratorExtensibilityTests
     private sealed class AttributedEntityGenerator : EntityGenerator
     {
         protected override void EmitPropertyAttributes(
-            StringBuilder sb, MetaObject owner, MetaField field, GenContext ctx)
+            CsWriter w, MetaObject owner, MetaField field, GenContext ctx)
         {
-            sb.AppendLine("    [Adopter]");
+            w.Line("[Adopter]");
         }
     }
 

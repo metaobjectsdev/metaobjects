@@ -4,6 +4,7 @@
 // (unsubclassed) generator stays byte-stable — the IntegrationFixture drift gate is
 // the strong enforcer of that, these lock the new behavior.
 
+using MetaObjects.Codegen.Writer;
 using System.Linq;
 using System.Text;
 using MetaObjects.Codegen;
@@ -38,11 +39,11 @@ public class EntityGeneratorRound2Tests
     // Subclass overriding the two new round-2 hooks: an extra using + a class-body trailer.
     private sealed class HookedGenerator : EntityGenerator
     {
-        protected override void EmitFileUsings(StringBuilder sb, MetaObject entity, GenContext ctx) =>
-            sb.AppendLine("using Acme.Adopter;");
+        protected override void EmitFileUsings(CsWriter w, MetaObject entity, GenContext ctx) =>
+            w.Using("Acme.Adopter");
 
-        protected override void EmitClassBodyTrailer(StringBuilder sb, MetaObject entity, GenContext ctx) =>
-            sb.AppendLine("    public int Marker() => 42;");
+        protected override void EmitClassBodyTrailer(CsWriter w, MetaObject entity, GenContext ctx) =>
+            w.Line("public int Marker() => 42;");
     }
 
     private const string SimpleModel = """
@@ -78,10 +79,10 @@ public class EntityGeneratorRound2Tests
     private sealed class DeclMarkerGenerator : EntityGenerator
     {
         protected override void EmitClassDeclarationLine(
-            StringBuilder sb, MetaObject entity, string className, ClassDeclarationKind kind, GenContext ctx)
+            CsWriter w, MetaObject entity, string className, ClassDeclarationKind kind, bool validatable, GenContext ctx)
         {
-            sb.AppendLine("// adopter-decl");
-            base.EmitClassDeclarationLine(sb, entity, className, kind, ctx);
+            w.Line("// adopter-decl");
+            base.EmitClassDeclarationLine(w, entity, className, kind, validatable, ctx);
         }
     }
 
@@ -202,8 +203,12 @@ public class EntityGeneratorRound2Tests
     // the per-property helpers are no longer private.
     private sealed class HelperReachingGenerator : EntityGenerator
     {
-        public string CallScalar(MetaObject owner, MetaField field) =>
-            ScalarProperty(owner, field, new[] { "id" }, withAttributes: false);
+        public string CallScalar(MetaObject owner, MetaField field)
+        {
+            var w = new CsWriter();
+            WriteScalarProperty(w, owner, field, new[] { "id" }, withAttributes: false);
+            return w.ToString();
+        }
     }
 
     [Fact]

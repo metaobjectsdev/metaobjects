@@ -1,7 +1,6 @@
 {
   "unconverted": {
     "MetaObjects.Codegen/Generators/DbContextGenerator.cs": "the 3,050-line DbContext generator; converts to CsWriter in its own PR (W-CS-3, ADR-0063), and this entry goes when it does",
-    "MetaObjects.Codegen/Generators/EntityGenerator.cs": "the 3,313-line entity generator; converts to CsWriter in its own PR (W-CS-2, ADR-0063), and this entry goes when it does",
     "MetaObjects.Codegen/Generators/ExpressionIndexesGenerator.cs": "The expression-indexes generator still builds its text with StringBuilder.AppendLine; converts to CsWriter in a later C# lane conversion PR (ADR-0063, spec/code-writer.md), and this entry goes when it does",
     "MetaObjects.Codegen/Generators/RenderHelperGenerator.cs": "The render-helper generator still builds its text with StringBuilder.AppendLine; converts to CsWriter in a later C# lane conversion PR (ADR-0063, spec/code-writer.md), and this entry goes when it does",
     "MetaObjects.Codegen/Generators/ReportExportGenerator.cs": "The report-export generator still builds its text with StringBuilder.AppendLine; converts to CsWriter in a later C# lane conversion PR (ADR-0063, spec/code-writer.md), and this entry goes when it does",
