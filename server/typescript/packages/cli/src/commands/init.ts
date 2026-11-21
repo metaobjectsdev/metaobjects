@@ -341,6 +341,8 @@ async function stackForAgentContext(opts: InitOptions, prior: Manifest | undefin
 async function writeUnlessDryRun(cwd: string, dryRun: boolean, path: string, contents: string): Promise<void> {
   if (dryRun) return;
   const abs = join(cwd, path);
+  // Identical bytes are left alone: a rewrite would only move the timestamp.
+  if (existsSyncWrap(abs) && readFileSyncWrap(abs, "utf8") === contents) return;
   await mkdir(dirname(abs), { recursive: true });
   await writeFile(abs, contents, "utf8");
 }
@@ -442,11 +444,14 @@ async function writeAgentContext(opts: InitOptions, result: InitResult): Promise
       `${c.path} appears hand-edited; refreshed version ${verbed(dryRun, "written")} to ${c.newPath}`,
     );
   }
-  await writeUnlessDryRun(
-    opts.cwd, dryRun, AGENT_CONTEXT_MANIFEST_PATH,
-    JSON.stringify(decision.manifest, null, 2) + "\n",
-  );
-  result.created.push(AGENT_CONTEXT_MANIFEST_PATH);
+  // The manifest is rewritten only when its text changed, so a refresh that changed
+  // nothing leaves every file, the manifest included, exactly as it was.
+  const manifestText = JSON.stringify(decision.manifest, null, 2) + "\n";
+  const manifestAbs = join(opts.cwd, AGENT_CONTEXT_MANIFEST_PATH);
+  if (!existsSyncWrap(manifestAbs) || readFileSyncWrap(manifestAbs, "utf8") !== manifestText) {
+    await writeUnlessDryRun(opts.cwd, dryRun, AGENT_CONTEXT_MANIFEST_PATH, manifestText);
+    result.created.push(AGENT_CONTEXT_MANIFEST_PATH);
+  }
 
   // A fragment this stack no longer assembles. `prunes` are ones we wrote that nobody has
   // touched — deleting is exactly as safe as the overwrite the same hash predicate already
@@ -1116,7 +1121,10 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
         // Report the refresh, not a scaffold. `result.refreshedDocsOnly` (not `flags.refreshDocs`)
         // because --refresh-docs on an uninitialized repo falls through to a full init, which
         // genuinely DID scaffold and must still say so.
-        log.info(`Refreshed the MetaObjects agent context in place (${result.created.length} files): .metaobjects/AGENTS.md + the metaobjects-* skills.`);
+        // `created` lists only what was written: an unchanged file is never rewritten.
+        log.info(result.created.length === 0
+          ? "The MetaObjects agent context is already current: no file changed."
+          : `Refreshed the MetaObjects agent context in place (${result.created.length} files): .metaobjects/AGENTS.md + the metaobjects-* skills.`);
         log.info("Your metadata, .metaobjects/config.json, codegen/generators/ and metaobjects.config.ts were left untouched.");
         for (const w of result.warnings) log.warn(w);
       } else if (flags.configOnly) {

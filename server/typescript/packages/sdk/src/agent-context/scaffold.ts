@@ -60,6 +60,8 @@ export function hashAgentContextRoot(root: string, docsRef: string): string {
 export interface ScaffoldDecision {
   /** files to (over)write at their own path: new, or unmodified-since-last-scaffold. */
   writes: { path: string; contents: string }[];
+  /** files already holding exactly the assembled bytes: recorded, never rewritten. */
+  unchanged: string[];
   /** hand-edited files: write the fresh contents to `<path>.new`, leave the original. */
   conflicts: { path: string; newPath: string; contents: string }[];
   /** the manifest to persist after writing. */
@@ -104,6 +106,7 @@ export function planScaffold(opts: {
   const { stack, assembled, prior, readCurrent, generatedBy, contentHash, skillsDir } = opts;
   const writes: ScaffoldDecision["writes"] = [];
   const conflicts: ScaffoldDecision["conflicts"] = [];
+  const unchanged: string[] = [];
   const files: Record<string, string> = {};
 
   // The manifest records what we WROTE, never what we merely produced. It used to be
@@ -124,6 +127,13 @@ export function planScaffold(opts: {
     if (current === undefined) {
       files[f.path] = hashContents(f.contents);
       writes.push({ path: f.path, contents: f.contents });
+      continue;
+    }
+    // The file already holds exactly these bytes: nothing to write, and the hash we record
+    // is the true one whatever wrote it. Rewriting identical bytes only churns timestamps.
+    if (current === f.contents) {
+      files[f.path] = hashContents(f.contents);
+      unchanged.push(f.path);
       continue;
     }
     const priorHash = prior?.files[f.path];
@@ -154,6 +164,7 @@ export function planScaffold(opts: {
 
   return {
     writes,
+    unchanged,
     conflicts,
     // `files` holds only what this run assembled, so a pruned orphan does not survive into
     // the new manifest — otherwise it would be re-reported as an orphan on every run.

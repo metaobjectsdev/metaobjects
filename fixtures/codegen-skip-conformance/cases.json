@@ -157,6 +157,12 @@
       "change": "A run that started after an input change failed; the input is then restored to what the last successful run saw.",
       "gen": "regenerate",
       "verify": "must-render"
+    },
+    {
+      "id": "template-and-docs-rerun",
+      "change": "The project also configures a `template` generator (a project template under the declared template root, rendered once per entity) and a docs page generator. Nothing changes between the two runs. Besides the two answers, the runner then forces a full render (`--force`, or the port's equivalent) and asserts it wrote zero files: no generated file, template output, docs page or hash manifest changed its bytes or its modification time. A port with no `template` generator names the case with its reason.",
+      "gen": "skip",
+      "verify": "may-answer-no-drift"
     }
   ]
 }

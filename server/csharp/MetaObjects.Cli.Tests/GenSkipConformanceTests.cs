@@ -10,6 +10,8 @@
 
 using System.Text.Json;
 using MetaObjects.Codegen;
+using MetaObjects.Codegen.Generators;
+using MetaObjects.Render;
 using Xunit;
 
 namespace MetaObjects.Cli.Tests;
@@ -80,6 +82,7 @@ public sealed class GenSkipConformanceTests : IDisposable
             "<Project Sdk=\"Microsoft.NET.Sdk\"><ItemGroup><ProjectReference Include=\"../engine/Engine.csproj\" /></ItemGroup></Project>\n");
         Directory.CreateDirectory(P("prompts"));
         File.WriteAllText(P("prompts/greeting.mustache"), "hello\n");
+        File.WriteAllText(P("prompts/note.mustache"), "{{name}}\n");
         Directory.CreateDirectory(P("extra"));
         File.WriteAllText(P("extra/data.txt"), "one");
         File.WriteAllText(P("README.md"), "readme v1\n");
@@ -96,6 +99,23 @@ public sealed class GenSkipConformanceTests : IDisposable
 
     private IReadOnlyList<IGenerator> Declared(bool uncacheable = false) =>
         [.. OwnedRunner.Declared(_tmp, "entity"), new Custom(!uncacheable)];
+
+    /// <summary>The case that also configures a <c>template</c> generator and a docs page.</summary>
+    private const string DocsCase = "template-and-docs-rerun";
+
+    private IReadOnlyList<IGenerator> DeclaredWithDocs() =>
+        [.. Declared(),
+         TemplateGenerator.Create("note", "note",
+             r => r.Objects().Where(o => !o.IsAbstract).Select(e => new TemplateWalkResult(new { name = e.Name }, $"notes/{e.Name}.txt")),
+             new FilesystemProvider(P("prompts"))),
+         new ApiDocsGenerator()];
+
+    /// <summary>Every file under the given directories: its bytes and its modification time.</summary>
+    private static List<(string Path, string Text, DateTime Stamp)> Snapshot(params string[] dirs) =>
+        [.. dirs.Where(Directory.Exists)
+            .SelectMany(d => Directory.GetFiles(d, "*", SearchOption.AllDirectories))
+            .Order(StringComparer.Ordinal)
+            .Select(f => (f, File.ReadAllText(f), File.GetLastWriteTimeUtc(f)))];
 
     private (int Exit, string Out, string Err) RunGen(IReadOnlyList<IGenerator> declared, params string[] more) =>
         Wrap(OwnedRunner.Run(_tmp, declared, GenArgs(more)));
@@ -147,7 +167,7 @@ public sealed class GenSkipConformanceTests : IDisposable
     [MemberData(nameof(Cases))]
     public void The_case_table_decides_gen_and_verify(string id, string gen, string verify)
     {
-        var declared = Declared();
+        var declared = id == DocsCase ? DeclaredWithDocs() : Declared();
         var first = RunGen(declared);
         Assert.True(first.Exit == 0, first.Out + first.Err);
         Assert.NotNull(GenFingerprint.Read(_tmp));
@@ -231,6 +251,7 @@ public sealed class GenSkipConformanceTests : IDisposable
                 Assert.NotEqual(0, bad.Exit);
                 File.WriteAllText(P("metaobjects/meta.order.json"), good);
                 break;
+            case DocsCase: break;
             default: Assert.Fail($"unknown case id '{id}': add it to this runner"); break;
         }
 
@@ -247,6 +268,17 @@ public sealed class GenSkipConformanceTests : IDisposable
         {
             Assert.False(File.Exists(P(".metaobjects/.gen-state/.hashes.json")));
             Assert.NotEmpty(Directory.GetFiles(P(".metaobjects/.gen-state/.hashes"), "*.json"));
+        }
+        if (id == DocsCase)
+        {
+            // The template output and the docs page were written, and a forced render rewrites none.
+            Assert.Equal("Order\n", File.ReadAllText(Path.Combine(OutDir, "notes", "Order.txt")));
+            Assert.Contains(Directory.GetFiles(OutDir, "*.md", SearchOption.AllDirectories), f => f.Contains("api", StringComparison.OrdinalIgnoreCase));
+            var before = Snapshot(OutDir, P(".metaobjects/.gen-state/.hashes"));
+            Thread.Sleep(20);
+            var forced = RunGen(declared, "--force");
+            Assert.True(forced.Exit == 0, forced.Out + forced.Err);
+            Assert.Equal(before, Snapshot(OutDir, P(".metaobjects/.gen-state/.hashes")));
         }
     }
 
