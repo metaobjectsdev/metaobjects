@@ -1,13 +1,11 @@
-"""Runs the SERIALIZER arm of the shared publish corpus (FR-023 §4.3) in Python.
+"""Runs the shared publish corpus (FR-023 §4.3) in Python: every case of
+``fixtures/shared-model-conformance`` through the same ``build_shared_model`` and
+``render_shared_model_files`` the ``shared-model`` generator calls.
 
-Python ships no publisher yet (Phase 2, #482, defers it until a Python-only publisher
-appears), so it does not run selection, the closure check or the refusals. What it does own
-is the document's bytes: load a case's ``files``, take exactly the nodes the pinned manifest
-lists, and ``serialize_shared_document`` must reproduce the pinned artifact byte for byte, and
-the sha256 the manifest records.
-
-The refusal cases and the manifest's own bytes are the publisher's, and are run by
-``codegen-ts/test/shared-model-conformance.test.ts`` until a second publisher exists.
+A publish case must reproduce the pinned artifact byte for byte and the pinned manifest (the
+golden carries ``@@METAMODEL_VERSION@@``, replaced here by this port's constant); a refusal case
+must raise the pinned reason and, for ``not-closed``, exactly the pinned ``(referrer, target)``
+pairs. The message text is not the contract.
 """
 
 from __future__ import annotations
@@ -18,36 +16,78 @@ from pathlib import Path
 
 import pytest
 
-from metaobjects import MetaDataLoader
-from metaobjects.serializer_json import serialize_shared_document
+from metaobjects.provider import Provider
+from metaobjects.registry import AttrSchema, TypeRegistry
+from metaobjects.registry_manifest import METAMODEL_VERSION
+from metaobjects.shared_model import (
+    SharedModelError,
+    build_shared_model,
+    render_shared_model_files,
+)
 
 _CORPUS_DIR = Path(__file__).resolve().parents[4] / "fixtures" / "shared-model-conformance"
 _CASES = json.loads((_CORPUS_DIR / "cases.json").read_text())["cases"]
 _PUBLISHED = [c for c in _CASES if "expectArtifact" in c]
+_REFUSED = [c for c in _CASES if "expectRefusal" in c]
+
+
+class _SecretHandling(Provider):
+    """The corpus's test provider ``secret-handling``: one common string attribute, which is
+    vocabulary a consumer's core-only toolchain does not have."""
+
+    def __init__(self) -> None:
+        super().__init__("secret-handling", dependencies=())
+
+    def register_types(self, registry: TypeRegistry) -> None:  # noqa: D401
+        registry.register_common_attrs([AttrSchema("secretHandling", "string")])
+
+
+_PROVIDERS = {"secret-handling": _SecretHandling}
+
+
+def _build(case: dict):
+    spec = case["input"]
+    return build_shared_model(
+        spec["name"],
+        [_CORPUS_DIR / f for f in spec["files"]],
+        spec.get("include", []),
+        spec.get("exclude", []),
+        requirements=spec.get("requirements", False),
+        providers=[_PROVIDERS[p]() for p in spec.get("providers", [])],
+    )
 
 
 def test_corpus_is_non_empty() -> None:
     """A silent zero-case run is a failed gate, not a pass."""
-    assert _PUBLISHED
+    assert len(_PUBLISHED) == 9
+    assert len(_REFUSED) == 6
+    assert len(_CASES) == len(_PUBLISHED) + len(_REFUSED)
 
 
 @pytest.mark.parametrize("case", _PUBLISHED, ids=[c["name"] for c in _PUBLISHED])
-def test_shared_document_bytes(case: dict) -> None:
-    manifest = json.loads((_CORPUS_DIR / case["expectManifest"]).read_text())
-    expected = (_CORPUS_DIR / case["expectArtifact"]).read_bytes()
-
-    result = MetaDataLoader.from_uris(
-        [(_CORPUS_DIR / f).as_uri() for f in case["input"]["files"]],
-        strict=True,
-        discover_naming=False,
+def test_published_artifact_and_manifest_bytes(case: dict) -> None:
+    expected_artifact = (_CORPUS_DIR / case["expectArtifact"]).read_text()
+    expected_manifest = (_CORPUS_DIR / case["expectManifest"]).read_text().replace(
+        "@@METAMODEL_VERSION@@", METAMODEL_VERSION
     )
-    assert not result.errors, [f"{e.code}: {e.message}" for e in result.errors]
 
-    # ADR-0039 sanctioned own: the root has no super chain, so its own children are its children.
-    # Every node the manifest lists, whatever its type: an export may carry requirement.* too.
-    selected = [c for c in result.root.own_children() if c.resolution_key() in manifest["nodes"]]
-    assert sorted(c.resolution_key() for c in selected) == manifest["nodes"]
+    files = render_shared_model_files(_build(case), case["input"]["version"])
 
-    document = serialize_shared_document(selected).encode("utf-8")
-    assert document == expected
-    assert manifest["integrity"] == "sha256-" + hashlib.sha256(document).hexdigest()
+    assert files.artifact[0] == f"{case['input']['name']}.metaobjects.json"
+    assert files.artifact[1] == expected_artifact
+    assert files.manifest[0] == "metaobjects.pkg.json"
+    assert files.manifest[1] == expected_manifest
+    manifest = json.loads(files.manifest[1])
+    assert manifest["integrity"] == "sha256-" + hashlib.sha256(files.artifact[1].encode()).hexdigest()
+
+
+@pytest.mark.parametrize("case", _REFUSED, ids=[c["name"] for c in _REFUSED])
+def test_refusals(case: dict) -> None:
+    expected = case["expectRefusal"]
+    with pytest.raises(SharedModelError) as raised:
+        _build(case)
+    assert raised.value.reason == expected["reason"]
+    if expected["reason"] == "not-closed":
+        assert [
+            {"referrer": r, "target": t} for r, t in raised.value.pairs
+        ] == expected["pairs"]

@@ -90,9 +90,13 @@ _PROMPTS = {
 }
 
 
-def _model_project(root: Path, generators: str) -> Path:
+#: Options a generator cannot run without; the entry is written as a mapping that carries them.
+_REQUIRED_OPTIONS = {"shared-model": '{name: depth, include: ["**"], version: "1.0.0", files: [metaobjects/meta.fitness.json]}'}
+
+
+def _model_project(root: Path, generators: str, options: str | None = None) -> Path:
     """A project over every metadata shape the ejectable generators read, with one target
-    that runs *generators*."""
+    that runs *generators* (given *options*, as a ``generators`` entry mapping)."""
     meta = root / "metaobjects"
     meta.mkdir(parents=True)
     canonical = FIXTURES / "persistence-conformance" / "canonical" / "meta.fitness.json"
@@ -107,7 +111,8 @@ def _model_project(root: Path, generators: str) -> Path:
     shop = FIXTURES / "requirement-test-identity-conformance" / "worked-example" / "input"
     for doc in shop.iterdir():
         (meta / doc.name).write_text(doc.read_text(encoding="utf-8"), encoding="utf-8")
-    config = f"libraries: [ai]\ntargets:\n  main:\n    outDir: gen\n    generators: [{generators}]\n"
+    entry = generators if options is None else f'{{name: "{generators}", options: {options}}}'
+    config = f"libraries: [ai]\ntargets:\n  main:\n    outDir: gen\n    generators: [{entry}]\n"
     (root / "metaobjects.config.yaml").write_text(config, encoding="utf-8")
     return root
 
@@ -170,11 +175,11 @@ def test_an_ejected_generator_writes_what_the_packaged_one_writes(name: str, tmp
     argv = ["gen"]
     out = "gen"
 
-    packaged_root = _model_project(tmp_path / "packaged", name)
+    packaged_root = _model_project(tmp_path / "packaged", name, _REQUIRED_OPTIONS.get(name))
     packaged = _run(packaged_root, argv, out, block=[])
     assert packaged, f"{name} wrote nothing over the test model, so it proves nothing"
 
-    owned_root = _model_project(tmp_path / "owned", owned.owned_token(entry))
+    owned_root = _model_project(tmp_path / "owned", owned.owned_token(entry), _REQUIRED_OPTIONS.get(name))
     assert owned.eject([name], owned_root).code == 0
     mine = _run(owned_root, argv, out, block=_packaged_modules())
 

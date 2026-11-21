@@ -52,6 +52,7 @@ from metaobjects.codegen.generators.router_generator import (
     RUNTIME_MODULES as _ROUTER_RUNTIME,
     router_generator,
 )
+from metaobjects.codegen.generators.shared_model_generator import shared_model_generator
 from metaobjects.codegen.generators.template_generator import template_generator
 from metaobjects.codegen.generators.trace_helper_generator import trace_helper_generator
 from metaobjects.render.verify import InMemoryProvider
@@ -82,14 +83,17 @@ class GeneratorOption:
 
     ``name`` is the camelCase key the config file uses (every key in that file is camelCase);
     the generator receives it as the snake_case keyword argument :attr:`kwarg`. ``kind`` is
-    ``integer``, ``boolean`` or ``string``; ``choices`` closes a string, ``minimum`` bounds an
-    integer."""
+    ``integer``, ``boolean``, ``string`` or ``stringList`` (a list of non-empty strings);
+    ``choices`` closes a string, ``minimum`` bounds an integer."""
 
     name: str
     kind: str
     description: str
     choices: tuple[str, ...] | None = None
     minimum: int | None = None
+    #: A generator that cannot run without it: ``resolve_options`` refuses an entry that
+    #: leaves it out, naming it, instead of the run failing (or doing nothing) later.
+    required: bool = False
 
     @property
     def kwarg(self) -> str:
@@ -107,6 +111,13 @@ class GeneratorOption:
             if self.minimum is not None and value < self.minimum:
                 return None, f"must be at least {self.minimum}"
             return value, None
+        if self.kind == "stringList":
+            if (
+                not isinstance(value, list)
+                or not all(isinstance(v, str) and v for v in value)
+            ):
+                return None, "must be a list of non-empty strings"
+            return tuple(value), None
         if not isinstance(value, str) or not value:
             return None, "must be a non-empty string"
         if self.choices is not None and value not in self.choices:
@@ -144,6 +155,9 @@ def resolve_options(
             errors.append(f"generator {generator!r} option {key!r} {why}, got {value!r}")
             continue
         kwargs[option.kwarg] = coerced
+    for option in accepted:
+        if option.required and option.name not in raw:
+            errors.append(f"generator {generator!r} needs the option {option.name!r}: {option.description}")
     return kwargs, errors
 
 
@@ -192,6 +206,16 @@ class GeneratorBuildContext:
     #: entry has none, and for ``--list``. A team's own factory that takes this context reads
     #: the entry's options here exactly as written.
     options: Mapping[str, object] = field(default_factory=dict)
+    #: The project directory (the one holding ``.metaobjects/``), absolute. ``None`` for
+    #: ``--list``. A generator that reads a file the model does not name (the shared-model
+    #: publisher's ``files`` and version) resolves it here.
+    project_root: str | None = None
+    #: The project's OWN metadata files, absolute (never a dependency's artifact). ``None``
+    #: for ``--list``. The shared-model publisher's default ``files``.
+    source_files: tuple[str, ...] | None = None
+    #: The consumer providers the run loaded the project with (``providers:`` of the config and
+    #: ``--provider``), so a generator that loads files of its own sees the same vocabulary.
+    providers: tuple[object, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -363,6 +387,22 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
             ),
         ),
         source=report_export_generator,
+    ),
+    "shared-model": GeneratorEntry(
+        name="shared-model",
+        description="A publisher's flattened shared-model artifact plus the manifest that pins it, for a consumer's `deps sync` (FR-023).",
+        tier="native",
+        layer="capability",
+        factory=shared_model_generator,
+        options=(
+            GeneratorOption("name", "string", required=True, description="The dependency key a consumer syncs under; also the artifact's basename."),
+            GeneratorOption("include", "stringList", required=True, description="Scope patterns of the top-level nodes to publish, e.g. acme::common::**."),
+            GeneratorOption("exclude", "stringList", description="Scope patterns removed from the selection after include."),
+            GeneratorOption("requirements", "boolean", description="Also publish the selected requirement.* nodes (default false)."),
+            GeneratorOption("files", "stringList", description="Which of the project's metadata files may contribute, relative to the project root (default: all of them)."),
+            GeneratorOption("version", "string", description="The published version (default: the nearest pyproject.toml or package.json version)."),
+        ),
+        source=shared_model_generator,
     ),
     "output-parser": GeneratorEntry(
         name="output-parser",

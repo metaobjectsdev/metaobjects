@@ -58,6 +58,13 @@ CORPORA: dict[str, dict[str, object]] = {
     },
 }
 
+#: Options a generator needs to run at all (it has no default for them): the depth test hands
+#: them to the packaged generator and to the owned copy alike. ``shared-model`` publishes a
+#: named selection, so it is told which nodes and which version.
+DEPTH_OPTIONS_BY_NAME: dict[str, dict[str, object]] = {
+    "shared-model": {"name": "depth", "include": ["**"], "version": "1.0.0"},
+}
+
 #: The one difference an owned copy's output is allowed: it imports the helper runtime the
 #: adopter owns, emitted beside it, where packaged output imports the installed one.
 PACKAGED_RUNTIME_IMPORT = "from metaobjects.codegen.runtime."
@@ -265,6 +272,7 @@ import json, sys, tempfile
 from pathlib import Path
 
 root, name, corpora = Path(sys.argv[1]), sys.argv[2], json.loads(sys.argv[3])
+DEPTH_OPTIONS = json.loads(sys.argv[4])
 
 from metaobjects import MetaDataLoader
 from metaobjects.codegen import eject as owned
@@ -278,7 +286,12 @@ out = {"owned": {}, "packaged": {}}
 for corpus, spec in corpora.items():
     loaded = MetaDataLoader(strict=True).load([FileSource(Path(f)) for f in spec["files"]])
     assert not loaded.errors, [str(e) for e in loaded.errors]
-    ctx = GeneratorBuildContext(template_root=spec.get("templates"))
+    ctx = GeneratorBuildContext(
+        template_root=spec.get("templates"),
+        options=DEPTH_OPTIONS,
+        project_root=str(root),
+        source_files=tuple(spec["files"]),
+    )
     mine, err = owned.build_owned(owned.owned_token(entry), root, ctx)
     assert err is None, err
     for side, generator in (("owned", mine), ("packaged", entry.factory(ctx))):
@@ -302,7 +315,8 @@ def _run_alone(name: str, root: Path) -> dict[str, dict[str, dict[str, str]]]:
         for corpus, spec in CORPORA.items()
     }
     proc = subprocess.run(
-        [sys.executable, "-c", _DRIVER, str(root), name, json.dumps(corpora)],
+        [sys.executable, "-c", _DRIVER, str(root), name, json.dumps(corpora),
+         json.dumps(DEPTH_OPTIONS_BY_NAME.get(name, {}))],
         cwd=root, env=env, capture_output=True, text=True,
     )
     assert proc.returncode == 0, f"{name}, ejected alone, does not load and run:\n{proc.stderr}"

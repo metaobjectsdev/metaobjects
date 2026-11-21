@@ -810,6 +810,24 @@ def _refuse_column_naming_flag(args: argparse.Namespace) -> str | None:
     return "error: " + removed_naming_source_message("--column-naming", flag)
 
 
+def _build_context_for_project(
+    template_root: str,
+    config: ProjectConfig,
+    collection: Collection,
+    providers: list[object],
+) -> GeneratorBuildContext:
+    """The context every generator factory of ``gen`` and ``verify --codegen`` is built with:
+    the template root, the project's directory and its own metadata files (never a dependency's
+    artifact), and the consumer providers the run loaded the model with. One definition, so the
+    two commands build a generator identically."""
+    return GeneratorBuildContext(
+        template_root,
+        project_root=str(project_root_for(config.metadata_dir())),
+        source_files=tuple(str(p) for p in collection.own_files),
+        providers=tuple(providers),
+    )
+
+
 def _template_root_for_config(args: argparse.Namespace, config: ProjectConfig) -> tuple[str, str | None]:
     """``(template root, refusal)`` for a config-driven run: ``templates`` in the config, else
     :func:`_template_root_for`. A ``--templates`` (``gen``) or ``--prompts`` (``verify``) that
@@ -2157,7 +2175,7 @@ def _cmd_gen_config_run(args: argparse.Namespace, state: _SkipState) -> int:
             refused_out=refused,
             select=collection.in_scope,
             in_ledger=collection.in_ledger,
-            build_ctx=GeneratorBuildContext(template_root),
+            build_ctx=_build_context_for_project(template_root, config, collection, providers),
             column_naming=column_naming,
             selection=selection,
             targeted_out=targeted,
@@ -2583,7 +2601,7 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
         regen = dict(
             select=collection.in_scope,
             in_ledger=collection.in_ledger,
-            build_ctx=GeneratorBuildContext(template_root),
+            build_ctx=_build_context_for_project(template_root, config, collection, providers),
             # R31: the `names` generator's constants are strategy-dependent, so the regen
             # must use the strategy `gen` wrote with, or every constant reads as drift.
             column_naming=naming,

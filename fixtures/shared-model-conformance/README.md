@@ -85,9 +85,9 @@ attribute `secretHandling` of type string, not required).
 
 - **TypeScript** — all of it: select, closure, serialize, core-vocabulary re-load, manifest, and
   every refusal (`codegen-ts/test/shared-model-conformance.test.ts`).
-- **Python** — the **serializer arm** only: load `files`, take exactly the nodes the pinned
-  manifest lists, and `serialize_shared_document` must reproduce the artifact byte for byte (and the
-  manifest's sha256). Python has no publisher (`server/python/tests/conformance/test_shared_model_conformance.py`).
+- **Python** — all of it, in `server/python/tests/conformance/test_shared_model_conformance.py`,
+  against `metaobjects.shared_model` (`build_shared_model`, `render_shared_model_files`), the engine
+  the `shared-model` generator calls. The test registers the `secret-handling` provider itself.
 - **Java** — all of it, in `server/java/metadata` (`SharedModelConformanceTest`, against the
   `SharedModel` engine that the `shared-model` generator in `codegen-base` calls).
 - **Kotlin** — inherits the Java engine and the Maven goals; `KotlinSharedModelGeneratorTest` pins
