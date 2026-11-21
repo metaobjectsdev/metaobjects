@@ -3,7 +3,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { z } from "zod";
 import { mountCrudRoutes } from "../../src/fastify/index.js";
 import type { ObjectManager } from "../../src/object-manager.js";
-import type { SortAllowlist } from "../../src/drizzle-fastify/filter-allowlist.js";
+import type { FilterAllowlist, SortAllowlist } from "../../src/drizzle-fastify/filter-allowlist.js";
 
 // In-memory fake ObjectManager — exercises only the surface the plain fastify
 // mount calls (findMany + count). Keeps the test off a real DB so it stays a
@@ -22,6 +22,7 @@ const SEED: Author[] = [
 function fakeOm(): ObjectManager {
   return {
     keyFields: () => ["id"],
+    fieldNames: () => ["id", "name", "createdAt"],
     async findMany(
       _entity: string,
       _filter: unknown,
@@ -158,5 +159,27 @@ describe("plain fastify mount — page bounds and the sort hint", () => {
       expected: "sort=<field>:asc|desc",
       allowed: ["name", "createdAt"],
     });
+  });
+});
+
+describe("plain fastify mount — filterAllowlist without sortAllowlist", () => {
+  test("?sort is ignored (key order), as with no filterAllowlist", async () => {
+    const filtered = Fastify();
+    const om = fakeOm();
+    const filterAllowlist: FilterAllowlist = { name: { ops: ["eq"], subType: "string", leadingWildcard: false } };
+    mountCrudRoutes({
+      fastify: filtered,
+      path: "/authors",
+      entity: "Author",
+      insertSchema: InsertSchema,
+      updateSchema: UpdateSchema,
+      om: async () => om,
+      filterAllowlist,
+    });
+    await filtered.ready();
+    const r = await filtered.inject({ method: "GET", url: "/authors?sort=name:desc" });
+    expect(r.statusCode).toBe(200);
+    expect((JSON.parse(r.body) as Author[]).map((a) => a.name)).toEqual(["Alice", "Bob", "Carol"]);
+    await filtered.close();
   });
 });

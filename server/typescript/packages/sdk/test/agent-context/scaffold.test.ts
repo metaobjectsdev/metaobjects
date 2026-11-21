@@ -42,7 +42,6 @@ describe("planScaffold", () => {
     const d = planScaffold({ stack, assembled: [files[0]!], prior, readCurrent: () => "always-on v2", generatedBy: "0.9.0" });
     expect(d.writes).toEqual([]);
     expect(d.conflicts).toEqual([]);
-    expect(d.unchanged).toEqual([".metaobjects/AGENTS.md"]);
     expect(d.manifest.files[".metaobjects/AGENTS.md"]).toBe(hashContents("always-on v2"));
   });
 

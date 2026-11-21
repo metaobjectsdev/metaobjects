@@ -147,7 +147,7 @@ export function mountListRoute(opts: SingleVerbOptions): void {
     try {
       query = opts.filterAllowlist !== undefined
         ? parseListQuery({
-            query: parsed,
+            query: opts.sortAllowlist !== undefined ? parsed : withoutSort(parsed),
             allowlist: opts.filterAllowlist,
             sortAllowlist: opts.sortAllowlist ?? {},
             isField: (name) => om.fieldNames(opts.entity).includes(name),
@@ -189,6 +189,11 @@ function pageAndSortOnly(parsed: Record<string, unknown>, withSort: boolean): Re
   const out: Record<string, unknown> = {};
   for (const k of ["limit", "offset", ...(withSort ? ["sort"] : [])]) if (k in parsed) out[k] = parsed[k];
   return out;
+}
+
+function withoutSort(parsed: Record<string, unknown>): Record<string, unknown> {
+  const { sort: _sort, ...rest } = parsed;
+  return rest;
 }
 
 /** The parsed filter tree and search as one ObjectManager filter (the AND of the two). */
