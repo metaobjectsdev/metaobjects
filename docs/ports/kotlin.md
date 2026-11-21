@@ -950,13 +950,9 @@ the contract is universal.
 A `field.enum` with `isArray: true` loads, string-backed or int-backed (`@intValueMap`, own or
 inherited from a shared abstract enum), and the data class types it `List<E>`.
 
-An **int-backed** enum array gets one array column over the declared integers,
-`portableIntEnumArray<E>(name, { toInt }, { fromInt })`: a native `INTEGER[]` on Postgres and a
-JSON array of numbers (`[5,0]`) on SQLite and MySQL, the same stored form as every other port.
-The two lambdas are the generated symbol-to-integer `when` expressions, so a member with no
-integer is a compile error, and a stored integer with no member throws on read. The column type is
-emitted into `MetaIntEnumArrayColumnType.kt` beside the tables, only in a package that has such a
-column. The `roundtrip-int-enum-array` persistence scenario runs in this port.
+An **int-backed** enum array gets one generated array column over the declared integers,
+`portableIntEnumArray`. Its stored form, the Kotlin specifics and the gating scenario are in
+[Int-backed enum arrays](../features/field-types.md#int-backed-enum-arrays).
 
 A **string-backed** enum array still has no Exposed array column: `enumColumnSpec` emits the scalar
 `enumerationByName(...)` for it, so the generated controller for such an entity does not compile.

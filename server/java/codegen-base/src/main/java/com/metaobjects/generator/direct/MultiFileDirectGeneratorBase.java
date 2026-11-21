@@ -62,7 +62,6 @@ public abstract class MultiFileDirectGeneratorBase<M extends MetaData> extends D
                 filename = path;
 
                 File fp = new File(outDir, path );
-                if ( !fp.exists()) fp.mkdirs();
 
                 String fn = getSingleOutputFilename( md );
                 File f = new File( fp, fn );
@@ -99,7 +98,6 @@ public abstract class MultiFileDirectGeneratorBase<M extends MetaData> extends D
 
                 // Create output file
                 File outf = new File(finalOutDir, getOutputFilename());
-                outf.createNewFile();
 
                 // Get the printwriter
                 out = finalBuffer;   // written below, and only when the bytes differ from what is on disk
@@ -140,7 +138,7 @@ public abstract class MultiFileDirectGeneratorBase<M extends MetaData> extends D
             }
             if ( finalFile != null && out != null ) {
                 try {
-                    GeneratedFileWriter.writeIfChanged(finalFile.toPath(), finalBuffer.toByteArray());
+                    GeneratedFileWriter.writeUnmarked(finalFile.toPath(), finalBuffer.toByteArray());
                 } catch (IOException e) {
                     throw new GeneratorException( "Unable to write to file [" + filename + "]: " + e, e );
                 }

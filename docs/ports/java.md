@@ -1052,17 +1052,11 @@ the runtime classpath, and no stored-procedure callable generator exists (FR-015
 TypeScript, C# and Kotlin only). OMDB is data access only; schema migrations are owned by the
 Node `meta` CLI.
 
-OMDB persists an int-backed `field.enum` array (`@intValueMap` with `isArray: true`, own or
-inherited) as each member's declared integer: a native `integer[]` on Postgres
-(`PostgresDriver.nativeArrayElementType`), and on SQLite, MySQL and Derby a JSON array of numbers
-(`[5,0]`) in a text column, read back as the members in order. A member with no declared integer is
-refused on write with an `SQLException` naming the field, and a stored integer with no member fails
-the read the way an unmapped scalar does; a null array stays null and an empty one stays empty. The
-`roundtrip-int-enum-array` persistence scenario runs in the Java runners. A string-backed enum array
-is not covered: a native array column is mapped only for `field.string`, `field.uuid`,
-`field.decimal` and the int-backed enum. The generated Spring enum for
-an int-backed enum carries `dbValue()` and `fromDbValue(int)`, and the payload types an array field as
-`List<E>`, so a repository you write maps each element.
+OMDB persists an int-backed `field.enum` array on Postgres, SQLite, MySQL and Derby; the stored
+form, the Java specifics and the gating scenario are in
+[Int-backed enum arrays](../features/field-types.md#int-backed-enum-arrays). A string-backed enum
+array is not covered: a native array column is mapped only for `field.string`, `field.uuid`,
+`field.decimal` and the int-backed enum.
 
 ## Capability snapshot
 

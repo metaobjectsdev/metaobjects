@@ -14,6 +14,7 @@ import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
 
+import com.metaobjects.generator.util.GeneratedFileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.StringReader;
@@ -392,6 +393,9 @@ public class MetaDataEjectMojo extends AbstractMojo {
                         getLog().info("Copied template " + ref + " -> " + target
                                 + ", REPLACING the file that was there (-Dforce=true).");
                         break;
+                    case IDENTICAL:
+                        getLog().info(target + IDENTICAL_NOTE);
+                        break;
                     case PRESERVED:
                         getLog().info(target + " already exists — " + describeOwned(target, content)
                                 + " Left untouched (-Dforce=true replaces it).");
@@ -418,6 +422,9 @@ public class MetaDataEjectMojo extends AbstractMojo {
                 case REPLACED:
                     getLog().info("Copied support " + simpleName + " -> " + target
                             + ", REPLACING the file that was there (-Dforce=true).");
+                    break;
+                case IDENTICAL:
+                    getLog().info(target + IDENTICAL_NOTE);
                     break;
                 case PRESERVED:
                     getLog().info(target + " already exists — " + describeOwned(target, owned)
@@ -502,6 +509,9 @@ public class MetaDataEjectMojo extends AbstractMojo {
                     getLog().info("Copied runtime " + simpleName + " -> " + target
                             + ", REPLACING the file that was there (-Dforce=true).");
                     break;
+                case IDENTICAL:
+                    getLog().info(target + IDENTICAL_NOTE);
+                    break;
                 case PRESERVED:
                     getLog().info(target + " already exists — " + describeOwned(target, owned)
                             + " Left untouched (-Dforce=true replaces it).");
@@ -550,18 +560,24 @@ public class MetaDataEjectMojo extends AbstractMojo {
     // writing
     // ------------------------------------------------------------------------------------
 
-    private enum WriteStatus { CREATED, REPLACED, PRESERVED }
+    /** {@code IDENTICAL}: the file already holds exactly this content, so nothing was written,
+     *  with or without {@code -Dforce=true} (a rewrite of identical bytes would only move its
+     *  timestamp and make every build tool downstream recompile it). */
+    private enum WriteStatus { CREATED, REPLACED, PRESERVED, IDENTICAL }
+
+    private static final String IDENTICAL_NOTE = " already exists and is IDENTICAL to the reference — nothing to do.";
 
     private WriteStatus write(Path dir, Path target, String content, boolean force)
             throws MojoExecutionException {
         try {
             if (Files.exists(target)) {
+                if (Files.readString(target, StandardCharsets.UTF_8).equals(content)) return WriteStatus.IDENTICAL;
                 if (!force) return WriteStatus.PRESERVED;
-                Files.writeString(target, content, StandardCharsets.UTF_8);
+                GeneratedFileWriter.writeIfChanged(target, content);
                 return WriteStatus.REPLACED;
             }
             Files.createDirectories(dir);
-            Files.writeString(target, content, StandardCharsets.UTF_8);
+            GeneratedFileWriter.writeIfChanged(target, content);
             return WriteStatus.CREATED;
         } catch (IOException ex) {
             throw new MojoExecutionException("Could not write " + target, ex);
@@ -578,6 +594,9 @@ public class MetaDataEjectMojo extends AbstractMojo {
             case REPLACED:
                 getLog().info("Ejected " + what + " -> " + target + ", REPLACING the file "
                         + "that was there (-Dforce=true).");
+                break;
+            case IDENTICAL:
+                getLog().info(target + IDENTICAL_NOTE);
                 break;
             case PRESERVED:
                 try {
@@ -612,7 +631,10 @@ public class MetaDataEjectMojo extends AbstractMojo {
         String content = codegenPom(artifactId, ports);
         try {
             Files.createDirectories(codegenRoot);
-            Files.writeString(pom, content, StandardCharsets.UTF_8);
+            if (!GeneratedFileWriter.writeIfChanged(pom, content)) {
+                getLog().info(pom + " already holds exactly this content — left untouched.");
+                return false;
+            }
         } catch (IOException ex) {
             throw new MojoExecutionException("Could not write " + pom, ex);
         }

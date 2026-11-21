@@ -10,6 +10,26 @@ here.**
 
 ## [Unreleased]
 
+- **Java and Kotlin: template and documentation output is recorded in the hash manifest.** The
+  `template` and `mustache` generators, the api, HTML, JSON and PlantUML documentation pages and the
+  `META-INF/services` registration wrote through a byte compare only, so a hand edit to one of them
+  was overwritten without the refusal every other generated file gets. They now go through
+  `GeneratedFileWriter.writeUnmarked`: each file is recorded under `.metaobjects/.gen-state/.hashes/`,
+  unchanged bytes are not rewritten, and a hand edit is refused by name under `handEdits: keep`. An
+  existing file at one of these paths that the manifest has no record of is taken as generated
+  output on the first run (it can carry no `GENERATED` marker), so upgrading refuses nothing. The
+  orphan sweep and `metaobjects:verify` now see these files too: one a template stops emitting is
+  deleted when untouched, as other generated files are. The documentation generators also no longer
+  create an empty file before writing, so `metaobjects:verify`'s in-memory render leaves nothing on
+  disk.
+- **Java and Kotlin: a gate that every generator writes through `GeneratedFileWriter`.**
+  `WritePathGateTest` scans the generator modules and the Maven plugin and fails on any other way of
+  writing a file, so a new generator cannot skip the hash manifest or the unchanged-bytes check.
+- **Java and Kotlin: `mvn metaobjects:eject -Dforce=true` no longer rewrites an identical copy.** An
+  owned generator, template, support or runtime file, or the `codegen/pom.xml`, that already holds
+  exactly the reference content is left alone and reported as identical, with or without `force`.
+  The codegen fingerprint, `metaobjects:fmt` and `metaobjects:init` also compare before they write.
+
 - **C#: a `@sequenceStart` whose migrations project lacks the design-time services line is a generation
   error.** When `dotnet meta gen` can see the context's `ModelSnapshot.cs` in another project and that
   project does not carry `[assembly: DesignTimeServicesReference]`, the next `dotnet ef migrations add`

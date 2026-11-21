@@ -54,10 +54,9 @@ import java.util.regex.Pattern;
  * {@code mvn metaobjects:generate}, where failing the reactor over a file the user chose
  * to own would punish exactly the person the guard is protecting.
  *
- * <p><b>WHAT THIS GUARD MUST NOT WRAP.</b> It only fits output whose header <i>we</i>
- * control, because "no marker ⇒ not ours" is sound only when our own emitters always
- * write the marker. These write paths deliberately bypass it, and re-routing them would
- * break them silently rather than loudly:
+ * <p><b>Output that cannot carry the marker.</b> "No marker ⇒ not ours" is sound only for
+ * output whose header <i>we</i> control. Some output has no room for one, and goes through
+ * {@link #writeUnmarked} instead of {@link #write}:
  *
  * <ul>
  *   <li>The {@code api-docs} generators' pages — rendered from {@code templates/api/*.mustache},
@@ -66,14 +65,21 @@ import java.util.regex.Pattern;
  *       renders (SQL, markdown, CSV); the content is not ours to require a marker of.</li>
  *   <li>{@code MustacheTemplateGenerator} — same reason: the body comes from a user-supplied
  *       mustache template, in an output format we do not choose.</li>
+ *   <li>The HTML, JSON and PlantUML documentation generators.</li>
  *   <li>{@code JavaObjectCodeGenerator}'s {@code META-INF/services} registration — the file's
  *       entire content is a bare provider FQN, with nowhere to put a marker.</li>
  * </ul>
  *
- * <p>Guarding any of these made the FIRST run write and every run after refuse, so the artifact
- * froze while the build stayed green — the exact silent-staleness failure this class was
- * added to prevent, produced by the class itself. Before wrapping a new write site, check
- * that its emitter actually writes the marker.
+ * <p>Routing these through {@link #write} would make the FIRST run write and every run after
+ * refuse, so the artifact froze while the build stayed green. {@link #writeUnmarked} records them
+ * in the hash manifest like every other generated file, so a hand edit to one is refused by name
+ * as it is in the other ports, but an existing file it has no record of is taken as this
+ * toolchain's output (the path has only ever been written by it) rather than refused for lacking
+ * a marker it could never have carried.
+ *
+ * <p>Every generator writes through this class. {@code WritePathGateTest} fails the build when
+ * generator source writes a file any other way, so a new generator cannot skip the manifest or
+ * the unchanged-bytes check.
  */
 public final class GeneratedFileWriter {
 
@@ -394,19 +400,40 @@ public final class GeneratedFileWriter {
      * with a generic one.
      */
     public static Outcome write(Path outFile, String content) throws IOException {
+        return write(outFile, content, false);
+    }
+
+    /**
+     * {@link #write} for output that cannot carry the {@code GENERATED} marker (template output,
+     * documentation pages, a {@code META-INF/services} file; see the class comment). The one
+     * difference: a file at this path that the manifest has no record of, or any file when no
+     * manifest is configured, is taken as this toolchain's output instead of refused for lacking
+     * the marker. Once recorded, it is guarded like every other generated file: unchanged bytes
+     * are not rewritten and a hand edit is refused under {@code handEdits=keep}.
+     */
+    public static Outcome writeUnmarked(Path outFile, String content) throws IOException {
+        return write(outFile, content, true);
+    }
+
+    /** {@link #writeUnmarked(Path, String)} for UTF-8 bytes already encoded. */
+    public static Outcome writeUnmarked(Path outFile, byte[] utf8) throws IOException {
+        return write(outFile, new String(utf8, StandardCharsets.UTF_8), true);
+    }
+
+    private static Outcome write(Path outFile, String content, boolean unmarked) throws IOException {
         Run run = ACTIVE_RUN.get();
         if (run != null) {
             run.emittedPaths.add(outFile.toAbsolutePath().normalize());
         }
 
         if (run == null || run.genStateDir == null) {
-            return writeMarkerOnly(outFile, content, run);
+            return writeMarkerOnly(outFile, content, run, unmarked);
         }
 
         String key = OrphanSweep.keyFor(run.projectRoot, outFile);
         if (key == null) {
             run.untrackedCount++;
-            return writeMarkerOnly(outFile, content, run);
+            return writeMarkerOnly(outFile, content, run, unmarked);
         }
 
         if (!Files.exists(outFile)) {
@@ -423,8 +450,10 @@ public final class GeneratedFileWriter {
             // output, from before a manifest existed (or before this generator's entry did)
             // — adopt it. No marker ⇒ hand-written, refused exactly as always; `handEdits`
             // never applies here, because a file never recorded as ours is not ours to
-            // replace under any policy.
-            if (looksGenerated(current)) {
+            // replace under any policy. Unmarked output has no marker to look for: its path
+            // was only ever written by this toolchain, unconditionally before it joined the
+            // manifest, so it is adopted.
+            if (unmarked || looksGenerated(current)) {
                 performWrite(outFile, content, run);
                 run.record(key, HashManifest.contentHash(content));
                 run.adoptedPaths.add(outFile.toString());
@@ -467,14 +496,15 @@ public final class GeneratedFileWriter {
     }
 
     /** The legacy, manifest-less decision: overwrite a marker-bearing file, refuse any other. */
-    private static Outcome writeMarkerOnly(Path outFile, String content, Run run) throws IOException {
+    private static Outcome writeMarkerOnly(Path outFile, String content, Run run, boolean unmarked)
+            throws IOException {
         // The marker question comes FIRST, and a refusal returns before anything is
         // claimed. A path the adopter hand-owns is a path NO generator can write, so two
         // generators emitting different content there is not an order-dependent output —
         // there is no output. Claiming first threw a GeneratorException and killed the
         // build over a conflict that could not reach disk, contradicting this class's own
         // rule that refusing is a WARNING and never a build failure.
-        if (Files.exists(outFile)
+        if (!unmarked && Files.exists(outFile)
             && !looksGenerated(Files.readString(outFile, StandardCharsets.UTF_8))) {
             LOG.warn(refusedMessage(outFile));
             if (run != null) run.refusedCount++;

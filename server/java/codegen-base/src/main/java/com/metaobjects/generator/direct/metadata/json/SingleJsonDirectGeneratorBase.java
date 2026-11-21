@@ -27,7 +27,6 @@ public abstract class SingleJsonDirectGeneratorBase extends DirectGeneratorBase 
         try {
             // Create output file
             outf = new File(getOutputDir(), getOutputFilename());
-            outf.createNewFile();
 
             // Create the JSON Writer
             fos = buffer;   // written below, and only when the bytes differ from what is on disk
@@ -46,7 +45,7 @@ public abstract class SingleJsonDirectGeneratorBase extends DirectGeneratorBase 
                 // NOTE: This is critical as the close flushes the JSON to the outputstream
                 if (writer != null) writer.close();
                 else if (fos != null) fos.close();
-                if (outf != null && fos != null) com.metaobjects.generator.util.GeneratedFileWriter.writeIfChanged(outf.toPath(), buffer.toByteArray());
+                if (outf != null && fos != null) com.metaobjects.generator.util.GeneratedFileWriter.writeUnmarked(outf.toPath(), buffer.toByteArray());
             } catch (IOException e) {
                 log.error("Error closing JSON file [" + outf + "]: " + e, e);
             }

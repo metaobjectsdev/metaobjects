@@ -104,8 +104,7 @@ public class InitMojo extends AbstractMojo {
                 kept.add(f[0]);
                 continue;
             }
-            Files.createDirectories(path.getParent());
-            Files.writeString(path, f[1], StandardCharsets.UTF_8);
+            com.metaobjects.generator.util.GeneratedFileWriter.writeIfChanged(path, f[1]);
             wrote.add(f[0]);
         }
         return new Result(wrote, kept);
