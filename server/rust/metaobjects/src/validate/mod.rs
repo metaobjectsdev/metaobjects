@@ -38,6 +38,24 @@ pub struct Ctx<'a> {
     pub naming: NamingCtx<'a>,
 }
 
+/// The part of [`Ctx`] that reading a loaded model needs: its tree and its objects by key.
+/// The `verify` rules gate runs after the load, when no registry is at hand, and reads
+/// through this.
+#[derive(Clone, Copy)]
+pub struct Env<'a> {
+    pub tree: &'a Tree,
+    pub objects: &'a util::ObjectIndex,
+}
+
+impl<'a> Ctx<'a> {
+    pub fn env(&self) -> Env<'a> {
+        Env {
+            tree: self.tree,
+            objects: self.objects,
+        }
+    }
+}
+
 /// What a pass writes. Errors and warnings are separate channels, as in every port.
 #[derive(Debug, Default)]
 pub struct Findings {

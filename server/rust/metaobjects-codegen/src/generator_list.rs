@@ -1,0 +1,195 @@
+//! The project's generator list: which generators `cargo meta gen` and `verify` run.
+//!
+//! A project chooses its generators in `metaobjects.config.json` at the project root, the way
+//! `metaobjects.config.ts`, `codegen/Generators.cs`, the pom and `metaobjects.config.yaml` do in
+//! the other ports, so changing the list never needs an eject:
+//!
+//! ```json
+//! { "generators": ["entity", "client", "commands"] }
+//! ```
+//!
+//! The list names generators; it takes no options and carries no layer or set settings, because
+//! a layer is only a generator. A project with no such file runs every generator its host
+//! offers, which is what a project did before the file existed. A list may leave a generator
+//! out; generated files of a generator that left the list are swept like those of any
+//! generator that stops emitting them (an edited one is refused by name).
+//!
+//! The file is the tool's own, not the shared `.metaobjects/config.json`: that file's keys are
+//! one contract across six ports, and a generator list is each port's own way of choosing.
+
+use std::path::Path;
+
+use crate::eject;
+
+/// The file that holds the list, from the project root.
+pub const GENERATOR_LIST_FILE: &str = "metaobjects.config.json";
+
+/// The one key the file takes.
+const KEY: &str = "generators";
+
+/// The list the project wrote, in the order it wrote it, or `None` when the project has no
+/// such file. Anything wrong with the file is an error naming the file and what to change.
+pub fn read(project_root: &Path) -> Result<Option<Vec<String>>, String> {
+    let path = project_root.join(GENERATOR_LIST_FILE);
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(format!("reading {GENERATOR_LIST_FILE}: {e}")),
+    };
+    parse(&text).map(Some)
+}
+
+/// The list in `text`, the contents of [`GENERATOR_LIST_FILE`].
+pub fn parse(text: &str) -> Result<Vec<String>, String> {
+    let value: serde_json::Value = serde_json::from_str(text)
+        .map_err(|e| format!("{GENERATOR_LIST_FILE} is not valid JSON: {e}"))?;
+    let Some(object) = value.as_object() else {
+        return Err(format!(
+            "{GENERATOR_LIST_FILE} must be an object with a \"{KEY}\" list, as written by `cargo meta init`"
+        ));
+    };
+    if let Some(unknown) = object.keys().find(|k| k.as_str() != KEY) {
+        return Err(format!(
+            "{GENERATOR_LIST_FILE} has an unknown key \"{unknown}\". The only key is \"{KEY}\": \
+             the generators to run, by name. Generators take no options here, and a layer is just a generator"
+        ));
+    }
+    let Some(list) = object.get(KEY).and_then(|v| v.as_array()) else {
+        return Err(format!(
+            "{GENERATOR_LIST_FILE} needs a \"{KEY}\" list of generator names, \
+             for example {}",
+            example()
+        ));
+    };
+    let mut names: Vec<String> = Vec::with_capacity(list.len());
+    for item in list {
+        let Some(name) = item.as_str() else {
+            return Err(format!(
+                "{GENERATOR_LIST_FILE}: every entry of \"{KEY}\" is a generator name (a string), got {item}"
+            ));
+        };
+        if names.iter().any(|n| n == name) {
+            return Err(format!(
+                "{GENERATOR_LIST_FILE}: \"{name}\" is listed twice; a generator runs once"
+            ));
+        }
+        names.push(name.to_string());
+    }
+    Ok(names)
+}
+
+/// Check a list against the generators a host offers: each name is one of them, and a shipped
+/// generator that builds on another has it in the list too.
+pub fn check(names: &[String], available: &[&str]) -> Result<(), String> {
+    if let Some(bad) = names.iter().find(|n| !available.contains(&n.as_str())) {
+        return Err(format!(
+            "{GENERATOR_LIST_FILE} lists the generator \"{bad}\", which is not available; \
+             available: {}. (`cargo meta gen --list` shows them)",
+            available.join(", ")
+        ));
+    }
+    for name in names {
+        let Some(shipped) = eject::reference(name) else {
+            continue;
+        };
+        if let Some(missing) = shipped
+            .needs
+            .iter()
+            .find(|n| !names.iter().any(|x| x == **n))
+        {
+            return Err(format!(
+                "{GENERATOR_LIST_FILE} lists \"{name}\" without \"{missing}\", which it builds on; \
+                 add \"{missing}\" to \"{KEY}\" or take \"{name}\" out"
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Every shipped generator's name, in the order a run applies them: the list `cargo meta init`
+/// writes.
+pub fn shipped_names() -> Vec<&'static str> {
+    eject::REFERENCES.iter().map(|r| r.name).collect()
+}
+
+fn example() -> String {
+    format!(
+        "{{ \"{KEY}\": [{}] }}",
+        shipped_names()
+            .iter()
+            .map(|n| format!("\"{n}\""))
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
+}
+
+/// The text `cargo meta init` writes: every shipped generator, so a new project generates what
+/// it always has and removes one by deleting a line.
+pub fn scaffold() -> String {
+    let items = shipped_names()
+        .iter()
+        .map(|n| format!("    \"{n}\""))
+        .collect::<Vec<_>>()
+        .join(",\n");
+    format!("{{\n  \"{KEY}\": [\n{items}\n  ]\n}}\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn s(list: &[&str]) -> Vec<String> {
+        list.iter().map(ToString::to_string).collect()
+    }
+
+    #[test]
+    fn the_scaffold_parses_and_names_every_shipped_generator_in_run_order() {
+        assert_eq!(
+            parse(&scaffold()).unwrap(),
+            s(&["entity", "client", "commands"])
+        );
+        assert!(check(&parse(&scaffold()).unwrap(), &shipped_names()).is_ok());
+    }
+
+    #[test]
+    fn a_file_that_is_not_a_list_of_names_is_refused_with_what_to_change() {
+        for (text, wants) in [
+            ("{", "not valid JSON"),
+            ("[]", "must be an object"),
+            ("{}", "needs a \"generators\" list"),
+            (
+                "{\"generators\": \"entity\"}",
+                "needs a \"generators\" list",
+            ),
+            ("{\"generators\": [1]}", "generator name (a string)"),
+            ("{\"generators\": [\"entity\", \"entity\"]}", "listed twice"),
+            (
+                "{\"generators\": [], \"layers\": {}}",
+                "unknown key \"layers\"",
+            ),
+        ] {
+            let e = parse(text).unwrap_err();
+            assert!(e.contains(wants), "{text}: {e}");
+            assert!(e.contains(GENERATOR_LIST_FILE), "{e}");
+        }
+        assert_eq!(parse("{\"generators\": []}").unwrap(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_name_nothing_offers_and_a_missing_dependency_are_refused() {
+        let available = shipped_names();
+        let e = check(&s(&["entity", "nope"]), &available).unwrap_err();
+        assert!(
+            e.contains("\"nope\"") && e.contains("available: entity, client, commands"),
+            "{e}"
+        );
+        let e = check(&s(&["client"]), &available).unwrap_err();
+        assert!(e.contains("\"client\" without \"entity\""), "{e}");
+        let e = check(&s(&["entity", "commands"]), &available).unwrap_err();
+        assert!(e.contains("\"commands\" without \"client\""), "{e}");
+        assert!(check(&s(&["entity", "client"]), &available).is_ok());
+        assert!(check(&s(&["entity"]), &available).is_ok());
+        // A project's own generator has no declared dependencies.
+        assert!(check(&s(&["mine"]), &["mine"]).is_ok());
+    }
+}

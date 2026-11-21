@@ -63,9 +63,10 @@ building block. Every generator is a reference helper an adopter selects, ejects
   (`docs/recipes/prisma.md`);
 - ship an AsyncAPI generator;
 - reach a consumer outside the five published ports (Go, Ruby, PHP, Swift…) directly. **Rust is a
-  sixth port in preview, unpublished** (`docs/ports/rust.md`): `cargo meta gen` runs the `entity`,
-  `client` and `commands` generators from a checkout of this repository, and there is no crate to
-  install, so a Rust estate can try it but cannot yet depend on it.
+  sixth port, a full language of 1.3.0, with its crates ready to publish but not yet published**
+  (`docs/ports/rust.md`): `cargo meta gen` runs the `entity`, `client` and `commands` generators from
+  a checkout of this repository, and there is no crate on crates.io yet, so a Rust estate works from
+  a checkout until the first release.
 
 **Each of those is a generator the project writes**, and that is the primary codegen path, not
 a workaround: a generator is a function from the loaded model to files, a few dozen lines, and

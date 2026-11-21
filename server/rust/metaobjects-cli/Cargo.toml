@@ -1,15 +1,19 @@
 [package]
 name = "metaobjects-cli"
-description = "The `cargo meta` command for MetaObjects on Rust (preview)."
+description = "The `cargo meta` command for MetaObjects on Rust: init, gen, verify and eject."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-# Not published yet. The crates.io name `cargo-meta` belongs to an unrelated crate, so this
-# package is `metaobjects-cli` and only its binary is called `cargo-meta`; that binary name
-# is what makes cargo's external-subcommand rule run it for `cargo meta ...`.
-publish = false
+homepage.workspace = true
+authors.workspace = true
+readme = "README.md"
+keywords = ["metadata", "codegen", "cargo", "cli", "schema"]
+categories = ["development-tools", "development-tools::cargo-plugins", "command-line-utilities"]
+# The crates.io name `cargo-meta` belongs to an unrelated crate, so this package is
+# `metaobjects-cli` and only its binary is called `cargo-meta`; that binary name is what makes
+# cargo's external-subcommand rule run it for `cargo meta ...`.
 
 [lib]
 name = "metaobjects_cli"

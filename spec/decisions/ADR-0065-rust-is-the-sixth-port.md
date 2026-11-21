@@ -3,10 +3,13 @@
 ## Status
 
 **Accepted** (2026-11-19). Registers no vocabulary: `metamodelVersion` is unchanged. Adds a sixth
-language port under `server/rust/`, in preview, and a `rust` CI lane. Amends nothing.
+language port under `server/rust/` and a `rust` CI lane. Amends nothing.
 **Amendment 1** (2026-11-19) records the command line, the shape of the generated crates and the
 `client` and `commands` generators. **Amendment 2** (2026-11-20) records the vendored copies of
-repository data the crate builds from.
+repository data the crate builds from. **Amendment 3** (2026-11-20) makes the crates publishable,
+puts the generator list in the project's hands, and stops `eject` writing a machine's path;
+it supersedes Decision 4 and Owner ruling 3. **Amendment 4** (2026-11-21) retires the "in preview"
+label.
 
 ## Context
 
@@ -22,8 +25,8 @@ five".
 
 ## Decision
 
-1. **Rust is a full port, built in phases, and it is in preview until it leaves preview by
-   decision.** It ships the same core as the others (ADR-0034 Amendment 3): the metamodel,
+1. **Rust is a full port, built in phases, and it is a full language of 1.3.0
+   (Amendment 4).** It ships the same core as the others (ADR-0034 Amendment 3): the metamodel,
    loader, canonical serializer and registry, then runtime metadata access, `verify`, prompt
    render and the reply parser. Its generators are reference helpers like every other port's,
    and it can eject them. The first slice is the loader core, gated by `registry-conformance`
@@ -39,21 +42,21 @@ five".
    other build-tool-hosted ports spell theirs (`dotnet meta`, `mvn metaobjects:...`). A bare `meta`
    stays the Node schema CLI's.
 
-4. **Preview, on a 0.x line, unpublished.** The crates are `publish = false` and nothing goes to
-   crates.io until the port leaves preview. When it publishes, it starts on its own `0.x` line
-   rather than joining the lockstep npm/Maven/PyPI/NuGet numbers, the way the source-only Angular
-   packages keep their own line (ADR-0048). It joins the convergent-publishing rule
-   (ADR-0035 Amendment 1) when it leaves preview.
+4. **Publishable crates on the shared version line.** *(Rewritten by Amendment 3; the first
+   version of this decision kept the port unpublished, on its own `0.x` line.)* The three crates
+   carry the packaging metadata crates.io needs, and the lane proves they package. Publishing is a
+   separate step that waits for the owner's go, and joins the convergent-publishing rule
+   (ADR-0035 Amendment 1) as a fifth registry on the version line the other four share.
 
 5. **Conformance is the definition of done, and gaps are ledgered, not hidden.** The metamodel
    runner keeps an expected-failures ledger in the format the other ports use. A fixture on the
    ledger that starts passing fails the run until it is removed, so the ledger can only shrink.
-   While the port is in preview, a fixture that is not on the ledger and fails in Rust prints a
+   Until the owner turns the warning off (Amendment 4), a fixture that is not on the ledger and fails in Rust prints a
    warning naming the fixture and the reason, and does not fail the run or the `rust` lane, so a
    new conformance fixture in a 1.3.0 PR never turns the lane red for a port that has not built
    that behavior yet. A regression is still a failure: the ledger records `minPassing`, the number
-   of fixtures known to pass, which may only rise, and the run fails when fewer pass. When the
-   preview label comes off, an unlisted failure fails the lane.
+   of fixtures known to pass, which may only rise, and the run fails when fewer pass. When the warning is turned
+   off, an unlisted failure fails the lane.
 
 6. **Deliberate differences from the other five.**
    - **No `migrate`.** Schema migrations are TypeScript-owned (ADR-0015), as in Java, C# and
@@ -133,8 +136,9 @@ so they are not re-derived.
 2. **No generator plugin contract for now.** Nothing discovers or loads a third-party generator.
    A project changes generation by owning a copy (ruling 5), and the engine's Rust API carries no
    stability promise while the port is in preview.
-3. **Rust stays preview and unpublished.** Decision 4 stands unchanged. `cargo meta` is installed
-   from a checkout (`cargo install --path`).
+3. **Rust stays unpublished until the owner says go.** *(Superseded by Amendment 3: the crates are
+   publishable, and nothing is published without that go.)* Until the first release,
+   `cargo meta` is installed from a checkout (`cargo install --path`).
 
 **The command line.**
 
@@ -176,8 +180,8 @@ so they are not re-derived.
    - *One crate per package with Cargo features for the client and the commands.* A crate is one
      compilation unit: a model change would rebuild the client and the commands with it, and a
      consumer of the model alone would carry `reqwest` and `clap` in its lockfile.
-   - *A published MetaObjects support crate.* Nothing is published (ruling 3), and generated model
-     code that imports MetaObjects would break the promise the other ports' entity tier keeps.
+   - *A published MetaObjects support crate.* Generated model code that imports MetaObjects would
+     break the promise the other ports' entity tier keeps, published or not.
    - *The support code copied into every model crate*, which is what the first slice did. Two
      crates would then each have their own `Decimal`, so a value could not cross a package
      boundary without a conversion.
@@ -255,3 +259,46 @@ cp spec/metamodel/<name>.json server/rust/metaobjects/data/metamodel/
 cp fixtures/conformance/ERROR-CODES.json server/rust/metaobjects/data/
 rsync -a --delete library/ server/rust/metaobjects/data/library/
 ```
+
+### Amendment 3 (2026-11-20) — publishable crates, the project's generator list, and the owned crate's engine
+
+Rust is a full language in 1.3.0, so the preview-era decisions that kept it unpublished and its
+generator list fixed are replaced. Three things change.
+
+1. **The crates are publishable.** `publish = false` is removed from `metaobjects`,
+   `metaobjects-codegen` and `metaobjects-cli`, and each carries a description, a README, the
+   licence text, keywords, categories, a homepage and authors. Decision 4 and Owner ruling 3 are
+   rewritten to say so. The `rust` lane runs `cargo publish --dry-run --workspace` (the
+   `gate_rust_publish_dry_run` step of `scripts/ci-local.sh`): it packages all three crates and
+   builds each from its package, so a change that would make publishing refuse them fails in
+   review. **Nothing is published.** Publishing, reserving a crate name and the renumbering of
+   the workspace onto the shared 1.3.0 line each wait for the owner's go; the one crates.io name
+   problem is unchanged (`cargo-meta` belongs to another crate, so the CLI package is
+   `metaobjects-cli` and its binary is `cargo-meta`).
+2. **The project chooses its generators in `metaobjects.config.json`** at the project root,
+   `{ "generators": ["entity", "client", "commands"] }`, the way the other ports choose theirs
+   (`metaobjects.config.ts`, `codegen/Generators.cs`, the pom, `metaobjects.config.yaml`). Changing
+   the list needs no eject. `cargo meta init` writes it with every shipped generator, and
+   `gen --list` shows each generator as configured or not. The file takes one key and no options:
+   a layer is only a generator, so there are no layer settings. A name nothing offers, a duplicate,
+   an unknown key, or a shipped generator listed without one it builds on (`client` without
+   `entity`) is a failed run that names the file. A generator that leaves the list has its files
+   swept like any generator that stops emitting them, and an edited one is refused by name.
+   `--generators` still narrows a single run, but only within the list. A project with no such file
+   runs every generator, as before. The file is the tool's own and not a key of the shared
+   `.metaobjects/config.json`, whose keys are one contract across six ports.
+3. **`eject` writes no machine's path.** The owned crate's `Cargo.toml` used to point at the
+   checkout the running binary was built in, which is a path on the build machine. It now names
+   the exact crates.io release (`metaobjects = "=<version>"`, because an owned copy is that
+   release's own source), and `--engine <directory | git-url[#rev]>` names a checkout or a git
+   revision when a project builds against one before a release exists. A relative directory is
+   relative to the project root.
+
+## Amendment 4: the preview label is retired (2026-11-21)
+
+Rust is a full language of 1.3.0, so the "in preview" label on the port is retired from Decision 1
+and from the docs. Two facts the label used to carry are stated here instead. The crates are ready to
+publish and are not published until the owner says go (Amendment 3). The conformance runner keeps its
+grace for new fixtures: a fixture that is not on the ledger and fails in Rust prints a warning and
+does not fail the `rust` lane, and that stays until the owner turns the warning off, at which point
+an unlisted failure fails the lane. Nothing in the runner changes.

@@ -1,4 +1,4 @@
-//! MetaObjects for Rust (preview).
+//! MetaObjects for Rust.
 //!
 //! The metamodel registry, the JSON and YAML loader, project and source
 //! resolution (the `.metaobjects/config.json` reader, the library sources),
@@ -18,6 +18,7 @@ pub mod node;
 pub mod parser;
 pub mod providers;
 pub mod registry;
+pub mod rules_check;
 pub mod serializer;
 pub mod source;
 pub mod sources;

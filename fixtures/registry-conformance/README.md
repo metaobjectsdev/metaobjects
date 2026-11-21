@@ -3,7 +3,7 @@
 A structural gate for the cross-language contract that **the metamodel subtype
 vocabularies must be identical across languages** (see CLAUDE.md →
 "Cross-language porting"). Each of the six ports (TypeScript, C#, Java, Kotlin,
-Python, and Rust in preview, ADR-0065) walks its own type registry and serializes the **logical metamodel
+Python, and Rust, ADR-0065) walks its own type registry and serializes the **logical metamodel
 vocabulary** as a canonical, fully-sorted, byte-stable JSON manifest. A
 conformance runner asserts that manifest is **byte-identical** to the single
 committed canonical, [`expected-registry.json`](./expected-registry.json).

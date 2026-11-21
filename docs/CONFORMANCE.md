@@ -70,10 +70,11 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/contract-conformance/`](../fixtures/contract-conformance/) (FR-022 — the `contract-schema` and `openapi` generators' golden trees and refusals) | 19 cases (14 trees + 5 errors) | ✓ (one neutral engine, ADR-0034 Amendment 10; the generated API lanes also hold real traffic to the documents) | — | — | — | — |
 | [`fixtures/explorer-conformance/`](../fixtures/explorer-conformance/) (the `explorer.json` data spine: `meta export --effective` + `meta verify --format json` + the generated-file manifest in, one explorer document out) | 1 case (`shop`) | ✓ (the builder is TypeScript, and reads only port-neutral inputs) | — | — | — | — |
 
-**Rust (preview, ADR-0065) is not a column yet.** The sixth port runs these corpora
+**Rust (ADR-0065) is not a column yet.** The sixth port runs these corpora
 today: `registry-conformance` (byte-identical manifest); the metamodel corpus, all 578
 green, with every validation pass the TypeScript loader runs, in the same order, so
 `server/rust/metaobjects/tests/conformance-expected-failures.json` is empty;
+`rules-check-conformance` (all 16 cases, the `verify` business-rules gate);
 `yaml-conformance`, 18 of 19 (the one on `yaml-conformance-expected-failures.json`,
 `yaml-ref-root-escape`, waits for the ADR-0059 root-level `::` reference rules, which are
 reference resolution, not a validation pass); `source-resolution-conformance` (all 28
@@ -86,11 +87,11 @@ crate carries; the `core` cases of `writer-conformance` (ADR-0063); and
 `generator-registry-conformance`, with the eject contract's census, completeness and depth
 (ADR-0034 Amendment 8). It also runs the codegen-compile gate (below) with every shipped
 generator, and a scale gate over twenty copies of the fitness model. The ledgers above may
-only shrink; the corpora without one assert each case outright. While the port is in
-preview, a new fixture that fails in Rust and is not on the ledger prints a warning and does
-not fail the lane; it becomes a hard failure when the port leaves preview. A regression
+only shrink; the corpora without one assert each case outright. A new
+fixture that fails in Rust and is not on the ledger prints a warning and does not fail the
+lane; it becomes a hard failure when ADR-0065 turns the warning off. A regression
 still fails: the ledger's `minPassing` (578) is the number of fixtures known to pass, and the
-run fails when fewer do. The column joins this table when the port leaves preview.
+run fails when fewer do. The column joins this table when the port runs the render, persistence and API-contract corpora.
 
 A ✓ means the port runs the corpus green; an explicit `n / m` is used where a port
 carries a ledgered divergence. The ledgered YAML fixtures are documented divergences (see the
@@ -247,7 +248,7 @@ Amendment 8). A gate, not a corpus: it has no fixtures of its own, and reads
   and emits what the packaged generator emits (depth). TypeScript:
   `cli/test/eject-contract.test.ts`. C#: `EjectContractTests`. Java: `EjectContractTest` in
   `maven-plugin`. Kotlin: `EjectContractTest` in `codegen-kotlin`. Python:
-  `tests/conformance/test_eject_contract.py`. Rust (preview) holds its three generators to
+  `tests/conformance/test_eject_contract.py`. Rust holds its three generators to
   the same assertions: census, completeness and the reference scan in
   `metaobjects-codegen/tests/generator_registry.rs`, and the ejected-alone build in
   `metaobjects-cli/tests/cli.rs`.
@@ -339,7 +340,7 @@ manifest contains without moving these boundaries.
   — Python having no static compiler — importing the generated package (which is what
   resolves the imports BETWEEN modules) plus `ruff` F821 for the branches importing
   never executes.
-- *Rust (preview) runs it too*, with `cargo check` and `rustfmt --check`, over every
+- *Rust runs it too*, with `cargo check` and `rustfmt --check`, over every
   generator it ships: it has no framework-bound route tier to exclude, and its generated
   client and commands are driven over HTTP against a local stub in the same test.
 - *Every port excludes its framework-bound route tier* — TS `routesFile`, C#
@@ -415,7 +416,7 @@ Per-port runners + commands:
 | Kotlin | `cd server/java && mvn -pl codegen-kotlin test` (snapshot suite) | `mvn -f server/java/integration-tests-kotlin/pom.xml test` (needs Docker) | `mvn -f server/java/integration-tests-kotlin/pom.xml test -Dtest=ApiContractConformanceTest` (needs Docker) |
 | C# | `dotnet test` (per project) | `scripts/integration-test.sh csharp` (needs Docker) | `dotnet test server/csharp/MetaObjects.IntegrationTests/MetaObjects.IntegrationTests.csproj --filter "FullyQualifiedName~ApiContractConformanceTest"` (needs Docker) |
 | Python | `pytest` (per package) | `scripts/integration-test.sh python` (needs Docker) | `cd server/python && uv run --extra integration pytest tests/integration/test_api_contract.py` (needs Docker) |
-| Rust (preview) | `cd server/rust && cargo test` (registry, metamodel, YAML, source-resolution, naming, skip, validation, wire-vector, writer and generator-registry corpora; the codegen-compile and scale gates, which run `cargo check` on generated crates and drive the generated client over HTTP against a local stub) | — | — |
+| Rust | `cd server/rust && cargo test` (registry, metamodel, YAML, source-resolution, naming, skip, validation, wire-vector, writer and generator-registry corpora; the codegen-compile and scale gates, which run `cargo check` on generated crates and drive the generated client over HTTP against a local stub) | — | — |
 
 The `persistence-conformance` corpus is intentionally **on-demand** — none of the
 unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
@@ -785,7 +786,8 @@ transition. The expectations are written from the TypeScript reference
 `server/typescript/packages/cli/test/rules-check-conformance.test.ts`,
 `server/csharp/MetaObjects.Conformance.Tests/RulesCheckConformanceTests.cs`,
 `server/java/metadata/src/test/java/com/metaobjects/conformance/RulesCheckConformanceTest.java`
-and `server/python/tests/conformance/test_rules_check_conformance.py`. Kotlin inherits the Java
+and `server/python/tests/conformance/test_rules_check_conformance.py` and
+`server/rust/metaobjects/tests/rules_check_conformance.rs`. Kotlin inherits the Java
 gate through the shared Maven goal.
 
 ### `fixtures/cube-model/` (46 cases)

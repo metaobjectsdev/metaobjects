@@ -21,8 +21,10 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use metaobjects::errors::MetaError;
+use metaobjects::rules_check::{RulesCheckResult, check_rules};
 use metaobjects::sources::{CONFIG_FILE, DEFAULT_METAOBJECTS_DIR};
 use metaobjects::timing::LoadTimings;
+use metaobjects::validate::util::ObjectIndex;
 
 use crate::fingerprint::{
     self, ABSENT, InputEntry, KIND_CONFIG, KIND_ENGINE, KIND_EXTRA, KIND_FLAG, KIND_GENERATOR,
@@ -32,6 +34,7 @@ use crate::fingerprint::{
 use crate::generator::{
     ERR_OUT_DIR, ERR_PATH_COLLISION, EmittedFile, GenContext, GenError, Generator,
 };
+use crate::generator_list;
 use crate::hashes::{HASHES_DIR, HashManifest, content_hash};
 use crate::project::{LoadedProject, load_project};
 use crate::sha256::sha256_hex;
@@ -199,6 +202,8 @@ pub enum RunError {
     /// Existing files are not what a previous run left (hand-edited, or unrecorded), so
     /// they were left alone. The rest of the run completed, and no skip key was stored.
     Refused(Refusal),
+    /// The project's generator list (`metaobjects.config.json`) is wrong.
+    GeneratorList(String),
     /// A file could not be read or written.
     Io(String),
 }
@@ -242,7 +247,7 @@ impl std::fmt::Display for RunError {
                 }
                 Ok(())
             }
-            RunError::Io(m) => write!(f, "{m}"),
+            RunError::GeneratorList(m) | RunError::Io(m) => write!(f, "{m}"),
         }
     }
 }
@@ -359,14 +364,36 @@ fn prepare<'g>(
 
     // plan
     let start = Instant::now();
-    let selected: Vec<&dyn Generator> = match &opts.generators {
-        None => generators.iter().map(AsRef::as_ref).collect(),
-        Some(names) => generators
-            .iter()
-            .map(AsRef::as_ref)
-            .filter(|g| names.iter().any(|n| n == g.name()))
-            .collect(),
-    };
+    // The project's own list narrows what the host offers; `--generators` narrows it again,
+    // but only within the list, so a flag never runs what the project left out.
+    let listed = generator_list::read(&project_root).map_err(RunError::GeneratorList)?;
+    if let Some(names) = &listed {
+        let available: Vec<&str> = generators.iter().map(|g| g.name()).collect();
+        generator_list::check(names, &available).map_err(RunError::GeneratorList)?;
+    }
+    if let (Some(listed), Some(flagged)) = (&listed, &opts.generators)
+        && let Some(out) = flagged.iter().find(|n| !listed.contains(n))
+    {
+        return Err(RunError::GeneratorList(format!(
+            "the generator {out} is not in the \"generators\" list of {}; the project runs: {}",
+            generator_list::GENERATOR_LIST_FILE,
+            listed.join(", ")
+        )));
+    }
+    let selected: Vec<&dyn Generator> = generators
+        .iter()
+        .map(AsRef::as_ref)
+        .filter(|g| {
+            listed
+                .as_ref()
+                .is_none_or(|l| l.iter().any(|n| n == g.name()))
+        })
+        .filter(|g| {
+            opts.generators
+                .as_ref()
+                .is_none_or(|names| names.iter().any(|n| n == g.name()))
+        })
+        .collect();
     let out_dir = normalize(&if opts.out_dir.is_absolute() {
         opts.out_dir.clone()
     } else {
@@ -685,11 +712,21 @@ pub struct VerifyReport {
     pub timings: LoadTimings,
     pub warnings: Vec<String>,
     pub project_root: PathBuf,
+    /// The business-rules gate (ADR-0066) over the loaded model. It does not depend on
+    /// generated files, so it is part of every `verify`, rendered or not.
+    pub rules: RulesCheckResult,
 }
 
 impl VerifyReport {
+    /// Whether the generated files match the model. The rules gate is separate: see
+    /// [`VerifyReport::rules_failed`].
     pub fn in_sync(&self) -> bool {
         self.drifted.is_empty() && self.missing.is_empty() && self.extra.is_empty()
+    }
+
+    /// Whether the rules gate has an error-severity finding (a warning never fails a run).
+    pub fn rules_failed(&self) -> bool {
+        self.rules.errors().next().is_some()
     }
 }
 
@@ -722,6 +759,7 @@ pub fn verify(
                 missing: Vec::new(),
                 extra: Vec::new(),
                 timings: p.timings,
+                rules: rules_of(&p.loaded),
                 warnings: p.warnings,
                 project_root: p.project_root,
             });
@@ -770,9 +808,22 @@ pub fn verify(
         missing,
         extra,
         timings: p.timings,
+        rules: rules_of(&p.loaded),
         warnings: p.warnings,
         project_root: p.project_root,
     })
+}
+
+/// The rules gate over a loaded project, under the project's own `rules.*` settings.
+fn rules_of(loaded: &LoadedProject) -> RulesCheckResult {
+    let result = &loaded.result;
+    let objects = ObjectIndex::build(&result.tree, result.root);
+    check_rules(
+        &result.tree,
+        result.root,
+        &objects,
+        &loaded.collection.config.rules,
+    )
 }
 
 /// Remove the now-empty directories above `path`, stopping at (and keeping) `stop`.

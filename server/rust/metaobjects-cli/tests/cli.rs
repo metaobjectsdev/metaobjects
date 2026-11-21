@@ -219,6 +219,7 @@ fn init_scaffolds_a_project_that_loads_and_never_overwrites() {
         ".metaobjects/config.json",
         ".metaobjects/.gitignore",
         "metaobjects/meta.app.yaml",
+        "metaobjects.config.json",
     ] {
         assert!(out.contains(&format!("wrote {rel}")), "{out}");
         assert!(p.exists(rel));
@@ -245,6 +246,111 @@ fn init_scaffolds_a_project_that_loads_and_never_overwrites() {
         p.read(".metaobjects/config.json"),
         "{ \"schema_version\": 1 }"
     );
+}
+
+#[test]
+fn init_writes_the_generator_list_and_gen_list_shows_it_against_what_is_available() {
+    let p = Project::empty("init-list");
+    ok(&p.run(&["meta", "init"]));
+    let list: serde_json::Value = serde_json::from_str(&p.read("metaobjects.config.json")).unwrap();
+    assert_eq!(
+        list["generators"],
+        serde_json::json!(["entity", "client", "commands"])
+    );
+    let out = ok(&p.run(&["meta", "gen", "--list"]));
+    assert!(
+        out.contains("metaobjects.config.json runs: entity, client, commands"),
+        "{out}"
+    );
+    assert_eq!(out.matches("[configured]").count(), 3, "{out}");
+    // An edited list is never overwritten by a second init.
+    p.write(
+        "metaobjects.config.json",
+        "{ \"generators\": [\"entity\"] }",
+    );
+    let out = ok(&p.run(&["meta", "init"]));
+    assert!(
+        out.contains("kept metaobjects.config.json (already exists)"),
+        "{out}"
+    );
+    let out = ok(&p.run(&["meta", "gen", "--list"]));
+    assert!(out.contains("runs: entity\n"), "{out}");
+    assert_eq!(out.matches("[not configured]").count(), 2, "{out}");
+}
+
+#[test]
+fn the_generator_list_changes_what_runs_without_an_eject() {
+    let p = Project::new("list-narrows");
+    ok(&p.run(&["meta", "gen"]));
+    let full = p.generated();
+    assert!(full.keys().any(|k| k.contains("shop_client/")), "{full:?}");
+    assert!(full.keys().any(|k| k.contains("shop_cli/")), "{full:?}");
+
+    // Leave `commands` out: its crates are swept, the rest is untouched.
+    p.write(
+        "metaobjects.config.json",
+        "{ \"generators\": [\"entity\", \"client\"] }",
+    );
+    ok(&p.run(&["meta", "gen"]));
+    let narrowed = p.generated();
+    assert!(
+        !narrowed.keys().any(|k| k.contains("shop_cli/")),
+        "{narrowed:?}"
+    );
+    assert!(narrowed.keys().any(|k| k.contains("shop_client/")));
+    ok(&p.run(&["meta", "verify", "--full"]));
+    assert!(!p.exists("codegen"), "no eject happened");
+
+    // `--generators` picks from the list, not past it.
+    let out = p.run(&["meta", "gen", "--generators", "commands"]);
+    assert_eq!(out.status.code(), Some(1));
+    let err = text(&out.stderr);
+    assert!(
+        err.contains("commands is not in the \"generators\" list"),
+        "{err}"
+    );
+
+    // Put it back and the crates come back.
+    p.write(
+        "metaobjects.config.json",
+        "{ \"generators\": [\"entity\", \"client\", \"commands\"] }",
+    );
+    ok(&p.run(&["meta", "gen"]));
+    assert_eq!(p.generated(), full);
+}
+
+#[test]
+fn a_generator_list_that_cannot_be_used_fails_by_name_and_writes_nothing() {
+    let p = Project::new("list-bad");
+    for (list, wants) in [
+        (
+            "{ \"generators\": [\"nope\"] }",
+            "\"nope\", which is not available",
+        ),
+        (
+            "{ \"generators\": [\"client\"] }",
+            "\"client\" without \"entity\"",
+        ),
+        (
+            "{ \"generators\": [\"entity\"], \"layers\": [] }",
+            "unknown key \"layers\"",
+        ),
+        ("{ \"generators\": ", "not valid JSON"),
+    ] {
+        p.write("metaobjects.config.json", list);
+        for args in [
+            vec!["meta", "gen"],
+            vec!["meta", "verify"],
+            vec!["meta", "gen", "--list"],
+        ] {
+            let out = p.run(&args);
+            assert_eq!(out.status.code(), Some(1), "{list} {args:?}");
+            let err = text(&out.stderr);
+            assert!(err.contains(wants), "{list}: {err}");
+            assert!(err.contains("metaobjects.config.json"), "{err}");
+        }
+        assert!(!p.exists("generated"), "nothing written for {list}");
+    }
 }
 
 #[test]
@@ -390,6 +496,72 @@ fn gen_list_names_the_generators_and_how_an_owned_copy_compares() {
     );
 }
 
+/// The manifest `eject` writes names no machine: not the checkout the binary was built in, and
+/// not the user's home. The default is the exact crates.io release; `--engine` is a choice.
+#[test]
+fn eject_writes_a_manifest_that_names_no_machine_and_takes_the_engine_by_flag() {
+    let built_in = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_string_lossy()
+        .replace('\\', "/");
+    let version = env!("CARGO_PKG_VERSION");
+
+    let p = Project::new("eject-engine-default");
+    let out = ok(&p.run(&["meta", "eject", "entity"]));
+    let manifest = p.read("codegen/Cargo.toml");
+    assert!(!manifest.contains(&built_in), "{manifest}");
+    assert!(!out.contains(&built_in), "{out}");
+    assert!(
+        !manifest
+            .lines()
+            .any(|l| !l.starts_with('#') && l.contains("{ path =")),
+        "{manifest}"
+    );
+    for name in ["metaobjects", "metaobjects-cli", "metaobjects-codegen"] {
+        assert!(
+            manifest.contains(&format!("{name} = \"={version}\"")),
+            "{name}: {manifest}"
+        );
+    }
+    assert!(
+        out.contains(&format!("the engine is crates.io, exactly {version}")),
+        "{out}"
+    );
+
+    // A checkout named relative to the project root is written relative to `codegen/`.
+    let p = Project::new("eject-engine-path");
+    ok(&p.run(&[
+        "meta",
+        "eject",
+        "entity",
+        "--engine",
+        "../checkout/server/rust",
+    ]));
+    let manifest = p.read("codegen/Cargo.toml");
+    assert!(
+        manifest.contains("metaobjects = { path = \"../../checkout/server/rust/metaobjects\" }"),
+        "{manifest}"
+    );
+    assert!(!manifest.contains(&built_in), "{manifest}");
+
+    // A git revision.
+    let p = Project::new("eject-engine-git");
+    ok(&p.run(&[
+        "meta",
+        "eject",
+        "entity",
+        "--engine=https://example.com/mo.git#abc123",
+    ]));
+    let manifest = p.read("codegen/Cargo.toml");
+    assert!(
+        manifest.contains(
+            "metaobjects-codegen = { git = \"https://example.com/mo.git\", rev = \"abc123\" }"
+        ),
+        "{manifest}"
+    );
+}
+
 #[test]
 fn eject_copies_the_generator_never_overwrites_and_undo_takes_back_only_identical_copies() {
     let p = Project::new("eject");
@@ -497,7 +669,9 @@ fn an_ejected_generator_builds_and_writes_what_the_shipped_one_writes() {
     // anything outside the engine, would not build here.
     let own = |name: &str| {
         let p = Project::new(&format!("owned-{name}"));
-        ok(&p.run(&["meta", "eject", name]));
+        // Nothing is on crates.io yet, so the scratch crate builds against this checkout.
+        let engine = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+        ok(&p.run(&["meta", "eject", name, "--engine", engine.to_str().unwrap()]));
         // The scratch crate resolves the versions the repository pins, without the network.
         std::fs::copy(
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../Cargo.lock"),
@@ -629,4 +803,69 @@ fn an_owned_crate_that_breaks_exits_1_and_its_own_answers_pass_through() {
         );
         assert_eq!(p.run(&["meta", "gen"]).status.code(), Some(code));
     }
+}
+
+/// An order with a lifecycle whose `archived` state nothing reaches.
+const LIFECYCLE_MODEL: &str = r#"{ "metadata.root": { "package": "shop", "children": [
+  { "object.entity": { "name": "Order", "children": [
+    { "source.rdb": { "@table": "orders" } },
+    { "field.long": { "name": "id" } },
+    { "identity.primary": { "name": "pk", "@fields": ["id"] } },
+    { "field.enum": { "name": "status", "@values": ["open", "closed", "archived"], "@default": "open",
+      "children": [
+        { "transition.action": { "name": "close", "@from": ["open"], "@to": "closed", "@public": true } }
+      ] } }
+  ] } }
+] } }"#;
+
+#[test]
+fn verify_runs_the_rules_gate_and_a_setting_decides_whether_a_finding_fails_it() {
+    // A model with no operation and no transition prints nothing about rules.
+    let p = Project::new("rules-silent");
+    p.run(&["meta", "gen"]);
+    let r = p.run(&["meta", "verify"]);
+    assert_eq!(r.status.code(), Some(0), "{}", text(&r.stderr));
+    assert!(!text(&r.stderr).contains("rules:"), "{}", text(&r.stderr));
+
+    // A lifecycle is summarised on every run, and an unreachable state is a warning by default.
+    let p = Project::new("rules");
+    std::fs::write(p.0.join("metaobjects/meta.shop.json"), LIFECYCLE_MODEL).unwrap();
+    ok(&p.run(&["meta", "gen"]));
+    let r = p.run(&["meta", "verify"]);
+    let err = text(&r.stderr);
+    assert_eq!(r.status.code(), Some(0), "a warning never fails: {err}");
+    assert!(
+        err.contains(
+            "cargo meta verify — rules: 0 operation(s), 1 lifecycle(s) with 1 transition(s)."
+        ),
+        "{err}"
+    );
+    assert!(
+        err.contains("WARN_LIFECYCLE_UNREACHABLE_STATE [shop::Order.status]: state \"archived\" of \"status\""),
+        "{err}"
+    );
+    assert!(!err.contains("error(s)"), "{err}");
+
+    // `verify.lifecycle.unreachable: error` turns the same finding into a failure.
+    std::fs::write(
+        p.0.join(".metaobjects/config.json"),
+        r#"{ "schema_version": 1, "verify": { "lifecycle": { "unreachable": "error" } } }"#,
+    )
+    .unwrap();
+    let r = p.run(&["meta", "verify"]);
+    let err = text(&r.stderr);
+    assert_eq!(r.status.code(), Some(1), "{err}");
+    assert!(
+        err.contains("cargo meta verify — rules: 1 error(s)."),
+        "{err}"
+    );
+
+    // `--codegen` is the generated-code gate alone: no rules lines, and a rules error does not fail it.
+    let r = p.run(&["meta", "verify", "--codegen"]);
+    let err = text(&r.stderr);
+    assert_eq!(r.status.code(), Some(0), "{err}");
+    assert!(
+        !err.contains("rules:") && !err.contains("WARN_LIFECYCLE"),
+        "{err}"
+    );
 }

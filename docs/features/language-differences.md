@@ -81,4 +81,4 @@ here changes in the same pull request.
 - [Migrations and drift](migrations-and-drift.md): the schema workflow every port uses.
 - The port pages: [TypeScript](../ports/typescript.md), [C#](../ports/csharp.md),
   [Java](../ports/java.md), [Kotlin](../ports/kotlin.md), [Python](../ports/python.md); the
-  Rust port is in preview and not in this comparison yet: [Rust](../ports/rust.md).
+  Rust port is not in this comparison yet: [Rust](../ports/rust.md).
