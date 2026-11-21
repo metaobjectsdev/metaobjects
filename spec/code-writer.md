@@ -1,7 +1,8 @@
 # The code writer contract
 
-Every port's generators write text through a code writer
-([ADR-0063](decisions/ADR-0063-generators-own-layout.md)). The generator says what a line
+Each port's generators write text through a code writer, as that port's writer lands
+([ADR-0063](decisions/ADR-0063-generators-own-layout.md)); [`docs/CONFORMANCE.md`](../docs/CONFORMANCE.md)
+records which ports have one. The generator says what a line
 contains, and the writer decides where it sits. This document is the contract the writers
 share. The cases in [`fixtures/writer-conformance/`](../fixtures/writer-conformance/) pin it.
 
