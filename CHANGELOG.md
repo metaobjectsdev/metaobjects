@@ -47,6 +47,16 @@ here.**
   exactly the reference content is left alone and reported as identical, with or without `force`.
   The codegen fingerprint, `metaobjects:fmt` and `metaobjects:init` also compare before they write.
 
+- **C#: a `rules-names` generator writes the business-rules names as constants (ADR-0067 layer 0).**
+  It is opt-in, like any generator: add `new RulesNamesGenerator()` to `codegen/Generators.cs`. For
+  each entity with a lifecycle it writes `<Entity>Rules.g.cs`, with each lifecycle's states, initial
+  and terminal states, transitions, and the permission each derived command asks for. For each
+  `api.operational` it writes `<Api>Operations.g.cs`, with each operation's name, permission and
+  `@errors` codes. It also writes `RuleErrorCodes.g.cs` once, with the shell's own codes. Permission
+  names are derived the way `verify` derives them, and `rules.lifecycle.commands` decides which
+  transitions get one. A model with no rules vocabulary gets no file. It is a layer generator, so the
+  flat generators' output is unchanged and the codegen-noop rules corpus still holds them. The shared
+  generator manifest gains the `rules-names` entry (C# only for now).
 - **C#: a `@sequenceStart` whose migrations project lacks the design-time services line is a generation
   error.** When `dotnet meta gen` can see the context's `ModelSnapshot.cs` in another project and that
   project does not carry `[assembly: DesignTimeServicesReference]`, the next `dotnet ef migrations add`

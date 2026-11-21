@@ -770,6 +770,36 @@ when the committed output was generated with another rule, rather than telling y
 regenerate. See the "Column naming" section of
 [`features/field-types.md`](../features/field-types.md).
 
+### `rules-names` — the business-rules names, as constants
+
+The `rules-names` generator (`RulesNamesGenerator`) is ADR-0067's layer 0 for the business-rules
+vocabulary ([business rules](../features/business-rules.md)). It writes nothing for a model that
+declares no lifecycle and no operation. For one that does, it writes:
+
+- `<Entity>Rules.g.cs` for each entity with a lifecycle. Each lifecycle field becomes a nested class
+  holding `Field`, `Initial` (the enum's `@default`), `TerminalStates` (the members no transition
+  leaves), `States`, `Transitions` and `Permissions`. `Permissions` maps each transition that
+  derives a command to the permission that command asks the policy about: its `@permission`, or the
+  derived `<package>.<Entity>.<transition>`. A `@public` transition, and one a declared command
+  claims, has none. `rules.lifecycle.commands` decides which transitions derive a command, and
+  `verify`'s rules gate uses the same derivation.
+- `<Api>Operations.g.cs` for each `api.operational`, with a nested class per operation holding
+  `Name`, `Permission` (absent when `@public`) and `Errors` (its `@errors` codes).
+- `RuleErrorCodes.g.cs`, once per run, with the codes the enforcing shell answers on its own
+  (`not_found`, `forbidden`, `invalid_transition`, `transition_condition_failed`, `state_managed`).
+
+```csharp
+if (!policy.Allows(user, PurchaseRequestRules.Status.Permissions.Submit)) return Results.Forbid();
+if (request.Status != PurchaseRequestRules.Status.States.Draft) return Conflict(RuleErrorCodes.InvalidTransition);
+```
+
+Every name is a `const string`, so it can stand in an attribute argument or a `switch` label, and
+hand code that uses one stops compiling when the model renames it. Two names that fold to one C#
+member (`in_review` and `inReview`) are refused, naming both. `Include` on the entry scopes it as
+it does any generator: an entity's file follows the entity, and an API's file follows its package.
+This is a layer generator, separate from the flat ones (ADR-0067 §5), so adding it changes no
+other generator's output.
+
 ### Report export
 
 A served report (a view-backed `object.report`) can be downloaded as a file:

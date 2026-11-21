@@ -261,6 +261,16 @@ public static class GeneratorRegistry
                 Factory = _ => new NamesGenerator(),
                 SourceFileName = "NamesGenerator.cs",
             },
+            // ADR-0067 layer 0, the business-rules half: a layer generator, separate from the flat ones.
+            ["rules-names"] = new()
+            {
+                Name = "rules-names",
+                Description = "Business-rules name constants: lifecycle states, transitions, permissions and error codes (ADR-0066).",
+                Tier = GeneratorTier.Native,
+                Layer = GeneratorLayer.Model,
+                Factory = _ => new RulesNamesGenerator(),
+                SourceFileName = "RulesNamesGenerator.cs",
+            },
             // The indexes the EF model cannot carry (an @expr key), as one SQL file to apply after the
             // schema EF builds. C#-only: meta migrate writes them into its own DDL.
             ["expression-indexes"] = new()

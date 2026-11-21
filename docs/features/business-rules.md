@@ -12,12 +12,14 @@ is needed, which moves are legal, and what a command may return, so all three ca
 **What 1.3.0 ships.** The vocabulary, checked when it loads and by `verify`, in all five ports.
 The Rust port loads the vocabulary and runs the same loader rules, and its `verify` runs the
 same rules gate, held to `fixtures/rules-check-conformance/` ([Rust port](../ports/rust.md)).
-A requirement can claim an operation or a transition. Nothing is generated from the vocabulary
-yet: the service shells that enforce these rules at run time are later work (ADR-0067): service
-generators an app adds to its generator list, as it adds any generator. A lifecycle in a project
+A requirement can claim an operation or a transition. The flat generators generate nothing from
+the vocabulary. The layer generators of ADR-0067 do, and an app adds them to its generator list as
+it adds any generator. The first is C#'s `rules-names`, which writes the states, transitions,
+permissions and error codes as constants ([C# port](../ports/csharp.md)). The service shells that
+enforce these rules at run time are later work. A lifecycle in a project
 that wires none will be advised by `verify` once that check lands; today the flat routes enforce
-nothing and `verify` says nothing about it. Until the shells land, a model with this vocabulary
-generates byte-identical code to the same model without it. The design is [ADR-0066](../../spec/decisions/ADR-0066-business-rules-operations-and-lifecycles.md).
+nothing and `verify` says nothing about it. Every flat generator writes byte-identical code for
+a model with this vocabulary and the same model without it. The design is [ADR-0066](../../spec/decisions/ADR-0066-business-rules-operations-and-lifecycles.md).
 
 **Experimental.** This vocabulary, its loader rules, its `verify` checks and its settings may
 change in a MINOR, including removals and renames, until generated services run on it in an

@@ -55,11 +55,17 @@ public static partial class ApiConstants
     public static readonly Regex BUSINESS_ERROR_CODE_PATTERN =
         new(@"^[a-z][a-z0-9]*(_[a-z0-9]+)*\z", RegexOptions.CultureInvariant);
 
+    /// <summary>The codes the enforcing shell answers on its own (ADR-0066 §6), in the order it checks them.
+    /// The rules-names generator writes them as constants.</summary>
+    public static readonly string[] SHELL_ERROR_CODES =
+        ["not_found", "forbidden", "invalid_transition", "transition_condition_failed", "state_managed"];
+
+    // Declared after SHELL_ERROR_CODES: static initializers run in textual order.
     /// <summary>Wire error codes an operation's route answers on its own, so a body may not declare them
     /// in @errors (O5): the enforcing shell's codes (ADR-0066) and the API contract's generic ones.</summary>
     public static readonly string[] RESERVED_ERROR_CODES =
     [
-        "not_found", "forbidden", "invalid_transition", "transition_condition_failed", "state_managed",
+        .. SHELL_ERROR_CODES,
         "validation", "invalid_json", "invalid_id", "method_not_allowed", "constraint_violation", "internal",
     ];
 }

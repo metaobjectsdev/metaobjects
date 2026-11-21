@@ -55,6 +55,7 @@
     <EmbeddedResource Include="Generators/RenderHelperGenerator.cs" />
     <EmbeddedResource Include="Generators/FilterAllowlistGenerator.cs" />
     <EmbeddedResource Include="Generators/NamesGenerator.cs" />
+    <EmbeddedResource Include="Generators/RulesNamesGenerator.cs" />
     <EmbeddedResource Include="Generators/CallableGenerator.cs" />
     <EmbeddedResource Include="Generators/RequirementTestsGenerator.cs" />
     <EmbeddedResource Include="Generators/SharedModelGenerator.cs" />
