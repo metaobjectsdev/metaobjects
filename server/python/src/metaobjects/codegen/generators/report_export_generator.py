@@ -226,7 +226,7 @@ class ReportExportGenerator:
             for f in report.fields()
             if not is_credential_field(f)  # #484: an export names no credential column
         ]
-        w.line("EXPORT_COLUMNS = ", group("(", cols, ")"))
+        w.line("EXPORT_COLUMNS = ", group("[", cols, "]"))
         w.gap()
         w.open("def export_csv(rows: Iterable[Mapping[str, Any]]) -> str:")
         w.line("return write_csv(EXPORT_COLUMNS, rows)")

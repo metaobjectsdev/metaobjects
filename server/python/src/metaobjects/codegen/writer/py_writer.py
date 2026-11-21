@@ -36,7 +36,7 @@ def call(fn: str, args: "list[object] | tuple[object, ...]") -> Group:
 
 
 def seq(items: "list[object] | tuple[object, ...]", open_: str = "[", close: str = "]") -> Group:
-    """A list literal ``[a, b]`` (pass ``("(", ")")`` for a tuple)."""
+    """A list literal ``[a, b]``. Do not use ``("(", ")")`` for a tuple: a flat one-item ``(x)`` is no tuple."""
     return group(open_, list(items), close)  # type: ignore[arg-type]
 
 
