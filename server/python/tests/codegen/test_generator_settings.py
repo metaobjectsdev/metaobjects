@@ -70,6 +70,35 @@ def test_the_config_reads_the_three_keys(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
+    "generators",
+    [
+        "- {name: names, packages: [acme::sales]}\n- {name: names, packages: [acme::hr]}",
+        "- names\n- {name: names, entities: [Order]}",
+        "- {name: names, options: {a: 1}}\n- names",
+        "- {name: names, handEdits: overwrite}\n- {name: names}",
+    ],
+)
+def test_a_generator_listed_twice_with_settings_is_refused(tmp_path: Path, generators: str) -> None:
+    cfg = tmp_path / "metaobjects.config.yaml"
+    cfg.write_text(
+        f"targets:\n  app:\n    outDir: gen\n    generators:\n{textwrap.indent(generators, '      ')}\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigError, match="'names' is listed twice"):
+        load_project_config(cfg)
+
+
+def test_a_generator_listed_twice_with_no_settings_is_allowed(tmp_path: Path) -> None:
+    cfg = tmp_path / "metaobjects.config.yaml"
+    cfg.write_text(
+        "targets:\n  app:\n    outDir: gen\n    generators:\n      - names\n      - names\n",
+        encoding="utf-8",
+    )
+    [target] = load_project_config(cfg).targets
+    assert target.generators == ["names", "names"]
+
+
+@pytest.mark.parametrize(
     ("entry", "fragment"),
     [
         ("packages: []", "'packages' must be a non-empty list"),

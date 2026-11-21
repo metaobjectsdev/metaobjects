@@ -117,6 +117,8 @@ class GeneratorOption:
                 or not all(isinstance(v, str) and v for v in value)
             ):
                 return None, "must be a list of non-empty strings"
+            if self.required and not value:
+                return None, "must list at least one name"
             return tuple(value), None
         if not isinstance(value, str) or not value:
             return None, "must be a non-empty string"
