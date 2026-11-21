@@ -21,8 +21,8 @@ skip them, so read the whole list before you regenerate.
   it ("Unrecognized key(s) in object: 'naming'"), but a 1.0.x C#, Java or Python tool ignores
   the unknown key without a word and keeps its old column names. A mixed estate therefore does
   not fail: the old port reads and writes columns named like the fields while the new ones use
-  `snake_case`. From 1.1.0 on, an unknown key there is a warning in TypeScript, so the next key
-  a release adds is not the same trap.
+  `snake_case`. From 1.1.0 on, an unknown key there is a warning in TypeScript, and from 1.3.0 on
+  in C#, so the next key a release adds is not the same trap.
 - **Mixed-version exports.** A 1.1 `meta export` file can hold a root-level reference written
   `::Name`, which 1.0.x refuses (`ERR_RELATIVE_REF_IN_CANONICAL`). Read 1.1 exports with 1.1
   tools.

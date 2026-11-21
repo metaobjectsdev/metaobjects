@@ -108,6 +108,12 @@ Drop metadata under `metaobjects/`, for example `metaobjects/meta.blog.json`:
 }}
 ```
 
+**Unknown top-level keys.** `dotnet meta` reads the top level of `.metaobjects/config.json` and
+ignores any key the C# port does not model. A key in no port's vocabulary warns on standard error,
+once per key, with the known keys, in TypeScript's words, and nothing fails: a newer MetaObjects may
+have written the key. A key inside a block C# owns (`csharp`, `naming`, `wire` and the rest) is
+refused as before.
+
 ### Building on a shared model (optional)
 
 A model published from another repository is declared under `dependencies` in
@@ -831,15 +837,18 @@ each writable entity (a concrete `object.entity` with a writable primary source)
   `<Entity>Create`). Every member is optional. Bind it with
   `<Entity>Update.From(body, options)`, which records the keys the body carried: `Has("note")` is
   true for `{"note": null}` and false for `{}`, so a PATCH can leave an omitted member alone and
-  clear an explicit null. `Validate` refuses null on a required member.
+  clear an explicit null. A body that is not a JSON object throws `JsonException`. `Validate`
+  refuses null on a required member. A field whose C# name is one of the record's own members
+  (`Fields`, `Present`, `Has`, `From`, `Validate`) is refused at generation, naming the entity and
+  the field; rename the field.
 
 Both records carry the entity's validation attributes (`[MaxLength]`, `[StringLength]`, `[Range]`,
 `[RegularExpression]`, `[EmailAddress]`, the array counts) and its wire converters (decimal,
 duration, strict uri/inet), written by `ContractMembers`, the one copy `EntityGenerator` writes its
 own from. A required string keeps its non-empty floor in both: on update it applies when the member
 is sent. Enum, value-object and map members name the entity's own types, so `entity` runs in the
-same project (`Requires: entity`). Bind with the application's JSON options; a generated server
-registers `JsonStringEnumConverter`, which an enum member needs.
+same project (`Requires: entity`). Bind with the application's JSON options; an enum member needs the
+`JsonStringEnumConverter` the application registers (see [Use](#use)).
 
 The lifecycle field stays on both records. The service shell checks a create against the initial
 state and refuses a change on the generic update with `409 state_managed` (ADR-0066 §6), so it has
