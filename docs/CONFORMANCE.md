@@ -1,6 +1,6 @@
 # Conformance coverage
 
-The MetaObjects standard ships **44 shared conformance corpora** under
+The MetaObjects standard ships **45 shared conformance corpora** under
 [`fixtures/`](../fixtures/). Every port runs every corpus that is *applicable to
 it* and asserts the same expected behaviour against the same fixtures. **This page
 is the inverse index**: fixture → feature doc + per-port pass status, and it is the
@@ -36,7 +36,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/extract-conformance/`](../fixtures/extract-conformance/) | 58 | ✓ | ✓ | inherits the shared JVM engine | ✓ | ✓ |
 | [`fixtures/output-prompt-conformance/`](../fixtures/output-prompt-conformance/) | 17 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 67 (55 query + 12 migration) | all 67; the 24 `report-*` and the `-15` decimal scenarios also on SQLite, MySQL and D1, `decimal-exact` also on MySQL (a scenario's `engines:` key is exact) | 55 query (migrations TS-only, ADR-0015); the `report-*` and `engines:` scenarios also on SQLite and MySQL | 55 query (via Exposed); the `report-*` and `engines:` scenarios also on SQLite and MySQL | 55 query; the `report-*` and `engines:` scenarios also on SQLite and MySQL | 55 query (pg8000); the `report-*` and `engines:` scenarios also on SQLite (`sqlite3`) and MySQL (PyMySQL) |
-| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 141 (34 core + 14 tph + 9 m2m + 6 jsonb + 2 write-through + 4 secret-fields + 2 enum-default + 12 projection + 37 report + 11 decimal + 2 duration + 8 api-settings) | ✓ (Fastify reference + generated lane); `report/`, `decimal/` and `duration/` also on SQLite, MySQL and D1 | ✓ (embedded HTTP + JDBC); `report/`, `decimal/` and `duration/` generated controllers over OMDB on Postgres, SQLite and MySQL | ✓ (embedded HTTP + Exposed); `report/`, `decimal/` and `duration/` also on SQLite and MySQL | ✓ (Kestrel + Npgsql); `report/`, `decimal/` and `duration/` also on SQLite and MySQL | ✓ (FastAPI + pg8000); `report/`, `decimal/` and `duration/` also on SQLite and MySQL |
+| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 161 (34 core + 14 tph + 9 m2m + 6 jsonb + 2 write-through + 4 secret-fields + 2 enum-default + 12 projection + 37 report + 11 decimal + 2 duration + 8 api-settings + 20 list-query) | ✓ (Fastify reference + generated lane); `report/`, `decimal/` and `duration/` also on SQLite, MySQL and D1; `list-query/` is TypeScript-only until each port's 1.3.0 REST-standard work | ✓ (embedded HTTP + JDBC); `report/`, `decimal/` and `duration/` generated controllers over OMDB on Postgres, SQLite and MySQL | ✓ (embedded HTTP + Exposed); `report/`, `decimal/` and `duration/` also on SQLite and MySQL | ✓ (Kestrel + Npgsql); `report/`, `decimal/` and `duration/` also on SQLite and MySQL | ✓ (FastAPI + pg8000); `report/`, `decimal/` and `duration/` also on SQLite and MySQL |
 | [`fixtures/decimal-wire/`](../fixtures/decimal-wire/) | 1 vector file (format, parse, filter operand, 15-digit read) | ✓ (`runtime-ts` and the generated helper) | ✓ (`CanonicalDecimal`) | ✓ (the generated wire file) | ✓ (`DecimalWire`) | ✓ (`decimal_wire`) |
 | [`fixtures/duration-wire/`](../fixtures/duration-wire/) | 1 vector file: the `wire` vectors (parse, precision, refused) every port passes, and the `codecs` groups (Postgres text read and write, stored microseconds) each port passes only for the codecs it has | ✓ (`metadata` / `runtime-ts` and the generated helper) | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/validation-conformance/`](../fixtures/validation-conformance/) | 42 cases + 43 cross-field cases (`cross-field-cases.json`, generated record model only) | ✓ (generated Zod + run-time `runValidators`) | ✓ | ✓ | ✓ | ✓ (generated Pydantic + run-time `run_validators`) |
@@ -52,6 +52,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/dependency-conformance/`](../fixtures/dependency-conformance/) | 47 cases (36 resolution, 7 of them with a ledger arm, + 11 check) + 32 transport cases | ✓ (reference implementation; all four arms) | ✓ (resolution arm, all 36, ledger included; check arm, all 11) | inherits via Java | ✓ (resolution arm, all 36, ledger included; check arm, all 11, as `verify --deps`) | ✓ (resolution arm, all 36 identically, ledger included; check arm, all 11, as `deps check` and `verify --deps`; the transport arm is Node-only) |
 | [`fixtures/shared-model-conformance/`](../fixtures/shared-model-conformance/) | 15 cases (9 publish + 6 refusal) | ✓ (reference implementation) | ✓ (all 15; `SharedModelConformanceTest`) | inherits via Java (`KotlinSharedModelGeneratorTest` pins the generator) | ✓ (all 15; `SharedModelConformanceTests`) | ✓ (all 15; `test_shared_model_conformance.py`) |
 | [`fixtures/agent-context-conformance/`](../fixtures/agent-context-conformance/) | 5 | ✓ (the emitter is TS-owned) | — | — | — | — |
+| [`fixtures/list-query-conformance/`](../fixtures/list-query-conformance/) (how a list route reads its query string: filter tree, search, sort, page, or the named 400) | 93 cases | ✓ (reference; the source of the expected answers) | planned (R-JV) | planned (R-KT) | planned (R-CS) | planned (R-PY) |
 | [`fixtures/docs-page-conformance/`](../fixtures/docs-page-conformance/) (the requirements pages and the model-only schema page: each page's data and bytes) | 4 cases | ✓ (reference; the source of the expected bytes) | planned | planned (through Java) | planned | planned |
 | [`fixtures/metamodel-docs/`](../fixtures/metamodel-docs/) | 1 | ✓ (docs emit is TS-owned) | — | — | — | — |
 | [`fixtures/fmt-conformance/`](../fixtures/fmt-conformance/) (#304 — `meta fmt`) | 13 | ✓ (reference) | ✓ | inherits via Java | ✓ | ✓ |
@@ -124,7 +125,8 @@ the contracts and the conformance kits that hold every port to them.
   `requirement-check-conformance/` (the requirement gate every port's `verify` runs; a
   drift gate is core, and it is not ejectable in any port),
   `rules-check-conformance/` (the business-rules gate every port's `verify` runs, ADR-0066) and
-  `codegen-skip-conformance/` (ADR-0064: which changes make `gen` render, and what a local `verify --codegen` may answer from the stored key), core for the same reason.
+  `codegen-skip-conformance/` (ADR-0064: which changes make `gen` render, and what a local `verify --codegen` may answer from the stored key), core for the same reason, and
+  `list-query-conformance/` (how a list route reads its query string: the REST wire contract, which is core like the reference-server lane below).
   A red cell here is a MetaObjects bug.
 - **Generator quality checks — a supported helper's tests, not a core promise.** The generated lane of
   `api-contract-conformance/`, `generator-registry-conformance/` (stable generator names),
@@ -515,9 +517,9 @@ REAL, a MySQL `DECIMAL` keeps its scale, a MySQL `DATETIME` is the UTC wall cloc
 `report-relative-date` carries a per-engine seed (`seed-data-engine`). `op: relate` and the
 write ops stay Postgres-only. See [features/reporting.md](features/reporting.md#what-the-corpus-gates).
 
-### `fixtures/api-contract-conformance/` (141)
+### `fixtures/api-contract-conformance/` (161)
 
-All 141 scenarios → [features/api-contract.md](features/api-contract.md) (cross-port
+All 161 scenarios → [features/api-contract.md](features/api-contract.md) (cross-port
 REST API URL grammar + JSON wire format). Verifies every backend's emitted CRUD
 routes answer identically over HTTP — list / get / create / patch+put / delete,
 plus pagination (`limit`/`offset`), sort (`sort=field:dir`), the `withCount=1`
@@ -530,7 +532,7 @@ and 2 error shapes (`invalid_filter_field` / `invalid_filter_op`) under the
 URL grammar `?filter[<field>][<op>]=<value>` (FR-009). On top of the 34 core
 scenarios (among them the write-input rules: server-owned keys dropped, an undeclared key
 refused under the default `api.unknownFields: reject`, and every validation issue listed)
-the corpus carries eleven sub-corpora — `tph/` (14, single-table
+the corpus carries twelve sub-corpora — `tph/` (14, single-table
 inheritance; a subtype decimal filters and refuses extra digits, and the input rules hold over
 the whole hierarchy), `m2m/` (9 — 3 plain, 5 gating TPH x M:N together, the combination
 each corpus alone could not reach, and 1 pinning the collection-URL spelling),
@@ -544,7 +546,7 @@ canonical string, read exactly, filtered exactly and refused past its declared d
 in a calendar or clock spelling, and filtered and sorted as a span on every engine), `api-settings/` (8,
 the project's `api` block: `api.pagination`'s default page, `limit_too_large` cap and refused
 negative `limit`, an empty page for `limit=0`, and
-`api.unknownFields: drop`) and `report/` (37,
+`api.unknownFields: drop`), `list-query/` (20, the REST standard's list handling against a real store: search ignores case and `like` does not, `filter[or]`/`filter[and]`, the nesting cap, bare fields, a leading `%`, value formats, paging past 50, and the `invalid_json`, `invalid_id`, `pagination.invalid_value` and `constraint_violation` refusals; generated lane, TypeScript only until each port's 1.3.0 REST-standard work) and `report/` (37,
 FR-044: a view-backed `object.report` is listed, filtered, sorted and paged on
 its derived fields, answers `POST` with 405 and mounts no `/{id}`; a `@spine` report keeps
 a row with no facts, and a measure with `@default` filters and sorts as its default). All 5 ports — TS, Java,
@@ -756,6 +758,21 @@ a port that disagrees with one is wrong. The case list, and what each pins, is i
 (Kotlin inherits it, through the shared Maven goal) and
 `server/csharp/MetaObjects.Conformance.Tests/RequirementCheckConformanceTests.cs`.
 
+### `fixtures/list-query-conformance/` (93 cases)
+
+All 93 cases → [features/api-contract.md](features/api-contract.md) ("The list query: search,
+combinators and refusals", and the bad-request responses). Each case is a raw query string, and
+what it pins is the answer a list route gives before any store is reached: the parsed query
+(a filter tree in neutral values, the search term and the fields it covers, the sort and the
+page) or the exact 400 body. With several faults in one query, it also pins which is reported
+first. The allowlist is not in the fixture: a runner derives it from `meta.json` the way its
+generator does, so a port that derives a different allowlist fails here. What a parsed query
+matches in a store is the `list-query/` sub-corpus of `api-contract-conformance/`.
+
+**Held to it:** `server/typescript/packages/integration-tests/test/list-query-conformance.test.ts`
+(the source of the expected answers). The other ports' runners arrive with their 1.3.0
+REST-standard work.
+
 ### `fixtures/docs-page-conformance/` (4 cases)
 
 All 4 cases → [features/requirements.md](features/requirements.md) (the documentation
@@ -841,9 +858,9 @@ JSON and verify payload feeds it unchanged.
 ## Orphaned fixtures (tested but not yet documented)
 
 The fixtures in the nine corpora mapped above (metamodel 578 + yaml 19 + verify 45
-+ render 21 + persistence 67 + api-contract 141 + source-resolution 28 + scope 10 +
++ render 21 + persistence 67 + api-contract 161 + source-resolution 28 + scope 10 +
 dependency 47) each map to a feature doc, and so do the two requirement corpora, `rules-check-conformance`, `shared-model-conformance`, the
-`cube-model` corpus and `explorer-conformance`, whose case lists live in their own READMEs. None are orphaned today. The remaining
+`cube-model` corpus, `explorer-conformance` and `list-query-conformance`, whose case lists live in their own READMEs. None are orphaned today. The remaining
 corpora in the totals table gate tooling contracts (registry manifests, provider
 composition, agent context, docs emit) rather than user-facing metamodel behaviour,
 so they have no feature-doc row.

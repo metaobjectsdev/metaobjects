@@ -25,7 +25,7 @@ export function tableTarget(entity: MetaData): TableTarget {
   return schema === undefined ? { table: resolveTableName(entity) } : { table: resolveTableName(entity), schema };
 }
 
-export type Filter = Record<string, FilterValue> | { $and: Filter[] };
+export type Filter = Record<string, FilterValue> | { $and: Filter[] } | { $or: Filter[] };
 
 export type FilterValue =
   | string | number | boolean | null
@@ -38,6 +38,8 @@ export type FilterValue =
       $lt?: string | number;
       $lte?: string | number;
       $like?: string;
+      /** Case-INSENSITIVE LIKE (`%`/`_` wildcards), as a REST list's `?search` matches. */
+      $ilike?: string;
       $in?: (string | number)[];
       $isNull?: boolean;
     };
@@ -113,6 +115,15 @@ export function compileFilter(
     if (clauses.length === 0) return null;
     return clauses.length === 1 ? clauses[0]! : { kind: "and", clauses };
   }
+  if ("$or" in filter && Array.isArray(filter.$or)) {
+    // An OR with no branch matches nothing, but `{ $or: [] }` reads as "no condition" the way
+    // `{ $and: [] }` does, so it is treated as one (null — match all) rather than as `false`.
+    const clauses = (filter.$or as Filter[])
+      .map((f) => compileFilter(entity, f, strategy, dialect))
+      .filter((c): c is WhereClause => c !== null);
+    if (clauses.length === 0) return null;
+    return clauses.length === 1 ? clauses[0]! : { kind: "or", clauses };
+  }
   const entries = Object.entries(filter);
   if (entries.length === 0) return null;
   if (entries.length === 1) {
@@ -162,6 +173,7 @@ function compileEntry(
   if ("$lt" in op && op.$lt !== undefined) return { kind: "lt", column, value: enc(op.$lt) };
   if ("$lte" in op && op.$lte !== undefined) return { kind: "lte", column, value: enc(op.$lte) };
   if ("$like" in op && op.$like !== undefined) return { kind: "like", column, pattern: op.$like };
+  if ("$ilike" in op && op.$ilike !== undefined) return { kind: "ilike", column, pattern: op.$ilike };
   if ("$in" in op && op.$in !== undefined) return { kind: "in", column, values: op.$in.map(enc) };
   if ("$isNull" in op && op.$isNull !== undefined) {
     return { kind: "isNull", column, not: !op.$isNull };

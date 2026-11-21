@@ -141,8 +141,8 @@ Filters use a **bracketed qs** shape: `filter[<field>][<op>]=<value>`.
 A bare value (`filter[<field>]=<value>`) is sugar for `eq`. Multiple
 filters AND together.
 
-> **`filter[or]` / `filter[and]` nesting is a TS-only extension**, not part of
-> the cross-port contract — see "TS-only filter extensions" below.
+> **`filter[or]` / `filter[and]` nesting, `?search` and the refusals that go with them are part
+> of the contract** since 1.3.0 — see "The list query: search, combinators and refusals" below.
 
 | Operator | Strings | Numbers / Dates | Booleans |
 |---|---|---|---|
@@ -167,37 +167,42 @@ SQLite/D1 (whose built-in LIKE folds ASCII case) the TS runtime lowers
 matching is deliberately NOT in the operator vocabulary (FR-009 §7 /
 ADR-0036 reserve `ilike` as a future additive operator, gated on real
 consumer demand); until then, normalize case in the data or the pattern —
-or use the TS-only `?search` extension, which IS case-insensitive.
+or use `?search`, which IS case-insensitive.
 
-### TS-only filter extensions (not part of the cross-port contract)
+### The list query: search, combinators and refusals
 
-The TypeScript runtime parser ships seven filter behaviors beyond the nine
-operators. They are **NOT part of the cross-port REST contract** — the other
-ports (Java, Kotlin, Python, C#) do not implement them, and a relying adopter
-must not assume them on a non-TS backend. They are deliberately deferred until
-real consumer demand (none touch the metamodel vocabulary, so any of them can be
-added cross-port later as a purely additive, non-breaking change):
+Until 1.3.0 these were TypeScript-only extensions. **They are now part of the contract**, with
+TypeScript's wire names unchanged. Two corpora hold every port to them:
 
-| Extension | What it does |
+- [`fixtures/list-query-conformance/`](../../fixtures/list-query-conformance/) — the parse.
+  A query string goes in, and a filter tree or the named 400 body comes out, with no server
+  and no database. It also pins the order faults are reported in.
+- [`fixtures/api-contract-conformance/list-query/`](../../fixtures/api-contract-conformance/list-query/)
+  — what a parsed query matches in a real store, over HTTP, in the generated lane: search
+  ignores case and `like` does not, plus or/and, the nesting cap, bare fields, paging past 50,
+  and the body, id and constraint refusals below.
+
+TypeScript passes both. Each other port takes them on in its 1.3.0 REST-standard work, and its
+runner holds it to them from then on; [`docs/CONFORMANCE.md`](../CONFORMANCE.md) says which ports
+run them today.
+
+| Behaviour | What it does |
 |---|---|
-| `?search=<term>` | ORs a case-INSENSITIVE substring match (`%term%`) across the entity's `@filterable` string fields — deliberately looser than the case-sensitive `like` operator (it is a human search box; ILIKE on Postgres, native LIKE on SQLite) |
-| `filter[or][N]` / `filter[and][N]` | boolean combinators (recursive nesting) |
-| leading-wildcard gating | a `like` pattern starting with `%` → HTTP 400 (`filter.leading_wildcard_disallowed`) |
-| filter nesting-depth cap | rejects deeply-nested `or`/`and` (tied to the combinators) |
+| `?search=<term>` | ORs a case-INSENSITIVE substring match (`%term%`) across the entity's `@filterable` text fields whose operator band includes `like`. That is plain strings and string-backed enums; it excludes a uuid or other formatted string and an int-backed enum, whose columns have no text match. It is deliberately looser than the case-sensitive `like` operator, because it is a human search box: ILIKE on Postgres, LIKE on SQLite, `LOWER() LIKE LOWER()` on MySQL. An empty `search` is no search. With `withCount`, the total counts the rows the search and filter match |
+| `filter[or][N]` / `filter[and][N]` | Boolean combinators, nesting recursively. Branches are taken in index order, not the order sent. A combinator with one branch is that branch. Conditions side by side (`filter[a][eq]=1&filter[or][0]…`) AND together. A branch that names no field (`filter[or][0]=x`) or an `or` that is not a list → `400 { "error": "invalid_filter_value", "field": "or" }` |
+| filter nesting-depth cap | Five levels of `or`/`and` are served; the sixth → `400 { "error": "filter.nesting_too_deep", "limit": 5 }`. A query-string parser has to be able to reach the cap: `qs`'s default depth of 5 keeps the sixth bracket pair as part of the key, so before 1.3.0 an over-deep TypeScript filter answered an unknown field named `[0][a][eq]` |
+| leading-wildcard gating | A `like` pattern starting with `%` → `400 { "error": "filter.leading_wildcard_disallowed", "field": "<field>" }` |
 | bare field parameter | `?priority=low` where `priority` is in the allowlist → HTTP 400 `{ "error": "filter.bare_field", "field": "priority", "expected": "filter[priority][eq]=low" }` instead of silently returning every row. A bare parameter named after a field of the entity that is NOT filterable (a column of the table or view the mount reads, off the allowlist) → HTTP 400 `{ "error": "filter.bare_field", "field": "kind", "filterable": false, "expected": "a filterable field — \"kind\" is not @filterable", "allowed": [<the filterable fields>] }` — declare `@filterable: true` on the field to filter by it. Any other unknown parameter (a cache-buster, a tracking tag) is still ignored, and the reserved list parameters (`filter`, `sort`, `limit`, `offset`, `search`, `withCount`) are never claimed |
-| filter-value format check | a comparison value (`eq`/`ne`/`gt`/`gte`/`lt`/`lte`, and every element of an `in` list) that cannot be the field's type → HTTP 400 `{ "error": "invalid_filter_value", "field": "publishedOn", "op": "gte", "expected": "date (YYYY-MM-DD)" }` instead of reaching SQL, where SQLite compared the text and silently returned `[]` and Postgres failed the cast. Checked per field: `field.date` (a real calendar day), `field.time` (`HH:MM[:SS[.fff]]`), `field.timestamp` (a date, optionally with a time and a `Z`/offset), `field.uuid` (`8-4-4-4-12` hex), `field.enum` (a declared member — the response adds `allowed`), numbers (an empty value is not `0`; on `field.int` / `field.long` / `field.currency` a fractional value such as `40.5` → `"expected": "integer (a whole number)"`) and booleans. A timestamp value whose offset arrived as a space — `…T00:00:00+00:00` sent unencoded, where `+` decodes to a space — adds `"hint"` saying to URL-encode the `+` as `%2B` or to use `Z`. A comparison value on a `field.timestamp` that is not `@localTime` is compared as an instant in the stored UTC spelling: a zoned value at its instant, a zoneless one read as UTC and a date alone as midnight UTC — the same rule the generated insert/update schemas store such a field by (`"2026-10-06"` is stored as `2026-10-06T00:00:00Z`: the canonical wire spelling, no fraction when it is zero; a value already spelled `YYYY-MM-DDTHH:MM:SS[.f]Z` is kept byte-for-byte), because SQLite and D1 compare the text; an `@localTime` value is kept as sent on both paths. The generated `<Entity>FilterAllowlist` carries the `format` / `enumValues` / `instant` / `integer` this needs; an allowlist generated before them still has a temporal value checked against all three temporal formats and an enum checked against the Drizzle column's own members. The envelope is the cross-port one; what is TS-only is refusing a malformed comparison value — the other ports pass it through to the database and only the `isNull` value is corpus-gated |
+| filter-value format check | a comparison value (`eq`/`ne`/`gt`/`gte`/`lt`/`lte`, and every element of an `in` list) that cannot be the field's type → HTTP 400 `{ "error": "invalid_filter_value", "field": "publishedOn", "op": "gte", "expected": "date (YYYY-MM-DD)" }` instead of reaching SQL, where SQLite compared the text and silently returned `[]` and Postgres failed the cast. Checked per field: `field.date` (a real calendar day), `field.time` (`HH:MM[:SS[.fff]]`), `field.timestamp` (a date, optionally with a time and a `Z`/offset), `field.uuid` (`8-4-4-4-12` hex), `field.enum` (a declared member — the response adds `allowed`), numbers (an empty value is not `0`; on `field.int` / `field.long` / `field.currency` a fractional value such as `40.5` → `"expected": "integer (a whole number)"`) and booleans. A timestamp value whose offset arrived as a space — `…T00:00:00+00:00` sent unencoded, where `+` decodes to a space — adds `"hint"` saying to URL-encode the `+` as `%2B` or to use `Z`. A comparison value on a `field.timestamp` that is not `@localTime` is compared as an instant in the stored UTC spelling: a zoned value at its instant, a zoneless one read as UTC and a date alone as midnight UTC — the same rule the generated insert/update schemas store such a field by (`"2026-10-06"` is stored as `2026-10-06T00:00:00Z`: the canonical wire spelling, no fraction when it is zero; a value already spelled `YYYY-MM-DDTHH:MM:SS[.f]Z` is kept byte-for-byte), because SQLite and D1 compare the text; an `@localTime` value is kept as sent on both paths. The generated `<Entity>FilterAllowlist` carries the `format` / `enumValues` / `instant` / `integer` this needs; an allowlist generated before them still has a temporal value checked against all three temporal formats and an enum checked against the Drizzle column's own members. Before 1.3.0 only TypeScript refused a malformed comparison value; the other ports passed it through to the database |
 
 **Leading-wildcard gating is fail-closed with no metadata opt-in.** The
-generated `<Entity>FilterAllowlist` hardcodes `leadingWildcard: false` on every
-field — an unanchored LIKE (`"%@example.com"`) cannot use a btree index, so the
-generated TS routes reject it by default. The runtime honors
-`leadingWildcard: true` per field, but codegen never emits it: to opt a field
-in, hand-edit that field's entry in the generated allowlist (hand edits inside
-generated files survive regeneration via the three-way merge). There is
-deliberately no `@`-attribute for this (ADR-0037/ADR-0023: the gate is a
-TS-only generated-code behavior, not cross-port metamodel semantics — the other
-ports accept leading wildcards, which is exactly why it is listed here as a
-TS-only extension).
+generated filter allowlist refuses a leading `%` on every field, because an unanchored LIKE
+(`"%@example.com"`) cannot use a btree index. The runtime honours a per-field opt-in
+(`leadingWildcard: true` in TypeScript's `<Entity>FilterAllowlist`), but codegen never emits
+it. To opt a field in, hand-edit that field's entry in the generated allowlist; hand edits
+inside generated files survive regeneration through the three-way merge. There is
+deliberately no `@`-attribute for this (ADR-0037/ADR-0023): it is a property of the generated
+route, not metamodel semantics.
 
 The **`in`-list size cap** (reject an `in` list longer than 100 → HTTP 400) is a
 safety limit, not a feature, and every port enforces it: TypeScript
@@ -205,26 +210,26 @@ safety limit, not a feature, and every port enforces it: TypeScript
 Java (`FilterParser.MAX_IN_LIST`), C# (`FilterParser.MaxInList`) and Kotlin (a generated
 file-private constant that matches the TypeScript default).
 
-### TS-only error responses (not part of the cross-port contract)
+### Error responses for a bad request or a failed write
 
-The TypeScript mount helpers (`@metaobjectsdev/runtime-ts/drizzle-fastify`,
-`/fastify` and `/hono`) pin five responses the contract leaves open — HTTP 5xx is
-implementation-defined below, and no corpus scenario sends a malformed body, a write the database rejects, a
-malformed page bound to an entity, or a value only the generated schema's format check refuses. All five use the contract's
-`{ "error": "<code>" }` envelope, and all five are scoped to the
-routes the helpers mount: an adopter's own routes, and a Fastify `setErrorHandler`
-or Hono `onError` the adopter installed, answer exactly as they did before.
+Before 1.3.0 these were TypeScript-only. They are now part of the contract, and
+`api-contract-conformance/list-query/` sends each one (`invalid-json`, `invalid-id`,
+`pagination-invalid-value`, `constraint-violation`). All of them use the contract's
+`{ "error": "<code>" }` envelope. In TypeScript they come from the mount helpers
+(`@metaobjectsdev/runtime-ts/drizzle-fastify`, `/fastify` and `/hono`) and apply only to the
+routes those helpers mount: an adopter's own routes, and a Fastify `setErrorHandler` or Hono
+`onError` the adopter installed, answer exactly as they did before.
 
 | Response | When |
 |---|---|
 | malformed JSON body | a `POST`/`PATCH`/`PUT` body that does not parse as JSON (an empty body sent as `application/json` included) → HTTP 400 `{ "error": "invalid_json" }`. An EMPTY body on a method that takes none (`GET`, `DELETE`, `HEAD`) is accepted even when the request declares `content-type: application/json`, as many clients do on every request; a non-empty `DELETE` body is still parsed. Before, Fastify answered its own `{ "statusCode": 400, "code": "FST_ERR_CTP_INVALID_JSON_BODY", … }` and Hono a Zod `validation` error about a missing object |
-| malformed id | a `:id` the key column cannot hold (a malformed uuid on a Postgres uuid key, a non-numeric id on an integer key, or numeric text that is not the canonical spelling of a number, such as `0x1` or `1e0`) → HTTP 400 `{ "error": "invalid_id" }` on GET, PATCH and DELETE. A malformed uuid in a POST or PATCH body's foreign key → HTTP 400 `{ "error": "validation" }`, from the insert/update schema's `8-4-4-4-12` hex check. Postgres used to answer 500 for both. The check is TS-only. The TypeScript, Java and Python ObjectManagers apply the numeric rule to a key passed as text to `findById`, `update`, `delete` and `load`: an optional `-` and ASCII digits with no leading zero (a decimal key may add `.` and digits), and no exponent, hex, plus sign, whitespace or negative zero, so the caller passes the decimal spelling. A string or uuid key is untouched |
-| malformed page bound | a `?limit=` or `?offset=` that is not a non-negative integer (`abc`, `-5`, `1.5`, an empty value) → HTTP 400 `{ "error": "pagination.invalid_value", "param": "limit", "value": "abc", "expected": "a non-negative integer (0 or more)" }`. Before, a non-numeric bound was dropped (every row came back) and a negative or fractional one reached SQL. An entity or a projection with declared columns has no page-size maximum unless the project sets `api.pagination` (see "A page size is a project setting" below, which answers `limit_too_large`); an opaque view (no declared columns, served by raw SQL) pages to at most 1000 rows, so there a `limit` above 1000 is refused too, with `"expected": "an integer from 0 to 1000"` (it used to be clamped silently). The same answer comes from the Drizzle mounts and the ObjectManager Fastify mount. The corpus sends a malformed bound only to a report (`report/bad-page-bound`), where every port answers this same envelope and also refuses `limit=0`; on an entity or a projection the other ports answer it as their framework does |
+| malformed id | a `:id` the key column cannot hold (a malformed uuid on a Postgres uuid key, a non-numeric id on an integer key, or numeric text that is not the canonical spelling of a number, such as `0x1` or `1e0`) → HTTP 400 `{ "error": "invalid_id" }` on GET, PATCH and DELETE. A malformed uuid in a POST or PATCH body's foreign key → HTTP 400 `{ "error": "validation" }`, from the insert/update schema's `8-4-4-4-12` hex check. Postgres used to answer 500 for both. The TypeScript, Java and Python ObjectManagers apply the numeric rule to a key passed as text to `findById`, `update`, `delete` and `load`: an optional `-` and ASCII digits with no leading zero (a decimal key may add `.` and digits), and no exponent, hex, plus sign, whitespace or negative zero, so the caller passes the decimal spelling. A string or uuid key is untouched |
+| malformed page bound | a `?limit=` or `?offset=` that is not a non-negative integer (`abc`, `-5`, `1.5`, an empty value) → HTTP 400 `{ "error": "pagination.invalid_value", "param": "limit", "value": "abc", "expected": "a non-negative integer (0 or more)" }`. Before, a non-numeric bound was dropped (every row came back) and a negative or fractional one reached SQL. An entity or a projection with declared columns has no page-size maximum unless the project sets `api.pagination` (see "A page size is a project setting" below, which answers `limit_too_large`); an opaque view (no declared columns, served by raw SQL) pages to at most 1000 rows, so there a `limit` above 1000 is refused too, with `"expected": "an integer from 0 to 1000"` (it used to be clamped silently). The same answer comes from the Drizzle mounts and the ObjectManager Fastify mount. The corpus pins it on an entity (`list-query/pagination-invalid-value`) and on a report (`report/bad-page-bound`, where `limit=0` is refused too) |
 | database constraint violation | a write the database itself rejects → `{ "error": "constraint_violation", "constraint": "<kind>" }`, HTTP **409** for `unique` and `foreign_key` (a conflict with another row) and HTTP **400** for `check` and `not_null` (the request's own value), per the status rule under "Error response". The body names the constraint KIND only — never the SQL, the table or the bound values. A `CHECK` the model derives (an enum, a `validator.numeric`/`length`/`regex` range) is normally refused earlier by the route's own validation, as the corpus's `{ "error": "validation" }` 400; this row is the database's backstop |
-| schema validation failure | a body that fails the insert/update schema → HTTP 400 `{ "error": "validation", "issues": [...] }`, each issue as Zod reports it **minus `pattern`**: Zod 4 attaches a failed `.regex()` check's source there, which for a generated `field.date` / `field.time` / `field.timestamp` check is a ~300-character calendar regex (and an authored `validator.regex` pattern is the server's to keep). The generated temporal checks carry a short `message` naming the expected format instead (`"must be an ISO date (YYYY-MM-DD)"`) |
-| unexpected server error | anything that is not a filter, validation, not-found or constraint answer — a query against a column the database no longer has, a driver failure → HTTP 500 `{ "error": "internal" }`, the code the cross-port reference servers already use. The body names no SQL, table, column or bound parameter; the full error goes to the server log (`console.error`). Before, Fastify's default handler echoed the driver message, which for Drizzle is the query text and its parameter values |
+| schema validation failure | a body that fails the insert/update schema → HTTP 400 `{ "error": "validation", "issues": [...] }` (see "A validation error lists every issue" below). In TypeScript each issue is as Zod reports it **minus `pattern`**: Zod 4 attaches a failed `.regex()` check's source there, which for a generated `field.date` / `field.time` / `field.timestamp` check is a ~300-character calendar regex (and an authored `validator.regex` pattern is the server's to keep). The generated temporal checks carry a short `message` naming the expected format instead (`"must be an ISO date (YYYY-MM-DD)"`) |
+| unexpected server error | anything that is not a filter, validation, not-found or constraint answer — a query against a column the database no longer has, a driver failure → HTTP 500 `{ "error": "internal" }`, the code the cross-port reference servers already use (the 5xx body is otherwise implementation-defined; see "Error response"). The body names no SQL, table, column or bound parameter; the full error goes to the server log (`console.error`). Before, Fastify's default handler echoed the driver message, which for Drizzle is the query text and its parameter values |
 
-How each framework scopes it: on Fastify, the helpers pass a **route-level**
+How each TypeScript framework scopes it: on Fastify, the helpers pass a **route-level**
 `errorHandler` in the options of each route they register (Fastify applies it to
 that route only). A deliberate 4xx raised on such a route — an auth `preHandler`'s
 401, schema validation, 413, 415 — is rethrown to the enclosing scope's handler
@@ -263,8 +268,8 @@ each handler they register instead; an `HTTPException` is rethrown to your
   sorts by its mapped integers. To sort by declared order, back the enum with
   an `@intValueMap` whose integers follow that order.
 - `limit=N` — page size.
-- `offset=N` — page offset. Both are non-negative integers; the TS mounts refuse
-  anything else with a 400 (see "TS-only error responses").
+- `offset=N` — page offset. Both are non-negative integers, and anything else is refused
+  with `400 pagination.invalid_value` (see "Error responses for a bad request or a failed write").
 - **A report is the exception: one cap in every port.** A served `object.report` list returns every
   row when `limit` is omitted, up to 10,000 (a generator option), and answers
   `400 { "error": "report_too_large", "maxRows": N }` for one row more, or for a `limit` above the cap.
@@ -533,9 +538,9 @@ Non-2xx responses MUST return:
 
 - HTTP 400 — validation and filter/sort-parser errors.
 - HTTP 404 — `{ "error": "not_found" }`.
-- HTTP 409 — a declared constraint conflicting with existing state (a uniqueness or referential violation); a constraint rejecting the request's own value — a `CHECK` or `NOT NULL` violation — stays a 400, because resending the same body can never succeed while a 409 can clear once the other row changes (the TS body is under "TS-only error responses").
+- HTTP 409 — a declared constraint conflicting with existing state (a uniqueness or referential violation); a constraint rejecting the request's own value — a `CHECK` or `NOT NULL` violation — stays a 400, because resending the same body can never succeed while a 409 can clear once the other row changes (the body is under "Error responses for a bad request or a failed write").
 - HTTP 5xx — implementation-defined (the TS mount helpers answer
-  `{ "error": "internal" }` and nothing more — see "TS-only error responses").
+  `{ "error": "internal" }` and nothing more — see "Error responses for a bad request or a failed write").
 
 #### A validation error lists every issue
 
@@ -563,7 +568,7 @@ one, in one shape in every port:
   know a code should treat it as `custom`.
 - `message` is the port's own wording and is not part of the contract.
 - A port may add keys to an issue (TypeScript keeps Zod's `minimum`, `maximum`, `origin` and so
-  on, minus `pattern`; see "TS-only error responses"), and a client must ignore keys it does not
+  on, minus `pattern`; see "Error responses for a bad request or a failed write"), and a client must ignore keys it does not
   know.
 
 Before 1.3.0 only TypeScript listed issues; the C#, Java, Kotlin and Python routes answered a
@@ -929,17 +934,10 @@ codegen status" above and "Verified by" below, and
 
 What's still genuinely open:
 
-- The seven **TS-only filter extensions** (`?search=`, `filter[or]` /
-  `filter[and]` nesting, leading-wildcard gating, the nesting-depth cap,
-  the `in`-list size cap, the bare filterable-field 400, and the
-  filter-value format check) — see "TS-only filter extensions" above.
-  None touch the metamodel vocabulary, so any of them can be promoted
-  cross-port later as a purely additive, non-breaking change if real
-  consumer demand shows up.
 - The `error` code vocabulary is not yet a hard cross-port invariant
-  beyond `not_found` and the filter-parser error codes.
+  beyond `not_found`, the list-query codes and the bad-request codes above.
 
-Neither item blocks adoption on any port today.
+It does not block adoption on any port today.
 
 ## Verified by
 

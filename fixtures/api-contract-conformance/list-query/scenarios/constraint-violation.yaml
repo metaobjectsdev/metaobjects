@@ -1,0 +1,20 @@
+name: constraint-violation
+description: >
+  A create that breaks the unique `sku` key is refused with
+  `409 {"error": "constraint_violation", "constraint": "unique"}`, and nothing about the SQL.
+requests:
+  - id: r1
+    method: POST
+    path: "/api/parts"
+    body: {"name": "Vise", "sku": "SKU-001", "category": "tool", "stock": 1}
+    expect:
+      status: 409
+      body:
+        equals: {"error": "constraint_violation", "constraint": "unique"}
+  - id: r2
+    method: GET
+    path: "/api/parts?filter[sku][eq]=SKU-001"
+    expect:
+      status: 200
+      body:
+        ids: [1]

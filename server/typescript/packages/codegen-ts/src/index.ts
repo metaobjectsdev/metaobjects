@@ -289,7 +289,10 @@ export {
 export { renderBarrel } from "./templates/barrel.js";
 export type { BarrelEntry } from "./templates/barrel.js";
 export { renderFilterType } from "./templates/filter-type.js";
-export { renderFilterAllowlist, renderSortAllowlist } from "./templates/filter-allowlist.js";
+export {
+  filterAllowlistRules, renderFilterAllowlist, renderSortAllowlist, sortAllowlistRules,
+  type FilterAllowlistRule, type SortAllowlistRule,
+} from "./templates/filter-allowlist.js";
 export { renderEntityConstants, renderValueObjectConstants, resourcePath } from "./templates/entity-constants.js";
 export { renderQueriesFile } from "./templates/queries-file.js";
 // #348 — which CRUD verbs a generated routes file mounts. Public because an OWNED

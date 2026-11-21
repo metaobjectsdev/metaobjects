@@ -1,0 +1,28 @@
+name: page-past-fifty
+description: >
+  A page of 51 rows is served whole, and the next page starts at row 52. The seed has 60 rows, so
+  this is a real page boundary and not the end of the table.
+requests:
+  - id: r1
+    method: GET
+    path: "/api/parts?limit=51&sort=id:asc"
+    expect:
+      status: 200
+      body:
+        length: 51
+  - id: r2
+    method: GET
+    path: "/api/parts?limit=5&offset=51&sort=id:asc"
+    expect:
+      status: 200
+      body:
+        ids: [52, 53, 54, 55, 56]
+  - id: r3
+    method: GET
+    path: "/api/parts?limit=0&withCount=1"
+    expect:
+      status: 200
+      body:
+        envelope: true
+        rowsLength: 0
+        total: 60

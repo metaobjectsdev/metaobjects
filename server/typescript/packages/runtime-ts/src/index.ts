@@ -53,3 +53,13 @@ export {
 
 // UI-1 — metadata API contract for the browser read-model.
 export { META_ROUTE_PATH, META_CONTENT_TYPE, metaJson } from "./meta-endpoint.js";
+
+// The REST standard's list handling, parsed into a port-neutral form before any query library
+// sees it (fixtures/list-query-conformance/): every mount and a hand-written transport share it.
+export {
+  parseListQuery, parseListQueryString, rawQueryOf, searchFields, likePatternToGlob,
+  DEFAULT_MAX_IN_LIST, DEFAULT_MAX_NESTING,
+  type FilterLeaf, type FilterNode, type FilterScalar, type ListQuery, type ListSearch, type ListSort, type ParseListQueryOpts,
+} from "./drizzle-fastify/list-query.js";
+export { FilterParseError, parsePageBound, pageLimit, type PageSize } from "./drizzle-fastify/list-params.js";
+export type { FilterAllowlist, FilterFieldRule, FilterSubType, FilterValueFormat, SortAllowlist, SortFieldRule } from "./drizzle-fastify/filter-allowlist.js";

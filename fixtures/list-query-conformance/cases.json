@@ -1,0 +1,1704 @@
+{
+  "cases": [
+    {
+      "group": "operators",
+      "name": "eq-text",
+      "query": "filter[title][eq]=Pump",
+      "why": "eq on a text field keeps the value as sent",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "title",
+            "op": "eq",
+            "value": "Pump"
+          }
+        }
+      }
+    },
+    {
+      "group": "operators",
+      "name": "eq-bare-value-sugar",
+      "query": "filter[title]=Pump",
+      "why": "a bare filter value is eq",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "title",
+            "op": "eq",
+            "value": "Pump"
+          }
+        }
+      }
+    },
+    {
+      "group": "operators",
+      "name": "ne-text",
+      "query": "filter[code][ne]=T-001",
+      "why": "ne on a text field",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "code",
+            "op": "ne",
+            "value": "T-001"
+          }
+        }
+      }
+    },
+    {
+      "group": "operators",
+      "name": "gt-integer",
+      "query": "filter[priority][gt]=2",
+      "why": "an integer operand is a JSON number",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "priority",
+            "op": "gt",
+            "value": 2
+          }
+        }
+      }
+    },
+    {
+      "group": "operators",
+      "name": "gte-double",
+      "query": "filter[score][gte]=1.5",
+      "why": "a double operand is a JSON number",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "score",
+            "op": "gte",
+            "value": 1.5
+          }
+        }
+      }
+    },
+    {
+      "group": "operators",
+      "name": "lt-date",
+      "query": "filter[dueOn][lt]=2026-03-01",
+      "why": "a date operand is kept as sent",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "dueOn",
+            "op": "lt",
+            "value": "2026-03-01"
+          }
+        }
+      }
+    },
+    {
+      "group": "operators",
+      "name": "lte-time",
+      "query": "filter[opensAt][lte]=09:30",
+      "why": "a time operand is kept as sent",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "opensAt",
+            "op": "lte",
+            "value": "09:30"
+          }
+        }
+      }
+    },
+    {
+      "group": "operators",
+      "name": "in-text",
+      "query": "filter[status][in]=open,closed",
+      "why": "in splits on commas",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "status",
+            "op": "in",
+            "value": [
+              "open",
+              "closed"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "group": "operators",
+      "name": "in-integers-trimmed",
+      "query": "filter[priority][in]=1,%202,3",
+      "why": "each in element is trimmed and typed",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "priority",
+            "op": "in",
+            "value": [
+              1,
+              2,
+              3
+            ]
+          }
+        }
+      }
+    },
+    {
+      "group": "operators",
+      "name": "like-trailing-wildcard",
+      "query": "filter[title][like]=Pu%25",
+      "why": "a like pattern is kept verbatim",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "title",
+            "op": "like",
+            "value": "Pu%"
+          }
+        }
+      }
+    },
+    {
+      "group": "operators",
+      "name": "like-underscore",
+      "query": "filter[code][like]=T-0_1",
+      "why": "_ is a wildcard and is kept",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "code",
+            "op": "like",
+            "value": "T-0_1"
+          }
+        }
+      }
+    },
+    {
+      "group": "operators",
+      "name": "isnull-true-filterable",
+      "query": "filter[ownerId][isNull]=true",
+      "why": "isNull true",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "ownerId",
+            "op": "isNull",
+            "value": true
+          }
+        }
+      }
+    },
+    {
+      "group": "operators",
+      "name": "isnull-false",
+      "query": "filter[ownerId][isNull]=false",
+      "why": "isNull false",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "ownerId",
+            "op": "isNull",
+            "value": false
+          }
+        }
+      }
+    },
+    {
+      "group": "operators",
+      "name": "isnull-one",
+      "query": "filter[dueOn][isNull]=1",
+      "why": "1 is true",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "dueOn",
+            "op": "isNull",
+            "value": true
+          }
+        }
+      }
+    },
+    {
+      "group": "operators",
+      "name": "boolean-true",
+      "query": "filter[active][eq]=true",
+      "why": "a boolean operand is a JSON boolean",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "active",
+            "op": "eq",
+            "value": true
+          }
+        }
+      }
+    },
+    {
+      "group": "operators",
+      "name": "boolean-zero",
+      "query": "filter[active][eq]=0",
+      "why": "0 is false",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "active",
+            "op": "eq",
+            "value": false
+          }
+        }
+      }
+    },
+    {
+      "group": "operators",
+      "name": "enum-member",
+      "query": "filter[status][eq]=pending",
+      "why": "an enum member",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "status",
+            "op": "eq",
+            "value": "pending"
+          }
+        }
+      }
+    },
+    {
+      "group": "operators",
+      "name": "int-enum-member",
+      "query": "filter[severity][in]=low,high",
+      "why": "an int-backed enum is filtered by member symbol",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "severity",
+            "op": "in",
+            "value": [
+              "low",
+              "high"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "group": "operators",
+      "name": "int-enum-no-like",
+      "query": "filter[severity][like]=lo%25",
+      "why": "an int-backed enum has no like",
+      "expect": {
+        "error": {
+          "error": "invalid_filter_op",
+          "field": "severity",
+          "op": "like",
+          "allowed": [
+            "eq",
+            "ne",
+            "in",
+            "isNull"
+          ]
+        }
+      }
+    },
+    {
+      "group": "operators",
+      "name": "currency-integer",
+      "query": "filter[feeCents][gte]=1500",
+      "why": "currency is integer minor units",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "feeCents",
+            "op": "gte",
+            "value": 1500
+          }
+        }
+      }
+    },
+    {
+      "group": "operators",
+      "name": "uuid",
+      "query": "filter[ownerId][eq]=6f1c2a9e-0b7d-4c3a-9e2f-1a2b3c4d5e6f",
+      "why": "a uuid operand is kept as sent",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "ownerId",
+            "op": "eq",
+            "value": "6f1c2a9e-0b7d-4c3a-9e2f-1a2b3c4d5e6f"
+          }
+        }
+      }
+    },
+    {
+      "group": "operators",
+      "name": "duration",
+      "query": "filter[timeSpent][gte]=PT1H30M",
+      "why": "a duration operand is kept as sent",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "timeSpent",
+            "op": "gte",
+            "value": "PT1H30M"
+          }
+        }
+      }
+    },
+    {
+      "group": "canonical-values",
+      "name": "decimal-canonical",
+      "query": "filter[amount][gt]=10.50",
+      "why": "a decimal operand is its canonical text, never a double",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "amount",
+            "op": "gt",
+            "value": "10.5"
+          }
+        }
+      }
+    },
+    {
+      "group": "canonical-values",
+      "name": "decimal-leading-zero",
+      "query": "filter[amount][gt]=010.5",
+      "why": "a leading zero is not the JSON-number grammar",
+      "expect": {
+        "error": {
+          "error": "invalid_filter_value",
+          "field": "amount",
+          "op": "gt",
+          "expected": "decimal number (digits, optional fraction, optional exponent)"
+        }
+      }
+    },
+    {
+      "group": "canonical-values",
+      "name": "decimal-exponent",
+      "query": "filter[amount][lte]=1.5e2",
+      "why": "the JSON-number grammar admits an exponent",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "amount",
+            "op": "lte",
+            "value": "150"
+          }
+        }
+      }
+    },
+    {
+      "group": "canonical-values",
+      "name": "timestamp-date-only-is-utc-midnight",
+      "query": "filter[createdAt][gte]=2026-10-06",
+      "why": "an instant read from a date is midnight UTC",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "createdAt",
+            "op": "gte",
+            "value": "2026-10-06T00:00:00Z"
+          }
+        }
+      }
+    },
+    {
+      "group": "canonical-values",
+      "name": "timestamp-zoneless-is-utc",
+      "query": "filter[createdAt][lt]=2026-10-06T08:00:00",
+      "why": "an instant with no zone is read as UTC",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "createdAt",
+            "op": "lt",
+            "value": "2026-10-06T08:00:00Z"
+          }
+        }
+      }
+    },
+    {
+      "group": "canonical-values",
+      "name": "timestamp-offset-to-utc",
+      "query": "filter[createdAt][lt]=2026-10-06T08:00:00%2B02:00",
+      "why": "a zoned instant is rewritten to UTC",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "createdAt",
+            "op": "lt",
+            "value": "2026-10-06T06:00:00Z"
+          }
+        }
+      }
+    },
+    {
+      "group": "canonical-values",
+      "name": "timestamp-local-kept",
+      "query": "filter[wallClock][gte]=2026-10-06T08:00:00",
+      "why": "a @localTime wall clock is kept as sent",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "wallClock",
+            "op": "gte",
+            "value": "2026-10-06T08:00:00"
+          }
+        }
+      }
+    },
+    {
+      "group": "canonical-values",
+      "name": "timestamp-local-offset-to-utc",
+      "query": "filter[wallClock][gte]=2026-10-06T08:00:00-05:00",
+      "why": "a zoned bound on a wall clock is still rewritten to UTC",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "wallClock",
+            "op": "gte",
+            "value": "2026-10-06T13:00:00Z"
+          }
+        }
+      }
+    },
+    {
+      "group": "combinators",
+      "name": "two-ops-one-field",
+      "query": "filter[priority][gte]=2&filter[priority][lte]=4",
+      "why": "two ops on one field AND together",
+      "expect": {
+        "list": {
+          "filter": {
+            "and": [
+              {
+                "field": "priority",
+                "op": "gte",
+                "value": 2
+              },
+              {
+                "field": "priority",
+                "op": "lte",
+                "value": 4
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "group": "combinators",
+      "name": "two-fields",
+      "query": "filter[status][eq]=open&filter[active][eq]=true",
+      "why": "two fields AND together, in the order sent",
+      "expect": {
+        "list": {
+          "filter": {
+            "and": [
+              {
+                "field": "status",
+                "op": "eq",
+                "value": "open"
+              },
+              {
+                "field": "active",
+                "op": "eq",
+                "value": true
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "group": "combinators",
+      "name": "or-two-branches",
+      "query": "filter[or][0][status][eq]=closed&filter[or][1][priority][eq]=5",
+      "why": "or of two branches",
+      "expect": {
+        "list": {
+          "filter": {
+            "or": [
+              {
+                "field": "status",
+                "op": "eq",
+                "value": "closed"
+              },
+              {
+                "field": "priority",
+                "op": "eq",
+                "value": 5
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "group": "combinators",
+      "name": "and-explicit",
+      "query": "filter[and][0][priority][gte]=2&filter[and][1][title][like]=P%25",
+      "why": "an explicit and",
+      "expect": {
+        "list": {
+          "filter": {
+            "and": [
+              {
+                "field": "priority",
+                "op": "gte",
+                "value": 2
+              },
+              {
+                "field": "title",
+                "op": "like",
+                "value": "P%"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "group": "combinators",
+      "name": "or-one-branch-is-the-branch",
+      "query": "filter[or][0][status][eq]=closed",
+      "why": "an or of one branch is that branch",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "status",
+            "op": "eq",
+            "value": "closed"
+          }
+        }
+      }
+    },
+    {
+      "group": "combinators",
+      "name": "or-beside-a-field",
+      "query": "filter[active][eq]=true&filter[or][0][status][eq]=open&filter[or][1][status][eq]=pending",
+      "why": "an or beside a field is ANDed with it",
+      "expect": {
+        "list": {
+          "filter": {
+            "and": [
+              {
+                "field": "active",
+                "op": "eq",
+                "value": true
+              },
+              {
+                "or": [
+                  {
+                    "field": "status",
+                    "op": "eq",
+                    "value": "open"
+                  },
+                  {
+                    "field": "status",
+                    "op": "eq",
+                    "value": "pending"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "group": "combinators",
+      "name": "or-branch-with-two-conditions",
+      "query": "filter[or][0][status][eq]=open&filter[or][0][priority][gt]=3&filter[or][1][active][eq]=false",
+      "why": "a branch with two conditions is their and",
+      "expect": {
+        "list": {
+          "filter": {
+            "or": [
+              {
+                "and": [
+                  {
+                    "field": "status",
+                    "op": "eq",
+                    "value": "open"
+                  },
+                  {
+                    "field": "priority",
+                    "op": "gt",
+                    "value": 3
+                  }
+                ]
+              },
+              {
+                "field": "active",
+                "op": "eq",
+                "value": false
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "group": "combinators",
+      "name": "and-inside-or",
+      "query": "filter[or][0][and][0][status][eq]=open&filter[or][0][and][1][active][eq]=true&filter[or][1][priority][eq]=1",
+      "why": "nesting an and inside an or",
+      "expect": {
+        "list": {
+          "filter": {
+            "or": [
+              {
+                "and": [
+                  {
+                    "field": "status",
+                    "op": "eq",
+                    "value": "open"
+                  },
+                  {
+                    "field": "active",
+                    "op": "eq",
+                    "value": true
+                  }
+                ]
+              },
+              {
+                "field": "priority",
+                "op": "eq",
+                "value": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "group": "combinators",
+      "name": "or-index-order",
+      "query": "filter[or][1][status][eq]=closed&filter[or][0][status][eq]=open",
+      "why": "branches are taken in index order, not the order sent",
+      "expect": {
+        "list": {
+          "filter": {
+            "or": [
+              {
+                "field": "status",
+                "op": "eq",
+                "value": "open"
+              },
+              {
+                "field": "status",
+                "op": "eq",
+                "value": "closed"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "group": "combinators",
+      "name": "or-sparse-large-index",
+      "query": "filter[or][0][status][eq]=open&filter[or][25][status][eq]=closed",
+      "why": "an index above 20 stays a branch",
+      "expect": {
+        "list": {
+          "filter": {
+            "or": [
+              {
+                "field": "status",
+                "op": "eq",
+                "value": "open"
+              },
+              {
+                "field": "status",
+                "op": "eq",
+                "value": "closed"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "group": "combinators",
+      "name": "nesting-at-the-cap",
+      "query": "filter[or][0][or][0][or][0][or][0][or][0][priority][eq]=1",
+      "why": "five levels of or/and is allowed",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "priority",
+            "op": "eq",
+            "value": 1
+          }
+        }
+      }
+    },
+    {
+      "group": "combinators",
+      "name": "nesting-too-deep",
+      "query": "filter[or][0][or][0][or][0][or][0][or][0][or][0][priority][eq]=1",
+      "why": "six levels is refused",
+      "expect": {
+        "error": {
+          "error": "filter.nesting_too_deep",
+          "limit": 5
+        }
+      }
+    },
+    {
+      "group": "combinators",
+      "name": "or-not-a-list",
+      "query": "filter[or]=open",
+      "why": "an or that is not a list of branches",
+      "expect": {
+        "error": {
+          "error": "invalid_filter_value",
+          "field": "or"
+        }
+      }
+    },
+    {
+      "group": "combinators",
+      "name": "or-branch-not-an-object",
+      "query": "filter[or][0]=open",
+      "why": "an or branch that names no field",
+      "expect": {
+        "error": {
+          "error": "invalid_filter_value",
+          "field": "or"
+        }
+      }
+    },
+    {
+      "group": "refusals",
+      "name": "unknown-field",
+      "query": "filter[nope][eq]=1",
+      "why": "a field the entity does not have",
+      "expect": {
+        "error": {
+          "error": "invalid_filter_field",
+          "field": "nope",
+          "allowed": [
+            "id",
+            "title",
+            "code",
+            "status",
+            "severity",
+            "priority",
+            "score",
+            "amount",
+            "feeCents",
+            "active",
+            "dueOn",
+            "opensAt",
+            "createdAt",
+            "wallClock",
+            "ownerId",
+            "timeSpent"
+          ]
+        }
+      }
+    },
+    {
+      "group": "refusals",
+      "name": "field-not-filterable",
+      "query": "filter[notes][eq]=x",
+      "why": "a field of the entity that is not @filterable",
+      "expect": {
+        "error": {
+          "error": "invalid_filter_field",
+          "field": "notes",
+          "allowed": [
+            "id",
+            "title",
+            "code",
+            "status",
+            "severity",
+            "priority",
+            "score",
+            "amount",
+            "feeCents",
+            "active",
+            "dueOn",
+            "opensAt",
+            "createdAt",
+            "wallClock",
+            "ownerId",
+            "timeSpent"
+          ]
+        }
+      }
+    },
+    {
+      "group": "refusals",
+      "name": "op-not-in-band",
+      "query": "filter[priority][like]=1%25",
+      "why": "like is not an integer op",
+      "expect": {
+        "error": {
+          "error": "invalid_filter_op",
+          "field": "priority",
+          "op": "like",
+          "allowed": [
+            "eq",
+            "ne",
+            "gt",
+            "gte",
+            "lt",
+            "lte",
+            "in",
+            "isNull"
+          ]
+        }
+      }
+    },
+    {
+      "group": "refusals",
+      "name": "gt-on-text",
+      "query": "filter[title][gt]=A",
+      "why": "gt is not a text op",
+      "expect": {
+        "error": {
+          "error": "invalid_filter_op",
+          "field": "title",
+          "op": "gt",
+          "allowed": [
+            "eq",
+            "ne",
+            "in",
+            "like",
+            "isNull"
+          ]
+        }
+      }
+    },
+    {
+      "group": "refusals",
+      "name": "unknown-op",
+      "query": "filter[title][between]=A",
+      "why": "an op that is not one of the nine",
+      "expect": {
+        "error": {
+          "error": "invalid_filter_op",
+          "field": "title",
+          "op": "between",
+          "allowed": [
+            "eq",
+            "ne",
+            "in",
+            "like",
+            "isNull"
+          ]
+        }
+      }
+    },
+    {
+      "group": "refusals",
+      "name": "leading-wildcard",
+      "query": "filter[title][like]=%25pump",
+      "why": "a like pattern starting with % is refused",
+      "expect": {
+        "error": {
+          "error": "filter.leading_wildcard_disallowed",
+          "field": "title"
+        }
+      }
+    },
+    {
+      "group": "refusals",
+      "name": "in-over-the-cap",
+      "query": "filter[priority][in]=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100",
+      "why": "an in list of 101 elements",
+      "expect": {
+        "error": {
+          "error": "filter.in_too_large",
+          "field": "priority",
+          "limit": 100
+        }
+      }
+    },
+    {
+      "group": "refusals",
+      "name": "in-at-the-cap",
+      "query": "filter[priority][in]=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99",
+      "why": "an in list of 100 elements is allowed",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "priority",
+            "op": "in",
+            "value": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25,
+              26,
+              27,
+              28,
+              29,
+              30,
+              31,
+              32,
+              33,
+              34,
+              35,
+              36,
+              37,
+              38,
+              39,
+              40,
+              41,
+              42,
+              43,
+              44,
+              45,
+              46,
+              47,
+              48,
+              49,
+              50,
+              51,
+              52,
+              53,
+              54,
+              55,
+              56,
+              57,
+              58,
+              59,
+              60,
+              61,
+              62,
+              63,
+              64,
+              65,
+              66,
+              67,
+              68,
+              69,
+              70,
+              71,
+              72,
+              73,
+              74,
+              75,
+              76,
+              77,
+              78,
+              79,
+              80,
+              81,
+              82,
+              83,
+              84,
+              85,
+              86,
+              87,
+              88,
+              89,
+              90,
+              91,
+              92,
+              93,
+              94,
+              95,
+              96,
+              97,
+              98,
+              99
+            ]
+          }
+        }
+      }
+    },
+    {
+      "group": "refusals",
+      "name": "integer-fractional",
+      "query": "filter[priority][gte]=2.5",
+      "why": "a fractional bound on an integer field",
+      "expect": {
+        "error": {
+          "error": "invalid_filter_value",
+          "field": "priority",
+          "op": "gte",
+          "expected": "integer (a whole number)"
+        }
+      }
+    },
+    {
+      "group": "refusals",
+      "name": "currency-fractional",
+      "query": "filter[feeCents][eq]=10.5",
+      "why": "currency is whole minor units",
+      "expect": {
+        "error": {
+          "error": "invalid_filter_value",
+          "field": "feeCents",
+          "op": "eq",
+          "expected": "integer (a whole number)"
+        }
+      }
+    },
+    {
+      "group": "refusals",
+      "name": "number-not-numeric",
+      "query": "filter[score][gt]=abc",
+      "why": "a number that is not one",
+      "expect": {
+        "error": {
+          "error": "invalid_filter_value",
+          "field": "score",
+          "op": "gt",
+          "expected": "number"
+        }
+      }
+    },
+    {
+      "group": "refusals",
+      "name": "number-empty",
+      "query": "filter[score][gt]=",
+      "why": "an empty number is not zero",
+      "expect": {
+        "error": {
+          "error": "invalid_filter_value",
+          "field": "score",
+          "op": "gt",
+          "expected": "number"
+        }
+      }
+    },
+    {
+      "group": "refusals",
+      "name": "boolean-not-boolean",
+      "query": "filter[active][eq]=yes",
+      "why": "a boolean that is not one",
+      "expect": {
+        "error": {
+          "error": "invalid_filter_value",
+          "field": "active",
+          "op": "eq",
+          "expected": "boolean"
+        }
+      }
+    },
+    {
+      "group": "refusals",
+      "name": "date-malformed",
+      "query": "filter[dueOn][gte]=2026-3-1",
+      "why": "a date that is not YYYY-MM-DD",
+      "expect": {
+        "error": {
+          "error": "invalid_filter_value",
+          "field": "dueOn",
+          "op": "gte",
+          "expected": "date (YYYY-MM-DD)"
+        }
+      }
+    },
+    {
+      "group": "refusals",
+      "name": "date-impossible",
+      "query": "filter[dueOn][gte]=2026-02-30",
+      "why": "a date that is not a calendar day",
+      "expect": {
+        "error": {
+          "error": "invalid_filter_value",
+          "field": "dueOn",
+          "op": "gte",
+          "expected": "date (YYYY-MM-DD)"
+        }
+      }
+    },
+    {
+      "group": "refusals",
+      "name": "time-malformed",
+      "query": "filter[opensAt][lt]=9am",
+      "why": "a time that is not HH:MM",
+      "expect": {
+        "error": {
+          "error": "invalid_filter_value",
+          "field": "opensAt",
+          "op": "lt",
+          "expected": "time (HH:MM[:SS[.fff]])"
+        }
+      }
+    },
+    {
+      "group": "refusals",
+      "name": "timestamp-malformed",
+      "query": "filter[createdAt][gt]=yesterday",
+      "why": "a timestamp that is not one",
+      "expect": {
+        "error": {
+          "error": "invalid_filter_value",
+          "field": "createdAt",
+          "op": "gt",
+          "expected": "timestamp (YYYY-MM-DD[THH:MM[:SS[.fff]]][Z|±HH:MM])"
+        }
+      }
+    },
+    {
+      "group": "refusals",
+      "name": "timestamp-unencoded-plus-hint",
+      "query": "filter[createdAt][gt]=2026-10-06T00:00:00+00:00",
+      "why": "a + sent unencoded arrives as a space; the answer says so",
+      "expect": {
+        "error": {
+          "error": "invalid_filter_value",
+          "field": "createdAt",
+          "op": "gt",
+          "expected": "timestamp (YYYY-MM-DD[THH:MM[:SS[.fff]]][Z|±HH:MM])",
+          "hint": "a \"+\" in a query string decodes to a space: URL-encode the offset's \"+\" as %2B, or use Z for UTC"
+        }
+      }
+    },
+    {
+      "group": "refusals",
+      "name": "uuid-malformed",
+      "query": "filter[ownerId][eq]=abc",
+      "why": "a uuid that is not 8-4-4-4-12 hex",
+      "expect": {
+        "error": {
+          "error": "invalid_filter_value",
+          "field": "ownerId",
+          "op": "eq",
+          "expected": "uuid (8-4-4-4-12 hex)"
+        }
+      }
+    },
+    {
+      "group": "refusals",
+      "name": "enum-not-a-member",
+      "query": "filter[status][eq]=archived",
+      "why": "a value that is not a declared member",
+      "expect": {
+        "error": {
+          "error": "invalid_filter_value",
+          "field": "status",
+          "op": "eq",
+          "expected": "one of: open, closed, pending",
+          "allowed": [
+            "open",
+            "closed",
+            "pending"
+          ]
+        }
+      }
+    },
+    {
+      "group": "refusals",
+      "name": "enum-in-not-a-member",
+      "query": "filter[status][in]=open,archived",
+      "why": "every in element is checked",
+      "expect": {
+        "error": {
+          "error": "invalid_filter_value",
+          "field": "status",
+          "op": "in",
+          "expected": "one of: open, closed, pending",
+          "allowed": [
+            "open",
+            "closed",
+            "pending"
+          ]
+        }
+      }
+    },
+    {
+      "group": "refusals",
+      "name": "decimal-malformed",
+      "query": "filter[amount][eq]=1,5",
+      "why": "a decimal that is not a JSON number",
+      "expect": {
+        "error": {
+          "error": "invalid_filter_value",
+          "field": "amount",
+          "op": "eq",
+          "expected": "decimal number (digits, optional fraction, optional exponent)"
+        }
+      }
+    },
+    {
+      "group": "refusals",
+      "name": "duration-malformed",
+      "query": "filter[timeSpent][gt]=90 minutes",
+      "why": "a duration that is not ISO-8601",
+      "expect": {
+        "error": {
+          "error": "invalid_filter_value",
+          "field": "timeSpent",
+          "op": "gt",
+          "expected": "duration (ISO 8601, e.g. PT1H30M; no years or months)"
+        }
+      }
+    },
+    {
+      "group": "refusals",
+      "name": "isnull-not-boolean",
+      "query": "filter[ownerId][isNull]=maybe",
+      "why": "isNull takes a boolean",
+      "expect": {
+        "error": {
+          "error": "invalid_filter_value",
+          "field": "ownerId",
+          "op": "isNull",
+          "expected": "boolean"
+        }
+      }
+    },
+    {
+      "group": "bare-parameters",
+      "name": "bare-filterable-field",
+      "query": "title=Pump",
+      "why": "a bare ?field= naming a filterable field",
+      "expect": {
+        "error": {
+          "error": "filter.bare_field",
+          "field": "title",
+          "expected": "filter[title][eq]=Pump"
+        }
+      }
+    },
+    {
+      "group": "bare-parameters",
+      "name": "bare-field-not-filterable",
+      "query": "notes=x",
+      "why": "a bare ?field= naming a field that is not filterable",
+      "expect": {
+        "error": {
+          "error": "filter.bare_field",
+          "field": "notes",
+          "filterable": false,
+          "expected": "a filterable field — \"notes\" is not @filterable",
+          "allowed": [
+            "id",
+            "title",
+            "code",
+            "status",
+            "severity",
+            "priority",
+            "score",
+            "amount",
+            "feeCents",
+            "active",
+            "dueOn",
+            "opensAt",
+            "createdAt",
+            "wallClock",
+            "ownerId",
+            "timeSpent"
+          ]
+        }
+      }
+    },
+    {
+      "group": "bare-parameters",
+      "name": "bare-unknown-parameter-ignored",
+      "query": "cb=12345&utm_source=mail",
+      "why": "any other parameter is ignored",
+      "expect": {
+        "list": {}
+      }
+    },
+    {
+      "group": "bare-parameters",
+      "name": "bare-repeated-parameter",
+      "query": "title=a&title=b",
+      "why": "a repeated bare field still names the field",
+      "expect": {
+        "error": {
+          "error": "filter.bare_field",
+          "field": "title",
+          "expected": "filter[title][eq]=<value>"
+        }
+      }
+    },
+    {
+      "group": "search",
+      "name": "search",
+      "query": "search=pump",
+      "why": "search is matched against the filterable fields whose band has like (not a uuid, not an int-backed enum)",
+      "expect": {
+        "list": {
+          "search": {
+            "term": "pump",
+            "fields": [
+              "title",
+              "code",
+              "status"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "group": "search",
+      "name": "search-empty-ignored",
+      "query": "search=",
+      "why": "an empty search is no search",
+      "expect": {
+        "list": {}
+      }
+    },
+    {
+      "group": "search",
+      "name": "search-with-filter",
+      "query": "search=pump&filter[status][eq]=open",
+      "why": "search and filter are both applied",
+      "expect": {
+        "list": {
+          "filter": {
+            "field": "status",
+            "op": "eq",
+            "value": "open"
+          },
+          "search": {
+            "term": "pump",
+            "fields": [
+              "title",
+              "code",
+              "status"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "group": "search",
+      "name": "search-wildcards-kept",
+      "query": "search=50%25_off",
+      "why": "the term is kept as sent",
+      "expect": {
+        "list": {
+          "search": {
+            "term": "50%_off",
+            "fields": [
+              "title",
+              "code",
+              "status"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "group": "sort-and-page",
+      "name": "sort-asc",
+      "query": "sort=title:asc",
+      "why": "an explicit order",
+      "expect": {
+        "list": {
+          "sort": {
+            "field": "title",
+            "order": "asc"
+          }
+        }
+      }
+    },
+    {
+      "group": "sort-and-page",
+      "name": "sort-desc-uppercase",
+      "query": "sort=title:DESC",
+      "why": "the order is case-insensitive",
+      "expect": {
+        "list": {
+          "sort": {
+            "field": "title",
+            "order": "desc"
+          }
+        }
+      }
+    },
+    {
+      "group": "sort-and-page",
+      "name": "sort-declared-default",
+      "query": "sort=priority",
+      "why": "no order takes the field's @sortableDefaultOrder",
+      "expect": {
+        "list": {
+          "sort": {
+            "field": "priority",
+            "order": "desc"
+          }
+        }
+      }
+    },
+    {
+      "group": "sort-and-page",
+      "name": "sort-undeclared-default",
+      "query": "sort=title",
+      "why": "no order and no declaration is asc",
+      "expect": {
+        "list": {
+          "sort": {
+            "field": "title",
+            "order": "asc"
+          }
+        }
+      }
+    },
+    {
+      "group": "sort-and-page",
+      "name": "sort-unknown-field",
+      "query": "sort=nope:asc",
+      "why": "a field not on the sort allowlist",
+      "expect": {
+        "error": {
+          "error": "invalid_sort",
+          "field": "nope",
+          "expected": "sort=<field>:asc|desc",
+          "allowed": [
+            "id",
+            "title",
+            "code",
+            "status",
+            "severity",
+            "priority",
+            "amount",
+            "feeCents",
+            "active",
+            "dueOn",
+            "opensAt",
+            "createdAt",
+            "wallClock",
+            "ownerId",
+            "timeSpent"
+          ]
+        }
+      }
+    },
+    {
+      "group": "sort-and-page",
+      "name": "sort-not-sortable",
+      "query": "sort=score:asc",
+      "why": "a filterable field marked @sortable false",
+      "expect": {
+        "error": {
+          "error": "invalid_sort",
+          "field": "score",
+          "expected": "sort=<field>:asc|desc",
+          "allowed": [
+            "id",
+            "title",
+            "code",
+            "status",
+            "severity",
+            "priority",
+            "amount",
+            "feeCents",
+            "active",
+            "dueOn",
+            "opensAt",
+            "createdAt",
+            "wallClock",
+            "ownerId",
+            "timeSpent"
+          ]
+        }
+      }
+    },
+    {
+      "group": "sort-and-page",
+      "name": "sort-bad-order",
+      "query": "sort=title:up",
+      "why": "an order that is not asc or desc",
+      "expect": {
+        "error": {
+          "error": "invalid_sort",
+          "field": "title",
+          "expected": "sort=<field>:asc|desc",
+          "allowed": [
+            "id",
+            "title",
+            "code",
+            "status",
+            "severity",
+            "priority",
+            "amount",
+            "feeCents",
+            "active",
+            "dueOn",
+            "opensAt",
+            "createdAt",
+            "wallClock",
+            "ownerId",
+            "timeSpent"
+          ]
+        }
+      }
+    },
+    {
+      "group": "sort-and-page",
+      "name": "page",
+      "query": "limit=10&offset=20",
+      "why": "limit and offset",
+      "expect": {
+        "list": {
+          "limit": 10,
+          "offset": 20
+        }
+      }
+    },
+    {
+      "group": "sort-and-page",
+      "name": "page-zero",
+      "query": "limit=0",
+      "why": "a zero limit is a page size",
+      "expect": {
+        "list": {
+          "limit": 0
+        }
+      }
+    },
+    {
+      "group": "sort-and-page",
+      "name": "limit-not-a-number",
+      "query": "limit=abc",
+      "why": "a limit that is not a non-negative integer",
+      "expect": {
+        "error": {
+          "error": "pagination.invalid_value",
+          "param": "limit",
+          "value": "abc",
+          "expected": "a non-negative integer (0 or more)"
+        }
+      }
+    },
+    {
+      "group": "sort-and-page",
+      "name": "limit-fractional",
+      "query": "limit=1.5",
+      "why": "a fractional limit",
+      "expect": {
+        "error": {
+          "error": "pagination.invalid_value",
+          "param": "limit",
+          "value": "1.5",
+          "expected": "a non-negative integer (0 or more)"
+        }
+      }
+    },
+    {
+      "group": "sort-and-page",
+      "name": "offset-negative",
+      "query": "offset=-1",
+      "why": "a negative offset",
+      "expect": {
+        "error": {
+          "error": "pagination.invalid_value",
+          "param": "offset",
+          "value": "-1",
+          "expected": "a non-negative integer (0 or more)"
+        }
+      }
+    },
+    {
+      "group": "sort-and-page",
+      "name": "limit-empty",
+      "query": "limit=",
+      "why": "an empty limit",
+      "expect": {
+        "error": {
+          "error": "pagination.invalid_value",
+          "param": "limit",
+          "value": "",
+          "expected": "a non-negative integer (0 or more)"
+        }
+      }
+    },
+    {
+      "group": "fault-order",
+      "name": "bare-field-before-page",
+      "query": "title=Pump&limit=abc",
+      "why": "a bare field is reported before a bad page",
+      "expect": {
+        "error": {
+          "error": "filter.bare_field",
+          "field": "title",
+          "expected": "filter[title][eq]=Pump"
+        }
+      }
+    },
+    {
+      "group": "fault-order",
+      "name": "page-before-filter",
+      "query": "limit=abc&filter[nope][eq]=1",
+      "why": "a bad page is reported before a bad filter",
+      "expect": {
+        "error": {
+          "error": "pagination.invalid_value",
+          "param": "limit",
+          "value": "abc",
+          "expected": "a non-negative integer (0 or more)"
+        }
+      }
+    },
+    {
+      "group": "fault-order",
+      "name": "filter-before-sort",
+      "query": "sort=nope&filter[nope][eq]=1",
+      "why": "a bad filter is reported before a bad sort",
+      "expect": {
+        "error": {
+          "error": "invalid_filter_field",
+          "field": "nope",
+          "allowed": [
+            "id",
+            "title",
+            "code",
+            "status",
+            "severity",
+            "priority",
+            "score",
+            "amount",
+            "feeCents",
+            "active",
+            "dueOn",
+            "opensAt",
+            "createdAt",
+            "wallClock",
+            "ownerId",
+            "timeSpent"
+          ]
+        }
+      }
+    },
+    {
+      "group": "fault-order",
+      "name": "first-filter-fault-wins",
+      "query": "filter[title][like]=%25x&filter[nope][eq]=1",
+      "why": "filter faults are reported in the order sent",
+      "expect": {
+        "error": {
+          "error": "filter.leading_wildcard_disallowed",
+          "field": "title"
+        }
+      }
+    }
+  ]
+}

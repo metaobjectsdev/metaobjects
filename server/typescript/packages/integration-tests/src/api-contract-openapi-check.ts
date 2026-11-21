@@ -19,11 +19,13 @@ const DOCUMENT_ID = "openapi";
 const JSON_MEDIA_TYPE = "application/json";
 
 /**
- * The REST contract's TypeScript-only query extensions (docs/features/api-contract.md, "TS-only
- * filter extensions"). The document states the cross-port contract, so it leaves these out, and a
+ * The list-query parameters the OpenAPI document does not describe yet: `?search` and the
+ * `filter[or]` / `filter[and]` combinators (docs/features/api-contract.md, "The list query:
+ * search, combinators and refusals"). They are part of the REST contract since 1.3.0, but the
+ * generated document still lists only the per-field `filter[<field>][<op>]` parameters, so a
  * scenario that sends one is outside what this check can hold.
  */
-const TS_ONLY_QUERY = /^(search|filter\[(or|and)\])/;
+const UNDOCUMENTED_QUERY = /^(search|filter\[(or|and)\])/;
 
 type JsonObject = Record<string, unknown>;
 
@@ -103,7 +105,7 @@ export function openApiCheck(caseName: string): ContractCheck {
     if (status >= 200 && status < 300) {
       const declared = new Set([...(item?.parameters ?? []), ...(operation.parameters ?? [])].map((p) => p.name));
       for (const name of queryNames(req.path)) {
-        if (!declared.has(name) && !TS_ONLY_QUERY.test(name)) fail(req, `query parameter '${name}' is not in the document`);
+        if (!declared.has(name) && !UNDOCUMENTED_QUERY.test(name)) fail(req, `query parameter '${name}' is not in the document`);
       }
       const request = operation.requestBody?.content?.[JSON_MEDIA_TYPE]?.schema;
       if (request !== undefined && req.body !== undefined) {

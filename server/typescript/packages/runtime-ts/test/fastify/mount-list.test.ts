@@ -21,6 +21,7 @@ const SEED: Author[] = [
 
 function fakeOm(): ObjectManager {
   return {
+    keyFields: () => ["id"],
     async findMany(
       _entity: string,
       _filter: unknown,

@@ -1,0 +1,31 @@
+{
+  "metadata.root": {
+    "package": "acme::desk",
+    "children": [
+      { "object.entity": {
+        "name": "Ticket",
+        "children": [
+          { "source.rdb":       { "@table": "tickets" } },
+          { "field.long":       { "name": "id", "@filterable": true } },
+          { "field.string":     { "name": "title", "@maxLength": 100, "@filterable": true } },
+          { "field.string":     { "name": "code", "@maxLength": 20, "@filterable": true } },
+          { "field.string":     { "name": "notes", "@maxLength": 200 } },
+          { "field.enum":       { "name": "status", "@values": ["open", "closed", "pending"], "@filterable": true } },
+          { "field.enum":       { "name": "severity", "@values": ["low", "high"], "@intValueMap": { "low": 1, "high": 2 }, "@filterable": true } },
+          { "field.int":        { "name": "priority", "@filterable": true, "@sortableDefaultOrder": "desc" } },
+          { "field.double":     { "name": "score", "@filterable": true, "@sortable": false } },
+          { "field.decimal":    { "name": "amount", "@precision": 12, "@scale": 2, "@filterable": true } },
+          { "field.currency":   { "name": "feeCents", "@currency": "USD", "@filterable": true } },
+          { "field.boolean":    { "name": "active", "@filterable": true } },
+          { "field.date":       { "name": "dueOn", "@filterable": true } },
+          { "field.time":       { "name": "opensAt", "@filterable": true } },
+          { "field.timestamp":  { "name": "createdAt", "@filterable": true } },
+          { "field.timestamp":  { "name": "wallClock", "@localTime": true, "@filterable": true } },
+          { "field.uuid":       { "name": "ownerId", "@filterable": true } },
+          { "field.duration":   { "name": "timeSpent", "@filterable": true } },
+          { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
+        ]
+      }}
+    ]
+  }
+}

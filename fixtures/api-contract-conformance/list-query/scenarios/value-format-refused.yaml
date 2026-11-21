@@ -1,0 +1,29 @@
+name: value-format-refused
+description: >
+  An operand that is not of the field's type is refused with `invalid_filter_value`, naming
+  the field, rather than reaching the store.
+requests:
+  - id: r1
+    method: GET
+    path: "/api/parts?filter[stock][gt]=abc"
+    expect:
+      status: 400
+      body:
+        error: "invalid_filter_value"
+        field: "stock"
+  - id: r2
+    method: GET
+    path: "/api/parts?filter[stock][gte]=2.5"
+    expect:
+      status: 400
+      body:
+        error: "invalid_filter_value"
+        field: "stock"
+  - id: r3
+    method: GET
+    path: "/api/parts?filter[category][eq]=gadget"
+    expect:
+      status: 400
+      body:
+        error: "invalid_filter_value"
+        field: "category"

@@ -213,6 +213,11 @@ function matchesWhere(row: Row, where?: WhereClause): boolean {
       return where.values.some((v) => sameValue(row[where.column], v));
     case "like":
       return likeMatch(row[where.column], where.pattern);
+    case "ilike": {
+      // ASCII case folding, as SQLite's LIKE does.
+      const v = row[where.column];
+      return typeof v === "string" && likeMatch(foldAscii(v), foldAscii(where.pattern));
+    }
     case "isNull": {
       const isNull = row[where.column] === null || row[where.column] === undefined;
       return where.not ? !isNull : isNull;
@@ -266,6 +271,10 @@ function compareValues(left: unknown, right: unknown): number {
 }
 
 // SQL LIKE: % → .*, _ → ., case-sensitive. Other regex metacharacters in `pattern` are escaped first.
+function foldAscii(s: string): string {
+  return s.replace(/[A-Z]/g, (c) => c.toLowerCase());
+}
+
 function likeMatch(value: unknown, pattern: string): boolean {
   if (typeof value !== "string") return false;
   const re = new RegExp("^" + pattern.replace(/[.+*?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*").replace(/_/g, ".") + "$");

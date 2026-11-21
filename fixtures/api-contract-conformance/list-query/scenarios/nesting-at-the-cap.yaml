@@ -1,0 +1,11 @@
+name: nesting-at-the-cap
+description: >
+  Five levels of or/and nesting is the cap and is served.
+requests:
+  - id: r1
+    method: GET
+    path: "/api/parts?filter[or][0][or][0][or][0][or][0][or][0][id][eq]=4"
+    expect:
+      status: 200
+      body:
+        ids: [4]
