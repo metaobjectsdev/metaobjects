@@ -1,6 +1,6 @@
-# Rust port (preview)
+# Rust port
 
-The Rust port is **in preview** ([ADR-0065](../../spec/decisions/ADR-0065-rust-is-the-sixth-port.md)).
+The Rust port is a full language of 1.3.0 ([ADR-0065](../../spec/decisions/ADR-0065-rust-is-the-sixth-port.md)).
 It reads a project, validates it, serializes it and generates code from it, and it is held to the
 same shared conformance corpora as the other five ports. Its command, `cargo meta`, runs the whole
 codegen loop on a JSON or YAML model: `init`, `gen`, `verify --codegen` and `eject`. Three generators
@@ -11,7 +11,7 @@ on crates.io yet, so there is nothing to `cargo add` or `cargo install` from a r
 checkout of this repository until the first release.
 
 This page says what runs today, what does not exist yet, and how to build and test it. For the
-decisions behind the port (why Rust, the layout, the preview rules), read the ADR.
+decisions behind the port (why Rust, the layout, the conformance rules), read the ADR.
 
 ## What works today
 
@@ -250,7 +250,7 @@ lines it lacks and how many are its own.
 and tells you the two lines of `codegen/main.rs` to change; it never edits that file.
 
 This is **not a plugin contract**. Nothing discovers or loads a third-party generator, and the
-engine's Rust API carries no stability promise while the port is in preview: an owned copy is pinned
+engine's Rust API carries no stability promise: an owned copy is pinned
 to the exact engine its `Cargo.toml` names.
 
 The owned crate's `Cargo.toml` names no machine. By default the three engine crates are the crates.io
@@ -262,7 +262,7 @@ root), and a git URL names a repository and an optional revision.
 ### Conformance
 
 The port runs the shared corpora below. Four of them keep a ledger: a fixture that fails and is not on
-the port's ledger prints a warning and does not fail the `rust` lane while the port is in preview; a
+the port's ledger prints a warning and does not fail the `rust` lane until ADR-0065 turns the warning off; a
 fixture that passed and regresses still fails it, because each ledger records how many fixtures must
 pass (`minPassing`) and may only shrink. The others have no ledger: each case asserts its result
 outright.
@@ -296,7 +296,7 @@ Two gates have no corpus of their own:
   a slow machine.
 
 Rust is not yet a column in the [per-corpus table](../CONFORMANCE.md#per-corpus-totals); it joins
-when the port leaves preview. The other corpora (render, persistence, API contract) need code the
+when the port has a column. The other corpora (render, persistence, API contract) need code the
 port does not have yet.
 
 ### Load benchmark
@@ -382,7 +382,7 @@ let result = Loader::new(&registry).load_sources(&sources);
 assert!(read_errors.is_empty() && result.errors.is_empty());
 ```
 
-The API is a preview and will change; read `server/rust/metaobjects/tests/project_load.rs` for a
+The API carries no stability promise and may change; read `server/rust/metaobjects/tests/project_load.rs` for a
 working call.
 
 ## A worked codegen exercise: `examples/tasks-axi-rust/`

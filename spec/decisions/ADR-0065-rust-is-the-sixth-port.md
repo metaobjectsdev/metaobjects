@@ -3,12 +3,13 @@
 ## Status
 
 **Accepted** (2026-11-19). Registers no vocabulary: `metamodelVersion` is unchanged. Adds a sixth
-language port under `server/rust/`, in preview, and a `rust` CI lane. Amends nothing.
+language port under `server/rust/` and a `rust` CI lane. Amends nothing.
 **Amendment 1** (2026-11-19) records the command line, the shape of the generated crates and the
 `client` and `commands` generators. **Amendment 2** (2026-11-20) records the vendored copies of
 repository data the crate builds from. **Amendment 3** (2026-11-20) makes the crates publishable,
 puts the generator list in the project's hands, and stops `eject` writing a machine's path;
-it supersedes Decision 4 and Owner ruling 3.
+it supersedes Decision 4 and Owner ruling 3. **Amendment 4** (2026-11-21) retires the "in preview"
+label.
 
 ## Context
 
@@ -24,8 +25,8 @@ five".
 
 ## Decision
 
-1. **Rust is a full port, built in phases, and it is in preview until it leaves preview by
-   decision.** It ships the same core as the others (ADR-0034 Amendment 3): the metamodel,
+1. **Rust is a full port, built in phases, and it is a full language of 1.3.0
+   (Amendment 4).** It ships the same core as the others (ADR-0034 Amendment 3): the metamodel,
    loader, canonical serializer and registry, then runtime metadata access, `verify`, prompt
    render and the reply parser. Its generators are reference helpers like every other port's,
    and it can eject them. The first slice is the loader core, gated by `registry-conformance`
@@ -50,12 +51,12 @@ five".
 5. **Conformance is the definition of done, and gaps are ledgered, not hidden.** The metamodel
    runner keeps an expected-failures ledger in the format the other ports use. A fixture on the
    ledger that starts passing fails the run until it is removed, so the ledger can only shrink.
-   While the port is in preview, a fixture that is not on the ledger and fails in Rust prints a
+   Until the owner turns the warning off (Amendment 4), a fixture that is not on the ledger and fails in Rust prints a
    warning naming the fixture and the reason, and does not fail the run or the `rust` lane, so a
    new conformance fixture in a 1.3.0 PR never turns the lane red for a port that has not built
    that behavior yet. A regression is still a failure: the ledger records `minPassing`, the number
-   of fixtures known to pass, which may only rise, and the run fails when fewer pass. When the
-   preview label comes off, an unlisted failure fails the lane.
+   of fixtures known to pass, which may only rise, and the run fails when fewer pass. When the warning is turned
+   off, an unlisted failure fails the lane.
 
 6. **Deliberate differences from the other five.**
    - **No `migrate`.** Schema migrations are TypeScript-owned (ADR-0015), as in Java, C# and
@@ -292,3 +293,12 @@ generator list fixed are replaced. Three things change.
    release's own source), and `--engine <directory | git-url[#rev]>` names a checkout or a git
    revision when a project builds against one before a release exists. A relative directory is
    relative to the project root.
+
+## Amendment 4: the preview label is retired (2026-11-21)
+
+Rust is a full language of 1.3.0, so the "in preview" label on the port is retired from Decision 1
+and from the docs. Two facts the label used to carry are stated here instead. The crates are ready to
+publish and are not published until the owner says go (Amendment 3). The conformance runner keeps its
+grace for new fixtures: a fixture that is not on the ledger and fails in Rust prints a warning and
+does not fail the `rust` lane, and that stays until the owner turns the warning off, at which point
+an unlisted failure fails the lane. Nothing in the runner changes.

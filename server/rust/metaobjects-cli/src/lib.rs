@@ -72,8 +72,8 @@ OPTIONS (gen):
                          owned copy compares.
 
 OPTIONS (verify):
-    --codegen            The generated-code gate. It is the only gate this port ships, so a
-                         bare `verify` runs it.
+    --codegen            The generated-code gate. A bare `verify` runs it and the
+                         business-rules gate.
     --full               Render and compare even when a local run could answer from the
                          stored key. Always on when CI is set.
 
@@ -571,7 +571,7 @@ fn cmd_verify(
     }
     if s.has("--templates") {
         return Err(Usage(format!(
-            "`{TOOL} verify --templates` does not exist yet: the Rust port ships no prompt or template generator, so it has no template gate. `{TOOL} verify --codegen` is the gate it ships."
+            "`{TOOL} verify --templates` does not exist yet: the Rust port ships no prompt or template generator, so it has no template gate. `{TOOL} verify --codegen` is the generated-code gate."
         )));
     }
     if s.has("--deps") {

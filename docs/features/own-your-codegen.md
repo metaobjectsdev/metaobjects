@@ -841,7 +841,7 @@ in a template. A template is a real path, not a consolation prize: it renders ag
 same neutral, byte-gated data dict every port shares, so one template emits identically on
 all five.
 
-The Rust port (preview) has the programmatic path only. `cargo meta eject <name>` writes a
+The Rust port has the programmatic path only. `cargo meta eject <name>` writes a
 `codegen/` crate the project owns: the copied generator under `codegen/generators/` and the
 generator list in `codegen/main.rs`, where a generator of your own is one more entry. There is
 no template surface and no plugin contract yet; see [the Rust port page](../ports/rust.md#owning-a-generator).

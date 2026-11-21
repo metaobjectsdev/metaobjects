@@ -7,7 +7,7 @@
 //! shrink: a listed fixture that now passes fails the run until it is removed, and
 //! a listed name with no fixture directory fails the run.
 //!
-//! While the port is in preview (ADR-0065 decision 5), an unlisted fixture that
+//! Until ADR-0065 turns the warning off (decision 5, Amendment 4), an unlisted fixture that
 //! fails prints a warning instead of failing the run, so a new fixture added for
 //! another port never turns this lane red. A regression is still caught: the ledger
 //! records `minPassing`, the number of fixtures known to pass, and the run fails
@@ -573,7 +573,7 @@ fn metamodel_corpus() {
     );
     for failure in &unexpected {
         eprintln!(
-            "warning: fixture fails in Rust and is not on the ledger (preview port, not a gate failure): {failure}"
+            "warning: fixture fails in Rust and is not on the ledger (not a gate failure): {failure}"
         );
     }
     if report {

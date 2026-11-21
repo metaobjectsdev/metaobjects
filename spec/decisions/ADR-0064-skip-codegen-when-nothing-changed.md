@@ -124,7 +124,7 @@ and the manifest is keyed by output path, so per-unit records will not collide.
 ## Amendment 1 (2026-11-20): the hash manifest is one file per package
 
 Registers no vocabulary: `metamodelVersion` is unchanged. For 1.3.0, in every port that keeps hash
-state (TypeScript, Python, C#, Java and Kotlin, and Rust in preview). This is the "per-package keys
+state (TypeScript, Python, C#, Java and Kotlin, and Rust). This is the "per-package keys
 come next" step of §6, applied to the one file every generated path is recorded in.
 
 ### Context

@@ -23,7 +23,7 @@ the [compatibility policy](../compatibility-policy.md), which stands as written.
 | Generators and their generated code in TypeScript, Java, Kotlin, C# and Python | supported helpers, compiled and tested against their fixtures; their internals are not a public API | [Own your codegen](own-your-codegen.md), ADR-0034 Amendment 11 |
 | Library `ai` | stable | [Libraries](libraries.md) |
 | Library `iam` | preview | [Libraries](libraries.md) |
-| Rust port | preview, unpublished | [Rust port](../ports/rust.md), ADR-0065 |
+| Rust port | supported, crates ready to publish and not yet published | [Rust port](../ports/rust.md), ADR-0065 |
 | Angular packages | source-only, on their own `0.6` line, not published | ADR-0048 |
 | Business-rules vocabulary: `api.*`, `operation.*`, `binding.*`, `transition.*`, `@permission`, `@public`, and the `rules` and `verify.lifecycle` settings | experimental | [Business rules](business-rules.md), ADR-0066 |
 | Reserved names (`transition.timed`, the event and streaming sibling of `api.operational`, `index.fulltext`, `index.vector`, `index.spatial`) | reserved: not in the registry | [Compatibility policy](../compatibility-policy.md) |
