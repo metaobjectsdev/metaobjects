@@ -25,6 +25,15 @@ here.**
   `{` (the writer drops a blank line after an opener, as it does in every port). A layout check
   with an allowlist that only shrinks keeps new hand-typed layout out of the generator source.
   The shared writer-conformance corpus gains six C# cases.
+- **C#: the last six generators write through the code writer (ADR-0063).** The routes generator, the
+  reverse-finder emitter, the expression-indexes, report-export and requirement-tests generators and the
+  render-helper generator no longer type line breaks or indentation, so the layout check's list of
+  unconverted generators is empty. Output is byte-identical on the 737 model fixtures in four layouts,
+  with these exceptions the writer owns: the shared `ReportExportWriter.g.cs` now ends with a newline
+  like every other generated file; a `// ` comment line for an empty statement is written as `//`; and
+  an empty requirement-tests witness interface has its braces on two lines. The routes generator's
+  `AppendOffsetLimit` and `AppendSaveChanges` helpers lose their `indent` argument, and its private
+  helpers take a `CsWriter`. The requirement-tests collision message indents its list by four spaces.
 - **C#: the DbContext generator writes through the code writer (ADR-0063).** `DbContextGenerator`
   (the context, its `OnModelCreating` and `ConfigureModelNN` chunks, the enum, map and duration helpers
   and the design-time services file) builds each file on a `CsWriter`. Output is byte-identical for the

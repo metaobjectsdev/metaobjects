@@ -1,7 +1,5 @@
 {
   "unconverted": {
-    "MetaObjects.Codegen/Generators/RenderHelperGenerator.cs": "The render-helper generator still builds its text with StringBuilder.AppendLine; converts to CsWriter in a later C# lane conversion PR (ADR-0063, spec/code-writer.md), and this entry goes when it does",
-    "MetaObjects.Codegen/Generators/RoutesGenerator.cs": "The routes generator still builds its text with StringBuilder.AppendLine; converts to CsWriter in a later C# lane conversion PR (ADR-0063, spec/code-writer.md), and this entry goes when it does"
   },
   "exempt": {
     "MetaObjects.Codegen/CSharpNaming.cs": "naming tables: the line-break characters it names are inputs it splits identifiers and comments on, and it writes no generated file",
