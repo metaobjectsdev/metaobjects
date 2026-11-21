@@ -124,5 +124,5 @@ export function sortOrderSpec(
   // The `?? "asc"` here is the ONLY place TypeScript's runtime spells the fallback. An
   // allowlist artifact carries declarations and nothing else — baking the default into
   // it would put the answer in two places per port, which is how a port drifts.
-  return supplied ?? allowlist[field]?.defaultOrder ?? "asc";
+  return supplied ?? (Object.hasOwn(allowlist, field) ? allowlist[field]?.defaultOrder : undefined) ?? "asc";
 }

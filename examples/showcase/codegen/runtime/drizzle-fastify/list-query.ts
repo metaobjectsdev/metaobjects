@@ -203,7 +203,7 @@ function parseNode(node: Record<string, unknown>, opts: ParseListQueryOpts, dept
       parts.push(subs.length === 1 ? (subs[0] as FilterNode) : key === "or" ? { or: subs } : { and: subs });
       continue;
     }
-    const rule = opts.allowlist[key];
+    const rule = Object.hasOwn(opts.allowlist, key) ? opts.allowlist[key] : undefined;
     if (!rule) {
       throw new FilterParseError("filter.unknown_field", `Unknown filter field "${key}".`, { field: key, allowed: Object.keys(opts.allowlist) });
     }
@@ -341,7 +341,7 @@ function asBoolean(value: unknown, field: string, op: string): boolean {
 function parseSort(spec: string, sortAllowlist: SortAllowlist): ListSort {
   const colonIdx = spec.indexOf(":");
   const field = colonIdx === -1 ? spec : spec.slice(0, colonIdx);
-  if (!sortAllowlist[field]) {
+  if (!Object.hasOwn(sortAllowlist, field)) {
     throw new FilterParseError(
       "sort.unknown_field",
       `Unknown sort field "${field}". The syntax is ${SORT_EXPECTED}.`,
