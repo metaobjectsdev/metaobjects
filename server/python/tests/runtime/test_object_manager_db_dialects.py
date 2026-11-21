@@ -1,4 +1,4 @@
-"""The ObjectManager on SQLite and MySQL: the SQL each driver's dialect emits, and the values
+"""The ObjectManagerDb on SQLite and MySQL: the SQL each driver's dialect emits, and the values
 it decodes.
 
 SQLite runs for real (stdlib ``sqlite3``, in memory) with a recording connection wrapped around
@@ -24,7 +24,7 @@ from metaobjects.runtime import (
     POSTGRES,
     SQLITE,
     MySqlDriver,
-    ObjectManager,
+    ObjectManagerDb,
     PostgresDriver,
     SqliteDriver,
 )
@@ -95,11 +95,11 @@ _SQLITE_DDL = (
 )
 
 
-def _sqlite_om() -> tuple[ObjectManager, Recording]:
+def _sqlite_om() -> tuple[ObjectManagerDb, Recording]:
     real = sqlite3.connect(":memory:")
     real.execute(_SQLITE_DDL)
     rec = Recording(real)
-    return ObjectManager(_root(), SqliteDriver(rec)), rec  # type: ignore[arg-type]
+    return ObjectManagerDb(_root(), SqliteDriver(rec)), rec  # type: ignore[arg-type]
 
 
 # ----------------------------------------------------------------------------
@@ -251,11 +251,11 @@ class FakeMySql:
         pass
 
 
-def _mysql_om() -> tuple[ObjectManager, FakeMySql]:
+def _mysql_om() -> tuple[ObjectManagerDb, FakeMySql]:
     conn = FakeMySql()
     conn.row = (42, "pen", 3, 1, decimal.Decimal("12.50"), "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
                 dt.date(2026, 5, 1), dt.datetime(2026, 5, 4, 3, 30))
-    return ObjectManager(_root(), MySqlDriver(conn)), conn  # type: ignore[arg-type]
+    return ObjectManagerDb(_root(), MySqlDriver(conn)), conn  # type: ignore[arg-type]
 
 
 def test_mysql_read_uses_backticks_and_percent_placeholders() -> None:
@@ -350,7 +350,7 @@ def test_postgres_is_unchanged() -> None:
         pass
 
     conn = Conn()
-    om = ObjectManager(_root(), PostgresDriver(conn))  # type: ignore[arg-type]
+    om = ObjectManagerDb(_root(), PostgresDriver(conn))  # type: ignore[arg-type]
     om.find_many("Item", {"label": {"like": "A%"}}, limit=1)
     assert conn.sql[-1][0] == (
         'SELECT "id", "label", "qty", "active", "price", "ref", "madeOn", "seenAt" FROM "items" '
@@ -388,7 +388,7 @@ def test_sqlite_binds_the_engines_spelling() -> None:
 
 
 def test_a_filter_operand_given_as_text_is_typed_by_the_field() -> None:
-    from metaobjects.runtime.object_manager import _compile_filter
+    from metaobjects.runtime.object_manager_db import _compile_filter
 
     root = _root()
     item = next(c for c in root.own_children() if c.name == "Item")
@@ -406,7 +406,7 @@ def test_a_mysql_decimal_operand_is_cast_to_a_decimal() -> None:
 
     from metaobjects.meta.core.field.meta_field import MetaField
     from metaobjects.runtime.dialect import MYSQL, POSTGRES
-    from metaobjects.runtime.object_manager import _op_clause
+    from metaobjects.runtime.object_manager_db import _op_clause
     from metaobjects.shared.base_types import TYPE_FIELD
 
     f = MetaField(TYPE_FIELD, "decimal", "amount")

@@ -1,4 +1,4 @@
-"""Issue #203 — ObjectManager honors ``field.timestamp @autoSet: onCreate|onUpdate``.
+"""Issue #203 — ObjectManagerDb honors ``field.timestamp @autoSet: onCreate|onUpdate``.
 
 The runtime write path (``create`` / ``update`` / ``insert_preserving``) owns
 the ``now()`` stamping so adopters stop hand-writing it in every repository. The
@@ -28,8 +28,8 @@ from typing import Any
 
 from metaobjects import load_string
 from metaobjects.naming import NamingRules
-from metaobjects.runtime import ObjectManager
-from metaobjects.runtime.object_manager import SelectResult
+from metaobjects.runtime import ObjectManagerDb
+from metaobjects.runtime.drivers import SelectResult
 
 # BaseAudit carries the @autoSet timestamps; Doc INHERITS them via extends — the
 # issue's exact real-world shape (declared once on a base, inherited everywhere).
@@ -92,7 +92,7 @@ _META = {
 
 class FakeWriteDriver:
     """Captures the write SQL + params; returns a canned single-row result so the
-    ObjectManager's RETURNING-row mapping does not crash."""
+    ObjectManagerDb's RETURNING-row mapping does not crash."""
 
     def __init__(self) -> None:
         self.inserts: list[tuple[str, tuple[Any, ...]]] = []
@@ -116,14 +116,14 @@ class FakeWriteDriver:
         return 1
 
 
-def _om() -> tuple[ObjectManager, FakeWriteDriver]:
+def _om() -> tuple[ObjectManagerDb, FakeWriteDriver]:
     root = load_string(json.dumps(_META)).root
     # This test is about @autoSet stamping, not naming (ADR-0058 flipped the
     # DEFAULT to snake_case) — pin `literal` so the fixture's field names
     # (`createdAt`, ...) stay the column names these assertions pin.
     root.naming = NamingRules(columns="literal")
     driver = FakeWriteDriver()
-    return ObjectManager(root, driver), driver  # type: ignore[arg-type]
+    return ObjectManagerDb(root, driver), driver  # type: ignore[arg-type]
 
 
 def _insert_cols(sql: str, params: tuple[Any, ...]) -> dict[str, Any]:

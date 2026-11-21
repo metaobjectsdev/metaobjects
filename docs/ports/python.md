@@ -770,7 +770,7 @@ that file's root package, so `package` on such a node is already the full
 
 A `field.enum` with `@intValueMap` (own or inherited from a shared abstract enum) is stored as its
 declared integers while `ObjectManager` callers pass and receive member symbols. The codec in
-`metaobjects.runtime.object_manager` encodes on every write and on filter operands, and decodes on
+`metaobjects.runtime.values` (called by `ObjectManagerDb`) encodes on every write and on filter operands, and decodes on
 every read. On an `isArray: true` field it does this for each element. On Postgres the array is an
 `integer[]` holding the ints in order: `["PUBLISHED", "DRAFT"]` is stored as `{5,0}`. An empty
 array stays empty, a null array stays null, and a null element stays a null element. An int that
@@ -1067,7 +1067,7 @@ import lines are stable.
 | API reference docs | Yes — `api-docs` in a target's `generators`, options in the top-level `apiDocs` block (`apiSubDir`, `projectName`, `modelBaseUrl`); `metaobjects docs` was removed in 1.1.0 ([migration](../features/migrations/docs-are-generators.md#python)) |
 | Requirement gate + requirement tests | Yes (`metaobjects verify`, on every run; `requirement-tests` emits pytest and is ejectable) |
 | Business-rules gate (ADR-0066, experimental) | Yes (`metaobjects verify`, on every run; see [business rules](../features/business-rules.md)) |
-| Runtime metadata | Yes (`metaobjects.runtime.ObjectManager` — DB-API 2 drivers: Postgres via pg8000/psycopg, `SqliteDriver` over the standard library's `sqlite3`, `MySqlDriver` over PyMySQL with the `mysql` extra) + loader API + render engine |
+| Runtime metadata | Yes (`metaobjects.runtime.ObjectManagerDb` — DB-API 2 drivers: Postgres via pg8000/psycopg, `SqliteDriver` over the standard library's `sqlite3`, `MySqlDriver` over PyMySQL with the `mysql` extra) + loader API + render engine |
 
 ## Conformance status (as of 2026-05-27)
 

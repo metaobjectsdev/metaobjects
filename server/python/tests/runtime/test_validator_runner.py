@@ -460,11 +460,11 @@ def test_constraints_inherited_through_extends_are_enforced() -> None:
     assert _rules(post, {"title": "ABCD"}) == ["title:length", "title:regex"]
 
 
-# ── ObjectManager.validate (standalone, no DB hit) ───────────────────────────
+# ── ObjectManagerDb.validate (standalone, no DB hit) ───────────────────────────
 
 
 def test_object_manager_validate_returns_the_runner_result() -> None:
-    from metaobjects.runtime import ObjectManager, PostgresDriver
+    from metaobjects.runtime import ObjectManagerDb, PostgresDriver
 
     doc = {"metadata.root": {"package": "p", "children": [
         {"object.entity": {"name": "Post", "children": [_string("title", required=True)]}},
@@ -472,7 +472,7 @@ def test_object_manager_validate_returns_the_runner_result() -> None:
     result = MetaDataLoader.from_string(json.dumps(doc))
     assert not result.errors
     # validate() never touches the driver, so no connection is needed.
-    om = ObjectManager(result.root, PostgresDriver(None))  # type: ignore[arg-type]
+    om = ObjectManagerDb(result.root, PostgresDriver(None))  # type: ignore[arg-type]
     assert om.validate("Post", {"title": "ok"}).ok is True
     assert [e.to_dict() for e in om.validate("Post", {}).errors] == [
         {"field": "title", "rule": "required", "message": "'title' is required"},

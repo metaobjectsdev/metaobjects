@@ -314,7 +314,7 @@ public partial class AppDbContext : DbContext
 `metaobjects.codegen` emits one Pydantic `BaseModel` per entity (not a `@dataclass`), with a
 `<Name>Create` and a `<Name>Patch` input model beside it, plus a shipped
 FastAPI `APIRouter` (`router_generator`, FR-008 §2.3) and a shipped
-`ObjectManager` runtime (`metaobjects.runtime.object_manager`) for CRUD
+`ObjectManagerDb` runtime (`metaobjects.runtime.object_manager_db`, the DB-API implementation of the abstract `ObjectManager`) for CRUD
 against the same metadata.
 
 ```python
@@ -345,9 +345,9 @@ class AuthorPatch(BaseModel):
 ```
 
 ```python
-from metaobjects.runtime.object_manager import ObjectManager
+from metaobjects.runtime import ObjectManagerDb
 
-om = ObjectManager(root, driver)   # driver wraps a DB-API 2 connection
+om = ObjectManagerDb(root, driver)   # driver wraps a DB-API 2 connection; ObjectManager is the abstract contract
 row = om.create("Author", {"name": "Ada", "bio": None})
 found = om.find_by_id("Author", row["id"])
 ```

@@ -2,7 +2,7 @@
 serialization seam (``tests/integration/normalization.normalize_value``) maps each
 native Python value to its cross-port wire form.
 
-These were originally tests of ``ObjectManager._coerce_for_contract`` (in-runtime
+These were originally tests of ``ObjectManagerDb._coerce_for_contract`` (in-runtime
 canonicalization). Per ADR-0019 the runtime no longer canonicalizes — ``find_*``
 return native pg8000 values (``int`` / ``Decimal`` / ``datetime`` / ``date`` /
 ``time`` / ``uuid.UUID`` / ``dict`` / ``list``). The wire-form mapping moved to the
@@ -18,7 +18,7 @@ import uuid as _uuid
 from tests.integration.normalization import normalize_value
 
 # Stable Postgres type OIDs (see pg_type.dat). The OID is the int4-vs-int8 wire
-# discriminator the native Python value cannot carry — ObjectManager surfaces it
+# discriminator the native Python value cannot carry — ObjectManagerDb surfaces it
 # via ``last_column_oids`` so the boundary applies the BIGINT→string rule.
 _OID_BIGINT = 20
 _OID_NUMERIC = 1700

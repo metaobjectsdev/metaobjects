@@ -4,7 +4,7 @@ Peer of ``generated_projection_app.py``, for the ``report/`` api-contract corpus
 (``fixtures/api-contract-conformance/report/``). Runs the REAL generation path
 (``run_gen``, the one ``metaobjects gen`` takes) for the served reports, writes the
 emitted package to a temp dir, imports each generated router UNMODIFIED, and mounts it
-behind a repository that reads the REAL view through the ``ObjectManager``.
+behind a repository that reads the REAL view through the ``ObjectManagerDb``.
 
 The generated routers are the artifact under test: what is under test is whether this
 port's GENERATOR emits a keyless read-only surface for a view-backed ``object.report``,
@@ -47,7 +47,7 @@ from metaobjects.codegen.generators.router_generator import router_generator
 from metaobjects.codegen.runner import run_gen
 from metaobjects.codegen.runtime.filter_parser import FilterPredicate
 from metaobjects.naming import attach_naming
-from metaobjects.runtime import Filter, ObjectManager
+from metaobjects.runtime import Filter, ObjectManagerDb
 
 #: The served reports, as (report name, generated module stem). ``ProductRevenue``
 #: declares ``@spine``: its seeded rows include the product with no sale.
@@ -161,16 +161,16 @@ def generate_reports(corpus_root: Path, model: LaneModel = REPORT_MODEL) -> Gene
 
 
 def load_runtime_root(corpus_root: Path) -> Any:
-    """The corpus model for the ObjectManager: the project's pinned naming attached (the
+    """The corpus model for the ObjectManagerDb: the project's pinned naming attached (the
     sub-corpus lives under ``api-contract-conformance/``, whose ``.metaobjects/config.json``
     pins literal columns, which is what the committed schemas spell)."""
     return attach_naming(_load_root(corpus_root / "meta.json"), corpus_root.parent)
 
 
 def build_generated_report_app(
-    corpus_root: Path, om: ObjectManager, model: LaneModel = REPORT_MODEL
+    corpus_root: Path, om: ObjectManagerDb, model: LaneModel = REPORT_MODEL
 ) -> tuple[FastAPI, set[str]]:
-    """Mount the generated routers behind ObjectManager-backed repositories.
+    """Mount the generated routers behind ObjectManagerDb-backed repositories.
 
     Returns ``(app, names of the files generation emitted)``.
     """
@@ -200,16 +200,16 @@ def _provide(repo: Any) -> Callable[[], Any]:
 
 class ObjectManagerReportRepository:
     """The adopter-owned seam of a GENERATED read-only ``<Report>Repository`` (``list`` /
-    ``count``), backed by the ``ObjectManager`` reading the report's real view.
+    ``count``), backed by the ``ObjectManagerDb`` reading the report's real view.
 
     The generated router parses the query string into :class:`FilterPredicate` records
     (values still TEXT: ``"0"``, ``"true"``, a date) and a sort clause; this class only
-    translates them to the ObjectManager's filter dict and ``sort`` pairs. Typing the text
+    translates them to the ObjectManagerDb's filter dict and ``sort`` pairs. Typing the text
     is the runtime's job (it parses a filter operand by the field's declared type), and an
-    operator is the ObjectManager's own, one for one.
+    operator is the ObjectManagerDb's own, one for one.
     """
 
-    def __init__(self, om: ObjectManager, report: str, lock: threading.Lock) -> None:
+    def __init__(self, om: ObjectManagerDb, report: str, lock: threading.Lock) -> None:
         self._om = om
         self._report = report
         self._lock = lock
@@ -234,7 +234,7 @@ class ObjectManagerReportRepository:
 
 class ObjectManagerEntityRepository(ObjectManagerReportRepository):
     """The seam of a GENERATED writable ``<Entity>Repository``: the report seam plus
-    ``find_by_id`` / ``create`` / ``update`` / ``delete``, over the ObjectManager."""
+    ``find_by_id`` / ``create`` / ``update`` / ``delete``, over the ObjectManagerDb."""
 
     def find_by_id(self, id: Any) -> Any:
         with self._lock:

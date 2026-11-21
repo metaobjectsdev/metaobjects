@@ -135,7 +135,7 @@ def test_column_attr_does_not_rename_the_read_model_field() -> None:
 
     The read model used to key by ``@column``. Everything else in this port keys by
     ``field.name``: the FR-036 create/patch models, the generated router (it stamps
-    ``dto["createdAt"]``), and the runtime — ``ObjectManager`` maps
+    ``dto["createdAt"]``), and the runtime — ``ObjectManagerDb`` maps
     ``{_column_of(f): f.name}`` on every read and RETURNING clause, commented "for
     cross-port row-shape parity". So the read model's stated reason ("the Python model
     field IS the column, so it binds straight to the row") was false: the runtime never

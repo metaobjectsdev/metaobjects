@@ -13,7 +13,7 @@ import pg8000.dbapi as pg8000
 
 from metaobjects import load_directory
 from metaobjects.naming import attach_naming
-from metaobjects.runtime import MySqlDriver, ObjectManager, PostgresDriver, SqliteDriver
+from metaobjects.runtime import MySqlDriver, ObjectManagerDb, PostgresDriver, SqliteDriver
 
 from .engines import ScenarioEngine, split_statements
 from .mysql_container import MySqlInfo
@@ -43,40 +43,40 @@ def run(scenario: QueryScenario, pg: PostgresContainer, canonical_dir: Path) -> 
     if scenario.seed_data and scenario.seed_data.strip():
         _execute(info, scenario.seed_data)
 
-    # 3. Run queries through ObjectManager.
+    # 3. Run queries through ObjectManagerDb.
     with closing(pg8000.connect(
         host=info.host, port=info.port, user=info.user, password=info.password, database=info.database,
     )) as conn:
         driver = PostgresDriver(conn)
-        om = ObjectManager(root_for_bootstrap, driver)
+        om = ObjectManagerDb(root_for_bootstrap, driver)
         _run_queries(scenario, om)
 
 
 def run_sqlite(scenario: QueryScenario, db_path: Path, canonical_dir: Path) -> None:
     """Run *scenario* on SQLite (stdlib ``sqlite3``): execute ``canonical/schema.sqlite.sql``
     verbatim into the empty database file *db_path*, seed it, and run the queries through the
-    ObjectManager with the SQLite driver. The expectations are the Postgres wire ones."""
+    ObjectManagerDb with the SQLite driver. The expectations are the Postgres wire ones."""
     engine = ScenarioEngine.SQLITE
     with closing(sqlite3.connect(str(db_path))) as conn:
         _exec_script(conn, (canonical_dir.parent / engine.schema_artifact).read_text())
         seed = engine.seed(scenario)
         if seed and seed.strip():
             _exec_script(conn, seed)
-        om = ObjectManager(_load(canonical_dir), SqliteDriver(conn))
+        om = ObjectManagerDb(_load(canonical_dir), SqliteDriver(conn))
         _run_queries(scenario, om)
 
 
 def run_mysql(scenario: QueryScenario, info: MySqlInfo, canonical_dir: Path) -> None:
     """Run *scenario* on MySQL: *info* names an EMPTY database; ``canonical/schema.mysql.sql``
     is executed verbatim, the seed is re-spelled for MySQL, and the queries run through the
-    ObjectManager with the MySQL driver. The expectations are the Postgres wire ones."""
+    ObjectManagerDb with the MySQL driver. The expectations are the Postgres wire ones."""
     engine = ScenarioEngine.MYSQL
     with closing(mysql_connect(info)) as conn:
         _exec_script(conn, (canonical_dir.parent / engine.schema_artifact).read_text())
         seed = engine.seed(scenario)
         if seed and seed.strip():
             _exec_script(conn, seed)
-        om = ObjectManager(_load(canonical_dir), MySqlDriver(conn))
+        om = ObjectManagerDb(_load(canonical_dir), MySqlDriver(conn))
         _run_queries(scenario, om)
 
 
@@ -91,7 +91,7 @@ def _exec_script(conn: Any, script: str) -> None:
         cur.close()
 
 
-def _run_queries(scenario: QueryScenario, om: ObjectManager) -> None:
+def _run_queries(scenario: QueryScenario, om: ObjectManagerDb) -> None:
     for spec in scenario.queries:
         # FR-017 TPH: an op marked `expect-error: true` (a cross-subtype write)
         # MUST be rejected by the runtime — a raise is the pass (mirrors TS/C#).
@@ -112,11 +112,11 @@ def _run_queries(scenario: QueryScenario, om: ObjectManager) -> None:
 
 
 # ----------------------------------------------------------------------------
-# DSL → ObjectManager
+# DSL → ObjectManagerDb
 # ----------------------------------------------------------------------------
 
 
-def _execute_spec(om: ObjectManager, spec: QuerySpec) -> Any:
+def _execute_spec(om: ObjectManagerDb, spec: QuerySpec) -> Any:
     if spec.op == "create":
         # FR-017 TPH: INSERT a row through the runtime write path, returning the
         # inserted row (asserted as a single row, like get/update). A subtype
@@ -244,7 +244,7 @@ def _execute(info: Any, sql: str) -> None:
             cur.close()
 
 
-def _assert_typed_decimals(scenario_path: str, spec: QuerySpec, actual: Any, om: ObjectManager) -> None:
+def _assert_typed_decimals(scenario_path: str, spec: QuerySpec, actual: Any, om: ObjectManagerDb) -> None:
     """The typed decimal gate (ADR-0019 Amendment 1): BEFORE any normalization, every field the
     model declares decimal (an entity field, or a report's derived decimal measure) must be
     ``None`` or a ``Decimal``. A float or a string fails, so the boundary can never launder a

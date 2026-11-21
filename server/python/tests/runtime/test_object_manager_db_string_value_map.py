@@ -1,4 +1,4 @@
-"""rc.21 — a string-stored ``field.enum`` with ``@stringValueMap``: the ObjectManager writes
+"""rc.21 — a string-stored ``field.enum`` with ``@stringValueMap``: the ObjectManagerDb writes
 the member's stored string and reads the member back; an unmapped stored string raises."""
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 
 from metaobjects import load_string
-from metaobjects.runtime.object_manager import _coerce_write_value, _decode_read_value
+from metaobjects.runtime.values import coerce_write_value as _coerce_write_value, decode_read_value as _decode_read_value
 
 _META = {"metadata.root": {"package": "acme", "children": [
     {"object.entity": {"name": "Article", "children": [
@@ -42,7 +42,7 @@ def test_an_unmapped_stored_string_raises() -> None:
 def test_an_unmapped_member_raises_written_or_filtered() -> None:
     # rc.21 part B (N4): a filter on an unmapped member raises, as a write does, in every port —
     # passed through, the symbol could equal another member's stored string.
-    from metaobjects.runtime.object_manager import _coerce_filter_value
+    from metaobjects.runtime.values import coerce_filter_value as _coerce_filter_value
     field = _status()
     with pytest.raises(ValueError, match="cannot write 'Archived': it has no stored string in @stringValueMap"):
         _coerce_write_value(field, "Archived")

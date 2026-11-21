@@ -1,6 +1,6 @@
 """The decimal wire rule (ADR-0019 Amendment 1) through a GENERATED router over HTTP.
 
-The router is the real generator's output, mounted unmodified over an ObjectManager on an
+The router is the real generator's output, mounted unmodified over an ObjectManagerDb on an
 in-memory SQLite database, so the three seams are exercised together: the request body (W2),
 the filter operand (W2) and the SQLite read (W4) in, and the canonical string (W1) out.
 """
@@ -27,7 +27,7 @@ from metaobjects.codegen.generators.filter_allowlist_generator import render_fil
 from metaobjects.codegen.generators.router_generator import render_router
 from metaobjects.codegen.runtime.filter_parser import FilterPredicate
 from metaobjects.codegen.runtime.m2m_codegen import build_object_index
-from metaobjects.runtime import ObjectManager, SqliteDriver
+from metaobjects.runtime import ObjectManagerDb, SqliteDriver
 from metaobjects.wire import WireFormat
 
 
@@ -60,7 +60,7 @@ _META = {
 
 
 class _Repo:
-    def __init__(self, om: ObjectManager) -> None:
+    def __init__(self, om: ObjectManagerDb) -> None:
         self.om = om
         self.lock = threading.Lock()
 
@@ -121,7 +121,7 @@ def _make_client(wire: WireFormat) -> TestClient:
         sys.path.remove(str(tmp))
     db = sqlite3.connect(":memory:", check_same_thread=False)
     db.execute("CREATE TABLE entries (id INTEGER PRIMARY KEY AUTOINCREMENT, amount NUMERIC, note NUMERIC)")
-    repo = _Repo(ObjectManager(root, SqliteDriver(db)))  # type: ignore[arg-type]
+    repo = _Repo(ObjectManagerDb(root, SqliteDriver(db)))  # type: ignore[arg-type]
     app = FastAPI()
     app.include_router(mod.router)
     app.dependency_overrides[mod.get_repository] = lambda: repo
@@ -203,7 +203,7 @@ def test_the_runtime_itself_returns_a_decimal() -> None:
     root = load_string(json.dumps(_META)).root
     db = sqlite3.connect(":memory:")
     db.execute("CREATE TABLE entries (id INTEGER PRIMARY KEY AUTOINCREMENT, amount NUMERIC, note NUMERIC)")
-    om = ObjectManager(root, SqliteDriver(db))  # type: ignore[arg-type]
+    om = ObjectManagerDb(root, SqliteDriver(db))  # type: ignore[arg-type]
     row = om.create("Entry", {"amount": Decimal("0.1") + Decimal("0.2")})
     assert row["amount"] == Decimal("0.3") and isinstance(row["amount"], Decimal)
 
@@ -275,7 +275,7 @@ def _make_float_client(wire: WireFormat) -> TestClient:
         sys.path.remove(str(tmp))
     db = sqlite3.connect(":memory:", check_same_thread=False)
     db.execute("CREATE TABLE samples (id INTEGER PRIMARY KEY AUTOINCREMENT, score REAL, series TEXT, fix TEXT, fixes TEXT, tiers TEXT, pricing TEXT)")
-    om = ObjectManager(root, SqliteDriver(db))  # type: ignore[arg-type]
+    om = ObjectManagerDb(root, SqliteDriver(db))  # type: ignore[arg-type]
 
     class Repo(_Repo):
         def list(self, limit: int, offset: int, sort: Any, filters: list[FilterPredicate]) -> list[Any]:
@@ -369,7 +369,7 @@ def test_a_decimal_array_is_range_checked_element_wise_and_coerced_for_the_drive
     root = load_string(json.dumps(_FLOAT_META)).root
     sample = next(c for c in root.children() if c.name.endswith("Sample"))
     series = next(f for f in sample.fields() if f.name == "series")
-    from metaobjects.runtime.object_manager import _coerce_write_value
+    from metaobjects.runtime.values import coerce_write_value as _coerce_write_value
 
     assert _coerce_write_value(series, [Decimal("1.5"), "2", 3, None]) == [Decimal("1.5"), Decimal("2"), Decimal("3"), None]
 

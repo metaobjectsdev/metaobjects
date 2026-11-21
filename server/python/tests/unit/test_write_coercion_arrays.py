@@ -1,6 +1,6 @@
 """Phase 1 — _coerce_write_value for native-array columns.
 
-When a field has isArray=True the ObjectManager write path must convert a
+When a field has isArray=True the ObjectManagerDb write path must convert a
 list of author strings to the native element type so pg8000 binds a native
 PG array column (text[] / uuid[]).
 
@@ -19,7 +19,7 @@ import metaobjects.core_types  # noqa: F401 — register attr classes
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.shared.base_types import TYPE_FIELD
-from metaobjects.runtime.object_manager import _coerce_write_value  # type: ignore[attr-defined]
+from metaobjects.runtime.values import coerce_write_value as _coerce_write_value  # type: ignore[attr-defined]
 
 
 def _field(sub_type: str, *, is_array: bool = False) -> MetaField:

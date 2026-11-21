@@ -1,4 +1,4 @@
-"""field.duration through the ObjectManager: the write codec (an accepted ISO-8601 string becomes a
+"""field.duration through the ObjectManagerDb: the write codec (an accepted ISO-8601 string becomes a
 ``timedelta``; anything else is refused), the per-engine binding (pg8000 binds the ``timedelta``
 as an interval, SQLite and MySQL an integer column holding the microsecond count, so it orders)
 and the read codec (every engine reads back a ``timedelta``; an interval with a month part is
@@ -18,9 +18,9 @@ import pytest
 
 from metaobjects import load_string
 from metaobjects.naming import NamingRules
-from metaobjects.runtime import MYSQL, POSTGRES, SQLITE, ObjectManager, SqliteDriver
+from metaobjects.runtime import MYSQL, POSTGRES, SQLITE, ObjectManagerDb, SqliteDriver
 from metaobjects.runtime.dialect import DurationParam
-from metaobjects.runtime.object_manager import _coerce_write_value, _decode_read_value
+from metaobjects.runtime.values import coerce_write_value as _coerce_write_value, decode_read_value as _decode_read_value
 
 _META = {
     "metadata.root": {
@@ -53,10 +53,10 @@ def _field(name: str) -> Any:
     return next(f for f in _root().children()[0].fields() if f.name == name)
 
 
-def _sqlite_om() -> tuple[ObjectManager, sqlite3.Connection]:
+def _sqlite_om() -> tuple[ObjectManagerDb, sqlite3.Connection]:
     conn = sqlite3.connect(":memory:")
     conn.execute('CREATE TABLE "holds" ("id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, "holdFor" INTEGER, "steps" TEXT)')
-    return ObjectManager(_root(), SqliteDriver(conn)), conn
+    return ObjectManagerDb(_root(), SqliteDriver(conn)), conn
 
 
 def test_an_accepted_iso_duration_is_written_as_a_timedelta() -> None:
@@ -196,7 +196,7 @@ _VO_META = {
 }
 
 
-def _plan_om() -> tuple[ObjectManager, sqlite3.Connection]:
+def _plan_om() -> tuple[ObjectManagerDb, sqlite3.Connection]:
     result = load_string(json.dumps(_VO_META))
     assert not result.errors, [str(e) for e in result.errors]
     root: Any = result.root
@@ -206,7 +206,7 @@ def _plan_om() -> tuple[ObjectManager, sqlite3.Connection]:
         'CREATE TABLE "plans" ("id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, '
         '"settings" TEXT, "windows" TEXT, "byName" TEXT)'
     )
-    return ObjectManager(root, SqliteDriver(conn)), conn
+    return ObjectManagerDb(root, SqliteDriver(conn)), conn
 
 
 def _window(timeout: Any, steps: list[Any], wait: Any) -> dict[str, Any]:

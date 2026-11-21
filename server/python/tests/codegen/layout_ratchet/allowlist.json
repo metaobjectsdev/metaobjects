@@ -3,7 +3,6 @@
   "unconverted": {
     "generators/entity_model.py": "Types its own layout into emitted Python; converts with the Python writer PR for this generator (ADR-0063). Entity model: W-PY-2.",
     "generators/extractor_generator.py": "Types its own layout into emitted Python; converts with the Python writer PR for this generator (ADR-0063). Extractor tier.",
-    "generators/filter_allowlist_generator.py": "Types its own layout into emitted Python; converts with the Python writer PR for this generator (ADR-0063). Filter allowlist tier.",
     "generators/names_generator.py": "Types its own layout into emitted Python; converts with the Python writer PR for this generator (ADR-0063). Names tier.",
     "generators/output_parser_generator.py": "Types its own layout into emitted Python; converts with the Python writer PR for this generator (ADR-0063). Output parser tier.",
     "generators/render_helper_generator.py": "Types its own layout into emitted Python; converts with the Python writer PR for this generator (ADR-0063). Render helper tier.",

@@ -111,15 +111,15 @@ def test_a_codegen_column_naming_strategy_is_no_longer_refused() -> None:
 def test_object_manager_column_naming_argument_is_refused() -> None:
     """ADR-0058 Decision 4: the 1.0 runtime setter is refused with the shared message, before
     the manager touches its driver, so the value it held is never silently dropped."""
-    from metaobjects.runtime.object_manager import ObjectManager
+    from metaobjects.runtime.object_manager_db import ObjectManagerDb
 
     with pytest.raises(ValueError) as excinfo:
-        ObjectManager(None, driver=None, column_naming="literal")  # type: ignore[arg-type]
+        ObjectManagerDb(None, driver=None, column_naming="literal")  # type: ignore[arg-type]
     assert str(excinfo.value) == (
-        'ObjectManager(column_naming=...) was removed in 1.1.0. Column and table naming is one '
+        'ObjectManagerDb(column_naming=...) was removed in 1.1.0. Column and table naming is one '
         'project setting now, read by every port: "naming" in .metaobjects/config.json, for '
         'example "naming": { "columns": "literal" }. Move it there and delete '
-        "ObjectManager(column_naming=...). See "
+        "ObjectManagerDb(column_naming=...). See "
         "https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/physical-naming.md"
     )
 
