@@ -949,7 +949,36 @@ def _apply_generator_selection(
             frozenset(picked.packages) if picked.packages is not None else None,
             frozenset(picked.entities) if picked.entities is not None else None,
         ))
+    if not errors:
+        errors.extend(_unmet_requires_by_selection(out, target.generators or [], in_target))
     return out, errors
+
+
+def _unmet_requires_by_selection(
+    gens: list[Generator], tokens: list[str], objects: list[MetaObject],
+) -> list[str]:
+    """One error per generator that covers an object a generator it ``requires`` is selected away from.
+
+    ``routes`` imports the filter allowlist of every object it routes; limit ``filter-allowlist``
+    to one entity and the other routers import a module nobody wrote, which ``gen`` would only
+    show as an ImportError in the generated package."""
+    errors: list[str] = []
+    for gen, token in zip(gens, tokens):
+        entry = get_generator(token)
+        if entry is None:
+            continue
+        inner_filter = getattr(gen, "filter", None)
+        covered = [o for o in objects if not callable(inner_filter) or inner_filter(o)]
+        for dep, dep_token in zip(gens, tokens):
+            if dep_token not in entry.requires or not isinstance(dep, SelectedGenerator):
+                continue
+            gap = sorted(o.name for o in covered if not dep.selects(o))
+            if gap:
+                errors.append(
+                    f"generator {token!r} requires {dep_token!r}, which is limited away from "
+                    f"{gap}; limit {token!r} to the same packages/entities, or lift the limit"
+                )
+    return errors
 
 
 def _parse_entities(value: str | None) -> list[str] | None:
