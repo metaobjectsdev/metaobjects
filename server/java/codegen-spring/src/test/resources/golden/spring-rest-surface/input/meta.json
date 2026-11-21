@@ -1,0 +1,74 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      { "object.entity": {
+        "name": "Customer",
+        "children": [
+          { "source.rdb":       { "@table": "customers" } },
+          { "field.long":       { "name": "id" } },
+          { "field.string":     { "name": "name", "@required": true, "@maxLength": 80 } },
+          { "field.enum":       { "name": "status", "@required": true, "@values": ["ACTIVE", "SUSPENDED"] } },
+          { "field.decimal":    { "name": "balance", "@precision": 12, "@scale": 2 } },
+          { "field.timestamp":  { "name": "createdAt" } },
+          { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "increment" } },
+          { "segment.filter":      { "name": "active", "@filter": { "status": "ACTIVE" } } },
+          { "dimension.attribute": { "name": "status", "@of": "Customer.status" } },
+          { "measure.aggregate":   { "name": "customers", "@agg": "count", "@of": "Customer.id" } },
+          { "measure.aggregate":   { "name": "activeCustomers", "@agg": "count", "@of": "Customer.id", "@segment": "active" } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "Order",
+        "children": [
+          { "source.rdb":         { "@table": "orders" } },
+          { "field.long":         { "name": "id" } },
+          { "field.long":         { "name": "customerId", "@required": true } },
+          { "field.decimal":      { "name": "total", "@required": true, "@precision": 12, "@scale": 2 } },
+          { "field.date":         { "name": "placedOn", "@required": true } },
+          { "field.boolean":      { "name": "rush" } },
+          { "relationship.association": { "name": "tags", "@cardinality": "many", "@objectRef": "Tag", "@through": "OrderTag" } },
+          { "identity.primary":   { "name": "pk", "@fields": "id", "@generation": "increment" } },
+          { "identity.reference": { "name": "fkCustomer", "@fields": "customerId", "@references": "Customer" } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "Tag",
+        "children": [
+          { "source.rdb":       { "@table": "tags" } },
+          { "field.long":       { "name": "id" } },
+          { "field.string":     { "name": "label", "@required": true, "@maxLength": 40 } },
+          { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "increment" } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "OrderTag",
+        "children": [
+          { "source.rdb":         { "@table": "order_tags" } },
+          { "field.long":         { "name": "orderId", "@required": true } },
+          { "field.long":         { "name": "tagId", "@required": true } },
+          { "identity.primary":   { "name": "pk", "@fields": ["orderId", "tagId"] } },
+          { "identity.reference": { "name": "fkOrder", "@fields": "orderId", "@references": "Order" } },
+          { "identity.reference": { "name": "fkTag", "@fields": "tagId", "@references": "Tag" } }
+        ]
+      }},
+      { "object.projection": {
+        "name": "OrderSummary",
+        "children": [
+          { "source.rdb":       { "@kind": "view", "@view": "v_order_summary" } },
+          { "field.long":       { "name": "id", "extends": "Order.id", "@filterable": true, "@sortable": true } },
+          { "field.decimal":    { "name": "total", "extends": "Order.total", "@filterable": true, "@sortable": true } },
+          { "field.date":       { "name": "placedOn", "extends": "Order.placedOn", "@filterable": true, "@sortable": true } },
+          { "identity.primary": { "name": "pk", "extends": "Order.pk" } }
+        ]
+      }},
+      { "object.report": {
+        "name": "CustomerStatusTotals",
+        "@from": "Customer",
+        "@dimensions": ["status"],
+        "@measures": ["customers", "activeCustomers"],
+        "children": [ { "source.rdb": { "@kind": "view", "@view": "v_customer_status_totals" } } ]
+      }}
+    ]
+  }
+}

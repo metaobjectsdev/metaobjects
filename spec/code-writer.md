@@ -21,11 +21,11 @@ smarter.
 
 ### Options
 
-| Option | Meaning | TypeScript default |
-|---|---|---|
-| `indent` | One level of indentation | two spaces |
-| `width` | The last column a line may reach before its last list breaks | 120 |
-| `trailingComma` | Whether a broken list puts a comma after its last item too | true |
+| Option | Meaning | TypeScript default | Java default |
+|---|---|---|---|
+| `indent` | One level of indentation | two spaces | four spaces |
+| `width` | The last column a line may reach before its last list breaks | 120 | 120 |
+| `trailingComma` | Whether a broken list puts a comma after its last item too | true | false |
 
 A dialect sets the defaults for its language. A `core` case always states all three, so it
 means the same thing in every port.
@@ -122,6 +122,32 @@ units. The comparison includes the indent, and a line exactly `width` long fits.
   with `.set(name, value)` and `.add(member)`) and `key` (an object key, quoted only when it is
   not an identifier).
 
+## Java dialect (`JavaWriter`)
+
+`JavaWriter` is in `codegen-base` (`com.metaobjects.generator.writer`), beside the core
+`CodeWriter`. Its `block(head)` is the scoped form: `try (var b = w.block("class A {")) { ... }`
+writes the head, indents, and on leaving the `try` dedents and writes `}`.
+
+- **The package line** is set with `packageName(name)` and prints after the `header(...)` lines
+  and before the imports, with one blank line between each section.
+- **Imports are collected while the body is written.** `use("pkg.Type")` records an import and
+  returns the name to write, which is the type's last segment (a nested type,
+  `java.util.Map.Entry`, is imported as written and written `Entry`). `useStatic("pkg.Type.member")`
+  records a static import and returns the member name. A type in `java.lang`, or in the file's own
+  package, imports nothing, whichever order the package and the types were named in.
+- **Order.** Static imports first, then one blank line, then the other imports. Each group is in
+  code-unit order, with no blank line between packages. A name used twice is imported once.
+- One local name imported from two types, or one static member name from two types, is
+  **`ERR_WRITER_IMPORT_CONFLICT`**. A generator that needs both writes one of them fully qualified.
+- **`doc(lines...)`** writes `/** text */` when there is one entry and it fits. Otherwise it
+  writes a block of ` * ` lines, with a bare ` *` line for an empty entry. A `*/` inside the text
+  is written as `*&#47;`.
+- Helpers: `str` (a quoted string literal) and `call` (`fn(a, b)`, a list that breaks one item per
+  line with no trailing comma).
+- A part is a `String`, a list (`Group`, built with `CodeWriter.list` or `CodeWriter.padded`) or a
+  `List` or array of parts, which are concatenated. Anything else (a number, `null`, another
+  object) is **`ERR_WRITER_UNKNOWN_PIECE`**: the writer never guesses how to print it.
+
 ## Extension by subclassing
 
 A writer and the generators built on it are meant to be extended in place
@@ -130,7 +156,8 @@ A writer and the generators built on it are meant to be extended in place
 - A writer class is not final. Every method is public or protected, never private, so a
   subclass can override one step and keep the rest. In TypeScript the core's steps include
   `piece` (what a part becomes), `breakAt` (where a line that does not fit breaks) and `fits`.
-  `TsWriter` adds `writeHeader`, `writeImports`, `writeImport` and `orderModules`.
+  `TsWriter` adds `writeHeader`, `writeImports`, `writeImport` and `orderModules`. `JavaWriter`
+  adds `writeHeader`, `writePackage`, `writeImports` and `needsImport`.
 - A reference generator is a class whose output comes from one overridable method per
   meaningful piece: the file header, the imports, and each section or member. An adopter
   overrides the method for the piece it wants changed, and passes its subclass where the

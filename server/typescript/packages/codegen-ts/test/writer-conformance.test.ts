@@ -15,7 +15,7 @@ type Op = [string, ...unknown[]];
 
 interface WriterCase {
   description: string;
-  dialect: "core" | "typescript";
+  dialect: string;
   options?: CodeWriterOptions;
   ops: Op[];
   expected?: string[];
@@ -67,6 +67,8 @@ describe("writer conformance", () => {
 
   for (const file of files) {
     const c = JSON.parse(readFileSync(join(CASES, file), "utf8")) as WriterCase;
+    // A case of another port's dialect (`java`, ...) belongs to that port's writer.
+    if (c.dialect !== "core" && c.dialect !== "typescript") continue;
     test(`${file.replace(/\.json$/, "")}: ${c.description}`, () => {
       if (c.dialect === "core") expect(c.options, "a core case states its options").toBeDefined();
       if (c.error !== undefined) {

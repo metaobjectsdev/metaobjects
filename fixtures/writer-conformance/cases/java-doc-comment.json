@@ -1,0 +1,44 @@
+{
+  "description": "A one-entry doc comment that fits is one line; more entries, or one that does not fit, make a block. An empty entry is a bare ` *` line, and a comment terminator inside the text is neutralised.",
+  "dialect": "java",
+  "ops": [
+    [
+      "doc",
+      "The user."
+    ],
+    [
+      "line",
+      "a();"
+    ],
+    [
+      "doc",
+      "First line.",
+      "",
+      "@see other"
+    ],
+    [
+      "line",
+      "b();"
+    ],
+    [
+      "doc",
+      "ends */ here"
+    ],
+    [
+      "line",
+      "c();"
+    ]
+  ],
+  "expected": [
+    "/** The user. */",
+    "a();",
+    "/**",
+    " * First line.",
+    " *",
+    " * @see other",
+    " */",
+    "b();",
+    "/** ends *&#47; here */",
+    "c();"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "description": "One static member name imported from two types is an error.",
+  "dialect": "java",
+  "ops": [
+    [
+      "useStatic",
+      "a.A.of"
+    ],
+    [
+      "useStatic",
+      "b.B.of"
+    ]
+  ],
+  "error": "ERR_WRITER_IMPORT_CONFLICT"
+}
