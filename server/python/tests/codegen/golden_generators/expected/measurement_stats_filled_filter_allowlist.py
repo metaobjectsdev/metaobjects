@@ -4,24 +4,21 @@
 """GENERATED — per-entity FR-009 filter allowlist for MeasurementStatsFilled.
 
 MEASUREMENTSTATSFILLED_FILTER_FIELDS lists the filterable field names; MEASUREMENTSTATSFILLED_FILTER_OPS_BY_FIELD
-constrains the operator vocabulary for each field by its subtype."""
+constrains the operator vocabulary for each field by its subtype.
+"""
 
 from __future__ import annotations
 
 MEASUREMENTSTATSFILLED_FILTER_FIELDS: frozenset[str] = frozenset(
-    {
-        "readings",
-        "avgPreciseKgOrMinusOne",
-        "maxPreciseKgOrZero",
-    }
+    {"readings", "avgPreciseKgOrMinusOne", "maxPreciseKgOrZero"},
 )
 
 MEASUREMENTSTATSFILLED_FILTER_OPS_BY_FIELD: dict[str, frozenset[str]] = {
     "readings": frozenset({"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"}),
     "avgPreciseKgOrMinusOne": frozenset(
-        {"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"}
+        {"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"},
     ),
     "maxPreciseKgOrZero": frozenset(
-        {"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"}
+        {"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"},
     ),
 }

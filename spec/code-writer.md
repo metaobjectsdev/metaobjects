@@ -11,7 +11,7 @@ A writer has two parts:
   snippets, fit-or-break lists and the output form. Every port's core runs the `core` cases.
 - **A dialect** for the language being written: import collection and ordering, string
   quoting, doc comments and expression helpers. A dialect runs the cases for its language,
-  such as `typescript`.
+  such as `typescript` or `python`.
 
 The writer never parses text. It lays out the structure the generator handed it. When a shape
 comes out badly, the generator breaks it explicitly with a block. The writer is not made
@@ -122,6 +122,39 @@ units. The comparison includes the indent, and a line exactly `width` long fits.
   with `.set(name, value)` and `.add(member)`) and `key` (an object key, quoted only when it is
   not an identifier).
 
+## Python dialect (`PyWriter`)
+
+Defaults: four-space indent, 88 columns, a trailing comma on a broken list.
+
+- **Imports are collected while the body is written.** `use(name, from)` records
+  `from m import name` and returns the name to write; `use(name, from, as)` records
+  `from m import name as as`. `use_module(m)` and `use_module(m, as)` record `import m` and
+  `import m as as`. `use_future(name)` records `from __future__ import name`. Imports print
+  before the body, after any `header(...)` lines, with one blank line between each section.
+- **Order.** Three sections: `__future__`, then absolute modules, then relative ones (those
+  starting with `.`). Each section is in code-point order, with one blank line between the
+  sections. In a section the plain `import m` lines come first, then the `from m import ...`
+  lines, each group in code-point order, and names in code-point order.
+- **Long import lines.** `from m import a, b` stays on one line when it fits; otherwise it
+  prints as `from m import (`, one name per line, each followed by a comma, and `)`. A single
+  name never breaks.
+- One local name imported from two modules, or naming two different exports, is
+  **`ERR_WRITER_IMPORT_CONFLICT`**.
+- **Suites.** A Python block has no closing token: the block ends when the indent drops.
+  `open` starts a suite and `dedent` ends it without writing a line. A pending blank-line
+  request survives a dedent, so the gap before the next definition is kept. (`close` still
+  writes its line and drops a pending request, as in the core.) A suite still open when the file
+  is finished ends there: Python needs no closing token, so this is not
+  `ERR_WRITER_UNCLOSED_BLOCK`. `close` with no suite open, and `dedent` with none open, are
+  `ERR_WRITER_UNBALANCED_CLOSE`.
+- **`gap()`** asks for two blank lines before whatever is written next (the gap between
+  top-level definitions). A later `blank()` does not shrink it.
+- **`doc(lines...)`** writes `"""text"""` when there is one entry and it fits. Otherwise it
+  writes the opening quotes with the first entry, each further entry on its own line (an
+  empty entry is a blank line) and the closing quotes on their own line. A backslash is
+  written as `\\` and `"""` as `\"\"\"`.
+- Helpers: `str_lit` (a double-quoted string literal), `call`, `seq`, `mapping` and `kwarg`.
+
 ## Extension by subclassing
 
 A writer and the generators built on it are meant to be extended in place
@@ -161,7 +194,9 @@ Each case in `fixtures/writer-conformance/cases/` is one JSON file:
 - An op is an array: its name, then its arguments. The core ops are `line`, `open` and `close`
   (whose arguments are parts), `blank` and `text`. The TypeScript ops are `use`, `useType`,
   `useDefault`, `useNamespace` and `useSideEffect` (name, then module; `useSideEffect` takes
-  only the module), `header` and `doc` (lines).
+  only the module), `header` and `doc` (lines). The Python ops are `use` (name, module), `useAs` (name, module,
+  alias), `useModule` (module, optional alias), `useFuture` (optional name), `header` and `doc`
+  (lines), `dedent` and `gap`.
 - A part is a string, a list (`{"list": {"open", "items", "close", "pad"?}}`, where items are
   parts) or an array of parts, which are concatenated.
 - `expected` is the output's lines. The file is those lines joined with `\n` plus a final `\n`,

@@ -4,15 +4,12 @@
 """GENERATED — per-entity FR-009 filter allowlist for RecentPrograms.
 
 RECENTPROGRAMS_FILTER_FIELDS lists the filterable field names; RECENTPROGRAMS_FILTER_OPS_BY_FIELD
-constrains the operator vocabulary for each field by its subtype."""
+constrains the operator vocabulary for each field by its subtype.
+"""
 
 from __future__ import annotations
 
-RECENTPROGRAMS_FILTER_FIELDS: frozenset[str] = frozenset(
-    {
-        "programs",
-    }
-)
+RECENTPROGRAMS_FILTER_FIELDS: frozenset[str] = frozenset({"programs"})
 
 RECENTPROGRAMS_FILTER_OPS_BY_FIELD: dict[str, frozenset[str]] = {
     "programs": frozenset({"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"}),

@@ -990,6 +990,20 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   the new `fixtures/writer-conformance/` corpus. No shipped generator uses the writer yet, so
   generated output does not change in this release.
 
+- **A code writer for Python generators: `CodeWriter` and `PyWriter` in `metaobjects.codegen.writer`**
+  (ADR-0063). The Python port of the writer contract in `spec/code-writer.md`: the language-neutral
+  core (lines, blocks, blank-line requests, snippets, fit-or-break lists), run against the shared
+  `core` cases of `fixtures/writer-conformance/`, plus a Python dialect with its own ten cases (imports
+  collected and sorted as `__future__`, absolute, relative; docstrings; suites that end by dedenting;
+  `gap()` for the two blank lines between top-level definitions). It is on the engine surface an
+  ejected generator may import (`eject.engineSurface.python.engine`). A layout check
+  (`tests/codegen/test_layout_ratchet.py`) parses generator source with `ast` and fails on a string
+  holding a line break, a string that starts with indentation, a join on a newline or an indentation
+  built by repeating a space; every file that still types its layout is on an allowlist that only
+  shrinks. The `output-prompt`, `report-export` and `filter-allowlist` generators now write through it
+  and no longer call `ruff`; the others convert one at a time, and `ruff_format` stays exported for
+  owned generators that call it.
+
 - **Select objects to regenerate in every port.** C# `dotnet meta gen --entities A,B` (and
   `verify --codegen --entities`) and, for Java and Kotlin, `mvn metaobjects:generate
   -Dmeta.entities=A,B` regenerate only the named objects' files, like TypeScript's
@@ -1845,6 +1859,15 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   start still scaffolds as RESTART, which is the accepted residual risk. An adopter's own differ
   is kept: the services wrap it. The `.csproj` the name is read from is an input of `dotnet meta
   gen`'s skip key (ADR-0064), so renaming the assembly renders again.
+
+- **Python: the `output-prompt`, `report-export` and `filter-allowlist` generators lay out their own
+  output** (ADR-0063). The bytes no longer depend on whether `ruff` is installed or on its version.
+  The files read the same, with these differences: a module docstring closes on its own line, a
+  broken call or set literal ends with a trailing comma, `import x` lines come before `from x import`
+  lines in a section, and a literal that fits 88 columns stays on one line. If you subclass
+  `FilterAllowlistGenerator`, `_emit_constants` now writes onto a `PyWriter` it is handed instead of
+  returning source lines; an override of `OutputPromptGenerator._emit_format_spec` may return text or
+  a writer piece.
 
 ### Deprecated
 

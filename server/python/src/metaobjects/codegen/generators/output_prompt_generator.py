@@ -24,8 +24,8 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from metaobjects.apidocs.naming import snake_case as _snake_case
-from metaobjects.codegen.constants import generated_header
-from metaobjects.codegen.format import ruff_format
+from metaobjects.codegen.constants import generated_header_lines
+from metaobjects.codegen.writer import Piece, PyWriter, str_lit
 from metaobjects.codegen.name_claims import claimed_module_path
 from metaobjects.codegen.value_objects import pkg_of
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
@@ -43,10 +43,11 @@ _GENERATOR_NAME = "output-prompt-generator"
 
 def _emit_format_spec(
     payload: MetaObject, template: MetaData, root_name: str
-) -> str:
-    """The baked ``OutputFormatSpec`` literal. Module-level back-compat shim; the
-    override seam is :meth:`OutputPromptGenerator._emit_format_spec`."""
-    return ofs.spec_literal(payload, template, root_name)
+) -> Piece:
+    """The baked ``OutputFormatSpec`` literal, as a writer piece (it breaks one field per
+    line when it does not fit). Module-level back-compat shim; the override seam is
+    :meth:`OutputPromptGenerator._emit_format_spec`, which may return plain text too."""
+    return ofs.spec_piece(payload, template, root_name)
 
 
 def render_output_prompt(
@@ -78,7 +79,7 @@ def render_output_prompt(
     # fragment and extract() agree on the root element/object.
     root_name = payload.name
     emit_spec = generator._emit_format_spec if generator is not None else _emit_format_spec
-    spec_literal = emit_spec(payload, template, root_name)
+    spec_literal = emit_spec(payload, template, root_name)  # a str or a writer piece
 
     fqn = (
         f"{payload.package}::{template_name}"
@@ -86,38 +87,30 @@ def render_output_prompt(
         else template_name
     )
 
-    lines: list[str] = [
-        generated_header(template_name, fqn),
-        "from __future__ import annotations\n",
-        "from metaobjects.render import (",
-        "    PROMPT_OVERRIDES_NONE,",
-        "    FieldKind,",
-        "    Format,",
-        "    OutputFormatSpec,",
-        "    PromptField,",
-        "    PromptOverrides,",
-        "    PromptStyle,",
-        "    render_output_format,",
-        ")",
+    w = PyWriter()
+    w.header(*generated_header_lines(template_name, fqn))
+    w.use_future()
+    for name in (
+        "PROMPT_OVERRIDES_NONE", "FieldKind", "Format", "OutputFormatSpec", "PromptField",
+        "PromptOverrides", "PromptStyle", "render_output_format",
+    ):
+        w.use(name, "metaobjects.render")
+    w.line("# FR-010 artifact 1 — the baked response-format descriptor for this prompt.")
+    w.line("_SPEC: OutputFormatSpec = ", spec_literal)
+    w.gap()
+    w.open(f"def {render_fn}(overrides: PromptOverrides | None = None) -> str:")
+    w.doc(
+        'The response-format instruction fragment ("produce your answer like this").',
         "",
-        "",
-        "# FR-010 artifact 1 — the baked response-format descriptor for this prompt.",
-        f"_SPEC: OutputFormatSpec = {spec_literal}",
-        "",
-        "",
-        f"def {render_fn}(overrides: PromptOverrides | None = None) -> str:",
-        '    """The response-format instruction fragment ("produce your answer like this").',
-        "",
-        "    A comment-free guide / inline / example-only fragment teaching an LLM how to",
-        "    shape its answer. Pass ``overrides`` to swap the style or override a field's",
-        '    example / instruction at render time."""',
-        "    return render_output_format(_SPEC, overrides or PROMPT_OVERRIDES_NONE)",
-        "",
-        "",
-        f'__all__ = ["{render_fn}"]',
-        "",
-    ]
-    return "\n".join(lines)
+        "A comment-free guide / inline / example-only fragment teaching an LLM how to",
+        "shape its answer. Pass ``overrides`` to swap the style or override a field's",
+        "example / instruction at render time.",
+    )
+    w.line("return render_output_format(_SPEC, overrides or PROMPT_OVERRIDES_NONE)")
+    w.dedent()
+    w.gap()
+    w.line(f"__all__ = [{str_lit(render_fn)}]")
+    return w.to_string()
 
 
 class OutputPromptGenerator:
@@ -133,7 +126,7 @@ class OutputPromptGenerator:
 
     def _emit_format_spec(
         self, payload: MetaObject, template: MetaData, root_name: str
-    ) -> str:
+    ) -> Piece:
         """EXTENSION SEAM — the baked ``OutputFormatSpec`` literal. Defaults to the
         module-level :func:`_emit_format_spec`; override to inject custom field
         examples / instructions / style into the prompt fragment descriptor."""
@@ -164,7 +157,7 @@ class OutputPromptGenerator:
                         ctx.claims, ctx.config, pkg_of(tmpl),
                         f"{_snake_case(tmpl.name)}_response_format", tmpl.resolution_key(),
                     ),
-                    content=ruff_format(content),
+                    content=content,
                 )
             )
         return files

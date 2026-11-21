@@ -34,8 +34,8 @@ no allowlist — they share the "no router emitted" gate with
 from __future__ import annotations
 
 from metaobjects.apidocs.naming import snake_case as _snake_case
-from metaobjects.codegen.constants import generated_header
-from metaobjects.codegen.format import ruff_format
+from metaobjects.codegen.constants import generated_header_lines
+from metaobjects.codegen.writer import PyWriter, call, group, str_lit
 from metaobjects.codegen.name_claims import claimed_module_path
 from metaobjects.codegen.value_objects import pkg_of
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, per_entity
@@ -253,29 +253,26 @@ class FilterAllowlistGenerator:
 
     def _emit_constants(
         self,
+        w: PyWriter,
         fields_const: str,
         ops_const: str,
         ops_by_field: dict[str, tuple[str, ...]],
-    ) -> list[str]:
-        """The ``<ENTITY>_FILTER_FIELDS`` frozenset + ``<ENTITY>_FILTER_OPS_BY_FIELD``
-        dict literal lines. Override to change the emitted data-structure shape."""
-        lines: list[str] = []
+    ) -> None:
+        """Write the ``<ENTITY>_FILTER_FIELDS`` frozenset + ``<ENTITY>_FILTER_OPS_BY_FIELD``
+        dict literal onto ``w``. Override to change the emitted data-structure shape."""
         if not ops_by_field:
-            lines.append(f"{fields_const}: frozenset[str] = frozenset()")
-            lines.append("")
-            lines.append(f"{ops_const}: dict[str, frozenset[str]] = {{}}")
-        else:
-            lines.append(f"{fields_const}: frozenset[str] = frozenset({{")
-            for name in ops_by_field:
-                lines.append(f'    "{name}",')
-            lines.append("})")
-            lines.append("")
-            lines.append(f"{ops_const}: dict[str, frozenset[str]] = {{")
-            for name, ops in ops_by_field.items():
-                ops_literal = ", ".join(f'"{op}"' for op in ops)
-                lines.append(f'    "{name}": frozenset({{{ops_literal}}}),')
-            lines.append("}")
-        return lines
+            w.line(f"{fields_const}: frozenset[str] = frozenset()")
+            w.blank()
+            w.line(f"{ops_const}: dict[str, frozenset[str]] = {{}}")
+            return
+        names = group("{", [str_lit(n) for n in ops_by_field], "}")
+        w.line(f"{fields_const}: frozenset[str] = ", call("frozenset", [names]))
+        w.blank()
+        entries = [
+            [str_lit(name), ": ", call("frozenset", [group("{", [str_lit(op) for op in ops], "}")])]
+            for name, ops in ops_by_field.items()
+        ]
+        w.line(f"{ops_const}: dict[str, frozenset[str]] = ", group("{", entries, "}"))
 
     def render_filter_allowlist(
         self, entity: MetaObject, object_index: dict[str, MetaObject] | None = None
@@ -312,18 +309,17 @@ class FilterAllowlistGenerator:
 
         ops_by_field = self._compute_filterable_ops(entity, object_index)
 
-        parts: list[str] = []
-        parts.append(
-            generated_header(short_name, _effective_fqn(entity)).rstrip() + "\n"
-            + f'"""GENERATED — per-entity FR-009 filter allowlist for {short_name}.\n\n'
-            f"{fields_const} lists the filterable field names; {ops_const}\n"
-            f'constrains the operator vocabulary for each field by its subtype."""\n'
+        w = PyWriter()
+        w.header(*generated_header_lines(short_name, _effective_fqn(entity)))
+        w.module_doc(
+            f"GENERATED — per-entity FR-009 filter allowlist for {short_name}.",
+            "",
+            f"{fields_const} lists the filterable field names; {ops_const}",
+            "constrains the operator vocabulary for each field by its subtype.",
         )
-        parts.append("from __future__ import annotations")
-        parts.append("")
-        parts.extend(self._emit_constants(fields_const, ops_const, ops_by_field))
-        parts.append("")
-        return "\n".join(parts)
+        w.use_future()
+        self._emit_constants(w, fields_const, ops_const, ops_by_field)
+        return w.to_string()
 
     def generate(self, ctx: GenContext) -> list[EmittedFile]:
         index = build_object_index(ctx.entities)
@@ -339,7 +335,7 @@ class FilterAllowlistGenerator:
                         c.claims, c.config, pkg_of(entity), f"{snake}_filter_allowlist",
                         entity.resolution_key(),
                     ),
-                    content=ruff_format(source),
+                    content=source,
                 )
             ]
 

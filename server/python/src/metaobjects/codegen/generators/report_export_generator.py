@@ -37,10 +37,10 @@ null is an empty cell. A column holding an array, map or object is written as co
 from __future__ import annotations
 
 from metaobjects.apidocs.naming import snake_case as _snake_case
-from metaobjects.codegen.constants import generated_header
-from metaobjects.codegen.format import ruff_format
+from metaobjects.codegen.constants import generated_header_lines
+from metaobjects.codegen.writer import PyWriter, call, group, str_lit
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
-from metaobjects.codegen.import_path import ModuleScope, import_line
+from metaobjects.codegen.import_path import ModuleScope
 from metaobjects.codegen.instance_artifacts import is_served_report
 from metaobjects.codegen.name_claims import claimed_module_path
 from metaobjects.codegen.value_objects import pkg_of
@@ -64,102 +64,6 @@ WRITER_MODULE = "report_export_writer"
 #: dates and booleans are never guarded, so a negative number stays a number.
 _STRING_SUBTYPES = frozenset({fc.FIELD_SUBTYPE_STRING, fc.FIELD_SUBTYPE_ENUM, fc.FIELD_SUBTYPE_URI})
 _JSON_SUBTYPES = frozenset({fc.FIELD_SUBTYPE_MAP, fc.FIELD_SUBTYPE_OBJECT})
-
-_WRITER_SOURCE = '''\
-"""GENERATED shared writers for report export: CSV and XML. Standard library only.
-
-Rows are lists of dicts in wire form (what the JSON export writes). A column is
-``ExportColumn(name, kind)``: ``"string"`` cells get the formula-injection guard in CSV,
-``"scalar"`` cells never do, ``"json"`` cells (arrays, maps, objects) are written as compact JSON.
-"""
-from __future__ import annotations
-
-import json
-import re
-from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
-from typing import Any
-from xml.sax.saxutils import escape, quoteattr
-
-#: The export cap: more rows than this is ``400 export_too_large``, never a truncated body.
-EXPORT_MAX_ROWS = {max_rows}
-#: Write a UTF-8 byte order mark before the CSV header row.
-EXPORT_CSV_BOM = {csv_bom}
-#: How a null is written in XML: ``"empty"`` (an empty element) or ``"nil"`` (``xsi:nil="true"``).
-EXPORT_XML_NULLS = "{xml_nulls}"
-
-XSI_NAMESPACE = "http://www.w3.org/2001/XMLSchema-instance"
-
-#: A string cell starting with one of these is prefixed with an apostrophe.
-_INJECTION_START = ("=", "+", "-", "@", "\\t", "\\r")
-#: Characters XML 1.0 cannot carry at all.
-_XML_ILLEGAL = re.compile("[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\ufffe\\uffff]")
-
-
-@dataclass(frozen=True)
-class ExportColumn:
-    name: str
-    kind: str  # "string" | "scalar" | "json"
-
-
-def wire_text(value: Any) -> str:
-    """The text of one wire-form value: null is empty, a boolean is true/false."""
-    if value is None:
-        return ""
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, (dict, list)):
-        return json.dumps(value, separators=(",", ":"), ensure_ascii=False)
-    return str(value)
-
-
-def csv_cell(text: str, guard: bool) -> str:
-    """One CSV field: the injection guard (string cells only), then quoting."""
-    if guard and text.startswith(_INJECTION_START):
-        text = "'" + text
-    if any(c in text for c in '",\\r\\n'):
-        return '"' + text.replace('"', '""') + '"'
-    return text
-
-
-def write_csv(columns: Sequence[ExportColumn], rows: Iterable[Mapping[str, Any]]) -> str:
-    """RFC 4180: a header row of the column names, CRLF after every record including the last."""
-    out = ["\\ufeff" if EXPORT_CSV_BOM else ""]
-    out.append(",".join(csv_cell(c.name, False) for c in columns) + "\\r\\n")
-    for row in rows:
-        out.append(
-            ",".join(csv_cell(wire_text(row.get(c.name)), c.kind == "string") for c in columns)
-            + "\\r\\n"
-        )
-    return "".join(out)
-
-
-def xml_text(text: str) -> str:
-    """Element text: illegal characters replaced, & < > escaped, CR and LF as references."""
-    return escape(_XML_ILLEGAL.sub("\\ufffd", text), {{"\\r": "&#13;", "\\n": "&#10;"}})
-
-
-def write_xml(root: str, columns: Sequence[ExportColumn], rows: Iterable[Mapping[str, Any]]) -> str:
-    """``<Root><row><field>value</field>...</row>...</Root>``: no declaration, no indentation."""
-    nil = EXPORT_XML_NULLS == "nil"
-    out = [f"<{{root}}" + (f" xmlns:xsi={{quoteattr(XSI_NAMESPACE)}}" if nil else "")]
-    body: list[str] = []
-    for row in rows:
-        body.append("<row>")
-        for c in columns:
-            value = row.get(c.name)
-            if value is None:
-                body.append(f'<{{c.name}} xsi:nil="true"/>' if nil else f"<{{c.name}}/>")
-            else:
-                body.append(f"<{{c.name}}>{{xml_text(wire_text(value))}}</{{c.name}}>")
-        body.append("</row>")
-    if body:
-        out.append(">" + "".join(body) + f"</{{root}}>")
-    else:
-        out.append("/>")
-    return "".join(out)
-'''
-
 
 def _column_kind(field: MetaField) -> str:
     if field_is_array(field) or field.sub_type in _JSON_SUBTYPES:
@@ -187,31 +91,149 @@ class ReportExportGenerator:
         self.csv_bom = csv_bom
 
     def render_writer(self) -> str:
-        return _WRITER_SOURCE.format(
-            max_rows=self.max_rows, csv_bom=repr(bool(self.csv_bom)), xml_nulls=self.xml_nulls
+        """The shared module: the options as constants, then the CSV and XML writers, which
+        are fixed runtime code written as snippets."""
+        w = PyWriter()
+        w.header(*generated_header_lines("report-export", "metaobjects::report-export"))
+        w.module_doc(
+            "GENERATED shared writers for report export: CSV and XML. Standard library only.",
+            "",
+            "Rows are lists of dicts in wire form (what the JSON export writes). A column is",
+            '``ExportColumn(name, kind)``: ``"string"`` cells get the formula-injection guard in CSV,',
+            '``"scalar"`` cells never do, ``"json"`` cells (arrays, maps, objects) are written as '
+            "compact JSON.",
         )
+        w.use_future()
+        w.use_module("json")
+        w.use_module("re")
+        for name in ("Iterable", "Mapping", "Sequence"):
+            w.use(name, "collections.abc")
+        w.use("dataclass", "dataclasses")
+        w.use("Any", "typing")
+        w.use("escape", "xml.sax.saxutils")
+        w.use("quoteattr", "xml.sax.saxutils")
+        w.line("#: The export cap: more rows than this is ``400 export_too_large``, never a truncated body.")
+        w.line(f"EXPORT_MAX_ROWS = {self.max_rows}")
+        w.line("#: Write a UTF-8 byte order mark before the CSV header row.")
+        w.line(f"EXPORT_CSV_BOM = {bool(self.csv_bom)!r}")
+        w.line('#: How a null is written in XML: ``"empty"`` (an empty element) or ``"nil"`` (``xsi:nil="true"``).')
+        w.line(f"EXPORT_XML_NULLS = {str_lit(self.xml_nulls)}")
+        w.blank()
+        w.line('XSI_NAMESPACE = "http://www.w3.org/2001/XMLSchema-instance"')
+        w.blank()
+        w.line("#: A string cell starting with one of these is prefixed with an apostrophe.")
+        w.line('_INJECTION_START = ("=", "+", "-", "@", "\\t", "\\r")')
+        w.line("#: Characters XML 1.0 cannot carry at all.")
+        w.line('_XML_ILLEGAL = re.compile("[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\ufffe\\uffff]")')
+        w.gap()
+        w.text(
+            r'''
+            @dataclass(frozen=True)
+            class ExportColumn:
+                name: str
+                kind: str  # "string" | "scalar" | "json"
+            '''
+        )
+        w.gap()
+        w.text(
+            r'''
+            def wire_text(value: Any) -> str:
+                """The text of one wire-form value: null is empty, a boolean is true/false."""
+                if value is None:
+                    return ""
+                if isinstance(value, bool):
+                    return "true" if value else "false"
+                if isinstance(value, (dict, list)):
+                    return json.dumps(value, separators=(",", ":"), ensure_ascii=False)
+                return str(value)
+            '''
+        )
+        w.gap()
+        w.text(
+            r'''
+            def csv_cell(text: str, guard: bool) -> str:
+                """One CSV field: the injection guard (string cells only), then quoting."""
+                if guard and text.startswith(_INJECTION_START):
+                    text = "'" + text
+                if any(c in text for c in '",\r\n'):
+                    return '"' + text.replace('"', '""') + '"'
+                return text
+            '''
+        )
+        w.gap()
+        w.text(
+            r'''
+            def write_csv(columns: Sequence[ExportColumn], rows: Iterable[Mapping[str, Any]]) -> str:
+                """RFC 4180: a header row of the column names, CRLF after every record including the last."""
+                out = ["\ufeff" if EXPORT_CSV_BOM else ""]
+                out.append(",".join(csv_cell(c.name, False) for c in columns) + "\r\n")
+                for row in rows:
+                    out.append(
+                        ",".join(csv_cell(wire_text(row.get(c.name)), c.kind == "string") for c in columns)
+                        + "\r\n"
+                    )
+                return "".join(out)
+            '''
+        )
+        w.gap()
+        w.text(
+            r'''
+            def xml_text(text: str) -> str:
+                """Element text: illegal characters replaced, & < > escaped, CR and LF as references."""
+                return escape(_XML_ILLEGAL.sub("\ufffd", text), {"\r": "&#13;", "\n": "&#10;"})
+            '''
+        )
+        w.gap()
+        w.text(
+            r'''
+            def write_xml(root: str, columns: Sequence[ExportColumn], rows: Iterable[Mapping[str, Any]]) -> str:
+                """``<Root><row><field>value</field>...</row>...</Root>``: no declaration, no indentation."""
+                nil = EXPORT_XML_NULLS == "nil"
+                out = [f"<{root}" + (f" xmlns:xsi={quoteattr(XSI_NAMESPACE)}" if nil else "")]
+                body: list[str] = []
+                for row in rows:
+                    body.append("<row>")
+                    for c in columns:
+                        value = row.get(c.name)
+                        if value is None:
+                            body.append(f'<{c.name} xsi:nil="true"/>' if nil else f"<{c.name}/>")
+                        else:
+                            body.append(f"<{c.name}>{xml_text(wire_text(value))}</{c.name}>")
+                    body.append("</row>")
+                if body:
+                    out.append(">" + "".join(body) + f"</{root}>")
+                else:
+                    out.append("/>")
+                return "".join(out)
+            '''
+        )
+        return w.to_string()
 
     def render_report(self, report: MetaObject, scope: ModuleScope = ModuleScope()) -> str:
         """The export module of one served report: its columns in derived-field order."""
-        cols = ",\n".join(
-            f'    ExportColumn("{f.name}", "{_column_kind(f)}")' for f in report.fields()
+        w = PyWriter()
+        w.header(*generated_header_lines(report.name, report.resolution_key()))
+        w.module_doc(f"GENERATED — CSV and XML export of the {report.name} report.")
+        w.use_future()
+        w.use("Iterable", "collections.abc")
+        w.use("Mapping", "collections.abc")
+        w.use("Any", "typing")
+        for name in ("ExportColumn", "write_csv", "write_xml"):
+            w.use(name, scope.root(WRITER_MODULE))
+        w.line(f"EXPORT_ROOT = {str_lit(report.name)}")
+        cols = [
+            call("ExportColumn", [str_lit(f.name), str_lit(_column_kind(f))])
+            for f in report.fields()
             if not is_credential_field(f)  # #484: an export names no credential column
-        )
-        return (
-            generated_header(report.name, report.resolution_key())
-            + '"""GENERATED — CSV and XML export of the '
-            + f'{report.name} report."""\n'
-            + "from __future__ import annotations\n\n"
-            + "from collections.abc import Iterable, Mapping\n"
-            + "from typing import Any\n\n"
-            + import_line(scope.root(WRITER_MODULE), "ExportColumn", "write_csv", "write_xml") + "\n\n"
-            + f'EXPORT_ROOT = "{report.name}"\n'
-            + f"EXPORT_COLUMNS = (\n{cols},\n)\n\n\n"
-            + "def export_csv(rows: Iterable[Mapping[str, Any]]) -> str:\n"
-            + "    return write_csv(EXPORT_COLUMNS, rows)\n\n\n"
-            + "def export_xml(rows: Iterable[Mapping[str, Any]]) -> str:\n"
-            + "    return write_xml(EXPORT_ROOT, EXPORT_COLUMNS, rows)\n"
-        )
+        ]
+        w.line("EXPORT_COLUMNS = ", group("(", cols, ")"))
+        w.gap()
+        w.open("def export_csv(rows: Iterable[Mapping[str, Any]]) -> str:")
+        w.line("return write_csv(EXPORT_COLUMNS, rows)")
+        w.dedent().gap()
+        w.open("def export_xml(rows: Iterable[Mapping[str, Any]]) -> str:")
+        w.line("return write_xml(EXPORT_ROOT, EXPORT_COLUMNS, rows)")
+        return w.to_string()
 
     def generate(self, ctx: GenContext) -> list[EmittedFile]:
         reports = [e for e in ctx.entities if ctx.matches(e) and is_served_report(e)]
@@ -220,10 +242,7 @@ class ReportExportGenerator:
         files = [
             EmittedFile(
                 path=f"{WRITER_MODULE}.py",
-                content=ruff_format(
-                    generated_header("report-export", "metaobjects::report-export")
-                    + self.render_writer()
-                ),
+                content=self.render_writer(),
             )
         ]
         for report in reports:
@@ -235,10 +254,8 @@ class ReportExportGenerator:
                         ctx.claims, ctx.config, pkg_of(report), f"{_snake_case(report.name)}_export",
                         report.resolution_key(),
                     ),
-                    content=ruff_format(
-                        self.render_report(
-                            report, ModuleScope(ctx.config.output_layout, pkg_of(report))
-                        )
+                    content=self.render_report(
+                        report, ModuleScope(ctx.config.output_layout, pkg_of(report))
                     ),
                 )
             )

@@ -4,18 +4,13 @@
 """GENERATED — per-entity FR-009 filter allowlist for ProgramFlags.
 
 PROGRAMFLAGS_FILTER_FIELDS lists the filterable field names; PROGRAMFLAGS_FILTER_OPS_BY_FIELD
-constrains the operator vocabulary for each field by its subtype."""
+constrains the operator vocabulary for each field by its subtype.
+"""
 
 from __future__ import annotations
 
 PROGRAMFLAGS_FILTER_FIELDS: frozenset[str] = frozenset(
-    {
-        "program",
-        "weeks",
-        "anyDeload",
-        "allDeload",
-        "anyLongDeload",
-    }
+    {"program", "weeks", "anyDeload", "allDeload", "anyLongDeload"},
 )
 
 PROGRAMFLAGS_FILTER_OPS_BY_FIELD: dict[str, frozenset[str]] = {

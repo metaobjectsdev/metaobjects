@@ -4,15 +4,12 @@
 """GENERATED — per-entity FR-009 filter allowlist for Entry.
 
 ENTRY_FILTER_FIELDS lists the filterable field names; ENTRY_FILTER_OPS_BY_FIELD
-constrains the operator vocabulary for each field by its subtype."""
+constrains the operator vocabulary for each field by its subtype.
+"""
 
 from __future__ import annotations
 
-ENTRY_FILTER_FIELDS: frozenset[str] = frozenset(
-    {
-        "amount",
-    }
-)
+ENTRY_FILTER_FIELDS: frozenset[str] = frozenset({"amount"})
 
 ENTRY_FILTER_OPS_BY_FIELD: dict[str, frozenset[str]] = {
     "amount": frozenset({"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"}),

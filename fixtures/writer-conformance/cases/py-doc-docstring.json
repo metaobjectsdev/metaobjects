@@ -1,0 +1,49 @@
+{
+  "description": "A one-entry docstring that fits is one line; more entries, or one that does not fit, make a block with the closing quotes on their own line. An empty entry is a blank line. Backslashes and triple quotes are escaped.",
+  "dialect": "python",
+  "ops": [
+    [
+      "open",
+      "def f():"
+    ],
+    [
+      "doc",
+      "The value."
+    ],
+    [
+      "line",
+      "pass"
+    ],
+    [
+      "dedent"
+    ],
+    [
+      "open",
+      "def g():"
+    ],
+    [
+      "doc",
+      "First line.",
+      "",
+      "See \\d and \"\"\"."
+    ],
+    [
+      "line",
+      "pass"
+    ],
+    [
+      "dedent"
+    ]
+  ],
+  "expected": [
+    "def f():",
+    "    \"\"\"The value.\"\"\"",
+    "    pass",
+    "def g():",
+    "    \"\"\"First line.",
+    "",
+    "    See \\\\d and \\\"\\\"\\\".",
+    "    \"\"\"",
+    "    pass"
+  ]
+}

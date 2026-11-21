@@ -1,0 +1,61 @@
+{
+  "description": "Imports used anywhere in the body print first: __future__, then absolute modules, then relative ones, with a blank line between the sections. In a section the plain `import m` lines come first, then the `from m import` lines, each in code-point order; names in code-point order.",
+  "dialect": "python",
+  "ops": [
+    [
+      "line",
+      "x = 1"
+    ],
+    [
+      "use",
+      "Path",
+      "pathlib"
+    ],
+    [
+      "use",
+      "annotations",
+      "__future__"
+    ],
+    [
+      "use",
+      "BaseModel",
+      "pydantic"
+    ],
+    [
+      "use",
+      "Field",
+      "pydantic"
+    ],
+    [
+      "use",
+      "helper",
+      ".helper"
+    ],
+    [
+      "use",
+      "Alpha",
+      "..alpha"
+    ],
+    [
+      "useModule",
+      "json"
+    ],
+    [
+      "useModule",
+      "zlib"
+    ]
+  ],
+  "expected": [
+    "from __future__ import annotations",
+    "",
+    "import json",
+    "import zlib",
+    "from pathlib import Path",
+    "from pydantic import BaseModel, Field",
+    "",
+    "from ..alpha import Alpha",
+    "from .helper import helper",
+    "",
+    "x = 1"
+  ]
+}

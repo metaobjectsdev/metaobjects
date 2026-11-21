@@ -7,9 +7,11 @@ format are in [`spec/code-writer.md`](../../spec/code-writer.md).
 - `cases/*.json` with `"dialect": "core"` pin the language-neutral core: indentation, blocks,
   blank-line requests, snippets, fit-or-break lists, line endings and the error codes. Every
   port's writer runs them with the options the case states.
-- Cases with a language dialect (`"dialect": "typescript"`) pin that language's writer: import
+- Cases with a language dialect (`"dialect": "typescript"` or `"python"`) pin that language's writer: import
   collection and ordering, doc comments and its defaults.
 
-Runner: TypeScript, `server/typescript/packages/codegen-ts/test/writer-conformance.test.ts`.
-The other ports run the `core` cases when their writers land, and add cases for their own
-dialect beside these.
+Runners: TypeScript, `server/typescript/packages/codegen-ts/test/writer-conformance.test.ts`;
+Python, `server/python/tests/codegen/test_writer_conformance.py`; Rust,
+`server/rust/metaobjects-codegen/tests/writer_conformance.rs` (core only). A runner skips a case
+of a dialect that is not its own. The other ports run the `core` cases when their writers land,
+and add cases for their own dialect beside these.

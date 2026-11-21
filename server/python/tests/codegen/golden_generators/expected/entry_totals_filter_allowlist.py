@@ -4,7 +4,8 @@
 """GENERATED — per-entity FR-009 filter allowlist for EntryTotals.
 
 ENTRYTOTALS_FILTER_FIELDS lists the filterable field names; ENTRYTOTALS_FILTER_OPS_BY_FIELD
-constrains the operator vocabulary for each field by its subtype."""
+constrains the operator vocabulary for each field by its subtype.
+"""
 
 from __future__ import annotations
 
@@ -18,7 +19,7 @@ ENTRYTOTALS_FILTER_FIELDS: frozenset[str] = frozenset(
         "top",
         "flaggedShare",
         "perFlagged",
-    }
+    },
 )
 
 ENTRYTOTALS_FILTER_OPS_BY_FIELD: dict[str, frozenset[str]] = {

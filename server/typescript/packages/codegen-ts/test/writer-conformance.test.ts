@@ -15,7 +15,7 @@ type Op = [string, ...unknown[]];
 
 interface WriterCase {
   description: string;
-  dialect: "core" | "typescript";
+  dialect: "core" | "typescript" | "python";
   options?: CodeWriterOptions;
   ops: Op[];
   expected?: string[];
@@ -59,13 +59,15 @@ function run(c: WriterCase): string {
 }
 
 const files = readdirSync(CASES).filter((f) => f.endsWith(".json")).sort();
+// A case of another port's dialect (such as `python`) belongs to that port's runner.
+const ownCases = files.filter((f) => (JSON.parse(readFileSync(join(CASES, f), "utf8")) as WriterCase).dialect !== "python");
 
 describe("writer conformance", () => {
   test("the corpus is present", () => {
     expect(files.length).toBeGreaterThanOrEqual(25);
   });
 
-  for (const file of files) {
+  for (const file of ownCases) {
     const c = JSON.parse(readFileSync(join(CASES, file), "utf8")) as WriterCase;
     test(`${file.replace(/\.json$/, "")}: ${c.description}`, () => {
       if (c.dialect === "core") expect(c.options, "a core case states its options").toBeDefined();

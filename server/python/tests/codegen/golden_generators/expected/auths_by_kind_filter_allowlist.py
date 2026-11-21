@@ -4,17 +4,12 @@
 """GENERATED — per-entity FR-009 filter allowlist for AuthsByKind.
 
 AUTHSBYKIND_FILTER_FIELDS lists the filterable field names; AUTHSBYKIND_FILTER_OPS_BY_FIELD
-constrains the operator vocabulary for each field by its subtype."""
+constrains the operator vocabulary for each field by its subtype.
+"""
 
 from __future__ import annotations
 
-AUTHSBYKIND_FILTER_FIELDS: frozenset[str] = frozenset(
-    {
-        "kind",
-        "auths",
-        "distinctRefs",
-    }
-)
+AUTHSBYKIND_FILTER_FIELDS: frozenset[str] = frozenset({"kind", "auths", "distinctRefs"})
 
 AUTHSBYKIND_FILTER_OPS_BY_FIELD: dict[str, frozenset[str]] = {
     "kind": frozenset({"eq", "ne", "in", "like", "isNull"}),
