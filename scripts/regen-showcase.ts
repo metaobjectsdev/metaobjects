@@ -382,11 +382,9 @@ function pristineProject(): string {
          join(tmp, ".metaobjects", "config.json"), { recursive: true });
   // A project with no `node_modules` anywhere above it switches Bun into auto-install: the
   // config's `@metaobjectsdev/*` imports would then resolve to a copy fetched into the
-  // machine-wide cache, not this tree, and that copy's formatter dependency cannot find its
-  // sibling `@biomejs/wasm-nodejs` ("Biome formatter error"), so every ts file comes out
-  // unformatted and the gate reports the whole committed tree as stale. An empty
-  // `node_modules` turns auto-install off; the CLI's own package aliases then resolve the
-  // workspace packages, which is what this check is meant to exercise.
+  // machine-wide cache, not this tree, so the gate would check that copy's output instead of
+  // the committed tree. An empty `node_modules` turns auto-install off; the CLI's own package
+  // aliases then resolve the workspace packages, which is what this check is meant to exercise.
   mkdirSync(join(tmp, "node_modules"));
   return tmp;
 }

@@ -8,6 +8,11 @@ writer contract and corpus, and the test that holds generator source to the rule
 generator and changed no generated output. Each generator is converted in its own later change;
 the Python writer and its first conversions are in [The Python writer](#the-python-writer).
 
+**Amended (1.3.0, TypeScript):** the TypeScript reference generators no longer run a formatter.
+`formatTs` returns its input unchanged, and the first `meta gen` after upgrading rewrites generated
+TypeScript once, in layout only. Decision 2 below stands; this amendment records the first
+conversion, which does change generated output.
+
 ## Context
 
 The Java `codegen-base` direct family (`FileIndentor` and `FileDirectWriter`, about 130 lines)

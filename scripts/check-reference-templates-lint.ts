@@ -19,8 +19,8 @@
  * trivially fixable with no behaviour change.
  *
  * Nothing could see them. The templates are excluded from each package's BUILD
- * tsconfig, this repo ships no `biome.json` of its own (biome is a dependency here for
- * `formatTs`, the codegen format pass — not a repo linter), and the gates that DO read
+ * tsconfig, this repo ships no `biome.json` of its own (biome is a devDependency here so
+ * the template lint below can run, not a repo linter), and the gates that DO read
  * these files — `test/reference-byte-identical.test.ts` in each package — compare
  * EMITTED OUTPUT, which is byte-identical whether a template asserts non-null or
  * narrows. The only reader who ever saw them was an adopter.
@@ -76,9 +76,8 @@ export async function discoverTemplates(repo: string = REPO): Promise<string[]> 
   return found.sort();
 }
 
-/** biome is a devDependency of the codegen packages (shipped code formats through the
- *  WASM build instead), so a binary is present after `bun install`. Any of them is the
- *  same pinned version. */
+/** biome is a devDependency of the codegen packages, so a binary is present after
+ *  `bun install`. Any of them is the same pinned version. */
 export function resolveBiomeBin(repo: string = REPO): string | undefined {
   for (const root of PACKAGE_ROOTS) {
     const rootDir = join(repo, root);
