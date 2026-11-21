@@ -36,7 +36,8 @@
 // barrel exports to name a file the run actually wrote.
 
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, readdirSync, statSync, readFileSync } from "node:fs";
+import { readdirSync, statSync, readFileSync } from "node:fs";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 import { join, relative } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 
@@ -78,7 +79,7 @@ async function emit(model: unknown, outputLayout: "flat" | "package"): Promise<s
   ]);
   expect(errors.map((e) => e.message)).toEqual([]);
 
-  const dir = mkdtempSync(join(import.meta.dir, "tmp-pkg-layout-"));
+  const dir = makeScratchDir("tmp-pkg-layout-");
   try {
     await runGen({
       config: defineConfig({
@@ -102,7 +103,7 @@ async function emit(model: unknown, outputLayout: "flat" | "package"): Promise<s
     walk(dir);
     return out.sort();
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
   }
 }
 
@@ -119,7 +120,7 @@ async function emitWithBarrel(
   ]);
   expect(errors.map((e) => e.message)).toEqual([]);
 
-  const dir = mkdtempSync(join(import.meta.dir, "tmp-pkg-barrel-"));
+  const dir = makeScratchDir("tmp-pkg-barrel-");
   try {
     await runGen({
       config: defineConfig({
@@ -145,7 +146,7 @@ async function emitWithBarrel(
     const specifiers = [...index.matchAll(/from\s+"([^"]+)"/g)].map((m) => m[1]!);
     return { specifiers, files: files.sort() };
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
   }
 }
 
@@ -237,7 +238,7 @@ describe("every relative import resolves in package layout, shared enums include
       new InMemoryStringSource(JSON.stringify(ENUM_MODEL), { id: "meta.json" }),
     ]);
     expect(errors.map((e) => e.message)).toEqual([]);
-    const dir = mkdtempSync(join(import.meta.dir, "tmp-pkg-enum-"));
+    const dir = makeScratchDir("tmp-pkg-enum-");
     try {
       await runGen({
         config: defineConfig({
@@ -277,7 +278,7 @@ describe("every relative import resolves in package layout, shared enums include
       expect(enumImports).toBeGreaterThan(0);
       expect(unresolved).toEqual([]);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTree(dir);
     }
   });
 });

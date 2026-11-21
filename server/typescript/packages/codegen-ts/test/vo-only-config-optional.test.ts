@@ -11,8 +11,7 @@
 // could not use it. It is now demanded at the point of USE, by the generator that
 // needs it, naming that generator.
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 import { join } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { runGen } from "../src/runner.js";
@@ -22,8 +21,8 @@ import { entityFile as referenceEntityFile } from "../src/reference/entity.js";
 import type { MetaobjectsGenConfig } from "../src/metaobjects-config.js";
 
 let tmp: string;
-beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "codegen-vo-only-")); });
-afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+beforeEach(() => { tmp = makeScratchDir("codegen-vo-only-"); });
+afterEach(() => { removeTree(tmp); });
 
 async function load(children: unknown[]) {
   const json = JSON.stringify({ "metadata.root": { package: "app", children } });

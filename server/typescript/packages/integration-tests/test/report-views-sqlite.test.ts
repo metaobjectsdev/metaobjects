@@ -47,9 +47,15 @@ function literalColumns<T>(root: T): T {
 let tmpDir: string;
 let k: Kysely<Record<string, unknown>>;
 
-beforeEach(() => {
-  tmpDir = mkdtempSync(join(tmpdir(), "report-views-sqlite-"));
+beforeEach(async () => {
+  // The database file lives in RAM ($DEV_SCRATCH when set): libsql commits every DDL statement
+  // with an fsync, and the canonical model applies dozens of them per test, so on a disk that is
+  // ~1.3 s per test setup (14 tests, ~20 s) and past the default timeout when the disk is busy.
+  tmpDir = mkdtempSync(join(process.env.DEV_SCRATCH || tmpdir(), "report-views-sqlite-"));
   k = new Kysely({ dialect: new LibsqlDialect({ url: `file:${join(tmpDir, "test.db")}` }) });
+  // A throwaway database needs no crash safety, so skip the per-statement fsync even when
+  // $DEV_SCRATCH is unset and the file lands on a real disk.
+  await sql.raw("PRAGMA synchronous = OFF").execute(k);
 });
 
 afterEach(async () => {
