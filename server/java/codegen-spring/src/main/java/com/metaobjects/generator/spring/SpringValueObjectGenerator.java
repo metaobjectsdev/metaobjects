@@ -164,15 +164,19 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
         boolean usesDecimal = fields.stream()
             .anyMatch(f -> SpringGeneratorSupport.isDecimalComponent(componentTypeFr019(f, vo)));
         if (usesDecimal) {
-            src.append(SpringGeneratorSupport.decimalAnnotationImports(runtimePackage, wire));
+            for (String fqn : SpringGeneratorSupport.decimalAnnotationImports(runtimePackage, wire)) {
+                src.append("import ").append(fqn).append(";\n");
+            }
         }
         // field.duration: a Duration component binds the canonical serializer / strict deserializer.
         boolean usesDuration = wire.durationsIso() && fields.stream()
             .anyMatch(f -> SpringGeneratorSupport.isDurationComponent(componentTypeFr019(f, vo)));
         if (usesDuration) {
             if (!usesDecimal) src.append("import com.fasterxml.jackson.databind.annotation.JsonDeserialize;\n");
-            src.append(SpringGeneratorSupport.durationAnnotationImports(
-                runtimePackage, usesDecimal && wire.decimalsAsString()));
+            for (String fqn : SpringGeneratorSupport.durationAnnotationImports(
+                    runtimePackage, usesDecimal && wire.decimalsAsString())) {
+                src.append("import ").append(fqn).append(";\n");
+            }
         }
         if (usesValid) {
             src.append("import jakarta.validation.Valid;\n");

@@ -103,6 +103,17 @@ here.**
   TypeScript passes both. The other ports take them on in their 1.3.0 REST-standard work. The
   decision is [ADR-0068](spec/decisions/ADR-0068-list-query-cross-port-contract.md). A
   scenario can now send a body that is not JSON with `rawBody`.
+- **Java: the Spring controller generator writes through the code writer (ADR-0063).**
+  `SpringControllerGenerator` writes through `SpringJavaWriter`, a `JavaWriter` that adds the two
+  layouts Spring source uses and a block does not: a continuation line (two indents deeper) and an
+  indented `case` body. Every member of the generated controller comes from its own protected
+  `write*` method, so an owned copy changes one handler by overriding one method; the `append*`
+  helpers that took a `StringBuilder` are gone. The shared validator members and the decimal and
+  duration import lists in `SpringGeneratorSupport` are written through the writer too
+  (`writeCrossFieldValidationMembers`; `decimalAnnotationImports` and `durationAnnotationImports`
+  now return qualified names). A generated controller changes in two layout details only, checked
+  on 1,512 controllers from every fixture model: its imports are sorted, and the blank line after
+  `public class ... {` is gone. The DTO and value-object output is unchanged.
 - **runtime-ts: one list-query parse for every mount.** `parseListQuery` (exported from
   `@metaobjectsdev/runtime-ts`; it does not depend on Drizzle) reads a list request into a
   port-neutral `ListQuery`, and each mount compiles that for its own query library. The Drizzle

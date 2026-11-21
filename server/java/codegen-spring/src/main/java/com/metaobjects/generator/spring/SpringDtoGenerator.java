@@ -253,7 +253,8 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
                       SpringNaming.splitFqn(entity.getName())[1]))
                 : List.<String>of());
         // Entity-scoped cross-field validators: class-level @AssertTrue rules on the full DTO only.
-        extraBodyMembers.addAll(SpringGeneratorSupport.crossFieldValidationMembers(entity, fields));
+        String crossField = crossFieldMembers(entity, fields);
+        if (!crossField.isEmpty()) extraBodyMembers.add(crossField);
         emitRecord(entity, outRoot, fields, annotationsPerField, extraBodyMembers);
     }
 
@@ -634,13 +635,17 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         boolean usesDuration = wire.durationsIso() && fields.stream()
             .anyMatch(f -> SpringGeneratorSupport.isDurationComponent(componentTypeFr019(f, entity)));
         if (usesDecimal) {
-            src.append(SpringGeneratorSupport.decimalAnnotationImports(runtimePackage, wire));
+            for (String fqn : SpringGeneratorSupport.decimalAnnotationImports(runtimePackage, wire)) {
+                src.append("import ").append(fqn).append(";\n");
+            }
         } else if (usesNetDeser || usesDuration) {
             src.append("import com.fasterxml.jackson.databind.annotation.JsonDeserialize;\n");
         }
         if (usesDuration) {
-            src.append(SpringGeneratorSupport.durationAnnotationImports(
-                runtimePackage, usesDecimal && wire.decimalsAsString()));
+            for (String fqn : SpringGeneratorSupport.durationAnnotationImports(
+                    runtimePackage, usesDecimal && wire.decimalsAsString())) {
+                src.append("import ").append(fqn).append(";\n");
+            }
         }
         // Wildcard import keeps the emit simple — record components carry a small,
         // closed set of jakarta.validation.constraints annotations.
@@ -1164,5 +1169,21 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
     @Deprecated
     protected static String escapeJavaString(String s) {
         return SpringGeneratorSupport.escapeJavaString(s);
+    }
+
+    /**
+     * The cross-field validator members ({@link SpringGeneratorSupport#writeCrossFieldValidationMembers})
+     * as one record-body member, or empty when the entity has none. Bridges the writer output into
+     * this generator's string assembly until the DTO generator writes through the writer itself.
+     */
+    protected static String crossFieldMembers(MetaObject entity, List<MetaField> fields) {
+        com.metaobjects.generator.writer.CodeWriter w =
+            new com.metaobjects.generator.writer.CodeWriter(com.metaobjects.generator.writer.WriterOptions.JAVA);
+        try (com.metaobjects.generator.writer.CodeWriter.Block b = w.block("{")) {
+            SpringGeneratorSupport.writeCrossFieldValidationMembers(w, entity, fields);
+        }
+        List<String> lines = List.of(w.toString().split("\n"));
+        if (lines.size() <= 2) return "";
+        return "\n" + String.join("\n", lines.subList(1, lines.size() - 1)) + "\n";
     }
 }
