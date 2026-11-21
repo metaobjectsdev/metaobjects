@@ -35,11 +35,10 @@ reference generator in the printed entry; without it no documentation generator 
 ## Regeneration and hand edits
 
 There is no three-way merge on the JVM (that is TypeScript-only). `mvn metaobjects:generate`
-records each file it writes in `.metaobjects/.gen-state/.hashes/`: a file that still matches
-is overwritten, and an edited one is refused by name (`<handEdits>keep</handEdits>`, the default)
-or replaced (`<handEdits>overwrite</handEdits>`). `mvn metaobjects:eject -Dnames=<name>` copies a
-generator into your repo to own. Commit the manifest. Details:
-[Own your codegen](../features/own-your-codegen.md).
+records each file it writes in `.metaobjects/.gen-state/.hashes/`; an edited file is refused by
+name, and `<handEdits>overwrite</handEdits>` replaces it instead. `mvn metaobjects:eject -Dnames=<name>`
+copies a generator into your repo to own. Commit the manifest. The rules for every port:
+[Hand edits and the hash manifest](../features/own-your-codegen.md#hand-edits-and-the-hash-manifest-every-port).
 
 ## Undo an eject, strict loading, and diagnostics
 
@@ -946,12 +945,10 @@ the output-pattern grammar are gated byte-identical against the shared
 `fixtures/template-codegen-conformance/` corpus, so a template that renders here
 renders the same everywhere.
 
-One deliberate difference from the other ports: this generator writes its output
-**directly**, not through `GeneratedFileWriter`, so your template is under no
-obligation to emit a marker, and its output is not recorded in the codegen hash manifest.
-The tradeoff is that these files are overwritten on every run, and the orphan sweep never
-deletes one that is no longer rendered — keep hand edits out of them, and delete a stale one
-yourself.
+Its output is recorded in the codegen hash manifest like the rest of the Java output, so your
+template need not emit a marker. An unchanged file is not rewritten, a hand edit is refused by
+name, and a file the template no longer renders is deleted when untouched. The rules for every
+port are in [Hand edits and the hash manifest](../features/own-your-codegen.md#hand-edits-and-the-hash-manifest-every-port).
 
 The data dict your template receives is documented in
 [`codegen-data-shapes.md`](../features/codegen-data-shapes.md).

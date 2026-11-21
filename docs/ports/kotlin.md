@@ -25,10 +25,10 @@ Two modules:
 ## Regeneration and hand edits
 
 There is no three-way merge on the JVM (that is TypeScript-only). Kotlin runs through the same
-`mvn metaobjects:generate` write path as Java: a file that still matches the committed hash
-manifest (`.metaobjects/.gen-state/.hashes/`) is overwritten, and an edited one is refused by
-name (or replaced with `<handEdits>overwrite</handEdits>`). `mvn metaobjects:eject -Dnames=<name>`
-copies a generator into your repo to own.
+`mvn metaobjects:generate` write path as Java, and the same committed manifest
+(`.metaobjects/.gen-state/.hashes/`) decides. The rules for every port are in
+[Hand edits and the hash manifest](../features/own-your-codegen.md#hand-edits-and-the-hash-manifest-every-port).
+`mvn metaobjects:eject -Dnames=<name>` copies a generator into your repo to own.
 
 ## Undo an eject, strict loading, and diagnostics
 
@@ -966,7 +966,7 @@ Persist it through your own column until the generator emits one.
 | Code-vs-API-doc | Cross-port codegen from same metadata | Build time |
 | DB-vs-metadata | `MetadataStartupValidator.validate(loader)` at Spring `ApplicationReadyEvent`; live-DB schema drift: TS toolchain `meta verify --db` | App startup; CI on every PR (TS) |
 | Migration-vs-metadata | TS toolchain `meta migrate` emits from metadata diffs (`meta:migrate` Maven goal was removed) | Build time |
-| Generated-edited | `@generated` KotlinPoet headers | Code review |
+| Generated-edited | Hash manifest: an edited file is refused by name; `mvn metaobjects:verify` reports it | Build time |
 | Prompt-vs-payload | `KotlinRenderHelperGenerator`'s build-time drift gate + Java `Renderer.verify` | Build time + runtime |
 | Generated-vs-runtime | `MetadataStartupValidator.validate(loader)` from Spring `ApplicationReadyEvent` | App startup |
 

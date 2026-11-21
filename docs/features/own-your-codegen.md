@@ -443,6 +443,10 @@ diff -u node_modules/@metaobjectsdev/codegen-ts/src/templates/zod-validators.ts 
         codegen/templates/zod-validators.ts
 ```
 
+## Hand edits and the hash manifest (every port)
+
+This is the one statement of the hand-edit guard. The other docs point here.
+
 Whatever you own, hand-edits inside a generated file survive regeneration — but *how* they
 survive depends on what the toolchain can see, and it is worth knowing which case you
 are in:
