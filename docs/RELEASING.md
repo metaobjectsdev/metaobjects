@@ -574,6 +574,13 @@ strategy mismatches) that the unit suites missed.
 
 ### 2c. Run an adopter estate against the RC (1.0 gate G3d)
 
+> **Staged candidates.** The checklist below is the final-cut gate. Each staged candidate
+> (`1.3.0-rc.N`, published to the private registry with `bun run prerelease:candidate`) has its
+> own run sheet and a script for its mechanical steps:
+> [`tools/prerelease/estate-run.md`](../tools/prerelease/estate-run.md) and
+> `tools/prerelease/estate-run.sh`. The commit each candidate was built from is recorded in
+> [`tools/prerelease/candidates.md`](../tools/prerelease/candidates.md).
+
 Every corpus in this repo can be green while a real application built on the release is
 broken — the defects live where features meet, in models no fixture composes. Before
 promoting, run at least one adopter estate against the candidate, end to end, and treat a
