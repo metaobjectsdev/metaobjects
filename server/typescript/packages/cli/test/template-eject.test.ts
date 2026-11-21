@@ -307,7 +307,12 @@ describe("ejectTemplates — never overwrites a file without force", () => {
     expect(readFileSync(join(project, "codegen/templates/b.ts"), "utf8")).toContain("// MINE");
 
     const forced = await ejectTemplates(project, [closure], true);
-    expect(forced.files.every((f) => f.status === "replaced")).toBe(true);
+    // --force replaces the edited copy; the two that already hold the shipped bytes are not rewritten.
+    expect(forced.files.map((f) => [f.path, f.status])).toEqual([
+      ["codegen/templates/a.ts", "preserved"],
+      ["codegen/templates/b.ts", "replaced"],
+      ["codegen/templates/cube/c.ts", "preserved"],
+    ]);
     expect(readFileSync(join(project, "codegen/templates/b.ts"), "utf8")).not.toContain("// MINE");
   });
 

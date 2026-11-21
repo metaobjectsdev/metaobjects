@@ -14,7 +14,7 @@ const DRIVER_TEXT = 'Failed query: select "id", "display_name" from "readers"\np
 // Every method the mount calls fails the way a driver does when the schema drifted.
 function brokenOm(): ObjectManager {
   const fail = async () => { throw new Error(DRIVER_TEXT); };
-  return { findMany: fail, findById: fail, create: fail, update: fail, delete: fail, count: fail } as unknown as ObjectManager;
+  return { keyFields: () => ["id"], findMany: fail, findById: fail, create: fail, update: fail, delete: fail, count: fail } as unknown as ObjectManager;
 }
 
 const InsertSchema = z.object({ displayName: z.string() });

@@ -1,0 +1,53 @@
+{
+  "embedded": false,
+  "count": 7,
+  "plural": "s",
+  "entries": [
+    {
+      "heading": "## Storefront",
+      "facts": "`functional` · **L1** · status: `live`",
+      "statement": "The storefront solution",
+      "counterexample": "**Counterexample:** Nothing can be sold"
+    },
+    {
+      "heading": "### Storefront.OrderService",
+      "facts": "`functional` · **L3** · status: `live`",
+      "statement": "Every placed order is recorded before payment is attempted",
+      "counterexample": "**Counterexample:** A payment attempted against an order that was never stored",
+      "description": "Recording first is what lets a failed payment be retried.\n\n# Why first\n\nA payment with no order is a refund nobody can trace."
+    },
+    {
+      "heading": "#### Storefront.OrderService.OrderRecord — What an order must hold",
+      "facts": "`functional` · **L4** · status: `live`",
+      "statement": "An order records what was bought, for how much, and when: placed | paid",
+      "counterexample": "**Counterexample:** An order row that cannot say who placed it",
+      "implementedBy": "**Implemented by:** `acme::shop::Order`, `acme::shop::Order.placedAt`"
+    },
+    {
+      "heading": "##### Storefront.OrderService.OrderRecord.TranscribableReference",
+      "facts": "`functional` · **L5** · status: `live`",
+      "statement": "An order carries a reference a customer can read\ndown a phone line",
+      "counterexample": "**Counterexample:** A reference that is a raw uuid",
+      "implementedBy": "**Implemented by:** `acme::shop::Order.reference`"
+    },
+    {
+      "heading": "##### Storefront.OrderService.OrderRecord.OrderExpiry",
+      "facts": "`functional` · **L5** · status: `planned` · tracked: acme/shop#412",
+      "statement": "An unpaid order carries the instant it stops being reservable",
+      "counterexample": "**Counterexample:** Stock held indefinitely against an order nobody paid for"
+    },
+    {
+      "heading": "## MoneyIsExactMinorUnits",
+      "facts": "`architectural` · status: `live`",
+      "statement": "Monetary amounts are stored as exact integer minor units, never as floating point",
+      "counterexample": "**Counterexample:** A cent that disappears when a total is split three ways",
+      "implementedBy": "**Implemented by:** `acme::shop::Invoice`"
+    },
+    {
+      "heading": "## GuestCheckout",
+      "facts": "`functional` · **L4** · status: `retired`",
+      "statement": "A visitor can check out without an account",
+      "counterexample": "**Counterexample:** An order with no way to reach the person who placed it"
+    }
+  ]
+}

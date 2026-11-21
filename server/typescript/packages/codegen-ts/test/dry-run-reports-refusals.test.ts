@@ -12,20 +12,20 @@
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { manifestExists } from "./support/manifest.js";
-import { mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { rmSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { decideAndWrite, previewWriteStatus } from "../src/overwrite-policy.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 let tmp: string;
 let state: string;
 beforeEach(() => {
-  tmp = mkdtempSync(join(tmpdir(), "dry-preview-"));
-  state = mkdtempSync(join(tmpdir(), "dry-preview-state-"));
+  tmp = makeScratchDir("dry-preview-");
+  state = makeScratchDir("dry-preview-state-");
 });
 afterEach(() => {
-  rmSync(tmp, { recursive: true, force: true });
-  rmSync(state, { recursive: true, force: true });
+  removeTree(tmp);
+  removeTree(state);
 });
 
 const opts = () => ({ genStateDir: state, outputRelPath: "User.ts" });

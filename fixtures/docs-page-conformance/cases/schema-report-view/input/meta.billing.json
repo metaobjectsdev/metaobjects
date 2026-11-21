@@ -1,0 +1,72 @@
+{
+  "metadata.root": {
+    "package": "acme::billing",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Invoice",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "invoices"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "status",
+                "@required": true,
+                "@default": "open"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "invoiceStatus",
+                "@of": "Invoice.status"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "invoiceCount",
+                "@agg": "count",
+                "@of": "Invoice.id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "StatusTotals",
+          "@from": "Invoice",
+          "@dimensions": [
+            "invoiceStatus"
+          ],
+          "@measures": [
+            "invoiceCount"
+          ],
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_status_totals"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

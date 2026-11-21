@@ -28,8 +28,7 @@
 // column that agrees with the strategy, both spellings coincide and this test would pass
 // against the defect.
 import { describe, test, expect } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MetaDataLoader, resolveColumnName } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
@@ -37,6 +36,7 @@ import { buildExpectedSchema } from "@metaobjectsdev/migrate-ts";
 import { runGen } from "../src/runner.js";
 import { entityFile } from "../src/generators/entity-file.js";
 import { defineConfig } from "../src/metaobjects-config.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 const META = JSON.stringify({
   "metadata.root": {
@@ -74,7 +74,7 @@ const META = JSON.stringify({
  * other — which is the only way the two sides are talking about the same thing.
  */
 async function bothNames(): Promise<{ codegen: string[]; migrate: string[] }> {
-  const repo = mkdtempSync(join(tmpdir(), "idx-parity-"));
+  const repo = makeScratchDir("idx-parity-");
   try {
     mkdirSync(join(repo, "metaobjects"), { recursive: true });
     const fixture = join(repo, "metaobjects", "meta.idx.json");
@@ -128,7 +128,7 @@ async function bothNames(): Promise<{ codegen: string[]; migrate: string[] }> {
 
     return { codegen, migrate };
   } finally {
-    rmSync(repo, { recursive: true, force: true });
+    removeTree(repo);
   }
 }
 

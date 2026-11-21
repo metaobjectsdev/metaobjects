@@ -1,25 +1,23 @@
 import {
   is, Column, SQL as DrizzleSQL,
-  eq, ne, gt, gte, lt, lte, inArray, like, ilike, isNull, not, and, or, asc, desc, sql,
+  eq, ne, gt, gte, lt, lte, inArray, like, ilike, isNull, not, and, or, sql,
+  asc, desc,
   type SQL, type SQLWrapper,
 } from "drizzle-orm";
 import type { SqlDialect } from "../sql-dialect.js";
-import type { FilterAllowlist, FilterOp, FilterFieldRule, SortAllowlist } from "./filter-allowlist.js";
-import { sortOrderSpec } from "./filter-allowlist.js";
-import { FilterParseError, parsePageBound, SORT_EXPECTED } from "./list-params.js";
+import type { FilterAllowlist, FilterFieldRule, SortAllowlist } from "./filter-allowlist.js";
+import { FilterParseError } from "./list-params.js";
+import { likePatternToGlob, parseListQuery, type FilterLeaf, type FilterNode, type FilterScalar, type ListSearch } from "./list-query.js";
 
 // Re-exported so existing importers keep one door; the definitions live in the
-// drizzle-free list-params module, which the ObjectManager Fastify mount also uses.
+// drizzle-free list-params and list-query modules, which the ObjectManager Fastify mount also uses.
 export { FilterParseError, parsePageBound, pageLimit, ERROR_CODE_LIMIT_TOO_LARGE, type PageSize, PAGINATION_EXPECTED, RAW_VIEW_MAX_LIMIT, REPORT_MAX_ROWS, ReportTooLargeError, parseReportPage, SORT_EXPECTED } from "./list-params.js";
-import {
-  ANY_TEMPORAL_EXPECTED, FORMAT_EXPECTED, PLUS_OFFSET_HINT,
-  looksLikeUnencodedPlusOffset, matchesAnyTemporal, matchesFormat, utcIsoIfZoned, utcIsoInstant,
-} from "./filter-value-format.js";
-import { FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_DURATION, FIELD_SUBTYPE_TIMESTAMP } from "@metaobjectsdev/metadata";
-import { canonicalDecimal } from "../decimal-wire.js";
-import {
-  DURATION_MICROS_MAX, DURATION_MICROS_MIN, durationToStoredMicros, formatPostgresInterval, parseDurationLiteral,
-} from "../duration-wire.js";
+export {
+  likePatternToGlob, parseListQuery, parseListQueryString, rawQueryOf, searchFields, DEFAULT_MAX_IN_LIST, DEFAULT_MAX_NESTING,
+  type FilterLeaf, type FilterNode, type FilterScalar, type ListQuery, type ListSearch, type ListSort, type ParseListQueryOpts,
+} from "./list-query.js";
+import { FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_DURATION } from "@metaobjectsdev/metadata";
+import { durationToStoredMicros, formatPostgresInterval, parseDurationLiteral } from "../duration-wire.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: dynamic dispatch over user's Drizzle table
 type AnyTable = any;
@@ -39,54 +37,8 @@ export interface ParseFilterResult {
   orderBy?: SQLWrapper[];
   limit?: number;
   offset?: number;
-  /** Search predicate — OR(like('%term%')) across @filterable string fields. */
+  /** Search predicate — OR(case-insensitive '%term%') across @filterable text fields. */
   searchWhere?: SQL;
-}
-
-
-const DEFAULT_MAX_NESTING = 5;
-const DEFAULT_MAX_IN_LIST = 100;
-
-/** Top-level list-query parameters this parser (or the mount around it) reads. A
- *  filterable field that happens to share one of these names is addressed only through
- *  `filter[<name>]`, so the bare-field check below never claims them. */
-const RESERVED_LIST_PARAMS: ReadonlySet<string> = new Set([
-  "filter", "sort", "limit", "offset", "search", "withCount",
-]);
-
-/**
- * `?priority=low` on a list whose allowlist has `priority` is almost always a caller who
- * meant `?filter[priority][eq]=low` — and silently ignoring it returns EVERY row, which
- * reads as "the filter matched everything". Refuse it, naming the syntax that works.
- *
- * A bare name that is a field of the entity but NOT on the filter allowlist is refused
- * too — the caller plainly meant that field — saying it is not filterable and listing
- * the fields that are. Any other unknown parameter — a cache-buster, a tracking tag, a
- * param some proxy appends — is left alone, as before.
- * TS-only (the other ports ignore unknown parameters): see docs/features/api-contract.md,
- * "TS-only filter extensions".
- */
-function rejectBareFieldParams(query: Record<string, unknown>, allowlist: FilterAllowlist, table: AnyTable): void {
-  for (const [key, value] of Object.entries(query)) {
-    if (RESERVED_LIST_PARAMS.has(key)) continue;
-    if (Object.hasOwn(allowlist, key)) {
-      const shown = typeof value === "string" ? value : "<value>";
-      throw new FilterParseError(
-        "filter.bare_field",
-        `"${key}" is a filterable field, but a bare ?${key}= parameter is not a filter. Use filter[${key}][eq]=${shown}.`,
-        { field: key, expected: `filter[${key}][eq]=${shown}` },
-      );
-    }
-    if (isEntityColumn(table, key)) {
-      const allowed = Object.keys(allowlist);
-      throw new FilterParseError(
-        "filter.bare_field",
-        `"${key}" is a field of this entity, but it is not @filterable, so it cannot be filtered on` +
-          (allowed.length > 0 ? ` (filterable: ${allowed.join(", ")}).` : " (no field is filterable)."),
-        { field: key, filterable: false, expected: `a filterable field — "${key}" is not @filterable`, allowed },
-      );
-    }
-  }
 }
 
 /** Is `key` one of the table's (or view's) own columns? A Drizzle table exposes each
@@ -102,206 +54,6 @@ function isEntityColumn(table: AnyTable, key: string): boolean {
   }
 }
 
-
-export function parseFilterParams(opts: ParseFilterOpts): ParseFilterResult {
-  rejectBareFieldParams(opts.query, opts.allowlist, opts.table);
-  const result: ParseFilterResult = {};
-
-  const limit = parsePageBound(opts.query, "limit");
-  if (limit !== undefined) result.limit = limit;
-  const offset = parsePageBound(opts.query, "offset");
-  if (offset !== undefined) result.offset = offset;
-
-  if (opts.query.filter && typeof opts.query.filter === "object") {
-    const where = parseNode(
-      opts.query.filter as Record<string, unknown>,
-      opts.table, opts.allowlist, opts.dialect,
-      opts.maxNesting ?? DEFAULT_MAX_NESTING,
-      opts.maxInListSize ?? DEFAULT_MAX_IN_LIST,
-      0,
-    );
-    if (where) result.where = where;
-  }
-
-  if (typeof opts.query.sort === "string") {
-    result.orderBy = parseSort(opts.query.sort, opts.table, opts.sortAllowlist, opts.dialect);
-  }
-
-  if (typeof opts.query.search === "string" && opts.query.search !== "") {
-    const term = `%${opts.query.search}%`;
-    const stringCols = Object.entries(opts.allowlist)
-      // A rule with a `format` (uuid, …) is a typed column on the wire as a string, not
-      // text: ILIKE on a Postgres uuid column is "operator does not exist" (a 500).
-      .filter(([, rule]) => {
-        const r = rule as FilterFieldRule;
-        return r.subType === "string" && r.format === undefined;
-      })
-      .map(([field]) => opts.table[field]);
-    if (stringCols.length > 0) {
-      // `?search` is a TS-only extension (docs/features/api-contract.md) and is
-      // deliberately case-INSENSITIVE — it is a human search box, not the
-      // contract's `like` operator (which is case-sensitive SQL LIKE, ADR-0049).
-      // Postgres uses ILIKE; SQLite's native LIKE folds ASCII case by default,
-      // which is the intended behavior here. MySQL's LIKE follows the column's
-      // collation, which is case-insensitive by default and case-sensitive on a
-      // `_bin` column, so it folds both sides explicitly.
-      const parts = stringCols.map((col) =>
-        opts.dialect === "postgres" ? ilike(col, term)
-        : opts.dialect === "mysql" ? sql`LOWER(${col}) LIKE LOWER(${term})`
-        : like(col, term));
-      // or() is defined as returning SQL | undefined but will always return
-      // SQL when given a non-empty array. parts[0] is always defined here
-      // because stringCols.length > 0 guarantees at least one element.
-      // biome-ignore lint/style/noNonNullAssertion: parts is guaranteed non-empty
-      result.searchWhere = (parts.length === 1 ? parts[0] : or(...parts)) as SQL;
-    }
-  }
-
-  return result;
-}
-
-function parseNode(
-  node: Record<string, unknown>,
-  table: AnyTable,
-  allowlist: FilterAllowlist,
-  dialect: SqlDialect,
-  maxNesting: number,
-  maxInList: number,
-  depth: number,
-): SQL | undefined {
-  if (depth > maxNesting) {
-    throw new FilterParseError("filter.nesting_too_deep", `Filter nesting depth exceeds limit (${maxNesting}).`, { limit: maxNesting });
-  }
-  const parts: SQL[] = [];
-  for (const [key, value] of Object.entries(node)) {
-    if (key === "or") {
-      const subs = ensureArray(value, "or").map((sub) =>
-        parseNode(sub as Record<string, unknown>, table, allowlist, dialect, maxNesting, maxInList, depth + 1)
-      ).filter((s): s is SQL => !!s);
-      if (subs.length > 0) parts.push(or(...subs)!);
-    } else if (key === "and") {
-      const subs = ensureArray(value, "and").map((sub) =>
-        parseNode(sub as Record<string, unknown>, table, allowlist, dialect, maxNesting, maxInList, depth + 1)
-      ).filter((s): s is SQL => !!s);
-      if (subs.length > 0) parts.push(and(...subs)!);
-    } else {
-      // key is a field name
-      const rule = allowlist[key];
-      if (!rule) {
-        throw new FilterParseError("filter.unknown_field", `Unknown filter field "${key}".`, { field: key, allowed: Object.keys(allowlist) });
-      }
-      const col = table[key];
-      if (col === undefined) {
-        throw new FilterParseError("filter.unknown_field", `Table has no column for field "${key}".`, { field: key });
-      }
-      if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-        for (const [opKey, opValue] of Object.entries(value)) {
-          const expr = compileOp(col, rule, key, opKey, opValue, dialect, maxInList);
-          if (expr) parts.push(expr);
-        }
-      } else {
-        // Bare value = eq sugar
-        const expr = compileOp(col, rule, key, "eq", value, dialect, maxInList);
-        if (expr) parts.push(expr);
-      }
-    }
-  }
-  if (parts.length === 0) return undefined;
-  if (parts.length === 1) return parts[0];
-  return and(...parts);
-}
-
-function compileOp(
-  col: unknown,
-  rule: FilterFieldRule,
-  field: string,
-  op: string,
-  value: unknown,
-  dialect: SqlDialect,
-  maxInList: number,
-): SQL | undefined {
-  if (!rule.ops.includes(op as FilterOp)) {
-    throw new FilterParseError("filter.unsupported_op", `Op "${op}" not supported for field "${field}".`, { field, op, allowed: rule.ops });
-  }
-  switch (op as FilterOp) {
-    case "eq":  return eq(col as any, coerce(value, rule, col, field, op, dialect));
-    case "ne":  return ne(col as any, coerce(value, rule, col, field, op, dialect));
-    case "gt":  return gt(col as any, coerce(value, rule, col, field, op, dialect));
-    case "gte": return gte(col as any, coerce(value, rule, col, field, op, dialect));
-    case "lt":  return lt(col as any, coerce(value, rule, col, field, op, dialect));
-    case "lte": return lte(col as any, coerce(value, rule, col, field, op, dialect));
-    case "in": {
-      const list = String(value).split(",").map((v) => coerce(v.trim(), rule, col, field, op, dialect));
-      if (list.length > maxInList) {
-        throw new FilterParseError("filter.in_too_large", `In-list size ${list.length} exceeds limit ${maxInList}.`, { field, limit: maxInList });
-      }
-      return inArray(col as any, list);
-    }
-    case "like": {
-      const s = String(value);
-      if (s.startsWith("%") && !rule.leadingWildcard) {
-        throw new FilterParseError("filter.leading_wildcard_disallowed", `Leading wildcard not allowed for field "${field}".`, { field });
-      }
-      // Cross-port contract (ADR-0049): `like` is case-SENSITIVE SQL LIKE —
-      // verbatim author-supplied pattern, `%`/`_` wildcards. Postgres LIKE is
-      // already case-sensitive. SQLite's built-in LIKE folds ASCII case by
-      // default (and `PRAGMA case_sensitive_like` is connection-global on a
-      // consumer-owned connection), so the sqlite branch lowers to GLOB with
-      // an exactly-translated pattern instead.
-      // MySQL's LIKE follows the column's collation, which is case-INSENSITIVE by
-      // default, so the pattern carries an explicit binary collation.
-      return dialect === "postgres"
-        ? like(col as any, s)
-        : dialect === "mysql"
-          ? sql`${col} LIKE ${s} COLLATE utf8mb4_bin`
-          : sql`${col} GLOB ${likePatternToGlob(s)}`;
-    }
-    case "isNull": {
-      // isNull's value is always coerced as boolean (true/false), regardless of the
-      // field's declared subType — the operator is "is the value null?", not "is X
-      // equal to null?". Field subtype is irrelevant.
-      const b = coerceAs(value, "boolean", field, op) as boolean;
-      return b ? isNull(col as any) : not(isNull(col as any));
-    }
-  }
-}
-
-/**
- * Translate a SQL LIKE pattern into an equivalent SQLite GLOB pattern:
- * `%` → `*`, `_` → `?`, and GLOB's own metacharacters (`*`, `?`, `[`) are
- * wrapped in single-character classes so they match literally. `]` is only
- * special inside a class, so it passes through. GLOB is case-sensitive,
- * which is why the sqlite `like` branch uses it (ADR-0049) — SQLite's
- * native LIKE folds ASCII case by default.
- */
-export function likePatternToGlob(pattern: string): string {
-  let out = "";
-  for (const ch of pattern) {
-    if (ch === "%") out += "*";
-    else if (ch === "_") out += "?";
-    else if (ch === "*") out += "[*]";
-    else if (ch === "?") out += "[?]";
-    else if (ch === "[") out += "[[]";
-    else out += ch;
-  }
-  return out;
-}
-
-function invalidValue(
-  field: string,
-  op: string,
-  s: string,
-  expected: string,
-  extra: Record<string, unknown> = {},
-): FilterParseError {
-  const hint = typeof extra["hint"] === "string" ? ` Hint: ${extra["hint"]}.` : "";
-  return new FilterParseError(
-    "filter.invalid_value",
-    `Field "${field}" op "${op}" requires ${expected}, got "${s}".${hint}`,
-    { field, op, expected, ...extra },
-  );
-}
-
 /** A Drizzle column's own enum members (`text(..., { enum })`, `pgEnum`), if it has them. */
 function columnEnumValues(col: unknown): readonly string[] | undefined {
   const v = (col as { enumValues?: unknown } | null | undefined)?.enumValues;
@@ -309,175 +61,115 @@ function columnEnumValues(col: unknown): readonly string[] | undefined {
 }
 
 /**
- * Refuse a value that cannot be the field's type BEFORE it is bound. Without this a
- * malformed date on SQLite compared as text and silently matched nothing (200 `[]`),
- * and on Postgres the driver refused the cast (a 500) — either way the caller could not
- * tell a typo from an empty result. The envelope is the cross-port `invalid_filter_value`,
- * carrying `op` and `expected` as the number/boolean checks already did.
+ * Parse a list query (`parseListQuery`, which raises every refusal) and compile it to
+ * Drizzle for `opts.table` on `opts.dialect`.
  */
-function assertWellFormed(s: string, rule: FilterFieldRule, col: unknown, field: string, op: string): void {
-  const members = rule.enumValues ?? columnEnumValues(col);
-  if (members !== undefined && !members.includes(s)) {
-    throw invalidValue(field, op, s, `one of: ${members.join(", ")}`, { allowed: [...members] });
-  }
-  if (rule.format !== undefined) {
-    if (!matchesFormat(rule.format, s)) {
-      // `filter[dueAt][lt]=2026-10-06T00:00:00+00:00` sent unencoded arrives with a space
-      // where the `+` was; "expected timestamp" alone does not say why a valid-looking
-      // value failed, so the answer names the fix.
-      const hint = rule.format === FIELD_SUBTYPE_TIMESTAMP && looksLikeUnencodedPlusOffset(s)
-        ? { hint: PLUS_OFFSET_HINT }
-        : {};
-      throw invalidValue(field, op, s, FORMAT_EXPECTED[rule.format], hint);
+export function parseFilterParams(opts: ParseFilterOpts): ParseFilterResult {
+  const table = opts.table;
+  const parsed = parseListQuery({
+    query: opts.query,
+    allowlist: opts.allowlist,
+    sortAllowlist: opts.sortAllowlist,
+    isField: (name) => isEntityColumn(table, name),
+    hasColumn: (name) => table[name] !== undefined,
+    enumValuesOf: (name) => columnEnumValues(table[name]),
+    ...(opts.maxNesting !== undefined ? { maxNesting: opts.maxNesting } : {}),
+    ...(opts.maxInListSize !== undefined ? { maxInListSize: opts.maxInListSize } : {}),
+  });
+  const result: ParseFilterResult = {};
+  if (parsed.limit !== undefined) result.limit = parsed.limit;
+  if (parsed.offset !== undefined) result.offset = parsed.offset;
+  if (parsed.filter !== undefined) result.where = compileFilterNode(parsed.filter, table, opts.allowlist, opts.dialect);
+  if (parsed.sort !== undefined) result.orderBy = nullsAsLargest(table[parsed.sort.field], parsed.sort.order, opts.dialect);
+  if (parsed.search !== undefined) result.searchWhere = compileSearch(parsed.search, table, opts.dialect);
+  return result;
+}
+
+/** Compile a parsed filter tree to a Drizzle condition over `table`. */
+export function compileFilterNode(node: FilterNode, table: AnyTable, allowlist: FilterAllowlist, dialect: SqlDialect): SQL {
+  if ("and" in node) return and(...node.and.map((n) => compileFilterNode(n, table, allowlist, dialect))) as SQL;
+  if ("or" in node) return or(...node.or.map((n) => compileFilterNode(n, table, allowlist, dialect))) as SQL;
+  return compileLeaf(node, table[node.field], allowlist[node.field] as FilterFieldRule, dialect);
+}
+
+/**
+ * `?search` is deliberately case-INSENSITIVE — a human search box, not the contract's `like`
+ * operator (case-sensitive SQL LIKE, ADR-0049). Postgres uses ILIKE; SQLite's native LIKE
+ * folds ASCII case, which is the intended behavior here. MySQL's LIKE follows the column's
+ * collation (case-insensitive by default, case-sensitive on a `_bin` column), so it folds
+ * both sides explicitly.
+ */
+function compileSearch(search: ListSearch, table: AnyTable, dialect: SqlDialect): SQL {
+  const term = `%${search.term}%`;
+  const parts = search.fields.map((field) => {
+    const col = table[field];
+    return dialect === "postgres" ? ilike(col, term)
+      : dialect === "mysql" ? sql`LOWER(${col}) LIKE LOWER(${term})`
+      : like(col, term);
+  });
+  return (parts.length === 1 ? parts[0] : or(...parts)) as SQL;
+}
+
+function compileLeaf(leaf: FilterLeaf, col: unknown, rule: FilterFieldRule, dialect: SqlDialect): SQL {
+  // biome-ignore lint/suspicious/noExplicitAny: a column of the adopter's Drizzle table
+  const c = col as any;
+  const bind = (v: FilterScalar): unknown => bindOperand(v, rule, leaf, dialect);
+  switch (leaf.op) {
+    case "eq":  return eq(c, bind(leaf.value as FilterScalar));
+    case "ne":  return ne(c, bind(leaf.value as FilterScalar));
+    case "gt":  return gt(c, bind(leaf.value as FilterScalar));
+    case "gte": return gte(c, bind(leaf.value as FilterScalar));
+    case "lt":  return lt(c, bind(leaf.value as FilterScalar));
+    case "lte": return lte(c, bind(leaf.value as FilterScalar));
+    case "in":  return inArray(c, (leaf.value as readonly FilterScalar[]).map(bind));
+    case "like": {
+      const s = leaf.value as string;
+      // Cross-port contract (ADR-0049): `like` is case-SENSITIVE SQL LIKE — verbatim
+      // pattern, `%`/`_` wildcards. Postgres LIKE already is. SQLite's built-in LIKE folds
+      // ASCII case by default (and `PRAGMA case_sensitive_like` is connection-global on a
+      // consumer-owned connection), so sqlite lowers to GLOB with an exactly-translated
+      // pattern. MySQL's LIKE follows the column's collation, so the pattern carries an
+      // explicit binary collation.
+      return dialect === "postgres"
+        ? like(c, s)
+        : dialect === "mysql"
+          ? sql`${c} LIKE ${s} COLLATE utf8mb4_bin`
+          : sql`${c} GLOB ${likePatternToGlob(s)}`;
     }
-  } else if (rule.subType === "datetime" && !matchesAnyTemporal(s)) {
-    throw invalidValue(field, op, s, ANY_TEMPORAL_EXPECTED);
+    case "isNull":
+      return leaf.value === true ? isNull(c) : not(isNull(c));
   }
 }
 
-/** Check a comparison value against the field's rule, then coerce it for binding. */
-function coerce(value: unknown, rule: FilterFieldRule, col: unknown, field: string, op: string, dialect: SqlDialect): unknown {
-  if (value === null || value === undefined) return null;
-  const s = typeof value === "string" ? value : String(value);
-  assertWellFormed(s, rule, col, field, op);
-  // A decimal operand is exact text, never a number (ADR-0019 Amendment 1, W2): parsed with
-  // the JSON-number grammar and bound as its canonical string. MySQL compares a DECIMAL column
-  // with a string operand as DOUBLES, so there the operand is cast to a wide DECIMAL first.
-  // SQLite and D1 hold a decimal as a double (W4) and order every number before any text, so a
-  // text operand against a computed column (a view's sum or average has no NUMERIC affinity)
-  // would compare false in the wrong direction: the operand is bound as the number it is, exact
-  // to the 15 digits W4 promises.
+/**
+ * Spell a checked operand the way the column binds it. A decimal operand is exact text
+ * (ADR-0019 Amendment 1, W2); MySQL compares a DECIMAL column with a string operand as
+ * DOUBLES, so there it is cast to a wide DECIMAL, and SQLite / D1 hold a decimal as a double
+ * (W4) and order every number before any text, so there it is bound as the number it is. A
+ * duration is the microsecond integer on SQLite / D1 / MySQL and the interval spelling on
+ * Postgres (which refuses a signed ISO-8601 duration). A timestamp on a column emitted under
+ * `timestampMode: "date"` (`dateValues`) binds a real `Date`: Drizzle calls `toISOString()`
+ * on it.
+ */
+function bindOperand(v: FilterScalar, rule: FilterFieldRule, leaf: FilterLeaf, dialect: SqlDialect): unknown {
   if (rule.format === FIELD_SUBTYPE_DECIMAL) {
-    const canonical = canonicalDecimal(s) as string;
-    if (dialect === "mysql") return sql`CAST(${canonical} AS DECIMAL(65,30))`;
-    return dialect === "sqlite" ? Number(canonical) : canonical;
+    if (dialect === "mysql") return sql`CAST(${v} AS DECIMAL(65,30))`;
+    return dialect === "sqlite" ? Number(v) : v;
   }
-  // A duration bound is spelled the way the column stores it: the microsecond integer on SQLite /
-  // D1 / MySQL, the interval spelling on Postgres (which refuses a signed ISO-8601 duration). Both
-  // compare and order as the span does.
   if (rule.format === FIELD_SUBTYPE_DURATION) {
-    const micros = parseDurationLiteral(s) as bigint;
-    // A well-formed span past 64 bits of microseconds is no stored value on any database, so it is
-    // a bad operand (400), not an error out of the binder.
-    if (micros > DURATION_MICROS_MAX || micros < DURATION_MICROS_MIN) throw invalidValue(field, op, s, DURATION_IN_RANGE);
+    const micros = parseDurationLiteral(String(v)) as bigint;
     return dialect === "sqlite" || dialect === "mysql" ? durationToStoredMicros(micros) : formatPostgresInterval(micros);
   }
-  // A timestamp bound is compared in the same UTC spelling the generated schemas store:
-  // on SQLite/D1 the column is TEXT and compares as text. An instant field (`instant`, i.e.
-  // not @localTime) reads a zoneless or date-only bound as UTC, as its write schema does —
-  // also before a Date-bound (`dateValues`) column's `new Date(...)`, which would otherwise
-  // read a zoneless string in the SERVER's local zone. Without `instant`, only a zoned
-  // bound is rewritten, and a Date-bound column parses the value itself.
-  if (rule.format === FIELD_SUBTYPE_TIMESTAMP) {
-    const bound = rule.instant === true ? utcIsoInstant(s) : rule.dateValues === true ? s : utcIsoIfZoned(s);
-    return coerceAs(bound, rule.subType, field, op, rule.dateValues);
-  }
-  const coerced = coerceAs(s, rule.subType, field, op, rule.dateValues);
-  // field.int / field.long / field.currency: a fractional bound is not a value of the field.
-  if (rule.integer === true && typeof coerced === "number" && !Number.isInteger(coerced)) {
-    throw invalidValue(field, op, s, INTEGER_EXPECTED);
-  }
-  return coerced;
-}
-
-/** `expected` for a non-whole bound on an integer-valued field (`integer: true`). */
-const INTEGER_EXPECTED = "integer (a whole number)";
-const DURATION_IN_RANGE = "duration within the 64-bit microsecond range";
-
-function coerceAs(value: unknown, subType: string, field: string, op: string, dateValues?: boolean): unknown {
-  if (value === null || value === undefined) return null;
-  const s = typeof value === "string" ? value : String(value);
-  switch (subType) {
-    case "string":   return s;
-    case "boolean":  {
-      if (s === "true"  || s === "1") return true;
-      if (s === "false" || s === "0") return false;
-      throw new FilterParseError("filter.invalid_value", `Field "${field}" op "${op}" requires boolean, got "${s}".`, { field, op, expected: "boolean" });
+  if (rule.subType === "datetime" && rule.dateValues === true) {
+    const d = new Date(String(v));
+    // `new Date("garbage")` is an Invalid Date rather than a throw; binding one would emit
+    // `NaN`-shaped SQL.
+    if (Number.isNaN(d.getTime())) {
+      throw new FilterParseError("filter.invalid_value", `Field "${leaf.field}" op "${leaf.op}" requires a date, got "${String(v)}".`, { field: leaf.field, op: leaf.op, expected: "date" });
     }
-    case "number":   {
-      // `Number("")` and `Number(" ")` are 0 — an empty bound is not the number zero.
-      const n = s.trim() === "" ? Number.NaN : Number(s);
-      if (!Number.isFinite(n)) {
-        throw new FilterParseError("filter.invalid_value", `Field "${field}" op "${op}" requires number, got "${s}".`, { field, op, expected: "number" });
-      }
-      return n;
-    }
-    // Under codegen's Postgres-only `timestampMode: "date"` the Drizzle column is
-    // Date-typed and calls `value.toISOString()` on any bound value, so passing the
-    // raw qs string through threw `TypeError: value.toISOString is not a function`
-    // for every op except isNull. The generated allowlist now carries `dateValues`
-    // for exactly those columns (see FilterFieldRule), so the value is bound as a
-    // real Date. In the default "string" mode — and for field.date / field.time,
-    // which Drizzle types as strings under every dialect — the flag is absent and
-    // the value stays a string, unchanged.
-    case "datetime": {
-      if (dateValues !== true) return s;
-      const d = new Date(s);
-      // `new Date("garbage")` yields an Invalid Date rather than throwing; binding
-      // one would emit `NaN`-shaped SQL. Reject at the boundary, matching how the
-      // number and boolean cases report a malformed value.
-      if (Number.isNaN(d.getTime())) {
-        throw new FilterParseError("filter.invalid_value", `Field "${field}" op "${op}" requires a date, got "${s}".`, { field, op, expected: "date" });
-      }
-      return d;
-    }
-    default: return s;
+    return d;
   }
-}
-
-function ensureArray(v: unknown, key: string): unknown[] {
-  if (Array.isArray(v)) return v;
-  if (v && typeof v === "object") {
-    // qs.parse may produce { "0": ..., "1": ... } shape for filter[or][0]...
-    return Object.values(v);
-  }
-  // Defensive — qs.parse normally produces an object/array; this branch is
-  // only reachable if a caller hand-constructs a malformed query object.
-  //
-  // `field` (not `key`) because this maps to the cross-port `invalid_filter_value`
-  // envelope, which REQUIRES `field` naming the offending filter key — here the
-  // `or`/`and` connector that was handed a non-array.
-  throw new FilterParseError("filter.invalid_value", `Expected array for "${key}".`, { field: key });
-}
-
-function parseSort(spec: string, table: AnyTable, sortAllowlist: SortAllowlist, dialect: SqlDialect | undefined): SQLWrapper[] {
-  const colonIdx = spec.indexOf(":");
-  const field = colonIdx === -1 ? spec : spec.slice(0, colonIdx);
-  if (!sortAllowlist[field]) {
-    throw new FilterParseError(
-      "sort.unknown_field",
-      `Unknown sort field "${field}". The syntax is ${SORT_EXPECTED}.`,
-      { field, expected: SORT_EXPECTED, allowed: Object.keys(sortAllowlist) },
-    );
-  }
-  // `?sort=field` with no `:order` takes the field's DECLARED default order.
-  //
-  // This is the read side of `@sortableDefaultOrder`, and until now there was none.
-  // The attribute was authored by an adopter, carried through the loader, and emitted
-  // into the generated `<Entity>SortAllowlist` as `{ defaultOrder: "desc" }` — and then
-  // nothing read it back. One door in, no door out: the adopter authored a promise the
-  // product never kept, and every unqualified sort came back ascending regardless.
-  //
-  // Scoped deliberately to "field named, order omitted". Applying it when `?sort` is
-  // ABSENT ENTIRELY would give every endpoint a default ordering it does not have
-  // today — a behaviour change for every consumer, to honour an attribute about how a
-  // FIELD sorts. The declaration says which way this column runs when you do not say;
-  // it does not say which column to sort by.
-  const orderRaw = sortOrderSpec(
-    sortAllowlist,
-    field,
-    colonIdx === -1 ? undefined : spec.slice(colonIdx + 1),
-  );
-  const order = orderRaw.toLowerCase();
-  if (order !== "asc" && order !== "desc") {
-    throw new FilterParseError(
-      "sort.invalid_order",
-      `Sort order must be asc|desc, got "${orderRaw}". The syntax is ${SORT_EXPECTED}.`,
-      { field, expected: SORT_EXPECTED, allowed: Object.keys(sortAllowlist) },
-    );
-  }
-  const col = table[field];
-  return nullsAsLargest(col as any, order, dialect);
+  return v;
 }
 
 /**

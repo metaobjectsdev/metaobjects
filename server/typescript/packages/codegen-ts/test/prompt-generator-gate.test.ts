@@ -14,14 +14,13 @@
 // warning only, and self-extinguishing so a deliberate choice is never nagged.
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import type { Generator } from "../src/generator.js";
 import { warnMissingPromptGenerators } from "../src/prompt-generator-gate.js";
 import { runGen } from "../src/runner.js";
 import { docsFile } from "../src/generators/index.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 const MODEL = {
   "metadata.root": {
@@ -168,8 +167,8 @@ describe("A3 — declared prompts with no prompt generator wired", () => {
 // named itself, because `docsFile()` emits documentation either way.
 describe("A3 — the runner reads a docs-only config as emitting no code", () => {
   let tmp: string;
-  beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "prompt-gate-docs-only-")); });
-  afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+  beforeEach(() => { tmp = makeScratchDir("prompt-gate-docs-only-"); });
+  afterEach(() => { removeTree(tmp); });
 
   async function promptWarnings(generators: Generator[], targetName: string): Promise<string[]> {
     const result = await runGen({

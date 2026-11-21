@@ -3,8 +3,8 @@
 // mounts. `components.schemas` is the canonical JSON Schema (an OpenAPI 3.1 schema IS JSON Schema
 // 2020-12), so the two artifacts cannot disagree.
 //
-// It states the cross-port contract only. The TS-only filter extensions (`?search`, `filter[or]`)
-// are left out, and so are the `405` refusals on a read-only surface, which are not operations a
+// It states the per-field list parameters only. `?search` and `filter[or]` / `filter[and]` (in
+// the REST contract since 1.3.0) are not described yet. Nor are the `405` refusals on a read-only surface, which are not operations a
 // caller can use (the api docs omit them for the same reason): a read-only resource says so in the
 // description of its operations instead.
 //

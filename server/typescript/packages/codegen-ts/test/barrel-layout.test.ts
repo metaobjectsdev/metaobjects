@@ -4,7 +4,7 @@
 // against either. Pinned here because the CHANGELOG's upgrade note says so.
 
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import ts from "typescript";
 import { InMemoryStringSource, MetaDataLoader, type MetaObject } from "@metaobjectsdev/metadata";
@@ -17,6 +17,7 @@ import { buildRelationMap } from "../src/relation-resolver.js";
 import { resolveTargets } from "../src/metaobjects-config.js";
 import type { EmittedFile, GenContext } from "../src/generator.js";
 import type { OutputLayout } from "../src/import-path.js";
+import { removeTree } from "../src/scratch-dir.js";
 
 const pk = { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } };
 const MODEL = { "metadata.root": { package: "acme::blog", children: [
@@ -78,7 +79,7 @@ function compile(files: EmittedFile[]): string[] {
     return ts.getPreEmitDiagnostics(program).map((d) =>
       `${d.file?.fileName.slice(dir.length + 1) ?? ""} ${ts.flattenDiagnosticMessageText(d.messageText, "\n")}`);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
   }
 }
 

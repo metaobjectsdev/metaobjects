@@ -5,7 +5,7 @@
 import { quoteIdent, type SqlDialect } from "../sql-dialect.js";
 import type { Hono } from "hono";
 import { sql, eq, and, count } from "drizzle-orm";
-import qs from "qs";
+import { parseListQueryString } from "../drizzle-fastify/list-query.js";
 import { parseFilterParams, parsePageBound, pageLimit, parseReportPage, RAW_VIEW_MAX_LIMIT, REPORT_MAX_ROWS, ReportTooLargeError, FilterParseError, type PageSize } from "../drizzle-fastify/filter-parser.js";
 import {
   ReportExportError, assertExportWithinCap, exportContentDisposition, exportWithCountError, isExportCountFlag,
@@ -164,7 +164,7 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
         const url = c.req.url;
         const qIdx = url.indexOf("?");
         const queryString = qIdx >= 0 ? url.slice(qIdx + 1) : "";
-        const parsed = qs.parse(queryString) as Record<string, unknown>;
+        const parsed = parseListQueryString(queryString);
         // A bound that is not an integer in range is a 400, not silently clamped.
         const reportPage = isReport ? parseReportPage(parsed, reportMaxRows) : undefined;
         const limitVal = reportPage?.limit ?? parsePageBound(parsed, "limit", RAW_VIEW_MAX_LIMIT) ?? RAW_VIEW_MAX_LIMIT;
@@ -184,7 +184,7 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
       const url = c.req.url;
       const qIdx = url.indexOf("?");
       const queryString = qIdx >= 0 ? url.slice(qIdx + 1) : "";
-      const parsed = qs.parse(queryString) as Record<string, unknown>;
+      const parsed = parseListQueryString(queryString);
       const withCount = isTruthyFlag(parsed["withCount"]);
       const format = exportSpec ? readExportFormat(parsed, exportSpec) : undefined;
       if (format !== undefined && format !== "json" && isExportCountFlag(parsed["withCount"])) throw exportWithCountError();

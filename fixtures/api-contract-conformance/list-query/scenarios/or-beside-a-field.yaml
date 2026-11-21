@@ -1,0 +1,11 @@
+name: or-beside-a-field
+description: >
+  An `or` beside a plain condition is ANDed with it.
+requests:
+  - id: r1
+    method: GET
+    path: "/api/parts?filter[category][eq]=kit&filter[or][0][stock][eq]=2&filter[or][1][stock][eq]=5&sort=id:asc"
+    expect:
+      status: 200
+      body:
+        ids: [2, 5, 32, 35]

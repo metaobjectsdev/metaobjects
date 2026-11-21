@@ -1,0 +1,11 @@
+name: bare-unknown-parameter-ignored
+description: >
+  A parameter that names no field (a cache-buster) is ignored.
+requests:
+  - id: r1
+    method: GET
+    path: "/api/parts?cb=12345&filter[id][in]=3,5,60&sort=id:asc"
+    expect:
+      status: 200
+      body:
+        ids: [3, 5, 60]

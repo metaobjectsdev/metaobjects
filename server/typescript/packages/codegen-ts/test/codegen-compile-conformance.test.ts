@@ -31,7 +31,7 @@
 
 import { describe, test, expect, setDefaultTimeout } from "bun:test";
 import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
-import { mkdtempSync, writeFileSync, rmSync, readdirSync, statSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
@@ -50,6 +50,7 @@ import { buildPkMap } from "../src/pk-resolver.js";
 import { buildRelationMap } from "../src/relation-resolver.js";
 import type { GenContext } from "../src/generator.js";
 import { runGen, defineConfig } from "../src/index.js";
+import { removeTree } from "../src/scratch-dir.js";
 
 setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
@@ -244,7 +245,7 @@ describe("codegen-compile conformance — the shared fitness corpus", () => {
         });
         expect(diagnostics).toEqual([]);
       } finally {
-        rmSync(dir, { recursive: true, force: true });
+        removeTree(dir);
       }
     });
     }
@@ -313,7 +314,7 @@ describe("codegen-compile conformance — the shared fitness corpus, package lay
           });
           expect(diagnostics).toEqual([]);
         } finally {
-          rmSync(dir, { recursive: true, force: true });
+          removeTree(dir);
         }
       });
     }

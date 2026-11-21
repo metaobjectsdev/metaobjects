@@ -1,0 +1,21 @@
+{
+  "metadata.root": {
+    "package": "acme::stockroom",
+    "children": [
+      { "object.entity": {
+        "name": "Part",
+        "children": [
+          { "source.rdb":         { "@table": "parts" } },
+          { "field.long":         { "name": "id", "@filterable": true, "@sortable": true } },
+          { "field.string":       { "name": "name", "@required": true, "@maxLength": 100, "@filterable": true, "@sortable": true } },
+          { "field.string":       { "name": "sku", "@required": true, "@maxLength": 20, "@filterable": true } },
+          { "field.enum":         { "name": "category", "@values": ["tool", "part", "kit"], "@required": true, "@filterable": true } },
+          { "field.int":          { "name": "stock", "@required": true, "@filterable": true } },
+          { "field.string":       { "name": "notes", "@maxLength": 200 } },
+          { "identity.primary":   { "name": "id", "@fields": "id", "@generation": "increment" } },
+          { "identity.secondary": { "name": "skuKey", "@fields": "sku" } }
+        ]
+      }}
+    ]
+  }
+}

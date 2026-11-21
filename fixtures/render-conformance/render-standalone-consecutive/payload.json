@@ -1,0 +1,5 @@
+{
+  "outer": true,
+  "inner": true,
+  "items": ["a", "b"]
+}

@@ -155,6 +155,21 @@ export class ObjectManager {
     return driver.count(buildCountSpec(entity, scoped, this.columnNamingStrategy, driver.dialect));
   }
 
+  /**
+   * The primary-key fields of an object, in declared order; empty for a report (FR-044),
+   * which has no identity. A REST list with no `?sort` orders by these, so its pages are
+   * stable on every engine.
+   */
+  keyFields(entityName: string): readonly string[] {
+    const entity = this.requireObject(entityName);
+    return entity.subType === OBJECT_SUBTYPE_REPORT ? [] : resolvePkFields(entity);
+  }
+
+  /** The fields of an object (effective: inherited ones included), as `findMany` returns them. */
+  fieldNames(entityName: string): readonly string[] {
+    return this.requireEntity(entityName).children().filter((c) => c.type === TYPE_FIELD).map((c) => c.name);
+  }
+
   async load(refString: string): Promise<Row | null> {
     const { entity: entityName, pkValues } = decodeRef(refString);
     const entity = this.requireIdentified(entityName, "load");

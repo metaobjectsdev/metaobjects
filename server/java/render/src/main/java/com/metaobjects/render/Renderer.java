@@ -59,6 +59,11 @@ public final class Renderer {
         }
 
         String expanded = preExpandPartials(body, req.provider(), new ArrayDeque<>());
+        try {
+            expanded = MustacheTags.withoutStandaloneComments(expanded);
+        } catch (MustacheTags.SyntaxException e) {
+            throw new RenderException("template syntax error: " + e.getMessage());
+        }
 
         // Per-variable escaping via the Mustache encode() hook — equivalent to
         // C# Stubble's SetEncodingFunction. {{var}} runs through the escaper,

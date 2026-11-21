@@ -7,7 +7,8 @@
 // METADATA ALONE. This generator reads `ctx.loadedRoot` and NOTHING else — no filesystem
 // walk, no config read, no test-source scan. That sentence is what rules out reviving the
 // retired `@verifiedBy` scan here, and it only keeps being true if nobody adds a second
-// input.
+// input. The one file it may read is a page TEMPLATE (the project's `templates/requirements/`
+// override), which shapes the layout and never adds a fact.
 //
 // AN EMPTY LEDGER EMITS ZERO FILES, not an empty page, so a project without a ledger that
 // lists this generator gets nothing rather than a page saying there is nothing.
@@ -26,6 +27,7 @@ import { renderRequirementsMarkdown } from "./requirements-markdown.js";
 import { renderRequirementsToon } from "./requirements-toon.js";
 import { requirementRows } from "./requirements-view.js";
 import { DOCS_TARGET_NAME } from "../docs-run.js";
+import { docsTemplateRoot, projectProvider } from "../render-engine/framework-provider.js";
 
 /** The human-facing index. */
 const MARKDOWN_FILENAME = "requirements.md";
@@ -37,6 +39,9 @@ export interface RequirementsFileOpts {
   outDir?: string;
   /** Named output target. Default `"docs"`, which `targets` must declare. */
   target?: string;
+  /** Directory whose `templates/requirements/requirements.{md,toon}.mustache` override the
+   *  shipped pages, relative to the project. Default: the project's own `templates/`. */
+  templates?: string;
 }
 
 export const requirementsFile = function requirementsFile(
@@ -54,9 +59,10 @@ export const requirementsFile = function requirementsFile(
       // "zero FILES", which only this line can provide.
       if (rows.length === 0) return [];
 
+      const provider = projectProvider(docsTemplateRoot(ctx, opts?.templates));
       const files: EmittedFile[] = [
-        { path: `${dirPrefix}${MARKDOWN_FILENAME}`, content: renderRequirementsMarkdown(rows) },
-        { path: `${dirPrefix}${TOON_FILENAME}`, content: renderRequirementsToon(rows) },
+        { path: `${dirPrefix}${MARKDOWN_FILENAME}`, content: renderRequirementsMarkdown(rows, { provider }) },
+        { path: `${dirPrefix}${TOON_FILENAME}`, content: renderRequirementsToon(rows, provider) },
       ];
       return files;
     }),

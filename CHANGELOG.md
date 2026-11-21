@@ -10,6 +10,11 @@ here.**
 
 ## [Unreleased]
 
+- **Java: a standalone `{{! comment }}` line leaves no blank line.** mustache.java kept the line break
+  after a standalone comment tag, so a Java render had one extra blank line where TypeScript, C# and
+  Python had none. `Renderer` now strips standalone comment lines before mustache.java parses them. A
+  template with such a line renders differently in Java, so a prompt body with one changes bytes (and
+  its prompt-cache prefix) on upgrade. The `render-standalone-*` fixtures pin the whitespace rules.
 - **C#: an unchanged file is never rewritten.** `dotnet meta gen` already left identical output alone
   when the project keeps a hash manifest. It now does the same on the path with no manifest (output
   written outside the project, or a program that runs the generators with no state directory), which
@@ -83,6 +88,52 @@ here.**
   because a newer MetaObjects may have written it, but each one is now named once on standard error
   with the known keys, in the words TypeScript uses. A key inside a block C# owns (`csharp`,
   `naming`, `wire` and the rest) is refused as before.
+- **The REST standard's list handling is part of the cross-port contract.** `?search`,
+  `filter[or]` / `filter[and]`, the nesting cap, the bare-field and leading-`%` refusals, the
+  filter-value format check, and the `invalid_json`, `invalid_id`, `pagination.invalid_value` and
+  `constraint_violation` responses were TypeScript-only extensions. `docs/features/api-contract.md`
+  now states them as contract, with TypeScript's wire names unchanged. Two corpora hold the ports
+  to it:
+  - a new shared corpus, `fixtures/list-query-conformance/`: 95 parse cases, each a query string
+    in and either a filter tree in neutral values or the exact 400 body out, run with no server
+    and no database;
+  - a 20-scenario `list-query/` sub-corpus of `api-contract-conformance/`, over a 60-row seed, in
+    the generated lane.
+
+  TypeScript passes both. The other ports take them on in their 1.3.0 REST-standard work. The
+  decision is [ADR-0068](spec/decisions/ADR-0068-list-query-cross-port-contract.md). A
+  scenario can now send a body that is not JSON with `rawBody`.
+- **runtime-ts: one list-query parse for every mount.** `parseListQuery` (exported from
+  `@metaobjectsdev/runtime-ts`; it does not depend on Drizzle) reads a list request into a
+  port-neutral `ListQuery`, and each mount compiles that for its own query library. The Drizzle
+  and Hono mounts and the `ObjectManager` Fastify mount all use it. The `ObjectManager` mount
+  (`@metaobjectsdev/runtime-ts/fastify`) takes two new options:
+  - `filterAllowlist`: it then serves `filter[...]`, `filter[or]` / `filter[and]` and `?search`
+    and refuses what the Drizzle mount refuses, with the same bodies;
+  - `pagination`: the `api.pagination` page size.
+
+  With no sort, the `ObjectManager` mount now orders by the primary key. The `ObjectManager`
+  `Filter` gains `$or` and a case-insensitive `$ilike`, and the class gains `keyFields()` and
+  `fieldNames()`.
+- **codegen-ts: the filter and sort allowlists are available as data.**
+  `filterAllowlistRules(entity)` and `sortAllowlistRules(entity)` return the rules that
+  `<Entity>FilterAllowlist` / `SortAllowlist` are printed from. The generated files are
+  byte-identical.
+
+- **Fixed: the filter nesting cap could not be reached.** `qs`'s default depth of 5 kept the sixth
+  bracket pair as part of the key, so `filter[or][0][or][0][or][0][a][eq]=1` read as a field named
+  `[0][a][eq]` and answered `invalid_filter_field` instead of `filter.nesting_too_deep`. Every
+  TypeScript mount now parses with `parseListQueryString`, whose depth is sized to the cap. As part
+  of the same fix, a combinator branch that names no field (`filter[or][0]=x`) is now
+  `400 invalid_filter_value` with `field: "or"`; before, it was an unknown field named `0`.
+- **Fixed: on SQLite, `like` through the `ObjectManager` was case-insensitive.** The Kysely and
+  Drizzle drivers sent SQLite's native LIKE, which folds ASCII case, against ADR-0049. They now
+  lower `like` to GLOB on SQLite, as the generated routes already did, and to a binary comparison
+  on MySQL.
+- **Fixed: `?search` on an entity with an int-backed enum answered 500 on Postgres.** The search
+  included every filterable text field, and an int-backed (`@intValueMap`) enum is an integer
+  column, so Postgres refused the ILIKE. Search now covers only fields whose operator band
+  includes `like`.
 - **C#: a `@sequenceStart` whose migrations project lacks the design-time services line is a generation
   error.** When `dotnet meta gen` can see the context's `ModelSnapshot.cs` in another project and that
   project does not carry `[assembly: DesignTimeServicesReference]`, the next `dotnet ef migrations add`

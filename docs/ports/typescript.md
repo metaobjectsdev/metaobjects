@@ -770,6 +770,18 @@ rejection, with no hand-written validation. If you set `apiPrefix` in
 The `runtime-ts` package supplies the helpers the generated routes lean on
 (`mountCrudRoutes`, `parseFilterParams`, the `ObjectManager` for full-runtime CRUD).
 
+The list handling is done in two stages. `parseListQuery` (exported from
+`@metaobjectsdev/runtime-ts`) reads the query string into a filter tree, a search, a sort and a
+page, and raises every refusal the REST standard names. It does not depend on Drizzle. Each mount
+then turns that tree into a query for its own library. The Drizzle and Hono mounts and the
+`ObjectManager` Fastify mount (`@metaobjectsdev/runtime-ts/fastify`) all parse this way, so they
+give the same answers to the same request. Give the `ObjectManager` mount
+`filterAllowlist: <Entity>FilterAllowlist` to serve `filter[...]`, `filter[or]` / `filter[and]`
+and `?search`, and `pagination` for `api.pagination`'s page size. Without a filter allowlist it
+reads only the page and the sort, as before. A list with no sort is ordered by the primary key.
+Hand-written transports should parse with `parseListQueryString` too: `qs`'s default depth
+cannot reach the five-level nesting cap.
+
 ### Hono variant (Workers / Bun / edge)
 
 For Cloudflare Workers, Bun servers, and any other Hono-flavored runtime, swap

@@ -17,8 +17,7 @@
 
 import { describe, test, expect, afterAll, setDefaultTimeout } from "bun:test";
 import { COMPILE_TEST_TIMEOUT_MS } from "../compile-timeout.js";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import ts from "typescript";
 import { MetaDataLoader, InMemoryStringSource, type MetaObject } from "@metaobjectsdev/metadata";
@@ -31,6 +30,7 @@ import { buildPkMap } from "../../src/pk-resolver.js";
 import { buildRelationMap } from "../../src/relation-resolver.js";
 import type { GenContext, EmittedFile } from "../../src/generator.js";
 import type { Provider } from "@metaobjectsdev/render";
+import { makeScratchDir, removeTree } from "../../src/scratch-dir.js";
 
 setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
@@ -207,7 +207,7 @@ function compile(dir: string, files: string[]): readonly ts.Diagnostic[] {
 
 const TEMP_DIRS: string[] = [];
 afterAll(() => {
-  for (const d of TEMP_DIRS) rmSync(d, { recursive: true, force: true });
+  for (const d of TEMP_DIRS) removeTree(d);
 });
 
 describe("extractor/render payload import resolves against the REAL generated VO modules (no ./payloads.js)", () => {
@@ -237,7 +237,7 @@ describe("extractor/render payload import resolves against the REAL generated VO
 
     // 3. Lay the real generated VO modules + the extractor/render files into a
     //    temp dir exactly as `meta gen` would (the default package layout, R63).
-    const dir = mkdtempSync(join(tmpdir(), "extractor-render-payload-"));
+    const dir = makeScratchDir("extractor-render-payload-");
     TEMP_DIRS.push(dir);
     const write = (rel: string, body: string) => {
       const full = join(dir, rel);

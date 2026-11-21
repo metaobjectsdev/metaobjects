@@ -2,8 +2,7 @@
 // the requirement ledger the caller hands the run, the files the run wrote and the routes it
 // mounts. It runs after the generators declared beside it, whatever their order.
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { MetaDataLoader, type MetaRoot } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
@@ -11,6 +10,7 @@ import { runGen } from "../src/runner.js";
 import { defineConfig } from "../src/metaobjects-config.js";
 import type { Generator } from "../src/generator.js";
 import { docsSiteFile, entityFile, routesFile } from "../src/generators/index.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 const FIXTURE = resolve(import.meta.dir, "fixtures", "single-entity.json");
 
@@ -25,13 +25,13 @@ let root: MetaRoot;
 // The run's one metadata source directory (the classic site loads whole directories).
 let sources: string;
 beforeEach(async () => {
-  tmp = mkdtempSync(join(tmpdir(), "codegen-docs-site-"));
+  tmp = makeScratchDir("codegen-docs-site-");
   sources = join(tmp, "metaobjects");
   mkdirSync(sources);
   copyFileSync(FIXTURE, join(sources, "meta.blog.json"));
   root = (await new MetaDataLoader().load([new FileSource(FIXTURE)])).root;
 });
-afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+afterEach(() => { removeTree(tmp); });
 
 const config = (generators: Generator[]) =>
   defineConfig({

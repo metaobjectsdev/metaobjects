@@ -2,12 +2,11 @@
 // switch and emit `pgTable` code, silently. `"d1"` is the common case: it is a `meta migrate`
 // transport, and D1 codegen is `"sqlite"`. Both choke points (normalizeConfig, runGen) refuse it.
 import { describe, test, expect } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { runGen } from "../src/runner.js";
 import { normalizeConfig, assertCodegenDialect, CODEGEN_DIALECTS, type MetaobjectsGenConfig } from "../src/metaobjects-config.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 const base = { outDir: "gen", generators: [] } as unknown as MetaobjectsGenConfig;
 
@@ -49,7 +48,7 @@ describe("normalizeConfig", () => {
 
 describe("runGen", () => {
   test('refuses dialect "d1" for a project with a sourced object, before writing anything', async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "codegen-dialect-"));
+    const tmp = makeScratchDir("codegen-dialect-");
     try {
       const json = JSON.stringify({ "metadata.root": { package: "app", children: [
         { "object.entity": { name: "Note", children: [
@@ -61,6 +60,6 @@ describe("runGen", () => {
       await expect(
         runGen({ metadata: root, projectRoot: tmp, config: { ...base, outDir: "gen", dialect: "d1" } as unknown as MetaobjectsGenConfig }),
       ).rejects.toThrow(/invalid codegen dialect "d1"/);
-    } finally { rmSync(tmp, { recursive: true, force: true }); }
+    } finally { removeTree(tmp); }
   });
 });

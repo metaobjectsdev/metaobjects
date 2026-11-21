@@ -59,7 +59,7 @@ beforeAll(async () => {
 
   const row = { id: 1, displayName: "Ann" };
   const om = {
-    findMany: async () => [row], findById: async () => row, create: async () => row,
+    keyFields: () => ["id"], findMany: async () => [row], findById: async () => row, create: async () => row,
     update: async () => row, delete: async () => 1, count: async () => 1,
   } as unknown as ObjectManager;
   omFastify = Fastify();

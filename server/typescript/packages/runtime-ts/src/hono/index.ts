@@ -26,7 +26,7 @@ import { classifyConstraintError, RedactedDatabaseError, logAndRedact } from "..
 import type { ZodTypeAny } from "zod";
 import { validationErrorBody } from "../route-errors.js";
 import { eq, count, and } from "drizzle-orm";
-import qs from "qs";
+import { parseListQueryString } from "../drizzle-fastify/list-query.js";
 import { contractErrorCode } from "../drizzle-fastify/util.js";
 import {
   parseFilterParams,
@@ -151,7 +151,7 @@ export function mountCrudRoutes(opts: CrudRoutesOptions): void {
 type VerbOptions = Omit<CrudRoutesOptions, "expose">;
 
 // ---------------------------------------------------------------------------
-// Hono-flavored qs.parse — analogue of Fastify's qs.parse(req.raw.url ...).
+// Hono-flavored query parse — analogue of the Fastify mounts' parseListQueryString(req.raw.url ...).
 //
 // Hono exposes the raw URL via c.req.url; we strip the prefix and feed the
 // raw query string to qs so the bracketed filter notation (filter[a][eq]=...)
@@ -163,7 +163,7 @@ export function parseHonoFilterParams(c: Context): Record<string, unknown> {
   const url = c.req.url;
   const qIdx = url.indexOf("?");
   const queryString = qIdx >= 0 ? url.slice(qIdx + 1) : "";
-  return qs.parse(queryString) as Record<string, unknown>;
+  return parseListQueryString(queryString);
 }
 
 /** READ source: the replica view when the entity is write-through, else the table.

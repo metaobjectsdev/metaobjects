@@ -1,0 +1,13 @@
+name: leading-wildcard-refused
+description: >
+  A `like` pattern starting with `%` is refused with `filter.leading_wildcard_disallowed`: an
+  unanchored match cannot use an index.
+requests:
+  - id: r1
+    method: GET
+    path: "/api/parts?filter[name][like]=%25Pump"
+    expect:
+      status: 400
+      body:
+        error: "filter.leading_wildcard_disallowed"
+        field: "name"

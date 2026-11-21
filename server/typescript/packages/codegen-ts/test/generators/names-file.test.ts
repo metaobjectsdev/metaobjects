@@ -4,21 +4,21 @@
 // a sourced entity emits `<Entity>.names.ts`, a sourceless object emits nothing (#248), and
 // the generator declares the markers the runner and eventual consumers key off of.
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { runGen, defineConfig } from "../../src/index.js";
 import { entityFile } from "../../src/generators/entity-file.js";
 import { namesFile } from "../../src/generators/names-file.js";
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "../../src/constants.js";
+import { makeScratchDir, removeTree } from "../../src/scratch-dir.js";
 
 let tmp: string;
 beforeEach(() => {
-  tmp = mkdtempSync(join(tmpdir(), "codegen-names-file-"));
+  tmp = makeScratchDir("codegen-names-file-");
 });
 afterEach(() => {
-  rmSync(tmp, { recursive: true, force: true });
+  removeTree(tmp);
 });
 
 async function loadRoot(children: unknown[]) {

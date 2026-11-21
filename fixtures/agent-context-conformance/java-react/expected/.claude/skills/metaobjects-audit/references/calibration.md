@@ -20,9 +20,11 @@
   `invalid-op` / `in`-over-cap 400s) is **generated in every port** (Java `SpringControllerGenerator`,
   C# `RoutesGenerator`, Python `router_generator`, Kotlin `KotlinSpringControllerGenerator`, TS) —
   gated by the api-contract corpus in BOTH lanes. **Flag hand-rolled filter parsing anywhere.**
-  Only the *richer* surface is genuinely **TS-only**: free-text `?search=`, the explicit
-  `filter[or][N]` / `filter[and][N]` nested boolean combinators (+ their nesting-depth cap), and
-  leading-wildcard gating — do NOT flag the absence of those in a non-TS port.
+  The *richer* list surface — free-text `?search=`, the explicit `filter[or][N]` /
+  `filter[and][N]` nested boolean combinators (+ their nesting-depth cap), and leading-wildcard
+  gating (ADR-0068) — passes in TypeScript and is **pending** in each other port until that port's
+  1.3.0 REST-standard work lands. Do NOT flag the absence of those in a port that has not landed
+  them yet.
 - **Output-parser codegen** ships in **all five ports** — Java's `SpringOutputParserGenerator`
   *generates* the `<Name>Parser` (the Jackson `readValue` lives inside that generated file). A
   hand-rolled parser in a **non-generated** file where a **responding `template.prompt`**

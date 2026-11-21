@@ -10,7 +10,7 @@
 
 import { describe, test, expect, setDefaultTimeout } from "bun:test";
 import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
 import { MetaDataLoader, InMemoryStringSource, type MetaObject, type MetaRoot } from "@metaobjectsdev/metadata";
@@ -21,6 +21,7 @@ import { buildPkMap } from "../src/pk-resolver.js";
 import { buildRelationMap } from "../src/relation-resolver.js";
 import type { EmittedFile, GenContext } from "../src/generator.js";
 import type { Dialect } from "../src/metaobjects-config.js";
+import { removeTree } from "../src/scratch-dir.js";
 
 setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
@@ -118,7 +119,7 @@ async function compileCaller(dialect: Dialect, body: string): Promise<string[]> 
     writeFileSync(join(dir, "caller.ts"), caller);
     return compile(dir, [...files.map((f) => f.path), "caller.ts"]);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
   }
 }
 
@@ -134,7 +135,7 @@ for (const dialect of ["postgres", "sqlite"] as const) {
         expect(customer).toContain(".$type<Address[]>()");
         expect(customer).toMatch(/import (type \{[^}]*\bAddress\b|\{[^}]*\btype Address\b)/);
       } finally {
-        rmSync(dir, { recursive: true, force: true });
+        removeTree(dir);
       }
     });
 

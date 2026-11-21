@@ -1,0 +1,484 @@
+{
+ "rows": [
+  {
+   "id": 1,
+   "name": "Anvil 01",
+   "sku": "SKU-001",
+   "category": "part",
+   "stock": 1,
+   "notes": "bin 1"
+  },
+  {
+   "id": 2,
+   "name": "Bracket 02",
+   "sku": "SKU-002",
+   "category": "kit",
+   "stock": 2,
+   "notes": "bin 2"
+  },
+  {
+   "id": 3,
+   "name": "Clamp 03",
+   "sku": "SKU-003",
+   "category": "tool",
+   "stock": 3,
+   "notes": "bin 3"
+  },
+  {
+   "id": 4,
+   "name": "Drill 04",
+   "sku": "SKU-004",
+   "category": "part",
+   "stock": 4,
+   "notes": "bin 4"
+  },
+  {
+   "id": 5,
+   "name": "Elbow 05",
+   "sku": "SKU-005",
+   "category": "kit",
+   "stock": 5,
+   "notes": "bin 5"
+  },
+  {
+   "id": 6,
+   "name": "Flange 06",
+   "sku": "SKU-006",
+   "category": "tool",
+   "stock": 6,
+   "notes": "bin 6"
+  },
+  {
+   "id": 7,
+   "name": "Pump Housing",
+   "sku": "SKU-007",
+   "category": "part",
+   "stock": 7,
+   "notes": "bin 0"
+  },
+  {
+   "id": 8,
+   "name": "pump seal",
+   "sku": "SKU-008",
+   "category": "kit",
+   "stock": 8,
+   "notes": "bin 1"
+  },
+  {
+   "id": 9,
+   "name": "Bilge PUMP",
+   "sku": "SKU-009",
+   "category": "tool",
+   "stock": 9,
+   "notes": "bin 2"
+  },
+  {
+   "id": 10,
+   "name": "Sump Pump",
+   "sku": "SKU-010",
+   "category": "part",
+   "stock": 0,
+   "notes": "bin 3"
+  },
+  {
+   "id": 11,
+   "name": "Knob 11",
+   "sku": "SKU-011",
+   "category": "kit",
+   "stock": 1,
+   "notes": "bin 4"
+  },
+  {
+   "id": 12,
+   "name": "Lever 12",
+   "sku": "SKU-012",
+   "category": "tool",
+   "stock": 2,
+   "notes": "bin 5"
+  },
+  {
+   "id": 13,
+   "name": "Anvil 13",
+   "sku": "SKU-013",
+   "category": "part",
+   "stock": 3,
+   "notes": "bin 6"
+  },
+  {
+   "id": 14,
+   "name": "Bracket 14",
+   "sku": "SKU-014",
+   "category": "kit",
+   "stock": 4,
+   "notes": "bin 0"
+  },
+  {
+   "id": 15,
+   "name": "Clamp 15",
+   "sku": "SKU-015",
+   "category": "tool",
+   "stock": 5,
+   "notes": "bin 1"
+  },
+  {
+   "id": 16,
+   "name": "Drill 16",
+   "sku": "SKU-016",
+   "category": "part",
+   "stock": 6,
+   "notes": "bin 2"
+  },
+  {
+   "id": 17,
+   "name": "Elbow 17",
+   "sku": "SKU-017",
+   "category": "kit",
+   "stock": 7,
+   "notes": "bin 3"
+  },
+  {
+   "id": 18,
+   "name": "Flange 18",
+   "sku": "SKU-018",
+   "category": "tool",
+   "stock": 8,
+   "notes": "bin 4"
+  },
+  {
+   "id": 19,
+   "name": "Gasket 19",
+   "sku": "SKU-019",
+   "category": "part",
+   "stock": 9,
+   "notes": "bin 5"
+  },
+  {
+   "id": 20,
+   "name": "Hinge 20",
+   "sku": "SKU-020",
+   "category": "kit",
+   "stock": 0,
+   "notes": "bin 6"
+  },
+  {
+   "id": 21,
+   "name": "Inlet 21",
+   "sku": "SKU-021",
+   "category": "tool",
+   "stock": 1,
+   "notes": "bin 0"
+  },
+  {
+   "id": 22,
+   "name": "Jack 22",
+   "sku": "SKU-022",
+   "category": "part",
+   "stock": 2,
+   "notes": "bin 1"
+  },
+  {
+   "id": 23,
+   "name": "Knob 23",
+   "sku": "SKU-023",
+   "category": "kit",
+   "stock": 3,
+   "notes": "bin 2"
+  },
+  {
+   "id": 24,
+   "name": "Lever 24",
+   "sku": "SKU-024",
+   "category": "tool",
+   "stock": 4,
+   "notes": "bin 3"
+  },
+  {
+   "id": 25,
+   "name": "Anvil 25",
+   "sku": "SKU-025",
+   "category": "part",
+   "stock": 5,
+   "notes": "bin 4"
+  },
+  {
+   "id": 26,
+   "name": "Bracket 26",
+   "sku": "SKU-026",
+   "category": "kit",
+   "stock": 6,
+   "notes": "bin 5"
+  },
+  {
+   "id": 27,
+   "name": "Clamp 27",
+   "sku": "SKU-027",
+   "category": "tool",
+   "stock": 7,
+   "notes": "bin 6"
+  },
+  {
+   "id": 28,
+   "name": "Drill 28",
+   "sku": "SKU-028",
+   "category": "part",
+   "stock": 8,
+   "notes": "bin 0"
+  },
+  {
+   "id": 29,
+   "name": "Elbow 29",
+   "sku": "SKU-029",
+   "category": "kit",
+   "stock": 9,
+   "notes": "bin 1"
+  },
+  {
+   "id": 30,
+   "name": "Flange 30",
+   "sku": "SKU-030",
+   "category": "tool",
+   "stock": 0,
+   "notes": "bin 2"
+  },
+  {
+   "id": 31,
+   "name": "Gasket 31",
+   "sku": "SKU-031",
+   "category": "part",
+   "stock": 1,
+   "notes": "bin 3"
+  },
+  {
+   "id": 32,
+   "name": "Hinge 32",
+   "sku": "SKU-032",
+   "category": "kit",
+   "stock": 2,
+   "notes": "bin 4"
+  },
+  {
+   "id": 33,
+   "name": "Inlet 33",
+   "sku": "SKU-033",
+   "category": "tool",
+   "stock": 3,
+   "notes": "bin 5"
+  },
+  {
+   "id": 34,
+   "name": "Jack 34",
+   "sku": "SKU-034",
+   "category": "part",
+   "stock": 4,
+   "notes": "bin 6"
+  },
+  {
+   "id": 35,
+   "name": "Knob 35",
+   "sku": "SKU-035",
+   "category": "kit",
+   "stock": 5,
+   "notes": "bin 0"
+  },
+  {
+   "id": 36,
+   "name": "Lever 36",
+   "sku": "SKU-036",
+   "category": "tool",
+   "stock": 6,
+   "notes": "bin 1"
+  },
+  {
+   "id": 37,
+   "name": "Anvil 37",
+   "sku": "SKU-037",
+   "category": "part",
+   "stock": 7,
+   "notes": "bin 2"
+  },
+  {
+   "id": 38,
+   "name": "Bracket 38",
+   "sku": "SKU-038",
+   "category": "kit",
+   "stock": 8,
+   "notes": "bin 3"
+  },
+  {
+   "id": 39,
+   "name": "Clamp 39",
+   "sku": "SKU-039",
+   "category": "tool",
+   "stock": 9,
+   "notes": "bin 4"
+  },
+  {
+   "id": 40,
+   "name": "Drill 40",
+   "sku": "SKU-040",
+   "category": "part",
+   "stock": 0,
+   "notes": "bin 5"
+  },
+  {
+   "id": 41,
+   "name": "Elbow 41",
+   "sku": "SKU-041",
+   "category": "kit",
+   "stock": 1,
+   "notes": "bin 6"
+  },
+  {
+   "id": 42,
+   "name": "Flange 42",
+   "sku": "SKU-042",
+   "category": "tool",
+   "stock": 2,
+   "notes": "bin 0"
+  },
+  {
+   "id": 43,
+   "name": "Gasket 43",
+   "sku": "SKU-043",
+   "category": "part",
+   "stock": 3,
+   "notes": "bin 1"
+  },
+  {
+   "id": 44,
+   "name": "Hinge 44",
+   "sku": "SKU-044",
+   "category": "kit",
+   "stock": 4,
+   "notes": "bin 2"
+  },
+  {
+   "id": 45,
+   "name": "Inlet 45",
+   "sku": "SKU-045",
+   "category": "tool",
+   "stock": 5,
+   "notes": "bin 3"
+  },
+  {
+   "id": 46,
+   "name": "Jack 46",
+   "sku": "SKU-046",
+   "category": "part",
+   "stock": 6,
+   "notes": "bin 4"
+  },
+  {
+   "id": 47,
+   "name": "Knob 47",
+   "sku": "SKU-047",
+   "category": "kit",
+   "stock": 7,
+   "notes": "bin 5"
+  },
+  {
+   "id": 48,
+   "name": "Lever 48",
+   "sku": "SKU-048",
+   "category": "tool",
+   "stock": 8,
+   "notes": "bin 6"
+  },
+  {
+   "id": 49,
+   "name": "Anvil 49",
+   "sku": "SKU-049",
+   "category": "part",
+   "stock": 9,
+   "notes": "bin 0"
+  },
+  {
+   "id": 50,
+   "name": "Bracket 50",
+   "sku": "SKU-050",
+   "category": "kit",
+   "stock": 0,
+   "notes": "bin 1"
+  },
+  {
+   "id": 51,
+   "name": "Clamp 51",
+   "sku": "SKU-051",
+   "category": "tool",
+   "stock": 1,
+   "notes": "bin 2"
+  },
+  {
+   "id": 52,
+   "name": "Drill 52",
+   "sku": "SKU-052",
+   "category": "part",
+   "stock": 2,
+   "notes": "bin 3"
+  },
+  {
+   "id": 53,
+   "name": "Elbow 53",
+   "sku": "SKU-053",
+   "category": "kit",
+   "stock": 3,
+   "notes": "bin 4"
+  },
+  {
+   "id": 54,
+   "name": "Flange 54",
+   "sku": "SKU-054",
+   "category": "tool",
+   "stock": 4,
+   "notes": "bin 5"
+  },
+  {
+   "id": 55,
+   "name": "Gasket 55",
+   "sku": "SKU-055",
+   "category": "part",
+   "stock": 5,
+   "notes": "bin 6"
+  },
+  {
+   "id": 56,
+   "name": "Hinge 56",
+   "sku": "SKU-056",
+   "category": "kit",
+   "stock": 6,
+   "notes": "bin 0"
+  },
+  {
+   "id": 57,
+   "name": "Inlet 57",
+   "sku": "SKU-057",
+   "category": "tool",
+   "stock": 7,
+   "notes": "bin 1"
+  },
+  {
+   "id": 58,
+   "name": "Jack 58",
+   "sku": "SKU-058",
+   "category": "part",
+   "stock": 8,
+   "notes": "bin 2"
+  },
+  {
+   "id": 59,
+   "name": "Knob 59",
+   "sku": "SKU-059",
+   "category": "kit",
+   "stock": 9,
+   "notes": "bin 3"
+  },
+  {
+   "id": 60,
+   "name": "Lever 60",
+   "sku": "SKU-060",
+   "category": "tool",
+   "stock": 0,
+   "notes": "bin 4"
+  }
+ ]
+}

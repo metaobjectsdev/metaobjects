@@ -10,8 +10,7 @@
 // mergeTempDir(), pointed at a private directory through DEV_SCRATCH.
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   contentHash,
@@ -20,6 +19,7 @@ import {
   mergeTempDir,
   readGeneratedHash,
 } from "../../src/overwrite-policy.js";
+import { makeScratchDir, removeTree } from "../../src/scratch-dir.js";
 
 const NO_GIT = "/usr/bin/totally-not-a-real-binary-xyz123";
 
@@ -30,7 +30,7 @@ let prevGit: string | undefined;
 let prevScratch: string | undefined;
 
 beforeEach(() => {
-  root = mkdtempSync(join(process.env.DEV_SCRATCH || tmpdir(), "codegen-fastpath-"));
+  root = makeScratchDir("codegen-fastpath-");
   out = join(root, "out");
   state = join(root, "state");
   prevGit = process.env.META_GEN_GIT;
@@ -43,7 +43,7 @@ afterEach(() => {
   else process.env.META_GEN_GIT = prevGit;
   if (prevScratch === undefined) delete process.env.DEV_SCRATCH;
   else process.env.DEV_SCRATCH = prevScratch;
-  rmSync(root, { recursive: true, force: true });
+  removeTree(root);
 });
 
 const opts = () => ({ genStateDir: state, outputRelPath: "User.ts" });

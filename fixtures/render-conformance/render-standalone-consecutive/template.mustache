@@ -1,0 +1,21 @@
+open-open:
+{{#outer}}
+{{#inner}}
+both
+{{/inner}}
+{{/outer}}
+close-then-open:
+{{#items}}
+- {{.}}
+{{/items}}
+{{^missing}}
+fallback
+{{/missing}}
+three-in-a-row:
+{{#outer}}
+{{! a comment between two section tags }}
+{{#inner}}
+deep
+{{/inner}}
+{{/outer}}
+end

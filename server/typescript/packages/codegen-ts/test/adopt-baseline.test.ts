@@ -14,8 +14,7 @@
 
 import { manifestEntries, manifestExists } from "./support/manifest.js";
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, readdirSync, statSync, existsSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { rmSync, writeFileSync, readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
@@ -24,12 +23,13 @@ import { defineConfig } from "../src/metaobjects-config.js";
 import { entityFile } from "../src/generators/entity-file.js";
 import { queriesFile } from "../src/generators/queries-file.js";
 import type { BaselineMode } from "../src/overwrite-policy.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 const FIXTURE = resolve(import.meta.dir, "fixtures", "single-entity.json");
 
 let projectRoot: string;
-beforeEach(() => { projectRoot = mkdtempSync(join(tmpdir(), "adopt-baseline-")); });
-afterEach(() => { rmSync(projectRoot, { recursive: true, force: true }); });
+beforeEach(() => { projectRoot = makeScratchDir("adopt-baseline-"); });
+afterEach(() => { removeTree(projectRoot); });
 
 const genStateDir = (): string => join(projectRoot, ".metaobjects", ".gen-state");
 const outDir = (): string => join(projectRoot, "generated");
@@ -53,7 +53,7 @@ async function gen(opts: { baseline?: BaselineMode; dryRun?: boolean } = {}) {
 
 /** The state of a project that predates the committed manifest: output on disk, no gen-state. */
 function dropAllGenState(): void {
-  rmSync(genStateDir(), { recursive: true, force: true });
+  removeTree(genStateDir());
 }
 
 /** Make every generated file differ from fresh output, as an older engine's output would. */
@@ -166,7 +166,7 @@ describe("--baseline=adopt", () => {
       for (const e of readdirSync(dir)) {
         const full = join(dir, e);
         if (e === ".hashes") continue; // the manifest directory is what a clone keeps
-      if (statSync(full).isDirectory()) { walk(full); rmSync(full, { recursive: true, force: true }); }
+      if (statSync(full).isDirectory()) { walk(full); removeTree(full); }
         else if (e !== ".engine.json") rmSync(full, { force: true });
       }
     };

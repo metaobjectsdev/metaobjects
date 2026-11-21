@@ -5,8 +5,7 @@
 // adopters' overrides would be ignored.
 
 import { describe, test, expect, afterEach } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import {
@@ -15,18 +14,19 @@ import {
   projectProvider,
   frameworkTemplatesDirForTests,
 } from "../../src/render-engine/framework-provider.js";
+import { makeScratchDir, removeTree } from "../../src/scratch-dir.js";
 
 const tmpDirs: string[] = [];
 
 afterEach(() => {
   while (tmpDirs.length > 0) {
     const dir = tmpDirs.pop()!;
-    rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
   }
 });
 
 function makeTempProject(): string {
-  const dir = mkdtempSync(join(tmpdir(), "mo-fwprov-"));
+  const dir = makeScratchDir("mo-fwprov-");
   tmpDirs.push(dir);
   return dir;
 }

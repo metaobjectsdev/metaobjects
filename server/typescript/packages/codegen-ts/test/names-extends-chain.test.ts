@@ -13,14 +13,14 @@
 // which is the outcome this change exists to prevent.
 import { describe, test, expect, setDefaultTimeout } from "bun:test";
 import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
-import { mkdtempSync, rmSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdtempSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import ts from "typescript";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { runGen, defineConfig } from "../src/index.js";
 import { namesFile } from "../src/generators/index.js";
 import { entityFile } from "../src/generators/entity-file.js";
+import { removeTree } from "../src/scratch-dir.js";
 
 setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
@@ -126,7 +126,7 @@ describe("names artifacts extend rather than restate", () => {
       expect(base?.includes("table: ")).toBe(false);
       expect(base?.includes("view: ")).toBe(false);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTree(dir);
     }
   });
 
@@ -146,7 +146,7 @@ describe("names artifacts extend rather than restate", () => {
       // readOnly, and spreading it would leak an absent shape onto a child that has one.
       expect(author).not.toContain("...BaseEntityNames,");
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTree(dir);
     }
   });
 
@@ -167,7 +167,7 @@ describe("names artifacts extend rather than restate", () => {
       expect(sub).not.toContain("zz_auths");
       expect(sub).not.toContain('kind: { name: "kind"');
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTree(dir);
     }
   });
 
@@ -203,7 +203,7 @@ describe("names artifacts extend rather than restate", () => {
         .map((d) => `${d.file?.fileName ?? ""}: ${ts.flattenDiagnosticMessageText(d.messageText, " ")}`);
       expect(errors).toEqual([]);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTree(dir);
     }
   });
 });
@@ -270,7 +270,7 @@ describe("a key-only abstract is a link in the chain, not a node to walk past", 
       expect(widget).toContain("...AuditedNames.identities,");
       expect(widget).not.toContain('by_email: {');
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTree(dir);
     }
   });
 
@@ -302,7 +302,7 @@ describe("a key-only abstract is a link in the chain, not a node to walk past", 
         .map((d) => `${d.file?.fileName ?? ""}: ${ts.flattenDiagnosticMessageText(d.messageText, " ")}`);
       expect(errors).toEqual([]);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTree(dir);
     }
   });
 });
@@ -369,7 +369,7 @@ describe("a scoped run still names the shared table", () => {
         .map((d) => `${d.file?.fileName ?? ""}: ${ts.flattenDiagnosticMessageText(d.messageText, " ")}`);
       expect(errs).toEqual([]);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTree(dir);
     }
   });
 });
@@ -400,7 +400,7 @@ describe("namesFile({ filter }) narrows emission without breaking the extends ch
       // And the surviving artifact still really extends the base it kept.
       expect(tree["Author.names.ts"]).toContain("BaseEntityNames");
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTree(dir);
     }
   });
 
@@ -412,7 +412,7 @@ describe("namesFile({ filter }) narrows emission without breaking the extends ch
         "Auth.names.ts", "Author.names.ts", "BaseEntity.names.ts", "CouponAuth.names.ts",
       ]);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTree(dir);
     }
   });
 });

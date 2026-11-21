@@ -123,7 +123,8 @@ emitted too, and a measure with `@default` is a `COALESCE` whose column MySQL re
   - The generated `delete<Entity>ById` checks that the row exists before deleting it.
 - **`like` is case-sensitive**, as the API contract requires (ADR-0049). MySQL's default
   collation is case-insensitive, so the generated routes compare with
-  `COLLATE utf8mb4_bin`. The TypeScript-only `?search` stays case-insensitive.
+  `COLLATE utf8mb4_bin`. `?search` stays case-insensitive, as the list contract states
+  ([api-contract.md](../features/api-contract.md)).
 - **Timestamps use Drizzle's `date` mode.** A `DATETIME` rejects the ISO wire form
   (`2026-05-28T20:26:40.002Z` is `ERROR 1292`). The generated Zod schema coerces the ISO string
   to a `Date`, Drizzle stores the UTC wall clock, and the JSON response carries ISO with `Z`.

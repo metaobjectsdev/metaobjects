@@ -23,8 +23,7 @@
 
 import { manifestFiles } from "../support/manifest.js";
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import {
   decideAndWrite,
@@ -32,17 +31,18 @@ import {
   contentHash,
   listGeneratedPaths,
 } from "../../src/overwrite-policy.js";
+import { makeScratchDir, removeTree } from "../../src/scratch-dir.js";
 
 let tmp: string;
 let state: string;
 
 beforeEach(() => {
-  tmp = mkdtempSync(join(tmpdir(), "codegen-pristine-"));
-  state = mkdtempSync(join(tmpdir(), "codegen-pristine-state-"));
+  tmp = makeScratchDir("codegen-pristine-");
+  state = makeScratchDir("codegen-pristine-state-");
 });
 afterEach(() => {
-  rmSync(tmp, { recursive: true, force: true });
-  rmSync(state, { recursive: true, force: true });
+  removeTree(tmp);
+  removeTree(state);
 });
 
 /** Simulate the fresh-clone shape: the committed manifest survives, the

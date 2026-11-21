@@ -12,7 +12,7 @@
 // Java half; both assert IDENTICAL strings).
 
 import { describe, test, expect, afterAll } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { type EmailDocument } from "@metaobjectsdev/render";
@@ -23,13 +23,14 @@ import { makeRenderContext } from "../src/render-context.js";
 import { buildPkMap } from "../src/pk-resolver.js";
 import { buildRelationMap } from "../src/relation-resolver.js";
 import type { GenContext } from "../src/generator.js";
+import { removeTree } from "../src/scratch-dir.js";
 
 // test → codegen-ts → packages → typescript → server → repo-root/fixtures
 const CORPUS = resolve(import.meta.dir, "../../../../../fixtures/template-output-render-conformance");
 
 const TEMP_DIRS: string[] = [];
 afterAll(() => {
-  for (const d of TEMP_DIRS) rmSync(d, { recursive: true, force: true });
+  for (const d of TEMP_DIRS) removeTree(d);
 });
 
 async function loadRootFromFile(metaJsonPath: string) {

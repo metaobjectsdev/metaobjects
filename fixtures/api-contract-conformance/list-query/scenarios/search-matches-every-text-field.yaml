@@ -1,0 +1,12 @@
+name: search-matches-every-text-field
+description: >
+  Search covers every filterable text field, not only the first: "sku-05" matches the sku of
+  rows 50 to 59.
+requests:
+  - id: r1
+    method: GET
+    path: "/api/parts?search=sku-05&sort=id:asc"
+    expect:
+      status: 200
+      body:
+        ids: [50, 51, 52, 53, 54, 55, 56, 57, 58, 59]

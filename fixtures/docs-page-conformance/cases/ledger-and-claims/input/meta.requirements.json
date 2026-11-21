@@ -1,0 +1,91 @@
+{
+  "metadata.root": {
+    "package": "acme::caps",
+    "children": [
+      {
+        "requirement.functional": {
+          "name": "Storefront",
+          "@level": 1,
+          "@status": "live",
+          "@statement": "The storefront solution",
+          "@counterexample": "Nothing can be sold",
+          "children": [
+            {
+              "requirement.functional": {
+                "name": "OrderService",
+                "@title": "Order service",
+                "@level": 3,
+                "@status": "live",
+                "@statement": "Every placed order is recorded before payment is attempted",
+                "@counterexample": "A payment attempted against an order that was never stored",
+                "@description": "Recording first is what lets a failed payment be retried.\n\n# Why first\n\nA payment with no order is a refund nobody can trace.",
+                "children": [
+                  {
+                    "requirement.functional": {
+                      "name": "OrderRecord",
+                      "@title": "What an order must hold",
+                      "@level": 4,
+                      "@status": "live",
+                      "@statement": "An order records what was bought, for how much, and when: placed | paid",
+                      "@counterexample": "An order row that cannot say who placed it",
+                      "@implementedBy": [
+                        "acme::shop::Order",
+                        "acme::shop::Order.placedAt"
+                      ],
+                      "children": [
+                        {
+                          "requirement.functional": {
+                            "name": "TranscribableReference",
+                            "@level": 5,
+                            "@status": "live",
+                            "@statement": "An order carries a reference a customer can read\ndown a phone line",
+                            "@counterexample": "A reference that is a raw uuid",
+                            "@implementedBy": [
+                              "acme::shop::Order.reference"
+                            ]
+                          }
+                        },
+                        {
+                          "requirement.functional": {
+                            "name": "OrderExpiry",
+                            "@level": 5,
+                            "@status": "planned",
+                            "@statement": "An unpaid order carries the instant it stops being reservable",
+                            "@counterexample": "Stock held indefinitely against an order nobody paid for",
+                            "@trackedBy": [
+                              "acme/shop#412"
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "requirement.architectural": {
+          "name": "MoneyIsExactMinorUnits",
+          "@status": "live",
+          "@statement": "Monetary amounts are stored as exact integer minor units, never as floating point",
+          "@counterexample": "A cent that disappears when a total is split three ways",
+          "@implementedBy": [
+            "acme::shop::Invoice"
+          ]
+        }
+      },
+      {
+        "requirement.functional": {
+          "name": "GuestCheckout",
+          "@level": 4,
+          "@status": "retired",
+          "@statement": "A visitor can check out without an account",
+          "@counterexample": "An order with no way to reach the person who placed it"
+        }
+      }
+    ]
+  }
+}

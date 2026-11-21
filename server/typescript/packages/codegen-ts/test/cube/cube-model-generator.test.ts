@@ -7,8 +7,7 @@
 // loader and run through runGen.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdtempSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { InMemoryStringSource, MetaDataLoader, type MetaObject, type MetaRoot } from "@metaobjectsdev/metadata";
 import { defineConfig, runGen, type MetaobjectsGenConfig } from "../../src/index.js";
@@ -16,15 +15,16 @@ import { buildCubeModel } from "../../src/cube/build-cube-model.js";
 import { CubeModelError, ERR_CUBE_UNSUPPORTED_DIALECT } from "../../src/cube/cube-errors.js";
 import { renderCubeYaml } from "../../src/cube/cube-yaml.js";
 import { cubeModel } from "../../src/generators/cube-model.js";
+import { makeScratchDir, removeTree } from "../../src/scratch-dir.js";
 
 type Json = Record<string, unknown>;
 
 let tmp: string;
 beforeEach(() => {
-  tmp = mkdtempSync(join(tmpdir(), "cube-model-gen-"));
+  tmp = makeScratchDir("cube-model-gen-");
 });
 afterEach(() => {
-  rmSync(tmp, { recursive: true, force: true });
+  removeTree(tmp);
 });
 
 function entity(name: string, children: Json[], extra: Json = {}): Json {

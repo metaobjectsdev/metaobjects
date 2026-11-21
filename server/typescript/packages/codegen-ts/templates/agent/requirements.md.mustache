@@ -1,0 +1,34 @@
+{{{generatedMarker}}}
+
+# Requirements
+
+Read this before adding a capability, and before extending anything that looks like it already does what you were asked for.
+
+- A requirement is **prescriptive**: it states what should be true, never what happened. `status: retired` means the capability was BUILT and deliberately REMOVED — that entry is a prohibition, not history, and the right response to it is to stop, not to rebuild.
+- The **node index** below answers *"does anything claim the thing I am about to change?"*. Match the literal FQN.
+- **The ledger under it is not the same list.** A retired capability carries no `@implementedBy` — there is nothing left to point at — so it appears there and in no index. Read it before you conclude a capability does not exist yet.
+
+## Node index
+
+{{#hasNodeIndex}}
+| Node | Kind | Claimed by |
+|---|---|---|
+{{#nodeIndex}}
+| `{{{address}}}` | `{{{concern}}}` | {{{claims}}} |
+{{/nodeIndex}}
+{{#hasStatements}}
+
+### What those requirements say
+
+{{#statements}}
+- `{{{path}}}` (`{{{subType}}}`) — {{{statement}}}
+{{/statements}}
+{{/hasStatements}}
+{{/hasNodeIndex}}
+{{^hasNodeIndex}}
+No requirement resolves to a model node. The common reason is the ordinary one: an entry at L4 or L5 that simply declares no `@implementedBy` yet, which is legal and is what a `planned` entry looks like. The others are an entry sitting ABOVE the L4 link floor (where a claim is not permitted), a `retired` entry (where it is forbidden outright), and a claim that names a node nothing resolves — `meta verify` is what says which.
+{{/hasNodeIndex}}
+
+## The ledger
+
+{{{ledger}}}

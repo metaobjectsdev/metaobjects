@@ -3,8 +3,6 @@
 // not vary. The corpus proves the bytes hold. This file proves the bytes mean what the docs say.
 
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { type ContractCase, contractCases, contractTree, loadCaseModel } from "../../scripts/gen-contract-conformance.js";
@@ -15,6 +13,7 @@ import { defineConfig, type Generator, runGen } from "../../src/index.js";
 import { jsonSchemaFile as refJsonSchemaFile } from "../../src/reference/contract-schema.js";
 import { openApiFile as refOpenApiFile } from "../../src/reference/openapi.js";
 import { ajvOver, danglingRefs, type JsonDoc } from "./contract-validators.js";
+import { makeScratchDir, removeTree } from "../../src/scratch-dir.js";
 
 const CASES = new Map(contractCases().map((c) => [c.name, c]));
 
@@ -32,7 +31,7 @@ interface RunOptions {
 
 async function emit(c: ContractCase, generators: Generator[], run: RunOptions = {}): Promise<Map<string, string>> {
   const root = await loadCaseModel(c);
-  const dir = mkdtempSync(join(tmpdir(), "contract-behaviour-"));
+  const dir = makeScratchDir("contract-behaviour-");
   try {
     const outDir = join(dir, "out");
     await runGen({
@@ -50,7 +49,7 @@ async function emit(c: ContractCase, generators: Generator[], run: RunOptions = 
     });
     return readTree(outDir);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
   }
 }
 

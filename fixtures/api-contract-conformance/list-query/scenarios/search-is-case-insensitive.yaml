@@ -1,0 +1,12 @@
+name: search-is-case-insensitive
+description: >
+  `?search=` matches its term anywhere in a filterable text field, ignoring case: "pump" finds
+  "Pump Housing", "pump seal", "Bilge PUMP" and "Sump Pump".
+requests:
+  - id: r1
+    method: GET
+    path: "/api/parts?search=pump&sort=id:asc"
+    expect:
+      status: 200
+      body:
+        ids: [7, 8, 9, 10]

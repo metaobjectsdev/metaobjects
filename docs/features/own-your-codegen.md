@@ -290,15 +290,20 @@ it yourself.
 |---|---|---|
 | `docs` | which objects and templates get a page, where a page lands, which page template renders, the whole overview page (`renderIndexPage`) | the page payloads (`buildEntityDocData`, `buildTemplateDocData`) and the ER diagram (`renderMermaidErBlock`) |
 | `api-docs` | which units get a page, where a page lands, whether the index and the agent form (`AGENT-API.md`) are written | the model of the generated API (`buildApiModelForRun`, which also reads the run: layout, `apiPrefix`, whether Hono routes are wired) and its renderers (`renderEntityApiPage`, `renderApiIndex`, `renderAgentApi`) |
-| `requirements` | which files the ledger becomes and where they land (`requirements.md`, `requirements.toon`); a project with no `requirement.*` node gets none | the two writers (`requirements-markdown`, `requirements-toon`) and the projection they read (`requirements-view`) |
-| `agent-docs` | which of the three pages are written and where; the schema page's inputs (lineage, cardinality, enums) | the three page renderers (`agent-schema-page`, `agent-ui-page`, `agent-requirements-page`) |
+| `requirements` | which files the ledger becomes and where they land (`requirements.md`, `requirements.toon`); a project with no `requirement.*` node gets none | the two page builders (`requirements-markdown`, `requirements-toon`) and the projection they read (`requirements-view`) |
+| `agent-docs` | which of the three pages are written and where | the three page builders (`agent-schema-page`, which also walks the model for the column-to-field map, lineage, relationships and enums; `agent-ui-page`; `agent-requirements-page`) |
 | `metamodel-docs` | where the pages land | nothing: the pages are rendered by `@metaobjectsdev/metadata`, which is core |
 
 The page templates themselves (the Mustache files the docs generators render) stay in the
 package. To change the wording of a model page you need no eject: put a file of the same
 name in your project (`templates/docs/entity-page.md.mustache` or
 `template-page.md.mustache`), or point `docsFile({ templates })` at another directory; it
-wins over the packaged one.
+wins over the packaged one. The requirements and agent pages work the same way:
+`templates/requirements/requirements.md.mustache` and `requirements.toon.mustache`
+(`requirementsFile({ templates })`), and `templates/agent/schema.md.mustache` and
+`requirements.md.mustache` (`agentDocsFile({ templates })`; its embedded ledger is the
+`requirements/requirements.md` template). The templates and the data they are fed are pinned in
+`fixtures/docs-page-conformance/`; which ports run that corpus is in [CONFORMANCE.md](../CONFORMANCE.md).
 
 ### The docs site: `meta eject docs-site` copies the theme
 

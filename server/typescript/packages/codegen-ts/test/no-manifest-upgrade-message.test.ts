@@ -12,8 +12,7 @@
 
 import { manifestExists } from "./support/manifest.js";
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync, readdirSync, statSync, existsSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { rmSync, writeFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
@@ -21,12 +20,13 @@ import { runGen } from "../src/runner.js";
 import { defineConfig } from "../src/metaobjects-config.js";
 import { entityFile } from "../src/generators/entity-file.js";
 import { queriesFile } from "../src/generators/queries-file.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 const FIXTURE = resolve(import.meta.dir, "fixtures", "single-entity.json");
 
 let projectRoot: string;
-beforeEach(() => { projectRoot = mkdtempSync(join(tmpdir(), "no-manifest-")); });
-afterEach(() => { rmSync(projectRoot, { recursive: true, force: true }); });
+beforeEach(() => { projectRoot = makeScratchDir("no-manifest-"); });
+afterEach(() => { removeTree(projectRoot); });
 
 const genStateDir = (): string => join(projectRoot, ".metaobjects", ".gen-state");
 const outDir = (): string => join(projectRoot, "generated");
@@ -50,7 +50,7 @@ async function gen(opts: { dryRun?: boolean } = {}) {
 /** Drop the whole gen-state: the state of a project whose .gitignore still reads
  *  `.gen-state/`, cloned fresh. */
 function dropAllGenState(): void {
-  rmSync(genStateDir(), { recursive: true, force: true });
+  removeTree(genStateDir());
 }
 
 /** Keep the manifest, drop only the bodies: a MIGRATED project, cloned fresh. */
@@ -59,7 +59,7 @@ function dropBodiesOnly(): void {
     for (const e of readdirSync(dir)) {
       const full = join(dir, e);
       if (e === ".hashes") continue; // the manifest directory is what a clone keeps
-      if (statSync(full).isDirectory()) { walk(full); rmSync(full, { recursive: true, force: true }); }
+      if (statSync(full).isDirectory()) { walk(full); removeTree(full); }
       else if (e !== ".engine.json") rmSync(full, { force: true });
     }
   };

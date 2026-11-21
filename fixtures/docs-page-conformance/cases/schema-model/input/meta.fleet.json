@@ -1,0 +1,207 @@
+{
+  "metadata.root": {
+    "package": "acme::fleet",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Owner",
+          "@description": "A person or company that owns vehicles.",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "owners"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "@required": true
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": "id",
+                "@generation": "increment"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "@required": true,
+                "@description": "The legal name, as registered."
+              }
+            },
+            {
+              "field.enum": {
+                "name": "tier",
+                "@values": [
+                  "standard",
+                  "fleet"
+                ]
+              }
+            },
+            {
+              "field.enum": {
+                "name": "rating",
+                "@values": [
+                  "LOW",
+                  "HIGH"
+                ],
+                "@intValueMap": {
+                  "LOW": 1,
+                  "HIGH": 2
+                }
+              }
+            },
+            {
+              "relationship.aggregation": {
+                "name": "vehicles",
+                "@cardinality": "many",
+                "@objectRef": "Vehicle"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Vehicle",
+          "@discriminator": "kind",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "vehicles"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "@required": true
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": "id",
+                "@generation": "increment"
+              }
+            },
+            {
+              "field.string": {
+                "name": "kind",
+                "@required": true
+              }
+            },
+            {
+              "field.long": {
+                "name": "ownerId"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "ownerRef",
+                "@fields": "ownerId",
+                "@references": "Owner"
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "owner",
+                "@cardinality": "one",
+                "@objectRef": "Owner",
+                "@onDelete": "cascade"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Car",
+          "extends": "Vehicle",
+          "@discriminatorValue": "Car",
+          "children": [
+            {
+              "field.int": {
+                "name": "doors"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Party",
+          "children": [
+            {
+              "field.string": {
+                "name": "name"
+              }
+            },
+            {
+              "field.enum": {
+                "name": "kind",
+                "@values": [
+                  "person",
+                  "company"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "OwnerSummary",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_owner_summary"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "Owner.id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "extends": "Owner.pk"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "children": [
+                  {
+                    "origin.passthrough": {
+                      "@from": "Owner.name"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.long": {
+                "name": "vehicleCount",
+                "children": [
+                  {
+                    "origin.aggregate": {
+                      "@agg": "count",
+                      "@of": "Vehicle.id",
+                      "@via": "Owner.vehicles"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

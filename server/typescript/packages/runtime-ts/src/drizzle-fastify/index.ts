@@ -23,7 +23,7 @@ import type { FastifyInstance, RouteShorthandOptions } from "fastify";
 import { classifyConstraintError, RedactedDatabaseError, logAndRedact } from "../constraint-errors.js";
 import type { ZodTypeAny } from "zod";
 import { eq, count, and, asc } from "drizzle-orm";
-import qs from "qs";
+import { parseListQueryString } from "./list-query.js";
 import type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
 export type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
 import { parseFilterParams, parsePageBound, pageLimit, FilterParseError, type PageSize } from "./filter-parser.js";
@@ -35,6 +35,10 @@ import { withContractErrorHandler } from "./route-error-handler.js";
 import { validationErrorBody } from "../route-errors.js";
 export { isTruthyFlag, contractErrorCode, parseId, coerceIdForColumn } from "./util.js";
 export { pageLimit, ERROR_CODE_LIMIT_TOO_LARGE, type PageSize } from "./list-params.js";
+export {
+  parseListQuery, parseListQueryString, rawQueryOf, FilterParseError,
+  type FilterNode, type ListQuery, type ParseListQueryOpts,
+} from "./filter-parser.js";
 export { ERROR_CODE_UNKNOWN_FIELDS, unknownBodyKeys } from "../wire-format.js";
 export { timestampWire, canonicalTimestamp } from "../timestamp-wire.js";
 export { decimalWire, withDecimals, decimalToNative, canonicalDecimal, parseDecimalInput, parseDecimalOperand } from "../decimal-wire.js";
@@ -210,7 +214,7 @@ export function mountListRoute(opts: VerbOptions): void {
       const rawSearch = req.raw.url?.includes("?")
         ? req.raw.url.slice(req.raw.url.indexOf("?") + 1)
         : "";
-      const qsParsed = qs.parse(rawSearch) as Record<string, unknown>;
+      const qsParsed = parseListQueryString(rawSearch);
       const withCount = isTruthyFlag(qsParsed.withCount);
 
       // FR-017 TPH: when subtype-scoped, AND the discriminator predicate into

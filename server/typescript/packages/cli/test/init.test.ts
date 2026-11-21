@@ -871,9 +871,10 @@ describe("initCommand --refresh-docs output (does what it says)", () => {
     expect(out).not.toContain('"type": "module"');
     expect(out).not.toContain("meta migrate --from-db");
 
-    // It should say what it DID do.
-    expect(out).toContain("Refreshed");
-    expect(out).toContain(".metaobjects/AGENTS.md");
+    // It should say what it DID do. Straight after init the scaffold is current, so the
+    // refresh writes nothing and says so (a refresh that changes a file names it, which
+    // init-refresh-docs.test.ts covers).
+    expect(out).toContain("already current: no file changed");
 
     // And the claim has to be true: nothing else moved.
     expect(readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8")).toBe(configBefore);

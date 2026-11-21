@@ -10,12 +10,12 @@
 // deleting a requirement between them, and asserts on the files left on disk.
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { MetaDataLoader, InMemoryStringSource, type MetaRoot } from "@metaobjectsdev/metadata";
 import { runGen } from "../src/runner.js";
 import { requirementTests } from "../src/generators/requirement-tests.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 const OUT_DIR = "tests";
 
@@ -63,11 +63,11 @@ const KEEP_STUB = join(OUT_DIR, "requirements", "keep.object.entity.test.ts");
 const DROP_STUB = join(OUT_DIR, "requirements", "drop.object.entity.test.ts");
 
 beforeEach(() => {
-  projectRoot = mkdtempSync(join(tmpdir(), "req-orphan-e2e-"));
+  projectRoot = makeScratchDir("req-orphan-e2e-");
 });
 
 afterEach(() => {
-  rmSync(projectRoot, { recursive: true, force: true });
+  removeTree(projectRoot);
 });
 
 interface GenOpts {

@@ -11,6 +11,9 @@ export type WhereClause =
   | { kind: "gt" | "gte" | "lt" | "lte"; column: string; value: number | string }
   | { kind: "in"; column: string; values: PrimitiveValue[] }
   | { kind: "like"; column: string; pattern: string }
+  /** A case-INSENSITIVE LIKE (`%`/`_` wildcards). Not a wire operator: a REST list's
+   *  `?search` compiles to an OR of these over its text fields. */
+  | { kind: "ilike"; column: string; pattern: string }
   | { kind: "isNull"; column: string; not: boolean }
   | { kind: "and"; clauses: WhereClause[] }
   | { kind: "or"; clauses: WhereClause[] };

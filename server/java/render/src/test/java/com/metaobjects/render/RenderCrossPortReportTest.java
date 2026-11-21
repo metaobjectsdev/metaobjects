@@ -46,11 +46,7 @@ public class RenderCrossPortReportTest {
      * differ; if Java comes into agreement, remove the entry (the test will fail
      * to remind you).
      */
-    private static final Set<String> KNOWN_DRIFT = Set.of(
-        // Mustache.java leaves the trailing newline after a standalone {{! comment }};
-        // TS / C# / Python all strip it.
-        "render-standalone-tag-stripping"
-    );
+    private static final Set<String> KNOWN_DRIFT = Set.of();
 
     static {
         Path p = Paths.get(System.getProperty("user.dir")).toAbsolutePath();
