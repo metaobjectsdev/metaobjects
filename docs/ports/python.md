@@ -246,6 +246,16 @@ row-model field that can be null is `T | None = None`; a measure with `@default`
 report with no view source, or an abstract one, generates nothing. The contract is in
 [reporting](../features/reporting.md#how-a-report-is-served).
 
+**Publishing a shared model.** The `shared-model` generator (FR-023) writes `<name>.metaobjects.json`
+and `metaobjects.pkg.json` for a consumer's `deps sync`, byte-identical to the other ports' and gated
+by `fixtures/shared-model-conformance/` (all 15 cases). Options on its `generators` entry: `name`,
+`include` (required), `exclude`, `requirements`, `files` (relative to the project root; default every
+metadata file of the project) and `version` (default: the nearest `pyproject.toml` or `package.json`
+version, recorded as a declared input so bumping it regenerates). The engine is
+`metaobjects.shared_model` (`build_shared_model`, `render_shared_model_files`); a selection that is
+empty, not closed or needs non-core vocabulary raises `SharedModelError` and fails the run. See
+[metadata-dependencies.md](../features/metadata-dependencies.md#publishing-a-dependency-sharedmodelfile).
+
 **Report export.** Add the standalone `report-export` generator to a target and the served
 report's list route answers `?format=csv|json|xml` ([contract](../features/api-contract.md#report-export)).
 It writes one shared `report_export_writer.py` (standard library only: `csv` quoting by hand,

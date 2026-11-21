@@ -1052,6 +1052,18 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   and no longer call `ruff`; the others convert one at a time, and `ruff_format` stays exported for
   owned generators that call it.
 
+- **Python publishes a shared model (FR-023).** A `shared-model` generator, wired in
+  `metaobjects.config.yaml` like any other (`metaobjects gen --list` names its options), writes
+  `<name>.metaobjects.json` and `metaobjects.pkg.json` for a consumer's `deps sync`: `name` and
+  `include` (required), `exclude`, `requirements`, `files` (relative to the project root; default
+  every metadata file of the project) and `version` (default: the nearest `pyproject.toml` or
+  `package.json` version, a declared input of the run). It was TypeScript, Java, Kotlin and C#
+  only, so a Python project ran a TypeScript generator for it. The bytes are the other ports': the
+  Python test runs all 15 cases of `fixtures/shared-model-conformance/` (nine publish, six
+  refusal), where it ran only the nine documents before. The engine is `metaobjects.shared_model`
+  (`build_shared_model`, `render_shared_model_files`, `SharedModelError` carrying the refusal
+  reason). A `generators` entry's `options` also gain a list kind, for `include`, `exclude` and
+  `files`.
 - **Python: the `ObjectManager` splits into an abstract `ObjectManager` and a concrete
   `ObjectManagerDb` (breaking).** `ObjectManager(root, driver)` no longer constructs: it raises a
   `TypeError` naming `ObjectManagerDb(root, driver)`, and there is no shim. `ObjectManager` is

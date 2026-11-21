@@ -202,7 +202,7 @@
       "tier": "native",
       "layer": "capability",
       "eject": "full",
-      "ports": ["typescript", "java", "kotlin", "csharp"]
+      "ports": ["typescript", "java", "kotlin", "csharp", "python"]
     },
     "form": {
       "concept": "Per-entity React form component over the generated Zod schema.",
@@ -555,7 +555,8 @@
           "metaobjects.codegen.requirement_walk",
           "metaobjects.codegen.type_map",
           "metaobjects.codegen.value_objects",
-          "metaobjects.codegen.writer"
+          "metaobjects.codegen.writer",
+          "metaobjects.shared_model"
         ]
       },
       "rust": {

@@ -504,8 +504,7 @@ publisher reachable.
 
 ## Publishing a dependency: `sharedModelFile()`
 
-A publisher wires the `shared-model` generator (TypeScript, Java, Kotlin and C#; Python
-consumes only) to select a subset of its own metadata by the same include/exclude scope-pattern
+A publisher wires the `shared-model` generator (TypeScript, Java, Kotlin, C# and Python) to select a subset of its own metadata by the same include/exclude scope-pattern
 grammar `scope` already uses, and emit it as one canonical-JSON artifact plus a
 manifest:
 
@@ -603,14 +602,24 @@ already do.
 
 Consumers declare `{ "name": "acme-billing", "npm": "@acme/billing-model", "dir": "metaobjects" }`.
 
-**A Python package.** The generator is TypeScript, so a Python project runs it with the
-Node `meta` it already uses for schema work.
+**A Python package.** A Python project runs its own `shared-model` generator
+(`metaobjects gen`); the Node `meta` writes the same bytes, so a project that still publishes
+with it sees no change.
 
-1. Point the target inside the importable package, and make sure the build ships the
-   JSON files as package data:
+1. Point the target inside the importable package, wire the generator in
+   `metaobjects.config.yaml`, and make sure the build ships the JSON files as package data:
 
-   ```ts
-   targets: { shared: { outDir: "src/acme_scheduling/metaobjects" } },
+   ```yaml
+   targets:
+     shared:
+       outDir: src/acme_scheduling/metaobjects
+       generators:
+         - name: shared-model
+           options:
+             name: acme-scheduling
+             include: ["acme::scheduling::**"]
+             # exclude, requirements and files are optional; files are relative to the project
+             # root. version defaults to the pyproject.toml [project] version below.
    ```
 
    ```toml
@@ -625,12 +634,11 @@ Node `meta` it already uses for schema work.
    acme_scheduling = ["metaobjects/*.json"]
    ```
 
-   With no `version` option and no `package.json` version nearer the project root, the
-   generator stamps `pyproject.toml`'s static `[project]` version. If the Node project
-   has its own `package.json` version, or the Python package lives elsewhere in the
-   repository, pass `version` explicitly so the manifest carries the version consumers
-   install.
-2. Bump the version, run `meta gen`, then build and upload as usual
+   With no `version` option, the Python generator stamps the nearest `pyproject.toml`
+   `[project]` version (or `package.json` version) at or above the project root. If the Python
+   package lives elsewhere in the repository, pass `version` explicitly so the manifest
+   carries the version consumers install. With no version found, the run fails.
+2. Bump the version, run `metaobjects gen`, then build and upload as usual
    (`python -m build`, then `twine upload` or `uv publish`). `unzip -l dist/*.whl`
    shows the two files if the package data is right.
 
@@ -684,18 +692,16 @@ Then `meta deps sync` as for any other installed package. Nothing about the regi
 reaches `.metaobjects/`: the lock records the transport (`npm`/`python` + `dir`), never a
 URL.
 
-**TypeScript, Java, Kotlin and C# publish; TypeScript, Python, Java, Kotlin and C# consume.**
+**TypeScript, Python, Java, Kotlin and C# publish and consume.**
 TypeScript, Python, Java, Kotlin and C# can *consume* a dependency (load its snapshot, extend
 it, overlay it). Java reads it at every rung of the Maven plugin's source ladder
 (`<sourceDir>`/`<sources>`, the neutral config, the default directory), and Kotlin inherits that
 through the same plugin and loader, so a Spring or Kotlin build consumes a shared model with no
-extra configuration. Java, Kotlin and C# can also *publish*: each ships a `shared-model`
+extra configuration. Java, Kotlin, C# and Python can also *publish*: each ships a `shared-model`
 generator (Java and Kotlin through the Maven plugin's `metaobjects:generate`, C# through
-`dotnet meta gen`; all three ejectable) that writes the artifact and manifest, byte-identical to
-the TypeScript one and gated by `fixtures/shared-model-conformance/`. The Node `meta deps sync`
-stays the only writer of the lock and the snapshot, in every port. A Python project that wants
-to publish a shared model runs a TypeScript `sharedModelFile()` generator against its own
-metadata.
+`dotnet meta gen`, Python through `metaobjects gen`; all four ejectable) that writes the artifact
+and manifest, byte-identical to the TypeScript one and gated by `fixtures/shared-model-conformance/`.
+The Node `meta deps sync` stays the only writer of the lock and the snapshot, in every port.
 
 **C#.** `dotnet meta` reads `dependencies` from `.metaobjects/config.json` at every rung of its
 source ladder — C# has no native config surface, so the explicit `<metadataDir>` form reads the
@@ -831,7 +837,6 @@ but **not** built yet — do not assume any of the following exists:
 - **A runtime `ObjectManager` scope predicate.** Nothing at runtime refuses to serve
   an imported entity — "what's imported" is a load-time/codegen concept today, not a
   runtime one.
-- **Python as a publisher** — Java, Kotlin and C# publish; Python consumes only.
 - **A JVM classpath read with `"commit": false`** — a Java or Kotlin build reading a dependency's
   artifact straight off the classpath with no committed snapshot. The committed snapshot is the only
   shipped path.
@@ -873,7 +878,7 @@ but **not** built yet — do not assume any of the following exists:
   `include` / `exclude` / `files` / `requirements`, and the refusals (an empty selection, a
   requirement claiming a node outside the selection, a closure failure naming every
   `referrer → target` pair, vocabulary a consumer's toolchain does not ship). TypeScript, Java
-  (Kotlin through the same engine) and C# run all of it; Python runs the serializer arm.
+  (Kotlin through the same engine), C# and Python run all of it.
 
 ## See also
 
