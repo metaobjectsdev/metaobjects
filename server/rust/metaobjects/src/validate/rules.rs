@@ -1102,9 +1102,10 @@ fn check_api_routes(tree: &Tree, ops: &[NodeId], sink: &mut Sink<'_>) {
 }
 
 /// The name a permission point asks the policy about: its `@permission`, else
-/// `<package>.<path>` (the package prefix is dropped when there is none). `::` and `.`
-/// both separate path segments, so they compare equal. Returns the name and whether it
-/// is derived.
+/// `<package>.<path>` (the package prefix is dropped when there is none). The name is
+/// compared exactly as the policy receives it: `::` and `.` are different things in the
+/// metadata, so `p::Order.open` and `p.Order.open` are two names. Returns the name and
+/// whether it is derived.
 fn permission_name_of(tree: &Tree, node: NodeId, owner: NodeId, path: &str) -> (String, bool) {
     let declared = match tree.attr(node, A_PERMISSION) {
         Some(Value::String(s)) => Some(s.as_str()),
@@ -1116,7 +1117,7 @@ fn permission_name_of(tree: &Tree, node: NodeId, owner: NodeId, path: &str) -> (
         None if pkg.is_empty() => path.to_string(),
         None => format!("{pkg}.{path}"),
     };
-    (name.replace(PACKAGE_SEP, "."), declared.is_none())
+    (name, declared.is_none())
 }
 
 /// P3: two permission points, one name. Points are every non-public operation and every

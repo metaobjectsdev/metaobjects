@@ -392,13 +392,14 @@ interface PermissionPoint {
 
 /** The name a permission point asks the policy about: its @permission, else `<package>.<path>`
  *  (the path is `<operation>`, or `<Entity>.<transition>` for a transition's command). The package
- *  prefix is dropped when there is none. `::` and `.` both separate path segments, so they compare
- *  equal: `p::Order` + `open` and `p` + `Order.open` are one name. */
+ *  prefix is dropped when there is none. The name is compared exactly as the policy receives it:
+ *  `::` and `.` are different things in the metadata, so `p::Order.open` and `p.Order.open` are
+ *  two names, not one. */
 function permissionNameOf(node: MetaData, owner: MetaData, path: string): { name: string; derived: boolean } {
   const declared = node.attr(OPERATION_ATTR_PERMISSION);
   const pkg = effectivePackageOf(topLevelNodeOf(owner));
   const name = typeof declared === "string" ? declared : pkg === "" ? path : `${pkg}.${path}`;
-  return { name: name.replaceAll("::", "."), derived: typeof declared !== "string" };
+  return { name, derived: typeof declared !== "string" };
 }
 
 /** P3: two permission points, one name. Points are every non-public operation and every transition

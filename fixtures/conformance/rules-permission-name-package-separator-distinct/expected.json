@@ -1,0 +1,67 @@
+{
+  "metadata.root": {
+    "children": [
+      {
+        "api.operational": {
+          "name": "Orders",
+          "package": "p::Order",
+          "children": [
+            {
+              "operation.query": {
+                "name": "open",
+                "@outputRef": "p::Order"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Order",
+          "package": "p",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "orders"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "field.enum": {
+                "name": "status",
+                "@default": "draft",
+                "@values": [
+                  "draft",
+                  "open"
+                ],
+                "children": [
+                  {
+                    "transition.action": {
+                      "name": "open",
+                      "@from": [
+                        "draft"
+                      ],
+                      "@to": "open"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -500,16 +500,16 @@ def validate_rules(root: MetaData, errors: list[MetaError]) -> None:
 def _permission_name_of(node: MetaData, owner: MetaData, path: str) -> tuple[str, bool]:
     """The name a permission point asks the policy about: its @permission, else
     ``<package>.<path>`` (the path is ``<operation>``, or ``<Entity>.<transition>`` for a
-    transition's command), with the package prefix dropped when there is none. ``::`` and
-    ``.`` both separate path segments, so ``p::Order`` + ``open`` and ``p`` + ``Order.open``
-    are one name. Returns (name, derived)."""
+    transition's command), with the package prefix dropped when there is none. The name is
+    compared exactly as the policy receives it: ``::`` and ``.`` are different things in the
+    metadata, so ``p::Order.open`` and ``p.Order.open`` are two names. Returns (name, derived)."""
     declared = node.get_meta_attr(OPERATION_ATTR_PERMISSION)
     pkg = effective_package_of(top_level_node_of(owner))
     if isinstance(declared, str):
         name = declared
     else:
         name = path if pkg == "" else f"{pkg}.{path}"
-    return name.replace("::", "."), not isinstance(declared, str)
+    return name, not isinstance(declared, str)
 
 
 def _check_permission_names(root: MetaData, sink: _Sink) -> None:

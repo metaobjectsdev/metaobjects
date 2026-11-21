@@ -57,10 +57,12 @@ here.**
   `expected.txt`.
 - **Business rules: two operations or transitions whose permission names come out equal are
   refused (rule P3).** A permission name is the declared `@permission`, or else the derived
-  `<package>.<path>` (a `::` package separator reads as `.`). When two permission points resolve to
+  `<package>.<path>`, compared exactly as the policy receives it, so `p::Order.open` and
+  `p.Order.open` are two names. When two permission points resolve to
   the same name and at least one of the two names is derived, the loader reports
   `ERR_TRANSITION_NAME_COLLISION` on the later one. Two equal declared names stay legal: that is a
-  shared permission. New fixtures `error-rules-permission-name-op-{dotted,declared,package}`.
+  shared permission. New fixtures `error-rules-permission-name-op-{dotted,declared}` and
+  `rules-permission-name-package-separator-distinct`.
 - **Python: unions and one-row-per-list-item views are checked at load.** The two must-fail
   projection fixtures (a `@union` whose branches do not line up, and a `@grain` view that breaks
   its rules) now fail in Python as they do in the other ports, and leave the Python
