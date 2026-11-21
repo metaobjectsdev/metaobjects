@@ -8,6 +8,7 @@ from pathlib import Path
 from metaobjects.cli import main
 from tests.codegen.gen_suite import GEN_SUITE
 from tests.codegen.config_helpers import as_config
+from tests.codegen.manifest_helpers import record_entry
 
 CANONICAL = Path(__file__).parents[4] / "fixtures" / "persistence-conformance" / "canonical"
 FITNESS = CANONICAL / "meta.fitness.json"
@@ -130,11 +131,7 @@ def _record_as_written(tmp_path: Path, rel: str) -> None:
     look like something MetaObjects WROTE on an earlier run. That is what makes a
     committed file a STALE artifact rather than a stranger, and the two now have
     different verdicts (see the jurisdiction rule in ``cli._is_ours_for``)."""
-    manifest = tmp_path / ".metaobjects" / ".gen-state" / ".hashes.json"
-    hashes = json.loads(manifest.read_text()) if manifest.exists() else {}
-    hashes[rel] = "0" * 64
-    manifest.parent.mkdir(parents=True, exist_ok=True)
-    manifest.write_text(json.dumps(hashes, indent=2, sort_keys=True) + "\n")
+    record_entry(tmp_path / ".metaobjects" / ".gen-state", rel)
 
 
 def test_verify_codegen_shared_outdir_detects_stale_extra(tmp_path: Path, capsys) -> None:

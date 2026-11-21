@@ -27,5 +27,17 @@ def read_manifest(gen_state: Path) -> dict[str, object]:
     return merged
 
 
+def record_entry(gen_state: Path, rel: str, digest: str = "0" * 64) -> None:
+    """Add a write record for ``rel`` to the root manifest file in ``.hashes/``, the way the
+    product files an entry no package claims (ADR-0064 Amendment 1)."""
+    from metaobjects.codegen.overwrite_policy import HASHES_DIR, ROOT_MANIFEST
+
+    path = gen_state / HASHES_DIR / ROOT_MANIFEST
+    entries = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    entries[rel] = digest
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(entries, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def has_manifest(gen_state: Path) -> bool:
     return (gen_state / ".hashes.json").exists() or bool(manifest_files(gen_state))
