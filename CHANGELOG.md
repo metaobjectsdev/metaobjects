@@ -88,6 +88,20 @@ here.**
   because a newer MetaObjects may have written it, but each one is now named once on standard error
   with the known keys, in the words TypeScript uses. A key inside a block C# owns (`csharp`,
   `naming`, `wire` and the rest) is refused as before.
+- **sdk: the static agent files, built once for every port (ADR-0033 Amendment 1).** The
+  assembler now also runs at build time, once per stack a port's own command serves: each server
+  language alone and Java with Kotlin, each with no client, React, React with TanStack or
+  Angular. The result is committed at `agent-context-shipped/` (a manifest plus each distinct file
+  once, by content hash), for each port's package to embed and its `agent-docs` command to copy,
+  so a non-TypeScript project gets its agent files with no Node. `agent-context-shipped/README.md`
+  is the contract; `buildShippedAgentContext()` and `materializeShippedStack()` are exported, and
+  `shipped.test.ts` fails when the tree is stale or a stack differs from what `meta agent-docs`
+  writes. The ports' own commands land in their own rows; until then they still redirect.
+- **sdk, cli: Rust is an agent-context server language.** `--server rust` (alias `rs`) is
+  accepted, and a `Cargo.toml` at the project root is detected as Rust. A Rust project's
+  always-on file gives the `cargo meta gen` loop and the `cargo meta verify` step, and a `rust`
+  case joins `fixtures/agent-context-conformance`. Libraries list Rust among their ports, checked
+  against the copy the Rust crate embeds.
 - **codegen-ts: the rules names layer (ADR-0067 layer 0).** A new generator, `rules-names`
   (`rulesNamesFile()`, ejectable), writes one `rules.names.ts` per metadata package that declares
   a lifecycle or an operation: each lifecycle's states, initial and terminal states and

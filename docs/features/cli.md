@@ -911,8 +911,17 @@ gates were removed — that content is effectively one static artifact, and ever
 already needs the Node `meta` CLI or its binary for schema ops (ADR-0015).
 
 ```bash
-npx meta agent-docs --server <lang>    # csharp | java | kotlin | python | node
+npx meta agent-docs --server <lang>    # csharp | java | kotlin | python | rust | node
 ```
+
+**The same files, built once for every port (1.3.0, ADR-0033 Amendment 1).** The assembler is
+also run at build time, once per stack a port's own command serves: each server language alone
+and Java with Kotlin, each with no client, React, React with TanStack or Angular. The result is
+committed at `agent-context-shipped/` (a manifest and each distinct file once), and a port's
+package embeds it so its command can copy one stack out with no Node on the path.
+`agent-context-shipped/README.md` is the contract that command follows, and the sdk's
+`shipped.test.ts` fails when the tree is stale. Until each port's command lands, the stubs
+below still redirect to the Node CLI.
 
 The C#, Java/Kotlin, and Python CLIs keep a **non-executing `agent-docs` pointer
 stub** that prints `agent-context scaffolding moved to the meta CLI — run: npx meta

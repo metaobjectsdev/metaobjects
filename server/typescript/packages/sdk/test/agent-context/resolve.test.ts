@@ -34,4 +34,8 @@ describe("detectStack", () => {
     expect(detectStack(probe([], ["Api.csproj"])).servers).toEqual(["csharp"]);
     expect(detectStack(probe([], ["pyproject.toml"])).servers).toEqual(["python"]);
   });
+  test("detects rust via a Cargo.toml at the root", () => {
+    expect(detectStack(probe([], ["Cargo.toml"])).servers).toEqual(["rust"]);
+    expect(detectStack(probe([], ["cargo.toml.bak"])).servers).toEqual([]);
+  });
 });

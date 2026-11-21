@@ -1,0 +1,5533 @@
+{
+  "schema": 1,
+  "docsRef": "main",
+  "docsLinkPrefix": "https://github.com/metaobjectsdev/metaobjects/blob/",
+  "skillsDir": ".claude/skills",
+  "stacks": [
+    {
+      "id": "typescript",
+      "servers": [
+        "typescript"
+      ],
+      "clients": [],
+      "files": [
+        {
+          "path": ".claude/skills/metaobjects-audit/SKILL.md",
+          "file": "db66e0e785a6cf50.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/calibration.md",
+          "file": "a7fd4ec2565ab8c0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/capability-checklist.md",
+          "file": "20ec11b332e12322.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/drift-signatures.md",
+          "file": "2fe5f67ab529af0c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/prompt-anti-patterns.md",
+          "file": "bfe25e4bd2cf097d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/requirements.md",
+          "file": "651a126eaa501924.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/surface-review-axes.md",
+          "file": "9fbf06132414b6be.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/typescript.md",
+          "file": "8b16b974614265d4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/vocabulary-hygiene.md",
+          "file": "b28302f5febaea38.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/SKILL.md",
+          "file": "969f739fa94d7a76.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/abstracts-and-overlay.md",
+          "file": "fb3d3670ae387530.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-code.md",
+          "file": "378f755bb43b1e71.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-models.md",
+          "file": "e1f6478444c1e120.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/choosing-a-shape.md",
+          "file": "c1a4896ebda79dd9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/declaring-reports.md",
+          "file": "6b42cc8511e0eb7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/identities-and-indexes.md",
+          "file": "8a9c3f4a4119022a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/inheritance-tph.md",
+          "file": "46659a758d40373b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/json-columns.md",
+          "file": "6afa98a9c7fd23f6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/metadata-dependencies.md",
+          "file": "608f89f60afad4b9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/model-first-rationale.md",
+          "file": "fda1a58ac1585828.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/read-views-and-projections.md",
+          "file": "b8371541b1d36c6b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/relationships.md",
+          "file": "e985f8151935157d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/reporting.md",
+          "file": "f80806308b356cb6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/requirements.md",
+          "file": "e5c6430567eecae4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/sources.md",
+          "file": "123dcfb6c65640a0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/typescript-providers.md",
+          "file": "1e0fda1afdd26e1a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/SKILL.md",
+          "file": "86974256b798cf22.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/any-stack.md",
+          "file": "4426fbef79f236fb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/choosing-layers.md",
+          "file": "8cd1bca8a659b6ef.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/dependencies-and-shared-models.md",
+          "file": "58d380101a100501.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/owning-generators.md",
+          "file": "e899275df4b48c66.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/physical-names.md",
+          "file": "c37f1e343d6e2832.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/principles.md",
+          "file": "dd80d926c56ea1e3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/template-or-code.md",
+          "file": "f745f2c1411ab2f0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/typescript-docs.md",
+          "file": "c5b68292c9103dcc.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/typescript-document-store.md",
+          "file": "c7994468651aa905.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/typescript-mysql.md",
+          "file": "103a368daf29e749.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/typescript-prisma.md",
+          "file": "1e292839ec10ca12.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/typescript-retargeting.md",
+          "file": "6935df5f6afbbf93.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/typescript-templates.md",
+          "file": "5a2f3bbdcf835d47.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/typescript.md",
+          "file": "e626029a53526f92.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/wire-format.md",
+          "file": "f425eaf3566cf602.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/SKILL.md",
+          "file": "a1b81119468f84a9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/references/typescript.md",
+          "file": "0fe543fe1b3c9b3c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/SKILL.md",
+          "file": "0440a95faf89e271.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/typescript.md",
+          "file": "494853543fba1c5f.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/SKILL.md",
+          "file": "80606ed514438d51.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/migration.md",
+          "file": "34d60341c7210314.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/requirements.md",
+          "file": "0ee567e8d039312d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/upgrading.md",
+          "file": "4f6d18160c694c41.md"
+        },
+        {
+          "path": ".metaobjects/AGENTS.md",
+          "file": "5df6f5793c17c564.md"
+        }
+      ]
+    },
+    {
+      "id": "typescript-react",
+      "servers": [
+        "typescript"
+      ],
+      "clients": [
+        "react"
+      ],
+      "files": [
+        {
+          "path": ".claude/skills/metaobjects-audit/SKILL.md",
+          "file": "db66e0e785a6cf50.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/calibration.md",
+          "file": "a7fd4ec2565ab8c0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/capability-checklist.md",
+          "file": "20ec11b332e12322.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/drift-signatures.md",
+          "file": "2fe5f67ab529af0c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/prompt-anti-patterns.md",
+          "file": "bfe25e4bd2cf097d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/requirements.md",
+          "file": "651a126eaa501924.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/surface-review-axes.md",
+          "file": "9fbf06132414b6be.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/typescript.md",
+          "file": "8b16b974614265d4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/vocabulary-hygiene.md",
+          "file": "b28302f5febaea38.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/SKILL.md",
+          "file": "969f739fa94d7a76.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/abstracts-and-overlay.md",
+          "file": "fb3d3670ae387530.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-code.md",
+          "file": "378f755bb43b1e71.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-models.md",
+          "file": "e1f6478444c1e120.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/choosing-a-shape.md",
+          "file": "c1a4896ebda79dd9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/declaring-reports.md",
+          "file": "6b42cc8511e0eb7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/identities-and-indexes.md",
+          "file": "8a9c3f4a4119022a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/inheritance-tph.md",
+          "file": "46659a758d40373b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/json-columns.md",
+          "file": "6afa98a9c7fd23f6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/metadata-dependencies.md",
+          "file": "608f89f60afad4b9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/model-first-rationale.md",
+          "file": "fda1a58ac1585828.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/read-views-and-projections.md",
+          "file": "b8371541b1d36c6b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/relationships.md",
+          "file": "e985f8151935157d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/reporting.md",
+          "file": "f80806308b356cb6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/requirements.md",
+          "file": "e5c6430567eecae4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/sources.md",
+          "file": "123dcfb6c65640a0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/typescript-providers.md",
+          "file": "1e0fda1afdd26e1a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/SKILL.md",
+          "file": "86974256b798cf22.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/any-stack.md",
+          "file": "4426fbef79f236fb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/choosing-layers.md",
+          "file": "8cd1bca8a659b6ef.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/dependencies-and-shared-models.md",
+          "file": "58d380101a100501.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/owning-generators.md",
+          "file": "e899275df4b48c66.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/physical-names.md",
+          "file": "c37f1e343d6e2832.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/principles.md",
+          "file": "dd80d926c56ea1e3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/template-or-code.md",
+          "file": "f745f2c1411ab2f0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/typescript-docs.md",
+          "file": "c5b68292c9103dcc.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/typescript-document-store.md",
+          "file": "c7994468651aa905.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/typescript-mysql.md",
+          "file": "103a368daf29e749.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/typescript-prisma.md",
+          "file": "1e292839ec10ca12.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/typescript-retargeting.md",
+          "file": "6935df5f6afbbf93.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/typescript-templates.md",
+          "file": "5a2f3bbdcf835d47.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/typescript.md",
+          "file": "e626029a53526f92.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/wire-format.md",
+          "file": "f425eaf3566cf602.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/SKILL.md",
+          "file": "a1b81119468f84a9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/references/typescript.md",
+          "file": "0fe543fe1b3c9b3c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/SKILL.md",
+          "file": "0440a95faf89e271.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/react.md",
+          "file": "1ed66f8d84192ee1.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/typescript.md",
+          "file": "494853543fba1c5f.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/SKILL.md",
+          "file": "80606ed514438d51.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/migration.md",
+          "file": "34d60341c7210314.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/requirements.md",
+          "file": "0ee567e8d039312d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/upgrading.md",
+          "file": "4f6d18160c694c41.md"
+        },
+        {
+          "path": ".metaobjects/AGENTS.md",
+          "file": "c6dbd68483d196ea.md"
+        }
+      ]
+    },
+    {
+      "id": "typescript-react-tanstack",
+      "servers": [
+        "typescript"
+      ],
+      "clients": [
+        "react",
+        "tanstack"
+      ],
+      "files": [
+        {
+          "path": ".claude/skills/metaobjects-audit/SKILL.md",
+          "file": "db66e0e785a6cf50.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/calibration.md",
+          "file": "a7fd4ec2565ab8c0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/capability-checklist.md",
+          "file": "20ec11b332e12322.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/drift-signatures.md",
+          "file": "2fe5f67ab529af0c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/prompt-anti-patterns.md",
+          "file": "bfe25e4bd2cf097d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/requirements.md",
+          "file": "651a126eaa501924.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/surface-review-axes.md",
+          "file": "9fbf06132414b6be.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/typescript.md",
+          "file": "8b16b974614265d4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/vocabulary-hygiene.md",
+          "file": "b28302f5febaea38.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/SKILL.md",
+          "file": "969f739fa94d7a76.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/abstracts-and-overlay.md",
+          "file": "fb3d3670ae387530.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-code.md",
+          "file": "378f755bb43b1e71.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-models.md",
+          "file": "e1f6478444c1e120.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/choosing-a-shape.md",
+          "file": "c1a4896ebda79dd9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/declaring-reports.md",
+          "file": "6b42cc8511e0eb7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/identities-and-indexes.md",
+          "file": "8a9c3f4a4119022a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/inheritance-tph.md",
+          "file": "46659a758d40373b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/json-columns.md",
+          "file": "6afa98a9c7fd23f6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/metadata-dependencies.md",
+          "file": "608f89f60afad4b9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/model-first-rationale.md",
+          "file": "fda1a58ac1585828.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/read-views-and-projections.md",
+          "file": "b8371541b1d36c6b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/relationships.md",
+          "file": "e985f8151935157d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/reporting.md",
+          "file": "f80806308b356cb6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/requirements.md",
+          "file": "e5c6430567eecae4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/sources.md",
+          "file": "123dcfb6c65640a0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/typescript-providers.md",
+          "file": "1e0fda1afdd26e1a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/SKILL.md",
+          "file": "86974256b798cf22.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/any-stack.md",
+          "file": "4426fbef79f236fb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/choosing-layers.md",
+          "file": "8cd1bca8a659b6ef.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/dependencies-and-shared-models.md",
+          "file": "58d380101a100501.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/owning-generators.md",
+          "file": "e899275df4b48c66.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/physical-names.md",
+          "file": "c37f1e343d6e2832.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/principles.md",
+          "file": "dd80d926c56ea1e3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/template-or-code.md",
+          "file": "f745f2c1411ab2f0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/typescript-docs.md",
+          "file": "c5b68292c9103dcc.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/typescript-document-store.md",
+          "file": "c7994468651aa905.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/typescript-mysql.md",
+          "file": "103a368daf29e749.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/typescript-prisma.md",
+          "file": "1e292839ec10ca12.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/typescript-retargeting.md",
+          "file": "6935df5f6afbbf93.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/typescript-templates.md",
+          "file": "5a2f3bbdcf835d47.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/typescript.md",
+          "file": "e626029a53526f92.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/wire-format.md",
+          "file": "f425eaf3566cf602.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/SKILL.md",
+          "file": "a1b81119468f84a9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/references/typescript.md",
+          "file": "0fe543fe1b3c9b3c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/SKILL.md",
+          "file": "0440a95faf89e271.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/react.md",
+          "file": "1ed66f8d84192ee1.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/tanstack.md",
+          "file": "51b5c54862c75382.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/typescript.md",
+          "file": "494853543fba1c5f.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/SKILL.md",
+          "file": "80606ed514438d51.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/migration.md",
+          "file": "34d60341c7210314.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/requirements.md",
+          "file": "0ee567e8d039312d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/upgrading.md",
+          "file": "4f6d18160c694c41.md"
+        },
+        {
+          "path": ".metaobjects/AGENTS.md",
+          "file": "98f64001b169da91.md"
+        }
+      ]
+    },
+    {
+      "id": "typescript-angular",
+      "servers": [
+        "typescript"
+      ],
+      "clients": [
+        "angular"
+      ],
+      "files": [
+        {
+          "path": ".claude/skills/metaobjects-audit/SKILL.md",
+          "file": "db66e0e785a6cf50.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/calibration.md",
+          "file": "a7fd4ec2565ab8c0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/capability-checklist.md",
+          "file": "20ec11b332e12322.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/drift-signatures.md",
+          "file": "2fe5f67ab529af0c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/prompt-anti-patterns.md",
+          "file": "bfe25e4bd2cf097d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/requirements.md",
+          "file": "651a126eaa501924.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/surface-review-axes.md",
+          "file": "9fbf06132414b6be.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/typescript.md",
+          "file": "8b16b974614265d4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/vocabulary-hygiene.md",
+          "file": "b28302f5febaea38.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/SKILL.md",
+          "file": "969f739fa94d7a76.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/abstracts-and-overlay.md",
+          "file": "fb3d3670ae387530.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-code.md",
+          "file": "378f755bb43b1e71.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-models.md",
+          "file": "e1f6478444c1e120.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/choosing-a-shape.md",
+          "file": "c1a4896ebda79dd9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/declaring-reports.md",
+          "file": "6b42cc8511e0eb7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/identities-and-indexes.md",
+          "file": "8a9c3f4a4119022a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/inheritance-tph.md",
+          "file": "46659a758d40373b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/json-columns.md",
+          "file": "6afa98a9c7fd23f6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/metadata-dependencies.md",
+          "file": "608f89f60afad4b9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/model-first-rationale.md",
+          "file": "fda1a58ac1585828.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/read-views-and-projections.md",
+          "file": "b8371541b1d36c6b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/relationships.md",
+          "file": "e985f8151935157d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/reporting.md",
+          "file": "f80806308b356cb6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/requirements.md",
+          "file": "e5c6430567eecae4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/sources.md",
+          "file": "123dcfb6c65640a0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/typescript-providers.md",
+          "file": "1e0fda1afdd26e1a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/SKILL.md",
+          "file": "86974256b798cf22.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/any-stack.md",
+          "file": "4426fbef79f236fb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/choosing-layers.md",
+          "file": "8cd1bca8a659b6ef.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/dependencies-and-shared-models.md",
+          "file": "58d380101a100501.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/owning-generators.md",
+          "file": "e899275df4b48c66.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/physical-names.md",
+          "file": "c37f1e343d6e2832.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/principles.md",
+          "file": "dd80d926c56ea1e3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/template-or-code.md",
+          "file": "f745f2c1411ab2f0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/typescript-docs.md",
+          "file": "c5b68292c9103dcc.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/typescript-document-store.md",
+          "file": "c7994468651aa905.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/typescript-mysql.md",
+          "file": "103a368daf29e749.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/typescript-prisma.md",
+          "file": "1e292839ec10ca12.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/typescript-retargeting.md",
+          "file": "6935df5f6afbbf93.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/typescript-templates.md",
+          "file": "5a2f3bbdcf835d47.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/typescript.md",
+          "file": "e626029a53526f92.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/wire-format.md",
+          "file": "f425eaf3566cf602.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/SKILL.md",
+          "file": "a1b81119468f84a9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/references/typescript.md",
+          "file": "0fe543fe1b3c9b3c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/SKILL.md",
+          "file": "0440a95faf89e271.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/typescript.md",
+          "file": "494853543fba1c5f.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/SKILL.md",
+          "file": "80606ed514438d51.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/migration.md",
+          "file": "34d60341c7210314.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/requirements.md",
+          "file": "0ee567e8d039312d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/upgrading.md",
+          "file": "4f6d18160c694c41.md"
+        },
+        {
+          "path": ".metaobjects/AGENTS.md",
+          "file": "be3b1226c6f00862.md"
+        }
+      ]
+    },
+    {
+      "id": "java",
+      "servers": [
+        "java"
+      ],
+      "clients": [],
+      "files": [
+        {
+          "path": ".claude/skills/metaobjects-audit/SKILL.md",
+          "file": "db66e0e785a6cf50.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/calibration.md",
+          "file": "a7fd4ec2565ab8c0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/capability-checklist.md",
+          "file": "20ec11b332e12322.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/drift-signatures.md",
+          "file": "2fe5f67ab529af0c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/java.md",
+          "file": "1217aab33469e7bd.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/prompt-anti-patterns.md",
+          "file": "bfe25e4bd2cf097d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/requirements.md",
+          "file": "651a126eaa501924.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/surface-review-axes.md",
+          "file": "9fbf06132414b6be.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/vocabulary-hygiene.md",
+          "file": "b28302f5febaea38.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/SKILL.md",
+          "file": "969f739fa94d7a76.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/abstracts-and-overlay.md",
+          "file": "fb3d3670ae387530.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-code.md",
+          "file": "378f755bb43b1e71.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-models.md",
+          "file": "e1f6478444c1e120.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/choosing-a-shape.md",
+          "file": "c1a4896ebda79dd9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/declaring-reports.md",
+          "file": "6b42cc8511e0eb7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/identities-and-indexes.md",
+          "file": "8a9c3f4a4119022a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/inheritance-tph.md",
+          "file": "46659a758d40373b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/java-providers.md",
+          "file": "eab139844783c8e7.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/json-columns.md",
+          "file": "6afa98a9c7fd23f6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/metadata-dependencies.md",
+          "file": "608f89f60afad4b9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/model-first-rationale.md",
+          "file": "fda1a58ac1585828.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/read-views-and-projections.md",
+          "file": "b8371541b1d36c6b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/relationships.md",
+          "file": "e985f8151935157d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/reporting.md",
+          "file": "f80806308b356cb6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/requirements.md",
+          "file": "e5c6430567eecae4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/sources.md",
+          "file": "123dcfb6c65640a0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/SKILL.md",
+          "file": "86974256b798cf22.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/any-stack.md",
+          "file": "4426fbef79f236fb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/choosing-layers.md",
+          "file": "8cd1bca8a659b6ef.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/dependencies-and-shared-models.md",
+          "file": "58d380101a100501.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/java.md",
+          "file": "e413f6fcd012b1f3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/owning-generators.md",
+          "file": "e899275df4b48c66.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/physical-names.md",
+          "file": "c37f1e343d6e2832.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/principles.md",
+          "file": "dd80d926c56ea1e3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/template-or-code.md",
+          "file": "f745f2c1411ab2f0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/wire-format.md",
+          "file": "f425eaf3566cf602.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/SKILL.md",
+          "file": "a1b81119468f84a9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/references/java.md",
+          "file": "84b5d02029893745.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/SKILL.md",
+          "file": "0440a95faf89e271.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/java.md",
+          "file": "83fa1bfb70e0da93.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/SKILL.md",
+          "file": "80606ed514438d51.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/migration.md",
+          "file": "34d60341c7210314.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/requirements.md",
+          "file": "0ee567e8d039312d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/upgrading.md",
+          "file": "4f6d18160c694c41.md"
+        },
+        {
+          "path": ".metaobjects/AGENTS.md",
+          "file": "13b9b0de13b23fab.md"
+        }
+      ]
+    },
+    {
+      "id": "java-react",
+      "servers": [
+        "java"
+      ],
+      "clients": [
+        "react"
+      ],
+      "files": [
+        {
+          "path": ".claude/skills/metaobjects-audit/SKILL.md",
+          "file": "db66e0e785a6cf50.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/calibration.md",
+          "file": "a7fd4ec2565ab8c0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/capability-checklist.md",
+          "file": "20ec11b332e12322.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/drift-signatures.md",
+          "file": "2fe5f67ab529af0c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/java.md",
+          "file": "1217aab33469e7bd.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/prompt-anti-patterns.md",
+          "file": "bfe25e4bd2cf097d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/requirements.md",
+          "file": "651a126eaa501924.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/surface-review-axes.md",
+          "file": "9fbf06132414b6be.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/vocabulary-hygiene.md",
+          "file": "b28302f5febaea38.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/SKILL.md",
+          "file": "969f739fa94d7a76.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/abstracts-and-overlay.md",
+          "file": "fb3d3670ae387530.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-code.md",
+          "file": "378f755bb43b1e71.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-models.md",
+          "file": "e1f6478444c1e120.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/choosing-a-shape.md",
+          "file": "c1a4896ebda79dd9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/declaring-reports.md",
+          "file": "6b42cc8511e0eb7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/identities-and-indexes.md",
+          "file": "8a9c3f4a4119022a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/inheritance-tph.md",
+          "file": "46659a758d40373b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/java-providers.md",
+          "file": "eab139844783c8e7.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/json-columns.md",
+          "file": "6afa98a9c7fd23f6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/metadata-dependencies.md",
+          "file": "608f89f60afad4b9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/model-first-rationale.md",
+          "file": "fda1a58ac1585828.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/read-views-and-projections.md",
+          "file": "b8371541b1d36c6b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/relationships.md",
+          "file": "e985f8151935157d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/reporting.md",
+          "file": "f80806308b356cb6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/requirements.md",
+          "file": "e5c6430567eecae4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/sources.md",
+          "file": "123dcfb6c65640a0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/SKILL.md",
+          "file": "86974256b798cf22.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/any-stack.md",
+          "file": "4426fbef79f236fb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/choosing-layers.md",
+          "file": "8cd1bca8a659b6ef.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/dependencies-and-shared-models.md",
+          "file": "58d380101a100501.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/java.md",
+          "file": "e413f6fcd012b1f3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/owning-generators.md",
+          "file": "e899275df4b48c66.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/physical-names.md",
+          "file": "c37f1e343d6e2832.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/principles.md",
+          "file": "dd80d926c56ea1e3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/template-or-code.md",
+          "file": "f745f2c1411ab2f0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/wire-format.md",
+          "file": "f425eaf3566cf602.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/SKILL.md",
+          "file": "a1b81119468f84a9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/references/java.md",
+          "file": "84b5d02029893745.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/SKILL.md",
+          "file": "0440a95faf89e271.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/java.md",
+          "file": "83fa1bfb70e0da93.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/react.md",
+          "file": "1ed66f8d84192ee1.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/SKILL.md",
+          "file": "80606ed514438d51.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/migration.md",
+          "file": "34d60341c7210314.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/requirements.md",
+          "file": "0ee567e8d039312d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/upgrading.md",
+          "file": "4f6d18160c694c41.md"
+        },
+        {
+          "path": ".metaobjects/AGENTS.md",
+          "file": "cf1872a72588959a.md"
+        }
+      ]
+    },
+    {
+      "id": "java-react-tanstack",
+      "servers": [
+        "java"
+      ],
+      "clients": [
+        "react",
+        "tanstack"
+      ],
+      "files": [
+        {
+          "path": ".claude/skills/metaobjects-audit/SKILL.md",
+          "file": "db66e0e785a6cf50.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/calibration.md",
+          "file": "a7fd4ec2565ab8c0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/capability-checklist.md",
+          "file": "20ec11b332e12322.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/drift-signatures.md",
+          "file": "2fe5f67ab529af0c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/java.md",
+          "file": "1217aab33469e7bd.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/prompt-anti-patterns.md",
+          "file": "bfe25e4bd2cf097d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/requirements.md",
+          "file": "651a126eaa501924.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/surface-review-axes.md",
+          "file": "9fbf06132414b6be.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/vocabulary-hygiene.md",
+          "file": "b28302f5febaea38.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/SKILL.md",
+          "file": "969f739fa94d7a76.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/abstracts-and-overlay.md",
+          "file": "fb3d3670ae387530.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-code.md",
+          "file": "378f755bb43b1e71.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-models.md",
+          "file": "e1f6478444c1e120.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/choosing-a-shape.md",
+          "file": "c1a4896ebda79dd9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/declaring-reports.md",
+          "file": "6b42cc8511e0eb7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/identities-and-indexes.md",
+          "file": "8a9c3f4a4119022a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/inheritance-tph.md",
+          "file": "46659a758d40373b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/java-providers.md",
+          "file": "eab139844783c8e7.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/json-columns.md",
+          "file": "6afa98a9c7fd23f6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/metadata-dependencies.md",
+          "file": "608f89f60afad4b9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/model-first-rationale.md",
+          "file": "fda1a58ac1585828.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/read-views-and-projections.md",
+          "file": "b8371541b1d36c6b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/relationships.md",
+          "file": "e985f8151935157d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/reporting.md",
+          "file": "f80806308b356cb6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/requirements.md",
+          "file": "e5c6430567eecae4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/sources.md",
+          "file": "123dcfb6c65640a0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/SKILL.md",
+          "file": "86974256b798cf22.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/any-stack.md",
+          "file": "4426fbef79f236fb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/choosing-layers.md",
+          "file": "8cd1bca8a659b6ef.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/dependencies-and-shared-models.md",
+          "file": "58d380101a100501.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/java.md",
+          "file": "e413f6fcd012b1f3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/owning-generators.md",
+          "file": "e899275df4b48c66.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/physical-names.md",
+          "file": "c37f1e343d6e2832.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/principles.md",
+          "file": "dd80d926c56ea1e3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/template-or-code.md",
+          "file": "f745f2c1411ab2f0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/wire-format.md",
+          "file": "f425eaf3566cf602.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/SKILL.md",
+          "file": "a1b81119468f84a9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/references/java.md",
+          "file": "84b5d02029893745.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/SKILL.md",
+          "file": "0440a95faf89e271.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/java.md",
+          "file": "83fa1bfb70e0da93.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/react.md",
+          "file": "1ed66f8d84192ee1.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/tanstack.md",
+          "file": "51b5c54862c75382.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/SKILL.md",
+          "file": "80606ed514438d51.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/migration.md",
+          "file": "34d60341c7210314.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/requirements.md",
+          "file": "0ee567e8d039312d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/upgrading.md",
+          "file": "4f6d18160c694c41.md"
+        },
+        {
+          "path": ".metaobjects/AGENTS.md",
+          "file": "a431af761169a99d.md"
+        }
+      ]
+    },
+    {
+      "id": "java-angular",
+      "servers": [
+        "java"
+      ],
+      "clients": [
+        "angular"
+      ],
+      "files": [
+        {
+          "path": ".claude/skills/metaobjects-audit/SKILL.md",
+          "file": "db66e0e785a6cf50.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/calibration.md",
+          "file": "a7fd4ec2565ab8c0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/capability-checklist.md",
+          "file": "20ec11b332e12322.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/drift-signatures.md",
+          "file": "2fe5f67ab529af0c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/java.md",
+          "file": "1217aab33469e7bd.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/prompt-anti-patterns.md",
+          "file": "bfe25e4bd2cf097d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/requirements.md",
+          "file": "651a126eaa501924.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/surface-review-axes.md",
+          "file": "9fbf06132414b6be.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/vocabulary-hygiene.md",
+          "file": "b28302f5febaea38.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/SKILL.md",
+          "file": "969f739fa94d7a76.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/abstracts-and-overlay.md",
+          "file": "fb3d3670ae387530.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-code.md",
+          "file": "378f755bb43b1e71.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-models.md",
+          "file": "e1f6478444c1e120.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/choosing-a-shape.md",
+          "file": "c1a4896ebda79dd9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/declaring-reports.md",
+          "file": "6b42cc8511e0eb7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/identities-and-indexes.md",
+          "file": "8a9c3f4a4119022a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/inheritance-tph.md",
+          "file": "46659a758d40373b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/java-providers.md",
+          "file": "eab139844783c8e7.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/json-columns.md",
+          "file": "6afa98a9c7fd23f6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/metadata-dependencies.md",
+          "file": "608f89f60afad4b9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/model-first-rationale.md",
+          "file": "fda1a58ac1585828.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/read-views-and-projections.md",
+          "file": "b8371541b1d36c6b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/relationships.md",
+          "file": "e985f8151935157d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/reporting.md",
+          "file": "f80806308b356cb6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/requirements.md",
+          "file": "e5c6430567eecae4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/sources.md",
+          "file": "123dcfb6c65640a0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/SKILL.md",
+          "file": "86974256b798cf22.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/any-stack.md",
+          "file": "4426fbef79f236fb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/choosing-layers.md",
+          "file": "8cd1bca8a659b6ef.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/dependencies-and-shared-models.md",
+          "file": "58d380101a100501.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/java.md",
+          "file": "e413f6fcd012b1f3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/owning-generators.md",
+          "file": "e899275df4b48c66.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/physical-names.md",
+          "file": "c37f1e343d6e2832.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/principles.md",
+          "file": "dd80d926c56ea1e3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/template-or-code.md",
+          "file": "f745f2c1411ab2f0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/wire-format.md",
+          "file": "f425eaf3566cf602.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/SKILL.md",
+          "file": "a1b81119468f84a9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/references/java.md",
+          "file": "84b5d02029893745.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/SKILL.md",
+          "file": "0440a95faf89e271.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/java.md",
+          "file": "83fa1bfb70e0da93.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/SKILL.md",
+          "file": "80606ed514438d51.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/migration.md",
+          "file": "34d60341c7210314.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/requirements.md",
+          "file": "0ee567e8d039312d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/upgrading.md",
+          "file": "4f6d18160c694c41.md"
+        },
+        {
+          "path": ".metaobjects/AGENTS.md",
+          "file": "c13bca93ec2f4d50.md"
+        }
+      ]
+    },
+    {
+      "id": "kotlin",
+      "servers": [
+        "kotlin"
+      ],
+      "clients": [],
+      "files": [
+        {
+          "path": ".claude/skills/metaobjects-audit/SKILL.md",
+          "file": "db66e0e785a6cf50.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/calibration.md",
+          "file": "a7fd4ec2565ab8c0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/capability-checklist.md",
+          "file": "20ec11b332e12322.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/drift-signatures.md",
+          "file": "2fe5f67ab529af0c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/kotlin.md",
+          "file": "91463562405e88cc.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/prompt-anti-patterns.md",
+          "file": "bfe25e4bd2cf097d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/requirements.md",
+          "file": "651a126eaa501924.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/surface-review-axes.md",
+          "file": "9fbf06132414b6be.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/vocabulary-hygiene.md",
+          "file": "b28302f5febaea38.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/SKILL.md",
+          "file": "969f739fa94d7a76.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/abstracts-and-overlay.md",
+          "file": "fb3d3670ae387530.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-code.md",
+          "file": "378f755bb43b1e71.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-models.md",
+          "file": "e1f6478444c1e120.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/choosing-a-shape.md",
+          "file": "c1a4896ebda79dd9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/declaring-reports.md",
+          "file": "6b42cc8511e0eb7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/identities-and-indexes.md",
+          "file": "8a9c3f4a4119022a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/inheritance-tph.md",
+          "file": "46659a758d40373b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/json-columns.md",
+          "file": "6afa98a9c7fd23f6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/kotlin-providers.md",
+          "file": "d6bd70c9bf36eb46.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/metadata-dependencies.md",
+          "file": "608f89f60afad4b9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/model-first-rationale.md",
+          "file": "fda1a58ac1585828.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/read-views-and-projections.md",
+          "file": "b8371541b1d36c6b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/relationships.md",
+          "file": "e985f8151935157d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/reporting.md",
+          "file": "f80806308b356cb6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/requirements.md",
+          "file": "e5c6430567eecae4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/sources.md",
+          "file": "123dcfb6c65640a0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/SKILL.md",
+          "file": "86974256b798cf22.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/any-stack.md",
+          "file": "4426fbef79f236fb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/choosing-layers.md",
+          "file": "8cd1bca8a659b6ef.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/dependencies-and-shared-models.md",
+          "file": "58d380101a100501.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/kotlin.md",
+          "file": "d3eaa47c0bbd9332.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/owning-generators.md",
+          "file": "e899275df4b48c66.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/physical-names.md",
+          "file": "c37f1e343d6e2832.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/principles.md",
+          "file": "dd80d926c56ea1e3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/template-or-code.md",
+          "file": "f745f2c1411ab2f0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/wire-format.md",
+          "file": "f425eaf3566cf602.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/SKILL.md",
+          "file": "a1b81119468f84a9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/references/kotlin.md",
+          "file": "ce8ecdef3b83fec0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/SKILL.md",
+          "file": "0440a95faf89e271.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/kotlin.md",
+          "file": "636d4309c12de5cb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/SKILL.md",
+          "file": "80606ed514438d51.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/migration.md",
+          "file": "34d60341c7210314.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/requirements.md",
+          "file": "0ee567e8d039312d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/upgrading.md",
+          "file": "4f6d18160c694c41.md"
+        },
+        {
+          "path": ".metaobjects/AGENTS.md",
+          "file": "f578d3e76cb97c78.md"
+        }
+      ]
+    },
+    {
+      "id": "kotlin-react",
+      "servers": [
+        "kotlin"
+      ],
+      "clients": [
+        "react"
+      ],
+      "files": [
+        {
+          "path": ".claude/skills/metaobjects-audit/SKILL.md",
+          "file": "db66e0e785a6cf50.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/calibration.md",
+          "file": "a7fd4ec2565ab8c0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/capability-checklist.md",
+          "file": "20ec11b332e12322.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/drift-signatures.md",
+          "file": "2fe5f67ab529af0c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/kotlin.md",
+          "file": "91463562405e88cc.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/prompt-anti-patterns.md",
+          "file": "bfe25e4bd2cf097d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/requirements.md",
+          "file": "651a126eaa501924.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/surface-review-axes.md",
+          "file": "9fbf06132414b6be.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/vocabulary-hygiene.md",
+          "file": "b28302f5febaea38.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/SKILL.md",
+          "file": "969f739fa94d7a76.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/abstracts-and-overlay.md",
+          "file": "fb3d3670ae387530.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-code.md",
+          "file": "378f755bb43b1e71.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-models.md",
+          "file": "e1f6478444c1e120.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/choosing-a-shape.md",
+          "file": "c1a4896ebda79dd9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/declaring-reports.md",
+          "file": "6b42cc8511e0eb7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/identities-and-indexes.md",
+          "file": "8a9c3f4a4119022a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/inheritance-tph.md",
+          "file": "46659a758d40373b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/json-columns.md",
+          "file": "6afa98a9c7fd23f6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/kotlin-providers.md",
+          "file": "d6bd70c9bf36eb46.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/metadata-dependencies.md",
+          "file": "608f89f60afad4b9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/model-first-rationale.md",
+          "file": "fda1a58ac1585828.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/read-views-and-projections.md",
+          "file": "b8371541b1d36c6b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/relationships.md",
+          "file": "e985f8151935157d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/reporting.md",
+          "file": "f80806308b356cb6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/requirements.md",
+          "file": "e5c6430567eecae4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/sources.md",
+          "file": "123dcfb6c65640a0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/SKILL.md",
+          "file": "86974256b798cf22.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/any-stack.md",
+          "file": "4426fbef79f236fb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/choosing-layers.md",
+          "file": "8cd1bca8a659b6ef.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/dependencies-and-shared-models.md",
+          "file": "58d380101a100501.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/kotlin.md",
+          "file": "d3eaa47c0bbd9332.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/owning-generators.md",
+          "file": "e899275df4b48c66.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/physical-names.md",
+          "file": "c37f1e343d6e2832.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/principles.md",
+          "file": "dd80d926c56ea1e3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/template-or-code.md",
+          "file": "f745f2c1411ab2f0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/wire-format.md",
+          "file": "f425eaf3566cf602.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/SKILL.md",
+          "file": "a1b81119468f84a9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/references/kotlin.md",
+          "file": "ce8ecdef3b83fec0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/SKILL.md",
+          "file": "0440a95faf89e271.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/kotlin.md",
+          "file": "636d4309c12de5cb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/react.md",
+          "file": "1ed66f8d84192ee1.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/SKILL.md",
+          "file": "80606ed514438d51.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/migration.md",
+          "file": "34d60341c7210314.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/requirements.md",
+          "file": "0ee567e8d039312d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/upgrading.md",
+          "file": "4f6d18160c694c41.md"
+        },
+        {
+          "path": ".metaobjects/AGENTS.md",
+          "file": "10f8c588c3a14034.md"
+        }
+      ]
+    },
+    {
+      "id": "kotlin-react-tanstack",
+      "servers": [
+        "kotlin"
+      ],
+      "clients": [
+        "react",
+        "tanstack"
+      ],
+      "files": [
+        {
+          "path": ".claude/skills/metaobjects-audit/SKILL.md",
+          "file": "db66e0e785a6cf50.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/calibration.md",
+          "file": "a7fd4ec2565ab8c0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/capability-checklist.md",
+          "file": "20ec11b332e12322.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/drift-signatures.md",
+          "file": "2fe5f67ab529af0c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/kotlin.md",
+          "file": "91463562405e88cc.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/prompt-anti-patterns.md",
+          "file": "bfe25e4bd2cf097d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/requirements.md",
+          "file": "651a126eaa501924.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/surface-review-axes.md",
+          "file": "9fbf06132414b6be.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/vocabulary-hygiene.md",
+          "file": "b28302f5febaea38.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/SKILL.md",
+          "file": "969f739fa94d7a76.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/abstracts-and-overlay.md",
+          "file": "fb3d3670ae387530.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-code.md",
+          "file": "378f755bb43b1e71.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-models.md",
+          "file": "e1f6478444c1e120.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/choosing-a-shape.md",
+          "file": "c1a4896ebda79dd9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/declaring-reports.md",
+          "file": "6b42cc8511e0eb7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/identities-and-indexes.md",
+          "file": "8a9c3f4a4119022a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/inheritance-tph.md",
+          "file": "46659a758d40373b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/json-columns.md",
+          "file": "6afa98a9c7fd23f6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/kotlin-providers.md",
+          "file": "d6bd70c9bf36eb46.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/metadata-dependencies.md",
+          "file": "608f89f60afad4b9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/model-first-rationale.md",
+          "file": "fda1a58ac1585828.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/read-views-and-projections.md",
+          "file": "b8371541b1d36c6b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/relationships.md",
+          "file": "e985f8151935157d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/reporting.md",
+          "file": "f80806308b356cb6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/requirements.md",
+          "file": "e5c6430567eecae4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/sources.md",
+          "file": "123dcfb6c65640a0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/SKILL.md",
+          "file": "86974256b798cf22.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/any-stack.md",
+          "file": "4426fbef79f236fb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/choosing-layers.md",
+          "file": "8cd1bca8a659b6ef.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/dependencies-and-shared-models.md",
+          "file": "58d380101a100501.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/kotlin.md",
+          "file": "d3eaa47c0bbd9332.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/owning-generators.md",
+          "file": "e899275df4b48c66.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/physical-names.md",
+          "file": "c37f1e343d6e2832.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/principles.md",
+          "file": "dd80d926c56ea1e3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/template-or-code.md",
+          "file": "f745f2c1411ab2f0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/wire-format.md",
+          "file": "f425eaf3566cf602.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/SKILL.md",
+          "file": "a1b81119468f84a9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/references/kotlin.md",
+          "file": "ce8ecdef3b83fec0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/SKILL.md",
+          "file": "0440a95faf89e271.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/kotlin.md",
+          "file": "636d4309c12de5cb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/react.md",
+          "file": "1ed66f8d84192ee1.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/tanstack.md",
+          "file": "51b5c54862c75382.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/SKILL.md",
+          "file": "80606ed514438d51.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/migration.md",
+          "file": "34d60341c7210314.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/requirements.md",
+          "file": "0ee567e8d039312d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/upgrading.md",
+          "file": "4f6d18160c694c41.md"
+        },
+        {
+          "path": ".metaobjects/AGENTS.md",
+          "file": "063a909f9775df93.md"
+        }
+      ]
+    },
+    {
+      "id": "kotlin-angular",
+      "servers": [
+        "kotlin"
+      ],
+      "clients": [
+        "angular"
+      ],
+      "files": [
+        {
+          "path": ".claude/skills/metaobjects-audit/SKILL.md",
+          "file": "db66e0e785a6cf50.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/calibration.md",
+          "file": "a7fd4ec2565ab8c0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/capability-checklist.md",
+          "file": "20ec11b332e12322.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/drift-signatures.md",
+          "file": "2fe5f67ab529af0c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/kotlin.md",
+          "file": "91463562405e88cc.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/prompt-anti-patterns.md",
+          "file": "bfe25e4bd2cf097d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/requirements.md",
+          "file": "651a126eaa501924.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/surface-review-axes.md",
+          "file": "9fbf06132414b6be.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/vocabulary-hygiene.md",
+          "file": "b28302f5febaea38.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/SKILL.md",
+          "file": "969f739fa94d7a76.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/abstracts-and-overlay.md",
+          "file": "fb3d3670ae387530.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-code.md",
+          "file": "378f755bb43b1e71.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-models.md",
+          "file": "e1f6478444c1e120.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/choosing-a-shape.md",
+          "file": "c1a4896ebda79dd9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/declaring-reports.md",
+          "file": "6b42cc8511e0eb7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/identities-and-indexes.md",
+          "file": "8a9c3f4a4119022a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/inheritance-tph.md",
+          "file": "46659a758d40373b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/json-columns.md",
+          "file": "6afa98a9c7fd23f6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/kotlin-providers.md",
+          "file": "d6bd70c9bf36eb46.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/metadata-dependencies.md",
+          "file": "608f89f60afad4b9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/model-first-rationale.md",
+          "file": "fda1a58ac1585828.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/read-views-and-projections.md",
+          "file": "b8371541b1d36c6b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/relationships.md",
+          "file": "e985f8151935157d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/reporting.md",
+          "file": "f80806308b356cb6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/requirements.md",
+          "file": "e5c6430567eecae4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/sources.md",
+          "file": "123dcfb6c65640a0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/SKILL.md",
+          "file": "86974256b798cf22.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/any-stack.md",
+          "file": "4426fbef79f236fb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/choosing-layers.md",
+          "file": "8cd1bca8a659b6ef.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/dependencies-and-shared-models.md",
+          "file": "58d380101a100501.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/kotlin.md",
+          "file": "d3eaa47c0bbd9332.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/owning-generators.md",
+          "file": "e899275df4b48c66.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/physical-names.md",
+          "file": "c37f1e343d6e2832.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/principles.md",
+          "file": "dd80d926c56ea1e3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/template-or-code.md",
+          "file": "f745f2c1411ab2f0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/wire-format.md",
+          "file": "f425eaf3566cf602.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/SKILL.md",
+          "file": "a1b81119468f84a9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/references/kotlin.md",
+          "file": "ce8ecdef3b83fec0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/SKILL.md",
+          "file": "0440a95faf89e271.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/kotlin.md",
+          "file": "636d4309c12de5cb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/SKILL.md",
+          "file": "80606ed514438d51.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/migration.md",
+          "file": "34d60341c7210314.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/requirements.md",
+          "file": "0ee567e8d039312d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/upgrading.md",
+          "file": "4f6d18160c694c41.md"
+        },
+        {
+          "path": ".metaobjects/AGENTS.md",
+          "file": "1fc0b42e73b64728.md"
+        }
+      ]
+    },
+    {
+      "id": "csharp",
+      "servers": [
+        "csharp"
+      ],
+      "clients": [],
+      "files": [
+        {
+          "path": ".claude/skills/metaobjects-audit/SKILL.md",
+          "file": "db66e0e785a6cf50.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/calibration.md",
+          "file": "a7fd4ec2565ab8c0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/capability-checklist.md",
+          "file": "20ec11b332e12322.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/csharp.md",
+          "file": "5b789ec72652dfa6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/drift-signatures.md",
+          "file": "2fe5f67ab529af0c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/prompt-anti-patterns.md",
+          "file": "bfe25e4bd2cf097d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/requirements.md",
+          "file": "651a126eaa501924.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/surface-review-axes.md",
+          "file": "9fbf06132414b6be.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/vocabulary-hygiene.md",
+          "file": "b28302f5febaea38.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/SKILL.md",
+          "file": "969f739fa94d7a76.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/abstracts-and-overlay.md",
+          "file": "fb3d3670ae387530.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-code.md",
+          "file": "378f755bb43b1e71.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-models.md",
+          "file": "e1f6478444c1e120.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/choosing-a-shape.md",
+          "file": "c1a4896ebda79dd9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/csharp-providers.md",
+          "file": "0080df7715486e4c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/declaring-reports.md",
+          "file": "6b42cc8511e0eb7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/identities-and-indexes.md",
+          "file": "8a9c3f4a4119022a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/inheritance-tph.md",
+          "file": "46659a758d40373b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/json-columns.md",
+          "file": "6afa98a9c7fd23f6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/metadata-dependencies.md",
+          "file": "608f89f60afad4b9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/model-first-rationale.md",
+          "file": "fda1a58ac1585828.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/read-views-and-projections.md",
+          "file": "b8371541b1d36c6b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/relationships.md",
+          "file": "e985f8151935157d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/reporting.md",
+          "file": "f80806308b356cb6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/requirements.md",
+          "file": "e5c6430567eecae4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/sources.md",
+          "file": "123dcfb6c65640a0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/SKILL.md",
+          "file": "86974256b798cf22.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/any-stack.md",
+          "file": "4426fbef79f236fb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/choosing-layers.md",
+          "file": "8cd1bca8a659b6ef.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/csharp.md",
+          "file": "6e3f75ac9b8e8680.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/dependencies-and-shared-models.md",
+          "file": "58d380101a100501.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/owning-generators.md",
+          "file": "e899275df4b48c66.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/physical-names.md",
+          "file": "c37f1e343d6e2832.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/principles.md",
+          "file": "dd80d926c56ea1e3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/template-or-code.md",
+          "file": "f745f2c1411ab2f0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/wire-format.md",
+          "file": "f425eaf3566cf602.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/SKILL.md",
+          "file": "a1b81119468f84a9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/references/csharp.md",
+          "file": "940c3d118c7ab1dc.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/SKILL.md",
+          "file": "0440a95faf89e271.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/csharp.md",
+          "file": "fe7f8817bfc35bb5.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/SKILL.md",
+          "file": "80606ed514438d51.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/migration.md",
+          "file": "34d60341c7210314.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/requirements.md",
+          "file": "0ee567e8d039312d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/upgrading.md",
+          "file": "4f6d18160c694c41.md"
+        },
+        {
+          "path": ".metaobjects/AGENTS.md",
+          "file": "cb2bbe4cb7d06c55.md"
+        }
+      ]
+    },
+    {
+      "id": "csharp-react",
+      "servers": [
+        "csharp"
+      ],
+      "clients": [
+        "react"
+      ],
+      "files": [
+        {
+          "path": ".claude/skills/metaobjects-audit/SKILL.md",
+          "file": "db66e0e785a6cf50.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/calibration.md",
+          "file": "a7fd4ec2565ab8c0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/capability-checklist.md",
+          "file": "20ec11b332e12322.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/csharp.md",
+          "file": "5b789ec72652dfa6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/drift-signatures.md",
+          "file": "2fe5f67ab529af0c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/prompt-anti-patterns.md",
+          "file": "bfe25e4bd2cf097d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/requirements.md",
+          "file": "651a126eaa501924.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/surface-review-axes.md",
+          "file": "9fbf06132414b6be.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/vocabulary-hygiene.md",
+          "file": "b28302f5febaea38.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/SKILL.md",
+          "file": "969f739fa94d7a76.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/abstracts-and-overlay.md",
+          "file": "fb3d3670ae387530.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-code.md",
+          "file": "378f755bb43b1e71.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-models.md",
+          "file": "e1f6478444c1e120.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/choosing-a-shape.md",
+          "file": "c1a4896ebda79dd9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/csharp-providers.md",
+          "file": "0080df7715486e4c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/declaring-reports.md",
+          "file": "6b42cc8511e0eb7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/identities-and-indexes.md",
+          "file": "8a9c3f4a4119022a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/inheritance-tph.md",
+          "file": "46659a758d40373b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/json-columns.md",
+          "file": "6afa98a9c7fd23f6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/metadata-dependencies.md",
+          "file": "608f89f60afad4b9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/model-first-rationale.md",
+          "file": "fda1a58ac1585828.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/read-views-and-projections.md",
+          "file": "b8371541b1d36c6b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/relationships.md",
+          "file": "e985f8151935157d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/reporting.md",
+          "file": "f80806308b356cb6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/requirements.md",
+          "file": "e5c6430567eecae4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/sources.md",
+          "file": "123dcfb6c65640a0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/SKILL.md",
+          "file": "86974256b798cf22.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/any-stack.md",
+          "file": "4426fbef79f236fb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/choosing-layers.md",
+          "file": "8cd1bca8a659b6ef.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/csharp.md",
+          "file": "6e3f75ac9b8e8680.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/dependencies-and-shared-models.md",
+          "file": "58d380101a100501.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/owning-generators.md",
+          "file": "e899275df4b48c66.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/physical-names.md",
+          "file": "c37f1e343d6e2832.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/principles.md",
+          "file": "dd80d926c56ea1e3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/template-or-code.md",
+          "file": "f745f2c1411ab2f0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/wire-format.md",
+          "file": "f425eaf3566cf602.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/SKILL.md",
+          "file": "a1b81119468f84a9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/references/csharp.md",
+          "file": "940c3d118c7ab1dc.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/SKILL.md",
+          "file": "0440a95faf89e271.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/csharp.md",
+          "file": "fe7f8817bfc35bb5.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/react.md",
+          "file": "1ed66f8d84192ee1.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/SKILL.md",
+          "file": "80606ed514438d51.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/migration.md",
+          "file": "34d60341c7210314.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/requirements.md",
+          "file": "0ee567e8d039312d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/upgrading.md",
+          "file": "4f6d18160c694c41.md"
+        },
+        {
+          "path": ".metaobjects/AGENTS.md",
+          "file": "4d4d3378a83fb76e.md"
+        }
+      ]
+    },
+    {
+      "id": "csharp-react-tanstack",
+      "servers": [
+        "csharp"
+      ],
+      "clients": [
+        "react",
+        "tanstack"
+      ],
+      "files": [
+        {
+          "path": ".claude/skills/metaobjects-audit/SKILL.md",
+          "file": "db66e0e785a6cf50.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/calibration.md",
+          "file": "a7fd4ec2565ab8c0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/capability-checklist.md",
+          "file": "20ec11b332e12322.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/csharp.md",
+          "file": "5b789ec72652dfa6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/drift-signatures.md",
+          "file": "2fe5f67ab529af0c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/prompt-anti-patterns.md",
+          "file": "bfe25e4bd2cf097d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/requirements.md",
+          "file": "651a126eaa501924.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/surface-review-axes.md",
+          "file": "9fbf06132414b6be.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/vocabulary-hygiene.md",
+          "file": "b28302f5febaea38.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/SKILL.md",
+          "file": "969f739fa94d7a76.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/abstracts-and-overlay.md",
+          "file": "fb3d3670ae387530.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-code.md",
+          "file": "378f755bb43b1e71.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-models.md",
+          "file": "e1f6478444c1e120.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/choosing-a-shape.md",
+          "file": "c1a4896ebda79dd9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/csharp-providers.md",
+          "file": "0080df7715486e4c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/declaring-reports.md",
+          "file": "6b42cc8511e0eb7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/identities-and-indexes.md",
+          "file": "8a9c3f4a4119022a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/inheritance-tph.md",
+          "file": "46659a758d40373b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/json-columns.md",
+          "file": "6afa98a9c7fd23f6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/metadata-dependencies.md",
+          "file": "608f89f60afad4b9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/model-first-rationale.md",
+          "file": "fda1a58ac1585828.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/read-views-and-projections.md",
+          "file": "b8371541b1d36c6b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/relationships.md",
+          "file": "e985f8151935157d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/reporting.md",
+          "file": "f80806308b356cb6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/requirements.md",
+          "file": "e5c6430567eecae4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/sources.md",
+          "file": "123dcfb6c65640a0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/SKILL.md",
+          "file": "86974256b798cf22.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/any-stack.md",
+          "file": "4426fbef79f236fb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/choosing-layers.md",
+          "file": "8cd1bca8a659b6ef.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/csharp.md",
+          "file": "6e3f75ac9b8e8680.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/dependencies-and-shared-models.md",
+          "file": "58d380101a100501.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/owning-generators.md",
+          "file": "e899275df4b48c66.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/physical-names.md",
+          "file": "c37f1e343d6e2832.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/principles.md",
+          "file": "dd80d926c56ea1e3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/template-or-code.md",
+          "file": "f745f2c1411ab2f0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/wire-format.md",
+          "file": "f425eaf3566cf602.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/SKILL.md",
+          "file": "a1b81119468f84a9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/references/csharp.md",
+          "file": "940c3d118c7ab1dc.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/SKILL.md",
+          "file": "0440a95faf89e271.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/csharp.md",
+          "file": "fe7f8817bfc35bb5.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/react.md",
+          "file": "1ed66f8d84192ee1.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/tanstack.md",
+          "file": "51b5c54862c75382.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/SKILL.md",
+          "file": "80606ed514438d51.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/migration.md",
+          "file": "34d60341c7210314.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/requirements.md",
+          "file": "0ee567e8d039312d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/upgrading.md",
+          "file": "4f6d18160c694c41.md"
+        },
+        {
+          "path": ".metaobjects/AGENTS.md",
+          "file": "42b77a057282e309.md"
+        }
+      ]
+    },
+    {
+      "id": "csharp-angular",
+      "servers": [
+        "csharp"
+      ],
+      "clients": [
+        "angular"
+      ],
+      "files": [
+        {
+          "path": ".claude/skills/metaobjects-audit/SKILL.md",
+          "file": "db66e0e785a6cf50.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/calibration.md",
+          "file": "a7fd4ec2565ab8c0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/capability-checklist.md",
+          "file": "20ec11b332e12322.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/csharp.md",
+          "file": "5b789ec72652dfa6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/drift-signatures.md",
+          "file": "2fe5f67ab529af0c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/prompt-anti-patterns.md",
+          "file": "bfe25e4bd2cf097d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/requirements.md",
+          "file": "651a126eaa501924.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/surface-review-axes.md",
+          "file": "9fbf06132414b6be.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/vocabulary-hygiene.md",
+          "file": "b28302f5febaea38.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/SKILL.md",
+          "file": "969f739fa94d7a76.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/abstracts-and-overlay.md",
+          "file": "fb3d3670ae387530.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-code.md",
+          "file": "378f755bb43b1e71.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-models.md",
+          "file": "e1f6478444c1e120.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/choosing-a-shape.md",
+          "file": "c1a4896ebda79dd9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/csharp-providers.md",
+          "file": "0080df7715486e4c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/declaring-reports.md",
+          "file": "6b42cc8511e0eb7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/identities-and-indexes.md",
+          "file": "8a9c3f4a4119022a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/inheritance-tph.md",
+          "file": "46659a758d40373b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/json-columns.md",
+          "file": "6afa98a9c7fd23f6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/metadata-dependencies.md",
+          "file": "608f89f60afad4b9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/model-first-rationale.md",
+          "file": "fda1a58ac1585828.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/read-views-and-projections.md",
+          "file": "b8371541b1d36c6b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/relationships.md",
+          "file": "e985f8151935157d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/reporting.md",
+          "file": "f80806308b356cb6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/requirements.md",
+          "file": "e5c6430567eecae4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/sources.md",
+          "file": "123dcfb6c65640a0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/SKILL.md",
+          "file": "86974256b798cf22.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/any-stack.md",
+          "file": "4426fbef79f236fb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/choosing-layers.md",
+          "file": "8cd1bca8a659b6ef.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/csharp.md",
+          "file": "6e3f75ac9b8e8680.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/dependencies-and-shared-models.md",
+          "file": "58d380101a100501.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/owning-generators.md",
+          "file": "e899275df4b48c66.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/physical-names.md",
+          "file": "c37f1e343d6e2832.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/principles.md",
+          "file": "dd80d926c56ea1e3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/template-or-code.md",
+          "file": "f745f2c1411ab2f0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/wire-format.md",
+          "file": "f425eaf3566cf602.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/SKILL.md",
+          "file": "a1b81119468f84a9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/references/csharp.md",
+          "file": "940c3d118c7ab1dc.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/SKILL.md",
+          "file": "0440a95faf89e271.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/csharp.md",
+          "file": "fe7f8817bfc35bb5.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/SKILL.md",
+          "file": "80606ed514438d51.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/migration.md",
+          "file": "34d60341c7210314.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/requirements.md",
+          "file": "0ee567e8d039312d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/upgrading.md",
+          "file": "4f6d18160c694c41.md"
+        },
+        {
+          "path": ".metaobjects/AGENTS.md",
+          "file": "1ffb7e594a3532d3.md"
+        }
+      ]
+    },
+    {
+      "id": "python",
+      "servers": [
+        "python"
+      ],
+      "clients": [],
+      "files": [
+        {
+          "path": ".claude/skills/metaobjects-audit/SKILL.md",
+          "file": "db66e0e785a6cf50.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/calibration.md",
+          "file": "a7fd4ec2565ab8c0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/capability-checklist.md",
+          "file": "20ec11b332e12322.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/drift-signatures.md",
+          "file": "2fe5f67ab529af0c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/prompt-anti-patterns.md",
+          "file": "bfe25e4bd2cf097d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/python.md",
+          "file": "b70e863795b7a44f.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/requirements.md",
+          "file": "651a126eaa501924.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/surface-review-axes.md",
+          "file": "9fbf06132414b6be.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/vocabulary-hygiene.md",
+          "file": "b28302f5febaea38.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/SKILL.md",
+          "file": "969f739fa94d7a76.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/abstracts-and-overlay.md",
+          "file": "fb3d3670ae387530.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-code.md",
+          "file": "378f755bb43b1e71.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-models.md",
+          "file": "e1f6478444c1e120.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/choosing-a-shape.md",
+          "file": "c1a4896ebda79dd9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/declaring-reports.md",
+          "file": "6b42cc8511e0eb7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/identities-and-indexes.md",
+          "file": "8a9c3f4a4119022a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/inheritance-tph.md",
+          "file": "46659a758d40373b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/json-columns.md",
+          "file": "6afa98a9c7fd23f6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/metadata-dependencies.md",
+          "file": "608f89f60afad4b9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/model-first-rationale.md",
+          "file": "fda1a58ac1585828.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/python-providers.md",
+          "file": "4244641a71a9c537.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/read-views-and-projections.md",
+          "file": "b8371541b1d36c6b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/relationships.md",
+          "file": "e985f8151935157d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/reporting.md",
+          "file": "f80806308b356cb6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/requirements.md",
+          "file": "e5c6430567eecae4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/sources.md",
+          "file": "123dcfb6c65640a0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/SKILL.md",
+          "file": "86974256b798cf22.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/any-stack.md",
+          "file": "4426fbef79f236fb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/choosing-layers.md",
+          "file": "8cd1bca8a659b6ef.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/dependencies-and-shared-models.md",
+          "file": "58d380101a100501.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/owning-generators.md",
+          "file": "e899275df4b48c66.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/physical-names.md",
+          "file": "c37f1e343d6e2832.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/principles.md",
+          "file": "dd80d926c56ea1e3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/python.md",
+          "file": "1c25799a074fff7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/template-or-code.md",
+          "file": "f745f2c1411ab2f0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/wire-format.md",
+          "file": "f425eaf3566cf602.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/SKILL.md",
+          "file": "a1b81119468f84a9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/references/python.md",
+          "file": "d3f2f83fe9835f64.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/SKILL.md",
+          "file": "0440a95faf89e271.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/python.md",
+          "file": "ca05e997cc76ca60.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/SKILL.md",
+          "file": "80606ed514438d51.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/migration.md",
+          "file": "34d60341c7210314.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/requirements.md",
+          "file": "0ee567e8d039312d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/upgrading.md",
+          "file": "4f6d18160c694c41.md"
+        },
+        {
+          "path": ".metaobjects/AGENTS.md",
+          "file": "14ca7edcbf971bef.md"
+        }
+      ]
+    },
+    {
+      "id": "python-react",
+      "servers": [
+        "python"
+      ],
+      "clients": [
+        "react"
+      ],
+      "files": [
+        {
+          "path": ".claude/skills/metaobjects-audit/SKILL.md",
+          "file": "db66e0e785a6cf50.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/calibration.md",
+          "file": "a7fd4ec2565ab8c0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/capability-checklist.md",
+          "file": "20ec11b332e12322.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/drift-signatures.md",
+          "file": "2fe5f67ab529af0c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/prompt-anti-patterns.md",
+          "file": "bfe25e4bd2cf097d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/python.md",
+          "file": "b70e863795b7a44f.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/requirements.md",
+          "file": "651a126eaa501924.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/surface-review-axes.md",
+          "file": "9fbf06132414b6be.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/vocabulary-hygiene.md",
+          "file": "b28302f5febaea38.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/SKILL.md",
+          "file": "969f739fa94d7a76.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/abstracts-and-overlay.md",
+          "file": "fb3d3670ae387530.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-code.md",
+          "file": "378f755bb43b1e71.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-models.md",
+          "file": "e1f6478444c1e120.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/choosing-a-shape.md",
+          "file": "c1a4896ebda79dd9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/declaring-reports.md",
+          "file": "6b42cc8511e0eb7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/identities-and-indexes.md",
+          "file": "8a9c3f4a4119022a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/inheritance-tph.md",
+          "file": "46659a758d40373b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/json-columns.md",
+          "file": "6afa98a9c7fd23f6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/metadata-dependencies.md",
+          "file": "608f89f60afad4b9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/model-first-rationale.md",
+          "file": "fda1a58ac1585828.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/python-providers.md",
+          "file": "4244641a71a9c537.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/read-views-and-projections.md",
+          "file": "b8371541b1d36c6b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/relationships.md",
+          "file": "e985f8151935157d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/reporting.md",
+          "file": "f80806308b356cb6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/requirements.md",
+          "file": "e5c6430567eecae4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/sources.md",
+          "file": "123dcfb6c65640a0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/SKILL.md",
+          "file": "86974256b798cf22.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/any-stack.md",
+          "file": "4426fbef79f236fb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/choosing-layers.md",
+          "file": "8cd1bca8a659b6ef.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/dependencies-and-shared-models.md",
+          "file": "58d380101a100501.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/owning-generators.md",
+          "file": "e899275df4b48c66.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/physical-names.md",
+          "file": "c37f1e343d6e2832.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/principles.md",
+          "file": "dd80d926c56ea1e3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/python.md",
+          "file": "1c25799a074fff7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/template-or-code.md",
+          "file": "f745f2c1411ab2f0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/wire-format.md",
+          "file": "f425eaf3566cf602.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/SKILL.md",
+          "file": "a1b81119468f84a9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/references/python.md",
+          "file": "d3f2f83fe9835f64.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/SKILL.md",
+          "file": "0440a95faf89e271.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/python.md",
+          "file": "ca05e997cc76ca60.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/react.md",
+          "file": "1ed66f8d84192ee1.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/SKILL.md",
+          "file": "80606ed514438d51.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/migration.md",
+          "file": "34d60341c7210314.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/requirements.md",
+          "file": "0ee567e8d039312d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/upgrading.md",
+          "file": "4f6d18160c694c41.md"
+        },
+        {
+          "path": ".metaobjects/AGENTS.md",
+          "file": "260df9380fb2eb9d.md"
+        }
+      ]
+    },
+    {
+      "id": "python-react-tanstack",
+      "servers": [
+        "python"
+      ],
+      "clients": [
+        "react",
+        "tanstack"
+      ],
+      "files": [
+        {
+          "path": ".claude/skills/metaobjects-audit/SKILL.md",
+          "file": "db66e0e785a6cf50.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/calibration.md",
+          "file": "a7fd4ec2565ab8c0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/capability-checklist.md",
+          "file": "20ec11b332e12322.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/drift-signatures.md",
+          "file": "2fe5f67ab529af0c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/prompt-anti-patterns.md",
+          "file": "bfe25e4bd2cf097d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/python.md",
+          "file": "b70e863795b7a44f.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/requirements.md",
+          "file": "651a126eaa501924.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/surface-review-axes.md",
+          "file": "9fbf06132414b6be.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/vocabulary-hygiene.md",
+          "file": "b28302f5febaea38.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/SKILL.md",
+          "file": "969f739fa94d7a76.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/abstracts-and-overlay.md",
+          "file": "fb3d3670ae387530.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-code.md",
+          "file": "378f755bb43b1e71.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-models.md",
+          "file": "e1f6478444c1e120.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/choosing-a-shape.md",
+          "file": "c1a4896ebda79dd9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/declaring-reports.md",
+          "file": "6b42cc8511e0eb7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/identities-and-indexes.md",
+          "file": "8a9c3f4a4119022a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/inheritance-tph.md",
+          "file": "46659a758d40373b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/json-columns.md",
+          "file": "6afa98a9c7fd23f6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/metadata-dependencies.md",
+          "file": "608f89f60afad4b9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/model-first-rationale.md",
+          "file": "fda1a58ac1585828.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/python-providers.md",
+          "file": "4244641a71a9c537.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/read-views-and-projections.md",
+          "file": "b8371541b1d36c6b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/relationships.md",
+          "file": "e985f8151935157d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/reporting.md",
+          "file": "f80806308b356cb6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/requirements.md",
+          "file": "e5c6430567eecae4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/sources.md",
+          "file": "123dcfb6c65640a0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/SKILL.md",
+          "file": "86974256b798cf22.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/any-stack.md",
+          "file": "4426fbef79f236fb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/choosing-layers.md",
+          "file": "8cd1bca8a659b6ef.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/dependencies-and-shared-models.md",
+          "file": "58d380101a100501.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/owning-generators.md",
+          "file": "e899275df4b48c66.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/physical-names.md",
+          "file": "c37f1e343d6e2832.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/principles.md",
+          "file": "dd80d926c56ea1e3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/python.md",
+          "file": "1c25799a074fff7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/template-or-code.md",
+          "file": "f745f2c1411ab2f0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/wire-format.md",
+          "file": "f425eaf3566cf602.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/SKILL.md",
+          "file": "a1b81119468f84a9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/references/python.md",
+          "file": "d3f2f83fe9835f64.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/SKILL.md",
+          "file": "0440a95faf89e271.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/python.md",
+          "file": "ca05e997cc76ca60.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/react.md",
+          "file": "1ed66f8d84192ee1.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/tanstack.md",
+          "file": "51b5c54862c75382.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/SKILL.md",
+          "file": "80606ed514438d51.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/migration.md",
+          "file": "34d60341c7210314.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/requirements.md",
+          "file": "0ee567e8d039312d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/upgrading.md",
+          "file": "4f6d18160c694c41.md"
+        },
+        {
+          "path": ".metaobjects/AGENTS.md",
+          "file": "490fa77b77d0a1cc.md"
+        }
+      ]
+    },
+    {
+      "id": "python-angular",
+      "servers": [
+        "python"
+      ],
+      "clients": [
+        "angular"
+      ],
+      "files": [
+        {
+          "path": ".claude/skills/metaobjects-audit/SKILL.md",
+          "file": "db66e0e785a6cf50.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/calibration.md",
+          "file": "a7fd4ec2565ab8c0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/capability-checklist.md",
+          "file": "20ec11b332e12322.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/drift-signatures.md",
+          "file": "2fe5f67ab529af0c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/prompt-anti-patterns.md",
+          "file": "bfe25e4bd2cf097d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/python.md",
+          "file": "b70e863795b7a44f.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/requirements.md",
+          "file": "651a126eaa501924.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/surface-review-axes.md",
+          "file": "9fbf06132414b6be.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/vocabulary-hygiene.md",
+          "file": "b28302f5febaea38.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/SKILL.md",
+          "file": "969f739fa94d7a76.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/abstracts-and-overlay.md",
+          "file": "fb3d3670ae387530.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-code.md",
+          "file": "378f755bb43b1e71.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-models.md",
+          "file": "e1f6478444c1e120.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/choosing-a-shape.md",
+          "file": "c1a4896ebda79dd9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/declaring-reports.md",
+          "file": "6b42cc8511e0eb7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/identities-and-indexes.md",
+          "file": "8a9c3f4a4119022a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/inheritance-tph.md",
+          "file": "46659a758d40373b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/json-columns.md",
+          "file": "6afa98a9c7fd23f6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/metadata-dependencies.md",
+          "file": "608f89f60afad4b9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/model-first-rationale.md",
+          "file": "fda1a58ac1585828.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/python-providers.md",
+          "file": "4244641a71a9c537.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/read-views-and-projections.md",
+          "file": "b8371541b1d36c6b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/relationships.md",
+          "file": "e985f8151935157d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/reporting.md",
+          "file": "f80806308b356cb6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/requirements.md",
+          "file": "e5c6430567eecae4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/sources.md",
+          "file": "123dcfb6c65640a0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/SKILL.md",
+          "file": "86974256b798cf22.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/any-stack.md",
+          "file": "4426fbef79f236fb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/choosing-layers.md",
+          "file": "8cd1bca8a659b6ef.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/dependencies-and-shared-models.md",
+          "file": "58d380101a100501.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/owning-generators.md",
+          "file": "e899275df4b48c66.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/physical-names.md",
+          "file": "c37f1e343d6e2832.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/principles.md",
+          "file": "dd80d926c56ea1e3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/python.md",
+          "file": "1c25799a074fff7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/template-or-code.md",
+          "file": "f745f2c1411ab2f0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/wire-format.md",
+          "file": "f425eaf3566cf602.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/SKILL.md",
+          "file": "a1b81119468f84a9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/references/python.md",
+          "file": "d3f2f83fe9835f64.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/SKILL.md",
+          "file": "0440a95faf89e271.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/python.md",
+          "file": "ca05e997cc76ca60.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/SKILL.md",
+          "file": "80606ed514438d51.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/migration.md",
+          "file": "34d60341c7210314.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/requirements.md",
+          "file": "0ee567e8d039312d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/upgrading.md",
+          "file": "4f6d18160c694c41.md"
+        },
+        {
+          "path": ".metaobjects/AGENTS.md",
+          "file": "417c26a7097034e4.md"
+        }
+      ]
+    },
+    {
+      "id": "rust",
+      "servers": [
+        "rust"
+      ],
+      "clients": [],
+      "files": [
+        {
+          "path": ".claude/skills/metaobjects-audit/SKILL.md",
+          "file": "db66e0e785a6cf50.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/calibration.md",
+          "file": "a7fd4ec2565ab8c0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/capability-checklist.md",
+          "file": "20ec11b332e12322.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/drift-signatures.md",
+          "file": "2fe5f67ab529af0c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/prompt-anti-patterns.md",
+          "file": "bfe25e4bd2cf097d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/requirements.md",
+          "file": "651a126eaa501924.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/surface-review-axes.md",
+          "file": "9fbf06132414b6be.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/vocabulary-hygiene.md",
+          "file": "b28302f5febaea38.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/SKILL.md",
+          "file": "969f739fa94d7a76.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/abstracts-and-overlay.md",
+          "file": "fb3d3670ae387530.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-code.md",
+          "file": "378f755bb43b1e71.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-models.md",
+          "file": "e1f6478444c1e120.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/choosing-a-shape.md",
+          "file": "c1a4896ebda79dd9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/declaring-reports.md",
+          "file": "6b42cc8511e0eb7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/identities-and-indexes.md",
+          "file": "8a9c3f4a4119022a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/inheritance-tph.md",
+          "file": "46659a758d40373b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/json-columns.md",
+          "file": "6afa98a9c7fd23f6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/metadata-dependencies.md",
+          "file": "608f89f60afad4b9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/model-first-rationale.md",
+          "file": "fda1a58ac1585828.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/read-views-and-projections.md",
+          "file": "b8371541b1d36c6b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/relationships.md",
+          "file": "e985f8151935157d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/reporting.md",
+          "file": "f80806308b356cb6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/requirements.md",
+          "file": "e5c6430567eecae4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/sources.md",
+          "file": "123dcfb6c65640a0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/SKILL.md",
+          "file": "86974256b798cf22.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/any-stack.md",
+          "file": "4426fbef79f236fb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/choosing-layers.md",
+          "file": "8cd1bca8a659b6ef.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/dependencies-and-shared-models.md",
+          "file": "58d380101a100501.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/owning-generators.md",
+          "file": "e899275df4b48c66.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/physical-names.md",
+          "file": "c37f1e343d6e2832.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/principles.md",
+          "file": "dd80d926c56ea1e3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/template-or-code.md",
+          "file": "f745f2c1411ab2f0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/wire-format.md",
+          "file": "f425eaf3566cf602.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/SKILL.md",
+          "file": "a1b81119468f84a9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/SKILL.md",
+          "file": "0440a95faf89e271.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/SKILL.md",
+          "file": "80606ed514438d51.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/migration.md",
+          "file": "34d60341c7210314.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/requirements.md",
+          "file": "0ee567e8d039312d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/upgrading.md",
+          "file": "4f6d18160c694c41.md"
+        },
+        {
+          "path": ".metaobjects/AGENTS.md",
+          "file": "b3680649050a0d51.md"
+        }
+      ]
+    },
+    {
+      "id": "rust-react",
+      "servers": [
+        "rust"
+      ],
+      "clients": [
+        "react"
+      ],
+      "files": [
+        {
+          "path": ".claude/skills/metaobjects-audit/SKILL.md",
+          "file": "db66e0e785a6cf50.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/calibration.md",
+          "file": "a7fd4ec2565ab8c0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/capability-checklist.md",
+          "file": "20ec11b332e12322.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/drift-signatures.md",
+          "file": "2fe5f67ab529af0c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/prompt-anti-patterns.md",
+          "file": "bfe25e4bd2cf097d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/requirements.md",
+          "file": "651a126eaa501924.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/surface-review-axes.md",
+          "file": "9fbf06132414b6be.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/vocabulary-hygiene.md",
+          "file": "b28302f5febaea38.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/SKILL.md",
+          "file": "969f739fa94d7a76.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/abstracts-and-overlay.md",
+          "file": "fb3d3670ae387530.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-code.md",
+          "file": "378f755bb43b1e71.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-models.md",
+          "file": "e1f6478444c1e120.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/choosing-a-shape.md",
+          "file": "c1a4896ebda79dd9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/declaring-reports.md",
+          "file": "6b42cc8511e0eb7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/identities-and-indexes.md",
+          "file": "8a9c3f4a4119022a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/inheritance-tph.md",
+          "file": "46659a758d40373b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/json-columns.md",
+          "file": "6afa98a9c7fd23f6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/metadata-dependencies.md",
+          "file": "608f89f60afad4b9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/model-first-rationale.md",
+          "file": "fda1a58ac1585828.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/read-views-and-projections.md",
+          "file": "b8371541b1d36c6b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/relationships.md",
+          "file": "e985f8151935157d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/reporting.md",
+          "file": "f80806308b356cb6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/requirements.md",
+          "file": "e5c6430567eecae4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/sources.md",
+          "file": "123dcfb6c65640a0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/SKILL.md",
+          "file": "86974256b798cf22.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/any-stack.md",
+          "file": "4426fbef79f236fb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/choosing-layers.md",
+          "file": "8cd1bca8a659b6ef.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/dependencies-and-shared-models.md",
+          "file": "58d380101a100501.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/owning-generators.md",
+          "file": "e899275df4b48c66.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/physical-names.md",
+          "file": "c37f1e343d6e2832.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/principles.md",
+          "file": "dd80d926c56ea1e3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/template-or-code.md",
+          "file": "f745f2c1411ab2f0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/wire-format.md",
+          "file": "f425eaf3566cf602.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/SKILL.md",
+          "file": "a1b81119468f84a9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/SKILL.md",
+          "file": "0440a95faf89e271.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/react.md",
+          "file": "1ed66f8d84192ee1.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/SKILL.md",
+          "file": "80606ed514438d51.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/migration.md",
+          "file": "34d60341c7210314.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/requirements.md",
+          "file": "0ee567e8d039312d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/upgrading.md",
+          "file": "4f6d18160c694c41.md"
+        },
+        {
+          "path": ".metaobjects/AGENTS.md",
+          "file": "f02832e4d7770c3c.md"
+        }
+      ]
+    },
+    {
+      "id": "rust-react-tanstack",
+      "servers": [
+        "rust"
+      ],
+      "clients": [
+        "react",
+        "tanstack"
+      ],
+      "files": [
+        {
+          "path": ".claude/skills/metaobjects-audit/SKILL.md",
+          "file": "db66e0e785a6cf50.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/calibration.md",
+          "file": "a7fd4ec2565ab8c0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/capability-checklist.md",
+          "file": "20ec11b332e12322.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/drift-signatures.md",
+          "file": "2fe5f67ab529af0c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/prompt-anti-patterns.md",
+          "file": "bfe25e4bd2cf097d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/requirements.md",
+          "file": "651a126eaa501924.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/surface-review-axes.md",
+          "file": "9fbf06132414b6be.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/vocabulary-hygiene.md",
+          "file": "b28302f5febaea38.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/SKILL.md",
+          "file": "969f739fa94d7a76.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/abstracts-and-overlay.md",
+          "file": "fb3d3670ae387530.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-code.md",
+          "file": "378f755bb43b1e71.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-models.md",
+          "file": "e1f6478444c1e120.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/choosing-a-shape.md",
+          "file": "c1a4896ebda79dd9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/declaring-reports.md",
+          "file": "6b42cc8511e0eb7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/identities-and-indexes.md",
+          "file": "8a9c3f4a4119022a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/inheritance-tph.md",
+          "file": "46659a758d40373b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/json-columns.md",
+          "file": "6afa98a9c7fd23f6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/metadata-dependencies.md",
+          "file": "608f89f60afad4b9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/model-first-rationale.md",
+          "file": "fda1a58ac1585828.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/read-views-and-projections.md",
+          "file": "b8371541b1d36c6b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/relationships.md",
+          "file": "e985f8151935157d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/reporting.md",
+          "file": "f80806308b356cb6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/requirements.md",
+          "file": "e5c6430567eecae4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/sources.md",
+          "file": "123dcfb6c65640a0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/SKILL.md",
+          "file": "86974256b798cf22.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/any-stack.md",
+          "file": "4426fbef79f236fb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/choosing-layers.md",
+          "file": "8cd1bca8a659b6ef.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/dependencies-and-shared-models.md",
+          "file": "58d380101a100501.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/owning-generators.md",
+          "file": "e899275df4b48c66.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/physical-names.md",
+          "file": "c37f1e343d6e2832.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/principles.md",
+          "file": "dd80d926c56ea1e3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/template-or-code.md",
+          "file": "f745f2c1411ab2f0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/wire-format.md",
+          "file": "f425eaf3566cf602.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/SKILL.md",
+          "file": "a1b81119468f84a9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/SKILL.md",
+          "file": "0440a95faf89e271.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/react.md",
+          "file": "1ed66f8d84192ee1.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/tanstack.md",
+          "file": "51b5c54862c75382.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/SKILL.md",
+          "file": "80606ed514438d51.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/migration.md",
+          "file": "34d60341c7210314.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/requirements.md",
+          "file": "0ee567e8d039312d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/upgrading.md",
+          "file": "4f6d18160c694c41.md"
+        },
+        {
+          "path": ".metaobjects/AGENTS.md",
+          "file": "bf673961bd3ea6ea.md"
+        }
+      ]
+    },
+    {
+      "id": "rust-angular",
+      "servers": [
+        "rust"
+      ],
+      "clients": [
+        "angular"
+      ],
+      "files": [
+        {
+          "path": ".claude/skills/metaobjects-audit/SKILL.md",
+          "file": "db66e0e785a6cf50.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/calibration.md",
+          "file": "a7fd4ec2565ab8c0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/capability-checklist.md",
+          "file": "20ec11b332e12322.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/drift-signatures.md",
+          "file": "2fe5f67ab529af0c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/prompt-anti-patterns.md",
+          "file": "bfe25e4bd2cf097d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/requirements.md",
+          "file": "651a126eaa501924.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/surface-review-axes.md",
+          "file": "9fbf06132414b6be.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/vocabulary-hygiene.md",
+          "file": "b28302f5febaea38.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/SKILL.md",
+          "file": "969f739fa94d7a76.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/abstracts-and-overlay.md",
+          "file": "fb3d3670ae387530.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-code.md",
+          "file": "378f755bb43b1e71.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-models.md",
+          "file": "e1f6478444c1e120.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/choosing-a-shape.md",
+          "file": "c1a4896ebda79dd9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/declaring-reports.md",
+          "file": "6b42cc8511e0eb7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/identities-and-indexes.md",
+          "file": "8a9c3f4a4119022a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/inheritance-tph.md",
+          "file": "46659a758d40373b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/json-columns.md",
+          "file": "6afa98a9c7fd23f6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/metadata-dependencies.md",
+          "file": "608f89f60afad4b9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/model-first-rationale.md",
+          "file": "fda1a58ac1585828.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/read-views-and-projections.md",
+          "file": "b8371541b1d36c6b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/relationships.md",
+          "file": "e985f8151935157d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/reporting.md",
+          "file": "f80806308b356cb6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/requirements.md",
+          "file": "e5c6430567eecae4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/sources.md",
+          "file": "123dcfb6c65640a0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/SKILL.md",
+          "file": "86974256b798cf22.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/any-stack.md",
+          "file": "4426fbef79f236fb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/choosing-layers.md",
+          "file": "8cd1bca8a659b6ef.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/dependencies-and-shared-models.md",
+          "file": "58d380101a100501.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/owning-generators.md",
+          "file": "e899275df4b48c66.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/physical-names.md",
+          "file": "c37f1e343d6e2832.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/principles.md",
+          "file": "dd80d926c56ea1e3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/template-or-code.md",
+          "file": "f745f2c1411ab2f0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/wire-format.md",
+          "file": "f425eaf3566cf602.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/SKILL.md",
+          "file": "a1b81119468f84a9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/SKILL.md",
+          "file": "0440a95faf89e271.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/SKILL.md",
+          "file": "80606ed514438d51.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/migration.md",
+          "file": "34d60341c7210314.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/requirements.md",
+          "file": "0ee567e8d039312d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/upgrading.md",
+          "file": "4f6d18160c694c41.md"
+        },
+        {
+          "path": ".metaobjects/AGENTS.md",
+          "file": "9b23d9815903eeab.md"
+        }
+      ]
+    },
+    {
+      "id": "java-kotlin",
+      "servers": [
+        "java",
+        "kotlin"
+      ],
+      "clients": [],
+      "files": [
+        {
+          "path": ".claude/skills/metaobjects-audit/SKILL.md",
+          "file": "db66e0e785a6cf50.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/calibration.md",
+          "file": "a7fd4ec2565ab8c0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/capability-checklist.md",
+          "file": "20ec11b332e12322.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/drift-signatures.md",
+          "file": "2fe5f67ab529af0c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/java.md",
+          "file": "1217aab33469e7bd.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/kotlin.md",
+          "file": "91463562405e88cc.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/prompt-anti-patterns.md",
+          "file": "bfe25e4bd2cf097d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/requirements.md",
+          "file": "651a126eaa501924.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/surface-review-axes.md",
+          "file": "9fbf06132414b6be.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/vocabulary-hygiene.md",
+          "file": "b28302f5febaea38.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/SKILL.md",
+          "file": "969f739fa94d7a76.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/abstracts-and-overlay.md",
+          "file": "fb3d3670ae387530.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-code.md",
+          "file": "378f755bb43b1e71.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-models.md",
+          "file": "e1f6478444c1e120.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/choosing-a-shape.md",
+          "file": "c1a4896ebda79dd9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/declaring-reports.md",
+          "file": "6b42cc8511e0eb7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/identities-and-indexes.md",
+          "file": "8a9c3f4a4119022a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/inheritance-tph.md",
+          "file": "46659a758d40373b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/java-providers.md",
+          "file": "eab139844783c8e7.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/json-columns.md",
+          "file": "6afa98a9c7fd23f6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/kotlin-providers.md",
+          "file": "d6bd70c9bf36eb46.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/metadata-dependencies.md",
+          "file": "608f89f60afad4b9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/model-first-rationale.md",
+          "file": "fda1a58ac1585828.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/read-views-and-projections.md",
+          "file": "b8371541b1d36c6b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/relationships.md",
+          "file": "e985f8151935157d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/reporting.md",
+          "file": "f80806308b356cb6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/requirements.md",
+          "file": "e5c6430567eecae4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/sources.md",
+          "file": "123dcfb6c65640a0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/SKILL.md",
+          "file": "86974256b798cf22.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/any-stack.md",
+          "file": "4426fbef79f236fb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/choosing-layers.md",
+          "file": "8cd1bca8a659b6ef.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/dependencies-and-shared-models.md",
+          "file": "58d380101a100501.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/java.md",
+          "file": "e413f6fcd012b1f3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/kotlin.md",
+          "file": "d3eaa47c0bbd9332.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/owning-generators.md",
+          "file": "e899275df4b48c66.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/physical-names.md",
+          "file": "c37f1e343d6e2832.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/principles.md",
+          "file": "dd80d926c56ea1e3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/template-or-code.md",
+          "file": "f745f2c1411ab2f0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/wire-format.md",
+          "file": "f425eaf3566cf602.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/SKILL.md",
+          "file": "a1b81119468f84a9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/references/java.md",
+          "file": "84b5d02029893745.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/references/kotlin.md",
+          "file": "ce8ecdef3b83fec0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/SKILL.md",
+          "file": "0440a95faf89e271.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/java.md",
+          "file": "83fa1bfb70e0da93.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/kotlin.md",
+          "file": "636d4309c12de5cb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/SKILL.md",
+          "file": "80606ed514438d51.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/migration.md",
+          "file": "34d60341c7210314.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/requirements.md",
+          "file": "0ee567e8d039312d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/upgrading.md",
+          "file": "4f6d18160c694c41.md"
+        },
+        {
+          "path": ".metaobjects/AGENTS.md",
+          "file": "f410d7096bb80685.md"
+        }
+      ]
+    },
+    {
+      "id": "java-kotlin-react",
+      "servers": [
+        "java",
+        "kotlin"
+      ],
+      "clients": [
+        "react"
+      ],
+      "files": [
+        {
+          "path": ".claude/skills/metaobjects-audit/SKILL.md",
+          "file": "db66e0e785a6cf50.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/calibration.md",
+          "file": "a7fd4ec2565ab8c0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/capability-checklist.md",
+          "file": "20ec11b332e12322.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/drift-signatures.md",
+          "file": "2fe5f67ab529af0c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/java.md",
+          "file": "1217aab33469e7bd.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/kotlin.md",
+          "file": "91463562405e88cc.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/prompt-anti-patterns.md",
+          "file": "bfe25e4bd2cf097d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/requirements.md",
+          "file": "651a126eaa501924.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/surface-review-axes.md",
+          "file": "9fbf06132414b6be.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/vocabulary-hygiene.md",
+          "file": "b28302f5febaea38.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/SKILL.md",
+          "file": "969f739fa94d7a76.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/abstracts-and-overlay.md",
+          "file": "fb3d3670ae387530.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-code.md",
+          "file": "378f755bb43b1e71.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-models.md",
+          "file": "e1f6478444c1e120.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/choosing-a-shape.md",
+          "file": "c1a4896ebda79dd9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/declaring-reports.md",
+          "file": "6b42cc8511e0eb7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/identities-and-indexes.md",
+          "file": "8a9c3f4a4119022a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/inheritance-tph.md",
+          "file": "46659a758d40373b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/java-providers.md",
+          "file": "eab139844783c8e7.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/json-columns.md",
+          "file": "6afa98a9c7fd23f6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/kotlin-providers.md",
+          "file": "d6bd70c9bf36eb46.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/metadata-dependencies.md",
+          "file": "608f89f60afad4b9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/model-first-rationale.md",
+          "file": "fda1a58ac1585828.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/read-views-and-projections.md",
+          "file": "b8371541b1d36c6b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/relationships.md",
+          "file": "e985f8151935157d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/reporting.md",
+          "file": "f80806308b356cb6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/requirements.md",
+          "file": "e5c6430567eecae4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/sources.md",
+          "file": "123dcfb6c65640a0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/SKILL.md",
+          "file": "86974256b798cf22.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/any-stack.md",
+          "file": "4426fbef79f236fb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/choosing-layers.md",
+          "file": "8cd1bca8a659b6ef.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/dependencies-and-shared-models.md",
+          "file": "58d380101a100501.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/java.md",
+          "file": "e413f6fcd012b1f3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/kotlin.md",
+          "file": "d3eaa47c0bbd9332.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/owning-generators.md",
+          "file": "e899275df4b48c66.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/physical-names.md",
+          "file": "c37f1e343d6e2832.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/principles.md",
+          "file": "dd80d926c56ea1e3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/template-or-code.md",
+          "file": "f745f2c1411ab2f0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/wire-format.md",
+          "file": "f425eaf3566cf602.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/SKILL.md",
+          "file": "a1b81119468f84a9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/references/java.md",
+          "file": "84b5d02029893745.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/references/kotlin.md",
+          "file": "ce8ecdef3b83fec0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/SKILL.md",
+          "file": "0440a95faf89e271.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/java.md",
+          "file": "83fa1bfb70e0da93.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/kotlin.md",
+          "file": "636d4309c12de5cb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/react.md",
+          "file": "1ed66f8d84192ee1.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/SKILL.md",
+          "file": "80606ed514438d51.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/migration.md",
+          "file": "34d60341c7210314.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/requirements.md",
+          "file": "0ee567e8d039312d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/upgrading.md",
+          "file": "4f6d18160c694c41.md"
+        },
+        {
+          "path": ".metaobjects/AGENTS.md",
+          "file": "6554b044ac4e5c29.md"
+        }
+      ]
+    },
+    {
+      "id": "java-kotlin-react-tanstack",
+      "servers": [
+        "java",
+        "kotlin"
+      ],
+      "clients": [
+        "react",
+        "tanstack"
+      ],
+      "files": [
+        {
+          "path": ".claude/skills/metaobjects-audit/SKILL.md",
+          "file": "db66e0e785a6cf50.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/calibration.md",
+          "file": "a7fd4ec2565ab8c0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/capability-checklist.md",
+          "file": "20ec11b332e12322.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/drift-signatures.md",
+          "file": "2fe5f67ab529af0c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/java.md",
+          "file": "1217aab33469e7bd.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/kotlin.md",
+          "file": "91463562405e88cc.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/prompt-anti-patterns.md",
+          "file": "bfe25e4bd2cf097d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/requirements.md",
+          "file": "651a126eaa501924.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/surface-review-axes.md",
+          "file": "9fbf06132414b6be.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/vocabulary-hygiene.md",
+          "file": "b28302f5febaea38.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/SKILL.md",
+          "file": "969f739fa94d7a76.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/abstracts-and-overlay.md",
+          "file": "fb3d3670ae387530.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-code.md",
+          "file": "378f755bb43b1e71.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-models.md",
+          "file": "e1f6478444c1e120.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/choosing-a-shape.md",
+          "file": "c1a4896ebda79dd9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/declaring-reports.md",
+          "file": "6b42cc8511e0eb7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/identities-and-indexes.md",
+          "file": "8a9c3f4a4119022a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/inheritance-tph.md",
+          "file": "46659a758d40373b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/java-providers.md",
+          "file": "eab139844783c8e7.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/json-columns.md",
+          "file": "6afa98a9c7fd23f6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/kotlin-providers.md",
+          "file": "d6bd70c9bf36eb46.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/metadata-dependencies.md",
+          "file": "608f89f60afad4b9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/model-first-rationale.md",
+          "file": "fda1a58ac1585828.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/read-views-and-projections.md",
+          "file": "b8371541b1d36c6b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/relationships.md",
+          "file": "e985f8151935157d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/reporting.md",
+          "file": "f80806308b356cb6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/requirements.md",
+          "file": "e5c6430567eecae4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/sources.md",
+          "file": "123dcfb6c65640a0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/SKILL.md",
+          "file": "86974256b798cf22.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/any-stack.md",
+          "file": "4426fbef79f236fb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/choosing-layers.md",
+          "file": "8cd1bca8a659b6ef.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/dependencies-and-shared-models.md",
+          "file": "58d380101a100501.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/java.md",
+          "file": "e413f6fcd012b1f3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/kotlin.md",
+          "file": "d3eaa47c0bbd9332.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/owning-generators.md",
+          "file": "e899275df4b48c66.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/physical-names.md",
+          "file": "c37f1e343d6e2832.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/principles.md",
+          "file": "dd80d926c56ea1e3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/template-or-code.md",
+          "file": "f745f2c1411ab2f0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/wire-format.md",
+          "file": "f425eaf3566cf602.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/SKILL.md",
+          "file": "a1b81119468f84a9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/references/java.md",
+          "file": "84b5d02029893745.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/references/kotlin.md",
+          "file": "ce8ecdef3b83fec0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/SKILL.md",
+          "file": "0440a95faf89e271.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/java.md",
+          "file": "83fa1bfb70e0da93.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/kotlin.md",
+          "file": "636d4309c12de5cb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/react.md",
+          "file": "1ed66f8d84192ee1.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/tanstack.md",
+          "file": "51b5c54862c75382.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/SKILL.md",
+          "file": "80606ed514438d51.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/migration.md",
+          "file": "34d60341c7210314.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/requirements.md",
+          "file": "0ee567e8d039312d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/upgrading.md",
+          "file": "4f6d18160c694c41.md"
+        },
+        {
+          "path": ".metaobjects/AGENTS.md",
+          "file": "cffbbf66c1dff86f.md"
+        }
+      ]
+    },
+    {
+      "id": "java-kotlin-angular",
+      "servers": [
+        "java",
+        "kotlin"
+      ],
+      "clients": [
+        "angular"
+      ],
+      "files": [
+        {
+          "path": ".claude/skills/metaobjects-audit/SKILL.md",
+          "file": "db66e0e785a6cf50.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/calibration.md",
+          "file": "a7fd4ec2565ab8c0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/capability-checklist.md",
+          "file": "20ec11b332e12322.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/drift-signatures.md",
+          "file": "2fe5f67ab529af0c.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/java.md",
+          "file": "1217aab33469e7bd.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/kotlin.md",
+          "file": "91463562405e88cc.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/prompt-anti-patterns.md",
+          "file": "bfe25e4bd2cf097d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/requirements.md",
+          "file": "651a126eaa501924.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/surface-review-axes.md",
+          "file": "9fbf06132414b6be.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-audit/references/vocabulary-hygiene.md",
+          "file": "b28302f5febaea38.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/SKILL.md",
+          "file": "969f739fa94d7a76.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/abstracts-and-overlay.md",
+          "file": "fb3d3670ae387530.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-code.md",
+          "file": "378f755bb43b1e71.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/adopting-existing-models.md",
+          "file": "e1f6478444c1e120.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/choosing-a-shape.md",
+          "file": "c1a4896ebda79dd9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/declaring-reports.md",
+          "file": "6b42cc8511e0eb7d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/identities-and-indexes.md",
+          "file": "8a9c3f4a4119022a.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/inheritance-tph.md",
+          "file": "46659a758d40373b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/java-providers.md",
+          "file": "eab139844783c8e7.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/json-columns.md",
+          "file": "6afa98a9c7fd23f6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/kotlin-providers.md",
+          "file": "d6bd70c9bf36eb46.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/metadata-dependencies.md",
+          "file": "608f89f60afad4b9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/model-first-rationale.md",
+          "file": "fda1a58ac1585828.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/read-views-and-projections.md",
+          "file": "b8371541b1d36c6b.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/relationships.md",
+          "file": "e985f8151935157d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/reporting.md",
+          "file": "f80806308b356cb6.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/requirements.md",
+          "file": "e5c6430567eecae4.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-authoring/references/sources.md",
+          "file": "123dcfb6c65640a0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/SKILL.md",
+          "file": "86974256b798cf22.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/any-stack.md",
+          "file": "4426fbef79f236fb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/choosing-layers.md",
+          "file": "8cd1bca8a659b6ef.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/dependencies-and-shared-models.md",
+          "file": "58d380101a100501.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/java.md",
+          "file": "e413f6fcd012b1f3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/kotlin.md",
+          "file": "d3eaa47c0bbd9332.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/owning-generators.md",
+          "file": "e899275df4b48c66.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/physical-names.md",
+          "file": "c37f1e343d6e2832.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/principles.md",
+          "file": "dd80d926c56ea1e3.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/template-or-code.md",
+          "file": "f745f2c1411ab2f0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-codegen/references/wire-format.md",
+          "file": "f425eaf3566cf602.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/SKILL.md",
+          "file": "a1b81119468f84a9.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/references/java.md",
+          "file": "84b5d02029893745.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-prompts/references/kotlin.md",
+          "file": "ce8ecdef3b83fec0.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/SKILL.md",
+          "file": "0440a95faf89e271.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/java.md",
+          "file": "83fa1bfb70e0da93.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-runtime-ui/references/kotlin.md",
+          "file": "636d4309c12de5cb.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/SKILL.md",
+          "file": "80606ed514438d51.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/migration.md",
+          "file": "34d60341c7210314.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/requirements.md",
+          "file": "0ee567e8d039312d.md"
+        },
+        {
+          "path": ".claude/skills/metaobjects-verify/references/upgrading.md",
+          "file": "4f6d18160c694c41.md"
+        },
+        {
+          "path": ".metaobjects/AGENTS.md",
+          "file": "124752f4316a72cc.md"
+        }
+      ]
+    }
+  ]
+}
