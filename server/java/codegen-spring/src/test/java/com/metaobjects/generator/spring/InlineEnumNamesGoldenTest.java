@@ -36,8 +36,9 @@ import static org.junit.Assert.assertFalse;
  * generators were run over this same input. What a wrong implementation gets caught on: naming
  * an inline enum {@code <Owner><Field>} where it used to be named for its top-most super (so
  * {@code ShipmentSummaryDto.Status} would become {@code ShipmentSummaryDto.ShipmentSummaryStatus}).
- * The one later edit is layout only: when the DTO generator moved onto the code writer
- * (ADR-0063), the blank line after each {@code <Entity>Patch} class opener went, and only it.
+ * The later edits are layout only, made when the generators moved onto the code writer
+ * (ADR-0063): the blank line after each class opener went, the parser's imports are sorted,
+ * and a blank line now follows the parser's leading comment.
  */
 public class InlineEnumNamesGoldenTest extends SharedRegistryTestBase {
 

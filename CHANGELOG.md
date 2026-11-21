@@ -137,7 +137,10 @@ here.**
   The names, repository and report-export generators follow (`SpringNamesGenerator`,
   `SpringRepositoryGenerator`, `SpringReportExportGenerator`), each finder, constant block and
   writer section from its own protected method; the one layout change in their output is that
-  the blank line after the class or interface opener is gone.
+  the blank line after the class or interface opener is gone. So does the output-parser generator
+  (`SpringOutputParserGenerator`), whose `StringBuilder` seams (`emitMapperMethods`, `emitMapper`,
+  `appendMapperHelpers`) now take the writer, and whose parsers gain a blank line after the
+  leading `// GENERATED` comment besides sorted imports.
 
   With no sort, the `ObjectManager` mount now orders by the primary key. The `ObjectManager`
   `Filter` gains `$or` and a case-insensitive `$ilike`, and the class gains `keyFields()` and
