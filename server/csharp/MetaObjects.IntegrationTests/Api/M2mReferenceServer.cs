@@ -8,7 +8,7 @@
 //
 // FW-8 (FR-018 x FR-017 — M:N traversal inside a TPH hierarchy, over the `Account`
 // discriminator base): two independent scoping rules layer ON TOP of the plain
-// M2MResolver traversal, mirroring what RoutesGenerator's AppendM2mRoute does for the
+// M2MResolver traversal, mirroring what RoutesGenerator's WriteM2mRoute does for the
 // GENERATED lane (OfType<Sub>() there; a raw discriminator-column check here) —
 //   - SOURCE side (rule c): a subtype-scoped mount (e.g. /accounts/member/{id}/scopes)
 //     must verify the id names a row of THAT subtype in the shared discriminator table

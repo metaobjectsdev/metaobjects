@@ -92,22 +92,22 @@ public class SharedModelGenerator : IGenerator
         return [new EmittedFile(files.ArtifactPath, files.Artifact), new EmittedFile(files.ManifestPath, files.Manifest)];
     }
 
-    private static string Required(string? value, string option, string what) =>
+    protected static string Required(string? value, string option, string what) =>
         string.IsNullOrWhiteSpace(value) ? throw Missing(option, what) : value.Trim();
 
-    private static InvalidOperationException Missing(string option, string what) =>
+    protected static InvalidOperationException Missing(string option, string what) =>
         new($"shared-model: set {option} on the generator ({what}): new SharedModelGenerator {{ {option} = ... }}");
 
     /// <summary>The <c>&lt;Version&gt;</c> the project builds with: the project file in the root, then
     /// <c>Directory.Build.props</c> in the root or the nearest directory above it. <c>null</c> when none declares one,
     /// or when the one that does is an MSBuild expression (<c>$(...)</c>) this generator does not evaluate.</summary>
-    private static string? ProjectVersion(string projectRoot)
+    protected static string? ProjectVersion(string projectRoot)
     {
         var declared = DeclaredVersion(projectRoot);
         return declared is null || declared.Contains("$(", StringComparison.Ordinal) ? null : declared;
     }
 
-    private static string? DeclaredVersion(string projectRoot)
+    protected static string? DeclaredVersion(string projectRoot)
     {
         foreach (var project in Directory.EnumerateFiles(projectRoot, "*.csproj").Order(StringComparer.Ordinal))
             if (VersionIn(project) is { } own) return own;
@@ -116,7 +116,7 @@ public class SharedModelGenerator : IGenerator
         return null;
     }
 
-    private static string? VersionIn(string file)
+    protected static string? VersionIn(string file)
     {
         if (!File.Exists(file)) return null;
         // The MSBuild property: <Version> directly under an unconditional <PropertyGroup>, never a

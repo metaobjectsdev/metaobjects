@@ -329,11 +329,13 @@ prints a warning naming the line to change. See
 
 **Generators write through a code writer.** `MetaObjects.Codegen.Writer.CsWriter` is where a
 generator's layout lives (ADR-0063): it owns the indent, the braces, the `using` lines and the
-blank lines, so a generator states what the file says and not how many spaces it takes. The
-filter allowlist, names, callable, output-prompt, output-parser and extractor generators are
-written on it, and so is the mirror record they share. Each is a class whose file is built from
-one overridable method per piece (`WriteFileHeader`, `WriteTypeDoc`, `WriteMembers` and so on),
-so an owned copy, or a subclass of the shipped one, changes the piece it wants and keeps the rest.
+blank lines, so a generator states what the file says and not how many spaces it takes. Every
+generator that emits C# source is written on it; the JSON, Markdown and template generators are
+not. Each such generator is a class whose file is built from one overridable method per
+piece (`WriteFileHeader`, `WriteTypeDoc`, `WriteMembers` and so on; in the routes generator
+`WriteListRoute`, `WriteCreateRoute`, `WriteUpdateRoute` and the rest, over a plan worked out once
+by `PlanStandardRoutes` or `PlanTphRoutes`), so an owned copy, or a subclass of the shipped one,
+changes the piece it wants and keeps the rest.
 Those methods are not a stability contract. A test keeps new hand-typed layout out of the
 generator source: a file that still builds text with `AppendLine` is on an allowlist with a
 written reason, and the list only gets shorter.

@@ -28,7 +28,7 @@ public sealed class ApiContractApiSettingsConformanceTest
     // The corpus cannot pin this: Java/Kotlin answer Spring's type-mismatch 400 and Python FastAPI's 422
     // for a non-numeric bound, so the generated C# route is exercised here against the cross-port 400 envelope.
     // Only the plain entity list is driven: the TPH base and per-subtype lists emit through the same
-    // AppendOffsetLimit, and no TPH fixture with api.pagination boots in this lane.
+    // WriteOffsetLimit, and no TPH fixture with api.pagination boots in this lane.
     [Theory]
     [InlineData("/api/items?limit=abc", "limit", "abc")]
     [InlineData("/api/items?limit=1O", "limit", "1O")]

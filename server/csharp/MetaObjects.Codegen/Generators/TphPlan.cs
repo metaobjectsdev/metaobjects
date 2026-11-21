@@ -177,7 +177,7 @@ public static class TphPlanBuilder
     /// reaches this row" — e.g. a M:N relationship whose TARGET is a TPH subtype: that
     /// subtype has no DbSet of its own (<see cref="DbContextGenerator.AppliesTo"/>
     /// excludes TPH subtypes), so the generated route must bind to the BASE's DbSet and
-    /// narrow via <c>OfType&lt;Sub&gt;()</c> (see <c>RoutesGenerator.AppendM2mRoute</c>).
+    /// narrow via <c>OfType&lt;Sub&gt;()</c> (see <c>RoutesGenerator.WriteM2mRoute</c>).
     /// Exposing the existing walk here keeps that lookup the ONE place it happens,
     /// rather than a second copy of this loop living in RoutesGenerator.</para>
     /// </summary>
