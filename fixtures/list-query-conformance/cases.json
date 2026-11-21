@@ -1494,6 +1494,66 @@
     },
     {
       "group": "sort-and-page",
+      "name": "sort-inherited-object-property",
+      "query": "sort=constructor",
+      "why": "a name every object inherits (constructor, toString) is not a field on the sort allowlist; it answers invalid_sort like any unknown field",
+      "expect": {
+        "error": {
+          "error": "invalid_sort",
+          "field": "constructor",
+          "expected": "sort=<field>:asc|desc",
+          "allowed": [
+            "id",
+            "title",
+            "code",
+            "status",
+            "severity",
+            "priority",
+            "amount",
+            "feeCents",
+            "active",
+            "dueOn",
+            "opensAt",
+            "createdAt",
+            "wallClock",
+            "ownerId",
+            "timeSpent"
+          ]
+        }
+      }
+    },
+    {
+      "group": "sort-and-page",
+      "name": "sort-inherited-object-property-tostring",
+      "query": "sort=toString:desc",
+      "why": "a name every object inherits (constructor, toString) is not a field on the sort allowlist; it answers invalid_sort like any unknown field",
+      "expect": {
+        "error": {
+          "error": "invalid_sort",
+          "field": "toString",
+          "expected": "sort=<field>:asc|desc",
+          "allowed": [
+            "id",
+            "title",
+            "code",
+            "status",
+            "severity",
+            "priority",
+            "amount",
+            "feeCents",
+            "active",
+            "dueOn",
+            "opensAt",
+            "createdAt",
+            "wallClock",
+            "ownerId",
+            "timeSpent"
+          ]
+        }
+      }
+    },
+    {
+      "group": "sort-and-page",
       "name": "sort-not-sortable",
       "query": "sort=score:asc",
       "why": "a filterable field marked @sortable false",

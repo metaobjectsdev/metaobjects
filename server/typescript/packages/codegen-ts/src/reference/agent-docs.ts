@@ -15,11 +15,12 @@
 //                touching persistence; ui.md, read before touching a form or a grid;
 //                requirements.md, read before adding a capability. A tier with nothing to
 //                describe emits no file.
-// customize:     which of the three pages are written and where (`generate`), the schema
-//                page's inputs (`lineageOf`, `cardinalityPhrase`, `relationshipLines`,
-//                `enumLines` and the loop that builds `declaredBy`). The page renderers
+// customize:     which of the three pages are written and where (`generate`), and the
+//                `templates` option, which swaps the mustache templates the pages render
+//                through. The model walk (`modelFacts`, `lineageOf`, `relationshipLines`,
+//                `enumRows`) lives in `agent-schema-page`; the page renderers
 //                (`agent-schema-page`, `agent-ui-page`, `agent-requirements-page`) are
-//                copied beside it into codegen/templates/.
+//                copied beside this file into codegen/templates/ by `meta eject`.
 // composes-with: api-docs (the fourth file the always-on pointer names, `api/AGENT-API.md`,
 //                is the api reference's, not this one's).
 //

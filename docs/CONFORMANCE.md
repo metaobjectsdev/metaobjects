@@ -52,7 +52,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/dependency-conformance/`](../fixtures/dependency-conformance/) | 47 cases (36 resolution, 7 of them with a ledger arm, + 11 check) + 32 transport cases | ✓ (reference implementation; all four arms) | ✓ (resolution arm, all 36, ledger included; check arm, all 11) | inherits via Java | ✓ (resolution arm, all 36, ledger included; check arm, all 11, as `verify --deps`) | ✓ (resolution arm, all 36 identically, ledger included; check arm, all 11, as `deps check` and `verify --deps`; the transport arm is Node-only) |
 | [`fixtures/shared-model-conformance/`](../fixtures/shared-model-conformance/) | 15 cases (9 publish + 6 refusal) | ✓ (reference implementation) | ✓ (all 15; `SharedModelConformanceTest`) | inherits via Java (`KotlinSharedModelGeneratorTest` pins the generator) | ✓ (all 15; `SharedModelConformanceTests`) | ✓ (all 15; `test_shared_model_conformance.py`) |
 | [`fixtures/agent-context-conformance/`](../fixtures/agent-context-conformance/) | 5 | ✓ (the emitter is TS-owned) | — | — | — | — |
-| [`fixtures/list-query-conformance/`](../fixtures/list-query-conformance/) (how a list route reads its query string: filter tree, search, sort, page, or the named 400) | 93 cases | ✓ (reference; the source of the expected answers) | planned (R-JV) | planned (R-KT) | planned (R-CS) | planned (R-PY) |
+| [`fixtures/list-query-conformance/`](../fixtures/list-query-conformance/) (how a list route reads its query string: filter tree, search, sort, page, or the named 400) | 95 cases | ✓ (reference; the source of the expected answers) | planned (R-JV) | planned (R-KT) | planned (R-CS) | planned (R-PY) |
 | [`fixtures/docs-page-conformance/`](../fixtures/docs-page-conformance/) (the requirements pages and the model-only schema page: each page's data and bytes) | 4 cases | ✓ (reference; the source of the expected bytes) | planned | planned (through Java) | planned | planned |
 | [`fixtures/metamodel-docs/`](../fixtures/metamodel-docs/) | 1 | ✓ (docs emit is TS-owned) | — | — | — | — |
 | [`fixtures/fmt-conformance/`](../fixtures/fmt-conformance/) (#304 — `meta fmt`) | 13 | ✓ (reference) | ✓ | inherits via Java | ✓ | ✓ |
@@ -758,9 +758,9 @@ a port that disagrees with one is wrong. The case list, and what each pins, is i
 (Kotlin inherits it, through the shared Maven goal) and
 `server/csharp/MetaObjects.Conformance.Tests/RequirementCheckConformanceTests.cs`.
 
-### `fixtures/list-query-conformance/` (93 cases)
+### `fixtures/list-query-conformance/` (95 cases)
 
-All 93 cases → [features/api-contract.md](features/api-contract.md) ("The list query: search,
+All 95 cases → [features/api-contract.md](features/api-contract.md) ("The list query: search,
 combinators and refusals", and the bad-request responses). Each case is a raw query string, and
 what it pins is the answer a list route gives before any store is reached: the parsed query
 (a filter tree in neutral values, the search term and the fields it covers, the sort and the
@@ -770,8 +770,10 @@ generator does, so a port that derives a different allowlist fails here. What a 
 matches in a store is the `list-query/` sub-corpus of `api-contract-conformance/`.
 
 **Held to it:** `server/typescript/packages/integration-tests/test/list-query-conformance.test.ts`
-(the source of the expected answers). The other ports' runners arrive with their 1.3.0
-REST-standard work.
+(the source of the expected answers). **Conformance status:** TypeScript passes; C#, Java,
+Kotlin, Python and Rust are pending until their 1.3.0 REST-standard work lands, and each port's
+change flips its own entry. The decision is
+[ADR-0068](../spec/decisions/ADR-0068-list-query-cross-port-contract.md).
 
 ### `fixtures/docs-page-conformance/` (4 cases)
 

@@ -53,13 +53,14 @@ here.**
   `constraint_violation` responses were TypeScript-only extensions. `docs/features/api-contract.md`
   now states them as contract, with TypeScript's wire names unchanged. Two corpora hold the ports
   to it:
-  - a new shared corpus, `fixtures/list-query-conformance/`: 93 parse cases, each a query string
+  - a new shared corpus, `fixtures/list-query-conformance/`: 95 parse cases, each a query string
     in and either a filter tree in neutral values or the exact 400 body out, run with no server
     and no database;
   - a 20-scenario `list-query/` sub-corpus of `api-contract-conformance/`, over a 60-row seed, in
     the generated lane.
 
-  TypeScript passes both. The other ports take them on in their 1.3.0 REST-standard work. A
+  TypeScript passes both. The other ports take them on in their 1.3.0 REST-standard work. The
+  decision is [ADR-0068](spec/decisions/ADR-0068-list-query-cross-port-contract.md). A
   scenario can now send a body that is not JSON with `rawBody`.
 - **runtime-ts: one list-query parse for every mount.** `parseListQuery` (exported from
   `@metaobjectsdev/runtime-ts`; it does not depend on Drizzle) reads a list request into a
