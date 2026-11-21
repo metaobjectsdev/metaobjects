@@ -92,9 +92,9 @@ public class NamesGenerator : PerEntityGenerator
         Render(entity, ctx, fragment: false)
         ?? throw new InvalidOperationException($"{entity.Name}: Render returned no names artifact.");
 
-    /// <summary>One emitted constant: its member name, its declaration body, and the metadata
-    /// node it came from (named in the collision refusal, so a failure points at the model).</summary>
-    /// <summary>One constant of the artifact: its name, its declaration, the metadata node it names, and an attribute line above it.</summary>
+    /// <summary>One emitted constant: its member name, its declaration body, the metadata
+    /// node it came from (named in the collision refusal, so a failure points at the model), and an
+    /// optional attribute line above it.</summary>
     protected readonly record struct Member(string Name, string Decl, string NodePath, string? Attribute = null);
 
     // A @storage: flattened field's own column constant names no column of the table: its members
