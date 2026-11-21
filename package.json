@@ -19,7 +19,8 @@
     "site:preview": "bun scripts/site-preview.ts",
     "clean": "rm -rf server/typescript/packages/*/dist server/typescript/packages/*/*.tsbuildinfo client/web/packages/*/dist client/web/packages/*/*.tsbuildinfo",
     "release": "bun scripts/release.mjs",
-    "prerelease:publish": "bun scripts/prerelease.mjs"
+    "prerelease:publish": "bun scripts/prerelease.mjs",
+    "prerelease:candidate": "bun scripts/prerelease.mjs --only all"
   },
   "devDependencies": {
     "bun-types": "latest",

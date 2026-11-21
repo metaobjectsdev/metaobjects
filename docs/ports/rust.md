@@ -39,6 +39,12 @@ from the checkout:
 cargo install --path <repo-root>/server/rust/metaobjects-cli
 ```
 
+To use a candidate or any other commit without a checkout, pin it from git
+(`cargo install --git https://github.com/metaobjectsdev/metaobjects --rev <commit> metaobjects-cli`,
+and the same `git` + `rev` on a `metaobjects` dependency). The candidate log
+(`tools/prerelease/candidates.md`) names the commit each staged candidate was built from; see
+[Pre-releases, "Rust"](../features/prerelease.md#rust).
+
 | Command | What it does |
 |---|---|
 | `cargo meta init [--project <dir>]` | Scaffolds `.metaobjects/config.json`, `.metaobjects/.gitignore` (which keeps `.gen-state/.hashes/` committed) and a first `metaobjects/meta.app.yaml`. It writes only what is missing, and never adds an empty metadata file to a project that already has metadata. |

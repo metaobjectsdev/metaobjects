@@ -6,6 +6,7 @@
 //   bun run prerelease:publish                       # next iteration, npm + Maven (the default scope)
 //   bun run prerelease:publish --only npm,csharp     # pick ports
 //   bun run prerelease:publish --only all            # all four
+//   bun run prerelease:candidate                     # the same: a FULL candidate, every registry
 //   bun run prerelease:publish --iter 5              # pin the iteration number
 //   bun run prerelease:publish --base 0.25.0         # override the in-development version
 //
@@ -64,7 +65,7 @@ import { join } from "node:path";
 import { mavenVersion } from "./maven-coordinate.mjs";
 import { TIER_ORDER } from "./publish-set.mjs";
 import {
-  changelogVersions, collectPages, decideBase, installRestoreHandlers, releasedVersion, run as runStep,
+  appendCandidateLog, candidateLogRow, changelogVersions, collectPages, decideBase, installRestoreHandlers, releasedVersion, run as runStep,
 } from "./prerelease-version.mjs";
 
 const argv = process.argv.slice(2);
@@ -417,6 +418,19 @@ if (wants("java")) {
 }
 
 restore();
+if (!DRY) {
+  // The repository's record of which commit each candidate was built from. Appended after the
+  // version declarations are restored, so the entry is the only change this run leaves behind.
+  const logPath = join(ROOT, "tools/prerelease/candidates.md");
+  const LOG = "tools/prerelease/candidates.md";
+  const dirtyOther = sh("git status --porcelain --untracked-files=no").split("\n")
+    .filter((l) => l.trim() && !l.endsWith(LOG)).length > 0;
+  appendCandidateLog(logPath, candidateLogRow({
+    candidate: CANON, commit: sh("git rev-parse HEAD").trim(), dirty: dirtyOther,
+    date: new Date(), registries: ONLY,
+  }));
+  ok(`recorded ${CANON} in ${LOG} — commit that line`);
+}
 if (DRY) {
   console.log(`\n\x1b[32m\x1b[1m✔ dry run of ${CANON} passed; nothing was published.\x1b[0m\n`);
 } else {

@@ -6,6 +6,8 @@
 // does this cut get?" from a source that cannot be wrong in the way the old one was.
 
 import { spawn } from "node:child_process";
+import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 
 /** Compare two plain x.y.z versions: negative, zero or positive. */
 export function cmpVer(a, b) {
@@ -97,6 +99,36 @@ export async function collectPages(fetchPage, limit = 50, maxPages = 1000) {
     if (items.length < limit) return all;
   }
   throw new Error(`the listing did not end within ${maxPages} pages`);
+}
+
+/** The header of the committed candidate log (tools/prerelease/candidates.md). */
+export const CANDIDATE_LOG_HEADER =
+  "# Staged candidates\n\n" +
+  "One row per `bun run prerelease:publish` that published, appended by the script and committed by\n" +
+  "the person who ran it. `Commit` is the `HEAD` the candidate was built from (`+dirty` when tracked\n" +
+  "files outside the version declarations were modified). `Registries` names ecosystems, never\n" +
+  "hosts. A Rust consumer pins that commit (docs/features/prerelease.md, \"Rust\").\n\n" +
+  "| Candidate | Commit | Date (UTC) | Registries |\n|---|---|---|---|\n";
+
+/**
+ * One row of the candidate log. `candidate` is the canonical `<base>-rc.<N>`; `registries` the
+ * ecosystems actually published (npm, python, csharp, java).
+ */
+export function candidateLogRow({ candidate, commit, dirty, date, registries }) {
+  if (!/^\d+\.\d+\.\d+-rc\.\d+$/.test(candidate)) throw new Error(`not a candidate version: ${candidate}`);
+  if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error(`not a full commit sha: ${commit}`);
+  if (!registries.length) throw new Error("a candidate row names at least one registry");
+  const day = date.toISOString().slice(0, 16).replace("T", " ");
+  return `| ${candidate} | \`${commit.slice(0, 12)}${dirty ? "+dirty" : ""}\` | ${day} | ${registries.join(", ")} |\n`;
+}
+
+/** Append `row` to the log at `path`, creating it with its header when it does not exist. */
+export function appendCandidateLog(path, row) {
+  if (!existsSync(path)) {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, CANDIDATE_LOG_HEADER);
+  }
+  appendFileSync(path, row);
 }
 
 const active = new Set();
