@@ -136,6 +136,63 @@ model and never was the durable one. These are:
 
 ---
 
+## 2a. Staged candidates
+
+A release that arrives as a series of candidates (`1.3.0-rc.1`, `-rc.2`, …), each run against
+the adopter estates before the next is cut, uses this tool and **not** `bun run release`.
+`release.mjs` always publishes to public npm `latest`, commits the version and dates the
+CHANGELOG; the private-registry path does none of that, and it does not run the maintenance-branch
+check that gates the final cut (`docs/RELEASING.md`, Step 0).
+
+**A full candidate, every registry:**
+
+```bash
+bun run prerelease:candidate          # = bun run prerelease:publish --only all
+```
+
+The default scope is npm and Maven only, so a Python or a C# estate gets nothing from a bare
+`prerelease:publish`. Use the full command for any candidate an estate in those ports will run;
+name a narrower `--only` only for a fix you are iterating on one port.
+
+**The log.** Every run that starts a publish appends one row to
+[`tools/prerelease/candidates.md`](../../tools/prerelease/candidates.md): the candidate, the full
+`HEAD` it was built from (shortened to 12 characters, `+dirty` when tracked files outside the
+version declarations were modified), the UTC date, and the ecosystems published. A run that stops
+partway still writes its row: a registry whose publish began but did not finish reads
+`<ecosystem> (cut short)`, because its candidate number is taken there, and a registry the run
+was asked for but never reached reads `stopped before <ecosystem>`. A dry run writes no row. It
+names ecosystems, never the registry host. The script writes the row after it has restored the
+version files, so the row is the only change the run leaves; **commit it**, so the repository
+records what each candidate was built from. Build a candidate from a commit that is already
+pushed: a sha nobody can fetch is not a record.
+
+**Estate runs.** What an estate does with a candidate is
+[`tools/prerelease/estate-run.md`](../../tools/prerelease/estate-run.md), with
+`tools/prerelease/estate-run.sh` for the mechanical part.
+
+### Rust
+
+There is no Rust candidate on the private registry: the three crates are `publish = false` and
+the registry serves npm, PyPI, NuGet and Maven. A Rust consumer **pins the commit** the
+candidate's row in the log names:
+
+```toml
+[dependencies]
+metaobjects = { git = "https://github.com/metaobjectsdev/metaobjects", rev = "<commit from candidates.md>" }
+```
+
+```bash
+cargo install --git https://github.com/metaobjectsdev/metaobjects --rev <commit> metaobjects-cli
+```
+
+Cargo finds each crate by name inside the repository, so the same `rev` serves
+`metaobjects`, `metaobjects-codegen` and `metaobjects-cli`. Use the full 40-character sha for
+`rev` (the log shortens it; `git rev-parse <short>` expands it in a clone). `cargo meta --version` prints
+only the crate version, so read the commit back from `Cargo.lock`'s `source` line (it ends in
+`#<sha>`), the way the other ports read their resolved versions.
+
+---
+
 ## 3. Consuming — one command in each direction
 
 ```bash

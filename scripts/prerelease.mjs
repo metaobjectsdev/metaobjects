@@ -6,6 +6,7 @@
 //   bun run prerelease:publish                       # next iteration, npm + Maven (the default scope)
 //   bun run prerelease:publish --only npm,csharp     # pick ports
 //   bun run prerelease:publish --only all            # all four
+//   bun run prerelease:candidate                     # the same: a FULL candidate, every registry
 //   bun run prerelease:publish --iter 5              # pin the iteration number
 //   bun run prerelease:publish --base 0.25.0         # override the in-development version
 //
@@ -64,7 +65,7 @@ import { join } from "node:path";
 import { mavenVersion } from "./maven-coordinate.mjs";
 import { TIER_ORDER } from "./publish-set.mjs";
 import {
-  changelogVersions, collectPages, decideBase, installRestoreHandlers, releasedVersion, run as runStep,
+  appendCandidateLog, candidateLogRow, candidateRegistries, changelogVersions, collectPages, decideBase, installRestoreHandlers, releasedVersion, run as runStep,
 } from "./prerelease-version.mjs";
 
 const argv = process.argv.slice(2);
@@ -277,6 +278,14 @@ const VERSION_FILES = [
 const dirty = sh(`git status --porcelain -- ${VERSION_FILES.map((f) => `'${f}'`).join(" ")}`).trim();
 if (dirty) die(`version-bearing files are dirty — commit or stash first:\n${dirty}`);
 ok("version-bearing files clean");
+// Whether the tree the candidate is built from has uncommitted work, taken now, before any
+// version edit and before restore(). New untracked files count; the candidate log itself does not.
+const CANDIDATE_LOG = "tools/prerelease/candidates.md";
+const builtFromDirtyTree = sh("git status --porcelain --untracked-files=all").split("\n")
+  .some((l) => l.trim() && l.slice(3) !== CANDIDATE_LOG);
+const published = [];  // registries this run published to completely, in order
+const started = [];    // registries whose first publish call began; one that is not in `published` was cut short
+const begin = (eco) => { if (!DRY) started.push(eco); };
 // The tracked files those same pathspecs cover — restore() may only revert files whose
 // pre-run cleanliness this gate actually verified.
 const covered = new Set(
@@ -299,7 +308,23 @@ const restore = () => {
   if (!touched.length) return;
   try { sh(`git checkout -- ${touched.map((f) => `'${f}'`).join(" ")}`); } catch {}
 };
-installRestoreHandlers(restore);
+// The repository's record of which commit each candidate was built from. It is written however the
+// run ends, because a run that stops after one registry has still burned the candidate number
+// there, and a Rust consumer pins the commit this row names. Written after restore(), so the
+// entry is the only change the run leaves behind.
+let recorded = false;
+const recordCandidate = () => {
+  if (recorded || DRY || !started.length) return; recorded = true;
+  try {
+    appendCandidateLog(join(ROOT, CANDIDATE_LOG), candidateLogRow({
+      candidate: CANON, commit: sh("git rev-parse HEAD").trim(), dirty: builtFromDirtyTree, date: new Date(),
+      registries: candidateRegistries({ published, started, only: ONLY }),
+    }));
+    console.log(`recorded ${CANON} in ${CANDIDATE_LOG} — commit that line`);
+  } catch (e) { console.error(`could not record ${CANON} in ${CANDIDATE_LOG}: ${e.message}`); }
+};
+const restoreAndRecord = () => { restore(); recordCandidate(); };
+installRestoreHandlers(restoreAndRecord);
 
 const scratch = (name) => { const d = join(SCRATCH, name); rmSync(d, { recursive: true, force: true }); mkdirSync(d, { recursive: true }); return d; };
 // Kept between runs (so Maven does not re-download the world every time) and deliberately
@@ -348,12 +373,14 @@ if (wants("npm")) {
   if (seen !== NPM_REG) die(`bun would publish to ${seen}, not ${NPM_REG} — aborting`);
   ok(`bun publish target verified by dry-run: ${seen}`);
 
+  begin("npm");
   if (!DRY) for (const pkg of ordered) {
     await run("bun publish --tag prerelease",
       { cwd: join(ROOT, pkg.dir), env: { ...process.env, HOME: home } });
     info(`published ${pkg.short}@${V.npm}`);
   }
   ok(DRY ? "npm: dry run, nothing published" : `npm: ${ordered.length} packages @ ${V.npm} (dist-tag prerelease)`);
+  if (!DRY) published.push("npm");
 }
 
 // ── python ────────────────────────────────────────────────────────────────────────────
@@ -364,10 +391,12 @@ if (wants("python")) {
   const dist = scratch("pydist");
   await run(`cd server/python && uv build --out-dir ${dist}`);
   ok(`python built ${V.pypi}`);
+  begin("python");
   if (!DRY) {
     await run(`cd server/python && uv publish --publish-url "${PYPI_URL}" --username "${OWNER}" --password "${TOKEN}" ${dist}/*`);
     ok(`python: metaobjects ${V.pypi} → ${expectedHost}`);
   } else ok("python: dry run, nothing published");
+  if (!DRY) published.push("python");
 }
 
 // ── csharp ────────────────────────────────────────────────────────────────────────────
@@ -378,10 +407,12 @@ if (wants("csharp")) {
                  "MetaObjects.Codegen/MetaObjects.Codegen", "MetaObjects.Cli/MetaObjects.Cli"];
   for (const p of projs) await run(`cd server/csharp && dotnet pack ${p}.csproj -c Release -o ${out} -p:Version=${V.nuget} --nologo -v q`);
   ok(`csharp packed ${V.nuget} (4 packages)`);
+  begin("csharp");
   if (!DRY) {
     await run(`dotnet nuget push "${out}/*.nupkg" --source "${NUGET_SRC}" --api-key "${TOKEN}"`);
     ok(`csharp: 4 packages @ ${V.nuget} → ${expectedHost}`);
   } else ok("csharp: dry run, nothing published");
+  if (!DRY) published.push("csharp");
 }
 
 // ── java / kotlin ─────────────────────────────────────────────────────────────────────
@@ -410,13 +441,15 @@ if (wants("java")) {
   // `package` for a dry run, not `install`: a dry run must not write artifacts anywhere.
   const goal = DRY ? "package" : "deploy";
   const repo = keptScratch("m2repo");
+  begin("java");
   await run(`cd server/java && mvn -B -s ${settings} -Dmaven.repo.local=${repo} ${goal} -DskipTests` +
      ` -DaltDeploymentRepository="mo-prerelease::${MAVEN_URL}"`,
      { stdio: "inherit" });
   ok(DRY ? "java: dry run, built (package), nothing deployed" : `java: reactor @ ${V.maven} → ${expectedHost}`);
+  if (!DRY) published.push("java");
 }
 
-restore();
+restoreAndRecord();
 if (DRY) {
   console.log(`\n\x1b[32m\x1b[1m✔ dry run of ${CANON} passed; nothing was published.\x1b[0m\n`);
 } else {

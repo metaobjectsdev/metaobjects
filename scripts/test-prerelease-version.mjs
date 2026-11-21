@@ -9,6 +9,7 @@
 // P2  the iteration counter reads every page of the registry's listing.
 // P3  a SIGTERM restores the version files, as exit and SIGINT already did, and stops a step that
 //     is still running instead of letting the run publish the remaining registries first.
+// P5  every published candidate leaves one row in the committed log: candidate, commit, date, registries.
 // P4  only CHANGELOG sections on the released major line or the next one count; the old Maven-only [7.x] sections
 //     made a cut after 1.2.0 propose 7.20.12.
 import assert from "node:assert/strict";
@@ -18,7 +19,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
-  changelogVersions, collectPages, decideBase, latestReleaseTag, releasedVersion, run,
+  CANDIDATE_LOG_HEADER, appendCandidateLog, candidateLogRow, candidateRegistries, changelogVersions, collectPages, decideBase,
+  latestReleaseTag, releasedVersion, run,
 } from "./prerelease-version.mjs";
 
 let fails = 0;
@@ -166,6 +168,44 @@ await test("P3: SIGTERM during a running step stops the step and the run, then r
 await test("a step resolves to its stdout and rejects on a non-zero exit", async () => {
   assert.equal(await run("printf 'a\\nb'"), "a\nb");
   await assert.rejects(run("echo boom >&2; exit 3"), /exit 3.*\n.*boom/s);
+});
+
+await test("a candidate row names the commit, the date and the registries, and never a host", () => {
+  const sha = "0123456789abcdef0123456789abcdef01234567";
+  assert.equal(
+    candidateLogRow({ candidate: "1.3.0-rc.1", commit: sha, dirty: false, date: new Date("2026-11-20T09:05:59Z"), registries: ["npm", "java"] }),
+    "| 1.3.0-rc.1 | `0123456789ab` | 2026-11-20 09:05 | npm, java |\n");
+  assert.match(candidateLogRow({ candidate: "1.3.0-rc.2", commit: sha, dirty: true, date: new Date(0), registries: ["npm"] }), /`0123456789ab\+dirty`/);
+  assert.throws(() => candidateLogRow({ candidate: "1.3.0", commit: sha, dirty: false, date: new Date(0), registries: ["npm"] }), /not a candidate/);
+  assert.throws(() => candidateLogRow({ candidate: "1.3.0-rc.1", commit: "abc", dirty: false, date: new Date(0), registries: ["npm"] }), /full commit sha/);
+  assert.throws(() => candidateLogRow({ candidate: "1.3.0-rc.1", commit: sha, dirty: false, date: new Date(0), registries: [] }), /at least one registry/);
+});
+
+await test("the candidate log is created with its header once and then only appended to", () => {
+  const dir = mkdtempSync(join(tmpdir(), "mo-candidate-log-"));
+  try {
+    const path = join(dir, "nested", "candidates.md");
+    appendCandidateLog(path, "| a |\n");
+    appendCandidateLog(path, "| b |\n");
+    assert.equal(readFileSync(path, "utf8"), `${CANDIDATE_LOG_HEADER}| a |\n| b |\n`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+await test("a registry cut short mid-publish is named in the row, and later ones as stopped before", () => {
+  // npm began and never finished (package k of 14 failed): the number is burned there.
+  assert.deepEqual(candidateRegistries({ published: [], started: ["npm"], only: ["npm", "python", "csharp", "java"] }),
+    ["npm (cut short)", "stopped before python, csharp, java"]);
+  // npm done, python cut short.
+  assert.deepEqual(candidateRegistries({ published: ["npm"], started: ["npm", "python"], only: ["npm", "python", "java"] }),
+    ["npm", "python (cut short)", "stopped before java"]);
+  // A clean full run has no qualifier.
+  assert.deepEqual(candidateRegistries({ published: ["npm", "java"], started: ["npm", "java"], only: ["npm", "java"] }), ["npm", "java"]);
+  // A cut-short npm still yields a row a Rust consumer can pin.
+  const sha = "0123456789abcdef0123456789abcdef01234567";
+  const registries = candidateRegistries({ published: [], started: ["npm"], only: ["npm"] });
+  assert.match(candidateLogRow({ candidate: "1.3.0-rc.1", commit: sha, dirty: false, date: new Date(0), registries }), /npm \(cut short\) \|\n$/);
 });
 
 if (fails) { console.error(`${fails} failure(s)`); process.exit(1); }

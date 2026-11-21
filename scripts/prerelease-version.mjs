@@ -6,6 +6,8 @@
 // does this cut get?" from a source that cannot be wrong in the way the old one was.
 
 import { spawn } from "node:child_process";
+import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 
 /** Compare two plain x.y.z versions: negative, zero or positive. */
 export function cmpVer(a, b) {
@@ -97,6 +99,45 @@ export async function collectPages(fetchPage, limit = 50, maxPages = 1000) {
     if (items.length < limit) return all;
   }
   throw new Error(`the listing did not end within ${maxPages} pages`);
+}
+
+/** The header of the committed candidate log (tools/prerelease/candidates.md). */
+export const CANDIDATE_LOG_HEADER =
+  "# Staged candidates\n\n" +
+  "One row per `bun run prerelease:publish` that published or was cut short. The columns, and the rule\n" +
+  "to commit each row, are in docs/features/prerelease.md, section 2a.\n\n" +
+  "| Candidate | Commit | Date (UTC) | Registries |\n|---|---|---|---|\n";
+
+/**
+ * One row of the candidate log. `candidate` is the canonical `<base>-rc.<N>`; `registries` the
+ * ecosystems actually published (npm, python, csharp, java).
+ */
+export function candidateLogRow({ candidate, commit, dirty, date, registries }) {
+  if (!/^\d+\.\d+\.\d+-rc\.\d+$/.test(candidate)) throw new Error(`not a candidate version: ${candidate}`);
+  if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error(`not a full commit sha: ${commit}`);
+  if (!registries.length) throw new Error("a candidate row names at least one registry");
+  const day = date.toISOString().slice(0, 16).replace("T", " ");
+  return `| ${candidate} | \`${commit.slice(0, 12)}${dirty ? "+dirty" : ""}\` | ${day} | ${registries.join(", ")} |\n`;
+}
+
+/**
+ * The registries a run names in its log row. `published` finished, `started` began a publish call,
+ * `only` is the ordered selection the run was asked for. One that started and did not finish was
+ * cut short, and its candidate number is burned there; one never started is reported as stopped before.
+ */
+export function candidateRegistries({ published, started, only }) {
+  const cutShort = started.filter((p) => !published.includes(p)).map((p) => `${p} (cut short)`);
+  const stopped = only.filter((p) => !started.includes(p));
+  return [...published, ...cutShort, ...(stopped.length ? [`stopped before ${stopped.join(", ")}`] : [])];
+}
+
+/** Append `row` to the log at `path`, creating it with its header when it does not exist. */
+export function appendCandidateLog(path, row) {
+  if (!existsSync(path)) {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, CANDIDATE_LOG_HEADER);
+  }
+  appendFileSync(path, row);
 }
 
 const active = new Set();
