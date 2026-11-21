@@ -48,7 +48,7 @@ Everything a generator reads comes from `@metaobjectsdev/codegen-ts`: `perEntity
 `perPackage` / `perModel`, `isAbstract`, `hasAnyRdbSource`, `isProjection`,
 `servesReadApi` / `servesWriteApi`, `objectRefTarget`, `enumValues`, `effectivePackage`,
 `packageToPath`, `servedPath`, `toCamelCase` / `toPascalCase` / `toSnakeCase` /
-`pluralize`, and `formatTs` for TypeScript output. The config's `apiPrefix` is
+`pluralize`, and `formatTs` (a no-op kept so an owned copy still loads). The config's `apiPrefix` is
 `ctx.renderContext?.apiPrefix`. Worked JSON Schema and OpenAPI 3.1 generators to copy:
 `docs/recipes/generators/typescript/` in the MetaObjects repository.
 
