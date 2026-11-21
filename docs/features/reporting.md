@@ -608,7 +608,7 @@ A measure with no `@of` must declare a `@filter` or a `@segment` (rule M0); ever
 |---|---|
 | TypeScript | `ObjectManager` reads a view-backed report through a detached read model: `list` and `count`, with filter, sort and limit on the derived fields. |
 | Java | OMDB, the same read. |
-| Python | `ObjectManager`, the same read. |
+| Python | `ObjectManagerDb`, the same read. |
 | C# | codegen writes a keyless EF Core row class per view-backed report and maps it with `HasNoKey().ToView(...)` plus a `DbSet`. |
 | Kotlin | codegen writes an Exposed table object per view-backed report. |
 
@@ -805,7 +805,7 @@ Postgres and MySQL, which hold the declared precision, and its `-15` twin everyw
 | C# (EF Core) | ✓ | ✓ | ✓ (Pomelo) | n/a |
 | Kotlin (Exposed) | ✓ | ✓ | ✓ | n/a |
 | Java (OMDB) | ✓ | ✓ | ✓ | n/a |
-| Python (`ObjectManager`) | ✓ (pg8000) | ✓ (`sqlite3`) | ✓ (PyMySQL) | n/a |
+| Python (`ObjectManagerDb`) | ✓ (pg8000) | ✓ (`sqlite3`) | ✓ (PyMySQL) | n/a |
 
 Each engine reads the artifact TypeScript produced for it: `canonical/schema.sqlite.sql` is
 the output of `meta migrate --dialect sqlite`, and `canonical/schema.mysql.sql` is the
