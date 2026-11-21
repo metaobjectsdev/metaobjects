@@ -140,7 +140,10 @@ here.**
   the blank line after the class or interface opener is gone. So does the output-parser generator
   (`SpringOutputParserGenerator`), whose `StringBuilder` seams (`emitMapperMethods`, `emitMapper`,
   `appendMapperHelpers`) now take the writer, and whose parsers gain a blank line after the
-  leading `// GENERATED` comment besides sorted imports.
+  leading `// GENERATED` comment besides sorted imports. The filter-allowlist, response-format and
+  render-helper generators follow: the allowlist output is unchanged, and the other two gain the
+  same blank after the leading comment, sorted imports and no blank after the class opener.
+  `SpringNaming.packageHeader` is removed; the writer's `packageName` replaces it.
 
   With no sort, the `ObjectManager` mount now orders by the primary key. The `ObjectManager`
   `Filter` gains `$or` and a case-insensitive `$ilike`, and the class gains `keyFields()` and
