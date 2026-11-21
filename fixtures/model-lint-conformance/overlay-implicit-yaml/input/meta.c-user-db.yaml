@@ -1,0 +1,8 @@
+metadata:
+  package: acme::app
+  children:
+    - object.entity:
+        name: User
+        overlay: true
+        children:
+          - field.string: email

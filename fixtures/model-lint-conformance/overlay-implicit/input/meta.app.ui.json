@@ -1,0 +1,19 @@
+{
+  "metadata.root": {
+    "package": "acme::app",
+    "children": [
+      {
+        "object.entity": {
+          "name": "User",
+          "children": [
+            {
+              "field.string": {
+                "name": "displayName"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "findings": [
+    {
+      "code": "WARN_DEPRECATED_REFERENCE",
+      "path": "acme::app::Doohickey",
+      "message": "extends deprecated object.entity acme::app::Gizmo. Replaced by acme::app::Modern."
+    },
+    {
+      "code": "WARN_DEPRECATED_REFERENCE",
+      "path": "acme::app::Widget",
+      "message": "extends deprecated object.entity acme::app::Legacy: Merged into Modern. Replaced by acme::app::Modern."
+    }
+  ]
+}

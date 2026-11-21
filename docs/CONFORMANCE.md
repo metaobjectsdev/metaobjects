@@ -1,6 +1,6 @@
 # Conformance coverage
 
-The MetaObjects standard ships **43 shared conformance corpora** under
+The MetaObjects standard ships **44 shared conformance corpora** under
 [`fixtures/`](../fixtures/). Every port runs every corpus that is *applicable to
 it* and asserts the same expected behaviour against the same fixtures. **This page
 is the inverse index**: fixture → feature doc + per-port pass status, and it is the
@@ -55,6 +55,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/metamodel-docs/`](../fixtures/metamodel-docs/) | 1 | ✓ (docs emit is TS-owned) | — | — | — | — |
 | [`fixtures/fmt-conformance/`](../fixtures/fmt-conformance/) (#304 — `meta fmt`) | 13 | ✓ (reference) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/field-lint-conformance/`](../fixtures/field-lint-conformance/) (the `verify` field authoring lint) | 15 | ✓ (reference) | ✓ | inherits via Java | ✓ | ✓ |
+| [`fixtures/model-lint-conformance/`](../fixtures/model-lint-conformance/) (the `verify` overlay, node-name and deprecated-reference authoring lints) | 18 | ✓ (reference) | ✓ | — (1.3.0 build, D8) | — (1.3.0 build, D8) | — (1.3.0 build, D8) |
 | [`fixtures/requirement-check-conformance/`](../fixtures/requirement-check-conformance/) (the `verify` requirement gate, ADR-0057) | 49 cases | ✓ (reference) | ✓ | inherits via Java (one Maven `metaobjects:verify` goal) | ✓ | ✓ |
 | [`fixtures/requirement-test-identity-conformance/`](../fixtures/requirement-test-identity-conformance/) (the identity, skip state and digest of each generated requirement test, and the filter seam, ADR-0057) | 27 cases | ✓ (reference) | ✓ | identity function inherits via Java; emitted names asserted by its own generator test | ✓ | ✓ |
 | [`fixtures/rules-check-conformance/`](../fixtures/rules-check-conformance/) (the `verify` business-rules gate, ADR-0066) | 16 cases | ✓ (reference) | ✓ | inherits via Java (one Maven `metaobjects:verify` goal) | ✓ | ✓ |
@@ -120,6 +121,7 @@ the contracts and the conformance kits that hold every port to them.
   scenarios), `agent-context-conformance/`, `metamodel-docs/`, `fmt-conformance/`
   (the canonical serializer, surfaced per-file — ADR-0034's "canonical format" is core),
   `field-lint-conformance/` (the advisory field lint every port's `verify` prints),
+  `model-lint-conformance/` (the advisory overlay, node-name and deprecated-reference lints),
   `requirement-check-conformance/` (the requirement gate every port's `verify` runs; a
   drift gate is core, and it is not ejectable in any port),
   `rules-check-conformance/` (the business-rules gate every port's `verify` runs, ADR-0066) and

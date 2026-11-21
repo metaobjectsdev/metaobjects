@@ -1,0 +1,9 @@
+{
+  "findings": [
+    {
+      "code": "WARN_NAME_INTERNAL_WHITESPACE",
+      "path": "acme::app::\"Line Item\"",
+      "message": "object.entity name \"Line Item\" contains whitespace. A name is an identifier: derived column names and wire keys carry the space, and generated code cannot use it as one. Consider renaming it."
+    }
+  ]
+}

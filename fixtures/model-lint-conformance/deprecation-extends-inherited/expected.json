@@ -1,0 +1,14 @@
+{
+  "findings": [
+    {
+      "code": "WARN_DEPRECATED_REFERENCE",
+      "path": "acme::app::Middle",
+      "message": "extends deprecated object.entity acme::app::Legacy: use Modern"
+    },
+    {
+      "code": "WARN_DEPRECATED_REFERENCE",
+      "path": "acme::app::Widget",
+      "message": "extends deprecated object.entity acme::app::Middle: use Modern"
+    }
+  ]
+}
