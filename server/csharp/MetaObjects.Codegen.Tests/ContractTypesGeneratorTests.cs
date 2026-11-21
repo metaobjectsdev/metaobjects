@@ -43,6 +43,7 @@ public class ContractTypesGeneratorTests
         { "field.object": { "name": "shipTo", "@objectRef": "Address", "@storage": "jsonb" } },
         { "field.timestamp": { "name": "createdAt", "@autoSet": "onCreate" } },
         { "field.string": { "name": "legacyCode", "@mutability": "readOnly" } },
+        { "field.string": { "name": "sku", "@mutability": "writeOnce" } },
         { "field.enum": { "name": "status", "@values": ["open", "closed"], "@default": "open", "children": [
           { "transition.action": { "name": "close", "@from": ["open"], "@to": "closed" } } ] } }
       ] } },
@@ -108,8 +109,8 @@ public class ContractTypesGeneratorTests
     [Fact]
     public void The_create_record_carries_what_a_client_sends_and_nothing_the_server_owns()
     {
-        // Generated key, @autoSet stamp and readOnly field are the server's; the lifecycle field stays.
-        Assert.Equal(["title", "note", "quantity", "channel", "tags", "shipTo", "status"], WireNames(T("OrderCreate")));
+        // Generated key, @autoSet stamp and readOnly field are the server's; writeOnce and the lifecycle field stay.
+        Assert.Equal(["title", "note", "quantity", "channel", "tags", "shipTo", "sku", "status"], WireNames(T("OrderCreate")));
         // A key the client chooses (no @generation) is part of the create body.
         Assert.Equal(["code", "label"], WireNames(T("TagCreate")));
     }
@@ -187,6 +188,45 @@ public class ContractTypesGeneratorTests
         var u = Update("""{"status": "closed"}""");
         Assert.True((bool)u.GetType().GetMethod("Has")!.Invoke(u, ["status"])!);
         Assert.Equal("closed", Get(u, "Status")!.ToString());
+    }
+
+    [Fact]
+    public void A_write_once_field_is_on_create_and_off_update()
+    {
+        Assert.Contains("sku", WireNames(T("OrderCreate")));
+        Assert.DoesNotContain("sku", WireNames(T("OrderUpdate")));
+        var u = Update("""{"sku": "x"}""");
+        Assert.False((bool)u.GetType().GetMethod("Has")!.Invoke(u, ["sku"])!);
+    }
+
+    [Fact]
+    public void An_update_from_a_body_that_is_not_an_object_is_a_JsonException()
+    {
+        var from = T("OrderUpdate").GetMethod("From")!;
+        foreach (var json in new[] { "null", "[]", "3" })
+        {
+            var ex = Assert.Throws<TargetInvocationException>(() => from.Invoke(null, [JsonDocument.Parse(json).RootElement, Web]));
+            Assert.IsAssignableFrom<JsonException>(ex.InnerException);
+        }
+    }
+
+    [Fact]
+    public void A_field_named_like_a_fixed_update_member_is_refused_at_generation()
+    {
+        const string clash = """
+        { "metadata.root": { "package": "acme::forms", "children": [
+          { "object.entity": { "name": "Form", "children": [
+            { "source.rdb": { "@table": "forms" } },
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
+            { "field.string": { "name": "fields" } } ] } } ] } }
+        """;
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(clash, id: "forms.json")]);
+        Assert.Empty(r.Errors);
+        var ctx = new GenContext { Entities = r.Root.Objects(), Root = r.Root, Config = new GenConfig { OutDir = "/unused", Namespace = Ns } };
+        var ex = Assert.Throws<InvalidOperationException>(() => new ContractTypesGenerator().Generate(ctx).ToList());
+        Assert.Contains("Form.fields", ex.Message);
+        Assert.Contains("FormUpdate", ex.Message);
     }
 
     [Fact]

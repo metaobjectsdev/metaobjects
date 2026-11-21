@@ -12,7 +12,8 @@
 //
 // Neither carries what the server owns: a derived (origin.*) field, an @autoSet stamp, a readOnly
 // field, a TPH discriminator. A generated key (@generation increment or uuid) is left off the
-// create record; every key is left off the update record, because the route names the row.
+// create record; every key is left off the update record, because the route names the row. A
+// writeOnce field is frozen after create, so it is on the create record and not on the update record.
 // A lifecycle field is on both: the service shell checks a create against the initial state and
 // refuses a change on the generic update with 409 state_managed (ADR-0066 §6), and to refuse it the
 // shell has to see it.
@@ -89,7 +90,7 @@ public class ContractTypesGenerator : PerEntityGenerator
     protected virtual IReadOnlyList<MetaField> UpdateFields(MetaObject entity, GenContext ctx)
     {
         var key = (entity.PrimaryIdentity()?.Fields ?? []).ToHashSet(StringComparer.Ordinal);
-        return entity.Fields().Where(f => !ServerOwned(entity, f, ctx) && !key.Contains(f.Name)).ToList();
+        return entity.Fields().Where(f => !ServerOwned(entity, f, ctx) && !f.IsWriteOnceMutability && !key.Contains(f.Name)).ToList();
     }
 
     /// <summary>Whether a create body must carry the member: it is required and has no @default to fall back to.</summary>
@@ -130,10 +131,17 @@ public class ContractTypesGenerator : PerEntityGenerator
         }
     }
 
+    private static readonly string[] ReservedUpdateMembers = ["Fields", "Present", "Has", "From", "Validate"];
+
     /// <summary>The update record, with its <c>From</c> binder and the present-null check.</summary>
     protected virtual void WriteUpdateRecord(CsWriter w, MetaObject entity, IReadOnlyList<MetaField> fields, GenContext ctx)
     {
         var name = UpdateName(entity);
+        foreach (var f in fields)
+            if (ReservedUpdateMembers.Contains(CSharpNaming.PropertyName(f, ctx.Config)))
+                throw new InvalidOperationException(
+                    $"contract-types: {entity.Name}.{f.Name} becomes the C# member \"{CSharpNaming.PropertyName(f, ctx.Config)}\", " +
+                    $"which {name} already declares ({string.Join(", ", ReservedUpdateMembers)}). Rename the field.");
         w.DocSummary($"GENERATED — the body that changes a {CSharpNaming.Pascal(entity.Name)}. Every member is optional: " +
                      "bind it with From, and Has tells an omitted member (untouched) from an explicit null (cleared).");
         using (w.Braced($"public sealed record {name} : IValidatableObject"))
@@ -155,6 +163,7 @@ public class ContractTypesGenerator : PerEntityGenerator
             w.DocSummary("Bind a body with the application's JSON options and record which members it carried.");
             using (w.Braced($"public static {name} From(JsonElement body, JsonSerializerOptions? options = null)"))
             {
+                w.Line("if (body.ValueKind != JsonValueKind.Object) throw new JsonException(\"The update body must be a JSON object.\");");
                 w.Line($"var bound = body.Deserialize<{name}>(options) ?? new {name}();");
                 w.Line("var comparer = options?.PropertyNameCaseInsensitive == true ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;");
                 w.Line("var present = new HashSet<string>(StringComparer.Ordinal);");
