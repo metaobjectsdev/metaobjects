@@ -478,8 +478,8 @@ reactor's 2.0.21; its round-trip test additionally needs docker. Run via
    selection compiles every entity's generated `<Entity>Controller.kt` — TPH, M:N, view
    projections, and every `emitPerFieldDispatchArm` operator arm across every scalar
    subtype — against real Spring 6.2 (`spring-webmvc`) + jakarta.servlet + Jackson on the
-   module's test classpath (real dependencies, not stubs), with one exclusion:
-   `IntEnumArrayController.kt` (see [Enum arrays](#enum-arrays) below). The
+   module's test classpath (real dependencies, not stubs), over every
+   entity, the int-backed enum array's included (see [Enum arrays](#enum-arrays) below). The
    per-field dispatch gate is derived from the SAME single source of truth the generated
    `<Entity>FilterAllowlist` reads (`com.metaobjects.query.FilterOps`), so the controller
    can never emit an operator the allowlist itself would refuse to admit — this is also
@@ -948,14 +948,19 @@ the contract is universal.
 ### Enum arrays
 
 A `field.enum` with `isArray: true` loads, string-backed or int-backed (`@intValueMap`, own or
-inherited from a shared abstract enum). The data class types it `List<E>`, but the Exposed table
-generator has no array column for an enum of either kind: `enumColumnSpec` in
-`KotlinExposedTableGenerator` emits the scalar `enumerationByName(...)` or
-`customEnumeration(..., "INTEGER", ...)`, so the generated controller for such an entity does not
-compile. It never stores member symbols in an integer column, because the code that would do so
-does not type-check. Persist an enum array through your own column until the generator emits one.
-The `roundtrip-int-enum-array` persistence scenario is deferred in this port's runners for this
-reason.
+inherited from a shared abstract enum), and the data class types it `List<E>`.
+
+An **int-backed** enum array gets one array column over the declared integers,
+`portableIntEnumArray<E>(name, { toInt }, { fromInt })`: a native `INTEGER[]` on Postgres and a
+JSON array of numbers (`[5,0]`) on SQLite and MySQL, the same stored form as every other port.
+The two lambdas are the generated symbol-to-integer `when` expressions, so a member with no
+integer is a compile error, and a stored integer with no member throws on read. The column type is
+emitted into `MetaIntEnumArrayColumnType.kt` beside the tables, only in a package that has such a
+column. The `roundtrip-int-enum-array` persistence scenario runs in this port.
+
+A **string-backed** enum array still has no Exposed array column: `enumColumnSpec` emits the scalar
+`enumerationByName(...)` for it, so the generated controller for such an entity does not compile.
+Persist it through your own column until the generator emits one.
 
 ## Drift detection (Tier-2 integration)
 

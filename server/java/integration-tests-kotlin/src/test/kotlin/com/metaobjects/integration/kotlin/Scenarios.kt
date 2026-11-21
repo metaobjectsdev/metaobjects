@@ -12,10 +12,7 @@ object Scenarios {
      * blocks it. Every other scenario under `queries/` runs, so a new fixture auto-runs or
      * auto-fails, forcing a deliberate entry here.
      */
-    val DEFERRED: Map<String, String> = mapOf(
-        "roundtrip-int-enum-array" to
-            "Exposed codegen persists no field.enum array of either kind: KotlinExposedTableGenerator.enumColumnSpec emits a SCALAR enumerationByName/customEnumeration column for an isArray enum, so the generated List<E> property does not type-check against it; the hand-written reference tables mirror the generator.",
-    )
+    val DEFERRED: Map<String, String> = emptyMap()
 
     data class SortSpec(val field: String, val dir: String)
 

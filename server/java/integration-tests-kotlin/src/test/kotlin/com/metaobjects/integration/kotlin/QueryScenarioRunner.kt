@@ -42,7 +42,9 @@ import org.jetbrains.exposed.sql.update
 import org.jetbrains.exposed.sql.statements.InsertStatement
 import org.jetbrains.exposed.sql.transactions.transaction
 import com.metaobjects.integration.kotlin.tables.AllTypesTable
+import com.metaobjects.integration.kotlin.tables.IntBackedEnumArrayColumnType
 import com.metaobjects.integration.kotlin.tables.IntBackedEnumColumnType
+import com.metaobjects.integration.kotlin.tables.IntEnumArrayTable
 import java.math.BigDecimal
 import java.net.URI
 import java.sql.DriverManager
@@ -487,6 +489,8 @@ object QueryScenarioRunner {
         // Int-backed field.enum: bind the member SYMBOL and let the column's codec encode it to
         // the stored int (see the same guard in `coerce`).
         if (col.columnType is IntBackedEnumColumnType) return raw.toString()
+        // Int-backed field.enum ARRAY: the member symbols as a list; the column's codec stores the ints.
+        if (col.columnType is IntBackedEnumArrayColumnType) return (raw as List<*>).map { it.toString() }
         // field.duration: parse the ISO-8601 authoring literal (checked BEFORE the sqlType
         // dispatch, whose `int` substring branch would match "interval").
         if (col.columnType is MetaDurationColumnType) return com.metaobjects.field.DurationWire.parse(raw.toString())
@@ -546,6 +550,7 @@ object QueryScenarioRunner {
             "Session" -> SessionTable
             "Asset" -> AssetTable
             "AllTypes" -> AllTypesTable
+            "IntEnumArray" -> IntEnumArrayTable
             // ADR-0019 Amendment 1: the decimal subject table.
             "Entry" -> EntryTable
             // Two same-named tables in two schemas (`@schema`).

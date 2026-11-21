@@ -176,6 +176,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // shared `MetaDurationColumnType.kt` (the engine-aware `Column<Duration>` builders) plus the
         // package's `MetaDurationWire.kt`, emitted in pass 3f.
         val packagesNeedingDurationHelper = sortedSetOf<String>()
+        val packagesNeedingIntEnumArrayHelper = sortedSetOf<String>()
 
         // Pass 2: emit one Table per entity using its own metadata + the
         // inbound FKs accumulated in Pass 1.
@@ -214,6 +215,9 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             if (entity.subType == MetaObject.SUBTYPE_ENTITY && entity.isWriteThrough) {
                 if (entityNeedsDurationHelper(entity, loader)) {
                     packagesNeedingDurationHelper += PackageMapping.splitFqn(entity.name).first
+                }
+                if (entityNeedsIntEnumArrayHelper(entity, loader)) {
+                    packagesNeedingIntEnumArrayHelper += PackageMapping.splitFqn(entity.name).first
                 }
                 emitWriteThrough(
                     entity, outRoot, loader, fkMap, refDecorationMap,
@@ -286,6 +290,9 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             if (entityNeedsDurationHelper(entity, loader)) {
                 packagesNeedingDurationHelper += PackageMapping.splitFqn(entity.name).first
             }
+            if (entityNeedsIntEnumArrayHelper(entity, loader)) {
+                packagesNeedingIntEnumArrayHelper += PackageMapping.splitFqn(entity.name).first
+            }
         }
 
         // Pass 3: emit ONE shared `MetaInstantWithTimeZoneColumnType.kt` per package
@@ -325,6 +332,12 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         }
 
         // Pass 3f: ONE shared `MetaDurationColumnType.kt` per package that has a `field.duration` column.
+        for (pkg in packagesNeedingIntEnumArrayHelper) {
+            emitSupportFile(
+                pkg, outRoot, INT_ENUM_ARRAY_SUPPORT_FILE_NAME,
+                intEnumArraySupportFileImports(exposedApi()), intEnumArraySupportBlock(exposedApi()),
+            )
+        }
         for (pkg in packagesNeedingDurationHelper) {
             emitDurationSupportFile(pkg, outRoot)
         }
@@ -654,6 +667,15 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         }
         return false
     }
+
+    /**
+     * True iff [entity]'s table carries an int-backed `field.enum` array column: a direct field, or a
+     * TPH subtype's column on the base's union table. (An `object.value` is never flattened to an enum
+     * array.) Mirrors [entityNeedsDurationHelper]'s walk.
+     */
+    private fun entityNeedsIntEnumArrayHelper(entity: MetaObject, loader: MetaDataLoader): Boolean =
+        entity.metaFields.any { KotlinTypeMapper.isIntBackedEnumArray(it) } ||
+            KotlinTphPlan.collectSubtypeFields(entity, loader).any { KotlinTypeMapper.isIntBackedEnumArray(it) }
 
     /**
      * Emit the per-package `MetaDurationColumnType.kt` support file: the `internal` engine-aware
@@ -1966,6 +1988,75 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             |""".trimMargin()
         }
 
+        /** File name (sans `.kt`) of the per-package support file for int-backed `field.enum` array columns. */
+        const val INT_ENUM_ARRAY_SUPPORT_FILE_NAME = "MetaIntEnumArrayColumnType"
+
+        /** Imports for [intEnumArraySupportBlock], keyed by [ExposedApi] (1.x binds an array through the raw statement). */
+        fun intEnumArraySupportFileImports(api: ExposedApi): String = """
+            |import ${ExposedImports.core(api, "Column")}
+            |import ${ExposedImports.core(api, "ColumnType")}
+            |import ${ExposedImports.core(api, "Table")}
+            |import ${ExposedImports.statementsApi(api, "PreparedStatementApi")}
+            |import ${ExposedImports.vendors(api, "currentDialect")}
+            |${if (api == ExposedApi.V1) "import org.jetbrains.exposed.v1.jdbc.statements.jdbc.JdbcPreparedStatementImpl" else ""}
+            |""".trimMargin().replace("\n\n", "\n").trimEnd() + "\n"
+
+        /**
+         * Shared support body for [INT_ENUM_ARRAY_SUPPORT_FILE_NAME].kt: the column type of an int-backed
+         * `isArray` `field.enum`. 0.x binds a typed array by element-type name; 1.x wants an
+         * `ArrayColumnType` there, so it binds through the raw JDBC statement, as the other array types do.
+         */
+        fun intEnumArraySupportBlock(api: ExposedApi): String {
+            val intArrayBind = if (api == ExposedApi.V1) {
+                "            @Suppress(\"UNCHECKED_CAST\")\n" +
+                    "            val raw = (stmt as JdbcPreparedStatementImpl).statement\n" +
+                    "            raw.setArray(index, raw.connection.createArrayOf(\"integer\", value as Array<Any?>))"
+            } else {
+                "            @Suppress(\"UNCHECKED_CAST\")\n" +
+                    "            stmt.setArray(index, \"integer\", value as Array<Any?>)"
+            }
+            return """
+            |private fun isPostgres(): Boolean = currentDialect.name.equals("postgresql", ignoreCase = true)
+            |
+            |private fun isMySql(): Boolean = currentDialect.name.let { it.equals("mysql", ignoreCase = true) || it.equals("mariadb", ignoreCase = true) }
+            |
+            |/**
+            | * GENERATED — do not hand-edit. An int-backed `isArray` `field.enum` column: each member is stored as
+            | * its declared integer, in a native `INTEGER[]` on Postgres and elsewhere (no array type) a JSON text
+            | * array of numbers. [toInt] and [fromInt] are the enum's symbol↔integer mapping, generated as `when`
+            | * expressions; an integer with no member fails the read rather than inventing one.
+            | */
+            |internal class MetaIntEnumArrayColumnType<E : Any>(
+            |    private val toInt: (E) -> Int,
+            |    private val fromInt: (Int) -> E,
+            |) : ColumnType<List<E>>() {
+            |    private fun json(value: List<E>): String = value.joinToString(",", "[", "]") { toInt(it).toString() }
+            |    override fun sqlType(): String = if (isPostgres()) "INTEGER[]" else if (isMySql()) "JSON" else "TEXT"
+            |    override fun valueFromDB(value: Any): List<E> = when (value) {
+            |        is java.sql.Array -> (value.array as Array<*>).map { fromInt((it as Number).toInt()) }
+            |        is Array<*> -> value.map { fromInt((it as Number).toInt()) }
+            |        is List<*> -> value.map { fromInt((it as Number).toInt()) }
+            |        else -> com.fasterxml.jackson.databind.ObjectMapper().readTree(value.toString()).map { fromInt(it.intValue()) }
+            |    }
+            |    override fun notNullValueToDB(value: List<E>): Any =
+            |        if (isPostgres()) value.map { toInt(it) }.toTypedArray<Any?>() else json(value)
+            |    override fun nonNullValueToString(value: List<E>): String =
+            |        if (isPostgres()) value.joinToString(",", "ARRAY[", "]::integer[]") { toInt(it).toString() } else "'" + json(value) + "'"
+            |    override fun setParameter(stmt: PreparedStatementApi, index: Int, value: Any?) {
+            |        if (value is Array<*>) {
+            |$intArrayBind
+            |        } else {
+            |            super.setParameter(stmt, index, value)
+            |        }
+            |    }
+            |}
+            |
+            |/** Column builder for an int-backed `isArray` `field.enum`: a `Column<List<E>>`. */
+            |internal fun <E : Any> Table.portableIntEnumArray(name: String, toInt: (E) -> Int, fromInt: (Int) -> E): Column<List<E>> =
+            |    registerColumn(name, MetaIntEnumArrayColumnType(toInt, fromInt))
+            |""".trimMargin()
+        }
+
         /** File name (sans `.kt`) of the per-package support file for `field.uuid` and `field.decimal` columns. */
         const val PORTABLE_SUPPORT_FILE_NAME = "MetaPortableColumnTypes"
 
@@ -2761,6 +2852,15 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // branches do not parse (`Foo.DRAFT 5 -> ...`).
         val fromDb = intMap.entries.joinToString("; ") { (sym, i) -> "$i -> $simple.$sym" }
         val toDb = intMap.entries.joinToString("; ") { (sym, i) -> "$simple.$sym -> $i" }
+        if (KotlinTypeMapper.isIntBackedEnumArray(field)) {
+            // An int-backed enum ARRAY: one integer[] column (a JSON text array of numbers where
+            // there is no array type) whose element codec is the same mapping as the scalar's.
+            // The scalar form would not type-check against the `List<E>` property, and it must
+            // never store the member symbols.
+            return "${KotlinTypeMapper.EXPOSED_PORTABLE_INT_ENUM_ARRAY_FN}<$simple>($colExpr, " +
+                "{ e -> when (e) { $toDb } }, " +
+                "{ i -> when (i) { $fromDb; else -> error(\"unmapped stored value \$i for $simple\") } })"
+        }
         // An int with no member is corrupt data the model does not describe: fail loudly
         // rather than substituting a member. The write side needs no `else` — it is
         // exhaustive over the enum by construction, since @intValueMap's keys are

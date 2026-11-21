@@ -249,7 +249,8 @@ Two rules follow from int-backing being a **persistence-layer codec**:
   back as its member. A null array stays null and an empty one stays empty. The array column
   has no `CHECK`, the same as a string-backed enum array. Where a port's runtime stores no
   primitive array on an engine, it refuses an int-backed one there rather than writing
-  symbols: see that port's page under [docs/ports/](../ports/).
+  symbols: see that port's page under [docs/ports/](../ports/). (Python on SQLite and MySQL is
+  the one place that still does.)
 - **A stored integer that maps to no member throws on read**, in every port. The row holds
   data the model says is impossible (a hand-written `INSERT`, or a member removed without a
   migration); surfacing the raw integer would hand you a "member" that is not one — and is

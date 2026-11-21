@@ -628,10 +628,12 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
     nullable.
   - Python: ObjectManager maps elements on write, read and filter operands on Postgres. Its
     SQLite and MySQL dialects store no primitive array, so the new scenario is deferred there.
-  - Java: OMDB stores no enum array on any engine, so its codec refuses an int-backed one on
-    write and read instead of writing symbols. Kotlin's Exposed table generator emits a scalar
-    column for an enum array, so generated code for an int-backed enum array does not compile
-    yet (see `KNOWN_GAPS.md`). Both defer the new scenario.
+  - Java: OMDB stores an int-backed enum array as a native `integer[]` on Postgres and a JSON array
+    of numbers on SQLite, MySQL and Derby; a member with no declared integer is refused on write,
+    and a stored integer with no member fails the read. Kotlin: the Exposed table generator emits an
+    integer array column for it (`portableIntEnumArray`, in a `MetaIntEnumArrayColumnType.kt` support
+    file written only into a package that has such a column), where it used to emit a scalar column
+    that did not compile. The new scenario runs in both.
   Gated by the positive conformance fixtures `enum-int-backed-array` and
   `enum-int-backed-array-inherited`, and the persistence scenario `roundtrip-int-enum-array`.
 
