@@ -493,8 +493,9 @@ take that writer instead of a `StringBuilder`. A hook writes complete lines with
 `using` with `w.Using(...)` and never types an indent or a line break: the writer indents the line to
 where it is written. `ValueObjectMemberAttributes` returns lines with no indent for the same reason.
 A class that carries cross-field validators gets `IValidatableObject` added to its declaration line by
-the base class, even when an override of `EmitClassHeader` or `EmitClassDeclarationLine` wrote the line. The hooks are not a stability
-contract; an owned copy ejected with `dotnet meta eject` is yours to change.
+the base class, even when an override of `EmitClassHeader` or `EmitClassDeclarationLine` wrote the line.
+The base class adds it to the last line written, so an override must write the declaration as its last
+line. The hooks are not a stability contract; an owned copy ejected with `dotnet meta eject` is yours to change.
 
 `DbContextGenerator` writes on the same writer. Its three file-shape hooks (`EmitUsings`,
 `EmitDbSetDeclarations`, `EmitOnModelCreatingBody`) take the `CsWriter` in place of the `StringBuilder`;
