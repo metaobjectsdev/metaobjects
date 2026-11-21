@@ -145,3 +145,17 @@ is removed when its generator converts, so the list only shrinks. The dialect co
   is that an override can break on a minor upgrade, which is the trade item 7 accepts.
 - Five writers must agree, which the shared corpus checks, as the repository already does for
   everything else that must match across ports.
+
+## Amendment (2026-11-21, C#): the C# writer
+
+The C# port has its writer, `CsWriter` (`server/csharp/MetaObjects.Codegen/Writer/CsWriter.cs`), and
+its layout ratchet (`server/csharp/MetaObjects.Codegen.Tests/LayoutRatchet/`). Decisions 1 to 7 apply
+unchanged. C# lays out at **120 columns** with a four-space indent and a trailing comma in broken
+lists. Its dialect adds usings collected while the body is written, `Braced` (Allman form), `DocSummary`
+and `Hanging`, and it refuses an alias that names two targets with `ERR_WRITER_IMPORT_CONFLICT`. The
+dialect contract is in [`spec/code-writer.md`](../code-writer.md), the C# dialect section.
+
+The ratchet is a Roslyn walk over the source of each generator, as item 6 requires. Its
+`allowlist.json` has an `unconverted` section, which is empty: no generator source types layout by hand. Its `exempt` section names the non-generator files the rule does not cover, each
+with a reason. Those entries only shrink, and a new generator that types layout by hand fails the
+ratchet.
