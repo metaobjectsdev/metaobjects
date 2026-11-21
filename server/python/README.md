@@ -54,7 +54,7 @@ Schema migrations are owned by the TypeScript `meta` CLI (ADR-0015); there is
 Table and column names are one project setting, `naming` in `.metaobjects/config.json`
 (`columns` and `tables`, each `snake_case` by default or `literal`). `metaobjects gen` and
 `verify` read it, and so do `load_directory`, `load_uris` and `load_string(..., project_dir=...)`:
-they search upward from the metadata directory for that file, so the `ObjectManager` queries the
+they search upward from the metadata directory for that file, so the `ObjectManagerDb` queries the
 names the code was generated for. If you keep a database whose columns are named exactly like the
 fields, add `"naming": { "columns": "literal" }`. With no config file found the loader warns once
 and uses `snake_case`; `metaobjects.naming.attach_naming(root, project_dir)` sets it explicitly and

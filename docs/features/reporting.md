@@ -656,7 +656,7 @@ same default everywhere, set where each port sets its other generator options:
 | TypeScript | `routesFile({ reportMaxRows: 500 })` (and `routesFileHono`), or `reportMaxRows` on `mountReadOnlyCrudRoutes` in an owned routes file |
 | C# | `new RoutesGenerator { ReportMaxRows = 500 }` |
 | Java, Kotlin | the `reportMaxRows` generator arg (`<reportMaxRows>500</reportMaxRows>` in the plugin's `<args>`) |
-| Python | `router_generator(report_max_rows=500)` |
+| Python | `RouterGenerator(report_max_rows=500)`, or `options: {reportMaxRows: 500}` on the `routes` entry in `metaobjects.config.yaml` |
 
 A page bound that is not usable is refused, never ignored: `limit` below 1, a negative `offset` or
 a value that is not an integer answers `400 { "error": "pagination.invalid_value", "param": ... }`,

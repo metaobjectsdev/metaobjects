@@ -88,7 +88,7 @@ dependency lock records what that version's shared model was when you last synce
 Because the snapshot is committed, only the machine that runs `sync` needs the package
 installed. CI, `meta gen`, `meta migrate` and every other port load the snapshot.
 
-**What a Java or .NET publisher packs.** The `shared-model` generator writes
+**What a Java or .NET publisher packs** (a Python publisher: see "A Python package" below). The `shared-model` generator writes
 `metaobjects.pkg.json` and `<name>.metaobjects.json` into its output directory; the build
 that packages your library puts that directory at `metaobjects/` in the package. In Maven
 that is a resource with a target path (`<resource><directory>shared</directory>
