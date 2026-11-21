@@ -94,6 +94,10 @@ class SelectedGenerator:
         self._inner = inner
         self._packages = packages
         self._entities = entities
+        # Bound per instance, not defined on the class: this wrapper is not a generator of its
+        # own (no registry entry builds one, nothing ejects it), and the generator census
+        # counts every class that has a `generate` method.
+        self.generate = inner.generate
 
     def __getattr__(self, attr: str) -> object:
         # Only reached for what this class does not define: delegate to the wrapped generator.
@@ -113,9 +117,6 @@ class SelectedGenerator:
     def filter(self, entity: MetaObject) -> bool:
         inner_filter = getattr(self._inner, "filter", None)
         return self.selects(entity) and (not callable(inner_filter) or bool(inner_filter(entity)))
-
-    def generate(self, ctx: GenContext) -> list[EmittedFile]:
-        return self._inner.generate(ctx)
 
 
 def generator_cacheable(gen: object) -> bool:
