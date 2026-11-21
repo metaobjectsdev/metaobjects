@@ -17,7 +17,8 @@
 #      when the read-back does not contain the candidate.
 #   3. Regenerates, and lists every file that changed (each one must be explained by an item in
 #      the CHANGELOG upgrade list). Then regenerates AGAIN: the second run must write zero files,
-#      checked by content and by modification time.
+#      checked by content and by modification time. Both checks see only files git reports:
+#      a gitignored path (ignored generated output, .gen-state snapshots) is not looked at.
 #   4. Runs the drift gate (verify --codegen), the build, the tests and any --db-cmd. A command
 #      you do not pass is reported as skipped, never as passed.
 #   5. Puts the estate back as it found it (unless --keep-linked), however the run ended, also

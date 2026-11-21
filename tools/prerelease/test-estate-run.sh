@@ -11,6 +11,7 @@
 # E6  each port spells the candidate its own way (PyPI rcN, Maven major + 7)
 # E8  a package left on another version, or rc.10 for rc.1, fails the read-back check
 # E9  the estate is put back on its starting commit after the run
+# E12 --no-link still restores the estate; E13 --keep-linked does not
 # E10 a --report path inside the estate is refused (exit 2)
 # E11 a link that fails partway leaves the estate on its starting commit
 # E7  a build command that fails is reported and the run exits 1; no command is "skipped", not "passed"
@@ -57,7 +58,7 @@ e8() { local d out; d="$(fresh "$IDEMPOTENT")"
   out="$(run "$d" 1.3.0-rc.1 ts $VERS 'echo @metaobjectsdev/cli@1.3.0-rc.10')"; [ $? = 1 ] || return 1
   out="$(run "$d" 1.3.0-rc.1 ts $VERS 'echo nothing about the product')"; [ $? = 1 ]; }
 e9() { local d before; d="$(fresh "$IDEMPOTENT")"; before="$(git -C "$d" rev-parse HEAD)"
-  # --no-link skips the restore (nothing was linked), so link through a stub that edits a tracked file.
+  # Link through a stub that edits a tracked file, so the restore has a pinned manifest to undo.
   mkdir -p "$d/tools"; cp "$HERE/estate-run.sh" "$d/tools/estate-run.sh"
   printf '#!/usr/bin/env bash\nif [ "$1" = link ]; then echo pinned >> seed.txt; fi\nexit 0\n' > "$d/tools/prerelease-link.sh"; chmod +x "$d/tools/prerelease-link.sh"
   git -C "$d" add -A && git -C "$d" commit -q -m tools; before="$(git -C "$d" rev-parse HEAD)"
@@ -65,6 +66,12 @@ e9() { local d before; d="$(fresh "$IDEMPOTENT")"; before="$(git -C "$d" rev-par
     --gen-cmd 'sh gen.sh' $VERS 'echo @metaobjectsdev/cli@1.3.0-rc.1' >/dev/null 2>&1; [ $? = 0 ] || return 1
   [ "$(git -C "$d" rev-parse HEAD)" = "$before" ] && [ -z "$(git -C "$d" status --porcelain --untracked-files=all)" ]; }
 
+e12() { local d; d="$(fresh "$IDEMPOTENT")"
+  run "$d" 1.3.0-rc.1 ts $VERS 'echo @metaobjectsdev/cli@1.3.0-rc.1' >/dev/null; [ $? = 0 ] || return 1
+  [ ! -e "$d/out.txt" ] && [ -z "$(git -C "$d" status --porcelain --untracked-files=all)" ]; }
+e13() { local d; d="$(fresh "$IDEMPOTENT")"
+  run "$d" 1.3.0-rc.1 ts $VERS 'echo @metaobjectsdev/cli@1.3.0-rc.1' --keep-linked >/dev/null; [ $? = 0 ] || return 1
+  [ -e "$d/out.txt" ]; }
 e10() { local d out; d="$(fresh "$IDEMPOTENT")"
   out="$(run "$d" 1.3.0-rc.1 ts $VERS 'echo @metaobjectsdev/cli@1.3.0-rc.1' --report "$d/report.md")"; rc=$?
   [ $rc = 2 ] && grep -q 'inside the estate' <<<"$out"; }
@@ -84,6 +91,8 @@ t "E5 a dirty project is refused" e5
 t "E6 PyPI and Maven spell the candidate their own way" e6
 t "E8 a stale package or rc.10 fails the read-back check" e8
 t "E9 the estate is put back on its starting commit" e9
+t "E12 --no-link still restores the estate" e12
+t "E13 --keep-linked leaves the regenerated tree in place" e13
 t "E10 a report path inside the estate is refused" e10
 t "E11 a link that fails partway still restores the estate" e11
 t "E7 a failing build is reported; a missing command is skipped, not passed" e7

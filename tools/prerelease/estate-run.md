@@ -22,7 +22,7 @@ It refuses an estate whose git tree is not clean, links the candidate, installs 
 the installed versions back** (a declared range is not proof of the version that ran: the run
 fails when the candidate is not in the read-back), regenerates and lists every changed file,
 regenerates **again** and requires that the second run writes zero files (by content and by
-modification time), then runs the drift gate, your build, your tests and your database commands.
+modification time; the check sees only files git reports, so a gitignored path is not checked), then runs the drift gate, your build, your tests and your database commands.
 A command you do not pass is reported `skipped`, never `passed`. However the run ended, including a
 `link` that failed partway, it puts the estate back on the commit it started on: it unlinks, then runs
 `git reset --hard` and `git clean -fd`. That deletes every untracked file in the estate, the regenerated
