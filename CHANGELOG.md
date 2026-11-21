@@ -15,6 +15,23 @@ here.**
   Python had none. `Renderer` now strips standalone comment lines before mustache.java parses them. A
   template with such a line renders differently in Java, so a prompt body with one changes bytes (and
   its prompt-cache prefix) on upgrade. The `render-standalone-*` fixtures pin the whitespace rules.
+- **Python: the entity model generator writes through the code writer (ADR-0063).** The model
+  modules (`<Name>.py` with `<Name>Create` and `<Name>Patch`), the shared `enums.py` and the
+  `_duration_wire.py` banner are built on a `PyWriter`, and `ruff` no longer runs over them, so the
+  bytes no longer depend on whether `ruff` is installed. Over 1,561 model modules generated from the
+  repository's fixtures, 1,146 are byte-identical, and the other 415 match once both versions are
+  put through the same `ruff` import sort and format. What moves: the standard-library and
+  third-party imports share one section (no blank line between `import datetime` and
+  `from pydantic import ...`, the writer's import order); a `Field(...)` too long for its line puts
+  one keyword per line; and a `field.duration` annotation too long for its line breaks inside
+  `Annotated[...]`. `PyWriter.gap()` asked for before the first body line now gives the two blank
+  lines PEP 8 sets after the imports and before a top-level class (a new `py-gap-after-imports`
+  writer-conformance case). For subclasses of `EntityModelGenerator` (not a stability contract,
+  ADR-0063 item 7): `_emit_field_lines`, `_emit_create_lines` and `_emit_patch_lines` return writer
+  pieces without indentation (`"name: int | None = None"`) instead of indented strings,
+  `_emit_cross_field_rules` returns a step that writes the method onto the writer (or `None`) instead
+  of lines, a new `_write_model` writes one class, and `render_entity_model` returns the finished
+  module rather than text for `ruff` to tidy.
 - **Python: `@union` and `@grain` projections are checked at load.** A union member whose fields
   differ in name, subtype, array-ness, `@column` or enum shape, a member that is the projection
   itself or declares its own `@union`, `@unionAll` without `@union`, a `@grain` that does not name a

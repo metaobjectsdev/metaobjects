@@ -1056,10 +1056,12 @@ already have it. The `[email]` extra is needed as soon as any field carries
 generator types that field `EmailStr`, which imports `email-validator` when the class is
 defined. Without it the generated module fails at import, not at `gen`.
 
-**Note on emitted output.** Both generators run `ruff_format(content)` on the
-file before writing, so the literal emitted layout may reflow whitespace
-slightly vs the snippets above. Function signatures, class definitions, and
-import lines are stable.
+**Note on emitted output.** The entity generator lays its modules out with the
+Python code writer (ADR-0063); no formatter runs over them, so what is written does
+not depend on whether `ruff` is installed. The output-parser generator still runs
+`ruff_format(content)` on the file until it is converted, so its literal layout may
+reflow whitespace slightly vs the snippets above. Function signatures, class
+definitions, and import lines are stable.
 
 ## Capability snapshot
 
