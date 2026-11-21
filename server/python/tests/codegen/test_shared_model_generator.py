@@ -43,6 +43,9 @@ def test_a_list_option_is_a_list_of_non_empty_strings() -> None:
     assert option.coerce("a::**")[1] is not None
     assert option.coerce(["a", ""])[1] is not None
     assert option.coerce(["a", 3])[1] is not None
+    assert option.coerce([]) == ((), None)
+    required = GeneratorOption("include", "stringList", description="d", required=True)
+    assert "at least one" in (required.coerce([])[1] or "")
 
 
 def test_it_writes_the_artifact_and_the_manifest_pinned_by_the_artifact(tmp_path: Path) -> None:

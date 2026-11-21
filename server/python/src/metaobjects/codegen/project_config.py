@@ -330,8 +330,19 @@ def _parse_generator_entries(
     names: list[str] = []
     overwrite: set[str] = set()
     settings: dict[str, GeneratorSettings] = {}
+    configured: set[str] = set()
+
+    def reject_repeat(name: str, carries: bool) -> None:
+        if name in names and (carries or name in configured):
+            raise ConfigError(
+                f"{ctx}: generator {name!r} is listed twice and one entry carries "
+                f"packages, entities, options or handEdits; settings are per generator name, "
+                f"so merge them into one entry."
+            )
+
     for entry in value:
         if isinstance(entry, str):
+            reject_repeat(entry, False)
             names.append(entry)
             continue
         if not isinstance(entry, dict):
@@ -350,7 +361,14 @@ def _parse_generator_entries(
         packages = _parse_name_list(entry["packages"], entry_ctx, "packages") if "packages" in entry else None
         entities = _parse_name_list(entry["entities"], entry_ctx, "entities") if "entities" in entry else None
         options = _parse_generator_options(entry["options"], entry_ctx) if "options" in entry else {}
+        carries = (
+            packages is not None or entities is not None or bool(options)
+            or hand_edits == HAND_EDITS_OVERWRITE
+        )
+        reject_repeat(name, carries)
         names.append(name)
+        if carries:
+            configured.add(name)
         if hand_edits == HAND_EDITS_OVERWRITE:
             overwrite.add(name)
         if packages is not None or entities is not None or options:
