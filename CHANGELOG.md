@@ -288,6 +288,13 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
 
 ### Added
 
+- **Java and Kotlin: `mvn metaobjects:init`.** The Maven plugin now has the scaffold goal the other
+  ports have. It writes `.metaobjects/config.json` (the new-project settings every port's init
+  writes) and an empty, loadable `metaobjects/meta.app.json`, each only when missing, and prints the
+  `<plugin>` entry to add to the pom with an empty `<generators/>`: codegen stays opt-in
+  (ADR-0034 Amendment 2). `-Dmeta.init.withDocs=true` adds the api reference generator to that
+  printed entry. It never edits the pom.
+
 - **The hash manifest is one file per package (ADR-0064 Amendment 1).** Every port that keeps hash
   state, TypeScript, C#, Java, Kotlin, Python and Rust, writes `.gen-state/.hashes/<package>.json`
   instead of one `.gen-state/.hashes.json`. The file name is the package's `::` segments joined with
