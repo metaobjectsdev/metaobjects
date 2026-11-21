@@ -450,7 +450,7 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   lists what the approach cannot do. It is an example on the TypeScript port, not a package.
 
 - **A working loop first in the agent context.** The always-on file `meta init` scaffolds
-  (`.metaobjects/AGENTS.md` and `CLAUDE.md`) now opens with the whole loop for the declared
+  (`.metaobjects/AGENTS.md`) now opens with the whole loop for the declared
   stack, in order: configure and run the generators (one step per declared server, with the
   import or class names to wire, plus the web client when one is declared), the schema
   (`meta migrate --from-db` for the first migration, `apply-pending` at boot, and a later
@@ -566,7 +566,8 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
 - **A view the lowering cannot express is refused, not shortened.** The TypeScript view extractor
   skipped any origin it could not lower, so a projection loaded clean and `meta migrate` created a
   view missing a column its generated type declares. Each such shape now fails, naming the
-  projection and the field: an aggregate-derived entity field read where a row-level value is
+  projection and the field, at load where the loader can see it and in the view extractor for a
+  model built another way: an aggregate-derived entity field read where a row-level value is
   needed, a computed reference cycle, a relative date on a field that is not temporal, and an
   unknown origin or aggregate.
 - **The view vocabulary lowers to SQL.** `meta migrate` builds every port's views, and it now
@@ -590,7 +591,8 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   `error-origin-passthrough-reverse-hop` (new) and `error-origin-passthrough-to-many` pin the
   message.
 
-- **An int-backed enum can be an array.** `@intValueMap` together with `isArray: true` (the
+- **An int-backed enum array loads in every port, and stores in TypeScript, C# and Python.**
+  `@intValueMap` together with `isArray: true` (the
   map on the field, or inherited from a shared enum) now loads in every port instead of
   failing with `ERR_ENUM_INT_VALUE_MAP_ARRAY`, which is removed. Each element is stored as its
   declared integer and read back as its member: `integer[]` on Postgres, and a JSON array of
@@ -796,7 +798,12 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   parameters, the error envelope, and those shapes as components. The output follows the REST contract
   and the `wire` setting, and a project on any port runs them through the Node `meta` CLI. They are
   reference helpers: opt-in, listed by `meta gen --list`, ejectable and gated by `verify --codegen`
-  (ADR-0034 Amendment 10). Protobuf is not built. See `docs/features/contract-emitters.md`.
+  (ADR-0034 Amendment 10). Protobuf is not built. See `docs/features/contract-emitters.md`. The
+  document also states this release's own API behaviour: a list's `limit` carries the project's
+  `api.pagination` default and maximum, a write's body says an undeclared key is refused with
+  `unknown_fields` (or dropped under `api.unknownFields: drop`), the error envelope carries
+  `issues`, `fields` and `maxLimit`, and a read-only resource says a write answers `405`. A project
+  that wires `openApiFile()` sees `openapi.json` change on the next `meta gen`.
 - **The data spine for a model explorer.** These changes are data only. No screen reads the new
   data yet.
   - `meta export --effective` writes the effective canonical JSON. Every field, child and attribute

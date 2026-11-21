@@ -12,7 +12,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, 
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { loadUris, type MetaObject, type MetaRoot, type WireFormat, wireFormatOf } from "@metaobjectsdev/metadata";
+import { type ApiPagination, loadUris, type MetaObject, type MetaRoot, type UnknownFieldsMode, type WireFormat, wireFormatOf } from "@metaobjectsdev/metadata";
 import { defineConfig, type Generator, runGen } from "../src/index.js";
 import { jsonSchemaFile, openApiFile } from "../src/generators/index.js";
 import { readTree } from "./gen-cube-model-canonical.js";
@@ -21,6 +21,12 @@ import { readTree } from "./gen-cube-model-canonical.js";
 const REPO_ROOT = resolve(import.meta.dir, "..", "..", "..", "..", "..");
 
 export const CONTRACT_CORPUS_DIR = join(REPO_ROOT, "fixtures", "contract-conformance");
+
+/** The parts of the `api` block of `.metaobjects/config.json` the document states. */
+interface ApiSettings {
+  readonly pagination?: ApiPagination;
+  readonly unknownFields?: UnknownFieldsMode;
+}
 
 /** This script, as a failing test names it. */
 export const CONTRACT_SCRIPT = "server/typescript/packages/codegen-ts/scripts/gen-contract-conformance.ts (bun run gen:contract-conformance)";
@@ -34,6 +40,8 @@ export interface ContractCase {
   /** The metadata file: the case's own `meta.json`, or a shared one `case.json` names. */
   readonly meta: string;
   readonly wire?: Partial<WireFormat>;
+  /** The project's `api` block, as in `.metaobjects/config.json`. */
+  readonly api?: ApiSettings;
   /** Objects the strict profile leaves out, because the strict subset cannot state them. */
   readonly strictExclude: readonly string[];
   /** The project wires `report-export`, so a report's list route takes `format`. */
@@ -44,6 +52,7 @@ interface CaseJson {
   /** Repository-relative metadata file. Default: `meta.json` beside it. */
   meta?: string;
   wire?: Partial<WireFormat>;
+  api?: ApiSettings;
   strictExclude?: string[];
   reportExport?: boolean;
 }
@@ -57,6 +66,7 @@ function readCase(name: string): ContractCase {
     dir,
     meta: json.meta === undefined ? join(dir, "meta.json") : join(REPO_ROOT, json.meta),
     ...(json.wire !== undefined && { wire: json.wire }),
+    ...(json.api !== undefined && { api: json.api }),
     strictExclude: json.strictExclude ?? [],
     reportExport: json.reportExport ?? false,
   };
@@ -76,6 +86,8 @@ export async function loadCaseModel(c: ContractCase): Promise<MetaRoot> {
     throw new Error(`${c.meta}: metadata did not load cleanly: ${result.errors.map((e) => e.message).join("; ")}`);
   }
   if (c.wire !== undefined) result.root.wireFormat = { ...wireFormatOf(result.root), ...c.wire };
+  if (c.api?.pagination !== undefined) result.root.apiPagination = c.api.pagination;
+  if (c.api?.unknownFields !== undefined) result.root.apiUnknownFields = c.api.unknownFields;
   return result.root;
 }
 

@@ -5,10 +5,24 @@
 //
 // It states the cross-port contract only. The TS-only filter extensions (`?search`, `filter[or]`)
 // are left out, and so are the `405` refusals on a read-only surface, which are not operations a
-// caller can use (the api docs omit them for the same reason).
+// caller can use (the api docs omit them for the same reason): a read-only resource says so in the
+// description of its operations instead.
+//
+// It also states what the 1.3 routes do beyond the happy path: the project's page size
+// (`api.pagination`), the refusal of an undeclared body key (`api.unknownFields`) and the list of
+// validation issues.
 
 import { flatSurfaceFields } from "../flattened.js";
-import { type MetaField, type MetaObject, type MetaRoot, opsForField } from "@metaobjectsdev/metadata";
+import {
+  type ApiPagination,
+  apiPaginationOf,
+  apiUnknownFieldsOf,
+  type MetaField,
+  type MetaObject,
+  type MetaRoot,
+  opsForField,
+  UNKNOWN_FIELDS_REJECT,
+} from "@metaobjectsdev/metadata";
 import { FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_TIMESTAMP, FILTER_OP_IN, FILTER_OP_IS_NULL, FILTER_OP_LIKE } from "@metaobjectsdev/metadata/constants";
 import { hasItemRoute, itemRouteField, servedPath, servesReadApi } from "../api-surface.js";
 import { isProjection } from "../projection/projection-detector.js";
@@ -103,7 +117,15 @@ function errorResponse(description: string): JsonSchema {
   return { description, content: jsonContent({ $ref: componentRef(ERROR_COMPONENT) }) };
 }
 
+const READ_ONLY_NOTE = 'Read-only: a write to this resource answers 405 {"error": "method_not_allowed"}.';
+
 const BAD_REQUEST = errorResponse("The request was refused.");
+const VALIDATION_REFUSED = errorResponse(
+  'The request was refused. A body that fails validation answers error "validation" with an issue for every problem, not the first.',
+);
+const UNKNOWN_FIELDS_REFUSED = errorResponse(
+  'The request was refused. A body key the model does not declare answers error "unknown_fields" with the keys in fields, and nothing is written. Any other problem answers error "validation" with an issue for every problem.',
+);
 const NOT_FOUND = errorResponse("No such row.");
 const CONFLICT = errorResponse("A constraint refused the write.");
 
@@ -141,9 +163,26 @@ function sortParameter(obj: MetaObject, excludeField: string | undefined, root: 
   return [{ name: "sort", in: "query", schema: { type: "string", enum: values } }];
 }
 
-function pageParameters(minLimit: number): JsonSchema[] {
+/**
+ * The page parameters. A project that sets `api.pagination` serves `defaultLimit` rows when `limit`
+ * is absent and refuses a `limit` above `maxLimit`, so the document says both. A report keeps its
+ * own row cap (a generator option the model does not hold), so it states neither.
+ */
+function pageParameters(minLimit: number, page: ApiPagination | undefined): JsonSchema[] {
+  const limit: JsonSchema = {
+    type: "integer",
+    minimum: minLimit,
+    ...(page !== undefined && { maximum: page.maxLimit, default: page.defaultLimit }),
+  };
   return [
-    { name: "limit", in: "query", schema: { type: "integer", minimum: minLimit } },
+    {
+      name: "limit",
+      in: "query",
+      ...(page !== undefined && {
+        description: `Rows per page. Absent, the server answers ${page.defaultLimit}; above ${page.maxLimit} it answers 400 limit_too_large.`,
+      }),
+      schema: limit,
+    },
     { name: "offset", in: "query", schema: { type: "integer", minimum: 0 } },
     { name: "withCount", in: "query", description: "Answer { rows, total } instead of the array.", schema: { type: "integer", enum: [1] } },
   ];
@@ -187,6 +226,8 @@ function idParameter(obj: MetaObject): JsonSchema {
 
 /** The operations of one resource: its collection path and, when it has rows by key, its item path. */
 interface ResourceOps {
+  /** Writes are not served here (a projection or a report), and the operations say so. */
+  readonly readOnly?: boolean;
   /** The object whose rows the routes answer, and whose name the operations carry. */
   readonly row: MetaObject;
   readonly path: string;
@@ -206,7 +247,7 @@ function listOperation(r: ResourceOps): JsonSchema {
   const parameters = [
     ...filterParameters(row, r.excludeField, r.root),
     ...sortParameter(row, r.excludeField, r.root),
-    ...pageParameters(r.report ? 1 : 0),
+    ...pageParameters(r.report ? 1 : 0, r.report ? undefined : apiPaginationOf(r.root)),
     ...(r.reportExport ? [{ name: "format", in: "query", schema: { type: "string", enum: ["csv", "json", "xml"] } }] : []),
   ];
   r.refs.listed.add(row);
@@ -216,13 +257,22 @@ function listOperation(r: ResourceOps): JsonSchema {
   return {
     operationId: `list${row.name}`,
     tags: [row.name],
+    ...(r.readOnly === true && { description: READ_ONLY_NOTE }),
     parameters,
     responses: { "200": { description: "The rows.", content: { ...content, ...exports } }, "400": BAD_REQUEST },
   };
 }
 
 function writeBody(r: ResourceOps, shape: ContractShape): JsonSchema {
-  return { required: true, content: jsonContent(pathRef(r.refs, r.row, shape)) };
+  const rejects = apiUnknownFieldsOf(r.root) === UNKNOWN_FIELDS_REJECT;
+  const description = rejects
+    ? "A top-level key the model does not declare is refused with 400 unknown_fields. A declared key the client may not set, such as the generated key, is dropped."
+    : "A top-level key the model does not declare is dropped, and the rest of the body is written.";
+  return { required: true, description, content: jsonContent(pathRef(r.refs, r.row, shape)) };
+}
+
+function writeRefused(r: ResourceOps): JsonSchema {
+  return apiUnknownFieldsOf(r.root) === UNKNOWN_FIELDS_REJECT ? UNKNOWN_FIELDS_REFUSED : VALIDATION_REFUSED;
 }
 
 function updateOperation(r: ResourceOps, operationId: string): JsonSchema {
@@ -232,7 +282,7 @@ function updateOperation(r: ResourceOps, operationId: string): JsonSchema {
     requestBody: writeBody(r, "update"),
     responses: {
       "200": { description: "The row.", content: jsonContent(pathRef(r.refs, r.row, "read")) },
-      "400": BAD_REQUEST,
+      "400": writeRefused(r),
       "404": NOT_FOUND,
       "409": CONFLICT,
     },
@@ -247,6 +297,7 @@ function itemOperations(r: ResourceOps): JsonSchema {
       get: {
         operationId: `get${row.name}`,
         tags,
+        ...(r.readOnly === true && { description: READ_ONLY_NOTE }),
         responses: { "200": { description: "The row.", content: jsonContent(pathRef(r.refs, row, "read")) }, "404": NOT_FOUND },
       },
     }),
@@ -276,7 +327,7 @@ function collectionOperations(r: ResourceOps): JsonSchema {
         requestBody: writeBody(r, "create"),
         responses: {
           "201": { description: "The new row.", content: jsonContent(pathRef(r.refs, row, "read")) },
-          "400": BAD_REQUEST,
+          "400": writeRefused(r),
           "409": CONFLICT,
         },
       },
@@ -323,7 +374,7 @@ function pathsOf(obj: MetaObject, input: OpenApiBuildInput, refs: PathRefs): Rec
   if (isProjection(obj)) {
     return resourcePaths({
       row: obj, path, report, reportExport: report && input.reportExport, item: hasItemRoute(obj), refs, root: input.root,
-      verbs: new Set<CrudVerb>(["list", "get"]),
+      readOnly: true, verbs: new Set<CrudVerb>(["list", "get"]),
     });
   }
   const plan = tphPlan(obj, root);
@@ -401,6 +452,21 @@ function collectSchemas(input: OpenApiBuildInput, refs: PathRefs): Record<string
       error: { type: "string" },
       message: { type: "string" },
       field: { type: "string", description: "The rejected filter or sort field, on the four codes that name one." },
+      fields: { type: "array", items: { type: "string" }, description: "The undeclared body keys, sorted, on unknown_fields." },
+      issues: {
+        type: "array",
+        description: "Every problem with the body, on validation.",
+        items: {
+          type: "object",
+          required: ["code", "path", "message"],
+          properties: {
+            code: { type: "string", description: "A Zod issue name. A client that does not know one treats it as custom." },
+            path: { type: "array", items: { oneOf: [{ type: "string" }, { type: "integer" }] }, description: "The location of the field in the body." },
+            message: { type: "string" },
+          },
+        },
+      },
+      maxLimit: { type: "integer", description: "The largest page the server serves, on limit_too_large." },
     },
   };
   return Object.fromEntries(Object.entries(schemas).sort(([a], [b]) => compareNames(a, b)));
