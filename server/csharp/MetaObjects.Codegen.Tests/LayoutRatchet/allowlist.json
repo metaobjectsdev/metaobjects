@@ -1,0 +1,21 @@
+{
+  "unconverted": {
+    "MetaObjects.Codegen/Generators/DbContextGenerator.cs": "the 3,050-line DbContext generator; converts to CsWriter in its own PR (W-CS-3, ADR-0063), and this entry goes when it does",
+    "MetaObjects.Codegen/Generators/EntityGenerator.cs": "the 3,313-line entity generator; converts to CsWriter in its own PR (W-CS-2, ADR-0063), and this entry goes when it does",
+    "MetaObjects.Codegen/Generators/ExpressionIndexesGenerator.cs": "The expression-indexes generator still builds its text with StringBuilder.AppendLine; converts to CsWriter in a later C# lane conversion PR (ADR-0063, spec/code-writer.md), and this entry goes when it does",
+    "MetaObjects.Codegen/Generators/RenderHelperGenerator.cs": "The render-helper generator still builds its text with StringBuilder.AppendLine; converts to CsWriter in a later C# lane conversion PR (ADR-0063, spec/code-writer.md), and this entry goes when it does",
+    "MetaObjects.Codegen/Generators/ReportExportGenerator.cs": "The report-export generator still builds its text with StringBuilder.AppendLine; converts to CsWriter in a later C# lane conversion PR (ADR-0063, spec/code-writer.md), and this entry goes when it does",
+    "MetaObjects.Codegen/Generators/RequirementTestsGenerator.cs": "The requirement-tests generator still builds its text with StringBuilder.AppendLine; converts to CsWriter in a later C# lane conversion PR (ADR-0063, spec/code-writer.md), and this entry goes when it does",
+    "MetaObjects.Codegen/Generators/ReverseFinders.cs": "The reverse-finder emitter still builds its text with StringBuilder.AppendLine; converts to CsWriter in a later C# lane conversion PR (ADR-0063, spec/code-writer.md), and this entry goes when it does",
+    "MetaObjects.Codegen/Generators/RoutesGenerator.cs": "The routes generator still builds its text with StringBuilder.AppendLine; converts to CsWriter in a later C# lane conversion PR (ADR-0063, spec/code-writer.md), and this entry goes when it does"
+  },
+  "exempt": {
+    "MetaObjects.Codegen/CSharpNaming.cs": "naming tables: the line-break characters it names are inputs it splits identifiers and comments on, and it writes no generated file",
+    "MetaObjects.Codegen/CodegenCli.cs": "the command line: its newlines and indents are console messages and usage text, not generated code",
+    "MetaObjects.Codegen/EjectableGenerators.cs": "eject rewrites the namespace and usings of a generator's own C# source as text; that is a source-to-source copy, not generated code",
+    "MetaObjects.Codegen/FrameworkQualifier.cs": "a post-pass that rewrites bare System.* references in already-written text; it splits and rejoins lines of any file and lays out none",
+    "MetaObjects.Codegen/GenFingerprint.cs": "the generation fingerprint: newline-joined records are the bytes that get hashed, a contract with the stored key, not generated code",
+    "MetaObjects.Codegen/HashManifest.cs": "the committed hash manifest: its line format is a stored contract with earlier runs, not generated code",
+    "MetaObjects.Codegen/ModelHash.cs": "the model hash: newline-joined records are the bytes that get hashed, a contract with the stored hash, not generated code"
+  }
+}

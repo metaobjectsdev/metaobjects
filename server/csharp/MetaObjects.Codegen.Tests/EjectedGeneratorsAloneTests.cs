@@ -65,6 +65,10 @@ public class EjectedGeneratorsAloneTests
         ["MetaObjects.Codegen.OutputPaths"] = "where an object's file lands under the output layout, and the claim that no two share a path: a path table, ruled engine",
         ["MetaObjects.Codegen.OutputLayout"] = "the output layout setting (flat or package) OutputPaths reads",
         ["MetaObjects.Codegen.NameClaims"] = "the claim registry: the code a clash raises and the scopes it keys on, one answer for every generator in the run",
+        // The code writer (ADR-0063): the dialect an owned generator writes through. It writes no
+        // text of its own, so an owned copy that calls it still holds every line it emits.
+        ["MetaObjects.Codegen.Writer.CodeWriter"] = "the language-neutral code writer: lines, blocks, blank-line requests, fit-or-break lists",
+        ["MetaObjects.Codegen.Writer.CsWriter"] = "the C# dialect of the writer: usings, braced blocks, doc summaries",
         // Questions about the model.
         ["MetaObjects.Codegen.InstanceArtifacts"] = "the predicate: does this object produce instance artifacts",
         ["MetaObjects.Codegen.ReportRows"] = "the row model a view-backed report is generated from: a model derivation",

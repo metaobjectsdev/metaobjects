@@ -17,6 +17,14 @@ here.**
   `ERR_DESIGN_TIME_REFERENCE_MISSING`, naming the project and the line to add, instead of warning. A
   run that cannot tell (no snapshot on disk yet) and a project that declares no `@sequenceStart` still
   get the warning.
+- **C#: the filter allowlist, names, callable, output-prompt, output-parser and extractor generators
+  write through a code writer (ADR-0063).** `MetaObjects.Codegen.Writer.CsWriter` carries the layout
+  (indent, braces, `using` lines, blank lines), and each of those generators is a class built from
+  overridable per-piece methods. The output is unchanged except in one place: a parser generated
+  for a reply declared `@responseFormat: xml` no longer has a blank line right after its opening
+  `{` (the writer drops a blank line after an opener, as it does in every port). A layout check
+  with an allowlist that only shrinks keeps new hand-typed layout out of the generator source.
+  The shared writer-conformance corpus gains six C# cases.
 - **`migrate.foreignKeyTargets: "warn"` turns the refusal of a foreign key onto a non-unique target into
   a report.** For a database whose unique index on the target is hand-made and not declared in the
   metadata. The default, `"refuse"`, is the 1.3.0 behavior; the refusal's hint now names the setting. See

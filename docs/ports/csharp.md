@@ -327,6 +327,17 @@ a project whose `codegen/Codegen.csproj` pins an older `MetaObjects.Codegen` tha
 prints a warning naming the line to change. See
 [Own your codegen → C#](../features/own-your-codegen.md#c-dotnet-meta-eject).
 
+**Generators write through a code writer.** `MetaObjects.Codegen.Writer.CsWriter` is where a
+generator's layout lives (ADR-0063): it owns the indent, the braces, the `using` lines and the
+blank lines, so a generator states what the file says and not how many spaces it takes. The
+filter allowlist, names, callable, output-prompt, output-parser and extractor generators are
+written on it, and so is the mirror record they share. Each is a class whose file is built from
+one overridable method per piece (`WriteFileHeader`, `WriteTypeDoc`, `WriteMembers` and so on),
+so an owned copy, or a subclass of the shipped one, changes the piece it wants and keeps the rest.
+Those methods are not a stability contract. A test keeps new hand-typed layout out of the
+generator source: a file that still builds text with `AppendLine` is on an allowlist with a
+written reason, and the list only gets shorter.
+
 **Give a copy back.** `dotnet meta eject --undo` drops every owned copy that is identical to the
 shipped generator (the comparison ignores blank lines, order and trailing whitespace, and covers
 the emitters eject handed over with it); `dotnet meta eject --undo <name>...` drops only those.

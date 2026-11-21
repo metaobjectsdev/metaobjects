@@ -122,6 +122,27 @@ units. The comparison includes the indent, and a line exactly `width` long fits.
   with `.set(name, value)` and `.add(member)`) and `key` (an object key, quoted only when it is
   not an identifier).
 
+## C# dialect (`CsWriter`)
+
+Case `dialect` is `csharp`. The defaults are four-space indent, width 120 and a trailing comma.
+
+- **Usings are collected while the body is written.** `Using(ns)`, `UsingStatic(type)` and
+  `UsingAlias(alias, target)` record a `using`, once. They print after any `Header(...)` lines
+  (`#nullable enable` is a header line, `GeneratedFileHeader(name)` writes the generated-file
+  marker, the generator's name and `#nullable enable`), with one blank line before the body.
+  A file with no usings prints no blank line for them.
+- **Order.** `AsWritten` (the default) prints the usings in the order they were recorded, so a
+  generator converted to the writer keeps its output. `Sorted` prints `System` namespaces first, then
+  the rest, each group in ordinal order of the namespace.
+- One alias naming two different targets is **`ERR_WRITER_IMPORT_CONFLICT`**.
+- **`Braced(head)`** writes `head`, then a `{` on its own line, indents, and writes `}` when the scope
+  ends: the Allman form C# generators emit.
+- **`DocSummary(lines...)`** writes `/// <summary>`, one `/// text` line per entry (a bare `///` for an
+  empty entry) and `/// </summary>`, at the current indent.
+- **`Hanging()`** is a scope for a statement that carries on after a line that is not finished. It
+  writes nothing, and indents the lines written inside it by one level. A block opened inside it
+  must be closed inside it.
+
 ## Extension by subclassing
 
 A writer and the generators built on it are meant to be extended in place

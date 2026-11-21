@@ -1,0 +1,30 @@
+{
+  "description": "A static using and an alias print as their own directives; naming the same alias twice for one target prints it once.",
+  "dialect": "csharp",
+  "ops": [
+    [
+      "usingStatic",
+      "System.Math"
+    ],
+    [
+      "usingAlias",
+      "Json",
+      "System.Text.Json.JsonSerializer"
+    ],
+    [
+      "usingAlias",
+      "Json",
+      "System.Text.Json.JsonSerializer"
+    ],
+    [
+      "line",
+      "class A { }"
+    ]
+  ],
+  "expected": [
+    "using static System.Math;",
+    "using Json = System.Text.Json.JsonSerializer;",
+    "",
+    "class A { }"
+  ]
+}
