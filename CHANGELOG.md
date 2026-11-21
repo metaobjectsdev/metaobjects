@@ -146,6 +146,15 @@ here.**
   `SpringNaming.packageHeader` is removed; the writer's `packageName` replaces it. The LLM-trace
   helper and the `requirement-tests` generator follow with the same layout changes, and the
   witness-key collision error now lists its colliding pairs on one line, separated by `; `.
+  In `codegen-base`, the entity extractor (`ExtractorCodeGenerator`, whose `write*` seams now take
+  a `JavaWriter`, and whose `writeHeader` no longer takes the extractor name or writes the class
+  opener) and the generated `ObjectClassBindingProvider` move to the writer too, with sorted imports
+  and no blank after the class opener; the older object code writers take their indentation unit
+  from `WriterOptions` (`JAVA`, and the new two-space `DIRECT`) instead of a typed string. Every
+  Java generator now writes through the code writer, so the layout ratchet's `unconverted` list
+  is empty. `CodeWriter`, `JavaWriter`, `WriterOptions` and `SpringJavaWriter` join the Java
+  engine surface (`eject.engineSurface.java.engine`), so an ejected generator imports them from
+  the package rather than copying them.
 
   With no sort, the `ObjectManager` mount now orders by the primary key. The `ObjectManager`
   `Filter` gains `$or` and a case-insensitive `$ilike`, and the class gains `keyFields()` and

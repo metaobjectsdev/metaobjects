@@ -3,6 +3,9 @@ package com.metaobjects.generator.direct.object.javacode;
 // Eject note (ADR-0034 Amendment 6): `mvn metaobjects:eject -Dnames=entity` copies this file
 // together with JavaCodeGenerator, BaseObjectCodeGenerator and the four writers, into one
 // package. The classes named bare below are those copies.
+import com.metaobjects.generator.writer.CodeWriter;
+import com.metaobjects.generator.writer.JavaWriter;
+import com.metaobjects.generator.writer.WriterOptions;
 import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.direct.GenerationContext;
 import com.metaobjects.generator.direct.object.BaseObjectCodeWriter;
@@ -167,33 +170,31 @@ public class JavaObjectCodeGenerator extends JavaCodeGenerator {
         if (!pkgDir.exists()) pkgDir.mkdirs();
         File src = new File(pkgDir, PROVIDER_SIMPLE_NAME + ".java");
 
-        StringBuilder sb = new StringBuilder();
-        sb.append("package ").append(PROVIDER_PACKAGE).append(";\n\n");
-        sb.append("import java.util.Map;\n");
-        sb.append("import java.util.HashMap;\n\n");
-        sb.append("/**\n");
-        sb.append(" * GENERATED — self-registering ").append(ObjectClassBindingProvider.class.getSimpleName())
-          .append(" (ADR-0001).\n");
-        sb.append(" * Maps each generated object's metadata resolution key (\"pkg::Name\") to its\n");
-        sb.append(" * generated Java class, so MetaObject.newInstance() yields the generated type.\n");
-        sb.append(" */\n");
-        sb.append("public final class ").append(PROVIDER_SIMPLE_NAME)
-          .append(" implements ").append(ObjectClassBindingProvider.class.getName()).append(" {\n\n");
-        sb.append("    @Override\n");
-        sb.append("    public Map<String, Class<?>> bindings() {\n");
-        sb.append("        Map<String, Class<?>> m = new HashMap<>();\n");
-        for (Map.Entry<String, String> e : fqnToClass.entrySet()) {
-            sb.append("        m.put(\"").append(escape(e.getKey())).append("\", ")
-              .append(e.getValue()).append(".class);\n");
+        JavaWriter w = new JavaWriter();
+        w.packageName(PROVIDER_PACKAGE);
+        w.use("java.util.Map");
+        w.use("java.util.HashMap");
+        w.line("/**");
+        w.line(" * GENERATED — self-registering " + ObjectClassBindingProvider.class.getSimpleName() + " (ADR-0001).");
+        w.line(" * Maps each generated object's metadata resolution key (\"pkg::Name\") to its");
+        w.line(" * generated Java class, so MetaObject.newInstance() yields the generated type.");
+        w.line(" */");
+        try (var cls = w.block("public final class " + PROVIDER_SIMPLE_NAME
+                + " implements " + ObjectClassBindingProvider.class.getName() + " {")) {
+            w.line("@Override");
+            try (var m = w.block("public Map<String, Class<?>> bindings() {")) {
+                w.line("Map<String, Class<?>> m = new HashMap<>();");
+                for (Map.Entry<String, String> e : fqnToClass.entrySet()) {
+                    w.line("m.put(\"" + escape(e.getKey()) + "\", " + e.getValue() + ".class);");
+                }
+                w.line("return m;");
+            }
         }
-        sb.append("        return m;\n");
-        sb.append("    }\n");
-        sb.append("}\n");
 
         // Guarded: the header above carries the GENERATED marker, so this is overwritten freely
         // while a hand-written provider at the same path is refused. Byte-identical to the
         // previous raw Files.write (UTF-8).
-        GeneratedFileWriter.write(src.toPath(), sb.toString());
+        GeneratedFileWriter.write(src.toPath(), w.toString());
     }
 
     /** Emit the {@code META-INF/services} registration naming the generated provider. */
@@ -203,7 +204,7 @@ public class JavaObjectCodeGenerator extends JavaCodeGenerator {
         File services = new File(servicesDir, ObjectClassBindingProvider.class.getName());
         // Unmarked: a META-INF/services file's content is a bare provider FQN with nowhere to
         // carry a GENERATED marker.
-        GeneratedFileWriter.writeUnmarked(services.toPath(), (PROVIDER_FQN + "\n").getBytes(StandardCharsets.UTF_8));
+        GeneratedFileWriter.writeUnmarked(services.toPath(), new CodeWriter(WriterOptions.JAVA).line(PROVIDER_FQN).toString().getBytes(StandardCharsets.UTF_8));
     }
 
     private static String escape(String s) {
@@ -222,7 +223,7 @@ public class JavaObjectCodeGenerator extends JavaCodeGenerator {
                     .withNameSuffix(getNameSuffix())
                     .addArrayMethods(addArrayMethods())
                     .addKeyMethods(addKeyMethods())
-                    .withIndentor("    ");
+                    .withIndentor(WriterOptions.JAVA.indent());
         }
         if (FLAVOR_VALUE_OBJECT.equals(getFlavor())) {
             return new ValueObjectCodeWriter(loader, pw, context)
@@ -233,7 +234,7 @@ public class JavaObjectCodeGenerator extends JavaCodeGenerator {
                     .withNameSuffix(getNameSuffix())
                     .addArrayMethods(addArrayMethods())
                     .addKeyMethods(addKeyMethods())
-                    .withIndentor("    ");
+                    .withIndentor(WriterOptions.JAVA.indent());
         }
         return super.createWriter(loader, md, pw, context);
     }
