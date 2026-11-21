@@ -110,6 +110,10 @@ export interface Collection {
    *  conventions leave without one. Absent = false. Read by every expected-schema build and by
    *  the mapping generators. */
   readonly foreignKeyIndexes: boolean;
+  /** `migrate.foreignKeyTargets` in `.metaobjects/config.json`: `refuse` (the default) stops a
+   *  migrate or a database verify on a foreign key whose target is not a unique key; `warn`
+   *  reports it and carries on. */
+  readonly foreignKeyTargets: "refuse" | "warn";
   /** `verify.handEdits` in `.metaobjects/config.json`: whether `meta verify --codegen` FAILS on a
    *  hand-edited generated file (`fail`) or lists it as a notice (`notice`). Undefined when the
    *  project does not say, which behaves as `notice`. */
@@ -316,6 +320,7 @@ export async function resolveCollection(
   let schemaConventions: string | undefined;
   let skipRedundantChecks = false;
   let foreignKeyIndexes = false;
+  let foreignKeyTargets: "refuse" | "warn" = "refuse";
   let handEdits: HandEditsPolicy | undefined;
 
   if (hasConfig) {
@@ -341,6 +346,7 @@ export async function resolveCollection(
     schemaConventions = cfg.migrate?.conventions;
     skipRedundantChecks = cfg.migrate?.checks?.skipRedundant === true;
     foreignKeyIndexes = cfg.migrate?.foreignKeyIndexes === true;
+    foreignKeyTargets = cfg.migrate?.foreignKeyTargets ?? "refuse";
     handEdits = cfg.verify?.handEdits;
     // An unknown token is a hard config error naming the valid ones, while
     // `librarySources` keeps skipping one silently for a programmatic caller. The two
@@ -463,6 +469,7 @@ export async function resolveCollection(
     schemaConventions,
     skipRedundantChecks,
     foreignKeyIndexes,
+    foreignKeyTargets,
     handEdits,
     fileIds: new Map(dependencies.map((d) => [d.artifactPath, d.sourceId])),
     importedPackages: [...importedPackages].sort(),

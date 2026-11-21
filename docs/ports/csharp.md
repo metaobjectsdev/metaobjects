@@ -533,8 +533,11 @@ already holds. EF finds the services through `[assembly: DesignTimeServicesRefer
 is generated beside the class when the context's assembly name is known (the single `.csproj` in
 the output directory or above it, or `GenConfig.ContextAssemblyName`). That covers EF's default
 layout, where the migrations live in the context's project. When the migrations or startup project
-is another one, `dotnet meta gen` warns and prints the one line to add to that project; without it
-a changed start scaffolds as `RESTART`. `dotnet ef migrations add --verbose` prints "Using
+is another one and `dotnet meta gen` can see it (the `<Context>ModelSnapshot.cs` is there) without the
+line, a project that declares an `@sequenceStart` fails with `ERR_DESIGN_TIME_REFERENCE_MISSING`, which
+names the project and the one line to add: without it a changed start scaffolds as `RESTART`. A run
+that cannot tell (no snapshot on disk yet), and a project that declares no start, get the warning
+with the same line instead. `dotnet ef migrations add --verbose` prints "Using
 design-time services from assembly …" when they are found.
 
 The start in the model, and the services, are emitted only for a project whose

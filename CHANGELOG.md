@@ -10,6 +10,18 @@ here.**
 
 ## [Unreleased]
 
+- **C#: a `@sequenceStart` whose migrations project lacks the design-time services line is a generation
+  error.** When `dotnet meta gen` can see the context's `ModelSnapshot.cs` in another project and that
+  project does not carry `[assembly: DesignTimeServicesReference]`, the next `dotnet ef migrations add`
+  would scaffold `RESTART WITH n` and hand out ids live rows hold. The run now fails with
+  `ERR_DESIGN_TIME_REFERENCE_MISSING`, naming the project and the line to add, instead of warning. A
+  run that cannot tell (no snapshot on disk yet) and a project that declares no `@sequenceStart` still
+  get the warning.
+- **`migrate.foreignKeyTargets: "warn"` turns the refusal of a foreign key onto a non-unique target into
+  a report.** For a database whose unique index on the target is hand-made and not declared in the
+  metadata. The default, `"refuse"`, is the 1.3.0 behavior; the refusal's hint now names the setting. See
+  [Migrations and drift](docs/features/migrations-and-drift.md).
+
 ## [1.3.0] — unreleased
 
 

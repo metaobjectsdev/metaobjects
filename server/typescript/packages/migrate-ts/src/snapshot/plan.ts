@@ -6,6 +6,7 @@ import { collectUnmanagedNames } from "../unmanaged.js";
 import { carryForwardOutOfScope, scopeExpectedSchema, scopedDiffInputs, type ObjectScopePredicate } from "../scope.js";
 import type { Dialect, DiffResult, SchemaSnapshot } from "../types.js";
 import type { ExpectedViewInput, SchemaBuildSettings } from "../expected-schema.js";
+import type { FkTargetViolation } from "../errors.js";
 
 /** `conventions` and `skipRedundantChecks`: the project's schema settings, passed to the build. */
 export interface PlanOfflineArgs extends Pick<DiffArgs, "allow" | "onAmbiguous" | "renames" | "ignoreTables">, SchemaBuildSettings {
@@ -56,6 +57,12 @@ export interface PlanOfflineResult {
   /** The subset of `outOfScope` a dependency contributed (FR-023), so the CLI can say
    *  WHY those objects were excluded. `undefined` when no `imported` was given. */
   importedOutOfScope: readonly string[] | undefined;
+  /** Foreign keys onto a non-unique target on a table this run does not govern: reported, not refused. */
+  ungovernedFkTargetViolations?: readonly FkTargetViolation[];
+  /** Foreign keys onto a non-unique target the run carries on past (SQLite, or `migrate.foreignKeyTargets: "warn"`). */
+  unenforcedFkTargetViolations?: readonly FkTargetViolation[];
+  /** Set with `unenforcedFkTargetViolations` when `migrate.foreignKeyTargets: "warn"` is the reason. */
+  fkTargetsAllowed?: true;
 }
 
 /**
@@ -71,6 +78,7 @@ export async function planOffline(args: PlanOfflineArgs): Promise<PlanOfflineRes
       conventions: args.conventions,
       skipRedundantChecks: args.skipRedundantChecks,
       foreignKeyIndexes: args.foreignKeyIndexes,
+      foreignKeyTargets: args.foreignKeyTargets,
     }),
     args.inScope,
     args.imported !== undefined ? { imported: args.imported } : undefined,
@@ -105,6 +113,9 @@ export async function planOffline(args: PlanOfflineArgs): Promise<PlanOfflineRes
     expected: scoped.snapshot,
     outOfScope: scoped.outOfScope,
     importedOutOfScope: scoped.importedOutOfScope,
+    ...(scoped.ungovernedFkTargetViolations !== undefined ? { ungovernedFkTargetViolations: scoped.ungovernedFkTargetViolations } : {}),
+    ...(scoped.unenforcedFkTargetViolations !== undefined ? { unenforcedFkTargetViolations: scoped.unenforcedFkTargetViolations } : {}),
+    ...(scoped.fkTargetsAllowed !== undefined ? { fkTargetsAllowed: true as const } : {}),
   };
 }
 
@@ -121,5 +132,6 @@ export function baselineFromMetadata(
     conventions: settings?.conventions,
     skipRedundantChecks: settings?.skipRedundantChecks,
     foreignKeyIndexes: settings?.foreignKeyIndexes,
+    foreignKeyTargets: settings?.foreignKeyTargets,
   });
 }

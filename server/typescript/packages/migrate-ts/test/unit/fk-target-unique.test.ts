@@ -225,6 +225,42 @@ describe("buildExpectedSchema — an FK must reference a unique key", () => {
   });
 });
 
+describe('migrate.foreignKeyTargets: "warn" reports an FK onto a non-unique target instead of refusing it', () => {
+  // For a database whose unique index on the target is hand-made and not declared in the metadata.
+  // Postgres still decides at apply time; the setting only stops MetaObjects refusing first.
+  test("refuse (and absent) keep the refusal on every dialect that refuses", async () => {
+    const root = await loadDoc(makeDoc({ references: "Person.code", holderFields: ["personCode"] }));
+    expect(() => buildExpectedSchema(root, { dialect: "postgres", foreignKeyTargets: "refuse" })).toThrow(FkTargetNotUniqueError);
+    expect(() => buildExpectedSchema(root, { dialect: "d1", foreignKeyTargets: "refuse" })).toThrow(FkTargetNotUniqueError);
+    expect(() => buildExpectedSchema(root, { dialect: "postgres" })).toThrow(FkTargetNotUniqueError);
+  });
+
+  test("warn builds the schema on Postgres and D1, FK included", async () => {
+    const root = await loadDoc(makeDoc({ references: "Person.code", holderFields: ["personCode"] }));
+    for (const dialect of ["postgres", "d1"] as const) {
+      const snapshot = buildExpectedSchema(root, { dialect, foreignKeyTargets: "warn" });
+      const visit = snapshot.tables.find((t) => (t.foreignKeys ?? []).length > 0);
+      expect(visit).toBeDefined();
+    }
+  });
+
+  test("warn returns the violations as unenforced, naming the setting as the reason", async () => {
+    const root = await loadDoc(makeDoc({ references: "Person.code", holderFields: ["personCode"] }));
+    const built = buildExpectedSchemaWithProvenance(root, { dialect: "postgres", foreignKeyTargets: "warn" });
+    const scoped = scopeExpectedSchema(built, undefined);
+    expect(scoped.unenforcedFkTargetViolations?.map((v) => v.referenceName)).toEqual(["ref_person"]);
+    expect(scoped.fkTargetsAllowed).toBe(true);
+  });
+
+  test("warn changes nothing for a model with no violation", async () => {
+    const root = await loadDoc(makeDoc({ references: "Person.code", holderFields: ["personCode"], codeUnique: true }));
+    const built = buildExpectedSchemaWithProvenance(root, { dialect: "postgres", foreignKeyTargets: "warn" });
+    expect(built.fkTargetViolations).toBeUndefined();
+    expect(built.fkTargetsAllowed).toBeUndefined();
+    expect(scopeExpectedSchema(built, undefined).unenforcedFkTargetViolations).toBeUndefined();
+  });
+});
+
 describe("on SQLite an FK onto a non-unique target is reported, not refused", () => {
   // SQLite checks foreign keys only with PRAGMA foreign_keys on (off by default), so the
   // DDL is accepted and only an enforced write fails. D1 always enforces them, and Postgres

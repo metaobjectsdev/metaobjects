@@ -65,6 +65,7 @@ pub const ALLOW_TOKENS: &[&str] = &[
 const MIGRATE_DIALECTS: &[&str] = &["sqlite", "postgres", "d1"];
 const MIGRATE_FORMATS: &[&str] = &["default", "flyway"];
 const MIGRATE_ON_AMBIGUOUS: &[&str] = &["abort", "rename", "drop-add"];
+const MIGRATE_FOREIGN_KEY_TARGETS: &[&str] = &["refuse", "warn"];
 
 macro_rules! string_enum {
     ($(#[$m:meta])* $name:ident { $($var:ident => $s:literal),+ $(,)? }) => {
@@ -249,6 +250,9 @@ pub struct MigrateConfig {
     /// `migrate.checks` was present (possibly empty).
     pub checks_present: bool,
     pub foreign_key_indexes: Option<bool>,
+    /// `migrate.foreignKeyTargets`: `refuse` (the default) or `warn`. Validated and kept; the
+    /// foreign-key target check is the TypeScript migrate engine's, so nothing here reads it.
+    pub foreign_key_targets: Option<String>,
 }
 
 /// One declared metadata dependency (FR-023). Parsed and validated only.
@@ -724,6 +728,7 @@ fn parse_migrate(v: &Value, issues: &mut Issues) -> Option<MigrateConfig> {
         "conventions",
         "checks",
         "foreignKeyIndexes",
+        "foreignKeyTargets",
     ];
     let o = strict_object(v, "migrate", KEYS, issues)?;
     let s = |key: &str, issues: &mut Issues| {
@@ -802,6 +807,15 @@ fn parse_migrate(v: &Value, issues: &mut Issues) -> Option<MigrateConfig> {
     m.foreign_key_indexes = o
         .get("foreignKeyIndexes")
         .and_then(|v| bool_of(v, "migrate.foreignKeyIndexes", issues));
+    m.foreign_key_targets = o.get("foreignKeyTargets").and_then(|v| {
+        enum_of(
+            v,
+            "migrate.foreignKeyTargets",
+            MIGRATE_FOREIGN_KEY_TARGETS,
+            None,
+            issues,
+        )
+    });
     Some(m)
 }
 
