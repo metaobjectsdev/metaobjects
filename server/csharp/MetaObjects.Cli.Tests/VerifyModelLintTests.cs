@@ -92,6 +92,28 @@ public sealed class VerifyModelLintTests : IDisposable
         Assert.DoesNotContain("deprecations:", stderr);
     }
 
+    [Fact]
+    public void Name_and_deprecation_lints_read_the_same_load_the_gate_reports()
+    {
+        var (model, templates) = Project();
+        var file = Path.Combine(model, "meta.app.json");
+        File.WriteAllText(file, File.ReadAllText(file).Replace("\"name\": \"Item\",", "\"name\": \"Item\", \"@bogusAttr\": \"x\","));
+
+        // Strict (default): the model does not load, so the load-reading lints stay silent; the
+        // overlay lint reads raw files and still reports.
+        var (strictExit, _, strict) = CliProcess.Run(_tmp, "verify", model, "--templates", "--prompts", templates);
+        Assert.NotEqual(0, strictExit);
+        Assert.DoesNotContain("names:", strict);
+        Assert.DoesNotContain("deprecations:", strict);
+        Assert.Contains("WARN_OVERLAY_IMPLICIT", strict);
+
+        // --lax: the same model loads, so both sections print.
+        var (laxExit, laxOut, lax) = CliProcess.Run(_tmp, "verify", model, "--templates", "--prompts", templates, "--lax");
+        Assert.True(laxExit == 0, $"stdout={laxOut}\nstderr={lax}");
+        Assert.Contains(NamesHeader, lax);
+        Assert.Contains(DeprecationsHeader, lax);
+    }
+
     public static TheoryData<string, string, string> OptOuts() => new()
     {
         { "--no-overlay-lint", OverlayLint.EnvOptOut, "WARN_OVERLAY_IMPLICIT" },

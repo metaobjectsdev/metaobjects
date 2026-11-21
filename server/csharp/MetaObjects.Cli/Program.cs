@@ -678,7 +678,8 @@ static int RunVerify(string[] rest)
         resolvedMeta,
         metadataDir is not null ? Path.GetFullPath(metadataDir) : Directory.GetCurrentDirectory(),
         ModelLints.Selection.From(noOverlayLint, noNameLint, noDeprecationLint),
-        Console.Error);
+        Console.Error,
+        strict: !lax);
 
     // The field AUTHORING lint — a reference identity over a field the object lacks, a
     // field name declared twice in one children list. Both load clean on every port. Runs

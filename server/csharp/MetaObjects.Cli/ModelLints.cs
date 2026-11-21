@@ -40,7 +40,7 @@ public static class ModelLints
     /// reads the raw files, so it runs even when the model does not load; the other two read the loaded
     /// model and stay silent when it does not (the load failure is reported by the gates).
     /// </summary>
-    public static void RunAdvisory(ResolvedMetadata meta, string baseDir, Selection selection, TextWriter stderr)
+    public static void RunAdvisory(ResolvedMetadata meta, string baseDir, Selection selection, TextWriter stderr, bool strict = true)
     {
         if (!selection.Overlays && !selection.Names && !selection.Deprecations) return;
         List<LintFinding> overlays = [], names = [], deprecations = [];
@@ -49,7 +49,7 @@ public static class ModelLints
             if (selection.Overlays) overlays = OverlayLint.Lint(Sources(meta, baseDir));
             if (selection.Names || selection.Deprecations)
             {
-                var load = meta.Load();
+                var load = meta.Load(strict);
                 if (load.Errors.Count == 0)
                 {
                     if (selection.Names) names = NameLint.Lint(load.Root);
