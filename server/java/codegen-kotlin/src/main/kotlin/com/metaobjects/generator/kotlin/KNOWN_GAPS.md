@@ -235,8 +235,8 @@ An `isArray` `field.enum` that is string-backed is typed `List<E>` on the data c
 `KotlinExposedTableGenerator.enumColumnSpec` emits a SCALAR column for it (`enumerationByName` /
 `customEnumeration`), so the generated controller for the entity does not compile. Nothing silently
 stores symbols in the wrong column: the mismatch fails the build. The fix is the same shape as the
-int-backed one, which has its own array column (`portableIntEnumArray`, in
-`MetaIntEnumArrayColumnType.kt`): an array column whose element codec is the enum's. The compile
+int-backed one ([Int-backed enum arrays](../../../../../../../../../../docs/features/field-types.md#int-backed-enum-arrays)):
+an array column whose element codec is the enum's. The compile
 gates carry no string-backed enum array, so none of them excludes anything.
 
 ## Composite-FK relationships not emitted

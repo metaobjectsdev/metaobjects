@@ -294,14 +294,11 @@ public class MustacheTemplateGenerator implements Generator {
             String fileName = className + "." + template.getOutputFileExtension();
             String packagePath = template.isPackagePath() ? getPackagePath(metaObject) : "";
             
-            // Create output directory
+            // Write generated file (the writer creates the directory). Unmarked: the body is a
+            // user template's output, in a format we do not choose.
             Path outputPath = Paths.get(outputDir, packagePath);
-            Files.createDirectories(outputPath);
-            
-            // Write generated file
             File outputFile = outputPath.resolve(fileName).toFile();
-            com.metaobjects.generator.util.GeneratedFileWriter.writeIfChanged(
-                outputFile.toPath(), generatedCode, java.nio.charset.Charset.defaultCharset());
+            com.metaobjects.generator.util.GeneratedFileWriter.writeUnmarked(outputFile.toPath(), generatedCode);
             
             log.debug("Generated file: {}", outputFile.getAbsolutePath());
             

@@ -156,8 +156,8 @@ thing in git and the only thing anyone reads.
 ## 7. Safety: never clobbering hand edits
 
 The backstop under every strategy above is that the generator will not silently eat your
-work. **Every port decides from the committed hash manifest, and the `@generated` header is
-not the decision:**
+work. **Every port decides from the committed hash manifest. The `@generated` header is not
+the decision, except on Java and Kotlin for a file the manifest has no record of:**
 
 - **TypeScript** decides from `.metaobjects/.gen-state/` — the snapshot body if this
   machine has one (three-way merge), otherwise the committed `.hashes/` (byte-for-byte
@@ -175,14 +175,9 @@ not the decision:**
   marker, refuse one without it — and in that mode the header IS load-bearing, in both
   directions. Neither `dotnet meta gen` nor `metaobjects gen` can put you there: both
   always supply the directory. If you embed either runner, supply one too.
-- **Java and Kotlin** decide from the same committed hash manifest since 8.1.0 (ADR-0060):
-  `GeneratedFileWriter` records what it writes, and an edited file is refused. The
-  `GENERATED` header token decides only for a file the manifest has no record of: one that
-  carries it is adopted as generated output, one that does not is refused. A refusal there
-  is a warning, not a build failure.
-
-Both are stated in full, per port, in
-[own-your-codegen.md](own-your-codegen.md).
+- **Java and Kotlin** decide from the same committed manifest, and their refusal is a
+  warning, not a build failure. The full rule is in
+  [own-your-codegen.md](own-your-codegen.md#hand-edits-and-the-hash-manifest-every-port).
 
 ## 8. Bind metadata → native types at build time, never runtime reflection
 
@@ -298,8 +293,8 @@ registered escaper formats; a `target` field is **rejected** (the CLI ports have
 output-target concept). The same neutral data dict, output-pattern grammar, and
 conformance corpus apply, so a spec renders byte-identically across ports. The standard
 write path decides from the hash manifest, not the header (section 7), so a template need
-not emit the `@generated` marker. The JVM's `TemplateScopeGenerator` writes directly and
-keeps no manifest record.)
+not emit the `@generated` marker. The JVM's `TemplateScopeGenerator` is recorded in the same
+manifest (see [own-your-codegen.md](own-your-codegen.md#hand-edits-and-the-hash-manifest-every-port)).
 
 **The spec is declared, never discovered.** Through 1.0 both CLI ports also read a
 `--template-spec` flag or a project-root `template-spec.json` on their own. Since 1.1.0 a spec

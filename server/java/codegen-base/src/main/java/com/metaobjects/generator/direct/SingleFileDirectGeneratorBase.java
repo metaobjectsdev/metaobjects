@@ -26,7 +26,6 @@ public abstract class SingleFileDirectGeneratorBase<T extends FileDirectWriter> 
             // Create output file
             filename = getOutputFilename();
             outf = new File(getOutputDir(), filename );
-            outf.createNewFile();
 
             // Get the printwriter
             pw = new PrintWriter(buffer);   // written below, and only when the bytes differ from what is on disk
@@ -52,7 +51,7 @@ public abstract class SingleFileDirectGeneratorBase<T extends FileDirectWriter> 
             else if ( pw != null ) pw.close();
             if ( outf != null && pw != null ) {
                 try {
-                    com.metaobjects.generator.util.GeneratedFileWriter.writeIfChanged(outf.toPath(), buffer.toByteArray());
+                    com.metaobjects.generator.util.GeneratedFileWriter.writeUnmarked(outf.toPath(), buffer.toByteArray());
                 } catch (IOException e) {
                     throw new GeneratorException( "Unable to write to file [" + filename + "]: " + e, e );
                 }

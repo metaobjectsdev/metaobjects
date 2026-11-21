@@ -18,8 +18,8 @@ Through 8.0.x, `mvn metaobjects:generate` decided whether it could overwrite a f
 had edited it. A file that was no longer generated (a renamed value object, a deleted entity)
 stayed on disk forever, because nothing recorded what a run had written.
 
-From 8.1.0 the Java and Kotlin generators record every file they write in a committed hash
-manifest, the same one TypeScript, Python and C# use:
+From 8.1.0 the Java and Kotlin generators record the generated source they write in a committed
+hash manifest, the same one TypeScript, Python and C# use:
 
 ```
 <module basedir>/.metaobjects/.gen-state/.hashes/<package>.json
@@ -39,14 +39,8 @@ generator of your own) and that generator's output directory within the module:
 }
 ```
 
-With it:
-
-- a file that still matches its record is overwritten as before;
-- **a file you edited is refused by name**, and the build logs a warning (it does not fail);
-- **a file no generator emits any more is deleted** when it still matches its record, and
-  refused by name when you edited it;
-- a file the manifest has no record of, and that has no `GENERATED` token, is refused, as
-  before.
+The rules that apply now, for every port, are stated once in
+[Hand edits and the hash manifest](../own-your-codegen.md#hand-edits-and-the-hash-manifest-every-port).
 
 ## What to do
 
@@ -122,11 +116,12 @@ also deleted, when every generator writing into its directory sets `overwrite`.
 That still works: deleting the line is an edit, so the file no longer matches its record and
 is refused.
 
-## What does not change
+## What does not change, and what 1.3.0 adds
 
-- User templates (`TemplateScopeGenerator`, `MustacheTemplateGenerator`), the api-docs pages
-  and the `META-INF/services` registration are not recorded. They are written on every run as
-  before, and the run never deletes them.
+- User templates, the documentation pages and the `META-INF/services` registration were not
+  recorded in 8.1.0, so they had no hand-edit protection there. From 1.3.0 they are
+  recorded like every other generated file. An existing file at such a path with no record
+  is adopted on the first run, not refused (see the CHANGELOG, 1.3.0 section).
 - A refusal is still a warning on the JVM. `mvn metaobjects:verify` is the gate that fails:
   it reports a stale file, says whether `generate` deletes it, and tells you to delete an
   edited one yourself.

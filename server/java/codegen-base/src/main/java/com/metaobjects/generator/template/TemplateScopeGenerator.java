@@ -79,17 +79,11 @@ public class TemplateScopeGenerator extends GeneratorBase {
         for (EmittedFile f : files) {
             Path target = outDir.toPath().resolve(f.path());
             try {
-                Files.createDirectories(target.getParent());
-                // NOT routed through GeneratedFileWriter, deliberately. This emits whatever
-                // a USER's `--template-spec` Mustache renders — SQL, markdown, CSV, anything
-                // — and that content carries no obligation to include the `GENERATED` marker
-                // the guard looks for. Guarding it made the first run write and every run
-                // after silently refuse, so metadata changes stopped reaching the artifact
-                // with the build still green.
-                //
-                // The marker floor protects output whose header WE control. User template
-                // output is not that.
-                com.metaobjects.generator.util.GeneratedFileWriter.writeIfChanged(target, f.content());
+                // Unmarked: this emits whatever a USER's `--template-spec` Mustache renders —
+                // SQL, markdown, CSV, anything — and that content carries no obligation to
+                // include the `GENERATED` marker. It is still recorded in the hash manifest, so
+                // unchanged bytes are not rewritten and a hand edit is refused by name.
+                com.metaobjects.generator.util.GeneratedFileWriter.writeUnmarked(target, f.content());
             } catch (IOException e) {
                 throw new GeneratorException(
                     "Failed to write template-codegen output [" + target + "]: " + e.getMessage(), e);

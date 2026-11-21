@@ -203,7 +203,7 @@ final class GenFingerprint {
         o.add("outputs", outs);
         try {
             Files.createDirectories(file.getParent());
-            Files.writeString(file, GSON.toJson(o) + "\n", StandardCharsets.UTF_8);
+            com.metaobjects.generator.util.GeneratedFileWriter.writeIfChanged(file, GSON.toJson(o) + "\n");
         } catch (IOException e) {
             throw new UncheckedIOException("Could not write the codegen fingerprint at " + file, e);
         }

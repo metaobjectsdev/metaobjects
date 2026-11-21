@@ -163,6 +163,36 @@ public class MetaDataEjectMojoTest {
     }
 
     @Test
+    public void forceLeavesAnIdenticalCopyAndPomUnwritten() throws Exception {
+        mojo("dto", false, null, null).execute();
+        Path target = codegenRoot().resolve("src/main/java/com/acme/codegen/SpringDtoGenerator.java");
+        Path pom = codegenRoot().resolve("pom.xml");
+        java.nio.file.attribute.FileTime longAgo = java.nio.file.attribute.FileTime.fromMillis(1_000_000_000_000L);
+        Files.setLastModifiedTime(target, longAgo);
+        Files.setLastModifiedTime(pom, longAgo);
+
+        mojo("dto", true, null, null).execute();
+
+        assertEquals("an identical copy is not rewritten, even with force", longAgo, Files.getLastModifiedTime(target));
+        assertEquals("an identical pom is not rewritten, even with force", longAgo, Files.getLastModifiedTime(pom));
+    }
+
+    @Test
+    public void forceOverAnIdenticalPomStillPrintsTheModulesHint() throws Exception {
+        mojo("dto", false, null, null).execute();
+        MetaDataEjectMojo again = mojo("dto", true, null, null);
+        Log log = Mockito.mock(Log.class);
+        again.setLog(log);
+
+        again.execute();
+
+        ArgumentCaptor<CharSequence> captor = ArgumentCaptor.forClass(CharSequence.class);
+        Mockito.verify(log, Mockito.atLeastOnce()).info(captor.capture());
+        assertTrue(captor.getAllValues().stream()
+                .anyMatch(m -> m.toString().contains("Add this module to the parent pom's <modules>:")));
+    }
+
+    @Test
     public void aSecondPomIsLeftUntouchedWithoutForce() throws Exception {
         mojo("dto", false, null, null).execute();
         Path pom = codegenRoot().resolve("pom.xml");
