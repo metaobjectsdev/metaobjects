@@ -158,6 +158,34 @@ def test_a_name_the_model_does_not_hold_is_refused(
     assert not out.exists() or not _stems(out)
 
 
+def test_a_generator_may_not_cover_what_its_required_generator_is_limited_away_from(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # `routes` imports the filter allowlist of each entity it routes. Limiting the allowlist to
+    # Invoice while routes covers Order and Person would emit routers that fail to import.
+    out = _project(
+        tmp_path, "- entity\n- {name: filter-allowlist, entities: [Invoice]}\n- routes\n")
+    monkeypatch.chdir(tmp_path)
+    assert main(["gen"]) != 0
+    err = capsys.readouterr().err
+    assert "'routes' requires 'filter-allowlist', which is limited away from" in err
+    assert "'Order'" in err and "'Person'" in err and "'Invoice'" not in err
+    assert not out.exists() or not _stems(out)
+
+
+def test_limiting_a_generator_and_the_one_it_requires_to_the_same_entity_is_accepted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    out = _project(
+        tmp_path,
+        "- entity\n- {name: filter-allowlist, entities: [Invoice]}\n"
+        "- {name: routes, entities: [Invoice]}\n",
+    )
+    monkeypatch.chdir(tmp_path)
+    assert main(["gen"]) == 0
+    assert "invoice_router" in _stems(out) and "order_router" not in _stems(out)
+
+
 def test_the_selection_stays_inside_the_targets_entities(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
