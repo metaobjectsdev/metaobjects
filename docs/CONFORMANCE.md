@@ -203,10 +203,11 @@ the metadata package, so two packages that each declare an object of the same na
 collide on an output path. State per port:
 
 - *Done, C#:* every per-object generator writes through `OutputPaths.Of`
-  (`<package segments>/<file>`; root-level objects at the root). The path follows the metadata
-  package, not `PackageNamespaces`. Since rc.19 R65 the namespace follows the package too
-  (`acme::alpha` → `Acme.Alpha`) unless a binding maps it; every cross-namespace reference is
-  `global::`-qualified. Tests: `OutputPathsTests`, `PackageNamespaceTests`.
+  (`<package segments>/<file>` under `csharp.outputLayout: "package"`, opt-in; flat otherwise;
+  root-level objects at the root). The path follows the metadata package, not `PackageNamespaces`.
+  The namespace follows the package only with `csharp.packageNamespaces: true`, opt-in since
+  1.3.0 (R64, R65; `acme::alpha` → `Acme.Alpha`), unless a binding maps it; every cross-namespace
+  reference is `global::`-qualified. Tests: `OutputPathsTests`, `PackageNamespaceTests`.
 - *Done, TypeScript:* `outputLayout` defaults to `"flat"`; `"package"` is opt-in (ruling
   R63). Tests: `barrel-layout.test.ts` (the barrel exports the same
   names in both layouts), `naming/name-claims.test.ts`.

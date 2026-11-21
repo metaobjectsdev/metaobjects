@@ -28,8 +28,10 @@ A command you do not pass is reported `skipped`, never `passed`. However the run
 `git reset --hard` and `git clean -fd`. That deletes every untracked file in the estate, the regenerated
 output included, so the estate must start clean and `--report` must name a file outside it (a path
 inside the estate is refused). `--keep-linked` skips the restore and leaves the link and the
-regenerated tree in place. `--no-link` skips link and unlink but still restores the estate. `--help` lists the per-port defaults and the flags that
-override them. Rust has no estate path: a Rust consumer pins the commit
+regenerated tree in place. `--no-link` skips link and unlink but still restores the estate. `--help`
+lists the flags. The default install, generation, verify and version-read commands for each port
+are in the `case` block of `estate-run.sh`; `--install-cmd`, `--gen-cmd`, `--verify-cmd` and
+`--versions-cmd` override them. Rust has no estate path: a Rust consumer pins the commit
 (`docs/features/prerelease.md`, "Rust").
 
 ## Every candidate, every estate (the base run)

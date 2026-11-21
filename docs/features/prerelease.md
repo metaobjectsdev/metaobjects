@@ -154,11 +154,14 @@ The default scope is npm and Maven only, so a Python or a C# estate gets nothing
 `prerelease:publish`. Use the full command for any candidate an estate in those ports will run;
 name a narrower `--only` only for a fix you are iterating on one port.
 
-**The log.** Every run that publishes appends one row to
+**The log.** Every run that starts a publish appends one row to
 [`tools/prerelease/candidates.md`](../../tools/prerelease/candidates.md): the candidate, the full
 `HEAD` it was built from (shortened to 12 characters, `+dirty` when tracked files outside the
-version declarations were modified), the UTC date, and the ecosystems published. It names
-ecosystems, never the registry host. The script writes the row after it has restored the
+version declarations were modified), the UTC date, and the ecosystems published. A run that stops
+partway still writes its row: a registry whose publish began but did not finish reads
+`<ecosystem> (cut short)`, because its candidate number is taken there, and a registry the run
+was asked for but never reached reads `stopped before <ecosystem>`. A dry run writes no row. It
+names ecosystems, never the registry host. The script writes the row after it has restored the
 version files, so the row is the only change the run leaves; **commit it**, so the repository
 records what each candidate was built from. Build a candidate from a commit that is already
 pushed: a sha nobody can fetch is not a record.
