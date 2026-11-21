@@ -18,6 +18,8 @@ import java.util.stream.Stream;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  * Cross-port render-conformance GATE — asserts Java's render output is
@@ -67,6 +69,7 @@ public class RenderCrossPortReportTest {
         try (Stream<Path> s = Files.list(FIXTURES_DIR)) {
             return s.filter(Files::isDirectory)
                 .filter(d -> Files.isRegularFile(d.resolve("expected.txt"))
+                          || Files.isRegularFile(d.resolve("expected-error.txt"))
                           || Files.isRegularFile(d.resolve("expected/rendered.txt")))
                 .sorted()
                 .map(p -> new Object[]{p.getFileName().toString(), p})
@@ -103,6 +106,22 @@ public class RenderCrossPortReportTest {
         Provider provider = Files.isDirectory(fixtureDir.resolve("partials"))
             ? new FilesystemProvider(fixtureDir)
             : new InMemoryProvider(Map.of());
+
+        // A fixture carrying expected-error.txt must FAIL to render, and the message must contain
+        // the file's trimmed text (a missing template variable raises on every render path).
+        Path expectedErrorPath = fixtureDir.resolve("expected-error.txt");
+        if (Files.isRegularFile(expectedErrorPath)) {
+            String want = Files.readString(expectedErrorPath, StandardCharsets.UTF_8).trim();
+            try {
+                new Renderer().render(new RenderRequest(
+                    template, null, payload, provider, format, null, null));
+                fail("fixture '" + name + "' must fail to render with: " + want);
+            } catch (RenderException e) {
+                assertTrue("error for '" + name + "' must contain '" + want + "' but was: " + e.getMessage(),
+                    e.getMessage().contains(want));
+            }
+            return;
+        }
 
         String actual = new Renderer().render(new RenderRequest(
             template, null, payload, provider, format, null, null));

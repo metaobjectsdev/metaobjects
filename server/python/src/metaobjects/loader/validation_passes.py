@@ -153,6 +153,10 @@ from ..meta.core.identity.identity_constants import (
 )
 from ..shared.separators import PACKAGE_SEP
 from ..meta.core.object.object_constants import (
+    OBJECT_PROJECTION_ATTR_GRAIN,
+    OBJECT_PROJECTION_ATTR_GRAIN_ORDINAL,
+    OBJECT_PROJECTION_ATTR_UNION,
+    OBJECT_PROJECTION_ATTR_UNION_ALL,
     OBJECT_SUBTYPE_ENTITY,
     OBJECT_SUBTYPE_PROJECTION,
     OBJECT_SUBTYPE_VALUE,
@@ -231,6 +235,8 @@ def run_validations(
     _validate_datagrid_filter_values(root, errors)
     # #207 — object.projection view-level @filter reference validation.
     _validate_projection_filter(root, errors)
+    # rc.21 part B — @union / @grain / @grainOrdinal shape rules on object.projection.
+    _validate_projection_union_and_grain(root, errors)
     # Origin @segment names a segment of the related entity; a correlated @filter operand names
     # a base-row field.
     _validate_origin_segments_and_correlation(root, errors)
@@ -1931,6 +1937,115 @@ def _filter_keys(filter_value: object, out: list[str] | None = None) -> list[str
         else:
             out.append(key)
     return out
+
+
+def _own_string_list(node: MetaData, name: str) -> list[str]:
+    # ADR-0039 sanctioned own: a projection's @union names ITS view's shape.
+    raw = node.attr(name)
+    if raw is None:
+        return []
+    if isinstance(raw, (list, tuple)):
+        return [str(x) for x in raw]
+    return [str(raw)]
+
+
+def _describe_union_field(f: MetaData) -> str:
+    """One union column as a comparable string: name, subtype, array-ness, @column and an
+    enum's members and value maps."""
+    arr = "[]" if f.resolved_is_array() else ""
+    col = f.get_meta_attr("column")
+    out = f"{f.name}: field.{f.sub_type}{arr}"
+    if isinstance(col, str):
+        out += f" @column {col}"
+    if f.sub_type == FIELD_SUBTYPE_ENUM:
+        shape = [
+            f.get_meta_attr(FIELD_ATTR_VALUES),
+            f.get_meta_attr(FIELD_ATTR_INT_VALUE_MAP),
+            f.get_meta_attr(FIELD_ATTR_STRING_VALUE_MAP),
+        ]
+        out += " " + json.dumps(shape, separators=(",", ":"))
+    return out
+
+
+def _validate_projection_union_and_grain(root: MetaData, errors: list[MetaError]) -> None:
+    """rc.21 part B -- the projection shapes beside a plain view (mirrors TS
+    ``validateProjectionUnionAndGrain``): ``@union`` members share this view's effective
+    fields in order; ``@grain`` names a base-entity jsonb ``field.object`` array;
+    ``@grainOrdinal`` names a bare ``field.int``/``field.long`` of the projection.
+    ERR_BAD_ATTR_VALUE otherwise."""
+    # ADR-0039 sanctioned own: root has no super; every projection is declared at root level.
+    for obj in root.own_children():
+        if obj.type != TYPE_OBJECT or obj.sub_type != OBJECT_SUBTYPE_PROJECTION:
+            continue
+
+        def bad(message: str, obj: MetaData = obj) -> None:
+            errors.append(MetaError(
+                f"object.projection {obj.name}: {message}",
+                ErrorCode.ERR_BAD_ATTR_VALUE, envelope=obj.source))
+
+        union_attr = OBJECT_PROJECTION_ATTR_UNION
+        # ADR-0039 sanctioned own: @union / @grain describe ITS view; an extender declares its own.
+        has_union = obj.attr(union_attr) is not None
+        if obj.attr(OBJECT_PROJECTION_ATTR_UNION_ALL) is not None and not has_union:
+            bad(f"@{OBJECT_PROJECTION_ATTR_UNION_ALL} needs @{union_attr}.")
+        if has_union:
+            referrer_pkg = obj.package or obj.file_default_package or ""
+            mine = [_describe_union_field(c) for c in obj.children() if c.type == TYPE_FIELD]
+            for name in _own_string_list(obj, union_attr):
+                member = resolve_object_ref(root, name, referrer_pkg)
+                if member is None or member.type != TYPE_OBJECT or member.sub_type != OBJECT_SUBTYPE_PROJECTION:
+                    bad(f'@{union_attr} names "{name}", which is not an object.projection.')
+                    continue
+                if member is obj:
+                    bad(f"@{union_attr} names the projection itself.")
+                    continue
+                # ADR-0039 sanctioned own: a member's own @union would be flattened away, silently.
+                if member.attr(union_attr) is not None:
+                    bad(f'@{union_attr} member "{member.name}" declares its own @{union_attr}; '
+                        "name its members here instead.")
+                theirs = [_describe_union_field(c) for c in member.children() if c.type == TYPE_FIELD]
+                if mine != theirs:
+                    bad(f'@{union_attr} member "{member.name}" has a different shape: '
+                        f"({', '.join(theirs)}) where this view is ({', '.join(mine)}). "
+                        "A union's members have the same fields, in order.")
+        grain_attr = OBJECT_PROJECTION_ATTR_GRAIN
+        ordinal_attr = OBJECT_PROJECTION_ATTR_GRAIN_ORDINAL
+        grain = obj.attr(grain_attr)
+        ordinal = obj.attr(ordinal_attr)
+        if ordinal is not None and grain is None:
+            bad(f"@{ordinal_attr} needs @{grain_attr}.")
+        if not isinstance(grain, str):
+            continue
+        base = _derive_base_entity(obj, root, obj.package or "", "@grain", obj.source, [])
+        field = None
+        if base is not None:
+            field = next((c for c in base.children() if c.type == TYPE_FIELD and c.name == grain), None)
+        storage = field.get_meta_attr(FIELD_ATTR_STORAGE) if field is not None else None
+        if (
+            field is None
+            or field.sub_type != FIELD_SUBTYPE_OBJECT
+            or not field.resolved_is_array()
+            or (storage is not None and storage != "jsonb")
+            or bound_ref_target(field, FIELD_ATTR_OBJECT_REF) is None
+        ):
+            base_note = f' "{base.name}"' if base is not None else ""
+            bad(f'@{grain_attr} "{grain}" must name a field.object array (isArray, jsonb storage, '
+                f"with @objectRef) of the base entity{base_note}.")
+        for f in (c for c in obj.children() if c.type == TYPE_FIELD):
+            # ADR-0039 sanctioned own: origin.* never inherits (ADR-0029).
+            if any(c.type == TYPE_ORIGIN and c.sub_type == ORIGIN_SUBTYPE_AGGREGATE for c in f.own_children()):
+                bad(f'"{f.name}" is an origin.aggregate; a @grain view has one row per element and groups nothing.')
+        if ordinal is not None:
+            f = next((c for c in obj.children() if c.type == TYPE_FIELD and c.name == ordinal), None)
+            # ADR-0039 sanctioned own: origin.* never inherits (ADR-0029).
+            if (
+                f is None
+                or f.sub_type not in (FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG)
+                or any(c.type == TYPE_ORIGIN for c in f.own_children())
+                or f.super_data is not None
+            ):
+                bad(f'@{ordinal_attr} "{ordinal}" must name a field.int or field.long of the '
+                    "projection, with no origin and no extends.")
 
 
 def _validate_projection_filter(

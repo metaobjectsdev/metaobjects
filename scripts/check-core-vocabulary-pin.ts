@@ -150,7 +150,8 @@ export const FAILURE_GUIDANCE = [
   "needs it. Put it in a pack instead: its own provider and spec/metamodel/<pack>.json",
   "(provider id 'metaobjects-<pack>'), composed by default if it ships with the library, so a",
   "project can leave it out. See docs/features/extending-with-providers.md and the worked",
-  "examples (metaobjects-rules, metaobjects-view-expressions).",
+  "examples (metaobjects-rules, metaobjects-view-expressions, metaobjects-reporting," +
+    " metaobjects-requirements).",
   "Only if a core maintainer has decided this belongs in core, regenerate the pin with",
   "`bun scripts/check-core-vocabulary-pin.ts --update` and justify it in the PR.",
 ].join("\n");

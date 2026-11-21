@@ -183,6 +183,7 @@ setting `rules.permissions.names` makes `verify` warn about derived names, or fa
 | O4 | `ERR_OPERATION_UNKNOWN_TRANSITION` | A `transitions` name is not a transition of the target. |
 | O5 | `ERR_BAD_ATTR_VALUE` | An `errors` code is not lower snake case, is listed twice, or is one the route answers itself: `not_found`, `forbidden`, `invalid_transition`, `transition_condition_failed`, `state_managed`, `validation`, `invalid_json`, `invalid_id`, `method_not_allowed`, `constraint_violation`, `internal`. |
 | O6 | `ERR_TRANSITION_NAME_COLLISION` | Two operations of one package share a name, compared without case, in one API or across the package's APIs. One operation declared in two files merges and is not refused. Neither is one operation declared identically in two APIs (a `v1` beside a `v2`): same name, subtype and every operation attribute; only the bindings may differ. |
+| P3 | `ERR_TRANSITION_NAME_COLLISION` | Two permission points ask about one permission name and at least one name is derived: an operation named `Order.open`, one declaring `permission: p.Order.open`, or one in package `p::Order`, beside the `open` transition of `Order` in `p`. `::` and `.` compare equal. Two declared `permission` values may be equal. |
 | B1 | `ERR_BINDING_PATH_MISMATCH` | A `binding.rest` `path` has the wrong placeholders. |
 | B2 | `ERR_BINDING_PATH_MISMATCH` | Two declared bindings of one API have the same method (declared or derived) and the same path, ignoring placeholder names. |
 

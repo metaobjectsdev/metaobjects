@@ -15,7 +15,7 @@ export interface LoadedModel {
  * Load N metadata source dirs into ONE root via a staging dir of symlinks.
  *
  * `extraProviders` are consumer-supplied metamodel providers, composed AFTER
- * the default bundle (`coreProviders`: core-types, db, doc, prompt, ui, rules, view-expressions) — mirroring
+ * the default bundle (`coreProviders`: core-types, db, doc, prompt, ui, ui-web, rules, view-expressions, reporting, requirements) — mirroring
  * `loadMemory`'s `providers` option — so a site can document metadata that uses
  * custom field/view/object subtypes (e.g. a project's `metaobjects.config.ts`
  * `providers`). Defaults to none, so config-less callers are unchanged.

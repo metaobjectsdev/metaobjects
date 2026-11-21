@@ -100,7 +100,7 @@ from ..meta.core.transition.transition_constants import (
     TRANSITION_SUBTYPE_ACTION,
 )
 from ..meta.meta_data import MetaData
-from ..naming_refs import effective_package_of
+from ..naming_refs import effective_package_of, top_level_node_of
 from ..meta.persistence.source.meta_source import MetaSource
 from ..shared.base_types import (
     TYPE_API,
@@ -494,6 +494,73 @@ def validate_rules(root: MetaData, errors: list[MetaError]) -> None:
                     "rename one, or declare both identically to expose one operation in two APIs.",
                 )
         _check_api_routes(ops, sink)
+    _check_permission_names(root, sink)
+
+
+def _permission_name_of(node: MetaData, owner: MetaData, path: str) -> tuple[str, bool]:
+    """The name a permission point asks the policy about: its @permission, else
+    ``<package>.<path>`` (the path is ``<operation>``, or ``<Entity>.<transition>`` for a
+    transition's command), with the package prefix dropped when there is none. ``::`` and
+    ``.`` both separate path segments, so ``p::Order`` + ``open`` and ``p`` + ``Order.open``
+    are one name. Returns (name, derived)."""
+    declared = node.get_meta_attr(OPERATION_ATTR_PERMISSION)
+    pkg = effective_package_of(top_level_node_of(owner))
+    if isinstance(declared, str):
+        name = declared
+    else:
+        name = path if pkg == "" else f"{pkg}.{path}"
+    return name.replace("::", "."), not isinstance(declared, str)
+
+
+def _check_permission_names(root: MetaData, sink: _Sink) -> None:
+    """P3: two permission points, one name, at least one of them derived (ADR-0066 section 1).
+    Points are every non-public operation and every transition of a live concrete entity
+    (a transition derives a command each). Compared case-sensitively (a grant key is exact).
+    Transitions register first, so the error lands on the operation when one meets a transition.
+    Two DECLARED @permission values may be equal: that sharing is the point."""
+    by_name: dict[str, list[tuple[MetaData, bool]]] = {}
+
+    def register(node: MetaData, owner: MetaData, path: str) -> None:
+        if node.get_meta_attr(OPERATION_ATTR_PUBLIC) is True:
+            return
+        name, derived = _permission_name_of(node, owner, path)
+        points = by_name.setdefault(name, [])
+        clash = next(
+            (
+                q
+                for q, q_derived in points
+                if q is not node
+                and (derived or q_derived)
+                and not (
+                    node.type == TYPE_OPERATION and q.type == TYPE_OPERATION and _same_operation(q, node)
+                )
+            ),
+            None,
+        )
+        if clash is not None:
+            sink.add(
+                node,
+                ErrorCode.ERR_TRANSITION_NAME_COLLISION,
+                f'{node.type}.{node.sub_type} "{_label(node)}" asks the policy about the permission name '
+                f'"{name}", which {clash.type}.{clash.sub_type} "{_label(clash)}" also asks about, and one '
+                "of the two names is derived rather than declared; declare a distinct @permission on one, "
+                "or rename it.",
+            )
+        points.append((node, derived))
+
+    for entity in root.children():
+        if entity.type != TYPE_OBJECT or entity.sub_type != OBJECT_SUBTYPE_ENTITY:
+            continue
+        if entity.is_abstract or not lifecycle_is_live(entity):
+            continue
+        for t in entity_transitions(entity):
+            register(t, entity, f"{entity.name}.{t.name}")
+    for api in root.children():
+        if api.type != TYPE_API:
+            continue
+        for op in api.children():
+            if op.type == TYPE_OPERATION:
+                register(op, api, op.name)
 
 
 def _ref_identity(op: MetaData, attr: str) -> object:

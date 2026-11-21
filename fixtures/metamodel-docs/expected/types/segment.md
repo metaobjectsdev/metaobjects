@@ -14,13 +14,15 @@ documentation attributes are omitted here (see [providers.md](../providers.md)).
 
 A named, reusable row filter on the declaring entity (FR-044). Measures and reports reference it by name; exporters emit it as a named segment.
 
+**Owning provider:** metaobjects-reporting
+
 **When to use:** The same filter (e.g. 'active purchase') would otherwise be repeated in several measures or reports.
 
 **Attributes**
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
-| `@filter` | filter | yes |  |  | — | The row scope: a portable attr.filter over the declaring entity's fields. May use relative-date values. |
+| `@filter` | filter | yes |  |  | metaobjects-reporting | The row scope: a portable attr.filter over the declaring entity's fields. May use relative-date values. |
 
 **Allowed children**
 

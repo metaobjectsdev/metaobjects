@@ -1,0 +1,1 @@
+{ "format": "text", "note": "a dotted path that fails to resolve at any step is a missing variable and raises" }

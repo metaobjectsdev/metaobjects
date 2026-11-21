@@ -15,7 +15,10 @@
  */
 package com.metaobjects.object;
 
+import com.metaobjects.attr.FilterAttribute;
+import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.object.value.ValueObject;
+import com.metaobjects.registry.MetaDataRegistry;
 
 /**
  * object.report — a declared report (FR-044): a fixed combination of the dimensions and
@@ -32,5 +35,32 @@ import com.metaobjects.object.value.ValueObject;
 public class ReportMetaObject extends AbstractObjectRepresentation {
     public ReportMetaObject(String name) { super(MetaObject.SUBTYPE_REPORT, name); }
     protected ReportMetaObject(String subType, String name) { super(subType, name); }
+
+    /**
+     * Register {@code object.report} (FR-044). Called by the reporting pack's provider, not by
+     * core: it inherits {@code object.base} from the object-types provider (the cross-definition
+     * {@code extendsBase}), so the inherited attrs are not a new claim by the reporting pack. Its
+     * structural children come from spec/metamodel/reporting.json (extendsBase), like
+     * object.projection.
+     */
+    public static void registerTypes(MetaDataRegistry registry) {
+        registry.registerType(ReportMetaObject.class, def -> {
+            def.type(MetaObject.TYPE_OBJECT).subType(MetaObject.SUBTYPE_REPORT)
+               .description("Report object (derived, read-only) — a declared aggregation of one entity")
+               .inheritsFrom(MetaObject.TYPE_OBJECT, MetaObject.SUBTYPE_BASE);
+            def.requiredAttributeWithConstraints(MetaObject.ATTR_REPORT_FROM)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.optionalAttributeWithConstraints(MetaObject.ATTR_REPORT_DIMENSIONS)
+               .ofType(StringAttribute.SUBTYPE_STRING).asArray();
+            def.requiredAttributeWithConstraints(MetaObject.ATTR_REPORT_MEASURES)
+               .ofType(StringAttribute.SUBTYPE_STRING).asArray();
+            def.optionalAttributeWithConstraints(MetaObject.ATTR_REPORT_SEGMENT)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.optionalAttributeWithConstraints(MetaObject.ATTR_FILTER)
+               .ofType(FilterAttribute.SUBTYPE_FILTER).asSingle();
+            def.optionalAttributeWithConstraints(MetaObject.ATTR_REPORT_SPINE)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+        });
+    }
     @Override protected Class<?> getDefaultObjectClass() { return ValueObject.class; }
 }

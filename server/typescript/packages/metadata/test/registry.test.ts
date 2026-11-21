@@ -16,7 +16,7 @@ import {
   TYPE_SOURCE,
   TYPE_ORIGIN,
   TYPE_TEMPLATE,
-  TYPE_REQUIREMENT,
+  OBJECT_SUBTYPE_REPORT,
   TYPE_API,
   SUBTYPE_BASE,
   SUBTYPE_ROOT,
@@ -326,9 +326,9 @@ describe("registerCoreTypes", () => {
     expect(registry.allSubTypesOf(TYPE_METADATA).sort()).toEqual([SUBTYPE_ROOT]);
   });
 
-  it("registers the correct subtypes for 'object'", () => {
+  it("registers the correct subtypes for 'object' (core alone: object.report is the reporting pack's)", () => {
     expect(registry.allSubTypesOf(TYPE_OBJECT).sort()).toEqual(
-      [...OBJECT_SUBTYPES].sort(),
+      OBJECT_SUBTYPES.filter((subType) => subType !== OBJECT_SUBTYPE_REPORT).sort(),
     );
   });
 
@@ -450,15 +450,14 @@ describe("registerCoreTypes", () => {
     expect(def!.childRules).toHaveLength(0);
   });
 
-  it("metadata.root (core alone) allows object, field, validator, template and requirement children (NOT a bare attr, and no api: the business-rules pack adds that)", () => {
+  it("metadata.root (core alone) allows object, field, validator and template children (NOT a bare attr; requirement and api come from their packs)", () => {
     // FR-033 S1-simple: the attr wildcard is dropped from the document root; the
-    // genuinely-open structural wildcards stay. `requirement` joined them when
-    // the capability ledger became metadata (ruling amendment 3) — capability
-    // requirements are declared beside the entities they describe.
+    // genuinely-open structural wildcards stay. `requirement` (the requirements
+    // pack) and `api` (the business-rules pack) are admitted by their packs.
     const def = registry.find(TYPE_METADATA, SUBTYPE_ROOT);
     expect(def).toBeDefined();
     const childTypes = def!.childRules.map((r) => r.childType).sort();
-    expect(childTypes).toEqual([TYPE_FIELD, TYPE_OBJECT, TYPE_VALIDATOR, TYPE_TEMPLATE, TYPE_REQUIREMENT].sort());
+    expect(childTypes).toEqual([TYPE_FIELD, TYPE_OBJECT, TYPE_VALIDATOR, TYPE_TEMPLATE].sort());
   });
 
   // 6. attr.* has empty child rules

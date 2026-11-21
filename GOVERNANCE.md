@@ -113,6 +113,9 @@ MetaObjects, in the way the [`library/`](library/) entries do (see
   what belongs in the project at all is set out in "What belongs in MetaObjects" in
   [docs/features/libraries.md](docs/features/libraries.md). Moving vocabulary into core is a
   model-format change, so it needs a core maintainer (above).
+- **An attribute promoted from a pack into core keeps its name and meaning.** Promotion moves
+  which provider registers the attribute. It does not rename it or change what it does, so a
+  model that used the attribute under the pack loads and behaves the same once core owns it.
 
 ### Releases
 

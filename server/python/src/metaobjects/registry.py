@@ -106,6 +106,10 @@ class TypeDefinition:
     # owns). Kept separately so the strict structural pass, which re-derives the rest
     # of ``child_rules`` from the shared spec, does not discard them.
     extended_child_rules: list[ChildRule] = field(default_factory=list)
+    # The type folds ``<type>.base`` of ANOTHER provider's registration, like the
+    # ``extendsBase`` of a spec type: attrs it does not redeclare come from the base,
+    # stamped with the base's owner, never as a new claim by this provider.
+    extends_base: bool = False
 
     @property
     def key(self) -> tuple[str, str]:
@@ -211,6 +215,12 @@ class TypeRegistry:
 
     def register(self, definition: TypeDefinition) -> None:
         self._check_not_sealed(f'register("{definition.key}")')
+        folded: list[AttrSchema] = []
+        if definition.extends_base and definition.sub_type != SUBTYPE_BASE:
+            base = self._defs.get((definition.type, SUBTYPE_BASE))
+            if base is not None:
+                own = {a.name for a in definition.attrs}
+                folded = [a for a in base.attrs if a.name not in own]
         # ADR-0062: refuse a name another provider already put on a related slot, BEFORE
         # the definition becomes visible, so a refused registration leaves no trace.
         for attr in definition.attrs:
@@ -226,7 +236,7 @@ class TypeRegistry:
             type=definition.type,
             sub_type=definition.sub_type,
             factory=definition.factory,
-            attrs=list(definition.attrs),
+            attrs=[*folded, *definition.attrs],
             child_rules=list(definition.child_rules),
             # FR-033 — carry the documentation surface + placement claim onto the
             # per-registry copy (copy the mutable parents list so a later extend()
@@ -247,7 +257,14 @@ class TypeRegistry:
         # TypeDefinition objects before `register()` is ever called).
         origin = self._current_provider_id or LIBRARY_ATTR_ORIGIN
         for attr in self._defs[definition.key].attrs:
-            self._attr_provenance[(definition.type, definition.sub_type, attr.name)] = origin
+            if any(attr is f for f in folded):
+                # Folded unchanged from the base: not this provider's claim.
+                base_origin = self._attr_provenance.get(
+                    (definition.type, SUBTYPE_BASE, attr.name), LIBRARY_ATTR_ORIGIN
+                )
+                self._attr_provenance[(definition.type, definition.sub_type, attr.name)] = base_origin
+            else:
+                self._attr_provenance[(definition.type, definition.sub_type, attr.name)] = origin
 
     def attr_origin(self, type_: str, sub_type: str, attr_name: str) -> str:
         """The provider id that registered/extended ``attr_name`` on ``(type_, sub_type)``,

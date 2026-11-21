@@ -2,16 +2,12 @@
   "language": "python",
   "fixtures": [
     "error-origin-function-free-sql",
-    "error-projection-grain-not-object-array",
-    "error-projection-union-shape",
     "projection-view-vocabulary-rc21"
   ],
   "_comment_fr024": "FR-024 Phase-E validation parity SHIPPED in this port. The full FR-024 loader contract now holds: object.projection registration + per-subtype projection child rules + dotted Entity.child extends-resolution (type-scoped, ERR_EXTENDS_TARGET_MISMATCH), AND the validation passes \u2014 identity names required + projection identity pass-through/key-correspondence (B3), value-purity + projection-licensing subtype rules (B4a), the entity-primary-source-readonly hard cutover (B4b), @via single-hop-unique inference + origin cardinality (B5), and extends/origin agreement + derived-field providability (B6). Every former FR-024 error fixture (error-identity-name-required, error-projection-identity-not-extended, error-identity-key-mismatch, error-projection-extends-entity, error-projection-source-writable, error-value-with-identity-secondary, error-value-with-source, error-origin-via-ambiguous, error-origin-passthrough-to-many, error-origin-aggregate-no-to-many, error-extends-origin-mismatch, error-derived-field-no-read-source, error-entity-primary-source-readonly) now emits its expected code with the byte-identical source envelope and is un-ledgered.",
   "notes": "The Python expected failures are the keys of \"reasons\" below. The AI LLM-call trace fixtures ai-trace-prompt-nested and ai-trace-sti load + canonical-serialize cleanly in the Python port (@responseRef registered on template.prompt, carved out of the cross-port registry manifest as ExclusionReason.TS_PILOT_VOCAB until the atomic all-ports flip; template.* admitted as an object.entity child).",
   "reasons": {
     "error-origin-function-free-sql": "the line registers the rc.21 view vocabulary in Python so a strict load accepts it but no loader check exists; also fails identically on origin/fix/rc19; implementedIn: typescript, csharp",
-    "error-projection-grain-not-object-array": "the line registers the rc.21 view vocabulary in Python so a strict load accepts it but no loader check exists; also fails identically on origin/fix/rc19; implementedIn: typescript, csharp",
-    "error-projection-union-shape": "the line registers the rc.21 view vocabulary in Python so a strict load accepts it but no loader check exists; also fails identically on origin/fix/rc19; implementedIn: typescript, csharp",
     "projection-view-vocabulary-rc21": "Python accepts the view functions and the cast node (C2) but not yet the rest of what this fixture declares: a dotted path in an origin.computed @expr (customerId.zip), a scalar origin.aggregate read from a computed field, a path operand in an origin.first @filter, an origin.passthrough through a path, and a derived field on an entity that declares a read source; implementedIn: typescript, csharp"
   }
 }

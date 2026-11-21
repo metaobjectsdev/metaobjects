@@ -19,7 +19,7 @@ import {
   type TemplateEngine,
 } from "./engine.js";
 import { renderJinja } from "./jinja/render.js";
-import { MAX_DEPTH } from "./verify-shared.js";
+import { MAX_DEPTH, ERR_VAR_NOT_ON_PAYLOAD } from "./verify-shared.js";
 
 // Resolve `{{> group/source }}` partials by inlining their text, recursively,
 // BEFORE Mustache parses — giving us deterministic whitespace and true,
@@ -110,12 +110,39 @@ export function render(o: RenderOptions): string {
   return result;
 }
 
+// A variable tag that resolves to `undefined` (the name is on no frame of the payload) is a
+// missing variable. `null` is a present value and renders empty. Raised with the message the
+// opt-in `verify` gate uses, so a typo like `{{nmae}}` fails on every render path.
+interface WriterInternals {
+  prototype: Record<"escapedValue" | "unescapedValue", (token: unknown[], context: { lookup(n: string): unknown }, ...r: unknown[]) => unknown>;
+}
+
+function failOnMissingVariable(): () => void {
+  const proto = (Mustache as unknown as { Writer: WriterInternals }).Writer.prototype;
+  const prev = { escapedValue: proto.escapedValue, unescapedValue: proto.unescapedValue };
+  for (const key of ["escapedValue", "unescapedValue"] as const) {
+    const original = prev[key];
+    proto[key] = function (this: unknown, token, context, ...rest) {
+      const name = String(token[1]);
+      if (context.lookup(name) === undefined) {
+        throw new Error(`render verify failed: ${ERR_VAR_NOT_ON_PAYLOAD} (${name})`);
+      }
+      return original.call(this, token, context, ...rest);
+    };
+  }
+  return () => {
+    proto.escapedValue = prev.escapedValue;
+    proto.unescapedValue = prev.unescapedValue;
+  };
+}
+
 function renderMustache(body: string, o: RenderOptions, escaper: (s: string) => string): string {
   const expanded = expand(body, o.provider, o.ref !== undefined ? [o.ref] : []);
 
   const prev = Mustache.escape;
   Mustache.escape = (v: unknown) => escaper(typeof v === "string" ? v : String(v));
   let result: string;
+  const restore = failOnMissingVariable();
   try {
     // Derived `has<Field>` accessors are part of the payload contract, not of the
     // caller's object — see payload-accessors.ts. Injected here so a `{{#hasFoo}}`
@@ -123,6 +150,7 @@ function renderMustache(body: string, o: RenderOptions, escaper: (s: string) => 
     result = Mustache.render(expanded, withDerivedAccessors(o.payload), {});
   } finally {
     Mustache.escape = prev;
+    restore();
   }
   return result;
 }

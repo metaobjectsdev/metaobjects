@@ -24,6 +24,8 @@ use crate::registry::{
 pub const CORE_TYPES_ID: &str = "metaobjects-core-types";
 pub const DB_ID: &str = "metaobjects-db";
 pub const DOCUMENTATION_ID: &str = "metaobjects-documentation";
+pub const REPORTING_ID: &str = "metaobjects-reporting";
+pub const REQUIREMENTS_ID: &str = "metaobjects-requirements";
 pub const RULES_ID: &str = "metaobjects-rules";
 pub const VIEW_EXPRESSIONS_ID: &str = "metaobjects-view-expressions";
 pub const PROMPT_ID: &str = "metaobjects-prompt";
@@ -89,11 +91,11 @@ const CORE_FAMILIES: &[(&str, &str)] = &[
     spec!("identity"),
     spec!("relationship"),
     spec!("index"),
-    spec!("requirement"),
-    spec!("reporting"),
 ];
 
 const RULES_FAMILIES: &[(&str, &str)] = &[spec!("api"), spec!("transition")];
+const REPORTING_SPEC: (&str, &str) = spec!("reporting");
+const REQUIREMENT_SPEC: (&str, &str) = spec!("requirement");
 const VIEW_EXPRESSIONS_SPEC: (&str, &str) = spec!("view-expressions");
 const DB_SPEC: (&str, &str) = spec!("db");
 const DOCUMENTATION_SPEC: (&str, &str) = spec!("documentation");
@@ -257,6 +259,8 @@ struct Definitions {
     core: Vec<ProviderDefinition>,
     rules: Vec<ProviderDefinition>,
     view_expressions: ProviderDefinition,
+    reporting: ProviderDefinition,
+    requirements: ProviderDefinition,
     db: ProviderDefinition,
     documentation: ProviderDefinition,
     prompt: ProviderDefinition,
@@ -272,6 +276,8 @@ fn definitions() -> &'static Definitions {
             core: CORE_FAMILIES.iter().map(|f| p(*f)).collect(),
             rules: RULES_FAMILIES.iter().map(|f| p(*f)).collect(),
             view_expressions: p(VIEW_EXPRESSIONS_SPEC),
+            reporting: p(REPORTING_SPEC),
+            requirements: p(REQUIREMENT_SPEC),
             db: p(DB_SPEC),
             documentation: p(DOCUMENTATION_SPEC),
             prompt: p(PROMPT_SPEC),
@@ -381,7 +387,10 @@ fn child_rule_id(rule: &ChildRule) -> String {
 
 /// Lower a definition's real types (not the universal `*.*` entry) to registry
 /// definitions, folding `<type>.base` into subtypes that set `extendsBase`.
-fn define_from_data(data: &ProviderDefinition) -> Result<Vec<TypeDefinition>, MetaError> {
+fn define_from_data(
+    data: &ProviderDefinition,
+    registry: Option<&TypeRegistry>,
+) -> Result<Vec<TypeDefinition>, MetaError> {
     let real: Vec<&TypeDef> = data.types.iter().filter(|t| !is_universal(t)).collect();
     let mut lowered: Vec<(String, Vec<AttrSchema>, Vec<ChildRule>)> = Vec::new();
     for t in &real {
@@ -404,18 +413,26 @@ fn define_from_data(data: &ProviderDefinition) -> Result<Vec<TypeDefinition>, Me
         let mut child_rules = own_rules.clone();
         if t.extends_base && t.sub_type != SUBTYPE_BASE {
             let base_key = format!("{}.{SUBTYPE_BASE}", t.type_name);
-            if let Some((_, base_attrs, base_rules)) =
-                lowered.iter().find(|(k, _, _)| *k == base_key)
-            {
+            // The base is this definition's own, else one another provider registered.
+            let registered = || {
+                let b = registry?.find(&t.type_name, SUBTYPE_BASE)?;
+                Some((b.attributes.clone(), b.child_rules.clone()))
+            };
+            let base = lowered
+                .iter()
+                .find(|(k, _, _)| *k == base_key)
+                .map(|(_, a, r)| (a.clone(), r.clone()))
+                .or_else(registered);
+            if let Some((base_attrs, base_rules)) = base {
                 let mut have: HashSet<String> = attributes.iter().map(|a| a.name.clone()).collect();
-                for a in base_attrs {
+                for a in &base_attrs {
                     if have.insert(a.name.clone()) {
                         attributes.push(a.clone());
                     }
                 }
                 let mut have_rule: HashSet<String> =
                     child_rules.iter().map(child_rule_id).collect();
-                for r in base_rules {
+                for r in &base_rules {
                     if have_rule.insert(child_rule_id(r)) {
                         child_rules.push(r.clone());
                     }
@@ -442,7 +459,7 @@ fn apply_definition(
     registry: &mut TypeRegistry,
     data: &ProviderDefinition,
 ) -> Result<(), MetaError> {
-    for def in define_from_data(data)? {
+    for def in define_from_data(data, Some(registry))? {
         registry.register(def)?;
     }
     if let Some(universal) = data.types.iter().find(|t| is_universal(t)) {
@@ -494,13 +511,13 @@ fn apply_definition(
 
 fn register_core(registry: &mut TypeRegistry) -> Result<(), MetaError> {
     let mut root = TypeDefinition::new("metadata", "root", "Root metadata document");
-    root.child_rules = ["object", "field", "validator", "template", "requirement"]
+    root.child_rules = ["object", "field", "validator", "template"]
         .iter()
         .map(|t| ChildRule::wildcard(t))
         .collect();
     registry.register(root)?;
     for family in &definitions().core {
-        for def in define_from_data(family)? {
+        for def in define_from_data(family, None)? {
             registry.register(def)?;
         }
     }
@@ -550,6 +567,27 @@ pub fn rules_provider() -> Provider {
             }
             Ok(())
         },
+    )
+}
+
+/// The reporting pack (FR-044): `object.report`, dimension / measure / segment, and
+/// `@segment` on `origin.aggregate` / `origin.first`.
+pub fn reporting_provider() -> Provider {
+    Provider::new(
+        REPORTING_ID,
+        &[CORE_TYPES_ID],
+        "Reporting: object.report, dimension / measure / segment on an entity, and @segment on origin.aggregate and origin.first.",
+        |r| apply_definition(r, &definitions().reporting),
+    )
+}
+
+/// The requirements pack: `requirement.functional` and `requirement.architectural`.
+pub fn requirements_provider() -> Provider {
+    Provider::new(
+        REQUIREMENTS_ID,
+        &[CORE_TYPES_ID],
+        "Requirements: requirement.functional and requirement.architectural, declared at the document root and checked by verify.",
+        |r| apply_definition(r, &definitions().requirements),
     )
 }
 
@@ -619,6 +657,8 @@ pub fn core_providers() -> Vec<Provider> {
         prompt_provider(),
         ui_provider(),
         ui_web_provider(),
+        reporting_provider(),
+        requirements_provider(),
     ]
 }
 

@@ -8,6 +8,8 @@ import { uiProvider } from "./presentation/ui/ui-provider.js";
 import { uiWebProvider } from "./presentation/ui-web/ui-web-provider.js";
 import { rulesProvider } from "./core/rules/rules-provider.js";
 import { viewExpressionsProvider } from "./persistence/view-expressions/view-expressions-provider.js";
+import { reportingProvider } from "./core/reporting/reporting-provider.js";
+import { requirementsProvider } from "./core/requirement/requirements-provider.js";
 import { type DataType } from "./data-type.js";
 import type { MetaData } from "./shared/meta-data.js";
 import { MetaRoot } from "./shared/meta-root.js";
@@ -59,18 +61,6 @@ import { TEMPLATE_SUBTYPES } from "./template/template-constants.js";
 import { MetaIndex } from "./core/index/meta-index.js";
 import { INDEX_DEFINITION } from "./core/index/index-definition.embedded.js";
 import { INDEX_SUBTYPES } from "./core/index/index-constants.js";
-import { MetaRequirement } from "./core/requirement/meta-requirement.js";
-import { REQUIREMENT_DEFINITION } from "./core/requirement/requirement-definition.embedded.js";
-import { REQUIREMENT_SUBTYPES } from "./core/requirement/requirement-constants.js";
-import { MetaDimension } from "./core/reporting/meta-dimension.js";
-import { MetaMeasure } from "./core/reporting/meta-measure.js";
-import { MetaSegment } from "./core/reporting/meta-segment.js";
-import { REPORTING_DEFINITION } from "./core/reporting/reporting-definition.embedded.js";
-import {
-  DIMENSION_SUBTYPES,
-  MEASURE_SUBTYPES,
-  SEGMENT_SUBTYPES,
-} from "./core/reporting/reporting-constants.js";
 import {
   TYPE_METADATA,
   TYPE_OBJECT,
@@ -85,10 +75,6 @@ import {
   TYPE_ORIGIN,
   TYPE_TEMPLATE,
   TYPE_INDEX,
-  TYPE_REQUIREMENT,
-  TYPE_DIMENSION,
-  TYPE_MEASURE,
-  TYPE_SEGMENT,
   SUBTYPE_ROOT,
 } from "./shared/base-types.js";
 import { CHILD_RULE_WILDCARD } from "./shared/structural.js";
@@ -204,8 +190,8 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
       wildcard(TYPE_FIELD),
       wildcard(TYPE_VALIDATOR),
       wildcard(TYPE_TEMPLATE),
-      // Capability requirements are declared beside the entities they describe.
-      wildcard(TYPE_REQUIREMENT),
+      // `requirement` (the requirements pack) and `api` (the rules pack) are admitted
+      // by their packs' `extends`, so composing a pack out removes its child rule too.
     ], MetaRoot),
   );
 
@@ -509,52 +495,6 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     registry.register(indexDef);
   }
 
-  // requirement — 2 subtypes. The axis is CHECK POLARITY, a genuine behaviour
-  // difference (ADR-0037 §2): `functional` is checked by EXISTENCE (nothing
-  // implements it -> fail), `architectural` by UNIVERSALITY (something violates
-  // it -> fail). Registered rather than hand-parsed because the capability
-  // ledger IS a metadata model: a closed status enum and a list of FQN
-  // references to model nodes are exactly `allowedValues` plus reference
-  // resolution, both of which this registry already owns (ruling amendment 3).
-  const REQUIREMENT_FACTORIES: FactoryMap = Object.fromEntries(
-    REQUIREMENT_SUBTYPES.map((subType) => [
-      `${TYPE_REQUIREMENT}.${subType}`,
-      (typeId: TypeId, name: string) => new MetaRequirement(typeId, name),
-    ]),
-  );
-  for (const reqDef of defineProviderFromData(REQUIREMENT_DEFINITION, REQUIREMENT_FACTORIES)) {
-    registry.register(reqDef);
-  }
-
-  // FR-044 reporting vocabulary — dimension / measure / segment. Declared as
-  // children of `object.entity` (spec/metamodel/object.json), never root-level, so
-  // no root wildcard is added above. Three types in one provider file because they
-  // are one vocabulary: a report names dimensions and measures, and both may
-  // reference a segment. `measure.derived` is NOT registered (waits for FR-037 R5).
-  const REPORTING_FACTORIES: FactoryMap = {
-    ...Object.fromEntries(
-      DIMENSION_SUBTYPES.map((subType) => [
-        `${TYPE_DIMENSION}.${subType}`,
-        (typeId: TypeId, name: string) => new MetaDimension(typeId, name),
-      ]),
-    ),
-    ...Object.fromEntries(
-      MEASURE_SUBTYPES.map((subType) => [
-        `${TYPE_MEASURE}.${subType}`,
-        (typeId: TypeId, name: string) => new MetaMeasure(typeId, name),
-      ]),
-    ),
-    ...Object.fromEntries(
-      SEGMENT_SUBTYPES.map((subType) => [
-        `${TYPE_SEGMENT}.${subType}`,
-        (typeId: TypeId, name: string) => new MetaSegment(typeId, name),
-      ]),
-    ),
-  };
-  for (const reportingDef of defineProviderFromData(REPORTING_DEFINITION, REPORTING_FACTORIES)) {
-    registry.register(reportingDef);
-  }
-
   // Declare the core cross-references ON their TypeDefinitions, so the loader's
   // registry-derived validation resolves them generically (a dangling target fails the
   // load). Set on the concrete subtypes the parser produces. (Production moves these into
@@ -567,13 +507,6 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
       ];
     }
   }
-  // NOTE: @implementedBy is deliberately NOT declared as a loader `references`
-  // descriptor. That pass always ERRORS on an unresolved target, and a
-  // requirement with status `planned` names nodes that do not exist YET, so declaring
-  // nodes that are GONE — declaring it here would make the entries that carry
-  // the mechanism's only controlled evidence fail to load. The loader owns what
-  // is unconditional (the status enum, shape, levels); `meta verify` owns the
-  // status-conditional resolution, where the severity actually depends on data.
   const idRefDef = registry.find(TYPE_IDENTITY, IDENTITY_SUBTYPE_REFERENCE);
   if (idRefDef) {
     idRefDef.references = [
@@ -621,9 +554,11 @@ export const coreTypesProvider: MetaDataTypeProvider = {
   },
 };
 
-/** The default provider bundle — core metamodel types plus the five concern
+/** The default provider bundle — core metamodel types, the five concern
  *  providers (DB-domain attrs, documentation common-attrs, prompt/AI, the
- *  UI/query-surface markers, and the TS-web presentation view attrs).
+ *  UI/query-surface markers, and the TS-web presentation view attrs), and the four
+ *  vocabulary packs (business rules, view expressions, reporting, requirements), each
+ *  of which an embedder may leave out.
  *  FR-033 S1-field-A re-homed the field's filter/sort/teaching/extract/storage
  *  attrs out of core into db/ui/prompt; the composed set is unchanged. uiWebProvider
  *  is TS-only (the non-TS ports mirror its spec file but never apply it — see
@@ -638,6 +573,8 @@ export const coreProviders: readonly MetaDataTypeProvider[] = [
   uiWebProvider,
   rulesProvider,
   viewExpressionsProvider,
+  reportingProvider,
+  requirementsProvider,
 ];
 
 /**

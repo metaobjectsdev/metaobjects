@@ -39,6 +39,9 @@
 //   O4 ERR_OPERATION_UNKNOWN_TRANSITION a @transitions name is not a transition of the target
 //   O5 ERR_BAD_ATTR_VALUE             an @errors code is not lower snake case, is listed twice, or is
 //                                      one the route answers itself (RESERVED_ERROR_CODES)
+//   P3 ERR_TRANSITION_NAME_COLLISION  two permission points ask the policy about one permission name, and at
+//                                      least one of the two names is derived (two DECLARED @permission values
+//                                      may be equal: that sharing is the point)
 //   B1 ERR_BINDING_PATH_MISMATCH      a binding.rest @path's placeholders are not the target's key fields
 //                                      (a keyed operation) or are not empty (an unkeyed one)
 //   B2 ERR_BINDING_PATH_MISMATCH      two binding.rest of one API declaring a @path have the same
@@ -369,7 +372,55 @@ public static partial class ValidationPasses
             }
             CheckApiRoutes(ops, sink);
         }
+        CheckPermissionNames(root, sink);
         return sink.Errors;
+    }
+
+    private sealed record PermissionPoint(MetaData Node, bool Derived);
+
+    /// <summary>The name a permission point asks the policy about: its @permission, else <c>&lt;package&gt;.&lt;path&gt;</c>
+    /// (the path is the operation name, or <c>&lt;Entity&gt;.&lt;transition&gt;</c> for a transition's command). The package
+    /// prefix is dropped when there is none. <c>::</c> and <c>.</c> both separate path segments, so they compare equal.</summary>
+    private static (string Name, bool Derived) PermissionNameOf(MetaData node, MetaData owner, string path)
+    {
+        var declared = node.Attr(OPERATION_ATTR_PERMISSION) as string;
+        var pkg = NamingRefs.EffectivePackageOf(NamingRefs.TopLevelNodeOf(owner));
+        var name = declared ?? (pkg.Length == 0 ? path : $"{pkg}.{path}");
+        return (name.Replace("::", "."), declared is null);
+    }
+
+    /// <summary>P3: two permission points, one name, at least one of the two derived. Points are every non-public
+    /// operation and every transition of a live concrete entity. Compared case-sensitively (a grant key is exact).
+    /// Transitions register first, so the error lands on the operation when an operation meets a transition.</summary>
+    private static void CheckPermissionNames(MetaData root, RulesErrorSink sink)
+    {
+        var byName = new Dictionary<string, List<PermissionPoint>>(StringComparer.Ordinal);
+        void Register(MetaData node, MetaData owner, string path)
+        {
+            if (node.Attr(OPERATION_ATTR_PUBLIC) is true) return;
+            var (name, derived) = PermissionNameOf(node, owner, path);
+            if (!byName.TryGetValue(name, out var points)) byName[name] = points = [];
+            var clash = points.FirstOrDefault(q =>
+                !ReferenceEquals(q.Node, node) && (derived || q.Derived)
+                && !(node.Type == TYPE_OPERATION && q.Node.Type == TYPE_OPERATION && SameOperation(q.Node, node)));
+            if (clash is not null)
+            {
+                sink.Add(node, ErrorCode.ERR_TRANSITION_NAME_COLLISION,
+                    $"{node.Type}.{node.SubType} \"{RulesLabel(node)}\" asks the policy about the permission name \"{name}\", which {clash.Node.Type}.{clash.Node.SubType} \"{RulesLabel(clash.Node)}\" also asks about, and one of the two names is derived rather than declared; declare a distinct @permission on one, or rename it.");
+            }
+            points.Add(new PermissionPoint(node, derived));
+        }
+        foreach (var entity in root.Children())
+        {
+            if (entity.Type != TYPE_OBJECT || entity.SubType != OBJECT_SUBTYPE_ENTITY) continue;
+            if (entity.IsAbstract || !Lifecycles.LifecycleIsLive(entity)) continue;
+            foreach (var t in Lifecycles.EntityTransitions(entity)) Register(t, entity, $"{entity.Name}.{t.Name}");
+        }
+        foreach (var api in root.Children())
+        {
+            if (api.Type != TYPE_API) continue;
+            foreach (var op in api.Children().Where(c => c.Type == TYPE_OPERATION)) Register(op, api, op.Name);
+        }
     }
 
     /// <summary>A reference attr's identity: the node it resolves to, else the raw value.</summary>

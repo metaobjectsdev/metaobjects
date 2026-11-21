@@ -23,6 +23,8 @@ import { uiProvider } from "../../src/presentation/ui/ui-provider.js";
 import { uiWebProvider } from "../../src/presentation/ui-web/ui-web-provider.js";
 import { rulesProvider } from "../../src/core/rules/rules-provider.js";
 import { viewExpressionsProvider } from "../../src/persistence/view-expressions/view-expressions-provider.js";
+import { reportingProvider } from "../../src/core/reporting/reporting-provider.js";
+import { requirementsProvider } from "../../src/core/requirement/requirements-provider.js";
 import { MetaDataLoader } from "../../src/loader/meta-data-loader.js";
 import type { MetaData } from "../../src/shared/meta-data.js";
 import { canonicalSerialize, canonicalSerializeEffective } from "../../src/serializer-json.js";
@@ -163,6 +165,8 @@ export const PROVIDERS: Readonly<Record<string, MetaDataTypeProvider>> = {
   [uiWebProvider.id]: uiWebProvider,         // "metaobjects-ui-web" (view control attrs)
   [rulesProvider.id]: rulesProvider,         // "metaobjects-rules" (api/operation/binding/transition)
   [viewExpressionsProvider.id]: viewExpressionsProvider, // "metaobjects-view-expressions" (origin.function, @union/@grain)
+  [reportingProvider.id]: reportingProvider, // "metaobjects-reporting" (object.report, dimension/measure/segment)
+  [requirementsProvider.id]: requirementsProvider, // "metaobjects-requirements" (requirement.*)
   // Test-only — provider-extension-* fixtures.
   "example-template-briefing": exampleTemplateBriefingProvider,
   "example-custom-vocabulary": exampleCustomVocabularyProvider,

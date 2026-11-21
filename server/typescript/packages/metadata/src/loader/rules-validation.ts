@@ -42,6 +42,11 @@
 //   O4 ERR_OPERATION_UNKNOWN_TRANSITION a @transitions name is not a transition of the target
 //   O5 ERR_BAD_ATTR_VALUE             an @errors code is not lower snake case, is listed twice, or is
 //                                      one the route answers itself (RESERVED_ERROR_CODES)
+//   P3 ERR_TRANSITION_NAME_COLLISION two permission points ask the policy about one permission name, and at
+//                                      least one of the two names is derived (ADR-0066 §1): an operation
+//                                      named "Order.open", one declaring @permission "p.Order.open", or one
+//                                      in package "p::Order", beside the "open" transition of Order in "p".
+//                                      Two DECLARED @permission values may be equal: that sharing is the point.
 //   B1 ERR_BINDING_PATH_MISMATCH      a binding.rest @path's placeholders are not the target's key fields
 //                                      (a keyed operation) or are not empty (an unkeyed one)
 //   B2 ERR_BINDING_PATH_MISMATCH      two binding.rest of one API declaring a @path have the same
@@ -94,7 +99,7 @@ import {
   transitionTo,
 } from "../core/transition/lifecycle.js";
 import { isWritableSource } from "../shared/node-guards.js";
-import { effectivePackageOf } from "../naming-refs.js";
+import { effectivePackageOf, topLevelNodeOf } from "../naming-refs.js";
 import { conditionMessage } from "./validation-passes.js";
 
 const RESERVED = new Set<string>(RESERVED_OPERATION_NAMES);
@@ -375,7 +380,56 @@ export function validateRules(root: MetaData): ParseError[] {
     }
     checkApiRoutes(ops, sink);
   }
+  checkPermissionNames(root, sink);
   return sink.errors;
+}
+
+interface PermissionPoint {
+  node: MetaData;
+  /** True when the name is derived (no @permission), false when declared. */
+  derived: boolean;
+}
+
+/** The name a permission point asks the policy about: its @permission, else `<package>.<path>`
+ *  (the path is `<operation>`, or `<Entity>.<transition>` for a transition's command). The package
+ *  prefix is dropped when there is none. `::` and `.` both separate path segments, so they compare
+ *  equal: `p::Order` + `open` and `p` + `Order.open` are one name. */
+function permissionNameOf(node: MetaData, owner: MetaData, path: string): { name: string; derived: boolean } {
+  const declared = node.attr(OPERATION_ATTR_PERMISSION);
+  const pkg = effectivePackageOf(topLevelNodeOf(owner));
+  const name = typeof declared === "string" ? declared : pkg === "" ? path : `${pkg}.${path}`;
+  return { name: name.replaceAll("::", "."), derived: typeof declared !== "string" };
+}
+
+/** P3: two permission points, one name. Points are every non-public operation and every transition
+ *  of a live concrete entity (the transitions derive a command each). Compared case-sensitively
+ *  (a grant key is exact). Transitions are registered first, so the error lands on the operation
+ *  when an operation meets a transition. */
+function checkPermissionNames(root: MetaData, sink: Sink): void {
+  const byName = new Map<string, PermissionPoint[]>();
+  const register = (node: MetaData, owner: MetaData, path: string): void => {
+    if (node.attr(OPERATION_ATTR_PUBLIC) === true) return;
+    const { name, derived } = permissionNameOf(node, owner, path);
+    const points = byName.get(name) ?? [];
+    byName.set(name, points);
+    const clash = points.find((q) =>
+      q.node !== node && (derived || q.derived) &&
+      !(node.type === TYPE_OPERATION && q.node.type === TYPE_OPERATION && sameOperation(q.node, node)));
+    if (clash !== undefined) {
+      sink.add(node, "ERR_TRANSITION_NAME_COLLISION",
+        `${node.type}.${node.subType} "${label(node)}" asks the policy about the permission name "${name}", which ${clash.node.type}.${clash.node.subType} "${label(clash.node)}" also asks about, and one of the two names is derived rather than declared; declare a distinct @permission on one, or rename it.`);
+    }
+    points.push({ node, derived });
+  };
+  for (const entity of root.children()) {
+    if (entity.type !== TYPE_OBJECT || entity.subType !== OBJECT_SUBTYPE_ENTITY) continue;
+    if (entity.isAbstract || !lifecycleIsLive(entity)) continue;
+    for (const t of entityTransitions(entity)) register(t, entity, `${entity.name}.${t.name}`);
+  }
+  for (const api of root.children()) {
+    if (api.type !== TYPE_API) continue;
+    for (const op of api.children()) if (op.type === TYPE_OPERATION) register(op, api, op.name);
+  }
 }
 
 /** A reference attr's identity: the node it resolves to, else the raw value. */
