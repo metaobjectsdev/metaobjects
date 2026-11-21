@@ -178,6 +178,21 @@ public class MetaDataEjectMojoTest {
     }
 
     @Test
+    public void forceOverAnIdenticalPomStillPrintsTheModulesHint() throws Exception {
+        mojo("dto", false, null, null).execute();
+        MetaDataEjectMojo again = mojo("dto", true, null, null);
+        Log log = Mockito.mock(Log.class);
+        again.setLog(log);
+
+        again.execute();
+
+        ArgumentCaptor<CharSequence> captor = ArgumentCaptor.forClass(CharSequence.class);
+        Mockito.verify(log, Mockito.atLeastOnce()).info(captor.capture());
+        assertTrue(captor.getAllValues().stream()
+                .anyMatch(m -> m.toString().contains("Add this module to the parent pom's <modules>:")));
+    }
+
+    @Test
     public void aSecondPomIsLeftUntouchedWithoutForce() throws Exception {
         mojo("dto", false, null, null).execute();
         Path pom = codegenRoot().resolve("pom.xml");

@@ -23,8 +23,10 @@ here.**
   create an empty file before writing, so `metaobjects:verify`'s in-memory render leaves nothing on
   disk.
 - **Java and Kotlin: a gate that every generator writes through `GeneratedFileWriter`.**
-  `WritePathGateTest` scans the generator modules and the Maven plugin and fails on any other way of
-  writing a file, so a new generator cannot skip the hash manifest or the unchanged-bytes check.
+  `GeneratorWritePathTest` runs every registered Java and Kotlin generator over the shared fitness
+  corpus and fails when a file is left on disk that the writer did not write, or when a second run
+  changes a file's bytes or modification time, so a new generator cannot skip the hash manifest or
+  the unchanged-bytes check.
 - **Java and Kotlin: `mvn metaobjects:eject -Dforce=true` no longer rewrites an identical copy.** An
   owned generator, template, support or runtime file, or the `codegen/pom.xml`, that already holds
   exactly the reference content is left alone and reported as identical, with or without `force`.

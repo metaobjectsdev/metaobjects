@@ -77,9 +77,10 @@ import java.util.regex.Pattern;
  * toolchain's output (the path has only ever been written by it) rather than refused for lacking
  * a marker it could never have carried.
  *
- * <p>Every generator writes through this class. {@code WritePathGateTest} fails the build when
- * generator source writes a file any other way, so a new generator cannot skip the manifest or
- * the unchanged-bytes check.
+ * <p>Every generator writes through this class. {@code GeneratorWritePathTest} (in the Maven plugin) runs
+ * every registered Java and Kotlin generator and fails the build when a file is left on disk that
+ * this class did not write, or when a second run rewrites a file, so a new generator cannot skip
+ * the manifest or the unchanged-bytes check.
  */
 public final class GeneratedFileWriter {
 

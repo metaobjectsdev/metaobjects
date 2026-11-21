@@ -619,7 +619,8 @@ public class MetaDataEjectMojo extends AbstractMojo {
     }
 
     /** Writes {@code codegen/pom.xml} only if absent (or {@code -Dforce=true}). Returns
-     *  whether it wrote (vs. left an existing one alone). */
+     *  whether the pom is now the reference one (written, or already identical) rather than an
+     *  existing one left alone. */
     private boolean writeCodegenPomIfNeeded(Path codegenRoot, String pkg, Set<EjectSupport.Port> ports)
             throws MojoExecutionException {
         Path pom = codegenRoot.resolve("pom.xml");
@@ -633,7 +634,7 @@ public class MetaDataEjectMojo extends AbstractMojo {
             Files.createDirectories(codegenRoot);
             if (!GeneratedFileWriter.writeIfChanged(pom, content)) {
                 getLog().info(pom + " already holds exactly this content — left untouched.");
-                return false;
+                return true;
             }
         } catch (IOException ex) {
             throw new MojoExecutionException("Could not write " + pom, ex);
