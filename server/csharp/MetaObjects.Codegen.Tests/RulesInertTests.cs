@@ -64,13 +64,24 @@ public class RulesInertTests
         return files;
     }
 
+    /// <summary>
+    /// The layer generators (ADR-0067 §5.2). They act on the rules vocabulary by design, so they are not held
+    /// to identical output; the flat generators they sit beside are, and that is what this test guards.
+    /// Pinned by name so a flat generator cannot be excused by being added here.
+    /// </summary>
+    private static readonly HashSet<string> LayerGenerators = new(StringComparer.Ordinal) { "rules-names" };
+
+    /// <summary>The registry's flat generators: every entry but the layer ones.</summary>
+    private static IEnumerable<KeyValuePair<string, GeneratorRegistryEntry>> Flat() =>
+        GeneratorRegistry.Entries.Where(e => !LayerGenerators.Contains(e.Key));
+
     private static IGenerator Build(GeneratorRegistryEntry entry) =>
         entry.Factory(new GeneratorBuildContext(CorpusPaths.FitnessTemplateRoot));
 
     public static TheoryData<string> GeneratorNames()
     {
         var data = new TheoryData<string>();
-        foreach (var name in GeneratorRegistry.Entries.Keys.Where(n => n != SharedModelTestSupport.Name)) data.Add(name);
+        foreach (var name in Flat().Select(e => e.Key).Where(n => n != SharedModelTestSupport.Name)) data.Add(name);
         return data;
     }
 
@@ -110,7 +121,7 @@ public class RulesInertTests
     {
         // Each is compared above on its error message alone, which proves nothing about its
         // output. Pinned by name so a generator that starts throwing cannot drop out silently.
-        var threw = GeneratorRegistry.Entries
+        var threw = Flat()
             .Where(e => Emit(Load("without"), [Build(e.Value)]).ContainsKey("<threw>"))
             .Select(e => e.Key)
             .OrderBy(n => n, StringComparer.Ordinal)
@@ -121,7 +132,7 @@ public class RulesInertTests
     [Fact]
     public void Every_runnable_generator_in_one_run_emits_the_same_files()
     {
-        var runnable = GeneratorRegistry.Entries
+        var runnable = Flat()
             .Where(e => !Emit(Load("without"), [Build(e.Value)]).ContainsKey("<threw>"))
             .ToList();
         var expected = Emit(Load("without"), runnable.Select(e => Build(e.Value)).ToList());

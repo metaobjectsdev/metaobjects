@@ -258,6 +258,32 @@ public static class RulesCheck
         }
     }
 
+    /// <summary>
+    /// The transitions of <paramref name="entity"/> that derive a command of their own under
+    /// <c>rules.lifecycle.commands</c>, in effective field order. Empty for an abstract entity and for one
+    /// with no source, whose lifecycles are inert. The same derivation the permission-name check uses, so
+    /// codegen and <c>verify</c> agree on which commands exist.
+    /// </summary>
+    public static IReadOnlyList<MetaData> CommandTransitions(MetaData root, RulesSettings settings, MetaData entity)
+    {
+        if (settings.LifecycleCommands == "none" || entity.IsAbstract || !Lifecycles.LifecycleIsLive(entity)) return [];
+        var claimed = ClaimedTransitions(root);
+        return Lifecycles.EntityTransitions(entity).Where(t => DerivesCommand(claimed, settings, entity, t)).ToList();
+    }
+
+    /// <summary>The permission a transition's derived command asks the policy about: its @permission,
+    /// else <c>&lt;package&gt;.&lt;Entity&gt;.&lt;transition&gt;</c>. Null when it is @public.</summary>
+    public static string? TransitionCommandPermission(MetaData entity, MetaData transition) =>
+        PermissionOf(transition, entity, $"{entity.Name}.{transition.Name}");
+
+    /// <summary>The permission an operation asks the policy about: its @permission, else
+    /// <c>&lt;package&gt;.&lt;operation&gt;</c>. Null when it is @public.</summary>
+    public static string? OperationPermission(MetaData op) => PermissionOf(op, op, op.Name);
+
+    private static string? PermissionOf(MetaData node, MetaData owner, string path) =>
+        node.Attr(OPERATION_ATTR_PUBLIC) is true ? null
+            : node.Attr(OPERATION_ATTR_PERMISSION) as string ?? DerivedPermissionName(owner, path);
+
     /// <summary>The rules gate over a loaded model.</summary>
     public static RulesCheckResult Check(MetaData root, RulesSettings settings)
     {

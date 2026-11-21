@@ -31,6 +31,12 @@ public class MetaRoot(TypeId typeId, string name) : MetaData(typeId, name)
     /// project-aware load as <see cref="WireFormat"/> and read by codegen through <see cref="ApiSettings.Of"/>.</summary>
     public ApiSettings Api { get; set; } = ApiSettings.Default;
 
+    /// <summary>ADR-0066 — the project's business-rules settings (<c>rules</c> and <c>verify</c> in
+    /// <c>.metaobjects/config.json</c>), set by the same project-aware load as <see cref="WireFormat"/>.
+    /// Codegen reads <c>rules.lifecycle.commands</c> from here to know which transitions derive a
+    /// command. A tree loaded with no project keeps every default.</summary>
+    public MetaObjects.Config.RulesSettings Rules { get; set; } = MetaObjects.Config.RulesSettings.Default;
+
     /// <summary>
     /// The project's enum storage defaults (<c>enums</c> in <c>.metaobjects/config.json</c>), set by
     /// the same project-aware load as <see cref="PhysicalNaming"/> and read through

@@ -79,6 +79,7 @@ public sealed record ResolvedMetadata(
         result.Root.WireFormat = Wire ?? WireFormat.Default;
         result.Root.Api = Api ?? ApiSettings.Default;
         result.Root.EnumDefaults = Enums ?? EnumDefaults.Default;
+        result.Root.Rules = Rules ?? RulesSettings.Default;
         if (Imports is null) return result;
 
         result.Root.ImportScope = Imports;

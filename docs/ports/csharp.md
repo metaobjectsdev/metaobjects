@@ -108,6 +108,12 @@ Drop metadata under `metaobjects/`, for example `metaobjects/meta.blog.json`:
 }}
 ```
 
+**Unknown top-level keys.** `dotnet meta` reads the top level of `.metaobjects/config.json` and
+ignores any key the C# port does not model. A key in no port's vocabulary warns on standard error,
+once per key, with the known keys, in TypeScript's words, and nothing fails: a newer MetaObjects may
+have written the key. A key inside a block C# owns (`csharp`, `naming`, `wire` and the rest) is
+refused as before.
+
 ### Building on a shared model (optional)
 
 A model published from another repository is declared under `dependencies` in
@@ -198,8 +204,23 @@ public static class Generators
 ```csharp
 // codegen/Program.cs
 using MetaObjects.Codegen;
-return CodegenCli.Run(args, Generators.All);
+return CodegenCli.Run(args, Generators.All, Generators.Configure);
 ```
+
+**Settings every generator shares.** The `GenConfig` options that no flag and no
+`.metaobjects/config.json` key sets (`ContextTypeName`, `PropertyNaming`, `ProvidedEnumNamespace`,
+`PackageNamespaces`, `TypeOverrides`, `Convention`, `UnmappedStrategy` and the rest) are set in
+`Generators.Configure`, which `dotnet meta init` writes beside the list. It receives the config a run
+builds from its flags and the project config, and returns the one the generators see:
+
+```csharp
+public static GenConfig Configure(GenConfig config) =>
+    config with { ContextTypeName = "ShopDbContext", ProvidedEnumNamespace = "Shop.Domain" };
+```
+
+`gen` and `verify --codegen` both apply it, so verify regenerates what gen wrote. A codegen project
+from before 1.3.0 has no `Configure`: add the method, and pass it as the third argument in
+`Program.cs`. `init` never edits a file that exists.
 
 Replace the empty list `dotnet meta init` wrote with the one above before the first `gen`: with
 an empty list `gen` writes nothing, and it needs an output directory (`--out`, or `csharp.outDir`
@@ -241,8 +262,8 @@ namespace. Setting `--namespace` or `csharp.namespace` switches the default off 
 no binding places in that one flat namespace. The namespace must be a dotted path of C#
 identifiers. `dotnet meta gen` and `verify` read that flat namespace and, through
 `csharp.packageNamespaces`, the package bindings (below). The finer per-package bindings
-(`TypeOverrides`, `Convention`, `UnmappedStrategy`) are `GenConfig` properties, set when you run
-codegen from your own code with `CodegenRunner`.
+(`TypeOverrides`, `Convention`, `UnmappedStrategy`) are `GenConfig` properties, set in
+`Generators.Configure` (above).
 
 **Package-keyed output (opt-in).** Two more `csharp` keys change where files land and which
 namespace a packaged type takes; a project that sets neither keeps the flat layout and the
@@ -475,7 +496,7 @@ The codegen emits:
 ### Entity and DbContext generator options
 
 **Renaming a property.** A field's C# property is its PascalCased name. To spell some
-differently (an acronym, say), set one resolver on the config, `GenConfig.PropertyNaming`
+differently (an acronym, say), set one resolver on the config in `Generators.Configure`, `GenConfig.PropertyNaming`
 (`Func<MetaField, string>`, returning the name). The entity classes, the composite
 `[PrimaryKey(nameof(...))]`, every `AppDbContext` model line and the reverse finders all read it,
 so the declaration and every reference agree. The hooks `EntityGenerator.PropertyName` and
@@ -769,6 +790,70 @@ resolve the identical column strings; `--column-naming` is refused
 when the committed output was generated with another rule, rather than telling you to
 regenerate. See the "Column naming" section of
 [`features/field-types.md`](../features/field-types.md).
+
+### `rules-names` — the business-rules names, as constants
+
+The `rules-names` generator (`RulesNamesGenerator`) is ADR-0067's layer 0 for the business-rules
+vocabulary ([business rules](../features/business-rules.md)). It writes nothing for a model that
+declares no lifecycle and no operation. For one that does, it writes:
+
+- `<Entity>Rules.g.cs` for each entity with a lifecycle. Each lifecycle field becomes a nested class
+  holding `Field`, `Initial` (the enum's `@default`), `TerminalStates` (the members no transition
+  leaves), `States`, `Transitions` and `Permissions`. `Permissions` maps each transition that
+  derives a command to the permission that command asks the policy about: its `@permission`, or the
+  derived `<package>.<Entity>.<transition>`. A `@public` transition, and one a declared command
+  claims, has none. `rules.lifecycle.commands` decides which transitions derive a command, and
+  `verify`'s rules gate uses the same derivation.
+- `<Api>Operations.g.cs` for each `api.operational`, with a nested class per operation holding
+  `Name`, `Permission` (absent when `@public`) and `Errors` (its `@errors` codes).
+- `RuleErrorCodes.g.cs`, once per run, with the codes the enforcing shell answers on its own
+  (`not_found`, `forbidden`, `invalid_transition`, `transition_condition_failed`, `state_managed`).
+
+```csharp
+if (!policy.Allows(user, PurchaseRequestRules.Status.Permissions.Submit)) return Results.Forbid();
+if (request.Status != PurchaseRequestRules.Status.States.Draft) return Conflict(RuleErrorCodes.InvalidTransition);
+```
+
+Every name is a `const string`, so it can stand in an attribute argument or a `switch` label, and
+hand code that uses one stops compiling when the model renames it. Two names that fold to one C#
+member (`in_review` and `inReview`) are refused, naming both. `Include` on the entry scopes it as
+it does any generator: an entity's file follows the entity, and an API's file follows its package.
+This is a layer generator, separate from the flat ones (ADR-0067 §5), so adding it changes no
+other generator's output.
+
+### `contract-types` — the create and update records
+
+The `contract-types` generator (`ContractTypesGenerator`) is ADR-0067's layer 1 for writes. For
+each writable entity (a concrete `object.entity` with a writable primary source) it writes
+`<Entity>Contracts.g.cs`, next to the entity, with two `sealed record`s:
+
+- `<Entity>Create`: what a client sends to create a row. It leaves off what the server owns (a
+  derived field, an `@autoSet` stamp, a `readOnly` field, the TPH discriminator) and a key the
+  server generates (`@generation: increment` or `uuid`). A key the client chooses stays. A member
+  that is required and has no `@default` is a C# `required` member, so System.Text.Json refuses a
+  body that omits it.
+- `<Entity>Update`: what a client may change. It leaves off the same server-owned members, every
+  key field (the route names the row) and a `writeOnce` field (frozen after create; it stays on
+  `<Entity>Create`). Every member is optional. Bind it with
+  `<Entity>Update.From(body, options)`, which records the keys the body carried: `Has("note")` is
+  true for `{"note": null}` and false for `{}`, so a PATCH can leave an omitted member alone and
+  clear an explicit null. A body that is not a JSON object throws `JsonException`. `Validate`
+  refuses null on a required member. A field whose C# name is one of the record's own members
+  (`Fields`, `Present`, `Has`, `From`, `Validate`) is refused at generation, naming the entity and
+  the field; rename the field.
+
+Both records carry the entity's validation attributes (`[MaxLength]`, `[StringLength]`, `[Range]`,
+`[RegularExpression]`, `[EmailAddress]`, the array counts) and its wire converters (decimal,
+duration, strict uri/inet), written by `ContractMembers`, the one copy `EntityGenerator` writes its
+own from. A required string keeps its non-empty floor in both: on update it applies when the member
+is sent. Enum, value-object and map members name the entity's own types, so `entity` runs in the
+same project (`Requires: entity`). Bind with the application's JSON options; an enum member needs the
+`JsonStringEnumConverter` the application registers (see [Use](#use)).
+
+The lifecycle field stays on both records. The service shell checks a create against the initial
+state and refuses a change on the generic update with `409 state_managed` (ADR-0066 §6), so it has
+to see the member. This is a layer generator, separate from the flat ones (ADR-0067 §5), so adding
+it changes no other generator's output. Eject hands `ContractMembers` over with either generator.
 
 ### Report export
 
