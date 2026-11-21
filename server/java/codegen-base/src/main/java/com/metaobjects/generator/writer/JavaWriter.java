@@ -177,7 +177,7 @@ public class JavaWriter extends CodeWriter {
     return !pkg.equals(JAVA_LANG) && !pkg.equals(packageName);
   }
 
-  private static String simpleName(String qualified) {
+  protected static String simpleName(String qualified) {
     return qualified.substring(qualified.lastIndexOf('.') + 1);
   }
 }
