@@ -41,7 +41,7 @@ async function loadModel(): Promise<MetaRoot> {
 /** The DDL `meta migrate` writes for the model on an empty database: tables, then the report views. */
 async function schemaSql(dialect: "postgres" | "sqlite"): Promise<string> {
   const root = await loadModel();
-  // The views come from the caller, as  passes them.
+  // The views come from the caller, as `meta migrate` passes them.
   const expected = buildExpectedSchema(root, { dialect, views: buildProjectionViews(root, { dialect }) });
   const result = await diff({ expected, actual: { tables: [], views: [] }, dialect });
   expect(result.blocked).toEqual([]);
