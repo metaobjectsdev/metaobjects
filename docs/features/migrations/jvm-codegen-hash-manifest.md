@@ -122,11 +122,13 @@ also deleted, when every generator writing into its directory sets `overwrite`.
 That still works: deleting the line is an edit, so the file no longer matches its record and
 is refused.
 
-## What does not change
+## What does not change, and what the next release adds
 
-- User templates (`TemplateScopeGenerator`, `MustacheTemplateGenerator`), the api-docs pages
-  and the `META-INF/services` registration are not recorded. They are written on every run as
-  before, and the run never deletes them.
+- User templates, the documentation pages and the `META-INF/services` registration were not
+  recorded in 8.1.0, so they had no hand-edit protection there. From the next release they are
+  recorded like every other generated file, and a hand edit to one is refused by name. An
+  existing file at such a path with no record is adopted on the first run, not refused
+  (see the CHANGELOG, Unreleased).
 - A refusal is still a warning on the JVM. `mvn metaobjects:verify` is the gate that fails:
   it reports a stale file, says whether `generate` deletes it, and tells you to delete an
   edited one yourself.

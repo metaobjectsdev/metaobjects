@@ -298,8 +298,8 @@ registered escaper formats; a `target` field is **rejected** (the CLI ports have
 output-target concept). The same neutral data dict, output-pattern grammar, and
 conformance corpus apply, so a spec renders byte-identically across ports. The standard
 write path decides from the hash manifest, not the header (section 7), so a template need
-not emit the `@generated` marker. The JVM's `TemplateScopeGenerator` writes directly and
-keeps no manifest record.)
+not emit the `@generated` marker. The JVM's `TemplateScopeGenerator` is guarded the same way
+(see [own-your-codegen.md](own-your-codegen.md)).)
 
 **The spec is declared, never discovered.** Through 1.0 both CLI ports also read a
 `--template-spec` flag or a project-root `template-spec.json` on their own. Since 1.1.0 a spec

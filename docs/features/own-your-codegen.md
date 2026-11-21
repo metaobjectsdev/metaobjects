@@ -534,12 +534,13 @@ adopts every generated file, deletes nothing, and prints one notice to commit th
 The token alone decides only when no manifest is configured, which `mvn metaobjects:generate`
 never does (an embedder driving a generator directly can).
 
-**Four write paths bypass the guard on purpose**, and they are not oversights: user-supplied
-templates (`TemplateScopeGenerator`, `MustacheTemplateGenerator`), the `api-docs` generators'
-pages, and the `META-INF/services` registration whose entire content is a bare
-fully-qualified name. None of them emits content MetaObjects authors, so none is recorded in
-the manifest. They are overwritten on every run, and the orphan sweep never deletes them.
-`GeneratedFileWriter`'s javadoc lists them.
+**Output that cannot carry the `GENERATED` token takes the unmarked path.** User-supplied
+templates (`TemplateScopeGenerator`, `MustacheTemplateGenerator`), the api, HTML, JSON and
+PlantUML documentation pages and the `META-INF/services` registration (a bare fully-qualified
+name, with nowhere to put a token) are recorded in the manifest like every other generated file.
+An unchanged file is not rewritten, and a hand edit is refused by name. The one difference is
+adoption: a file at such a path that the manifest has no record of is taken as this toolchain's
+output, because the path was only ever written by it. `GeneratedFileWriter`'s javadoc lists them.
 
 Two consequences to hold on to:
 
@@ -1204,7 +1205,9 @@ Eject never edits an existing pom. It prints the three things to wire: the `<mod
 entry for your parent pom, a plugin `<dependency>` on the codegen module for the module
 that runs `metaobjects:generate`, and the new `<classname>` for each `<generator>`. It
 never overwrites a copy without `-Dforce`, and `-Dlist` marks each owned copy `identical`
-or `DIFFERS: N behind, M of your own`. A copy is `identical` only when every file it owns is:
+or `DIFFERS: N behind, M of your own`. A file that already holds exactly the reference bytes
+is reported `IDENTICAL` and left unwritten, with or without `-Dforce`, so its timestamp does
+not move. A copy is `identical` only when every file it owns is:
 the classes copied with it, its templates, the shared support classes it imports and the helper
 runtime its output imports. A differing one is named
 (`[owned — DIFFERS: 0 behind, 1 of your own; differing: api/index.md.mustache]`), so a resync

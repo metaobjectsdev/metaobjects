@@ -296,7 +296,8 @@ sharing the enum keeps its integer `CHECK`. The generated type is the port's lis
 
 The `roundtrip-int-enum-array` persistence scenario
 ([fixtures/persistence-conformance/README.md](../../fixtures/persistence-conformance/README.md#int-backed-enum-array-scenario))
-gates every row of this table. A **string-backed** enum array is a different case: Java's OMDB
+gates the Postgres, MySQL, SQLite and D1 columns of this table on the ports that run it. Derby is
+not in that corpus. A **string-backed** enum array is a different case: Java's OMDB
 maps no native array column for it, and Kotlin's Exposed generator emits a scalar column for it,
 so a generated Kotlin controller for such an entity does not compile
 ([KNOWN_GAPS.md](../../server/java/codegen-kotlin/src/main/kotlin/com/metaobjects/generator/kotlin/KNOWN_GAPS.md)).
