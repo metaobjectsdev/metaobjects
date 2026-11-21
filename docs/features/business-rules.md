@@ -14,8 +14,9 @@ The Rust port loads the vocabulary and runs the same loader rules, and its `veri
 same rules gate, held to `fixtures/rules-check-conformance/` ([Rust port](../ports/rust.md)).
 A requirement can claim an operation or a transition. The flat generators generate nothing from
 the vocabulary. The layer generators of ADR-0067 do, and an app adds them to its generator list as
-it adds any generator. The first is C#'s `rules-names`, which writes the states, transitions,
-permissions and error codes as constants ([C# port](../ports/csharp.md)). The service shells that
+it adds any generator. The first are C#'s `rules-names`, which writes the states, transitions,
+permissions and error codes as constants, and `contract-types`, which writes each entity's create
+and update records ([C# port](../ports/csharp.md)). The service shells that
 enforce these rules at run time are later work. A lifecycle in a project
 that wires none will be advised by `verify` once that check lands; today the flat routes enforce
 nothing and `verify` says nothing about it. Every flat generator writes byte-identical code for

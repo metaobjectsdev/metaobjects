@@ -47,6 +47,19 @@ here.**
   exactly the reference content is left alone and reported as identical, with or without `force`.
   The codegen fingerprint, `metaobjects:fmt` and `metaobjects:init` also compare before they write.
 
+- **C#: a `contract-types` generator writes each entity's create and update records (ADR-0067 layer 1).**
+  Opt-in, beside `entity`: add `new ContractTypesGenerator()` to `codegen/Generators.cs`. For each
+  writable entity it writes `<Entity>Contracts.g.cs` with `<Entity>Create` and `<Entity>Update`,
+  `sealed record`s carrying the entity's validation attributes and wire converters. Neither carries
+  what the server owns: a generated key, an `@autoSet` stamp, a `readOnly` or derived field, a TPH
+  discriminator. A required member with no `@default` is a `required` member of the create record, so
+  a body that omits it does not bind. Every update member is optional; `<Entity>Update.From` binds a
+  body and records which keys it carried, so `Has` tells an omitted member (untouched) from an
+  explicit null (cleared), and validation refuses null on a required member. The lifecycle field
+  stays on both, so the service shell can check it and refuse a change with `409 state_managed`. The
+  validation and converter attributes moved out of `EntityGenerator` into `ContractMembers`, which
+  eject hands over with either generator; the entity's output is unchanged. The shared generator
+  manifest gains the `contract-types` entry (C# only for now).
 - **C#: a `rules-names` generator writes the business-rules names as constants (ADR-0067 layer 0).**
   It is opt-in, like any generator: add `new RulesNamesGenerator()` to `codegen/Generators.cs`. For
   each entity with a lifecycle it writes `<Entity>Rules.g.cs`, with each lifecycle's states, initial

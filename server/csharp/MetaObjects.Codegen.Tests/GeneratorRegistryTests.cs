@@ -23,6 +23,7 @@ public sealed class GeneratorRegistryTests
         // Program A / §A5 — per-object physical database name constants.
         "names",
         "rules-names",
+        "contract-types",
         // The @expr indexes the EF model cannot carry, as SQL (C#-only).
         "expression-indexes",
         // ADR-0057 — per-requirement xUnit tests calling a project-owned witness.

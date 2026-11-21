@@ -166,7 +166,7 @@ public static class GeneratorRegistry
                 Layer = GeneratorLayer.Model,
                 Factory = _ => new EntityGenerator(),
                 SourceFileName = "EntityGenerator.cs",
-                Companions = ["Generators/Fr019SharedEnum.cs", "Generators/M2MNavigation.cs", "Generators/ReverseFinders.cs", "Docs/XmlDocBuilder.cs"],
+                Companions = ["Generators/ContractMembers.cs", "Generators/Fr019SharedEnum.cs", "Generators/M2MNavigation.cs", "Generators/ReverseFinders.cs", "Docs/XmlDocBuilder.cs"],
             },
             ["db-context"] = new()
             {
@@ -270,6 +270,19 @@ public static class GeneratorRegistry
                 Layer = GeneratorLayer.Model,
                 Factory = _ => new RulesNamesGenerator(),
                 SourceFileName = "RulesNamesGenerator.cs",
+            },
+            // ADR-0067 layer 1 for writes: the create and update records, a layer generator. They name
+            // the entity's enum and value-object types, so entity runs with it.
+            ["contract-types"] = new()
+            {
+                Name = "contract-types",
+                Description = "Per-entity create and update records with the entity's validation (ADR-0067 layer 1).",
+                Tier = GeneratorTier.Native,
+                Layer = GeneratorLayer.Model,
+                Requires = ["entity"],
+                Factory = _ => new ContractTypesGenerator(),
+                SourceFileName = "ContractTypesGenerator.cs",
+                Companions = ["Generators/ContractMembers.cs", "Generators/Fr019SharedEnum.cs", "Docs/XmlDocBuilder.cs"],
             },
             // The indexes the EF model cannot carry (an @expr key), as one SQL file to apply after the
             // schema EF builds. C#-only: meta migrate writes them into its own DDL.

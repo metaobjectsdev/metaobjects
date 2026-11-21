@@ -56,6 +56,7 @@
     <EmbeddedResource Include="Generators/FilterAllowlistGenerator.cs" />
     <EmbeddedResource Include="Generators/NamesGenerator.cs" />
     <EmbeddedResource Include="Generators/RulesNamesGenerator.cs" />
+    <EmbeddedResource Include="Generators/ContractTypesGenerator.cs" />
     <EmbeddedResource Include="Generators/CallableGenerator.cs" />
     <EmbeddedResource Include="Generators/RequirementTestsGenerator.cs" />
     <EmbeddedResource Include="Generators/SharedModelGenerator.cs" />
@@ -64,6 +65,7 @@
     <!-- Emitters handed over with the generators above (their `Companions`). -->
     <EmbeddedResource Include="Generators/ExtractDelegateEmitter.cs" />
     <EmbeddedResource Include="Generators/Fr010FieldMapping.cs" />
+    <EmbeddedResource Include="Generators/ContractMembers.cs" />
     <EmbeddedResource Include="Generators/Fr019SharedEnum.cs" />
     <EmbeddedResource Include="Generators/M2MNavigation.cs" />
     <EmbeddedResource Include="Generators/OutputFormatSpecEmitter.cs" />

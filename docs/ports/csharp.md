@@ -800,6 +800,36 @@ it does any generator: an entity's file follows the entity, and an API's file fo
 This is a layer generator, separate from the flat ones (ADR-0067 §5), so adding it changes no
 other generator's output.
 
+### `contract-types` — the create and update records
+
+The `contract-types` generator (`ContractTypesGenerator`) is ADR-0067's layer 1 for writes. For
+each writable entity (a concrete `object.entity` with a writable primary source) it writes
+`<Entity>Contracts.g.cs`, next to the entity, with two `sealed record`s:
+
+- `<Entity>Create`: what a client sends to create a row. It leaves off what the server owns (a
+  derived field, an `@autoSet` stamp, a `readOnly` field, the TPH discriminator) and a key the
+  server generates (`@generation: increment` or `uuid`). A key the client chooses stays. A member
+  that is required and has no `@default` is a C# `required` member, so System.Text.Json refuses a
+  body that omits it.
+- `<Entity>Update`: what a client may change. It leaves off the same server-owned members and every
+  key field, since the route names the row. Every member is optional. Bind it with
+  `<Entity>Update.From(body, options)`, which records the keys the body carried: `Has("note")` is
+  true for `{"note": null}` and false for `{}`, so a PATCH can leave an omitted member alone and
+  clear an explicit null. `Validate` refuses null on a required member.
+
+Both records carry the entity's validation attributes (`[MaxLength]`, `[StringLength]`, `[Range]`,
+`[RegularExpression]`, `[EmailAddress]`, the array counts) and its wire converters (decimal,
+duration, strict uri/inet), written by `ContractMembers`, the one copy `EntityGenerator` writes its
+own from. A required string keeps its non-empty floor in both: on update it applies when the member
+is sent. Enum, value-object and map members name the entity's own types, so `entity` runs in the
+same project (`Requires: entity`). Bind with the application's JSON options; a generated server
+registers `JsonStringEnumConverter`, which an enum member needs.
+
+The lifecycle field stays on both records. The service shell checks a create against the initial
+state and refuses a change on the generic update with `409 state_managed` (ADR-0066 §6), so it has
+to see the member. This is a layer generator, separate from the flat ones (ADR-0067 §5), so adding
+it changes no other generator's output. Eject hands `ContractMembers` over with either generator.
+
 ### Report export
 
 A served report (a view-backed `object.report`) can be downloaded as a file:
