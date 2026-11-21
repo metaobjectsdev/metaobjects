@@ -174,7 +174,7 @@ No hand-written Exposed wiring needed.
 | Generated-code-vs-metadata (codegen drift) | `meta:verify` goal (regenerate-to-temp + compare) | Build time / CI |
 | Code-vs-API-doc | Cross-port codegen from same metadata | Build time |
 | DB-vs-metadata, Migration-vs-metadata | TypeScript toolchain (`@metaobjectsdev/cli migrate`) — schema migrations and live-DB schema-drift verification are TS-only | Build time / CI |
-| Generated-edited | `@generated` headers in KotlinPoet output | Code review |
+| Generated-edited | Hash manifest: an edited file is refused by name; `mvn metaobjects:verify` reports it | Build time |
 | Prompt-vs-payload | `KotlinRenderHelperGenerator`'s build-time drift gate + Java `Renderer.verify` | Build time + runtime |
 | Generated-vs-runtime | `MetadataStartupValidator.validate(loader)` from Spring `ApplicationReadyEvent` | App startup |
 

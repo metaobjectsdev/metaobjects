@@ -35,11 +35,10 @@ reference generator in the printed entry; without it no documentation generator 
 ## Regeneration and hand edits
 
 There is no three-way merge on the JVM (that is TypeScript-only). `mvn metaobjects:generate`
-records each file it writes in `.metaobjects/.gen-state/.hashes/`: a file that still matches
-is overwritten, and an edited one is refused by name (`<handEdits>keep</handEdits>`, the default)
-or replaced (`<handEdits>overwrite</handEdits>`). `mvn metaobjects:eject -Dnames=<name>` copies a
-generator into your repo to own. Commit the manifest. Details:
-[Own your codegen](../features/own-your-codegen.md).
+records each file it writes in `.metaobjects/.gen-state/.hashes/`; an edited file is refused by
+name, and `<handEdits>overwrite</handEdits>` replaces it instead. `mvn metaobjects:eject -Dnames=<name>`
+copies a generator into your repo to own. Commit the manifest. The rules for every port:
+[Hand edits and the hash manifest](../features/own-your-codegen.md#hand-edits-and-the-hash-manifest-every-port).
 
 ## Undo an eject, strict loading, and diagnostics
 
@@ -946,12 +945,10 @@ the output-pattern grammar are gated byte-identical against the shared
 `fixtures/template-codegen-conformance/` corpus, so a template that renders here
 renders the same everywhere.
 
-One deliberate difference from the other ports: this generator writes its output
-**directly**, not through `GeneratedFileWriter`, so your template is under no
-obligation to emit a marker, and its output is not recorded in the codegen hash manifest.
-The tradeoff is that these files are overwritten on every run, and the orphan sweep never
-deletes one that is no longer rendered — keep hand edits out of them, and delete a stale one
-yourself.
+Its output is recorded in the codegen hash manifest like the rest of the Java output, so your
+template need not emit a marker. An unchanged file is not rewritten, a hand edit is refused by
+name, and a file the template no longer renders is deleted when untouched. The rules for every
+port are in [Hand edits and the hash manifest](../features/own-your-codegen.md#hand-edits-and-the-hash-manifest-every-port).
 
 The data dict your template receives is documented in
 [`codegen-data-shapes.md`](../features/codegen-data-shapes.md).
@@ -1052,17 +1049,11 @@ the runtime classpath, and no stored-procedure callable generator exists (FR-015
 TypeScript, C# and Kotlin only). OMDB is data access only; schema migrations are owned by the
 Node `meta` CLI.
 
-OMDB persists an int-backed `field.enum` array (`@intValueMap` with `isArray: true`, own or
-inherited) as each member's declared integer: a native `integer[]` on Postgres
-(`PostgresDriver.nativeArrayElementType`), and on SQLite, MySQL and Derby a JSON array of numbers
-(`[5,0]`) in a text column, read back as the members in order. A member with no declared integer is
-refused on write with an `SQLException` naming the field, and a stored integer with no member fails
-the read the way an unmapped scalar does; a null array stays null and an empty one stays empty. The
-`roundtrip-int-enum-array` persistence scenario runs in the Java runners. A string-backed enum array
-is not covered: a native array column is mapped only for `field.string`, `field.uuid`,
-`field.decimal` and the int-backed enum. The generated Spring enum for
-an int-backed enum carries `dbValue()` and `fromDbValue(int)`, and the payload types an array field as
-`List<E>`, so a repository you write maps each element.
+OMDB persists an int-backed `field.enum` array on Postgres, SQLite, MySQL and Derby; the stored
+form, the Java specifics and the gating scenario are in
+[Int-backed enum arrays](../features/field-types.md#int-backed-enum-arrays). A string-backed enum
+array is not covered: a native array column is mapped only for `field.string`, `field.uuid`,
+`field.decimal` and the int-backed enum.
 
 ## Capability snapshot
 

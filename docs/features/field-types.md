@@ -242,14 +242,8 @@ deferred (see [enum-datatype-design.md](../superpowers/specs/2026-05-23-enum-dat
 
 Two rules follow from int-backing being a **persistence-layer codec**:
 
-- **An array is mapped element by element.** An enum field with `isArray: true` that
-  carries `@intValueMap` (its own, or inherited from a shared enum) stores each element as
-  its declared integer: an `integer[]` column on Postgres, and a JSON array of numbers
-  (`[5,0]`) where an engine keeps arrays as JSON text (SQLite, D1, MySQL). Each element reads
-  back as its member. A null array stays null and an empty one stays empty. The array column
-  has no `CHECK`, the same as a string-backed enum array. Where a port's runtime stores no
-  primitive array on an engine, see that port's page under [docs/ports/](../ports/) for what it
-  does there.
+- **An array is mapped element by element.** See [Int-backed enum arrays](#int-backed-enum-arrays)
+  below.
 - **A stored integer that maps to no member throws on read**, in every port. The row holds
   data the model says is impossible (a hand-written `INSERT`, or a member removed without a
   migration); surfacing the raw integer would hand you a "member" that is not one — and is
@@ -277,6 +271,36 @@ unmapped integer does. Where each port maps it: the C# EF converter and `CHECK`;
 the Drizzle column codec, the runtime ObjectManager and the view, report and Cube lowerings
 (TypeScript); the OMDB codec (Java); the Exposed `customEnumeration` (Kotlin); the generated
 Spring enum's `dbValue()` (for a hand-written repository); the Python ObjectManager.
+
+### Int-backed enum arrays
+
+This section is the one description of the int-backed enum array for every port; the port pages
+name only their own classes and point here.
+
+An enum field with `isArray: true` that carries `@intValueMap` (its own, or inherited from a
+shared enum) stores each element as its declared integer: an `integer[]` column on Postgres, and
+a JSON array of numbers (`[5,0]`) where an engine keeps arrays as JSON text (SQLite, D1, MySQL).
+Each element reads back as its member, in order. A null array stays null and an empty one stays
+empty. A stored integer with no member throws on read, as it does for a scalar. The array column
+has no `CHECK` (membership of an enum array is checked by the application), while a scalar column
+sharing the enum keeps its integer `CHECK`. The generated type is the port's list of the enum
+(`List<E>`, `IList<TEnum>`, an array of the union).
+
+| Port | Engines it stores the array on | Where the mapping lives |
+|---|---|---|
+| TypeScript | Postgres, SQLite, D1, MySQL | the Drizzle column codec and the runtime ObjectManager |
+| C# | Postgres, SQLite, MySQL | the element converter of an EF Core primitive collection; a non-required array is `IList<TEnum>?` |
+| Java | Postgres, SQLite, MySQL, Derby | the OMDB codec (`JdbcCodecs`; `PostgresDriver.nativeArrayElementType` on Postgres). A member with no declared integer is refused on write with an `SQLException` naming the field. A repository you write yourself maps each element through the generated enum's `dbValue()` and `fromDbValue(int)` |
+| Kotlin | Postgres, SQLite, MySQL | the generated `portableIntEnumArray<E>(name, { toInt }, { fromInt })` column, emitted into `MetaIntEnumArrayColumnType.kt` only in a package that has such a column. Its two lambdas are generated `when` expressions, so a member with no integer is a compile error |
+| Python | Postgres only | the codec in `metaobjects.runtime.values`, called by `ObjectManagerDb`. SQLite and MySQL store no primitive array in this runtime, so an enum array of either kind is Postgres-only there |
+
+The `roundtrip-int-enum-array` persistence scenario
+([fixtures/persistence-conformance/README.md](../../fixtures/persistence-conformance/README.md#int-backed-enum-array-scenario))
+gates the Postgres, MySQL, SQLite and D1 columns of this table on the ports that run it. Derby is
+not in that corpus. A **string-backed** enum array is a different case: Java's OMDB
+maps no native array column for it, and Kotlin's Exposed generator emits a scalar column for it,
+so a generated Kotlin controller for such an entity does not compile
+([KNOWN_GAPS.md](../../server/java/codegen-kotlin/src/main/kotlin/com/metaobjects/generator/kotlin/KNOWN_GAPS.md)).
 
 ### Sharing one enum — abstract `field.enum` + `extends`
 

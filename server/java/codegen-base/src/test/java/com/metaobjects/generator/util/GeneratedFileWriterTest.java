@@ -559,4 +559,82 @@ public class GeneratedFileWriterTest {
         assertFalse("a capture run writes no file", Files.exists(tmp.getRoot().toPath().resolve("virtual")));
         assertNull(GeneratedFileWriter.currentRun());
     }
+
+    // === output that cannot carry the marker (template, docs, services files) =========
+
+    private static final String PAGE = "# Customer\n\nA page with no marker.\n";
+
+    @Test
+    public void unmarked_noManifest_overwritesWhatIsThereInsteadOfRefusing() throws Exception {
+        Path out = tmp.getRoot().toPath().resolve("docs/customer.md");
+        Files.createDirectories(out.getParent());
+        Files.writeString(out, "old page\n");
+        assertEquals(GeneratedFileWriter.Outcome.WRITTEN, GeneratedFileWriter.writeUnmarked(out, PAGE));
+        assertEquals(PAGE, Files.readString(out));
+    }
+
+    @Test
+    public void unmarked_withManifest_isRecordedAndAnExistingUnrecordedFileIsAdopted() throws Exception {
+        Path project = tmp.newFolder().toPath();
+        Path genState = project.resolve(".metaobjects/.gen-state");
+        Path out = project.resolve("docs/customer.md");
+        Files.createDirectories(out.getParent());
+        Files.writeString(out, "a page from before the manifest\n");
+
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.configureManifest(genState, project);
+            assertEquals(GeneratedFileWriter.Outcome.WRITTEN, GeneratedFileWriter.writeUnmarked(out, PAGE));
+            assertEquals(List.of(out.toString()), run.adoptedPaths());
+        }
+        assertEquals(PAGE, Files.readString(out));
+        assertEquals(HashManifest.contentHash(PAGE), HashManifest.recordedHash(genState, "docs/customer.md"));
+    }
+
+    @Test
+    public void unmarked_withManifest_unchangedBytesAreNotRewritten() throws Exception {
+        Path project = tmp.newFolder().toPath();
+        Path genState = project.resolve(".metaobjects/.gen-state");
+        Path out = project.resolve("docs/customer.md");
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.configureManifest(genState, project);
+            GeneratedFileWriter.writeUnmarked(out, PAGE.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        }
+        Files.setLastModifiedTime(out, LONG_AGO);
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.configureManifest(genState, project);
+            assertEquals(GeneratedFileWriter.Outcome.UNCHANGED, GeneratedFileWriter.writeUnmarked(out, PAGE));
+        }
+        assertEquals(LONG_AGO, Files.getLastModifiedTime(out));
+    }
+
+    @Test
+    public void unmarked_withManifest_aHandEditIsRefusedByNameUnderKeep() throws Exception {
+        Path project = tmp.newFolder().toPath();
+        Path genState = project.resolve(".metaobjects/.gen-state");
+        Path out = project.resolve("docs/customer.md");
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.configureManifest(genState, project);
+            GeneratedFileWriter.writeUnmarked(out, PAGE);
+        }
+        String edited = PAGE + "my own paragraph\n";
+        Files.writeString(out, edited);
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.configureManifest(genState, project);
+            run.attributeTo("api-docs", GeneratedFileWriter.HAND_EDITS_KEEP, null);
+            assertEquals(GeneratedFileWriter.Outcome.REFUSED, GeneratedFileWriter.writeUnmarked(out, PAGE + "new\n"));
+        }
+        assertEquals(edited, Files.readString(out));
+        assertEquals(HashManifest.contentHash(PAGE), HashManifest.recordedHash(genState, "docs/customer.md"));
+    }
+
+    @Test
+    public void unmarked_captureRun_holdsTheBytesAndWritesNothing() throws Exception {
+        Path out = tmp.getRoot().toPath().resolve("virtual/docs/customer.md");
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginCaptureRun()) {
+            GeneratedFileWriter.writeUnmarked(out, PAGE);
+            assertEquals(PAGE, new String(run.captured().get(out.toAbsolutePath().normalize()),
+                java.nio.charset.StandardCharsets.UTF_8));
+        }
+        assertFalse(Files.exists(tmp.getRoot().toPath().resolve("virtual")));
+    }
 }

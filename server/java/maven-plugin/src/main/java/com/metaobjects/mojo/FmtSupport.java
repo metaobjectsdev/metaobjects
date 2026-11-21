@@ -366,7 +366,7 @@ public final class FmtSupport {
 
     private static void writeString(Path path, String content) {
         try {
-            Files.writeString(path, content, StandardCharsets.UTF_8);
+            com.metaobjects.generator.util.GeneratedFileWriter.writeIfChanged(path, content);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

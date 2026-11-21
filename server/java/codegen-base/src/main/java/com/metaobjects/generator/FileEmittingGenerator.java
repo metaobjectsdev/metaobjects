@@ -29,15 +29,17 @@ import java.util.List;
  * Wire it in the pom like any generator — {@code <classname>} plus an
  * {@code <args><outputDir>}{@code </outputDir></args>} — from a module the plugin's
  * classpath can see (the {@code codegen/} module {@code mvn metaobjects:eject} scaffolds is
- * one). {@code mvn metaobjects:verify} re-runs it into a temp dir and diffs, with nothing to
+ * one). {@code mvn metaobjects:verify} re-runs it in memory and diffs, with nothing to
  * register.
  *
  * <p><b>Writing.</b> A file whose content carries this toolchain's {@code GENERATED} header
  * comment goes through {@link GeneratedFileWriter}, so an existing file WITHOUT the marker —
  * one someone took ownership of — is refused with a warning, exactly as for the reference
  * generators. Content that carries no such header (JSON, YAML — formats that cannot hold a
- * comment) is written as given: the marker rule would let run 1 write it and refuse it on
- * every run after, freezing it behind a green build.
+ * comment) goes through {@link GeneratedFileWriter#writeUnmarked}: it is recorded in the hash
+ * manifest and guarded the same way, but never refused for lacking a marker it cannot carry (the
+ * marker rule would let run 1 write it and refuse it on every run after, freezing it behind a
+ * green build).
  */
 public abstract class FileEmittingGenerator extends GeneratorBase {
 
@@ -63,7 +65,7 @@ public abstract class FileEmittingGenerator extends GeneratorBase {
                 if (GeneratedFileWriter.looksGenerated(f.content())) {
                     GeneratedFileWriter.write(target, f.content());
                 } else {
-                    GeneratedFileWriter.writeIfChanged(target, f.content());
+                    GeneratedFileWriter.writeUnmarked(target, f.content());
                 }
             } catch (IOException e) {
                 throw new GeneratorException(getClass().getSimpleName() + ": could not write " + target + ": " + e, e);
