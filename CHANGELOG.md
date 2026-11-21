@@ -51,7 +51,43 @@ here.**
   owned generator, template, support or runtime file, or the `codegen/pom.xml`, that already holds
   exactly the reference content is left alone and reported as identical, with or without `force`.
   The codegen fingerprint, `metaobjects:fmt` and `metaobjects:init` also compare before they write.
-
+- **C#: a `contract-types` generator writes each entity's create and update records (ADR-0067 layer 1).**
+  Opt-in, beside `entity`: add `new ContractTypesGenerator()` to `codegen/Generators.cs`. For each
+  writable entity it writes `<Entity>Contracts.g.cs` with `<Entity>Create` and `<Entity>Update`,
+  `sealed record`s carrying the entity's validation attributes and wire converters. Neither carries
+  what the server owns: a generated key, an `@autoSet` stamp, a `readOnly` or derived field, a TPH
+  discriminator. A required member with no `@default` is a `required` member of the create record, so
+  a body that omits it does not bind. A `writeOnce` field is on the create record and off the update
+  record, since it is frozen after create. Every update member is optional; `<Entity>Update.From` binds a
+  body and records which keys it carried, so `Has` tells an omitted member (untouched) from an
+  explicit null (cleared), and validation refuses null on a required member. The lifecycle field
+  stays on both, so the service shell can check it and refuse a change with `409 state_managed`. The
+  validation and converter attributes moved out of `EntityGenerator` into `ContractMembers`, which
+  eject hands over with either generator; the entity's output is unchanged. The shared generator
+  manifest gains the `contract-types` entry (C# only for now).
+- **C#: a `rules-names` generator writes the business-rules names as constants (ADR-0067 layer 0).**
+  It is opt-in, like any generator: add `new RulesNamesGenerator()` to `codegen/Generators.cs`. For
+  each entity with a lifecycle it writes `<Entity>Rules.g.cs`, with each lifecycle's states, initial
+  and terminal states, transitions, and the permission each derived command asks for. For each
+  `api.operational` it writes `<Api>Operations.g.cs`, with each operation's name, permission and
+  `@errors` codes. It also writes `RuleErrorCodes.g.cs` once, with the shell's own codes. Permission
+  names are derived the way `verify` derives them, and `rules.lifecycle.commands` decides which
+  transitions get one. A model with no rules vocabulary gets no file. It is a layer generator, so the
+  flat generators' output is unchanged and the codegen-noop rules corpus still holds them. The shared
+  generator manifest gains the `rules-names` entry (C# only for now).
+- **C#: the codegen project sets every `GenConfig` option.** `dotnet meta init` now writes a
+  `Generators.Configure` method beside the generator list, and `codegen/Program.cs` passes it to
+  `CodegenCli.Run`. It receives the config a run builds from its flags and `.metaobjects/config.json`
+  and returns the one the generators see. That makes the options no flag or config key sets
+  reachable on the normal path: `ContextTypeName`, `PropertyNaming`, `ProvidedEnumNamespace`,
+  `PackageNamespaces`, `TypeOverrides`, `Convention`, `UnmappedStrategy` and the rest. `gen` and
+  `verify --codegen` both apply it. An existing codegen project keeps working unchanged; to use it,
+  add the method and pass `Generators.Configure` as the third argument in `Program.cs`.
+- **C#: an unknown top-level key in `.metaobjects/config.json` warns.** It was ignored without a word,
+  so a misspelt key (`scopes` for `scope`) did nothing. It is still ignored, and nothing fails,
+  because a newer MetaObjects may have written it, but each one is now named once on standard error
+  with the known keys, in the words TypeScript uses. A key inside a block C# owns (`csharp`,
+  `naming`, `wire` and the rest) is refused as before.
 - **The REST standard's list handling is part of the cross-port contract.** `?search`,
   `filter[or]` / `filter[and]`, the nesting cap, the bare-field and leading-`%` refusals, the
   filter-value format check, and the `invalid_json`, `invalid_id`, `pagination.invalid_value` and
@@ -98,7 +134,6 @@ here.**
   included every filterable text field, and an int-backed (`@intValueMap`) enum is an integer
   column, so Postgres refused the ILIKE. Search now covers only fields whose operator band
   includes `like`.
-
 - **C#: a `@sequenceStart` whose migrations project lacks the design-time services line is a generation
   error.** When `dotnet meta gen` can see the context's `ModelSnapshot.cs` in another project and that
   project does not carry `[assembly: DesignTimeServicesReference]`, the next `dotnet ef migrations add`

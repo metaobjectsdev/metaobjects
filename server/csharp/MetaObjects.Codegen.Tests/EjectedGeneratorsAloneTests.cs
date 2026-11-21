@@ -281,6 +281,14 @@ public class EjectedGeneratorsAloneTests
         // `expression-indexes` emits only for an @expr index, which neither shared corpus has.
         if (generator is "expression-indexes")
             yield return ("expression-indexes", LoadInline(ExpressionIndexesGeneratorTests.Model, "expr.json"));
+        // `rules-names` emits only for a lifecycle or an api.operational, which neither shared corpus has.
+        if (generator is "rules-names")
+        {
+            var rules = MetaDataLoader.FromDirectory(
+                Path.Combine(CorpusPaths.RepoRoot(), "fixtures", "codegen-noop", "rules", "with"), strict: true);
+            Assert.Empty(rules.Errors.Select(e => e.Code + ": " + e.Message));
+            yield return ("rules", rules.Root);
+        }
         yield return ("fitness", EjectedGeneratorCompileTests.LoadCorpus());
         var worked = MetaDataLoader.FromDirectory(
             Path.Combine(CorpusPaths.RepoRoot(), "fixtures", "requirement-test-identity-conformance", "worked-example", "input"), strict: true);

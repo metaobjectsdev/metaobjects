@@ -43,12 +43,12 @@ public static class CodegenScaffold
     /// <summary>codegen/Codegen.csproj, pinning <c>MetaObjects.Codegen</c> to the tool's own version.</summary>
     public static string Csproj() => CsprojTemplate.Replace("{VERSION}", EjectCommand.ToolVersion());
 
-    /// <summary>codegen/Program.cs: the two-line entry point that runs the list.</summary>
+    /// <summary>codegen/Program.cs: the two-line entry point that runs the list with the project's settings.</summary>
     public const string ProgramCs =
         "// Runs the generator list in Generators.cs. `dotnet meta gen` and `dotnet meta verify --codegen`\n" +
         "// run this project (`dotnet run --project codegen -- <args>`); see MetaObjects.Codegen.CodegenCli.Run.\n" +
         "using MetaObjects.Codegen;\n" +
-        "return CodegenCli.Run(args, Generators.All);\n";
+        "return CodegenCli.Run(args, Generators.All, Generators.Configure);\n";
 
 
     /// <summary>
@@ -82,6 +82,17 @@ public static class CodegenScaffold
             "    [\n" +
             lines +
             "    ];\n" +
+            "\n" +
+            "    // The settings every generator in the list shares (MetaObjects.Codegen.GenConfig). `config`\n" +
+            "    // arrives filled in from the gen flags and .metaobjects/config.json; return it with the\n" +
+            "    // options you want changed. `gen` and `verify --codegen` both apply it. For example:\n" +
+            "    //   config with\n" +
+            "    //   {\n" +
+            "    //       ContextTypeName = \"ShopDbContext\",\n" +
+            "    //       ProvidedEnumNamespace = \"Shop.Domain\",\n" +
+            "    //       PackageNamespaces = new() { [\"shop::billing\"] = \"Shop.Billing\" },\n" +
+            "    //   }\n" +
+            "    public static GenConfig Configure(GenConfig config) => config;\n" +
             "}\n";
     }
 

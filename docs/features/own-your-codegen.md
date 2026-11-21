@@ -1580,8 +1580,8 @@ writes its output through come with it
 
 The generator list is `codegen/Generators.cs` (ADR-0034 Amendment 9), compiled by the
 console project `codegen/Codegen.csproj` (referencing `MetaObjects.Codegen` at the tool's
-version) and run by `codegen/Program.cs`, two lines that pass `Generators.All` to the public
-runner. `dotnet meta init` writes the three files; eject writes each one that is missing,
+version) and run by `codegen/Program.cs`, two lines that pass `Generators.All` and `Generators.Configure`
+to the public runner. `dotnet meta init` writes the three files; eject writes each one that is missing,
 and when it writes `Generators.cs` the list holds the copies it just ejected, as
 `new Codegen.Generators.<Name>()`. After that all three are yours: eject never touches them
 again, even with `--force`, and prints the entry to add instead, in place of the packaged
@@ -1618,7 +1618,8 @@ namespace:
 
 | Eject | Also writes |
 |---|---|
-| `entity` | `Fr019SharedEnum.cs` (shared and provided enums), `M2MNavigation.cs` (the many-to-many navigation), `ReverseFinders.cs` (the reverse FK finders), `XmlDocBuilder.cs` (doc comments) |
+| `entity` | `ContractMembers.cs` (the validation and wire-converter attributes), `Fr019SharedEnum.cs` (shared and provided enums), `M2MNavigation.cs` (the many-to-many navigation), `ReverseFinders.cs` (the reverse FK finders), `XmlDocBuilder.cs` (doc comments) |
+| `contract-types` | `ContractMembers.cs`, `Fr019SharedEnum.cs`, `XmlDocBuilder.cs` |
 | `db-context` | `Fr019SharedEnum.cs`, `M2MNavigation.cs`, `XmlDocBuilder.cs` |
 | `routes` | `M2MNavigation.cs` |
 | `output-parser`, `extractor` | `ExtractDelegateEmitter.cs`, `Fr010FieldMapping.cs`; `extractor` also `Fr019SharedEnum.cs` |
@@ -1656,7 +1657,7 @@ edits are untouched:
 ```bash
 scratch=$(mktemp -d)
 dotnet meta eject entity --root "$scratch"
-cp "$scratch"/codegen/generators/{Fr019SharedEnum,M2MNavigation,ReverseFinders,XmlDocBuilder}.cs codegen/generators/
+cp "$scratch"/codegen/generators/{ContractMembers,Fr019SharedEnum,M2MNavigation,ReverseFinders,XmlDocBuilder}.cs codegen/generators/
 dotnet meta gen --list    # no longer reports an emitter missing
 ```
 

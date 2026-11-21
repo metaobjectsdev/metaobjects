@@ -243,6 +243,8 @@ public class EjectContractTests
             new("stored-proc", Directory("conformance", "parameter-ref-on-stored-proc", "input"), null),
             // An @expr index: expression-indexes emits only over one.
             new("expression-indexes", InlineModel(ExpressionIndexesGeneratorTests.Model), null),
+            // A lifecycle and an api.operational: rules-names emits only over them.
+            new("rules", Directory("codegen-noop", "rules", "with"), null),
             // A reply with a nested object: the extractor emits only over one.
             new("nested-reply", Directory("template-output-render-conformance", "xpkg-collision-json"),
                 Path.Combine(CorpusPaths.RepoRoot(), "fixtures", "template-output-render-conformance", "templates")),

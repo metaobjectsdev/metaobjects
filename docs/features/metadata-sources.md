@@ -80,9 +80,10 @@ surfaces have no such limit.
 The non-TypeScript ports read a **neutral subset** of that file —
 `schema_version` and `sources` — and ignore every other top-level key, so the
 TypeScript-owned keys beside them (`migrate`, `extract`, and the rest) never
-become a four-port concern. The Node CLI remains the file's only writer;
-`meta init --config-only` writes it into a Maven- or pip-rooted project without
-adding a TypeScript scaffold.
+become a four-port concern. The C# port names an unknown top-level key on standard
+error, once per key, and still ignores it ([C# port](../ports/csharp.md#configure)).
+The Node CLI remains the file's only writer; `meta init --config-only` writes it into
+a Maven- or pip-rooted project without adding a TypeScript scaffold.
 
 **`scope` and `migrate.scope` remain Node-CLI-only, but Java's `<filters>` name glob is
 the same grammar.** Since 8.2.0 the Maven plugin's `<filters>` patterns use `scope`'s
@@ -173,8 +174,9 @@ Consequences worth knowing:
 Both parse (the config shape is fixed now so a later phase slots in without a config
 migration) and both throw `ERR_SOURCE_KIND_UNSUPPORTED` when the toolchain tries to
 resolve them. A misspelled key such as `{ "pathh": "model" }` is a **load error**,
-not a silently ignored extra: `.metaobjects/config.json` is validated strictly, top
-level and every nested block.
+not a silently ignored extra: the TypeScript toolchain validates `.metaobjects/config.json`
+strictly, top level and every nested block (the C# port warns on an unknown top-level key
+instead; see [C# port](../ports/csharp.md#configure)).
 
 ---
 
@@ -542,7 +544,8 @@ the per-level walk order layer 1 preserves is pinned by
 | `ERR_COLLECTION_NOT_FOUND` | No `sources` were declared **and** no default `metaobjects/` directory exists |
 
 A schema violation in `.metaobjects/config.json` itself (an unknown key, a wrong
-type) surfaces as the config load error and stops the command.
+type) surfaces as the TypeScript config load error and stops the command. The C# port
+warns on an unknown top-level key and carries on.
 
 ---
 
@@ -625,7 +628,8 @@ reproduce.
 
 `ConfigSchema` is `.strict()` at every level — the top level, `sources` entries,
 `scope`, `migrate`, and `migrate.d1`. A key that used to be silently dropped is now
-a load error that stops the command.
+a load error that stops the command. This is the TypeScript toolchain's rule; the C# port
+keeps its top-level check a warning ([C# port](../ports/csharp.md#configure)).
 
 This is deliberate and it is the whole point: a stripped key means the setting you
 wrote does not exist, and the command runs as if you had never written it.
