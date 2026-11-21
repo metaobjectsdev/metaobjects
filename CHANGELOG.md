@@ -1928,6 +1928,16 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
 
 ### Fixed
 
+- **Python: an `origin.computed` `@expr` and a validator `@condition` accept every expression
+  function and the `cast` node.** The Python loader knew only `coalesce`, so a projection that used
+  `lower`, `greatest`, `splitPart`, `concat`, `nullif`, `length` or `{ cast, as }` was refused with
+  `ERR_UNKNOWN_EXPR_NODE` while the TypeScript, C#, Java and Kotlin loaders accepted it. It now
+  validates the same fifteen functions (arity, parameter kinds, result type), checks a cast
+  against the same table of what can become what (an enum stored as an integer casts to `int`, an
+  object never casts, a boolean casts only to `int`), and refuses in a CHECK `@condition` anything
+  only a view can hold (a cast, a function other than `coalesce`, a dotted path). Python-written
+  models are unaffected unless they used these nodes, which never loaded.
+
 - **A credential is never filterable or sortable, in every port.** A field that declares a
   `view.password` and that a model also marked `@filterable` or `@sortable` was on the generated
   filter and sort allowlists, so a client could learn its value by probing (`filter[pinHash][eq]=...`,
