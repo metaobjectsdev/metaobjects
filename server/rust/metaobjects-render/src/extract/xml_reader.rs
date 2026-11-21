@@ -375,7 +375,11 @@ fn parse_children(
             next = e;
         }
         let content = &inner[content_start..content_end];
-        accumulate(out, key, combine(attrs, content, ci, close.is_some(), depth));
+        accumulate(
+            out,
+            key,
+            combine(attrs, content, ci, close.is_some(), depth),
+        );
         pos = next;
         scan = next;
     }
@@ -406,7 +410,14 @@ fn combine(
     if depth < MAX_DEPTH && content.contains('<') {
         let mut nested = IndexMap::new();
         let mut loose = Vec::new();
-        parse_children(content, ci, &mut nested, Some(&mut loose), closed, depth + 1);
+        parse_children(
+            content,
+            ci,
+            &mut nested,
+            Some(&mut loose),
+            closed,
+            depth + 1,
+        );
         if !nested.is_empty() {
             let mut merged = attrs;
             for (k, v) in nested {
