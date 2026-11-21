@@ -30,7 +30,7 @@ something half-built; these tests are what notice:
 | Java | `server/java/codegen-spring/src/test/java/com/metaobjects/generator/spring/RulesInertTest.java` |
 | Kotlin | `server/java/codegen-kotlin/src/test/kotlin/com/metaobjects/generator/kotlin/RulesInertTest.kt` |
 | Python | `server/python/tests/test_rules_inert.py` |
-| Rust (preview) | `server/rust/metaobjects-codegen/tests/rules_inert.rs` (every generator it ships: `entity`, `client`, `commands`) |
+| Rust | `server/rust/metaobjects-codegen/tests/rules_inert.rs` (every generator it ships: `entity`, `client`, `commands`) |
 
 Regenerate `without/` from `with/` by deleting every `transition.*` child and the
 `api.operational` node, nothing else.

@@ -69,7 +69,7 @@
 #                                    #   python → full python test suite + integration-tests
 #                                    #   csharp → full csharp codegen suite + conformance
 #                                    #            + integration-tests
-#                                    #   rust   → the Rust port (preview): cargo fmt
+#                                    #   rust   → the Rust port: cargo fmt
 #                                    #            --check, clippy -D warnings, and its
 #                                    #            tests, which run its shared corpora
 #                                    #            and the codegen compile and scale gates,

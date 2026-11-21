@@ -169,7 +169,7 @@ metaobjects/
 ├── fixtures/conformance/          # cross-language test fixtures
 │
 ├── server/                        # runs on a server
-│   ├── typescript/   java/   python/   csharp/   rust/ (preview, ADR-0065)
+│   ├── typescript/   java/   python/   csharp/   rust/ (ADR-0065)
 │
 └── client/                        # runs on an end-user device
     ├── web/                       # browser (TS-only — the browser is TS-native)

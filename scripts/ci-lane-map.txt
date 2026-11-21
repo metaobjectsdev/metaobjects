@@ -41,7 +41,7 @@ client/web/*          | ts-fast ts-unit | the universal web client, built and te
 server/java/*         | java-slow       | the Java and Kotlin ports (the reactor holds both conformance suites)
 server/python/*       | python          | the Python port
 server/csharp/*       | csharp          | the C# port
-server/rust/*         | rust            | the Rust port (preview, ADR-0065)
+server/rust/*         | rust            | the Rust port (ADR-0065)
 fixtures/*            | ALL             | shared corpora every port runs
 spec/*                | ALL             | the metamodel spec every port implements
 scripts/bench-load/* | NONE            | load-benchmark drivers: run by hand, read by no test lane (the gates lane still checks them)

@@ -131,7 +131,7 @@ This is the mechanism that keeps the codegen surface coherent as it grows.
 
 ## Port ids
 
-`typescript`, `csharp`, `java`, `kotlin`, `python`, and `rust`. Rust is a **preview**
-port (ADR-0065): it is recorded here and held to the same four manifest checks (no rogue
+`typescript`, `csharp`, `java`, `kotlin`, `python`, and `rust`. Rust
+(ADR-0065) is recorded here and held to the same four manifest checks (no rogue
 names, presence both ways, tier, layer) and the same eject contract by its own test
-(`server/rust/metaobjects-codegen/tests/generator_registry.rs`), but it ships preview, not stable.
+(`server/rust/metaobjects-codegen/tests/generator_registry.rs`), as the other ports are.
