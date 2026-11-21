@@ -134,6 +134,11 @@ here.**
     and refuses what the Drizzle mount refuses, with the same bodies;
   - `pagination`: the `api.pagination` page size.
 
+  The names, repository and report-export generators follow (`SpringNamesGenerator`,
+  `SpringRepositoryGenerator`, `SpringReportExportGenerator`), each finder, constant block and
+  writer section from its own protected method; the one layout change in their output is that
+  the blank line after the class or interface opener is gone.
+
   With no sort, the `ObjectManager` mount now orders by the primary key. The `ObjectManager`
   `Filter` gains `$or` and a case-insensitive `$ilike`, and the class gains `keyFields()` and
   `fieldNames()`.
