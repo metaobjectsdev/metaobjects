@@ -2,11 +2,11 @@
 //
 // Bun's `rmSync(dir, { recursive: true })` has been seen failing with
 // `EFAULT: bad address in system call argument` while other tests in the same process
-// were also touching the filesystem (its recursive remove shares native state across
-// calls). The failure is in the remover, not in the directory, so removal falls back to a
-// plain readdir/unlink/rmdir walk, which does not go through that code path. A path that is
-// already gone is success, never an error: another remover may have beaten us to it.
-import { mkdtempSync, readdirSync, rmSync, rmdirSync, unlinkSync, lstatSync } from "node:fs";
+// were also touching the filesystem (observed on Bun 1.3.x; local Bun 1.3.14). The failure
+// is in the remover, not in the directory, so removal never calls it: it always walks the
+// tree with readdir/unlink/rmdir. A path that is already gone is success, never an error:
+// another remover may have beaten us to it.
+import { mkdtempSync, readdirSync, rmdirSync, unlinkSync, lstatSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -43,12 +43,7 @@ function walkRemove(path: string): void {
   }
 }
 
-/** Remove a directory tree, tolerating it being absent and Bun's intermittent EFAULT. */
+/** Remove a directory tree, tolerating it being absent. Never uses Bun's recursive `rmSync`. */
 export function removeTree(path: string): void {
-  try {
-    rmSync(path, { recursive: true, force: true });
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== "EFAULT") throw e;
-    walkRemove(path);
-  }
+  walkRemove(path);
 }
