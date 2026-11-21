@@ -20,7 +20,6 @@ ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
 # shellcheck source=leak-patterns.sh
 . "$ROOT/.githooks/leak-patterns.sh"
 PATTERNS="$LEAK_PATTERNS"
-ALLOW="$LEAK_ALLOW"
 
 DENY_FILE="$(git config --get hooks.denyListPath 2>/dev/null || true)"
 [ -z "$DENY_FILE" ] && DENY_FILE="$ROOT/.githooks/deny-list.local"
@@ -39,7 +38,7 @@ fi
 hits=$(printf '%s\n' "$DIFF" | awk '
   /^\+\+\+ /          { f=$2; sub(/^b\//,"",f); next }
   /^\+/ && !/^\+\+\+/ { if (f !~ /^\.githooks\//) print f "\t" substr($0,2) }
-' | grep -Ei "$PATTERNS" | grep -vEi "$ALLOW" || true)
+' | grep -Ei "$PATTERNS" || true)
 
 if [ -n "$hits" ]; then
   echo "" >&2
