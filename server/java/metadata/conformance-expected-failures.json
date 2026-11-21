@@ -3,12 +3,5 @@
   "_comment": "FR-013/FR-014/FR-015 validation passes shipped. The former subtype-field-override gap (MergedSource envelopes on extends-overrides) is RETIRED: FR-024's addressing-model fix (bare nested names + own-children-only overlay lookup in BaseMetaDataParser) made subtype same-name children SHADOWING REDECLARATIONS per the cross-port contract, which was the root cause \u2014 error-field-readonly-downgrade and field-readonly-upgrade-on-subtype now pass byte-identically.",
   "_comment_ai_pilot": "ai-trace-* fixtures now pass in Java (@responseRef + template.* child admitted)",
   "_comment_fr024": "FR-024 validation parity SHIPPED in this port (ValidationPhase.java): subtype rules (identity-name, value purity, projection licensing), projection identity pass-through + key correspondence, source-role B4b cutover (ERR_ENTITY_PRIMARY_SOURCE_READONLY), origin @via single-hop inference + cardinality + extends/origin agreement, and derived-field providability. All 13 FR-024 error fixtures emit their expected code + envelope. Kotlin rides this same JVM loader. B4b landed with the FR-024 projection-codegen increment (proc/view-primary entity fixtures migrated to object.projection).",
-  "_comment_rc21": "rc.21 view vocabulary validation is not implemented in Java; these fixtures also fail on origin/fix/rc19; implementedIn typescript, csharp. A listed fixture that starts passing fails the run (fixed-but-listed), so remove it from this list then.",
-  "fixtures": [
-    "projection-view-vocabulary-rc21",
-    "error-computed-cast-enum-not-int-stored",
-    "error-origin-function-free-sql",
-    "error-projection-grain-not-object-array",
-    "error-projection-union-shape"
-  ]
+  "fixtures": []
 }

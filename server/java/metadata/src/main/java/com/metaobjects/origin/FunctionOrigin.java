@@ -21,8 +21,8 @@ import com.metaobjects.registry.MetaDataRegistry;
 /**
  * rc.21 part B (U10) — {@code origin.function}: a value computed by a database function the
  * project owns, named ({@code @function}, {@code @schema}) and typed by its argument fields
- * ({@code @args}). Registered so a strict load accepts it; the call rules run in TypeScript
- * and C#, and only the TypeScript view emitter lowers it.
+ * ({@code @args}). Registered so a strict load accepts it; the call rules run in the loader
+ * (ValidationPhase), and only the TypeScript view emitter lowers it.
  */
 public class FunctionOrigin extends MetaOrigin {
 
@@ -33,6 +33,8 @@ public class FunctionOrigin extends MetaOrigin {
     public static final String ATTR_ARGS = "args";
     public static final String ATTR_PARAMS = "params";
     public static final String ATTR_RETURNS = "returns";
+    /** A function and a schema name are plain identifiers, never free SQL. */
+    public static final java.util.regex.Pattern IDENTIFIER = java.util.regex.Pattern.compile("^[A-Za-z_][A-Za-z0-9_]*$");
 
     public FunctionOrigin(String name) {
         super(SUBTYPE_FUNCTION, name);

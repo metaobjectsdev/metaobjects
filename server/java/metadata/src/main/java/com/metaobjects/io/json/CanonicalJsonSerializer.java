@@ -86,7 +86,7 @@ public final class CanonicalJsonSerializer {
      * Plain Gson (no pretty-printing) — pretty-printing is applied by
      * {@link #toCanonicalString} over the full tree, not per-attribute.
      */
-    private static final Gson GSON = new Gson();
+    private static final Gson GSON = new GsonBuilder().serializeNulls().create();
 
     /** Prefix for inline @-attributes. */
     private static final String ATTR_PREFIX = "@";
@@ -877,6 +877,7 @@ public final class CanonicalJsonSerializer {
      */
     private static String toCanonicalString(JsonElement element) {
         String raw = new GsonBuilder()
+                .serializeNulls() // a null literal in an expression tree ({ value: null }) is content
                 .setPrettyPrinting()
                 .disableHtmlEscaping()
                 .create()

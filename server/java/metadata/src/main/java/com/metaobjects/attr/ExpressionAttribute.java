@@ -11,11 +11,16 @@ import com.metaobjects.field.CurrencyField;
 import com.metaobjects.field.DateField;
 import com.metaobjects.field.DecimalField;
 import com.metaobjects.field.DoubleField;
+import com.metaobjects.field.EnumField;
 import com.metaobjects.field.FloatField;
 import com.metaobjects.field.IntegerField;
 import com.metaobjects.field.LongField;
+import com.metaobjects.field.MapField;
+import com.metaobjects.field.ObjectField;
 import com.metaobjects.field.StringField;
 import com.metaobjects.field.TimestampField;
+import com.metaobjects.field.UuidField;
+import com.metaobjects.database.CoreDBMetaDataProvider;
 import com.metaobjects.reporting.ReportingConstants;
 import com.metaobjects.query.FilterOps;
 import com.metaobjects.registry.MetaDataRegistry;
@@ -27,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.function.Predicate;
 
 /**
  * An Expression Attribute that holds an object-valued {@code attr.expression} value
@@ -48,8 +54,9 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
 
     public static final String SUBTYPE_EXPRESSION = "expression";
 
-    /** Singleton Gson for round-trip JSON — shared, thread-safe. */
-    private static final Gson GSON = new Gson();
+    /** Singleton Gson for round-trip JSON — shared, thread-safe. Nulls are kept: a null literal
+     *  ({@code { value: null }}, e.g. under a cast) is part of the tree. */
+    private static final Gson GSON = new com.google.gson.GsonBuilder().serializeNulls().create();
 
     // -----------------------------------------------------------------------
     // Registration
@@ -241,6 +248,78 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
     public static final String EXPR_CASE_OPERAND = "operand";
     public static final String EXPR_NOW = ReportingConstants.FILTER_RELATIVE_NOW;
     public static final String EXPR_NOW_START_OF = ReportingConstants.FILTER_RELATIVE_START_OF;
+    /** rc.21 part B (U12): {@code { cast: <expr>, as: "<field subtype>", dbColumnType?: "<text spelling>" }}. */
+    public static final String EXPR_CAST = "cast";
+    public static final String EXPR_CAST_AS = "as";
+    public static final String EXPR_CAST_DB_COLUMN_TYPE = "dbColumnType";
+    /** rc.21 part B (U11, U13): the closed, typed function set beside coalesce. */
+    public static final String EXPR_FN_GREATEST = "greatest";
+    public static final String EXPR_FN_LEAST = "least";
+    public static final String EXPR_FN_NULLIF = "nullif";
+    public static final String EXPR_FN_LOWER = "lower";
+    public static final String EXPR_FN_UPPER = "upper";
+    public static final String EXPR_FN_BTRIM = "btrim";
+    public static final String EXPR_FN_SPLIT_PART = "splitPart";
+    public static final String EXPR_FN_CONCAT = "concat";
+    public static final String EXPR_FN_CONCAT_WS = "concatWs";
+    public static final String EXPR_FN_SUBSTRING = "substring";
+    public static final String EXPR_FN_REPLACE = "replace";
+    public static final String EXPR_FN_LEFT = "left";
+    public static final String EXPR_FN_RIGHT = "right";
+    public static final String EXPR_FN_LENGTH = "length";
+
+    /** A function parameter's kind: a string, an integer, any scalar, or the type the "same" ones share. */
+    private static final String PARAM_STRING = "string";
+    private static final String PARAM_INT = "int";
+    private static final String PARAM_SCALAR = "scalar";
+    private static final String PARAM_SAME = "same";
+
+    /** One function's signature: arity, each parameter's kind (the last repeats), and its result. */
+    public static final class FnSignature {
+        public final int min;
+        public final int max; // Integer.MAX_VALUE for variadic
+        public final List<String> params;
+        public final String result; // string | int | same
+        /** The "same" type must be orderable (greatest / least). */
+        public final boolean ordered;
+
+        FnSignature(int min, int max, List<String> params, String result, boolean ordered) {
+            this.min = min; this.max = max; this.params = params; this.result = result; this.ordered = ordered;
+        }
+    }
+
+    private static final int VARIADIC = Integer.MAX_VALUE;
+
+    /** rc.21 part B: every expression function, by name. A closed set, never free SQL. */
+    public static final Map<String, FnSignature> EXPR_FUNCTIONS = exprFunctions();
+
+    private static Map<String, FnSignature> exprFunctions() {
+        Map<String, FnSignature> m = new LinkedHashMap<>();
+        m.put(EXPR_FN_COALESCE, new FnSignature(1, VARIADIC, List.of(PARAM_SAME), PARAM_SAME, false));
+        m.put(EXPR_FN_GREATEST, new FnSignature(1, VARIADIC, List.of(PARAM_SAME), PARAM_SAME, true));
+        m.put(EXPR_FN_LEAST, new FnSignature(1, VARIADIC, List.of(PARAM_SAME), PARAM_SAME, true));
+        m.put(EXPR_FN_NULLIF, new FnSignature(2, 2, List.of(PARAM_SAME, PARAM_SAME), PARAM_SAME, false));
+        m.put(EXPR_FN_LOWER, new FnSignature(1, 1, List.of(PARAM_STRING), PARAM_STRING, false));
+        m.put(EXPR_FN_UPPER, new FnSignature(1, 1, List.of(PARAM_STRING), PARAM_STRING, false));
+        m.put(EXPR_FN_BTRIM, new FnSignature(1, 2, List.of(PARAM_STRING, PARAM_STRING), PARAM_STRING, false));
+        m.put(EXPR_FN_SPLIT_PART, new FnSignature(3, 3, List.of(PARAM_STRING, PARAM_STRING, PARAM_INT), PARAM_STRING, false));
+        m.put(EXPR_FN_CONCAT, new FnSignature(1, VARIADIC, List.of(PARAM_SCALAR), PARAM_STRING, false));
+        m.put(EXPR_FN_CONCAT_WS, new FnSignature(2, VARIADIC, List.of(PARAM_STRING, PARAM_SCALAR), PARAM_STRING, false));
+        m.put(EXPR_FN_SUBSTRING, new FnSignature(2, 3, List.of(PARAM_STRING, PARAM_INT, PARAM_INT), PARAM_STRING, false));
+        m.put(EXPR_FN_REPLACE, new FnSignature(3, 3, List.of(PARAM_STRING, PARAM_STRING, PARAM_STRING), PARAM_STRING, false));
+        m.put(EXPR_FN_LEFT, new FnSignature(2, 2, List.of(PARAM_STRING, PARAM_INT), PARAM_STRING, false));
+        m.put(EXPR_FN_RIGHT, new FnSignature(2, 2, List.of(PARAM_STRING, PARAM_INT), PARAM_STRING, false));
+        m.put(EXPR_FN_LENGTH, new FnSignature(1, 1, List.of(PARAM_STRING), PARAM_INT, false));
+        return java.util.Collections.unmodifiableMap(m);
+    }
+
+    /** The field subtypes a cast may name in {@code as}. */
+    public static final List<String> EXPR_CAST_TARGETS = List.of(
+        StringField.SUBTYPE_STRING, IntegerField.SUBTYPE_INT, LongField.SUBTYPE_LONG, DoubleField.SUBTYPE_DOUBLE,
+        FloatField.SUBTYPE_FLOAT, DecimalField.SUBTYPE_DECIMAL, BooleanField.SUBTYPE_BOOLEAN, DateField.SUBTYPE_DATE,
+        TimestampField.SUBTYPE_TIMESTAMP, UuidField.SUBTYPE_UUID);
+    private static final Set<String> INTEGER_SUBTYPES = orderedSet(IntegerField.SUBTYPE_INT, LongField.SUBTYPE_LONG);
+    private static final Set<String> NON_SCALAR_SUBTYPES = orderedSet(ObjectField.SUBTYPE_OBJECT, MapField.SUBTYPE_MAP);
 
     /** Boolean composition keys — mirror {@code FilterAttribute}'s private compose keys. */
     static final String COMPOSE_AND = "and";
@@ -274,6 +353,71 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
         m.put("fn", List.of("fn", "args"));
         m.put("op", List.of("op", "left", "right", "arg", "args"));
         return java.util.Collections.unmodifiableMap(m);
+    }
+
+    /**
+     * Why a value of {@code from} cannot be cast to {@code to}, or {@code null} when it can.
+     * {@code intStoredEnum} is whether the operand is an enum field stored as an integer
+     * ({@code @intValueMap}). The same table in every port: a cast never makes a value of a kind
+     * the source cannot hold. Mirrors the TS {@code castProblem}.
+     */
+    public static String castProblem(String from, String to, boolean intStoredEnum) {
+        if (from == null) return null; // a null literal casts to anything
+        if (NON_SCALAR_SUBTYPES.contains(from)) return "a field." + from + " value cannot be cast";
+        if (from.equals(to)) return null;
+        if (EnumField.SUBTYPE_ENUM.equals(from)) {
+            if (StringField.SUBTYPE_STRING.equals(to)) {
+                return intStoredEnum
+                    ? "an int-stored enum (@intValueMap) cast to string gives its integer, not its member; cast it to int"
+                    : null;
+            }
+            if (INTEGER_SUBTYPES.contains(to)) {
+                return intStoredEnum ? null : "only an enum stored as an integer (@intValueMap) can be cast to a number";
+            }
+            return "an enum cannot be cast to " + to;
+        }
+        if (StringField.SUBTYPE_STRING.equals(to)) return null;
+        if (StringField.SUBTYPE_STRING.equals(from)) return null; // the database parses it
+        // Postgres casts a boolean only to and from integer (int4), so those are the only number casts.
+        if (NUMERIC_SUBTYPES.contains(to)) {
+            if (BooleanField.SUBTYPE_BOOLEAN.equals(from)) {
+                return IntegerField.SUBTYPE_INT.equals(to) ? null : "a boolean casts only to int, not " + to;
+            }
+            return NUMERIC_SUBTYPES.contains(from) ? null : "a " + from + " cannot be cast to " + to;
+        }
+        if (BooleanField.SUBTYPE_BOOLEAN.equals(to)) {
+            return IntegerField.SUBTYPE_INT.equals(from) ? null : "a " + from + " cannot be cast to boolean; only an int can";
+        }
+        if (DateField.SUBTYPE_DATE.equals(to) || TimestampField.SUBTYPE_TIMESTAMP.equals(to)) {
+            return DateField.SUBTYPE_DATE.equals(from) || TimestampField.SUBTYPE_TIMESTAMP.equals(from)
+                ? null : "a " + from + " cannot be cast to " + to;
+        }
+        return "a " + from + " cannot be cast to " + to;
+    }
+
+    /**
+     * The first node an expression tree holds that only a view can render (a cast, case, now, a
+     * function other than coalesce, a path), or {@code null}: a CHECK condition takes none of them.
+     * Mirrors the TS {@code exprViewOnlyNode}.
+     */
+    public static String exprViewOnlyNode(Object node) {
+        if (!(node instanceof Map<?, ?> n)) return null;
+        if (n.containsKey(EXPR_CAST)) return EXPR_CAST;
+        if (n.containsKey(EXPR_CASE)) return EXPR_CASE;
+        if (n.containsKey(EXPR_NOW)) return EXPR_NOW;
+        if (n.containsKey("fn") && !EXPR_FN_COALESCE.equals(n.get("fn"))) return String.valueOf(n.get("fn"));
+        if (n.get("field") instanceof String f && f.contains(".")) return "the path \"" + f + "\"";
+        for (String key : List.of("left", "right", "arg")) {
+            String hit = exprViewOnlyNode(n.get(key));
+            if (hit != null) return hit;
+        }
+        if (n.get("args") instanceof List<?> args) {
+            for (Object a : args) {
+                String hit = exprViewOnlyNode(a);
+                if (hit != null) return hit;
+            }
+        }
+        return null;
     }
 
     /**
@@ -348,18 +492,57 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
             if (n.containsKey(EXPR_CASE_OPERAND)) out.addAll(validateExprNode(n.get(EXPR_CASE_OPERAND)));
             return out;
         }
+        if (n.containsKey(EXPR_CAST)) {
+            List<String> extra = new ArrayList<>();
+            for (String k : n.keySet()) {
+                if (!k.equals(EXPR_CAST) && !k.equals(EXPR_CAST_AS) && !k.equals(EXPR_CAST_DB_COLUMN_TYPE)) extra.add(k);
+            }
+            if (!extra.isEmpty()) {
+                out.add("expression '" + EXPR_CAST + "' takes only '" + EXPR_CAST_AS + "' and '"
+                    + EXPR_CAST_DB_COLUMN_TYPE + "' beside it, not " + String.join(", ", extra));
+                return out;
+            }
+            Object to = n.get(EXPR_CAST_AS);
+            if (!(to instanceof String) || !EXPR_CAST_TARGETS.contains(to)) {
+                out.add("'" + EXPR_CAST + "' requires '" + EXPR_CAST_AS + "': one of " + String.join(", ", EXPR_CAST_TARGETS));
+                return out;
+            }
+            if (n.containsKey(EXPR_CAST_DB_COLUMN_TYPE)) {
+                Object spelling = n.get(EXPR_CAST_DB_COLUMN_TYPE);
+                boolean legal = spelling instanceof String sp
+                    && CoreDBMetaDataProvider.dbColumnTypeLength(sp) >= 0
+                    && !CoreDBMetaDataProvider.DB_COLUMN_TYPE_UUID.equals(sp)
+                    && !CoreDBMetaDataProvider.DB_COLUMN_TYPE_JSONB.equals(sp)
+                    && StringField.SUBTYPE_STRING.equals(to);
+                if (!legal) {
+                    out.add("'" + EXPR_CAST + "' '" + EXPR_CAST_DB_COLUMN_TYPE + "' is a text spelling of @dbColumnType"
+                        + " (text, varchar, character varying, varchar(n), character varying(n), character(n)) with '"
+                        + EXPR_CAST_AS + ": " + StringField.SUBTYPE_STRING + "'");
+                    return out;
+                }
+            }
+            out.addAll(validateExprNode(n.get(EXPR_CAST)));
+            return out;
+        }
         if (n.containsKey("fn")) {
             Object fn = n.get("fn");
-            if (!EXPR_FN_COALESCE.equals(fn)) {
+            FnSignature sig = fn instanceof String fnName ? EXPR_FUNCTIONS.get(fnName) : null;
+            if (sig == null) {
                 out.add("unknown expression fn '" + String.valueOf(fn) + "'");
                 return out;
             }
+            String name = (String) fn;
             Object args = n.get("args");
-            if (args instanceof List && !((List<?>) args).isEmpty()) {
-                for (Object a : (List<?>) args) out.addAll(validateExprNode(a));
-            } else {
-                out.add("'" + EXPR_FN_COALESCE + "' requires a non-empty args array");
+            if (!(args instanceof List) || ((List<?>) args).size() < Math.max(sig.min, 1)) {
+                out.add(sig.min <= 1 ? "'" + name + "' requires a non-empty args array"
+                    : "'" + name + "' requires at least " + sig.min + " args");
+                return out;
             }
+            if (((List<?>) args).size() > sig.max) {
+                out.add("'" + name + "' takes at most " + sig.max + " args, got " + ((List<?>) args).size());
+                return out;
+            }
+            for (Object a : (List<?>) args) out.addAll(validateExprNode(a));
             return out;
         }
         if (n.containsKey("op")) {
@@ -395,7 +578,7 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
             out.add("unknown expression op '" + op + "'");
             return out;
         }
-        out.add("expression node must be one of {field}, {value}, {op,…}, {fn,…}, {case,…}, {now}");
+        out.add("expression node must be one of {field}, {value}, {op,…}, {fn,…}, {case,…}, {now}, {cast,…}");
         return out;
     }
 
@@ -430,6 +613,16 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
      * on a boolean operand is rejected. Mirrors the TS {@code inferExprType}.
      */
     public static InferResult inferExprType(Object node, Function<String, String> resolveField) {
+        return inferExprType(node, resolveField, name -> false);
+    }
+
+    /**
+     * As {@link #inferExprType(Object, Function)}, with {@code isIntStoredEnum}: whether a
+     * {@code {field}} names an enum stored as an integer ({@code @intValueMap}), which a cast
+     * reads. Mirrors the TS {@code inferExprType}.
+     */
+    public static InferResult inferExprType(Object node, Function<String, String> resolveField,
+                                            Predicate<String> isIntStoredEnum) {
         List<String> structural = validateExprNode(node);
         if (!structural.isEmpty()) return new InferResult(null, structural);
         @SuppressWarnings("unchecked")
@@ -452,13 +645,13 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
         if (n.containsKey(EXPR_CASE)) {
             List<String> errors = new ArrayList<>();
             InferResult operand = n.containsKey(EXPR_CASE_OPERAND)
-                ? inferExprType(n.get(EXPR_CASE_OPERAND), resolveField) : null;
+                ? inferExprType(n.get(EXPR_CASE_OPERAND), resolveField, isIntStoredEnum) : null;
             if (operand != null) errors.addAll(operand.errors);
             List<String> results = new ArrayList<>();
             List<Object> resultNodes = new ArrayList<>();
             for (Object armObj : (List<?>) n.get(EXPR_CASE)) {
                 Map<?, ?> arm = (Map<?, ?>) armObj;
-                InferResult w = inferExprType(arm.get(EXPR_CASE_WHEN), resolveField);
+                InferResult w = inferExprType(arm.get(EXPR_CASE_WHEN), resolveField, isIntStoredEnum);
                 errors.addAll(w.errors);
                 if (operand == null && w.type != null && !BooleanField.SUBTYPE_BOOLEAN.equals(w.type)) {
                     errors.add("a searched '" + EXPR_CASE + "' needs a boolean '" + EXPR_CASE_WHEN + "', got " + w.type);
@@ -468,13 +661,13 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
                     errors.add("a simple '" + EXPR_CASE + "' compares its " + operand.type + " '" + EXPR_CASE_OPERAND
                         + "' with a " + w.type + " '" + EXPR_CASE_WHEN + "'");
                 }
-                InferResult t = inferExprType(arm.get(EXPR_CASE_THEN), resolveField);
+                InferResult t = inferExprType(arm.get(EXPR_CASE_THEN), resolveField, isIntStoredEnum);
                 errors.addAll(t.errors);
                 results.add(t.type);
                 resultNodes.add(arm.get(EXPR_CASE_THEN));
             }
             if (n.containsKey(EXPR_CASE_ELSE)) {
-                InferResult e = inferExprType(n.get(EXPR_CASE_ELSE), resolveField);
+                InferResult e = inferExprType(n.get(EXPR_CASE_ELSE), resolveField, isIntStoredEnum);
                 errors.addAll(e.errors);
                 results.add(e.type);
                 resultNodes.add(n.get(EXPR_CASE_ELSE));
@@ -486,27 +679,60 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
             }
             return new InferResult(unified, errors);
         }
-        if (n.containsKey("fn")) { // coalesce
+        if (n.containsKey(EXPR_CAST)) {
+            Object inner = n.get(EXPR_CAST);
+            InferResult operand = inferExprType(inner, resolveField, isIntStoredEnum);
+            String to = (String) n.get(EXPR_CAST_AS);
+            String fieldRef = inner instanceof Map<?, ?> im && im.get("field") instanceof String f ? f : null;
+            String problem = castProblem(operand.type, to, fieldRef != null && isIntStoredEnum.test(fieldRef));
+            List<String> errors = new ArrayList<>(operand.errors);
+            if (problem != null) errors.add("'" + EXPR_CAST + "': " + problem);
+            return new InferResult(to, errors);
+        }
+        if (n.containsKey("fn")) {
+            String name = (String) n.get("fn");
+            FnSignature sig = EXPR_FUNCTIONS.get(name);
+            List<?> args = (List<?>) n.get("args");
             List<String> errors = new ArrayList<>();
-            List<String> argTypes = new ArrayList<>();
-            List<Object> args = new ArrayList<>((List<?>) n.get("args"));
-            for (Object a : args) {
-                InferResult r = inferExprType(a, resolveField);
-                errors.addAll(r.errors);
-                argTypes.add(r.type);
+            List<String> same = new ArrayList<>();
+            List<Object> sameNodes = new ArrayList<>();
+            for (int i = 0; i < args.size(); i++) {
+                InferResult a = inferExprType(args.get(i), resolveField, isIntStoredEnum);
+                errors.addAll(a.errors);
+                String kind = sig.params.get(Math.min(i, sig.params.size() - 1));
+                if (a.type == null) continue; // a null literal fits any parameter
+                if (PARAM_SAME.equals(kind)) {
+                    same.add(a.type);
+                    sameNodes.add(args.get(i));
+                } else if (PARAM_STRING.equals(kind) && !StringField.SUBTYPE_STRING.equals(a.type)) {
+                    errors.add("'" + name + "' argument " + (i + 1) + " must be a string, got " + a.type);
+                } else if (PARAM_INT.equals(kind) && !IntegerField.SUBTYPE_INT.equals(a.type)) {
+                    // Postgres resolves these functions over int4 only (no implicit bigint to int for a call).
+                    errors.add("'" + name + "' argument " + (i + 1) + " must be an int, got " + a.type
+                        + (LongField.SUBTYPE_LONG.equals(a.type) ? "; cast it ({ cast: <expr>, as: int })" : ""));
+                } else if (PARAM_SCALAR.equals(kind) && NON_SCALAR_SUBTYPES.contains(a.type)) {
+                    errors.add("'" + name + "' argument " + (i + 1) + " must be a scalar, got " + a.type);
+                }
             }
+            // Adaptable literals (an int literal beside a decimal) fit the typed anchor.
             List<String> differing = new ArrayList<>();
-            String unified = unifyTypes(args, argTypes, differing);
+            String unified = unifyTypes(sameNodes, same, differing);
             if (!differing.isEmpty()) {
-                errors.add("'" + EXPR_FN_COALESCE + "' arguments have differing types (" + String.join(", ", differing) + ")");
+                errors.add("'" + name + "' arguments have differing types (" + String.join(", ", differing) + ")");
             }
-            return new InferResult(unified, errors);
+            if (sig.ordered && unified != null
+                    && (BooleanField.SUBTYPE_BOOLEAN.equals(unified) || NON_SCALAR_SUBTYPES.contains(unified))) {
+                errors.add("'" + name + "' needs ordered arguments, got " + unified);
+            }
+            String type = PARAM_SAME.equals(sig.result) ? unified
+                : PARAM_INT.equals(sig.result) ? IntegerField.SUBTYPE_INT : StringField.SUBTYPE_STRING;
+            return new InferResult(type, errors);
         }
 
         String op = (String) n.get("op");
         if (COMPARISON_OPS.contains(op)) {
-            InferResult l = inferExprType(n.get("left"), resolveField);
-            InferResult r = inferExprType(n.get("right"), resolveField);
+            InferResult l = inferExprType(n.get("left"), resolveField, isIntStoredEnum);
+            InferResult r = inferExprType(n.get("right"), resolveField, isIntStoredEnum);
             List<String> errors = new ArrayList<>(l.errors);
             errors.addAll(r.errors);
             if (l.type != null && !FilterOps.opsForSubType(l.type).contains(op)) {
@@ -516,7 +742,7 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
         }
         if (NULL_OPS.contains(op)) {
             return new InferResult(BooleanField.SUBTYPE_BOOLEAN,
-                inferExprType(n.get("arg"), resolveField).errors);
+                inferExprType(n.get("arg"), resolveField, isIntStoredEnum).errors);
         }
         if (EXPR_OP_NOT.equals(op) || VARIADIC_LOGIC_OPS.contains(op)) {
             List<Object> kids = new ArrayList<>();
@@ -524,7 +750,7 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
             else for (Object a : (List<?>) n.get("args")) kids.add(a);
             List<String> errors = new ArrayList<>();
             for (Object k : kids) {
-                InferResult kt = inferExprType(k, resolveField);
+                InferResult kt = inferExprType(k, resolveField, isIntStoredEnum);
                 errors.addAll(kt.errors);
                 if (kt.type != null && !BooleanField.SUBTYPE_BOOLEAN.equals(kt.type)) {
                     errors.add("op '" + op + "' requires boolean operands, got " + kt.type);
