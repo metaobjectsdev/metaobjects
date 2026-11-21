@@ -15,6 +15,12 @@ here.**
   Python had none. `Renderer` now strips standalone comment lines before mustache.java parses them. A
   template with such a line renders differently in Java, so a prompt body with one changes bytes (and
   its prompt-cache prefix) on upgrade. The `render-standalone-*` fixtures pin the whitespace rules.
+- **Python: `@union` and `@grain` projections are checked at load.** A union member whose fields
+  differ in name, subtype, array-ness, `@column` or enum shape, a member that is the projection
+  itself or declares its own `@union`, `@unionAll` without `@union`, a `@grain` that does not name a
+  base-entity `field.object` jsonb array with `@objectRef`, an aggregate in a `@grain` view, and a
+  malformed `@grainOrdinal` are now `ERR_BAD_ATTR_VALUE`, as in TypeScript and C#. Python passes the
+  `error-projection-union-shape` and `error-projection-grain-not-object-array` fixtures.
 - **C#: an unchanged file is never rewritten.** `dotnet meta gen` already left identical output alone
   when the project keeps a hash manifest. It now does the same on the path with no manifest (output
   written outside the project, or a program that runs the generators with no state directory), which
