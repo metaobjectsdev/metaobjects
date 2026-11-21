@@ -8,7 +8,7 @@
 #   `metaobjects-cli`      the `cargo-meta` binary, so `cargo meta gen` works.
 [workspace]
 resolver = "3"
-members = ["metaobjects", "metaobjects-codegen", "metaobjects-cli"]
+members = ["metaobjects", "metaobjects-codegen", "metaobjects-cli", "metaobjects-render"]
 
 [workspace.package]
 version = "0.1.0"

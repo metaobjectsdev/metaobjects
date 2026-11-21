@@ -47,6 +47,14 @@ function membersOf(port, src) {
       return m[1].split(",").map((s) => s.trim()).filter(Boolean)
         .map((s) => s.toUpperCase());
     }
+    case "rust": {
+      // pub enum FieldKind { String, Int, ... }  (PascalCase variants; doc comments and
+      // attributes on their own lines are stripped first)
+      const m = src.match(/enum\s+FieldKind\s*\{([^}]*)\}/);
+      if (!m) return null;
+      return m[1].split("\n").filter((l) => !/^\s*(\/\/|#\[)/.test(l)).join("\n")
+        .split(",").map((s) => s.trim()).filter(Boolean).map((s) => s.toUpperCase());
+    }
     case "typescript": {
       // export const FieldKind = { STRING: "STRING", ... } as const;
       const m = src.match(/const\s+FieldKind\s*=\s*\{([\s\S]*?)\}\s*as\s+const/);
