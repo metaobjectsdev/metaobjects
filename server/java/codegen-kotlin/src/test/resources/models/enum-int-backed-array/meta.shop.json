@@ -1,0 +1,27 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "field.enum": {
+          "name": "Stage",
+          "abstract": true,
+          "@values": ["DRAFT", "PUBLISHED", "ARCHIVED"],
+          "@intValueMap": { "DRAFT": 0, "PUBLISHED": 5, "ARCHIVED": 9 }
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Doc",
+          "children": [
+            { "source.rdb": { "name": "src", "@table": "docs", "@kind": "table" } },
+            { "field.long": { "name": "id" } },
+            { "field.enum": { "name": "stage", "extends": "Stage" } },
+            { "field.enum": { "name": "history", "extends": "Stage", "isArray": true } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+          ]
+        }
+      }
+    ]
+  }
+}

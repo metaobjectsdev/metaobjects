@@ -24,6 +24,14 @@ Prompt / template drift is still checked via the `metaobjects-render` `Verify` A
 
 > **Schema migrations and database checks run in the Node `meta` tool.** The Maven plugin generates and verifies code, but writing and applying migrations (`npx meta migrate`, `npx meta migrate apply-pending`) and checking a live database against the model (`npx meta verify --db`) need Node: `npm i -D @metaobjectsdev/cli`, then `npx meta init --config-only` to point it at your metadata. Node is needed where migrations are written or applied, not in your running service. What else behaves differently in this port is listed in [What differs by language](../features/language-differences.md).
 
+**Start a project.** `mvn metaobjects:init` writes `.metaobjects/config.json` (a page size of 50 on
+every generated list route, `api.unknownFields: reject`, `verify.handEdits: fail`,
+`migrate.foreignKeyIndexes: true`) and an empty, loadable `metaobjects/meta.app.json`, and reports
+what it wrote. It never overwrites a file it finds; it says it kept it. The generator list is the
+`<generators>` of the plugin in your `pom.xml`, which the goal never edits: it prints the `<plugin>`
+entry to add, with an empty `<generators/>`. `-Dmeta.init.withDocs=true` is the opt-in that puts the api
+reference generator in the printed entry; without it no documentation generator is wired.
+
 ## Regeneration and hand edits
 
 There is no three-way merge on the JVM (that is TypeScript-only). `mvn metaobjects:generate`
@@ -1044,13 +1052,15 @@ the runtime classpath, and no stored-procedure callable generator exists (FR-015
 TypeScript, C# and Kotlin only). OMDB is data access only; schema migrations are owned by the
 Node `meta` CLI.
 
-OMDB persists no `field.enum` array, string-backed or int-backed. On Postgres a native array column
-is mapped only for `field.string`, `field.uuid` and `field.decimal` (`PostgresDriver.nativeArrayElementType`),
-and the other drivers have no primitive-array path. An int-backed enum array (`@intValueMap` with
-`isArray: true`, own or inherited) loads, but the enum codec refuses it on write and on read with an
-`SQLException` naming the field. Without that refusal the scalar codec would write the member
-symbols, and on SQLite it would read a stored `[5,0]` as `DRAFT`. The `roundtrip-int-enum-array`
-persistence scenario is deferred in the Java runners for this reason. The generated Spring enum for
+OMDB persists an int-backed `field.enum` array (`@intValueMap` with `isArray: true`, own or
+inherited) as each member's declared integer: a native `integer[]` on Postgres
+(`PostgresDriver.nativeArrayElementType`), and on SQLite, MySQL and Derby a JSON array of numbers
+(`[5,0]`) in a text column, read back as the members in order. A member with no declared integer is
+refused on write with an `SQLException` naming the field, and a stored integer with no member fails
+the read the way an unmapped scalar does; a null array stays null and an empty one stays empty. The
+`roundtrip-int-enum-array` persistence scenario runs in the Java runners. A string-backed enum array
+is not covered: a native array column is mapped only for `field.string`, `field.uuid`,
+`field.decimal` and the int-backed enum. The generated Spring enum for
 an int-backed enum carries `dbValue()` and `fromDbValue(int)`, and the payload types an array field as
 `List<E>`, so a repository you write maps each element.
 

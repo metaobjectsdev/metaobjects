@@ -27,7 +27,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | Corpus | Fixtures | TS | Java | Kotlin | C# | Python |
 |---|---|---|---|---|---|---|
 | [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 578 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
-| [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 19 | 19 / 19 | 18 / 19 (1 ledgered: `yaml-quoted-leading-zero` — Java pipeline strips quotes off `"007"`) | inherits via Java | 18 / 19 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 19 / 19 |
+| [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 19 | 19 / 19 | 19 / 19 | inherits via Java | 18 / 19 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 19 / 19 |
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 45 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/verify-strict-conformance/`](../fixtures/verify-strict-conformance/) | 1 | ✓ | — | — | — | ✓ |
 | [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 18 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
@@ -93,11 +93,10 @@ still fails: the ledger's `minPassing` (578) is the number of fixtures known to 
 run fails when fewer do. The column joins this table when the port leaves preview.
 
 A ✓ means the port runs the corpus green; an explicit `n / m` is used where a port
-carries a ledgered divergence. The two ledgered YAML fixtures are documented
-library-vs-pipeline divergences (see the `_comment` block in each port's
-`yaml-conformance-expected-failures.json` for the full reconciliation note). They
-are tracked as known-gaps rather than silently patched — the runner treats listed
-fixtures as passing, but a future port-level reconciliation pass would close them.
+carries a ledgered divergence. The ledgered YAML fixtures are documented divergences (see the
+`_comment` or `notes` in each port's `yaml-conformance-expected-failures.json` for the full
+reconciliation note). They are tracked as known-gaps rather than silently patched — the runner
+treats listed fixtures as passing, but a future port-level reconciliation pass would close them.
 
 ### Core corpora and template quality checks
 

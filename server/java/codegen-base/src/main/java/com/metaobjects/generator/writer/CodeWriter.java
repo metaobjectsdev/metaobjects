@@ -271,7 +271,7 @@ public class CodeWriter {
     return s.codePointCount(0, s.length());
   }
 
-  private static String describe(Object p) {
+  protected static String describe(Object p) {
     if (p == null) return "null";
     return "an object (" + p.getClass().getName() + ")";
   }

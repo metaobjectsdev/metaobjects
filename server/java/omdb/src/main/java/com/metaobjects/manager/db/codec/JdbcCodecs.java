@@ -80,6 +80,79 @@ public final class JdbcCodecs {
         return DEFAULT;
     }
 
+    /**
+     * The declared symbol→int map of an INT-BACKED {@code field.enum} (own or inherited,
+     * ADR-0039), or {@code null} for a string-backed enum or any other field. The drivers use it
+     * to decide that an enum ARRAY is a native {@code integer[]}.
+     */
+    public static Map<String, Integer> enumIntValueMap(MetaField f) {
+        return EnumField.SUBTYPE_ENUM.equals(f.getSubType()) ? EnumCodec.intValueMap(f) : null;
+    }
+
+    /**
+     * The stored integers of an int-backed enum array's members, in order (a null member stays
+     * null). A member with no declared integer throws: binding the symbol would store a spelling
+     * the column does not hold, and inventing a number would store a row nobody wrote.
+     */
+    public static Integer[] encodeIntEnumList(MetaField f, Object value) throws SQLException {
+        Map<String, Integer> intMap = enumIntValueMap(f);
+        if (intMap == null) {
+            throw new SQLException("field.enum '" + f.getName() + "' declares no @" + EnumField.ATTR_INT_VALUE_MAP);
+        }
+        java.util.List<?> list = (value instanceof java.util.List<?> l) ? l : java.util.List.of(value);
+        Integer[] out = new Integer[list.size()];
+        for (int i = 0; i < out.length; i++) {
+            Object e = list.get(i);
+            if (e == null) continue;
+            Integer mapped = intMap.get(e.toString());
+            if (mapped == null) {
+                throw new SQLException("field.enum '" + f.getName() + "' cannot bind " + e
+                    + ": it has no integer in @" + EnumField.ATTR_INT_VALUE_MAP + " (declared: " + intMap + ")");
+            }
+            out[i] = mapped;
+        }
+        return out;
+    }
+
+    /**
+     * The members of an int-backed enum array's stored integers, in order. A stored integer with
+     * no member throws, as an unmapped scalar does: the database holds a value the model does not
+     * describe.
+     */
+    public static java.util.List<Object> decodeIntEnumList(MetaField f, Iterable<?> stored) throws SQLException {
+        Map<String, Integer> intMap = enumIntValueMap(f);
+        if (intMap == null) {
+            throw new SQLException("field.enum '" + f.getName() + "' declares no @" + EnumField.ATTR_INT_VALUE_MAP);
+        }
+        return decodeIntEnumList(f, intMap, stored);
+    }
+
+    private static java.util.List<Object> decodeIntEnumList(MetaField f, Map<String, Integer> intMap, Iterable<?> stored)
+            throws SQLException {
+        java.util.List<Object> out = new java.util.ArrayList<>();
+        for (Object element : stored) {
+            if (element == null) {
+                out.add(null);
+                continue;
+            }
+            int value = ((Number) element).intValue();
+            String member = null;
+            for (Map.Entry<String, Integer> e : intMap.entrySet()) {
+                if (e.getValue() != null && e.getValue() == value) {
+                    member = e.getKey();
+                    break;
+                }
+            }
+            if (member == null) {
+                throw new SQLException("field.enum '" + f.getName() + "' read stored value " + value
+                    + " with no member in @" + EnumField.ATTR_INT_VALUE_MAP + " (declared: " + intMap
+                    + ") — the database holds a value the model does not describe.");
+            }
+            out.add(member);
+        }
+        return out;
+    }
+
     public static JdbcFieldCodec forField(MetaField f) {
         return BY_TYPE.getOrDefault(f.getClass(), DEFAULT);
     }
@@ -461,7 +534,10 @@ public final class JdbcCodecs {
                         + " (declared: " + storedMap + ") — the database holds a value the model "
                         + "does not describe.");
             }
-            refuseArray(f);
+            if (f.isArrayType()) {
+                readIntArray(o, f, intMap, rs.getString(j));
+                return;
+            }
             int stored = rs.getInt(j);
             if (rs.wasNull()) {
                 f.setString(o, null);
@@ -512,7 +588,14 @@ public final class JdbcCodecs {
                 s.setString(j, stored);
                 return;
             }
-            refuseArray(f);
+            if (f.isArrayType()) {
+                if (v == null) {
+                    s.setNull(j, Types.VARCHAR);
+                    return;
+                }
+                s.setString(j, jsonIntArray(encodeIntEnumList(f, v)));
+                return;
+            }
             if (v == null) {
                 s.setNull(j, Types.INTEGER);
                 return;
@@ -528,13 +611,44 @@ public final class JdbcCodecs {
             s.setString(j, v.toString());
         }
 
-        /** Throws when an int-backed enum is an ARRAY: OMDB has no enum-array column to store it in. */
-        private static void refuseArray(MetaField f) throws SQLException {
-            if (!f.isArrayType()) return;
-            throw new SQLException(
-                "field.enum '" + f.getName() + "' is an int-backed array (@" + EnumField.ATTR_INT_VALUE_MAP
-                    + " with isArray) — OMDB persists no enum array, so it refuses rather than store "
-                    + "the member symbols or read a member nobody stored.");
+        /**
+         * An int-backed ARRAY on an engine with no native array column (SQLite, MySQL, Derby): a
+         * JSON array of numbers in a text/JSON column ({@code [5,0]}, {@code []}, SQL NULL),
+         * the same form every other port stores. A native {@code integer[]} (Postgres) never gets
+         * here: the driver binds and reads it before the codec is asked.
+         */
+        private static void readIntArray(Object o, MetaField f, Map<String, Integer> intMap, String json)
+                throws SQLException {
+            if (json == null) {
+                f.setObjectArray(o, null);
+                return;
+            }
+            java.util.List<Object> stored = new java.util.ArrayList<>();
+            try {
+                com.google.gson.JsonElement parsed = com.google.gson.JsonParser.parseString(json);
+                if (!parsed.isJsonArray()) {
+                    throw new SQLException("field.enum '" + f.getName() + "' read stored value " + json
+                        + ", which is not a JSON array of numbers");
+                }
+                for (com.google.gson.JsonElement e : parsed.getAsJsonArray()) {
+                    stored.add(e.isJsonNull() ? null : e.getAsInt());
+                }
+            } catch (com.google.gson.JsonParseException | NumberFormatException | UnsupportedOperationException
+                    | IllegalStateException e) {
+                throw new SQLException("field.enum '" + f.getName() + "' read stored value " + json
+                    + ", which is not a JSON array of numbers", e);
+            }
+            f.setObjectArray(o, decodeIntEnumList(f, intMap, stored));
+        }
+
+        /** {@code [5,0]}: the stored form of an int-backed enum array on an engine with no array type. */
+        private static String jsonIntArray(Integer[] ints) {
+            StringBuilder out = new StringBuilder("[");
+            for (int i = 0; i < ints.length; i++) {
+                if (i > 0) out.append(',');
+                out.append(ints[i] == null ? "null" : ints[i].toString());
+            }
+            return out.append(']').toString();
         }
 
         /** rc.21 — the declared member→stored-string map ({@code @stringValueMap}, resolving), or null. */
@@ -551,7 +665,7 @@ public final class JdbcCodecs {
         }
 
         /** The declared symbol→int map, or null when the enum is string-backed. */
-        private static Map<String, Integer> intValueMap(MetaField f) {
+        static Map<String, Integer> intValueMap(MetaField f) {
             if (!f.hasMetaAttr(EnumField.ATTR_INT_VALUE_MAP)) return null;
             Object raw = f.getMetaAttr(EnumField.ATTR_INT_VALUE_MAP).getValue();
             if (!(raw instanceof Map)) return null;

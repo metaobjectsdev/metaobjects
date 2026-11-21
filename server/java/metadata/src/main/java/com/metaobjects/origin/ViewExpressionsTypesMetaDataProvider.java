@@ -36,6 +36,12 @@ public class ViewExpressionsTypesMetaDataProvider implements MetaDataTypeProvide
     /** The pack's cross-port logical id, the {@code provider} of view-expressions.json. */
     public static final String LOGICAL_ID = "metaobjects-view-expressions";
 
+    /** The projection attrs this pack adds (names as in {@code spec/metamodel/view-expressions.json}). */
+    public static final String ATTR_UNION = "union";
+    public static final String ATTR_UNION_ALL = "unionAll";
+    public static final String ATTR_GRAIN = "grain";
+    public static final String ATTR_GRAIN_ORDINAL = "grainOrdinal";
+
     @Override
     public void registerTypes(MetaDataRegistry registry) {
         FunctionOrigin.registerTypes(registry);

@@ -93,4 +93,60 @@ class KotlinExposedTableIntBackedEnumTest {
             outDir.toFile().deleteRecursively()
         }
     }
+
+    /**
+     * An int-backed enum ARRAY (the map inherited from a shared abstract enum, the shape adopters
+     * write) is one array column over the declared integers, never the scalar `customEnumeration`:
+     * that would not type-check against the `List<E>` property, and must never store member symbols.
+     * The column type lives in its own support file, emitted only because such a column exists.
+     */
+    @Test fun `int-backed enum array emits the integer array column and its support file and compiles`() {
+        val outDir = Files.createTempDirectory("ktbl-int-enum-array-")
+        try {
+            val loader = loadDirectory("enum-int-backed-array", models.resolve("enum-int-backed-array"))
+            for (gen in listOf(KotlinEntityGenerator(), KotlinExposedTableGenerator())) {
+                gen.setArgs(mapOf("outputDir" to outDir.toString()))
+                gen.execute(loader)
+            }
+
+            val src = outDir.resolve("acme/shop/DocTable.kt").readText()
+            assertTrue("portableIntEnumArray<Stage>(\"history\"" in src,
+                "history must be the integer array column; saw:\n$src")
+            assertTrue("Stage.DRAFT -> 0" in src && "Stage.PUBLISHED -> 5" in src && "Stage.ARCHIVED -> 9" in src,
+                "the write lambda must map every member to its declared int; saw:\n$src")
+            assertTrue("0 -> Stage.DRAFT" in src && "5 -> Stage.PUBLISHED" in src && "9 -> Stage.ARCHIVED" in src,
+                "the read lambda must map every declared int to its member; saw:\n$src")
+            assertTrue("unmapped stored value" in src, "an int with no member must fail the read; saw:\n$src")
+            assertTrue("customEnumeration(\"history\"" !in src,
+                "an array must not take the scalar column; saw:\n$src")
+            // The scalar sibling sharing the map keeps the scalar form.
+            assertTrue("customEnumeration(\"stage\", \"INTEGER\"" in src, "scalar stage unchanged; saw:\n$src")
+
+            val support = outDir.resolve("acme/shop/MetaIntEnumArrayColumnType.kt")
+            assertTrue(Files.exists(support), "expected the support file; files=${Files.walk(outDir).toList()}")
+            val supportSrc = support.readText()
+            assertTrue("INTEGER[]" in supportSrc && "\"integer\"" in supportSrc,
+                "the support file must bind a native integer[] on Postgres; saw:\n$supportSrc")
+
+            val result = compile(outDir)
+            assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test fun `a package with no int-backed enum array gets no integer array support file`() {
+        val outDir = Files.createTempDirectory("ktbl-int-enum-noarray-")
+        try {
+            val loader = loadDirectory("enum-int-backed", models.resolve("enum-int-backed"))
+            for (gen in listOf(KotlinEntityGenerator(), KotlinExposedTableGenerator())) {
+                gen.setArgs(mapOf("outputDir" to outDir.toString()))
+                gen.execute(loader)
+            }
+            assertTrue(!Files.exists(outDir.resolve("acme/shop/MetaIntEnumArrayColumnType.kt")),
+                "a scalar-only int-backed enum must not emit the array support file")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
 }

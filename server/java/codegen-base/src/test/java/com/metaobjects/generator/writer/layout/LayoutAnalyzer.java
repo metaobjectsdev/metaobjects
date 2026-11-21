@@ -27,6 +27,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
+import javax.tools.Diagnostic;
+import javax.tools.DiagnosticCollector;
 import javax.tools.JavaCompiler;
 import javax.tools.JavaFileObject;
 import javax.tools.SimpleJavaFileObject;
@@ -123,12 +125,24 @@ public final class LayoutAnalyzer {
             return source;
           }
         };
-    JavacTask task = (JavacTask) compiler.getTask(null, null, null, List.of("-proc:none"), null, List.of(file));
+    DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
+    JavacTask task =
+        (JavacTask) compiler.getTask(null, null, diagnostics, List.of("-proc:none"), null, List.of(file));
     Iterable<? extends CompilationUnitTree> units;
     try {
       units = task.parse();
     } catch (IOException e) {
       throw new IllegalStateException("cannot parse " + fileName, e);
+    }
+    // A file that does not parse is never "clean": the scan would walk a partial tree and miss offenders.
+    List<String> broken = new ArrayList<>();
+    for (Diagnostic<? extends JavaFileObject> d : diagnostics.getDiagnostics()) {
+      if (d.getKind() == Diagnostic.Kind.ERROR) {
+        broken.add("line " + d.getLineNumber() + ": " + d.getMessage(null));
+      }
+    }
+    if (!broken.isEmpty()) {
+      throw new IllegalStateException("cannot parse " + fileName + ": " + String.join("; ", broken));
     }
     SourcePositions positions = Trees.instance(task).getSourcePositions();
     List<Finding> findings = new ArrayList<>();

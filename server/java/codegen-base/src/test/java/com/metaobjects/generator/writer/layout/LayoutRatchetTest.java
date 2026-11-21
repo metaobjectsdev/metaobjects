@@ -45,6 +45,16 @@ public class LayoutRatchetTest {
   // ── 1. the analyzer ──────────────────────────────────────────────────────────────────
 
   @Test
+  public void a_file_that_does_not_parse_is_refused_not_treated_as_clean() {
+    try {
+      LayoutAnalyzer.analyze("Broken.java", "class Broken { void f() { String s = \"a\\nb\"; ");
+      org.junit.Assert.fail("a file with a syntax error must not scan as clean");
+    } catch (IllegalStateException e) {
+      org.junit.Assert.assertTrue(e.getMessage(), e.getMessage().startsWith("cannot parse Broken.java"));
+    }
+  }
+
+  @Test
   public void catches_a_newline_escape() {
     assertEquals(sorted(Kind.NEWLINE_LITERAL), kinds("String s = \"a\\nb\";"));
     assertEquals(sorted(Kind.NEWLINE_LITERAL), kinds("String s = \"a\\r\";"));

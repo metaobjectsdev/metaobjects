@@ -230,6 +230,8 @@ public class PostgresDriver extends GenericSQLDriver {
         if (com.metaobjects.field.UuidField.SUBTYPE_UUID.equals(f.getSubType())) return "uuid";
         // field.decimal isArray is a native NUMERIC[] (no bound on the elements; the wire layer range-checks them).
         if (com.metaobjects.field.DecimalField.SUBTYPE_DECIMAL.equals(f.getSubType())) return "numeric";
+        // An int-backed field.enum isArray is a native INTEGER[] holding each member's declared integer.
+        if (com.metaobjects.manager.db.codec.JdbcCodecs.enumIntValueMap(f) != null) return "integer";
         if (com.metaobjects.field.StringField.SUBTYPE_STRING.equals(f.getSubType())
                 && !isOpenJsonbField(f)) {
             return "text";

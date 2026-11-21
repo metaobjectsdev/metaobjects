@@ -51,8 +51,10 @@ import com.metaobjects.attr.ExpressionAttribute;
 import com.metaobjects.origin.AggregateOrigin;
 import com.metaobjects.origin.ComputedOrigin;
 import com.metaobjects.origin.FirstOrigin;
+import com.metaobjects.origin.FunctionOrigin;
 import com.metaobjects.origin.MetaOrigin;
 import com.metaobjects.origin.PassthroughOrigin;
+import com.metaobjects.origin.ViewExpressionsTypesMetaDataProvider;
 import com.metaobjects.relationship.M2MFields;
 import com.metaobjects.relationship.MetaRelationship;
 import com.metaobjects.relationship.RelationshipReferences;
@@ -282,6 +284,8 @@ public final class ValidationPhase {
         pass(collected, () -> validateDataGridLayouts(root));
         // #207 — projection row-scope @filter field-ref validation (fail-closed).
         pass(collected, () -> validateProjectionFilter(root));
+        // rc.21 part B — @union / @grain / @grainOrdinal shape rules on object.projection.
+        pass(collected, () -> collected.addAll(validateProjectionUnionAndGrain(root)));
         // Origin @segment names a segment of the related entity; a correlated @filter operand
         // names a base-row field.
         pass(collected, () -> validateOriginSegmentsAndCorrelation(root));
@@ -2581,6 +2585,14 @@ public final class ValidationPhase {
                     + "' node, since a CHECK can hold neither a CASE nor the current time.";
             }
         }
+        // rc.21 part B: a CHECK holds the condition's SQL, which every port's CHECK emitter renders from
+        // fields, literals, comparisons, null tests, and / or / not and coalesce. The rest of the
+        // expression grammar (case, now, cast, the other functions, paths) is for views only.
+        String viewOnly = ExpressionAttribute.exprViewOnlyNode(condition);
+        if (viewOnly != null) {
+            return "uses " + viewOnly + ", which a CHECK condition cannot hold: it takes fields, literals,"
+                + " comparisons, null tests, and / or / not, and coalesce.";
+        }
         ExpressionAttribute.InferResult inferred = ExpressionAttribute.inferExprType(
             condition, name -> fields.containsKey(name) ? fields.get(name).getSubType() : null);
         if (!inferred.errors.isEmpty()) {
@@ -2688,8 +2700,8 @@ public final class ValidationPhase {
     private static List<java.util.Map<?, ?>> exprNodes(Object node, List<java.util.Map<?, ?>> out) {
         if (node instanceof java.util.Map<?, ?> m) {
             out.add(m);
-            for (String k : List.of("left", "right", "arg", ExpressionAttribute.EXPR_CASE_OPERAND,
-                    ExpressionAttribute.EXPR_CASE_ELSE)) exprNodes(m.get(k), out);
+            for (String k : List.of("left", "right", "arg", ExpressionAttribute.EXPR_CAST,
+                    ExpressionAttribute.EXPR_CASE_OPERAND, ExpressionAttribute.EXPR_CASE_ELSE)) exprNodes(m.get(k), out);
             if (m.get("args") instanceof java.util.Collection<?> args) for (Object a : args) exprNodes(a, out);
             if (m.get(ExpressionAttribute.EXPR_CASE) instanceof java.util.Collection<?> arms) {
                 for (Object arm : arms) {
@@ -2701,6 +2713,228 @@ public final class ValidationPhase {
             }
         }
         return out;
+    }
+
+    /**
+     * rc.21 part B (U10) — origin.function: a call of a database function the project owns. Its name
+     * and schema are plain identifiers (never free SQL); each argument names a scalar field of the
+     * host (an entity), or of the projection (not an aggregate, not the field itself) or its base.
+     * Mirrors TS {@code _validateFunctionOrigin}.
+     */
+    private static void validateFunctionOrigin(MetaOrigin origin, MetaObject obj, MetaField<?> field, MetaRoot root) {
+        com.metaobjects.source.ErrorSource src = origin.getSource();
+        String where = "origin.function on " + obj.getName() + "." + field.getName();
+        // ADR-0039: own — origin.* never inherits (ADR-0029).
+        for (String attr : List.of(FunctionOrigin.ATTR_FUNCTION, FunctionOrigin.ATTR_SCHEMA)) {
+            if (!origin.hasMetaAttr(attr, false)) continue;
+            String v = origin.getMetaAttr(attr, false).getValueAsString();
+            if (v == null || !FunctionOrigin.IDENTIFIER.matcher(v).matches()) {
+                throw invalidOrigin(where + ": @" + attr + " \"" + v + "\" is not a plain identifier"
+                    + " ([A-Za-z_][A-Za-z0-9_]*); a function is named, never written as SQL.", src);
+            }
+        }
+        List<String> args = originStringList(origin, FunctionOrigin.ATTR_ARGS);
+        // The declared signature: each parameter and the result is a field subtype (the cast targets);
+        // the result is the carrying field's, each argument its parameter's.
+        List<String> params = originStringList(origin, FunctionOrigin.ATTR_PARAMS);
+        List<String> types = new ArrayList<>(params);
+        List<String> returned = originStringList(origin, FunctionOrigin.ATTR_RETURNS);
+        types.addAll(returned);
+        for (String t : types) {
+            if (!ExpressionAttribute.EXPR_CAST_TARGETS.contains(t)) {
+                throw invalidOrigin(where + ": \"" + t + "\" is not a parameter or return type; use one of "
+                    + String.join(", ", ExpressionAttribute.EXPR_CAST_TARGETS) + ".", src);
+            }
+        }
+        if (!returned.isEmpty() && !returned.get(0).equals(field.getSubType())) {
+            throw invalidOrigin(where + ": @returns " + returned.get(0) + ", but the field is field."
+                + field.getSubType() + "; the declared return type must be the field's type.", src);
+        }
+        if (params.size() != args.size()) {
+            throw invalidOrigin(where + ": @params declares " + params.size() + " parameter type(s) for "
+                + args.size() + " argument(s); declare one per @args entry.", src);
+        }
+        boolean isProjection = MetaObject.SUBTYPE_PROJECTION.equals(obj.getSubType());
+        MetaObject base = isProjection ? deriveBaseEntityOrNull(obj, root, field.getName(), src) : obj;
+        for (int index = 0; index < args.size(); index++) {
+            String name = args.get(index);
+            MetaField<?> own = null;
+            if (!name.equals(field.getShortName())) {
+                for (MetaField<?> f : obj.getChildren(MetaField.class, true)) {
+                    if (name.equals(f.getShortName())) { own = f; break; }
+                }
+            }
+            MetaOrigin ownOrigin = own == null ? null : ownOriginOf(own);
+            MetaField<?> arg = own;
+            if (arg == null && base != null) {
+                for (MetaField<?> f : base.getChildren(MetaField.class, true)) {
+                    if (name.equals(f.getShortName())) { arg = f; break; }
+                }
+            }
+            if (arg == null || name.equals(field.getShortName())) {
+                throw invalidOrigin(where + ": @args names \"" + name + "\", which is not a field of "
+                    + (isProjection ? "the projection or its base entity" : "\"" + obj.getName() + "\"") + ".", src);
+            } else if (ownOrigin != null && AggregateOrigin.SUBTYPE_AGGREGATE.equals(ownOrigin.getSubType())) {
+                throw invalidOrigin(where + ": @args names \"" + name + "\", an origin.aggregate; a function"
+                    + " takes values of the row, not of the group.", src);
+            } else if (ObjectField.SUBTYPE_OBJECT.equals(arg.getSubType()) || MapField.SUBTYPE_MAP.equals(arg.getSubType())
+                    || arg.isArrayType()) {
+                throw invalidOrigin(where + ": @args names \"" + name + "\", a field." + arg.getSubType()
+                    + (arg.isArrayType() ? " array" : "") + "; a function argument is a scalar.", src);
+            } else if (!arg.getSubType().equals(params.get(index))) {
+                throw invalidOrigin(where + ": argument " + (index + 1) + " \"" + name + "\" is a field."
+                    + arg.getSubType() + ", but parameter " + (index + 1) + " is declared " + params.get(index)
+                    + "; pass an origin.computed field that casts it ({ cast: { field: " + name + " }, as: "
+                    + params.get(index) + " }).", src);
+            }
+        }
+    }
+
+    /** rc.21 part B (U14): the value object a {@code @grain} projection's rows are elements of, if it has one. */
+    private static MetaObject grainValueObject(MetaObject obj, MetaRoot root) {
+        // ADR-0039: own — a projection's @grain names ITS view's shape; an extender declares its own.
+        if (!MetaObject.SUBTYPE_PROJECTION.equals(obj.getSubType())
+                || !obj.hasMetaAttr(ViewExpressionsTypesMetaDataProvider.ATTR_GRAIN, false)) return null;
+        String grain = obj.getMetaAttr(ViewExpressionsTypesMetaDataProvider.ATTR_GRAIN, false).getValueAsString();
+        MetaObject base = deriveBaseEntityOrNull(obj, root, "@grain", obj.getSource());
+        if (base == null) return null;
+        for (MetaField<?> f : base.getChildren(MetaField.class, true)) {
+            if (f.getShortName().equals(grain)) return References.refTarget(f, ObjectField.ATTR_OBJECTREF);
+        }
+        return null;
+    }
+
+    /** An own string or string-array attr of a node, one entry per item; empty when absent. */
+    private static List<String> ownStringList(MetaData node, String attr) {
+        if (!node.hasMetaAttr(attr, false)) return java.util.Collections.emptyList();
+        Object raw = node.getMetaAttr(attr, false).getValue();
+        List<String> out = new ArrayList<>();
+        if (raw instanceof Iterable<?> items) {
+            for (Object o : items) out.add(String.valueOf(o));
+        } else if (raw != null) {
+            out.add(String.valueOf(raw));
+        }
+        return out;
+    }
+
+    /**
+     * rc.21 part B — the projection shapes beside a plain view:
+     * <ul>
+     *   <li>{@code @union} names projections whose rows join this one's: each must be an
+     *       object.projection other than this one, with the same effective fields in order (name,
+     *       subtype, array-ness and {@code @column}); {@code @unionAll} needs {@code @union};</li>
+     *   <li>{@code @grain} names a base-entity field.object array stored as jsonb; such a projection
+     *       holds no origin.aggregate, and {@code @grainOrdinal} names one of its own field.int /
+     *       field.long fields with no origin.</li>
+     * </ul>
+     * ERR_BAD_ATTR_VALUE otherwise. Mirrors TS {@code validateProjectionUnionAndGrain}.
+     */
+    static List<MetaDataException> validateProjectionUnionAndGrain(MetaRoot root) {
+        List<MetaDataException> errors = new ArrayList<>();
+        for (MetaObject obj : rootObjects(root)) {
+            if (!MetaObject.SUBTYPE_PROJECTION.equals(obj.getSubType())) continue;
+            java.util.function.Consumer<String> bad = message -> errors.add(new MetaDataException(
+                ErrorMessageConstants.ERR_BAD_ATTR_VALUE + ": object.projection " + obj.getName() + ": " + message,
+                ErrorCode.ERR_BAD_ATTR_VALUE, obj.getSource()));
+            String unionAttr = ViewExpressionsTypesMetaDataProvider.ATTR_UNION;
+            String unionAllAttr = ViewExpressionsTypesMetaDataProvider.ATTR_UNION_ALL;
+            // ADR-0039: own — a projection's @union, @grain names ITS view's shape; an extender declares its own.
+            boolean hasUnion = obj.hasMetaAttr(unionAttr, false);
+            if (obj.hasMetaAttr(unionAllAttr, false) && !hasUnion) {
+                bad.accept("@" + unionAllAttr + " needs @" + unionAttr + ".");
+            }
+            if (hasUnion) {
+                String referrerPkg = obj.getPackage() == null ? "" : obj.getPackage();
+                List<String> a = new ArrayList<>();
+                for (MetaField<?> f : obj.getChildren(MetaField.class, true)) a.add(describeUnionField(f));
+                for (String name : ownStringList(obj, unionAttr)) {
+                    MetaObject member = resolveRootObject(root, name, referrerPkg);
+                    if (member == null || !MetaObject.SUBTYPE_PROJECTION.equals(member.getSubType())) {
+                        bad.accept("@" + unionAttr + " names \"" + name + "\", which is not an object.projection.");
+                        continue;
+                    }
+                    if (member == obj) {
+                        bad.accept("@" + unionAttr + " names the projection itself.");
+                        continue;
+                    }
+                    // A member's own @union would be flattened away, silently.
+                    if (member.hasMetaAttr(unionAttr, false)) {
+                        bad.accept("@" + unionAttr + " member \"" + member.getName() + "\" declares its own @"
+                            + unionAttr + "; name its members here instead.");
+                    }
+                    List<String> b = new ArrayList<>();
+                    for (MetaField<?> f : member.getChildren(MetaField.class, true)) b.add(describeUnionField(f));
+                    if (!a.equals(b)) {
+                        bad.accept("@" + unionAttr + " member \"" + member.getName() + "\" has a different shape: ("
+                            + String.join(", ", b) + ") where this view is (" + String.join(", ", a)
+                            + "). A union's members have the same fields, in order.");
+                    }
+                }
+            }
+            String grainAttr = ViewExpressionsTypesMetaDataProvider.ATTR_GRAIN;
+            String ordinalAttr = ViewExpressionsTypesMetaDataProvider.ATTR_GRAIN_ORDINAL;
+            boolean hasGrain = obj.hasMetaAttr(grainAttr, false);
+            boolean hasOrdinal = obj.hasMetaAttr(ordinalAttr, false);
+            if (hasOrdinal && !hasGrain) bad.accept("@" + ordinalAttr + " needs @" + grainAttr + ".");
+            if (!hasGrain) continue;
+            String grain = obj.getMetaAttr(grainAttr, false).getValueAsString();
+            MetaObject base = deriveBaseEntityOrNull(obj, root, "@grain", obj.getSource());
+            MetaField<?> grainField = null;
+            if (base != null) {
+                for (MetaField<?> f : base.getChildren(MetaField.class, true)) {
+                    if (f.getShortName().equals(grain)) { grainField = f; break; }
+                }
+            }
+            boolean storageOk = grainField != null && (!grainField.hasMetaAttr(MetaField.ATTR_STORAGE)
+                || "jsonb".equals(grainField.getMetaAttr(MetaField.ATTR_STORAGE).getValueAsString()));
+            if (grainField == null || !ObjectField.SUBTYPE_OBJECT.equals(grainField.getSubType())
+                    || !grainField.isArrayType() || !storageOk
+                    || References.refTarget(grainField, ObjectField.ATTR_OBJECTREF) == null) {
+                bad.accept("@" + grainAttr + " \"" + grain + "\" must name a field.object array (isArray, jsonb storage,"
+                    + " with @objectRef) of the base entity" + (base == null ? "" : " \"" + base.getName() + "\"") + ".");
+            }
+            for (MetaField<?> f : obj.getChildren(MetaField.class, true)) {
+                MetaOrigin o = ownOriginOf(f);
+                if (o != null && AggregateOrigin.SUBTYPE_AGGREGATE.equals(o.getSubType())) {
+                    bad.accept("\"" + f.getShortName() + "\" is an origin.aggregate; a @grain view has one row per"
+                        + " element and groups nothing.");
+                }
+            }
+            if (hasOrdinal) {
+                String ordinal = obj.getMetaAttr(ordinalAttr, false).getValueAsString();
+                MetaField<?> f = null;
+                for (MetaField<?> c : obj.getChildren(MetaField.class, true)) {
+                    if (c.getShortName().equals(ordinal)) { f = c; break; }
+                }
+                if (f == null || !(IntegerField.SUBTYPE_INT.equals(f.getSubType()) || LongField.SUBTYPE_LONG.equals(f.getSubType()))
+                        || ownOriginOf(f) != null || f.getSuperData() != null) {
+                    bad.accept("@" + ordinalAttr + " \"" + ordinal + "\" must name a field.int or field.long of the"
+                        + " projection, with no origin and no extends.");
+                }
+            }
+        }
+        return errors;
+    }
+
+    /** One union column as a comparable string: name, subtype, array-ness, @column and an enum's members and value maps. */
+    private static String describeUnionField(MetaField<?> f) {
+        StringBuilder sb = new StringBuilder(f.getShortName()).append(": field.").append(f.getSubType());
+        if (f.isArrayType()) sb.append("[]");
+        if (f.hasMetaAttr(MetaField.ATTR_COLUMN)) sb.append(" @column ").append(f.getMetaAttr(MetaField.ATTR_COLUMN).getValueAsString());
+        if (EnumField.SUBTYPE_ENUM.equals(f.getSubType())) {
+            // An enum's members and value maps are part of the column's meaning.
+            List<Object> shape = new ArrayList<>();
+            for (String a : List.of(EnumField.ATTR_VALUES, EnumField.ATTR_INT_VALUE_MAP, EnumField.ATTR_STRING_VALUE_MAP)) {
+                shape.add(f.hasMetaAttr(a) ? f.getMetaAttr(a).getValue() : null);
+            }
+            sb.append(' ').append(new com.google.gson.Gson().toJson(shape));
+        }
+        return sb.toString();
+    }
+
+    private static MetaDataException invalidOrigin(String message, com.metaobjects.source.ErrorSource src) {
+        return new MetaDataException(ErrorMessageConstants.ERR_INVALID_ORIGIN + ": " + message,
+            ErrorCode.ERR_INVALID_ORIGIN, src);
     }
 
     /** A field's origin. ADR-0039: own — origin.* never inherits (ADR-0029), so it is declared on the field. */
@@ -3149,6 +3383,31 @@ public final class ValidationPhase {
             }
             OriginTarget fromTarget = validateFromOrOfPath(from, root, obj, field.getName(),
                 "origin.passthrough.@from", origin.getSource());
+            // rc.21 part B (U14): on a @grain projection, a @from on the grain field's value object
+            // reads a member of the array element; there is no path to walk.
+            if (fromTarget.entity != null && fromTarget.entity == grainValueObject(obj, root)) {
+                checkPassthroughType(field, fromTarget.field, from, origin.isConvert(), obj, origin.getSource());
+                MetaField<?> member = fromTarget.field;
+                if (member.isArrayType() || ObjectField.SUBTYPE_OBJECT.equals(member.getSubType())
+                        || MapField.SUBTYPE_MAP.equals(member.getSubType())) {
+                    throw invalidOrigin("origin.passthrough on " + obj.getName() + "." + field.getName() + ": @from \""
+                        + from + "\" is not a scalar member of the @grain element.", origin.getSource());
+                }
+                String grainVia = origin.getVia();
+                if (grainVia != null && !grainVia.isEmpty()) {
+                    throw invalidOrigin("origin.passthrough on " + obj.getName() + "." + field.getName() + ": @from \""
+                        + from + "\" reads the @grain element, which takes no @via.", origin.getSource());
+                }
+                // A value object's enum member is held in the document as its symbol; a value map
+                // describes a column the element does not have.
+                if (EnumField.SUBTYPE_ENUM.equals(member.getSubType())
+                        && (member.hasMetaAttr(EnumField.ATTR_INT_VALUE_MAP) || member.hasMetaAttr(EnumField.ATTR_STRING_VALUE_MAP))) {
+                    throw invalidOrigin("origin.passthrough on " + obj.getName() + "." + field.getName() + ": @from \""
+                        + from + "\" is an enum with a value map, but a @grain element holds the member's symbol; "
+                        + "read it as a field.string, or drop the map on the value object's member.", origin.getSource());
+                }
+                return;
+            }
             // FR-024 B6 — extends/origin agreement (host-agnostic; before via/inference).
             checkExtendsOriginAgreement(field, fromTarget.field, from, obj, origin.getSource());
             // #185 — passthrough is type-preserving unless @convert acknowledges a change
@@ -3474,18 +3733,41 @@ public final class ValidationPhase {
                     return;
                 }
             }
-            ExpressionAttribute.InferResult inferred = ExpressionAttribute.inferExprType(
-                expr, name -> {
-                    if (obj != baseEntity && !name.equals(selfName)) {
-                        for (MetaField<?> own : obj.getChildren(MetaField.class, true)) {
-                            if (!name.equals(own.getShortName())) continue;
-                            MetaOrigin ownOrigin = ownOriginOf(own);
-                            if (ownOrigin != null
-                                    && AggregateOrigin.SUBTYPE_AGGREGATE.equals(ownOrigin.getSubType())) return null;
-                            return own.getSubType();
-                        }
+            // rc.19 computed-over-joined: a ref names one of the projection's own fields first (a
+            // passthrough, an origin.first, another origin.computed or, rc.21 U13, a scalar
+            // origin.aggregate, read on the grouped row), else a base field, else (rc.21 U3, a
+            // projection only) a PATH of to-one hops from the base and a field of the entity
+            // reached, joined but not output. Never itself; never a collect (an array).
+            java.util.function.Function<String, MetaField<?>> fieldNode = name -> {
+                if (obj != baseEntity && !name.equals(selfName)) {
+                    for (MetaField<?> own : obj.getChildren(MetaField.class, true)) {
+                        if (name.equals(own.getShortName())) return own;
                     }
-                    return resolvedFieldSubType(baseEntity, name);
+                }
+                MetaField<?> baseField = null;
+                for (MetaData c : baseEntity.getChildren(MetaData.class, true)) {
+                    if (c instanceof MetaField<?> f && nameMatches(c, name)) { baseField = f; break; }
+                }
+                if (baseField != null || obj == baseEntity || !name.contains(".")) return baseField;
+                com.metaobjects.relationship.FilterPath.Result path =
+                    com.metaobjects.relationship.FilterPath.resolve(baseEntity, name);
+                return path != null && path.path() != null ? path.path().field() : null;
+            };
+            java.util.function.Function<String, MetaField<?>> refNode = name -> {
+                MetaField<?> node = fieldNode.apply(name);
+                if (node == null) return null;
+                MetaOrigin nodeOrigin = ownOriginOf(node);
+                if (!name.equals(selfName) && nodeOrigin != null
+                        && AggregateOrigin.SUBTYPE_AGGREGATE.equals(nodeOrigin.getSubType())
+                        && MetaOrigin.AGG_COLLECT.equals(nodeOrigin.getAgg())) return null;
+                return node;
+            };
+            ExpressionAttribute.InferResult inferred = ExpressionAttribute.inferExprType(
+                expr, name -> { MetaField<?> n = refNode.apply(name); return n == null ? null : n.getSubType(); },
+                name -> {
+                    MetaField<?> n = fieldNode.apply(name);
+                    return n != null && EnumField.SUBTYPE_ENUM.equals(n.getSubType())
+                        && n.hasMetaAttr(EnumField.ATTR_INT_VALUE_MAP);
                 });
             if (!inferred.errors.isEmpty()) {
                 throw new MetaDataException(
@@ -3497,21 +3779,7 @@ public final class ValidationPhase {
             // A literal compared with a field must be able to equal it: of its kind, and for an
             // enum one of its @values (the rule a validator's @condition follows). Resolved as the
             // inference resolved the ref: a projection field first, else a base field.
-            String literalProblem = literalComparisonProblem(expr, name -> {
-                if (obj != baseEntity && !name.equals(selfName)) {
-                    for (MetaField<?> own : obj.getChildren(MetaField.class, true)) {
-                        if (!name.equals(own.getShortName())) continue;
-                        MetaOrigin ownOrigin = ownOriginOf(own);
-                        if (ownOrigin != null
-                                && AggregateOrigin.SUBTYPE_AGGREGATE.equals(ownOrigin.getSubType())) return null;
-                        return own;
-                    }
-                }
-                for (MetaData c : baseEntity.getChildren(MetaData.class, true)) {
-                    if (c instanceof MetaField<?> f && nameMatches(c, name)) return f;
-                }
-                return null;
-            });
+            String literalProblem = literalComparisonProblem(expr, refNode);
             if (literalProblem != null) {
                 throw new MetaDataException(
                     ErrorMessageConstants.ERR_INVALID_ORIGIN
@@ -3528,6 +3796,12 @@ public final class ValidationPhase {
                         + " expression and must match (no @convert escape).",
                     ErrorCode.ERR_COMPUTED_TYPE_MISMATCH, src);
             }
+            return;
+        }
+
+        // origin.function — rc.21 part B (U10): a call of a database function the project owns.
+        if (FunctionOrigin.SUBTYPE_FUNCTION.equals(subType)) {
+            validateFunctionOrigin(origin, obj, field, root);
             return;
         }
 
@@ -4193,7 +4467,8 @@ public final class ValidationPhase {
                     Object filter = origin.getMetaAttr(MetaOrigin.ATTR_FILTER, false).getValue();
                     MetaObject base = deriveBaseEntityOrNull(obj, root, field.getName(), origin.getSource());
                     if (base == null) continue;
-                    checkCorrelatedOperands(filter, base, where, origin.getSource());
+                    checkCorrelatedOperands(filter, base, where, origin.getSource(),
+                        MetaObject.SUBTYPE_PROJECTION.equals(obj.getSubType()));
                 }
             }
         }
@@ -4242,13 +4517,13 @@ public final class ValidationPhase {
     }
 
     private static void checkCorrelatedOperands(Object filter, MetaObject base, String where,
-                                                com.metaobjects.source.ErrorSource source) {
+                                                com.metaobjects.source.ErrorSource source, boolean onProjection) {
         if (!(filter instanceof java.util.Map<?, ?> m)) return;
         for (java.util.Map.Entry<?, ?> e : m.entrySet()) {
             String key = String.valueOf(e.getKey());
             if ("and".equals(key) || "or".equals(key)) {
                 if (e.getValue() instanceof Iterable<?> subs) {
-                    for (Object sub : subs) checkCorrelatedOperands(sub, base, where, source);
+                    for (Object sub : subs) checkCorrelatedOperands(sub, base, where, source, onProjection);
                 }
                 continue;
             }
@@ -4284,10 +4559,23 @@ public final class ValidationPhase {
                     }
                 }
                 if (!known) {
+                    // rc.21 part B (U4): on a projection, the operand may be a PATH of to-one hops from
+                    // the base row and a field of the entity reached ("orderId.customerId"), joined on
+                    // the outer row.
+                    com.metaobjects.relationship.FilterPath.Result path =
+                        name instanceof String ns && ns.contains(".") && onProjection
+                            ? com.metaobjects.relationship.FilterPath.resolve(base, ns) : null;
+                    if (path != null && path.path() != null) continue;
+                    String why = path != null
+                        ? "compares with the base-row path \"" + name + "\": " + path.error() + "."
+                        : name instanceof String ns2 && ns2.contains(".") && !onProjection
+                            ? "compares with the path \"" + name + "\"; a path operand is legal only on a projection,"
+                                + " whose view joins it."
+                            : "names base-row field \"" + name + "\", which \"" + base.getShortName()
+                                + "\" does not declare.";
                     throw new MetaDataException(
                         ErrorMessageConstants.ERR_BAD_ATTR_FILTER + ": " + where + ": @filter on \"" + key
-                            + "\" names base-row field \"" + name + "\", which \"" + base.getShortName()
-                            + "\" does not declare.",
+                            + "\" " + why,
                         ErrorCode.ERR_BAD_ATTR_FILTER, source);
                 }
             }
@@ -5839,7 +6127,8 @@ public final class ValidationPhase {
                     // A derived field a projection reaches (its @filter or a passthrough @from)
                     // is lowered inline there, so it needs no read source. Only the inlinable origins.
                     if ((FirstOrigin.SUBTYPE_FIRST.equals(origin.getSubType())
-                            || ComputedOrigin.SUBTYPE_COMPUTED.equals(origin.getSubType()))
+                            || ComputedOrigin.SUBTYPE_COMPUTED.equals(origin.getSubType())
+                            || FunctionOrigin.SUBTYPE_FUNCTION.equals(origin.getSubType()))
                             && reached.contains(fc)) {
                         continue;
                     }
@@ -5896,9 +6185,52 @@ public final class ValidationPhase {
                         // The origin pass reports an unresolved @from.
                     }
                 }
+                // rc.21 part B (U3): a computed expression's path ref reaches the field at its end.
+                MetaOrigin computed = ownOriginOf(field);
+                if (computed != null && ComputedOrigin.SUBTYPE_COMPUTED.equals(computed.getSubType())
+                        && base != null && base != obj && computed.hasMetaAttr(MetaOrigin.ATTR_EXPR, false)) {
+                    java.util.Set<String> refs = new java.util.LinkedHashSet<>();
+                    collectExprFieldRefs(computed.getMetaAttr(MetaOrigin.ATTR_EXPR, false).getValue(), refs);
+                    for (String name : refs) {
+                        if (!name.contains(".")) continue;
+                        com.metaobjects.relationship.FilterPath.Result path =
+                            com.metaobjects.relationship.FilterPath.resolve(base, name);
+                        if (path != null && path.path() != null) reached.add(path.path().field());
+                    }
+                }
             }
         }
+        // A reached origin.function inlines its arguments on the same row, so a derived argument
+        // (an origin.computed cast, say) is reached too.
+        for (MetaData f : new java.util.ArrayList<>(reached)) reachFunctionArgs(f, reached);
         return reached;
+    }
+
+    private static void reachFunctionArgs(MetaData f, java.util.Set<MetaData> reached) {
+        MetaOrigin origin = f instanceof MetaField<?> mf ? ownOriginOf(mf) : null;
+        MetaData host = f.getParent();
+        if (origin == null || !FunctionOrigin.SUBTYPE_FUNCTION.equals(origin.getSubType()) || host == null) return;
+        for (String name : originStringList(origin, FunctionOrigin.ATTR_ARGS)) {
+            for (MetaData c : host.getChildren(MetaData.class, true)) {
+                if (c instanceof MetaField && name.equals(c.getShortName())) {
+                    if (reached.add(c)) reachFunctionArgs(c, reached);
+                    break;
+                }
+            }
+        }
+    }
+
+    /** An origin's own string-array attr ({@code @args}, {@code @params}), one entry per item. */
+    private static List<String> originStringList(MetaOrigin origin, String attr) {
+        if (!origin.hasMetaAttr(attr, false)) return java.util.Collections.emptyList();
+        Object raw = origin.getMetaAttr(attr, false).getValue();
+        List<String> out = new ArrayList<>();
+        if (raw instanceof Iterable<?> items) {
+            for (Object o : items) out.add(String.valueOf(o));
+        } else if (raw != null) {
+            out.add(String.valueOf(raw));
+        }
+        return out;
     }
 
     // =========================================================================

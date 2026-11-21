@@ -3,6 +3,8 @@ package com.metaobjects.integration.kotlin.tables
 import org.jetbrains.exposed.sql.Column
 import org.jetbrains.exposed.sql.ColumnType
 import org.jetbrains.exposed.sql.Table
+import org.jetbrains.exposed.sql.statements.api.PreparedStatementApi
+import org.jetbrains.exposed.sql.vendors.currentDialect
 
 /**
  * Hand-written reference Exposed column type for an INT-BACKED `field.enum` (`@intValueMap`) —
@@ -65,3 +67,63 @@ internal fun Table.intBackedEnum(name: String, intByMember: Map<String, Int>): C
  * must carry the fixture's map exactly (`fixtures/persistence-conformance/canonical/meta.fitness.json`).
  */
 internal val INT_ENUM_MEMBERS: Map<String, Int> = mapOf("DRAFT" to 0, "PUBLISHED" to 5, "ARCHIVED" to 9)
+
+/**
+ * Hand-written reference column type for an INT-BACKED `field.enum` ARRAY: the test-harness analogue
+ * of the `portableIntEnumArray(...)` column [com.metaobjects.generator.kotlin.KotlinExposedTableGenerator]
+ * emits. Each element is stored as its declared integer: a native `INTEGER[]` on Postgres, and on
+ * SQLite and MySQL (no array type) a JSON array of numbers (`[5,0]`), never the member symbols.
+ * Like [IntBackedEnumColumnType] it carries the member SYMBOL in and out (`Column<List<String>>`),
+ * and an integer with no member throws on the read.
+ */
+internal class IntBackedEnumArrayColumnType(
+    private val intByMember: Map<String, Int>,
+) : ColumnType<List<String>>() {
+
+    private val memberByInt: Map<Int, String> =
+        intByMember.entries.associate { (member, stored) -> stored to member }
+
+    private fun isPostgres(): Boolean = currentDialect.name.equals("postgresql", ignoreCase = true)
+    private fun isMySql(): Boolean =
+        currentDialect.name.let { it.equals("mysql", ignoreCase = true) || it.equals("mariadb", ignoreCase = true) }
+
+    private fun member(stored: Int): String = memberByInt[stored]
+        ?: error(
+            "field.enum read stored value $stored with no member in @intValueMap " +
+                "(declared: $intByMember) — the database holds a value the model does not describe."
+        )
+
+    private fun stored(member: String): Int = intByMember[member]
+        ?: error("field.enum has no @intValueMap entry for member '$member' (declared: $intByMember).")
+
+    private fun json(value: List<String>): String = value.joinToString(",", "[", "]") { stored(it).toString() }
+
+    override fun sqlType(): String = if (isPostgres()) "INTEGER[]" else if (isMySql()) "JSON" else "TEXT"
+
+    override fun valueFromDB(value: Any): List<String> = when (value) {
+        is java.sql.Array -> (value.array as Array<*>).map { member((it as Number).toInt()) }
+        is Array<*> -> value.map { member((it as Number).toInt()) }
+        is List<*> -> value.map { member((it as Number).toInt()) }
+        else -> com.fasterxml.jackson.databind.ObjectMapper().readTree(value.toString()).map { member(it.intValue()) }
+    }
+
+    override fun notNullValueToDB(value: List<String>): Any =
+        if (isPostgres()) value.map { stored(it) }.toTypedArray<Any?>() else json(value)
+
+    override fun nonNullValueToString(value: List<String>): String =
+        if (isPostgres()) value.joinToString(",", "ARRAY[", "]::integer[]") { stored(it).toString() }
+        else "'" + json(value) + "'"
+
+    override fun setParameter(stmt: PreparedStatementApi, index: Int, value: Any?) {
+        if (value is Array<*>) {
+            @Suppress("UNCHECKED_CAST")
+            stmt.setArray(index, "integer", value as Array<Any?>)
+        } else {
+            super.setParameter(stmt, index, value)
+        }
+    }
+}
+
+/** Column builder for an int-backed `field.enum` array: a `Column<List<String>>` of member symbols over `integer[]` / JSON text. */
+internal fun Table.intBackedEnumArray(name: String, intByMember: Map<String, Int>): Column<List<String>> =
+    registerColumn(name, IntBackedEnumArrayColumnType(intByMember))

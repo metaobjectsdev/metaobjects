@@ -224,6 +224,14 @@ object KotlinTypeMapper {
     const val EXPOSED_PORTABLE_DECIMAL_ARRAY_FN = "portableDecimalArray"
 
     /**
+     * Builder extension for an int-backed `isArray` `field.enum` column: a `Column<List<E>>` holding each
+     * member's declared integer, as a native `INTEGER[]` on Postgres and a JSON text array of numbers on
+     * MySQL and SQLite. Its own support file, emitted only for a package with such a column; the two `when` lambdas it takes
+     * are the generated symbol↔int mapping.
+     */
+    const val EXPOSED_PORTABLE_INT_ENUM_ARRAY_FN = "portableIntEnumArray"
+
+    /**
      * Compute the generated Kotlin enum-class name for an [EnumField] hung off [entity].
      *
      * Returns {@code null} when [field] is not an {@link EnumField} (the caller should
@@ -736,6 +744,14 @@ object KotlinTypeMapper {
      */
     fun usesPortableHelper(field: MetaField<*>): Boolean =
         field is DecimalField || (field is UuidField && !isArrayResolved(field))
+
+    /**
+     * True for an `isArray` `field.enum` that declares `@intValueMap` (own or inherited, ADR-0039):
+     * its column holds each member's declared integer, so it needs the package's
+     * `MetaIntEnumArrayColumnType.kt` support file. A string-backed enum array is not this.
+     */
+    fun isIntBackedEnumArray(field: MetaField<*>): Boolean =
+        field is EnumField && isArrayResolved(field) && field.hasMetaAttr(EnumField.ATTR_INT_VALUE_MAP)
 
     fun usesUuidStringHelper(field: MetaField<*>): Boolean =
         field is StringField && !isArrayResolved(field) && dbColumnType(field) == DB_COLUMN_TYPE_UUID

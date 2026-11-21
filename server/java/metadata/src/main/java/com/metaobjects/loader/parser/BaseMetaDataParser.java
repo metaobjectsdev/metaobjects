@@ -613,6 +613,17 @@ public abstract class BaseMetaDataParser {
      * Looks up the expected attribute definition from the parent's type definition
      */
     protected void parseInlineAttribute(MetaData parentMetaData, String attrName, String stringValue) {
+        parseInlineAttribute(parentMetaData, attrName, stringValue, false);
+    }
+
+    /**
+     * As {@link #parseInlineAttribute(MetaData, String, String)}, with {@code quotedText} set when
+     * the author wrote the value as a quoted string ({@code "007"}, {@code "true"}). Quoted text is
+     * text: the value-based type inference below is for unquoted numbers and booleans only, so a
+     * quoted number-like value keeps its quotes (every other port does the same).
+     */
+    protected void parseInlineAttribute(MetaData parentMetaData, String attrName, String stringValue,
+                                        boolean quotedText) {
         try {
             // Special handling for isArray as native property (without @)
             if ("isArray".equals(attrName)) {
@@ -642,7 +653,10 @@ public abstract class BaseMetaDataParser {
                 }
 
                 // If the registry returned "string" as default, try to infer a more specific type from the value
-                if ("true".equalsIgnoreCase(stringValue) || "false".equalsIgnoreCase(stringValue)) {
+                // (never for quoted text: "007" is a string, not the integer 7).
+                if (quotedText) {
+                    // keep "string"
+                } else if ("true".equalsIgnoreCase(stringValue) || "false".equalsIgnoreCase(stringValue)) {
                     expectedAttributeSubType = "boolean";
                 } else if (stringValue.matches("-?\\d+")) {
                     // Check if value is within Integer range vs Long range

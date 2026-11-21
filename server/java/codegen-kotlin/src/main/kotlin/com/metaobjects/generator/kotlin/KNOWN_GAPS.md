@@ -229,16 +229,15 @@ mirror deliberately stays `String` / `List<String>`; its `toStrict()` bridges `S
 `valueOf`. Kept as a resolved entry (rather than deleted) because external notes referenced this
 section by title.
 
-## `field.enum` arrays have no Exposed array column
+## String-backed `field.enum` arrays have no Exposed array column
 
-An `isArray` `field.enum`, string-backed or int-backed (`@intValueMap`), is typed `List<E>` on the
-data class, but `KotlinExposedTableGenerator.enumColumnSpec` emits a SCALAR column for it
-(`enumerationByName` / `customEnumeration(..., "INTEGER", ...)`), so the generated controller for
-the entity does not compile. Nothing silently stores symbols: the mismatch fails the build. The fix
-is an array column whose element codec is the enum's: `array<E>(col, <enum column type>)` on
-Postgres, and a JSON text array on SQLite/MySQL as `MetaDecimalArrayColumnType` does for decimals.
-Until then the compile gates leave out the fitness corpus' `IntEnumArrayController.kt` (and
-`GeneratorRequiresCompileTest` its `IntEnumArrayRepository*.kt`, which bind the same column).
+An `isArray` `field.enum` that is string-backed is typed `List<E>` on the data class, but
+`KotlinExposedTableGenerator.enumColumnSpec` emits a SCALAR column for it (`enumerationByName` /
+`customEnumeration`), so the generated controller for the entity does not compile. Nothing silently
+stores symbols in the wrong column: the mismatch fails the build. The fix is the same shape as the
+int-backed one, which has its own array column (`portableIntEnumArray`, in
+`MetaIntEnumArrayColumnType.kt`): an array column whose element codec is the enum's. The compile
+gates carry no string-backed enum array, so none of them excludes anything.
 
 ## Composite-FK relationships not emitted
 

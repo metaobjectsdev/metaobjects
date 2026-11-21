@@ -345,6 +345,13 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
 
 ### Added
 
+- **Java and Kotlin: `mvn metaobjects:init`.** The Maven plugin now has the scaffold goal the other
+  ports have. It writes `.metaobjects/config.json` (the new-project settings every port's init
+  writes) and an empty, loadable `metaobjects/meta.app.json`, each only when missing, and prints the
+  `<plugin>` entry to add to the pom with an empty `<generators/>`: codegen stays opt-in
+  (ADR-0034 Amendment 2). `-Dmeta.init.withDocs=true` adds the api reference generator to that
+  printed entry. It never edits the pom.
+
 - **The hash manifest is one file per package (ADR-0064 Amendment 1).** Every port that keeps hash
   state, TypeScript, C#, Java, Kotlin, Python and Rust, writes `.gen-state/.hashes/<package>.json`
   instead of one `.gen-state/.hashes.json`. The file name is the package's `::` segments joined with
@@ -685,10 +692,12 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
     nullable.
   - Python: ObjectManager maps elements on write, read and filter operands on Postgres. Its
     SQLite and MySQL dialects store no primitive array, so the new scenario is deferred there.
-  - Java: OMDB stores no enum array on any engine, so its codec refuses an int-backed one on
-    write and read instead of writing symbols. Kotlin's Exposed table generator emits a scalar
-    column for an enum array, so generated code for an int-backed enum array does not compile
-    yet (see `KNOWN_GAPS.md`). Both defer the new scenario.
+  - Java: OMDB stores an int-backed enum array as a native `integer[]` on Postgres and a JSON array
+    of numbers on SQLite, MySQL and Derby; a member with no declared integer is refused on write,
+    and a stored integer with no member fails the read. Kotlin: the Exposed table generator emits an
+    integer array column for it (`portableIntEnumArray`, in a `MetaIntEnumArrayColumnType.kt` support
+    file written only into a package that has such a column), where it used to emit a scalar column
+    that did not compile. The new scenario runs in both.
   Gated by the positive conformance fixtures `enum-int-backed-array` and
   `enum-int-backed-array-inherited`, and the persistence scenario `roundtrip-int-enum-array`.
 
@@ -2064,6 +2073,20 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   object never casts, a boolean casts only to `int`), and refuses in a CHECK `@condition` anything
   only a view can hold (a cast, a function other than `coalesce`, a dotted path). Python-written
   models are unaffected unless they used these nodes, which never loaded.
+
+- **The Java and Kotlin loader accepts every view function and cast, not only `coalesce`.** Java
+  validated only `coalesce` inside a computed expression, so a model using `cast`, `lower`,
+  `concat`, `substring` and the rest of the function set, an `origin.function`, `@union` /
+  `@grain`, or a correlated filter that walks a reference was refused by the JVM ports while
+  TypeScript and C# loaded it. The Java loader now checks them the way TypeScript does (the
+  function arities and parameter kinds, the cast legality table, an int-stored enum cast, the
+  `dbColumnType` text spellings). The five conformance fixtures the Java ledger excused now
+  pass and its list is empty. No Java generator lowers these nodes to a view yet.
+- **Quoted number-like text keeps its quotes in the Java loader.** A quoted value such as
+  `"007"` or `"true"` on a string attribute (`column: "007"`) was read as the integer `7` or the
+  boolean, so the canonical output differed from every other port. Quoted text is text; only an
+  unquoted number or boolean is inferred. The `yaml-quoted-leading-zero` fixture passes in Java
+  and the YAML ledger is empty.
 
 - **A credential is never filterable or sortable, in every port.** A field that declares a
   `view.password` and that a model also marked `@filterable` or `@sortable` was on the generated
