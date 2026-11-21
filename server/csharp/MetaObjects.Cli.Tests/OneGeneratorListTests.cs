@@ -260,7 +260,7 @@ public sealed class OneGeneratorListTests : IDisposable
         Assert.Contains("  wrote codegen/Codegen.csproj", lines);
         Assert.Equal(CodegenScaffold.ProgramCs, File.ReadAllText(Path.Combine(_tmp, "codegen", "Program.cs")));
         Assert.Equal(
-            "using MetaObjects.Codegen;\nreturn CodegenCli.Run(args, Generators.All);",
+            "using MetaObjects.Codegen;\nreturn CodegenCli.Run(args, Generators.All, Generators.Configure);",
             string.Join("\n", CodegenScaffold.ProgramCs.Split('\n').Where(l => l.Length > 0 && !l.StartsWith("//", StringComparison.Ordinal))));
         var list = File.ReadAllText(Path.Combine(_tmp, "codegen", "Generators.cs"));
         Assert.Equal(CodegenScaffold.GeneratorsCs([]), list);

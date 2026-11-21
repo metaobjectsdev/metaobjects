@@ -225,13 +225,18 @@ public static class CodegenCli
     /// <paramref name="generators"/> is the project's WHOLE list, so a recorded file none of
     /// them emitted is stale output and is deleted when untouched (<see cref="GenConfig.SweepOrphans"/>).
     /// </param>
+    /// <param name="configure">
+    /// The project's own settings (<c>Generators.Configure</c> in <c>codegen/Generators.cs</c>),
+    /// applied to the config this method builds, last. <c>null</c> keeps it as built.
+    /// </param>
     public static GenOutcome RunGen(
         LoadResult load, string outDir, string? ns, bool emitAbstractShapes,
         IReadOnlyList<IGenerator> generators, string? projectRoot = null,
         string baseline = "default",
         bool? includeNames = null,
         bool sweepOrphans = false,
-        IReadOnlyList<string>? entities = null)
+        IReadOnlyList<string>? entities = null,
+        Func<GenConfig, GenConfig>? configure = null)
     {
         var loadErrors = load.Errors.Select(e => e.Code.ToString()).ToList();
         if (loadErrors.Count > 0) return new GenOutcome(loadErrors, null);
@@ -265,6 +270,7 @@ public static class CodegenCli
             ForeignKeyIndexes = neutralConfig?.MigrateForeignKeyIndexes ?? false,
             SchemaConventions = neutralConfig?.MigrateConventions,
         }.WithCSharpLayout(neutralConfig);
+        if (configure is not null) config = configure(config);
 
         CodegenRunner.RunResult result;
         try
@@ -450,7 +456,16 @@ public static class CodegenCli
     /// <c>CodegenCli.Run(args, Generators.All)</c>. Dispatches on <c>args[0]</c> (<c>"gen"</c>
     /// or <c>"verify"</c>), prints to the console, and returns the process exit code.
     /// </summary>
-    public static int Run(string[] args, IReadOnlyList<IGenerator> generators)
+    public static int Run(string[] args, IReadOnlyList<IGenerator> generators) => Run(args, generators, null);
+
+    /// <summary>
+    /// <see cref="Run(string[], IReadOnlyList{IGenerator})"/>, with the project's own settings:
+    /// <paramref name="configure"/> receives the <see cref="GenConfig"/> a run builds from its flags and
+    /// <c>.metaobjects/config.json</c> and returns the one the generators see. <c>gen</c> and
+    /// <c>verify --codegen</c> both apply it, so verify regenerates exactly what gen wrote. The
+    /// scaffold <c>dotnet meta init</c> writes passes <c>Generators.Configure</c>.
+    /// </summary>
+    public static int Run(string[] args, IReadOnlyList<IGenerator> generators, Func<GenConfig, GenConfig>? configure)
     {
         if (args.Length == 0)
         {
@@ -464,8 +479,8 @@ public static class CodegenCli
         }
         return args[0] switch
         {
-            "gen" => RunGenArgs(args[1..], generators),
-            "verify" => RunVerifyArgs(args[1..], generators),
+            "gen" => RunGenArgs(args[1..], generators, configure),
+            "verify" => RunVerifyArgs(args[1..], generators, configure),
             "docs" => Removed(),
             _ => Unknown(args[0]),
         };
@@ -680,10 +695,10 @@ public static class CodegenCli
     /// vouches for the output.</summary>
     private sealed class KeyGate { public string? ProjectRoot; public bool Keep; }
 
-    private static int RunGenArgs(string[] rest, IReadOnlyList<IGenerator> declared)
+    private static int RunGenArgs(string[] rest, IReadOnlyList<IGenerator> declared, Func<GenConfig, GenConfig>? configure)
     {
         var gate = new KeyGate();
-        try { return RunGenCore(rest, declared, gate); }
+        try { return RunGenCore(rest, declared, gate, configure); }
         finally { if (gate.ProjectRoot is { } root && !gate.Keep) GenFingerprint.Delete(root); }
     }
 
@@ -694,7 +709,7 @@ public static class CodegenCli
         TemplateSpec = a.TemplateSpecPath, Entities = a.Entities, EmitAbstractShapes = a.EmitAbstractShapes, Strict = a.Strict, Baseline = a.Baseline,
     };
 
-    private static int RunGenCore(string[] rest, IReadOnlyList<IGenerator> declared, KeyGate gate)
+    private static int RunGenCore(string[] rest, IReadOnlyList<IGenerator> declared, KeyGate gate, Func<GenConfig, GenConfig>? configure)
     {
         var a = OwnedArgs.Parse(rest, GenCommandName, GenValueFlags, GenBoolFlags);
         if (a.Refusal is not null)
@@ -844,7 +859,8 @@ public static class CodegenCli
             // Only a run of the whole declared list can tell a stale file from one the
             // narrowing left out; --entities narrows the same way, so it never sweeps either.
             sweepOrphans: a.Selection is not { Count: > 0 } && a.Entities is null,
-            entities: a.Entities);
+            entities: a.Entities,
+            configure: configure);
         if (!outcome.Ok)
         {
             ReportFailure(outcome, GenCommandName);
@@ -967,7 +983,7 @@ public static class CodegenCli
         "JSON your API writes for decimals, durations or a value object's null members. Declare " +
         $"{committed.Block()} in .metaobjects/config.json, and gen and verify --codegen both read it.";
 
-    private static int RunVerifyArgs(string[] rest, IReadOnlyList<IGenerator> declared)
+    private static int RunVerifyArgs(string[] rest, IReadOnlyList<IGenerator> declared, Func<GenConfig, GenConfig>? configure)
     {
         var a = OwnedArgs.Parse(rest, VerifyCommandName, VerifyValueFlags, VerifyBoolFlags);
         if (a.Refusal is not null)
@@ -1071,6 +1087,7 @@ public static class CodegenCli
             ForeignKeyIndexes = neutralConfig?.MigrateForeignKeyIndexes ?? false,
             SchemaConventions = neutralConfig?.MigrateConventions,
         }.WithCSharpLayout(neutralConfig);
+        if (configure is not null) config = configure(config);
         // ADR-0064: locally, an unchanged key and output that still hashes to what gen recorded answer
         // "no drift" without rendering. CI and --full always render.
         if (a.Entities is null && suite.All(g => g.Cacheable) && GenFingerprint.MayAnswerNoDrift(

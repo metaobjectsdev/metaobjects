@@ -44,13 +44,10 @@ public sealed class SourceResolverTests
     }
 
     /// <summary>
-    /// A genuinely unknown top-level key resolves normally here, and THROWS in
-    /// TypeScript. That asymmetry is ruled INTENDED in the source-resolution corpus
-    /// README: TypeScript owns this file and models its whole vocabulary, so only it
-    /// can tell a typo from a key a sibling owns. This port models the neutral subset
-    /// (`schema_version` + `sources`), for which every other key is indistinguishable
-    /// from a TypeScript-owned one — imitating strictness would mean carrying TS's key
-    /// list and rejecting a config a newer `meta` had just written.
+    /// A genuinely unknown top-level key resolves normally here: it is never rejected,
+    /// because a newer `meta` may have just written it. Since 1.3.0 this port warns about
+    /// it, as TypeScript does (NeutralConfigUnknownKeyTests); the resolution itself is
+    /// unchanged.
     /// </summary>
     /// <remarks>
     /// Deliberately NOT a shared corpus case: a shared case asserts one outcome and

@@ -27,7 +27,12 @@ internal static class OwnedRunner
     /// <summary>Run <c>CodegenCli.Run(args, declared)</c> from <paramref name="workingDir"/>, capturing
     /// stdout and stderr.</summary>
     internal static (int ExitCode, string Stdout, string Stderr) Run(
-        string workingDir, IReadOnlyList<IGenerator> declared, params string[] args)
+        string workingDir, IReadOnlyList<IGenerator> declared, params string[] args) =>
+        Run(workingDir, declared, null, args);
+
+    /// <summary>As above, with the project's <c>Generators.Configure</c>: <c>CodegenCli.Run(args, declared, configure)</c>.</summary>
+    internal static (int ExitCode, string Stdout, string Stderr) Run(
+        string workingDir, IReadOnlyList<IGenerator> declared, Func<GenConfig, GenConfig>? configure, params string[] args)
     {
         lock (Gate)
         {
@@ -38,7 +43,7 @@ internal static class OwnedRunner
                 Directory.SetCurrentDirectory(workingDir);
                 Console.SetOut(outWriter);
                 Console.SetError(errWriter);
-                var exit = CodegenCli.Run(args, declared);
+                var exit = CodegenCli.Run(args, declared, configure);
                 return (exit, outWriter.ToString(), errWriter.ToString());
             }
             finally

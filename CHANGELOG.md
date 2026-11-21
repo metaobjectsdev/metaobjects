@@ -46,7 +46,6 @@ here.**
   owned generator, template, support or runtime file, or the `codegen/pom.xml`, that already holds
   exactly the reference content is left alone and reported as identical, with or without `force`.
   The codegen fingerprint, `metaobjects:fmt` and `metaobjects:init` also compare before they write.
-
 - **C#: a `contract-types` generator writes each entity's create and update records (ADR-0067 layer 1).**
   Opt-in, beside `entity`: add `new ContractTypesGenerator()` to `codegen/Generators.cs`. For each
   writable entity it writes `<Entity>Contracts.g.cs` with `<Entity>Create` and `<Entity>Update`,
@@ -70,6 +69,19 @@ here.**
   transitions get one. A model with no rules vocabulary gets no file. It is a layer generator, so the
   flat generators' output is unchanged and the codegen-noop rules corpus still holds them. The shared
   generator manifest gains the `rules-names` entry (C# only for now).
+- **C#: the codegen project sets every `GenConfig` option.** `dotnet meta init` now writes a
+  `Generators.Configure` method beside the generator list, and `codegen/Program.cs` passes it to
+  `CodegenCli.Run`. It receives the config a run builds from its flags and `.metaobjects/config.json`
+  and returns the one the generators see. That makes the options no flag or config key sets
+  reachable on the normal path: `ContextTypeName`, `PropertyNaming`, `ProvidedEnumNamespace`,
+  `PackageNamespaces`, `TypeOverrides`, `Convention`, `UnmappedStrategy` and the rest. `gen` and
+  `verify --codegen` both apply it. An existing codegen project keeps working unchanged; to use it,
+  add the method and pass `Generators.Configure` as the third argument in `Program.cs`.
+- **C#: an unknown top-level key in `.metaobjects/config.json` warns.** It was ignored without a word,
+  so a misspelt key (`scopes` for `scope`) did nothing. It is still ignored, and nothing fails,
+  because a newer MetaObjects may have written it, but each one is now named once on standard error
+  with the known keys, in the words TypeScript uses. A key inside a block C# owns (`csharp`,
+  `naming`, `wire` and the rest) is refused as before.
 - **C#: a `@sequenceStart` whose migrations project lacks the design-time services line is a generation
   error.** When `dotnet meta gen` can see the context's `ModelSnapshot.cs` in another project and that
   project does not carry `[assembly: DesignTimeServicesReference]`, the next `dotnet ef migrations add`

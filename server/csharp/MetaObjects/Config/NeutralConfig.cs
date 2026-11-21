@@ -5,7 +5,10 @@
 // TypeScript-owned keys (`pending_in_git`, `confidence_thresholds`, `extract`, and the rest of
 // `migrate` and `scope`); those are IGNORED rather than modeled, so a new TS-only key never becomes
 // a four-port change. See
-// docs/superpowers/specs/2026-08-19-cross-port-metadata-sources-design.md §4.
+// docs/superpowers/specs/2026-08-19-cross-port-metadata-sources-design.md §4. A top-level key that
+// is in no port's vocabulary (TopLevelKeys, TypeScript's list) WARNS, as it does in TypeScript, and
+// is still ignored: a new top-level key TypeScript adds is one line in TopLevelKeys, or this port
+// names it in a warning until then.
 //
 // `dependencies` (FR-023) is read at EVERY rung of the source ladder, including the explicit
 // metadata directory a C# command is handed, because this port has no native config surface of its
@@ -171,6 +174,39 @@ public sealed class NeutralConfig
     /// raise-don't-degrade behavior is), so callers should match on message,
     /// not code, for this path.
     public static NeutralConfig? Read(string configDir) => Read(configDir, validateNaming: true);
+
+    /// <summary>
+    /// The top-level keys of <c>.metaobjects/config.json</c> any MetaObjects port reads. TypeScript owns
+    /// the file and models its whole vocabulary, so this is its schema's key list
+    /// (<c>CONFIG_TOP_LEVEL_KEYS</c> in <c>@metaobjectsdev/sdk</c>), in the same order.
+    /// </summary>
+    public static readonly IReadOnlyList<string> TopLevelKeys =
+    [
+        "schema_version", "pending_in_git", "confidence_thresholds", "sources", "dependencies", "libraries",
+        "scope", "extract", "migrate", "verify", "requirements", "naming", "wire", "api", "enums", "rules", "csharp",
+    ];
+
+    /// <summary>Where an unknown-key warning goes: standard error unless a host replaces it.</summary>
+    public static Action<string> WarningSink { get; set; } = m => Console.Error.WriteLine(m);
+
+    private static readonly HashSet<string> WarnedKeys = [];
+
+    /// <summary>
+    /// Warn once per file and key, through <see cref="WarningSink"/>, for each top-level key not in
+    /// <see cref="TopLevelKeys"/>. The words are TypeScript's <c>loadConfig</c> warning.
+    /// </summary>
+    private static void WarnUnknownTopLevelKeys(JsonElement root, string path)
+    {
+        foreach (var p in root.EnumerateObject())
+        {
+            if (TopLevelKeys.Contains(p.Name)) continue;
+            lock (WarnedKeys)
+                if (!WarnedKeys.Add(path + "\0" + p.Name)) continue;
+            WarningSink(
+                $"warning: {path}: unknown top-level key \"{p.Name}\" ignored. A newer MetaObjects may have written it; " +
+                $"upgrade this tool, or remove the key if it is a misspelling. Known keys: {string.Join(", ", TopLevelKeys)}.");
+        }
+    }
 
     /// `migrate.checks.skipRedundant`, as the TypeScript `meta migrate` reads it; false when absent or not a boolean.
     private static bool ReadMigrateSkipRedundant(JsonElement root) =>
@@ -382,8 +418,11 @@ public sealed class NeutralConfig
                 }
             }
 
-            // Unknown top-level keys, and every key of `scope` / `migrate` but the two pattern
-            // lists read above, are IGNORED by design — see the file header.
+            // An unknown top-level key WARNS and is ignored, as in TypeScript: a newer MetaObjects or a
+            // sibling port may have written it, so it must not fail the load (forward tolerance), but a
+            // misspelling is named. Every key of `scope` / `migrate` but the pattern lists read above is
+            // TypeScript-owned and ignored.
+            WarnUnknownTopLevelKeys(root, path);
             return new NeutralConfig(specs, libraries, new PhysicalNaming(columns, tables) { Collections = collections }, ReadWire(root, path),
                 ReadCSharp(root, path, configDir), dependencies, scopeInclude, migrateScope,
                 Path.GetFullPath(configDir))

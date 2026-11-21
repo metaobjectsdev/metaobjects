@@ -198,8 +198,23 @@ public static class Generators
 ```csharp
 // codegen/Program.cs
 using MetaObjects.Codegen;
-return CodegenCli.Run(args, Generators.All);
+return CodegenCli.Run(args, Generators.All, Generators.Configure);
 ```
+
+**Settings every generator shares.** The `GenConfig` options that no flag and no
+`.metaobjects/config.json` key sets (`ContextTypeName`, `PropertyNaming`, `ProvidedEnumNamespace`,
+`PackageNamespaces`, `TypeOverrides`, `Convention`, `UnmappedStrategy` and the rest) are set in
+`Generators.Configure`, which `dotnet meta init` writes beside the list. It receives the config a run
+builds from its flags and the project config, and returns the one the generators see:
+
+```csharp
+public static GenConfig Configure(GenConfig config) =>
+    config with { ContextTypeName = "ShopDbContext", ProvidedEnumNamespace = "Shop.Domain" };
+```
+
+`gen` and `verify --codegen` both apply it, so verify regenerates what gen wrote. A codegen project
+from before 1.3.0 has no `Configure`: add the method, and pass it as the third argument in
+`Program.cs`. `init` never edits a file that exists.
 
 Replace the empty list `dotnet meta init` wrote with the one above before the first `gen`: with
 an empty list `gen` writes nothing, and it needs an output directory (`--out`, or `csharp.outDir`
@@ -241,8 +256,8 @@ namespace. Setting `--namespace` or `csharp.namespace` switches the default off 
 no binding places in that one flat namespace. The namespace must be a dotted path of C#
 identifiers. `dotnet meta gen` and `verify` read that flat namespace and, through
 `csharp.packageNamespaces`, the package bindings (below). The finer per-package bindings
-(`TypeOverrides`, `Convention`, `UnmappedStrategy`) are `GenConfig` properties, set when you run
-codegen from your own code with `CodegenRunner`.
+(`TypeOverrides`, `Convention`, `UnmappedStrategy`) are `GenConfig` properties, set in
+`Generators.Configure` (above).
 
 **Package-keyed output (opt-in).** Two more `csharp` keys change where files land and which
 namespace a packaged type takes; a project that sets neither keeps the flat layout and the
@@ -475,7 +490,7 @@ The codegen emits:
 ### Entity and DbContext generator options
 
 **Renaming a property.** A field's C# property is its PascalCased name. To spell some
-differently (an acronym, say), set one resolver on the config, `GenConfig.PropertyNaming`
+differently (an acronym, say), set one resolver on the config in `Generators.Configure`, `GenConfig.PropertyNaming`
 (`Func<MetaField, string>`, returning the name). The entity classes, the composite
 `[PrimaryKey(nameof(...))]`, every `AppDbContext` model line and the reverse finders all read it,
 so the declaration and every reference agree. The hooks `EntityGenerator.PropertyName` and
