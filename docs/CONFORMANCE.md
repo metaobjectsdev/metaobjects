@@ -93,11 +93,10 @@ still fails: the ledger's `minPassing` (578) is the number of fixtures known to 
 run fails when fewer do. The column joins this table when the port leaves preview.
 
 A ✓ means the port runs the corpus green; an explicit `n / m` is used where a port
-carries a ledgered divergence. The two ledgered YAML fixtures are documented
-library-vs-pipeline divergences (see the `_comment` block in each port's
-`yaml-conformance-expected-failures.json` for the full reconciliation note). They
-are tracked as known-gaps rather than silently patched — the runner treats listed
-fixtures as passing, but a future port-level reconciliation pass would close them.
+carries a ledgered divergence. The ledgered YAML fixtures are documented divergences (see the
+`_comment` or `notes` in each port's `yaml-conformance-expected-failures.json` for the full
+reconciliation note). They are tracked as known-gaps rather than silently patched — the runner
+treats listed fixtures as passing, but a future port-level reconciliation pass would close them.
 
 ### Core corpora and template quality checks
 

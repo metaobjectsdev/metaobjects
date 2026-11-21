@@ -478,8 +478,8 @@ reactor's 2.0.21; its round-trip test additionally needs docker. Run via
    selection compiles every entity's generated `<Entity>Controller.kt` — TPH, M:N, view
    projections, and every `emitPerFieldDispatchArm` operator arm across every scalar
    subtype — against real Spring 6.2 (`spring-webmvc`) + jakarta.servlet + Jackson on the
-   module's test classpath (real dependencies, not stubs), over every
-   entity, the int-backed enum array's included (see [Enum arrays](#enum-arrays) below). The
+   module's test classpath (real dependencies, not stubs), over every entity, including the
+   int-backed enum array (see [Enum arrays](#enum-arrays) below). The
    per-field dispatch gate is derived from the SAME single source of truth the generated
    `<Entity>FilterAllowlist` reads (`com.metaobjects.query.FilterOps`), so the controller
    can never emit an operator the allowlist itself would refuse to admit — this is also

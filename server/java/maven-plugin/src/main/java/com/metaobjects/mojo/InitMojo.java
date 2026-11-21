@@ -31,7 +31,7 @@ import java.util.List;
  * instead, with an empty {@code <generators/>}. {@code -Dmeta.init.withDocs=true} is the opt-in:
  * the printed entry then lists the api reference generator ({@code JavaApiDocsGenerator}) as well,
  * and without the flag no documentation generator is wired. Nothing writes code or docs until the
- * pom lists a generator ({@code mvn metaobjects:generate --list} shows the catalog).</p>
+ * pom lists a generator (the catalog is in {@code docs/ports/java.md}).</p>
  */
 @Mojo(name = "init", threadSafe = true)
 public class InitMojo extends AbstractMojo {
