@@ -12,7 +12,7 @@
 // on the discriminator reads the subtype's pinned value, so it holds on a body that omits it.
 
 import { describe, test, expect, afterEach, setDefaultTimeout } from "bun:test";
-import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
+import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
@@ -26,6 +26,7 @@ import { buildPkMap } from "../src/pk-resolver.js";
 import { buildRelationMap } from "../src/relation-resolver.js";
 import type { EmittedFile, GenContext } from "../src/generator.js";
 import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
+import { removeTree } from "../src/scratch-dir.js";
 
 setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
@@ -54,7 +55,7 @@ const MODEL = {
 
 const tmpDirs: string[] = [];
 afterEach(() => {
-  while (tmpDirs.length > 0) rmSync(tmpDirs.pop()!, { recursive: true, force: true });
+  while (tmpDirs.length > 0) removeTree(tmpDirs.pop()!);
 });
 
 function tmpDir(prefix: string): string {

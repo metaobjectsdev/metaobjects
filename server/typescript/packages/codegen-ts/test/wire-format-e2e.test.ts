@@ -6,7 +6,7 @@
 // back; `weight` is a NUMERIC column so a row holds the number SQLite or D1 would.
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Database } from "bun:sqlite";
@@ -18,6 +18,7 @@ import { mountCrudRoutes } from "@metaobjectsdev/runtime-ts/hono";
 import { renderZodValidators, renderInsertSchemaOnly } from "../src/templates/zod-validators.js";
 import { renderFilterAllowlist } from "../src/templates/filter-allowlist.js";
 import { decimalColumnsLine } from "../src/api-surface.js";
+import { removeTree } from "../src/scratch-dir.js";
 
 const MODEL = {
   "metadata.root": { package: "ledger", children: [
@@ -51,7 +52,7 @@ const entries = sqliteTable("entries", {
 });
 
 const dir = mkdtempSync(join(import.meta.dir, "tmp-wire-"));
-afterAll(() => rmSync(dir, { recursive: true, force: true }));
+afterAll(() => removeTree(dir));
 
 async function execute(name: string, source: string): Promise<Record<string, unknown>> {
   const file = join(dir, `${name}.ts`);

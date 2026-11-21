@@ -33,8 +33,7 @@
 // fix the builder, never the gate.
 
 import { describe, test, expect } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { MetaDataLoader, InMemoryStringSource, type MetaObject } from "@metaobjectsdev/metadata";
 import { routesFileHono, callableFile, promptRender, extractor, renderHelper } from "../../src/generators/index.js";
@@ -47,6 +46,7 @@ import { makeRenderContext } from "../../src/render-context.js";
 import { buildPkMap } from "../../src/pk-resolver.js";
 import { buildRelationMap } from "../../src/relation-resolver.js";
 import type { Generator, GenContext, EmittedFile } from "../../src/generator.js";
+import { makeScratchDir } from "../../src/scratch-dir.js";
 
 // ---------------------------------------------------------------------------
 // The rich fixture — one root that hits every documented surface + skip shape.
@@ -152,7 +152,7 @@ const FIXTURE = JSON.stringify({
 // codegen-time provider (projectProvider(projectRoot)) for its build-time drift
 // gate, so we materialize a project root with the referenced templates.
 function makeProjectRoot(): string {
-  const proj = mkdtempSync(join(tmpdir(), "api-docs-accuracy-"));
+  const proj = makeScratchDir("api-docs-accuracy-");
   const write = (rel: string, body: string) => {
     const full = join(proj, "templates", rel);
     mkdirSync(join(full, ".."), { recursive: true });
@@ -1171,7 +1171,7 @@ describe("api-docs ACCURACY gate — writes are documented only where the genera
       new InMemoryStringSource(READ_WRITE_FIXTURE, { id: "orders.json", format: "json" }),
     ]);
     expect(res.errors).toEqual([]);
-    const projectRoot = mkdtempSync(join(tmpdir(), "api-docs-accuracy-rw-"));
+    const projectRoot = makeScratchDir("api-docs-accuracy-rw-");
     entityFiles = await runGenerator(entityFile(), res.root, projectRoot);
     queriesFiles = await runGenerator(queriesFile(), res.root, projectRoot);
     routesFiles = await runGenerator(routesFile(), res.root, projectRoot);

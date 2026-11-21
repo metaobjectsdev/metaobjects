@@ -6,7 +6,7 @@
 
 import { describe, expect, test, setDefaultTimeout } from "bun:test";
 import { COMPILE_TEST_TIMEOUT_MS } from "../compile-timeout.js";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
 import {
@@ -23,6 +23,7 @@ import { buildRelationMap } from "../../src/relation-resolver.js";
 import { assertNoCollectionNameCollisions } from "../../src/naming/collection-name-collision.js";
 import { hookListNameSegment, listFnName, reverseFinderFnName } from "../../src/naming.js";
 import type { EmittedFile, GenContext } from "../../src/generator.js";
+import { removeTree } from "../../src/scratch-dir.js";
 
 setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
@@ -86,7 +87,7 @@ function compile(files: Map<string, string>): string[] {
     return ts.getPreEmitDiagnostics(program).map((d) =>
       `${d.file?.fileName.slice(dir.length + 1) ?? ""} ${ts.flattenDiagnosticMessageText(d.messageText, "\n")}`);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
   }
 }
 

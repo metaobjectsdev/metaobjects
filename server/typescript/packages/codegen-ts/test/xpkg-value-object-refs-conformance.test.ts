@@ -5,7 +5,7 @@
 // binds the pair under package-qualified local aliases, and the whole output type-checks.
 
 import { describe, test, expect, afterAll } from "bun:test";
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import ts from "typescript";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
@@ -16,10 +16,11 @@ import { entityFile } from "../src/generators/entity-file.js";
 import { routesFile } from "../src/generators/routes-file.js";
 import { callableFile } from "../src/generators/callable-file.js";
 import { ERR_NAME_COLLISION } from "../src/naming/name-claims.js";
+import { removeTree } from "../src/scratch-dir.js";
 
 const CORPUS = resolve(import.meta.dir, "../../../../../fixtures/codegen-conformance/xpkg-value-object-refs/input");
 const TEMP_DIRS: string[] = [];
-afterAll(() => { for (const d of TEMP_DIRS) rmSync(d, { recursive: true, force: true }); });
+afterAll(() => { for (const d of TEMP_DIRS) removeTree(d); });
 
 async function load() {
   const res = await new MetaDataLoader().load(

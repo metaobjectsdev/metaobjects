@@ -9,7 +9,7 @@
 //     on the row, the write schemas and the filter allowlist.
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -30,6 +30,7 @@ import { writeDeniedFieldNames } from "../src/api-surface.js";
 import { isTphReadNullTolerant } from "../src/templates/zod-validators.js";
 import { flatSurfaceFields } from "../src/flattened.js";
 import { renderAgentUiPage } from "../src/generators/agent-ui-page.js";
+import { removeTree } from "../src/scratch-dir.js";
 
 const META = JSON.stringify({
   "metadata.root": { package: "acme", children: [
@@ -56,7 +57,7 @@ async function load(): Promise<MetaRoot> {
 }
 
 const dirs: string[] = [];
-afterAll(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }); });
+afterAll(() => { for (const d of dirs) removeTree(d); });
 
 async function generate(root: MetaRoot, dialect: Dialect, generators: ReturnType<typeof entityFile>[], parent: string): Promise<string> {
   const repo = mkdtempSync(join(parent, "flat-"));

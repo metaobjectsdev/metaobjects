@@ -12,12 +12,13 @@
 // standing condition they cannot satisfy.
 
 import { describe, test, expect } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { runGen, defineConfig } from "../src/index.js";
 import { entityFile } from "../src/generators/entity-file.js";
 import { namesFile } from "../src/generators/index.js";
+import { removeTree } from "../src/scratch-dir.js";
 
 /** A value object only: nothing DB-backed, so the names generator matches nothing. */
 const NO_DB_MODEL = {
@@ -69,7 +70,7 @@ async function warningsFor(model: unknown): Promise<string[]> {
     });
     return r.warnings;
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
   }
 }
 
@@ -104,7 +105,7 @@ describe("a wired generator that matched nothing is reported", () => {
       });
       expect(Array.isArray(r.warnings)).toBe(true);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTree(dir);
     }
   });
 });

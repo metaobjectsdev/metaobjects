@@ -1,7 +1,7 @@
 // ADR-0064 Amendment 1: the hash manifest is one file per model package. The vectors are the
 // shared ones every port runs (`fixtures/codegen-skip-conformance/manifests.json`).
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
   buildPlacementIndex,
@@ -10,6 +10,7 @@ import {
   readManifestState,
 } from "../src/hash-manifest-store.js";
 import { forgetGeneratedPaths, listGeneratedPaths, withManifestBatch, writeManifestFiles } from "../src/overwrite-policy.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 interface Vectors {
   objects: { name: string; package: string }[];
@@ -33,11 +34,11 @@ const INDEX = buildPlacementIndex(VECTORS.objects);
 let tmp: string;
 let state: string;
 beforeEach(() => {
-  tmp = mkdtempSync(join(process.env.DEV_SCRATCH ?? "/tmp", "hash-manifest-store-"));
+  tmp = makeScratchDir("hash-manifest-store-");
   state = join(tmp, ".metaobjects", ".gen-state");
   mkdirSync(state, { recursive: true });
 });
-afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+afterEach(() => { removeTree(tmp); });
 
 const dirOf = (): string => join(state, ".hashes");
 const files = (): string[] => (existsSync(dirOf()) ? readdirSync(dirOf()).sort() : []);

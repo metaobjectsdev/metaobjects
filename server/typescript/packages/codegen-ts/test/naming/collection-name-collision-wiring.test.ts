@@ -4,8 +4,6 @@
 // TS twin) emits neither, so it never refuses them.
 
 import { describe, test, expect } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { runGen } from "../../src/runner.js";
@@ -15,6 +13,7 @@ import { apiDocsFile } from "../../src/generators/api-docs-file.js";
 import { entityFile } from "../../src/generators/entity-file.js";
 import { routesFile } from "../../src/generators/routes-file.js";
 import { ERR_COLLECTION_NAME_COLLISION } from "../../src/naming/collection-name-collision.js";
+import { makeScratchDir, removeTree } from "../../src/scratch-dir.js";
 
 const entity = (name: string, table: string) => ({
   "object.entity": {
@@ -32,7 +31,7 @@ async function run(names: [string, string], generators: Parameters<typeof define
     "metadata.root": { package: "acme", children: [entity(names[0], "t_a"), entity(names[1], "t_b")] },
   }), { id: "m.json", format: "json" })]);
   expect(res.errors).toEqual([]);
-  const tmp = mkdtempSync(join(tmpdir(), "collision-wiring-"));
+  const tmp = makeScratchDir("collision-wiring-");
   try {
     await runGen({
       config: defineConfig({
@@ -41,7 +40,7 @@ async function run(names: [string, string], generators: Parameters<typeof define
       }),
       metadata: res.root, projectRoot: tmp,
     });
-  } finally { rmSync(tmp, { recursive: true, force: true }); }
+  } finally { removeTree(tmp); }
 }
 
 describe("the collision refusal follows the wired generators", () => {

@@ -30,7 +30,7 @@
 // Sibling: `timestamp-mode-execution.test.ts` (same technique, timestampMode).
 
 import { describe, test, expect, afterEach } from "bun:test";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -52,6 +52,7 @@ import { renderZodValidators } from "../src/templates/zod-validators.js";
 import { makeRenderContext } from "../src/render-context.js";
 import { buildPkMap } from "../src/pk-resolver.js";
 import { buildRelationMap } from "../src/relation-resolver.js";
+import { removeTree } from "../src/scratch-dir.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: dynamically imported generated module — no static shape
 type GeneratedModule = Record<string, any>;
@@ -59,7 +60,7 @@ type GeneratedModule = Record<string, any>;
 const tmpDirs: string[] = [];
 afterEach(() => {
   while (tmpDirs.length > 0) {
-    rmSync(tmpDirs.pop()!, { recursive: true, force: true });
+    removeTree(tmpDirs.pop()!);
   }
 });
 

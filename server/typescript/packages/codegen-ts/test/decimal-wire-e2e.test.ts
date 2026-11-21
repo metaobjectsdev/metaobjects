@@ -8,7 +8,7 @@
 // is a double. Exactness beyond 15 digits is the Postgres and MySQL lanes' to prove.
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Database } from "bun:sqlite";
@@ -20,6 +20,7 @@ import { mountCrudRoutes } from "@metaobjectsdev/runtime-ts/hono";
 import { renderZodValidators } from "../src/templates/zod-validators.js";
 import { renderFilterAllowlist } from "../src/templates/filter-allowlist.js";
 import { decimalColumnsLine, decimalFieldNames } from "../src/api-surface.js";
+import { removeTree } from "../src/scratch-dir.js";
 
 const MODEL = {
   "metadata.root": { package: "ledger", children: [
@@ -44,7 +45,7 @@ const entries = sqliteTable("entries", {
 });
 
 const dir = mkdtempSync(join(import.meta.dir, "tmp-decimal-"));
-afterAll(() => rmSync(dir, { recursive: true, force: true }));
+afterAll(() => removeTree(dir));
 
 async function execute(name: string, source: string): Promise<Record<string, unknown>> {
   const file = join(dir, `${name}.ts`);

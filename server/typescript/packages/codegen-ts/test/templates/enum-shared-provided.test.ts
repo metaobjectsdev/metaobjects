@@ -10,14 +10,14 @@
 //   • inline: a plain <Entity><Field> union is unchanged (no enums.ts, no import).
 
 import { describe, test, expect } from "bun:test";
-import { mkdtempSync, rmSync, readFileSync, existsSync, readdirSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { runGen, defineConfig } from "../../src/index.js";
 import { barrel } from "../../src/generators/barrel.js";
 import { entityFile } from "../../src/generators/entity-file.js";
 import { queriesFile } from "../../src/generators/queries-file.js";
 import { MetaDataLoader, InMemoryStringSource, type MetaRoot } from "@metaobjectsdev/metadata";
+import { makeScratchDir, removeTree } from "../../src/scratch-dir.js";
 
 async function loadRoot(doc: unknown): Promise<MetaRoot> {
   const result = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(doc))]);
@@ -31,7 +31,7 @@ interface RunOut {
 }
 
 async function gen(root: MetaRoot, providedEnumModule?: string): Promise<RunOut> {
-  const tmp = mkdtempSync(join(tmpdir(), "enum-fr019-"));
+  const tmp = makeScratchDir("enum-fr019-");
   try {
     const result = await runGen({
       config: defineConfig({
@@ -50,7 +50,7 @@ async function gen(root: MetaRoot, providedEnumModule?: string): Promise<RunOut>
     }
     return { files, warnings: result.warnings };
   } finally {
-    rmSync(tmp, { recursive: true, force: true });
+    removeTree(tmp);
   }
 }
 
@@ -128,7 +128,7 @@ describe("#266 shared enums across multiple entityFile() instances", () => {
   // collision — making a root-level abstract field.enum unusable in any such config.
   test("two filtered entityFile() instances in one target emit the shared enums module once", async () => {
     const root = await loadRoot(sharedModel());
-    const tmp = mkdtempSync(join(tmpdir(), "enum-266-"));
+    const tmp = makeScratchDir("enum-266-");
     try {
       const result = await runGen({
         config: defineConfig({
@@ -159,7 +159,7 @@ describe("#266 shared enums across multiple entityFile() instances", () => {
         expect(readFileSync(join(tmp, name), "utf-8")).toContain('from "./enums"');
       }
     } finally {
-      rmSync(tmp, { recursive: true, force: true });
+      removeTree(tmp);
     }
   });
 });

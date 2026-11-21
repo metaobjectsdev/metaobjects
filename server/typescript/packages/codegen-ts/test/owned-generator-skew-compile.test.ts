@@ -15,7 +15,7 @@
 
 import { describe, test, expect, setDefaultTimeout } from "bun:test";
 import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
-import { mkdtempSync, rmSync, readdirSync } from "node:fs";
+import { mkdtempSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import ts from "typescript";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
@@ -26,6 +26,7 @@ import { entityFile as currentEntity } from "../src/reference/entity.js";
 import { queriesFile as currentQueries } from "../src/reference/queries.js";
 import { entityFile as ownedEntity108 } from "./fixtures/owned-1.0.8/entity.js";
 import { queriesFile as ownedQueries108 } from "./fixtures/owned-1.0.8/queries.js";
+import { removeTree } from "../src/scratch-dir.js";
 
 setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
@@ -77,7 +78,7 @@ for (const dialect of ["sqlite", "postgres"] as const) {
             });
             expect(compile(dir)).toEqual([]);
           } finally {
-            rmSync(dir, { recursive: true, force: true });
+            removeTree(dir);
           }
         }, 60_000);
       }

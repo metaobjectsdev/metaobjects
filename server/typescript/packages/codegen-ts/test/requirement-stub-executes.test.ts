@@ -6,11 +6,11 @@
 // tests WRITE the generated stub to disk and RUN it, asserting on the exit code.
 
 import { describe, test, expect } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderRequirementTest } from "../src/templates/requirement-test.js";
 import type { RequirementTestArgs } from "../src/templates/requirement-test.js";
+import { makeScratchDir } from "../src/scratch-dir.js";
 
 function args(status: string): RequirementTestArgs {
   return {
@@ -36,7 +36,7 @@ function args(status: string): RequirementTestArgs {
 }
 
 function runStub(src: string): { code: number; out: string } {
-  const dir = mkdtempSync(join(tmpdir(), "req-stub-"));
+  const dir = makeScratchDir("req-stub-");
   const file = join(dir, "stub.test.ts");
   writeFileSync(file, src);
   const r = Bun.spawnSync(["bun", "test", file], { cwd: dir });

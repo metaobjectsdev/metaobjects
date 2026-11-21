@@ -6,7 +6,7 @@
 
 import { describe, test, expect } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
@@ -17,6 +17,7 @@ import { buildPkMap } from "../src/pk-resolver.js";
 import { buildRelationMap } from "../src/relation-resolver.js";
 import type { GenContext } from "../src/generator.js";
 import type { Dialect } from "../src/metaobjects-config.js";
+import { removeTree } from "../src/scratch-dir.js";
 
 async function loadRoot() {
   const json = JSON.stringify({
@@ -133,7 +134,7 @@ describe("generated field.duration columns", () => {
         const diagnostics = compile(dir, files.map((f) => f.path));
         expect(diagnostics.map((d) => ts.flattenDiagnosticMessageText(d.messageText, "\n"))).toEqual([]);
       } finally {
-        rmSync(dir, { recursive: true, force: true });
+        removeTree(dir);
       }
     });
   }
@@ -178,7 +179,7 @@ describe("generated field.duration columns", () => {
       expect(byMicros).toEqual([{ id: 2 }]);
       sqlite.close();
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTree(dir);
     }
   });
 });

@@ -9,8 +9,7 @@
 //   bun test test/golden/golden-output.test.ts
 
 import { describe, it, expect } from "bun:test";
-import { mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, existsSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
 import { join, resolve, relative } from "node:path";
 import { runGen, defineConfig } from "../../src/index.js";
 import { barrel } from "../../src/generators/barrel.js";
@@ -20,6 +19,7 @@ import { routesFile } from "../../src/generators/routes-file.js";
 import { formFile } from "@metaobjectsdev/codegen-ts-react";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
+import { makeScratchDir, removeTree } from "../../src/scratch-dir.js";
 
 const FIXTURE = resolve(import.meta.dir, "../fixtures/trainer-website-shape.json");
 const SNAP = join(import.meta.dir, "__snapshots__");
@@ -37,7 +37,7 @@ describe("golden output — byte-identical port gate", () => {
   for (const dialect of ["sqlite", "postgres"] as const) {
     it(`generates byte-identical output — ${dialect}`, async () => {
       // Use a temp dir so runGen can write files; we read them back for comparison.
-      const tmp = mkdtempSync(join(tmpdir(), `codegen-golden-${dialect}-`));
+      const tmp = makeScratchDir(`codegen-golden-${dialect}-`);
       try {
         const result = await runGen({
           config: defineConfig({
@@ -81,7 +81,7 @@ describe("golden output — byte-identical port gate", () => {
           expect(snapFiles).toEqual(writtenFiles);
         }
       } finally {
-        rmSync(tmp, { recursive: true, force: true });
+        removeTree(tmp);
       }
     });
   }

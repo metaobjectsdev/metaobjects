@@ -10,15 +10,16 @@
 // ERR_VAR_NOT_ON_PAYLOAD naming the offending field.
 
 import { describe, test, expect, afterAll } from "bun:test";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { InMemoryProvider, type EmailDocument } from "@metaobjectsdev/render";
 import { renderRenderHelper } from "../src/templates/render-helper.js";
+import { removeTree } from "../src/scratch-dir.js";
 
 const TEMP_DIRS: string[] = [];
 afterAll(() => {
-  for (const d of TEMP_DIRS) rmSync(d, { recursive: true, force: true });
+  for (const d of TEMP_DIRS) removeTree(d);
 });
 
 async function loadRoot(children: unknown[]) {

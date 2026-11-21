@@ -8,6 +8,7 @@ import {
   manifestExists,
   readManifestState,
 } from "../../src/hash-manifest-store.js";
+import { removeTree } from "../../src/scratch-dir.js";
 
 export { HASHES_DIR, LEGACY_HASHES_FILE, manifestExists };
 
@@ -36,7 +37,7 @@ export function manifestMtimes(genStateDir: string): Record<string, number> {
 
 /** Remove the whole manifest (per-package dir and legacy file). */
 export function removeManifest(genStateDir: string): void {
-  rmSync(join(genStateDir, HASHES_DIR), { recursive: true, force: true });
+  removeTree(join(genStateDir, HASHES_DIR));
   rmSync(join(genStateDir, LEGACY_HASHES_FILE), { force: true });
 }
 

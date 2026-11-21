@@ -4,8 +4,7 @@
 // it.
 
 import { describe, test, expect, afterEach } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import {
   MetaDataLoader, InMemoryStringSource, collectionNameOf, pluralizer, registerPluralizer,
@@ -17,6 +16,7 @@ import { entityFile } from "../../src/generators/entity-file.js";
 import { queriesFile } from "../../src/generators/queries-file.js";
 import { routesFile } from "../../src/generators/routes-file.js";
 import { resourcePath } from "../../src/templates/entity-ui-descriptor.js";
+import { makeScratchDir, removeTree } from "../../src/scratch-dir.js";
 
 type Json = Record<string, unknown>;
 
@@ -47,7 +47,7 @@ async function load(historyAttrs: Json = {}): Promise<MetaRoot> {
 }
 
 async function gen(root: MetaRoot): Promise<{ files: Map<string, string>; warnings: string[] }> {
-  const tmp = mkdtempSync(join(tmpdir(), "mo-collection-"));
+  const tmp = makeScratchDir("mo-collection-");
   try {
     const { warnings } = await runGen({
       config: defineConfig({
@@ -65,7 +65,7 @@ async function gen(root: MetaRoot): Promise<{ files: Map<string, string>; warnin
     }
     return { files, warnings };
   } finally {
-    rmSync(tmp, { recursive: true, force: true });
+    removeTree(tmp);
   }
 }
 

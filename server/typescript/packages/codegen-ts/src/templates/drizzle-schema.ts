@@ -590,16 +590,16 @@ function buildCompositeKeyCallback(
   return code`${primaryKeySym}({ columns: [${columnRefs}] })`;
 }
 
-/** Build a JS-style object literal string (not JSON.stringify which uses quoted keys).
- *  Array values get `as const` appended so Drizzle's text(...,{ enum: [...] })
- *  narrows the inferred column type to a literal union instead of bare `string`. */
-function inlineObjectLiteral(obj: Record<string, unknown>): string {
+/** Build a JS-style object literal string (not JSON.stringify, which quotes every key):
+ *  `{ length: 200 }`, not `{ "length": 200 }`. A key that is not a bare identifier keeps
+ *  its quotes. Array values get `as const` appended so Drizzle's text(...,{ enum: [...] })
+ *  narrows the inferred column type to a literal union instead of bare `string`. Shared by
+ *  the table template and the existing-view declaration (`view-decl.ts`). */
+export function inlineObjectLiteral(obj: Record<string, unknown>): string {
   const entries = Object.entries(obj).map(([k, v]) => {
+    const name = /^[A-Za-z_$][\w$]*$/.test(k) ? k : JSON.stringify(k);
     const lit = JSON.stringify(v);
-    if (Array.isArray(v)) {
-      return `${k}: ${lit} as const`;
-    }
-    return `${k}: ${lit}`;
+    return Array.isArray(v) ? `${name}: ${lit} as const` : `${name}: ${lit}`;
   });
   return `{ ${entries.join(", ")} }`;
 }

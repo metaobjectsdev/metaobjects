@@ -15,10 +15,10 @@ import {
   REQUIREMENT_STATUSES_REQUIRING_LIVE_NODES,
   type RequirementStatus,
 } from "@metaobjectsdev/metadata";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderRequirementTest } from "../src/templates/requirement-test.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 const view = {
   subType: "functional",
@@ -52,14 +52,14 @@ function render(statement: string, counterexample: string): string {
 
 /** Write the stub and run it, returning bun's exit code and combined output. */
 function runStub(src: string): { code: number; out: string } {
-  const dir = mkdtempSync(join(tmpdir(), "req-escape-"));
+  const dir = makeScratchDir("req-escape-");
   try {
     const file = join(dir, "stub.test.ts");
     writeFileSync(file, src);
     const r = Bun.spawnSync(["bun", "test", file], { cwd: dir });
     return { code: r.exitCode, out: r.stdout.toString() + r.stderr.toString() };
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
   }
 }
 

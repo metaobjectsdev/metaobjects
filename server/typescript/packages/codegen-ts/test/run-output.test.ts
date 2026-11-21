@@ -2,21 +2,21 @@
 // model explorer) runs after every other generator and reads the files through `ctx.runOutput`,
 // keyed as the manifest keys them. `requirementLedger` is the caller's callback, called once.
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, unlinkSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { unlinkSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 import { runGen } from "../src/runner.js";
 import { defineConfig } from "../src/metaobjects-config.js";
 import { perEntity, type Generator, type RunOutputFile } from "../src/generator.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 const FIXTURE = resolve(import.meta.dir, "fixtures", "single-entity.json");
 const TWO = resolve(import.meta.dir, "fixtures", "two-entities-fk.json");
 
 let tmp: string;
-beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "codegen-run-output-")); });
-afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+beforeEach(() => { tmp = makeScratchDir("codegen-run-output-"); });
+afterEach(() => { removeTree(tmp); });
 
 async function load(file = FIXTURE) {
   return (await new MetaDataLoader().load([new FileSource(file)])).root;

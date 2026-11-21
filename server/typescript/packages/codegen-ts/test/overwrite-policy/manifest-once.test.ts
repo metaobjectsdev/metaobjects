@@ -2,21 +2,21 @@
 // entry changed; a file whose new bytes equal what is on disk is never rewritten.
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import * as fs from "node:fs";
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync, statSync, writeFileSync } from "node:fs";
 import { isManifestPath, manifestEntries, manifestFiles, manifestMtimes } from "../support/manifest.js";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { decideAndWrite, mergeTempDir, withManifestBatch } from "../../src/overwrite-policy.js";
+import { makeScratchDir, removeTree } from "../../src/scratch-dir.js";
 
 let out: string;
 let state: string;
 beforeEach(() => {
-  out = mkdtempSync(join(tmpdir(), "codegen-once-"));
-  state = mkdtempSync(join(tmpdir(), "codegen-once-state-"));
+  out = makeScratchDir("codegen-once-");
+  state = makeScratchDir("codegen-once-state-");
 });
 afterEach(() => {
-  rmSync(out, { recursive: true, force: true });
-  rmSync(state, { recursive: true, force: true });
+  removeTree(out);
+  removeTree(state);
 });
 
 function run(files: Record<string, string>): void {
@@ -80,13 +80,13 @@ describe("three-way merge temporaries", () => {
   let scratch: string;
   let saved: string | undefined;
   beforeEach(() => {
-    scratch = mkdtempSync(join(tmpdir(), "codegen-once-scratch-"));
+    scratch = makeScratchDir("codegen-once-scratch-");
     saved = process.env.DEV_SCRATCH;
     process.env.DEV_SCRATCH = scratch;
   });
   afterEach(() => {
     if (saved === undefined) delete process.env.DEV_SCRATCH; else process.env.DEV_SCRATCH = saved;
-    rmSync(scratch, { recursive: true, force: true });
+    removeTree(scratch);
   });
 
   const leftovers = () => {

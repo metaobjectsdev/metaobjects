@@ -8,8 +8,7 @@
 
 import { manifestEntries, manifestFiles } from "./support/manifest.js";
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import {
   decideAndWrite,
@@ -17,17 +16,18 @@ import {
   readGeneratedSnapshot,
   forgetGeneratedPaths,
 } from "../src/overwrite-policy.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 let root: string;
 let genStateDir: string;
 
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), "gen-state-readers-"));
+  root = makeScratchDir("gen-state-readers-");
   genStateDir = join(root, ".gen-state");
 });
 
 afterEach(() => {
-  rmSync(root, { recursive: true, force: true });
+  removeTree(root);
 });
 
 /** Write `relPath` through the real policy so the snapshot + hash are produced

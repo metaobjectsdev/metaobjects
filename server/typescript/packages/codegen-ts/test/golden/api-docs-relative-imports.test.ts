@@ -23,8 +23,7 @@
 
 import { describe, test, expect, afterAll, setDefaultTimeout } from "bun:test";
 import { COMPILE_TEST_TIMEOUT_MS } from "../compile-timeout.js";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import ts from "typescript";
 import { MetaDataLoader, InMemoryStringSource, type MetaObject } from "@metaobjectsdev/metadata";
@@ -41,6 +40,7 @@ import { buildPkMap } from "../../src/pk-resolver.js";
 import { buildRelationMap } from "../../src/relation-resolver.js";
 import { runGen, defineConfig } from "../../src/index.js";
 import type { Generator, GenContext, EmittedFile } from "../../src/generator.js";
+import { makeScratchDir, removeTree } from "../../src/scratch-dir.js";
 
 setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
@@ -165,7 +165,7 @@ describe("Fix 1: rendered api-docs import specifiers are `./`-prefixed (copy-pas
 
 const TEMP_DIRS: string[] = [];
 afterAll(() => {
-  for (const d of TEMP_DIRS) rmSync(d, { recursive: true, force: true });
+  for (const d of TEMP_DIRS) removeTree(d);
 });
 
 /** Run one generator with a structural GenContext (mirrors the accuracy gate). */
@@ -276,7 +276,7 @@ function compile(dir: string, files: string[]): readonly ts.Diagnostic[] {
 describe("Fix 1: a CRUD consumer from AGENT-API.md COMPILES against the REAL generated code (no TS2307)", () => {
   test("the doc's `./`-prefixed imports RESOLVE + the CRUD example type-checks", async () => {
     const root = await loadRoot();
-    const projectRoot = mkdtempSync(join(tmpdir(), "api-docs-relimports-proj-"));
+    const projectRoot = makeScratchDir("api-docs-relimports-proj-");
     TEMP_DIRS.push(projectRoot);
 
     // 1. Generate the REAL entity + queries code for Product (flat layout).
@@ -290,7 +290,7 @@ describe("Fix 1: a CRUD consumer from AGENT-API.md COMPILES against the REAL gen
     // 3. Lay out a temp output dir exactly as a consumer's generated dir: the
     //    real generated files at the root + a consumer that copy-pastes the
     //    doc's import header + CRUD example body.
-    const dir = mkdtempSync(join(tmpdir(), "api-docs-relimports-"));
+    const dir = makeScratchDir("api-docs-relimports-");
     TEMP_DIRS.push(dir);
     const write = (rel: string, body: string) => {
       const full = join(dir, rel);
@@ -353,7 +353,7 @@ const HONO_CHILDREN = CHILDREN;
 describe("Fix 2: api-docs documents Hono routes when the Hono generator is in the run", () => {
   test("ctx.config.includeHonoRoutes drives the builder — Hono symbols are documented", async () => {
     const root = await loadRoot();
-    const projectRoot = mkdtempSync(join(tmpdir(), "api-docs-hono-"));
+    const projectRoot = makeScratchDir("api-docs-hono-");
     TEMP_DIRS.push(projectRoot);
 
     // The api-docs generator, run with includeHonoRoutes in its ctx.config
@@ -371,7 +371,7 @@ describe("Fix 2: api-docs documents Hono routes when the Hono generator is in th
 
   test("without includeHonoRoutes, NO Hono symbols are documented (Fastify only)", async () => {
     const root = await loadRoot();
-    const projectRoot = mkdtempSync(join(tmpdir(), "api-docs-nohono-"));
+    const projectRoot = makeScratchDir("api-docs-nohono-");
     TEMP_DIRS.push(projectRoot);
     const files = await runGenerator(apiDocsFile(), root, projectRoot, { outputLayout: "flat" });
     const agentFile = files.find((f) => f.path.endsWith("AGENT-API.md"))!;
@@ -392,11 +392,11 @@ describe("Fix 2: api-docs documents Hono routes when the Hono generator is in th
   // the Hono marker off the declared suite, as for every generator.
   test("runGen: api-docs in the generator list writes into the docs target and documents the Hono routes", async () => {
     const root = await loadRoot();
-    const projectRoot = mkdtempSync(join(tmpdir(), "api-docs-rungen-"));
+    const projectRoot = makeScratchDir("api-docs-rungen-");
     TEMP_DIRS.push(projectRoot);
 
-    const outDir = mkdtempSync(join(tmpdir(), "api-docs-rungen-code-"));
-    const docsDir = mkdtempSync(join(tmpdir(), "api-docs-rungen-docs-"));
+    const outDir = makeScratchDir("api-docs-rungen-code-");
+    const docsDir = makeScratchDir("api-docs-rungen-docs-");
     TEMP_DIRS.push(outDir, docsDir);
     const result = await runGen({
       config: defineConfig({

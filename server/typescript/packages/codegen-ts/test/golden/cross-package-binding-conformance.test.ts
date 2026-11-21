@@ -9,8 +9,7 @@
 // before the root `Customer`), so a short-name lookup or a re-resolve in `acme` binds it.
 
 import { describe, test, expect } from "bun:test";
-import { mkdtempSync, rmSync, readFileSync, readdirSync, existsSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { join, dirname, relative } from "node:path";
 import {
   MetaDataLoader,
@@ -27,6 +26,7 @@ import { entityFile } from "../../src/generators/entity-file.js";
 import { queriesFile } from "../../src/generators/queries-file.js";
 import { routesFile } from "../../src/generators/routes-file.js";
 import { buildRelationMap } from "../../src/relation-resolver.js";
+import { makeScratchDir, removeTree } from "../../src/scratch-dir.js";
 
 function findRepoRoot(start: string): string {
   let dir = start;
@@ -120,7 +120,7 @@ describe("cross-package binding conformance (TS)", () => {
 
   test("generated modules import the bound target's module, never the wrong same-named one", async () => {
     const root = await loadFixture();
-    const tmp = mkdtempSync(join(tmpdir(), "xpkg-binding-"));
+    const tmp = makeScratchDir("xpkg-binding-");
     const files: Record<string, string> = {};
     try {
       await runGen({
@@ -143,7 +143,7 @@ describe("cross-package binding conformance (TS)", () => {
       };
       walk(tmp);
     } finally {
-      rmSync(tmp, { recursive: true, force: true });
+      removeTree(tmp);
     }
 
     // a::Post — the M:N route and the to-one relation reach b::Tag's module.

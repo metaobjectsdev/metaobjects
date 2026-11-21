@@ -12,8 +12,6 @@
 // even wired.
 
 import { describe, test, expect } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MetaDataLoader, InMemoryStringSource, retiredAttr, type MetaRoot } from "@metaobjectsdev/metadata";
 import { runGen } from "../src/runner.js";
@@ -22,6 +20,7 @@ import { RETIRED_CODEGEN_ATTRS } from "../src/constants.js";
 import { warnRetiredCodegenAttrs } from "../src/retired-codegen-attrs.js";
 import { entityFile } from "../src/generators/entity-file.js";
 import { routesFile } from "../src/generators/routes-file.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 /** An entity carrying `attrs` verbatim, source-backed so it reaches every generator. */
 function entity(name: string, attrs: Record<string, unknown> = {}): unknown {
@@ -52,7 +51,7 @@ async function loadRoot(...children: unknown[]): Promise<MetaRoot> {
 
 /** Collect the warnings a real `runGen` produces, generating into a throwaway dir. */
 async function warningsFrom(root: MetaRoot, generators = [entityFile()]): Promise<string[]> {
-  const dir = mkdtempSync(join(tmpdir(), "retired-attrs-"));
+  const dir = makeScratchDir("retired-attrs-");
   try {
     const res = await runGen({
       config: defineConfig({
@@ -62,7 +61,7 @@ async function warningsFrom(root: MetaRoot, generators = [entityFile()]): Promis
     });
     return res.warnings;
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
   }
 }
 
@@ -179,7 +178,7 @@ describe("retired @emit* codegen attributes — the `meta gen` warning", () => {
     // The behaviour half. `@emitRoutes: false` used to suppress this file; it must not
     // now, and the run must not turn red for saying so.
     const root = await loadRoot(entity("Subscriber", { "@emitRoutes": false }));
-    const dir = mkdtempSync(join(tmpdir(), "retired-attrs-emit-"));
+    const dir = makeScratchDir("retired-attrs-emit-");
     try {
       const res = await runGen({
         config: defineConfig({
@@ -192,7 +191,7 @@ describe("retired @emit* codegen attributes — the `meta gen` warning", () => {
       expect(res.conflicts).toEqual([]);
       expect(res.warnings.some((w) => w.includes("@emitRoutes"))).toBe(true);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTree(dir);
     }
   });
 

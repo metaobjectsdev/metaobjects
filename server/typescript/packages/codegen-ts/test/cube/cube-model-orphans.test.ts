@@ -18,13 +18,13 @@
 // reconciles, so none of this is visible to the golden tests.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { InMemoryStringSource, MetaDataLoader, type MetaRoot } from "@metaobjectsdev/metadata";
 import { defineConfig, runGen, type Generator } from "../../src/index.js";
 import { cubeModel as builtinCubeModel, ownsCubeFile } from "../../src/generators/cube-model.js";
 import { cubeModel as refCubeModel } from "../../src/reference/cube-model.js";
+import { makeScratchDir, removeTree } from "../../src/scratch-dir.js";
 
 type Json = Record<string, unknown>;
 
@@ -76,10 +76,10 @@ for (const impl of IMPLEMENTATIONS) {
   describe(`cube-model orphan cleanup, through runGen: ${impl.label}`, () => {
     let projectRoot: string;
     beforeEach(() => {
-      projectRoot = mkdtempSync(join(tmpdir(), "cube-orphan-e2e-"));
+      projectRoot = makeScratchDir("cube-orphan-e2e-");
     });
     afterEach(() => {
-      rmSync(projectRoot, { recursive: true, force: true });
+      removeTree(projectRoot);
     });
 
     const abs = (rel: string): string => join(projectRoot, rel);
@@ -263,10 +263,10 @@ for (const impl of IMPLEMENTATIONS) {
   describe(`cube-model view cleanup, through runGen: ${impl.label}`, () => {
     let projectRoot: string;
     beforeEach(() => {
-      projectRoot = mkdtempSync(join(tmpdir(), "cube-orphan-view-"));
+      projectRoot = makeScratchDir("cube-orphan-view-");
     });
     afterEach(() => {
-      rmSync(projectRoot, { recursive: true, force: true });
+      removeTree(projectRoot);
     });
     const abs = (rel: string): string => join(projectRoot, rel);
     const VIEW = join(OUT_DIR, "model", "views", "ProgramRoster.yml");
