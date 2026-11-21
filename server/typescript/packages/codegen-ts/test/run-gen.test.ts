@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, readFileSync, existsSync, readdirSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, existsSync, readdirSync, writeFileSync } from "node:fs";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 import { join, resolve } from "node:path";
 import type { MetaRoot, MetaObject } from "@metaobjectsdev/metadata";
 import {
@@ -24,8 +24,8 @@ import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 
 let tmp: string;
-beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "codegen-run-gen-")); });
-afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+beforeEach(() => { tmp = makeScratchDir("codegen-run-gen-"); });
+afterEach(() => { removeTree(tmp); });
 
 const FIXTURE_DIR = resolve(import.meta.dir, "fixtures");
 
@@ -305,7 +305,7 @@ describe("runGen — entityFilter", () => {
     const fullBarrel = readFileSync(join(tmp, "index.ts"), "utf-8");
     expect(fullBarrel).toContain('export * from "./Post"');
     expect(fullBarrel).toContain('export * from "./User"');
-    for (const f of readdirSync(tmp)) rmSync(join(tmp, f), { recursive: true, force: true });
+    for (const f of readdirSync(tmp)) removeTree(join(tmp, f));
 
     const out = await runGen({ config, metadata: result.root, entityFilter: ["Post"] });
     expect(out.warnings).toEqual([]);

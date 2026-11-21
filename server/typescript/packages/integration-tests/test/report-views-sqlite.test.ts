@@ -23,7 +23,7 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { lstatSync, mkdtempSync, readdirSync, rmdirSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Kysely, sql } from "kysely";
@@ -44,17 +44,34 @@ function literalColumns<T>(root: T): T {
   return root;
 }
 
+/** Walks the tree instead of Bun's recursive rmSync, which intermittently throws EFAULT under load. */
+function removeTree(path: string): void {
+  try {
+    if (!lstatSync(path).isDirectory()) { unlinkSync(path); return; }
+    for (const n of readdirSync(path)) removeTree(join(path, n));
+    rmdirSync(path);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+  }
+}
+
 let tmpDir: string;
 let k: Kysely<Record<string, unknown>>;
 
-beforeEach(() => {
-  tmpDir = mkdtempSync(join(tmpdir(), "report-views-sqlite-"));
+beforeEach(async () => {
+  // The database file lives in RAM ($DEV_SCRATCH when set): libsql commits every DDL statement
+  // with an fsync, and the canonical model applies dozens of them per test, so on a disk that is
+  // ~1.3 s per test setup (14 tests, ~20 s) and past the default timeout when the disk is busy.
+  tmpDir = mkdtempSync(join(process.env.DEV_SCRATCH || tmpdir(), "report-views-sqlite-"));
   k = new Kysely({ dialect: new LibsqlDialect({ url: `file:${join(tmpDir, "test.db")}` }) });
+  // A throwaway database needs no crash safety, so skip the per-statement fsync even when
+  // $DEV_SCRATCH is unset and the file lands on a real disk.
+  await sql.raw("PRAGMA synchronous = OFF").execute(k);
 });
 
 afterEach(async () => {
   await k.destroy();
-  rmSync(tmpDir, { recursive: true, force: true });
+  removeTree(tmpDir);
 });
 
 // libsql execute() is single-statement: split on ";" (no view body or seed carries an inner ";").

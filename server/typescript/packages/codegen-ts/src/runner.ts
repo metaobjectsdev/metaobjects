@@ -3,10 +3,10 @@ import { join, relative, resolve, isAbsolute, dirname, sep } from "node:path";
 import { warnMissingPromptGenerators } from "./prompt-generator-gate.js";
 import { runEmitsEntityModule, runEmitsHonoRoutes, runEmitsQueries, runEmitsRestRoutes, runEmitsUiTier, runRoutesExpose, warnUnmarkedRoutesGenerators, warnUnmarkedUiGenerators } from "./ui-tier-gate.js";
 import { warnRetiredCodegenAttrs } from "./retired-codegen-attrs.js";
-import { tmpdir } from "node:os";
+import { removeTree, scratchRoot } from "./scratch-dir.js";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import type { MetaData, MetaObject } from "@metaobjectsdev/metadata";
 import {
   isMetaRoot, FIELD_SUBTYPE_TIMESTAMP, FIELD_ATTR_FILTERABLE,
@@ -382,7 +382,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
         : resolve(projectRoot ?? process.cwd(), opts.genStateDir))
     : (projectRoot !== undefined
         ? join(projectRoot, ".metaobjects", ".gen-state")
-        : join(tmpdir(), `meta-gen-state-${process.pid}`));
+        : join(scratchRoot(), `meta-gen-state-${process.pid}`));
   // A file written OUTSIDE the project has no place in the project's gen-state: its
   // manifest key would be `../..`-relative, committed into the hash manifest, and its snapshot
   // body — stored at `<gen-state>/<key>` — would walk out of `.gen-state/` and land a second
@@ -391,7 +391,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // Unique to THIS run, not just this process: a second runGen in one process (an embedder,
   // a watch loop, a test) would otherwise find the first run's snapshot and three-way merge,
   // which is exactly the record-keeping an untracked file does not have.
-  const untrackedGenStateDir = join(tmpdir(), `meta-gen-untracked-${process.pid}-${randomUUID()}`);
+  const untrackedGenStateDir = join(scratchRoot(), `meta-gen-untracked-${process.pid}-${randomUUID()}`);
   const untrackedOutDirs = opts.untrackedOutDirs ?? [];
   const outsideProject = (fullPath: string): boolean => {
     if (projectRoot === undefined) return false;
@@ -418,7 +418,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   };
   const noteUntracked = (): void => {
     // The per-run state held nothing anyone reads again; do not leave it in the tmpdir.
-    rmSync(untrackedGenStateDir, { recursive: true, force: true });
+    removeTree(untrackedGenStateDir);
     if (untrackedCount === 0) return;
     warnings.push(
       `${untrackedCount} generated file(s) were written outside the project root and are not ` +
