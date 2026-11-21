@@ -549,7 +549,7 @@ public class RoutesGenerator : PerEntityGenerator
         // fields (writable entities only; a read-only projection has no insert path).
         if (writable && autoSetFields.Count > 0)
             AppendInsertPreserving(w, cls, dbSet, ValueObjectNames.ContextTypeRef(ctx.Config));
-        AppendOmitResultClass(w, credentials.Count > 0);
+        AppendOmitResultClass(w, credentials.Count > 0 || (hasItem && M2mTargetHasCredentials([entity], ctx.Root, ctx.Config)));
         w.Close("}");
 
         return new EmittedFile(OutputPaths.Of(entity, ctx, $"{cls}Routes.g.cs"), w.ToString());
@@ -757,7 +757,7 @@ public class RoutesGenerator : PerEntityGenerator
             foreach (var st in tph.Subtypes)
                 if (AutoSetFields(st.Entity, ctx.Config).Count > 0)
                     AppendInsertPreserving(w, ValueObjectNames.TypeRef(st.Entity, ctx.Root, ctx.Config, ValueObjectNames.Namespace(baseEntity, ctx.Config)), dbSet, ValueObjectNames.ContextTypeRef(ctx.Config));
-        AppendOmitResultClass(w, baseCredentials.Count > 0);
+        AppendOmitResultClass(w, baseCredentials.Count > 0 || (hasItem && M2mTargetHasCredentials(tph.Subtypes.Select(st => st.Entity).Prepend(baseEntity), ctx.Root, ctx.Config)));
         w.Close("}");
 
         return new EmittedFile(OutputPaths.Of(baseEntity, ctx, $"{baseCls}Routes.g.cs"), w.ToString());
@@ -937,6 +937,10 @@ public class RoutesGenerator : PerEntityGenerator
         credentials.Count == 0
             ? $"Results.Created({location}, {value})"
             : $"(IResult)new CredentialOmittingResult({value}, {NamesLiteral(credentials)}, status: 201, location: {location})";
+
+    // True when any M:N traversal mounted for these sources returns rows of a target that carries a credential.
+    private static bool M2mTargetHasCredentials(IEnumerable<MetaObject> sources, MetaRoot root, GenConfig config) =>
+        sources.Any(src => M2MNavigationBuilder.For(src, root).Any(nav => TphUnionCredentialNames(nav.Target, root, config).Count > 0));
 
     // Emitted only into a routes class that uses it (never for a model without a credential).
     private static void AppendOmitResultClass(CsWriter w, bool used)

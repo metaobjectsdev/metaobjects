@@ -104,7 +104,7 @@ public class ReportExportGenerator : IGenerator
         w.Using("System.Collections.Generic");
         w.Using("System.IO");
         w.Using("System.Linq");
-        if (!pkgMode) foreach (var u in PackageBindingResolver.HomeUsings(ctx.Config, [report])) w.Line(u);
+        if (!pkgMode) foreach (var u in PackageBindingResolver.HomeUsings(ctx.Config, [report])) w.Using(u["using ".Length..^1]);
         w.Line($"namespace {ns};");
         w.Blank();
         w.Line($"/// <summary>The CSV and XML export of the <c>{report.Name}</c> report: its columns, in derived-field order, over the generated <see cref=\"{cls}\"/> row.</summary>");
