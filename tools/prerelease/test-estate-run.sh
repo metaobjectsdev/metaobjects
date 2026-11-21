@@ -11,6 +11,8 @@
 # E6  each port spells the candidate its own way (PyPI rcN, Maven major + 7)
 # E8  a package left on another version, or rc.10 for rc.1, fails the read-back check
 # E9  the estate is put back on its starting commit after the run
+# E10 a --report path inside the estate is refused (exit 2)
+# E11 a link that fails partway leaves the estate on its starting commit
 # E7  a build command that fails is reported and the run exits 1; no command is "skipped", not "passed"
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -63,6 +65,17 @@ e9() { local d before; d="$(fresh "$IDEMPOTENT")"; before="$(git -C "$d" rev-par
     --gen-cmd 'sh gen.sh' $VERS 'echo @metaobjectsdev/cli@1.3.0-rc.1' >/dev/null 2>&1; [ $? = 0 ] || return 1
   [ "$(git -C "$d" rev-parse HEAD)" = "$before" ] && [ -z "$(git -C "$d" status --porcelain --untracked-files=all)" ]; }
 
+e10() { local d out; d="$(fresh "$IDEMPOTENT")"
+  out="$(run "$d" 1.3.0-rc.1 ts $VERS 'echo @metaobjectsdev/cli@1.3.0-rc.1' --report "$d/report.md")"; rc=$?
+  [ $rc = 2 ] && grep -q 'inside the estate' <<<"$out"; }
+e11() { local d before; d="$(fresh "$IDEMPOTENT")"
+  mkdir -p "$d/tools"; cp "$HERE/estate-run.sh" "$d/tools/estate-run.sh"
+  printf '#!/usr/bin/env bash\nif [ "$1" = link ]; then echo pinned >> seed.txt; exit 1; fi\nexit 0\n' > "$d/tools/prerelease-link.sh"; chmod +x "$d/tools/prerelease-link.sh"
+  git -C "$d" add -A && git -C "$d" commit -q -m tools
+  bash "$d/tools/estate-run.sh" --project "$d" --port ts --version 1.3.0-rc.1 --install-cmd true --verify-cmd true \
+    --gen-cmd 'sh gen.sh' >/dev/null 2>&1; [ $? = 1 ] || return 1
+  [ -z "$(git -C "$d" status --porcelain --untracked-files=all)" ]; }
+
 t "E1 a clean run passes and lists what the first gen changed" e1
 t "E2 a gen that writes on every run fails the zero-write check" e2
 t "E3 a gen that rewrites identical bytes fails the zero-write check" e3
@@ -71,6 +84,8 @@ t "E5 a dirty project is refused" e5
 t "E6 PyPI and Maven spell the candidate their own way" e6
 t "E8 a stale package or rc.10 fails the read-back check" e8
 t "E9 the estate is put back on its starting commit" e9
+t "E10 a report path inside the estate is refused" e10
+t "E11 a link that fails partway still restores the estate" e11
 t "E7 a failing build is reported; a missing command is skipped, not passed" e7
 
 [ "$fails" = 0 ] && echo "all estate-run tests passed" || { echo "$fails failure(s)"; exit 1; }

@@ -23,9 +23,12 @@ the installed versions back** (a declared range is not proof of the version that
 fails when the candidate is not in the read-back), regenerates and lists every changed file,
 regenerates **again** and requires that the second run writes zero files (by content and by
 modification time), then runs the drift gate, your build, your tests and your database commands.
-A command you do not pass is reported `skipped`, never `passed`. It unlinks on the way out, however
-the run ended, and prints a report. `--no-link` is for an estate already linked another way;
-`--keep-linked` leaves the link in place. `--help` lists the per-port defaults and the flags that
+A command you do not pass is reported `skipped`, never `passed`. However the run ended, including a
+`link` that failed partway, it puts the estate back on the commit it started on: it unlinks, then runs
+`git reset --hard` and `git clean -fd`. That deletes every untracked file in the estate, the regenerated
+output included, so the estate must start clean and `--report` must name a file outside it (a path
+inside the estate is refused). `--keep-linked` skips the restore and leaves the link and the
+regenerated tree in place. `--no-link` skips link and unlink but still restores the estate. `--help` lists the per-port defaults and the flags that
 override them. Rust has no estate path: a Rust consumer pins the commit
 (`docs/features/prerelease.md`, "Rust").
 
@@ -62,7 +65,8 @@ fixed before rc.2. Watch for:
   because the base layout changed under every edit. Move edits into hooks or owned generators
   first where that is possible, and report the count.
 - Owned generator copies from 1.2 must still load and generate.
-- Commit the new hash manifest (`.metaobjects/.gen-state/.hashes/`).
+- Commit the new hash manifest (`.metaobjects/.gen-state/.hashes/`). The end-of-run restore wipes it,
+  so run with `--keep-linked`, commit the manifest in the estate, then `prerelease-link.sh unlink`.
 - C#, Java and Kotlin estates run the base run only and must see **no** diff against rc.1.
 
 **rc.3, new output, C#, Java and Kotlin; TypeScript service code.**

@@ -20,8 +20,8 @@
 #      checked by content and by modification time.
 #   4. Runs the drift gate (verify --codegen), the build, the tests and any --db-cmd. A command
 #      you do not pass is reported as skipped, never as passed.
-#   5. Puts the estate back as it found it (unless --keep-linked), however the run ended: unlink,
-#      then `git reset --hard` to the commit it started on and `git clean -fd`. That is safe only
+#   5. Puts the estate back as it found it (unless --keep-linked), however the run ended, also
+#      when link failed partway or --no-link was given: unlink, then `git reset --hard` to the commit it started on and `git clean -fd`. That is safe only
 #      because step 1 required a clean tree, and it is why a dirty tree is refused. Ignored files
 #      (node_modules, .venv, bin, obj) stay as the candidate installed them: reinstall afterwards.
 #
@@ -102,17 +102,25 @@ case "$PORT" in
     : "${VERSIONS_CMD:=mvn -B dependency:list -DincludeGroupIds=com.metaobjects | grep 'com.metaobjects'}" ;;
 esac
 
+if [ -n "$REPORT" ]; then
+  [ -d "$(dirname "$REPORT")" ] || die "--report directory does not exist: $(dirname "$REPORT")"
+  REPORT="$(cd "$(dirname "$REPORT")" && pwd)/$(basename "$REPORT")"
+  case "$REPORT" in "$PROJECT"/*) die "--report $REPORT is inside the estate, and the restore at the end deletes untracked files there: write it outside" ;; esac
+fi
+
 # ── bookkeeping ───────────────────────────────────────────────────────────────────────
 WORK="$(mktemp -d "${DEV_SCRATCH:-${TMPDIR:-/tmp}}/estate-run.XXXXXX")"
 ROWS="$WORK/rows"; DETAIL="$WORK/detail"; : > "$ROWS"; : > "$DETAIL"
-FAILED=0; LINKED=0; STARTED="$(date +%s)"
+FAILED=0; STARTED="$(date +%s)"
 START_HEAD="$(git -C "$PROJECT" rev-parse HEAD)"
 
 cleanup() {
   local code=$?
-  if [ "$LINKED" = 1 ] && [ "$KEEP" = 0 ]; then
-    "$HERE/prerelease-link.sh" unlink --project "$PROJECT" >"$WORK/unlink.log" 2>&1 \
-      || { echo "! unlink failed:" >&2; cat "$WORK/unlink.log" >&2; }
+  if [ "$KEEP" = 0 ]; then
+    if [ "$NOLINK" = 0 ]; then
+      "$HERE/prerelease-link.sh" unlink --project "$PROJECT" >"$WORK/unlink.log" 2>&1 \
+        || { echo "! unlink failed:" >&2; cat "$WORK/unlink.log" >&2; }
+    fi
     # unlink repins to the public latest; the estate goes back to the commit it started on instead.
     git -C "$PROJECT" reset -q --hard "$START_HEAD" && git -C "$PROJECT" clean -qfd \
       && echo "restored $PROJECT to ${START_HEAD:0:12}" >&2 || echo "! could not restore $PROJECT to $START_HEAD" >&2
@@ -159,7 +167,7 @@ finish() {
 # ── 1. link, install clean, read the versions back ────────────────────────────────────
 if [ "$NOLINK" = 0 ]; then
   if ( cd "$PROJECT" && "$HERE/prerelease-link.sh" link --project "$PROJECT" --version "$VERSION" ) >"$WORK/link.log" 2>&1
-  then LINKED=1; row "link $VERSION" "passed" 0
+  then row "link $VERSION" "passed" 0
   else row "link $VERSION" "**FAILED**" 0; fail_detail "link $VERSION" "$WORK/link.log"; FAILED=1; finish; fi
 else
   row "link $VERSION" "skipped (--no-link: the read-back below is the only proof)" 0

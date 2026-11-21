@@ -283,7 +283,9 @@ ok("version-bearing files clean");
 const CANDIDATE_LOG = "tools/prerelease/candidates.md";
 const builtFromDirtyTree = sh("git status --porcelain --untracked-files=all").split("\n")
   .some((l) => l.trim() && l.slice(3) !== CANDIDATE_LOG);
-const published = [];  // registries this run actually published to, in order
+const published = [];  // registries this run published to completely, in order
+const started = [];    // registries whose first publish call began; one that is not in `published` was cut short
+const begin = (eco) => { if (!DRY) started.push(eco); };
 // The tracked files those same pathspecs cover — restore() may only revert files whose
 // pre-run cleanliness this gate actually verified.
 const covered = new Set(
@@ -312,12 +314,13 @@ const restore = () => {
 // entry is the only change the run leaves behind.
 let recorded = false;
 const recordCandidate = () => {
-  if (recorded || DRY || !published.length) return; recorded = true;
-  const stopped = ONLY.filter((p) => !published.includes(p));
+  if (recorded || DRY || !started.length) return; recorded = true;
+  const cutShort = started.filter((p) => !published.includes(p)).map((p) => `${p} (cut short)`);
+  const stopped = ONLY.filter((p) => !started.includes(p));
   try {
     appendCandidateLog(join(ROOT, CANDIDATE_LOG), candidateLogRow({
       candidate: CANON, commit: sh("git rev-parse HEAD").trim(), dirty: builtFromDirtyTree, date: new Date(),
-      registries: stopped.length ? [...published, `stopped before ${stopped.join(", ")}`] : published,
+      registries: [...published, ...cutShort, ...(stopped.length ? [`stopped before ${stopped.join(", ")}`] : [])],
     }));
     console.log(`recorded ${CANON} in ${CANDIDATE_LOG} — commit that line`);
   } catch (e) { console.error(`could not record ${CANON} in ${CANDIDATE_LOG}: ${e.message}`); }
@@ -372,6 +375,7 @@ if (wants("npm")) {
   if (seen !== NPM_REG) die(`bun would publish to ${seen}, not ${NPM_REG} — aborting`);
   ok(`bun publish target verified by dry-run: ${seen}`);
 
+  begin("npm");
   if (!DRY) for (const pkg of ordered) {
     await run("bun publish --tag prerelease",
       { cwd: join(ROOT, pkg.dir), env: { ...process.env, HOME: home } });
@@ -389,6 +393,7 @@ if (wants("python")) {
   const dist = scratch("pydist");
   await run(`cd server/python && uv build --out-dir ${dist}`);
   ok(`python built ${V.pypi}`);
+  begin("python");
   if (!DRY) {
     await run(`cd server/python && uv publish --publish-url "${PYPI_URL}" --username "${OWNER}" --password "${TOKEN}" ${dist}/*`);
     ok(`python: metaobjects ${V.pypi} → ${expectedHost}`);
@@ -404,6 +409,7 @@ if (wants("csharp")) {
                  "MetaObjects.Codegen/MetaObjects.Codegen", "MetaObjects.Cli/MetaObjects.Cli"];
   for (const p of projs) await run(`cd server/csharp && dotnet pack ${p}.csproj -c Release -o ${out} -p:Version=${V.nuget} --nologo -v q`);
   ok(`csharp packed ${V.nuget} (4 packages)`);
+  begin("csharp");
   if (!DRY) {
     await run(`dotnet nuget push "${out}/*.nupkg" --source "${NUGET_SRC}" --api-key "${TOKEN}"`);
     ok(`csharp: 4 packages @ ${V.nuget} → ${expectedHost}`);
@@ -437,6 +443,7 @@ if (wants("java")) {
   // `package` for a dry run, not `install`: a dry run must not write artifacts anywhere.
   const goal = DRY ? "package" : "deploy";
   const repo = keptScratch("m2repo");
+  begin("java");
   await run(`cd server/java && mvn -B -s ${settings} -Dmaven.repo.local=${repo} ${goal} -DskipTests` +
      ` -DaltDeploymentRepository="mo-prerelease::${MAVEN_URL}"`,
      { stdio: "inherit" });
