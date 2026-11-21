@@ -9,6 +9,7 @@ import com.metaobjects.generator.spring.AutoSetSupport;
 import com.metaobjects.generator.spring.Fr019SharedEnum;
 import com.metaobjects.generator.spring.SpringGeneratorSupport;
 import com.metaobjects.generator.spring.SpringNaming;
+import com.metaobjects.generator.spring.SpringJavaWriter;
 import com.metaobjects.generator.spring.SpringRecordBuilder;
 import com.metaobjects.generator.spring.SpringTypeMapper;
 import com.metaobjects.generator.spring.TphPlan;
@@ -22,6 +23,7 @@ import com.metaobjects.field.ObjectField;
 import com.metaobjects.field.StringField;
 import com.metaobjects.field.UriField;
 import com.metaobjects.generator.GeneratorException;
+import com.metaobjects.generator.writer.CodeWriter;
 import com.metaobjects.generator.GeneratorIOWriter;
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
 import com.metaobjects.generator.util.GeneratorUtil;
@@ -247,15 +249,10 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         // "writable" reading of this flag stays true.
         boolean writableForAutoSet = !GeneratorUtil.isReport(entity)
             && (SpringGeneratorSupport.repositoryAppliesTo(entity) || TphPlan.isTphSubtype(entity));
-        List<String> extraBodyMembers = new ArrayList<>(
-            (writableForAutoSet && SpringGeneratorSupport.hasAutoSetFields(entity))
-                ? autoSetStampHelpers(entity, fields, SpringNaming.dtoName(
-                      SpringNaming.splitFqn(entity.getName())[1]))
-                : List.<String>of());
+        boolean stamps = writableForAutoSet && SpringGeneratorSupport.hasAutoSetFields(entity);
         // Entity-scoped cross-field validators: class-level @AssertTrue rules on the full DTO only.
-        String crossField = crossFieldMembers(entity, fields);
-        if (!crossField.isEmpty()) extraBodyMembers.add(crossField);
-        emitRecord(entity, outRoot, fields, annotationsPerField, extraBodyMembers);
+        boolean crossField = !SpringGeneratorSupport.crossFieldRules(entity, fields, f -> "").isEmpty();
+        emitRecord(entity, outRoot, fields, annotationsPerField, stamps, crossField);
     }
 
     /**
@@ -309,247 +306,291 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
      * TPH {@link #emitTphSubtypePatch} paths funnel through here so the tristate semantics (absent /
      * present-null-clears / present-null-on-@required-throws / present-value-binds) cannot drift.
      */
-    private void writePatch(MetaObject entity, Path outRoot, String patchName, String dtoName,
+    protected void writePatch(MetaObject entity, Path outRoot, String patchName, String dtoName,
             List<MetaField> settable, List<MetaField> onUpdateAutoSet) {
         String[] split = SpringNaming.splitFqn(entity.getName());
         String pkg = split[0];
         String shortName = split[1];
 
-        StringBuilder src = new StringBuilder();
-        if (!pkg.isEmpty()) src.append("package ").append(pkg).append(";\n\n");
-        src.append("import com.fasterxml.jackson.core.JsonProcessingException;\n");
-        src.append("import com.fasterxml.jackson.core.type.TypeReference;\n");
-        src.append("import com.fasterxml.jackson.databind.JsonNode;\n");
-        src.append("import com.fasterxml.jackson.databind.ObjectMapper;\n");
-        src.append("import ").append(runtimePackage).append(".PatchValidationException;\n");
-        src.append("import java.util.LinkedHashMap;\n");
-        src.append("import java.util.Map;\n");
-        src.append("import java.util.Set;\n\n");
-        src.append("/** GENERATED — presence-tracked partial-update (PATCH) shape for ")
-           .append(shortName).append(". Do not hand-edit; regenerated from metadata. */\n");
-        src.append("public final class ").append(patchName).append(" {\n\n");
-        src.append("    private final Map<String, Object> assigned;\n\n");
-        src.append("    private ").append(patchName)
-           .append("(Map<String, Object> assigned) { this.assigned = assigned; }\n\n");
+        SpringJavaWriter w = newWriter(pkg);
+        w.use("com.fasterxml.jackson.core.JsonProcessingException");
+        w.use("com.fasterxml.jackson.core.type.TypeReference");
+        w.use("com.fasterxml.jackson.databind.JsonNode");
+        w.use("com.fasterxml.jackson.databind.ObjectMapper");
+        w.use(runtimePackage + ".PatchValidationException");
+        w.use("java.util.LinkedHashMap");
+        w.use("java.util.Map");
+        w.use("java.util.Set");
+        w.line("/** GENERATED — presence-tracked partial-update (PATCH) shape for " + shortName
+            + ". Do not hand-edit; regenerated from metadata. */");
+        try (CodeWriter.Block cls = w.block("public final class " + patchName + " {")) {
+            w.line("private final Map<String, Object> assigned;");
+            w.blank();
+            w.line("private " + patchName + "(Map<String, Object> assigned) { this.assigned = assigned; }");
+            w.blank();
+            writePatchAccessors(w, entity, dtoName, settable);
+            w.blank();
+            // FR-036: the assigned name→value map (present values, incl. an explicit null), for the
+            // controller to bean-validate each PRESENT non-null value against the DTO's constraints.
+            w.text("""
+                /** The field names ASSIGNED by this patch (present in the body), in order. */
+                public Set<String> assignedFields() { return assigned.keySet(); }
 
-        // Per settable field: has<Field>() (presence, incl. explicit null) + <field>() (value).
-        //
-        // The ACCESSOR takes the escaped name; the map KEY keeps the declared one. A Patch is a
-        // plain class rather than a record, so javac does not reject an illegal name here — it
-        // resolves it against Object. `notify` fails loudly (the Boolean accessor cannot override
-        // the final void one), but `toString` compiles CLEANLY and silently overrides
-        // Object.toString(), so every log line and debugger view of the patch returns a field
-        // value instead. has<Cap>() needs no escape: capitalisation already clears the collision.
+                /** The name&rarr;value map of fields ASSIGNED by this patch (present values, incl. explicit null). */
+                public java.util.Map<String, Object> assignedValues() { return java.util.Collections.unmodifiableMap(assigned); }
+                """);
+            w.blank();
+            // Issue #203 — @autoSet onUpdate stamping. The generated controller's PATCH handler calls
+            // this AFTER binding + validating the caller's present values and BEFORE delegating to
+            // repository.patch, so every partial update bumps updated_at (the model value is ignored:
+            // the server owns onUpdate timestamps). now() is keyed off each column's temporal type. Only
+            // emitted for entities that declare an @autoSet onUpdate column.
+            if (!onUpdateAutoSet.isEmpty()) {
+                writeStampAutoSetOnUpdate(w, onUpdateAutoSet);
+                w.blank();
+            }
+            PatchBinders binders = writePatchFromJson(w, entity, patchName, dtoName, settable);
+            w.blank();
+            writePatchBinder(w);
+            if (binders.decimal() || binders.decimalList()) {
+                w.use(runtimePackage + ".CanonicalDecimalDeserializer");
+                w.blank();
+                writePatchDecimalBinder(w);
+            }
+            if (binders.decimalList()) {
+                w.blank();
+                writePatchDecimalListBinder(w);
+            }
+            if (binders.duration() || binders.durationList()) {
+                w.use(runtimePackage + ".CanonicalDurationDeserializer");
+            }
+            if (binders.duration()) {
+                w.blank();
+                writePatchDurationBinder(w);
+            }
+            if (binders.durationList()) {
+                w.blank();
+                writePatchDurationListBinder(w);
+            }
+        }
+        writeJavaFile(entity, outRoot, pkg, patchName, w);
+    }
+
+    /** Which typed binders a patch's {@code fromJson} calls, so only those are written. */
+    protected record PatchBinders(boolean decimal, boolean decimalList, boolean duration, boolean durationList) {}
+
+    /**
+     * Per settable field: {@code has<Field>()} (presence, incl. explicit null) and
+     * {@code <field>()} (value).
+     *
+     * <p>The ACCESSOR takes the escaped name; the map KEY keeps the declared one. A Patch is a
+     * plain class rather than a record, so javac does not reject an illegal name here — it
+     * resolves it against Object. {@code notify} fails loudly (the Boolean accessor cannot override
+     * the final void one), but {@code toString} compiles CLEANLY and silently overrides
+     * Object.toString(), so every log line and debugger view of the patch returns a field
+     * value instead. has&lt;Cap&gt;() needs no escape: capitalisation already clears the collision.</p>
+     */
+    protected void writePatchAccessors(SpringJavaWriter w, MetaObject entity, String dtoName,
+                                       List<MetaField> settable) {
         for (MetaField field : settable) {
             String name = field.getName();
             String accessor = SpringNaming.recordComponentName(name);
             String cap = SpringNaming.capitalize(name);
             String type = patchComponentType(field, entity, dtoName);
-            src.append("    public boolean has").append(cap)
-               .append("() { return assigned.containsKey(\"").append(name).append("\"); }\n");
-            src.append("    public ").append(type).append(' ').append(accessor).append("() { return (")
-               .append(type).append(") assigned.get(\"").append(name).append("\"); }\n");
+            w.line("public boolean has" + cap + "() { return assigned.containsKey(\"" + name + "\"); }");
+            w.line("public " + type + " " + accessor + "() { return (" + type + ") assigned.get(\"" + name + "\"); }");
         }
-        src.append("\n    /** The field names ASSIGNED by this patch (present in the body), in order. */\n");
-        src.append("    public Set<String> assignedFields() { return assigned.keySet(); }\n\n");
-        // FR-036: the assigned name→value map (present values, incl. an explicit null), for the
-        // controller to bean-validate each PRESENT non-null value against the DTO's constraints.
-        src.append("    /** The name&rarr;value map of fields ASSIGNED by this patch (present values, incl. explicit null). */\n");
-        src.append("    public java.util.Map<String, Object> assignedValues() { return java.util.Collections.unmodifiableMap(assigned); }\n\n");
-
-        // Issue #203 — @autoSet onUpdate stamping. The generated controller's PATCH handler calls
-        // this AFTER binding + validating the caller's present values and BEFORE delegating to
-        // repository.patch, so every partial update bumps updated_at (the model value is ignored:
-        // the server owns onUpdate timestamps). now() is keyed off each column's temporal type. Only
-        // emitted for entities that declare an @autoSet onUpdate column.
-        if (!onUpdateAutoSet.isEmpty()) {
-            src.append("    /** Issue #203 @autoSet: stamp every onUpdate column to now() (server-owned; bumps on every PATCH). */\n");
-            src.append("    public void stampAutoSetOnUpdate() {\n");
-            for (MetaField field : onUpdateAutoSet) {
-                src.append("        assigned.put(\"").append(field.getName()).append("\", ")
-                   .append(AutoSetSupport.nowExpr(field)).append(");\n");
-            }
-            src.append("    }\n\n");
-        }
-
-        // fromJson — the presence-tracked builder.
-        src.append("    /**\n");
-        src.append("     * Build from a JSON body. A non-object body is rejected; an ABSENT key is\n");
-        src.append("     * untouched; a present null CLEARS a non-@required field and is a validation\n");
-        src.append("     * error on a @required one; a present value binds via Jackson exactly as\n");
-        src.append("     * create does. Unknown keys are ignored (FR-035 PATCH-3 deferred).\n");
-        src.append("     */\n");
-        src.append("    public static ").append(patchName)
-           .append(" fromJson(JsonNode body, ObjectMapper mapper) {\n");
-        src.append("        if (!body.isObject()) throw new PatchValidationException(\"(request body)\");\n");
-        src.append("        Map<String, Object> assigned = new LinkedHashMap<>();\n");
-        // Every field is bound even after one fails, so the one exception below lists them all.
-        src.append("        java.util.List<PatchValidationException.Problem> problems = PatchValidationException.newProblems();\n");
-        boolean usesDecimalPatch = false;
-        boolean usesDecimalListPatch = false;
-        boolean usesDurationPatch = false;
-        boolean usesDurationListPatch = false;
-        for (MetaField field : settable) {
-            String name = field.getName();
-            String type = patchComponentType(field, entity, dtoName);
-            boolean required = SpringGeneratorSupport.isRequired(field);
-            // A TypeReference (not a raw Class) so a generic component — e.g. a
-            // field.<scalar> @isArray List<Long> — binds with its element type intact.
-            if ("java.math.BigDecimal".equals(type)) {
-                // ADR-0019 Amendment 1 (W2): a decimal binds through the strict rule, not the
-                // mapper's coercion: "" or "NaN" is a 400, a number is read exactly.
-                int[] bound = SpringGeneratorSupport.declaredDecimalBound(field);
-                src.append("        PatchValidationException.collect(problems, () -> bindDecimal(body, assigned, \"").append(name).append("\", ")
-                   .append(required).append(", ").append(bound == null ? 0 : bound[0])
-                   .append(", ").append(bound == null ? 0 : bound[1]).append("));\n");
-                usesDecimalPatch = true;
-                continue;
-            }
-            if ("java.util.List<java.math.BigDecimal>".equals(type)) {
-                // The same strict rule per element of a decimal array.
-                int[] bound = SpringGeneratorSupport.declaredDecimalBound(field);
-                src.append("        PatchValidationException.collect(problems, () -> bindDecimalList(body, assigned, \"").append(name).append("\", ")
-                   .append(required).append(", ").append(bound == null ? 0 : bound[0])
-                   .append(", ").append(bound == null ? 0 : bound[1]).append("));\n");
-                usesDecimalPatch = true;
-                usesDecimalListPatch = true;
-                continue;
-            }
-            if (wire.durationsIso()
-                    && ("java.time.Duration".equals(type) || "java.util.List<java.time.Duration>".equals(type))) {
-                // wire.durations: iso. field.duration binds through the strict accepted-form rule, not the mapper's
-                // Duration.parse (which takes fractional hours, lowercase and numbers of seconds).
-                boolean list = !"java.time.Duration".equals(type);
-                src.append("        PatchValidationException.collect(problems, () -> bindDuration").append(list ? "List" : "").append("(body, assigned, \"")
-                   .append(name).append("\", ").append(required).append("));\n");
-                if (list) usesDurationListPatch = true; else usesDurationPatch = true;
-                continue;
-            }
-            src.append("        PatchValidationException.collect(problems, () -> bind(body, mapper, assigned, \"").append(name)
-               .append("\", new TypeReference<").append(type).append(">() {}, ")
-               .append(required).append("));\n");
-        }
-        src.append("        if (!problems.isEmpty()) throw new PatchValidationException(problems, assigned);\n");
-        src.append("        return new ").append(patchName).append("(assigned);\n");
-        src.append("    }\n\n");
-
-        // bind — one settable field. treeToValue lets Jackson handle every subtype (no hand-rolled arms).
-        src.append("    private static void bind(JsonNode body, ObjectMapper mapper, Map<String, Object> assigned,\n");
-        src.append("            String field, TypeReference<?> type, boolean required) {\n");
-        src.append("        if (!body.has(field)) return;                         // absent → untouched\n");
-        src.append("        JsonNode node = body.get(field);\n");
-        src.append("        if (node.isNull()) {\n");
-        src.append("            if (required) throw new PatchValidationException(field);\n");
-        src.append("            assigned.put(field, null);                         // explicit null → clear\n");
-        src.append("            return;\n");
-        src.append("        }\n");
-        src.append("        try {\n");
-        src.append("            assigned.put(field, mapper.treeToValue(node, type));\n");
-        src.append("        } catch (JsonProcessingException e) {\n");
-        src.append("            throw new PatchValidationException(field, e);\n");
-        src.append("        }\n");
-        src.append("    }\n");
-        if (usesDecimalPatch) {
-            // The import line is written before the body; add the one the body now needs.
-            String pve = "import " + runtimePackage + ".PatchValidationException;\n";
-            int at = src.indexOf(pve);
-            src.insert(at, "import " + runtimePackage + ".CanonicalDecimalDeserializer;\n");
-            // ADR-0019 Amendment 1 (W2): the strict decimal rule over the tree node.
-            src.append("\n    private static void bindDecimal(JsonNode body, Map<String, Object> assigned,\n");
-            src.append("            String field, boolean required, int precision, int scale) {\n");
-            src.append("        if (!body.has(field)) return;                         // absent → untouched\n");
-            src.append("        JsonNode node = body.get(field);\n");
-            src.append("        if (node.isNull()) {\n");
-            src.append("            if (required) throw new PatchValidationException(field);\n");
-            src.append("            assigned.put(field, null);                         // explicit null → clear\n");
-            src.append("            return;\n");
-            src.append("        }\n");
-            src.append("        try {\n");
-            src.append("            // precision 0 declares no @precision: only the engine-wide W3 limits apply\n");
-            src.append("            assigned.put(field, precision == 0 ? CanonicalDecimalDeserializer.fromNode(node)\n");
-            src.append("                : CanonicalDecimalDeserializer.fromNode(node, precision, scale));\n");
-            src.append("        } catch (IllegalArgumentException e) {\n");
-            src.append("            throw new PatchValidationException(field, e);\n");
-            src.append("        }\n");
-            src.append("    }\n");
-            if (usesDecimalListPatch) {
-                src.append("\n    private static void bindDecimalList(JsonNode body, Map<String, Object> assigned,\n");
-                src.append("            String field, boolean required, int precision, int scale) {\n");
-                src.append("        if (!body.has(field)) return;                         // absent → untouched\n");
-                src.append("        JsonNode node = body.get(field);\n");
-                src.append("        if (node.isNull()) {\n");
-                src.append("            if (required) throw new PatchValidationException(field);\n");
-                src.append("            assigned.put(field, null);                         // explicit null → clear\n");
-                src.append("            return;\n");
-                src.append("        }\n");
-                src.append("        if (!node.isArray()) throw new PatchValidationException(field);\n");
-                src.append("        java.util.List<java.math.BigDecimal> items = new java.util.ArrayList<>();\n");
-                src.append("        for (JsonNode item : node) {\n");
-                src.append("            if (item.isNull()) throw new PatchValidationException(field);\n");
-                src.append("            try {\n");
-                src.append("                items.add(precision == 0 ? CanonicalDecimalDeserializer.fromNode(item)\n");
-                src.append("                    : CanonicalDecimalDeserializer.fromNode(item, precision, scale));\n");
-                src.append("            } catch (IllegalArgumentException e) {\n");
-                src.append("                throw new PatchValidationException(field, e);\n");
-                src.append("            }\n");
-                src.append("        }\n");
-                src.append("        assigned.put(field, items);\n");
-                src.append("    }\n");
-            }
-        }
-        if (usesDurationPatch || usesDurationListPatch) {
-            String pve = "import " + runtimePackage + ".PatchValidationException;\n";
-            int at = src.indexOf(pve);
-            src.insert(at, "import " + runtimePackage + ".CanonicalDurationDeserializer;\n");
-        }
-        if (usesDurationPatch) {
-            src.append("\n    private static void bindDuration(JsonNode body, Map<String, Object> assigned,\n");
-            src.append("            String field, boolean required) {\n");
-            src.append("        if (!body.has(field)) return;                         // absent → untouched\n");
-            src.append("        JsonNode node = body.get(field);\n");
-            src.append("        if (node.isNull()) {\n");
-            src.append("            if (required) throw new PatchValidationException(field);\n");
-            src.append("            assigned.put(field, null);                         // explicit null → clear\n");
-            src.append("            return;\n");
-            src.append("        }\n");
-            src.append("        try {\n");
-            src.append("            assigned.put(field, CanonicalDurationDeserializer.fromNode(node));\n");
-            src.append("        } catch (IllegalArgumentException e) {\n");
-            src.append("            throw new PatchValidationException(field, e);\n");
-            src.append("        }\n");
-            src.append("    }\n");
-        }
-        if (usesDurationListPatch) {
-            src.append("\n    private static void bindDurationList(JsonNode body, Map<String, Object> assigned,\n");
-            src.append("            String field, boolean required) {\n");
-            src.append("        if (!body.has(field)) return;                         // absent → untouched\n");
-            src.append("        JsonNode node = body.get(field);\n");
-            src.append("        if (node.isNull()) {\n");
-            src.append("            if (required) throw new PatchValidationException(field);\n");
-            src.append("            assigned.put(field, null);                         // explicit null → clear\n");
-            src.append("            return;\n");
-            src.append("        }\n");
-            src.append("        if (!node.isArray()) throw new PatchValidationException(field);\n");
-            src.append("        java.util.List<java.time.Duration> items = new java.util.ArrayList<>();\n");
-            src.append("        for (JsonNode item : node) {\n");
-            src.append("            if (item.isNull()) throw new PatchValidationException(field);\n");
-            src.append("            try {\n");
-            src.append("                items.add(CanonicalDurationDeserializer.fromNode(item));\n");
-            src.append("            } catch (IllegalArgumentException e) {\n");
-            src.append("                throw new PatchValidationException(field, e);\n");
-            src.append("            }\n");
-            src.append("        }\n");
-            src.append("        assigned.put(field, items);\n");
-            src.append("    }\n");
-        }
-        src.append("}\n");
-
-        writeJavaFile(entity, outRoot, pkg, patchName, src.toString());
     }
 
+    /** Issue #203: the patch's {@code stampAutoSetOnUpdate()}, bumping every onUpdate column to now(). */
+    protected void writeStampAutoSetOnUpdate(SpringJavaWriter w, List<MetaField> onUpdateAutoSet) {
+        w.line("/** Issue #203 @autoSet: stamp every onUpdate column to now() (server-owned; bumps on every PATCH). */");
+        try (CodeWriter.Block m = w.block("public void stampAutoSetOnUpdate() {")) {
+            for (MetaField field : onUpdateAutoSet) {
+                w.line("assigned.put(\"" + field.getName() + "\", " + AutoSetSupport.nowExpr(field) + ");");
+            }
+        }
+    }
 
+    /** {@code fromJson} — the presence-tracked builder; returns which typed binders it calls. */
+    protected PatchBinders writePatchFromJson(SpringJavaWriter w, MetaObject entity, String patchName,
+                                              String dtoName, List<MetaField> settable) {
+        boolean decimal = false;
+        boolean decimalList = false;
+        boolean duration = false;
+        boolean durationList = false;
+        w.text("""
+            /**
+             * Build from a JSON body. A non-object body is rejected; an ABSENT key is
+             * untouched; a present null CLEARS a non-@required field and is a validation
+             * error on a @required one; a present value binds via Jackson exactly as
+             * create does. Unknown keys are ignored (FR-035 PATCH-3 deferred).
+             */
+            """);
+        try (CodeWriter.Block m = w.block("public static " + patchName + " fromJson(JsonNode body, ObjectMapper mapper) {")) {
+            w.text("""
+                if (!body.isObject()) throw new PatchValidationException("(request body)");
+                Map<String, Object> assigned = new LinkedHashMap<>();
+                java.util.List<PatchValidationException.Problem> problems = PatchValidationException.newProblems();
+                """);
+            // Every field is bound even after one fails, so the one exception below lists them all.
+            for (MetaField field : settable) {
+                String name = field.getName();
+                String type = patchComponentType(field, entity, dtoName);
+                String required = String.valueOf(SpringGeneratorSupport.isRequired(field));
+                String collect = "PatchValidationException.collect(problems, () -> ";
+                // A TypeReference (not a raw Class) so a generic component — e.g. a
+                // field.<scalar> @isArray List<Long> — binds with its element type intact.
+                if ("java.math.BigDecimal".equals(type) || "java.util.List<java.math.BigDecimal>".equals(type)) {
+                    // ADR-0019 Amendment 1 (W2): a decimal binds through the strict rule, not the
+                    // mapper's coercion: "" or "NaN" is a 400, a number is read exactly. The same
+                    // strict rule applies per element of a decimal array.
+                    boolean list = !"java.math.BigDecimal".equals(type);
+                    int[] bound = SpringGeneratorSupport.declaredDecimalBound(field);
+                    w.line(collect + "bindDecimal" + (list ? "List" : "") + "(body, assigned, \"" + name + "\", "
+                        + required + ", " + (bound == null ? 0 : bound[0]) + ", " + (bound == null ? 0 : bound[1]) + "));");
+                    decimal = true;
+                    if (list) decimalList = true;
+                    continue;
+                }
+                if (wire.durationsIso()
+                        && ("java.time.Duration".equals(type) || "java.util.List<java.time.Duration>".equals(type))) {
+                    // wire.durations: iso. field.duration binds through the strict accepted-form rule, not the mapper's
+                    // Duration.parse (which takes fractional hours, lowercase and numbers of seconds).
+                    boolean list = !"java.time.Duration".equals(type);
+                    w.line(collect + "bindDuration" + (list ? "List" : "") + "(body, assigned, \"" + name + "\", "
+                        + required + "));");
+                    if (list) durationList = true; else duration = true;
+                    continue;
+                }
+                w.line(collect + "bind(body, mapper, assigned, \"" + name + "\", new TypeReference<" + type + ">() {}, "
+                    + required + "));");
+            }
+            w.line("if (!problems.isEmpty()) throw new PatchValidationException(problems, assigned);");
+            w.line("return new " + patchName + "(assigned);");
+        }
+        return new PatchBinders(decimal, decimalList, duration, durationList);
+    }
 
+    /** {@code bind} — one settable field. treeToValue lets Jackson handle every subtype (no hand-rolled arms). */
+    protected void writePatchBinder(SpringJavaWriter w) {
+        w.text("""
+            private static void bind(JsonNode body, ObjectMapper mapper, Map<String, Object> assigned,
+                    String field, TypeReference<?> type, boolean required) {
+                if (!body.has(field)) return;                         // absent → untouched
+                JsonNode node = body.get(field);
+                if (node.isNull()) {
+                    if (required) throw new PatchValidationException(field);
+                    assigned.put(field, null);                         // explicit null → clear
+                    return;
+                }
+                try {
+                    assigned.put(field, mapper.treeToValue(node, type));
+                } catch (JsonProcessingException e) {
+                    throw new PatchValidationException(field, e);
+                }
+            }
+            """);
+    }
 
+    /** ADR-0019 Amendment 1 (W2): the strict decimal rule over the tree node. */
+    protected void writePatchDecimalBinder(SpringJavaWriter w) {
+        w.text("""
+            private static void bindDecimal(JsonNode body, Map<String, Object> assigned,
+                    String field, boolean required, int precision, int scale) {
+                if (!body.has(field)) return;                         // absent → untouched
+                JsonNode node = body.get(field);
+                if (node.isNull()) {
+                    if (required) throw new PatchValidationException(field);
+                    assigned.put(field, null);                         // explicit null → clear
+                    return;
+                }
+                try {
+                    // precision 0 declares no @precision: only the engine-wide W3 limits apply
+                    assigned.put(field, precision == 0 ? CanonicalDecimalDeserializer.fromNode(node)
+                        : CanonicalDecimalDeserializer.fromNode(node, precision, scale));
+                } catch (IllegalArgumentException e) {
+                    throw new PatchValidationException(field, e);
+                }
+            }
+            """);
+    }
+
+    /** The strict decimal rule per element of a decimal array. */
+    protected void writePatchDecimalListBinder(SpringJavaWriter w) {
+        w.text("""
+            private static void bindDecimalList(JsonNode body, Map<String, Object> assigned,
+                    String field, boolean required, int precision, int scale) {
+                if (!body.has(field)) return;                         // absent → untouched
+                JsonNode node = body.get(field);
+                if (node.isNull()) {
+                    if (required) throw new PatchValidationException(field);
+                    assigned.put(field, null);                         // explicit null → clear
+                    return;
+                }
+                if (!node.isArray()) throw new PatchValidationException(field);
+                java.util.List<java.math.BigDecimal> items = new java.util.ArrayList<>();
+                for (JsonNode item : node) {
+                    if (item.isNull()) throw new PatchValidationException(field);
+                    try {
+                        items.add(precision == 0 ? CanonicalDecimalDeserializer.fromNode(item)
+                            : CanonicalDecimalDeserializer.fromNode(item, precision, scale));
+                    } catch (IllegalArgumentException e) {
+                        throw new PatchValidationException(field, e);
+                    }
+                }
+                assigned.put(field, items);
+            }
+            """);
+    }
+
+    /** {@code wire.durations: iso}: the strict accepted-form duration rule over the tree node. */
+    protected void writePatchDurationBinder(SpringJavaWriter w) {
+        w.text("""
+            private static void bindDuration(JsonNode body, Map<String, Object> assigned,
+                    String field, boolean required) {
+                if (!body.has(field)) return;                         // absent → untouched
+                JsonNode node = body.get(field);
+                if (node.isNull()) {
+                    if (required) throw new PatchValidationException(field);
+                    assigned.put(field, null);                         // explicit null → clear
+                    return;
+                }
+                try {
+                    assigned.put(field, CanonicalDurationDeserializer.fromNode(node));
+                } catch (IllegalArgumentException e) {
+                    throw new PatchValidationException(field, e);
+                }
+            }
+            """);
+    }
+
+    /** The strict duration rule per element of a duration array. */
+    protected void writePatchDurationListBinder(SpringJavaWriter w) {
+        w.text("""
+            private static void bindDurationList(JsonNode body, Map<String, Object> assigned,
+                    String field, boolean required) {
+                if (!body.has(field)) return;                         // absent → untouched
+                JsonNode node = body.get(field);
+                if (node.isNull()) {
+                    if (required) throw new PatchValidationException(field);
+                    assigned.put(field, null);                         // explicit null → clear
+                    return;
+                }
+                if (!node.isArray()) throw new PatchValidationException(field);
+                java.util.List<java.time.Duration> items = new java.util.ArrayList<>();
+                for (JsonNode item : node) {
+                    if (item.isNull()) throw new PatchValidationException(field);
+                    try {
+                        items.add(CanonicalDurationDeserializer.fromNode(item));
+                    } catch (IllegalArgumentException e) {
+                        throw new PatchValidationException(field, e);
+                    }
+                }
+                assigned.put(field, items);
+            }
+            """);
+    }
 
     /** The {@code <Entity>Patch} component type for {@code field}. Identical to the DTO's
      *  FR-019-aware {@link #componentTypeFr019} EXCEPT for an INLINE {@code field.enum}: its
@@ -590,43 +631,36 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         // path (SpringGeneratorSupport.hasAutoSetFields(base) — @autoSet columns live on the base, shared
         // by every subtype row in the single table): empty for a non-@autoSet hierarchy, so the
         // union DTO stays byte-identical.
-        List<String> extraBodyMembers =
-            (SpringGeneratorSupport.repositoryAppliesTo(base) && SpringGeneratorSupport.hasAutoSetFields(base))
-                ? autoSetStampHelpers(base, fields, SpringNaming.dtoName(SpringNaming.splitFqn(base.getName())[1]))
-                : List.of();
-        emitRecord(base, outRoot, fields, annotationsPerField, extraBodyMembers);
+        boolean stamps = SpringGeneratorSupport.repositoryAppliesTo(base) && SpringGeneratorSupport.hasAutoSetFields(base);
+        emitRecord(base, outRoot, fields, annotationsPerField, stamps, false);
     }
 
     /** Shared record emitter: write {@code <Entity>Dto} record from a field + per-field annotation
-     *  list, plus {@code extraBodyMembers} (static methods / declarations) appended after the
-     *  nested-enum declarations in the record body — e.g. the issue #203 @autoSet stamping helpers.
-     *  Every DTO but a projection's carries the Java builder (#365): a projection's read DTO arrives
-     *  from a query and nothing should construct it, the line the Kotlin port draws too. An entity
-     *  cannot have a read-only primary source, so "not a projection" is exactly "constructable". */
-    private void emitRecord(MetaObject entity, Path outRoot, List<MetaField> fields,
-            List<String> annotationsPerField, List<String> extraBodyMembers) {
+     *  list. The record body carries the nested inline enums, then (when {@code stamps}) the
+     *  issue #203 @autoSet stamping helpers, then (when {@code crossField}) the class-level
+     *  cross-field validators, then the Java builder (#365) — on every DTO but a projection's: a
+     *  projection's read DTO arrives from a query and nothing should construct it, the line the
+     *  Kotlin port draws too. An entity cannot have a read-only primary source, so "not a
+     *  projection" is exactly "constructable". */
+    protected void emitRecord(MetaObject entity, Path outRoot, List<MetaField> fields,
+            List<String> annotationsPerField, boolean stamps, boolean crossField) {
         String[] split = SpringNaming.splitFqn(entity.getName());
         String pkg = split[0];
         String shortName = split[1];
         String recordName = SpringNaming.dtoName(shortName);
 
         // A jakarta constraint is any annotation content OTHER than the Jackson @JsonDeserialize
-        // (#234) — stripping only @JsonDeserialize keeps this byte-identical for every pre-#234
-        // DTO (which never carries one) while a uri/inet-only component doesn't pull an unused
-        // jakarta.validation import.
+        // (#234) — stripping only @JsonDeserialize keeps a uri/inet-only component from pulling an
+        // unused jakarta.validation import.
         boolean usesValidation = annotationsPerField.stream()
             .anyMatch(a -> !a.replaceAll("@JsonDeserialize\\([^)]*\\)", "").trim().isEmpty());
         // @Valid (jakarta.validation, NOT ...constraints) cascades validation into a
         // value-object jsonb component — emitted on VO fields by emit() (Program D).
-        boolean crossField = extraBodyMembers.stream().anyMatch(m -> m.contains("@AssertTrue"));
         boolean usesValid = annotationsPerField.stream().anyMatch(a -> a.contains("@Valid"));
         // #234: a strict field.uri / field.inet component carries @JsonDeserialize(using = …).
         boolean usesNetDeser = annotationsPerField.stream().anyMatch(a -> a.contains("@JsonDeserialize"));
 
-        StringBuilder src = new StringBuilder();
-        if (!pkg.isEmpty()) {
-            src.append("package ").append(pkg).append(";\n\n");
-        }
+        SpringJavaWriter w = newWriter(pkg);
         // ADR-0019 Amendment 1: a decimal component binds the canonical serializer / strict
         // deserializer (JsonDeserialize is imported once, for either reason).
         boolean usesDecimal = fields.stream()
@@ -635,87 +669,69 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         boolean usesDuration = wire.durationsIso() && fields.stream()
             .anyMatch(f -> SpringGeneratorSupport.isDurationComponent(componentTypeFr019(f, entity)));
         if (usesDecimal) {
-            for (String fqn : SpringGeneratorSupport.decimalAnnotationImports(runtimePackage, wire)) {
-                src.append("import ").append(fqn).append(";\n");
-            }
+            for (String fqn : SpringGeneratorSupport.decimalAnnotationImports(runtimePackage, wire)) w.use(fqn);
         } else if (usesNetDeser || usesDuration) {
-            src.append("import com.fasterxml.jackson.databind.annotation.JsonDeserialize;\n");
+            w.use("com.fasterxml.jackson.databind.annotation.JsonDeserialize");
         }
         if (usesDuration) {
             for (String fqn : SpringGeneratorSupport.durationAnnotationImports(
                     runtimePackage, usesDecimal && wire.decimalsAsString())) {
-                src.append("import ").append(fqn).append(";\n");
+                w.use(fqn);
             }
         }
+        if (usesValid) w.use("jakarta.validation.Valid");
         // Wildcard import keeps the emit simple — record components carry a small,
         // closed set of jakarta.validation.constraints annotations.
-        if (usesValid) {
-            src.append("import jakarta.validation.Valid;\n");
-        }
-        if (usesValidation || crossField) {
-            src.append("import jakarta.validation.constraints.*;\n");
-        }
-        if (usesDecimal || usesNetDeser || usesDuration || usesValid || usesValidation || crossField) {
-            src.append('\n');
-        }
-        src.append("/** GENERATED — wire DTO for ").append(shortName)
-           .append(". Do not hand-edit; regenerated from metadata. */\n");
+        if (usesValidation || crossField) w.use("jakarta.validation.constraints.*");
+        w.line("/** GENERATED — wire DTO for " + shortName + ". Do not hand-edit; regenerated from metadata. */");
         // A request body DROPS an undeclared key, never rejects it, whatever FAIL_ON_UNKNOWN_PROPERTIES
         // the host's ObjectMapper carries (a plain ObjectMapper has it on). Only a class bound from a
         // write route's body is one; a projection or report row keeps the host mapper's strictness.
         if (requestBodies.contains(entity.getName())) {
-            src.append("@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)\n");
+            w.line("@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)");
         }
-        src.append("public record ").append(recordName).append("(\n");
-
+        w.line("public record " + recordName + "(");
         // Filter ObjectField — see class javadoc. Same reason as the Kotlin port's
         // KotlinExposedTableGenerator scalar-only filter.
         List<String[]> components = new ArrayList<>(fields.size());
-        for (int i = 0; i < fields.size(); i++) {
-            MetaField field = fields.get(i);
-            String annotations = annotationsPerField.get(i);
-            String type = componentTypeFr019(field, entity);
-            // A field named notify/wait/toString/… cannot BE a record component (JLS 8.10.3),
-            // so it is escaped here and pinned back to its declared name on the wire.
-            String component = SpringNaming.recordComponentName(field.getName());
-            String jsonName = SpringNaming.jsonPropertyAnnotation(field.getName());
-            src.append("    ");
-            if (!annotations.isEmpty()) src.append(annotations).append(' ');
-            String decimalJson = SpringGeneratorSupport.decimalJsonAnnotations(type, runtimePackage, field, wire);
-            if (!decimalJson.isEmpty()) src.append(decimalJson).append(' ');
-            String durationJson = SpringGeneratorSupport.durationJsonAnnotations(type, wire);
-            if (!durationJson.isEmpty()) src.append(durationJson).append(' ');
-            if (!jsonName.isEmpty()) src.append(jsonName).append(' ');
-            src.append(type).append(' ').append(component);
-            if (i < fields.size() - 1) src.append(',');
-            src.append('\n');
-            components.add(new String[] { type, component });
-        }
+        w.deeper(1, () -> {
+            for (int i = 0; i < fields.size(); i++) {
+                MetaField field = fields.get(i);
+                String type = componentTypeFr019(field, entity);
+                // A field named notify/wait/toString/… cannot BE a record component (JLS 8.10.3),
+                // so it is escaped here and pinned back to its declared name on the wire.
+                String component = SpringNaming.recordComponentName(field.getName());
+                w.line(SpringGeneratorSupport.recordComponentDeclaration(
+                    annotationsPerField.get(i), type, component, field, runtimePackage, wire)
+                    + (i < fields.size() - 1 ? "," : ""));
+                components.add(new String[] { type, component });
+            }
+        });
 
-        // Nested `public enum <Name> { <members> }` declarations for this record's INLINE enum
-        // fields, deduped by enum-type name. FR-019: a field resolving to a package-level shared
-        // enum is NOT nested here — its type is materialized standalone (or @provided externally)
-        // and merely referenced. Inline enums stay nested (cross-port parity, byte-identical default).
-        List<String> enumDecls = collectEnumDecls(entity, fields);
         // FR-044: a report row is not constructable either, for the projection's reason.
-        String builder = MetaObject.SUBTYPE_PROJECTION.equals(entity.getSubType()) || GeneratorUtil.isReport(entity)
-            ? "" : SpringRecordBuilder.members(recordName, components);
-        if (enumDecls.isEmpty() && extraBodyMembers.isEmpty() && builder.isEmpty()) {
-            src.append(") {}\n");
+        boolean builder = !MetaObject.SUBTYPE_PROJECTION.equals(entity.getSubType()) && !GeneratorUtil.isReport(entity)
+            && SpringRecordBuilder.applies(recordName, components);
+        if (!hasEnumDecls(fields) && !stamps && !crossField && !builder) {
+            w.line(") {}");
         } else {
-            src.append(") {\n");
-            for (String decl : enumDecls) src.append("    ").append(decl.replace("\n", "\n    ")).append('\n');
-            for (String member : extraBodyMembers) src.append(member);
-            src.append(builder);
-            src.append("}\n");
+            try (CodeWriter.Block body = w.block(") {")) {
+                // Nested `public enum <Name> { <members> }` declarations for this record's INLINE enum
+                // fields, deduped by enum-type name. FR-019: a field resolving to a package-level shared
+                // enum is NOT nested here — its type is materialized standalone (or @provided externally)
+                // and merely referenced.
+                writeEnumDecls(w, entity, fields);
+                if (stamps) writeAutoSetStampHelpers(w, entity, fields, recordName);
+                if (crossField) SpringGeneratorSupport.writeCrossFieldValidationMembers(w, entity, fields);
+                if (builder) SpringRecordBuilder.writeMembers(w, recordName, components);
+            }
         }
-
-        writeJavaFile(entity, outRoot, pkg, recordName, src.toString());
+        writeJavaFile(entity, outRoot, pkg, recordName, w);
     }
 
     /**
-     * Issue #203 — build the record-body {@code @autoSet} stamping helpers for {@code entity}
-     * (whose DTO record is {@code recordName}, over the component list {@code fields}):
+     * Issue #203 — write the record-body {@code @autoSet} stamping helpers for {@code entity}
+     * (whose DTO record is {@code recordName}, over the component list {@code fields}), each after
+     * a blank line:
      * <ul>
      *   <li>{@code stampForInsert(dto)} — a copy with EVERY {@code @autoSet} column (onCreate AND
      *       onUpdate) stamped to {@code now()} (a fresh row's updated_at equals its created_at —
@@ -727,64 +743,60 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
      * Each rebuilds the immutable record via its canonical constructor, copying every non-stamped
      * component through and substituting {@code now()} for the stamped ones.
      */
-    private List<String> autoSetStampHelpers(MetaObject entity, List<MetaField> fields, String recordName) {
+    protected void writeAutoSetStampHelpers(SpringJavaWriter w, MetaObject entity, List<MetaField> fields,
+                                            String recordName) {
         List<MetaField> stampAll = SpringGeneratorSupport.stampFields(entity);      // onCreate + onUpdate
         List<MetaField> onUpdate = SpringGeneratorSupport.onUpdateFields(entity);   // onUpdate only
-        List<String> members = new ArrayList<>();
-        members.add(stampHelper(recordName, "stampForInsert", fields, stampAll,
+        writeStampHelper(w, recordName, "stampForInsert", fields, stampAll,
             "a copy with every @autoSet column (onCreate AND onUpdate) stamped to now() on insert "
-                + "(the model value is ignored; a fresh row's updated_at equals its created_at)"));
-        members.add(stampHelper(recordName, "stampForUpdate", fields, onUpdate,
+                + "(the model value is ignored; a fresh row's updated_at equals its created_at)");
+        writeStampHelper(w, recordName, "stampForUpdate", fields, onUpdate,
             "a copy with @autoSet onUpdate columns stamped to now(); onCreate columns are preserved "
-                + "(never rewrites created_at — the full-DTO update path)"));
-        members.add(
-            "\n    /** Issue #203 @autoSet escape hatch: the DTO written VERBATIM (import/restore/replication). */\n"
-            + "    public static " + recordName + " insertPreserving(" + recordName + " dto) { return dto; }\n");
-        return members;
+                + "(never rewrites created_at — the full-DTO update path)");
+        w.blank();
+        w.line("/** Issue #203 @autoSet escape hatch: the DTO written VERBATIM (import/restore/replication). */");
+        w.line("public static " + recordName + " insertPreserving(" + recordName + " dto) { return dto; }");
     }
 
     /**
-     * One {@code public static <Record> <method>(<Record> dto)} stamping helper: rebuild the record
-     * via its canonical constructor, substituting {@code now()} (keyed off each column's temporal
-     * type) for every field in {@code stamp} and copying the rest through. One {@code now()} local
-     * per distinct temporal Java type so all fields of that type share a single instant.
+     * One {@code public static <Record> <method>(<Record> dto)} stamping helper, after a blank
+     * line: rebuild the record via its canonical constructor, substituting {@code now()} (keyed
+     * off each column's temporal type) for every field in {@code stamp} and copying the rest
+     * through. One {@code now()} local per distinct temporal Java type so all fields of that type
+     * share a single instant.
      */
-    private static String stampHelper(String recordName, String methodName, List<MetaField> fields,
-            List<MetaField> stamp, String doc) {
+    protected void writeStampHelper(SpringJavaWriter w, String recordName, String methodName,
+                                    List<MetaField> fields, List<MetaField> stamp, String doc) {
         java.util.Set<String> stampNames = new java.util.LinkedHashSet<>();
         for (MetaField f : stamp) stampNames.add(f.getName());
-
-        StringBuilder b = new StringBuilder();
-        b.append("\n    /** Issue #203 @autoSet: ").append(doc).append(". */\n");
-        b.append("    public static ").append(recordName).append(' ').append(methodName)
-         .append('(').append(recordName).append(" dto) {\n");
-        // One shared now() local per distinct temporal Java type among the stamped fields.
-        java.util.LinkedHashMap<String, String> typeToVar = new java.util.LinkedHashMap<>();
-        for (MetaField f : stamp) {
-            String javaType = SpringTypeMapper.javaTypeName(f);
-            typeToVar.computeIfAbsent(javaType, jt -> {
-                String var = "__now" + jt.substring(jt.lastIndexOf('.') + 1);
-                b.append("        ").append(jt).append(' ').append(var).append(" = ")
-                 .append(AutoSetSupport.nowExpr(f)).append(";\n");
-                return var;
+        w.blank();
+        w.line("/** Issue #203 @autoSet: " + doc + ". */");
+        try (CodeWriter.Block m = w.block(
+                "public static " + recordName + " " + methodName + "(" + recordName + " dto) {")) {
+            // One shared now() local per distinct temporal Java type among the stamped fields.
+            java.util.LinkedHashMap<String, String> typeToVar = new java.util.LinkedHashMap<>();
+            for (MetaField f : stamp) {
+                String javaType = SpringTypeMapper.javaTypeName(f);
+                typeToVar.computeIfAbsent(javaType, jt -> {
+                    String var = "__now" + jt.substring(jt.lastIndexOf('.') + 1);
+                    w.line(jt + " " + var + " = " + AutoSetSupport.nowExpr(f) + ";");
+                    return var;
+                });
+            }
+            w.line("return new " + recordName + "(");
+            w.deeper(1, () -> {
+                for (int i = 0; i < fields.size(); i++) {
+                    String name = fields.get(i).getName();
+                    // A CALL site, so it takes the escaped component name: `dto.notify()` binds to
+                    // Object.notify() — a real void method — where a value is required.
+                    String value = stampNames.contains(name)
+                        ? typeToVar.get(SpringTypeMapper.javaTypeName(fields.get(i)))
+                        : "dto." + SpringNaming.recordComponentName(name) + "()";
+                    w.line(value + (i < fields.size() - 1 ? "," : ""));
+                }
             });
+            w.line(");");
         }
-        b.append("        return new ").append(recordName).append("(\n");
-        for (int i = 0; i < fields.size(); i++) {
-            MetaField field = fields.get(i);
-            String name = field.getName();
-            // A CALL site, so it takes the escaped component name: `dto.notify()` binds to
-            // Object.notify() — a real void method — where a value is required.
-            String value = stampNames.contains(name)
-                ? typeToVar.get(SpringTypeMapper.javaTypeName(field))
-                : "dto." + SpringNaming.recordComponentName(name) + "()";
-            b.append("            ").append(value);
-            if (i < fields.size() - 1) b.append(',');
-            b.append('\n');
-        }
-        b.append("        );\n");
-        b.append("    }\n");
-        return b.toString();
     }
 
     /**
@@ -800,48 +812,41 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         String shortName = split[1];
         String typeName = SpringNaming.dtoName(shortName);
 
-        StringBuilder src = new StringBuilder();
-        if (!pkg.isEmpty()) {
-            src.append("package ").append(pkg).append(";\n\n");
+        SpringJavaWriter w = newWriter(pkg);
+        w.line("/** GENERATED — abstract wire-DTO shape for " + shortName + ". Do not hand-edit; regenerated from metadata. */");
+        try (CodeWriter.Block b = w.block("public interface " + typeName + " {")) {
+            for (MetaField field : SpringGeneratorSupport.scalarFields(entity)) {
+                // JLS 9.2: an interface method override-equivalent to a public Object method but
+                // with a different return type is a compile error, so the shape escapes too — and
+                // it must agree with the record that implements it.
+                w.line(SpringTypeMapper.javaTypeName(field) + " "
+                    + SpringNaming.recordComponentName(field.getName()) + "();");
+            }
         }
-        src.append("/** GENERATED — abstract wire-DTO shape for ").append(shortName)
-           .append(". Do not hand-edit; regenerated from metadata. */\n");
-        src.append("public interface ").append(typeName).append(" {\n");
-        for (MetaField field : SpringGeneratorSupport.scalarFields(entity)) {
-            String type = SpringTypeMapper.javaTypeName(field);
-            // JLS 9.2: an interface method override-equivalent to a public Object method but
-            // with a different return type is a compile error, so the shape escapes too — and
-            // it must agree with the record that implements it.
-            src.append("    ").append(type).append(' ')
-               .append(SpringNaming.recordComponentName(field.getName())).append("();\n");
-        }
-        src.append("}\n");
+        writeJavaFile(entity, outRoot, pkg, typeName, w);
+    }
 
-        writeJavaFile(entity, outRoot, pkg, typeName, src.toString());
+    /** The writer one generated file is written with, set to its package. */
+    protected SpringJavaWriter newWriter(String pkg) {
+        SpringJavaWriter w = new SpringJavaWriter();
+        if (!pkg.isEmpty()) w.packageName(pkg);
+        return w;
     }
 
     /**
      * Resolve {@code <outRoot>/<pkg-as-dirs>/<typeName>.java}, create parent
-     * directories, and write {@code body}. Shared file-IO tail for both the
+     * directories, and write the finished {@code w}. Shared file-IO tail for both the
      * concrete-record and abstract-interface emit paths.
      */
-    protected void writeJavaFile(MetaObject entity, Path outRoot, String pkg, String typeName, String body) {
+    protected void writeJavaFile(MetaObject entity, Path outRoot, String pkg, String typeName, SpringJavaWriter w) {
         try {
             Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(typeName + ".java");
-            GeneratedFileWriter.write(outFile, body);
+            GeneratedFileWriter.write(outFile, w.toString());
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing " + typeName + ".java for entity " + entity.getName() + ": " + e, e);
         }
     }
-
-
-
-
-
-
-
-
 
     // === validation (SP-C validator parity) =================================
 
@@ -920,108 +925,124 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
      *  header varies): two {@link com.fasterxml.jackson.databind.JsonDeserializer}s implementing the
      *  #234 Contract-A strict URI / IP-literal rules verified against the shared validation-conformance
      *  corpus. */
-    private void writeNetBindingsFile(String pkg, Path outRoot) {
-        StringBuilder src = new StringBuilder();
-        if (!pkg.isEmpty()) src.append("package ").append(pkg).append(";\n\n");
-        src.append("import com.fasterxml.jackson.core.JsonParser;\n");
-        src.append("import com.fasterxml.jackson.databind.DeserializationContext;\n");
-        src.append("import com.fasterxml.jackson.databind.JsonDeserializer;\n\n");
-        src.append("import java.io.IOException;\n");
-        src.append("import java.net.InetAddress;\n");
-        src.append("import java.net.URI;\n");
-        src.append("import java.net.URISyntaxException;\n\n");
-        src.append("/** GENERATED (#234) — strict Jackson deserializers for field.uri / field.inet.\n");
-        src.append(" *  Do not hand-edit; regenerated from metadata. Dependency-free (java.net + Jackson). */\n");
-        src.append("public final class MetaNetBindings {\n\n");
-        src.append("    private MetaNetBindings() {}\n\n");
-        src.append("    /** field.uri — an ABSOLUTE URI carrying a scheme (leading/trailing whitespace trimmed,\n");
-        src.append("     *  WHATWG). A relative reference (example.com, /path) or malformed value is rejected. */\n");
-        src.append("    public static final class AbsoluteUriDeserializer extends JsonDeserializer<URI> {\n");
-        src.append("        @Override\n");
-        src.append("        public URI deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {\n");
-        src.append("            String raw = p.getValueAsString();\n");
-        src.append("            if (raw == null) return null;\n");
-        src.append("            URI uri;\n");
-        src.append("            try {\n");
-        src.append("                uri = new URI(raw.trim());\n");
-        src.append("            } catch (URISyntaxException e) {\n");
-        src.append("                throw new IllegalArgumentException(\"field.uri: not a valid URI: \" + raw, e);\n");
-        src.append("            }\n");
-        src.append("            if (!uri.isAbsolute()) {\n");
-        src.append("                throw new IllegalArgumentException(\n");
-        src.append("                        \"field.uri: must be an absolute URI carrying a scheme: \" + raw);\n");
-        src.append("            }\n");
-        src.append("            return uri;\n");
-        src.append("        }\n");
-        src.append("    }\n\n");
-        src.append("    /** field.inet — an IPv4 or IPv6 LITERAL only. Never a DNS lookup: a value containing\n");
-        src.append("     *  ':' can only be an IPv6 literal (getByName parses it offline), otherwise a strict\n");
-        src.append("     *  dotted-quad IPv4. Hostnames, CIDR, padding, out-of-range octets are rejected. */\n");
-        src.append("    public static final class InetLiteralDeserializer extends JsonDeserializer<InetAddress> {\n");
-        src.append("        @Override\n");
-        src.append("        public InetAddress deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {\n");
-        src.append("            String raw = p.getValueAsString();\n");
-        src.append("            if (raw == null) return null;\n");
-        src.append("            // No trim: IP-literal grammar has no whitespace, so padding is rejected.\n");
-        src.append("            if (raw.indexOf(':') >= 0) {\n");
-        src.append("                try {\n");
-        src.append("                    return InetAddress.getByName(raw); // ':' => IPv6 literal — getByName does no DNS\n");
-        src.append("                } catch (Exception e) {\n");
-        src.append("                    throw new IllegalArgumentException(\"field.inet: not a valid IPv6 literal: \" + raw, e);\n");
-        src.append("                }\n");
-        src.append("            }\n");
-        src.append("            return parseIpv4(raw);\n");
-        src.append("        }\n\n");
-        src.append("        private static InetAddress parseIpv4(String s) {\n");
-        src.append("            String[] parts = s.split(\"\\\\.\", -1);\n");
-        src.append("            if (parts.length != 4) {\n");
-        src.append("                throw new IllegalArgumentException(\"field.inet: not a valid IPv4 literal: \" + s);\n");
-        src.append("            }\n");
-        src.append("            byte[] octets = new byte[4];\n");
-        src.append("            for (int i = 0; i < 4; i++) {\n");
-        src.append("                String part = parts[i];\n");
-        src.append("                // #234 review H1: reject a leading-zero octet (010 / 01) — the\n");
-        src.append("                // octal/decimal-parse ambiguity — matching Python ipaddress + the TS regex.\n");
-        src.append("                if (part.isEmpty() || part.length() > 3\n");
-        src.append("                        || (part.length() > 1 && part.charAt(0) == '0')) {\n");
-        src.append("                    throw new IllegalArgumentException(\"field.inet: not a valid IPv4 literal: \" + s);\n");
-        src.append("                }\n");
-        src.append("                for (int j = 0; j < part.length(); j++) {\n");
-        src.append("                    if (!Character.isDigit(part.charAt(j))) {\n");
-        src.append("                        throw new IllegalArgumentException(\"field.inet: not a valid IPv4 literal: \" + s);\n");
-        src.append("                    }\n");
-        src.append("                }\n");
-        src.append("                int v = Integer.parseInt(part);\n");
-        src.append("                if (v > 255) {\n");
-        src.append("                    throw new IllegalArgumentException(\"field.inet: IPv4 octet out of range: \" + s);\n");
-        src.append("                }\n");
-        src.append("                octets[i] = (byte) v;\n");
-        src.append("            }\n");
-        src.append("            try {\n");
-        src.append("                return InetAddress.getByAddress(octets);\n");
-        src.append("            } catch (Exception e) {\n");
-        src.append("                throw new IllegalArgumentException(\"field.inet: not a valid IPv4 literal: \" + s, e);\n");
-        src.append("            }\n");
-        src.append("        }\n");
-        src.append("    }\n");
-        src.append("}\n");
-
+    protected void writeNetBindingsFile(String pkg, Path outRoot) {
+        SpringJavaWriter w = newWriter(pkg);
+        w.use("com.fasterxml.jackson.core.JsonParser");
+        w.use("com.fasterxml.jackson.databind.DeserializationContext");
+        w.use("com.fasterxml.jackson.databind.JsonDeserializer");
+        w.use("java.io.IOException");
+        w.use("java.net.InetAddress");
+        w.use("java.net.URI");
+        w.use("java.net.URISyntaxException");
+        w.text("""
+            /** GENERATED (#234) — strict Jackson deserializers for field.uri / field.inet.
+             *  Do not hand-edit; regenerated from metadata. Dependency-free (java.net + Jackson). */
+            """);
+        try (CodeWriter.Block cls = w.block("public final class MetaNetBindings {")) {
+            w.line("private MetaNetBindings() {}");
+            w.blank();
+            writeAbsoluteUriDeserializer(w);
+            w.blank();
+            writeInetLiteralDeserializer(w);
+        }
         try {
             Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("MetaNetBindings.java");
-            GeneratedFileWriter.write(outFile, src.toString());
+            GeneratedFileWriter.write(outFile, w.toString());
         } catch (IOException e) {
             throw new GeneratorException("failed writing MetaNetBindings.java for package " + pkg + ": " + e, e);
         }
     }
 
+    /** field.uri — an ABSOLUTE URI carrying a scheme; a relative reference or malformed value is rejected. */
+    protected void writeAbsoluteUriDeserializer(SpringJavaWriter w) {
+        w.text("""
+            /** field.uri — an ABSOLUTE URI carrying a scheme (leading/trailing whitespace trimmed,
+             *  WHATWG). A relative reference (example.com, /path) or malformed value is rejected. */
+            public static final class AbsoluteUriDeserializer extends JsonDeserializer<URI> {
+                @Override
+                public URI deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+                    String raw = p.getValueAsString();
+                    if (raw == null) return null;
+                    URI uri;
+                    try {
+                        uri = new URI(raw.trim());
+                    } catch (URISyntaxException e) {
+                        throw new IllegalArgumentException("field.uri: not a valid URI: " + raw, e);
+                    }
+                    if (!uri.isAbsolute()) {
+                        throw new IllegalArgumentException(
+                                "field.uri: must be an absolute URI carrying a scheme: " + raw);
+                    }
+                    return uri;
+                }
+            }
+            """);
+    }
+
+    /** field.inet — an IPv4 or IPv6 LITERAL only, never a DNS lookup. */
+    protected void writeInetLiteralDeserializer(SpringJavaWriter w) {
+        w.text("""
+            /** field.inet — an IPv4 or IPv6 LITERAL only. Never a DNS lookup: a value containing
+             *  ':' can only be an IPv6 literal (getByName parses it offline), otherwise a strict
+             *  dotted-quad IPv4. Hostnames, CIDR, padding, out-of-range octets are rejected. */
+            public static final class InetLiteralDeserializer extends JsonDeserializer<InetAddress> {
+                @Override
+                public InetAddress deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+                    String raw = p.getValueAsString();
+                    if (raw == null) return null;
+                    // No trim: IP-literal grammar has no whitespace, so padding is rejected.
+                    if (raw.indexOf(':') >= 0) {
+                        try {
+                            return InetAddress.getByName(raw); // ':' => IPv6 literal — getByName does no DNS
+                        } catch (Exception e) {
+                            throw new IllegalArgumentException("field.inet: not a valid IPv6 literal: " + raw, e);
+                        }
+                    }
+                    return parseIpv4(raw);
+                }
+
+                private static InetAddress parseIpv4(String s) {
+                    String[] parts = s.split("\\\\.", -1);
+                    if (parts.length != 4) {
+                        throw new IllegalArgumentException("field.inet: not a valid IPv4 literal: " + s);
+                    }
+                    byte[] octets = new byte[4];
+                    for (int i = 0; i < 4; i++) {
+                        String part = parts[i];
+                        // #234 review H1: reject a leading-zero octet (010 / 01) — the
+                        // octal/decimal-parse ambiguity — matching Python ipaddress + the TS regex.
+                        if (part.isEmpty() || part.length() > 3
+                                || (part.length() > 1 && part.charAt(0) == '0')) {
+                            throw new IllegalArgumentException("field.inet: not a valid IPv4 literal: " + s);
+                        }
+                        for (int j = 0; j < part.length(); j++) {
+                            if (!Character.isDigit(part.charAt(j))) {
+                                throw new IllegalArgumentException("field.inet: not a valid IPv4 literal: " + s);
+                            }
+                        }
+                        int v = Integer.parseInt(part);
+                        if (v > 255) {
+                            throw new IllegalArgumentException("field.inet: IPv4 octet out of range: " + s);
+                        }
+                        octets[i] = (byte) v;
+                    }
+                    try {
+                        return InetAddress.getByAddress(octets);
+                    } catch (Exception e) {
+                        throw new IllegalArgumentException("field.inet: not a valid IPv4 literal: " + s, e);
+                    }
+                }
+            }
+            """);
+    }
+
     /**
-     * Collect the nested {@code public enum <Name> { <members> }} declarations for the enum
+     * Write the nested {@code public enum <Name> { <members> }} declarations for the enum
      * fields in {@code fields} (the record's components), deduped by enum-type name (two fields
      * extending one abstract enum collapse onto ONE decl named for the super). Mirrors
      * {@link SpringValueObjectGenerator}'s own enum collection.
      */
-    private static List<String> collectEnumDecls(MetaObject owner, List<MetaField> fields) {
-        List<String> decls = new ArrayList<>();
+    protected static void writeEnumDecls(CodeWriter w, MetaObject owner, List<MetaField> fields) {
         java.util.Set<String> seen = new java.util.LinkedHashSet<>();
         for (MetaField<?> field : fields) {
             if (!(field instanceof EnumField ef)) continue;
@@ -1031,9 +1052,17 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             String typeName = SpringTypeMapper.enumTypeName(owner, ef);
             if (!seen.add(typeName)) continue; // dedup shared abstract-enum types
             List<String> values = SpringTypeMapper.effectiveEnumValues(ef);
-            decls.add(SpringTypeMapper.enumDeclaration(typeName, values, SpringTypeMapper.intValueMap(ef), SpringTypeMapper.stringValueMap(ef)));
+            SpringTypeMapper.writeEnumDeclaration(
+                w, typeName, values, SpringTypeMapper.intValueMap(ef), SpringTypeMapper.stringValueMap(ef));
         }
-        return decls;
+    }
+
+    /** Whether {@link #writeEnumDecls} writes anything for {@code fields}. */
+    protected static boolean hasEnumDecls(List<MetaField> fields) {
+        for (MetaField<?> field : fields) {
+            if (field instanceof EnumField && Fr019SharedEnum.sharedEnumForField(field) == null) return true;
+        }
+        return false;
     }
 
 
@@ -1171,19 +1200,4 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         return SpringGeneratorSupport.escapeJavaString(s);
     }
 
-    /**
-     * The cross-field validator members ({@link SpringGeneratorSupport#writeCrossFieldValidationMembers})
-     * as one record-body member, or empty when the entity has none. Bridges the writer output into
-     * this generator's string assembly until the DTO generator writes through the writer itself.
-     */
-    protected static String crossFieldMembers(MetaObject entity, List<MetaField> fields) {
-        com.metaobjects.generator.writer.CodeWriter w =
-            new com.metaobjects.generator.writer.CodeWriter(com.metaobjects.generator.writer.WriterOptions.JAVA);
-        try (com.metaobjects.generator.writer.CodeWriter.Block b = w.block("{")) {
-            SpringGeneratorSupport.writeCrossFieldValidationMembers(w, entity, fields);
-        }
-        List<String> lines = List.of(w.toString().split("\n"));
-        if (lines.size() <= 2) return "";
-        return "\n" + String.join("\n", lines.subList(1, lines.size() - 1)) + "\n";
-    }
 }

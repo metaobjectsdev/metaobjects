@@ -406,7 +406,7 @@ public final class SpringGeneratorSupport {
      * Java DTO-record component type for {@code field} owned by {@code owner}. A
      * {@code field.enum} is typed as the value-constrained nested Java {@code enum}
      * ({@link SpringTypeMapper#enumTypeName}, single or {@code List<Enum>}) whose declaration
-     * {@code SpringDtoGenerator.collectEnumDecls} emits inside the record body — parity with the other ports and
+     * {@code SpringDtoGenerator.writeEnumDecls} writes inside the record body — parity with the other ports and
      * with {@link SpringValueObjectGenerator}. Other scalars delegate to {@link SpringTypeMapper};
      * array fields ({@code isArray=true}) are wrapped as {@code List<elementType>} (the wrapped
      * element type so an omitted JSON element deserialises to {@code null}).
@@ -1131,6 +1131,25 @@ public final class SpringGeneratorSupport {
         out.add(runtimePackage + ".CanonicalDecimalDeserializer");
         out.add(runtimePackage + ".DeclaredDecimal");
         return out;
+    }
+
+    /**
+     * One record component declaration, as a DTO or value-object record writes it: the validation
+     * annotations, the decimal and duration wire bindings, the {@code @JsonProperty} pin of an
+     * escaped name, then {@code type component}.
+     */
+    public static String recordComponentDeclaration(String annotations, String type, String component,
+                                                    MetaField<?> field, String runtimePackage, WireFormat wire) {
+        List<String> parts = new ArrayList<>();
+        if (!annotations.isEmpty()) parts.add(annotations);
+        String decimalJson = decimalJsonAnnotations(type, runtimePackage, field, wire);
+        if (!decimalJson.isEmpty()) parts.add(decimalJson);
+        String durationJson = durationJsonAnnotations(type, wire);
+        if (!durationJson.isEmpty()) parts.add(durationJson);
+        String jsonName = SpringNaming.jsonPropertyAnnotation(field.getName());
+        if (!jsonName.isEmpty()) parts.add(jsonName);
+        parts.add(type + " " + component);
+        return String.join(" ", parts);
     }
 
     /** The element type string of a duration component (see {@link #durationJsonAnnotations}). */

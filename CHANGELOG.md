@@ -113,7 +113,18 @@ here.**
   (`writeCrossFieldValidationMembers`; `decimalAnnotationImports` and `durationAnnotationImports`
   now return qualified names). A generated controller changes in two layout details only, checked
   on 1,512 controllers from every fixture model: its imports are sorted, and the blank line after
-  `public class ... {` is gone. The DTO and value-object output is unchanged.
+  `public class ... {` is gone.
+
+  The DTO, value-object and shared-enum generators follow (`SpringDtoGenerator`,
+  `SpringValueObjectGenerator`, `Fr019SharedEnum`). A record, patch class, stamping helper and
+  enum declaration each come from a protected method, and the string-returning helpers they used
+  are replaced by writer ones: `SpringTypeMapper.enumDeclaration` by `writeEnumDeclaration`,
+  `SpringRecordBuilder.members` by `writeMembers` (with `applies` to ask first), and an owned DTO
+  generator customizes every file it writes by overriding `newWriter`. Their output changes in
+  layout only, checked on every fixture model in two wire and API configurations: sorted imports
+  with no blank between groups, no blank line after `public final class ...Patch {` or a doubled
+  one in a patch with no settable fields, no trailing indent on the blank lines of a nested enum,
+  and no leading blank line in a file with no package.
 - **runtime-ts: one list-query parse for every mount.** `parseListQuery` (exported from
   `@metaobjectsdev/runtime-ts`; it does not depend on Drizzle) reads a list request into a
   port-neutral `ListQuery`, and each mount compiles that for its own query library. The Drizzle

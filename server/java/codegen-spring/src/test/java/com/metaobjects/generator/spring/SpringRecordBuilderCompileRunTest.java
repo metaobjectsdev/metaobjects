@@ -129,21 +129,27 @@ public class SpringRecordBuilderCompileRunTest extends SharedRegistryTestBase {
     @Test
     public void aComponentNamedBuilderSuppressesTheBuilderRatherThanCollideWithIt() {
         // Its accessor `builder()` and the static factory `builder()` would share a signature.
-        assertEquals("", SpringRecordBuilder.members("Widget",
+        assertEquals("", members("Widget",
             List.of(new String[] { "String", "name" }, new String[] { "String", "builder" })));
-        assertTrue(SpringRecordBuilder.members("Widget", List.<String[]>of(new String[] { "String", "name" }))
+        assertTrue(members("Widget", List.<String[]>of(new String[] { "String", "name" }))
             .contains("public static Builder builder()"));
         assertEquals("a record with no components has nothing to build",
-            "", SpringRecordBuilder.members("Empty", List.of()));
+            "", members("Empty", List.of()));
         // A nested class may not share its enclosing class's name, and it would shadow a
         // component type named Builder inside the builder.
-        assertEquals("", SpringRecordBuilder.members("Builder", List.<String[]>of(new String[] { "String", "name" })));
-        assertEquals("", SpringRecordBuilder.members("Widget", List.<String[]>of(new String[] { "acme.Builder", "b" })));
-        assertEquals("", SpringRecordBuilder.members("Widget",
+        assertEquals("", members("Builder", List.<String[]>of(new String[] { "String", "name" })));
+        assertEquals("", members("Widget", List.<String[]>of(new String[] { "acme.Builder", "b" })));
+        assertEquals("", members("Widget",
             List.<String[]>of(new String[] { "java.util.List<Builder>", "bs" })));
         assertTrue("a type merely CONTAINING the word is not a collision",
-            SpringRecordBuilder.members("Widget", List.<String[]>of(new String[] { "StringBuilder", "sb" }))
+            members("Widget", List.<String[]>of(new String[] { "StringBuilder", "sb" }))
                 .contains("public static Builder builder()"));
+    }
+
+    /** The members {@link SpringRecordBuilder#writeMembers} writes, as text ("" when it writes none). */
+    private static String members(String recordName, List<String[]> components) {
+        com.metaobjects.generator.writer.JavaWriter w = new com.metaobjects.generator.writer.JavaWriter();
+        return SpringRecordBuilder.writeMembers(w, recordName, components) ? w.toString() : "";
     }
 
     private Path compile(Path gen, Path extra) throws Exception {

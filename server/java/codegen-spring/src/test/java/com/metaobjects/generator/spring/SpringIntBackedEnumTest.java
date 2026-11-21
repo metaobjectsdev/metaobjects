@@ -29,6 +29,13 @@ public class SpringIntBackedEnumTest {
     @Rule
     public TemporaryFolder tmp = new TemporaryFolder();
 
+    /** The declaration {@link SpringTypeMapper#writeEnumDeclaration} writes, as text without its trailing newline. */
+    private static String decl(String name, List<String> values, Map<String, Integer> ints, Map<String, String> strings) {
+        com.metaobjects.generator.writer.JavaWriter w = new com.metaobjects.generator.writer.JavaWriter();
+        SpringTypeMapper.writeEnumDeclaration(w, name, values, ints, strings);
+        return w.toString().stripTrailing();
+    }
+
     private static Map<String, Integer> declared() {
         Map<String, Integer> m = new LinkedHashMap<>();
         m.put("DRAFT", 0);
@@ -40,13 +47,13 @@ public class SpringIntBackedEnumTest {
     @Test
     public void aStringBackedEnumIsUnchanged() {
         assertEquals("public enum Level { LOW, HIGH }",
-            SpringTypeMapper.enumDeclaration("Level", List.of("LOW", "HIGH"), null));
+            decl("Level", List.of("LOW", "HIGH"), null, null));
     }
 
     @Test
     public void anIntBackedEnumMapsBothWaysAndRefusesAnUnmappedValue() throws Exception {
-        String decl = SpringTypeMapper.enumDeclaration(
-            "Status", List.of("DRAFT", "PUBLISHED", "ARCHIVED"), declared());
+        String decl = decl(
+            "Status", List.of("DRAFT", "PUBLISHED", "ARCHIVED"), declared(), null);
         Path src = tmp.newFolder("src").toPath();
         Path out = tmp.newFolder("out").toPath();
         Path file = src.resolve("Status.java");
@@ -80,7 +87,7 @@ public class SpringIntBackedEnumTest {
         Map<String, String> stored = new LinkedHashMap<>();
         stored.put("DRAFT", "draft_v1");
         stored.put("PUBLISHED", "published_v1");
-        String decl = SpringTypeMapper.enumDeclaration("Phase", List.of("DRAFT", "PUBLISHED"), null, stored);
+        String decl = decl("Phase", List.of("DRAFT", "PUBLISHED"), null, stored);
         Path src = tmp.newFolder("src2").toPath();
         Path out = tmp.newFolder("out2").toPath();
         Path file = src.resolve("Phase.java");

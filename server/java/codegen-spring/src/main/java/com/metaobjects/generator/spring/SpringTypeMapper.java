@@ -1,5 +1,7 @@
 package com.metaobjects.generator.spring;
 
+import com.metaobjects.generator.writer.CodeWriter;
+
 import com.metaobjects.field.BooleanField;
 import com.metaobjects.field.CurrencyField;
 import com.metaobjects.field.DateField;
@@ -420,62 +422,49 @@ public final class SpringTypeMapper {
     }
 
     /**
-     * A Java {@code enum} declaration for {@code typeName}. With an {@code @intValueMap} the enum
-     * carries each member's declared stored integer ({@code dbValue()}) and the reverse lookup
-     * ({@code fromDbValue}), which throws on an unmapped stored value. The mapping is declared
-     * metadata, so it is generated rather than left to a hand-written repository, where the
-     * obvious {@code ordinal()} compiles, round-trips within one process, and writes rows no
-     * other port agrees with.
+     * Write the Java {@code enum} declaration for an enum type at the writer's current indent:
+     * {@code public enum <Name> { A, B, C }} for a string-backed enum. With {@code @intValueMap}
+     * (FR-020) each member carries its stored integer ({@code dbValue()}) and the reverse lookup
+     * {@code fromDbValue(int)}, which throws on an unmapped one; with only a
+     * {@code @stringValueMap} (rc.21) the same, keyed by the stored string.
      */
-    public static String enumDeclaration(String typeName, List<String> values, java.util.Map<String, Integer> intValueMap) {
-        return enumDeclaration(typeName, values, intValueMap, null);
-    }
-
-    /**
-     * rc.21 — as {@link #enumDeclaration(String, List, java.util.Map)}, and with a
-     * {@code @stringValueMap} the enum carries each member's stored STRING ({@code dbValue()})
-     * and the reverse lookup ({@code fromDbValue(String)}), which throws on an unmapped one.
-     */
-    public static String enumDeclaration(String typeName, List<String> values, java.util.Map<String, Integer> intValueMap,
-                                         java.util.Map<String, String> stringValueMap) {
-        if (intValueMap == null && stringValueMap != null) {
-            StringBuilder sb = new StringBuilder("public enum ").append(typeName).append(" {\n");
-            List<String> members = new java.util.ArrayList<>();
-            for (String v : values) {
-                String stored = stringValueMap.getOrDefault(v, v).replace("\\", "\\\\").replace("\"", "\\\"");
-                members.add("    " + v + "(\"" + stored + "\")");
+    public static void writeEnumDeclaration(CodeWriter w, String typeName, List<String> values,
+                                            java.util.Map<String, Integer> intValueMap,
+                                            java.util.Map<String, String> stringValueMap) {
+        if (intValueMap == null && stringValueMap == null) {
+            w.line("public enum " + typeName + " { " + String.join(", ", values) + " }");
+            return;
+        }
+        boolean ints = intValueMap != null;
+        String stored = ints ? "int" : "String";
+        try (CodeWriter.Block b = w.block("public enum " + typeName + " {")) {
+            for (int i = 0; i < values.size(); i++) {
+                String v = values.get(i);
+                String arg = ints
+                    ? String.valueOf(intValueMap.get(v))
+                    : "\"" + stringValueMap.getOrDefault(v, v).replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+                w.line(v + "(" + arg + ")" + (i < values.size() - 1 ? "," : ";"));
             }
-            sb.append(String.join(",\n", members)).append(";\n\n");
-            sb.append("    private final String dbValue;\n\n");
-            sb.append("    ").append(typeName).append("(String dbValue) { this.dbValue = dbValue; }\n\n");
-            sb.append("    /** The stored string this member maps to, from the declared @stringValueMap. */\n");
-            sb.append("    public String dbValue() { return dbValue; }\n\n");
-            sb.append("    /** The member a stored string maps to; throws on a value the map does not declare. */\n");
-            sb.append("    public static ").append(typeName).append(" fromDbValue(String value) {\n");
-            sb.append("        for (").append(typeName).append(" e : values()) if (e.dbValue.equals(value)) return e;\n");
-            sb.append("        throw new IllegalArgumentException(\"unmapped stored value \" + value + \" for ")
-              .append(typeName).append("\");\n");
-            sb.append("    }\n}");
-            return sb.toString();
+            w.blank();
+            w.line("private final " + stored + " dbValue;");
+            w.blank();
+            w.line(typeName + "(" + stored + " dbValue) { this.dbValue = dbValue; }");
+            w.blank();
+            w.line(ints
+                ? "/** The stored integer this member maps to, from the declared @intValueMap. */"
+                : "/** The stored string this member maps to, from the declared @stringValueMap. */");
+            w.line("public " + stored + " dbValue() { return dbValue; }");
+            w.blank();
+            w.line(ints
+                ? "/** The member a stored integer maps to; throws on a value the map does not declare. */"
+                : "/** The member a stored string maps to; throws on a value the map does not declare. */");
+            try (CodeWriter.Block m = w.block("public static " + typeName + " fromDbValue(" + stored + " value) {")) {
+                w.line("for (" + typeName + " e : values()) if ("
+                    + (ints ? "e.dbValue == value" : "e.dbValue.equals(value)") + ") return e;");
+                w.line("throw new IllegalArgumentException(\"unmapped stored value \" + value + \" for "
+                    + typeName + "\");");
+            }
         }
-        if (intValueMap == null) {
-            return "public enum " + typeName + " { " + String.join(", ", values) + " }";
-        }
-        StringBuilder sb = new StringBuilder("public enum ").append(typeName).append(" {\n");
-        List<String> members = new java.util.ArrayList<>();
-        for (String v : values) members.add("    " + v + "(" + intValueMap.get(v) + ")");
-        sb.append(String.join(",\n", members)).append(";\n\n");
-        sb.append("    private final int dbValue;\n\n");
-        sb.append("    ").append(typeName).append("(int dbValue) { this.dbValue = dbValue; }\n\n");
-        sb.append("    /** The stored integer this member maps to, from the declared @intValueMap. */\n");
-        sb.append("    public int dbValue() { return dbValue; }\n\n");
-        sb.append("    /** The member a stored integer maps to; throws on a value the map does not declare. */\n");
-        sb.append("    public static ").append(typeName).append(" fromDbValue(int value) {\n");
-        sb.append("        for (").append(typeName).append(" e : values()) if (e.dbValue == value) return e;\n");
-        sb.append("        throw new IllegalArgumentException(\"unmapped stored value \" + value + \" for ")
-          .append(typeName).append("\");\n");
-        sb.append("    }\n}");
-        return sb.toString();
     }
 
     /** rc.21 — the declared member → stored string ({@code @stringValueMap}, resolving), or null. */
