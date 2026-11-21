@@ -90,7 +90,7 @@ The Stryker mutation gate (`bun run conformance:mutation` in
 `$DEV_SCRATCH` when that is set, else the system temp directory, and removes it on exit. Point
 `DEV_SCRATCH` at a RAM-backed directory to keep that scratch off disk.
 
-In `server/typescript/packages/codegen-ts`, a test that needs a temp directory uses `makeScratchDir`
+In `server/typescript/packages/codegen-ts`, a new test that needs a temp directory uses `makeScratchDir`
 and `removeTree` (`src/scratch-dir.ts`), not `mkdtempSync` and `rmSync(..., { recursive: true })`:
 Bun's recursive `rmSync` can fail with `EFAULT` under parallel test load and fail the test.
 
