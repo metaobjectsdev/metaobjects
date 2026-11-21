@@ -1,0 +1,39 @@
+{
+  "description": "A doc summary writes /// lines between summary tags, with a bare /// for an empty entry, at the current indent.",
+  "dialect": "csharp",
+  "ops": [
+    [
+      "line",
+      "public class A"
+    ],
+    [
+      "open",
+      "{"
+    ],
+    [
+      "docSummary",
+      "First line.",
+      "",
+      "Third line."
+    ],
+    [
+      "line",
+      "public int X { get; set; }"
+    ],
+    [
+      "close",
+      "}"
+    ]
+  ],
+  "expected": [
+    "public class A",
+    "{",
+    "    /// <summary>",
+    "    /// First line.",
+    "    ///",
+    "    /// Third line.",
+    "    /// </summary>",
+    "    public int X { get; set; }",
+    "}"
+  ]
+}

@@ -7,9 +7,9 @@ format are in [`spec/code-writer.md`](../../spec/code-writer.md).
 - `cases/*.json` with `"dialect": "core"` pin the language-neutral core: indentation, blocks,
   blank-line requests, snippets, fit-or-break lists, line endings and the error codes. Every
   port's writer runs them with the options the case states.
-- Cases with a language dialect (`"dialect": "typescript"`, `"java"` or `"python"`) pin that
-  language's writer: import collection and ordering, doc comments and its defaults. A runner
-  skips the dialects that are not its own.
+- Cases with a language dialect (`"dialect": "typescript"`, `"java"`, `"python"`, `"csharp"`) pin that
+  language's writer: import or `using` collection and ordering, doc comments and its defaults. A
+  runner runs the `core` cases and its own dialect's, and skips the others by name.
 
 Runners:
 
@@ -17,6 +17,11 @@ Runners:
 - Java, `server/java/codegen-base/src/test/java/com/metaobjects/generator/writer/WriterConformanceTest.java` (`core` and `java`).
 - Python, `server/python/tests/codegen/test_writer_conformance.py` (`core` and `python`).
 - Rust, `server/rust/metaobjects-codegen/tests/writer_conformance.rs` (`core`).
+- C#, `server/csharp/MetaObjects.Codegen.Tests/WriterConformanceTests.cs` (`core` and `csharp`).
 
-The ports without a writer yet (C#, Kotlin) run the `core` cases when their writers
+The ports without a writer yet (Kotlin) run the `core` cases when their writers
 land, and add cases for their own dialect beside these.
+
+The `csharp` ops are `header` (lines), `using`, `usingStatic` (a namespace or type), `usingAlias`
+(alias, target) and `docSummary` (lines), beside the core ops. A `csharp` case may state
+`"options": {"usingOrder": "sorted"}`; the default order is the order the generator named them.

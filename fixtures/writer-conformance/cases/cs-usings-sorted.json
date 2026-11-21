@@ -1,0 +1,37 @@
+{
+  "description": "With the sorted order, System namespaces print first, then the rest, each in code-unit order of the namespace.",
+  "dialect": "csharp",
+  "options": {
+    "usingOrder": "sorted"
+  },
+  "ops": [
+    [
+      "using",
+      "Microsoft.EntityFrameworkCore"
+    ],
+    [
+      "using",
+      "System.Linq"
+    ],
+    [
+      "using",
+      "System"
+    ],
+    [
+      "using",
+      "Acme.Models"
+    ],
+    [
+      "line",
+      "class A { }"
+    ]
+  ],
+  "expected": [
+    "using System;",
+    "using System.Linq;",
+    "using Acme.Models;",
+    "using Microsoft.EntityFrameworkCore;",
+    "",
+    "class A { }"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "description": "One alias naming two different targets is an import conflict.",
+  "dialect": "csharp",
+  "ops": [
+    [
+      "usingAlias",
+      "Json",
+      "System.Text.Json.JsonSerializer"
+    ],
+    [
+      "usingAlias",
+      "Json",
+      "Newtonsoft.Json.JsonConvert"
+    ]
+  ],
+  "error": "ERR_WRITER_IMPORT_CONFLICT",
+  "errorQuotes": "Json"
+}

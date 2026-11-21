@@ -58,7 +58,14 @@ function run(c: WriterCase): string {
   return w.toString();
 }
 
-const files = readdirSync(CASES).filter((f) => f.endsWith(".json")).sort();
+// A case of another port's dialect (`csharp`) belongs to that port's writer and is not run here.
+const files = readdirSync(CASES)
+  .filter((f) => f.endsWith(".json"))
+  .filter((f) => {
+    const dialect = (JSON.parse(readFileSync(join(CASES, f), "utf8")) as WriterCase).dialect;
+    return dialect === "core" || dialect === "typescript";
+  })
+  .sort();
 
 describe("writer conformance", () => {
   test("the corpus is present", () => {
