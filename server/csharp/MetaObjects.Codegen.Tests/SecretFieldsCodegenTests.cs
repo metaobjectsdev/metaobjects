@@ -74,6 +74,32 @@ public class SecretFieldsCodegenTests
     ]}}
     """;
 
+    // Author has no credential of its own; its M:N target Account does.
+    private const string M2mToCredentialModel = """
+    { "metadata.root": { "package": "acme::secrets", "children": [
+      { "object.entity": { "name": "Author", "children": [
+        { "source.rdb":       { "@table": "authors" } },
+        { "field.long":       { "name": "id" } },
+        { "relationship.association": { "name": "accounts", "@cardinality": "many", "@objectRef": "Account", "@through": "AuthorAccount" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}},
+      { "object.entity": { "name": "Account", "children": [
+        { "source.rdb":       { "@table": "accounts" } },
+        { "field.long":       { "name": "id" } },
+        { "field.string":     { "name": "pinHash", "@maxLength": 100, "children": [ { "view.password": {} } ] } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}},
+      { "object.entity": { "name": "AuthorAccount", "children": [
+        { "source.rdb":       { "@table": "author_accounts" } },
+        { "field.long":       { "name": "authorId" } },
+        { "field.long":       { "name": "accountId" } },
+        { "identity.primary": { "@fields": ["authorId", "accountId"] } },
+        { "identity.reference": { "name": "fkAuthor",  "@fields": "authorId",  "@references": "Author" } },
+        { "identity.reference": { "name": "fkAccount", "@fields": "accountId", "@references": "Account" } }
+      ]}}
+    ]}}
+    """;
+
     private static string Routes(string model, string file = "AccountRoutes.g.cs")
     {
         var r = new MetaDataLoader().Load([new InMemoryStringSource(model, id: "secrets.json")]);
@@ -85,6 +111,15 @@ public class SecretFieldsCodegenTests
             Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", ColumnNamingStrategy = ColumnNamingStrategy.Literal },
         };
         return new RoutesGenerator().Generate(ctx).Single(f => System.IO.Path.GetFileName(f.Path) == file).Content;
+    }
+
+    [Fact]
+    public void An_m2m_route_returning_credential_rows_ships_the_omitting_result_class()
+    {
+        var src = Routes(M2mToCredentialModel, "AuthorRoutes.g.cs");
+
+        Assert.Contains("new CredentialOmittingResult(rows, new string[] { \"PinHash\" }", src);
+        Assert.Contains("private sealed class CredentialOmittingResult : IResult", src);
     }
 
     [Fact]

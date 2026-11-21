@@ -243,10 +243,10 @@ public sealed class EfModelGapsTests
     // shadow `CountryId1`, and the declared delete behaviour on it.
     private sealed class AddressWithCountry : MetaObjects.Codegen.Generators.EntityGenerator
     {
-        protected override void EmitClassBodyTrailer(System.Text.StringBuilder sb, MetaObjects.Meta.MetaObject entity, MetaObjects.Codegen.GenContext ctx)
+        protected override void EmitClassBodyTrailer(MetaObjects.Codegen.Writer.CsWriter w, MetaObjects.Meta.MetaObject entity, MetaObjects.Codegen.GenContext ctx)
         {
             if (entity.Name == "Address")
-                sb.AppendLine($"    public {MetaObjects.Codegen.ValueObjectNames.GlobalRef(ctx.Root.FindObject("Country")!, ctx.Config)}? Country {{ get; set; }}");
+                w.Line($"public {MetaObjects.Codegen.ValueObjectNames.GlobalRef(ctx.Root.FindObject("Country")!, ctx.Config)}? Country {{ get; set; }}");
         }
     }
 
@@ -266,10 +266,10 @@ public sealed class EfModelGapsTests
     // rc.21 fix round (M6): the owned type's only navigation to the target is used whatever its name.
     private sealed class AddressWithHomeCountry : MetaObjects.Codegen.Generators.EntityGenerator
     {
-        protected override void EmitClassBodyTrailer(System.Text.StringBuilder sb, MetaObjects.Meta.MetaObject entity, MetaObjects.Codegen.GenContext ctx)
+        protected override void EmitClassBodyTrailer(MetaObjects.Codegen.Writer.CsWriter w, MetaObjects.Meta.MetaObject entity, MetaObjects.Codegen.GenContext ctx)
         {
             if (entity.Name == "Address")
-                sb.AppendLine($"    public {MetaObjects.Codegen.ValueObjectNames.GlobalRef(ctx.Root.FindObject("Country")!, ctx.Config)}? HomeCountry {{ get; set; }}");
+                w.Line($"public {MetaObjects.Codegen.ValueObjectNames.GlobalRef(ctx.Root.FindObject("Country")!, ctx.Config)}? HomeCountry {{ get; set; }}");
         }
     }
 
@@ -311,10 +311,10 @@ public sealed class EfModelGapsTests
 
     private sealed class AddressWithBillingCountry : MetaObjects.Codegen.Generators.EntityGenerator
     {
-        protected override void EmitClassBodyTrailer(System.Text.StringBuilder sb, MetaObjects.Meta.MetaObject entity, MetaObjects.Codegen.GenContext ctx)
+        protected override void EmitClassBodyTrailer(MetaObjects.Codegen.Writer.CsWriter w, MetaObjects.Meta.MetaObject entity, MetaObjects.Codegen.GenContext ctx)
         {
             if (entity.Name == "Address")
-                sb.AppendLine($"    public {MetaObjects.Codegen.ValueObjectNames.GlobalRef(ctx.Root.FindObject("Country")!, ctx.Config)}? BillingCountry {{ get; set; }}");
+                w.Line($"public {MetaObjects.Codegen.ValueObjectNames.GlobalRef(ctx.Root.FindObject("Country")!, ctx.Config)}? BillingCountry {{ get; set; }}");
         }
     }
 

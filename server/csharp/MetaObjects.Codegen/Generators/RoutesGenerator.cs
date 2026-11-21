@@ -38,6 +38,7 @@
 // copied both — see MetaObjects.Codegen.HelperRuntime.
 
 using System.Text;
+using MetaObjects.Codegen.Writer;
 using MetaObjects.Meta;
 using static MetaObjects.Core.Field.FieldConstants;
 using static MetaObjects.Core.Object.ObjectConstants;
@@ -117,16 +118,16 @@ public class RoutesGenerator : PerEntityGenerator
     // policy to a bare Map* call, and an adopter that doesn't notice ships it open. The XML
     // doc on the mount method is the one place a consumer reads before wiring it into their
     // host, so it says so and shows the fix rather than leaving it to a README nobody opens.
-    private static void AppendUnauthenticatedRoutesDoc(StringBuilder sb, string cls, bool readOnly)
+    private static void AppendUnauthenticatedRoutesDoc(CsWriter w, string cls, bool readOnly)
     {
         var verbs = readOnly ? "read endpoints" : "endpoints";
-        sb.AppendLine($"    /// <summary>Maps <c>{cls}</c> REST routes. Unauthenticated — see remarks.</summary>");
-        sb.AppendLine("    /// <remarks>");
-        sb.AppendLine($"    /// These {verbs} are unauthenticated. Guard them by mapping on a group that requires");
-        sb.AppendLine($"    /// authorization, e.g. <c>app.MapGroup(\"\").RequireAuthorization().Map{cls}Routes();</c>");
-        sb.AppendLine("    /// A row-ownership rule (\"only the owner may read this row\") cannot be expressed on a mount:");
-        sb.AppendLine($"    /// eject this generator with <c>dotnet meta eject</c> and hand-write those {verbs}.");
-        sb.AppendLine("    /// </remarks>");
+        w.Line($"/// <summary>Maps <c>{cls}</c> REST routes. Unauthenticated — see remarks.</summary>");
+        w.Line("/// <remarks>");
+        w.Line($"/// These {verbs} are unauthenticated. Guard them by mapping on a group that requires");
+        w.Line($"/// authorization, e.g. <c>app.MapGroup(\"\").RequireAuthorization().Map{cls}Routes();</c>");
+        w.Line("/// A row-ownership rule (\"only the owner may read this row\") cannot be expressed on a mount:");
+        w.Line($"/// eject this generator with <c>dotnet meta eject</c> and hand-write those {verbs}.");
+        w.Line("/// </remarks>");
     }
 
     /// <summary>
@@ -154,56 +155,56 @@ public class RoutesGenerator : PerEntityGenerator
     // (that generator's MaxRows) governs instead and the refusal is export_too_large;
     // report_too_large never answers on an export. With no report-export generator wired the
     // emitted text is the same as before export existed.
-    private void AppendReportPaging(StringBuilder sb, int? exportMaxRows)
+    private void AppendReportPaging(CsWriter w, int? exportMaxRows)
     {
         var max = ReportMaxRows.ToString(System.Globalization.CultureInfo.InvariantCulture);
         var tooLarge = "Results.BadRequest(new { error = \"report_too_large\", maxRows })";
-        sb.AppendLine("            // Pagination (report): every row up to the cap, refused above it.");
+        w.Line("// Pagination (report): every row up to the cap, refused above it.");
         if (exportMaxRows is not { } exportCap)
         {
-            sb.AppendLine($"            const int maxRows = {max};");
+            w.Line($"const int maxRows = {max};");
         }
         else
         {
             var exportMax = exportCap.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            sb.AppendLine($"            const int listMaxRows = {max};");
-            sb.AppendLine($"            const int exportMaxRows = {exportMax};");
-            sb.AppendLine("            // With ?format the export cap governs and report_too_large never answers.");
-            sb.AppendLine("            var maxRows = format is null ? listMaxRows : exportMaxRows;");
+            w.Line($"const int listMaxRows = {max};");
+            w.Line($"const int exportMaxRows = {exportMax};");
+            w.Line("// With ?format the export cap governs and report_too_large never answers.");
+            w.Line("var maxRows = format is null ? listMaxRows : exportMaxRows;");
             tooLarge = "format is null ? " + tooLarge + " : ReportExportHttp.TooLarge(maxRows)";
         }
-        sb.AppendLine("            long? limit = null;");
-        sb.AppendLine("            long offset = 0;");
-        sb.AppendLine("            if (qs.TryGetValue(\"limit\", out var limitRaw))");
-        sb.AppendLine("            {");
-        sb.AppendLine("                if (!long.TryParse(limitRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var parsedLimit) || parsedLimit < 1)");
-        sb.AppendLine("                    return Results.BadRequest(new { error = \"pagination.invalid_value\", param = \"limit\", value = limitRaw.ToString(), expected = $\"an integer from 1 to {maxRows}\" });");
-        sb.AppendLine("                if (parsedLimit > maxRows)");
-        sb.AppendLine($"                    return {tooLarge};");
-        sb.AppendLine("                limit = parsedLimit;");
-        sb.AppendLine("            }");
-        sb.AppendLine("            if (qs.TryGetValue(\"offset\", out var offsetRaw)");
-        sb.AppendLine("                && (!long.TryParse(offsetRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out offset) || offset < 0))");
-        sb.AppendLine("                return Results.BadRequest(new { error = \"pagination.invalid_value\", param = \"offset\", value = offsetRaw.ToString(), expected = \"a non-negative integer (0 or more)\" });");
-        sb.AppendLine("            if (offset > 0) q = q.Skip((int)System.Math.Min(offset, int.MaxValue));");
-        sb.AppendLine("            q = q.Take((int)(limit ?? maxRows + 1L));");
-        sb.AppendLine();
-        sb.AppendLine("            var rows = await q.ToListAsync();");
-        sb.AppendLine("            if (limit is null && rows.Count > maxRows)");
-        sb.AppendLine($"                return {tooLarge};");
+        w.Line("long? limit = null;");
+        w.Line("long offset = 0;");
+        w.Line("if (qs.TryGetValue(\"limit\", out var limitRaw))");
+        w.Open("{");
+        w.Line("if (!long.TryParse(limitRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var parsedLimit) || parsedLimit < 1)");
+        using (w.Hanging()) w.Line("return Results.BadRequest(new { error = \"pagination.invalid_value\", param = \"limit\", value = limitRaw.ToString(), expected = $\"an integer from 1 to {maxRows}\" });");
+        w.Line("if (parsedLimit > maxRows)");
+        using (w.Hanging()) w.Line($"return {tooLarge};");
+        w.Line("limit = parsedLimit;");
+        w.Close("}");
+        w.Line("if (qs.TryGetValue(\"offset\", out var offsetRaw)");
+        using (w.Hanging()) w.Line("&& (!long.TryParse(offsetRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out offset) || offset < 0))");
+        using (w.Hanging()) w.Line("return Results.BadRequest(new { error = \"pagination.invalid_value\", param = \"offset\", value = offsetRaw.ToString(), expected = \"a non-negative integer (0 or more)\" });");
+        w.Line("if (offset > 0) q = q.Skip((int)System.Math.Min(offset, int.MaxValue));");
+        w.Line("q = q.Take((int)(limit ?? maxRows + 1L));");
+        w.Blank();
+        w.Line("var rows = await q.ToListAsync();");
+        w.Line("if (limit is null && rows.Count > maxRows)");
+        using (w.Hanging()) w.Line($"return {tooLarge};");
     }
 
     // A report-export download: the rows are fetched exactly as the list route fetches them, then
     // written as CSV or XML by the module the report-export generator emitted for this report. A JSON
     // export is the list route's own body, written by the withCount tail below.
-    private static void AppendReportExportBranch(StringBuilder sb, string cls, string route)
+    private static void AppendReportExportBranch(CsWriter w, string cls, string route)
     {
-        sb.AppendLine();
-        sb.AppendLine("            // Export (report-export): the same rows as a download. withCount with csv or xml was refused above.");
-        sb.AppendLine("            if (format == \"csv\")");
-        sb.AppendLine($"                return ReportExportHttp.Csv(http, \"{route}\", w => {cls}Export.WriteCsv(w, rows));");
-        sb.AppendLine("            if (format == \"xml\")");
-        sb.AppendLine($"                return ReportExportHttp.Xml(http, \"{route}\", w => {cls}Export.WriteXml(w, rows));");
+        w.Blank();
+        w.Line("// Export (report-export): the same rows as a download. withCount with csv or xml was refused above.");
+        w.Line("if (format == \"csv\")");
+        using (w.Hanging()) w.Line($"return ReportExportHttp.Csv(http, \"{route}\", w => {cls}Export.WriteCsv(w, rows));");
+        w.Line("if (format == \"xml\")");
+        using (w.Hanging()) w.Line($"return ReportExportHttp.Xml(http, \"{route}\", w => {cls}Export.WriteXml(w, rows));");
     }
 
     // Every type the route file names bare — the entity itself, its value objects (owned and map
@@ -319,110 +320,111 @@ public class RoutesGenerator : PerEntityGenerator
             .ToHashSet(StringComparer.Ordinal);
         bool sqliteSort = sortFields.Any(decimalSortFields.Contains);
 
-        var sb = new StringBuilder();
-        sb.AppendLine("// <auto-generated/>");
-        sb.AppendLine("// Generated by MetaObjects routes-generator. Do not edit by hand.");
-        sb.AppendLine("#nullable enable");
-        sb.AppendLine("using System.Linq;");
-        sb.AppendLine("using Microsoft.AspNetCore.Builder;");
-        sb.AppendLine("using Microsoft.AspNetCore.Http;");
-        sb.AppendLine("using Microsoft.AspNetCore.Routing;");
-        sb.AppendLine("using Microsoft.EntityFrameworkCore;");
-        sb.AppendLine($"using {HelperRuntimeNamespace};");
+        var w = new CsWriter();
+        w.Line("// <auto-generated/>");
+        w.Line("// Generated by MetaObjects routes-generator. Do not edit by hand.");
+        w.Line("#nullable enable");
+        w.Line("using System.Linq;");
+        w.Line("using Microsoft.AspNetCore.Builder;");
+        w.Line("using Microsoft.AspNetCore.Http;");
+        w.Line("using Microsoft.AspNetCore.Routing;");
+        w.Line("using Microsoft.EntityFrameworkCore;");
+        w.Line($"using {HelperRuntimeNamespace};");
         if (!ctx.Config.PackageNamespacesFromMetadata)
-            foreach (var u in PackageBindingResolver.HomeUsings(ctx.Config, ReferencedTypes([entity], ctx.Root))) sb.AppendLine(u);
-        sb.AppendLine();
-        sb.AppendLine($"namespace {ValueObjectNames.CompanionNamespace(entity, ctx.Config)};");
-        sb.AppendLine();
-        sb.AppendLine($"public static class {cls}Routes");
-        sb.AppendLine("{");
+            foreach (var u in PackageBindingResolver.HomeUsings(ctx.Config, ReferencedTypes([entity], ctx.Root))) w.Line(u);
+        w.Blank();
+        w.Line($"namespace {ValueObjectNames.CompanionNamespace(entity, ctx.Config)};");
+        w.Blank();
+        w.Line($"public static class {cls}Routes");
+        w.Open("{");
         // Static sort allowlist (case-insensitive) so the qs ?sort=field:dir
         // is gated against the entity's scalar fields.
-        AppendSortAllowlist(sb, "SortAllowlist", sortFieldNodes, ctx.Config);
-        AppendSortDefaultOrder(sb, entity, "SortDefaultDesc", ctx.Config);
-        if (writable) AppendKnownFields(sb, [entity], ctx.Root);
-        AppendUnauthenticatedRoutesDoc(sb, cls, isProjection);
-        sb.AppendLine($"    public static IEndpointRouteBuilder Map{cls}Routes(this IEndpointRouteBuilder app, string prefix = \"/api\")");
-        sb.AppendLine("    {");
+        AppendSortAllowlist(w, "SortAllowlist", sortFieldNodes, ctx.Config);
+        AppendSortDefaultOrder(w, entity, "SortDefaultDesc", ctx.Config);
+        if (writable) AppendKnownFields(w, [entity], ctx.Root);
+        AppendUnauthenticatedRoutesDoc(w, cls, isProjection);
+        w.Line($"public static IEndpointRouteBuilder Map{cls}Routes(this IEndpointRouteBuilder app, string prefix = \"/api\")");
+        w.Open("{");
         // Refuse to start when the host's serializer contract cannot be read to strip a credential.
         if (credentials.Count > 0)
-            sb.AppendLine($"        SerializerKeys.EnsureContract(app.ServiceProvider, new System.Type[] {{ typeof({readCls}) }}, {NamesLiteral(credentials)});");
-        AppendDecimalRangeGroup(sb);
+            w.Line($"SerializerKeys.EnsureContract(app.ServiceProvider, new System.Type[] {{ typeof({readCls}) }}, {NamesLiteral(credentials)});");
+        AppendDecimalRangeGroup(w);
 
         // List — honours ?limit / ?offset / ?sort / ?withCount per api-contract.md.
-        sb.AppendLine("        app.MapGet(prefix + \"/" + route + "\", async (HttpContext http, " + ValueObjectNames.ContextTypeRef(ctx.Config) + " db) =>");
-        sb.AppendLine("        {");
-        sb.AppendLine("            var qs = http.Request.Query;");
+        w.Line("app.MapGet(prefix + \"/" + route + "\", async (HttpContext http, " + ValueObjectNames.ContextTypeRef(ctx.Config) + " db) =>");
+        w.Open("{");
+        w.Line("var qs = http.Request.Query;");
         if (export is not null)
         {
-            sb.AppendLine("            // Export (report-export): ?format=csv|json|xml. An unknown format, or withCount with csv or xml, is refused before any query runs.");
-            sb.AppendLine("            var format = ReportExportHttp.Requested(qs);");
-            sb.AppendLine("            if (ReportExportHttp.Refuse(format, qs) is { } exportRefusal) return exportRefusal;");
+            w.Line("// Export (report-export): ?format=csv|json|xml. An unknown format, or withCount with csv or xml, is refused before any query runs.");
+            w.Line("var format = ReportExportHttp.Requested(qs);");
+            w.Line("if (ReportExportHttp.Refuse(format, qs) is { } exportRefusal) return exportRefusal;");
         }
-        sb.AppendLine($"            IQueryable<{readCls}> q = db." + readDbSet + ".AsNoTracking();");
-        sb.AppendLine();
-        sb.AppendLine("            // Filter: ?filter[<field>][<op>]=<value> against the per-entity allowlist.");
+        w.Line($"IQueryable<{readCls}> q = db." + readDbSet + ".AsNoTracking();");
+        w.Blank();
+        w.Line("// Filter: ?filter[<field>][<op>]=<value> against the per-entity allowlist.");
         var fm = FilterMapArg($"{cls}FilterAllowlist", entity, ctx.Config);
-        sb.AppendLine($"            var filter = EfCoreFilterDispatch.Validate<{readCls}>(FilterParser.Parse(qs, {cls}FilterAllowlist.Fields, {cls}FilterAllowlist.OpsByField){fm});");
-        sb.AppendLine("            if (filter.ErrorEnvelope is not null)");
+        w.Line($"var filter = EfCoreFilterDispatch.Validate<{readCls}>(FilterParser.Parse(qs, {cls}FilterAllowlist.Fields, {cls}FilterAllowlist.OpsByField){fm});");
+        w.Line("if (filter.ErrorEnvelope is not null)");
         // `field` names the rejected filter field — required cross-port on every
         // filter envelope, so a caller with several filters knows which one failed.
-        sb.AppendLine("                return Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field });");
-        sb.AppendLine($"            q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates{fm});");
-        sb.AppendLine();
-        sb.AppendLine("            // Sort: ?sort=field:asc|desc against the static allowlist.");
-        sb.AppendLine("            if (qs.TryGetValue(\"sort\", out var sortRaw) && !string.IsNullOrWhiteSpace(sortRaw))");
-        sb.AppendLine("            {");
-        sb.AppendLine("                var parts = sortRaw.ToString().Split(':', 2);");
-        sb.AppendLine("                var field = parts[0];");
-        sb.AppendLine("                if (!SortAllowlist.TryGetValue(field, out var resolved))");
-        sb.AppendLine("                    return Results.BadRequest(new { error = \"invalid_sort\", field });");
+        using (w.Hanging()) w.Line("return Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field });");
+        w.Line($"q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates{fm});");
+        w.Blank();
+        w.Line("// Sort: ?sort=field:asc|desc against the static allowlist.");
+        w.Line("if (qs.TryGetValue(\"sort\", out var sortRaw) && !string.IsNullOrWhiteSpace(sortRaw))");
+        w.Open("{");
+        w.Line("var parts = sortRaw.ToString().Split(':', 2);");
+        w.Line("var field = parts[0];");
+        w.Line("if (!SortAllowlist.TryGetValue(field, out var resolved))");
+        using (w.Hanging()) w.Line("return Results.BadRequest(new { error = \"invalid_sort\", field });");
         // `?sort=field` with no `:order` takes the field's DECLARED @sortableDefaultOrder.
         // Keyed on `resolved` — the allowlist's canonical Pascal spelling — so a
         // case-insensitive wire name still finds its declaration. Ascending stays the
         // fallback HERE, one place per port.
-        sb.AppendLine("                var desc = parts.Length > 1");
-        sb.AppendLine("                    ? string.Equals(parts[1], \"desc\", System.StringComparison.OrdinalIgnoreCase)");
-        sb.AppendLine("                    : SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;");
-        sb.AppendLine(sqliteSort
-            ? $"                q = ApplySort{cls}(q, resolved, desc, db.Database.ProviderName?.Contains(\"Sqlite\", System.StringComparison.OrdinalIgnoreCase) == true);"
-            : $"                q = ApplySort{cls}(q, resolved, desc);");
-        sb.AppendLine("            }");
-        sb.AppendLine();
+        w.Line("var desc = parts.Length > 1");
+        using (w.Hanging()) w.Line("? string.Equals(parts[1], \"desc\", System.StringComparison.OrdinalIgnoreCase)");
+        using (w.Hanging()) w.Line(": SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;");
+        if (sqliteSort)
+            w.Line($"q = ApplySort{cls}(q, resolved, desc, db.Database.ProviderName?.Contains(\"Sqlite\", System.StringComparison.OrdinalIgnoreCase) == true);");
+        else
+            w.Line($"q = ApplySort{cls}(q, resolved, desc);");
+        w.Close("}");
+        w.Blank();
         if (isReport)
         {
-            AppendReportPaging(sb, export);
-            if (export is not null) AppendReportExportBranch(sb, cls, route);
+            AppendReportPaging(w, export);
+            if (export is not null) AppendReportExportBranch(w, cls, route);
         }
         else
         {
-            sb.AppendLine("            // Pagination: ?offset=N first (skip), then ?limit=N (take).");
-            AppendOffsetLimit(sb, ctx.Root.Api.Pagination, "            ", "offsetRaw", "offset", "limitRaw", "limit");
-            sb.AppendLine();
-            sb.AppendLine("            var rows = await q.ToListAsync();");
+            w.Line("// Pagination: ?offset=N first (skip), then ?limit=N (take).");
+            AppendOffsetLimit(w, ctx.Root.Api.Pagination, "offsetRaw", "offset", "limitRaw", "limit");
+            w.Blank();
+            w.Line("var rows = await q.ToListAsync();");
         }
-        sb.AppendLine();
-        sb.AppendLine("            // withCount=1 → { rows, total } envelope; otherwise bare row array.");
-        sb.AppendLine("            var withCount = qs.TryGetValue(\"withCount\", out var wc) && (wc == \"1\" || string.Equals(wc, \"true\", System.StringComparison.OrdinalIgnoreCase));");
+        w.Blank();
+        w.Line("// withCount=1 → { rows, total } envelope; otherwise bare row array.");
+        w.Line("var withCount = qs.TryGetValue(\"withCount\", out var wc) && (wc == \"1\" || string.Equals(wc, \"true\", System.StringComparison.OrdinalIgnoreCase));");
         if (export is null)
-            sb.AppendLine($"            if (!withCount) return {OkResult("rows", credentials)};");
+            w.Line($"if (!withCount) return {OkResult("rows", credentials)};");
         else
-            sb.AppendLine($"            if (!withCount) return format is null ? {OkResult("rows", credentials)} : ReportExportHttp.Json(http, \"{route}\", rows{ExportOmit(credentials, false)});");
-        sb.AppendLine($"            var totalQ = EfCoreFilterDispatch.ApplyFilter(db.{readDbSet}.AsNoTracking(), filter.Predicates{fm});");
-        sb.AppendLine("            var total = await totalQ.CountAsync();");
+            w.Line($"if (!withCount) return format is null ? {OkResult("rows", credentials)} : ReportExportHttp.Json(http, \"{route}\", rows{ExportOmit(credentials, false)});");
+        w.Line($"var totalQ = EfCoreFilterDispatch.ApplyFilter(db.{readDbSet}.AsNoTracking(), filter.Predicates{fm});");
+        w.Line("var total = await totalQ.CountAsync();");
         if (export is null)
-            sb.AppendLine($"            return {OkResult("new { rows, total }", credentials, envelope: true)};");
+            w.Line($"return {OkResult("new { rows, total }", credentials, envelope: true)};");
         else
-            sb.AppendLine($"            return format is null ? {OkResult("new { rows, total }", credentials, envelope: true)} : ReportExportHttp.Json(http, \"{route}\", new {{ rows, total }}{ExportOmit(credentials, true)});");
-        sb.AppendLine("        });");
+            w.Line($"return format is null ? {OkResult("new { rows, total }", credentials, envelope: true)} : ReportExportHttp.Json(http, \"{route}\", new {{ rows, total }}{ExportOmit(credentials, true)});");
+        w.Close("});");
 
         if (hasItem)
         {
-            sb.AppendLine();
-            sb.AppendLine("        app.MapGet(prefix + \"/" + route + "/{id}\", async (" + pkType + " id, " + ValueObjectNames.ContextTypeRef(ctx.Config) + " db) =>");
-            sb.AppendLine("            await db." + readDbSet + ".FindAsync(id) is { } found");
-            sb.AppendLine("                ? " + OkResult("found", credentials));
-            sb.AppendLine("                : Results.NotFound(new { error = \"not_found\" }));");
+            w.Blank();
+            w.Line("app.MapGet(prefix + \"/" + route + "/{id}\", async (" + pkType + " id, " + ValueObjectNames.ContextTypeRef(ctx.Config) + " db) =>");
+            using (w.Hanging()) w.Line("await db." + readDbSet + ".FindAsync(id) is { } found");
+            using (w.Hanging()) using (w.Hanging()) w.Line("? " + OkResult("found", credentials));
+            using (w.Hanging()) using (w.Hanging()) w.Line(": Results.NotFound(new { error = \"not_found\" }));");
         }
 
         if (writable)
@@ -432,11 +434,11 @@ public class RoutesGenerator : PerEntityGenerator
             // field.timestamp → non-nullable DateTimeOffset) binds to a CLR default when
             // omitted, invisible to [Required], so the create handler checks raw-JSON presence.
             var requiredKeys = RequiredCreateKeys(entity, f => pkFields.Contains(f.Name));
-            sb.AppendLine();
+            w.Blank();
             // #214 — a write-through create binds the derived-FREE WRITE entity, persists to
             // the table, then RE-READS the row through the replica view by PK so the returned
             // body carries the derived (view-computed) fields (read-your-writes).
-            AppendCreateHandler(sb, "/" + route, cls, ValueObjectNames.ContextTypeRef(ctx.Config), dbSet, requiredKeys,
+            AppendCreateHandler(w, "/" + route, cls, ValueObjectNames.ContextTypeRef(ctx.Config), dbSet, requiredKeys,
                 CreatedResult("prefix + \"/" + route + "\"", "input", credentials), voFields, mapVoFields, autoSetFields,
                 writeThrough ? (readDbSet, pkProp!, route) : null,
                 deniedFields.Select(f => CSharpNaming.PropertyName(f, ctx.Config)).ToList(), credentials,
@@ -458,59 +460,59 @@ public class RoutesGenerator : PerEntityGenerator
             // CLEARS a nullable column; an explicit null on a NOT-NULL (@required) column
             // is a 400. The per-key merge (shared with the TPH per-subtype handler) is
             // emitted by AppendPartialMergeLoop.
-            sb.AppendLine();
-            sb.AppendLine("        async System.Threading.Tasks.Task<IResult> Update" + cls + "(" + pkType + " id, HttpContext http, " + ValueObjectNames.ContextTypeRef(ctx.Config) + " db)");
-            sb.AppendLine("        {");
-            sb.AppendLine("            var existing = await db." + dbSet + ".FindAsync(id);");
-            sb.AppendLine("            if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
-            sb.AppendLine("            System.Text.Json.JsonDocument body;");
-            sb.AppendLine("            try { body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }");
-            sb.AppendLine("            catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }");
-            sb.AppendLine("            using var bodyScope = body;");
-            sb.AppendLine("            if (body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object) return ValidationIssues.Unreadable();");
-            AppendUnknownFieldsCheck(sb, ctx.Root, "body");
-            sb.AppendLine("            // Deserialize each value with the app's CONFIGURED JSON options, not defaults —");
-            sb.AppendLine("            // a field.timestamp binds to DateTimeOffset via a custom converter registered on");
-            sb.AppendLine("            // ConfigureHttpJsonOptions, and default options cannot read the wire format, throwing 500.");
-            sb.AppendLine("            var jsonOpts = ((Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>)");
-            sb.AppendLine("                http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)");
-            sb.AppendLine("                .Value.SerializerOptions;");
-            sb.AppendLine("            var entry = db.Entry(existing);");
-            AppendUpdateAutoSet(sb, autoSetFields);
-            AppendPartialMergeLoop(sb, null, voFields, mapVoFields, autoSetNavs, frozenNavs, HasDecimalField(entity),
+            w.Blank();
+            w.Line("async System.Threading.Tasks.Task<IResult> Update" + cls + "(" + pkType + " id, HttpContext http, " + ValueObjectNames.ContextTypeRef(ctx.Config) + " db)");
+            w.Open("{");
+            w.Line("var existing = await db." + dbSet + ".FindAsync(id);");
+            w.Line("if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
+            w.Line("System.Text.Json.JsonDocument body;");
+            w.Line("try { body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }");
+            w.Line("catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }");
+            w.Line("using var bodyScope = body;");
+            w.Line("if (body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object) return ValidationIssues.Unreadable();");
+            AppendUnknownFieldsCheck(w, ctx.Root, "body");
+            w.Line("// Deserialize each value with the app's CONFIGURED JSON options, not defaults —");
+            w.Line("// a field.timestamp binds to DateTimeOffset via a custom converter registered on");
+            w.Line("// ConfigureHttpJsonOptions, and default options cannot read the wire format, throwing 500.");
+            w.Line("var jsonOpts = ((Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>)");
+            using (w.Hanging()) w.Line("http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)");
+            using (w.Hanging()) w.Line(".Value.SerializerOptions;");
+            w.Line("var entry = db.Entry(existing);");
+            AppendUpdateAutoSet(w, autoSetFields);
+            AppendPartialMergeLoop(w, null, voFields, mapVoFields, autoSetNavs, frozenNavs, HasDecimalField(entity),
                 deniedFields.SelectMany(f => WireKeys(f, ctx.Config)).ToList(), deniedFields.Select(f => CSharpNaming.PropertyName(f, ctx.Config)).ToList(), HasIsoDurationField(entity, ctx.Root));
-            AppendSaveChanges(sb);
-            AppendArrayNullClears(sb, voFields, tableRef, pkColumnRef);
+            AppendSaveChanges(w);
+            AppendArrayNullClears(w, voFields, tableRef, pkColumnRef);
             // #214 — writes target the table; for a write-through entity re-read the row
             // through the replica view by PK so the returned body carries the derived fields.
             if (writeThrough)
             {
-                sb.AppendLine($"            var __view = await db.{readDbSet}.FindAsync(id);");
+                w.Line($"var __view = await db.{readDbSet}.FindAsync(id);");
                 // #214 [2] — a @kind:materializedView (unrefreshed) or filtered replica view may
                 // not surface the just-written row; fall back to the write entity so the body is
                 // never null (degraded — missing only the derived fields; matches the Python port).
-                sb.AppendLine($"            return {OkResult("(object?)__view ?? existing", credentials)};");
+                w.Line($"return {OkResult("(object?)__view ?? existing", credentials)};");
             }
             else
             {
-                sb.AppendLine($"            return {OkResult("existing", credentials)};");
+                w.Line($"return {OkResult("existing", credentials)};");
             }
-            sb.AppendLine("        }");
-            sb.AppendLine("        app.MapPatch(prefix + \"/" + route + "/{id}\", Update" + cls + ");");
-            sb.AppendLine("        app.MapPut(prefix + \"/" + route + "/{id}\", Update" + cls + ");");
-            sb.AppendLine();
-            sb.AppendLine("        app.MapDelete(prefix + \"/" + route + "/{id}\", async (" + pkType + " id, " + ValueObjectNames.ContextTypeRef(ctx.Config) + " db) =>");
-            sb.AppendLine("        {");
-            sb.AppendLine("            var existing = await db." + dbSet + ".FindAsync(id);");
-            sb.AppendLine("            if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
-            sb.AppendLine("            db." + dbSet + ".Remove(existing);");
-            AppendSaveChanges(sb);
-            sb.AppendLine("            return Results.NoContent();");
-            sb.AppendLine("        });");
+            w.Close("}");
+            w.Line("app.MapPatch(prefix + \"/" + route + "/{id}\", Update" + cls + ");");
+            w.Line("app.MapPut(prefix + \"/" + route + "/{id}\", Update" + cls + ");");
+            w.Blank();
+            w.Line("app.MapDelete(prefix + \"/" + route + "/{id}\", async (" + pkType + " id, " + ValueObjectNames.ContextTypeRef(ctx.Config) + " db) =>");
+            w.Open("{");
+            w.Line("var existing = await db." + dbSet + ".FindAsync(id);");
+            w.Line("if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
+            w.Line("db." + dbSet + ".Remove(existing);");
+            AppendSaveChanges(w);
+            w.Line("return Results.NoContent();");
+            w.Close("});");
         }
         else if (isProjection)
         {
-            AppendProjectionRejects(sb, route, pkType, hasItem, isReport ? "report" : "projection");
+            AppendProjectionRejects(w, route, pkType, hasItem, isReport ? "report" : "projection");
         }
 
         // FR-018 M:N traversal — GET /<source-plural>/{id}/<relationName> through the
@@ -519,37 +521,38 @@ public class RoutesGenerator : PerEntityGenerator
         // segment = relationship name.
         if (hasItem)
             foreach (var nav in M2MNavigationBuilder.For(entity, ctx.Root, ctx.Warn))
-                AppendM2mRoute(sb, nav, route, pkType!, ctx.Root, ctx.Config);
+                AppendM2mRoute(w, nav, route, pkType!, ctx.Root, ctx.Config);
 
-        sb.AppendLine();
-        sb.AppendLine("        return mount;");
-        sb.AppendLine("    }");
-        sb.AppendLine();
+        w.Blank();
+        w.Line("return mount;");
+        w.Close("}");
+        w.Blank();
         // Allowlisted property name → IOrderedQueryable dispatch via EF.Property.
         // Reflection-free at runtime; EF Core translates EF.Property(x, "<Name>")
         // into the column reference at SQL generation.
-        sb.AppendLine($"    private static IOrderedQueryable<{readCls}> ApplySort{cls}(IQueryable<{readCls}> q, string field, bool desc{(sqliteSort ? ", bool sqlite" : "")})");
-        sb.AppendLine("    {");
-        sb.AppendLine("        return field switch");
-        sb.AppendLine("        {");
+        w.Line($"private static IOrderedQueryable<{readCls}> ApplySort{cls}(IQueryable<{readCls}> q, string field, bool desc{(sqliteSort ? ", bool sqlite" : "")})");
+        w.Open("{");
+        w.Line("return field switch");
+        w.Open("{");
         foreach (var name in sortFields)
         {
             var exact = NullsLargestSort("q", $"EF.Property<object>(x!, \"{name}\")");
-            sb.AppendLine(decimalSortFields.Contains(name)
-                ? $"            \"{name}\" => sqlite ? ({NullsLargestSort("q", $"(double?)EF.Property<decimal?>(x!, \"{name}\")")}) : ({exact}),"
-                : $"            \"{name}\" => {exact},");
+            if (decimalSortFields.Contains(name))
+                w.Line($"\"{name}\" => sqlite ? ({NullsLargestSort("q", $"(double?)EF.Property<decimal?>(x!, \"{name}\")")}) : ({exact}),");
+            else
+                w.Line($"\"{name}\" => {exact},");
         }
-        sb.AppendLine("            _ => (IOrderedQueryable<" + readCls + ">)q.OrderBy(x => 0),");
-        sb.AppendLine("        };");
-        sb.AppendLine("    }");
+        w.Line("_ => (IOrderedQueryable<" + readCls + ">)q.OrderBy(x => 0),");
+        w.Close("};");
+        w.Close("}");
         // Issue #203 — the verbatim-insert escape hatch, only for an entity with @autoSet
         // fields (writable entities only; a read-only projection has no insert path).
         if (writable && autoSetFields.Count > 0)
-            AppendInsertPreserving(sb, cls, dbSet, ValueObjectNames.ContextTypeRef(ctx.Config));
-        AppendOmitResultClass(sb);
-        sb.AppendLine("}");
+            AppendInsertPreserving(w, cls, dbSet, ValueObjectNames.ContextTypeRef(ctx.Config));
+        AppendOmitResultClass(w, credentials.Count > 0 || (hasItem && M2mTargetHasCredentials([entity], ctx.Root, ctx.Config)));
+        w.Close("}");
 
-        return new EmittedFile(OutputPaths.Of(entity, ctx, $"{cls}Routes.g.cs"), sb.ToString());
+        return new EmittedFile(OutputPaths.Of(entity, ctx, $"{cls}Routes.g.cs"), w.ToString());
     }
 
     // F22 — the write verbs on a read-only projection, each answering the cross-port
@@ -569,24 +572,24 @@ public class RoutesGenerator : PerEntityGenerator
     //
     // A view-backed report (FR-044) takes the keyless arm: POST only. `noun` is what the
     // free-prose message calls the resource ("projection" or "report").
-    private static void AppendProjectionRejects(StringBuilder sb, string route, string? pkType, bool hasItem, string noun)
+    private static void AppendProjectionRejects(CsWriter w, string route, string? pkType, bool hasItem, string noun)
     {
-        sb.AppendLine();
-        AppendReject(sb, "MapPost", "/" + route, "POST", null, noun);
+        w.Blank();
+        AppendReject(w, "MapPost", "/" + route, "POST", null, noun);
         if (!hasItem) return;
-        AppendReject(sb, "MapPatch", "/" + route + "/{id}", "PATCH", pkType, noun);
-        AppendReject(sb, "MapPut", "/" + route + "/{id}", "PUT", pkType, noun);
-        AppendReject(sb, "MapDelete", "/" + route + "/{id}", "DELETE", pkType, noun);
+        AppendReject(w, "MapPatch", "/" + route + "/{id}", "PATCH", pkType, noun);
+        AppendReject(w, "MapPut", "/" + route + "/{id}", "PUT", pkType, noun);
+        AppendReject(w, "MapDelete", "/" + route + "/{id}", "DELETE", pkType, noun);
     }
 
     // The item handlers take the route's `id` even though they ignore it: a typed
     // parameter makes an unparsable id a 404 from routing rather than a 405 claiming
     // the write was refused on a row that could never have been addressed.
-    private static void AppendReject(StringBuilder sb, string map, string path, string verb, string? pkType, string noun)
+    private static void AppendReject(CsWriter w, string map, string path, string verb, string? pkType, string noun)
     {
         var parms = pkType is null ? "()" : "(" + pkType + " id)";
-        sb.AppendLine("        app." + map + "(prefix + \"" + path + "\", " + parms + " =>");
-        sb.AppendLine("            Results.Json(new { error = \"method_not_allowed\", message = \"" + verb
+        w.Line("app." + map + "(prefix + \"" + path + "\", " + parms + " =>");
+        using (w.Hanging()) w.Line("Results.Json(new { error = \"method_not_allowed\", message = \"" + verb
             + " is not supported on a " + noun + " (read-only).\" }, statusCode: 405));");
     }
 
@@ -633,29 +636,29 @@ public class RoutesGenerator : PerEntityGenerator
             .ToList();
         var sortFields = sortFieldNodes.Select(f => CSharpNaming.PropertyName(f, ctx.Config)).ToList();
 
-        var sb = new StringBuilder();
-        sb.AppendLine("// <auto-generated/>");
-        sb.AppendLine("// Generated by MetaObjects routes-generator (TPH). Do not edit by hand.");
-        sb.AppendLine("#nullable enable");
-        sb.AppendLine("using System.Linq;");
-        sb.AppendLine("using Microsoft.AspNetCore.Builder;");
-        sb.AppendLine("using Microsoft.AspNetCore.Http;");
-        sb.AppendLine("using Microsoft.AspNetCore.Routing;");
-        sb.AppendLine("using Microsoft.EntityFrameworkCore;");
-        sb.AppendLine($"using {HelperRuntimeNamespace};");
+        var w = new CsWriter();
+        w.Line("// <auto-generated/>");
+        w.Line("// Generated by MetaObjects routes-generator (TPH). Do not edit by hand.");
+        w.Line("#nullable enable");
+        w.Line("using System.Linq;");
+        w.Line("using Microsoft.AspNetCore.Builder;");
+        w.Line("using Microsoft.AspNetCore.Http;");
+        w.Line("using Microsoft.AspNetCore.Routing;");
+        w.Line("using Microsoft.EntityFrameworkCore;");
+        w.Line($"using {HelperRuntimeNamespace};");
         if (!ctx.Config.PackageNamespacesFromMetadata)
-            foreach (var u in PackageBindingResolver.HomeUsings(ctx.Config, ReferencedTypes(tph.Subtypes.Select(st => st.Entity).Prepend(baseEntity), ctx.Root))) sb.AppendLine(u);
-        sb.AppendLine();
-        sb.AppendLine($"namespace {ValueObjectNames.CompanionNamespace(baseEntity, ctx.Config)};");
-        sb.AppendLine();
-        sb.AppendLine($"public static class {baseCls}Routes");
-        sb.AppendLine("{");
+            foreach (var u in PackageBindingResolver.HomeUsings(ctx.Config, ReferencedTypes(tph.Subtypes.Select(st => st.Entity).Prepend(baseEntity), ctx.Root))) w.Line(u);
+        w.Blank();
+        w.Line($"namespace {ValueObjectNames.CompanionNamespace(baseEntity, ctx.Config)};");
+        w.Blank();
+        w.Line($"public static class {baseCls}Routes");
+        w.Open("{");
 
         // Polymorphic sort allowlist over the base scalar columns.
-        AppendSortAllowlist(sb, "SortAllowlist", sortFieldNodes, ctx.Config);
-        AppendSortDefaultOrder(sb, baseEntity, "SortDefaultDesc", ctx.Config);
+        AppendSortAllowlist(w, "SortAllowlist", sortFieldNodes, ctx.Config);
+        AppendSortDefaultOrder(w, baseEntity, "SortDefaultDesc", ctx.Config);
         // One known set for the whole hierarchy: a sibling subtype's column is declared, so it is not unknown.
-        AppendKnownFields(sb, tph.Subtypes.Select(st => st.Entity).Prepend(baseEntity), ctx.Root);
+        AppendKnownFields(w, tph.Subtypes.Select(st => st.Entity).Prepend(baseEntity), ctx.Root);
 
         // Per-subtype sort allowlists (case-insensitive) over each subtype's EFFECTIVE
         // scalar fields (inherited base + own). The per-subtype list resolves the qs
@@ -668,54 +671,54 @@ public class RoutesGenerator : PerEntityGenerator
             var subSortFields = st.Entity.Fields()
                 .Where(f => CSharpNaming.ScalarFor(f.SubType) is not null && !f.ResolvedIsArray() && !hierarchyCredentials.Contains(f.Name))
                 .ToList();
-            AppendSortAllowlist(sb, $"{subClsName}SortAllowlist", subSortFields, ctx.Config);
-            AppendSortDefaultOrder(sb, st.Entity, $"{subClsName}SortDefaultDesc", ctx.Config);
+            AppendSortAllowlist(w, $"{subClsName}SortAllowlist", subSortFields, ctx.Config);
+            AppendSortDefaultOrder(w, st.Entity, $"{subClsName}SortDefaultDesc", ctx.Config);
         }
 
-        AppendUnauthenticatedRoutesDoc(sb, baseCls, readOnly: false);
-        sb.AppendLine($"    public static IEndpointRouteBuilder Map{baseCls}Routes(this IEndpointRouteBuilder app, string prefix = \"/api\")");
-        sb.AppendLine("    {");
+        AppendUnauthenticatedRoutesDoc(w, baseCls, readOnly: false);
+        w.Line($"public static IEndpointRouteBuilder Map{baseCls}Routes(this IEndpointRouteBuilder app, string prefix = \"/api\")");
+        w.Open("{");
         if (baseCredentials.Count > 0)
         {
             var credTypes = new[] { baseCls }.Concat(tph.Subtypes.Select(st => ValueObjectNames.TypeRef(st.Entity, ctx.Root, ctx.Config, ValueObjectNames.Namespace(baseEntity, ctx.Config))));
-            sb.AppendLine($"        SerializerKeys.EnsureContract(app.ServiceProvider, new System.Type[] {{ {string.Join(", ", credTypes.Select(t => $"typeof({t})"))} }}, {NamesLiteral(baseCredentials)});");
+            w.Line($"SerializerKeys.EnsureContract(app.ServiceProvider, new System.Type[] {{ {string.Join(", ", credTypes.Select(t => $"typeof({t})"))} }}, {NamesLiteral(baseCredentials)});");
         }
-        AppendDecimalRangeGroup(sb);
+        AppendDecimalRangeGroup(w);
 
         // --- Polymorphic list: GET /<base> (union of all subtypes; each row carries its discriminator) ---
-        sb.AppendLine("        app.MapGet(prefix + \"/" + baseRoute + "\", async (HttpContext http, " + ValueObjectNames.ContextTypeRef(ctx.Config) + " db) =>");
-        sb.AppendLine("        {");
-        sb.AppendLine("            var qs = http.Request.Query;");
-        sb.AppendLine($"            IQueryable<{baseCls}> q = db.{dbSet}.AsNoTracking();");
+        w.Line("app.MapGet(prefix + \"/" + baseRoute + "\", async (HttpContext http, " + ValueObjectNames.ContextTypeRef(ctx.Config) + " db) =>");
+        w.Open("{");
+        w.Line("var qs = http.Request.Query;");
+        w.Line($"IQueryable<{baseCls}> q = db.{dbSet}.AsNoTracking();");
         var fmB = FilterMapArg($"{baseCls}FilterAllowlist", baseEntity, ctx.Config);
-        sb.AppendLine($"            var filter = EfCoreFilterDispatch.Validate<{baseCls}>(FilterParser.Parse(qs, {baseCls}FilterAllowlist.Fields, {baseCls}FilterAllowlist.OpsByField){fmB});");
-        sb.AppendLine("            if (filter.ErrorEnvelope is not null) return Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field });");
-        sb.AppendLine($"            q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates{fmB});");
-        sb.AppendLine("            if (qs.TryGetValue(\"sort\", out var sortRaw) && !string.IsNullOrWhiteSpace(sortRaw))");
-        sb.AppendLine("            {");
-        sb.AppendLine("                var parts = sortRaw.ToString().Split(':', 2);");
-        sb.AppendLine("                if (!SortAllowlist.TryGetValue(parts[0], out var resolved)) return Results.BadRequest(new { error = \"invalid_sort\", field = parts[0] });");
-        sb.AppendLine("                var desc = parts.Length > 1");
-        sb.AppendLine("                    ? string.Equals(parts[1], \"desc\", System.StringComparison.OrdinalIgnoreCase)");
-        sb.AppendLine("                    : SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;");
-        sb.AppendLine("                q = ApplySort(q, resolved, desc);");
-        sb.AppendLine("            }");
-        AppendOffsetLimit(sb, ctx.Root.Api.Pagination, "            ", "offRaw", "off", "limRaw", "lim");
-        sb.AppendLine("            var rows = await q.ToListAsync();");
-        sb.AppendLine("            var withCount = qs.TryGetValue(\"withCount\", out var wc) && (wc == \"1\" || string.Equals(wc, \"true\", System.StringComparison.OrdinalIgnoreCase));");
-        sb.AppendLine($"            if (!withCount) return {OkResult("rows", baseCredentials)};");
-        sb.AppendLine($"            var total = await EfCoreFilterDispatch.ApplyFilter(db.{dbSet}.AsNoTracking(), filter.Predicates{fmB}).CountAsync();");
-        sb.AppendLine($"            return {OkResult("new { rows, total }", baseCredentials, envelope: true)};");
-        sb.AppendLine("        });");
+        w.Line($"var filter = EfCoreFilterDispatch.Validate<{baseCls}>(FilterParser.Parse(qs, {baseCls}FilterAllowlist.Fields, {baseCls}FilterAllowlist.OpsByField){fmB});");
+        w.Line("if (filter.ErrorEnvelope is not null) return Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field });");
+        w.Line($"q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates{fmB});");
+        w.Line("if (qs.TryGetValue(\"sort\", out var sortRaw) && !string.IsNullOrWhiteSpace(sortRaw))");
+        w.Open("{");
+        w.Line("var parts = sortRaw.ToString().Split(':', 2);");
+        w.Line("if (!SortAllowlist.TryGetValue(parts[0], out var resolved)) return Results.BadRequest(new { error = \"invalid_sort\", field = parts[0] });");
+        w.Line("var desc = parts.Length > 1");
+        using (w.Hanging()) w.Line("? string.Equals(parts[1], \"desc\", System.StringComparison.OrdinalIgnoreCase)");
+        using (w.Hanging()) w.Line(": SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;");
+        w.Line("q = ApplySort(q, resolved, desc);");
+        w.Close("}");
+        AppendOffsetLimit(w, ctx.Root.Api.Pagination, "offRaw", "off", "limRaw", "lim");
+        w.Line("var rows = await q.ToListAsync();");
+        w.Line("var withCount = qs.TryGetValue(\"withCount\", out var wc) && (wc == \"1\" || string.Equals(wc, \"true\", System.StringComparison.OrdinalIgnoreCase));");
+        w.Line($"if (!withCount) return {OkResult("rows", baseCredentials)};");
+        w.Line($"var total = await EfCoreFilterDispatch.ApplyFilter(db.{dbSet}.AsNoTracking(), filter.Predicates{fmB}).CountAsync();");
+        w.Line($"return {OkResult("new { rows, total }", baseCredentials, envelope: true)};");
+        w.Close("});");
 
         if (hasItem)
         {
             // --- Polymorphic get: GET /<base>/{id} (one row of whatever subtype) ---
-            sb.AppendLine();
-            sb.AppendLine("        app.MapGet(prefix + \"/" + baseRoute + "/{id}\", async (" + pkType + " id, " + ValueObjectNames.ContextTypeRef(ctx.Config) + " db) =>");
-            sb.AppendLine($"            await db.{dbSet}.AsNoTracking().FirstOrDefaultAsync(x => x.{pkProp} == id) is {{ }} found");
-            sb.AppendLine("                ? " + OkResult("found", baseCredentials));
-            sb.AppendLine("                : Results.NotFound(new { error = \"not_found\" }));");
+            w.Blank();
+            w.Line("app.MapGet(prefix + \"/" + baseRoute + "/{id}\", async (" + pkType + " id, " + ValueObjectNames.ContextTypeRef(ctx.Config) + " db) =>");
+            using (w.Hanging()) w.Line($"await db.{dbSet}.AsNoTracking().FirstOrDefaultAsync(x => x.{pkProp} == id) is {{ }} found");
+            using (w.Hanging()) using (w.Hanging()) w.Line("? " + OkResult("found", baseCredentials));
+            using (w.Hanging()) using (w.Hanging()) w.Line(": Results.NotFound(new { error = \"not_found\" }));");
 
             // FW-8 — M:N traversal declared on the BASE: every row of the shared table
             // is a legitimate source (rule a in the cross-port contract — the independent
@@ -724,40 +727,40 @@ public class RoutesGenerator : PerEntityGenerator
             // a vanilla entity's traversal at the base route. Mirrors TS
             // renderTphRoutesFile's baseM2mMounts.
             foreach (var nav in M2MNavigationBuilder.For(baseEntity, ctx.Root, ctx.Warn))
-                AppendM2mRoute(sb, nav, baseRoute, pkType!, ctx.Root, ctx.Config);
+                AppendM2mRoute(w, nav, baseRoute, pkType!, ctx.Root, ctx.Config);
 
             // --- Per-subtype CRUD sets ---
             var hierarchy = tph.Subtypes.Select(s => s.Entity).Prepend(baseEntity).ToList();
             foreach (var st in tph.Subtypes)
-                AppendTphSubtypeRoutes(sb, st, hierarchy, ctx.Root, ctx.Config, baseRoute, baseCls, dbSet, pkType!, pkProp!, discProp, discField, ctx.Warn);
+                AppendTphSubtypeRoutes(w, st, hierarchy, ctx.Root, ctx.Config, baseRoute, baseCls, dbSet, pkType!, pkProp!, discProp, discField, ctx.Warn);
         }
 
-        sb.AppendLine();
-        sb.AppendLine("        return mount;");
-        sb.AppendLine("    }");
-        sb.AppendLine();
+        w.Blank();
+        w.Line("return mount;");
+        w.Close("}");
+        w.Blank();
 
         // Polymorphic sort dispatch over base scalar columns (reflection-free via EF.Property).
-        sb.AppendLine($"    private static IOrderedQueryable<{baseCls}> ApplySort(IQueryable<{baseCls}> q, string field, bool desc)");
-        sb.AppendLine("    {");
-        sb.AppendLine("        return field switch");
-        sb.AppendLine("        {");
+        w.Line($"private static IOrderedQueryable<{baseCls}> ApplySort(IQueryable<{baseCls}> q, string field, bool desc)");
+        w.Open("{");
+        w.Line("return field switch");
+        w.Open("{");
         foreach (var name in sortFields)
-            sb.AppendLine($"            \"{name}\" => {NullsLargestSort("q", $"EF.Property<object>(x!, \"{name}\")")},");
-        sb.AppendLine("            _ => (IOrderedQueryable<" + baseCls + ">)q.OrderBy(x => 0),");
-        sb.AppendLine("        };");
-        sb.AppendLine("    }");
+            w.Line($"\"{name}\" => {NullsLargestSort("q", $"EF.Property<object>(x!, \"{name}\")")},");
+        w.Line("_ => (IOrderedQueryable<" + baseCls + ">)q.OrderBy(x => 0),");
+        w.Close("};");
+        w.Close("}");
         // Issue #203 — a verbatim-insert escape hatch per subtype that declares @autoSet
         // fields (overloaded by the subtype parameter type; the discriminator is injected by
         // EF via the subtype CLR type on Add). Only when the subtype has @autoSet columns.
         if (hasItem)
             foreach (var st in tph.Subtypes)
                 if (AutoSetFields(st.Entity, ctx.Config).Count > 0)
-                    AppendInsertPreserving(sb, ValueObjectNames.TypeRef(st.Entity, ctx.Root, ctx.Config, ValueObjectNames.Namespace(baseEntity, ctx.Config)), dbSet, ValueObjectNames.ContextTypeRef(ctx.Config));
-        AppendOmitResultClass(sb);
-        sb.AppendLine("}");
+                    AppendInsertPreserving(w, ValueObjectNames.TypeRef(st.Entity, ctx.Root, ctx.Config, ValueObjectNames.Namespace(baseEntity, ctx.Config)), dbSet, ValueObjectNames.ContextTypeRef(ctx.Config));
+        AppendOmitResultClass(w, baseCredentials.Count > 0 || (hasItem && M2mTargetHasCredentials(tph.Subtypes.Select(st => st.Entity).Prepend(baseEntity), ctx.Root, ctx.Config)));
+        w.Close("}");
 
-        return new EmittedFile(OutputPaths.Of(baseEntity, ctx, $"{baseCls}Routes.g.cs"), sb.ToString());
+        return new EmittedFile(OutputPaths.Of(baseEntity, ctx, $"{baseCls}Routes.g.cs"), w.ToString());
     }
 
     // FR-036 #4 — the wire keys of the @required fields whose keys must be PRESENT (and
@@ -888,28 +891,26 @@ public class RoutesGenerator : PerEntityGenerator
     // ignoring case), as ever. When a resolver renamed a property beyond case it is a map that accepts the
     // field name too, so `?sort=` takes the same key as `?filter[...]` (which keys on the field name)
     // and the property name a client may have read from a response.
-    private static void AppendSortAllowlist(StringBuilder sb, string name, IReadOnlyList<MetaField> fields, GenConfig config)
+    private static void AppendSortAllowlist(CsWriter w, string name, IReadOnlyList<MetaField> fields, GenConfig config)
     {
         var pairs = fields.Select(f => (Field: f.Name, Prop: CSharpNaming.PropertyName(f, config))).ToList();
         if (pairs.All(p => string.Equals(p.Field, p.Prop, StringComparison.OrdinalIgnoreCase)))
         {
-            sb.Append($"    private static readonly System.Collections.Generic.HashSet<string> {name} =");
-            sb.AppendLine(" new(System.StringComparer.OrdinalIgnoreCase)");
-            sb.AppendLine("    {");
-            foreach (var p in pairs) sb.AppendLine($"        \"{p.Prop}\",");
-            sb.AppendLine("    };");
-            sb.AppendLine();
+            w.Line($"private static readonly System.Collections.Generic.HashSet<string> {name} = new(System.StringComparer.OrdinalIgnoreCase)");
+            w.Open("{");
+            foreach (var p in pairs) w.Line($"\"{p.Prop}\",");
+            w.Close("};");
+            w.Blank();
             return;
         }
-        sb.Append($"    private static readonly System.Collections.Generic.Dictionary<string, string> {name} =");
-        sb.AppendLine(" new(System.StringComparer.OrdinalIgnoreCase)");
-        sb.AppendLine("    {");
+        w.Line($"private static readonly System.Collections.Generic.Dictionary<string, string> {name} = new(System.StringComparer.OrdinalIgnoreCase)");
+        w.Open("{");
         // Property names first, so a field name that spells another field's property never shadows it.
         var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var p in pairs) if (keys.Add(p.Prop)) sb.AppendLine($"        [\"{p.Prop}\"] = \"{p.Prop}\",");
-        foreach (var p in pairs) if (keys.Add(p.Field)) sb.AppendLine($"        [\"{p.Field}\"] = \"{p.Prop}\",");
-        sb.AppendLine("    };");
-        sb.AppendLine();
+        foreach (var p in pairs) if (keys.Add(p.Prop)) w.Line($"[\"{p.Prop}\"] = \"{p.Prop}\",");
+        foreach (var p in pairs) if (keys.Add(p.Field)) w.Line($"[\"{p.Field}\"] = \"{p.Prop}\",");
+        w.Close("};");
+        w.Blank();
     }
 
     // The extra argument that hands the filter dispatch the allowlist's field-to-property map: only
@@ -937,35 +938,39 @@ public class RoutesGenerator : PerEntityGenerator
             ? $"Results.Created({location}, {value})"
             : $"(IResult)new CredentialOmittingResult({value}, {NamesLiteral(credentials)}, status: 201, location: {location})";
 
+    // True when any M:N traversal mounted for these sources returns rows of a target that carries a credential.
+    private static bool M2mTargetHasCredentials(IEnumerable<MetaObject> sources, MetaRoot root, GenConfig config) =>
+        sources.Any(src => M2MNavigationBuilder.For(src, root).Any(nav => TphUnionCredentialNames(nav.Target, root, config).Count > 0));
+
     // Emitted only into a routes class that uses it (never for a model without a credential).
-    private static void AppendOmitResultClass(StringBuilder sb)
+    private static void AppendOmitResultClass(CsWriter w, bool used)
     {
-        if (!sb.ToString().Contains("new CredentialOmittingResult(")) return;
-        sb.AppendLine();
-        sb.AppendLine("    // #484 — a credential (view.password) is never sent: the key is OMITTED from the body, not nulled.");
-        sb.AppendLine("    // Serializes with the app's configured JSON options, then removes the named keys from each row.");
-        sb.AppendLine("    private sealed class CredentialOmittingResult : IResult");
-        sb.AppendLine("    {");
-        sb.AppendLine("        private readonly object _value;");
-        sb.AppendLine("        private readonly string[] _names;");
-        sb.AppendLine("        private readonly bool _envelope;");
-        sb.AppendLine("        private readonly int _status;");
-        sb.AppendLine("        private readonly string? _location;");
-        sb.AppendLine("        public CredentialOmittingResult(object value, string[] names, bool envelope = false, int status = 200, string? location = null)");
-        sb.AppendLine("        { _value = value; _names = names; _envelope = envelope; _status = status; _location = location; }");
-        sb.AppendLine("        public async System.Threading.Tasks.Task ExecuteAsync(HttpContext http)");
-        sb.AppendLine("        {");
-        sb.AppendLine("            var opts = ((Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>)");
-        sb.AppendLine("                http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)");
-        sb.AppendLine("                .Value.SerializerOptions;");
-        sb.AppendLine("            var node = System.Text.Json.JsonSerializer.SerializeToNode(_value, _value.GetType(), opts);");
-        sb.AppendLine("            // The keys are the serializer's own for these properties and the envelope's rows (naming policy, rename, attribute), never guessed from names.");
-        sb.AppendLine("            SerializerKeys.StripBody(node, _value, _envelope, opts, _names);");
-        sb.AppendLine("            http.Response.StatusCode = _status;");
-        sb.AppendLine("            if (_location is not null) http.Response.Headers.Location = _location;");
-        sb.AppendLine("            await http.Response.WriteAsJsonAsync(node, opts);");
-        sb.AppendLine("        }");
-        sb.AppendLine("    }");
+        if (!used) return;
+        w.Blank();
+        w.Line("// #484 — a credential (view.password) is never sent: the key is OMITTED from the body, not nulled.");
+        w.Line("// Serializes with the app's configured JSON options, then removes the named keys from each row.");
+        w.Line("private sealed class CredentialOmittingResult : IResult");
+        w.Open("{");
+        w.Line("private readonly object _value;");
+        w.Line("private readonly string[] _names;");
+        w.Line("private readonly bool _envelope;");
+        w.Line("private readonly int _status;");
+        w.Line("private readonly string? _location;");
+        w.Line("public CredentialOmittingResult(object value, string[] names, bool envelope = false, int status = 200, string? location = null)");
+        w.Line("{ _value = value; _names = names; _envelope = envelope; _status = status; _location = location; }");
+        w.Line("public async System.Threading.Tasks.Task ExecuteAsync(HttpContext http)");
+        w.Open("{");
+        w.Line("var opts = ((Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>)");
+        using (w.Hanging()) w.Line("http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)");
+        using (w.Hanging()) w.Line(".Value.SerializerOptions;");
+        w.Line("var node = System.Text.Json.JsonSerializer.SerializeToNode(_value, _value.GetType(), opts);");
+        w.Line("// The keys are the serializer's own for these properties and the envelope's rows (naming policy, rename, attribute), never guessed from names.");
+        w.Line("SerializerKeys.StripBody(node, _value, _envelope, opts, _names);");
+        w.Line("http.Response.StatusCode = _status;");
+        w.Line("if (_location is not null) http.Response.Headers.Location = _location;");
+        w.Line("await http.Response.WriteAsJsonAsync(node, opts);");
+        w.Close("}");
+        w.Close("}");
     }
 
     private static List<AutoSetField> AutoSetFields(MetaObject entity, GenConfig config)
@@ -1073,62 +1078,62 @@ public class RoutesGenerator : PerEntityGenerator
     // routes class. Null under `drop` (nothing is emitted and no handler checks): the constant's name otherwise.
     private const string KnownFieldsConst = "KnownFields";
 
-    private static void AppendKnownFields(StringBuilder sb, IEnumerable<MetaObject> objects, MetaRoot root)
+    private static void AppendKnownFields(CsWriter w, IEnumerable<MetaObject> objects, MetaRoot root)
     {
         if (root.Api.UnknownFields != UnknownFieldsMode.Reject) return;
         var names = objects.SelectMany(o => o.Fields()).Select(f => f.Name)
             .Distinct(StringComparer.Ordinal).OrderBy(n => n, StringComparer.Ordinal).ToList();
-        sb.AppendLine("    // api.unknownFields: reject — the declared field names (wire spelling); any other body key is a 400.");
-        sb.AppendLine("    private static readonly System.Collections.Generic.HashSet<string> " + KnownFieldsConst + " = new(System.StringComparer.Ordinal)");
-        sb.AppendLine("    {");
-        foreach (var n in names) sb.AppendLine($"        \"{n}\",");
-        sb.AppendLine("    };");
-        sb.AppendLine();
+        w.Line("// api.unknownFields: reject — the declared field names (wire spelling); any other body key is a 400.");
+        w.Line("private static readonly System.Collections.Generic.HashSet<string> " + KnownFieldsConst + " = new(System.StringComparer.Ordinal)");
+        w.Open("{");
+        foreach (var n in names) w.Line($"\"{n}\",");
+        w.Close("};");
+        w.Blank();
     }
 
     // The unknown-field refusal, before any validation of the body. `bodyVar` is the parsed JsonDocument.
-    private static void AppendUnknownFieldsCheck(StringBuilder sb, MetaRoot root, string bodyVar)
+    private static void AppendUnknownFieldsCheck(CsWriter w, MetaRoot root, string bodyVar)
     {
         if (root.Api.UnknownFields != UnknownFieldsMode.Reject) return;
         // `http` carries the app's JSON options: a key the binder matches case-insensitively is declared.
-        sb.AppendLine($"            if (UnknownFieldCheck.Reject({bodyVar}.RootElement, {KnownFieldsConst}, http) is {{ }} __unknown) return __unknown;");
+        w.Line($"if (UnknownFieldCheck.Reject({bodyVar}.RootElement, {KnownFieldsConst}, http) is {{ }} __unknown) return __unknown;");
     }
 
     // The offset + limit lines of a list route. Without `api.pagination` they are exactly what they always
     // were; with it, no limit takes defaultLimit and one above maxLimit is 400 limit_too_large.
-    private static void AppendOffsetLimit(StringBuilder sb, ApiPagination? page, string indent, string offRaw, string off, string limRaw, string lim)
+    private static void AppendOffsetLimit(CsWriter w, ApiPagination? page, string offRaw, string off, string limRaw, string lim)
     {
         if (page is not null)
         {
             // An offset that is present but not a non-negative int is refused, as the TypeScript routes answer,
             // never read as "absent" and answered with a page the client did not ask for.
-            sb.AppendLine($"{indent}if (qs.TryGetValue(\"offset\", out var {offRaw}Bad) && !(int.TryParse({offRaw}Bad, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {off}Bad) && {off}Bad >= 0))");
-            sb.AppendLine($"{indent}    return Results.BadRequest(new {{ error = \"pagination.invalid_value\", param = \"offset\", value = {offRaw}Bad.ToString(), expected = \"a non-negative integer (0 or more)\" }});");
+            w.Line($"if (qs.TryGetValue(\"offset\", out var {offRaw}Bad) && !(int.TryParse({offRaw}Bad, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {off}Bad) && {off}Bad >= 0))");
+            using (w.Hanging()) w.Line($"return Results.BadRequest(new {{ error = \"pagination.invalid_value\", param = \"offset\", value = {offRaw}Bad.ToString(), expected = \"a non-negative integer (0 or more)\" }});");
         }
-        sb.AppendLine($"{indent}if (qs.TryGetValue(\"offset\", out var {offRaw}) && int.TryParse({offRaw}, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {off}) && {off} > 0)");
-        sb.AppendLine($"{indent}    q = q.Skip({off});");
+        w.Line($"if (qs.TryGetValue(\"offset\", out var {offRaw}) && int.TryParse({offRaw}, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {off}) && {off} > 0)");
+        using (w.Hanging()) w.Line($"q = q.Skip({off});");
         if (page is null)
         {
-            sb.AppendLine($"{indent}if (qs.TryGetValue(\"limit\", out var {limRaw}) && int.TryParse({limRaw}, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {lim}) && {lim} > 0)");
-            sb.AppendLine($"{indent}    q = q.Take({lim});");
+            w.Line($"if (qs.TryGetValue(\"limit\", out var {limRaw}) && int.TryParse({limRaw}, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {lim}) && {lim} > 0)");
+            using (w.Hanging()) w.Line($"q = q.Take({lim});");
             return;
         }
-        sb.AppendLine($"{indent}// api.pagination: no limit takes defaultLimit; a limit above maxLimit is refused.");
+        w.Line($"// api.pagination: no limit takes defaultLimit; a limit above maxLimit is refused.");
         // A negative or non-numeric limit is refused with the malformed-bound envelope, as the TypeScript routes answer.
-        sb.AppendLine($"{indent}if (qs.TryGetValue(\"limit\", out var {limRaw}Neg) && !(long.TryParse({limRaw}Neg, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {lim}Neg) && {lim}Neg >= 0))");
-        sb.AppendLine($"{indent}    return Results.BadRequest(new {{ error = \"pagination.invalid_value\", param = \"limit\", value = {limRaw}Neg.ToString(), expected = \"a non-negative integer (0 or more)\" }});");
-        sb.AppendLine($"{indent}var __take = {page.DefaultLimit};");
+        w.Line($"if (qs.TryGetValue(\"limit\", out var {limRaw}Neg) && !(long.TryParse({limRaw}Neg, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {lim}Neg) && {lim}Neg >= 0))");
+        using (w.Hanging()) w.Line($"return Results.BadRequest(new {{ error = \"pagination.invalid_value\", param = \"limit\", value = {limRaw}Neg.ToString(), expected = \"a non-negative integer (0 or more)\" }});");
+        w.Line($"var __take = {page.DefaultLimit};");
         // `limit=0` is a page of zero rows, as every other port serves it, not "no limit".
-        sb.AppendLine($"{indent}if (qs.TryGetValue(\"limit\", out var {limRaw}) && long.TryParse({limRaw}, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {lim}) && {lim} >= 0)");
-        sb.AppendLine($"{indent}{{");
-        sb.AppendLine($"{indent}    if ({lim} > {page.MaxLimit}) return Results.BadRequest(new {{ error = \"limit_too_large\", maxLimit = {page.MaxLimit} }});");
-        sb.AppendLine($"{indent}    __take = (int){lim};");
-        sb.AppendLine($"{indent}}}");
-        sb.AppendLine($"{indent}q = q.Take(__take);");
+        w.Line($"if (qs.TryGetValue(\"limit\", out var {limRaw}) && long.TryParse({limRaw}, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {lim}) && {lim} >= 0)");
+        w.Open("{");
+        w.Line($"if ({lim} > {page.MaxLimit}) return Results.BadRequest(new {{ error = \"limit_too_large\", maxLimit = {page.MaxLimit} }});");
+        w.Line($"__take = (int){lim};");
+        w.Close($"}}");
+        w.Line($"q = q.Take(__take);");
     }
 
     private static void AppendCreateHandler(
-        StringBuilder sb, string mapPath, string cls, string ctxType, string dbSet,
+        CsWriter w, string mapPath, string cls, string ctxType, string dbSet,
         IReadOnlyList<string> requiredKeys, string createdExpr, IReadOnlyList<VoField> voFields,
         IReadOnlyList<MapVoField> mapVoFields,
         IReadOnlyList<AutoSetField> autoSetFields,
@@ -1142,44 +1147,42 @@ public class RoutesGenerator : PerEntityGenerator
         // The body is always read here, not model-bound: the framework answers a body it cannot bind with a
         // bare 400 and no body, while every validation failure must list its issues (the cross-port
         // {error:"validation", issues:[...]} envelope), so the handler reads the body itself and collects them.
-        sb.AppendLine($"        app.MapPost(prefix + \"{mapPath}\", async (HttpContext http, {ctxType} db) =>");
-        sb.AppendLine("        {");
-        AppendJsonOptsLocal(sb);
-        sb.AppendLine("            System.Text.Json.JsonDocument __body;");
-        sb.AppendLine("            try { __body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }");
-        sb.AppendLine("            catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }");
-        sb.AppendLine("            using var __bodyScope = __body;");
-        sb.AppendLine("            if (__body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)");
-        sb.AppendLine("                return ValidationIssues.Unreadable();");
-        if (root is not null) AppendUnknownFieldsCheck(sb, root, "__body");
-        sb.AppendLine("            var __issues = new ValidationIssues();");
+        w.Line($"app.MapPost(prefix + \"{mapPath}\", async (HttpContext http, {ctxType} db) =>");
+        w.Open("{");
+        AppendJsonOptsLocal(w);
+        w.Line("System.Text.Json.JsonDocument __body;");
+        w.Line("try { __body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }");
+        w.Line("catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }");
+        w.Line("using var __bodyScope = __body;");
+        w.Line("if (__body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)");
+        using (w.Hanging()) w.Line("return ValidationIssues.Unreadable();");
+        if (root is not null) AppendUnknownFieldsCheck(w, root, "__body");
+        w.Line("var __issues = new ValidationIssues();");
         // FR-036 #4 — @required-key presence: an omitted key OR an explicit null on a @required
         // field → 400, matching the JVM/Python "missing @required → 400" contract. Case-insensitive
         // so a camelCase wire key ("createdAt") matches its PascalCase property ("CreatedAt").
         if (requiredKeys.Count > 0)
         {
-            sb.AppendLine("            var __present = new System.Collections.Generic.HashSet<string>(System.StringComparer.OrdinalIgnoreCase);");
-            sb.AppendLine("            foreach (var __p in __body.RootElement.EnumerateObject())");
-            sb.AppendLine("                if (__p.Value.ValueKind != System.Text.Json.JsonValueKind.Null) __present.Add(__p.Name);");
-            sb.Append("            foreach (var __req in new[] { ");
-            sb.Append(string.Join(", ", requiredKeys.Select(k => "\"" + k + "\"")));
-            sb.AppendLine(" })");
-            sb.AppendLine("                if (!__present.Contains(__req)) __issues.AddRequired(__req);");
+            w.Line("var __present = new System.Collections.Generic.HashSet<string>(System.StringComparer.OrdinalIgnoreCase);");
+            w.Line("foreach (var __p in __body.RootElement.EnumerateObject())");
+            using (w.Hanging()) w.Line("if (__p.Value.ValueKind != System.Text.Json.JsonValueKind.Null) __present.Add(__p.Name);");
+            w.Line("foreach (var __req in new[] { " + string.Join(", ", requiredKeys.Select(k => "\"" + k + "\"")) + " })");
+            using (w.Hanging()) w.Line("if (!__present.Contains(__req)) __issues.AddRequired(__req);");
         }
         // A value that cannot be read (a wrong-shaped VO, a decimal out of range, a malformed date) throws
         // JsonException: it is listed at its path, and the body cannot be checked further.
-        sb.AppendLine($"            {cls}? input = null;");
-        sb.AppendLine("            try { input = System.Text.Json.JsonSerializer.Deserialize<" + cls + ">(__body.RootElement.GetRawText(), jsonOpts); }");
-        sb.AppendLine("            catch (System.Exception __e) { __issues.AddReadFailure(__e, typeof(" + cls + ")); }");
-        sb.AppendLine("            if (input is null) return __issues.Any ? __issues.ToResult() : ValidationIssues.Unreadable();");
-        AppendCreateServerOwned(sb, serverOwned);
-        AppendCreateIgnoreDenied(sb, deniedNavs);
-        AppendCreateValidation(sb, readOnlyRequired);
-        AppendCreateVoValidation(sb, voFields, mapVoFields);
-        sb.AppendLine("            if (__issues.Any) return __issues.ToResult();");
-        AppendCreateAutoSet(sb, autoSetFields);
-        AppendCreatePersist(sb, dbSet, createdExpr, reRead, credentials ?? []);
-        sb.AppendLine("        });");
+        w.Line($"{cls}? input = null;");
+        w.Line("try { input = System.Text.Json.JsonSerializer.Deserialize<" + cls + ">(__body.RootElement.GetRawText(), jsonOpts); }");
+        w.Line("catch (System.Exception __e) { __issues.AddReadFailure(__e, typeof(" + cls + ")); }");
+        w.Line("if (input is null) return __issues.Any ? __issues.ToResult() : ValidationIssues.Unreadable();");
+        AppendCreateServerOwned(w, serverOwned);
+        AppendCreateIgnoreDenied(w, deniedNavs);
+        AppendCreateValidation(w, readOnlyRequired);
+        AppendCreateVoValidation(w, voFields, mapVoFields);
+        w.Line("if (__issues.Any) return __issues.ToResult();");
+        AppendCreateAutoSet(w, autoSetFields);
+        AppendCreatePersist(w, dbSet, createdExpr, reRead, credentials ?? []);
+        w.Close("});");
     }
 
     // The persist tail of a generated POST handler: add the bound `input` to the WRITE
@@ -1188,23 +1191,23 @@ public class RoutesGenerator : PerEntityGenerator
     // is set: the row is read back THROUGH the replica view by PK so the returned body
     // carries the derived (view-computed) fields. Assumes `input` + `db` are in scope.
     private static void AppendCreatePersist(
-        StringBuilder sb, string dbSet, string createdExpr,
+        CsWriter w, string dbSet, string createdExpr,
         (string ReadDbSet, string PkProp, string Route)? reRead,
         IReadOnlyList<string> credentials)
     {
-        sb.AppendLine($"            db.{dbSet}.Add(input);");
-        AppendSaveChanges(sb);
+        w.Line($"db.{dbSet}.Add(input);");
+        AppendSaveChanges(w);
         if (reRead is { } rr)
         {
-            sb.AppendLine($"            var __created = await db.{rr.ReadDbSet}.FindAsync(input.{rr.PkProp});");
+            w.Line($"var __created = await db.{rr.ReadDbSet}.FindAsync(input.{rr.PkProp});");
             // #214 [2] — a @kind:materializedView (unrefreshed) or filtered replica view may not
             // surface the just-inserted row; fall back to the bound write `input` so the 201 body
             // is never null (degraded — missing only the derived fields; matches the Python port).
-            sb.AppendLine($"            return {CreatedResult($"prefix + \"/{rr.Route}/\" + input.{rr.PkProp}", "(object?)__created ?? input", credentials)};");
+            w.Line($"return {CreatedResult($"prefix + \"/{rr.Route}/\" + input.{rr.PkProp}", "(object?)__created ?? input", credentials)};");
         }
         else
         {
-            sb.AppendLine($"            return {createdExpr};");
+            w.Line($"return {createdExpr};");
         }
     }
 
@@ -1217,11 +1220,11 @@ public class RoutesGenerator : PerEntityGenerator
     //   - M:N navigation collections: emptied, else `Add` would insert a client-sent related graph.
     // A readOnly field needs no line here: the entity declares it with a private setter, which
     // System.Text.Json never binds (EntityGenerator.SetterFor).
-    private static void AppendCreateServerOwned(StringBuilder sb, IReadOnlyList<string>? statements)
+    private static void AppendCreateServerOwned(CsWriter w, IReadOnlyList<string>? statements)
     {
         if (statements is null || statements.Count == 0) return;
-        sb.AppendLine("            // Server-owned: a generated key, the TPH discriminator and M:N navigations are not settable by the client; the value is ignored.");
-        foreach (var st in statements) sb.AppendLine("            " + st);
+        w.Line("// Server-owned: a generated key, the TPH discriminator and M:N navigations are not settable by the client; the value is ignored.");
+        foreach (var st in statements) w.Line("" + st);
     }
 
     // The reset statements AppendCreateServerOwned emits for one entity (empty when it has none, so an
@@ -1257,22 +1260,22 @@ public class RoutesGenerator : PerEntityGenerator
 
     // #484 — a write-denied key (@formExclude or credential) on a create body is IGNORED, never
     // rejected: the bound value is reset to the CLR default (unset / null) before validation.
-    private static void AppendCreateIgnoreDenied(StringBuilder sb, IReadOnlyList<string>? deniedNavs)
+    private static void AppendCreateIgnoreDenied(CsWriter w, IReadOnlyList<string>? deniedNavs)
     {
         if (deniedNavs is null || deniedNavs.Count == 0) return;
-        sb.AppendLine("            // @formExclude / credential: not settable through the generated create; the value is ignored.");
+        w.Line("// @formExclude / credential: not settable through the generated create; the value is ignored.");
         foreach (var nav in deniedNavs)
-            sb.AppendLine($"            input.{nav} = default!;");
+            w.Line($"input.{nav} = default!;");
     }
 
     // Issue #203 — stamp EVERY @autoSet column (onCreate AND onUpdate) with now() on
     // insert, overriding whatever the client sent (the model's value is ignored, so a
     // fresh row's updated-at equals its created-at). Emits nothing when the entity has no
     // @autoSet field. Assumes the bound local `input` is in scope.
-    private static void AppendCreateAutoSet(StringBuilder sb, IReadOnlyList<AutoSetField> autoSetFields)
+    private static void AppendCreateAutoSet(CsWriter w, IReadOnlyList<AutoSetField> autoSetFields)
     {
         foreach (var a in autoSetFields)
-            sb.AppendLine($"            input.{a.Nav} = {a.NowExpr};");
+            w.Line($"input.{a.Nav} = {a.NowExpr};");
     }
 
     // Issue #203 — stamp each onUpdate @autoSet column with now() on update, BEFORE the
@@ -1280,11 +1283,11 @@ public class RoutesGenerator : PerEntityGenerator
     // are NOT stamped — they are never rewritten (the write-once created-at contract). The
     // merge loop skips every @autoSet column, so this assignment is authoritative. Assumes
     // the tracked entity local `existing` is in scope.
-    private static void AppendUpdateAutoSet(StringBuilder sb, IReadOnlyList<AutoSetField> autoSetFields)
+    private static void AppendUpdateAutoSet(CsWriter w, IReadOnlyList<AutoSetField> autoSetFields)
     {
         foreach (var a in autoSetFields)
             if (a.OnUpdate)
-                sb.AppendLine($"            existing.{a.Nav} = {a.NowExpr};");
+                w.Line($"existing.{a.Nav} = {a.NowExpr};");
     }
 
     // Issue #203 — the InsertPreserving escape hatch for one entity: a public static helper
@@ -1292,17 +1295,17 @@ public class RoutesGenerator : PerEntityGenerator
     // written verbatim), for import / restore / replication paths that must keep the
     // original timestamps. Emitted only for an entity that declares @autoSet fields (else
     // there is nothing to preserve — the normal POST already writes every column verbatim).
-    private static void AppendInsertPreserving(StringBuilder sb, string cls, string dbSet, string ctxType)
+    private static void AppendInsertPreserving(CsWriter w, string cls, string dbSet, string ctxType)
     {
-        sb.AppendLine();
-        sb.AppendLine("    /// <summary>Escape hatch: insert without @autoSet stamping (created-at/updated-at");
-        sb.AppendLine("    /// written verbatim from <paramref name=\"input\"/>) for import / restore / replication.</summary>");
-        sb.AppendLine($"    public static async System.Threading.Tasks.Task<{cls}> InsertPreserving({ctxType} db, {cls} input)");
-        sb.AppendLine("    {");
-        sb.AppendLine($"        db.{dbSet}.Add(input);");
-        sb.AppendLine("        await db.SaveChangesAsync();");
-        sb.AppendLine("        return input;");
-        sb.AppendLine("    }");
+        w.Blank();
+        w.Line("/// <summary>Escape hatch: insert without @autoSet stamping (created-at/updated-at");
+        w.Line("/// written verbatim from <paramref name=\"input\"/>) for import / restore / replication.</summary>");
+        w.Line($"public static async System.Threading.Tasks.Task<{cls}> InsertPreserving({ctxType} db, {cls} input)");
+        w.Open("{");
+        w.Line($"db.{dbSet}.Add(input);");
+        w.Line("await db.SaveChangesAsync();");
+        w.Line("return input;");
+        w.Close("}");
     }
 
     // Program D — post-save raw NULL for each nullable array-of-VO column a request cleared
@@ -1316,14 +1319,13 @@ public class RoutesGenerator : PerEntityGenerator
     // the bare literals otherwise (ADR-0034's documented fallback, byte-identical to before).
     // Emits nothing when the entity has no nullable array-of-VO column.
     private static void AppendArrayNullClears(
-        StringBuilder sb, IReadOnlyList<VoField> voFields, string tableRef, string pkColumnRef)
+        CsWriter w, IReadOnlyList<VoField> voFields, string tableRef, string pkColumnRef)
     {
         for (int i = 0; i < voFields.Count; i++)
         {
             var vf = voFields[i];
             if (!vf.IsArray || vf.Required) continue;
-            sb.AppendLine(
-                $"            if (__clearVo{i}) await db.Database.ExecuteSqlRawAsync(" +
+            w.Line($"if (__clearVo{i}) await db.Database.ExecuteSqlRawAsync(" +
                 $"\"UPDATE \\\"{SqlSplice(tableRef)}\\\" SET \\\"{SqlSplice(vf.JsonColumnRef)}\\\" = NULL WHERE \\\"{SqlSplice(pkColumnRef)}\\\" = {{0}}\", id);");
         }
     }
@@ -1343,18 +1345,16 @@ public class RoutesGenerator : PerEntityGenerator
     // into nested VO members; a null nav is vacuously valid (a missing required VO column is
     // already caught by the @required-key presence check). Assumes `input` is in scope.
     private static void AppendCreateVoValidation(
-        StringBuilder sb, IReadOnlyList<VoField> voFields, IReadOnlyList<MapVoField> mapVoFields)
+        CsWriter w, IReadOnlyList<VoField> voFields, IReadOnlyList<MapVoField> mapVoFields)
     {
         foreach (var vf in voFields)
-            sb.AppendLine(
-                $"            ValueObjectValidator.Collect(input.{vf.Nav}, __issues, jsonOpts, \"{vf.WireName}\");");
+            w.Line($"ValueObjectValidator.Collect(input.{vf.Nav}, __issues, jsonOpts, \"{vf.WireName}\");");
         // #362 — a field.map @objectRef's values are value objects and get the same graph
         // validation. ValueObjectValidator unwraps an IDictionary to its Values; before that
         // arm existed a Dictionary hit the IEnumerable arm, yielded KeyValuePair structs, and
         // validated vacuously — so this line and that arm are one fix, not two.
         foreach (var mf in mapVoFields)
-            sb.AppendLine(
-                $"            ValueObjectValidator.Collect(input.{mf.Nav}, __issues, jsonOpts, \"{mf.WireName}\");");
+            w.Line($"ValueObjectValidator.Collect(input.{mf.Nav}, __issues, jsonOpts, \"{mf.WireName}\");");
     }
 
     // The configured System.Text.Json options local (`jsonOpts`) — the app's
@@ -1392,17 +1392,17 @@ public class RoutesGenerator : PerEntityGenerator
     private static bool HasIsoDurationField(MetaObject entity, MetaRoot root) =>
         WireFormat.Of(root).Durations == DurationWireForm.Iso && entity.Fields().Any(f => f.SubType == FIELD_SUBTYPE_DURATION && CSharpNaming.DbColumnTypeClrOverride(f) is null);
 
-    private static void AppendDecimalRangeGroup(StringBuilder sb)
+    private static void AppendDecimalRangeGroup(CsWriter w)
         {
-            sb.AppendLine("        IEndpointRouteBuilder mount = app;");
-            sb.AppendLine("        app = app.MapGroup(string.Empty).AddEndpointFilter(new DecimalRangeEndpointFilter());");
+            w.Line("IEndpointRouteBuilder mount = app;");
+            w.Line("app = app.MapGroup(string.Empty).AddEndpointFilter(new DecimalRangeEndpointFilter());");
         }
 
-    private static void AppendJsonOptsLocal(StringBuilder sb)
+    private static void AppendJsonOptsLocal(CsWriter w)
     {
-        sb.AppendLine("            var jsonOpts = ((Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>)");
-        sb.AppendLine("                http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)");
-        sb.AppendLine("                .Value.SerializerOptions;");
+        w.Line("var jsonOpts = ((Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>)");
+        using (w.Hanging()) w.Line("http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)");
+        using (w.Hanging()) w.Line(".Value.SerializerOptions;");
     }
 
     // FR-036 A2 — the shared create-validation preamble for a generated POST handler
@@ -1413,15 +1413,15 @@ public class RoutesGenerator : PerEntityGenerator
     // DataAnnotations on its own). Assumes the bound local `input` is in scope.
     // A violation naming only a @required readOnly member (<paramref name="readOnlyRequired"/>)
     // is ignored: the client cannot set that member, so it cannot satisfy the rule.
-    private static void AppendCreateValidation(StringBuilder sb, IReadOnlyList<string>? readOnlyRequired = null)
+    private static void AppendCreateValidation(CsWriter w, IReadOnlyList<string>? readOnlyRequired = null)
     {
         if (readOnlyRequired is null || readOnlyRequired.Count == 0)
         {
-            sb.AppendLine("            __issues.ValidateObject(input, jsonOpts);");
+            w.Line("__issues.ValidateObject(input, jsonOpts);");
             return;
         }
         var names = string.Join(", ", readOnlyRequired.Select(n => "\"" + n + "\""));
-        sb.AppendLine($"            __issues.ValidateObjectExcept(input, jsonOpts, new[] {{ {names} }});");
+        w.Line($"__issues.ValidateObjectExcept(input, jsonOpts, new[] {{ {names} }});");
     }
 
     // FR-035 PATCH-2 — the shared present-key merge loop for the generated update
@@ -1432,7 +1432,7 @@ public class RoutesGenerator : PerEntityGenerator
     // locals `body` (JsonDocument), `existing` (the entity instance), `entry` (EntityEntry)
     // and `jsonOpts` are in scope.
     private static void AppendPartialMergeLoop(
-        StringBuilder sb, string? discProp, IReadOnlyList<VoField> voFields,
+        CsWriter w, string? discProp, IReadOnlyList<VoField> voFields,
         IReadOnlyList<MapVoField> mapVoFields,
         IReadOnlyList<string> autoSetNavs, IReadOnlyList<string> frozenNavs, bool hasDecimal,
         IReadOnlyList<string> deniedKeys, IReadOnlyList<string> deniedClr, bool hasDuration = false)
@@ -1443,23 +1443,23 @@ public class RoutesGenerator : PerEntityGenerator
         // (AppendArrayNullClears). Declared before the loop so the post-save clears see it.
         for (int i = 0; i < voFields.Count; i++)
             if (voFields[i].IsArray && !voFields[i].Required)
-                sb.AppendLine($"            var __clearVo{i} = false;");
+                w.Line($"var __clearVo{i} = false;");
 
         // The body key -> CLR property map comes from the host serializer's own contract (a naming policy
         // such as SnakeCaseLower, a rename, an attribute), never from a guess at the name: the keys a
         // client echoes from a response are the keys this resolves.
-        sb.AppendLine($"            var __keys = SerializerKeys.PropertyByKey(existing.GetType(), jsonOpts);");
+        w.Line($"var __keys = SerializerKeys.PropertyByKey(existing.GetType(), jsonOpts);");
         // Every violation is collected (never the first alone) and answered together after the loop.
-        sb.AppendLine("            var __issues = new ValidationIssues();");
-        sb.AppendLine("            foreach (var prop in body.RootElement.EnumerateObject())");
-        sb.AppendLine("            {");
-        sb.AppendLine("                var __clr = __keys.TryGetValue(prop.Name, out var __mapped) ? __mapped : null;");
+        w.Line("var __issues = new ValidationIssues();");
+        w.Line("foreach (var prop in body.RootElement.EnumerateObject())");
+        w.Open("{");
+        w.Line("var __clr = __keys.TryGetValue(prop.Name, out var __mapped) ? __mapped : null;");
         // #484 — @formExclude / credential keys are IGNORED (never a 400), ahead of every arm below
         // (a present null is a write too). Denied by the serializer-resolved property AND by the field-name spellings.
         if (deniedClr.Count > 0)
-            sb.AppendLine($"                if (__clr is {string.Join(" or ", deniedClr.Select(n => "\"" + n + "\""))}) continue; // @formExclude / credential: not writable");
+            w.Line($"if (__clr is {string.Join(" or ", deniedClr.Select(n => "\"" + n + "\""))}) continue; // @formExclude / credential: not writable");
         foreach (var key in deniedKeys)
-            sb.AppendLine($"                if (string.Equals(prop.Name, \"{key}\", System.StringComparison.OrdinalIgnoreCase)) continue; // @formExclude / credential: not writable");
+            w.Line($"if (string.Equals(prop.Name, \"{key}\", System.StringComparison.OrdinalIgnoreCase)) continue; // @formExclude / credential: not writable");
         // Program D — typed value-object arms FIRST (owned-nav columns are invisible to
         // EF's FindProperty below, so the generic scalar path would silently drop them).
         // Present value → deserialize + recursive VO validation + assign the CLR nav
@@ -1470,33 +1470,33 @@ public class RoutesGenerator : PerEntityGenerator
         {
             var vf = voFields[i];
             var v = "__vo" + i;
-            sb.AppendLine($"                if ({KeyMatch(vf.WireKeys)} || __clr == \"{vf.Nav}\")");
-            sb.AppendLine("                {");
-            sb.AppendLine("                    if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Null)");
-            sb.AppendLine("                    {");
+            w.Line($"if ({KeyMatch(vf.WireKeys)} || __clr == \"{vf.Nav}\")");
+            w.Open("{");
+            w.Line("if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Null)");
+            w.Open("{");
             if (vf.Required)
             {
-                sb.AppendLine($"                        __issues.AddRequired(\"{vf.WireName}\"); // @required VO column: present-null is a 400");
-                sb.AppendLine("                        continue;");
+                w.Line($"__issues.AddRequired(\"{vf.WireName}\"); // @required VO column: present-null is a 400");
+                w.Line("continue;");
             }
             else
             {
-                sb.AppendLine($"                        existing.{vf.Nav} = null;");
+                w.Line($"existing.{vf.Nav} = null;");
                 if (vf.IsArray)
-                    sb.AppendLine($"                        __clearVo{i} = true; // NULL the jsonb column post-save (EF writes [] for a null OwnsMany nav)");
-                sb.AppendLine("                        continue;");
+                    w.Line($"__clearVo{i} = true; // NULL the jsonb column post-save (EF writes [] for a null OwnsMany nav)");
+                w.Line("continue;");
             }
-            sb.AppendLine("                    }");
+            w.Close("}");
             // A wrong-shaped VO value (e.g. a JSON array for a single-VO column, an object for an
             // array column) throws JsonException — return the cross-port 400 rather than an
             // unhandled 500 (matches every other port + this port's own reference lane).
-            sb.AppendLine($"                    {vf.DeserType} {v};");
-            sb.AppendLine($"                    try {{ {v} = System.Text.Json.JsonSerializer.Deserialize<{vf.DeserType}>(prop.Value.GetRawText(), jsonOpts); }}");
-            sb.AppendLine($"                    catch (System.Text.Json.JsonException __e) {{ __issues.AddJson(__e, null, \"{vf.WireName}\"); continue; }}");
-            sb.AppendLine($"                    if (!ValueObjectValidator.Collect({v}, __issues, jsonOpts, \"{vf.WireName}\")) continue;");
-            sb.AppendLine($"                    existing.{vf.Nav} = {v}{(vf.Required ? "!" : "")};");
-            sb.AppendLine("                    continue;");
-            sb.AppendLine("                }");
+            w.Line($"{vf.DeserType} {v};");
+            w.Line($"try {{ {v} = System.Text.Json.JsonSerializer.Deserialize<{vf.DeserType}>(prop.Value.GetRawText(), jsonOpts); }}");
+            w.Line($"catch (System.Text.Json.JsonException __e) {{ __issues.AddJson(__e, null, \"{vf.WireName}\"); continue; }}");
+            w.Line($"if (!ValueObjectValidator.Collect({v}, __issues, jsonOpts, \"{vf.WireName}\")) continue;");
+            w.Line($"existing.{vf.Nav} = {v}{(vf.Required ? "!" : "")};");
+            w.Line("continue;");
+            w.Close("}");
         }
         // #362 — a present field.map @objectRef key, handled BEFORE the generic property path.
         // The generic path deserializes and assigns without ever running the value-object graph
@@ -1507,48 +1507,48 @@ public class RoutesGenerator : PerEntityGenerator
         {
             var mf = mapVoFields[i];
             var mv = "__map" + i;
-            sb.AppendLine($"                if ({KeyMatch(mf.WireKeys)} || __clr == \"{mf.Nav}\")");
-            sb.AppendLine("                {");
-            sb.AppendLine("                    if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Null)");
-            sb.AppendLine($"                    {{ existing.{mf.Nav} = null; continue; }}");
-            sb.AppendLine($"                    {mf.DeserType}? {mv};");
-            sb.AppendLine($"                    try {{ {mv} = System.Text.Json.JsonSerializer.Deserialize<{mf.DeserType}>(prop.Value.GetRawText(), jsonOpts); }}");
-            sb.AppendLine($"                    catch (System.Text.Json.JsonException __e) {{ __issues.AddJson(__e, null, \"{mf.WireName}\"); continue; }}");
-            sb.AppendLine($"                    if (!ValueObjectValidator.Collect({mv}, __issues, jsonOpts, \"{mf.WireName}\")) continue;");
-            sb.AppendLine($"                    existing.{mf.Nav} = {mv};");
-            sb.AppendLine("                    continue;");
-            sb.AppendLine("                }");
+            w.Line($"if ({KeyMatch(mf.WireKeys)} || __clr == \"{mf.Nav}\")");
+            w.Open("{");
+            w.Line("if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Null)");
+            w.Line($"{{ existing.{mf.Nav} = null; continue; }}");
+            w.Line($"{mf.DeserType}? {mv};");
+            w.Line($"try {{ {mv} = System.Text.Json.JsonSerializer.Deserialize<{mf.DeserType}>(prop.Value.GetRawText(), jsonOpts); }}");
+            w.Line($"catch (System.Text.Json.JsonException __e) {{ __issues.AddJson(__e, null, \"{mf.WireName}\"); continue; }}");
+            w.Line($"if (!ValueObjectValidator.Collect({mv}, __issues, jsonOpts, \"{mf.WireName}\")) continue;");
+            w.Line($"existing.{mf.Nav} = {mv};");
+            w.Line("continue;");
+            w.Close("}");
         }
-        sb.AppendLine("                var target = (__clr is null ? null : entry.Metadata.FindProperty(__clr))");
-        sb.AppendLine("                    ?? entry.Metadata.FindProperty(prop.Name)");
-        sb.AppendLine("                    ?? entry.Metadata.GetProperties().FirstOrDefault(p => string.Equals(p.Name, prop.Name, System.StringComparison.OrdinalIgnoreCase));");
-        sb.AppendLine("                if (target is null) continue;");
-        sb.AppendLine("                var __wire = ValidationIssues.WireName(existing.GetType(), target.Name, jsonOpts);");
-        sb.AppendLine("                if (target.IsPrimaryKey()) continue;                        // PK is route-authoritative");
+        w.Line("var target = (__clr is null ? null : entry.Metadata.FindProperty(__clr))");
+        using (w.Hanging()) w.Line("?? entry.Metadata.FindProperty(prop.Name)");
+        using (w.Hanging()) w.Line("?? entry.Metadata.GetProperties().FirstOrDefault(p => string.Equals(p.Name, prop.Name, System.StringComparison.OrdinalIgnoreCase));");
+        w.Line("if (target is null) continue;");
+        w.Line("var __wire = ValidationIssues.WireName(existing.GetType(), target.Name, jsonOpts);");
+        w.Line("if (target.IsPrimaryKey()) continue;                        // PK is route-authoritative");
         if (discProp is not null)
         {
-            sb.AppendLine($"                if (string.Equals(target.Name, \"{discProp}\", System.StringComparison.Ordinal)) continue; // discriminator is immutable");
+            w.Line($"if (string.Equals(target.Name, \"{discProp}\", System.StringComparison.Ordinal)) continue; // discriminator is immutable");
         }
         // Issue #203 — @autoSet columns are server-owned: an onUpdate column is stamped to
         // now() (below), an onCreate column is never rewritten. Either way the caller can
         // never set them via the PATCH/PUT body, so skip any present key.
         foreach (var nav in autoSetNavs)
-            sb.AppendLine($"                if (string.Equals(target.Name, \"{nav}\", System.StringComparison.Ordinal)) continue; // @autoSet: server-owned");
+            w.Line($"if (string.Equals(target.Name, \"{nav}\", System.StringComparison.Ordinal)) continue; // @autoSet: server-owned");
         // FR-037 R1 — @mutability readOnly / writeOnce are not PATCH-settable. STRIPPED,
         // never 400'd: the uniform behaviour of every excluded key on this path. Skipping
         // BEFORE the null branch also covers the FR-035 present-null arm, since clearing a
         // column is itself a write.
         foreach (var nav in frozenNavs)
-            sb.AppendLine($"                if (string.Equals(target.Name, \"{nav}\", System.StringComparison.Ordinal)) continue; // @mutability: not patch-settable");
-        sb.AppendLine("                if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Null)");
-        sb.AppendLine("                {");
-        sb.AppendLine("                    // FR-035 PATCH-2: explicit null clears a nullable column; on a");
-        sb.AppendLine("                    // NOT-NULL (@required) column it is a 400 (matching the cross-port contract).");
-        sb.AppendLine("                    if (!target.IsNullable) { __issues.AddRequired(__wire); continue; }");
-        sb.AppendLine("                    entry.CurrentValues[target] = null;");
-        sb.AppendLine("                    continue;");
-        sb.AppendLine("                }");
-        sb.AppendLine("                var clr = System.Nullable.GetUnderlyingType(target.ClrType) ?? target.ClrType;");
+            w.Line($"if (string.Equals(target.Name, \"{nav}\", System.StringComparison.Ordinal)) continue; // @mutability: not patch-settable");
+        w.Line("if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Null)");
+        w.Open("{");
+        w.Line("// FR-035 PATCH-2: explicit null clears a nullable column; on a");
+        w.Line("// NOT-NULL (@required) column it is a 400 (matching the cross-port contract).");
+        w.Line("if (!target.IsNullable) { __issues.AddRequired(__wire); continue; }");
+        w.Line("entry.CurrentValues[target] = null;");
+        w.Line("continue;");
+        w.Close("}");
+        w.Line("var clr = System.Nullable.GetUnderlyingType(target.ClrType) ?? target.ClrType;");
         // ADR-0019 Amendment 1 (W2): a decimal is read from a JSON-number string or a JSON number,
         // exactly; anything else, or a value decimal cannot hold, is the 400 validation envelope.
         // `DecimalWire` resolves to the copy the entity generator emits into this namespace (the
@@ -1556,30 +1556,30 @@ public class RoutesGenerator : PerEntityGenerator
         // ejected generator only in the helper-runtime `using`, as before.
         if (hasDecimal || hasDuration)
         {
-            sb.AppendLine("                object? __val;");
+            w.Line("object? __val;");
             var arm = "if";
             if (hasDecimal)
             {
-                sb.AppendLine("                if (clr == typeof(decimal))");
-                sb.AppendLine("                {");
-                sb.AppendLine("                    if (!DecimalWire.TryParseElement(prop.Value, out var __dec)) { __issues.Add(\"invalid_type\", __wire + \" is not a decimal\", __wire); continue; }");
-                sb.AppendLine("                    if (!DecimalWire.FitsDeclared(existing.GetType(), target.Name, __dec)) { __issues.Add(\"too_big\", __wire + \" exceeds its declared precision and scale\", __wire); continue; }");
-                sb.AppendLine("                    __val = __dec;");
-                sb.AppendLine("                }");
-                sb.AppendLine("                else if (clr == typeof(System.Collections.Generic.IList<decimal>))");
-                sb.AppendLine("                {");
-                sb.AppendLine("                    if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.Array) { __issues.Add(\"invalid_type\", __wire + \" is not an array\", __wire); continue; }");
-                sb.AppendLine("                    var __decs = new System.Collections.Generic.List<decimal>();");
-                sb.AppendLine("                    var __decBad = false;");
-                sb.AppendLine("                    foreach (var __el in prop.Value.EnumerateArray())");
-                sb.AppendLine("                    {");
-                sb.AppendLine("                        if (!DecimalWire.TryParseElement(__el, out var __d1)) { __issues.Add(\"invalid_type\", __wire + \" holds a value that is not a decimal\", __wire, __decs.Count); __decBad = true; break; }");
-                sb.AppendLine("                        if (!DecimalWire.FitsDeclared(existing.GetType(), target.Name, __d1)) { __issues.Add(\"too_big\", __wire + \" holds a value over its declared precision and scale\", __wire, __decs.Count); __decBad = true; break; }");
-                sb.AppendLine("                        __decs.Add(__d1);");
-                sb.AppendLine("                    }");
-                sb.AppendLine("                    if (__decBad) continue;");
-                sb.AppendLine("                    __val = __decs;");
-                sb.AppendLine("                }");
+                w.Line("if (clr == typeof(decimal))");
+                w.Open("{");
+                w.Line("if (!DecimalWire.TryParseElement(prop.Value, out var __dec)) { __issues.Add(\"invalid_type\", __wire + \" is not a decimal\", __wire); continue; }");
+                w.Line("if (!DecimalWire.FitsDeclared(existing.GetType(), target.Name, __dec)) { __issues.Add(\"too_big\", __wire + \" exceeds its declared precision and scale\", __wire); continue; }");
+                w.Line("__val = __dec;");
+                w.Close("}");
+                w.Line("else if (clr == typeof(System.Collections.Generic.IList<decimal>))");
+                w.Open("{");
+                w.Line("if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.Array) { __issues.Add(\"invalid_type\", __wire + \" is not an array\", __wire); continue; }");
+                w.Line("var __decs = new System.Collections.Generic.List<decimal>();");
+                w.Line("var __decBad = false;");
+                w.Line("foreach (var __el in prop.Value.EnumerateArray())");
+                w.Open("{");
+                w.Line("if (!DecimalWire.TryParseElement(__el, out var __d1)) { __issues.Add(\"invalid_type\", __wire + \" holds a value that is not a decimal\", __wire, __decs.Count); __decBad = true; break; }");
+                w.Line("if (!DecimalWire.FitsDeclared(existing.GetType(), target.Name, __d1)) { __issues.Add(\"too_big\", __wire + \" holds a value over its declared precision and scale\", __wire, __decs.Count); __decBad = true; break; }");
+                w.Line("__decs.Add(__d1);");
+                w.Close("}");
+                w.Line("if (__decBad) continue;");
+                w.Line("__val = __decs;");
+                w.Close("}");
                 arm = "else if";
             }
             // field.duration: a bare TimeSpan deserialized here would take System.Text.Json's own
@@ -1588,44 +1588,44 @@ public class RoutesGenerator : PerEntityGenerator
             // namespace) and refuse anything else with the validation envelope.
             if (hasDuration)
             {
-                sb.AppendLine($"                {arm} (clr == typeof(System.TimeSpan))");
-                sb.AppendLine("                {");
-                sb.AppendLine("                    if (!DurationWire.TryParseElement(prop.Value, out var __dur)) { __issues.Add(\"invalid_type\", __wire + \" is not an ISO-8601 duration\", __wire); continue; }");
-                sb.AppendLine("                    __val = __dur;");
-                sb.AppendLine("                }");
-                sb.AppendLine("                else if (clr == typeof(System.Collections.Generic.IList<System.TimeSpan>))");
-                sb.AppendLine("                {");
-                sb.AppendLine("                    if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.Array) { __issues.Add(\"invalid_type\", __wire + \" is not an array\", __wire); continue; }");
-                sb.AppendLine("                    var __durs = new System.Collections.Generic.List<System.TimeSpan>();");
-                sb.AppendLine("                    var __durBad = false;");
-                sb.AppendLine("                    foreach (var __el in prop.Value.EnumerateArray())");
-                sb.AppendLine("                    {");
-                sb.AppendLine("                        if (!DurationWire.TryParseElement(__el, out var __u1)) { __issues.Add(\"invalid_type\", __wire + \" holds a value that is not an ISO-8601 duration\", __wire, __durs.Count); __durBad = true; break; }");
-                sb.AppendLine("                        __durs.Add(__u1);");
-                sb.AppendLine("                    }");
-                sb.AppendLine("                    if (__durBad) continue;");
-                sb.AppendLine("                    __val = __durs;");
-                sb.AppendLine("                }");
+                w.Line($"{arm} (clr == typeof(System.TimeSpan))");
+                w.Open("{");
+                w.Line("if (!DurationWire.TryParseElement(prop.Value, out var __dur)) { __issues.Add(\"invalid_type\", __wire + \" is not an ISO-8601 duration\", __wire); continue; }");
+                w.Line("__val = __dur;");
+                w.Close("}");
+                w.Line("else if (clr == typeof(System.Collections.Generic.IList<System.TimeSpan>))");
+                w.Open("{");
+                w.Line("if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.Array) { __issues.Add(\"invalid_type\", __wire + \" is not an array\", __wire); continue; }");
+                w.Line("var __durs = new System.Collections.Generic.List<System.TimeSpan>();");
+                w.Line("var __durBad = false;");
+                w.Line("foreach (var __el in prop.Value.EnumerateArray())");
+                w.Open("{");
+                w.Line("if (!DurationWire.TryParseElement(__el, out var __u1)) { __issues.Add(\"invalid_type\", __wire + \" holds a value that is not an ISO-8601 duration\", __wire, __durs.Count); __durBad = true; break; }");
+                w.Line("__durs.Add(__u1);");
+                w.Close("}");
+                w.Line("if (__durBad) continue;");
+                w.Line("__val = __durs;");
+                w.Close("}");
             }
-            sb.AppendLine("                else");
-            sb.AppendLine("                {");
-            sb.AppendLine("                    try { __val = System.Text.Json.JsonSerializer.Deserialize(prop.Value.GetRawText(), clr, jsonOpts); }");
-            sb.AppendLine("                    catch (System.Exception __e) { __issues.AddReadFailure(__e, clr, __wire); continue; }");
-            sb.AppendLine("                }");
+            w.Line("else");
+            w.Open("{");
+            w.Line("try { __val = System.Text.Json.JsonSerializer.Deserialize(prop.Value.GetRawText(), clr, jsonOpts); }");
+            w.Line("catch (System.Exception __e) { __issues.AddReadFailure(__e, clr, __wire); continue; }");
+            w.Close("}");
         }
         else
         {
-            sb.AppendLine("                object? __val;");
-            sb.AppendLine("                try { __val = System.Text.Json.JsonSerializer.Deserialize(prop.Value.GetRawText(), clr, jsonOpts); }");
-            sb.AppendLine("                catch (System.Exception __e) { __issues.AddReadFailure(__e, clr, __wire); continue; }");
+            w.Line("object? __val;");
+            w.Line("try { __val = System.Text.Json.JsonSerializer.Deserialize(prop.Value.GetRawText(), clr, jsonOpts); }");
+            w.Line("catch (System.Exception __e) { __issues.AddReadFailure(__e, clr, __wire); continue; }");
         }
-        sb.AppendLine("                // FR-036 A2 — validate the PRESENT, non-null value with the same per-field");
-        sb.AppendLine("                // DataAnnotations as create. This validates ONLY the present value (never the");
-        sb.AppendLine("                // whole row) so an ABSENT @required field is untouched, not a 400.");
-        sb.AppendLine("                if (!__issues.ValidateProperty(existing, target.Name, __val, jsonOpts)) continue;");
-        sb.AppendLine("                entry.CurrentValues[target] = __val;");
-        sb.AppendLine("            }");
-        sb.AppendLine("            if (__issues.Any) return __issues.ToResult();");
+        w.Line("// FR-036 A2 — validate the PRESENT, non-null value with the same per-field");
+        w.Line("// DataAnnotations as create. This validates ONLY the present value (never the");
+        w.Line("// whole row) so an ABSENT @required field is untouched, not a 400.");
+        w.Line("if (!__issues.ValidateProperty(existing, target.Name, __val, jsonOpts)) continue;");
+        w.Line("entry.CurrentValues[target] = __val;");
+        w.Close("}");
+        w.Line("if (__issues.Any) return __issues.ToResult();");
     }
 
     // Emit the per-subtype CRUD route set under /<base>/<segment>. Scoped to the subtype
@@ -1633,7 +1633,7 @@ public class RoutesGenerator : PerEntityGenerator
     // subtype CLR type (discriminator injected by EF on Add); update is a partial merge
     // that never touches the PK or the discriminator.
     private static void AppendTphSubtypeRoutes(
-        StringBuilder sb, TphSubtypePlan st, IReadOnlyList<MetaObject> hierarchy, MetaRoot root, GenConfig config, string baseRoute, string baseCls, string dbSet,
+        CsWriter w, TphSubtypePlan st, IReadOnlyList<MetaObject> hierarchy, MetaRoot root, GenConfig config, string baseRoute, string baseCls, string dbSet,
         string pkType, string pkProp, string discProp, MetaField? discField, Action<string> onWarn)
     {
         // #362 — field.object columns on a TPH subtype stay out of scope (Program D §6), but a
@@ -1660,38 +1660,38 @@ public class RoutesGenerator : PerEntityGenerator
         var credentials = HierarchyMarkedFields(st.Entity, hierarchy, IsCredentialField).SelectMany(f => CredentialSpellings(f, config)).ToList();
 
         // Per-subtype list: GET /<base>/<seg>
-        sb.AppendLine();
-        sb.AppendLine("        app.MapGet(prefix + \"/" + subRoute + "\", async (HttpContext http, " + ValueObjectNames.ContextTypeRef(config) + " db) =>");
-        sb.AppendLine("        {");
-        sb.AppendLine("            var qs = http.Request.Query;");
-        sb.AppendLine($"            IQueryable<{subType}> q = db.{dbSet}.OfType<{subType}>().AsNoTracking();");
+        w.Blank();
+        w.Line("app.MapGet(prefix + \"/" + subRoute + "\", async (HttpContext http, " + ValueObjectNames.ContextTypeRef(config) + " db) =>");
+        w.Open("{");
+        w.Line("var qs = http.Request.Query;");
+        w.Line($"IQueryable<{subType}> q = db.{dbSet}.OfType<{subType}>().AsNoTracking();");
         var fmS = FilterMapArg(subAllowlist, st.Entity, config);
-        sb.AppendLine($"            var filter = EfCoreFilterDispatch.Validate<{subType}>(FilterParser.Parse(qs, {subAllowlist}.Fields, {subAllowlist}.OpsByField){fmS});");
-        sb.AppendLine("            if (filter.ErrorEnvelope is not null) return Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field });");
-        sb.AppendLine($"            q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates{fmS});");
-        sb.AppendLine("            if (qs.TryGetValue(\"sort\", out var sortRaw) && !string.IsNullOrWhiteSpace(sortRaw))");
-        sb.AppendLine("            {");
-        sb.AppendLine("                var parts = sortRaw.ToString().Split(':', 2);");
-        sb.AppendLine($"                if (!{subCls}SortAllowlist.TryGetValue(parts[0], out var resolved)) return Results.BadRequest(new {{ error = \"invalid_sort\", field = parts[0] }});");
-        sb.AppendLine("                var desc = parts.Length > 1");
-        sb.AppendLine("                    ? string.Equals(parts[1], \"desc\", System.StringComparison.OrdinalIgnoreCase)");
-        sb.AppendLine($"                    : {subCls}SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;");
-        sb.AppendLine("                q = " + NullsLargestSort("q", "EF.Property<object>(x!, resolved)") + ";");
-        sb.AppendLine("            }");
-        AppendOffsetLimit(sb, root.Api.Pagination, "            ", "offRaw", "off", "limRaw", "lim");
-        sb.AppendLine("            var rows = await q.ToListAsync();");
-        sb.AppendLine("            var withCount = qs.TryGetValue(\"withCount\", out var wc) && (wc == \"1\" || string.Equals(wc, \"true\", System.StringComparison.OrdinalIgnoreCase));");
-        sb.AppendLine($"            if (!withCount) return {OkResult("rows", credentials)};");
-        sb.AppendLine($"            var total = await EfCoreFilterDispatch.ApplyFilter(db.{dbSet}.OfType<{subType}>().AsNoTracking(), filter.Predicates{fmS}).CountAsync();");
-        sb.AppendLine($"            return {OkResult("new { rows, total }", credentials, envelope: true)};");
-        sb.AppendLine("        });");
+        w.Line($"var filter = EfCoreFilterDispatch.Validate<{subType}>(FilterParser.Parse(qs, {subAllowlist}.Fields, {subAllowlist}.OpsByField){fmS});");
+        w.Line("if (filter.ErrorEnvelope is not null) return Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field });");
+        w.Line($"q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates{fmS});");
+        w.Line("if (qs.TryGetValue(\"sort\", out var sortRaw) && !string.IsNullOrWhiteSpace(sortRaw))");
+        w.Open("{");
+        w.Line("var parts = sortRaw.ToString().Split(':', 2);");
+        w.Line($"if (!{subCls}SortAllowlist.TryGetValue(parts[0], out var resolved)) return Results.BadRequest(new {{ error = \"invalid_sort\", field = parts[0] }});");
+        w.Line("var desc = parts.Length > 1");
+        using (w.Hanging()) w.Line("? string.Equals(parts[1], \"desc\", System.StringComparison.OrdinalIgnoreCase)");
+        using (w.Hanging()) w.Line($": {subCls}SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;");
+        w.Line("q = " + NullsLargestSort("q", "EF.Property<object>(x!, resolved)") + ";");
+        w.Close("}");
+        AppendOffsetLimit(w, root.Api.Pagination, "offRaw", "off", "limRaw", "lim");
+        w.Line("var rows = await q.ToListAsync();");
+        w.Line("var withCount = qs.TryGetValue(\"withCount\", out var wc) && (wc == \"1\" || string.Equals(wc, \"true\", System.StringComparison.OrdinalIgnoreCase));");
+        w.Line($"if (!withCount) return {OkResult("rows", credentials)};");
+        w.Line($"var total = await EfCoreFilterDispatch.ApplyFilter(db.{dbSet}.OfType<{subType}>().AsNoTracking(), filter.Predicates{fmS}).CountAsync();");
+        w.Line($"return {OkResult("new { rows, total }", credentials, envelope: true)};");
+        w.Close("});");
 
         // Per-subtype get: GET /<base>/<seg>/{id} — scoped (cross-subtype → 404).
-        sb.AppendLine();
-        sb.AppendLine("        app.MapGet(prefix + \"/" + subRoute + "/{id}\", async (" + pkType + " id, " + ValueObjectNames.ContextTypeRef(config) + " db) =>");
-        sb.AppendLine($"            await db.{dbSet}.OfType<{subType}>().AsNoTracking().FirstOrDefaultAsync(x => x.{pkProp} == id) is {{ }} found");
-        sb.AppendLine("                ? " + OkResult("found", credentials));
-        sb.AppendLine("                : Results.NotFound(new { error = \"not_found\" }));");
+        w.Blank();
+        w.Line("app.MapGet(prefix + \"/" + subRoute + "/{id}\", async (" + pkType + " id, " + ValueObjectNames.ContextTypeRef(config) + " db) =>");
+        using (w.Hanging()) w.Line($"await db.{dbSet}.OfType<{subType}>().AsNoTracking().FirstOrDefaultAsync(x => x.{pkProp} == id) is {{ }} found");
+        using (w.Hanging()) using (w.Hanging()) w.Line("? " + OkResult("found", credentials));
+        using (w.Hanging()) using (w.Hanging()) w.Line(": Results.NotFound(new { error = \"not_found\" }));");
 
         // Per-subtype create: POST /<base>/<seg> — discriminator injected by EF via the
         // subtype CLR type; the POST body OMITS the discriminator. FR-036 #4: the @required-key
@@ -1703,9 +1703,9 @@ public class RoutesGenerator : PerEntityGenerator
             return string.Equals(p, pkProp, System.StringComparison.Ordinal)
                    || string.Equals(p, discProp, System.StringComparison.Ordinal);
         });
-        sb.AppendLine();
+        w.Blank();
         // VO columns on a TPH subtype are out of scope (Program D §6) — no typed arms.
-        AppendCreateHandler(sb, "/" + subRoute, subType, ValueObjectNames.ContextTypeRef(config), dbSet, requiredKeys,
+        AppendCreateHandler(w, "/" + subRoute, subType, ValueObjectNames.ContextTypeRef(config), dbSet, requiredKeys,
             CreatedResult("prefix + \"/" + subRoute + "/\" + input." + pkProp, "input", credentials), [], mapVoFields, autoSetFields,
             deniedNavs: deniedFields.Select(f => CSharpNaming.PropertyName(f, config)).ToList(), credentials: credentials,
             serverOwned: ServerOwnedCreateResets(st.Entity, root, config, discField, hierarchy[0]), root: root,
@@ -1713,44 +1713,44 @@ public class RoutesGenerator : PerEntityGenerator
 
         // Per-subtype update (PATCH + PUT): partial merge of the JSON body onto the scoped
         // entity, NEVER touching the PK or the discriminator. Cross-subtype id → 404.
-        sb.AppendLine();
-        sb.AppendLine("        async System.Threading.Tasks.Task<IResult> Update" + subCls + "(" + pkType + " id, HttpContext http, " + ValueObjectNames.ContextTypeRef(config) + " db)");
-        sb.AppendLine("        {");
-        sb.AppendLine($"            var existing = await db.{dbSet}.OfType<{subType}>().FirstOrDefaultAsync(x => x.{pkProp} == id);");
-        sb.AppendLine("            if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
-        sb.AppendLine("            System.Text.Json.JsonDocument body;");
-        sb.AppendLine("            try { body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }");
-        sb.AppendLine("            catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }");
-        sb.AppendLine("            using var bodyScope = body;");
-        sb.AppendLine("            if (body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object) return ValidationIssues.Unreadable();");
-        AppendUnknownFieldsCheck(sb, root, "body");
-        sb.AppendLine("            // Configured JSON options (not defaults) so a custom converter — e.g. the");
-        sb.AppendLine("            // field.timestamp DateTimeOffset converter — is honored; defaults throw 500 on it.");
-        sb.AppendLine("            var jsonOpts = ((Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>)");
-        sb.AppendLine("                http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)");
-        sb.AppendLine("                .Value.SerializerOptions;");
-        sb.AppendLine("            var entry = db.Entry(existing);");
-        AppendUpdateAutoSet(sb, autoSetFields);
+        w.Blank();
+        w.Line("async System.Threading.Tasks.Task<IResult> Update" + subCls + "(" + pkType + " id, HttpContext http, " + ValueObjectNames.ContextTypeRef(config) + " db)");
+        w.Open("{");
+        w.Line($"var existing = await db.{dbSet}.OfType<{subType}>().FirstOrDefaultAsync(x => x.{pkProp} == id);");
+        w.Line("if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
+        w.Line("System.Text.Json.JsonDocument body;");
+        w.Line("try { body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }");
+        w.Line("catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }");
+        w.Line("using var bodyScope = body;");
+        w.Line("if (body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object) return ValidationIssues.Unreadable();");
+        AppendUnknownFieldsCheck(w, root, "body");
+        w.Line("// Configured JSON options (not defaults) so a custom converter — e.g. the");
+        w.Line("// field.timestamp DateTimeOffset converter — is honored; defaults throw 500 on it.");
+        w.Line("var jsonOpts = ((Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>)");
+        using (w.Hanging()) w.Line("http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)");
+        using (w.Hanging()) w.Line(".Value.SerializerOptions;");
+        w.Line("var entry = db.Entry(existing);");
+        AppendUpdateAutoSet(w, autoSetFields);
         // ADR-0045 + the 0.19.4 lesson: TPH is a SEPARATE code path per port, so the
         // per-subtype merge states the same exclusion rather than inheriting it.
-        AppendPartialMergeLoop(sb, discProp, [], mapVoFields, autoSetNavs, frozenNavs, HasDecimalField(st.Entity),
+        AppendPartialMergeLoop(w, discProp, [], mapVoFields, autoSetNavs, frozenNavs, HasDecimalField(st.Entity),
             deniedFields.SelectMany(f => WireKeys(f, config)).ToList(), deniedFields.Select(f => CSharpNaming.PropertyName(f, config)).ToList(), HasIsoDurationField(st.Entity, root));
-        AppendSaveChanges(sb);
-        sb.AppendLine($"            return {OkResult("existing", credentials)};");
-        sb.AppendLine("        }");
-        sb.AppendLine("        app.MapPatch(prefix + \"/" + subRoute + "/{id}\", Update" + subCls + ");");
-        sb.AppendLine("        app.MapPut(prefix + \"/" + subRoute + "/{id}\", Update" + subCls + ");");
+        AppendSaveChanges(w);
+        w.Line($"return {OkResult("existing", credentials)};");
+        w.Close("}");
+        w.Line("app.MapPatch(prefix + \"/" + subRoute + "/{id}\", Update" + subCls + ");");
+        w.Line("app.MapPut(prefix + \"/" + subRoute + "/{id}\", Update" + subCls + ");");
 
         // Per-subtype delete: DELETE /<base>/<seg>/{id} — scoped (cross-subtype → 404).
-        sb.AppendLine();
-        sb.AppendLine("        app.MapDelete(prefix + \"/" + subRoute + "/{id}\", async (" + pkType + " id, " + ValueObjectNames.ContextTypeRef(config) + " db) =>");
-        sb.AppendLine("        {");
-        sb.AppendLine($"            var existing = await db.{dbSet}.OfType<{subType}>().FirstOrDefaultAsync(x => x.{pkProp} == id);");
-        sb.AppendLine("            if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
-        sb.AppendLine($"            db.{dbSet}.Remove(existing);");
-        AppendSaveChanges(sb);
-        sb.AppendLine("            return Results.NoContent();");
-        sb.AppendLine("        });");
+        w.Blank();
+        w.Line("app.MapDelete(prefix + \"/" + subRoute + "/{id}\", async (" + pkType + " id, " + ValueObjectNames.ContextTypeRef(config) + " db) =>");
+        w.Open("{");
+        w.Line($"var existing = await db.{dbSet}.OfType<{subType}>().FirstOrDefaultAsync(x => x.{pkProp} == id);");
+        w.Line("if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
+        w.Line($"db.{dbSet}.Remove(existing);");
+        AppendSaveChanges(w);
+        w.Line("return Results.NoContent();");
+        w.Close("});");
 
         // FW-8 — M:N traversal this SUBTYPE resolves, own + INHERITED (rule b: use the
         // resolving Relationships(), not an own-only read — M2MNavigationBuilder.For
@@ -1762,7 +1762,7 @@ public class RoutesGenerator : PerEntityGenerator
         // segment in the URL would be decorative (rule c).
         var sourceScope = new TphM2mSourceScope(dbSet, subType, pkProp);
         foreach (var nav in M2MNavigationBuilder.For(st.Entity, root, onWarn))
-            AppendM2mRoute(sb, nav, subRoute, pkType, root, config, sourceScope);
+            AppendM2mRoute(w, nav, subRoute, pkType, root, config, sourceScope);
     }
 
     /// <summary>
@@ -1783,17 +1783,17 @@ public class RoutesGenerator : PerEntityGenerator
     /// kind, identical on both ports.
     /// </para>
     /// </summary>
-    private static void AppendSaveChanges(StringBuilder sb, string indent = "            ")
+    private static void AppendSaveChanges(CsWriter w)
     {
-        sb.AppendLine(indent + "try { await db.SaveChangesAsync(); }");
-        sb.AppendLine(indent + "catch (System.Exception __saveError)");
-        sb.AppendLine(indent + "{");
-        sb.AppendLine(indent + "    if (ConstraintErrors.Classify(__saveError) is { } __constraint)");
-        sb.AppendLine(indent + "        return Results.Json(");
-        sb.AppendLine(indent + "            new { error = __constraint.Error, constraint = __constraint.Constraint },");
-        sb.AppendLine(indent + "            statusCode: __constraint.Status);");
-        sb.AppendLine(indent + "    throw;");
-        sb.AppendLine(indent + "}");
+        w.Line("try { await db.SaveChangesAsync(); }");
+        w.Line("catch (System.Exception __saveError)");
+        w.Open("{");
+        w.Line("if (ConstraintErrors.Classify(__saveError) is { } __constraint)");
+        using (w.Hanging()) w.Line("return Results.Json(");
+        using (w.Hanging()) using (w.Hanging()) w.Line("new { error = __constraint.Error, constraint = __constraint.Constraint },");
+        using (w.Hanging()) using (w.Hanging()) w.Line("statusCode: __constraint.Status);");
+        w.Line("throw;");
+        w.Close("}");
     }
 
     // A junction/target column's CLR property, through the same resolver its entity class used.
@@ -1821,7 +1821,7 @@ public class RoutesGenerator : PerEntityGenerator
     // traverse it just as well and the segment would be decorative (rule c in the
     // cross-port contract; mirrors TS mount-m2m.ts's `sourceDiscriminator` Stage 0).
     private static void AppendM2mRoute(
-        System.Text.StringBuilder sb, M2MNavigation nav, string sourceRoute, string pkType, MetaRoot root,
+        CsWriter w, M2MNavigation nav, string sourceRoute, string pkType, MetaRoot root,
         GenConfig config, TphM2mSourceScope? sourceScope = null)
     {
         var relSeg = nav.Name;                                    // relationship name segment
@@ -1843,42 +1843,42 @@ public class RoutesGenerator : PerEntityGenerator
         var targetPk = nav.Target.PrimaryIdentity()?.Fields is { Count: 1 } tf
             ? JunctionProperty(nav.Target, tf[0], config) : "Id";
 
-        sb.AppendLine();
-        sb.AppendLine("        app.MapGet(prefix + \"/" + sourceRoute + "/{id}/" + relSeg + "\", async (" + pkType + " id, " + ValueObjectNames.ContextTypeRef(config) + " db) =>");
-        sb.AppendLine("        {");
+        w.Blank();
+        w.Line("app.MapGet(prefix + \"/" + sourceRoute + "/{id}/" + relSeg + "\", async (" + pkType + " id, " + ValueObjectNames.ContextTypeRef(config) + " db) =>");
+        w.Open("{");
         if (sourceScope is not null)
         {
             // Rule c — prove the id names a row of THIS subtype before touching the
             // junction. A well-formed id belonging to a SIBLING subtype is not an error
             // (it just has no relations under this segment): 200 with an empty list,
             // never 404 and never the sibling's rows.
-            sb.AppendLine($"            if (!await db.{sourceScope.DbSet}.OfType<{sourceScope.SubtypeClass}>().AnyAsync(x => x.{sourceScope.PkProp} == id))");
-            sb.AppendLine($"                return Results.Ok(new System.Collections.Generic.List<{targetCls}>());");
+            w.Line($"if (!await db.{sourceScope.DbSet}.OfType<{sourceScope.SubtypeClass}>().AnyAsync(x => x.{sourceScope.PkProp} == id))");
+            using (w.Hanging()) w.Line($"return Results.Ok(new System.Collections.Generic.List<{targetCls}>());");
         }
         if (nav.Symmetric)
         {
             // Union both junction columns; the related id is the column that is NOT the source id.
-            sb.AppendLine($"            var pairs = await db.{junctionDbSet}.AsNoTracking()");
-            sb.AppendLine($"                .Where(j => EF.Property<{fkType}>(j, \"{srcFkProp}\").Equals(id) || EF.Property<{fkType}>(j, \"{tgtFkProp}\").Equals(id))");
-            sb.AppendLine($"                .Select(j => new {{ S = EF.Property<{fkType}>(j, \"{srcFkProp}\"), T = EF.Property<{fkType}>(j, \"{tgtFkProp}\") }})");
-            sb.AppendLine("                .ToListAsync();");
-            sb.AppendLine($"            var relatedIds = new System.Collections.Generic.HashSet<{fkType}>();");
-            sb.AppendLine("            foreach (var p in pairs)");
-            sb.AppendLine("                relatedIds.Add(p.S.Equals(id) ? p.T : p.S);");
+            w.Line($"var pairs = await db.{junctionDbSet}.AsNoTracking()");
+            using (w.Hanging()) w.Line($".Where(j => EF.Property<{fkType}>(j, \"{srcFkProp}\").Equals(id) || EF.Property<{fkType}>(j, \"{tgtFkProp}\").Equals(id))");
+            using (w.Hanging()) w.Line($".Select(j => new {{ S = EF.Property<{fkType}>(j, \"{srcFkProp}\"), T = EF.Property<{fkType}>(j, \"{tgtFkProp}\") }})");
+            using (w.Hanging()) w.Line(".ToListAsync();");
+            w.Line($"var relatedIds = new System.Collections.Generic.HashSet<{fkType}>();");
+            w.Line("foreach (var p in pairs)");
+            using (w.Hanging()) w.Line("relatedIds.Add(p.S.Equals(id) ? p.T : p.S);");
         }
         else
         {
-            sb.AppendLine($"            var relatedIds = (await db.{junctionDbSet}.AsNoTracking()");
-            sb.AppendLine($"                .Where(j => EF.Property<{fkType}>(j, \"{srcFkProp}\").Equals(id))");
-            sb.AppendLine($"                .Select(j => EF.Property<{fkType}>(j, \"{tgtFkProp}\"))");
-            sb.AppendLine("                .ToListAsync()).ToHashSet();");
+            w.Line($"var relatedIds = (await db.{junctionDbSet}.AsNoTracking()");
+            using (w.Hanging()) w.Line($".Where(j => EF.Property<{fkType}>(j, \"{srcFkProp}\").Equals(id))");
+            using (w.Hanging()) w.Line($".Select(j => EF.Property<{fkType}>(j, \"{tgtFkProp}\"))");
+            using (w.Hanging()) w.Line(".ToListAsync()).ToHashSet();");
         }
-        sb.AppendLine($"            if (relatedIds.Count == 0) return Results.Ok(new System.Collections.Generic.List<{targetCls}>());");
-        sb.AppendLine($"            var rows = await {targetFrom}.AsNoTracking()");
-        sb.AppendLine($"                .Where(t => relatedIds.Contains(EF.Property<{fkType}>(t, \"{targetPk}\")))");
-        sb.AppendLine("                .ToListAsync();");
-        sb.AppendLine($"            return {OkResult("rows", TphUnionCredentialNames(nav.Target, root, config))};");
-        sb.AppendLine("        });");
+        w.Line($"if (relatedIds.Count == 0) return Results.Ok(new System.Collections.Generic.List<{targetCls}>());");
+        w.Line($"var rows = await {targetFrom}.AsNoTracking()");
+        using (w.Hanging()) w.Line($".Where(t => relatedIds.Contains(EF.Property<{fkType}>(t, \"{targetPk}\")))");
+        using (w.Hanging()) w.Line(".ToListAsync();");
+        w.Line($"return {OkResult("rows", TphUnionCredentialNames(nav.Target, root, config))};");
+        w.Close("});");
     }
 
     /// <summary>
@@ -1911,20 +1911,19 @@ public class RoutesGenerator : PerEntityGenerator
     /// default into its map. <c>Attr()</c> is the RESOLVING accessor (ADR-0039), so an
     /// order inherited via <c>extends</c> is honoured.
     /// </remarks>
-    private static void AppendSortDefaultOrder(StringBuilder sb, MetaObject owner, string constName, GenConfig config)
+    private static void AppendSortDefaultOrder(CsWriter w, MetaObject owner, string constName, GenConfig config)
     {
-        sb.Append($"    private static readonly System.Collections.Generic.Dictionary<string, bool> {constName} =");
-        sb.AppendLine(" new(System.StringComparer.OrdinalIgnoreCase)");
-        sb.AppendLine("    {");
+        w.Line($"private static readonly System.Collections.Generic.Dictionary<string, bool> {constName} = new(System.StringComparer.OrdinalIgnoreCase)");
+        w.Open("{");
         foreach (var f in owner.Fields())
         {
             if (CSharpNaming.ScalarFor(f.SubType) is null || f.ResolvedIsArray()) continue;
             if (f.Attr(FIELD_ATTR_SORTABLE_DEFAULT_ORDER) is not string v) continue;
             if (v != "asc" && v != "desc") continue;
-            sb.AppendLine($"        [\"{CSharpNaming.PropertyName(f, config)}\"] = {(v == "desc" ? "true" : "false")},");
+            w.Line($"[\"{CSharpNaming.PropertyName(f, config)}\"] = {(v == "desc" ? "true" : "false")},");
         }
-        sb.AppendLine("    };");
-        sb.AppendLine();
+        w.Close("};");
+        w.Blank();
     }
 
 

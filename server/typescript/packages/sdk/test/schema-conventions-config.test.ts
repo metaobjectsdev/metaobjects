@@ -78,3 +78,21 @@ describe("migrate.checks", () => {
     expect(await refusal({ skipRedundant: "yes" })).toMatch(/migrate\.checks\.skipRedundant: .*expected boolean/);
   });
 });
+
+describe("migrate.foreignKeyTargets", () => {
+  test("is refuse or warn in the config schema", () => {
+    expect(ConfigSchema.safeParse({ schema_version: 1, migrate: { foreignKeyTargets: "warn" } }).success).toBe(true);
+    expect(ConfigSchema.safeParse({ schema_version: 1, migrate: { foreignKeyTargets: "refuse" } }).success).toBe(true);
+    expect(ConfigSchema.safeParse({ schema_version: 1, migrate: { foreignKeyTargets: "ignore" } }).success).toBe(false);
+    expect(ConfigSchema.safeParse({ schema_version: 1, migrate: { foreignKeyTargets: true } }).success).toBe(false);
+  });
+
+  test("the resolved collection carries it, refuse when absent", async () => {
+    await withProject({ migrate: { foreignKeyTargets: "warn" } }, async (dir) => {
+      expect((await resolveCollection(dir)).foreignKeyTargets).toBe("warn");
+    });
+    await withProject({}, async (dir) => {
+      expect((await resolveCollection(dir)).foreignKeyTargets).toBe("refuse");
+    });
+  });
+});

@@ -417,6 +417,20 @@ fn migrate_verify_requirements_scope_and_csharp_are_kept() {
 }
 
 #[test]
+fn migrate_foreign_key_targets_is_refuse_or_warn() {
+    let read = |v: serde_json::Value| {
+        parse_config(
+            &json!({"schema_version": 1, "migrate": {"foreignKeyTargets": v}}),
+            "c.json",
+            &NamingRegistry::builtin(),
+        )
+    };
+    let m = read(json!("warn")).unwrap().config.migrate.unwrap();
+    assert_eq!(m.foreign_key_targets.as_deref(), Some("warn"));
+    assert!(read(json!("ignore")).is_err());
+}
+
+#[test]
 fn dependencies_are_validated_and_names_must_be_unique() {
     let n = NamingRegistry::builtin();
     let ok = parse_config(

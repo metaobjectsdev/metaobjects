@@ -1,0 +1,13 @@
+{
+  "unconverted": {
+  },
+  "exempt": {
+    "MetaObjects.Codegen/CSharpNaming.cs": "naming tables: the line-break characters it names are inputs it splits identifiers and comments on, and it writes no generated file",
+    "MetaObjects.Codegen/CodegenCli.cs": "the command line: its newlines and indents are console messages and usage text, not generated code",
+    "MetaObjects.Codegen/EjectableGenerators.cs": "eject rewrites the namespace and usings of a generator's own C# source as text; that is a source-to-source copy, not generated code",
+    "MetaObjects.Codegen/FrameworkQualifier.cs": "a post-pass that rewrites bare System.* references in already-written text; it splits and rejoins lines of any file and lays out none",
+    "MetaObjects.Codegen/GenFingerprint.cs": "the generation fingerprint: newline-joined records are the bytes that get hashed, a contract with the stored key, not generated code",
+    "MetaObjects.Codegen/HashManifest.cs": "the committed hash manifest: its line format is a stored contract with earlier runs, not generated code",
+    "MetaObjects.Codegen/ModelHash.cs": "the model hash: newline-joined records are the bytes that get hashed, a contract with the stored hash, not generated code"
+  }
+}

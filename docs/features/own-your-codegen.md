@@ -1613,6 +1613,10 @@ namespace:
 | `output-prompt` | `OutputFormatSpecEmitter.cs`, `Fr010FieldMapping.cs` |
 | `api-docs` | the page model, builder, renderer and path math (below), `Fr010FieldMapping.cs`, `M2MNavigation.cs` |
 
+The code writer (`MetaObjects.Codegen.Writer.CodeWriter` and `CsWriter`, ADR-0063) is not
+copied. It lays a file out and decides nothing about its content, so like the naming tables it
+stays in the package, and an owned copy imports it from there.
+
 The copies are the packaged source with the same namespace edit as the generator and no
 other change. A file two generators share is written once: a later eject finds it, says
 `[kept — already yours]` and leaves your edits alone, and `--force` replaces it with the

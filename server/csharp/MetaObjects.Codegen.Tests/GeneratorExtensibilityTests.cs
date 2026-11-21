@@ -60,11 +60,11 @@ public class GeneratorExtensibilityTests
     private sealed class TaggedDbContextGenerator : DbContextGenerator
     {
         protected override void EmitOnModelCreatingBody(
-            StringBuilder sb, IReadOnlyList<string> modelLines, GenContext ctx)
+            MetaObjects.Codegen.Writer.CsWriter w, IReadOnlyList<string> modelLines, GenContext ctx)
         {
-            sb.AppendLine();
-            sb.AppendLine("    // ADOPTER MODEL CONFIG");
-            base.EmitOnModelCreatingBody(sb, modelLines, ctx);
+            w.Blank();
+            w.Line("// ADOPTER MODEL CONFIG");
+            base.EmitOnModelCreatingBody(w, modelLines, ctx);
         }
     }
 

@@ -73,7 +73,7 @@ public class GuardedSpanContext(DbContextOptions<GuardedSpanContext> options) : 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         SpanTable.Map(modelBuilder);
-        // DbContextGenerator.DurationColumnLines, verbatim but for the entity; the mapping objects
+        // DbContextGenerator.WriteDurationColumn, verbatim but for the entity; the mapping objects
         // are the generated AppDbContext's own.
         if (Database.ProviderName == "Npgsql.EntityFrameworkCore.PostgreSQL")
         {

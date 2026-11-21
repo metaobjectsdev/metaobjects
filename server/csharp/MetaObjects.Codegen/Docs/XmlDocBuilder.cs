@@ -2,6 +2,7 @@
 // notes is intentionally NEVER read — D5 contract.
 
 using System.Text;
+using MetaObjects.Codegen.Writer;
 using MetaObjects.Core.Documentation;
 using MetaObjects.Meta;
 
@@ -105,6 +106,20 @@ public static class XmlDocBuilder
         {
             sb.Append(indent).AppendLine(obsolete);
         }
+    }
+
+    /// <summary>
+    /// Write <paramref name="node"/>'s doc block and <c>[Obsolete]</c> (if any) on the writer, one
+    /// line each, at the writer's current indent. Writes nothing when neither attribute is present.
+    /// </summary>
+    public static void WriteTo(CsWriter w, MetaData node)
+    {
+        (string doc, string? obsolete) = Render(node);
+        if (!string.IsNullOrEmpty(doc))
+        {
+            foreach (var line in doc.Split('\n')) w.Line(line.TrimEnd('\r'));
+        }
+        if (obsolete is not null) w.Line(obsolete);
     }
 
     /// <summary>

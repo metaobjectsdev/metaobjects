@@ -459,7 +459,9 @@
           "MetaObjects.Codegen.RequirementTestClaim",
           "MetaObjects.Codegen.SourceNames",
           "MetaObjects.Codegen.SuperNames",
-          "MetaObjects.Codegen.ValueObjectNames"
+          "MetaObjects.Codegen.ValueObjectNames",
+          "MetaObjects.Codegen.Writer.CodeWriter",
+          "MetaObjects.Codegen.Writer.CsWriter"
         ]
       },
       "java": {

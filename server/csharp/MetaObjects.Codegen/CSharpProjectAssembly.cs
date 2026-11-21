@@ -221,22 +221,31 @@ public static class DesignTimeServicesReferences
     /// The migrations are found by <c>&lt;contextName&gt;ModelSnapshot.cs</c> in the repository of
     /// <see cref="GenConfig.OutDir"/>'s project.
     /// </summary>
-    public static string? Warning(GenConfig config, string generator, string contextName, string servicesTypeName, string line, string consequence)
+    public static string? Warning(GenConfig config, string generator, string contextName, string servicesTypeName, string line, string consequence) =>
+        Check(config, generator, contextName, servicesTypeName, line, consequence).Message;
+
+    /// <summary>
+    /// The same answer as <see cref="Warning"/>, plus whether the line is PROVEN missing: the
+    /// migrations were found in another project, and that project does not reference
+    /// <paramref name="servicesTypeName"/>. A run that cannot tell (no snapshot on disk) is not
+    /// proven; it stays a warning, because a project with no migrations yet has nothing to restart.
+    /// </summary>
+    public static (string? Message, bool Missing) Check(GenConfig config, string generator, string contextName, string servicesTypeName, string line, string consequence)
     {
         var assembly = config.ContextAssemblyName;
         var (need, migrations) = CSharpProjectAssembly.DesignTimeReference(config.OutDir, contextName, servicesTypeName, assembly);
         return need switch
         {
             DesignTimeReferenceNeed.Needed =>
-                $"{generator}: the migrations of {contextName} are in {migrations}, not in the context's project ({assembly}), " +
+                ($"{generator}: the migrations of {contextName} are in {migrations}, not in the context's project ({assembly}), " +
                 $"and that project does not reference {servicesTypeName}. EF reads [assembly: DesignTimeServicesReference] only " +
                 $"from the startup and migrations assemblies, so it never reads the one generated beside the context; {consequence}. " +
-                $"Add this line to a .cs file of that project: {line}",
+                $"Add this line to a .cs file of that project: {line}", true),
             DesignTimeReferenceNeed.Unknown =>
-                $"{generator}: cannot tell whether EF reads the DesignTimeServicesReference generated beside {contextName}: EF reads it " +
+                ($"{generator}: cannot tell whether EF reads the DesignTimeServicesReference generated beside {contextName}: EF reads it " +
                 $"only from the startup and migrations assemblies, and no {contextName}ModelSnapshot.cs was found to show that " +
-                $"{assembly} holds the migrations. If the migrations are in another project, add this line to it ({consequence}): {line}",
-            _ => null,
+                $"{assembly} holds the migrations. If the migrations are in another project, add this line to it ({consequence}): {line}", false),
+            _ => (null, false),
         };
     }
 }

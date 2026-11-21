@@ -384,6 +384,17 @@ function refuseEngineError(err: Error, hint: string, fmt: OutputFormat): number 
   return 1;
 }
 
+/**
+ * The refusal for a foreign key onto a non-unique target. A text run drops every hint, and this
+ * one carries the off switch (`migrate.foreignKeyTargets`), which nothing else would tell a person
+ * whose database already holds the unique index by hand, so it is printed for text runs too.
+ */
+function refuseFkTargetError(err: Error, fmt: OutputFormat): number {
+  const rc = refuseEngineError(err, FK_TARGET_NOT_UNIQUE_HINT, fmt);
+  if (fmt === "text") log.error(`migrate: ${FK_TARGET_NOT_UNIQUE_HINT}`);
+  return rc;
+}
+
 const SCHEMA_CONVENTIONS_HINT =
   "set migrate.conventions in .metaobjects/config.json to one of the presets, or supply your own conventions from metaobjects.config.ts";
 
@@ -413,7 +424,8 @@ const DUPLICATE_SQL_NAME_HINT =
 const CHECK_NAME_HINT =
   "give each constraint on a table its own @constraintName, at most 63 bytes";
 const FK_TARGET_NOT_UNIQUE_HINT =
-  "declare an identity.secondary on the target entity with exactly the referenced fields, or reference its primary key";
+  "declare an identity.secondary on the target entity with exactly the referenced fields, or reference its primary key; " +
+  "if the database already holds a unique index there that the metadata does not declare, set migrate.foreignKeyTargets to \"warn\" in .metaobjects/config.json";
 const DECLARED_RENAME_HINT =
   "fix or remove the --rename-table / --rename-column flag; a table's name is its name in the metadata (the new name when it is renamed too)";
 
@@ -883,7 +895,7 @@ export async function migrateCommand(
     const expected = scoped.snapshot;
     logOutOfScope(scoped.outOfScope, scoped.importedOutOfScope ?? [], fmt);
     warnUngovernedFkTargets(scoped.ungovernedFkTargetViolations);
-    warnUnenforcedFkTargets("migrate", scoped.unenforcedFkTargetViolations);
+    warnUnenforcedFkTargets("migrate", scoped.unenforcedFkTargetViolations, scoped.fkTargetsAllowed !== undefined);
     let actual;
     try {
       actual = await introspect(kysely.db, kysely.dialect);
@@ -1220,7 +1232,7 @@ export async function migrateCommand(
     // A metadata defect too: a declared CHECK name that duplicates another constraint or is too long.
     if (isInvalidCheckNameError(err)) return refuseEngineError(err, CHECK_NAME_HINT, fmt);
     // A metadata defect too: a foreign key whose target columns are not a unique key there.
-    if (isFkTargetNotUniqueError(err)) return refuseEngineError(err, FK_TARGET_NOT_UNIQUE_HINT, fmt);
+    if (isFkTargetNotUniqueError(err)) return refuseFkTargetError(err, fmt);
     // A metadata defect too: an enum member longer than the project's enums.maxLength.
     if (isEnumLengthRefusal(err)) return refuseEngineError(err, ENUM_LENGTH_HINT, fmt);
     // Unexpected error: emit structured error on stdout in the active format, then exit 1.
@@ -1661,6 +1673,8 @@ export async function runOfflineGenerate(
   // for an unscoped run.
   const { diff: diffResult, nextSnapshot, expected: governedExpected } = plan;
   logOutOfScope(plan.outOfScope, plan.importedOutOfScope ?? [], fmt);
+  warnUngovernedFkTargets(plan.ungovernedFkTargetViolations);
+  warnUnenforcedFkTargets("migrate", plan.unenforcedFkTargetViolations, plan.fkTargetsAllowed !== undefined);
 
   const offlineNotes = viewRecreateNotes(diffResult.changes);
   // Which comparison ran (every Postgres run says so): this one never reads the database, so
@@ -1907,7 +1921,7 @@ async function runD1Migrate(
   const expected = scoped.snapshot;
   logOutOfScope(scoped.outOfScope, scoped.importedOutOfScope ?? [], fmt);
   warnUngovernedFkTargets(scoped.ungovernedFkTargetViolations);
-  warnUnenforcedFkTargets("migrate", scoped.unenforcedFkTargetViolations);
+  warnUnenforcedFkTargets("migrate", scoped.unenforcedFkTargetViolations, scoped.fkTargetsAllowed !== undefined);
   let actual;
   try {
     actual = await introspectD1({

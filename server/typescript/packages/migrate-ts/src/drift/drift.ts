@@ -120,6 +120,8 @@ export interface DriftResult extends DiffResult {
    * as `meta migrate` does.
    */
   unenforcedFkTargetViolations?: readonly FkTargetViolation[];
+  /** Set with `unenforcedFkTargetViolations` when `migrate.foreignKeyTargets: "warn"` is why they are not refused. */
+  fkTargetsAllowed?: true;
 }
 
 /**
@@ -148,6 +150,7 @@ export async function computeDriftFromActual(
       conventions: opts?.conventions,
       skipRedundantChecks: opts?.skipRedundantChecks,
       foreignKeyIndexes: opts?.foreignKeyIndexes,
+      foreignKeyTargets: opts?.foreignKeyTargets,
     }),
     opts?.inScope,
     opts?.imported !== undefined ? { imported: opts.imported } : undefined,
@@ -176,6 +179,7 @@ export async function computeDriftFromActual(
     declaredSchemas: scoped.declaredSchemas,
     importedOutOfScope: scoped.importedOutOfScope,
     ...(scoped.unenforcedFkTargetViolations !== undefined ? { unenforcedFkTargetViolations: scoped.unenforcedFkTargetViolations } : {}),
+    ...(scoped.fkTargetsAllowed !== undefined ? { fkTargetsAllowed: true as const } : {}),
   };
 }
 

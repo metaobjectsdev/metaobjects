@@ -327,6 +327,17 @@ a project whose `codegen/Codegen.csproj` pins an older `MetaObjects.Codegen` tha
 prints a warning naming the line to change. See
 [Own your codegen → C#](../features/own-your-codegen.md#c-dotnet-meta-eject).
 
+**Generators write through a code writer.** `MetaObjects.Codegen.Writer.CsWriter` is where a
+generator's layout lives (ADR-0063): it owns the indent, the braces, the `using` lines and the
+blank lines, so a generator states what the file says and not how many spaces it takes. The
+filter allowlist, names, callable, output-prompt, output-parser and extractor generators are
+written on it, and so is the mirror record they share. Each is a class whose file is built from
+one overridable method per piece (`WriteFileHeader`, `WriteTypeDoc`, `WriteMembers` and so on),
+so an owned copy, or a subclass of the shipped one, changes the piece it wants and keeps the rest.
+Those methods are not a stability contract. A test keeps new hand-typed layout out of the
+generator source: a file that still builds text with `AppendLine` is on an allowlist with a
+written reason, and the list only gets shorter.
+
 **Give a copy back.** `dotnet meta eject --undo` drops every owned copy that is identical to the
 shipped generator (the comparison ignores blank lines, order and trailing whitespace, and covers
 the emitters eject handed over with it); `dotnet meta eject --undo <name>...` drops only those.
@@ -470,10 +481,31 @@ so the declaration and every reference agree. The hooks `EntityGenerator.Propert
 `DbContextGenerator.PropertyName` default to it; a subclass that overrides one must override the
 other the same way. The routes generator, the filter map and the credential stripping read the same resolver, and a hook that disagrees with it is refused.
 
-**Class attributes.** `EntityGenerator.EmitClassAttributes(sb, entity, className, kind, ctx)` is
+**Class attributes.** `EntityGenerator.EmitClassAttributes(w, entity, className, kind, ctx)` (`w` is the `CsWriter`) is
 called for every class it emits (mapped entity, TPH subtype, abstract shape, value object), after
 the framework's own attributes and right before the declaration line. Override it to add an
 attribute without re-implementing `EmitClassHeader`.
+
+**The writer owns layout (ADR-0063).** `EntityGenerator` writes every file on a
+`MetaObjects.Codegen.Writer.CsWriter`, and its hooks (`EmitClassHeader`, `EmitClassAttributes`,
+`EmitClassDeclarationLine`, `EmitPropertyAttributes`, `EmitFileUsings`, `EmitClassBodyTrailer`)
+take that writer instead of a `StringBuilder`. A hook writes complete lines with `w.Line(...)` or a
+`using` with `w.Using(...)` and never types an indent or a line break: the writer indents the line to
+where it is written. `ValueObjectMemberAttributes` returns lines with no indent for the same reason.
+A class that carries cross-field validators gets `IValidatableObject` added to its declaration line by
+the base class, even when an override of `EmitClassHeader` or `EmitClassDeclarationLine` wrote the line.
+The base class adds it to the last line written, so an override must write the declaration as its last
+line. The hooks are not a stability contract; an owned copy ejected with `dotnet meta eject` is yours to change.
+
+`DbContextGenerator` writes on the same writer. Its three file-shape hooks (`EmitUsings`,
+`EmitDbSetDeclarations`, `EmitOnModelCreatingBody`) take the `CsWriter` in place of the `StringBuilder`;
+`EmitUsings` leaves the class body open with `w.Open("{")` and the generator writes the closing `}`. The
+hooks that return text (`ContextUsings`, `ContextMemberLines`, `ContextPreambleLines`,
+`ContextTrailerLines`, `DbSetLine`, `EntityConfigTrailer`, `FieldTypeConfig`, `OwnedTypeConfig` and the
+rest) return lines with no indent: each model entry is one statement, and the writer indents it where it is
+written. An entry that already carries an indent still reads right, because the writer removes an entry's
+common margin before it indents. A `ContextUsings` line is a `using ...;` directive, which the writer
+prints once, in the order given.
 
 **One line at a time.** Each of these is a `protected virtual` hook whose default is the line it
 replaces; override it, call base, and adjust. On `EntityGenerator`: `ValueObjectMemberAttributes`
@@ -533,8 +565,11 @@ already holds. EF finds the services through `[assembly: DesignTimeServicesRefer
 is generated beside the class when the context's assembly name is known (the single `.csproj` in
 the output directory or above it, or `GenConfig.ContextAssemblyName`). That covers EF's default
 layout, where the migrations live in the context's project. When the migrations or startup project
-is another one, `dotnet meta gen` warns and prints the one line to add to that project; without it
-a changed start scaffolds as `RESTART`. `dotnet ef migrations add --verbose` prints "Using
+is another one and `dotnet meta gen` can see it (the `<Context>ModelSnapshot.cs` is there) without the
+line, a project that declares an `@sequenceStart` fails with `ERR_DESIGN_TIME_REFERENCE_MISSING`, which
+names the project and the one line to add: without it a changed start scaffolds as `RESTART`. A run
+that cannot tell (no snapshot on disk yet), and a project that declares no start, get the warning
+with the same line instead. `dotnet ef migrations add --verbose` prints "Using
 design-time services from assembly …" when they are found.
 
 The start in the model, and the services, are emitted only for a project whose

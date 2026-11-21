@@ -10,6 +10,63 @@ here.**
 
 ## [Unreleased]
 
+- **C#: a `@sequenceStart` whose migrations project lacks the design-time services line is a generation
+  error.** When `dotnet meta gen` can see the context's `ModelSnapshot.cs` in another project and that
+  project does not carry `[assembly: DesignTimeServicesReference]`, the next `dotnet ef migrations add`
+  would scaffold `RESTART WITH n` and hand out ids live rows hold. The run now fails with
+  `ERR_DESIGN_TIME_REFERENCE_MISSING`, naming the project and the line to add, instead of warning. A
+  run that cannot tell (no snapshot on disk yet) and a project that declares no `@sequenceStart` still
+  get the warning.
+- **C#: the filter allowlist, names, callable, output-prompt, output-parser and extractor generators
+  write through a code writer (ADR-0063).** `MetaObjects.Codegen.Writer.CsWriter` carries the layout
+  (indent, braces, `using` lines, blank lines), and each of those generators is a class built from
+  overridable per-piece methods. The output is unchanged except in one place: a parser generated
+  for a reply declared `@responseFormat: xml` no longer has a blank line right after its opening
+  `{` (the writer drops a blank line after an opener, as it does in every port). A layout check
+  with an allowlist that only shrinks keeps new hand-typed layout out of the generator source.
+  The shared writer-conformance corpus gains six C# cases.
+- **C#: the last six generators write through the code writer (ADR-0063).** The routes generator, the
+  reverse-finder emitter, the expression-indexes, report-export and requirement-tests generators and the
+  render-helper generator no longer type line breaks or indentation, so the layout check's list of
+  unconverted generators is empty. Output is byte-identical on the 737 model fixtures in four layouts,
+  with these exceptions the writer owns: the shared `ReportExportWriter.g.cs` now ends with a newline
+  like every other generated file; a `// ` comment line for an empty statement is written as `//`; and
+  an empty requirement-tests witness interface has its braces on two lines. The routes generator's
+  `AppendOffsetLimit` and `AppendSaveChanges` helpers lose their `indent` argument, and its private
+  helpers take a `CsWriter`. The requirement-tests collision message indents its list by four spaces.
+- **C#: the DbContext generator writes through the code writer (ADR-0063).** `DbContextGenerator`
+  (the context, its `OnModelCreating` and `ConfigureModelNN` chunks, the enum, map and duration helpers
+  and the design-time services file) builds each file on a `CsWriter`. Output is byte-identical for the
+  737 model fixtures in all four layouts. **An owned or subclassed generator needs a small edit.** The
+  hooks `EmitUsings`, `EmitDbSetDeclarations` and `EmitOnModelCreatingBody` take a `CsWriter` in place of the
+  `StringBuilder`, and `EmitUsings` opens the class body with `w.Open("{")`. The hooks that return
+  text now document their lines as unindented; a line that still carries an indent is accepted, since the
+  writer removes the common margin. A `ContextUsings` line is a `using ...;` directive, printed once in the
+  order given. The layout check's allowlist loses the DbContext generator's entry.
+- **C#: the entity generator writes through the code writer (ADR-0063).** `EntityGenerator` (mapped
+  entities, TPH subtypes, abstract shapes, value objects, shared enums and the decimal, duration and
+  net-validation helper files) builds each file on a `CsWriter`. Output is unchanged for the 737 model
+  fixtures in all four layouts except three layout details the writer owns: a class with no members
+  has no blank line between its braces, a blank line before a closing `}` is dropped, and a `///`
+  doc line has no trailing space. **An owned or subclassed generator needs a small edit.** The hooks
+  `EmitClassHeader`, `EmitClassAttributes`, `EmitClassDeclarationLine`, `EmitPropertyAttributes`,
+  `EmitFileUsings` and `EmitClassBodyTrailer` take a `CsWriter` in place of the `StringBuilder`, and write
+  lines with `w.Line(...)` or `w.Using(...)`, with no typed indentation. The base class still adds
+  `IValidatableObject` to the declaration line an override wrote. The property emitters are renamed
+  `WriteScalarProperty`, `WriteEnumProperty`, `WriteObjectNavProperty`, `WriteMapProperty` and the
+  `WriteTphSubtype*Property` pair, and the validator-attribute writers `Write*ValidatorAttributes`.
+  `ValueObjectMemberAttributes` returns lines with no indent (it used to return four spaces of it).
+  `XmlDocBuilder.WriteTo(writer, node)` is the writer form of `AppendTo`. The public statics
+  `EntityGenerator.M2mNavProperty` and `ExtractDelegateEmitter.DelegatingMembers`, which returned a
+  string, are now `WriteM2mNavProperty(CsWriter, ...)` and `WriteDelegatingMembers(CsWriter, ...)`,
+  returning void. `NamesGenerator.Member` and `MemberGroups` are now protected. A flat-layout shared-enum
+  file that holds two or more namespaces no longer ends with an extra blank line. The layout check no
+  longer lists `EntityGenerator.cs` as unconverted.
+- **`migrate.foreignKeyTargets: "warn"` turns the refusal of a foreign key onto a non-unique target into
+  a report.** For a database whose unique index on the target is hand-made and not declared in the
+  metadata. The default, `"refuse"`, is the 1.3.0 behavior; the refusal's hint now names the setting. See
+  [Migrations and drift](docs/features/migrations-and-drift.md).
+
 ## [1.3.0] — unreleased
 
 

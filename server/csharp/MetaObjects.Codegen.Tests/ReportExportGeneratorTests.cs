@@ -108,6 +108,31 @@ public class ReportExportGeneratorTests
         Assert.Contains("XmlNil = true;", files["ReportExportWriter.g.cs"]);
     }
 
+    // A report whose package maps to a namespace other than the configured one gets that namespace as a
+    // `using`, printed in the one using block with the others, directly before `namespace`.
+    [Fact]
+    public void A_home_namespace_using_sits_in_the_using_block_before_the_namespace_line()
+    {
+        var root = Load();
+        var ctx = new GenContext
+        {
+            Entities = root.Objects().Where(o => !o.IsReport()).ToList(),
+            Root = root,
+            Config = new GenConfig
+            {
+                OutDir = "/unused", Namespace = "Acme.Gen", ColumnNamingStrategy = ColumnNamingStrategy.Literal,
+                PackageNamespaces = new() { ["acme::shop"] = "Acme.Shop" },
+            },
+        };
+        var module = new ReportExportGenerator().Generate(ctx)
+            .Single(f => System.IO.Path.GetFileName(f.Path) == "LineTotalsExport.g.cs").Content;
+        var lines = module.Split('\n').SkipWhile(l => !l.StartsWith("using ", StringComparison.Ordinal)).ToList();
+        var header = lines.TakeWhile(l => !l.StartsWith("namespace ", StringComparison.Ordinal)).ToList();
+        Assert.Contains("using Acme.Shop;", header);
+        Assert.Equal(["using System.Collections.Generic;", "using System.IO;", "using System.Linq;", "using Acme.Shop;", ""], header);
+        Assert.StartsWith("namespace ", lines[header.Count]);
+    }
+
     [Fact]
     public void Options_reach_the_shared_writer()
     {
@@ -170,7 +195,8 @@ public class ReportExportGeneratorTests
         new ReportExportGenerator().Generate(Ctx(Load(model))).Single(f => f.Path == "ReportExportWriter.g.cs").Content;
 
     // field.duration: the writer of a model with no duration column is the writer from before
-    // durations existed, byte for byte (the hash of that writer for this model, pinned).
+    // durations existed, byte for byte (the hash of that writer for this model, pinned) bar the one
+    // newline the code writer ends every file with, which the hash leaves out.
     [Fact]
     public void The_writer_of_a_model_without_a_duration_column_is_unchanged()
     {
@@ -178,7 +204,7 @@ public class ReportExportGeneratorTests
         Assert.DoesNotContain("TimeSpan ts", writer);
         Assert.DoesNotContain("duration", writer, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("@DURATION", writer);
-        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(writer.Replace("\r\n", "\n"))));
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(writer.Replace("\r\n", "\n").TrimEnd('\n'))));
         Assert.Equal("78913C645BB9D25C334F2285C210D0192510618A63C564AA7833C8AEA4A0B5AF", hash);
     }
 

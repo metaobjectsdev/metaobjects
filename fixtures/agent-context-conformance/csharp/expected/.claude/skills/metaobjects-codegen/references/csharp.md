@@ -305,7 +305,11 @@ hand, so set its strategy from the root: `ColumnNamingStrategy = load.Root.Physi
 The generators are subclassable: the per-class emit methods are `protected virtual`,
 plus finer hooks — `EmitClassHeader` / `EmitClassDeclarationLine` (class declaration:
 `partial`, marker interfaces), `EmitPropertyAttributes` (per-property C# attributes),
-`EmitFileUsings` (extra usings), `EmitClassBodyTrailer` (extra members). Subclass a
+`EmitFileUsings` (extra usings), `EmitClassBodyTrailer` (extra members). Each takes the
+generator's `CsWriter`: write whole lines with `w.Line(...)` and `using`s with `w.Using(...)`, never
+typed indentation or line breaks (the writer lays the file out, ADR-0063). `DbContextGenerator`'s
+`EmitUsings`, `EmitDbSetDeclarations` and `EmitOnModelCreatingBody` take it too, and its text hooks
+(`ContextMemberLines`, `FieldTypeConfig`, `OwnedTypeConfig`, ...) return unindented lines. Subclass a
 generator and override only the seam you need rather than forking. `@default` on a
 scalar emits a literal initializer; an override of `EmitClassDeclarationLine` must not name a
 concrete parent as the C# base (the child already declares the parent's properties, so a base would
