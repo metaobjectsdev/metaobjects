@@ -54,7 +54,6 @@ import {
   isWriteThrough,
   isAbstract,
   hasWritableRdbSource,
-  formatTs,
   ownedRuntimeImport,
   DEFAULT_OUTPUT_LAYOUT,
   entityOutputPath,
@@ -188,7 +187,7 @@ export const entityFile = function entityFile(opts?: EntityFileOpts): Generator 
     };
     return {
       path: entityOutputPath(ctx.config.outputLayout ?? DEFAULT_OUTPUT_LAYOUT, effectivePackage(entity), `${entity.name}.ts`),
-      content: await formatTs(renderEntity(entity, renderContext, { allowlists })),
+      content: renderEntity(entity, renderContext, { allowlists }),
     };
   });
 
@@ -209,7 +208,7 @@ export const entityFile = function entityFile(opts?: EntityFileOpts): Generator 
         ctx.select !== undefined ? { select: ctx.select } : undefined,
       );
       if (sharedEnums !== null) {
-        files.push({ path: `${SHARED_ENUMS_BASENAME}.ts`, content: await formatTs(sharedEnums) });
+        files.push({ path: `${SHARED_ENUMS_BASENAME}.ts`, content: sharedEnums });
       }
       return files;
     },

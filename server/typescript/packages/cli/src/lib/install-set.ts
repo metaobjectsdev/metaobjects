@@ -20,6 +20,7 @@
 import { createRequire } from "node:module";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { HTTP_RUNTIME_PACKAGE, type GeneratorRegistryEntry } from "@metaobjectsdev/codegen-ts";
 import { cliVersion } from "./version.js";
 import { packageOf } from "./catalog.js";
@@ -48,6 +49,30 @@ export function peerRangesOf(packageName: string): Record<string, string> {
  */
 export function dependencyRangesOf(packageName: string): Record<string, string> {
   return manifestRangesOf(packageName, "dependencies");
+}
+
+/**
+ * A peer range the CLI itself declares, or `undefined` if it cannot be read. `meta init` writes
+ * the SQLite driver into a new project with it, so the range an adopter installs is the one this
+ * CLI was tested against and never a second copy kept here.
+ */
+export function ownPeerRange(name: string): string | undefined {
+  try {
+    let dir = dirname(fileURLToPath(import.meta.url));
+    for (let hops = 0; hops < 8; hops++) {
+      const candidate = join(dir, "package.json");
+      if (existsSync(candidate)) {
+        const manifest = JSON.parse(readFileSync(candidate, "utf8")) as PackageManifest & { name?: string };
+        if (manifest.name === "@metaobjectsdev/cli") return manifest.peerDependencies?.[name];
+      }
+      const up = dirname(dir);
+      if (up === dir) break;
+      dir = up;
+    }
+  } catch {
+    // unreadable: the caller writes the package without a range
+  }
+  return undefined;
 }
 
 function manifestRangesOf(packageName: string, field: "peerDependencies" | "dependencies"): Record<string, string> {

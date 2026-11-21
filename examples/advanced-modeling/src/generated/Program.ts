@@ -2,51 +2,23 @@
 // Source metadata: Program (Program)
 // Extend in your own module (e.g. Program.extra.ts) — nothing imports it for you.
 import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
-import {
-  type AnyPgColumn,
-  bigint,
-  check,
-  jsonb,
-  pgTable,
-  text,
-  uuid,
-  varchar,
-} from "drizzle-orm/pg-core";
+import { type AnyPgColumn, bigint, check, jsonb, pgTable, text, uuid, varchar } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import { authors } from "./Author";
-import {
-  type InstructorProfile,
-  InstructorProfileInsertSchema,
-} from "./InstructorProfile";
-import {
-  type SyllabusSection,
-  SyllabusSectionInsertSchema,
-} from "./SyllabusSection";
+import { type InstructorProfile, InstructorProfileInsertSchema } from "./InstructorProfile";
+import { type SyllabusSection, SyllabusSectionInsertSchema } from "./SyllabusSection";
 
-export const programs = pgTable(
-  "programs",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    title: varchar("title", { length: 200 }).notNull(),
-    status: text("status", {
-      enum: ["draft", "published", "archived"] as const,
-    }),
-    summary: varchar("summary", { length: 2000 }),
-    priceCents: bigint("price_cents", { mode: "number" }),
-    coverKey: varchar("cover_key", { length: 80 }),
-    authorId: uuid("author_id")
-      .notNull()
-      .references((): AnyPgColumn => authors.id),
-    syllabus: jsonb("syllabus").$type<SyllabusSection[]>(),
-    instructorProfile: jsonb("instructor_profile").$type<InstructorProfile>(),
-  },
-  (table) => [
-    check(
-      "programs_status_chk",
-      sql`status IN ('draft', 'published', 'archived')`,
-    ),
-  ],
-);
+export const programs = pgTable("programs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  title: varchar("title", { length: 200 }).notNull(),
+  status: text("status", { enum: ["draft", "published", "archived"] as const }),
+  summary: varchar("summary", { length: 2000 }),
+  priceCents: bigint("price_cents", { mode: "number" }),
+  coverKey: varchar("cover_key", { length: 80 }),
+  authorId: uuid("author_id").notNull().references((): AnyPgColumn => authors.id),
+  syllabus: jsonb("syllabus").$type<SyllabusSection[]>(),
+  instructorProfile: jsonb("instructor_profile").$type<InstructorProfile>(),
+}, (table) => [check("programs_status_chk", sql`status IN ('draft', 'published', 'archived')`)]);
 export type Program = InferSelectModel<typeof programs>;
 export type ProgramInsert = InferInsertModel<typeof programs>;
 export type ProgramUpdate = Partial<ProgramInsert>;
@@ -58,12 +30,10 @@ export const ProgramInsertSchema = z.object({
   summary: z.string().max(2000).optional(),
   priceCents: z.number().int().optional(),
   coverKey: z.string().max(80).optional(),
-  authorId: z
-    .string()
-    .regex(
-      /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
-      "Invalid uuid",
-    ),
+  authorId: z.string().regex(
+    /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
+    "Invalid uuid",
+  ),
   syllabus: z.array(SyllabusSectionInsertSchema).optional(),
   instructorProfile: InstructorProfileInsertSchema.optional(),
 });
@@ -74,13 +44,10 @@ export const ProgramUpdateSchema = z.object({
   summary: z.string().max(2000).optional().nullable(),
   priceCents: z.number().int().optional().nullable(),
   coverKey: z.string().max(80).optional().nullable(),
-  authorId: z
-    .string()
-    .regex(
-      /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
-      "Invalid uuid",
-    )
-    .optional(),
+  authorId: z.string().regex(
+    /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
+    "Invalid uuid",
+  ).optional(),
   syllabus: z.array(SyllabusSectionInsertSchema).optional().nullable(),
   instructorProfile: InstructorProfileInsertSchema.optional().nullable(),
 });
@@ -125,39 +92,21 @@ export const Program = {
     label: "Title",
     view: "text",
     htmlType: "text",
-    rules: {
-      required: "Title is required",
-      maxLength: { value: 200, message: "Must be 200 characters or fewer" },
-    },
+    rules: { required: "Title is required", maxLength: { value: 200, message: "Must be 200 characters or fewer" } },
   },
-  status: {
-    name: "status",
-    label: "Status",
-    view: "dropdown",
-    options: ["draft", "published", "archived"] as const,
-  },
+  status: { name: "status", label: "Status", view: "dropdown", options: ["draft", "published", "archived"] as const },
   summary: {
     name: "summary",
     label: "Summary",
     view: "textarea",
-    rules: {
-      maxLength: { value: 2000, message: "Must be 2000 characters or fewer" },
-    },
+    rules: { maxLength: { value: 2000, message: "Must be 2000 characters or fewer" } },
   },
-  priceCents: {
-    name: "priceCents",
-    label: "Price Cents",
-    view: "currency",
-    currency: "USD",
-    locale: "en-US",
-  },
+  priceCents: { name: "priceCents", label: "Price Cents", view: "currency", currency: "USD", locale: "en-US" },
   coverKey: {
     name: "coverKey",
     label: "Cover Key",
     view: "image",
-    rules: {
-      maxLength: { value: 80, message: "Must be 80 characters or fewer" },
-    },
+    rules: { maxLength: { value: 80, message: "Must be 80 characters or fewer" } },
   },
   authorId: {
     name: "authorId",
@@ -166,18 +115,8 @@ export const Program = {
     htmlType: "text",
     rules: { required: "Author Id is required" },
   },
-  syllabus: {
-    name: "syllabus",
-    label: "Syllabus",
-    view: "text",
-    htmlType: "text",
-  },
-  instructorProfile: {
-    name: "instructorProfile",
-    label: "Instructor Profile",
-    view: "text",
-    htmlType: "text",
-  },
+  syllabus: { name: "syllabus", label: "Syllabus", view: "text", htmlType: "text" },
+  instructorProfile: { name: "instructorProfile", label: "Instructor Profile", view: "text", htmlType: "text" },
 } as const;
 import type { FilterAllowlist } from "../../codegen/runtime/drizzle-fastify/filter-allowlist";
 

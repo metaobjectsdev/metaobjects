@@ -5,27 +5,14 @@ import { eq, inArray } from "drizzle-orm";
 import type { z } from "zod";
 
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
-type Db = BaseSQLiteDatabase<
-  "sync" | "async",
-  unknown,
-  Record<string, unknown>
->;
+type Db = BaseSQLiteDatabase<"sync" | "async", unknown, Record<string, unknown>>;
 
-import {
-  type Week,
-  WeekInsertSchema,
-  type WeekPatch,
-  weeks,
-  WeekUpdateSchema,
-} from "./Week";
+import { type Week, WeekInsertSchema, type WeekPatch, weeks, WeekUpdateSchema } from "./Week";
 export async function findWeekById(db: Db, id: number): Promise<Week | null> {
   const [week] = await db.select().from(weeks).where(eq(weeks.id, id)).limit(1);
   return week ?? null;
 }
-export async function listWeeks(
-  db: Db,
-  opts?: { limit?: number; offset?: number },
-): Promise<Week[]> {
+export async function listWeeks(db: Db, opts?: { limit?: number; offset?: number }): Promise<Week[]> {
   let q = db.select().from(weeks).$dynamic();
   if (opts?.limit !== undefined) {
     q = q.limit(opts.limit);
@@ -35,30 +22,19 @@ export async function listWeeks(
   }
   return q;
 }
-export async function createWeek(
-  db: Db,
-  data: z.input<typeof WeekInsertSchema>,
-): Promise<Week> {
+export async function createWeek(db: Db, data: z.input<typeof WeekInsertSchema>): Promise<Week> {
   const validated = WeekInsertSchema.parse(data);
   const [week] = await db.insert(weeks).values(validated).returning();
   return week!;
 }
-export async function updateWeek(
-  db: Db,
-  id: number,
-  patch: WeekPatch,
-): Promise<Week | null> {
+export async function updateWeek(db: Db, id: number, patch: WeekPatch): Promise<Week | null> {
   const validated = WeekUpdateSchema.parse(patch);
   // PATCH-5: an empty patch is a no-op — return the current row rather than let
   // Drizzle throw on an empty SET clause.
   if (Object.keys(validated).length === 0) {
     return findWeekById(db, id);
   }
-  const [week] = await db
-    .update(weeks)
-    .set(validated)
-    .where(eq(weeks.id, id))
-    .returning();
+  const [week] = await db.update(weeks).set(validated).where(eq(weeks.id, id)).returning();
   return week ?? null;
 }
 export async function deleteWeekById(db: Db, id: number): Promise<boolean> {
@@ -67,17 +43,11 @@ export async function deleteWeekById(db: Db, id: number): Promise<boolean> {
   const deleted = await db.delete(weeks).where(eq(weeks.id, id)).returning();
   return deleted.length > 0;
 }
-export async function findWeeksByProgram(
-  db: Db,
-  programId: number,
-): Promise<Week[]> {
+export async function findWeeksByProgram(db: Db, programId: number): Promise<Week[]> {
   return db.select().from(weeks).where(eq(weeks.programId, programId));
 }
 
-export async function findWeeksByProgramIn(
-  db: Db,
-  programIds: number[],
-): Promise<Week[]> {
+export async function findWeeksByProgramIn(db: Db, programIds: number[]): Promise<Week[]> {
   if (programIds.length === 0) {
     return [];
   }

@@ -12,7 +12,8 @@ The MetaObjects CLI — scaffolds `metaobjects/` + `.metaobjects/`, runs codegen
 bun add -D @metaobjectsdev/cli
 ```
 
-The SQLite/Turso driver (`@libsql/kysely-libsql`) ships as a direct dependency — `meta migrate` against a `sqlite`/`libsql` URL works out of the box. Postgres remains an optional peer (install only if you target Postgres):
+The SQLite/Turso driver (`@libsql/kysely-libsql`) is an optional peer, because it carries a native binary per platform and libc: `meta init` adds it to a SQLite project's `package.json` (run your package manager's install afterwards), and a project that skipped `init` adds it itself. Without it, `meta migrate` against a `sqlite`/`libsql` URL stops with the install command for your package manager. Postgres is an optional peer too (install only if you target Postgres):
+- SQLite on Node: `bun add -D @libsql/kysely-libsql`
 - Postgres: `bun add -D pg`
 
 If a required driver is ever missing, the CLI prints an install command matching your project's package manager (npm / pnpm / yarn / bun, detected from the lockfile).
@@ -28,7 +29,7 @@ bun run build:binary        # → dist/meta (compiled for the build host's OS/ar
 ./dist/meta --help
 ```
 
-The build externalizes two optional Biome WASM backends (`@biomejs/wasm-bundler`, `@biomejs/wasm-web`) that the CLI never loads — codegen formats through the Node WebAssembly backend (`@biomejs/wasm-nodejs`), and the native Biome binary is not installed with the CLI.
+The build externalizes two optional Biome WASM backends (`@biomejs/wasm-bundler`, `@biomejs/wasm-web`) that the CLI never loads — the owned-copy comparison uses the Node WebAssembly backend (`@biomejs/wasm-nodejs`), generation runs no formatter, and the native Biome binary is not installed with the CLI.
 
 ### Cross-compiling for other platforms
 
@@ -44,7 +45,7 @@ bun build ./bin/meta.ts --compile --target=bun-windows-x64 --outfile dist/meta-w
 
 ### SQLite driver inside the binary
 
-The standalone binary uses Bun's built-in **`bun:sqlite`** for the `sqlite` dialect (it ships inside the embedded Bun runtime). The npm/Node distribution uses the bundled `@libsql/kysely-libsql` dependency. This is automatic — the same `--db file:./app.db --dialect sqlite` flags work in both. (Postgres in the standalone binary still requires the `pg` peer to be resolvable, because `pg` is a native module that `--compile` cannot embed; sqlite is the fully self-contained path.)
+The standalone binary uses Bun's built-in **`bun:sqlite`** for the `sqlite` dialect (it ships inside the embedded Bun runtime). The npm/Node distribution uses the `@libsql/kysely-libsql` driver your project declares. This is automatic — the same `--db file:./app.db --dialect sqlite` flags work in both. (Postgres in the standalone binary still requires the `pg` peer to be resolvable, because `pg` is a native module that `--compile` cannot embed; sqlite is the fully self-contained path.)
 
 Run schema ops from the compiled binary:
 
@@ -109,7 +110,7 @@ Running `meta` with no arguments prints a concise status line (whether a `metaob
 
 Scaffolds `metaobjects/` (visible entity declarations, with a placeholder `meta.common.json`), `.metaobjects/` (hidden tool state: `config.json`, the always-on `AGENTS.md`, `.gitignore`, `.gen-state/`), the `metaobjects-*` skills under `.claude/skills/` (or `--skills-dir`), a root `AGENTS.md` / `CLAUDE.md` import of the always-on file, an **empty** `codegen/generators/` plus its `tsconfig.codegen.json`, and `metaobjects.config.ts` at the repo root. The scaffolded config carries `outputLayout: "package"` — one directory per metadata package, so two objects with one name in two packages are two files. The engine default stays `flat`; delete the line (or set `"flat"`) for the old layout.
 
-**It copies no generators and declares no dependencies.** Codegen is opt-in (ADR-0034 Amendment 2): the scaffolded config carries `generators: []` and a comment pointing at the catalog. `meta gen --list --probe` shows what each generator would emit for your model, with the import line that runs it as shipped; `meta gen --list --format json` adds what to install (`install.dev`, `install.runtime`) and the config keys each generator reads (`configKeys`), which the text listing does not print. Import a generator from its package to use it unchanged; `meta eject <name>...` copies the ones you want to change into `codegen/generators/` — **yours to edit** — and prints the import line to swap in, the entry to add, the install command and any config keys those generators read. `meta gen` runs whatever `generators: [...]` holds: the package's generator where you imported it, your copy where you ejected it.
+**It copies no generators.** It declares one dependency, the SQLite driver, and only in a SQLite project (see [Install](#install)). Codegen is opt-in (ADR-0034 Amendment 2): the scaffolded config carries `generators: []` and a comment pointing at the catalog. `meta gen --list --probe` shows what each generator would emit for your model, with the import line that runs it as shipped; `meta gen --list --format json` adds what to install (`install.dev`, `install.runtime`) and the config keys each generator reads (`configKeys`), which the text listing does not print. Import a generator from its package to use it unchanged; `meta eject <name>...` copies the ones you want to change into `codegen/generators/` — **yours to edit** — and prints the import line to swap in, the entry to add, the install command and any config keys those generators read. `meta gen` runs whatever `generators: [...]` holds: the package's generator where you imported it, your copy where you ejected it.
 
 Flags:
 - `--force` — overwrite scaffold files (memory records preserved)

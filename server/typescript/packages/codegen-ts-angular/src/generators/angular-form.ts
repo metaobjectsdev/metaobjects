@@ -3,7 +3,6 @@ import {
   perEntity,
   type Generator,
   type GeneratorFactory,
-  formatTs,
   entityOutputPath,
   servesWriteApi,
   isProjection,
@@ -49,7 +48,7 @@ export const angularFormFile = function angularFormFile(
       }
       return {
         path: entityOutputPath(ctx.renderContext.outputLayout, effectivePackage(entity), `${entity.name}.form.component.ts`),
-        content: await formatTs(renderFormFile(entity, ctx.renderContext)),
+        content: renderFormFile(entity, ctx.renderContext),
       };
     }),
   };

@@ -7,28 +7,12 @@ import type { z } from "zod";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 type Db = PgDatabase<PgQueryResultHKT, Record<string, unknown>>;
 
-import {
-  type Workout,
-  WorkoutInsertSchema,
-  type WorkoutPatch,
-  workouts,
-  WorkoutUpdateSchema,
-} from "./Workout";
-export async function findWorkoutById(
-  db: Db,
-  id: number,
-): Promise<Workout | null> {
-  const [workout] = await db
-    .select()
-    .from(workouts)
-    .where(eq(workouts.id, id))
-    .limit(1);
+import { type Workout, WorkoutInsertSchema, type WorkoutPatch, workouts, WorkoutUpdateSchema } from "./Workout";
+export async function findWorkoutById(db: Db, id: number): Promise<Workout | null> {
+  const [workout] = await db.select().from(workouts).where(eq(workouts.id, id)).limit(1);
   return workout ?? null;
 }
-export async function listWorkouts(
-  db: Db,
-  opts?: { limit?: number; offset?: number },
-): Promise<Workout[]> {
+export async function listWorkouts(db: Db, opts?: { limit?: number; offset?: number }): Promise<Workout[]> {
   let q = db.select().from(workouts).$dynamic();
   if (opts?.limit !== undefined) {
     q = q.limit(opts.limit);
@@ -38,52 +22,32 @@ export async function listWorkouts(
   }
   return q;
 }
-export async function createWorkout(
-  db: Db,
-  data: z.input<typeof WorkoutInsertSchema>,
-): Promise<Workout> {
+export async function createWorkout(db: Db, data: z.input<typeof WorkoutInsertSchema>): Promise<Workout> {
   const validated = WorkoutInsertSchema.parse(data);
   const [workout] = await db.insert(workouts).values(validated).returning();
   return workout!;
 }
-export async function updateWorkout(
-  db: Db,
-  id: number,
-  patch: WorkoutPatch,
-): Promise<Workout | null> {
+export async function updateWorkout(db: Db, id: number, patch: WorkoutPatch): Promise<Workout | null> {
   const validated = WorkoutUpdateSchema.parse(patch);
   // PATCH-5: an empty patch is a no-op — return the current row rather than let
   // Drizzle throw on an empty SET clause.
   if (Object.keys(validated).length === 0) {
     return findWorkoutById(db, id);
   }
-  const [workout] = await db
-    .update(workouts)
-    .set(validated)
-    .where(eq(workouts.id, id))
-    .returning();
+  const [workout] = await db.update(workouts).set(validated).where(eq(workouts.id, id)).returning();
   return workout ?? null;
 }
 export async function deleteWorkoutById(db: Db, id: number): Promise<boolean> {
   // Use .returning() unconditionally — supported on SQLite ≥3.35 (covers D1, libsql/Turso)
   // and Postgres. Result is an array of deleted rows; presence implies success.
-  const deleted = await db
-    .delete(workouts)
-    .where(eq(workouts.id, id))
-    .returning();
+  const deleted = await db.delete(workouts).where(eq(workouts.id, id)).returning();
   return deleted.length > 0;
 }
-export async function findWorkoutsByWeek(
-  db: Db,
-  weekId: number,
-): Promise<Workout[]> {
+export async function findWorkoutsByWeek(db: Db, weekId: number): Promise<Workout[]> {
   return db.select().from(workouts).where(eq(workouts.weekId, weekId));
 }
 
-export async function findWorkoutsByWeekIn(
-  db: Db,
-  weekIds: number[],
-): Promise<Workout[]> {
+export async function findWorkoutsByWeekIn(db: Db, weekIds: number[]): Promise<Workout[]> {
   if (weekIds.length === 0) {
     return [];
   }

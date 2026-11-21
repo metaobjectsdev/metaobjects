@@ -5,31 +5,14 @@ import { eq, inArray } from "drizzle-orm";
 import type { z } from "zod";
 
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
-type Db = BaseSQLiteDatabase<
-  "sync" | "async",
-  unknown,
-  Record<string, unknown>
->;
+type Db = BaseSQLiteDatabase<"sync" | "async", unknown, Record<string, unknown>>;
 
-import {
-  type Video,
-  VideoInsertSchema,
-  type VideoPatch,
-  videos,
-  VideoUpdateSchema,
-} from "./Video";
+import { type Video, VideoInsertSchema, type VideoPatch, videos, VideoUpdateSchema } from "./Video";
 export async function findVideoById(db: Db, id: number): Promise<Video | null> {
-  const [video] = await db
-    .select()
-    .from(videos)
-    .where(eq(videos.id, id))
-    .limit(1);
+  const [video] = await db.select().from(videos).where(eq(videos.id, id)).limit(1);
   return video ?? null;
 }
-export async function listVideos(
-  db: Db,
-  opts?: { limit?: number; offset?: number },
-): Promise<Video[]> {
+export async function listVideos(db: Db, opts?: { limit?: number; offset?: number }): Promise<Video[]> {
   let q = db.select().from(videos).$dynamic();
   if (opts?.limit !== undefined) {
     q = q.limit(opts.limit);
@@ -39,30 +22,19 @@ export async function listVideos(
   }
   return q;
 }
-export async function createVideo(
-  db: Db,
-  data: z.input<typeof VideoInsertSchema>,
-): Promise<Video> {
+export async function createVideo(db: Db, data: z.input<typeof VideoInsertSchema>): Promise<Video> {
   const validated = VideoInsertSchema.parse(data);
   const [video] = await db.insert(videos).values(validated).returning();
   return video!;
 }
-export async function updateVideo(
-  db: Db,
-  id: number,
-  patch: VideoPatch,
-): Promise<Video | null> {
+export async function updateVideo(db: Db, id: number, patch: VideoPatch): Promise<Video | null> {
   const validated = VideoUpdateSchema.parse(patch);
   // PATCH-5: an empty patch is a no-op — return the current row rather than let
   // Drizzle throw on an empty SET clause.
   if (Object.keys(validated).length === 0) {
     return findVideoById(db, id);
   }
-  const [video] = await db
-    .update(videos)
-    .set(validated)
-    .where(eq(videos.id, id))
-    .returning();
+  const [video] = await db.update(videos).set(validated).where(eq(videos.id, id)).returning();
   return video ?? null;
 }
 export async function deleteVideoById(db: Db, id: number): Promise<boolean> {
@@ -71,22 +43,13 @@ export async function deleteVideoById(db: Db, id: number): Promise<boolean> {
   const deleted = await db.delete(videos).where(eq(videos.id, id)).returning();
   return deleted.length > 0;
 }
-export async function findVideosByExercise(
-  db: Db,
-  exerciseId: number,
-): Promise<Video[]> {
+export async function findVideosByExercise(db: Db, exerciseId: number): Promise<Video[]> {
   return db.select().from(videos).where(eq(videos.exerciseId, exerciseId));
 }
 
-export async function findVideosByExerciseIn(
-  db: Db,
-  exerciseIds: number[],
-): Promise<Video[]> {
+export async function findVideosByExerciseIn(db: Db, exerciseIds: number[]): Promise<Video[]> {
   if (exerciseIds.length === 0) {
     return [];
   }
-  return db
-    .select()
-    .from(videos)
-    .where(inArray(videos.exerciseId, exerciseIds));
+  return db.select().from(videos).where(inArray(videos.exerciseId, exerciseIds));
 }

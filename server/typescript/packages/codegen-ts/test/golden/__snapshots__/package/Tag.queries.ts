@@ -5,27 +5,14 @@ import { eq, inArray } from "drizzle-orm";
 import type { z } from "zod";
 
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
-type Db = BaseSQLiteDatabase<
-  "sync" | "async",
-  unknown,
-  Record<string, unknown>
->;
+type Db = BaseSQLiteDatabase<"sync" | "async", unknown, Record<string, unknown>>;
 
-import {
-  type Tag,
-  TagInsertSchema,
-  type TagPatch,
-  tags,
-  TagUpdateSchema,
-} from "./Tag";
+import { type Tag, TagInsertSchema, type TagPatch, tags, TagUpdateSchema } from "./Tag";
 export async function findTagById(db: Db, id: number): Promise<Tag | null> {
   const [tag] = await db.select().from(tags).where(eq(tags.id, id)).limit(1);
   return tag ?? null;
 }
-export async function listTags(
-  db: Db,
-  opts?: { limit?: number; offset?: number },
-): Promise<Tag[]> {
+export async function listTags(db: Db, opts?: { limit?: number; offset?: number }): Promise<Tag[]> {
   let q = db.select().from(tags).$dynamic();
   if (opts?.limit !== undefined) {
     q = q.limit(opts.limit);
@@ -35,30 +22,19 @@ export async function listTags(
   }
   return q;
 }
-export async function createTag(
-  db: Db,
-  data: z.input<typeof TagInsertSchema>,
-): Promise<Tag> {
+export async function createTag(db: Db, data: z.input<typeof TagInsertSchema>): Promise<Tag> {
   const validated = TagInsertSchema.parse(data);
   const [tag] = await db.insert(tags).values(validated).returning();
   return tag!;
 }
-export async function updateTag(
-  db: Db,
-  id: number,
-  patch: TagPatch,
-): Promise<Tag | null> {
+export async function updateTag(db: Db, id: number, patch: TagPatch): Promise<Tag | null> {
   const validated = TagUpdateSchema.parse(patch);
   // PATCH-5: an empty patch is a no-op — return the current row rather than let
   // Drizzle throw on an empty SET clause.
   if (Object.keys(validated).length === 0) {
     return findTagById(db, id);
   }
-  const [tag] = await db
-    .update(tags)
-    .set(validated)
-    .where(eq(tags.id, id))
-    .returning();
+  const [tag] = await db.update(tags).set(validated).where(eq(tags.id, id)).returning();
   return tag ?? null;
 }
 export async function deleteTagById(db: Db, id: number): Promise<boolean> {
@@ -67,17 +43,11 @@ export async function deleteTagById(db: Db, id: number): Promise<boolean> {
   const deleted = await db.delete(tags).where(eq(tags.id, id)).returning();
   return deleted.length > 0;
 }
-export async function findTagsByCustomer(
-  db: Db,
-  customerId: number,
-): Promise<Tag[]> {
+export async function findTagsByCustomer(db: Db, customerId: number): Promise<Tag[]> {
   return db.select().from(tags).where(eq(tags.customerId, customerId));
 }
 
-export async function findTagsByCustomerIn(
-  db: Db,
-  customerIds: number[],
-): Promise<Tag[]> {
+export async function findTagsByCustomerIn(db: Db, customerIds: number[]): Promise<Tag[]> {
   if (customerIds.length === 0) {
     return [];
   }

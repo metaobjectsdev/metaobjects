@@ -35,31 +35,28 @@ import { mountCrudRoutes } from "../../codegen/runtime/drizzle-fastify/index";
  * routesFile({ expose: ["list", "get"] }) rather than mounting them open.
  */
 export async function programRoutes(fastify: FastifyInstance) {
-  await fastify.register(
-    async (instance) => {
-      mountCrudRoutes({
-        fastify: instance,
-        path: Program.$path,
-        db,
-        table: programs,
-        insertSchema: ProgramInsertSchema,
-        updateSchema: ProgramUpdateSchema,
-        filterAllowlist: ProgramFilterAllowlist,
-        sortAllowlist: ProgramSortAllowlist,
-        dialect: "postgres",
-        knownFields: [
-          "id",
-          "title",
-          "status",
-          "summary",
-          "priceCents",
-          "coverKey",
-          "authorId",
-          "syllabus",
-          "instructorProfile",
-        ],
-      });
-    },
-    { prefix: "/api" },
-  );
+  await fastify.register(async (instance) => {
+    mountCrudRoutes({
+      fastify: instance,
+      path: Program.$path,
+      db,
+      table: programs,
+      insertSchema: ProgramInsertSchema,
+      updateSchema: ProgramUpdateSchema,
+      filterAllowlist: ProgramFilterAllowlist,
+      sortAllowlist: ProgramSortAllowlist,
+      dialect: "postgres",
+      knownFields: [
+        "id",
+        "title",
+        "status",
+        "summary",
+        "priceCents",
+        "coverKey",
+        "authorId",
+        "syllabus",
+        "instructorProfile",
+      ],
+    });
+  }, { prefix: "/api" });
 }

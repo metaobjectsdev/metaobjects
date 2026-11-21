@@ -31,18 +31,15 @@ import { mountReadOnlyCrudRoutes } from "../../codegen/runtime/drizzle-fastify/i
  * mount. Hand-write those reads rather than exposing this one open.
  */
 export async function programSummaryRoutes(fastify: FastifyInstance) {
-  await fastify.register(
-    async (instance) => {
-      mountReadOnlyCrudRoutes({
-        fastify: instance,
-        path: ProgramSummary.$path,
-        db,
-        view: programSummaryView,
-        filterAllowlist: ProgramSummaryFilterAllowlist,
-        sortAllowlist: ProgramSummarySortAllowlist,
-        dialect: "postgres",
-      });
-    },
-    { prefix: "/api" },
-  );
+  await fastify.register(async (instance) => {
+    mountReadOnlyCrudRoutes({
+      fastify: instance,
+      path: ProgramSummary.$path,
+      db,
+      view: programSummaryView,
+      filterAllowlist: ProgramSummaryFilterAllowlist,
+      sortAllowlist: ProgramSummarySortAllowlist,
+      dialect: "postgres",
+    });
+  }, { prefix: "/api" });
 }

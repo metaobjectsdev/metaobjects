@@ -29,7 +29,6 @@ import {
   effectivePackage,
   DEFAULT_OUTPUT_LAYOUT,
   entityOutputPath,
-  formatTs,
   isCredentialField,
   isReport,
   relativeModuleSpecifier,
@@ -247,14 +246,14 @@ export function reportExport(opts?: ReportExportOpts): Generator {
       const reports = ctx.entities.filter(ctx.matches).filter(isReport);
       if (reports.length === 0) return [];
       const out: EmittedFile[] = [
-        { path: `${EXPORT_WRITERS_BASENAME}.ts`, content: await formatTs(renderExportWriters(emit)) },
+        { path: `${EXPORT_WRITERS_BASENAME}.ts`, content: renderExportWriters(emit) },
       ];
       // One module per report `meta gen <Entity>` named; the writers above serve them all.
       for (const report of reports.filter((r) => ctx.selected?.(r) ?? true)) {
         const pkg = effectivePackage(report);
         out.push({
           path: entityOutputPath(layout, pkg, `${report.name}.export.ts`),
-          content: await formatTs(renderReportExportModule(report, { selfTarget, pkg, extStyle }, emit)),
+          content: renderReportExportModule(report, { selfTarget, pkg, extStyle }, emit),
         });
       }
       return out;

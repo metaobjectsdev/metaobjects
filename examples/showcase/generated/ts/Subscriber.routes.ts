@@ -35,21 +35,18 @@ import { mountCrudRoutes } from "../../codegen/runtime/drizzle-fastify/index";
  * routesFile({ expose: ["list", "get"] }) rather than mounting them open.
  */
 export async function subscriberRoutes(fastify: FastifyInstance) {
-  await fastify.register(
-    async (instance) => {
-      mountCrudRoutes({
-        fastify: instance,
-        path: Subscriber.$path,
-        db,
-        table: subscribers,
-        insertSchema: SubscriberInsertSchema,
-        updateSchema: SubscriberUpdateSchema,
-        filterAllowlist: SubscriberFilterAllowlist,
-        sortAllowlist: SubscriberSortAllowlist,
-        dialect: "sqlite",
-        knownFields: ["id", "email", "name", "status", "createdAt"],
-      });
-    },
-    { prefix: "/api" },
-  );
+  await fastify.register(async (instance) => {
+    mountCrudRoutes({
+      fastify: instance,
+      path: Subscriber.$path,
+      db,
+      table: subscribers,
+      insertSchema: SubscriberInsertSchema,
+      updateSchema: SubscriberUpdateSchema,
+      filterAllowlist: SubscriberFilterAllowlist,
+      sortAllowlist: SubscriberSortAllowlist,
+      dialect: "sqlite",
+      knownFields: ["id", "email", "name", "status", "createdAt"],
+    });
+  }, { prefix: "/api" });
 }

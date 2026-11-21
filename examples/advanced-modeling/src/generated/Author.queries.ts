@@ -7,28 +7,12 @@ import type { z } from "zod";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 type Db = PgDatabase<PgQueryResultHKT, Record<string, unknown>>;
 
-import {
-  type Author,
-  AuthorInsertSchema,
-  type AuthorPatch,
-  authors,
-  AuthorUpdateSchema,
-} from "./Author";
-export async function findAuthorById(
-  db: Db,
-  id: string,
-): Promise<Author | null> {
-  const [author] = await db
-    .select()
-    .from(authors)
-    .where(eq(authors.id, id))
-    .limit(1);
+import { type Author, AuthorInsertSchema, type AuthorPatch, authors, AuthorUpdateSchema } from "./Author";
+export async function findAuthorById(db: Db, id: string): Promise<Author | null> {
+  const [author] = await db.select().from(authors).where(eq(authors.id, id)).limit(1);
   return author ?? null;
 }
-export async function listAuthors(
-  db: Db,
-  opts?: { limit?: number; offset?: number },
-): Promise<Author[]> {
+export async function listAuthors(db: Db, opts?: { limit?: number; offset?: number }): Promise<Author[]> {
   let q = db.select().from(authors).$dynamic();
   if (opts?.limit !== undefined) {
     q = q.limit(opts.limit);
@@ -38,38 +22,24 @@ export async function listAuthors(
   }
   return q;
 }
-export async function createAuthor(
-  db: Db,
-  data: z.input<typeof AuthorInsertSchema>,
-): Promise<Author> {
+export async function createAuthor(db: Db, data: z.input<typeof AuthorInsertSchema>): Promise<Author> {
   const validated = AuthorInsertSchema.parse(data);
   const [author] = await db.insert(authors).values(validated).returning();
   return author!;
 }
-export async function updateAuthor(
-  db: Db,
-  id: string,
-  patch: AuthorPatch,
-): Promise<Author | null> {
+export async function updateAuthor(db: Db, id: string, patch: AuthorPatch): Promise<Author | null> {
   const validated = AuthorUpdateSchema.parse(patch);
   // PATCH-5: an empty patch is a no-op — return the current row rather than let
   // Drizzle throw on an empty SET clause.
   if (Object.keys(validated).length === 0) {
     return findAuthorById(db, id);
   }
-  const [author] = await db
-    .update(authors)
-    .set(validated)
-    .where(eq(authors.id, id))
-    .returning();
+  const [author] = await db.update(authors).set(validated).where(eq(authors.id, id)).returning();
   return author ?? null;
 }
 export async function deleteAuthorById(db: Db, id: string): Promise<boolean> {
   // Use .returning() unconditionally — supported on SQLite ≥3.35 (covers D1, libsql/Turso)
   // and Postgres. Result is an array of deleted rows; presence implies success.
-  const deleted = await db
-    .delete(authors)
-    .where(eq(authors.id, id))
-    .returning();
+  const deleted = await db.delete(authors).where(eq(authors.id, id)).returning();
   return deleted.length > 0;
 }

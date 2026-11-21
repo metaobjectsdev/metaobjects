@@ -424,6 +424,12 @@ gate_assess_prompt() { node scripts/build-assess-prompt.mjs --out /dev/null && n
 # dependencies, optionalDependencies or a required peer; see scripts/check-peer-ranges.ts.
 gate_peer_ranges() { bun scripts/check-peer-ranges.ts && bun test scripts/check-peer-ranges.test.ts; }
 
+# What `npm install @metaobjectsdev/cli` puts on disk, held to a budget that only moves down
+# (scripts/check-install-size.mjs). It packs this checkout's built packages and installs them,
+# so it needs dist/, npm and the registry for third-party packages: the full run's ts-slow
+# lane, never `--only gates`, which has to work offline.
+gate_install_size() { node scripts/check-install-size.mjs; }
+
 # ── this repo's OWNED copies of the reference templates must BE the templates ──
 # owned-copies-current.test.ts already asserts byte-identity; this runs the same check
 # from the gates lane so a stale copy is named with the command that fixes it. Changing
@@ -1366,6 +1372,7 @@ lane_ts() {
 lane_mutation() { if want ts; then step_if bun "completeness-gate (mutation, full)" gate_completeness; fi; }
 # ts-slow's half: the two real-PG suites plus the TS integration suite.
 lane_ts_integ() {
+  step_if npm "install size budget" gate_install_size
   integ_ready || return 0
   use_pg_sidecar
   step_if bun "migrate-ts real-PG suite"          gate_migrate_ts_pg
@@ -1621,6 +1628,7 @@ elif [ "$PARALLEL" -eq 0 ]; then
       # Ordered BEFORE the docker integration step so a container-readiness flake there
       # can never prevent the migrate verdict from being produced.
       if in_lane_any ts ts-slow && docker info >/dev/null 2>&1; then ensure_pg_sidecar; fi
+      in_lane_any ts ts-slow     && step_if npm "install size budget" gate_install_size
       in_lane_any ts ts-slow     && step_if bun "migrate-ts real-PG suite" gate_migrate_ts_pg
       in_lane_any ts ts-slow     && step_if bun "runtime-ts real-PG dialect matrix" gate_runtime_ts_pg
       in_lane_any ts ts-slow     && step_if bun "prisma real-PG round trip" gate_prisma_pg

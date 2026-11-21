@@ -33,17 +33,20 @@
  * declaration lands it in every `@metaobjectsdev/cli` install:
  *
  *   - the native Biome formatter (`@biomejs/biome`, which pulls a ~94 MB per-platform
- *     `@biomejs/cli-*` binary). Codegen formats through the WebAssembly build
- *     (`@biomejs/wasm-nodejs` + `@biomejs/js-api`, see `codegen-ts/src/format.ts`).
+ *     `@biomejs/cli-*` binary). Generation runs no formatter; the CLI's owned-copy
+ *     comparison uses the WebAssembly build (`@biomejs/wasm-nodejs` + `@biomejs/js-api`).
  *   - `dprint-node` (~25 MB: all seven platform binaries in one package) and `ts-poet`,
  *     which `require`s it on load. codegen-ts vendors the printer (`codegen-ts/src/poet.ts`)
  *     and runs dprint as WebAssembly (`@dprint/typescript`).
+ *   - `drizzle-orm` and `zod`, which only the code `meta gen` writes imports. `codegen-ts` lists
+ *     them as optional peers, and `meta eject` prints the install set for the generators taken.
+ *     `@metaobjectsdev/sdk` validates its config with zod at run time and is the one exception.
  *   - any `@types/*` package. Type definitions do nothing at run time; one belongs in
  *     `dependencies` only when a published `.d.ts` imports it, so a consumer's compile
  *     needs it — and then it goes in `ALLOWED_TYPES_DEPS` below, with that reason.
  *
- * Development use belongs in `devDependencies`; a genuine run-time need for the first two
- * must be an optional peer (`peerDependenciesMeta`).
+ * Development use belongs in `devDependencies`; a genuine run-time need for the
+ * first three must be an optional peer (`peerDependenciesMeta`).
  */
 import { join } from "node:path";
 import { enumerateWorkspacePackages } from "./publish-set.mjs";
@@ -54,10 +57,16 @@ const BEYOND_ANY_REAL_VERSION = "9999.0.0";
 /** Packages no publishable package may require at install time, with why. */
 function installOnly(name: string): string | undefined {
   if (name === "@biomejs/biome" || name.startsWith("@biomejs/cli-")) {
-    return "the native Biome formatter (~94 MB binary); codegen formats through @biomejs/wasm-nodejs";
+    return "the native Biome formatter (~94 MB binary); the CLI's owned-copy comparison uses the @biomejs/wasm-nodejs WASM build";
   }
   if (name === "dprint-node" || name === "ts-poet") {
     return "dprint-node's seven native binaries (~25 MB; ts-poet requires it on load); codegen-ts vendors the printer and runs dprint as WebAssembly";
+  }
+  if (name === "drizzle-orm") {
+    return "~17 MB of ORM that only the generated code imports; the adopter's project installs it when it takes a generator (meta eject prints the set)";
+  }
+  if (name === "zod") {
+    return "~8 MB that only generated code imports; the adopter's project installs it when it takes a generator (meta eject prints the set)";
   }
   if (name.startsWith("@types/")) {
     return "type definitions, unused at run time; list it in ALLOWED_TYPES_DEPS only if a published .d.ts imports it";
@@ -66,10 +75,14 @@ function installOnly(name: string): string | undefined {
 }
 
 /**
- * `@types/*` run-time dependencies that are deliberate: `"<package> <dep>"` → why a
- * consumer's compile needs it (a published `.d.ts` that imports it). Empty today.
+ * Deliberate exceptions to the install-only rule: `"<package> <dep>"` → why. A `@types/*`
+ * entry is there because a published `.d.ts` imports it; any other entry is a package that
+ * uses the dependency at run time.
  */
-const ALLOWED_TYPES_DEPS: Record<string, string> = {};
+const ALLOWED_TYPES_DEPS: Record<string, string> = {
+  // Not a types package: the one deliberate run-time use of zod in the install set.
+  "@metaobjectsdev/sdk zod": "the sdk validates .metaobjects/config.json and package manifests with zod schemas at run time",
+};
 
 interface Violation { pkg: string; peer: string; range: string }
 export interface InstallOnlyDep { pkg: string; dep: string; field: string; why: string }

@@ -5,34 +5,14 @@ import { eq, inArray } from "drizzle-orm";
 import type { z } from "zod";
 
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
-type Db = BaseSQLiteDatabase<
-  "sync" | "async",
-  unknown,
-  Record<string, unknown>
->;
+type Db = BaseSQLiteDatabase<"sync" | "async", unknown, Record<string, unknown>>;
 
-import {
-  type Exercise,
-  ExerciseInsertSchema,
-  type ExercisePatch,
-  exercises,
-  ExerciseUpdateSchema,
-} from "./Exercise";
-export async function findExerciseById(
-  db: Db,
-  id: number,
-): Promise<Exercise | null> {
-  const [exercise] = await db
-    .select()
-    .from(exercises)
-    .where(eq(exercises.id, id))
-    .limit(1);
+import { type Exercise, ExerciseInsertSchema, type ExercisePatch, exercises, ExerciseUpdateSchema } from "./Exercise";
+export async function findExerciseById(db: Db, id: number): Promise<Exercise | null> {
+  const [exercise] = await db.select().from(exercises).where(eq(exercises.id, id)).limit(1);
   return exercise ?? null;
 }
-export async function listExercises(
-  db: Db,
-  opts?: { limit?: number; offset?: number },
-): Promise<Exercise[]> {
+export async function listExercises(db: Db, opts?: { limit?: number; offset?: number }): Promise<Exercise[]> {
   let q = db.select().from(exercises).$dynamic();
   if (opts?.limit !== undefined) {
     q = q.limit(opts.limit);
@@ -42,57 +22,34 @@ export async function listExercises(
   }
   return q;
 }
-export async function createExercise(
-  db: Db,
-  data: z.input<typeof ExerciseInsertSchema>,
-): Promise<Exercise> {
+export async function createExercise(db: Db, data: z.input<typeof ExerciseInsertSchema>): Promise<Exercise> {
   const validated = ExerciseInsertSchema.parse(data);
   const [exercise] = await db.insert(exercises).values(validated).returning();
   return exercise!;
 }
-export async function updateExercise(
-  db: Db,
-  id: number,
-  patch: ExercisePatch,
-): Promise<Exercise | null> {
+export async function updateExercise(db: Db, id: number, patch: ExercisePatch): Promise<Exercise | null> {
   const validated = ExerciseUpdateSchema.parse(patch);
   // PATCH-5: an empty patch is a no-op — return the current row rather than let
   // Drizzle throw on an empty SET clause.
   if (Object.keys(validated).length === 0) {
     return findExerciseById(db, id);
   }
-  const [exercise] = await db
-    .update(exercises)
-    .set(validated)
-    .where(eq(exercises.id, id))
-    .returning();
+  const [exercise] = await db.update(exercises).set(validated).where(eq(exercises.id, id)).returning();
   return exercise ?? null;
 }
 export async function deleteExerciseById(db: Db, id: number): Promise<boolean> {
   // Use .returning() unconditionally — supported on SQLite ≥3.35 (covers D1, libsql/Turso)
   // and Postgres. Result is an array of deleted rows; presence implies success.
-  const deleted = await db
-    .delete(exercises)
-    .where(eq(exercises.id, id))
-    .returning();
+  const deleted = await db.delete(exercises).where(eq(exercises.id, id)).returning();
   return deleted.length > 0;
 }
-export async function findExercisesByWorkout(
-  db: Db,
-  workoutId: number,
-): Promise<Exercise[]> {
+export async function findExercisesByWorkout(db: Db, workoutId: number): Promise<Exercise[]> {
   return db.select().from(exercises).where(eq(exercises.workoutId, workoutId));
 }
 
-export async function findExercisesByWorkoutIn(
-  db: Db,
-  workoutIds: number[],
-): Promise<Exercise[]> {
+export async function findExercisesByWorkoutIn(db: Db, workoutIds: number[]): Promise<Exercise[]> {
   if (workoutIds.length === 0) {
     return [];
   }
-  return db
-    .select()
-    .from(exercises)
-    .where(inArray(exercises.workoutId, workoutIds));
+  return db.select().from(exercises).where(inArray(exercises.workoutId, workoutIds));
 }

@@ -27,7 +27,6 @@ import {
   perEntity,
   type Generator,
   type GeneratorFactory,
-  formatTs,
   entityOutputPath,
   servesClientTier,
   withClientDirective,
@@ -123,11 +122,11 @@ export const tanstackGridHook = function tanstackGridHook(opts?: TanstackGridHoo
     return [{
       path: entityOutputPath(ctx.renderContext.outputLayout, pkg,
         entityMetaFileName(entity.name)),
-      content: await formatTs(renderEntityMetaFile(
+      content: renderEntityMetaFile(
         entity,
         ctx.renderContext.apiPrefix,
         namesConstArg(metaNames),
-      )),
+      ),
     }, {
       path: entityOutputPath(
         ctx.renderContext.outputLayout,
@@ -135,7 +134,7 @@ export const tanstackGridHook = function tanstackGridHook(opts?: TanstackGridHoo
         `${entity.name}.grid.ts`,
       ),
       content: withClientDirective(
-        await formatTs(renderGridHookFile(entity, ctx.renderContext)),
+        renderGridHookFile(entity, ctx.renderContext),
         ctx.renderContext.clientDirective,
       ),
     }];

@@ -63,7 +63,6 @@ import {
   writeDeniedColumnsLine,
   knownFieldsLine,
   servesReadApi,
-  formatTs,
   DEFAULT_OUTPUT_LAYOUT,
   entityOutputPath,
   effectivePackage,
@@ -183,7 +182,6 @@ import {
  * ${runtimeSpec}.
 ${authSeamJsDoc({ framework: "hono", handlerName, mountPathExpr: authPathExpr, narrowable: false })}
  */
-// biome-ignore lint/suspicious/noExplicitAny: consumer-defined Hono bindings/variables
 export function ${handlerName}(app: ${HonoSym}<any, any, any>, deps: { db: unknown }): void {
   ${mountReadOnlyCrudRoutesSym}({
     app,
@@ -238,7 +236,6 @@ import {
  * (auth, side effects, etc.).
 ${authSeamJsDoc({ framework: "hono", handlerName, mountPathExpr: authPathExpr, narrowable: true })}
  */
-// biome-ignore lint/suspicious/noExplicitAny: consumer-defined Hono bindings/variables
 export function ${handlerName}(app: ${HonoSym}<any, any, any>, deps: { db: unknown }): void {
   ${mountCrudRoutesSym}({
     app,
@@ -338,7 +335,7 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
       if (matched.length === 0 || !ctx.renderContext) return files;
       return [...files, {
         path: routesIndexFileName("hono"),
-        content: await formatTs(renderRoutesIndex(matched, ctx.renderContext, "hono")),
+        content: renderRoutesIndex(matched, ctx.renderContext, "hono"),
       }];
     },
   };
@@ -358,7 +355,7 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
         effectivePackage(entity),
         `${entity.name}.routes.hono.ts`,
       ),
-      content: await formatTs(renderRoutesHono(entity, renderContext, resolveExpose(entity, opts?.expose), opts?.reportMaxRows)),
+      content: renderRoutesHono(entity, renderContext, resolveExpose(entity, opts?.expose), opts?.reportMaxRows),
     };
   });
   if (opts?.target) {

@@ -19,8 +19,8 @@ port actually send and take, under the project's [`wire` setting](api-contract.m
 
 **What they do not do.** They generate no client and no server, and they do not validate anything at
 runtime. Run openapi-generator, Kiota or orval on the document for a client. The protobuf emitter in
-the [design](../superpowers/specs/2026-06-11-fr-022-contract-emitters-design.md) is not built; it is
-planned with binary protocols for 1.3.
+the [design](../superpowers/specs/2026-06-11-fr-022-contract-emitters-design.md) is not built, and no
+release is planned for it.
 
 **Entirely opt-in.** `meta init` wires no generator. A project that does not list them gets no file.
 
@@ -160,6 +160,21 @@ field's allowed operators, `sort`, `limit`, `offset` and `withCount`, M:N traver
 and per-subtype mounts, projections, reports (with the `format` parameter when `report-export` is
 wired), and the error envelope.
 
+It also states what the routes do beyond the happy path:
+
+- **Page size.** When the project sets `api.pagination`, a list's `limit` carries that `default` and
+  `maximum`, and the description names the `limit_too_large` answer. Without the setting `limit`
+  states neither, because the server serves what it always did. A report keeps its own row cap and
+  states neither either.
+- **Undeclared body keys.** A create, `PUT` or `PATCH` body description says an undeclared key is
+  refused with `400 unknown_fields` (the default) or dropped under `api.unknownFields: drop`.
+  The shapes stay open: the server still drops a declared key a client may not set, such as the
+  generated key, so a client that echoes back a row it read keeps working.
+- **Validation issues.** `ApiError` carries `issues` (every problem, as `code`, `path` and
+  `message`), `fields` (the undeclared keys) and `maxLimit`.
+- **Read-only resources.** A projection or a report has no write operations, and each of its
+  operations says a write answers `405 method_not_allowed`.
+
 A list answers an array, or `{ rows, total }` with `withCount=1`, so its response is a `oneOf` of
 `<Name>List` and `<Name>Page`.
 
@@ -187,7 +202,8 @@ openApiFile({
 - `readOnly` and `writeOnly`: the shapes are separate.
 - The TypeScript-only `search`, `filter[or]` and `filter[and]` extensions: the document states the
   cross-port contract ([api-contract.md](api-contract.md)).
-- 405 answers: a verb a read-only surface does not serve is absent from the document.
+- 405 answers as operations: a verb a read-only surface does not serve is absent from the document,
+  and the surface's operations say so in prose.
 - Routes you wrote by hand. Eject `openapi` and add them in `buildOpenApiDocument` if you want them
   documented.
 

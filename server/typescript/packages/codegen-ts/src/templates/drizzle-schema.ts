@@ -48,7 +48,7 @@ interface CheckEntry { name: Code; expr: Code; key: string; text: string }
  * - relations() block at the end of the section
  *
  * Returns a Code object so ts-poet can deduplicate imports when this composes
- * with the rest of the entity file. Biome formatting runs after composition.
+ * with the rest of the entity file.
  */
 export function renderDrizzleSchema(
   obj: MetaObject,

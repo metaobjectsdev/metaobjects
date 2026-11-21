@@ -10,17 +10,17 @@
   "generated/python/subscriber_names.py": "269637a02bf9b46f55658b58cb42f83196c03a877e1e2101337847fd406c1561",
   "generated/python/subscriber_router.py": "16502ff815bf9ae29c7dba4700d0465d06058a9fd7ea8db5f98334d52d284851",
   "generated/ts/Subscriber.queries.ts": {
-    "hash": "9f1a459c57fafc98bf074b4443b506d4a1e7023ed188f293021ae89c298d4562",
+    "hash": "63adba7ac4415f5e9962c4da100ffd97816524580a513e8350d14bc7a9f3507c",
     "generatedBy": "queries-file",
     "sourceNode": "acme::Subscriber"
   },
   "generated/ts/Subscriber.routes.ts": {
-    "hash": "f76f592c98bd0ac5c07c4fe9c26cd88659793141e6620310dc725c7edcf68099",
+    "hash": "c26d2e8e146c5e310fabefa16d1a413109716544a3f817f20f4536cf09e2585e",
     "generatedBy": "routes-file",
     "sourceNode": "acme::Subscriber"
   },
   "generated/ts/Subscriber.ts": {
-    "hash": "a78c17f915222ee108290c28468313d77f77b5cff438f485324409302e389a96",
+    "hash": "760b3d76d100d05f289070ce483f63ee022a3c6fc8d6356e691e4d17f0593734",
     "generatedBy": "entity-file",
     "sourceNode": "acme::Subscriber"
   },

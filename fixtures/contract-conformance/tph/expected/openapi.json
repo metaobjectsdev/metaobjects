@@ -583,6 +583,7 @@
         ],
         "requestBody": {
           "required": true,
+          "description": "A top-level key the model does not declare is refused with 400 unknown_fields. A declared key the client may not set, such as the generated key, is dropped.",
           "content": {
             "application/json": {
               "schema": {
@@ -603,7 +604,7 @@
             }
           },
           "400": {
-            "description": "The request was refused.",
+            "description": "The request was refused. A body key the model does not declare answers error \"unknown_fields\" with the keys in fields, and nothing is written. Any other problem answers error \"validation\" with an issue for every problem.",
             "content": {
               "application/json": {
                 "schema": {
@@ -672,6 +673,7 @@
         ],
         "requestBody": {
           "required": true,
+          "description": "A top-level key the model does not declare is refused with 400 unknown_fields. A declared key the client may not set, such as the generated key, is dropped.",
           "content": {
             "application/json": {
               "schema": {
@@ -692,7 +694,7 @@
             }
           },
           "400": {
-            "description": "The request was refused.",
+            "description": "The request was refused. A body key the model does not declare answers error \"unknown_fields\" with the keys in fields, and nothing is written. Any other problem answers error \"validation\" with an issue for every problem.",
             "content": {
               "application/json": {
                 "schema": {
@@ -730,6 +732,7 @@
         ],
         "requestBody": {
           "required": true,
+          "description": "A top-level key the model does not declare is refused with 400 unknown_fields. A declared key the client may not set, such as the generated key, is dropped.",
           "content": {
             "application/json": {
               "schema": {
@@ -750,7 +753,7 @@
             }
           },
           "400": {
-            "description": "The request was refused.",
+            "description": "The request was refused. A body key the model does not declare answers error \"unknown_fields\" with the keys in fields, and nothing is written. Any other problem answers error \"validation\" with an issue for every problem.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1091,6 +1094,7 @@
         ],
         "requestBody": {
           "required": true,
+          "description": "A top-level key the model does not declare is refused with 400 unknown_fields. A declared key the client may not set, such as the generated key, is dropped.",
           "content": {
             "application/json": {
               "schema": {
@@ -1111,7 +1115,7 @@
             }
           },
           "400": {
-            "description": "The request was refused.",
+            "description": "The request was refused. A body key the model does not declare answers error \"unknown_fields\" with the keys in fields, and nothing is written. Any other problem answers error \"validation\" with an issue for every problem.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1180,6 +1184,7 @@
         ],
         "requestBody": {
           "required": true,
+          "description": "A top-level key the model does not declare is refused with 400 unknown_fields. A declared key the client may not set, such as the generated key, is dropped.",
           "content": {
             "application/json": {
               "schema": {
@@ -1200,7 +1205,7 @@
             }
           },
           "400": {
-            "description": "The request was refused.",
+            "description": "The request was refused. A body key the model does not declare answers error \"unknown_fields\" with the keys in fields, and nothing is written. Any other problem answers error \"validation\" with an issue for every problem.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1238,6 +1243,7 @@
         ],
         "requestBody": {
           "required": true,
+          "description": "A top-level key the model does not declare is refused with 400 unknown_fields. A declared key the client may not set, such as the generated key, is dropped.",
           "content": {
             "application/json": {
               "schema": {
@@ -1258,7 +1264,7 @@
             }
           },
           "400": {
-            "description": "The request was refused.",
+            "description": "The request was refused. A body key the model does not declare answers error \"unknown_fields\" with the keys in fields, and nothing is written. Any other problem answers error \"validation\" with an issue for every problem.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1571,6 +1577,7 @@
         ],
         "requestBody": {
           "required": true,
+          "description": "A top-level key the model does not declare is refused with 400 unknown_fields. A declared key the client may not set, such as the generated key, is dropped.",
           "content": {
             "application/json": {
               "schema": {
@@ -1591,7 +1598,7 @@
             }
           },
           "400": {
-            "description": "The request was refused.",
+            "description": "The request was refused. A body key the model does not declare answers error \"unknown_fields\" with the keys in fields, and nothing is written. Any other problem answers error \"validation\" with an issue for every problem.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1660,6 +1667,7 @@
         ],
         "requestBody": {
           "required": true,
+          "description": "A top-level key the model does not declare is refused with 400 unknown_fields. A declared key the client may not set, such as the generated key, is dropped.",
           "content": {
             "application/json": {
               "schema": {
@@ -1680,7 +1688,7 @@
             }
           },
           "400": {
-            "description": "The request was refused.",
+            "description": "The request was refused. A body key the model does not declare answers error \"unknown_fields\" with the keys in fields, and nothing is written. Any other problem answers error \"validation\" with an issue for every problem.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1718,6 +1726,7 @@
         ],
         "requestBody": {
           "required": true,
+          "description": "A top-level key the model does not declare is refused with 400 unknown_fields. A declared key the client may not set, such as the generated key, is dropped.",
           "content": {
             "application/json": {
               "schema": {
@@ -1738,7 +1747,7 @@
             }
           },
           "400": {
-            "description": "The request was refused.",
+            "description": "The request was refused. A body key the model does not declare answers error \"unknown_fields\" with the keys in fields, and nothing is written. Any other problem answers error \"validation\" with an issue for every problem.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1821,6 +1830,52 @@
           "field": {
             "type": "string",
             "description": "The rejected filter or sort field, on the four codes that name one."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The undeclared body keys, sorted, on unknown_fields."
+          },
+          "issues": {
+            "type": "array",
+            "description": "Every problem with the body, on validation.",
+            "items": {
+              "type": "object",
+              "required": [
+                "code",
+                "path",
+                "message"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "description": "A Zod issue name. A client that does not know one treats it as custom."
+                },
+                "path": {
+                  "type": "array",
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  },
+                  "description": "The location of the field in the body."
+                },
+                "message": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "maxLimit": {
+            "type": "integer",
+            "description": "The largest page the server serves, on limit_too_large."
           }
         }
       },

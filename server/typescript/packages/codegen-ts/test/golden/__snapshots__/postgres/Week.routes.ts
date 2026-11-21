@@ -2,14 +2,7 @@
 // Source metadata: Week (Week)
 // Extend in your own module (e.g. Week.extra.ts) — nothing imports it for you.
 import { db } from "~/server/db";
-import {
-  Week,
-  WeekFilterAllowlist,
-  WeekInsertSchema,
-  weeks,
-  WeekSortAllowlist,
-  WeekUpdateSchema,
-} from "./Week";
+import { Week, WeekFilterAllowlist, WeekInsertSchema, weeks, WeekSortAllowlist, WeekUpdateSchema } from "./Week";
 import { mountCrudRoutes } from "@metaobjectsdev/runtime-ts/drizzle-fastify";
 import type { FastifyInstance } from "fastify";
 

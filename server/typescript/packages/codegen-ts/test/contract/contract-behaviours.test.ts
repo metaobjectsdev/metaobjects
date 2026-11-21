@@ -391,6 +391,41 @@ describe("what a project's run changes", () => {
   });
 });
 
+describe("the document states what the routes do beyond the happy path", () => {
+  type Operation = { description?: string; parameters?: Array<{ name: string; description?: string; schema?: JsonDoc }>; requestBody?: { description?: string }; responses?: Record<string, { description?: string }> };
+  const operation = (doc: JsonDoc, path: string, method: string): Operation =>
+    (((doc["paths"] as JsonDoc)[path] as JsonDoc)[method]) as Operation;
+  const document = async (name: string): Promise<JsonDoc> => jsonAt(await emit(corpusCase(name), [openApiFile({ title: "t", version: "1" })]), "openapi.json");
+
+  test("a project's page size is the limit's default and maximum, and absent it states neither", async () => {
+    const limitOf = (doc: JsonDoc) => operation(doc, "/api/authors", "get").parameters?.find((p) => p.name === "limit")?.schema;
+    expect(limitOf(await document("api-settings"))).toEqual({ type: "integer", minimum: 0, maximum: 1000, default: 50 });
+    expect(limitOf(await document("blog"))).toEqual({ type: "integer", minimum: 0 });
+  });
+
+  test("a write says an undeclared key is refused by default, and dropped under api.unknownFields: drop", async () => {
+    const reject = operation(await document("blog"), "/api/authors", "post");
+    expect(reject.requestBody?.description).toContain("unknown_fields");
+    expect(reject.responses?.["400"]?.description).toContain("unknown_fields");
+    const drop = operation(await document("api-settings-drop"), "/api/authors", "post");
+    expect(drop.requestBody?.description).toContain("dropped");
+    expect(drop.responses?.["400"]?.description).not.toContain("unknown_fields");
+    expect(drop.responses?.["400"]?.description).toContain("validation");
+  });
+
+  test("the error envelope carries the validation issues and the undeclared keys", async () => {
+    const error = ((await document("blog"))["components"] as { schemas: Record<string, { properties: Record<string, unknown> }> }).schemas["ApiError"];
+    expect(Object.keys(error?.properties ?? {})).toEqual(["error", "message", "field", "fields", "issues", "maxLimit"]);
+  });
+
+  test("a read-only resource says a write answers 405, though 405 is no operation", async () => {
+    const doc = await document("projection");
+    expect(operation(doc, "/api/invoice_ledgers", "get").description).toContain("405");
+    expect(operation(doc, "/api/invoices", "get").description).toBeUndefined();
+    expect(Object.keys((doc["paths"] as JsonDoc)["/api/invoice_ledgers"] as JsonDoc)).toEqual(["get"]);
+  });
+});
+
 describe("the reference copies", () => {
   for (const c of contractCases()) {
     if (c.name.startsWith("error-")) continue;

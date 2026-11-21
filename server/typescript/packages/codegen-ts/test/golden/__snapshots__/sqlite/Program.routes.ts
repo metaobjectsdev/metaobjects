@@ -45,14 +45,6 @@ export async function programRoutes(fastify: FastifyInstance) {
     filterAllowlist: ProgramFilterAllowlist,
     sortAllowlist: ProgramSortAllowlist,
     dialect: "sqlite",
-    knownFields: [
-      "id",
-      "slug",
-      "title",
-      "description",
-      "priceCents",
-      "isPublished",
-      "createdAt",
-    ],
+    knownFields: ["id", "slug", "title", "description", "priceCents", "isPublished", "createdAt"],
   });
 }

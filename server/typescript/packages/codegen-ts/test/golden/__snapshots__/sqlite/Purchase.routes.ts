@@ -45,12 +45,6 @@ export async function purchaseRoutes(fastify: FastifyInstance) {
     filterAllowlist: PurchaseFilterAllowlist,
     sortAllowlist: PurchaseSortAllowlist,
     dialect: "sqlite",
-    knownFields: [
-      "id",
-      "subscriberId",
-      "programId",
-      "amountCents",
-      "purchasedAt",
-    ],
+    knownFields: ["id", "subscriberId", "programId", "amountCents", "purchasedAt"],
   });
 }

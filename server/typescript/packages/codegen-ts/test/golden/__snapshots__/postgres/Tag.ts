@@ -6,19 +6,14 @@ import { bigint, pgTable, varchar } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
 export const tags = pgTable("tags", {
-  id: bigint("id", { mode: "number" })
-    .primaryKey()
-    .generatedByDefaultAsIdentity(),
+  id: bigint("id", { mode: "number" }).primaryKey().generatedByDefaultAsIdentity(),
   name: varchar("name", { length: 50 }).notNull().unique(),
   slug: varchar("slug", { length: 50 }).notNull().unique(),
 });
 export type Tag = InferSelectModel<typeof tags>;
 export type TagInsert = InferInsertModel<typeof tags>;
 export type TagUpdate = Partial<TagInsert>;
-export const TagInsertSchema = z.object({
-  name: z.string().min(1).max(50),
-  slug: z.string().min(1).max(50),
-});
+export const TagInsertSchema = z.object({ name: z.string().min(1).max(50), slug: z.string().min(1).max(50) });
 
 export const TagUpdateSchema = z.object({
   name: z.string().min(1).max(50).optional(),
@@ -65,20 +60,14 @@ export const Tag = {
     label: "Name",
     view: "text",
     htmlType: "text",
-    rules: {
-      required: "Name is required",
-      maxLength: { value: 50, message: "Must be 50 characters or fewer" },
-    },
+    rules: { required: "Name is required", maxLength: { value: 50, message: "Must be 50 characters or fewer" } },
   },
   slug: {
     name: "slug",
     label: "Slug",
     view: "text",
     htmlType: "text",
-    rules: {
-      required: "Slug is required",
-      maxLength: { value: 50, message: "Must be 50 characters or fewer" },
-    },
+    rules: { required: "Slug is required", maxLength: { value: 50, message: "Must be 50 characters or fewer" } },
   },
 } as const;
 import type { FilterAllowlist } from "@metaobjectsdev/runtime-ts/drizzle-fastify";
@@ -87,10 +76,4 @@ export const TagFilterAllowlist = {} as const satisfies FilterAllowlist;
 import type { SortAllowlist } from "@metaobjectsdev/runtime-ts/drizzle-fastify";
 
 export const TagSortAllowlist = {} as const satisfies SortAllowlist;
-export type TagFilter = {
-  limit?: number;
-  offset?: number;
-  sort?: string;
-  or?: TagFilter[];
-  and?: TagFilter[];
-};
+export type TagFilter = { limit?: number; offset?: number; sort?: string; or?: TagFilter[]; and?: TagFilter[] };

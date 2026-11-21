@@ -5,19 +5,12 @@ import { Program } from "./Program.meta";
 import { buildFilterQs } from "@metaobjectsdev/runtime-web";
 import { useEntityPathFetcher } from "@metaobjectsdev/tanstack";
 import { useQuery } from "@tanstack/react-query";
-import type {
-  ColumnFiltersState,
-  PaginationState,
-  SortingState,
-} from "@tanstack/react-table";
+import type { ColumnFiltersState, PaginationState, SortingState } from "@tanstack/react-table";
 import { useMemo, useState } from "react";
 
 export function useProgramDefaultGrid() {
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [pagination, setPagination] = useState<PaginationState>({
-    pageIndex: 0,
-    pageSize: 25,
-  });
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 25 });
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [search, setSearch] = useState<string>("");
 
@@ -29,9 +22,7 @@ export function useProgramDefaultGrid() {
       filterObj[f.id] = f.value as unknown;
     }
     const sortEntry = sorting[0];
-    const sort = sortEntry
-      ? `${sortEntry.id}:${sortEntry.desc ? "desc" : "asc"}`
-      : undefined;
+    const sort = sortEntry ? `${sortEntry.id}:${sortEntry.desc ? "desc" : "asc"}` : undefined;
     return buildFilterQs({
       ...filterObj,
       ...(sort !== undefined ? { sort } : {}),
@@ -44,8 +35,7 @@ export function useProgramDefaultGrid() {
 
   const query = useQuery<{ rows: ProgramRow[]; total: number }>({
     queryKey: ["program", "grid", "default", qs],
-    queryFn: () =>
-      fetcher<{ rows: ProgramRow[]; total: number }>(`${Program.$path}?${qs}`),
+    queryFn: () => fetcher<{ rows: ProgramRow[]; total: number }>(`${Program.$path}?${qs}`),
   });
 
   return {
@@ -63,10 +53,7 @@ export function useProgramDefaultGrid() {
 }
 export function useProgramCompactGrid() {
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [pagination, setPagination] = useState<PaginationState>({
-    pageIndex: 0,
-    pageSize: 50,
-  });
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 50 });
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [search, setSearch] = useState<string>("");
 
@@ -78,9 +65,7 @@ export function useProgramCompactGrid() {
       filterObj[f.id] = f.value as unknown;
     }
     const sortEntry = sorting[0];
-    const sort = sortEntry
-      ? `${sortEntry.id}:${sortEntry.desc ? "desc" : "asc"}`
-      : undefined;
+    const sort = sortEntry ? `${sortEntry.id}:${sortEntry.desc ? "desc" : "asc"}` : undefined;
     return buildFilterQs({
       ...filterObj,
       ...(sort !== undefined ? { sort } : {}),
@@ -93,8 +78,7 @@ export function useProgramCompactGrid() {
 
   const query = useQuery<{ rows: ProgramRow[]; total: number }>({
     queryKey: ["program", "grid", "compact", qs],
-    queryFn: () =>
-      fetcher<{ rows: ProgramRow[]; total: number }>(`${Program.$path}?${qs}`),
+    queryFn: () => fetcher<{ rows: ProgramRow[]; total: number }>(`${Program.$path}?${qs}`),
   });
 
   return {

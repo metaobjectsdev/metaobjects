@@ -7,15 +7,8 @@ import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 type Db = PgDatabase<PgQueryResultHKT, Record<string, unknown>>;
 
 import { type ProgramSummary, programSummaryView } from "./ProgramSummary";
-export async function findProgramSummaryById(
-  db: Db,
-  id: string,
-): Promise<ProgramSummary | null> {
-  const [row] = await db
-    .select()
-    .from(programSummaryView)
-    .where(eq(programSummaryView.id, id))
-    .limit(1);
+export async function findProgramSummaryById(db: Db, id: string): Promise<ProgramSummary | null> {
+  const [row] = await db.select().from(programSummaryView).where(eq(programSummaryView.id, id)).limit(1);
   return row ?? null;
 }
 

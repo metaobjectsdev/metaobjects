@@ -24,19 +24,14 @@ export const SyllabusSection = {
     label: "Heading",
     view: "text",
     htmlType: "text",
-    rules: {
-      required: "Heading is required",
-      maxLength: { value: 120, message: "Must be 120 characters or fewer" },
-    },
+    rules: { required: "Heading is required", maxLength: { value: 120, message: "Must be 120 characters or fewer" } },
   },
   summary: {
     name: "summary",
     label: "Summary",
     view: "text",
     htmlType: "text",
-    rules: {
-      maxLength: { value: 500, message: "Must be 500 characters or fewer" },
-    },
+    rules: { maxLength: { value: 500, message: "Must be 500 characters or fewer" } },
   },
   orderIndex: {
     name: "orderIndex",

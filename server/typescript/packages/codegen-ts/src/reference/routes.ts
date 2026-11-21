@@ -73,7 +73,6 @@ import {
   writeDeniedColumnsLine,
   knownFieldsLine,
   servesReadApi,
-  formatTs,
   DEFAULT_OUTPUT_LAYOUT,
   entityOutputPath,
   effectivePackage,
@@ -770,7 +769,7 @@ export const routesFile = function routesFile(opts?: RoutesFileOpts): Generator 
     };
     return {
       path: entityOutputPath(ctx.config.outputLayout ?? DEFAULT_OUTPUT_LAYOUT, effectivePackage(entity), `${entity.name}.routes.ts`),
-      content: await formatTs(renderRoutes(entity, renderContext, resolveExpose(entity, opts?.expose), opts?.reportMaxRows)),
+      content: renderRoutes(entity, renderContext, resolveExpose(entity, opts?.expose), opts?.reportMaxRows),
     };
   });
   const generator: Generator = {
@@ -796,7 +795,7 @@ export const routesFile = function routesFile(opts?: RoutesFileOpts): Generator 
       if (matched.length === 0 || !ctx.renderContext) return files;
       return [...files, {
         path: routesIndexFileName("fastify"),
-        content: await formatTs(renderRoutesIndex(matched, ctx.renderContext, "fastify")),
+        content: renderRoutesIndex(matched, ctx.renderContext, "fastify"),
       }];
     },
   };

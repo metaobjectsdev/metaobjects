@@ -5,24 +5,13 @@ import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
 import { check, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { z } from "zod";
 
-export const subscribers = sqliteTable(
-  "subscribers",
-  {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    email: text("email").notNull(),
-    name: text("name"),
-    status: text("status", {
-      enum: ["active", "paused", "cancelled"] as const,
-    }).notNull(),
-    createdAt: text("created_at").$defaultFn(() => new Date().toISOString()),
-  },
-  (table) => [
-    check(
-      "subscribers_status_chk",
-      sql`status IN ('active', 'paused', 'cancelled')`,
-    ),
-  ],
-);
+export const subscribers = sqliteTable("subscribers", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  email: text("email").notNull(),
+  name: text("name"),
+  status: text("status", { enum: ["active", "paused", "cancelled"] as const }).notNull(),
+  createdAt: text("created_at").$defaultFn(() => new Date().toISOString()),
+}, (table) => [check("subscribers_status_chk", sql`status IN ('active', 'paused', 'cancelled')`)]);
 export type Subscriber = InferSelectModel<typeof subscribers>;
 export type SubscriberInsert = InferInsertModel<typeof subscribers>;
 export type SubscriberUpdate = Partial<SubscriberInsert>;
@@ -35,10 +24,8 @@ function utcIsoTimestamp(v: string): string {
   if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(v)) {
     return v;
   }
-  const m =
-    /^(\d{4}-\d{2}-\d{2})(?:[Tt ](\d{2}:\d{2})(?::(\d{2})(?:\.(\d+))?)?(?:([Zz])|([+-]\d{2}):?(\d{2})?)?)?$/.exec(
-      v,
-    );
+  const m = /^(\d{4}-\d{2}-\d{2})(?:[Tt ](\d{2}:\d{2})(?::(\d{2})(?:\.(\d+))?)?(?:([Zz])|([+-]\d{2}):?(\d{2})?)?)?$/
+    .exec(v);
   if (m === null) {
     return v;
   }
@@ -47,19 +34,14 @@ function utcIsoTimestamp(v: string): string {
       m[6] === undefined ? "Z" : `${m[6]}:${m[7] ?? "00"}`
     }`,
   );
-  return Number.isNaN(t)
-    ? v
-    : new Date(t).toISOString().replace(/\.?0+Z$/, "Z");
+  return Number.isNaN(t) ? v : new Date(t).toISOString().replace(/\.?0+Z$/, "Z");
 }
 
 export const SubscriberInsertSchema = z.object({
   email: z.string().min(1).max(320),
   name: z.string().optional(),
   status: z.enum(["active", "paused", "cancelled"]),
-  createdAt: z
-    .string()
-    .optional()
-    .transform(() => new Date().toISOString()),
+  createdAt: z.string().optional().transform(() => new Date().toISOString()),
 });
 
 export const SubscriberUpdateSchema = z.object({
@@ -84,20 +66,14 @@ export const SubscriberInsertPreservingSchema = z.object({
   email: z.string().min(1).max(320),
   name: z.string().optional(),
   status: z.enum(["active", "paused", "cancelled"]),
-  createdAt: z
-    .string()
-    .regex(
-      /^(?:\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2[0-8]))|(?:\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/,
-      "must be an ISO 8601 timestamp (YYYY-MM-DD[THH:MM[:SS[.fff]]][Z|±HH:MM])",
-    )
-    .transform(utcIsoTimestamp)
-    .optional(),
+  createdAt: z.string().regex(
+    /^(?:\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2[0-8]))|(?:\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/,
+    "must be an ISO 8601 timestamp (YYYY-MM-DD[THH:MM[:SS[.fff]]][Z|±HH:MM])",
+  ).transform(utcIsoTimestamp).optional(),
 });
 
 /** Typed input of `insertPreservingSubscriber` — SubscriberInsertPreservingSchema's pre-transform shape. */
-export type SubscriberCreatePreserving = z.input<
-  typeof SubscriberInsertPreservingSchema
->;
+export type SubscriberCreatePreserving = z.input<typeof SubscriberInsertPreservingSchema>;
 /**
  * Metadata constants for Subscriber.
  *
@@ -130,10 +106,7 @@ export const Subscriber = {
     label: "Email",
     view: "text",
     htmlType: "text",
-    rules: {
-      required: "Email is required",
-      maxLength: { value: 320, message: "Must be 320 characters or fewer" },
-    },
+    rules: { required: "Email is required", maxLength: { value: 320, message: "Must be 320 characters or fewer" } },
   },
   name: { name: "name", label: "Name", view: "text", htmlType: "text" },
   status: {
@@ -143,12 +116,7 @@ export const Subscriber = {
     rules: { required: "Status is required" },
     options: ["active", "paused", "cancelled"] as const,
   },
-  createdAt: {
-    name: "createdAt",
-    label: "Created At",
-    view: "date",
-    htmlType: "datetime-local",
-  },
+  createdAt: { name: "createdAt", label: "Created At", view: "date", htmlType: "datetime-local" },
 } as const;
 import type { FilterAllowlist } from "../../codegen/runtime/drizzle-fastify/filter-allowlist";
 

@@ -249,8 +249,8 @@ describe("a value object is never renamed", () => {
     expect(files.get("acme/beta/Note.ts")).toContain("betaText: string;");
     // The file that meets both binds each under a package-qualified local alias.
     const digest = files.get("acme/app/Digest.ts")!;
-    expect(digest).toMatch(/import \{\s*type Note as AcmeAlphaNote,\s*NoteInsertSchema as AcmeAlphaNoteInsertSchema,\s*\} from "\.\.\/alpha\/Note\.js";/);
-    expect(digest).toMatch(/import \{\s*type Note as AcmeBetaNote,\s*NoteInsertSchema as AcmeBetaNoteInsertSchema,\s*\} from "\.\.\/beta\/Note\.js";/);
+    expect(digest).toMatch(/import \{\s*type Note as AcmeAlphaNote,\s*NoteInsertSchema as AcmeAlphaNoteInsertSchema,?\s*\} from "\.\.\/alpha\/Note\.js";/);
+    expect(digest).toMatch(/import \{\s*type Note as AcmeBetaNote,\s*NoteInsertSchema as AcmeBetaNoteInsertSchema,?\s*\} from "\.\.\/beta\/Note\.js";/);
     expect(digest).toContain("fromAlpha?: AcmeAlphaNote | undefined;");
     expect(digest).toContain("fromBeta?: AcmeBetaNote | undefined;");
     for (const content of files.values()) {

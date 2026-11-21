@@ -9,7 +9,6 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { perEntity, type Generator, type GeneratorFactory } from "../generator.js";
 import { renderCallableFile, isCallableEntity } from "../templates/callable-file.js";
-import { formatTs } from "../format.js";
 import { DEFAULT_OUTPUT_LAYOUT, entityOutputPath } from "../import-path.js";
 import { effectivePackage } from "../docs-paths.js";
 
@@ -34,7 +33,7 @@ export const callableFile = function callableFile(opts?: CallableFileOpts): Gene
           effectivePackage(entity),
           `${entity.name}.callable.ts`,
         ),
-        content: await formatTs(renderCallableFile(entity, ctx.renderContext)),
+        content: renderCallableFile(entity, ctx.renderContext),
       };
     }),
   };

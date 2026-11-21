@@ -55,7 +55,6 @@ export function renderRoutesIndex(
       " * on the mount paths before calling this. An entity that needs a row-ownership rule",
       " * should not be registered open: narrow its routes with `expose` or hand-write them.",
       " */",
-      "// biome-ignore lint/suspicious/noExplicitAny: consumer-defined Hono bindings/variables",
       "export function registerAllRoutes(app: Hono<any, any, any>, deps: { db: unknown }): void {",
       ...sorted.map((e) => `  ${handler(e)}(app, deps);`),
       "}",

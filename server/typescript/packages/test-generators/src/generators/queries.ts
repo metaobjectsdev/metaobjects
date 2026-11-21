@@ -43,7 +43,6 @@ import {
   isProjection,
   isWriteThrough,
   servesReadApi,
-  formatTs,
   DEFAULT_OUTPUT_LAYOUT,
   entityOutputPath,
   GENERATED_HEADER,
@@ -173,7 +172,7 @@ export const queriesFile = function queriesFile(opts?: QueriesFileOpts): Generat
       claimModuleNames(ctx, entity);
       return {
         path: entityOutputPath(ctx.config.outputLayout ?? DEFAULT_OUTPUT_LAYOUT, effectivePackage(entity), `${entity.name}.queries.ts`),
-        content: await formatTs(renderQueries(entity, ctx.renderContext)),
+        content: renderQueries(entity, ctx.renderContext),
       };
     }),
   };

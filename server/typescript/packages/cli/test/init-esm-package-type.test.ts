@@ -17,6 +17,7 @@
 // every first-touch compile failure except the one it was written for.
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync } from "node:fs";
+const rm = (path: string, opts: { recursive: boolean; force: boolean }): void => rmSync(path, opts);
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { init } from "../src/commands/init.js";
@@ -109,7 +110,7 @@ describe("meta init — ESM package type", () => {
   });
 });
 
-describe("meta init — the scaffold declares no dependencies", () => {
+describe("meta init — the scaffold declares no generator dependencies", () => {
   // ADR-0034 puts real source in the adopter's repo, and init used to declare what that
   // source imported (@metaobjectsdev/codegen-ts + /metadata) plus what the code it would
   // GENERATE imported (drizzle-orm, zod, fastify). Both sets existed only because init
@@ -120,12 +121,12 @@ describe("meta init — the scaffold declares no dependencies", () => {
   // generators you take — covered end-to-end in scaffold-output-imports-declared.test.ts,
   // which ejects a selection, applies its install set and then checks the generated
   // output against the manifest.
-  test("adds nothing to dependencies or devDependencies", async () => {
+  test("adds only the SQLite driver, and nothing to devDependencies", async () => {
     writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "x", type: "commonjs" }, null, 2) + "\n");
     await init({ cwd: dir, quiet: true });
     const pkg = readPkg();
     expect(pkg.devDependencies).toBeUndefined();
-    expect(pkg.dependencies).toBeUndefined();
+    expect(Object.keys(pkg.dependencies as Record<string, string>)).toEqual(["@libsql/kysely-libsql"]);
   });
 
   test("still leaves a pin the project already chose exactly as it was", async () => {
@@ -138,8 +139,38 @@ describe("meta init — the scaffold declares no dependencies", () => {
     const pkg = readPkg();
     expect((pkg.devDependencies as Record<string, string>)["ts-poet"]).toBe("6.0.0");
     expect((pkg.dependencies as Record<string, string>)["@metaobjectsdev/codegen-ts"]).toBe("0.1.0");
-    // ...and adds nothing beside them.
+    // ...and adds nothing beside them but the SQLite driver.
     expect(Object.keys(pkg.devDependencies as Record<string, string>)).toEqual(["ts-poet"]);
-    expect(Object.keys(pkg.dependencies as Record<string, string>)).toEqual(["@metaobjectsdev/codegen-ts"]);
+    expect(Object.keys(pkg.dependencies as Record<string, string>)).toEqual(["@libsql/kysely-libsql", "@metaobjectsdev/codegen-ts"]);
+  });
+});
+
+describe("meta init — the SQLite driver", () => {
+  // libSQL carries a native binary per platform and libc, so the CLI does not install it; the
+  // project that targets SQLite declares it, at the range the CLI declares as its peer.
+  const driverOf = (): string | undefined =>
+    (readPkg().dependencies as Record<string, string> | undefined)?.["@libsql/kysely-libsql"];
+
+  test("a sqlite project declares it at the range the CLI was tested against", async () => {
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "x" }, null, 2) + "\n");
+    const result = await init({ cwd: dir, quiet: true });
+    expect(driverOf()).toBe(">=0.4.0 <0.5.0");
+    expect(result.warnings.join("\n")).toContain("added @libsql/kysely-libsql");
+  });
+
+  test("a postgres, mysql or d1 project does not", async () => {
+    for (const dialect of ["postgres", "mysql", "d1"]) {
+      writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "x" }, null, 2) + "\n");
+      rm(join(dir, ".metaobjects"), { recursive: true, force: true });
+      await init({ cwd: dir, quiet: true, dialect, force: true });
+      expect(driverOf(), dialect).toBeUndefined();
+    }
+  });
+
+  test("a project that already declares it keeps its pin and gets no second entry", async () => {
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "x", devDependencies: { "@libsql/kysely-libsql": "0.4.1" } }, null, 2) + "\n");
+    await init({ cwd: dir, quiet: true });
+    expect(driverOf()).toBeUndefined();
+    expect((readPkg().devDependencies as Record<string, string>)["@libsql/kysely-libsql"]).toBe("0.4.1");
   });
 });

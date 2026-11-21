@@ -2,14 +2,7 @@
 // Source metadata: Tag (Tag)
 // Extend in your own module (e.g. Tag.extra.ts) — nothing imports it for you.
 import { db } from "../db";
-import {
-  Tag,
-  TagFilterAllowlist,
-  TagInsertSchema,
-  tags,
-  TagSortAllowlist,
-  TagUpdateSchema,
-} from "./Tag";
+import { Tag, TagFilterAllowlist, TagInsertSchema, tags, TagSortAllowlist, TagUpdateSchema } from "./Tag";
 import { mountCrudRoutes } from "@metaobjectsdev/runtime-ts/drizzle-fastify";
 import type { FastifyInstance } from "fastify";
 

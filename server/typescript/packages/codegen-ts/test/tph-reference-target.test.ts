@@ -184,7 +184,7 @@ for (const dialect of ["postgres", "sqlite"] as const) {
       expect(referencesTarget(leg, "carrierId", anyColumn, "parties.id")).toBe(true);
       // The cardinality-one navigation and the junction's one() side, both onto `parties`.
       expect(leg).toContain("carrier: one(parties, { fields: [legs.carrierId], references: [parties.id] })");
-      expect(leg).toContain("fkCarrier: one(parties, { fields: [legs.carrierId], references: [parties.id], })");
+      expect(leg).toContain("fkCarrier: one(parties, { fields: [legs.carrierId], references: [parties.id] })");
     });
 
     test("references declared on a subtype or an intermediate level keep their FKs", async () => {

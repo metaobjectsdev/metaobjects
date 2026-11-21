@@ -32,7 +32,7 @@
 // theirs and may not even parse), canonicalization degrades to trimmed raw lines. The
 // verdict then reads `differs` where it might have read `reformatted` — the pre-existing
 // behaviour, never a false `reformatted`.
-import { Biome, Distribution } from "@biomejs/js-api";
+import type { Biome } from "@biomejs/js-api";
 
 export type OwnedVerdict =
   /** Byte-for-byte the reference. */
@@ -53,11 +53,15 @@ export interface OwnedComparison {
 
 // One instance, created lazily and shared. Cache the PROMISE so concurrent first calls
 // (--list compares every owned copy) share one in-flight create rather than racing.
+// The WebAssembly build is also LOADED lazily: it is about 14 MB of module that every other
+// `meta` command (gen, verify, migrate, init) has no use for, so the import waits for the first
+// comparison instead of being paid at start-up.
 let _biome: Promise<Biome | undefined> | undefined;
 
 function getBiome(): Promise<Biome | undefined> {
   if (!_biome) {
-    _biome = Biome.create({ distribution: Distribution.NODE })
+    _biome = import("@biomejs/js-api")
+      .then(({ Biome: Formatter, Distribution }) => Formatter.create({ distribution: Distribution.NODE }))
       .then((biome) => {
         biome.applyConfiguration({
           formatter: { enabled: true, indentStyle: "space", indentWidth: 2, lineWidth: 1 },
@@ -65,7 +69,7 @@ function getBiome(): Promise<Biome | undefined> {
         });
         return biome;
       })
-      // A comparison is a REPORT LINE. If the formatter cannot start, say less — never
+      // A comparison is a REPORT LINE. If the formatter cannot load or start, say less — never
       // fail the command the adopter actually ran.
       .catch(() => undefined);
   }

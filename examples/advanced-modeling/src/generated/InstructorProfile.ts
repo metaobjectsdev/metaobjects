@@ -34,17 +34,13 @@ export const InstructorProfile = {
     label: "Bio",
     view: "text",
     htmlType: "text",
-    rules: {
-      maxLength: { value: 2000, message: "Must be 2000 characters or fewer" },
-    },
+    rules: { maxLength: { value: 2000, message: "Must be 2000 characters or fewer" } },
   },
   credentialsSummary: {
     name: "credentialsSummary",
     label: "Credentials Summary",
     view: "text",
     htmlType: "text",
-    rules: {
-      maxLength: { value: 300, message: "Must be 300 characters or fewer" },
-    },
+    rules: { maxLength: { value: 300, message: "Must be 300 characters or fewer" } },
   },
 } as const;

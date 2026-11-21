@@ -16,6 +16,8 @@ import { currentContentHash } from "../lib/agent-context-staleness.js";
 import { findWranglerConfig, parseWranglerConfig } from "@metaobjectsdev/migrate-ts";
 import { DEFAULT_DOCS_DIR } from "@metaobjectsdev/codegen-ts";
 import { describeError } from "../lib/error-text.js";
+import { ownPeerRange } from "../lib/install-set.js";
+import { declaredDependencyNames, type PackageManifest } from "../lib/package-manifest.js";
 import { SUBTYPE_ROOT, TYPE_METADATA, TYPE_SUBTYPE_SEPARATOR } from "@metaobjectsdev/metadata/constants";
 import { docsRefForVersion } from "@metaobjectsdev/metadata";
 
@@ -832,7 +834,7 @@ export async function init(opts: InitOptions): Promise<InitResult> {
     result.preserved.push(".gitignore");
   }
 
-  await prepareManifestForScaffold(opts.cwd, result);
+  await prepareManifestForScaffold(opts.cwd, result, resolveInitDialect(opts));
 
   return result;
 }
@@ -859,7 +861,7 @@ export async function init(opts: InitOptions): Promise<InitResult> {
  * accreted a second, and the second silently inherited the first's early returns. The
  * declarations are unconditional on a readable manifest — see the comment at that point.
  */
-async function prepareManifestForScaffold(cwd: string, result: InitResult): Promise<void> {
+async function prepareManifestForScaffold(cwd: string, result: InitResult, dialect: InitDialect): Promise<void> {
   const pkgPath = join(cwd, "package.json");
   if (!(await fileExists(pkgPath))) {
     // No package.json at all: say what is needed rather than inventing a manifest
@@ -929,22 +931,31 @@ async function prepareManifestForScaffold(cwd: string, result: InitResult): Prom
     }
   }
 
-  // NO DEPENDENCIES ARE ADDED. `meta init` used to declare five packages here —
-  // codegen-ts and metadata for the generators it copied, drizzle-orm / zod / fastify
-  // for the code those generators would write — and every one of them was a
-  // consequence of the scaffold WIRING a suite. It wires nothing now, so declaring
-  // anything would be declaring a dependency on code this project may never generate.
+  // THE DATABASE DRIVER IS THE ONE DEPENDENCY INIT DECLARES. It used to declare five packages,
+  // codegen-ts and metadata for the generators it copied and drizzle-orm / zod / fastify for the
+  // code those generators would write, and every one of them was a consequence of the scaffold
+  // WIRING a suite. It wires nothing now, so those stay out: the need moved to the moment a
+  // generator is chosen, where `meta eject <name>...` reports the exact install set for what you
+  // took (lib/install-set.ts) and `meta gen --list --format json` carries it per entry.
   //
-  // The need did not vanish, it MOVED to the moment a generator is chosen:
-  // `meta eject <name>...` reports the exact install set for what you took, with
-  // third-party ranges read from the runtime package's own peerDependencies (see
-  // lib/install-set.ts), and `meta gen --list --format json` carries the same set per
-  // entry before you commit to anything.
-  if (moduleSystemNote !== undefined) {
+  // A driver is different: it belongs to the DATABASE the project named, not to a generator, and
+  // `meta migrate` and `meta verify --db` need it before any generator exists. SQLite's driver
+  // (libSQL, with a native binary per platform and libc) is not installed with the CLI, so a
+  // sqlite project declares it here, at the range the CLI was tested against. Postgres, D1 and
+  // MySQL have no driver of this kind to add: `pg` is the project's own, and D1 goes through
+  // wrangler.
+  const driverAdded = dialect === "sqlite" ? declareSqliteDriver(pkg) : false;
+  if (driverAdded) {
+    result.warnings.push(
+      `package.json: added ${SQLITE_DRIVER} to dependencies, the driver \`meta migrate\` and \`meta verify --db\` use for SQLite. ` +
+        "Run your package manager's install to fetch it.",
+    );
+  }
+  if (moduleSystemNote !== undefined || driverAdded) {
     // Preserve the file's existing indentation rather than reformatting someone's manifest.
     const indent = /\n(\s+)"/.exec(raw)?.[1] ?? "  ";
     await writeFile(pkgPath, `${JSON.stringify(pkg, null, indent)}\n`, "utf8");
-    result.warnings.push(moduleSystemNote);
+    if (moduleSystemNote !== undefined) result.warnings.push(moduleSystemNote);
   }
 }
 
@@ -952,6 +963,21 @@ async function prepareManifestForScaffold(cwd: string, result: InitResult): Prom
 
 
 
+
+/** The SQLite driver `meta migrate` loads on Node (under Bun the built-in `bun:sqlite` is used). */
+const SQLITE_DRIVER = "@libsql/kysely-libsql";
+
+/** Declare the SQLite driver unless the manifest already does, in any dependency field.
+ *  True when the manifest changed. */
+function declareSqliteDriver(pkg: Record<string, unknown>): boolean {
+  if (declaredDependencyNames(pkg as PackageManifest).has(SQLITE_DRIVER)) return false;
+  const range = ownPeerRange(SQLITE_DRIVER);
+  const deps = (pkg.dependencies ?? {}) as Record<string, string>;
+  // Without a readable range the driver is still declared, at any version, rather than not at all.
+  deps[SQLITE_DRIVER] = range ?? "*";
+  pkg.dependencies = Object.fromEntries(Object.entries(deps).sort(([a], [b]) => a.localeCompare(b)));
+  return true;
+}
 
 /** True when the project has hand-written CommonJS at the root (excluding tooling dirs). */
 async function hasCommonJsSources(cwd: string): Promise<boolean> {

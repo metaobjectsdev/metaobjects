@@ -27,7 +27,6 @@ import {
   perEntity,
   type Generator,
   type GeneratorFactory,
-  formatTs,
   entityOutputPath,
   servesClientTier,
   withClientDirective,
@@ -95,7 +94,7 @@ export const tanstackGrid = function tanstackGrid(opts?: TanstackGridOpts): Gene
     return {
       path: entityOutputPath(ctx.renderContext.outputLayout, effectivePackage(entity), `${entity.name}.columns.tsx`),
       content: withClientDirective(
-        await formatTs(renderColumnsFile(entity, ctx.renderContext)),
+        renderColumnsFile(entity, ctx.renderContext),
         ctx.renderContext.clientDirective,
       ),
     };

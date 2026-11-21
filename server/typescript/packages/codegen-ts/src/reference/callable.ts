@@ -31,7 +31,6 @@ import {
   perEntity,
   type Generator,
   type GeneratorFactory,
-  formatTs,
   DEFAULT_OUTPUT_LAYOUT,
   entityOutputPath,
   effectivePackage,
@@ -61,7 +60,7 @@ export const callableFile = function callableFile(opts?: CallableFileOpts): Gene
           effectivePackage(entity),
           `${entity.name}.callable.ts`,
         ),
-        content: await formatTs(renderCallableFile(entity, ctx.renderContext)),
+        content: renderCallableFile(entity, ctx.renderContext),
       };
     }),
   };

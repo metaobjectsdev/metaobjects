@@ -11,7 +11,6 @@ export interface FormFileOpts {
 
 /**
  * Forms are opt-in: a user must add `formFile()` to config.generators.
- * .tsx files are not piped through formatTs (Biome only handles .ts here).
  *
  * Decide per generator what you consume: wire only the generators whose output you
  * actually import, and narrow this one with its `filter` option. There is no `@emit*`

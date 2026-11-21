@@ -3,7 +3,6 @@ import {
   oncePerRun,
   type Generator,
   type GeneratorFactory,
-  formatTs,
   packageToPath,
   servesClientTier,
   servesWriteApi,
@@ -65,7 +64,7 @@ export const barrel = function barrel(opts?: AngularBarrelOpts): Generator {
       const content = `// ${GENERATED_HEADER}-angular — ${GENERATED_EDIT_NOTE}\n${lines.join("\n")}\n`;
       return {
         path: "index.ts",
-        content: await formatTs(content),
+        content: content,
       };
     }),
   };

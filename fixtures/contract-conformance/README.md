@@ -11,7 +11,7 @@ Each case is a directory.
   corpus model, because that is the surface every port's routes are held to.
 - `case.json` keys: `meta` (repository-relative), `wire` (the setting, as in
   `.metaobjects/config.json`; a case on an api-contract model pins what that corpus pins, because the
-  integration suite holds that corpus's answers to this document), `strictExclude` (objects the strict profile leaves out, because the
+  integration suite holds that corpus's answers to this document), `api` (the `api` block of the config: `pagination`, `unknownFields`), `strictExclude` (objects the strict profile leaves out, because the
   strict subset cannot state them) and `reportExport` (the project wires `report-export`).
 - `expected/`: the exact tree the emitters write: the canonical schemas, the strict schemas and
   `openapi.json`. Or `expected-error.txt`: the exact refusal.
@@ -30,6 +30,8 @@ document for that corpus.
 | `all-fields` | Every wire type, every constraint, a value object, a map, a recursive value object, a credential, and the write-mode fields. |
 | `all-fields-wire-string-emit` | `all-fields` under `wire: { decimals: "string", nullMembers: "emit" }`. |
 | `all-fields-wire-string-omit` | `all-fields` under `wire: { decimals: "string", nullMembers: "omit" }`. |
+| `api-settings` | The `blog` model under `api.pagination`: the list's `limit` has a default and a maximum. |
+| `api-settings-drop` | The `blog` model under `api.unknownFields: drop`: a write body says undeclared keys are dropped. |
 | `blog` | The api-contract corpus's root model: CRUD, filter, sort and paging. |
 | `decimal` | The api-contract `decimal/` model. |
 | `error-name-collision` | Refused: a real object takes the name of another object's create shape. |

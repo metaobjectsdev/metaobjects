@@ -268,7 +268,7 @@ function evaluatePath(expr: string, ownPaths: ReadonlyMap<string, string>): stri
 }
 
 /**
- * Every mount in one emitted routes file. A line-oriented walk over the biome-formatted
+ * Every mount in one emitted routes file. A line-oriented walk over the emitted
  * output: a mount opens on `mount…CrudRoutes({` and closes on `});`, and the three
  * properties read are each one line. The count of openers is asserted against the
  * mounts recovered, so a formatting change that moved a property onto the opener line

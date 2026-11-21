@@ -5,34 +5,14 @@ import { eq, inArray } from "drizzle-orm";
 import type { z } from "zod";
 
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
-type Db = BaseSQLiteDatabase<
-  "sync" | "async",
-  unknown,
-  Record<string, unknown>
->;
+type Db = BaseSQLiteDatabase<"sync" | "async", unknown, Record<string, unknown>>;
 
-import {
-  type Product,
-  ProductInsertSchema,
-  type ProductPatch,
-  products,
-  ProductUpdateSchema,
-} from "./Product";
-export async function findProductById(
-  db: Db,
-  id: number,
-): Promise<Product | null> {
-  const [product] = await db
-    .select()
-    .from(products)
-    .where(eq(products.id, id))
-    .limit(1);
+import { type Product, ProductInsertSchema, type ProductPatch, products, ProductUpdateSchema } from "./Product";
+export async function findProductById(db: Db, id: number): Promise<Product | null> {
+  const [product] = await db.select().from(products).where(eq(products.id, id)).limit(1);
   return product ?? null;
 }
-export async function listProducts(
-  db: Db,
-  opts?: { limit?: number; offset?: number },
-): Promise<Product[]> {
+export async function listProducts(db: Db, opts?: { limit?: number; offset?: number }): Promise<Product[]> {
   let q = db.select().from(products).$dynamic();
   if (opts?.limit !== undefined) {
     q = q.limit(opts.limit);
@@ -42,52 +22,32 @@ export async function listProducts(
   }
   return q;
 }
-export async function createProduct(
-  db: Db,
-  data: z.input<typeof ProductInsertSchema>,
-): Promise<Product> {
+export async function createProduct(db: Db, data: z.input<typeof ProductInsertSchema>): Promise<Product> {
   const validated = ProductInsertSchema.parse(data);
   const [product] = await db.insert(products).values(validated).returning();
   return product!;
 }
-export async function updateProduct(
-  db: Db,
-  id: number,
-  patch: ProductPatch,
-): Promise<Product | null> {
+export async function updateProduct(db: Db, id: number, patch: ProductPatch): Promise<Product | null> {
   const validated = ProductUpdateSchema.parse(patch);
   // PATCH-5: an empty patch is a no-op — return the current row rather than let
   // Drizzle throw on an empty SET clause.
   if (Object.keys(validated).length === 0) {
     return findProductById(db, id);
   }
-  const [product] = await db
-    .update(products)
-    .set(validated)
-    .where(eq(products.id, id))
-    .returning();
+  const [product] = await db.update(products).set(validated).where(eq(products.id, id)).returning();
   return product ?? null;
 }
 export async function deleteProductById(db: Db, id: number): Promise<boolean> {
   // Use .returning() unconditionally — supported on SQLite ≥3.35 (covers D1, libsql/Turso)
   // and Postgres. Result is an array of deleted rows; presence implies success.
-  const deleted = await db
-    .delete(products)
-    .where(eq(products.id, id))
-    .returning();
+  const deleted = await db.delete(products).where(eq(products.id, id)).returning();
   return deleted.length > 0;
 }
-export async function findProductsByTag(
-  db: Db,
-  tagId: number,
-): Promise<Product[]> {
+export async function findProductsByTag(db: Db, tagId: number): Promise<Product[]> {
   return db.select().from(products).where(eq(products.tagId, tagId));
 }
 
-export async function findProductsByTagIn(
-  db: Db,
-  tagIds: number[],
-): Promise<Product[]> {
+export async function findProductsByTagIn(db: Db, tagIds: number[]): Promise<Product[]> {
   if (tagIds.length === 0) {
     return [];
   }

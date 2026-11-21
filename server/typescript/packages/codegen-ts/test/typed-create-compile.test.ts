@@ -139,9 +139,7 @@ for (const dialect of ["postgres", "sqlite"] as const) {
         const queries = files.find((f) => f.path === "Brewer.queries.ts")!.content.replace(/\s+/g, " ");
         const party = files.find((f) => f.path === "Party.queries.ts")!.content.replace(/\s+/g, " ");
         expect(brewer).toContain("export type BrewerCreate = z.input<typeof BrewerInsertSchema>;");
-        expect(brewer).toContain(
-          "export type BrewerCreatePreserving = z.input< typeof BrewerInsertPreservingSchema >;",
-        );
+        expect(brewer).toContain("export type BrewerCreatePreserving = z.input<typeof BrewerInsertPreservingSchema>;");
         // Spelled through the schema, not the entity module's alias, so an owned queries
         // generator ejected before the alias existed still compiles (owned-generator-skew-compile).
         expect(queries).toContain("data: z.input<typeof BrewerInsertSchema>");

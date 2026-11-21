@@ -7,21 +7,15 @@ import { z } from "zod";
 import { CustomerNames } from "./Customer.names";
 
 export const customers = sqliteTable(CustomerNames.sources.primary.table, {
-  id: integer(CustomerNames.fields.id.column).primaryKey({
-    autoIncrement: true,
-  }),
+  id: integer(CustomerNames.fields.id.column).primaryKey({ autoIncrement: true }),
   email: text(CustomerNames.fields.email.column).notNull(),
 });
 export type Customer = InferSelectModel<typeof customers>;
 export type CustomerInsert = InferInsertModel<typeof customers>;
 export type CustomerUpdate = Partial<CustomerInsert>;
-export const CustomerInsertSchema = z.object({
-  email: z.string().min(1).max(255),
-});
+export const CustomerInsertSchema = z.object({ email: z.string().min(1).max(255) });
 
-export const CustomerUpdateSchema = z.object({
-  email: z.string().min(1).max(255).optional(),
-});
+export const CustomerUpdateSchema = z.object({ email: z.string().min(1).max(255).optional() });
 
 /** Typed create shape for Customer: the insert schema's INPUT (pre-transform) type. A
  * renamed/dropped/misspelt field is a compile error at every `createCustomer` call site;
@@ -63,10 +57,7 @@ export const Customer = {
     label: "Email",
     view: "text",
     htmlType: "text",
-    rules: {
-      required: "Email is required",
-      maxLength: { value: 255, message: "Must be 255 characters or fewer" },
-    },
+    rules: { required: "Email is required", maxLength: { value: 255, message: "Must be 255 characters or fewer" } },
   },
 } as const;
 import type { FilterAllowlist } from "@metaobjectsdev/runtime-ts/drizzle-fastify";
