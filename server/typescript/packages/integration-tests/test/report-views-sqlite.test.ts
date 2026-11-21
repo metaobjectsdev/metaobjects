@@ -23,7 +23,7 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { lstatSync, mkdtempSync, readdirSync, rmdirSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Kysely, sql } from "kysely";
@@ -44,6 +44,17 @@ function literalColumns<T>(root: T): T {
   return root;
 }
 
+/** Walks the tree instead of Bun's recursive rmSync, which intermittently throws EFAULT under load. */
+function removeTree(path: string): void {
+  try {
+    if (!lstatSync(path).isDirectory()) { unlinkSync(path); return; }
+    for (const n of readdirSync(path)) removeTree(join(path, n));
+    rmdirSync(path);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+  }
+}
+
 let tmpDir: string;
 let k: Kysely<Record<string, unknown>>;
 
@@ -60,7 +71,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await k.destroy();
-  rmSync(tmpDir, { recursive: true, force: true });
+  removeTree(tmpDir);
 });
 
 // libsql execute() is single-statement: split on ";" (no view body or seed carries an inner ";").

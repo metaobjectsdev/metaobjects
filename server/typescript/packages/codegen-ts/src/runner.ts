@@ -3,7 +3,6 @@ import { join, relative, resolve, isAbsolute, dirname, sep } from "node:path";
 import { warnMissingPromptGenerators } from "./prompt-generator-gate.js";
 import { runEmitsEntityModule, runEmitsHonoRoutes, runEmitsQueries, runEmitsRestRoutes, runEmitsUiTier, runRoutesExpose, warnUnmarkedRoutesGenerators, warnUnmarkedUiGenerators } from "./ui-tier-gate.js";
 import { warnRetiredCodegenAttrs } from "./retired-codegen-attrs.js";
-import { tmpdir } from "node:os";
 import { removeTree, scratchRoot } from "./scratch-dir.js";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -383,7 +382,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
         : resolve(projectRoot ?? process.cwd(), opts.genStateDir))
     : (projectRoot !== undefined
         ? join(projectRoot, ".metaobjects", ".gen-state")
-        : join(tmpdir(), `meta-gen-state-${process.pid}`));
+        : join(scratchRoot(), `meta-gen-state-${process.pid}`));
   // A file written OUTSIDE the project has no place in the project's gen-state: its
   // manifest key would be `../..`-relative, committed into the hash manifest, and its snapshot
   // body — stored at `<gen-state>/<key>` — would walk out of `.gen-state/` and land a second
