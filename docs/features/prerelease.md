@@ -172,8 +172,8 @@ pushed: a sha nobody can fetch is not a record.
 
 ### Rust
 
-There is no Rust candidate on the private registry: the three crates are `publish = false` and
-the registry serves npm, PyPI, NuGet and Maven. A Rust consumer **pins the commit** the
+There is no Rust candidate on the private registry: the four crates are ready to publish and not
+published, and the registry serves npm, PyPI, NuGet and Maven. A Rust consumer **pins the commit** the
 candidate's row in the log names:
 
 ```toml

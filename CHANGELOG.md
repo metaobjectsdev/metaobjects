@@ -72,7 +72,9 @@ here.**
 path of the machine the tool was built on into `codegen/Cargo.toml`: the owned crate names the exact
 crates.io release by default, and `--engine <directory | git-url[#rev]>` names a checkout or a git
 revision. The three crates lose `publish = false`, carry their packaging metadata, and the `rust` lane
-runs `cargo publish --dry-run`. Nothing is published. `cargo meta verify` now runs the business-rules
+runs `cargo publish --dry-run` over all four crates. Nothing is published. The new `metaobjects-render`
+crate carries the Rust prompt render, the reply parser and the output-format fragment. `cargo meta eject --force` leaves a
+copy that already matches the shipped generator untouched. `cargo meta verify` now runs the business-rules
 gate (ADR-0066) too: the same five findings, severities and message text as the other ports, under the
 four `rules.*` and `verify.lifecycle.unreachable` settings, held to `fixtures/rules-check-conformance/`.
 

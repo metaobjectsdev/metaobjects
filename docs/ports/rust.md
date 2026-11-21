@@ -282,6 +282,9 @@ outright.
 | `decimal-wire`, `duration-wire` | every vector, against the code the support crate carries |
 | `writer-conformance` | every `core` case of the code writer ([ADR-0063](../../spec/decisions/ADR-0063-generators-own-layout.md)) |
 | `generator-registry-conformance` | the shipped generators are exactly the registry's `rust` entries, with its tier and layer, and the eject contract's census, completeness and depth hold (ADR-0034 Amendment 8) |
+| `render-conformance` | every case, byte-identical, through `metaobjects_render::render` (the Mustache engine underneath is `mustache-ng`) |
+| `extract-conformance` | all 58 cases, through `metaobjects_render::extract::extract` |
+| `output-prompt-conformance` | all 17 cases in all three `@promptStyle` styles, with the extract round trip, through `metaobjects_render::prompt::render_output_format` |
 
 Two gates have no corpus of their own:
 
