@@ -5,6 +5,12 @@
 //   2. the scope rule: which files are generator source, by rule and not by list;
 //   3. the ratchet over the real project: every file with hand-typed layout is on the allowlist
 //      with a reason, every allowlisted file still needs its entry, and the allowlist only shrinks.
+//
+// Lint-gate exception (ADR-0063): part 3 reads the real generator source on purpose. The ratchet is
+// a chartered lint gate over source layout, the same per-port gate the TypeScript and Rust ports run,
+// so scanning the source tree is its contract and not a proxy for behavior. The behavior of the
+// writer itself is covered by the writer-conformance and CsWriter tests. The allowlist-only-shrinks
+// check compares against local git refs and passes when they are absent, as on a fresh clone.
 
 using System.Diagnostics;
 using System.Text.Json;
