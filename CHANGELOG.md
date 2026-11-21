@@ -10,6 +10,8 @@ here.**
 
 ## [Unreleased]
 
+- **The deprecated-reference finding ends its sentence before naming the replacement.** It read `…Team: the league no longer tracks teams Replaced by acme::app::Club.`; it now reads `…tracks teams. Replaced by acme::app::Club.` A reason that already ends in `.`, `!` or `?` is left as written.
+
 - **C#: `dotnet meta verify` runs the three model authoring lints.** The overlay lint
   (`WARN_OVERLAY_IMPLICIT`), the node-name lint (`WARN_NAME_SURROUNDING_WHITESPACE`,
   `WARN_NAME_INTERNAL_WHITESPACE`) and the deprecated-reference lint (`WARN_DEPRECATED_REFERENCE`)

@@ -74,7 +74,7 @@ interface Declaration {
  * same message.
  */
 export async function lintOverlays(
-  collection: Collection,
+  collection: Pick<Collection, "files" | "fileIds" | "configDir">,
   readSource: ReadSource,
 ): Promise<Diagnostic[]> {
   // type -> resolutionKey -> every declaration seen for it, in file order.
