@@ -347,9 +347,11 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
     settings. It has no `verify`, so the rules gate does not run there.
 
   Nothing is generated from the vocabulary yet: the enforcing service shells are later work
-  (ADR-0067), and `fixtures/codegen-noop/rules/` holds every generator to byte-identical output.
+  (ADR-0067: service generators an app chooses like any other, not a named set), and
+  `fixtures/codegen-noop/rules/` holds every generator to byte-identical output.
   A model that declares none of it sees no change. See `docs/features/business-rules.md`.
-  ADR-0067 records the layering and service-seam design, and amends ADR-0045.
+  ADR-0067 records the layering and service-seam design (a layer is a generator an app chooses; the
+  actor is a type the app defines), and amends ADR-0045.
 - **Rust port foundation, in preview (ADR-0065).** `server/rust/` is a Cargo workspace with a
   pinned toolchain and one crate, `metaobjects`: the node model, the type registry and the
   built-in providers (strict, sealed after bootstrap, the same `ERR_*` codes), and a JSON loader

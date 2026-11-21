@@ -43,9 +43,9 @@ The gap survived because **no `@autoSet` scenario existed in `api-contract-confo
 
 ## Amendment 1 (2026-11-13): a generated service shell may hold the guarantee
 
-ADR-0067 adds a `layered` generator set whose service layer enforces declared business rules
-(ADR-0066). The transport of that set calls the service and holds no rules, so the decision
-sentence above no longer describes it. It is replaced with:
+ADR-0067 adds service generators, which an app chooses as it chooses any generator, and whose
+service layer enforces declared business rules (ADR-0066). The transport of such a project calls
+the service and holds no rules, so the decision sentence above no longer describes it. It is replaced with:
 
 **The outermost generated write-path artifact an adopter deploys must guarantee every
 metamodel-declared write semantic, either itself or by calling a generated service shell that
@@ -54,13 +54,13 @@ operation body is called by the shell, inside the guarantee, and is not such a s
 
 The rest of the decision stands:
 
-- The API surface stamps (item 1) in every set that has no service layer, which is the
-  `classic` set.
+- The API surface stamps (item 1) in every project that wires no service generator, which is
+  today's flat generators.
 - Persistence-layer stamping stays (item 2).
 - Conformance gates the wire tier (item 3).
 
 The first rejected alternative ("rewire the Kotlin controller to delegate to the generated
 repository") was rejected because routing every controller through a lower layer "would churn
-all generated output". The `layered` set does not do that. It is opt-in per package, and a
-project that does not choose it keeps today's output byte for byte. So the objection does not
-apply to it. It still applies to rewiring the `classic` set, which this amendment does not do.
+all generated output". The service generators do not do that. They are separate generators an app adds, and a
+project that does not add them keeps today's output byte for byte. So the objection does not
+apply to them. It still applies to rewiring today's flat generators, which this amendment does not do.
