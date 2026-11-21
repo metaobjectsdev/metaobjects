@@ -292,7 +292,7 @@ sharing the enum keeps its integer `CHECK`. The generated type is the port's lis
 | C# | Postgres, SQLite, MySQL | the element converter of an EF Core primitive collection; a non-required array is `IList<TEnum>?` |
 | Java | Postgres, SQLite, MySQL, Derby | the OMDB codec (`JdbcCodecs`; `PostgresDriver.nativeArrayElementType` on Postgres). A member with no declared integer is refused on write with an `SQLException` naming the field. A repository you write yourself maps each element through the generated enum's `dbValue()` and `fromDbValue(int)` |
 | Kotlin | Postgres, SQLite, MySQL | the generated `portableIntEnumArray<E>(name, { toInt }, { fromInt })` column, emitted into `MetaIntEnumArrayColumnType.kt` only in a package that has such a column. Its two lambdas are generated `when` expressions, so a member with no integer is a compile error |
-| Python | Postgres only | the codec in `metaobjects.runtime.values`, called by `ObjectManagerDb`. SQLite and MySQL store no primitive array in this runtime, so an enum array of either kind is Postgres-only there |
+| Python | Postgres, SQLite, MySQL | the codec in `metaobjects.runtime.values`, called by `ObjectManagerDb`; the SQLite and MySQL dialects bind the array as JSON text and decode each element |
 
 The `roundtrip-int-enum-array` persistence scenario
 ([fixtures/persistence-conformance/README.md](../../fixtures/persistence-conformance/README.md#int-backed-enum-array-scenario))

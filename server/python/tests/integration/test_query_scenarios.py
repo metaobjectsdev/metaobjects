@@ -34,17 +34,9 @@ from .scenarios import QueryScenario, find_corpus_root, load_queries
 # ``tph-*`` scenarios run green and are no longer skipped.
 EXPECTED_FAILURES: dict[str, str] = {}
 
-# The same, for one engine only: (engine, scenario name) -> reason. The Python runtime's
-# SQLite and MySQL dialects bind no list parameter (``runtime/dialect.py`` encode_param has
-# no list case), so no primitive array -- string- or int-backed -- persists on those engines.
-_NO_ARRAYS = (
-    "the Python runtime stores no primitive array on this engine "
-    "(SqliteDialect/MySqlDialect.encode_param have no list case)"
-)
-ENGINE_EXPECTED_FAILURES: dict[tuple[str, str], str] = {
-    ("sqlite", "roundtrip-int-enum-array"): _NO_ARRAYS,
-    ("mysql", "roundtrip-int-enum-array"): _NO_ARRAYS,
-}
+# The same, for one engine only: (engine, scenario name) -> reason. Empty: a primitive
+# array (``roundtrip-int-enum-array``) persists on SQLite and MySQL as a JSON array.
+ENGINE_EXPECTED_FAILURES: dict[tuple[str, str], str] = {}
 
 
 def _skip_if_expected(engine: str, scenario: QueryScenario) -> None:

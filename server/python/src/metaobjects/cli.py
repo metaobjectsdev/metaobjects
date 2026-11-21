@@ -968,7 +968,14 @@ def _unmet_requires_by_selection(
         if entry is None:
             continue
         inner_filter = getattr(gen, "filter", None)
-        covered = [o for o in objects if not callable(inner_filter) or inner_filter(o)]
+        # Only the objects whose output imports the required generator's: `routes` writes no
+        # router for an abstract or sourceless object, so limiting `filter-allowlist` away from
+        # one leaves nothing dangling.
+        covered = [
+            o for o in objects
+            if (not callable(inner_filter) or inner_filter(o))
+            and (entry.covers is None or entry.covers(o))
+        ]
         for dep, dep_token in zip(gens, tokens):
             if dep_token not in entry.requires or not isinstance(dep, SelectedGenerator):
                 continue

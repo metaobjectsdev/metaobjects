@@ -147,8 +147,14 @@ def eject(names: list[str], root: Path, *, force: bool = False) -> EjectResult:
     for n in names:
         entry = known[n]
         target = owned_path(root, n)
-        target.write_text(ejected_source(entry), encoding="utf-8")
-        out.append(f"ejected {n} -> {target.relative_to(root)}")
+        source = ejected_source(entry)
+        # `--force` over a copy that already IS the reference writes nothing: an unchanged
+        # file is never rewritten.
+        if target.exists() and target.read_bytes() == source.encode("utf-8"):
+            out.append(f"unchanged {n} -> {target.relative_to(root)} (already the reference)")
+        else:
+            target.write_text(source, encoding="utf-8")
+            out.append(f"ejected {n} -> {target.relative_to(root)}")
         out.append(f"  wire it: replace \"{n}\" in `generators` with {owned_token(entry)}")
         for module in entry.runtime:
             rt = runtime_path(root, module)

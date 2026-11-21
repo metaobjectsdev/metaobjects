@@ -55,6 +55,8 @@ from metaobjects.codegen.generators.router_generator import (
 from metaobjects.codegen.generators.shared_model_generator import shared_model_generator
 from metaobjects.codegen.generators.template_generator import template_generator
 from metaobjects.codegen.generators.trace_helper_generator import trace_helper_generator
+from metaobjects.codegen.runtime.shared_predicates import emits_router
+from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.render.verify import InMemoryProvider
 
 GeneratorTier = str  # "native" | "neutral"
@@ -241,6 +243,11 @@ class GeneratorEntry:
     #: Not gated cross-port (the manifest carries no such column); surfaced by ``--list``
     #: and warned about by :func:`unsatisfied_requires`.
     requires: tuple[str, ...] = ()
+    #: The objects whose output imports what ``requires`` names: limiting a required generator
+    #: away from one of these leaves a dangling import, limiting it away from any other object
+    #: does not. ``None`` = every object. ``routes`` writes nothing for an abstract or
+    #: sourceless object, so a limit that leaves those out is no gap.
+    covers: Callable[[MetaObject], bool] | None = None
     #: The settings an ``options:`` mapping on this generator's ``generators`` entry may carry.
     #: A generator that lists none refuses any.
     options: tuple[GeneratorOption, ...] = ()
@@ -362,6 +369,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         # FIELDS/OPS constants from <entity>_filter_allowlist; without either the
         # generated package fails at import (ModuleNotFoundError).
         requires=("entity", "filter-allowlist"),
+        covers=emits_router,
         source=router_generator,
         runtime=_ROUTER_RUNTIME + (_EXPORT_RUNTIME,) + _SHARED_PREDICATES + (_FR010_FIELD_MAPPING, _M2M_CODEGEN),
     ),

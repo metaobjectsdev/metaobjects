@@ -173,6 +173,34 @@ def test_a_generator_may_not_cover_what_its_required_generator_is_limited_away_f
     assert not out.exists() or not _stems(out)
 
 
+def test_an_unlimited_generator_does_not_count_objects_it_writes_nothing_for(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # `routes` writes no router for an abstract object or a sourceless one, so limiting the
+    # allowlist to the packages that hold the routed entities leaves nothing dangling.
+    out = _project(
+        tmp_path,
+        "- entity\n- {name: filter-allowlist, packages: ['acme::sales', 'acme::hr']}\n- routes\n",
+    )
+    (tmp_path / "metaobjects" / "meta.common.json").write_text(
+        json.dumps({"metadata.root": {"package": "acme::common", "children": [
+            {"object.entity": {"name": "Base", "abstract": True, "children": [
+                {"field.long": {"name": "id"}},
+            ]}},
+            {"object.entity": {"name": "Remote", "children": [
+                {"field.long": {"name": "id"}},
+                {"identity.primary": {"name": "pk", "@fields": ["id"]}},
+            ]}},
+        ]}}),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    assert main(["gen"]) == 0
+    stems = _stems(out)
+    assert {"order_router", "invoice_router", "person_router"} <= stems
+    assert "remote_router" not in stems and "base_router" not in stems
+
+
 def test_limiting_a_generator_and_the_one_it_requires_to_the_same_entity_is_accepted(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -178,6 +178,18 @@ here.**
   included every filterable text field, and an int-backed (`@intValueMap`) enum is an integer
   column, so Postgres refused the ILIKE. Search now covers only fields whose operator band
   includes `like`.
+- **Python: a primitive array persists on SQLite and MySQL.** The `ObjectManagerDb`'s SQLite and
+  MySQL dialects bound no list, so an `isArray` string, number, date, uuid or enum field could not be
+  written there. The column the TypeScript-owned schema gives it (`TEXT` on SQLite, `JSON` on MySQL)
+  now holds a JSON array, an int-backed enum's as its integers (`[5,0]`), and each element reads back
+  through the scalar decode. `roundtrip-int-enum-array` runs on both engines instead of being deferred.
+  A `field.date`, `field.time` or `field.timestamp` array was refused on write on every engine,
+  Postgres included (the list was parsed as one value); it is now parsed element by element.
+- **Python: an unrestricted `routes` is no longer refused for objects it writes no router for.**
+  `metaobjects gen` refused a config that limits `filter-allowlist` (or `entity`) to some packages
+  while `routes` is left unlimited, whenever another package held an abstract or sourceless object,
+  saying `routes` covered it. `routes` writes nothing for those objects, so only the objects it
+  routes count now.
 - **C#: a `@sequenceStart` whose migrations project lacks the design-time services line is a generation
   error.** When `dotnet meta gen` can see the context's `ModelSnapshot.cs` in another project and that
   project does not carry `[assembly: DesignTimeServicesReference]`, the next `dotnet ef migrations add`
@@ -869,8 +881,8 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
     the only int-backed enum, projection and report-row enum arrays get the element converter
     (they read stored ints as ordinals before), and a non-required int-backed enum array is
     nullable.
-  - Python: ObjectManager maps elements on write, read and filter operands on Postgres. Its
-    SQLite and MySQL dialects store no primitive array, so the new scenario is deferred there.
+  - Python: ObjectManager maps elements on write, read and filter operands, on Postgres, SQLite
+    and MySQL (the last two store a JSON array of numbers).
   - Java: OMDB stores an int-backed enum array as a native `integer[]` on Postgres and a JSON array
     of numbers on SQLite, MySQL and Derby; a member with no declared integer is refused on write,
     and a stored integer with no member fails the read. Kotlin: the Exposed table generator emits an

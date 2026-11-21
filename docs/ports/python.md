@@ -781,10 +781,13 @@ that file's root package, so `package` on such a node is already the full
 A `field.enum` with `@intValueMap` (own or inherited from a shared abstract enum) is stored as its
 declared integers while `ObjectManager` callers pass and receive member symbols. The codec in
 `metaobjects.runtime.values` (called by `ObjectManagerDb`) encodes on every write and on filter operands, and decodes on
-every read. On an `isArray: true` field it does this for each element, on Postgres only (see
+every read. On an `isArray: true` field it does this for each element, on every engine (see
 [Int-backed enum arrays](../features/field-types.md#int-backed-enum-arrays)); a null element stays
 a null element. An int that has no member raises `ValueError` on read, whether it is a scalar or an
-array element.
+array element. On SQLite and MySQL, which have no array type, the column is `TEXT` / `JSON` holding a
+JSON array (`[5,0]`). This holds for every primitive array (strings, numbers, dates, uuids): each
+element is written as the JSON form of what the scalar column binds and read back through the scalar
+decode.
 
 ### Run-time validation
 
