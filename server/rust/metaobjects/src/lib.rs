@@ -1,4 +1,4 @@
-//! MetaObjects for Rust (preview).
+//! MetaObjects for Rust.
 //!
 //! The metamodel registry, the JSON and YAML loader, project and source
 //! resolution (the `.metaobjects/config.json` reader, the library sources),

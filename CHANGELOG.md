@@ -66,6 +66,13 @@ here.**
   a report.** For a database whose unique index on the target is hand-made and not declared in the
   metadata. The default, `"refuse"`, is the 1.3.0 behavior; the refusal's hint now names the setting. See
   [Migrations and drift](docs/features/migrations-and-drift.md).
+- **Rust (ADR-0065 Amendment 3).** A project now chooses its generators in `metaobjects.config.json`
+(`{ "generators": [...] }`, written by `cargo meta init`) and no longer needs to eject to drop one;
+`cargo meta gen --list` shows each as configured or not. `cargo meta eject` no longer writes the
+path of the machine the tool was built on into `codegen/Cargo.toml`: the owned crate names the exact
+crates.io release by default, and `--engine <directory | git-url[#rev]>` names a checkout or a git
+revision. The three crates lose `publish = false`, carry their packaging metadata, and the `rust` lane
+runs `cargo publish --dry-run`. Nothing is published.
 
 ## [1.3.0] — unreleased
 

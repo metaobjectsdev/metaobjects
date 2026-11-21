@@ -46,6 +46,13 @@ fn vendored_copies_match_their_sources() {
     if !root.join("spec/metamodel").is_dir() {
         return;
     }
+    // Each crate carries the licence text it is published with.
+    for crate_dir in ["metaobjects", "metaobjects-codegen", "metaobjects-cli"] {
+        same(
+            &krate.join("..").join(crate_dir).join("LICENSE"),
+            &root.join("LICENSE"),
+        );
+    }
     let data = krate.join("data");
     same(
         &data.join("ERROR-CODES.json"),

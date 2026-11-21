@@ -1,5 +1,5 @@
-# The Rust port of MetaObjects (preview). ADR-0065 records why it exists and how it
-# differs from the other five ports.
+# The Rust port of MetaObjects. ADR-0065 records why it exists and how it differs from the
+# other ports; its Amendment 3 records that it is a full, publishable language.
 #
 # Three crates:
 #   `metaobjects`          metamodel registry, loader, canonical serializer.
@@ -16,6 +16,8 @@ edition = "2024"
 rust-version = "1.94"
 license = "Apache-2.0"
 repository = "https://github.com/metaobjectsdev/metaobjects"
+homepage = "https://metaobjects.dev"
+authors = ["MetaObjects contributors"]
 
 [workspace.dependencies]
 # `preserve_order` keeps object keys in document order, which the loader needs:

@@ -4,9 +4,11 @@ The Rust port is **in preview** ([ADR-0065](../../spec/decisions/ADR-0065-rust-i
 It reads a project, validates it, serializes it and generates code from it, and it is held to the
 same shared conformance corpora as the other five ports. Its command, `cargo meta`, runs the whole
 codegen loop on a JSON or YAML model: `init`, `gen`, `verify --codegen` and `eject`. Three generators
-ship: `entity`, `client` and `commands`. **Nothing is published**: there is no crate on crates.io, so
-there is nothing to `cargo add` or `cargo install` from a registry. You work from a checkout of this
-repository.
+ship: `entity`, `client` and `commands`, and a project chooses which of them run in
+`metaobjects.config.json`. The three crates are **ready to publish but not published**: they package and
+build from their packages (a `cargo publish --dry-run` runs in the `rust` lane), and there is no release
+on crates.io yet, so there is nothing to `cargo add` or `cargo install` from a registry. You work from a
+checkout of this repository until the first release.
 
 This page says what runs today, what does not exist yet, and how to build and test it. For the
 decisions behind the port (why Rust, the layout, the preview rules), read the ADR.
@@ -47,13 +49,31 @@ and the same `git` + `rev` on a `metaobjects` dependency). The candidate log
 
 | Command | What it does |
 |---|---|
-| `cargo meta init [--project <dir>]` | Scaffolds `.metaobjects/config.json`, `.metaobjects/.gitignore` (which keeps `.gen-state/.hashes/` committed) and a first `metaobjects/meta.app.yaml`. It writes only what is missing, and never adds an empty metadata file to a project that already has metadata. |
+| `cargo meta init [--project <dir>]` | Scaffolds `.metaobjects/config.json`, `.metaobjects/.gitignore` (which keeps `.gen-state/.hashes/` committed), a first `metaobjects/meta.app.yaml` and `metaobjects.config.json`, the list of generators to run (see [Choosing generators](#choosing-generators)). It writes only what is missing, and never adds an empty metadata file to a project that already has metadata. |
 | `cargo meta gen [ENTITY...]` | Generates the crates. It skips the whole run when the model, the project config and the generators are unchanged ([ADR-0064](../../spec/decisions/ADR-0064-skip-codegen-when-nothing-changed.md)), writes only files whose bytes changed, removes a generated file nothing emits any more, and refuses to overwrite or delete a generated file that was edited by hand. It prints what it created, updated and removed, and the crates to re-check. |
 | `cargo meta verify [--codegen] [--full]` | The codegen drift gate: renders in memory, compares with disk, writes nothing, and exits 1 on drift, naming each file. Locally it may answer from the stored skip key; `--full`, or a set `CI` variable, always renders. `--codegen` is the only gate the port ships, so a bare `verify` runs it. `--db`, `--templates` and `--deps` exit 2 with the reason and where that check lives. |
 | `cargo meta eject <generator>...` | Copies a shipped generator into the project to own. `--undo` takes back copies still identical to the shipped source; `--list` shows what can be ejected and how each owned copy compares. See [Owning a generator](#owning-a-generator). |
 
 `gen` and `verify` share `--project <dir>`, `--out <dir>` (default `generated`), `--generators <a,b>`,
 `--strict` and `--timings`. `gen` adds `--force` and `--list`. `cargo meta --help` is the reference.
+
+### Choosing generators
+
+The generators a project runs are the list in `metaobjects.config.json` at the project root, the way the
+other ports choose theirs (`metaobjects.config.ts`, `codegen/Generators.cs`, the pom,
+`metaobjects.config.yaml`). `cargo meta init` writes every shipped generator; delete a line to stop
+running one, and no eject is needed:
+
+```json
+{ "generators": ["entity", "client", "commands"] }
+```
+
+The file takes that one key and no options: a layer is only a generator, so there are no layer settings.
+A project with no such file runs every generator. A generator that leaves the list has its files removed
+on the next `gen` (a file somebody edited is refused by name instead), and the run fails, naming the
+file, for a name nothing offers, a duplicate, an unknown key, or a generator listed without one it
+builds on (`client` needs `entity`; `commands` needs both). `cargo meta gen --list` shows each generator
+as `[configured]` or `[not configured]`, and `--generators` narrows one run to some of the list.
 
 **Exit codes** are the ones every port's tool uses: 0 success, 1 the run failed (a model that does not
 load, a refused file, drift), 2 a usage error. An unknown flag names the flags the command takes.
@@ -231,7 +251,13 @@ and tells you the two lines of `codegen/main.rs` to change; it never edits that 
 
 This is **not a plugin contract**. Nothing discovers or loads a third-party generator, and the
 engine's Rust API carries no stability promise while the port is in preview: an owned copy is pinned
-to the engine checkout its `Cargo.toml` points at.
+to the exact engine its `Cargo.toml` names.
+
+The owned crate's `Cargo.toml` names no machine. By default the three engine crates are the crates.io
+release the tool is, pinned exactly (`metaobjects = "=<version>"`), since an owned copy is that release's
+source. Until a release exists, or to build against your own changes, eject with
+`--engine <directory | git-url[#rev]>`: a directory is a checkout's `server/rust` (relative to the project
+root), and a git URL names a repository and an optional revision.
 
 ### Conformance
 
@@ -295,14 +321,14 @@ regeneration, peak memory), so a port's speed can be tracked per feature next to
   TypeScript; change the model or own the generator instead.
 - **The service tier.** No `ObjectManager`, no persistence drivers and no web adapters.
 - **Templates and prompts.** No render engine, no payload value objects and no output parser.
-- **Publication.** The crate sets `publish = false`. There is no crates.io release, no version policy
-  beyond ADR-0065 (the port starts on its own `0.x` line when it publishes, and joins the lockstep
-  numbers only when it leaves preview), and `Cargo.toml` is not a stable interface.
+- **Publication.** The crates are publishable and the lane proves they package (`cargo publish
+  --dry-run`), but nothing is published: there is no crates.io release yet, and publishing waits for
+  the owner's go ([ADR-0065](../../spec/decisions/ADR-0065-rust-is-the-sixth-port.md) Amendment 3).
 
-**A note on the name `cargo-meta`.** The crates.io name `cargo-meta` is held by an unrelated crate. The
-plan is to publish the CLI crate under another name that installs a `cargo-meta` binary, so the command
-you type is still `cargo meta`. That is a plan, not a promise: the crate name is not chosen, and
-nothing is reserved.
+**A note on the name `cargo-meta`.** The crates.io name `cargo-meta` is held by an unrelated crate, so the
+CLI package is `metaobjects-cli` and installs a `cargo-meta` binary: the command you type is still
+`cargo meta`. Nothing is reserved on crates.io; reserving a name is a publish, and waits for the
+owner's go.
 
 The schema stays where it is for every port: migrations and database checks run in the Node `meta`
 tool ([ADR-0015](../../spec/decisions/ADR-0015-single-shared-migrate-engine.md);

@@ -1,4 +1,4 @@
-//! The `cargo meta` command (preview).
+//! The `cargo meta` command.
 //!
 //! Cargo runs `cargo-<name>` for `cargo <name>` and passes `<name>` as the first argument, so
 //! the binary accepts both `cargo-meta meta gen` (how cargo calls it) and `cargo-meta gen`.
@@ -19,29 +19,31 @@ use std::path::{Path, PathBuf};
 
 use metaobjects::collection::discover_collection_root;
 use metaobjects::timing::{LoadTimings, ms, render_table};
-use metaobjects_codegen::eject::{self, CopyState, EjectError};
+use metaobjects_codegen::eject::{self, CopyState, EjectError, EngineSource};
 use metaobjects_codegen::engine::{
     ChangeKind, OWNED_MANIFEST, Outcome, RunError, RunOptions, RunReport, VerifyReport,
 };
+use metaobjects_codegen::generator_list::{self, GENERATOR_LIST_FILE};
 use metaobjects_codegen::{Generator, run, shipped_generators, verify};
 
 /// The tool's name in messages.
 const TOOL: &str = "cargo meta";
 
 const USAGE: &str = "\
-cargo meta: MetaObjects for Rust (preview)
+cargo meta: MetaObjects for Rust
 
 USAGE:
     cargo meta init   [--project <dir>]
     cargo meta gen    [OPTIONS] [ENTITY...]
     cargo meta verify [--codegen] [--full] [OPTIONS]
-    cargo meta eject  <generator>... [--force]
+    cargo meta eject  <generator>... [--force] [--engine <source>]
     cargo meta eject  --undo [<generator>...] [--force]
     cargo meta eject  --list
 
 COMMANDS:
-    init       Scaffold a project: .metaobjects/config.json, a first metadata file and the
-               ignore rules for the generation state. Writes only what is missing.
+    init       Scaffold a project: .metaobjects/config.json, a first metadata file, the
+               ignore rules for the generation state and metaobjects.config.json, the list of
+               generators to run. Writes only what is missing.
     gen        Generate Rust crates from the project's model. Skips the whole run when the
                model, the project config and the generators are unchanged; writes only files
                whose bytes changed; removes a generated file nothing emits any more; refuses
@@ -50,19 +52,23 @@ COMMANDS:
                without writing anything. Exits 1 on drift.
     eject      Copy a shipped generator into codegen/generators/ to own and change.
                --undo takes back copies that are still identical to the shipped generator.
+               The owned crate builds against this release of the engine from crates.io;
+               --engine <dir | git-url[#rev]> names a checkout or a git revision instead.
 
 OPTIONS (gen and verify):
     --project <dir>      The project root (the directory holding .metaobjects/config.json).
                          Default: the nearest one at or above the current directory.
     --out <dir>          Where the crates are written, relative to the project root and
                          a sub-directory of it. Default: generated
-    --generators <a,b>   Run only these generators (`cargo meta gen --list` names them).
+    --generators <a,b>   Run only these generators, from the project's list
+                         (`cargo meta gen --list` shows both).
     --strict             Load strictly: an attribute no provider declares is an error.
     --timings            Print the time spent in each stage.
 
 OPTIONS (gen):
     --force              Render and compare even when nothing changed.
-    --list               List the generators, and how each owned copy compares.
+    --list               List the generators: which the project's list runs, and how each
+                         owned copy compares.
 
 OPTIONS (verify):
     --codegen            The generated-code gate. It is the only gate this port ships, so a
@@ -73,6 +79,9 @@ OPTIONS (verify):
 OPTIONS (everywhere):
     -h, --help           Print this help.
     -V, --version        Print the version.
+
+GENERATORS: a project chooses what runs in metaobjects.config.json, `{ \"generators\": [..] }`,
+by name. Edit the list; no eject is needed. With no such file every generator runs.
 
 ENTITY names limit `gen` to the crates that contain them plus the crates those depend on.
 Such a run never skips, never stores the skip key and never removes a file.
@@ -124,6 +133,7 @@ const VERIFY_FLAGS: &[Flag] = &[
     switch("--timings"),
 ];
 const EJECT_FLAGS: &[Flag] = &[
+    valued("--engine"),
     switch("--force"),
     switch("--list"),
     valued("--project"),
@@ -339,25 +349,84 @@ fn unchanged_copy_notice(project_root: &Path) -> Option<String> {
     })
 }
 
-fn list_generators(out: &mut dyn Write, root: &Path, generators: &[Box<dyn Generator>]) {
+/// `gen --list`: every generator, whether the project's list runs it, and how an owned copy
+/// compares. Returns the exit status: 1 when the project's list cannot be used.
+fn list_generators(
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+    root: &Path,
+    generators: &[Box<dyn Generator>],
+) -> i32 {
+    let listed = match generator_list::read(root) {
+        Ok(listed) => listed,
+        Err(e) => {
+            let _ = writeln!(err, "{TOOL}: {e}");
+            return 1;
+        }
+    };
+    let owns = eject::owns_generators(root);
+    let mut available: Vec<&str> = eject::REFERENCES.iter().map(|r| r.name).collect();
+    for g in generators {
+        if !available.contains(&g.name()) {
+            available.push(g.name());
+        }
+    }
+    let mut status = 0;
+    match &listed {
+        None => {
+            let _ = writeln!(
+                out,
+                "No {GENERATOR_LIST_FILE}: every generator runs. `{TOOL} init` writes one to choose from."
+            );
+        }
+        Some(names) => {
+            let _ = writeln!(
+                out,
+                "{GENERATOR_LIST_FILE} runs: {}",
+                if names.is_empty() {
+                    "nothing (the list is empty)".to_string()
+                } else {
+                    names.join(", ")
+                }
+            );
+            // An owned crate may carry generators this command cannot see without building it.
+            if !owns && let Err(e) = generator_list::check(names, &available) {
+                let _ = writeln!(err, "{TOOL}: {e}");
+                status = 1;
+            }
+        }
+    }
+    let on = |name: &str| match &listed {
+        None => String::new(),
+        Some(names) if names.iter().any(|n| n == name) => " [configured]".to_string(),
+        Some(_) => " [not configured]".to_string(),
+    };
     let copies = eject::owned_copies(root);
     for r in eject::REFERENCES {
-        let owned = copies.iter().find(|c| c.reference == r);
-        let state = match owned {
+        let state = match copies.iter().find(|c| c.reference == r) {
             Some(c) => format!(" [owned: {}]", c.state),
             None => String::new(),
         };
         let _ = writeln!(
             out,
-            "{} - {} (layer: {}){state}",
-            r.name, r.summary, r.layer
+            "{} - {} (layer: {}){}{state}",
+            r.name,
+            r.summary,
+            r.layer,
+            on(r.name)
         );
     }
     for g in generators {
         if eject::reference(g.name()).is_none() {
-            let _ = writeln!(out, "{} - a generator of this project", g.name());
+            let _ = writeln!(
+                out,
+                "{} - a generator of this project{}",
+                g.name(),
+                on(g.name())
+            );
         }
     }
+    status
 }
 
 fn cmd_gen(
@@ -369,8 +438,12 @@ fn cmd_gen(
 ) -> Result<i32, Usage> {
     let s = split(args, "gen", GEN_FLAGS)?;
     if s.has("--list") {
-        list_generators(out, &project_root(&s, cwd), generators);
-        return Ok(0);
+        return Ok(list_generators(
+            out,
+            err,
+            &project_root(&s, cwd),
+            generators,
+        ));
     }
     let mut options = run_options(&s, cwd, generators)?;
     options.force = s.has("--force");
@@ -503,20 +576,21 @@ fn cmd_verify(
 fn cmd_eject(
     args: &[String],
     cwd: &Path,
-    engine_root: &Path,
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> Result<i32, Usage> {
     let s = split(args, "eject", EJECT_FLAGS)?;
+    let engine = s
+        .value("--engine")
+        .map_or_else(EngineSource::default, EngineSource::parse);
     let root = project_root(&s, cwd);
     if s.has("--list") {
-        list_generators(out, &root, &[]);
-        return Ok(0);
+        return Ok(list_generators(out, err, &root, &[]));
     }
     let result = if s.has("--undo") {
         eject::undo(&root, &s.words, s.has("--force"))
     } else {
-        eject::eject(&root, &s.words, s.has("--force"), engine_root)
+        eject::eject(&root, &s.words, s.has("--force"), &engine)
     };
     match result {
         Ok(lines) => {
@@ -534,20 +608,21 @@ fn cmd_eject(
 }
 
 /// What `init` writes when it is missing: a path from the project root and its text.
-fn init_files() -> [(&'static str, &'static str); 3] {
+fn init_files() -> [(&'static str, String); 4] {
     [
         (
             ".metaobjects/config.json",
-            "{\n  \"schema_version\": 1,\n  \"migrate\": {\n    \"foreignKeyIndexes\": true\n  },\n  \"verify\": {\n    \"handEdits\": \"fail\"\n  },\n  \"api\": {\n    \"pagination\": {\n      \"defaultLimit\": 50,\n      \"maxLimit\": 1000\n    },\n    \"unknownFields\": \"reject\"\n  }\n}\n",
+            "{\n  \"schema_version\": 1,\n  \"migrate\": {\n    \"foreignKeyIndexes\": true\n  },\n  \"verify\": {\n    \"handEdits\": \"fail\"\n  },\n  \"api\": {\n    \"pagination\": {\n      \"defaultLimit\": 50,\n      \"maxLimit\": 1000\n    },\n    \"unknownFields\": \"reject\"\n  }\n}\n".to_string(),
         ),
         (
             ".metaobjects/.gitignore",
-            "# The generation state. `.hashes/` is committed: it is one hash per generated\n# path (one file per model package), and the only thing that lets `gen` tell \"this file is exactly what I wrote\" from\n# \"somebody edited this\" on a machine that did not generate it. Everything else here (the\n# skip key) describes one machine's last run and is not.\n#\n# The glob form matters: `.gen-state/` (a directory) would stop git descending, and the\n# negation below could never take effect.\n.gen-state/*\n!.gen-state/.hashes/\n",
+            "# The generation state. `.hashes/` is committed: it is one hash per generated\n# path (one file per model package), and the only thing that lets `gen` tell \"this file is exactly what I wrote\" from\n# \"somebody edited this\" on a machine that did not generate it. Everything else here (the\n# skip key) describes one machine's last run and is not.\n#\n# The glob form matters: `.gen-state/` (a directory) would stop git descending, and the\n# negation below could never take effect.\n.gen-state/*\n!.gen-state/.hashes/\n".to_string(),
         ),
         (
             "metaobjects/meta.app.yaml",
-            "metadata:\n  package: app\n  children: []\n",
+            "metadata:\n  package: app\n  children: []\n".to_string(),
         ),
+    (GENERATOR_LIST_FILE, generator_list::scaffold()),
     ]
 }
 
@@ -596,6 +671,7 @@ fn cmd_init(
     let _ = writeln!(
         out,
         "next: declare your objects in metaobjects/ (JSON or YAML), then run `{TOOL} gen`.\n\
+         Choose the generators `gen` runs by editing {GENERATOR_LIST_FILE}.\n\
          Commit .metaobjects/.gen-state/.hashes/ with the generated crates.\n\
          Schema migrations are the Node `meta` command's (`meta migrate`), for every server language."
     );
@@ -603,9 +679,9 @@ fn cmd_init(
 }
 
 /// Who is running the command line.
-enum Host<'a> {
+enum Host {
     /// `cargo-meta` itself, with the shipped generators.
-    Shipped { engine_root: &'a Path },
+    Shipped,
     /// A project's `codegen/` crate, with the generator list it declares.
     Owned,
 }
@@ -652,7 +728,7 @@ fn dispatch(
     args: &[String],
     cwd: &Path,
     generators: &[Box<dyn Generator>],
-    host: &Host<'_>,
+    host: &Host,
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> i32 {
@@ -674,7 +750,7 @@ fn dispatch(
         return 0;
     }
     let result = match (command.as_str(), host) {
-        ("gen" | "verify", Host::Shipped { .. }) => {
+        ("gen" | "verify", Host::Shipped) => {
             // Owned generators are a build of the project's own crate. `--list` reads files
             // and needs no build.
             let flags = if command == "gen" {
@@ -699,8 +775,8 @@ fn dispatch(
         }
         ("gen", Host::Owned) => cmd_gen(tail, cwd, generators, out, err),
         ("verify", Host::Owned) => cmd_verify(tail, cwd, generators, out, err),
-        ("init", Host::Shipped { .. }) => cmd_init(tail, cwd, out, err),
-        ("eject", Host::Shipped { engine_root }) => cmd_eject(tail, cwd, engine_root, out, err),
+        ("init", Host::Shipped) => cmd_init(tail, cwd, out, err),
+        ("eject", Host::Shipped) => cmd_eject(tail, cwd, out, err),
         ("init" | "eject", Host::Owned) => Err(Usage(format!(
             "`{command}` is not a command of a project's codegen crate; run `{TOOL} {command}`"
         ))),
@@ -723,26 +799,7 @@ fn dispatch(
 
 /// Run the command line with the shipped generators. Returns the process exit status.
 pub fn main_with(args: &[String], cwd: &Path, out: &mut dyn Write, err: &mut dyn Write) -> i32 {
-    let engine_root = eject::default_engine_root();
-    main_with_engine(args, cwd, &engine_root, out, err)
-}
-
-/// [`main_with`], naming the engine checkout an ejected `codegen/Cargo.toml` points at.
-pub fn main_with_engine(
-    args: &[String],
-    cwd: &Path,
-    engine_root: &Path,
-    out: &mut dyn Write,
-    err: &mut dyn Write,
-) -> i32 {
-    dispatch(
-        args,
-        cwd,
-        &shipped_generators(),
-        &Host::Shipped { engine_root },
-        out,
-        err,
-    )
+    dispatch(args, cwd, &shipped_generators(), &Host::Shipped, out, err)
 }
 
 /// The command line of a project's `codegen/` crate: `gen` and `verify` over the generator

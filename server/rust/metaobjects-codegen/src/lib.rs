@@ -1,4 +1,4 @@
-//! MetaObjects code generation for Rust (preview).
+//! MetaObjects code generation for Rust.
 //!
 //! The run engine ([`engine`]) loads a project, decides whether anything changed
 //! ([`fingerprint`], ADR-0064), renders through [`generator::Generator`]s, and writes only the
@@ -21,6 +21,7 @@ pub mod engine;
 pub mod entity;
 pub mod fingerprint;
 pub mod generator;
+pub mod generator_list;
 pub mod hashes;
 pub mod names;
 pub mod plan;

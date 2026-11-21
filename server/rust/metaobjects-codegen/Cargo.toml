@@ -1,13 +1,16 @@
 [package]
 name = "metaobjects-codegen"
-description = "MetaObjects code generation for Rust (preview): the run engine and the entity generator."
+description = "MetaObjects code generation for Rust: the run engine and the entity, client and commands generators."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-# Not published yet: the first crates.io release is a separate, approved step.
-publish = false
+homepage.workspace = true
+authors.workspace = true
+readme = "README.md"
+keywords = ["metadata", "codegen", "code-generation", "schema", "rest"]
+categories = ["development-tools", "development-tools::build-utils"]
 build = "build.rs"
 
 [dependencies]

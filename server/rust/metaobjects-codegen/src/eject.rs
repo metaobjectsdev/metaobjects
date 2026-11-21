@@ -17,8 +17,8 @@
 //! `crate::`, which is what lets one text compile in both places.
 //!
 //! This is not a plugin contract. Nothing discovers or loads a third-party generator, and
-//! the engine's Rust API carries no stability promise while the port is in preview: an owned
-//! copy is pinned to the engine checkout its `Cargo.toml` points at.
+//! the engine's Rust API carries no stability promise between releases: an owned copy is
+//! pinned to the exact engine its `Cargo.toml` names (see [`EngineSource`]).
 //!
 //! Nothing is recorded about an eject. What a project owns is what is on disk under
 //! `codegen/generators/`, and "identical" is decided by comparing a copy with the shipped
@@ -43,6 +43,8 @@ pub struct Reference {
     pub tier: &'static str,
     /// The layer an adopter selects it by, in the shared generator registry's words.
     pub layer: &'static str,
+    /// The shipped generators it builds on: a project's generator list names them too.
+    pub needs: &'static [&'static str],
     /// One line for `gen --list`.
     pub summary: &'static str,
     /// The shipped source, which is also the owned copy's text.
@@ -74,6 +76,7 @@ pub const REFERENCES: &[Reference] = &[
         layer: "model",
         module: "entity",
         type_name: "EntityGenerator",
+        needs: &[],
         summary: "model crates, one per metadata package: serde structs, enums, value \
                   objects, create and patch inputs, validate()",
         source: include_str!("entity.rs"),
@@ -84,6 +87,7 @@ pub const REFERENCES: &[Reference] = &[
         layer: "client",
         module: "client",
         type_name: "ClientGenerator",
+        needs: &["entity"],
         summary: "client crates, one per package with served entities: a typed HTTP \
                   client and list query per entity (needs entity)",
         source: include_str!("client.rs"),
@@ -94,6 +98,7 @@ pub const REFERENCES: &[Reference] = &[
         layer: "client",
         module: "commands",
         type_name: "CommandsGenerator",
+        needs: &["entity", "client"],
         summary: "command crates, one per package with served entities: clap commands \
                   over the client (needs entity and client; Rust only)",
         source: include_str!("commands.rs"),
@@ -255,16 +260,114 @@ fn resolve(names: &[String]) -> Result<Vec<&'static Reference>, EjectError> {
     Ok(out)
 }
 
+/// Where an owned generator crate gets the engine it builds against: the three crates
+/// `metaobjects`, `metaobjects-codegen` and `metaobjects-cli`.
+///
+/// The default names no machine. An owned copy is the engine's own source, so it is pinned to
+/// the exact engine release it was ejected from; a checkout or a git revision is a choice the
+/// project makes out loud with `--engine`, and what it writes is that choice, never the path
+/// the running binary was built in.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum EngineSource {
+    /// The crates.io release this tool is (`=<version>`).
+    #[default]
+    Registry,
+    /// A checkout's `server/rust` directory, as the project named it. A relative path is
+    /// relative to the project root.
+    Path(PathBuf),
+    /// A git repository, and the revision to build (a branch, tag or commit), if any.
+    Git { url: String, rev: Option<String> },
+}
+
+impl EngineSource {
+    /// What `--engine` was given: a URL (`https://...`, `ssh://...`, `git@host:...`), with an
+    /// optional `#<revision>`, names a git repository; anything else is a directory.
+    pub fn parse(spec: &str) -> Self {
+        if spec.contains("://") || spec.starts_with("git@") {
+            let (url, rev) = match spec.split_once('#') {
+                Some((url, rev)) if !rev.is_empty() => (url, Some(rev.to_string())),
+                Some((url, _)) => (url, None),
+                None => (spec, None),
+            };
+            EngineSource::Git {
+                url: url.to_string(),
+                rev,
+            }
+        } else {
+            EngineSource::Path(PathBuf::from(spec))
+        }
+    }
+
+    /// One phrase for the message `eject` prints.
+    pub fn describe(&self) -> String {
+        match self {
+            EngineSource::Registry => {
+                format!("crates.io, exactly {}", env!("CARGO_PKG_VERSION"))
+            }
+            EngineSource::Path(p) => format!("the checkout at {}", p.display()),
+            EngineSource::Git { url, rev: Some(r) } => format!("{url} at {r}"),
+            EngineSource::Git { url, rev: None } => url.clone(),
+        }
+    }
+
+    /// The dependency line for one engine crate, as written in `codegen/Cargo.toml`.
+    fn dependency(&self, name: &str) -> String {
+        match self {
+            EngineSource::Registry => format!("{name} = \"={}\"", env!("CARGO_PKG_VERSION")),
+            EngineSource::Path(root) => {
+                // `codegen/Cargo.toml` sits one directory below the project root.
+                let base = if root.is_absolute() {
+                    root.clone()
+                } else {
+                    Path::new("..").join(root)
+                };
+                format!("{name} = {{ path = {} }}", toml_string(&base.join(name)))
+            }
+            EngineSource::Git { url, rev } => match rev {
+                Some(r) => format!(
+                    "{name} = {{ git = {}, rev = {} }}",
+                    toml_str(url),
+                    toml_str(r)
+                ),
+                None => format!("{name} = {{ git = {} }}", toml_str(url)),
+            },
+        }
+    }
+
+    fn note(&self) -> &'static str {
+        match self {
+            EngineSource::Registry => {
+                "# The engine is the crates.io release this project ejected from, pinned exactly: an\n\
+                 # owned copy is that release's source. Upgrade the three versions together, then\n\
+                 # compare each copy with `cargo meta gen --list`. To build against a checkout or a\n\
+                 # git revision instead, replace each line with `{ path = \"...\" }` or\n\
+                 # `{ git = \"...\", rev = \"...\" }`, or eject with `--engine`.\n"
+            }
+            EngineSource::Path(_) => {
+                "# The engine is a checkout of the repository's `server/rust`. Change the three paths\n\
+                 # if it moves, or point them at a git revision or a crates.io release.\n"
+            }
+            EngineSource::Git { .. } => {
+                "# The engine is a git revision of the repository. Change the three entries to move to\n\
+                 # another revision, a checkout (`path`) or a crates.io release.\n"
+            }
+        }
+    }
+}
+
+/// A string as a TOML basic string.
+fn toml_str(text: &str) -> String {
+    format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
 /// A path as a TOML basic string.
 fn toml_string(path: &Path) -> String {
     let text = path.to_string_lossy().replace('\\', "/");
-    format!("\"{}\"", text.replace('"', "\\\""))
+    toml_str(&text)
 }
 
-/// The owned crate's manifest. `engine_root` is the directory holding the three engine
-/// crates (a checkout's `server/rust`): nothing is published while the port is in preview.
-pub fn scaffold_manifest(engine_root: &Path) -> String {
-    let dep = |name: &str| toml_string(&engine_root.join(name));
+/// The owned crate's manifest, with the engine from `engine`.
+pub fn scaffold_manifest(engine: &EngineSource) -> String {
     format!(
         "# The generators this project owns (`cargo meta eject`). This crate is yours.\n\
          # `cargo meta gen` and `cargo meta verify` build and run it while it exists.\n\
@@ -278,13 +381,11 @@ pub fn scaffold_manifest(engine_root: &Path) -> String {
          name = \"codegen\"\n\
          path = \"main.rs\"\n\
          \n\
-         # The Rust port is in preview and nothing is published, so the engine is a path into\n\
-         # a checkout. Change these three paths if that checkout moves, or point them at a git\n\
-         # revision.\n\
+         {}\
          [dependencies]\n\
-         metaobjects = {{ path = {} }}\n\
-         metaobjects-cli = {{ path = {} }}\n\
-         metaobjects-codegen = {{ path = {} }}\n\
+         {}\n\
+         {}\n\
+         {}\n\
          # What the shipped generators themselves import. Add your own beside it.\n\
          serde_json = {{ version = \"1\", features = [\"preserve_order\"] }}\n\
          \n\
@@ -295,9 +396,10 @@ pub fn scaffold_manifest(engine_root: &Path) -> String {
          \n\
          # Its own workspace, so an enclosing one neither claims nor rejects it.\n\
          [workspace]\n",
-        dep("metaobjects"),
-        dep("metaobjects-cli"),
-        dep("metaobjects-codegen"),
+        engine.note(),
+        engine.dependency("metaobjects"),
+        engine.dependency("metaobjects-cli"),
+        engine.dependency("metaobjects-codegen"),
     )
 }
 
@@ -346,7 +448,7 @@ pub fn eject(
     project_root: &Path,
     names: &[String],
     force: bool,
-    engine_root: &Path,
+    engine: &EngineSource,
 ) -> Result<Vec<String>, EjectError> {
     if names.is_empty() {
         return Err(EjectError::Usage(
@@ -384,10 +486,10 @@ pub fn eject(
     if manifest.exists() {
         lines.push(format!("  kept {OWNED_MANIFEST} (already yours)"));
     } else {
-        write_new(&manifest, &scaffold_manifest(engine_root))?;
+        write_new(&manifest, &scaffold_manifest(engine))?;
         lines.push(format!(
-            "  wrote {OWNED_MANIFEST} (the engine is the checkout at {})",
-            engine_root.display()
+            "  wrote {OWNED_MANIFEST} (the engine is {})",
+            engine.describe()
         ));
     }
     let main = project_root.join(OWNED_MAIN);
@@ -513,13 +615,4 @@ pub fn undo(project_root: &Path, names: &[String], force: bool) -> Result<Vec<St
         );
     }
     Ok(lines)
-}
-
-/// The directory an owned crate's engine paths default to: the `server/rust` of the checkout
-/// this binary was built from.
-pub fn default_engine_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")))
 }

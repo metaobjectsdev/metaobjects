@@ -838,7 +838,7 @@ gate_conf_python() {
   if [ "$NO_INTEG" -eq 1 ] || ! docker info >/dev/null 2>&1; then skip_integ=""; fi
   ( cd server/python && uv run --extra integration pytest tests/ $skip_integ -q -n "${MO_CI_PY_WORKERS:-8}" )
 }
-# The Rust port (preview, ADR-0065). The whole workspace suite, not a cherry-pick: the
+# The Rust port (ADR-0065). The whole workspace suite, not a cherry-pick: the
 # registry-conformance and metamodel corpora, the unit tests, and the codegen tests (which run
 # `cargo check` on generated crates), a few seconds once built. --locked
 # so a stale Cargo.lock fails here instead of being rewritten. The build goes to the
@@ -849,7 +849,15 @@ gate_conf_rust() {
       && cargo clippy --locked --all-targets -q -- -D warnings \
       && cargo test --locked -q -- --nocapture \
       && gate_rust_load_bench \
-      && gate_rust_gen_bench )
+      && gate_rust_gen_bench \
+      && gate_rust_publish_dry_run )
+}
+# The crates are publishable (ADR-0065 Amendment 3), so a change that would make `cargo publish`
+# refuse them fails here, not on the day somebody publishes: package all three, build each
+# from its packaged copy, and stop short of uploading. --allow-dirty because this checks the
+# packaging, not the working tree; nothing is uploaded, ever, by this gate.
+gate_rust_publish_dry_run() {
+  cargo publish --dry-run --workspace --locked --allow-dirty
 }
 # Load time per phase and per validation pass on the 20x fitness model. Record only:
 # it prints a table and never fails on a number, so a slowdown is read in the log and
