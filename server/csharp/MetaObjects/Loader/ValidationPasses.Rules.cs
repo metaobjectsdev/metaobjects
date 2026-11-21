@@ -380,13 +380,14 @@ public static partial class ValidationPasses
 
     /// <summary>The name a permission point asks the policy about: its @permission, else <c>&lt;package&gt;.&lt;path&gt;</c>
     /// (the path is the operation name, or <c>&lt;Entity&gt;.&lt;transition&gt;</c> for a transition's command). The package
-    /// prefix is dropped when there is none. <c>::</c> and <c>.</c> both separate path segments, so they compare equal.</summary>
+    /// prefix is dropped when there is none. The name is compared exactly as the policy receives it: <c>::</c> and <c>.</c>
+    /// are different things in the metadata, so <c>p::Order.open</c> and <c>p.Order.open</c> are two names.</summary>
     private static (string Name, bool Derived) PermissionNameOf(MetaData node, MetaData owner, string path)
     {
         var declared = node.Attr(OPERATION_ATTR_PERMISSION) as string;
         var pkg = NamingRefs.EffectivePackageOf(NamingRefs.TopLevelNodeOf(owner));
         var name = declared ?? (pkg.Length == 0 ? path : $"{pkg}.{path}");
-        return (name.Replace("::", "."), declared is null);
+        return (name, declared is null);
     }
 
     /// <summary>P3: two permission points, one name, at least one of the two derived. Points are every non-public

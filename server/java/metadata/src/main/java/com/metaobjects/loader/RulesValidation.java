@@ -469,8 +469,9 @@ final class RulesValidation {
         if (flag(node, ApiConstants.ATTR_PUBLIC)) return;
         String declared = Lifecycles.stringValue(node, ApiConstants.ATTR_PERMISSION);
         String pkg = References.effectivePackageOf(owner);
-        String raw = declared != null ? declared : pkg.isEmpty() ? path : pkg + "." + path;
-        String name = raw.replace("::", ".");
+        // Compared exactly as the policy receives it: "::" and "." are different things in the
+        // metadata, so "p::Order.open" and "p.Order.open" are two names.
+        String name = declared != null ? declared : pkg.isEmpty() ? path : pkg + "." + path;
         boolean derived = declared == null;
         List<PermissionPoint> points = byName.computeIfAbsent(name, k -> new ArrayList<>());
         PermissionPoint clash = null;
