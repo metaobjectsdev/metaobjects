@@ -84,11 +84,18 @@ npm install --save-dev @metaobjectsdev/codegen-ts-react @metaobjectsdev/codegen-
 npm install            @metaobjectsdev/react @metaobjectsdev/tanstack @metaobjectsdev/runtime-web
 ```
 
-`@metaobjectsdev/codegen-ts` declares `drizzle-orm` and `zod` as non-optional
-peer dependencies, so npm installs both automatically. The default Fastify
-routes generator (`routesFile()`) additionally needs `fastify` at runtime — it
-is an **optional** peer of `@metaobjectsdev/runtime-ts` (so it is *not*
-auto-installed); add it explicitly:
+`@metaobjectsdev/codegen-ts` declares `drizzle-orm` and `zod` as **optional** peer
+dependencies, so npm installs neither with it. Install them when the generators you
+take write code that imports them; `meta gen --list --format json` gives each
+generator's install set. The stock `entity`, `queries` and `routes` pair needs both:
+
+```bash
+npm install drizzle-orm zod
+```
+
+The default Fastify routes generator (`routesFile()`) additionally needs `fastify`
+at runtime — it is an **optional** peer of `@metaobjectsdev/runtime-ts` (so it is
+*not* auto-installed); add it explicitly:
 
 ```bash
 npm install fastify
