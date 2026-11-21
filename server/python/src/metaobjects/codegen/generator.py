@@ -72,6 +72,52 @@ class Generator(Protocol):
     def generate(self, ctx: GenContext) -> list[EmittedFile]: ...
 
 
+class SelectedGenerator:
+    """A generator limited to some packages and objects: the ``packages`` / ``entities`` of its
+    ``generators`` entry in ``metaobjects.config.yaml``.
+
+    It is the wrapped generator with one thing changed, its ``filter`` (the predicate the
+    runner reads into ``ctx.matches``): the wrapped generator's own filter, if it has one,
+    AND-ed with the selection. So the selection can only narrow, and it narrows a whole-model
+    file the generator writes (shared enums, a report writer) the same way as a per-object
+    one: the file is built from the objects the generator is selected for. Every other
+    attribute (``name``, ``cacheable``, ``declared_extra_inputs``, whatever an owned
+    generator adds) is the wrapped generator's.
+    """
+
+    def __init__(
+        self,
+        inner: "Generator",
+        packages: frozenset[str] | None,
+        entities: frozenset[str] | None,
+    ) -> None:
+        self._inner = inner
+        self._packages = packages
+        self._entities = entities
+
+    def __getattr__(self, attr: str) -> object:
+        # Only reached for what this class does not define: delegate to the wrapped generator.
+        return getattr(self._inner, attr)
+
+    @property
+    def inner(self) -> "Generator":
+        return self._inner
+
+    def selects(self, entity: MetaObject) -> bool:
+        from metaobjects.codegen.value_objects import pkg_of
+
+        return (self._entities is None or entity.name in self._entities) and (
+            self._packages is None or pkg_of(entity) in self._packages
+        )
+
+    def filter(self, entity: MetaObject) -> bool:
+        inner_filter = getattr(self._inner, "filter", None)
+        return self.selects(entity) and (not callable(inner_filter) or bool(inner_filter(entity)))
+
+    def generate(self, ctx: GenContext) -> list[EmittedFile]:
+        return self._inner.generate(ctx)
+
+
 def generator_cacheable(gen: object) -> bool:
     """Whether a run that includes ``gen`` may be skipped when nothing changed."""
     return bool(getattr(gen, "cacheable", True))

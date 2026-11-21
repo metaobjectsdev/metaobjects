@@ -1004,6 +1004,17 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   and no longer call `ruff`; the others convert one at a time, and `ruff_format` stays exported for
   owned generators that call it.
 
+- **Python: per-generator package and entity selection and generator options in
+  `metaobjects.config.yaml`.** A `generators` entry written as a mapping now takes `packages`,
+  `entities` and `options` beside `name` and `handEdits`. `packages` and `entities` limit that one
+  generator to part of its target; `options` hands the generator its own settings, in camelCase,
+  as snake_case keyword arguments. They work for a packaged generator (`report-export` takes
+  `maxRows`, `xmlNulls` and `csvBom`; `routes` takes `reportMaxRows`; `metaobjects gen --list` names
+  them) and for a team's own `module:symbol` one, whose factory or class receives them (or, if it
+  takes the build context, reads `ctx.options`). A package or entity the target does not hold, an
+  option a generator does not take, and options on a generator instance are refused with a message
+  that lists what is accepted, never ignored. `metaobjects-config.schema.json` carries the keys.
+
 - **Select objects to regenerate in every port.** C# `dotnet meta gen --entities A,B` (and
   `verify --codegen --entities`) and, for Java and Kotlin, `mvn metaobjects:generate
   -Dmeta.entities=A,B` regenerate only the named objects' files, like TypeScript's
