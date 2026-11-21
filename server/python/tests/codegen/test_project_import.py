@@ -303,6 +303,7 @@ def test_a_namespace_layout_in_the_project_loses_to_a_regular_package_earlier_lo
 def test_build_owned_instantiates_a_generator_class(tmp_path: Path) -> None:
     """MINOR 2: `module:symbol` naming a generator CLASS yields an instance, not the class."""
     from metaobjects.codegen.eject import build_owned
+    from metaobjects.codegen.generator_registry import GeneratorBuildContext
 
     pkg = tmp_path / "owned_gen_pkg"
     pkg.mkdir()
@@ -314,7 +315,7 @@ def test_build_owned_instantiates_a_generator_class(tmp_path: Path) -> None:
         "        return []\n"
     )
     try:
-        gen, err = build_owned("owned_gen_pkg.mine:Mine", tmp_path, None)  # type: ignore[arg-type]
+        gen, err = build_owned("owned_gen_pkg.mine:Mine", tmp_path, GeneratorBuildContext())
         assert err is None
         assert not isinstance(gen, type) and gen is not None and gen.name == "mine"
         assert gen.generate(None) == []  # type: ignore[arg-type]

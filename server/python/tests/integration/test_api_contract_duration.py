@@ -3,7 +3,7 @@
 Drives ``fixtures/api-contract-conformance/duration/`` against the GENERATED ``Timer`` router
 on a REAL database: the corpus' ``schema.<engine>.sql`` runs verbatim on Postgres, SQLite and
 MySQL 8.4, ``timers`` is seeded from ``seed.json`` (empty, so the first POST is id 1), and the
-generated consumer seam is an ``ObjectManager`` repository. The corpus config pins
+generated consumer seam is an ``ObjectManagerDb`` repository. The corpus config pins
 ``wire.durations: iso``. A scenario's top-level ``engines:`` is EXACT; without it a scenario
 runs on every engine the lane has. Same harness as ``test_api_contract_decimal.py``.
 """

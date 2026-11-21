@@ -1,4 +1,4 @@
-"""field.enum @intValueMap — Python ObjectManager persistence codec.
+"""field.enum @intValueMap — Python ObjectManagerDb persistence codec.
 
 The metamodel layer ships the attribute; this pins the RUNTIME halves:
 write encodes the member symbol to its declared int, read decodes it back.
@@ -14,7 +14,7 @@ import pytest
 
 from metaobjects.loader.meta_data_loader import MetaDataLoader
 from metaobjects.loader.sources import InMemoryStringSource
-from metaobjects.runtime.object_manager import _coerce_write_value, _decode_read_value
+from metaobjects.runtime.values import coerce_write_value as _coerce_write_value, decode_read_value as _decode_read_value
 
 INT_MAP = ', "@intValueMap": {"DRAFT": 0, "PUBLISHED": 5, "ARCHIVED": 9}'
 
@@ -162,31 +162,31 @@ def _order_entity(extra: str):
 
 
 def test_filter_eq_on_int_backed_enum_binds_the_int():
-    from metaobjects.runtime.object_manager import _compile_filter
+    from metaobjects.runtime.object_manager_db import _compile_filter
     _, params = _compile_filter({"status": {"eq": "PUBLISHED"}}, _order_entity(INT_MAP))
     assert params == [5]
 
 
 def test_filter_shortcut_equality_on_int_backed_enum_binds_the_int():
-    from metaobjects.runtime.object_manager import _compile_filter
+    from metaobjects.runtime.object_manager_db import _compile_filter
     _, params = _compile_filter({"status": "DRAFT"}, _order_entity(INT_MAP))
     assert params == [0]
 
 
 def test_filter_in_on_int_backed_enum_binds_each_int():
-    from metaobjects.runtime.object_manager import _compile_filter
+    from metaobjects.runtime.object_manager_db import _compile_filter
     _, params = _compile_filter({"status": {"in": ["DRAFT", "ARCHIVED"]}}, _order_entity(INT_MAP))
     assert params == [0, 9]
 
 
 def test_filter_on_string_backed_enum_is_unchanged():
-    from metaobjects.runtime.object_manager import _compile_filter
+    from metaobjects.runtime.object_manager_db import _compile_filter
     _, params = _compile_filter({"status": {"eq": "PUBLISHED"}}, _order_entity(""))
     assert params == ["PUBLISHED"]
 
 
 def test_filter_isnull_binds_no_param_and_is_not_coerced():
-    from metaobjects.runtime.object_manager import _compile_filter
+    from metaobjects.runtime.object_manager_db import _compile_filter
     sql, params = _compile_filter({"status": {"isNull": True}}, _order_entity(INT_MAP))
     assert params == []
     assert "IS NULL" in sql
@@ -281,9 +281,9 @@ def test_int_backed_enum_array_inheriting_the_map_from_a_shared_enum():
 
 def test_filter_equality_on_an_int_backed_enum_array_binds_ints():
     """The runtime has no array operators (contains/overlaps) and the loader
-    refuses @filterable on an array, but a direct ObjectManager filter can still
+    refuses @filterable on an array, but a direct ObjectManagerDb filter can still
     compare the whole array; its operand encodes like a write."""
-    from metaobjects.runtime.object_manager import _compile_filter
+    from metaobjects.runtime.object_manager_db import _compile_filter
     _, params = _compile_filter({"status": {"eq": ["PUBLISHED", "DRAFT"]}}, _order_entity(ARRAY_INT_MAP))
     assert params == [[5, 0]]
     _, params = _compile_filter({"status": ["ARCHIVED"]}, _order_entity(ARRAY_INT_MAP))

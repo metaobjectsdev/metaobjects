@@ -13,7 +13,7 @@ import pytest
 
 from metaobjects.loader.meta_data_loader import MetaDataLoader
 from metaobjects.loader.sources import InMemoryStringSource
-from metaobjects.runtime.object_manager import _coerce_key_value
+from metaobjects.runtime.values import coerce_key_value as _coerce_key_value
 
 MODEL = """{"metadata.root": {"package": "acme", "children": [
   {"object.entity": {"name": "Thing", "children": [

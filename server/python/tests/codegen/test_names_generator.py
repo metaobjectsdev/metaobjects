@@ -118,7 +118,7 @@ def test_emits_final_constants_for_table_and_columns() -> None:
     assert "READ_ONLY" not in src
     # A2: both names, always, always distinguished.
     assert 'SUBSCRIBER_CREATED_AT_FIELD: Final[str] = "createdAt"' in src
-    # This port's default strategy is literal, matching ObjectManager.
+    # This port's default strategy is literal, matching ObjectManagerDb.
     assert 'SUBSCRIBER_CREATED_AT_COLUMN: Final[str] = "createdAt"' in src
     # The map's values REFERENCE the constant, never repeat the literal.
     assert '"createdAt": SUBSCRIBER_CREATED_AT_COLUMN,' in src

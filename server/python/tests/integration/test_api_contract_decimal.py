@@ -4,7 +4,7 @@ Drives ``fixtures/api-contract-conformance/decimal/`` against the GENERATED rout
 writable ``Entry`` router and the served ``EntryTotals`` report router) on a REAL database:
 the corpus' TypeScript-produced ``schema.<engine>.sql`` runs verbatim on Postgres, SQLite and
 MySQL 8.4, ``entries`` is seeded from ``seed.json`` (amounts are strings, never numbers), and
-each generated consumer seam is an ``ObjectManager`` repository. A scenario's top-level
+each generated consumer seam is an ``ObjectManagerDb`` repository. A scenario's top-level
 ``engines:`` is EXACT (an unknown name is an error); without it a scenario runs on every
 engine the lane has.
 

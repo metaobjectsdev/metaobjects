@@ -1052,6 +1052,19 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   and no longer call `ruff`; the others convert one at a time, and `ruff_format` stays exported for
   owned generators that call it.
 
+- **Python: the `ObjectManager` splits into an abstract `ObjectManager` and a concrete
+  `ObjectManagerDb` (breaking).** `ObjectManager(root, driver)` no longer constructs: it raises a
+  `TypeError` naming `ObjectManagerDb(root, driver)`, and there is no shim. `ObjectManager` is
+  now the store-neutral contract (the Java `ObjectManager` / `ObjectManagerDB` shape) that
+  generated and hand-written code can be typed against; `ObjectManagerDb` is the DB-API
+  implementation on Postgres, SQLite and MySQL, with the same SQL and the same rows as before.
+  New with the split: `with om.transaction():` (every write in the block commits together or
+  rolls back together; a nested block joins the outer one), persistence listeners
+  (`om.add_listener(PersistenceListener)`, before and after each create, update and delete), and
+  `metaobjects.runtime.values`, the write and read value codecs as a public module. The drivers
+  (`DbApiDriver`, `PostgresDriver`, `SqliteDriver`, `MySqlDriver`) now live in
+  `metaobjects.runtime.drivers` and keep their `metaobjects.runtime` exports. Upgrade note:
+  [docs/features/migrations/python-object-manager-split.md](docs/features/migrations/python-object-manager-split.md).
 - **Python: per-generator package and entity selection and generator options in
   `metaobjects.config.yaml`.** A `generators` entry written as a mapping now takes `packages`,
   `entities` and `options` beside `name` and `handEdits`. `packages` and `entities` limit that one

@@ -1,5 +1,5 @@
 """B1, end to end on SQLite: `naming.columns: literal` in the project's
-`.metaobjects/config.json`, found by `load_directory`, makes the ObjectManager read a
+`.metaobjects/config.json`, found by `load_directory`, makes the ObjectManagerDb read a
 table whose columns are the literal field names."""
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import sqlite3
 from pathlib import Path
 
 from metaobjects import load_directory
-from metaobjects.runtime import ObjectManager, SqliteDriver
+from metaobjects.runtime import ObjectManagerDb, SqliteDriver
 
 _META = {
     "metadata.root": {
@@ -44,14 +44,14 @@ def _db() -> sqlite3.Connection:
 
 def test_literal_columns_are_read_through_the_object_manager(tmp_path: Path) -> None:
     meta = _project(tmp_path, {"columns": "literal"})
-    om = ObjectManager(load_directory(meta).root, SqliteDriver(_db()))  # type: ignore[arg-type]
+    om = ObjectManagerDb(load_directory(meta).root, SqliteDriver(_db()))  # type: ignore[arg-type]
     assert om.find_many("Item") == [{"id": 1, "unitPrice": "ten"}]
     assert om.create("Item", {"unitPrice": "five"})["unitPrice"] == "five"
 
 
 def test_without_the_setting_the_runtime_does_not_read_the_literal_column(tmp_path: Path) -> None:
     meta = _project(tmp_path, {})
-    om = ObjectManager(load_directory(meta).root, SqliteDriver(_db()))  # type: ignore[arg-type]
+    om = ObjectManagerDb(load_directory(meta).root, SqliteDriver(_db()))  # type: ignore[arg-type]
     # SQLite reads an unknown double-quoted identifier as a string literal, so the wrong
     # name does not error: it answers with the name itself, and the stored value is never read.
     assert "ten" not in om.find_many("Item")[0].values()

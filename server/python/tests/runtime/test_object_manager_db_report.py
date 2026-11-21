@@ -1,4 +1,4 @@
-"""ObjectManager reads a view-backed ``object.report`` (FR-044 Plan 2, Task 14).
+"""ObjectManagerDb reads a view-backed ``object.report`` (FR-044 Plan 2, Task 14).
 
 A report declares no fields: its read shape is derived (Table B). The runtime reads
 it through a detached READ MODEL (``report_read_model``) swapped in at
@@ -23,7 +23,8 @@ from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_REPORT
 from metaobjects.meta.core.reporting.report_read_model import report_read_model
 from metaobjects.naming import NamingRules, attach_naming
-from metaobjects.runtime.object_manager import ObjectManager, SelectResult
+from metaobjects.runtime.drivers import SelectResult
+from metaobjects.runtime.object_manager_db import ObjectManagerDb
 from metaobjects.serializer_json import canonical_serialize
 from metaobjects.shared.base_types import TYPE_OBJECT
 
@@ -66,8 +67,8 @@ def _canonical_root():
     return attach_naming(result.root, CORPUS)
 
 
-def _om(root: Any, driver: RecordingDriver, **kw: Any) -> ObjectManager:
-    return ObjectManager(root, driver, **kw)  # type: ignore[arg-type]
+def _om(root: Any, driver: RecordingDriver, **kw: Any) -> ObjectManagerDb:
+    return ObjectManagerDb(root, driver, **kw)  # type: ignore[arg-type]
 
 
 def _load(text: str):
@@ -166,7 +167,7 @@ def test_count_reads_the_view() -> None:
 def test_the_naming_strategy_applies_to_the_derived_name() -> None:
     """The derived field carries no @column, so snake_case turns ``programTitle`` into
     ``program_title`` (a column the lowering emits under the same strategy)."""
-    # ADR-0058 — naming is read from the loaded root, not an ObjectManager kwarg.
+    # ADR-0058 — naming is read from the loaded root, not an ObjectManagerDb kwarg.
     root = _canonical_root()
     root.naming = NamingRules(columns="snake_case")
     drv = RecordingDriver()

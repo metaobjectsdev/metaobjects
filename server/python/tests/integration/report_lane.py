@@ -1,9 +1,9 @@
-"""One database engine of the api-contract ``report/`` lane: schema, seed, ObjectManager.
+"""One database engine of the api-contract ``report/`` lane: schema, seed, ObjectManagerDb.
 
 The corpus ships a TypeScript-produced schema per engine (``report/schema.<engine>.sql``: the
 four base tables and the nine report views). A lane executes it verbatim into an EMPTY
 database, seeds the base tables from ``seed.json`` (every key but ``reports``; the keys are
-listed parents first), and reads the views through the ObjectManager with the engine's driver.
+listed parents first), and reads the views through the ObjectManagerDb with the engine's driver.
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from typing import Any
 
 import pg8000.dbapi as pg8000
 
-from metaobjects.runtime import MySqlDriver, ObjectManager, PostgresDriver, SqliteDriver
+from metaobjects.runtime import MySqlDriver, ObjectManagerDb, PostgresDriver, SqliteDriver
 from metaobjects.runtime.dialect import Dialect, MYSQL, POSTGRES, SQLITE
 
 from .engines import split_statements
@@ -35,7 +35,7 @@ _DIALECTS: dict[str, Dialect] = {"postgres": POSTGRES, "sqlite": SQLITE, "mysql"
 class ReportLane:
     engine: str
     conn: Any
-    om: ObjectManager
+    om: ObjectManagerDb
     #: base tables in seed order (parents first): name -> rows
     base_tables: dict[str, list[dict[str, Any]]]
     #: what the views are expected to return for the full seed
@@ -137,17 +137,17 @@ def open_lane(
                 password=info.password, database=info.database,
             )) as conn:
                 _exec_script(conn, schema)
-                yield ReportLane(engine, conn, ObjectManager(root, PostgresDriver(conn)), base, reports)
+                yield ReportLane(engine, conn, ObjectManagerDb(root, PostgresDriver(conn)), base, reports)
     elif engine == "sqlite":
         assert sqlite_path is not None
         # check_same_thread=False: the generated sync routes run on the framework's threadpool.
         with closing(sqlite3.connect(str(sqlite_path), check_same_thread=False)) as conn:
             _exec_script(conn, schema)
-            yield ReportLane(engine, conn, ObjectManager(root, SqliteDriver(conn)), base, reports)
+            yield ReportLane(engine, conn, ObjectManagerDb(root, SqliteDriver(conn)), base, reports)
     elif engine == "mysql":
         assert mysql is not None
         with closing(mysql_connect(mysql)) as conn:
             _exec_script(conn, schema)
-            yield ReportLane(engine, conn, ObjectManager(root, MySqlDriver(conn)), base, reports)
+            yield ReportLane(engine, conn, ObjectManagerDb(root, MySqlDriver(conn)), base, reports)
     else:
         raise ValueError(f"unknown engine {engine!r}")

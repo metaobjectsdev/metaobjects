@@ -132,7 +132,7 @@ def test_base_router_polymorphic_plus_per_subtype(entities, index) -> None:
 
 def test_base_seam_states_the_discriminated_union_obligation(entities, index) -> None:
     # The router returns whatever the consumer's repository returns, and the natural
-    # repository — ObjectManager — reads a TPH BASE with the base's columns only (the
+    # repository — ObjectManagerDb — reads a TPH BASE with the base's columns only (the
     # persistence contract in every port). An adopter wiring one to the other served
     # `GET /<base>` without any subtype field and nothing errored. The seam says so.
     src = render_router(entities["Auth"], index)

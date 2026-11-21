@@ -1,4 +1,4 @@
-"""field.duration on a live Postgres through the ObjectManager: the shared interval codec
+"""field.duration on a live Postgres through the ObjectManagerDb: the shared interval codec
 vectors against each driver's native read path. Ordering, range filters and the canonical wire
 form are gated by ``test_api_contract_duration.py`` (the ``api-contract-conformance/duration``
 corpus), which replaced the bespoke ordering test that lived here."""
@@ -15,7 +15,7 @@ import pytest
 from metaobjects import load_string
 from metaobjects.codegen.runtime.duration_wire import format_duration
 from metaobjects.naming import NamingRules
-from metaobjects.runtime import ObjectManager, PostgresDriver
+from metaobjects.runtime import ObjectManagerDb, PostgresDriver
 
 from .postgres_container import PostgresContainer
 
@@ -66,7 +66,7 @@ def _psycopg2(info: Any) -> Any:
 def test_an_interval_reads_as_its_span_and_one_with_a_month_part_is_refused(connect: Any) -> None:
     """The shared ``postgres`` / ``postgresRefused`` vectors against the native read path: each
     interval is stored by Postgres itself and read back through the driver and the
-    ObjectManager. Left to themselves pg8000 drops the sign of a negative time part
+    ObjectManagerDb. Left to themselves pg8000 drops the sign of a negative time part
     (``-00:01:30`` is +90 s) and psycopg makes a month 30 days; neither reaches a duration."""
     root: Any = load_string(json.dumps(_META)).root
     root.naming = NamingRules(columns="literal")
@@ -76,7 +76,7 @@ def test_an_interval_reads_as_its_span_and_one_with_a_month_part_is_refused(conn
             cur.execute('CREATE TABLE "holds" ("id" BIGINT PRIMARY KEY, "holdFor" INTERVAL)')
             conn.commit()
             driver = PostgresDriver(conn)
-            om = ObjectManager(root, driver)
+            om = ObjectManagerDb(root, driver)
             dcur = driver._cursor()
             dcur.execute("SELECT ARRAY[CAST('-01:30:00' AS interval), CAST('-00:00:01.5' AS interval)]")
             assert [format_duration(d) for d in dcur.fetchone()[0]] == ["-PT1H30M", "-PT1.5S"]

@@ -3,11 +3,11 @@ also on SQLite and MySQL.
 
 Postgres: each scenario provisions a fresh Postgres, applies the committed TS-produced
 ``canonical/schema.postgres.sql`` verbatim (schema migrations are TS-only -- ADR-0015), then
-runs the query DSL through the ObjectManager runtime.
+runs the query DSL through the ObjectManagerDb runtime.
 
 SQLite and MySQL 8.4: the same ``report-*`` scenarios run against the engine's own
 TS-produced artifact (``canonical/schema.sqlite.sql`` / ``schema.mysql.sql``), through the
-ObjectManager's SQLite and MySQL drivers. The ``expect`` blocks stay the Postgres wire ones;
+ObjectManagerDb's SQLite and MySQL drivers. The ``expect`` blocks stay the Postgres wire ones;
 the runtime decodes each engine's values to the declared field types and the same
 serialization boundary canonicalizes them. ``report-relative-date`` carries a per-engine seed
 (``seed-data-engine``). One MySQL server serves the whole session; each scenario starts from
@@ -30,7 +30,7 @@ from .scenarios import QueryScenario, find_corpus_root, load_queries
 # single-table-inheritance support — resolving a discriminator subtype's
 # inherited fields / identity / shared table via ``extends`` plus discriminator
 # inject/scope/strip. FR-017 Tier-4: the Python runtime now ships TPH support
-# (ObjectManager discriminator inject/scope/strip + runtime/tph.py), so the
+# (ObjectManagerDb discriminator inject/scope/strip + runtime/tph.py), so the
 # ``tph-*`` scenarios run green and are no longer skipped.
 EXPECTED_FAILURES: dict[str, str] = {}
 

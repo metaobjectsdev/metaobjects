@@ -1,4 +1,4 @@
-"""field.currency read decoding — the Python ObjectManager.
+"""field.currency read decoding — the Python ObjectManagerDb.
 
 Currency is integer minor units, natively and on the wire. A table column stores it as
 BIGINT, which pg8000 already hands back as an ``int``. A VIEW column need not: ``SUM`` over
@@ -14,7 +14,7 @@ from decimal import Decimal
 
 from metaobjects.loader.meta_data_loader import MetaDataLoader
 from metaobjects.loader.sources import InMemoryStringSource
-from metaobjects.runtime.object_manager import _decode_read_value
+from metaobjects.runtime.values import decode_read_value as _decode_read_value
 
 MODEL = """{"metadata.root": {"package": "acme", "children": [
   {"object.entity": {"name": "Leg", "children": [

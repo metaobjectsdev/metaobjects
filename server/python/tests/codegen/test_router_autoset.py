@@ -1,7 +1,7 @@
 """#203 / ADR-0045 — the generated FastAPI router (the deployed API surface) stamps
 ``@autoSet`` timestamps ABOVE the consumer repository seam, so an adopter who wires
 their own persistence into the generated router still gets the shipped stamping
-semantics. (The ObjectManager keeps stamping for non-HTTP writes — defense-in-depth,
+semantics. (The ObjectManagerDb keeps stamping for non-HTTP writes — defense-in-depth,
 not the wire-tier guarantee.) A non-``@autoSet`` entity's router stays byte-identical."""
 
 from __future__ import annotations

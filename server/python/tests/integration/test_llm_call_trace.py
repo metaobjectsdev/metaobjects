@@ -1,6 +1,6 @@
 """Real-Postgres round-trip oracle for the AI-trace recorder (Slice 1, Python port).
 
-Proves a typed LLM-call trace persists + reads back through the ObjectManager
+Proves a typed LLM-call trace persists + reads back through the ObjectManagerDb
 runtime against a live Postgres: a trace entity extending the SHIPPED
 ``metaobjects::ai::LlmCallBase`` (library/ai/model.yaml) plus a typed
 ``voResponse`` (field.object + @objectRef + @storage:jsonb). Asserts BOTH the raw
@@ -8,7 +8,7 @@ envelope (the 18 base fields, raw llmRequest/llmResponse jsonb) AND the typed
 voResponse jsonb round-trip.
 
 Mirrors test_runtime_return_types: a docker-CLI PostgresContainer + pg8000 +
-ObjectManager, schema provisioned by explicit DDL (ADR-0015: pure data-access).
+ObjectManagerDb, schema provisioned by explicit DDL (ADR-0015: pure data-access).
 Not part of the default unit run — requires Docker.
 """
 from __future__ import annotations
@@ -20,7 +20,7 @@ from metaobjects import FileSource, MetaDataLoader
 from metaobjects.naming import NamingRules
 from metaobjects.runtime import (
     LlmCallInput,
-    ObjectManager,
+    ObjectManagerDb,
     ObjectManagerLlmCallRecorder,
     PostgresDriver,
     build_llm_call_row,
@@ -74,7 +74,7 @@ def _connect(info):
 def test_typed_trace_round_trips_through_postgres() -> None:
     # voResponse is AUTHORED in the fixture (field.object + @objectRef + jsonb).
     # No derivation: this proves the recorder persists the authored typed column
-    # through the metadata-driven ObjectManager runtime.
+    # through the metadata-driven ObjectManagerDb runtime.
     loader = MetaDataLoader(strict=True)
     result = loader.load([
         FileSource(_repo_file("library/ai/model.yaml")),
@@ -95,7 +95,7 @@ def test_typed_trace_round_trips_through_postgres() -> None:
             conn.commit()
             cur.close()
 
-            om = ObjectManager(result.root, PostgresDriver(conn))
+            om = ObjectManagerDb(result.root, PostgresDriver(conn))
             # Capture (don't swallow) write failures so the round-trip fails loudly.
             write_errors: list[BaseException] = []
             recorder = ObjectManagerLlmCallRecorder(om, _ENTITY, on_error=write_errors.append)

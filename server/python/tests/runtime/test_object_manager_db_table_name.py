@@ -1,4 +1,4 @@
-"""ObjectManager's physical table name comes from a DECLARED source, or nowhere.
+"""ObjectManagerDb's physical table name comes from a DECLARED source, or nowhere.
 
 #248: participation in persistence derives from a declared ``source.rdb``, never
 from the object subtype. A concrete ``object.entity`` declaring no source at all
@@ -17,7 +17,7 @@ import pytest
 
 from metaobjects.loader.meta_data_loader import MetaDataLoader
 from metaobjects.loader.sources import InMemoryStringSource
-from metaobjects.runtime.object_manager import ObjectManager
+from metaobjects.runtime.object_manager_db import ObjectManagerDb
 
 SOURCELESS = """{ "metadata.root": { "package": "acme", "children": [
   { "object.entity": { "name": "Ledger", "children": [
@@ -50,10 +50,10 @@ INHERITED = """{ "metadata.root": { "package": "acme", "children": [
 ]} }"""
 
 
-def _om(json_str: str) -> ObjectManager:
+def _om(json_str: str) -> ObjectManagerDb:
     result = MetaDataLoader().load([InMemoryStringSource(json_str, "test.json")])
     assert result.errors == []
-    return ObjectManager(result.root, driver=None)
+    return ObjectManagerDb(result.root, driver=None)
 
 
 def test_a_sourceless_entity_loads_cleanly() -> None:

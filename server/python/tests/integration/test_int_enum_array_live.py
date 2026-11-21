@@ -1,6 +1,6 @@
 """An int-backed ``field.enum`` ARRAY on a live Postgres: the stored elements are ints.
 
-The unit tests pin the codec in isolation; this drives the real ``ObjectManager`` and pg8000
+The unit tests pin the codec in isolation; this drives the real ``ObjectManagerDb`` and pg8000
 against an ``integer[]`` column and reads the RAW column back, so the failure mode the old
 load-time refusal guarded against (member symbols persisted into the array) cannot hide behind a
 codec that only round-trips with itself.
@@ -23,7 +23,7 @@ import pg8000.dbapi as pg8000
 import pytest
 
 from metaobjects import load_string
-from metaobjects.runtime import ObjectManager, PostgresDriver
+from metaobjects.runtime import ObjectManagerDb, PostgresDriver
 
 from .postgres_container import PostgresContainer
 
@@ -55,7 +55,7 @@ _DDL = 'CREATE TABLE "orders" ("id" BIGINT PRIMARY KEY, "status" INTEGER, "histo
 
 
 @pytest.fixture
-def pg() -> Iterator[tuple[ObjectManager, Any]]:
+def pg() -> Iterator[tuple[ObjectManagerDb, Any]]:
     with PostgresContainer() as container:
         info = container.info()
         with closing(pg8000.connect(
@@ -67,7 +67,7 @@ def pg() -> Iterator[tuple[ObjectManager, Any]]:
             conn.commit()
             result = load_string(json.dumps(_META))
             assert result.errors == [], result.errors
-            yield ObjectManager(result.root, PostgresDriver(conn)), conn
+            yield ObjectManagerDb(result.root, PostgresDriver(conn)), conn
 
 
 def _raw(conn: Any, id_value: int) -> Any:
@@ -78,7 +78,7 @@ def _raw(conn: Any, id_value: int) -> Any:
     return history
 
 
-def test_int_backed_enum_array_round_trips_and_stores_ints(pg: tuple[ObjectManager, Any]) -> None:
+def test_int_backed_enum_array_round_trips_and_stores_ints(pg: tuple[ObjectManagerDb, Any]) -> None:
     om, conn = pg
 
     created = om.create("Order", {"id": 1, "status": "PUBLISHED", "history": ["PUBLISHED", "DRAFT"]})
@@ -108,7 +108,7 @@ def test_int_backed_enum_array_round_trips_and_stores_ints(pg: tuple[ObjectManag
     assert [r["id"] for r in rows] == [1]
 
 
-def test_an_unmapped_stored_element_fails_the_read(pg: tuple[ObjectManager, Any]) -> None:
+def test_an_unmapped_stored_element_fails_the_read(pg: tuple[ObjectManagerDb, Any]) -> None:
     om, conn = pg
     cur = conn.cursor()
     cur.execute('INSERT INTO "orders" ("id", "history") VALUES (1, \'{0,7}\')')

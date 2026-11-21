@@ -1,4 +1,4 @@
-"""FR-024 §7 (#214) — ObjectManager read-routing for a write-through entity read-view.
+"""FR-024 §7 (#214) — ObjectManagerDb read-routing for a write-through entity read-view.
 
 A write-through entity (writable table source + read-only replica view source +
 derived ``origin.*`` fields) routes: READS (find_many / find_by_id / count) through
@@ -16,8 +16,8 @@ from typing import Any
 
 from metaobjects import load_string
 from metaobjects.naming import NamingRules
-from metaobjects.runtime import ObjectManager
-from metaobjects.runtime.object_manager import SelectResult
+from metaobjects.runtime import ObjectManagerDb
+from metaobjects.runtime.drivers import SelectResult
 
 _META = {
     "metadata.root": {
@@ -88,14 +88,14 @@ class FakeDriver:
         return 1
 
 
-def _om() -> tuple[ObjectManager, FakeDriver]:
+def _om() -> tuple[ObjectManagerDb, FakeDriver]:
     root = load_string(json.dumps(_META)).root
     # This test is about write-through (table vs replica-view routing), not naming
     # (ADR-0058 flipped the DEFAULT to snake_case) — pin `literal` so the fixture's
     # field names stay the column names these assertions pin.
     root.naming = NamingRules(columns="literal")
     d = FakeDriver()
-    return ObjectManager(root, d), d  # type: ignore[arg-type]
+    return ObjectManagerDb(root, d), d  # type: ignore[arg-type]
 
 
 def _from(sql: str) -> str:

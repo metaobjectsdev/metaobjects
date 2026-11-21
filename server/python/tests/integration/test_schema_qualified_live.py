@@ -1,7 +1,7 @@
 """A ``source.rdb @schema`` places the relation the runtime reads and writes, on a live Postgres.
 
 ``meta migrate`` creates a table declared with ``@schema: sales`` as ``"sales"."payers"``, so the
-ObjectManager must address it there, not as a bare ``"payers"`` (which ``search_path`` resolves to
+ObjectManagerDb must address it there, not as a bare ``"payers"`` (which ``search_path`` resolves to
 ``public``, a different table or none). Two ``Payer`` tables in two schemas are two relations.
 """
 from __future__ import annotations
@@ -15,7 +15,7 @@ import pg8000.dbapi as pg8000
 import pytest
 
 from metaobjects import load_string
-from metaobjects.runtime import ObjectManager, PostgresDriver
+from metaobjects.runtime import ObjectManagerDb, PostgresDriver
 
 from .postgres_container import PostgresContainer
 
@@ -47,7 +47,7 @@ def test_a_schema_qualified_entity_is_read_and_written_in_its_schema(pg: Any) ->
     for schema in ("sales", "billing"):
         result = load_string(json.dumps(_payer(schema, schema)))
         assert result.errors == [], result.errors
-        om = ObjectManager(result.root, PostgresDriver(pg))
+        om = ObjectManagerDb(result.root, PostgresDriver(pg))
         om.create("Payer", {"id": 1, "label": schema})
         assert om.find_by_id("Payer", 1)["label"] == schema
         assert [r["label"] for r in om.find_many("Payer")] == [schema]

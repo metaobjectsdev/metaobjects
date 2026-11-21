@@ -4,7 +4,7 @@ The same row → the same canonical JSON on every port, so `expect` blocks
 compare byte-equal after canonical serialization.
 
 This is the **serialization boundary** for the Python port (ADR-0019): the
-runtime ``ObjectManager`` returns native pg8000 values (``int`` / ``Decimal`` /
+runtime ``ObjectManagerDb`` returns native pg8000 values (``int`` / ``Decimal`` /
 ``datetime`` / ``date`` / ``time`` / ``timedelta`` / ``uuid.UUID`` / ``dict`` / ``list``); the
 canonicalization to the cross-port wire form lives HERE, keyed by Python native
 type — mirroring the other ports' by-native-type runners (Java keys off
@@ -14,7 +14,7 @@ type — mirroring the other ports' by-native-type runners (Java keys off
 The one SQL-type distinction a native Python value cannot carry is int4-vs-int8
 (pg8000 returns plain ``int`` for both, and a BIGINT aggregate over an INTEGER
 column is indistinguishable by value). The boundary recovers it from the
-per-column Postgres OID that ``ObjectManager`` surfaces alongside the query
+per-column Postgres OID that ``ObjectManagerDb`` surfaces alongside the query
 (``last_column_oids``) — the same SQL-type discriminator the other ports get from
 their driver's native typing. A field whose column OID is BIGINT (or any int8
 OID) stringifies; an INTEGER/SMALLINT int stays a JSON number.
@@ -65,7 +65,7 @@ def normalize_value(v: Any, column_oid: int | None = None, *, actual: bool = Fal
         # BIGINT → string (the cross-port contract; avoids the JS Number 2^53
         # precision cliff). The OID is the authoritative discriminator: pg8000
         # returns plain int for both INTEGER and BIGINT, so we key off the column
-        # OID surfaced by ObjectManager. With no OID (a nested jsonb int, or an
+        # OID surfaced by ObjectManagerDb. With no OID (a nested jsonb int, or an
         # `expect` literal), fall back to the value heuristic the TS runner uses
         # (stringify ints outside the int4 range) so cross-port output stays
         # stable without column metadata.
