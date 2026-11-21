@@ -4,22 +4,25 @@ import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { canonicalLines } from "../src/lib/owned-copy.js";
 
+// onResolve does not see a static import inside a module (only dynamic ones), so the probe
+// counts Biome module loads in onLoad, which sees both kinds.
 const probe = `
 import { plugin } from "bun";
-const resolved = [];
+import { readFileSync } from "node:fs";
+const loaded = [];
 plugin({
   name: "biome-probe",
   setup(build) {
-    build.onResolve({ filter: /@biomejs/ }, (args) => {
-      resolved.push(args.path);
-      return undefined;
+    build.onLoad({ filter: /@biomejs\\/.*\\.m?js$/ }, (args) => {
+      loaded.push(args.path);
+      return { loader: "js", contents: readFileSync(args.path, "utf8") };
     });
   },
 });
 const { canonicalLines } = await import(${JSON.stringify(join(import.meta.dir, "..", "src", "lib", "owned-copy.ts"))});
-const afterImport = resolved.length;
+const afterImport = loaded.length;
 await canonicalLines("const x = {a:1};\\n");
-console.log(JSON.stringify({ afterImport, afterCall: resolved.length }));
+console.log(JSON.stringify({ afterImport, afterCall: loaded.length }));
 `;
 
 describe("owned-copy loads Biome on first use", () => {
