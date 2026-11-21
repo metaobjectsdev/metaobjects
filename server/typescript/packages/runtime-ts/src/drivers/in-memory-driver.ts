@@ -270,11 +270,11 @@ function compareValues(left: unknown, right: unknown): number {
   return String(a).localeCompare(String(b));
 }
 
-// SQL LIKE: % → .*, _ → ., case-sensitive. Other regex metacharacters in `pattern` are escaped first.
 function foldAscii(s: string): string {
   return s.replace(/[A-Z]/g, (c) => c.toLowerCase());
 }
 
+// SQL LIKE: % → .*, _ → ., case-sensitive. Other regex metacharacters in `pattern` are escaped first.
 function likeMatch(value: unknown, pattern: string): boolean {
   if (typeof value !== "string") return false;
   const re = new RegExp("^" + pattern.replace(/[.+*?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*").replace(/_/g, ".") + "$");
