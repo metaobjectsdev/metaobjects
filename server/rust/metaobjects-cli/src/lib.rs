@@ -72,8 +72,8 @@ OPTIONS (gen):
                          owned copy compares.
 
 OPTIONS (verify):
-    --codegen            The generated-code gate. A bare `verify` runs it and the
-                         business-rules gate.
+    --codegen            The generated-code gate only: no business-rules gate. A bare
+                         `verify` runs both.
     --full               Render and compare even when a local run could answer from the
                          stored key. Always on when CI is set.
 
@@ -591,13 +591,16 @@ fn cmd_verify(
             for line in to_err {
                 let _ = writeln!(err, "{line}");
             }
-            for line in rules_lines(&report) {
-                let _ = writeln!(err, "{line}");
+            let rules = !s.has("--codegen");
+            if rules {
+                for line in rules_lines(&report) {
+                    let _ = writeln!(err, "{line}");
+                }
             }
             if s.has("--timings") {
                 print_timings(out, &report.timings);
             }
-            Ok(if report.in_sync() && !report.rules_failed() {
+            Ok(if report.in_sync() && !(rules && report.rules_failed()) {
                 0
             } else {
                 1

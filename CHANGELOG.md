@@ -407,7 +407,7 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
     effect yet: the service shells that act on it are later work.
   - A requirement's `@implementedBy` may name an operation (`Purchasing.decide`) or a
     transition (`PurchaseRequest.status.submit`).
-  - The Rust preview port (ADR-0065) registers the same vocabulary and runs the same loader
+  - The Rust port (ADR-0065) registers the same vocabulary and runs the same loader
     rules with the same messages, so it still passes `registry-conformance` byte for byte and
     the whole metamodel corpus (574 of 574, ledger empty). It reads and validates the new
     settings. It has no `verify`, so the rules gate does not run there.
@@ -418,7 +418,7 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   A model that declares none of it sees no change. See `docs/features/business-rules.md`.
   ADR-0067 records the layering and service-seam design (a layer is a generator an app chooses; the
   actor is a type the app defines), and amends ADR-0045.
-- **Rust port foundation, in preview (ADR-0065).** `server/rust/` is a Cargo workspace with a
+- **Rust port foundation (ADR-0065).** `server/rust/` is a Cargo workspace with a
   pinned toolchain and one crate, `metaobjects`: the node model, the type registry and the
   built-in providers (strict, sealed after bootstrap, the same `ERR_*` codes), and a JSON loader
   that reads packages, children, subtypes, attributes, `extends` and references, with the
@@ -427,7 +427,7 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   the other ports do. It passes `registry-conformance` byte for byte and all 526 of the
   metamodel fixtures, and runs every validation pass the TypeScript loader runs, in the same order
   (the conformance ledger is empty and may only shrink).
-  While the port is in preview, a new fixture that fails in Rust and is not on the ledger prints a
+  Until ADR-0065 turns the warning off, a new fixture that fails in Rust and is not on the ledger prints a
   warning and does not fail the lane; a fixture that passed and regresses still fails it, because
   the ledger records how many fixtures must pass. Nothing is published. Every load records how
   long each phase and each validation pass took (`LoadResult::timings`; the `validate` module's
@@ -438,7 +438,7 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   `load_bench` and `gen_bench` tables (record only, printed without a baseline delta — a
   cross-machine delta measures the machine, not the change) in `scripts/ci-local.sh --only rust`,
   `pr-ci` and `local-ci`, selected by changes under `server/rust/`.
-- **Rust port reads a real project, in preview.** The loader now reads YAML authoring files
+- **Rust port reads a real project.** The loader now reads YAML authoring files
   (ADR-0006: bare type keys, scalar-body names, the `[]` suffix, sigil-free attributes, anchors and
   aliases, the `ERR_YAML_COERCION` guard, and a line and column on every error from a YAML file),
   and the crate resolves a project the way the other ports do: the `.metaobjects/config.json`
@@ -446,7 +446,7 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   `iam` and `ai` library sources embedded in the crate, and the naming strategies, pluralizers and
   collection-name collision check. It passes `yaml-conformance` 18 of 19, and the
   `source-resolution-conformance` and `naming-conformance` corpora in full. Nothing is published.
-- **Rust port generates code, in preview: `cargo meta gen` and the `entity` generator.** Two new
+- **Rust port generates code: `cargo meta gen` and the `entity` generator.** Two new
   workspace crates. `metaobjects-codegen` holds the run engine and the generator; `metaobjects-cli`
   builds the binary `cargo-meta`, so cargo's external-subcommand rule makes `cargo meta gen` work
   (`cargo-meta gen` too). The run engine follows ADR-0064 and keeps the other ports' manifest
@@ -475,7 +475,7 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   depend on, rather than merging. Navigation across relationships is not emitted. Nothing is
   published.
 
-- **Rust port's command line, in preview: `cargo meta init`, `verify --codegen` and `eject`, and
+- **Rust port's command line: `cargo meta init`, `verify --codegen` and `eject`, and
   the `client` and `commands` generators (ADR-0065 Amendment 1).** A Rust developer can now run the
   whole codegen loop on a JSON or YAML model. `init` scaffolds `.metaobjects/config.json`, the
   ignore rules that keep `.hashes.json` committed and a first metadata file, writing only what is
@@ -487,7 +487,7 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   (0, 1, 2). `eject <generator>` writes a `codegen/` crate the project owns (the copied generator
   and the generator list); `gen` and `verify` then build and run it, `gen --list` shows how each
   copy compares with the shipped source, and `eject --undo` takes back copies still identical.
-  There is no plugin contract: the engine's Rust API has no stability promise in preview.
+  There is no plugin contract: the engine's Rust API has no stability promise.
   The `entity` generator now also writes `<Name>Create` and `<Name>Patch` for every entity and a
   `validate()` on value objects and both bodies (lengths, bounds, item counts, patterns, text
   forms, nested value objects and the rules across members), exact decimals and signed durations
@@ -517,8 +517,8 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   binary is built or installed and are picked up on their own once it is. `--project <path> --out <dir>` runs it on a
   private project, copies the metadata, and refuses an output inside the repository. `load_bench`
   gained `--dir` and `--json`, `gen-model.py` gained `--unique-names`, and Java has a warm-load
-  driver. New page `docs/ports/rust.md` says what the preview Rust port does and does not do, how
-  to build and test it, and the preview scope of `cargo meta`; the crates.io name `cargo-meta` is
+  driver. New page `docs/ports/rust.md` says what the Rust port does and does not do, how
+  to build and test it, and the scope of `cargo meta`; the crates.io name `cargo-meta` is
   held by an unrelated crate, so the CLI crate will publish under another name that installs a
   `cargo-meta` binary (a plan, not a promise). Nothing is published.
 - **Example and write-up: metadata-driven grids, forms and routes in TypeScript.**

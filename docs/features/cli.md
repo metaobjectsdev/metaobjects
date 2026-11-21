@@ -172,7 +172,7 @@ Rules of the contract:
   It is not a subverb and nothing mutes it. A model with no operation and no transition gets no
   line. A model with one gets a summary line, and an error-severity finding exits non-zero. The
   codes, settings and the checks are in [business-rules.md](business-rules.md#what-verify-reports).
-  Rust's `cargo meta verify` runs it too, beside the codegen drift gate.
+  Rust's bare `cargo meta verify` runs it too, beside the codegen drift gate; `verify --codegen` runs the drift gate alone.
 
 ### The prompt directory: `--prompts` everywhere (F101)
 

@@ -91,7 +91,7 @@ only shrink; the corpora without one assert each case outright. A new
 fixture that fails in Rust and is not on the ledger prints a warning and does not fail the
 lane; it becomes a hard failure when ADR-0065 turns the warning off. A regression
 still fails: the ledger's `minPassing` (578) is the number of fixtures known to pass, and the
-run fails when fewer do. The column joins this table when the port leaves preview.
+run fails when fewer do. The column joins this table when the port runs the render, persistence and API-contract corpora.
 
 A ✓ means the port runs the corpus green; an explicit `n / m` is used where a port
 carries a ledgered divergence. The two ledgered YAML fixtures are documented

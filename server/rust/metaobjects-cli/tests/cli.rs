@@ -859,4 +859,13 @@ fn verify_runs_the_rules_gate_and_a_setting_decides_whether_a_finding_fails_it()
         err.contains("cargo meta verify — rules: 1 error(s)."),
         "{err}"
     );
+
+    // `--codegen` is the generated-code gate alone: no rules lines, and a rules error does not fail it.
+    let r = p.run(&["meta", "verify", "--codegen"]);
+    let err = text(&r.stderr);
+    assert_eq!(r.status.code(), Some(0), "{err}");
+    assert!(
+        !err.contains("rules:") && !err.contains("WARN_LIFECYCLE"),
+        "{err}"
+    );
 }

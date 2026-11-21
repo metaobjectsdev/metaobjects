@@ -20,10 +20,9 @@ the [compatibility policy](../compatibility-policy.md), which stands as written.
 | Metamodel, loader, canonical format, registry | stable | [Compatibility policy](../compatibility-policy.md) |
 | `meta verify` and its drift gates | stable | [Compatibility policy](../compatibility-policy.md) |
 | Prompt render and the reply parser | stable | [Compatibility policy](../compatibility-policy.md) |
-| Generators and their generated code in TypeScript, Java, Kotlin, C# and Python | supported helpers, compiled and tested against their fixtures; their internals are not a public API | [Own your codegen](own-your-codegen.md), ADR-0034 Amendment 11 |
+| Generators and their generated code in TypeScript, Java, Kotlin, C#, Python and Rust (the Rust crates are ready to publish and not yet published) | supported helpers, compiled and tested against their fixtures; their internals are not a public API | [Own your codegen](own-your-codegen.md), ADR-0034 Amendment 11 |
 | Library `ai` | stable | [Libraries](libraries.md) |
 | Library `iam` | preview | [Libraries](libraries.md) |
-| Rust port | supported, crates ready to publish and not yet published | [Rust port](../ports/rust.md), ADR-0065 |
 | Angular packages | source-only, on their own `0.6` line, not published | ADR-0048 |
 | Business-rules vocabulary: `api.*`, `operation.*`, `binding.*`, `transition.*`, `@permission`, `@public`, and the `rules` and `verify.lifecycle` settings | experimental | [Business rules](business-rules.md), ADR-0066 |
 | Reserved names (`transition.timed`, the event and streaming sibling of `api.operational`, `index.fulltext`, `index.vector`, `index.spatial`) | reserved: not in the registry | [Compatibility policy](../compatibility-policy.md) |
@@ -42,4 +41,4 @@ the [compatibility policy](../compatibility-policy.md), which stands as written.
 - A library's `stability` is in its manifest and is printed by `meta gen --list`.
 - The business-rules label is in the compatibility policy, the CHANGELOG entry for 1.3.0, and
   [Business rules](business-rules.md).
-- A port's preview status is on its page under `docs/ports/`.
+- A port's status is on its page under `docs/ports/`.
