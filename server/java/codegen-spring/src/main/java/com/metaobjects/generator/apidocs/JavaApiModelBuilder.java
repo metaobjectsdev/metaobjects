@@ -3,6 +3,7 @@ package com.metaobjects.generator.apidocs;
 // Eject note (ADR-0034 Amendment 8): `mvn metaobjects:eject` copies this file with the rest of the
 // api reference. The siblings below stay in their packages as engine, so each is imported by name.
 import com.metaobjects.generator.apidocs.GeneratorApplicability;
+import com.metaobjects.generator.spring.SpringJavaWriter;
 import com.metaobjects.generator.spring.FindInbound;
 import com.metaobjects.generator.spring.SpringM2mSupport;
 import com.metaobjects.generator.spring.SpringNaming;
@@ -266,31 +267,30 @@ public final class JavaApiModelBuilder {
 
     /** Stable human signature listing the repository interface methods + M:N finders. */
     private String repositorySignature(String repo, String dto, MetaObject obj, MetaDataLoader loader) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("interface ").append(repo).append(" {\n");
-        sb.append("    List<").append(dto).append("> list(int limit, int offset, SortClause sort, List<FilterPredicate> filters);\n");
-        sb.append("    long count(List<FilterPredicate> filters);\n");
-        // F22 — the read-only seam a projection actually gets: findById only when it is
-        // addressable, and nothing that writes. Listing create/update/delete here would
-        // document four methods the emitted interface does not declare.
-        if (RestSurfaceGate.isReadOnly(obj)) {
-            if (RestSurfaceGate.hasItemRoute(obj)) {
-                sb.append("    Optional<").append(dto).append("> findById(Long id);\n");
+        SpringJavaWriter w = new SpringJavaWriter();
+        try (var cls = w.block("interface " + repo + " {")) {
+            w.line("List<" + dto + "> list(int limit, int offset, SortClause sort, List<FilterPredicate> filters);");
+            w.line("long count(List<FilterPredicate> filters);");
+            // F22 — the read-only seam a projection actually gets: findById only when it is
+            // addressable, and nothing that writes. Listing create/update/delete here would
+            // document four methods the emitted interface does not declare.
+            if (RestSurfaceGate.isReadOnly(obj)) {
+                if (RestSurfaceGate.hasItemRoute(obj)) {
+                    w.line("Optional<" + dto + "> findById(Long id);");
+                }
+            } else {
+                w.line("Optional<" + dto + "> findById(Long id);");
+                w.line(dto + " create(" + dto + " dto);");
+                w.line("Optional<" + dto + "> update(Long id, " + dto + " dto);");
+                w.line("boolean delete(Long id);");
+                for (SpringM2mSupport.M2mNav nav : SpringM2mSupport.resolve(obj, loader)) {
+                    w.line("List<" + nav.targetDtoType() + "> " + SpringGeneratorSupport.m2mFinderName(nav.relationName())
+                        + "(Long sourceId" + SpringGeneratorSupport.targetSubtypeParam(nav) + ");");
+                }
             }
-            sb.append("}");
-            return sb.toString();
         }
-        sb.append("    Optional<").append(dto).append("> findById(Long id);\n");
-        sb.append("    ").append(dto).append(" create(").append(dto).append(" dto);\n");
-        sb.append("    Optional<").append(dto).append("> update(Long id, ").append(dto).append(" dto);\n");
-        sb.append("    boolean delete(Long id);\n");
-        for (SpringM2mSupport.M2mNav nav : SpringM2mSupport.resolve(obj, loader)) {
-            sb.append("    List<").append(nav.targetDtoType()).append("> ")
-              .append(SpringGeneratorSupport.m2mFinderName(nav.relationName())).append("(Long sourceId")
-              .append(SpringGeneratorSupport.targetSubtypeParam(nav)).append(");\n");
-        }
-        sb.append("}");
-        return sb.toString();
+        // A signature is shown inline, so it carries no trailing line break.
+        return w.toString().stripTrailing();
     }
 
     // ----- templates ---------------------------------------------------------
