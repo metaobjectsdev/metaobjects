@@ -48,7 +48,7 @@ meta gen                                  # the regeneration, now on its own
 ```
 
 **Why `--baseline=adopt` and not a plain `meta gen`.** A plain run works only if your
-committed output still matches fresh output. If it does not — an engine or formatter moved
+committed output still matches fresh output. If it does not — an engine moved
 it, which is the usual state of a project that has not regenerated in a few releases — every
 such file is refused, and a run where *everything* refuses writes **no manifest at all**:
 there is then nothing to commit, and the next run refuses identically. `--baseline=adopt`
@@ -84,7 +84,7 @@ two people who both regenerated do not conflict over ordering.
 
 | situation | before | after |
 |---|---|---|
-| File matches its recorded hash (a formatter or engine bump moved the output) | overwritten, reported `NEW` | overwritten, reported `overwrite` |
+| File matches its recorded hash (an engine bump moved the output) | overwritten, reported `NEW` | overwritten, reported `overwrite` |
 | File carries a hand edit | **overwritten silently** | `refused`, path named, exit code 1 |
 | File we have no record of writing | **overwritten silently** | `refused`, path named, exit code 1 |
 | Snapshot body present (the machine that generated it) | three-way merge | three-way merge, unchanged |

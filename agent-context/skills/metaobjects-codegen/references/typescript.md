@@ -59,6 +59,11 @@ npm install --save-dev @metaobjectsdev/cli @metaobjectsdev/codegen-ts
 npm install            @metaobjectsdev/metadata @metaobjectsdev/runtime-ts
 ```
 
+`drizzle-orm` and `zod` are optional peers of `@metaobjectsdev/codegen-ts`, so npm does not install
+them with the CLI. Install them when a generator you take writes code that imports them.
+`meta gen --list --format json` gives each generator's `install.dev` and `install.runtime`, and
+`meta eject <name>...` prints the consolidated install set.
+
 For the React + TanStack codegen packages, also:
 
 ```bash

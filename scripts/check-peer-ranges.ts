@@ -57,7 +57,7 @@ const BEYOND_ANY_REAL_VERSION = "9999.0.0";
 /** Packages no publishable package may require at install time, with why. */
 function installOnly(name: string): string | undefined {
   if (name === "@biomejs/biome" || name.startsWith("@biomejs/cli-")) {
-    return "the native Biome formatter (~94 MB binary); the CLI's owned-copy comparison uses @biomejs/wasm-nodejs";
+    return "the native Biome formatter (~94 MB binary); the CLI's owned-copy comparison uses the @biomejs/wasm-nodejs WASM build";
   }
   if (name === "dprint-node" || name === "ts-poet") {
     return "dprint-node's seven native binaries (~25 MB; ts-poet requires it on load); codegen-ts vendors the printer and runs dprint as WebAssembly";
