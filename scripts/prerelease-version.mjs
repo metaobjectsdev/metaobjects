@@ -104,10 +104,8 @@ export async function collectPages(fetchPage, limit = 50, maxPages = 1000) {
 /** The header of the committed candidate log (tools/prerelease/candidates.md). */
 export const CANDIDATE_LOG_HEADER =
   "# Staged candidates\n\n" +
-  "One row per `bun run prerelease:publish` that published, appended by the script and committed by\n" +
-  "the person who ran it. `Commit` is the `HEAD` the candidate was built from (`+dirty` when tracked\n" +
-  "files outside the version declarations were modified). `Registries` names ecosystems, never\n" +
-  "hosts. A Rust consumer pins that commit (docs/features/prerelease.md, \"Rust\").\n\n" +
+  "One row per `bun run prerelease:publish` that published or was cut short. The columns, and the rule\n" +
+  "to commit each row, are in docs/features/prerelease.md, section 2a.\n\n" +
   "| Candidate | Commit | Date (UTC) | Registries |\n|---|---|---|---|\n";
 
 /**

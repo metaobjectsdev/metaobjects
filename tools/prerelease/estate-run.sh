@@ -54,7 +54,7 @@ while [ $# -gt 0 ]; do
     --db-cmd)       DB_CMDS+=("$2"); shift 2 ;;
     --keep-linked)  KEEP=1; shift ;;
     --no-link)      NOLINK=1; shift ;;
-    -h|--help)      sed -n '2,30p' "$0"; exit 0 ;;
+    -h|--help)      sed -n '2,33p' "$0"; exit 0 ;;
     *) die "unknown option: $1" ;;
   esac
 done
