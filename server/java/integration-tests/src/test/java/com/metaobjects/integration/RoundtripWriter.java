@@ -178,7 +178,10 @@ final class RoundtripWriter {
         String name = mf.getName();
         if (raw == null) { vo.setObject(name, null); return; }
 
-        if (mf instanceof StringField || mf instanceof EnumField) {
+        if (mf instanceof EnumField && mf.isArrayType() && raw instanceof java.util.List<?> members) {
+            // An enum ARRAY: the member symbols as a list (setString would store the list's text).
+            vo.setObjectArray(name, members.stream().map(m -> m == null ? null : m.toString()).toList());
+        } else if (mf instanceof StringField || mf instanceof EnumField) {
             vo.setString(name, raw.toString());
         } else if (mf instanceof UriField || mf instanceof InetField) {
             // field.uri / field.inet are String-backed scalars (DataTypes.STRING). Author the URI /

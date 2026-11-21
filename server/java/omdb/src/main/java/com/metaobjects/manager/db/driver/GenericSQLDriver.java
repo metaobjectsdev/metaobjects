@@ -277,6 +277,9 @@ public class GenericSQLDriver implements DatabaseDriver {
         return null;
     }
 
+    /** The native element type of an int-backed {@code field.enum} array: each member is its declared integer. */
+    protected static final String INT_ENUM_ARRAY_ELEMENT = "integer";
+
     /**
      * Bind a {@code List} value to a native SQL array parameter ({@code text[]} / {@code uuid[]}).
      * A {@code uuid[]} binds {@link java.util.UUID} elements (a String element would draw a
@@ -1479,6 +1482,14 @@ public class GenericSQLDriver implements DatabaseDriver {
         // from the connection so pgjdbc routes the List to the array column.
         String arrayElemType = nativeArrayElementType(f);
         if (arrayElemType != null) {
+            if (INT_ENUM_ARRAY_ELEMENT.equals(arrayElemType)) {
+                // An int-backed enum array: each member binds as its declared integer.
+                Integer[] ints = value == null ? null
+                    : com.metaobjects.manager.db.codec.JdbcCodecs.encodeIntEnumList(f, value);
+                if (ints == null) s.setNull(index, Types.ARRAY);
+                else s.setArray(index, s.getConnection().createArrayOf("integer", ints));
+                return;
+            }
             bindNativeArrayParameter(s, index, arrayElemType, value);
             return;
         }
@@ -1754,6 +1765,16 @@ public class GenericSQLDriver implements DatabaseDriver {
         // branch below, since a `field.uuid isArray` matches isUuidColumn on subtype too.
         String arrayElemType = nativeArrayElementType(f);
         if (arrayElemType != null) {
+            if (INT_ENUM_ARRAY_ELEMENT.equals(arrayElemType)) {
+                java.sql.Array sqlArr = rs.getArray(j);
+                if (sqlArr == null || rs.wasNull()) {
+                    f.setObjectArray(o, null);
+                } else {
+                    f.setObjectArray(o, com.metaobjects.manager.db.codec.JdbcCodecs.decodeIntEnumList(
+                        f, java.util.Arrays.asList((Object[]) sqlArr.getArray())));
+                }
+                return;
+            }
             readNativeArrayInto(o, f, arrayElemType, rs, j);
             return;
         }
