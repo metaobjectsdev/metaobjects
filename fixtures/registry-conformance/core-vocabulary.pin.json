@@ -45,21 +45,6 @@
       "attrs": [],
       "children": []
     },
-    "dimension.attribute": {
-      "attrs": [
-        "of",
-        "via"
-      ],
-      "children": []
-    },
-    "dimension.time": {
-      "attrs": [
-        "grains",
-        "of",
-        "via"
-      ],
-      "children": []
-    },
     "field.base": {
       "attrs": [
         "default",
@@ -203,31 +188,6 @@
       "attrs": [],
       "children": []
     },
-    "measure.aggregate": {
-      "attrs": [
-        "agg",
-        "default",
-        "distinct",
-        "filter",
-        "of",
-        "segment"
-      ],
-      "children": []
-    },
-    "measure.derived": {
-      "attrs": [
-        "expr"
-      ],
-      "children": []
-    },
-    "measure.ratio": {
-      "attrs": [
-        "default",
-        "denominator",
-        "numerator"
-      ],
-      "children": []
-    },
     "object.base": {
       "attrs": [
         "object",
@@ -249,10 +209,7 @@
         "discriminatorValue"
       ],
       "children": [
-        "dimension.*:*",
-        "measure.*:*",
         "relationship.*:*",
-        "segment.*:*",
         "template.*:*"
       ]
     },
@@ -260,18 +217,6 @@
       "attrs": [
         "collectionName",
         "filter"
-      ],
-      "children": []
-    },
-    "object.report": {
-      "attrs": [
-        "collectionName",
-        "dimensions",
-        "filter",
-        "from",
-        "measures",
-        "segment",
-        "spine"
       ],
       "children": []
     },
@@ -288,7 +233,6 @@
         "filter",
         "of",
         "orderBy",
-        "segment",
         "via"
       ],
       "children": []
@@ -308,7 +252,6 @@
         "filter",
         "of",
         "orderBy",
-        "segment",
         "via"
       ],
       "children": []
@@ -366,42 +309,6 @@
         "sourceRefField",
         "symmetric",
         "through"
-      ],
-      "children": []
-    },
-    "requirement.architectural": {
-      "attrs": [
-        "counterexample",
-        "disposition",
-        "implementedBy",
-        "level",
-        "statement",
-        "status",
-        "supersededBy",
-        "trackedBy"
-      ],
-      "children": [
-        "requirement.*:*"
-      ]
-    },
-    "requirement.functional": {
-      "attrs": [
-        "counterexample",
-        "disposition",
-        "implementedBy",
-        "level",
-        "statement",
-        "status",
-        "supersededBy",
-        "trackedBy"
-      ],
-      "children": [
-        "requirement.*:*"
-      ]
-    },
-    "segment.filter": {
-      "attrs": [
-        "filter"
       ],
       "children": []
     },

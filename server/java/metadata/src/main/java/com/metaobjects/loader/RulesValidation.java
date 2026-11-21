@@ -430,7 +430,64 @@ final class RulesValidation {
             }
             checkApiRoutes(ops, sink);
         }
+        checkPermissionNames(root, sink);
         return sink.errors;
+    }
+
+    /** One permission point: a node and whether its permission name is derived (no @permission). */
+    private record PermissionPoint(MetaData node, boolean derived) {}
+
+    /**
+     * P3: two permission points ask the policy about one permission name, and at least one of the two
+     * names is derived. Points are every non-public operation and every transition of a live concrete
+     * entity (a transition derives a command each). A name is the node's {@code @permission}, else
+     * {@code <package>.<path>} (the path is the operation name, or {@code Entity.transition}); {@code ::}
+     * and {@code .} both separate segments so they compare equal. Compared case-sensitively. Transitions
+     * register first, so the error lands on the operation when an operation meets a transition. Two
+     * DECLARED values may be equal: that sharing is the point.
+     */
+    private static void checkPermissionNames(MetaRoot root, Sink sink) {
+        Map<String, List<PermissionPoint>> byName = new java.util.HashMap<>();
+        for (MetaData entity : root.getChildren(MetaData.class, true)) {
+            if (!Lifecycles.isEntity(entity) || Lifecycles.isAbstract(entity) || !Lifecycles.lifecycleIsLive(entity)) continue;
+            for (MetaData t : Lifecycles.entityTransitions(entity)) {
+                registerPermissionPoint(t, entity, entity.getShortName() + "." + t.getShortName(), byName, sink);
+            }
+        }
+        for (MetaData api : root.getChildren(MetaData.class, true)) {
+            if (!ApiConstants.TYPE_API.equals(api.getType())) continue;
+            for (MetaData op : api.getChildren(MetaData.class, true)) {
+                if (ApiConstants.TYPE_OPERATION.equals(op.getType())) {
+                    registerPermissionPoint(op, api, op.getShortName(), byName, sink);
+                }
+            }
+        }
+    }
+
+    private static void registerPermissionPoint(MetaData node, MetaData owner, String path,
+                                                Map<String, List<PermissionPoint>> byName, Sink sink) {
+        if (flag(node, ApiConstants.ATTR_PUBLIC)) return;
+        String declared = Lifecycles.stringValue(node, ApiConstants.ATTR_PERMISSION);
+        String pkg = References.effectivePackageOf(owner);
+        String raw = declared != null ? declared : pkg.isEmpty() ? path : pkg + "." + path;
+        String name = raw.replace("::", ".");
+        boolean derived = declared == null;
+        List<PermissionPoint> points = byName.computeIfAbsent(name, k -> new ArrayList<>());
+        PermissionPoint clash = null;
+        for (PermissionPoint q : points) {
+            if (q.node() == node || !(derived || q.derived())) continue;
+            if (ApiConstants.TYPE_OPERATION.equals(node.getType()) && ApiConstants.TYPE_OPERATION.equals(q.node().getType())
+                && sameOperation(q.node(), node)) continue;
+            clash = q;
+            break;
+        }
+        if (clash != null) {
+            sink.add(node, ErrorCode.ERR_TRANSITION_NAME_COLLISION,
+                node.getType() + "." + node.getSubType() + " \"" + label(node) + "\" asks the policy about the permission name \""
+                    + name + "\", which " + clash.node().getType() + "." + clash.node().getSubType() + " \"" + label(clash.node())
+                    + "\" also asks about, and one of the two names is derived rather than declared; declare a distinct @permission on one, or rename it.");
+        }
+        points.add(new PermissionPoint(node, derived));
     }
 
     /** A reference attr's identity: the node it resolves to, else the raw value. */

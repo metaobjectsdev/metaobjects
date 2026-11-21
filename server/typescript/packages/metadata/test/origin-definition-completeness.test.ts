@@ -16,15 +16,17 @@ import { describe, test, expect } from "bun:test";
 import { composeRegistry } from "../src/provider.js";
 import { coreTypesProvider } from "../src/core-types.js";
 import { viewExpressionsProvider } from "../src/persistence/view-expressions/view-expressions-provider.js";
+import { reportingProvider } from "../src/core/reporting/reporting-provider.js";
 import { TYPE_ORIGIN } from "../src/shared/base-types.js";
 import { ORIGIN_SUBTYPES } from "../src/persistence/origin/origin-constants.js";
 
-// Compose with ONLY the core-types provider and the view-expressions pack (which
-// owns origin.function) — so `def.attributes` reflects
+// Compose with ONLY the core-types provider, the view-expressions pack (which
+// owns origin.function) and the reporting pack (which adds @segment to
+// origin.aggregate and origin.first) — so `def.attributes` reflects
 // exactly what the ORIGIN provider registered, not the doc-domain attrs that
 // other providers add via registry.extend(). This isolates the externalization
 // gate.
-const registry = composeRegistry([coreTypesProvider, viewExpressionsProvider]);
+const registry = composeRegistry([coreTypesProvider, viewExpressionsProvider, reportingProvider]);
 
 type ExpectedAttr = {
   valueType: string;

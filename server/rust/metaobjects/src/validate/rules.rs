@@ -38,6 +38,9 @@
 //!  O4  ERR_OPERATION_UNKNOWN_TRANSITION  a @transitions name is not a transition of the target
 //!  O5  ERR_BAD_ATTR_VALUE                an @errors code is not lower snake case, is listed twice,
 //!                                        or is one the route answers itself
+//!  P3  ERR_TRANSITION_NAME_COLLISION     two permission points ask the policy about one permission
+//!                                        name and at least one of the two names is derived; two
+//!                                        DECLARED @permission values may be equal (shared permission)
 //!  B1  ERR_BINDING_PATH_MISMATCH         a binding.rest @path's placeholders are not the target's key
 //!                                        fields (keyed) or are not empty (unkeyed)
 //!  B2  ERR_BINDING_PATH_MISMATCH         two bindings of one API share a method and a path
@@ -1098,6 +1101,87 @@ fn check_api_routes(tree: &Tree, ops: &[NodeId], sink: &mut Sink<'_>) {
     }
 }
 
+/// The name a permission point asks the policy about: its `@permission`, else
+/// `<package>.<path>` (the package prefix is dropped when there is none). `::` and `.`
+/// both separate path segments, so they compare equal. Returns the name and whether it
+/// is derived.
+fn permission_name_of(tree: &Tree, node: NodeId, owner: NodeId, path: &str) -> (String, bool) {
+    let declared = match tree.attr(node, A_PERMISSION) {
+        Some(Value::String(s)) => Some(s.as_str()),
+        _ => None,
+    };
+    let pkg = tree.effective_package(tree.top_level_of(owner));
+    let name = match declared {
+        Some(d) => d.to_string(),
+        None if pkg.is_empty() => path.to_string(),
+        None => format!("{pkg}.{path}"),
+    };
+    (name.replace(PACKAGE_SEP, "."), declared.is_none())
+}
+
+/// P3: two permission points, one name. Points are every non-public operation and every
+/// transition of a live concrete entity. Compared case-sensitively (a grant key is
+/// exact). Transitions are registered first, so the error lands on the operation when an
+/// operation meets a transition.
+fn check_permission_names(ctx: &Ctx<'_>, top_level: &[NodeId], sink: &mut Sink<'_>) {
+    let tree = ctx.tree;
+    let mut by_name: HashMap<String, Vec<(NodeId, bool)>> = HashMap::new();
+    let mut register = |node: NodeId, owner: NodeId, path: &str, sink: &mut Sink<'_>| {
+        if is_true(tree, node, A_PUBLIC) {
+            return;
+        }
+        let (name, derived) = permission_name_of(tree, node, owner, path);
+        let points = by_name.entry(name.clone()).or_default();
+        let is_op = |n: NodeId| tree.node(n).type_name == T_OPERATION;
+        let clash = points.iter().find(|&&(q, q_derived)| {
+            q != node
+                && (derived || q_derived)
+                && !(is_op(node) && is_op(q) && same_operation(ctx, q, node))
+        });
+        if let Some(&(q, _)) = clash {
+            let (n, c) = (tree.node(node), tree.node(q));
+            sink.add(
+                node,
+                ERR_TRANSITION_NAME_COLLISION,
+                format!(
+                    "{}.{} \"{}\" asks the policy about the permission name \"{name}\", which {}.{} \"{}\" also asks about, and one of the two names is derived rather than declared; declare a distinct @permission on one, or rename it.",
+                    n.type_name,
+                    n.sub_type,
+                    label(tree, node),
+                    c.type_name,
+                    c.sub_type,
+                    label(tree, q)
+                ),
+            );
+        }
+        points.push((node, derived));
+    };
+    for &entity in top_level {
+        if !is_entity(tree, entity) || tree.node(entity).is_abstract {
+            continue;
+        }
+        if !tree.children(entity).iter().any(|&c| tree.node(c).type_name == T_SOURCE) {
+            continue;
+        }
+        let ename = tree.node(entity).name.clone();
+        for t in entity_transitions(tree, entity) {
+            let path = format!("{ename}.{}", tree.node(t).name);
+            register(t, entity, &path, sink);
+        }
+    }
+    for &api in top_level {
+        if tree.node(api).type_name != T_API {
+            continue;
+        }
+        for &op in tree.children(api).iter() {
+            if tree.node(op).type_name == T_OPERATION {
+                let path = tree.node(op).name.clone();
+                register(op, api, &path, sink);
+            }
+        }
+    }
+}
+
 /// The rules pass. Runs after the reference-bearing validation, where the reference runs it.
 pub fn validate_rules(ctx: &Ctx<'_>, f: &mut Findings) {
     let tree = ctx.tree;
@@ -1175,6 +1259,7 @@ pub fn validate_rules(ctx: &Ctx<'_>, f: &mut Findings) {
         }
         check_api_routes(tree, &ops, &mut sink);
     }
+    check_permission_names(ctx, top_level, &mut sink);
     f.errors.extend(sink.errors);
 }
 

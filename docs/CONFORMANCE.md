@@ -26,12 +26,12 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 
 | Corpus | Fixtures | TS | Java | Kotlin | C# | Python |
 |---|---|---|---|---|---|---|
-| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 578 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
+| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 584 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
 | [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 19 | 19 / 19 | 19 / 19 | inherits via Java | 18 / 19 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 19 / 19 |
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 45 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/verify-strict-conformance/`](../fixtures/verify-strict-conformance/) | 1 | ✓ | — | — | — | ✓ |
-| [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 21 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
-| [`fixtures/jinja-render-conformance/`](../fixtures/jinja-render-conformance/) (ADR-0061 — Jinja bodies render the same in jinja2 and nunjucks) | 15 | ✓ (nunjucks) | refuses Jinja (`ERR_TEMPLATE_ENGINE_UNSUPPORTED`) | refuses, via Java | refuses Jinja (`ERR_TEMPLATE_ENGINE_UNSUPPORTED`) | ✓ (jinja2) |
+| [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 23 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
+| [`fixtures/jinja-render-conformance/`](../fixtures/jinja-render-conformance/) (ADR-0061 — Jinja bodies render the same in jinja2 and nunjucks) | 16 | ✓ (nunjucks) | refuses Jinja (`ERR_TEMPLATE_ENGINE_UNSUPPORTED`) | refuses, via Java | refuses Jinja (`ERR_TEMPLATE_ENGINE_UNSUPPORTED`) | ✓ (jinja2) |
 | [`fixtures/jinja-verify-conformance/`](../fixtures/jinja-verify-conformance/) (ADR-0061 — the payload check over a Jinja body) | 31 | ✓ | refuses Jinja | refuses, via Java | refuses Jinja | ✓ |
 | [`fixtures/extract-conformance/`](../fixtures/extract-conformance/) | 58 | ✓ | ✓ | inherits the shared JVM engine | ✓ | ✓ |
 | [`fixtures/output-prompt-conformance/`](../fixtures/output-prompt-conformance/) | 17 | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -73,7 +73,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/explorer-conformance/`](../fixtures/explorer-conformance/) (the `explorer.json` data spine: `meta export --effective` + `meta verify --format json` + the generated-file manifest in, one explorer document out) | 1 case (`shop`) | ✓ (the builder is TypeScript, and reads only port-neutral inputs) | — | — | — | — |
 
 **Rust (ADR-0065) is not a column yet.** The sixth port runs these corpora
-today: `registry-conformance` (byte-identical manifest); the metamodel corpus, all 578
+today: `registry-conformance` (byte-identical manifest); the metamodel corpus, all 584
 green, with every validation pass the TypeScript loader runs, in the same order, so
 `server/rust/metaobjects/tests/conformance-expected-failures.json` is empty;
 `rules-check-conformance` (all 16 cases, the `verify` business-rules gate);
@@ -94,7 +94,7 @@ generator, and a scale gate over twenty copies of the fitness model. The ledgers
 only shrink; the corpora without one assert each case outright. A new
 fixture that fails in Rust and is not on the ledger prints a warning and does not fail the
 lane; it becomes a hard failure when ADR-0065 turns the warning off. A regression
-still fails: the ledger's `minPassing` (578) is the number of fixtures known to pass, and the
+still fails: the ledger's `minPassing` (584) is the number of fixtures known to pass, and the
 run fails when fewer do. The column joins this table when the port runs the persistence and API-contract corpora.
 
 A ✓ means the port runs the corpus green; an explicit `n / m` is used where a port
@@ -192,8 +192,11 @@ canonical (`fixtures/registry-conformance/expected-registry.json`).
 - *Implemented in TypeScript and C#* (`implementedIn: ["typescript", "csharp"]`): the rc.21
   view vocabulary — `origin.function` and the `object.projection` attrs `@union`, `@unionAll`,
   `@grain`, `@grainOrdinal`. The TypeScript view emitter lowers them; the C# loader validates
-  them (mirroring the TypeScript checks message for message); the other ports load them strictly
-  and do not act on them yet.
+  them (mirroring the TypeScript checks message for message). The Java (and so Kotlin) and Python
+  loaders also validate the `@union` / `@unionAll` / `@grain` / `@grainOrdinal` shape rules (the
+  `error-projection-union-shape` and `error-projection-grain-not-object-array` fixtures fail in
+  every port); no port other than TypeScript lowers them to a view, and Python does not yet check
+  `origin.function`.
 - *Loads strictly in every port.* Each port registers the `metaobjects-ui-web` provider
   (`view.textarea @rows`, the `view.image` attrs) and `@object` / `@objectAdapter` on
   `object.*`, loads all three fixtures strictly, and emits `implementedIn` in its manifest, which
@@ -430,7 +433,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 
 ## Fixture-to-doc mapping
 
-### `fixtures/conformance/` — metamodel loader + canonical serializer (578)
+### `fixtures/conformance/` — metamodel loader + canonical serializer (584)
 
 | Fixture prefix | Feature doc |
 |---|---|
@@ -469,24 +472,26 @@ on a reporting measure, etc.) and 7 `error-yaml-*` fixtures that pin the
 YAML 1.1 coercion guards (bool / null / hex in string contexts; numeric in enum
 contexts; reserved-as-attr).
 
-### `fixtures/render-conformance/` (21)
+### `fixtures/render-conformance/` (23)
 
-All 21 fixtures → [features/templates-and-payloads.md](features/templates-and-payloads.md)
+All 23 fixtures → [features/templates-and-payloads.md](features/templates-and-payloads.md)
 (render engine output section). 5 are end-to-end shape and escape examples (prompt / email /
 spreadsheet / CSV-injection escape / CSV numeric-literal exemption); 16 pin Mustache-engine
 semantics — dotted-path lookup, parent-context fallthrough, falsy/empty-array section behavior,
 inverted sections, nested partials, a comment tag beside a partial, standalone-tag whitespace
 stripping (including two standalone tags in a row, a standalone tag at the end of the file and an
 indented standalone tag, which shared docs templates rely on), raw-HTML bypass, trailing-newline preservation, unicode multibyte handling, the derived
-`has` accessor, and the `-last` list-separator accessor.
+`has` accessor, and the `-last` list-separator accessor; 2 refuse a variable missing from the
+payload, a plain name and a dotted path (`ERR_VAR_NOT_ON_PAYLOAD`, pinned by `expected-error.txt`).
 
-### `fixtures/jinja-render-conformance/` (15) and `fixtures/jinja-verify-conformance/` (31)
+### `fixtures/jinja-render-conformance/` (16) and `fixtures/jinja-verify-conformance/` (31)
 
 Both → [features/templates-and-payloads.md](features/templates-and-payloads.md) (Jinja
 templates section, [ADR-0061](../spec/decisions/ADR-0061-per-port-template-engines.md)). Run by
 Python (jinja2) and TypeScript (nunjucks) only; Java, Kotlin and C# refuse a Jinja body with
-`ERR_TEMPLATE_ENGINE_UNSUPPORTED` instead. The render corpus holds 13 output cases and 2 error
-cases (an include cycle and an unresolved include), each with the same Mustache-path message.
+`ERR_TEMPLATE_ENGINE_UNSUPPORTED` instead. The render corpus holds 13 output cases and 3 error
+cases (an include cycle, an unresolved include and a variable missing from the payload), each
+with the same Mustache-path message.
 The verify corpus reuses `verify-conformance/`'s `payload.json` field-tree shape; an
 `ERR_TEMPLATE_SYNTAX` finding's path is the parser's own message, so runners compare it as
 empty.
@@ -859,8 +864,8 @@ JSON and verify payload feeds it unchanged.
 
 ## Orphaned fixtures (tested but not yet documented)
 
-The fixtures in the nine corpora mapped above (metamodel 578 + yaml 19 + verify 45
-+ render 21 + persistence 67 + api-contract 161 + source-resolution 28 + scope 10 +
+The fixtures in the nine corpora mapped above (metamodel 584 + yaml 19 + verify 45
++ render 23 + persistence 67 + api-contract 161 + source-resolution 28 + scope 10 +
 dependency 47) each map to a feature doc, and so do the two requirement corpora, `rules-check-conformance`, `shared-model-conformance`, the
 `cube-model` corpus, `explorer-conformance` and `list-query-conformance`, whose case lists live in their own READMEs. None are orphaned today. The remaining
 corpora in the totals table gate tooling contracts (registry manifests, provider

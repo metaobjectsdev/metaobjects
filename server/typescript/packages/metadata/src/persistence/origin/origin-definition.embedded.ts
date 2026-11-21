@@ -97,14 +97,6 @@ export const ORIGIN_DEFINITION: ProviderDefinition = {
         },
         {
           "type": "attr",
-          "subType": "string",
-          "name": "segment",
-          "min": 0,
-          "max": 1,
-          "description": "Optional name of a segment.filter declared on the related entity (the @of entity, else the @via terminal) — rc.19 origin-segment. Its predicate scopes the related rows, ANDed with @filter, exactly as measure.aggregate @segment does; it may use relative dates."
-        },
-        {
-          "type": "attr",
           "subType": "boolean",
           "name": "distinct",
           "min": 0,
@@ -177,14 +169,6 @@ export const ORIGIN_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "Optional structured predicate scoping which related rows are eligible for selection. A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time. A clause value may also be a relative date ({ now: \"<ISO-8601 duration>\", startOf? }) on a date or timestamp field, or — correlated-filter — { field: \"<base field>\" }, the base row's field, compared with eq/ne/gt/gte/lt/lte or the null-safe isDistinctFrom / isNotDistinctFrom (rc.19)."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "segment",
-          "min": 0,
-          "max": 1,
-          "description": "Optional name of a segment.filter declared on the related entity (the @of entity) — rc.19 origin-segment. Its predicate scopes the related rows, ANDed with @filter, exactly as measure.aggregate @segment does; it may use relative dates."
         }
       ]
     }

@@ -2,7 +2,14 @@ package com.metaobjects.render;
 
 import com.github.mustachejava.DefaultMustacheFactory;
 import com.github.mustachejava.Mustache;
+import com.github.mustachejava.DefaultMustacheVisitor;
 import com.github.mustachejava.MustacheException;
+import com.github.mustachejava.MustacheVisitor;
+import com.github.mustachejava.TemplateContext;
+import com.github.mustachejava.codes.ValueCode;
+import com.github.mustachejava.reflect.Guard;
+import com.github.mustachejava.reflect.MissingWrapper;
+import com.github.mustachejava.reflect.ReflectionObjectHandler;
 
 import java.io.IOException;
 import java.io.StringReader;
@@ -76,6 +83,16 @@ public final class Renderer {
         try {
             DefaultMustacheFactory factory = new DefaultMustacheFactory() {
                 @Override
+                public MustacheVisitor createMustacheVisitor() {
+                    return new DefaultMustacheVisitor(this) {
+                        @Override
+                        public void value(TemplateContext tc, String variable, boolean encoded) {
+                            list.add(new CheckedValueCode(tc, this.df, variable, encoded));
+                        }
+                    };
+                }
+
+                @Override
                 public void encode(String value, Writer writer) {
                     try {
                         writer.write(escaper.apply(value));
@@ -84,6 +101,7 @@ public final class Renderer {
                     }
                 }
             };
+            factory.setObjectHandler(new MissingVariableObjectHandler());
             Mustache compiled = factory.compile(new StringReader(expanded), refOrInline(req));
             StringWriter writer = new StringWriter();
             // Derived `has<Field>` accessors are part of the payload contract, not of the
@@ -93,6 +111,10 @@ public final class Renderer {
             compiled.execute(writer, PayloadAccessors.withDerivedAccessors(req.payload())).flush();
             rendered = writer.toString();
         } catch (MustacheException | IOException e) {
+            // A missing variable is raised from inside the engine, which wraps it; surface it as is.
+            for (Throwable t = e; t != null; t = t.getCause()) {
+                if (t instanceof RenderException re) throw re;
+            }
             throw new RenderException("Mustache compile/execute failed", e);
         }
 
@@ -179,5 +201,42 @@ public final class Renderer {
         }
         out.append(text, last, text.length());
         return out.toString();
+    }
+
+    /**
+     * Marks a name that is on no scope of the payload. A key present with a null value is NOT
+     * missing (it renders empty); only an absent name is.
+     */
+    private static final class AbsentWrapper extends MissingWrapper {
+        AbsentWrapper(String name, Guard[] guards) {
+            super(name, guards);
+        }
+    }
+
+    private static final class MissingVariableObjectHandler extends ReflectionObjectHandler {
+        @Override
+        protected MissingWrapper createMissingWrapper(String name, List<Guard> guards) {
+            return new AbsentWrapper(name, guards.toArray(new Guard[0]));
+        }
+    }
+
+    /**
+     * A variable tag whose name is absent from the payload raises, with the message the opt-in
+     * verify gate uses, so a typo like {@code {{nmae}}} fails on every render path. Section tags
+     * stay silent: an absent section is simply falsy.
+     */
+    private static final class CheckedValueCode extends ValueCode {
+        CheckedValueCode(TemplateContext tc, DefaultMustacheFactory df, String variable, boolean encoded) {
+            super(tc, df, variable, encoded);
+        }
+
+        @Override
+        public Writer execute(Writer writer, List<Object> scopes) {
+            if (!returnThis && oh.find(name, scopes) instanceof AbsentWrapper) {
+                throw new RenderException(
+                    "render verify failed: " + Verify.ERR_VAR_NOT_ON_PAYLOAD + " (" + name + ")");
+            }
+            return super.execute(writer, scopes);
+        }
     }
 }

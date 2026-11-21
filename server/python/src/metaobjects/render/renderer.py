@@ -32,6 +32,7 @@ from .mustache_tags import KIND_PARTIAL, MustacheSyntaxError, delimiter_change, 
 from .payload_accessors import with_derived_accessors
 from .verify import (
     ERR_REQUIRED_SLOT_UNUSED,
+    ERR_VAR_NOT_ON_PAYLOAD,
     MAX_DEPTH,
     InMemoryProvider,
     PayloadField,
@@ -333,7 +334,12 @@ def _emit(
         if isinstance(tok, _Text):
             out.append(tok.value)
         elif isinstance(tok, _Interp):
-            value = _resolve(tok.path, stack)
+            found, value = _resolve_found(tok.path, stack)
+            if not found:
+                # A name on no frame of the payload is a missing variable: raised on every
+                # render path, with the message the opt-in verify gate uses. A present null
+                # is a value and renders empty.
+                raise RenderError(f"render verify failed: {ERR_VAR_NOT_ON_PAYLOAD} ({tok.path})")
             if value is None or value is False:
                 continue
             text = _stringify(value)
@@ -369,22 +375,29 @@ def _resolve(path: str, stack: list[Any]) -> Any:
     """Mustache lookup: first segment walks the context stack innermost→outermost;
     remaining segments descend into the resolved value. Implicit iterator
     ``{{.}}`` returns the top of the stack."""
+    return _resolve_found(path, stack)[1]
+
+
+def _resolve_found(path: str, stack: list[Any]) -> tuple[bool, Any]:
+    """:func:`_resolve` that also says whether the name was FOUND: a name absent from every
+    frame (or a dotted path that leaves the payload, or descends through a null) is not
+    found; a key present with a null value is found."""
     if path == ".":
-        return stack[-1] if stack else None
+        return True, (stack[-1] if stack else None)
     segs = path.split(".")
-    current = _lookup(stack, segs[0])
+    found, current = _lookup(stack, segs[0])
     for seg in segs[1:]:
-        if current is None:
-            return None
-        current = _lookup([current], seg)
-    return current
+        if not found or current is None:
+            return False, None
+        found, current = _lookup([current], seg)
+    return found, current
 
 
-def _lookup(stack: list[Any], name: str) -> Any:
+def _lookup(stack: list[Any], name: str) -> tuple[bool, Any]:
     for ctx in reversed(stack):
         if isinstance(ctx, dict) and name in ctx:
-            return ctx[name]
-    return None
+            return True, ctx[name]
+    return False, None
 
 
 def _truthy(value: Any) -> bool:

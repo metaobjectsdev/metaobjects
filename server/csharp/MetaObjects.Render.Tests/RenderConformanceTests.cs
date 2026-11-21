@@ -10,7 +10,7 @@ namespace MetaObjects.Render.Tests;
 ///   template.mustache  the entry template
 ///   partials/*.mustache  optional partials, referenced as `partials/&lt;name&gt;`
 ///   payload.json       the render payload (pre-formatted primitives)
-///   expected.txt       byte-exact expected output
+///   expected.txt       byte-exact expected output (or expected-error.txt: the render must fail with that text)
 /// The same shared corpus is rendered byte-for-byte identically by TS and C#.
 /// Mirrors typescript/packages/render/test/render-conformance.test.ts.
 /// </summary>
@@ -67,8 +67,23 @@ public class RenderConformanceTests
         var format = JsonDocument.Parse(metaRaw).RootElement.GetProperty("format").GetString()!;
         var template = File.ReadAllText(Path.Combine(dir, "template.mustache"));
         var payload = JsonPayload.Parse(File.ReadAllText(Path.Combine(dir, "payload.json")));
-        var expected = File.ReadAllText(Path.Combine(dir, "expected.txt"));
         var provider = ProviderFromPartials(dir);
+
+        // expected-error.txt: the render must fail, and the message must contain the file's trimmed text.
+        var errorFile = Path.Combine(dir, "expected-error.txt");
+        if (File.Exists(errorFile))
+        {
+            var ex = Assert.Throws<RenderException>(() => Renderer.Render(new RenderRequest
+            {
+                Template = template,
+                Payload = payload,
+                Provider = provider,
+                Format = format,
+            }));
+            Assert.Contains(File.ReadAllText(errorFile).Trim(), ex.Message);
+            return;
+        }
+        var expected = File.ReadAllText(Path.Combine(dir, "expected.txt"));
 
         var actual = Renderer.Render(new RenderRequest
         {

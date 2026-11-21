@@ -10,8 +10,9 @@ Output matches the TypeScript port (nunjucks) for the shared Jinja vocabulary â€
   ``| e`` / ``| forceescape`` escape with that same escaper, as in nunjucks;
 * what a macro, a ``call`` block or a block ``set`` renders is already escaped, so printing
   it does not escape it again (nunjucks returns those as safe strings);
-* a lookup on a missing key renders empty however deep it chains (``v.x.y``), as in
-  nunjucks; every engine failure surfaces as ``JinjaRenderError``;
+* a lookup on a missing key chains however deep (``v.x.y``) and stays undefined, and
+  PRINTING an undefined value raises ``render verify failed: ERR_VAR_NOT_ON_PAYLOAD`` (a
+  present null prints empty); every engine failure surfaces as ``JinjaRenderError``;
 * a trailing newline is kept (jinja2 drops it by default; nunjucks and Mustache keep it);
 * the static template graph is checked first, so a cycle or a missing template fails with
   the Mustache path's messages (``partial cycle:``, ``unresolved partial:``).
@@ -27,7 +28,7 @@ from . import escapers
 from .engine import TEMPLATE_ENGINE_JINJA, partial_engine_message, partial_engine_mismatch
 from .jinja_verify import jinja2_module, parse_jinja, ref_of_template_name
 from .renderer import _stringify
-from .verify import MAX_DEPTH, Provider
+from .verify import ERR_VAR_NOT_ON_PAYLOAD, MAX_DEPTH, Provider
 
 
 class JinjaRenderError(Exception):
@@ -106,6 +107,11 @@ def render_jinja(body: str, ref: str | None, payload: Any, provider: Provider, f
         return value if isinstance(value, (Markup, _Rendered)) else forceescape(value)
 
     def finalize(value: Any) -> str:
+        # A value absent from the payload is a missing variable and raises, as on the
+        # Mustache path; a present null still prints empty. The engine does not hand the
+        # variable's name over at this point, so the message carries none.
+        if isinstance(value, jinja2.Undefined):
+            raise JinjaRenderError(f"render verify failed: {ERR_VAR_NOT_ON_PAYLOAD}")
         return str(escape(value))
 
     def load(name: str) -> tuple[str, None, Any] | None:

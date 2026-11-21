@@ -98,6 +98,8 @@ public static class FixtureDiscovery
             // The business-rules and view-expressions packs are in the default bundle.
             "metaobjects-rules",
             "metaobjects-view-expressions",
+            "metaobjects-reporting",
+            "metaobjects-requirements",
         };
 
     /// <summary>

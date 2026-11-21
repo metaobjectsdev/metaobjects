@@ -144,3 +144,20 @@ describe("render — maxChars output budget", () => {
     expect(render({ template: "{{x}}", payload: { x: long }, provider: P({}) })).toBe(long);
   });
 });
+
+describe("a missing variable raises on every render path", () => {
+  test("mustache: a variable absent from the payload throws the verify error by default", () => {
+    expect(() => render({ template: "Hi {{nmae}}!", payload: { name: "Ada" }, provider: P({}) })).toThrow(
+      "render verify failed: ERR_VAR_NOT_ON_PAYLOAD (nmae)",
+    );
+    expect(() => render({ template: "Hi {{{nmae}}}!", payload: {}, provider: P({}) })).toThrow(/ERR_VAR_NOT_ON_PAYLOAD \(nmae\)/);
+  });
+  test("mustache: null is present and renders empty; absent sections stay legal", () => {
+    expect(render({ template: "Hi {{n}}!{{#x}}y{{/x}}", payload: { n: null }, provider: P({}) })).toBe("Hi !");
+  });
+  test("jinja: a variable absent from the payload throws", () => {
+    expect(() => render({ template: "Hi {{ nmae }}!", payload: { name: "Ada" }, provider: P({}), engine: "jinja" })).toThrow(
+      /ERR_VAR_NOT_ON_PAYLOAD/,
+    );
+  });
+});

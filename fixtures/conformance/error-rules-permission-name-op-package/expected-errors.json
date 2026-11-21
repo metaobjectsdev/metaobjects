@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_TRANSITION_NAME_COLLISION",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.orders.api.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['api.operational'].children[0]['operation.query']"
+      }
+    }
+  ],
+  "warnings": []
+}

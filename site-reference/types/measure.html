@@ -52,6 +52,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 (<code>min..max</code>, <code>*</code> = unbounded).</p>
 <h3>measure.aggregate</h3>
 <p>A named aggregate over the declaring entity&#39;s own rows (FR-044). @agg count without @distinct counts rows; with @distinct it counts distinct values of @of (a list in @of is a distinct count of the tuple). Unlike origin.aggregate, count is NOT distinct by default: a measure aggregates its own rows and dimensions reach only to-one paths, so no join inflates it.</p>
+<p><strong>Owning provider:</strong> metaobjects-reporting</p>
 <p><strong>When to use:</strong> A number a dashboard shows: revenue, purchases, distinct buyers, last activity.</p>
 <p><strong>Attributes</strong></p>
 <table>
@@ -72,7 +73,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>yes</td>
 <td></td>
 <td><code>count</code>, <code>sum</code>, <code>avg</code>, <code>min</code>, <code>max</code>, <code>any</code>, <code>all</code></td>
-<td>—</td>
+<td>metaobjects-reporting</td>
 <td>The aggregate function. sum/avg need a numeric field; min/max refuse boolean, object and map fields; any/all (boolean OR / AND, Postgres bool_or / bool_and) type the measure boolean and take either a field.boolean in @of or no @of, when they ask whether some row (any) or every row (all) passes the measure&#39;s @filter / @segment.</td>
 </tr>
 <tr>
@@ -81,7 +82,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>no</td>
 <td></td>
 <td></td>
-<td>—</td>
+<td>metaobjects-reporting</td>
 <td>Optional integer the measure reads when it would otherwise be null: nothing matched, every matched value is null, or (a ratio) the denominator is zero or null. The derived report field is then never null. Refused on @agg: count (a count is never null), on min/max over a field that is not numeric, and on @agg any/all unless it is 0 (false) or 1 (true). A ratio&#39;s operand carries its own @default into the ratio.</td>
 </tr>
 <tr>
@@ -90,7 +91,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>no</td>
 <td></td>
 <td></td>
-<td>—</td>
+<td>metaobjects-reporting</td>
 <td>Count distinct values. Legal only with @agg: count.</td>
 </tr>
 <tr>
@@ -99,7 +100,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>no</td>
 <td></td>
 <td></td>
-<td>—</td>
+<td>metaobjects-reporting</td>
 <td>Optional row scope (a portable attr.filter over the declaring entity&#39;s fields). May use relative-date values ({ now: &quot;-P7D&quot; }). Combines with @segment by AND.</td>
 </tr>
 <tr>
@@ -108,7 +109,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>no</td>
 <td></td>
 <td></td>
-<td>—</td>
+<td>metaobjects-reporting</td>
 <td>Dotted Entity.field reference(s) on the declaring entity, or Entity.field.member for a member of a value object stored with @storage: flattened (e.g. &#39;Payment.amount.amount&#39;). A report that takes sum, avg, min or max of a numeric member must group by every non-numeric member of the same value object (its currency), so amounts in different units are never combined. A bare string is one column; more than one requires @agg: count and @distinct: true. Required for every @agg except any/all, which may omit it to quantify their @filter / @segment over the rows.</td>
 </tr>
 <tr>
@@ -117,7 +118,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>no</td>
 <td></td>
 <td></td>
-<td>—</td>
+<td>metaobjects-reporting</td>
 <td>Optional name of a segment declared on the same entity. Combines with @filter by AND.</td>
 </tr>
 </tbody></table>
@@ -125,6 +126,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <p><em>No structural children.</em></p>
 <h3>measure.derived</h3>
 <p>A named arithmetic expression (FR-044 R13) over measures of the same entity and the report&#39;s numeric attribute dimensions, typed decimal. @expr is FR-037 R5&#39;s first arithmetic wave: add, subtract, multiply and divide, each of two operands. divide lowers as a ratio does, so a zero divisor yields null. A report listing a derived measure that reads a dimension must list that dimension.</p>
+<p><strong>Owning provider:</strong> metaobjects-reporting</p>
 <p><strong>When to use:</strong> A number computed from other measures or from a grouped value: utilization percent (billable hours x 100 / capacity), budget burn (cost / budget), net revenue (revenue - refunds).</p>
 <p><strong>Attributes</strong></p>
 <table>
@@ -145,7 +147,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>yes</td>
 <td></td>
 <td></td>
-<td>—</td>
+<td>metaobjects-reporting</td>
 <td>The arithmetic: { field: name } names a numeric measure.aggregate or measure.ratio of the same entity, or one of its numeric attribute dimensions (never another measure.derived); { value: n } is a number; { fn: add | subtract | multiply | divide, args: [a, b] } combines two operands.</td>
 </tr>
 </tbody></table>
@@ -153,6 +155,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <p><em>No structural children.</em></p>
 <h3>measure.ratio</h3>
 <p>A named quotient of two numeric measure.aggregate siblings (FR-044), lowered as numerator / NULLIF(denominator, 0) and typed decimal. A zero denominator yields null.</p>
+<p><strong>Owning provider:</strong> metaobjects-reporting</p>
 <p><strong>When to use:</strong> Averages per unit that are not a plain avg: average days engaged per starter.</p>
 <p><strong>Attributes</strong></p>
 <table>
@@ -173,7 +176,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>no</td>
 <td></td>
 <td></td>
-<td>—</td>
+<td>metaobjects-reporting</td>
 <td>Optional integer the measure reads when it would otherwise be null: nothing matched, every matched value is null, or (a ratio) the denominator is zero or null. The derived report field is then never null. Refused on @agg: count (a count is never null) and on min/max over a field that is not numeric. A ratio&#39;s operand carries its own @default into the ratio.</td>
 </tr>
 <tr>
@@ -182,7 +185,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>yes</td>
 <td></td>
 <td></td>
-<td>—</td>
+<td>metaobjects-reporting</td>
 <td>Name of a measure.aggregate on the same entity whose result is numeric: a count, a sum, an avg, or a min or max of a numeric field.</td>
 </tr>
 <tr>
@@ -191,7 +194,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>yes</td>
 <td></td>
 <td></td>
-<td>—</td>
+<td>metaobjects-reporting</td>
 <td>Name of a measure.aggregate on the same entity whose result is numeric: a count, a sum, an avg, or a min or max of a numeric field.</td>
 </tr>
 </tbody></table>

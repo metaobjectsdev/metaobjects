@@ -104,27 +104,6 @@ export const OBJECT_DEFINITION: ProviderDefinition = {
           "max": null
         },
         {
-          "type": "dimension",
-          "subType": "*",
-          "name": "*",
-          "min": 0,
-          "max": null
-        },
-        {
-          "type": "measure",
-          "subType": "*",
-          "name": "*",
-          "min": 0,
-          "max": null
-        },
-        {
-          "type": "segment",
-          "subType": "*",
-          "name": "*",
-          "min": 0,
-          "max": null
-        },
-        {
           "type": "attr",
           "subType": "string",
           "name": "discriminator",
@@ -182,73 +161,6 @@ export const OBJECT_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "Optional row-scope predicate (a portable attr.filter object: eq/ne/gt/gte/lt/lte/like/in/isNull with and/or, desugared to { field: { op: value } } at parse time) selecting which rows the view returns — lowered to an outer SQL WHERE. A key names one of the projection's own fields, else a field of its base entity the view need not output, else a PATH of to-one hops (identity.reference or @cardinality one relationship names) from the base then a field of the entity reached ('orderId.customerId.hasActiveMembership'), joined but not output. A reached entity field may itself be derived (entity-derived: an origin.computed or origin.first declared on the entity, inlined where the filter reaches it). An aggregate-derived field is not addressable (fail-closed); a to-many hop is refused. A value may be a relative date ({ now: \"<ISO-8601 duration>\", startOf? }) on a date or timestamp field (rc.19)."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "collectionName",
-          "min": 0,
-          "max": 1,
-          "description": "The name of this object's collection, in the object's own casing (e.g. 'CaseHistory', 'Queues'): the REST collection segment (snake_cased) in every port, the reverse-finder names in C#, TypeScript and Python, the C# DbSet property, and the TypeScript list function, list hook and Drizzle table variable. It need not be a grammatical plural. Absent, the project's pluralizer derives it from the object's name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own)."
-        }
-      ]
-    },
-    {
-      "type": "object",
-      "subType": "report",
-      "extendsBase": true,
-      "description": "A declared report (FR-044): a fixed combination of dimensions and measures of ONE entity (@from), compiled to a read-only view. One row per distinct dimension tuple; no dimensions means exactly one row. Fields are DERIVED, not declared: one per dimension (a time dimension's field is <dimension><Grain>, e.g. purchasedAtDay) and one per measure. Every measure must belong to @from (two fact tables are two reports). @filter and @segment scope rows before grouping and combine by AND. Read-only: no writes, no get-by-id.",
-      "whenToUse": "Dashboard totals, per-day series and per-group summaries that would otherwise be hand-written GROUP BY queries.",
-      "children": [
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "from",
-          "min": 1,
-          "max": 1,
-          "description": "The object.entity whose rows the report aggregates."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "dimensions",
-          "isArray": true,
-          "min": 0,
-          "max": 1,
-          "description": "Dimension names of @from; a time dimension is written 'name:grain'. Absent means one global row."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "measures",
-          "isArray": true,
-          "min": 1,
-          "max": 1,
-          "description": "Measure names of @from."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "segment",
-          "min": 0,
-          "max": 1,
-          "description": "Optional segment of @from scoping the rows."
-        },
-        {
-          "type": "attr",
-          "subType": "filter",
-          "name": "filter",
-          "min": 0,
-          "max": 1,
-          "description": "Optional row scope over @from's fields; may use relative-date values."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "spine",
-          "min": 0,
-          "max": 1,
-          "description": "Optional to-one path from @from to the entity whose rows supply the report's rows (e.g. 'Purchase.program'), written like a dimension's @via. With it the report has one row per distinct dimension tuple among THAT entity's rows, including the ones no row of @from refers to: a count there is 0 and any other measure is null unless it declares @default. Every listed dimension must be reached through this path. @segment and @filter still scope the rows of @from and never remove a row. A row of @from whose reference is null or matches nothing is in no row of the report."
         },
         {
           "type": "attr",
