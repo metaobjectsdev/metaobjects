@@ -17,5 +17,5 @@ Runners:
 - Java, `server/java/codegen-base/src/test/java/com/metaobjects/generator/writer/WriterConformanceTest.java` (`core` and `java`).
 - Rust, `server/rust/metaobjects-codegen/tests/writer_conformance.rs` (`core`).
 
-The other ports run the `core` cases when their writers land, and add cases for their own
-dialect beside these.
+The ports without a writer yet (C#, Kotlin, Python) run the `core` cases when their writers
+land, and add cases for their own dialect beside these.
