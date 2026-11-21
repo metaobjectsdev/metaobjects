@@ -29,7 +29,7 @@ use common::{
 const COPIES: usize = 20;
 const ROOT_PACKAGE: &str = "\"package\": \"fitness\"";
 /// The crates every run writes once, however large the model.
-const SHARED: &[&str] = &["meta_support", "meta_client", "meta_cli"];
+const SHARED: &[&str] = &["meta_support", "meta_client", "meta_cli", "meta_store"];
 
 /// The generated output for ONE copy of the fitness model, shared crates left out.
 const BUDGET_BYTES: usize = 340_000;

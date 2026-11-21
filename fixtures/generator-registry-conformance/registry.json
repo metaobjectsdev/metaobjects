@@ -184,11 +184,11 @@
       "ports": ["csharp"]
     },
     "repository": {
-      "concept": "Per-entity repository seam (Java: Spring Data interface; Kotlin: an open Exposed persistence base with CRUD + patch bodies).",
+      "concept": "Per-entity repository seam (Java: Spring Data interface; Kotlin: an open Exposed persistence base with CRUD + patch bodies; Rust: a store crate per package over sqlx, with list, count, get, create, update, delete and the guarded lifecycle update).",
       "tier": "native",
       "layer": "persistence",
       "eject": "full",
-      "ports": ["java", "kotlin"]
+      "ports": ["java", "kotlin", "rust"]
     },
     "dto": {
       "concept": "Per-entity Spring DTO.",

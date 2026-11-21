@@ -263,6 +263,7 @@ fn init_writes_the_generator_list_and_gen_list_shows_it_against_what_is_availabl
             "entity",
             "rules-names",
             "contract-types",
+            "repository",
             "client",
             "commands",
             "render-helper",
@@ -272,10 +273,10 @@ fn init_writes_the_generator_list_and_gen_list_shows_it_against_what_is_availabl
     );
     let out = ok(&p.run(&["meta", "gen", "--list"]));
     assert!(
-        out.contains("metaobjects.config.json runs: entity, rules-names, contract-types, client, commands, render-helper, output-parser, output-prompt"),
+        out.contains("metaobjects.config.json runs: entity, rules-names, contract-types, repository, client, commands, render-helper, output-parser, output-prompt"),
         "{out}"
     );
-    assert_eq!(out.matches("[configured]").count(), 8, "{out}");
+    assert_eq!(out.matches("[configured]").count(), 9, "{out}");
     // An edited list is never overwritten by a second init.
     p.write(
         "metaobjects.config.json",
@@ -288,7 +289,7 @@ fn init_writes_the_generator_list_and_gen_list_shows_it_against_what_is_availabl
     );
     let out = ok(&p.run(&["meta", "gen", "--list"]));
     assert!(out.contains("runs: entity\n"), "{out}");
-    assert_eq!(out.matches("[not configured]").count(), 7, "{out}");
+    assert_eq!(out.matches("[not configured]").count(), 8, "{out}");
 }
 
 #[test]
@@ -326,7 +327,7 @@ fn the_generator_list_changes_what_runs_without_an_eject() {
     // Put it back and the crates come back.
     p.write(
         "metaobjects.config.json",
-        "{ \"generators\": [\"entity\", \"client\", \"commands\"] }",
+        "{ \"generators\": [\"entity\", \"repository\", \"client\", \"commands\"] }",
     );
     ok(&p.run(&["meta", "gen"]));
     assert_eq!(p.generated(), full);
@@ -590,7 +591,7 @@ fn eject_copies_the_generator_never_overwrites_and_undo_takes_back_only_identica
     assert_eq!(r.status.code(), Some(2));
     assert!(
         text(&r.stderr).contains(
-            "unknown or non-ejectable generator(s): nope; ejectable: entity, rules-names, contract-types, client, commands, render-helper, output-parser, output-prompt"
+            "unknown or non-ejectable generator(s): nope; ejectable: entity, rules-names, contract-types, repository, client, commands, render-helper, output-parser, output-prompt"
         ),
         "{}",
         text(&r.stderr)

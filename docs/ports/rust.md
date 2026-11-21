@@ -107,9 +107,11 @@ generated/
   shop_formats/   output-prompt   the output-format fragment per responding prompt
   shop_rules/     rules-names     lifecycles, commands, operations, permissions, business errors (when the package declares rules)
   shop_contract/  contract-types  each operation's input, output and errors (when the package declares operations)
+  shop_store/     repository list, count, get, create, update, delete and the guarded update per stored entity, on sqlx
   meta_support/   entity     exact decimals, durations, patch helpers, the validation checks
   meta_client/    client     the HTTP transport (reqwest), errors, the query builder
   meta_cli/       commands   what a command uses to build a body and a query
+  meta_store/     repository the table descriptor, filters, and the Postgres and SQLite statements
 ```
 
 The generated crates depend on each other by path and on ordinary crates.io crates (`serde`,
@@ -329,6 +331,49 @@ match body.error {
 }
 ```
 
+### `repository`: data access on sqlx
+
+`repository` ([ADR-0067](../../spec/decisions/ADR-0067-layering-and-the-service-seam.md) layer 3)
+writes a `<package>_store` crate with a module per entity that has a source. Each module has
+`TABLE`, the entity's physical mapping (table, schema, key, and each field's column and storage
+kind, under the project's `naming` strategies and every `@table`/`@column`), and typed functions
+over it:
+
+- `list(c, &Query)` (a `Filter` of the nine operators, sort and paging), `count(c, Option<&Filter>)`
+  and `get(c, id)`;
+- `create(c, &XCreate)`, `update(c, id, &XPatch)` (`None` when there was no row) and
+  `delete(c, id)` (`false` when there was none), for an entity whose source is writable;
+- per lifecycle (ADR-0066), the guarded update `transition_<field>(c, id, from, to)`: one
+  `UPDATE ... WHERE key = id AND state IN (from)`, `false` when no row matched because it is gone
+  or another writer moved it first. It decides nothing: which move is legal, and who may make it,
+  is the service's (layer 4).
+
+`c` is a `sqlx::PgConnection` or a `sqlx::SqliteConnection` (a transaction derefs to one), through
+`meta_store::Conn`; the shared crate's `postgres` and `sqlite` features pick the engines. Rows come
+back as the model crate's own types, which stay free of sqlx. A subtype in a single-table
+hierarchy writes its discriminator itself and reads only its own rows. Field names in a filter or
+sort are the model's, checked at run time; which fields a caller may filter on is the transport's
+choice, not the store's.
+
+```rust
+use meta_store::{Filter, Query};
+use shop_store::order;
+
+let mut c = sqlx::PgConnection::connect(&url).await?;
+let page = order::list(&mut c, &Query {
+    filter: Some(Filter::from_json(&json!({ "status": { "eq": "NEW" } }))?),
+    limit: Some(50),
+    ..Query::default()
+}).await?;
+// When `status` has transitions, it is a lifecycle and gets its guarded update:
+if !order::transition_status(&mut c, id, &[OrderStatus::New], OrderStatus::InFlight).await? {
+    // someone else moved it first
+}
+```
+
+Not stored yet: a `@storage: flattened` field is refused at generation (`ERR_UNSUPPORTED`), and
+projections, reports and many-to-many traversal get no store functions.
+
 ### Owning a generator
 
 A generator is a reference helper
@@ -439,14 +484,16 @@ regeneration, peak memory), so a port's speed can be tracked per feature next to
 
 ## What does not exist yet
 
-- **Other generators.** There is no server-side route, ORM or repository generator and no
-  documentation generator. Projections and reports get no client yet, and a template over a
+- **Other generators.** There is no server-side route or service generator and no
+  documentation generator. The store has no functions for projections, reports or many-to-many
+  traversal yet. Projections and reports get no client yet, and a template over a
   sourceless `object.projection` payload gets no render function.
 - **Other gates.** `verify --codegen`, `verify --templates` and the business-rules gate are the ones
   it has. There is no requirement gate and no `fmt`.
 - **A three-way merge.** A hand-edited generated file is refused by name, as in every port but
   TypeScript; change the model or own the generator instead.
-- **The service tier.** No `ObjectManager`, no persistence drivers and no web adapters.
+- **The service tier.** No `ObjectManager` and no web adapters; data access is the generated
+  store crates.
 - **Publication.** The crates are publishable and the lane proves they package (`cargo publish
   --dry-run`), but nothing is published: there is no crates.io release yet, and publishing waits for
   the owner's go ([ADR-0065](../../spec/decisions/ADR-0065-rust-is-the-sixth-port.md) Amendment 3).

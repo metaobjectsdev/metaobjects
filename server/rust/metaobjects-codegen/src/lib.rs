@@ -5,7 +5,8 @@
 //! files whose bytes changed, keeping one hash manifest ([`hashes`]) that it saves once per
 //! run. Each shipped generator writes one crate per metadata package (ADR-0065): [`entity`]
 //! (serde structs, enums, value objects and the bodies a caller sends, with `validate()`),
-//! [`rules_names`] and [`contract_types`] (the rules layers 0 and 1, ADR-0067), [`client`] (a
+//! [`rules_names`] and [`contract_types`] (the rules layers 0 and 1, ADR-0067), [`repository`]
+//! (data access over `sqlx` for each stored entity), [`client`] (a
 //! typed HTTP client for the REST API the model implies), [`commands`] (command-line commands
 //! over that client) and the prompt tier ([`render_helper`], [`output_parser`],
 //! [`output_prompt`]). [`eject`] copies one into the project to own (ADR-0034), and [`plan`] is
@@ -33,6 +34,7 @@ pub mod output_prompt;
 pub mod plan;
 pub mod project;
 pub mod render_helper;
+pub mod repository;
 pub mod rules_names;
 pub mod sha256;
 pub mod writer;
@@ -52,6 +54,7 @@ pub use metaobjects_render as render;
 pub use output_parser::OutputParserGenerator;
 pub use output_prompt::OutputPromptGenerator;
 pub use render_helper::{RenderHelperGenerator, TemplateCheck, check_templates};
+pub use repository::RepositoryGenerator;
 pub use rules_names::RulesNamesGenerator;
 
 /// The generators `cargo meta gen` runs when the project owns none, in the order they run.
@@ -60,6 +63,7 @@ pub fn shipped_generators() -> Vec<Box<dyn Generator>> {
         Box::new(EntityGenerator),
         Box::new(RulesNamesGenerator),
         Box::new(ContractTypesGenerator),
+        Box::new(RepositoryGenerator),
         Box::new(ClientGenerator),
         Box::new(CommandsGenerator),
         Box::new(RenderHelperGenerator),

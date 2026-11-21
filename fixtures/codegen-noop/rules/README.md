@@ -25,7 +25,11 @@ vocabulary is their job. Each adds only files of its own for `with/`, and moves 
 writes for `without/`. Today those are TypeScript's `rules-names`, which writes nothing for
 `without/`, and `contract-types`, whose entity contracts do not depend on the vocabulary and whose
 operations module (and the value object only an operation reaches) does. In Rust, `rules-names`
-and `contract-types` write nothing for `without/` and, for `with/`, only files of their own.
+and `contract-types` write nothing for `without/` and, for `with/`, only files of their own. The
+Rust data-access generator (`repository`, ADR-0067 layer 3) writes the same files for both models,
+because it stores every entity either way; the vocabulary changes only the file of the entity that
+holds the lifecycle, and only by appending that lifecycle's guarded update (`transition_status`) at
+its end.
 
 The service generators (ADR-0067 layers 4 and 5) are the enforcing shells, so they also CHANGE
 files they write for `without/`: TypeScript's `service` adds a file per derived transition command
@@ -43,7 +47,7 @@ something half-built; these tests are what notice:
 | Java | `server/java/codegen-spring/src/test/java/com/metaobjects/generator/spring/RulesInertTest.java` |
 | Kotlin | `server/java/codegen-kotlin/src/test/kotlin/com/metaobjects/generator/kotlin/RulesInertTest.kt` |
 | Python | `server/python/tests/test_rules_inert.py` |
-| Rust | `server/rust/metaobjects-codegen/tests/rules_inert.rs` (every flat generator it ships; the rules-layer generators are held to adding files only) |
+| Rust | `server/rust/metaobjects-codegen/tests/rules_inert.rs` (every flat generator it ships; the rules-layer generators are held to adding files only, and the data-access generator to appending the guarded update) |
 
 Regenerate `without/` from `with/` by deleting every `transition.*` child and the
 `api.operational` node, nothing else.

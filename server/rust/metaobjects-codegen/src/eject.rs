@@ -107,6 +107,18 @@ pub const REFERENCES: &[Reference] = &[
         source: include_str!("contract_types.rs"),
     },
     Reference {
+        name: "repository",
+        tier: "native",
+        layer: "persistence",
+        module: "repository",
+        type_name: "RepositoryGenerator",
+        needs: &["entity"],
+        summary: "store crates, one per package with stored entities: each entity's table and \
+                  its list, count, get, create, update, delete and guarded lifecycle update over \
+                  sqlx, on Postgres and SQLite, and the shared data-access crate (needs entity)",
+        source: include_str!("repository.rs"),
+    },
+    Reference {
         name: "client",
         tier: "native",
         layer: "client",

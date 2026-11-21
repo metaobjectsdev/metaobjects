@@ -38,6 +38,10 @@ pub const CLI_CRATE: &str = "meta_cli";
 pub const CONTRACT_CRATE: &str = "meta_contract";
 /// The suffix of the client crate of a package: `shop` is served by `shop_client`.
 pub const CLIENT_SUFFIX: &str = "_client";
+/// The shared data-access crate the `repository` generator's store crates use.
+pub const STORE_CRATE: &str = "meta_store";
+/// The suffix of the store crate of a package: `shop`'s repositories are in `shop_store`.
+pub const STORE_SUFFIX: &str = "_store";
 /// The suffix of the command crate of a package: `shop` is driven by `shop_cli`.
 pub const CLI_SUFFIX: &str = "_cli";
 
@@ -1270,7 +1274,13 @@ impl Plan {
                 )),
                 None => Ok(()),
             };
-        for shared in [SUPPORT_CRATE, CLIENT_CRATE, CLI_CRATE, CONTRACT_CRATE] {
+        for shared in [
+            SUPPORT_CRATE,
+            CLIENT_CRATE,
+            CLI_CRATE,
+            CONTRACT_CRATE,
+            STORE_CRATE,
+        ] {
             claim_crate(
                 shared.to_string(),
                 format!("the generated support crate {shared}"),
@@ -1282,6 +1292,7 @@ impl Plan {
             if c.structs.iter().any(|&i| self.structs[i].route.is_some()) {
                 claim_crate(format!("{cname}{CLIENT_SUFFIX}"), origin("client"))?;
                 claim_crate(format!("{cname}{CLI_SUFFIX}"), origin("commands"))?;
+                claim_crate(format!("{cname}{STORE_SUFFIX}"), origin("store"))?;
             }
         }
         for (cname, c) in &self.crates {

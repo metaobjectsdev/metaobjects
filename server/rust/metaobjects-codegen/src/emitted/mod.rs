@@ -23,7 +23,7 @@ pub const VALIDATION_RS: &str = include_str!("validation.rs");
 /// The text of `src/wire.rs` in a generated crate.
 pub const WIRE_RS: &str = include_str!("wire.rs");
 
-// Two more files are fixed text a generator writes whole but are not compiled here: they are
+// More files are fixed text a generator writes whole but are not compiled here: they are
 // written for the dependencies of the crate they land in (`reqwest` for the transport), which
 // this crate does not have. The compile gate builds them in a generated workspace.
 
@@ -34,3 +34,6 @@ pub const COMMAND_HELPERS_RS: &str = include_str!("command_helpers.rs");
 /// The text of `meta_contract/src/lib.rs`, the wire error contract the `contract-types`
 /// generator's crates share.
 pub const CONTRACT_RS: &str = include_str!("contract.rs");
+/// The text of `meta_store/src/lib.rs`, the data access the `repository` generator's crates
+/// share (written for `sqlx`).
+pub const STORE_RS: &str = include_str!("store.rs");
