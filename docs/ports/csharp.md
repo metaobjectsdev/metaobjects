@@ -826,8 +826,9 @@ each writable entity (a concrete `object.entity` with a writable primary source)
   server generates (`@generation: increment` or `uuid`). A key the client chooses stays. A member
   that is required and has no `@default` is a C# `required` member, so System.Text.Json refuses a
   body that omits it.
-- `<Entity>Update`: what a client may change. It leaves off the same server-owned members and every
-  key field, since the route names the row. Every member is optional. Bind it with
+- `<Entity>Update`: what a client may change. It leaves off the same server-owned members, every
+  key field (the route names the row) and a `writeOnce` field (frozen after create; it stays on
+  `<Entity>Create`). Every member is optional. Bind it with
   `<Entity>Update.From(body, options)`, which records the keys the body carried: `Has("note")` is
   true for `{"note": null}` and false for `{}`, so a PATCH can leave an omitted member alone and
   clear an explicit null. `Validate` refuses null on a required member.

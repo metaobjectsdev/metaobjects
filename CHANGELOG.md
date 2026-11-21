@@ -52,7 +52,8 @@ here.**
   `sealed record`s carrying the entity's validation attributes and wire converters. Neither carries
   what the server owns: a generated key, an `@autoSet` stamp, a `readOnly` or derived field, a TPH
   discriminator. A required member with no `@default` is a `required` member of the create record, so
-  a body that omits it does not bind. Every update member is optional; `<Entity>Update.From` binds a
+  a body that omits it does not bind. A `writeOnce` field is on the create record and off the update
+  record, since it is frozen after create. Every update member is optional; `<Entity>Update.From` binds a
   body and records which keys it carried, so `Has` tells an omitted member (untouched) from an
   explicit null (cleared), and validation refuses null on a required member. The lifecycle field
   stays on both, so the service shell can check it and refuse a change with `409 state_managed`. The
