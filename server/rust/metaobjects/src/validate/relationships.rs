@@ -389,14 +389,40 @@ fn junction_shape_owned_by_rule_d(
     false
 }
 
-/// `deriveM2MFields`: the failure message when the junction's two references cannot be
-/// paired with the navigating entity `source` and the `@objectRef` target.
-fn derive_m2m_failure(
+/// The junction of a many-to-many relationship and its two foreign-key fields, as
+/// `deriveM2MFields` derives them from the junction's two `identity.reference` children.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct M2mFields {
+    /// The junction (`@through`) entity.
+    pub junction: NodeId,
+    /// The junction field that holds the navigating entity's key.
+    pub source_field: String,
+    /// The junction field that holds the target's key.
+    pub target_field: String,
+    /// An undirected self-join (`@symmetric`): a junction row relates each side to the other,
+    /// so the two fields are interchangeable.
+    pub symmetric: bool,
+}
+
+/// `deriveM2MFields`: the junction and foreign-key fields of the many-to-many relationship
+/// `rel` navigated from `source`, or the message saying why its two references cannot be
+/// paired with `source` and the `@objectRef` target. The loader's rule (f) reports that
+/// message, and the generators read the fields, so the two cannot disagree.
+pub fn derive_m2m_fields(
     tree: &Tree,
     objs: &ObjectIndex,
     rel: NodeId,
     source: NodeId,
-) -> Option<String> {
+) -> Result<M2mFields, String> {
+    let fields = |junction: NodeId, s: NodeId, t: NodeId, symmetric: bool| -> M2mFields {
+        let name = |r: NodeId| fk_field(tree, r).unwrap_or_default().to_string();
+        M2mFields {
+            junction,
+            source_field: name(s),
+            target_field: name(t),
+            symmetric,
+        }
+    };
     let declaring = parent_of(tree, rel);
     let declaring = if tree.node(declaring).type_name == TYPE_OBJECT {
         declaring
@@ -404,20 +430,22 @@ fn derive_m2m_failure(
         source
     };
     let label = rel_label(tree, declaring, rel);
-    let through = str_attr(tree, rel, ATTR_THROUGH)?;
+    let Some(through) = str_attr(tree, rel, ATTR_THROUGH) else {
+        return Err(format!("relationship \"{label}\" has no @through"));
+    };
     let Some(junction) = objs.ref_target(tree, rel, ATTR_THROUGH) else {
-        return Some(format!(
+        return Err(format!(
             "relationship \"{label}\" @through \"{through}\" does not resolve to an entity"
         ));
     };
     let Some(target_name) = str_attr(tree, rel, ATTR_OBJECT_REF) else {
-        return Some(format!(
+        return Err(format!(
             "relationship \"{label}\" is missing @objectRef (the M:N target)"
         ));
     };
     let refs = reference_identities(tree, junction);
     if refs.len() != 2 {
-        return Some(format!(
+        return Err(format!(
             "junction \"{through}\" for relationship \"{label}\" must declare exactly two identity.reference children (found {})",
             refs.len()
         ));
@@ -448,21 +476,25 @@ fn derive_m2m_failure(
                 .collect::<Vec<_>>()
                 .join(" or ");
             let short = target_name.rsplit("::").next().unwrap_or(target_name);
-            return Some(format!(
+            return Err(format!(
                 "junction \"{through}\" for relationship \"{label}\" must declare one identity.reference to {subject} and one to \"{short}\""
             ));
         }
-        return None;
+        let (Some(s), Some(t)) = (source_ref, target_ref) else {
+            unreachable!("both references have a foreign-key field")
+        };
+        return Ok(fields(junction, s, t, false));
     }
     if tree.attr(rel, ATTR_SYMMETRIC) == Some(&Value::Bool(true)) {
-        return refs.iter().any(|&r| fk_field(tree, r).is_none()).then(|| {
-            format!(
+        if refs.iter().any(|&r| fk_field(tree, r).is_none()) {
+            return Err(format!(
                 "symmetric junction \"{through}\" for \"{label}\" has a reference with no @fields"
-            )
-        });
+            ));
+        }
+        return Ok(fields(junction, refs[0], refs[1], true));
     }
     let Some(declared) = nonempty_attr(tree, rel, ATTR_SOURCE_REF_FIELD) else {
-        return Some(format!(
+        return Err(format!(
             "self-join relationship \"{label}\" through \"{through}\" is ambiguous: set @sourceRefField (directed) or @symmetric (undirected)"
         ));
     };
@@ -471,16 +503,16 @@ fn derive_m2m_failure(
         .copied()
         .find(|&r| fk_field(tree, r) == Some(declared))
     else {
-        return Some(format!(
+        return Err(format!(
             "@sourceRefField \"{declared}\" on \"{label}\" does not match any identity.reference FK field on junction \"{through}\""
         ));
     };
-    let distinct = refs.iter().copied().find(|&r| r != source_ref);
-    distinct
-        .is_none_or(|r| fk_field(tree, r).is_none())
-        .then(|| {
-            format!("junction \"{through}\" for \"{label}\" has no distinct target-side reference")
-        })
+    match refs.iter().copied().find(|&r| r != source_ref) {
+        Some(t) if fk_field(tree, t).is_some() => Ok(fields(junction, source_ref, t, false)),
+        _ => Err(format!(
+            "junction \"{through}\" for \"{label}\" has no distinct target-side reference"
+        )),
+    }
 }
 
 /// Rule (f): a M:N junction must pair: one reference resolving to the navigating entity,
@@ -494,12 +526,13 @@ pub fn validate_m2m_junction_pairing(ctx: &Ctx<'_>, out: &mut Findings) {
             continue;
         }
         for rel in relationships(tree, obj) {
+            // A non-text @through is reported by the attribute checks, not here.
             if str_attr(tree, rel, ATTR_CARDINALITY) != Some(CARDINALITY_MANY)
-                || tree.attr(rel, ATTR_THROUGH).is_none()
+                || str_attr(tree, rel, ATTR_THROUGH).is_none()
             {
                 continue;
             }
-            let Some(message) = derive_m2m_failure(tree, objs, rel, obj) else {
+            let Err(message) = derive_m2m_fields(tree, objs, rel, obj) else {
                 continue;
             };
             let declaring = parent_of(tree, rel);

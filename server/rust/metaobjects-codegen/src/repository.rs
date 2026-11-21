@@ -33,8 +33,11 @@
 //! A served read (a concrete projection or report whose read source is a view) gets the same
 //! module, read only: `TABLE`, `list`, `count`, and `get` when it has a single key.
 //!
-//! Not generated yet: many-to-many traversal, and `@storage: flattened` value objects (an entity
-//! with one is refused by name).
+//! A many-to-many relationship of an entity with a key gets `<relation>_of`, the related rows
+//! through the junction the core derives ([`derive_m2m_fields`]).
+//!
+//! Not generated yet: `@storage: flattened` value objects (an entity with one is refused by
+//! name).
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -44,6 +47,7 @@ use metaobjects::naming::{
 };
 use metaobjects::node::{NodeId, Tree};
 use metaobjects::rules_names::rules_names_of;
+use metaobjects::validate::relationships::derive_m2m_fields;
 use metaobjects::validate::util::ObjectIndex;
 use metaobjects_codegen::emitted::STORE_RS;
 use metaobjects_codegen::generator::{
@@ -75,6 +79,7 @@ const ATTR_STRING_VALUE_MAP: &str = "stringValueMap";
 const ATTR_STORAGE: &str = "storage";
 const STORAGE_FLATTENED: &str = "flattened";
 const TYPE_ORIGIN: &str = "origin";
+const TYPE_RELATIONSHIP: &str = "relationship";
 
 /// The `sqlx` the store crates are written for.
 const SQLX: &str = r#"{ version = "0.8", default-features = false, features = ["runtime-tokio", "chrono", "json"] }"#;
@@ -157,6 +162,26 @@ pub struct LifecyclePlan {
     pub state_type: String,
 }
 
+/// One many-to-many relationship of a stored entity: its junction and the reads through it.
+pub struct TraversalPlan {
+    /// The relationship's name in the model.
+    pub relation: String,
+    /// The function's name: `<relation in snake case>_of`.
+    pub function: String,
+    /// The `Through` const's name: the relation in screaming snake case.
+    pub constant: String,
+    /// The junction entity's name in the model.
+    pub junction: String,
+    pub schema: Option<String>,
+    pub table: String,
+    pub source: ColumnPlan,
+    pub target: ColumnPlan,
+    pub symmetric: bool,
+    /// The path of the target's `TABLE`, and of its row type.
+    pub target_table: String,
+    pub target_row: String,
+}
+
 /// One stored entity, with everything its file needs resolved.
 pub struct StoredEntity {
     /// The object's name in the model.
@@ -176,6 +201,8 @@ pub struct StoredEntity {
     pub read_only: bool,
     pub discriminator: Option<(String, String)>,
     pub lifecycles: Vec<LifecyclePlan>,
+    /// Its many-to-many relationships, for an entity with a key.
+    pub traversals: Vec<TraversalPlan>,
 }
 
 fn unsupported(message: String) -> GenError {
@@ -400,7 +427,96 @@ fn stored_entity(
         read_only: route.read_only,
         discriminator: discriminator(tree, s.node),
         lifecycles: cycles,
+        traversals: Vec::new(),
     })
+}
+
+/// The traversals of the stored entity `s`, with each target's store crate added to `deps`.
+/// The junction and its two foreign keys come from the core's derivation, the one the
+/// loader's pairing rule runs, so a relationship that loaded is one this can follow.
+fn traversals(
+    tree: &Tree,
+    index: &ObjectIndex,
+    naming: &NamingCtx<'_>,
+    plan: &Plan,
+    s: &StructPlan,
+    route: &Route,
+    deps: &mut BTreeSet<String>,
+) -> Result<Vec<TraversalPlan>, GenError> {
+    let fail = |e: metaobjects::errors::MetaError| unsupported(e.to_string());
+    if route.key.is_none() {
+        return Ok(Vec::new());
+    }
+    let mut out = Vec::new();
+    for t in &route.traversals {
+        let what = format!("{}.{}", s.name, t.name);
+        let rel = tree
+            .children(s.node)
+            .iter()
+            .copied()
+            .find(|&c| tree.node(c).type_name == TYPE_RELATIONSHIP && tree.node(c).name == t.name)
+            .ok_or_else(|| unsupported(format!("{what} is not a relationship")))?;
+        let m2m = derive_m2m_fields(tree, index, rel, s.node).map_err(unsupported)?;
+        let junction = plan
+            .structs
+            .iter()
+            .find(|j| j.node == m2m.junction)
+            .ok_or_else(|| unsupported(format!("{what}: its junction is not a planned entity")))?;
+        let column = |name: &str| -> Result<ColumnPlan, GenError> {
+            let f = junction
+                .fields
+                .iter()
+                .find(|f| f.wire == name)
+                .ok_or_else(|| {
+                    unsupported(format!(
+                        "{what}: the junction {} has no field {name}",
+                        junction.name
+                    ))
+                })?;
+            let (kind, array, map) = column_kind(tree, f, &what)?;
+            if array || map.is_some() {
+                return Err(unsupported(format!(
+                    "{what}: the junction key {name} is not a single text or number"
+                )));
+            }
+            Ok(ColumnPlan {
+                field: f.wire.clone(),
+                column: resolve_column_name(tree, f.node, naming).map_err(fail)?,
+                kind,
+                array,
+                map,
+                // ADR-0039 sanctioned own: `@dbColumnType` is physical and never inherited.
+                stored_as: tree
+                    .own_attr(f.node, ATTR_DB_COLUMN_TYPE)
+                    .and_then(|a| a.value.as_str())
+                    .map(str::to_string),
+            })
+        };
+        let target = &plan.structs[t.target];
+        let store = format!("{}{STORE_SUFFIX}", target.crate_name);
+        let own = format!("{}{STORE_SUFFIX}", s.crate_name);
+        deps.insert(target.crate_name.clone());
+        let target_table = if store == own {
+            format!("crate::{}::TABLE", target.module())
+        } else {
+            deps.insert(store.clone());
+            format!("{store}::{}::TABLE", target.module())
+        };
+        out.push(TraversalPlan {
+            relation: t.name.clone(),
+            function: format!("{}_of", snake_ident(&t.name).trim_start_matches("r#")),
+            constant: screaming(&t.name),
+            junction: junction.name.clone(),
+            schema: resolve_table_schema(tree, junction.node, naming).map_err(fail)?,
+            table: resolve_table_name(tree, junction.node, naming).map_err(fail)?,
+            source: column(&m2m.source_field)?,
+            target: column(&m2m.target_field)?,
+            symmetric: m2m.symmetric,
+            target_table,
+            target_row: format!("{}::{}", target.crate_name, target.type_name),
+        });
+    }
+    Ok(out)
 }
 
 /// The shipped [`RepositoryParts::render`], through `parts`.
@@ -446,7 +562,8 @@ pub fn render<P: RepositoryParts + ?Sized>(
         let mut modules = Vec::new();
         for s in served {
             let route = s.route.as_ref().expect("a stored object has a route");
-            let e = stored_entity(tree, &naming, s, route, &lifecycles)?;
+            let mut e = stored_entity(tree, &naming, s, route, &lifecycles)?;
+            e.traversals = traversals(tree, &index, &naming, &plan, s, route, &mut deps)?;
             for f in &s.fields {
                 if let Some(t) = f.ty.type_ref() {
                     deps.insert(t.crate_name.clone());
@@ -580,11 +697,45 @@ fn function(w: &mut CodeWriter, doc: &str, name: &str, params: &[String], ret: &
     });
 }
 
-fn table_item(w: &mut CodeWriter, e: &StoredEntity) {
-    let opt = |v: &Option<String>| {
-        v.as_ref()
-            .map_or("None".to_string(), |s| format!("Some({})", literal(s)))
+fn opt(v: &Option<String>) -> String {
+    v.as_ref()
+        .map_or("None".to_string(), |s| format!("Some({})", literal(s)))
+}
+
+/// `Column::new(...)` (or its list or typed form) for one column.
+fn column_piece(c: &ColumnPlan) -> metaobjects_codegen::writer::Piece {
+    let mut args = vec![literal(&c.field), literal(&c.column), c.kind.clone()];
+    let ctor = match (&c.stored_as, c.array) {
+        (None, false) => "new",
+        (None, true) => "list",
+        (Some(ty), array) => {
+            args.push(literal(ty));
+            if array { "typed_list" } else { "typed" }
+        }
     };
+    piece![format!("Column::{ctor}"), list("(", args, ")")]
+}
+
+/// The junction const of one many-to-many relationship.
+fn through_item(w: &mut CodeWriter, t: &TraversalPlan) {
+    let fields: Vec<metaobjects_codegen::writer::Piece> = vec![
+        format!("schema: {}", opt(&t.schema)).into(),
+        format!("name: {}", literal(&t.table)).into(),
+        piece!["source: ", column_piece(&t.source)],
+        piece!["target: ", column_piece(&t.target)],
+        format!("symmetric: {}", t.symmetric).into(),
+    ];
+    w.prose(&format!(
+        "The junction of `{}`: `{}` rows, stored in `{}`.",
+        t.relation, t.junction, t.table
+    ));
+    w.line(piece![
+        format!("pub const {}: Through = ", t.constant),
+        padded("Through {", fields, "};")
+    ]);
+}
+
+fn table_item(w: &mut CodeWriter, e: &StoredEntity) {
     for c in &e.columns {
         if let Some((name, ty, pairs)) = &c.map {
             w.prose(&format!("What `{}` stores for each member.", c.field));
@@ -595,22 +746,8 @@ fn table_item(w: &mut CodeWriter, e: &StoredEntity) {
             w.blank();
         }
     }
-    let columns: Vec<metaobjects_codegen::writer::Piece> = e
-        .columns
-        .iter()
-        .map(|c| {
-            let mut args = vec![literal(&c.field), literal(&c.column), c.kind.clone()];
-            let ctor = match (&c.stored_as, c.array) {
-                (None, false) => "new",
-                (None, true) => "list",
-                (Some(ty), array) => {
-                    args.push(literal(ty));
-                    if array { "typed_list" } else { "typed" }
-                }
-            };
-            piece![format!("Column::{ctor}"), list("(", args, ")")]
-        })
-        .collect();
+    let columns: Vec<metaobjects_codegen::writer::Piece> =
+        e.columns.iter().map(column_piece).collect();
     let discriminator = e
         .discriminator
         .as_ref()
@@ -649,6 +786,9 @@ pub fn entity_file(e: &StoredEntity) -> Result<String, GenError> {
         "Column",
         "Kind",
     ];
+    if !e.traversals.is_empty() {
+        names.push("Through");
+    }
     names.sort_unstable();
     items.push(
         item(|w| {
@@ -657,6 +797,9 @@ pub fn entity_file(e: &StoredEntity) -> Result<String, GenError> {
         .map_err(wrap)?,
     );
     items.push(item(|w| table_item(w, e)).map_err(wrap)?);
+    for t in &e.traversals {
+        items.push(item(|w| through_item(w, t)).map_err(wrap)?);
+    }
     let row = &e.row;
     let body = item(|w| {
         w.prose(&format!("The `{}` rows the query selects, in its order and page.", e.object));
@@ -685,6 +828,19 @@ pub fn entity_file(e: &StoredEntity) -> Result<String, GenError> {
                 &format!("Option<{row}>"),
                 "meta_store::get(c, &TABLE, id).await",
             );
+            for t in &e.traversals {
+                function(
+                    w,
+                    &format!(
+                        "The rows `{}` relates to the row whose `{key}` is `id`, in no order.",
+                        t.relation
+                    ),
+                    &t.function,
+                    &[format!("id: {ty}")],
+                    &format!("Vec<{}>", t.target_row),
+                    &format!("meta_store::related(c, &{}, &{}, id).await", t.target_table, t.constant),
+                );
+            }
         }
         if !e.read_only {
             function(

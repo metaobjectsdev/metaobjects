@@ -137,6 +137,21 @@ impl Table {
     }
 }
 
+/// The junction of a many-to-many relationship: the table and the two columns that hold the
+/// keys of the rows it relates.
+#[derive(Debug, Clone, Copy)]
+pub struct Through {
+    pub schema: Option<&'static str>,
+    pub name: &'static str,
+    /// The column that holds the key of the row the relationship is navigated from.
+    pub source: Column,
+    /// The column that holds the key of a related row.
+    pub target: Column,
+    /// An undirected self-join: a row relates each of its two sides to the other, so a row
+    /// `(a, b)` answers from `a` and from `b`.
+    pub symmetric: bool,
+}
+
 /// A data-access failure.
 #[derive(Debug)]
 pub enum StoreError {
@@ -1075,6 +1090,52 @@ pub async fn get<T: DeserializeOwned, C: Conn + ?Sized>(
     key_where(&mut sql, table, &key)?;
     let rows = c.rows(&sql.text, sql.binds, table.columns).await?;
     Ok(rows_into(table, rows)?.into_iter().next())
+}
+
+/// The `target` rows related through `through` to the row whose key is `key`, in no order (a
+/// relationship is a set). A subtype target answers only its own rows.
+pub async fn related<T: DeserializeOwned, C: Conn + ?Sized>(
+    c: &mut C,
+    target: &Table,
+    through: &Through,
+    key: impl Serialize,
+) -> Result<Vec<T>, StoreError> {
+    let key = serde_json::to_value(key).map_err(|e| bad(target.object, e.to_string()))?;
+    let engine = c.engine();
+    let (s, t) = (&through.source, &through.target);
+    let junction = match through.schema {
+        Some(schema) => format!("{}.{}", quote(schema), quote(through.name)),
+        None => quote(through.name),
+    };
+    let mut sql = select(engine, target);
+    sql.push(&format!(" WHERE {} IN (SELECT ", quote(target.key_column()?.column)));
+    let mut param = |sql: &mut Sql| -> Result<(), StoreError> {
+        let b = scalar_bind(engine, s.field, s.kind, &key)?;
+        sql.param(b, s);
+        Ok(())
+    };
+    if through.symmetric {
+        // The side of each row that is not the source; a row relating a row to itself is
+        // that row.
+        sql.push(&format!("CASE WHEN {} = ", quote(s.column)));
+        param(&mut sql)?;
+        sql.push(&format!(
+            " THEN {} ELSE {} END FROM {junction} WHERE {} = ",
+            quote(t.column),
+            quote(s.column),
+            quote(s.column)
+        ));
+        param(&mut sql)?;
+        sql.push(&format!(" OR {} = ", quote(t.column)));
+        param(&mut sql)?;
+    } else {
+        sql.push(&format!("{} FROM {junction} WHERE {} = ", quote(t.column), quote(s.column)));
+        param(&mut sql)?;
+    }
+    sql.push(")");
+    scope(&mut sql, target, false)?;
+    let rows = c.rows(&sql.text, sql.binds, target.columns).await?;
+    rows_into(target, rows)
 }
 
 /// The rows a query selects, in its order and page.

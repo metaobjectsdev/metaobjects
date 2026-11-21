@@ -49,7 +49,7 @@ const PROBE_DEPENDENCIES: &str = "fitness = { path = \"../out/fitness\" }\n\
     tokio = { version = \"1\", features = [\"rt\", \"macros\"] }\n";
 
 const PROBE_MAIN: &str = r##"
-use fitness_store::{all_types, bridge_auth, coupon_auth, int_enum_array, program};
+use fitness_store::{all_types, bridge_auth, coupon_auth, int_enum_array, person, program};
 use meta_store::{Filter, Query, Sort};
 use serde_json::json;
 use sqlx::Connection;
@@ -152,6 +152,25 @@ async fn main() {
     let stored: (i64, String) = sqlx::query_as(r#"SELECT "state", "history" FROM "int_enum_arrays""#).fetch_one(&mut c).await.unwrap();
     show("int-enum", &a);
     println!("int-enum-stored {} {}", stored.0, stored.1);
+
+    // m2n-symmetric-self-join and m2n-directed-self-join: a symmetric row answers from both
+    // sides and a row relating a person to herself answers once; a directed one from one side.
+    sqlx::raw_sql(
+        r#"INSERT INTO "people" ("id", "name") VALUES (1, 'Alice'), (2, 'Bob'), (3, 'Carol'), (4, 'Dave');
+           INSERT INTO "friendships" ("personAId", "personBId") VALUES (1, 2), (3, 1), (2, 4), (1, 1);
+           INSERT INTO "follows" ("followerId", "followeeId") VALUES (1, 2), (1, 3), (2, 1);"#,
+    )
+    .execute(&mut c)
+    .await
+    .unwrap();
+    let ids = |mut rows: Vec<fitness::Person>| -> Vec<i64> {
+        rows.sort_by_key(|p| p.id);
+        rows.into_iter().map(|p| p.id).collect()
+    };
+    show("friends-1", &ids(person::friends_of(&mut c, 1).await.unwrap()));
+    show("friends-4", &ids(person::friends_of(&mut c, 4).await.unwrap()));
+    show("following-1", &ids(person::following_of(&mut c, 1).await.unwrap()));
+    show("following-3", &ids(person::following_of(&mut c, 3).await.unwrap()));
 }
 "##;
 
@@ -242,6 +261,11 @@ fn the_store_crates_build_are_formatted_and_read_and_write_the_corpus_rows_on_sq
     assert_eq!(json("int-enum")["state"], json!("PUBLISHED"));
     // `@intValueMap` { DRAFT: 0, PUBLISHED: 5, ARCHIVED: 9 }: the database holds the integers.
     assert_eq!(lines["int-enum-stored"], "5 [0,9,5]");
+    // The corpus's expected people, by id.
+    assert_eq!(json("friends-1"), json!([1, 2, 3]));
+    assert_eq!(json("friends-4"), json!([2]));
+    assert_eq!(json("following-1"), json!([2, 3]));
+    assert_eq!(json("following-3"), json!([]));
 }
 
 const PURCHASING_DEPENDENCIES: &str = "acme_purchasing = { path = \"../out/acme_purchasing\" }\n\

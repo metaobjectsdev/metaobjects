@@ -378,15 +378,20 @@ A view decides its own column types (`AVG` of an integer is `NUMERIC` on Postgre
 read's numbers are read through a cast to their field's type, and a report's column is its derived
 field's name under the project's column strategy.
 
-Not stored yet: a `@storage: flattened` field is refused at generation (`ERR_UNSUPPORTED`), and
-many-to-many traversal gets no store function.
+A many-to-many relationship of a keyed entity gets `<relation>_of(c, id)`: the related rows,
+read through the junction in one statement, in no order. The junction and its two keys are the
+ones the loader's pairing rule derives (`metaobjects::validate::relationships::derive_m2m_fields`),
+so a relationship that loads is one the store can follow. A `@symmetric` self-join answers from
+both sides of a row, and a row relating a row to itself answers that row.
+
+Not stored yet: a `@storage: flattened` field is refused at generation (`ERR_UNSUPPORTED`).
 
 The store is held to the shared persistence corpus (`fixtures/persistence-conformance`):
 `tests/persistence_conformance.rs` generates the corpus model, starts a throwaway Postgres
 (`docker run --rm` on a tmpfs, removed when the test ends; without docker the test says so and
 passes), and runs every scenario through the generated functions, normalized as
-`normalization.md` says. The scenarios it does not run yet (the three many-to-many ones) are
-on a ledger in that file, which only shrinks. `tests/repository.rs` runs the same
+`normalization.md` says. All 55 run; a scenario this port could not run would go on the
+ledger in that file, which is empty and only shrinks. `tests/repository.rs` runs the same
 rows on SQLite in memory, and the guarded update on the rules model.
 
 ### Owning a generator
@@ -500,7 +505,7 @@ regeneration, peak memory), so a port's speed can be tracked per feature next to
 ## What does not exist yet
 
 - **Other generators.** There is no server-side route or service generator and no
-  documentation generator. The store has no many-to-many traversal yet. Projections and reports
+  documentation generator. Projections and reports
   get no client or commands yet, and a template over a
   sourceless `object.projection` payload gets no render function.
 - **Other gates.** `verify --codegen`, `verify --templates` and the business-rules gate are the ones

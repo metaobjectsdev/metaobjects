@@ -22,20 +22,14 @@ use std::process::Command;
 use std::time::{Duration, Instant};
 
 use saphyr::{LoadableYamlNode, Scalar, Yaml};
-use serde_json::{Map, Value};
+use serde_json::{Map, Value, json};
 
 use common::{Scratch, assert_builds, assert_pinned, cargo, generate_all, generated_workspace};
 
 const CORPUS: &str = "../../../fixtures/persistence-conformance";
 
-const M2N: &str = "op: relate (many-to-many traversal) has no store function yet";
-
 /// Scenarios not run yet, with what is missing. Shrink-only.
-const LEDGER: &[(&str, &str)] = &[
-    ("m2n-directed-self-join", M2N),
-    ("m2n-hetero", M2N),
-    ("m2n-symmetric-self-join", M2N),
-];
+const LEDGER: &[(&str, &str)] = &[];
 
 fn corpus() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join(CORPUS)
@@ -403,6 +397,13 @@ macro_rules! entity {
 }
 
 async fn step(c: &mut PgConnection, s: &Value) -> R {
+    if s["op"] == "relate" {
+        let entity = s["entity"].as_str().unwrap_or("");
+        return match (entity, s["relation"].as_str().unwrap_or("")) {
+            RELATIONS
+            (o, r) => Err(format!("no traversal {o}.{r}")),
+        };
+    }
     match s["entity"].as_str().unwrap_or("") {
         ENTITIES
         other => Err(format!("no store for {other}")),
@@ -457,8 +458,9 @@ async fn main() {
 
 /// One dispatch arm per module of the generated store crate: its object, row, create and patch
 /// types, and the key's type, read off the generated functions' signatures.
-fn entity_arms(store: &Path) -> String {
+fn entity_arms(store: &Path) -> (String, String) {
     let mut arms = String::new();
+    let mut relations = String::new();
     let mut files: Vec<_> = std::fs::read_dir(store.join("src"))
         .unwrap()
         .map(|e| e.unwrap().path())
@@ -482,6 +484,33 @@ fn entity_arms(store: &Path) -> String {
                 "i64"
             }
         });
+        // A traversal: `/// The rows `<relation>` relates ...` over `pub async fn <f><`, whose
+        // body names the target's TABLE.
+        for (doc, rest) in text
+            .split("/// The rows `")
+            .skip(1)
+            .map(|r| r.split_once('`').unwrap())
+        {
+            let function = rest
+                .split("pub async fn ")
+                .nth(1)
+                .unwrap()
+                .split('<')
+                .next()
+                .unwrap();
+            let target = rest
+                .split("meta_store::related(c, &")
+                .nth(1)
+                .unwrap()
+                .split(',')
+                .next()
+                .unwrap();
+            let target = target.replace("crate::", "fitness_store::");
+            relations.push_str(&format!(
+                "            (\"{object}\", \"{doc}\") => Ok(out(&{target}, fitness_store::{module}::{function}(c, key!({}, s)).await.map_err(e)?)),\n",
+                key.expect("a traversal has a keyed source")
+            ));
+        }
         if text.contains("writable: false") {
             let key = key.map(|k| format!(", {k}")).unwrap_or_default();
             arms.push_str(&format!(
@@ -497,7 +526,7 @@ fn entity_arms(store: &Path) -> String {
             "        \"{object}\" => entity!(c, s, {module}, {object}, {object}Create, {tail}),\n"
         ));
     }
-    arms
+    (arms, relations)
 }
 
 #[test]
@@ -523,8 +552,10 @@ fn the_persistence_corpus_reads_and_writes_through_the_generated_store_on_postgr
         ],
     );
     generate_all(&p, &[]);
-    let arms = entity_arms(&p.path().join("generated/fitness_store"));
-    let main = PROBE_MAIN.replace("        ENTITIES\n", &arms);
+    let (arms, relations) = entity_arms(&p.path().join("generated/fitness_store"));
+    let main = PROBE_MAIN
+        .replace("        ENTITIES\n", &arms)
+        .replace("            RELATIONS\n", &relations);
     let ws = generated_workspace("persistence-pg-ws", &p, Some((PROBE_DEPENDENCIES, &main)));
     let all = scenarios();
     let map: Map<String, Value> = all.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
@@ -571,14 +602,27 @@ fn the_persistence_corpus_reads_and_writes_through_the_generated_store_on_postgr
             let qname = q["name"].as_str().unwrap().to_string();
             let result = &got[&(name.clone(), qname.clone())];
             let wants_error = q.get("expect-error").and_then(Value::as_bool) == Some(true);
+            // A traversal answers a set: both sides are compared in canonical order.
+            let set = |v: &Value| -> Value {
+                let mut rows = v.as_array().cloned().unwrap_or_default();
+                rows.sort_by_key(|r| r.to_string());
+                Value::Array(rows)
+            };
+            let relate = q["op"] == "relate";
+            let result = &match result.get("ok") {
+                Some(v) if relate => json!({ "ok": set(v) }),
+                _ => result.clone(),
+            };
+            let expect = if relate {
+                set(&q["expect"])
+            } else {
+                q["expect"].clone()
+            };
             let problem = match (wants_error, result.get("ok"), result.get("err")) {
                 (true, _, Some(_)) => None,
                 (true, Some(v), _) => Some(format!("expected an error, got {v}")),
-                (false, Some(v), _) if v == &q["expect"] => None,
-                (false, Some(v), _) => Some(format!(
-                    "\n    expected: {}\n    actual:   {v}",
-                    q["expect"]
-                )),
+                (false, Some(v), _) if v == &expect => None,
+                (false, Some(v), _) => Some(format!("\n    expected: {expect}\n    actual:   {v}")),
                 (false, _, err) => Some(format!("error: {}", err.unwrap())),
                 _ => unreachable!(),
             };
