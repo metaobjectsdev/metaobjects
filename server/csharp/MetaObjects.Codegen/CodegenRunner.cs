@@ -257,7 +257,8 @@ public static class CodegenRunner
     /// </para>
     /// <para>
     /// With no state dir the legacy marker rule stands, preserving the previous behaviour
-    /// (and its status string) for programmatic callers.
+    /// (and its status string) for programmatic callers; identical content is still
+    /// <c>unchanged</c> and never rewritten.
     /// </para>
     /// </summary>
     private static string WriteOne(
@@ -272,14 +273,18 @@ public static class CodegenRunner
 
         if (config.GenStateDir is null || manifest is null)
         {
-            if (exists && !File.ReadAllText(full).Contains(GeneratedMarker, StringComparison.Ordinal))
+            var onDisk = exists ? File.ReadAllText(full) : null;
+            // Identical bytes are left alone, as on the manifest path: an unchanged file is
+            // never rewritten, whichever path a run takes.
+            if (onDisk == content) return "unchanged";
+            if (onDisk is not null && !onDisk.Contains(GeneratedMarker, StringComparison.Ordinal))
             {
                 warnings.Add($"refusing to overwrite hand-written file: {relPath}");
                 return "skipped-handwritten";
             }
             WriteFile(full, content);
-            // "written" for both a create and an overwrite, preserving the exact status
-            // vocabulary this path had before the manifest existed — callers key on it.
+            // "written" for both a create and an overwrite, preserving the status vocabulary
+            // this path had before the manifest existed — callers key on it.
             return "written";
         }
 

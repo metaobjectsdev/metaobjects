@@ -196,8 +196,7 @@ public static class EjectCommand
             var file = entry.SourceFileName!;
             var rewritten = EjectableGenerators.RewriteForEject(EjectableGenerators.ReadSource(name)!);
             var dest = Path.Combine(generatorsDir, file);
-            var status = File.Exists(dest) ? "replaced" : "created";
-            File.WriteAllText(dest, rewritten);
+            var status = WriteOwnedCopy(dest, rewritten, File.Exists(dest) ? "replaced" : "created");
             outLines.Add($"ejected \"{name}\" -> codegen/generators/{file} [{status}]");
         }
         outLines.AddRange(EjectCompanions(root, names.Select(n => known[n]).ToList(), force));
@@ -353,6 +352,19 @@ public static class EjectCommand
     }
 
     /// <summary>
+    /// Write one reference copy to <paramref name="dest"/> and return the status to report:
+    /// <paramref name="status"/> when the bytes were written, <c>unchanged</c> when the file on
+    /// disk already holds exactly <paramref name="content"/>. An identical file is never
+    /// rewritten, so <c>--force</c> over an unedited copy leaves it, and its timestamp, alone.
+    /// </summary>
+    private static string WriteOwnedCopy(string dest, string content, string status)
+    {
+        if (File.Exists(dest) && File.ReadAllText(dest) == content) return "unchanged";
+        File.WriteAllText(dest, content);
+        return status;
+    }
+
+    /// <summary>
     /// Copy the emitters the ejected <paramref name="entries"/> write their output through
     /// (<see cref="GeneratorRegistryEntry.Companions"/>) next to the generators, each once however
     /// many of them call it. A file that already exists is the adopter's and is kept — possibly
@@ -382,7 +394,8 @@ public static class EjectCommand
                 continue;
             }
             Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
-            File.WriteAllText(dest, EjectableGenerators.RewriteForEject(EjectableGenerators.ReadSourcePath(sourcePath)));
+            status = WriteOwnedCopy(
+                dest, EjectableGenerators.RewriteForEject(EjectableGenerators.ReadSourcePath(sourcePath)), status);
             lines.Add($"  {relative} [{status}]");
         }
         return lines;
@@ -416,7 +429,7 @@ public static class EjectCommand
                 lines.Add($"  {HelperRuntime.OwnedDirectory}/{file} [kept — already yours]");
                 continue;
             }
-            File.WriteAllText(dest, HelperRuntime.OwnedReference(file));
+            status = WriteOwnedCopy(dest, HelperRuntime.OwnedReference(file), status);
             lines.Add($"  {HelperRuntime.OwnedDirectory}/{file} [{status}]");
         }
         lines.Add(

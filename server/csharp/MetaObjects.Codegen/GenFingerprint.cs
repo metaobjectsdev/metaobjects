@@ -309,7 +309,10 @@ public static class GenFingerprint
                 format = FormatVersion, model, identity, outputs,
                 untracked = (untracked ?? []).Order(StringComparer.Ordinal).ToArray(),
             }, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(PathFor(projectRoot), json + "\n");
+        // Compared first, like every other write: a run that changes nothing leaves the file alone.
+        var path = PathFor(projectRoot);
+        var text = json + "\n";
+        if (!File.Exists(path) || File.ReadAllText(path) != text) File.WriteAllText(path, text);
     }
 
     private static string? DiskHash(string projectRoot, string key)

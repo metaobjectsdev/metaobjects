@@ -119,6 +119,27 @@ public sealed class EjectCommandTests : IDisposable
     }
 
     [Fact]
+    public void Force_over_an_unedited_copy_rewrites_nothing()
+    {
+        // Compare before write: --force over files that already match the reference reports them
+        // unchanged and leaves their bytes and timestamps alone.
+        Assert.Equal(0, EjectCommand.Run(["routes"], _root, force: false).ExitCode);
+        var copyPath = Path.Combine(GeneratorsDir, "RoutesGenerator.cs");
+        var parser = Path.Combine(RuntimeDir, "FilterParser.cs");
+        var stamp = new DateTime(2001, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(copyPath, stamp);
+        File.SetLastWriteTimeUtc(parser, stamp);
+
+        var forced = EjectCommand.Run(["routes"], _root, force: true);
+
+        Assert.Equal(0, forced.ExitCode);
+        Assert.Contains(forced.Out, l => l.Contains("RoutesGenerator.cs [unchanged]"));
+        Assert.Contains(forced.Out, l => l.Contains("FilterParser.cs [unchanged]"));
+        Assert.Equal(stamp, File.GetLastWriteTimeUtc(copyPath));
+        Assert.Equal(stamp, File.GetLastWriteTimeUtc(parser));
+    }
+
+    [Fact]
     public void A_second_eject_of_a_different_generator_does_not_touch_the_existing_scaffold()
     {
         EjectCommand.Run(["entity"], _root, force: false);
