@@ -98,6 +98,10 @@ jobs:
           fetch-depth: 0          # leak-scan diffs against origin/main
           persist-credentials: false
       - run: scripts/ci-local.sh --only gates --strict-toolchains
+        env:
+          # site-bijection lists the site repo through api.github.com; the token lifts it out of
+          # the anonymous rate limit.
+          GITHUB_TOKEN: ${{ github.token }}
 
   # TS FAST lane — build+typecheck, conformance, completeness (the pure-code
   # correctness signal). No docker/integration, so no sidecar.

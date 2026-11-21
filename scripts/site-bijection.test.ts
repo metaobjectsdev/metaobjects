@@ -20,6 +20,20 @@ const SITE_REPO = "metaobjectsdev.github.io";
 const TIMEOUT = 20_000;
 
 /**
+ * Headers for api.github.com. Unauthenticated calls share one 60-per-hour budget per source
+ * address, and a hosted runner's address is shared with other jobs, so the call answers 403
+ * (rate limit) at random. CI exports its token as GITHUB_TOKEN or GH_TOKEN, and sending it
+ * raises the budget. With neither set (a local run) the call stays anonymous. An unreachable
+ * tree still fails closed below.
+ */
+function githubHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { accept: "application/vnd.github+json" };
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+  if (token) headers.authorization = `Bearer ${token}`;
+  return headers;
+}
+
+/**
  * Every `www/**\/*.html` on the live site's default branch.
  *
  * DERIVED, never hardcoded. A hand-maintained page list is the same defect class as the
@@ -31,7 +45,7 @@ const TIMEOUT = 20_000;
 async function livePages(): Promise<string[]> {
   const r = await fetch(
     `https://api.github.com/repos/${OWNER}/${SITE_REPO}/git/trees/main?recursive=1`,
-    { headers: { accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(TIMEOUT) });
+    { headers: githubHeaders(), signal: AbortSignal.timeout(TIMEOUT) });
   // Fail closed. An unreachable tree must never read as "no pages, therefore no orphans".
   if (!r.ok) throw new Error(`could not list ${SITE_REPO} tree (HTTP ${r.status})`);
   const body = (await r.json()) as { truncated?: boolean; tree?: { path?: string }[] };

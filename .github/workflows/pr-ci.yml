@@ -84,6 +84,9 @@ jobs:
       - name: Gates
         env:
           MO_CI_LEAK_BASE: origin/${{ github.base_ref }}
+          # site-bijection lists the site repo through api.github.com; the token lifts it out of
+          # the anonymous rate limit.
+          GITHUB_TOKEN: ${{ github.token }}
         run: scripts/ci-local.sh --only gates --strict-toolchains
 
   ts:
