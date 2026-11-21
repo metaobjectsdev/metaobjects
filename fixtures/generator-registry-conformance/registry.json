@@ -23,6 +23,20 @@
       "eject": "full",
       "ports": ["typescript", "csharp", "java", "kotlin", "python", "rust"]
     },
+    "rules-names": {
+      "concept": "Per-package rules names (ADR-0067 layer 0): lifecycle states and transitions, derived commands, declared operations, the permissions they ask about and the business errors commands declare. RUST ONLY for now; each other port adds itself with its rules-layer work.",
+      "tier": "native",
+      "layer": "model",
+      "eject": "full",
+      "ports": ["rust"]
+    },
+    "contract-types": {
+      "concept": "Per-package contract types (ADR-0067 layer 1): each declared operation's input, output, business errors and error body, the read shape of a projection it returns, and the wire error contract. On rust an entity's read, create and patch shapes are the entity generator's model crate, which carries no persistence mapping. RUST ONLY for now; each other port adds itself with its rules-layer work.",
+      "tier": "native",
+      "layer": "model",
+      "eject": "full",
+      "ports": ["rust"]
+    },
     "output-prompt": {
       "concept": "Per-template output-format prompt fragment generator.",
       "tier": "native",

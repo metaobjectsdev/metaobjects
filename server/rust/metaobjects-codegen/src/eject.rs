@@ -83,6 +83,30 @@ pub const REFERENCES: &[Reference] = &[
         source: include_str!("entity.rs"),
     },
     Reference {
+        name: "rules-names",
+        tier: "native",
+        layer: "model",
+        module: "rules_names",
+        type_name: "RulesNamesGenerator",
+        needs: &["entity"],
+        summary: "rules crates, one per package with a lifecycle or an operation: states, \
+                  transitions, derived commands, operations, permissions and business errors as \
+                  enums (ADR-0067 layer 0; needs entity)",
+        source: include_str!("rules_names.rs"),
+    },
+    Reference {
+        name: "contract-types",
+        tier: "native",
+        layer: "model",
+        module: "contract_types",
+        type_name: "ContractTypesGenerator",
+        needs: &["entity"],
+        summary: "contract crates, one per package with a declared operation: each operation's \
+                  input, output, business errors and error body, the read shape of a projection \
+                  it returns, and the shared wire error crate (ADR-0067 layer 1; needs entity)",
+        source: include_str!("contract_types.rs"),
+    },
+    Reference {
         name: "client",
         tier: "native",
         layer: "client",

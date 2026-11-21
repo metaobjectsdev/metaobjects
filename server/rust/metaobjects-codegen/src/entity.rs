@@ -256,18 +256,7 @@ fn model_crate<P: EntityParts + ?Sized>(
         format!("{cname}/rustfmt.toml"),
         RUSTFMT_TOML.to_string(),
     ));
-    let shadowed: HashSet<&str> = c
-        .structs
-        .iter()
-        .flat_map(|&i| {
-            let s = &plan.structs[i];
-            std::iter::once(s.type_name.as_str())
-                .chain(s.enums.iter().map(|e| e.type_name.as_str()))
-        })
-        .chain(c.shared_enums.iter().map(|(_, e)| e.type_name.as_str()))
-        .filter(|n| PRELUDE_TYPES.contains(n))
-        .collect();
-    let q = Qualifier { shadowed };
+    let q = Qualifier::of(plan, c);
 
     let mut lib_items: Vec<(String, Vec<String>)> = Vec::new();
     for &i in &c.structs {
@@ -356,7 +345,23 @@ pub struct Qualifier<'a> {
     shadowed: HashSet<&'a str>,
 }
 
-impl Qualifier<'_> {
+impl<'a> Qualifier<'a> {
+    /// The qualifier of the crate `c`: the std types its own types shadow.
+    pub fn of(plan: &'a Plan, c: &'a CratePlan) -> Self {
+        let shadowed = c
+            .structs
+            .iter()
+            .flat_map(|&i| {
+                let s = &plan.structs[i];
+                std::iter::once(s.type_name.as_str())
+                    .chain(s.enums.iter().map(|e| e.type_name.as_str()))
+            })
+            .chain(c.shared_enums.iter().map(|(_, e)| e.type_name.as_str()))
+            .filter(|n| PRELUDE_TYPES.contains(n))
+            .collect();
+        Qualifier { shadowed }
+    }
+
     /// `short`, or `full` when the crate declares a type named `short`.
     pub fn std(&self, short: &'static str, full: &'static str) -> &'static str {
         if self.shadowed.contains(short) {

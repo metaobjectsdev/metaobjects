@@ -31,3 +31,6 @@ pub const WIRE_RS: &str = include_str!("wire.rs");
 pub const CLIENT_TRANSPORT_RS: &str = include_str!("client_transport.rs");
 /// The text of `meta_cli/src/lib.rs`, the helpers the `commands` generator's crates share.
 pub const COMMAND_HELPERS_RS: &str = include_str!("command_helpers.rs");
+/// The text of `meta_contract/src/lib.rs`, the wire error contract the `contract-types`
+/// generator's crates share.
+pub const CONTRACT_RS: &str = include_str!("contract.rs");

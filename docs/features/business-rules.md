@@ -16,10 +16,11 @@ A requirement can claim an operation or a transition. The flat generators genera
 the vocabulary. The layer generators of ADR-0067 do, and an app adds them to its generator list as
 it adds any generator. The first is `rules-names`, which writes the states, transitions,
 permissions and error codes as constants, in TypeScript (see
-[The names layer](#the-names-layer-typescript)) and C#. The second is `contract-types`: in
+[The names layer](#the-names-layer-typescript)), C# and Rust. The second is `contract-types`: in
 TypeScript it writes the shapes and errors an operation takes and returns (see
-[The contract types layer](#the-contract-types-layer-typescript)), and in C# so far each
-entity's create and update records ([C# port](../ports/csharp.md)). The TypeScript runtime makes the
+[The contract types layer](#the-contract-types-layer-typescript)), and in C# and Rust so far each
+entity's create and update records ([C# port](../ports/csharp.md), [Rust port](../ports/rust.md));
+the Rust generators write only for a package that declares rules. The TypeScript runtime makes the
 guarded update a transition writes, `ObjectManager.guardedUpdate`, held to the shared
 persistence scenario `guarded-update.yaml`. The service layer starts in TypeScript: `service` writes
 each package's derived list, get, create, update and delete, every write in one transaction with the

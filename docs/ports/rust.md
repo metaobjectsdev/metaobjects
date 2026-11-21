@@ -105,6 +105,8 @@ generated/
   shop_prompts/   render-helper   a typed render function per template (when the package has templates)
   shop_parsers/   output-parser   a strict parse and a tolerant extract per responding prompt
   shop_formats/   output-prompt   the output-format fragment per responding prompt
+  shop_rules/     rules-names     lifecycles, commands, operations, permissions, business errors (when the package declares rules)
+  shop_contract/  contract-types  each operation's input, output and errors (when the package declares operations)
   meta_support/   entity     exact decimals, durations, patch helpers, the validation checks
   meta_client/    client     the HTTP transport (reqwest), errors, the query builder
   meta_cli/       commands   what a command uses to build a body and a query
@@ -288,6 +290,42 @@ let got = shop_parsers::extract_judge(&reply, &ExtractOptions::default());
 match got.value {
     Some(verdict) => use_it(verdict),
     None => log_the_report(&got.outcome.report),
+}
+```
+
+### `rules-names` and `contract-types`: the rules layers
+
+The business-rules vocabulary ([ADR-0066](../../spec/decisions/ADR-0066-business-rules-operations-and-lifecycles.md))
+gets the first two layers of [ADR-0067](../../spec/decisions/ADR-0067-layering-and-the-service-seam.md).
+Both write nothing for a package that declares no lifecycle and no operation, so turning them on
+changes nothing for a model without rules.
+
+`rules-names` (layer 0) writes a `<package>_rules` crate of names hand-written code can match on:
+
+- a module per entity with a lifecycle, and in it a module per lifecycle field: `State` (the model
+  crate's own enum, so a value read off a record compares directly), `FIELD`, `STATES`, `INITIAL`,
+  `TERMINAL` and `Transition` (`name()`, `from()`, `to()`), plus `Command`, the commands derived
+  from the transitions no operation claims, with the permission each asks about;
+- `Operation` (`kind()`, `permission()`, `transitions()`, `errors()`), `Permission` (every
+  permission the package asks about, declared or derived: `<package>.<operation>` and
+  `<package>.<Entity>.<transition>`), `BusinessError` and `ShellError` (the five codes the
+  enforcing shell answers with). Each is a closed enum with `ALL`.
+
+`contract-types` (layer 1) writes a `<package>_contract` crate. Its `operations` module has, per
+operation, `<Op>Input` and `<Op>Output` (the model's own types, a `Vec` for `@many`),
+`<Op>BusinessError` (its declared `@errors`, or `NoBusinessError`) and `<Op>Error`, the error body
+whose code is a fixed one or one of its own. A projection an operation returns gets its read shape
+in that crate. The shared `meta_contract` crate holds the wire error contract: `ErrorCode` with
+each code's HTTP status, `ErrorBody`, `ValidationErrorBody` and `ConstraintViolationBody`. An
+entity's read, create and patch shapes, with `validate()`, are the model crate's; it carries no
+persistence mapping, so it already is the contract.
+
+```rust
+let body: DecideError = serde_json::from_slice(&response)?;
+match body.error {
+    OperationCode::Business(DecideBusinessError::OverBudget) => ask_for_less(),
+    OperationCode::Fixed(code) => fail(code.status()),
+    OperationCode::Business(DecideBusinessError::AlreadyDecided) => refresh(),
 }
 ```
 

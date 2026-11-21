@@ -118,7 +118,7 @@ const RESERVED_OPERATION_NAMES: [&str; 5] = ["create", "get", "list", "update", 
 
 /// Wire error codes an operation's route answers on its own, so a body may not declare
 /// them in `@errors`.
-const RESERVED_ERROR_CODES: [&str; 11] = [
+pub const RESERVED_ERROR_CODES: [&str; 11] = [
     "not_found",
     "forbidden",
     "invalid_transition",

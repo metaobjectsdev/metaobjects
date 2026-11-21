@@ -34,6 +34,8 @@ pub const SUPPORT_CRATE: &str = "meta_support";
 pub const CLIENT_CRATE: &str = "meta_client";
 /// The crate every generated command crate takes its helpers from.
 pub const CLI_CRATE: &str = "meta_cli";
+/// The crate every generated contract crate takes the wire error contract from.
+pub const CONTRACT_CRATE: &str = "meta_contract";
 /// The suffix of the client crate of a package: `shop` is served by `shop_client`.
 pub const CLIENT_SUFFIX: &str = "_client";
 /// The suffix of the command crate of a package: `shop` is driven by `shop_cli`.
@@ -51,6 +53,7 @@ const TYPE_VIEW: &str = "view";
 const VIEW_PASSWORD: &str = "password";
 const OBJECT_ENTITY: &str = "entity";
 const OBJECT_VALUE: &str = "value";
+const OBJECT_PROJECTION: &str = "projection";
 const IDENTITY_PRIMARY: &str = "primary";
 const ATTR_DESCRIPTION: &str = "description";
 const ATTR_VALUES: &str = "values";
@@ -845,24 +848,57 @@ impl Plan {
     }
 
     pub fn build(tree: &Tree, root: NodeId, collection: &Collection) -> Result<Plan, GenError> {
-        // Every concrete entity and value object, in model order.
+        Plan::build_with(tree, root, collection, None)
+    }
+
+    /// The plan with the concrete `object.projection`s in `projections` planned too, each as a
+    /// read shape in its package's crate named `<package crate><suffix>`: the crate of the
+    /// generator that writes it (the contract types). A projection has no create or patch body.
+    /// The plan the other generators read ([`Plan::of`]) has no projections, so planning them
+    /// moves none of their output.
+    pub fn with_projections(
+        ctx: &GenContext<'_>,
+        suffix: &str,
+        projections: &HashSet<NodeId>,
+    ) -> Result<Plan, GenError> {
+        Plan::build_with(
+            ctx.tree,
+            ctx.root,
+            ctx.collection,
+            Some((suffix, projections)),
+        )
+    }
+
+    fn build_with(
+        tree: &Tree,
+        root: NodeId,
+        collection: &Collection,
+        projections: Option<(&str, &HashSet<NodeId>)>,
+    ) -> Result<Plan, GenError> {
+        // Every concrete entity and value object (and, when asked, projection), in model order.
         let mut structs: Vec<StructPlan> = Vec::new();
         let mut by_node: HashMap<NodeId, usize> = HashMap::new();
         let index = ObjectIndex::build(tree, root);
         for &id in tree.own_children(root) {
             let n = tree.node(id);
+            let projection = n.sub_type == OBJECT_PROJECTION;
             if n.type_name != TYPE_OBJECT
-                || !matches!(n.sub_type.as_str(), OBJECT_ENTITY | OBJECT_VALUE)
+                || !(matches!(n.sub_type.as_str(), OBJECT_ENTITY | OBJECT_VALUE)
+                    || (projection && projections.is_some_and(|(_, set)| set.contains(&id))))
                 || n.is_abstract
             {
                 continue;
             }
             let pkg = tree.effective_package(id);
+            let crate_name = match projections {
+                Some((suffix, _)) if projection => format!("{}{suffix}", crate_name(&pkg)),
+                _ => crate_name(&pkg),
+            };
             by_node.insert(id, structs.len());
             structs.push(StructPlan {
                 node: id,
                 key: tree.resolution_key(id),
-                crate_name: crate_name(&pkg),
+                crate_name,
                 type_name: type_ident(&n.name),
                 name: n.name.clone(),
                 doc: str_attr(tree, id, ATTR_DESCRIPTION).map(str::to_string),
@@ -1234,7 +1270,7 @@ impl Plan {
                 )),
                 None => Ok(()),
             };
-        for shared in [SUPPORT_CRATE, CLIENT_CRATE, CLI_CRATE] {
+        for shared in [SUPPORT_CRATE, CLIENT_CRATE, CLI_CRATE, CONTRACT_CRATE] {
             claim_crate(
                 shared.to_string(),
                 format!("the generated support crate {shared}"),
