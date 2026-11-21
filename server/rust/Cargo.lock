@@ -124,6 +124,7 @@ dependencies = [
  "metaobjects",
  "metaobjects-render",
  "proc-macro2",
+ "saphyr",
  "serde",
  "serde_json",
  "syn",

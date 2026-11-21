@@ -374,6 +374,14 @@ if !order::transition_status(&mut c, id, &[OrderStatus::New], OrderStatus::InFli
 Not stored yet: a `@storage: flattened` field is refused at generation (`ERR_UNSUPPORTED`), and
 projections, reports and many-to-many traversal get no store functions.
 
+The store is held to the shared persistence corpus (`fixtures/persistence-conformance`):
+`tests/persistence_conformance.rs` generates the corpus model, starts a throwaway Postgres
+(`docker run --rm` on a tmpfs, removed when the test ends; without docker the test says so and
+passes), and runs every scenario through the generated functions, normalized as
+`normalization.md` says. The scenarios it does not run yet (many-to-many, projections and
+reports) are on a ledger in that file, which only shrinks. `tests/repository.rs` runs the same
+rows on SQLite in memory, and the guarded update on the rules model.
+
 ### Owning a generator
 
 A generator is a reference helper

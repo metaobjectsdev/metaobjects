@@ -59,17 +59,40 @@ pub struct Column {
     /// An array of `kind`: a native array on Postgres, JSON text on SQLite. An array of
     /// value objects is one `Json` column instead.
     pub array: bool,
+    /// The column's own SQL type when the model names one (`@dbColumnType`), as a string held
+    /// in a `uuid` or `jsonb` column: Postgres casts to it on a write and back on a read.
+    pub stored_as: Option<&'static str>,
 }
 
 impl Column {
     /// A column holding one value of `kind`.
     pub const fn new(field: &'static str, column: &'static str, kind: Kind) -> Column {
-        Column { field, column, kind, array: false }
+        Column { field, column, kind, array: false, stored_as: None }
     }
 
     /// A column holding a list of `kind`.
     pub const fn list(field: &'static str, column: &'static str, kind: Kind) -> Column {
-        Column { field, column, kind, array: true }
+        Column { field, column, kind, array: true, stored_as: None }
+    }
+
+    /// A column holding one value of `kind` in its own SQL type `ty`.
+    pub const fn typed(
+        field: &'static str,
+        column: &'static str,
+        kind: Kind,
+        ty: &'static str,
+    ) -> Column {
+        Column { field, column, kind, array: false, stored_as: Some(ty) }
+    }
+
+    /// A column holding a list of `kind` in its own SQL type `ty` (of each element).
+    pub const fn typed_list(
+        field: &'static str,
+        column: &'static str,
+        kind: Kind,
+        ty: &'static str,
+    ) -> Column {
+        Column { field, column, kind, array: true, stored_as: Some(ty) }
     }
 }
 
@@ -368,6 +391,14 @@ fn table_ref(table: &Table) -> String {
 }
 
 fn pg_type(c: &Column) -> String {
+    if let Some(ty) = c.stored_as {
+        return if c.array { format!("{ty}[]") } else { ty.to_string() };
+    }
+    logical_pg_type(c)
+}
+
+/// The Postgres type the model's `kind` reads as.
+fn logical_pg_type(c: &Column) -> String {
     let base = match c.kind {
         Kind::Text | Kind::StringEnum(_) => "text",
         Kind::Int | Kind::IntEnum(_) => "integer",
@@ -392,10 +423,13 @@ fn pg_type(c: &Column) -> String {
     }
 }
 
-/// What a SELECT reads for a column: on Postgres an exact decimal and a uuid as text, and an
-/// address without its netmask.
+/// What a SELECT reads for a column: on Postgres an exact decimal and a uuid as text, an
+/// address without its netmask, and a column of its own SQL type as the type of its kind.
 fn read_expr(engine: Engine, c: &Column) -> String {
     let col = quote(c.column);
+    if engine == Engine::Postgres && c.stored_as.is_some() {
+        return format!("CAST({col} AS {})", logical_pg_type(c));
+    }
     match (engine, c.kind, c.array) {
         (Engine::Postgres, Kind::Decimal | Kind::Uuid, false) => format!("{col}::text"),
         (Engine::Postgres, Kind::Decimal | Kind::Uuid, true) => format!("{col}::text[]"),
@@ -461,7 +495,9 @@ fn scalar_bind(engine: Engine, field: &str, kind: Kind, v: &Value) -> Result<Bin
             let d =
                 meta_support::wire::Duration::parse(text).map_err(|e| bad(field, e.to_string()))?;
             match engine {
-                Engine::Postgres => Bind::Text(d.to_string()),
+                // In microseconds, the interval's own resolution: Postgres reads no sign on an
+                // ISO duration.
+                Engine::Postgres => Bind::Text(format!("{} microseconds", d.nanos() / 1000)),
                 Engine::Sqlite => Bind::Int(
                     i64::try_from(d.nanos() / 1000)
                         .map_err(|_| bad(field, "the duration is too long"))?,
@@ -605,11 +641,14 @@ mod pg {
 
     /// The fractional seconds of a time: `.` and the digits without trailing zeros, or nothing
     /// for a whole second.
+    /// The fraction of a second on the wire: milliseconds, truncated, with no trailing zeros
+    /// and no dot when there are none (normalization.md).
     fn fraction(nanos: u32) -> String {
-        if nanos == 0 {
+        let millis = nanos / 1_000_000;
+        if millis == 0 {
             return String::new();
         }
-        let digits = format!("{nanos:09}");
+        let digits = format!("{millis:03}");
         format!(".{}", digits.trim_end_matches('0'))
     }
 

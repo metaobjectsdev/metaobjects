@@ -24,6 +24,8 @@ serde.workspace = true
 # The layout ratchet (tests/layout_ratchet.rs) parses generator source to find hand-typed layout.
 syn = { version = "3", default-features = false, features = ["full", "visit", "parsing", "printing", "clone-impls"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
+# The persistence-corpus runner (tests/persistence_conformance.rs) reads the scenario YAML.
+saphyr = "0.3.4"
 
 [lints]
 workspace = true
