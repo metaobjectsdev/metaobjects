@@ -192,8 +192,8 @@ The shell sits in layer 4, and only there:
   queue consumer or an agent tool that calls the service gets the same checks as an HTTP request.
 
 Today's flat generators have no service layer. A project that declares a lifecycle and wires no
-service generator is advised by `verify` that the lifecycle is not enforced; the flat routes
-enforce nothing. (This replaces the first version of this section, which promised the
+service generator will be advised by `verify` that the lifecycle is not enforced, once that check
+lands (it is not yet emitted); the flat routes enforce nothing. (This replaces the first version of this section, which promised the
 guarded update and the `state_managed` refusal in the flat routes. That would have changed the
 output of five routes generators for projects that asked for nothing.)
 
@@ -290,5 +290,5 @@ field in the generator manifest and per-package set selection; it removes the `l
 settings the original §2 and §4 named (`layers.service.unit`, `layers.transactions`,
 `layers.crudHooks`, `layers.events`, `layers.errors`) and the storage kit; it replaces the
 Java and Python data-access cells of §4 (JPA, SQLAlchemy), adds the Rust column, replaces §6's
-"minimum enforcement" in the flat routes with an advisory from `verify` (the flat routes enforce nothing), and adds §7 and §8. The
+"minimum enforcement" in the flat routes with a planned advisory from `verify` (the flat routes enforce nothing), and adds §7 and §8. The
 four `rules.*` and `verify.*` settings of ADR-0066 stay.

@@ -276,7 +276,7 @@ will be the first to act on it, and the documentation says so until they do.
 ### 6. What the enforcing shell will guarantee, for every transition
 
 The shells are later work: service generators that an app adds (ADR-0067). A project that declares
-a lifecycle and wires no service generator is told so by `verify`, as an advisory; today's flat
+a lifecycle and wires no service generator will be told so by `verify`, as an advisory, once that check lands; today's flat
 routes enforce nothing. This is what the shells are held to:
 
 1. Load the row: 404 when it is absent.
