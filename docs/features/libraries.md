@@ -175,7 +175,8 @@ Anything else stays with the adopter (policy, presentation, branding, scheduling
 separate project.
 
 **Worked example, reporting** ([reporting.md](reporting.md)). The vocabulary (dimensions,
-measures, segments, `object.report`) is core. The planned `reporting` library holds
+measures, segments, `object.report`) is the `metaobjects-reporting` provider pack, in the default
+bundle ([extending-with-providers.md](extending-with-providers.md)). The planned `reporting` library holds
 metadata only, so opting in adds no code. Exporting to another tool and dashboards are
 catalog generators, one per heavy format, so an adopter never takes a dependency they did
 not wire: `cube-model` ships today, a dashboard generator does not exist yet.
