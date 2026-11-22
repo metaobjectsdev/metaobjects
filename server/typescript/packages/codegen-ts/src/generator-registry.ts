@@ -302,7 +302,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     tier: "native",
     factory: () => serviceFile(),
     factoryExport: "serviceFile",
-    options: "filter?, runtimeImport?, target?",
+    options: "filter?, runtimeImport?, target?, interactiveTransactions?",
     requires: ["entity", "contract-types"],
     runtimePackages: ["@metaobjectsdev/runtime-ts"],
     runtimePeers: ["drizzle-orm", "zod"],
