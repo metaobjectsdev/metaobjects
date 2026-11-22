@@ -194,7 +194,7 @@ def test_literal_default_is_still_emitted() -> None:
     fflag = _f("enabled", fc.FIELD_SUBTYPE_BOOLEAN)
     fflag.set_attr(fc.FIELD_ATTR_DEFAULT, True)
     out = render_entity_model(_entity("Row", [fstatus, fflag]))
-    assert "status: str = 'active'" in out
+    assert 'status: str = "active"' in out
     assert "enabled: bool = True" in out
 
 
@@ -244,7 +244,7 @@ def test_field_default_is_emitted_as_literal() -> None:
     assert "flag: bool = False" in out
     assert "n: int = 1" in out
     assert "c: float = 0.5" in out
-    assert "s: str = 'approx'" in out
+    assert 's: str = "approx"' in out
 
 
 @pytest.mark.parametrize(
@@ -252,18 +252,18 @@ def test_field_default_is_emitted_as_literal() -> None:
     [
         (fc.FIELD_SUBTYPE_STRING, "{}", "[]"),
         (fc.FIELD_SUBTYPE_STRING, "[]", "[]"),
-        (fc.FIELD_SUBTYPE_STRING, "{a,b}", "['a', 'b']"),
-        (fc.FIELD_SUBTYPE_STRING, '["a","b"]', "['a', 'b']"),
+        (fc.FIELD_SUBTYPE_STRING, "{a,b}", '["a", "b"]'),
+        (fc.FIELD_SUBTYPE_STRING, '["a","b"]', '["a", "b"]'),
         (fc.FIELD_SUBTYPE_LONG, "{1,2}", "[1, 2]"),
         (fc.FIELD_SUBTYPE_DOUBLE, "[1.5]", "[1.5]"),
         (fc.FIELD_SUBTYPE_BOOLEAN, "{true,false}", "[True, False]"),
         # JSON numbers and booleans in a text array read as their text, as TypeScript reads them.
-        (fc.FIELD_SUBTYPE_STRING, "[true, 1]", "['true', '1']"),
+        (fc.FIELD_SUBTYPE_STRING, "[true, 1]", '["true", "1"]'),
         # An empty array needs no element parsing, so every element subtype has it.
         (fc.FIELD_SUBTYPE_UUID, "{}", "[]"),
         (fc.FIELD_SUBTYPE_DECIMAL, "[]", "[]"),
         # YAML `default: [a, b]` reaches the generator as a native list, not a string.
-        (fc.FIELD_SUBTYPE_STRING, ["a", "b"], "['a', 'b']"),
+        (fc.FIELD_SUBTYPE_STRING, ["a", "b"], '["a", "b"]'),
         (fc.FIELD_SUBTYPE_STRING, [], "[]"),
         (fc.FIELD_SUBTYPE_LONG, [1, 2], "[1, 2]"),
         (fc.FIELD_SUBTYPE_BOOLEAN, [True, False], "[True, False]"),

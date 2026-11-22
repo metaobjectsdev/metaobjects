@@ -316,3 +316,19 @@ def test_declared_collection_name_names_the_reverse_finders() -> None:
     )
     assert reverse_finder_fn(plain, "teamFk") == "find_matches_by_team_fk"
     assert reverse_finder_in_fn(plain, "teamFk") == "find_matches_by_team_fk_in"
+
+
+def test_reference_over_a_flattened_member_names_its_flat_key() -> None:
+    """A reference whose ``@fields`` is a flattened value-object member
+    (``address.countryId``) names the finder pair by the member's flat key, as TypeScript
+    does. It used to put the dotted path into the method name, which is not Python."""
+    fixture = _find_fixture().parents[2] / "reference-flattened-member" / "input"
+    result = MetaDataLoader.from_directory(str(fixture))
+    assert not result.errors, [f"{e.code}: {e.message}" for e in result.errors]
+    objects = {c.name: c for c in result.root.children() if isinstance(c, MetaObject)}
+    plan = objects["Plan"]
+    assert [r.fk_field for r in reverse_fks_for(plan)] == ["addressCountryId"]
+    src = render_router(plan, build_object_index(list(objects.values())))
+    assert src is not None
+    compile(src, "plan_router.py", "exec")
+    assert "def find_plans_by_address_country(self, address_country_id: Any) -> _list[Any]: ..." in src

@@ -426,3 +426,75 @@ def test_order_term_puts_nulls_largest_on_every_dialect() -> None:
     my = MySqlDialect()
     assert my.order_term("`c`", False) == "(`c` IS NULL) ASC, `c` ASC"
     assert my.order_term("`c`", True) == "(`c` IS NULL) DESC, `c` DESC"
+
+
+# ----------------------------------------------------------------------------
+# Primitive arrays off Postgres: a JSON array in a TEXT (SQLite) / JSON (MySQL) column
+# ----------------------------------------------------------------------------
+
+_ARRAY_META = {
+    "metadata.root": {
+        "package": "acme::shop",
+        "children": [
+            {"field.enum": {"name": "State", "abstract": True,
+                            "@values": ["DRAFT", "PUBLISHED"],
+                            "@intValueMap": {"DRAFT": 0, "PUBLISHED": 5}}},
+            {
+                "object.entity": {
+                    "name": "Tagged",
+                    "children": [
+                        {"source.rdb": {"@table": "tagged"}},
+                        {"field.long": {"name": "id"}},
+                        {"field.string": {"name": "tags", "isArray": True}},
+                        {"field.date": {"name": "days", "isArray": True}},
+                        {"field.enum": {"name": "history", "extends": "State", "isArray": True}},
+                        {"identity.primary": {"name": "pk", "@fields": ["id"], "@generation": "increment"}},
+                    ],
+                }
+            },
+        ],
+    }
+}
+
+
+def _array_root() -> Any:
+    root = load_string(json.dumps(_ARRAY_META)).root
+    root.naming = NamingRules(columns="literal")
+    return root
+
+
+def test_sqlite_stores_a_primitive_array_as_a_json_array_and_reads_it_back() -> None:
+    real = sqlite3.connect(":memory:")
+    real.execute(
+        'CREATE TABLE "tagged" ("id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, '
+        '"tags" TEXT, "days" TEXT, "history" TEXT)'
+    )
+    om = ObjectManagerDb(_array_root(), SqliteDriver(Recording(real)))  # type: ignore[arg-type]
+    created = om.create(
+        "Tagged",
+        {"tags": ["a", "b"], "days": ["2026-05-01"], "history": ["PUBLISHED", "DRAFT"]},
+    )
+    # The int-backed enum's elements are stored as their integers, the rest as their text.
+    stored = real.execute('SELECT "tags", "days", "history" FROM "tagged"').fetchone()
+    assert [json.loads(c) for c in stored] == [["a", "b"], ["2026-05-01"], [5, 0]]
+    assert created["tags"] == ["a", "b"]
+    assert created["days"] == [dt.date(2026, 5, 1)]
+    assert created["history"] == ["PUBLISHED", "DRAFT"]
+
+    empty = om.create("Tagged", {"tags": [], "history": None})
+    assert empty["tags"] == [] and empty["history"] is None and empty["days"] is None
+    [reread] = om.find_many("Tagged", {"id": empty["id"]})
+    assert reread["tags"] == [] and reread["history"] is None
+
+
+def test_mysql_binds_a_primitive_array_as_json_and_decodes_the_column() -> None:
+    root = _array_root()
+    tagged = next(o for o in root.own_children() if getattr(o, "name", None) == "Tagged")
+    fields = {f.name: f for f in tagged.fields()}
+    assert MYSQL.encode_param([5, 0]) == "[5, 0]"
+    assert MYSQL.encode_param(["a", None]) == '["a", null]'
+    assert MYSQL.encode_param([dt.date(2026, 5, 1)]) == '["2026-05-01"]'
+    assert MYSQL.decode_value(fields["days"], '["2026-05-01"]') == [dt.date(2026, 5, 1)]
+    # PyMySQL hands a JSON column back as text; a list is decoded the same way.
+    assert MYSQL.decode_value(fields["tags"], ["a"]) == ["a"]
+    assert MYSQL.decode_value(fields["history"], b"[5,0]") == [5, 0]

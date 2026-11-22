@@ -510,6 +510,7 @@
           "com.metaobjects.generator.requirement.RequirementTestRenderer",
           "com.metaobjects.generator.spring.AutoSetSupport",
           "com.metaobjects.generator.spring.FindInbound",
+          "com.metaobjects.generator.spring.SpringJavaWriter",
           "com.metaobjects.generator.spring.SpringM2mSupport",
           "com.metaobjects.generator.spring.SpringNaming",
           "com.metaobjects.generator.spring.SpringTypeMapper",
@@ -517,7 +518,10 @@
           "com.metaobjects.generator.util.GeneratedFileWriter",
           "com.metaobjects.generator.util.GeneratorUtil",
           "com.metaobjects.generator.util.JavaIdentifiers",
-          "com.metaobjects.generator.util.RestSurfaceGate"
+          "com.metaobjects.generator.util.RestSurfaceGate",
+          "com.metaobjects.generator.writer.CodeWriter",
+          "com.metaobjects.generator.writer.JavaWriter",
+          "com.metaobjects.generator.writer.WriterOptions"
         ]
       },
       "kotlin": {

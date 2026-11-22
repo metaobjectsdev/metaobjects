@@ -15,6 +15,29 @@ here.**
   Python had none. `Renderer` now strips standalone comment lines before mustache.java parses them. A
   template with such a line renders differently in Java, so a prompt body with one changes bytes (and
   its prompt-cache prefix) on upgrade. The `render-standalone-*` fixtures pin the whitespace rules.
+- **Python: the entity model generator writes through the code writer (ADR-0063).** The model
+  modules (`<Name>.py` with `<Name>Create` and `<Name>Patch`), the shared `enums.py` and the
+  `_duration_wire.py` banner are built on a `PyWriter`, and `ruff` no longer runs over them, so the
+  bytes no longer depend on whether `ruff` is installed. Over 1,561 model modules generated from the
+  repository's fixtures, 1,146 are byte-identical, and the other 415 match once both versions are
+  put through the same `ruff` import sort and format. What moves: the standard-library and
+  third-party imports share one section (no blank line between `import datetime` and
+  `from pydantic import ...`, the writer's import order); a `Field(...)` too long for its line puts
+  one keyword per line; and a `field.duration` annotation too long for its line breaks inside
+  `Annotated[...]`. `PyWriter.gap()` asked for before the first body line now gives the two blank
+  lines PEP 8 sets after the imports and before a top-level class (a new `py-gap-after-imports`
+  writer-conformance case). For subclasses of `EntityModelGenerator` (not a stability contract,
+  ADR-0063 item 7): `_emit_field_lines`, `_emit_create_lines` and `_emit_patch_lines` return writer
+  pieces without indentation (`"name: int | None = None"`) instead of indented strings,
+  `_emit_cross_field_rules` returns a step that writes the method onto the writer (or `None`) instead
+  of lines, a new `_write_model` writes one class, and `render_entity_model` returns the finished
+  module rather than text for `ruff` to tidy.
+- **Python: `@union` and `@grain` projections are checked at load.** A union member whose fields
+  differ in name, subtype, array-ness, `@column` or enum shape, a member that is the projection
+  itself or declares its own `@union`, `@unionAll` without `@union`, a `@grain` that does not name a
+  base-entity `field.object` jsonb array with `@objectRef`, an aggregate in a `@grain` view, and a
+  malformed `@grainOrdinal` are now `ERR_BAD_ATTR_VALUE`, as in TypeScript and C#. Python passes the
+  `error-projection-union-shape` and `error-projection-grain-not-object-array` fixtures.
 - **C#: an unchanged file is never rewritten.** `dotnet meta gen` already left identical output alone
   when the project keeps a hash manifest. It now does the same on the path with no manifest (output
   written outside the project, or a program that runs the generators with no state directory), which
@@ -157,6 +180,28 @@ here.**
   `meta gen`; the contract corpus goldens move with it. A new contract case, `list-query`, documents
   the list-query model, and the list-query lane now holds every exchange to it as the other
   generated lanes do; the check no longer exempts `search` and the combinators.
+- **Java: the Spring controller generator writes through the code writer (ADR-0063).**
+  `SpringControllerGenerator` writes through `SpringJavaWriter`, a `JavaWriter` that adds the two
+  layouts Spring source uses and a block does not: a continuation line (two indents deeper) and an
+  indented `case` body. Every member of the generated controller comes from its own protected
+  `write*` method, so an owned copy changes one handler by overriding one method; the `append*`
+  helpers that took a `StringBuilder` are gone. The shared validator members and the decimal and
+  duration import lists in `SpringGeneratorSupport` are written through the writer too
+  (`writeCrossFieldValidationMembers`; `decimalAnnotationImports` and `durationAnnotationImports`
+  now return qualified names). A generated controller changes in two layout details only, checked
+  on 1,512 controllers from every fixture model: its imports are sorted, and the blank line after
+  `public class ... {` is gone.
+
+  The DTO, value-object and shared-enum generators follow (`SpringDtoGenerator`,
+  `SpringValueObjectGenerator`, `Fr019SharedEnum`). A record, patch class, stamping helper and
+  enum declaration each come from a protected method, and the string-returning helpers they used
+  are replaced by writer ones: `SpringTypeMapper.enumDeclaration` by `writeEnumDeclaration`,
+  `SpringRecordBuilder.members` by `writeMembers` (with `applies` to ask first), and an owned DTO
+  generator customizes every file it writes by overriding `newWriter`. Their output changes in
+  layout only, checked on every fixture model in two wire and API configurations: sorted imports
+  with no blank between groups, no blank line after `public final class ...Patch {` or a doubled
+  one in a patch with no settable fields, no trailing indent on the blank lines of a nested enum,
+  and no leading blank line in a file with no package.
 - **runtime-ts: one list-query parse for every mount.** `parseListQuery` (exported from
   `@metaobjectsdev/runtime-ts`; it does not depend on Drizzle) reads a list request into a
   port-neutral `ListQuery`, and each mount compiles that for its own query library. The Drizzle
@@ -165,6 +210,28 @@ here.**
   - `filterAllowlist`: it then serves `filter[...]`, `filter[or]` / `filter[and]` and `?search`
     and refuses what the Drizzle mount refuses, with the same bodies;
   - `pagination`: the `api.pagination` page size.
+
+  The names, repository and report-export generators follow (`SpringNamesGenerator`,
+  `SpringRepositoryGenerator`, `SpringReportExportGenerator`), each finder, constant block and
+  writer section from its own protected method; the one layout change in their output is that
+  the blank line after the class or interface opener is gone. So does the output-parser generator
+  (`SpringOutputParserGenerator`), whose `StringBuilder` seams (`emitMapperMethods`, `emitMapper`,
+  `appendMapperHelpers`) now take the writer, and whose parsers gain a blank line after the
+  leading `// GENERATED` comment besides sorted imports. The filter-allowlist, response-format and
+  render-helper generators follow: the allowlist output is unchanged, and the other two gain the
+  same blank after the leading comment, sorted imports and no blank after the class opener.
+  `SpringNaming.packageHeader` is removed; the writer's `packageName` replaces it. The LLM-trace
+  helper and the `requirement-tests` generator follow with the same layout changes, and the
+  witness-key collision error now lists its colliding pairs on one line, separated by `; `.
+  In `codegen-base`, the entity extractor (`ExtractorCodeGenerator`, whose `write*` seams now take
+  a `JavaWriter`, and whose `writeHeader` no longer takes the extractor name or writes the class
+  opener) and the generated `ObjectClassBindingProvider` move to the writer too, with sorted imports
+  and no blank after the class opener; the older object code writers take their indentation unit
+  from `WriterOptions` (`JAVA`, and the new two-space `DIRECT`) instead of a typed string. Every
+  Java generator now writes through the code writer, so the layout ratchet's `unconverted` list
+  is empty. `CodeWriter`, `JavaWriter`, `WriterOptions` and `SpringJavaWriter` join the Java
+  engine surface (`eject.engineSurface.java.engine`), so an ejected generator imports them from
+  the package rather than copying them.
 
   With no sort, the `ObjectManager` mount now orders by the primary key. The `ObjectManager`
   `Filter` gains `$or` and a case-insensitive `$ilike`, and the class gains `keyFields()` and
@@ -188,6 +255,28 @@ here.**
   included every filterable text field, and an int-backed (`@intValueMap`) enum is an integer
   column, so Postgres refused the ILIKE. Search now covers only fields whose operator band
   includes `like`.
+- **Python: a primitive array persists on SQLite and MySQL.** The `ObjectManagerDb`'s SQLite and
+  MySQL dialects bound no list, so an `isArray` string, number, date, uuid or enum field could not be
+  written there. The column the TypeScript-owned schema gives it (`TEXT` on SQLite, `JSON` on MySQL)
+  now holds a JSON array, an int-backed enum's as its integers (`[5,0]`), and each element reads back
+  through the scalar decode. `roundtrip-int-enum-array` runs on both engines instead of being deferred.
+  A `field.date`, `field.time` or `field.timestamp` array was refused on write on every engine,
+  Postgres included (the list was parsed as one value); it is now parsed element by element.
+- **Python: an unrestricted `routes` is no longer refused for objects it writes no router for.**
+  `metaobjects gen` refused a config that limits `filter-allowlist` (or `entity`) to some packages
+  while `routes` is left unlimited, whenever another package held an abstract or sourceless object,
+  saying `routes` covered it. `routes` writes nothing for those objects, so only the objects it
+  routes count now. A routed object's model still imports the abstract base it `extends`, the value
+  objects its fields reference and its M:N targets, so limiting `entity` away from one of those is
+  still refused. So is the concrete subtype of a routed discriminator base, whose `Create` and
+  `Patch` models the base's router imports.
+- **Python: `metaobjects eject --force` no longer rewrites an identical copy.** It compares each file
+  with the reference before writing, and one that already matches is left alone and reported
+  `unchanged`.
+- **Python: a reverse finder over a flattened value-object member is named by its flat key.** A
+  reference whose `@fields` names a member such as `address.countryId` emitted a method name with a
+  dot in it, which is not Python. It is now `find_plans_by_address_country`, as TypeScript names it,
+  so the generated finder name changes for such a model on upgrade.
 - **C#: a `@sequenceStart` whose migrations project lacks the design-time services line is a generation
   error.** When `dotnet meta gen` can see the context's `ModelSnapshot.cs` in another project and that
   project does not carry `[assembly: DesignTimeServicesReference]`, the next `dotnet ef migrations add`
@@ -879,8 +968,8 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
     the only int-backed enum, projection and report-row enum arrays get the element converter
     (they read stored ints as ordinals before), and a non-required int-backed enum array is
     nullable.
-  - Python: ObjectManager maps elements on write, read and filter operands on Postgres. Its
-    SQLite and MySQL dialects store no primitive array, so the new scenario is deferred there.
+  - Python: ObjectManager maps elements on write, read and filter operands, on Postgres, SQLite
+    and MySQL (the last two store a JSON array of numbers).
   - Java: OMDB stores an int-backed enum array as a native `integer[]` on Postgres and a JSON array
     of numbers on SQLite, MySQL and Derby; a member with no declared integer is refused on write,
     and a stored integer with no member fails the read. Kotlin: the Exposed table generator emits an

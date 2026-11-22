@@ -3,6 +3,7 @@ package com.metaobjects.generator.direct;
 import com.metaobjects.generator.GeneratorIOWriter;
 import com.metaobjects.generator.GeneratorIOException;
 import com.metaobjects.generator.direct.util.FileIndentor;
+import com.metaobjects.generator.writer.WriterOptions;
 import com.metaobjects.loader.MetaDataLoader;
 
 import java.io.PrintWriter;
@@ -30,7 +31,7 @@ public abstract class FileDirectWriter<T extends FileDirectWriter> extends Gener
 
     protected FileIndentor getIndentor() {
         if ( indentor == null ) {
-            indentor = new FileIndentor( "  " );
+            indentor = new FileIndentor( WriterOptions.DIRECT.indent() );
         }
         return indentor;
     }

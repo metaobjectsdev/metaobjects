@@ -149,5 +149,5 @@ jobs:
           MIGRATE_TS_PG_EXPECT: '1'
           RUNTIME_TS_PG_EXPECT: '1'
         run: |
-          METAOBJECTS_CI_M2_REPO="$HOME/.m2/repository" \
+          METAOBJECTS_CI_M2_RUN_REPO="$HOME/.m2/repository" \
             scripts/ci-local.sh --only "$LANE" --integration-only --strict-toolchains

@@ -1264,8 +1264,9 @@ flavor, so the writers come with it:
 | `JavaCodeWriter` | The Java type of each field; accessor, parameter, class and package names; the body of the interface flavor. |
 | `PojoAwareCodeWriter`, `ValueObjectCodeWriter` | The fields, the constructor and the accessor bodies of the two concrete flavors. |
 
-All seven land in one package and use one another, never the packaged classes: eject
-rewrites the package line of each and, where one imports another, that import. To change a
+All seven land in one package and use one another, never the packaged copies: eject
+rewrites the package line of each and, where one imports another, that import. They do call
+the code writer (`JavaWriter`, `WriterOptions`), which is engine and stays in the package. To change a
 field, a constructor or an accessor, edit the writer. You subclass nothing. `-Dlist` gives
 `entity` one verdict over all seven files.
 
@@ -1327,7 +1328,9 @@ the packaged sibling classes they still call, so they compile from any package.
 **What stays in the package is the engine**, public and unchanged: the generator base and
 runner types, the naming and type-mapping tables (`SpringNaming`, `SpringTypeMapper`,
 `KotlinNaming`, `KotlinTypeMapper`), the questions a generator asks of the model
-(`FindInbound`, `TphPlan`, the M:N support, `RestSurfaceGate`), and the Kotlin
+(`FindInbound`, `TphPlan`, the M:N support, `RestSurfaceGate`), the code writer the Java
+generators lay their output out with (`CodeWriter`, `JavaWriter`, `WriterOptions`, and
+`SpringJavaWriter` for Spring source), and the Kotlin
 `Fr019SharedEnum`. Anything that returns emitted text is handed over; a table or a model
 question is not. The Kotlin `Fr019SharedEnum` writes no output. It answers where a shared or
 `@provided` enum lives, and the type mapper and the generator utilities take its

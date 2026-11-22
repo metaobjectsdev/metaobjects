@@ -6,7 +6,6 @@ import java.util.Map;
  * GENERATED — per-object physical database names for Order.
  */
 public abstract class OrderNames {
-
     public static final String TYPE = "object";
     public static final String SUB_TYPE = "entity";
     public static final String NAME = "Order";

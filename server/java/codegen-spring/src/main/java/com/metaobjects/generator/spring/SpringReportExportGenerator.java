@@ -4,6 +4,7 @@ package com.metaobjects.generator.spring;
 // com.metaobjects.generator.spring when this generator is copied out via
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.generator.spring.SpringJavaWriter;
 import com.metaobjects.generator.spring.SpringGeneratorSupport;
 import com.metaobjects.generator.spring.SpringNaming;
 
@@ -208,6 +209,15 @@ public class SpringReportExportGenerator extends MultiFileDirectGeneratorBase<Me
 
     private static String exportSource(MetaObject entity, String pkg, String shortName,
                                        String writerPackage, int maxRows) {
+        SpringReportExportGenerator gen = new SpringReportExportGenerator();
+        SpringJavaWriter w = gen.newWriter(pkg);
+        gen.writeExportClass(w, entity, pkg, shortName, writerPackage, maxRows);
+        return w.toString();
+    }
+
+    /** The per-report {@code <R>Export} class: its columns, its cells and its CSV and XML bodies. */
+    protected void writeExportClass(SpringJavaWriter w, MetaObject entity, String pkg, String shortName,
+                                    String writerPackage, int maxRows) {
         String dto = SpringNaming.dtoName(shortName);
         String className = shortName + "Export";
         // A credential column is never exported: no header, no cell.
@@ -216,54 +226,57 @@ public class SpringReportExportGenerator extends MultiFileDirectGeneratorBase<Me
         for (MetaField f : SpringGeneratorSupport.dtoComponentFields(entity)) {
             if (!credentials.contains(f.getName())) fields.add(f);
         }
-        StringBuilder src = new StringBuilder();
-        if (!pkg.isEmpty()) src.append("package ").append(pkg).append(";\n\n");
-        if (!writerPackage.equals(pkg)) {
-            src.append("import ").append(writerPackage).append('.').append(WRITER_NAME).append(";\n");
+        if (!writerPackage.equals(pkg)) w.use(writerPackage + "." + WRITER_NAME);
+        w.use("java.util.List");
+        w.line("/**");
+        w.line(" * GENERATED — the export of the " + shortName + " report: its columns in");
+        w.line(" * derived-field order, each cell's wire form, and the CSV and XML bodies. The");
+        w.line(" * route reads {@link #MAX_ROWS}; the shared {@link " + WRITER_NAME + "} writes the bytes.");
+        w.line(" */");
+        try (var cls = w.block("public final class " + className + " {")) {
+            w.line("private " + className + "() {}");
+            w.blank();
+            w.line("/** The most rows one export answers; one more is 400 export_too_large. */");
+            w.line("public static final int MAX_ROWS = " + maxRows + ";");
+            w.blank();
+            w.line("/** The XML root element and the report's name. */");
+            w.line("public static final String ROOT = \"" + shortName + "\";");
+            w.blank();
+            w.line("/** The derived fields, in order: the CSV header row and the XML element names. */");
+            List<String> names = new java.util.ArrayList<>();
+            for (MetaField f : fields) names.add("\"" + f.getName() + "\"");
+            w.line("public static final List<String> FIELDS = List.of(" + String.join(", ", names) + ");");
+            w.blank();
+            writeCellsMethod(w, dto, fields);
+            w.blank();
+            w.line("/** The rows as RFC 4180 CSV bytes (UTF-8). */");
+            try (var m = w.block("public static byte[] csv(List<" + dto + "> rows) {")) {
+                w.line("return " + WRITER_NAME + ".csv(FIELDS, rows.stream().map(" + className + "::cells).toList());");
+            }
+            w.blank();
+            w.line("/** The rows as XML bytes (UTF-8, no declaration). */");
+            try (var m = w.block("public static byte[] xml(List<" + dto + "> rows) {")) {
+                w.line("return " + WRITER_NAME + ".xml(ROOT, FIELDS, rows.stream().map(" + className + "::cells).toList());");
+            }
         }
-        src.append("import java.util.List;\n\n");
-        src.append("/**\n");
-        src.append(" * GENERATED — the export of the ").append(shortName).append(" report: its columns in\n");
-        src.append(" * derived-field order, each cell's wire form, and the CSV and XML bodies. The\n");
-        src.append(" * route reads {@link #MAX_ROWS}; the shared {@link ").append(WRITER_NAME)
-           .append("} writes the bytes.\n");
-        src.append(" */\n");
-        src.append("public final class ").append(className).append(" {\n\n");
-        src.append("    private ").append(className).append("() {}\n\n");
-        src.append("    /** The most rows one export answers; one more is 400 export_too_large. */\n");
-        src.append("    public static final int MAX_ROWS = ").append(maxRows).append(";\n\n");
-        src.append("    /** The XML root element and the report's name. */\n");
-        src.append("    public static final String ROOT = \"").append(shortName).append("\";\n\n");
-        src.append("    /** The derived fields, in order: the CSV header row and the XML element names. */\n");
-        src.append("    public static final List<String> FIELDS = List.of(");
-        for (int i = 0; i < fields.size(); i++) {
-            if (i > 0) src.append(", ");
-            src.append('"').append(fields.get(i).getName()).append('"');
+    }
+
+    /** {@code cells(row)}: one row's cells in wire form, one factory call per exported field. */
+    protected void writeCellsMethod(SpringJavaWriter w, String dto, List<MetaField> fields) {
+        w.line("/** One row's cells in wire form: currency as integer minor units, a date as YYYY-MM-DD,");
+        w.line(" *  a decimal as the wire setting writes it, a boolean as true/false, null as null. */");
+        try (var m = w.block("public static List<" + WRITER_NAME + ".Cell> cells(" + dto + " row) {")) {
+            if (fields.isEmpty()) {
+                w.line("return List.of();");
+                return;
+            }
+            w.line("return List.of(");
+            for (int i = 0; i < fields.size(); i++) {
+                MetaField f = fields.get(i);
+                w.continuation(WRITER_NAME + "." + cellFactory(f) + "(row." + JavaIdentifiers.escapeMember(f.getName())
+                    + "())" + (i < fields.size() - 1 ? "," : ");"));
+            }
         }
-        src.append(");\n\n");
-        src.append("    /** One row's cells in wire form: currency as integer minor units, a date as YYYY-MM-DD,\n");
-        src.append("     *  a decimal as the wire setting writes it, a boolean as true/false, null as null. */\n");
-        src.append("    public static List<").append(WRITER_NAME).append(".Cell> cells(").append(dto).append(" row) {\n");
-        src.append("        return List.of(");
-        for (int i = 0; i < fields.size(); i++) {
-            MetaField f = fields.get(i);
-            src.append(i == 0 ? "\n" : ",\n").append("                ").append(WRITER_NAME).append('.')
-               .append(cellFactory(f)).append("(row.").append(JavaIdentifiers.escapeMember(f.getName())).append("())");
-        }
-        src.append(");\n");
-        src.append("    }\n\n");
-        src.append("    /** The rows as RFC 4180 CSV bytes (UTF-8). */\n");
-        src.append("    public static byte[] csv(List<").append(dto).append("> rows) {\n");
-        src.append("        return ").append(WRITER_NAME).append(".csv(FIELDS, rows.stream().map(")
-           .append(className).append("::cells).toList());\n");
-        src.append("    }\n\n");
-        src.append("    /** The rows as XML bytes (UTF-8, no declaration). */\n");
-        src.append("    public static byte[] xml(List<").append(dto).append("> rows) {\n");
-        src.append("        return ").append(WRITER_NAME).append(".xml(ROOT, FIELDS, rows.stream().map(")
-           .append(className).append("::cells).toList());\n");
-        src.append("    }\n");
-        src.append("}\n");
-        return src.toString();
     }
 
     /** Which {@code ReportExportWriter} factory turns this field's value into a cell. */
@@ -283,27 +296,6 @@ public class SpringReportExportGenerator extends MultiFileDirectGeneratorBase<Me
     // The shared writer
     // -----------------------------------------------------------------------
 
-    private static String writerSource(String pkg, String xmlNulls, boolean csvBom, boolean decimalsAsString) {
-        return writerSource(pkg, xmlNulls, csvBom, decimalsAsString, false);
-    }
-
-    /**
-     * The shared writer; {@code duration} adds the {@code duration(Duration)} cell factory, and is
-     * set only when a served report has a scalar {@code field.duration} column, so a model without
-     * one gets the writer it always got, byte for byte.
-     */
-    static String writerSource(String pkg, String xmlNulls, boolean csvBom, boolean decimalsAsString,
-            boolean duration) {
-        String template = duration ? WRITER_TEMPLATE.replace(DURATION_CELL_ANCHOR, DURATION_CELL + DURATION_CELL_ANCHOR)
-            : WRITER_TEMPLATE;
-        String text = template
-            .replace("@PACKAGE@", pkg.isEmpty() ? "" : "package " + pkg + ";\n\n")
-            .replace("@BOM@", String.valueOf(csvBom))
-            .replace("@NIL@", String.valueOf(XML_NULLS_NIL.equals(xmlNulls)))
-            .replace("@DECIMALS_AS_STRING@", String.valueOf(decimalsAsString));
-        return text;
-    }
-
     /** True when a served report has a scalar {@code field.duration} column (an array is a JSON cell). */
     static boolean usesDurationCell(List<MetaObject> served) {
         for (MetaObject entity : served) {
@@ -315,235 +307,283 @@ public class SpringReportExportGenerator extends MultiFileDirectGeneratorBase<Me
         return false;
     }
 
-    /** Where {@link #DURATION_CELL} goes in the writer: just before the decimal cell factory. */
-    private static final String DURATION_CELL_ANCHOR =
-        "    /** A decimal as the wire setting writes it: under \"string\" canonical plain notation (no\n";
+    /**
+     * The shared writer; {@code duration} adds the {@code duration(Duration)} cell factory, and is
+     * set only when a served report has a scalar {@code field.duration} column, so a model without
+     * one gets the writer it always got, byte for byte.
+     */
+    static String writerSource(String pkg, String xmlNulls, boolean csvBom, boolean decimalsAsString,
+            boolean duration) {
+        SpringReportExportGenerator gen = new SpringReportExportGenerator();
+        SpringJavaWriter w = gen.newWriter(pkg);
+        gen.writeWriterClass(w, xmlNulls, csvBom, decimalsAsString, duration);
+        return w.toString();
+    }
 
-    /** The {@code field.duration} cell factory, emitted only for a model that has one. */
-    private static final String DURATION_CELL = """
-    /** A field.duration in its canonical ISO-8601 wire form ([-]PT[nH][nM][n[.f]S], to the
-     *  nanosecond), as the list route writes it; Duration.toString() differs for a negative span. */
-    public static Cell duration(java.time.Duration value) {
-        if (value == null) return NULL;
-        boolean negative = value.isNegative();
-        java.time.Duration mag = negative ? value.negated() : value;
-        long total = mag.getSeconds();
-        long nanos = mag.getNano();
-        if (total == 0 && nanos == 0) return new Cell("PT0S", false);
-        StringBuilder b = new StringBuilder(negative ? "-PT" : "PT");
-        if (total / 3600 > 0) b.append(total / 3600).append('H');
-        if (total % 3600 / 60 > 0) b.append(total % 3600 / 60).append('M');
-        if (total % 60 > 0 || nanos > 0) {
-            b.append(total % 60);
-            if (nanos > 0) {
-                String digits = Long.toString(nanos);
-                b.append('.').append(("000000000".substring(digits.length()) + digits).replaceAll("0+$", ""));
+    /** The writer one generated file is written with, set to its package. */
+    protected SpringJavaWriter newWriter(String pkg) {
+        SpringJavaWriter w = new SpringJavaWriter();
+        if (!pkg.isEmpty()) w.packageName(pkg);
+        return w;
+    }
+
+    /** The shared {@code ReportExportWriter} class, verbatim but for its three settings. */
+    protected void writeWriterClass(SpringJavaWriter w, String xmlNulls, boolean csvBom,
+                                    boolean decimalsAsString, boolean duration) {
+        for (String fqn : List.of("com.fasterxml.jackson.databind.ObjectMapper",
+                "com.fasterxml.jackson.databind.SerializationFeature", "java.io.ByteArrayOutputStream",
+                "java.math.BigDecimal", "java.nio.charset.StandardCharsets", "java.time.LocalDateTime",
+                "java.time.LocalTime", "java.time.format.DateTimeFormatter", "java.util.List",
+                "javax.xml.stream.XMLOutputFactory", "javax.xml.stream.XMLStreamException",
+                "javax.xml.stream.XMLStreamWriter")) {
+            w.use(fqn);
+        }
+        writeWriterClassDoc(w);
+        try (var cls = w.block("public final class " + WRITER_NAME + " {")) {
+            writeWriterSettings(w, xmlNulls, csvBom, decimalsAsString);
+            w.blank();
+            writeWriterCells(w);
+            if (duration) {
+                w.blank();
+                writeDurationCell(w);
             }
-            b.append('S');
-        }
-        return new Cell(b.toString(), false);
-    }
-
-""";
-
-    /** The shared writer, verbatim but for the four substitutions in {@link #writerSource}. */
-    private static final String WRITER_TEMPLATE = """
-@PACKAGE@import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import java.io.ByteArrayOutputStream;
-import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
-import java.time.format.DateTimeFormatter;
-import java.util.List;
-import javax.xml.stream.XMLOutputFactory;
-import javax.xml.stream.XMLStreamException;
-import javax.xml.stream.XMLStreamWriter;
-
-/**
- * GENERATED — the one writer every report export shares: CSV quoting, CRLF, the byte order
- * mark constant, the formula-injection guard, and XML over the JDK's StAX writer.
- *
- * <p>The guard applies to string-valued cells only (a string, an enum symbol, a uri): a value
- * starting with {@code =}, {@code +}, {@code -}, {@code @}, TAB or CR gets a leading
- * {@code '}, then the cell is quoted if it holds a quote, comma, CR or LF. A number, a
- * decimal, a date or a boolean is never guarded, so a negative number stays a number.
- */
-public final class ReportExportWriter {
-
-    private ReportExportWriter() {}
-
-    /** Write a UTF-8 byte order mark before the CSV (Excel on Windows wants one). */
-    public static final boolean EXPORT_CSV_BOM = @BOM@;
-
-    /** Write a null field as an empty element with xsi:nil="true" (true) or as an empty element (false). */
-    public static final boolean EXPORT_XML_NIL = @NIL@;
-
-    /** The project's wire.decimals: the canonical string (true, "string") or as Jackson writes a
-     *  BigDecimal number (false, "native"), so a decimal cell matches the list route. */
-    public static final boolean DECIMALS_AS_STRING = @DECIMALS_AS_STRING@;
-
-    private static final String XSI_NS = "http://www.w3.org/2001/XMLSchema-instance";
-
-    private static final ObjectMapper JSON = new ObjectMapper()
-        .findAndRegisterModules()
-        .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-
-    /** One cell in wire form: its text, or null for a null; {@code guarded} marks a string-valued cell. */
-    public static final class Cell {
-        private final String text;
-        private final boolean guarded;
-
-        private Cell(String text, boolean guarded) {
-            this.text = text;
-            this.guarded = guarded;
-        }
-
-        public String text() {
-            return text;
-        }
-
-        public boolean guarded() {
-            return guarded;
+            w.blank();
+            writeWriterBodies(w);
         }
     }
 
-    private static final Cell NULL = new Cell(null, false);
-
-    /** A string-valued cell (string, enum symbol, uri): subject to the formula-injection guard. */
-    public static Cell text(Object value) {
-        return value == null ? NULL : new Cell(String.valueOf(value), true);
+    /** The writer's class Javadoc. */
+    protected void writeWriterClassDoc(SpringJavaWriter w) {
+        w.text("""
+            /**
+             * GENERATED — the one writer every report export shares: CSV quoting, CRLF, the byte order
+             * mark constant, the formula-injection guard, and XML over the JDK's StAX writer.
+             *
+             * <p>The guard applies to string-valued cells only (a string, an enum symbol, a uri): a value
+             * starting with {@code =}, {@code +}, {@code -}, {@code @}, TAB or CR gets a leading
+             * {@code '}, then the cell is quoted if it holds a quote, comma, CR or LF. A number, a
+             * decimal, a date or a boolean is never guarded, so a negative number stays a number.
+             */
+            """);
     }
 
-    /** A cell that is never guarded (number, date, time, timestamp, uuid, boolean, currency).
-     *  A time and a zone-less timestamp keep their seconds, as Jackson's JSR-310 serializers write them. */
-    public static Cell raw(Object value) {
-        if (value == null) return NULL;
-        if (value instanceof LocalTime) {
-            return new Cell(((LocalTime) value).format(DateTimeFormatter.ISO_LOCAL_TIME), false);
-        }
-        if (value instanceof LocalDateTime) {
-            return new Cell(((LocalDateTime) value).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME), false);
-        }
-        return new Cell(String.valueOf(value), false);
+    /** The private constructor and the three settings the writer is generated with. */
+    protected void writeWriterSettings(SpringJavaWriter w, String xmlNulls, boolean csvBom, boolean decimalsAsString) {
+        w.text("""
+            private ReportExportWriter() {}
+
+            /** Write a UTF-8 byte order mark before the CSV (Excel on Windows wants one). */
+            """);
+        w.line("public static final boolean EXPORT_CSV_BOM = " + csvBom + ";");
+        w.blank();
+        w.text("""
+            /** Write a null field as an empty element with xsi:nil="true" (true) or as an empty element (false). */
+            """);
+        w.line("public static final boolean EXPORT_XML_NIL = " + XML_NULLS_NIL.equals(xmlNulls) + ";");
+        w.blank();
+        w.text("""
+            /** The project's wire.decimals: the canonical string (true, "string") or as Jackson writes a
+             *  BigDecimal number (false, "native"), so a decimal cell matches the list route. */
+            """);
+        w.line("public static final boolean DECIMALS_AS_STRING = " + decimalsAsString + ";");
     }
 
-    /** A decimal as the wire setting writes it: under "string" canonical plain notation (no
-     *  exponent, no trailing fraction zeros, zero as 0), under "native" as Jackson writes it. */
-    public static Cell decimal(BigDecimal value) {
-        if (value == null) return NULL;
-        if (!DECIMALS_AS_STRING) return new Cell(value.toString(), false);
-        return new Cell(value.signum() == 0 ? "0" : value.stripTrailingZeros().toPlainString(), false);
-    }
+    /** The JSON mapper, the {@code Cell} type and the text, raw cell factories. */
+    protected void writeWriterCells(SpringJavaWriter w) {
+        w.text("""
+            private static final String XSI_NS = "http://www.w3.org/2001/XMLSchema-instance";
 
-    /** An array or a map, as compact JSON text. */
-    public static Cell json(Object value) {
-        if (value == null) return NULL;
-        try {
-            return new Cell(JSON.writeValueAsString(value), false);
-        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
-            throw new IllegalStateException("cannot write a report cell as JSON: " + e.getMessage(), e);
-        }
-    }
+            private static final ObjectMapper JSON = new ObjectMapper()
+                .findAndRegisterModules()
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
-    // -----------------------------------------------------------------------
-    // CSV
-    // -----------------------------------------------------------------------
+            /** One cell in wire form: its text, or null for a null; {@code guarded} marks a string-valued cell. */
+            public static final class Cell {
+                private final String text;
+                private final boolean guarded;
 
-    /** RFC 4180 CSV: a header row, then one record per row, CRLF after every record. */
-    public static byte[] csv(List<String> names, List<List<Cell>> rows) {
-        StringBuilder out = new StringBuilder();
-        if (EXPORT_CSV_BOM) out.append('\\uFEFF');
-        for (int i = 0; i < names.size(); i++) {
-            if (i > 0) out.append(',');
-            out.append(quote(names.get(i)));
-        }
-        out.append("\\r\\n");
-        for (List<Cell> row : rows) {
-            for (int i = 0; i < row.size(); i++) {
-                if (i > 0) out.append(',');
-                out.append(csvCell(row.get(i)));
+                private Cell(String text, boolean guarded) {
+                    this.text = text;
+                    this.guarded = guarded;
+                }
+
+                public String text() {
+                    return text;
+                }
+
+                public boolean guarded() {
+                    return guarded;
+                }
             }
-            out.append("\\r\\n");
-        }
-        return out.toString().getBytes(StandardCharsets.UTF_8);
-    }
 
-    /** One cell: null is empty, a guarded string is prefixed with an apostrophe when it starts
-     *  like a formula, then the text is quoted when it needs to be. */
-    static String csvCell(Cell cell) {
-        String value = cell.text();
-        if (value == null) return "";
-        if (cell.guarded() && !value.isEmpty()) {
-            char first = value.charAt(0);
-            if (first == '=' || first == '+' || first == '-' || first == '@' || first == '\\t' || first == '\\r') {
-                value = "'" + value;
+            private static final Cell NULL = new Cell(null, false);
+
+            /** A string-valued cell (string, enum symbol, uri): subject to the formula-injection guard. */
+            public static Cell text(Object value) {
+                return value == null ? NULL : new Cell(String.valueOf(value), true);
             }
-        }
-        return quote(value);
-    }
 
-    private static String quote(String value) {
-        boolean needs = false;
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            if (c == '"' || c == ',' || c == '\\r' || c == '\\n') {
-                needs = true;
-                break;
+            /** A cell that is never guarded (number, date, time, timestamp, uuid, boolean, currency).
+             *  A time and a zone-less timestamp keep their seconds, as Jackson's JSR-310 serializers write them. */
+            public static Cell raw(Object value) {
+                if (value == null) return NULL;
+                if (value instanceof LocalTime) {
+                    return new Cell(((LocalTime) value).format(DateTimeFormatter.ISO_LOCAL_TIME), false);
+                }
+                if (value instanceof LocalDateTime) {
+                    return new Cell(((LocalDateTime) value).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME), false);
+                }
+                return new Cell(String.valueOf(value), false);
             }
-        }
-        return needs ? "\\"" + value.replace("\\"", "\\"\\"") + "\\"" : value;
+            """);
     }
 
-    // -----------------------------------------------------------------------
-    // XML
-    // -----------------------------------------------------------------------
+    /** The {@code field.duration} cell factory, written only for a model that has one. */
+    protected void writeDurationCell(SpringJavaWriter w) {
+        w.text("""
+            /** A field.duration in its canonical ISO-8601 wire form ([-]PT[nH][nM][n[.f]S], to the
+             *  nanosecond), as the list route writes it; Duration.toString() differs for a negative span. */
+            public static Cell duration(java.time.Duration value) {
+                if (value == null) return NULL;
+                boolean negative = value.isNegative();
+                java.time.Duration mag = negative ? value.negated() : value;
+                long total = mag.getSeconds();
+                long nanos = mag.getNano();
+                if (total == 0 && nanos == 0) return new Cell("PT0S", false);
+                StringBuilder b = new StringBuilder(negative ? "-PT" : "PT");
+                if (total / 3600 > 0) b.append(total / 3600).append('H');
+                if (total % 3600 / 60 > 0) b.append(total % 3600 / 60).append('M');
+                if (total % 60 > 0 || nanos > 0) {
+                    b.append(total % 60);
+                    if (nanos > 0) {
+                        String digits = Long.toString(nanos);
+                        b.append('.').append(("000000000".substring(digits.length()) + digits).replaceAll("0+$", ""));
+                    }
+                    b.append('S');
+                }
+                return new Cell(b.toString(), false);
+            }
+            """);
+    }
 
-    /** {@code <root><row><field>value</field>...</row>...</root>}: UTF-8, no declaration, no indentation. */
-    public static byte[] xml(String root, List<String> names, List<List<Cell>> rows) {
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        try {
-            XMLStreamWriter w = XMLOutputFactory.newFactory().createXMLStreamWriter(bytes, "UTF-8");
-            w.writeStartElement(root);
-            if (EXPORT_XML_NIL) w.writeNamespace("xsi", XSI_NS);
-            for (List<Cell> row : rows) {
-                w.writeStartElement("row");
+    /** The decimal and JSON cell factories, then the CSV and XML bodies. */
+    protected void writeWriterBodies(SpringJavaWriter w) {
+        w.text("""
+            /** A decimal as the wire setting writes it: under "string" canonical plain notation (no
+             *  exponent, no trailing fraction zeros, zero as 0), under "native" as Jackson writes it. */
+            public static Cell decimal(BigDecimal value) {
+                if (value == null) return NULL;
+                if (!DECIMALS_AS_STRING) return new Cell(value.toString(), false);
+                return new Cell(value.signum() == 0 ? "0" : value.stripTrailingZeros().toPlainString(), false);
+            }
+
+            /** An array or a map, as compact JSON text. */
+            public static Cell json(Object value) {
+                if (value == null) return NULL;
+                try {
+                    return new Cell(JSON.writeValueAsString(value), false);
+                } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                    throw new IllegalStateException("cannot write a report cell as JSON: " + e.getMessage(), e);
+                }
+            }
+
+            // -----------------------------------------------------------------------
+            // CSV
+            // -----------------------------------------------------------------------
+
+            /** RFC 4180 CSV: a header row, then one record per row, CRLF after every record. */
+            public static byte[] csv(List<String> names, List<List<Cell>> rows) {
+                StringBuilder out = new StringBuilder();
+                if (EXPORT_CSV_BOM) out.append('\\uFEFF');
                 for (int i = 0; i < names.size(); i++) {
-                    String value = row.get(i).text();
-                    if (value == null) {
-                        w.writeEmptyElement(names.get(i));
-                        if (EXPORT_XML_NIL) w.writeAttribute("xsi", XSI_NS, "nil", "true");
-                    } else {
-                        w.writeStartElement(names.get(i));
-                        w.writeCharacters(xmlText(value));
-                        w.writeEndElement();
+                    if (i > 0) out.append(',');
+                    out.append(quote(names.get(i)));
+                }
+                out.append("\\r\\n");
+                for (List<Cell> row : rows) {
+                    for (int i = 0; i < row.size(); i++) {
+                        if (i > 0) out.append(',');
+                        out.append(csvCell(row.get(i)));
+                    }
+                    out.append("\\r\\n");
+                }
+                return out.toString().getBytes(StandardCharsets.UTF_8);
+            }
+
+            /** One cell: null is empty, a guarded string is prefixed with an apostrophe when it starts
+             *  like a formula, then the text is quoted when it needs to be. */
+            static String csvCell(Cell cell) {
+                String value = cell.text();
+                if (value == null) return "";
+                if (cell.guarded() && !value.isEmpty()) {
+                    char first = value.charAt(0);
+                    if (first == '=' || first == '+' || first == '-' || first == '@' || first == '\\t' || first == '\\r') {
+                        value = "'" + value;
                     }
                 }
-                w.writeEndElement();
+                return quote(value);
             }
-            w.writeEndElement();
-            w.close();
-        } catch (XMLStreamException e) {
-            throw new IllegalStateException("cannot write the report as XML: " + e.getMessage(), e);
-        }
-        return bytes.toByteArray();
-    }
 
-    /** A character XML 1.0 cannot hold becomes U+FFFD; the writer escapes {@code & < >}. */
-    private static String xmlText(String value) {
-        StringBuilder out = null;
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            boolean ok = c == '\\t' || c == '\\n' || c == '\\r' || (c >= 0x20 && c <= 0xD7FF)
-                || (c >= 0xE000 && c <= 0xFFFD) || Character.isSurrogate(c);
-            if (!ok && out == null) {
-                out = new StringBuilder(value.length()).append(value, 0, i);
+            private static String quote(String value) {
+                boolean needs = false;
+                for (int i = 0; i < value.length(); i++) {
+                    char c = value.charAt(i);
+                    if (c == '"' || c == ',' || c == '\\r' || c == '\\n') {
+                        needs = true;
+                        break;
+                    }
+                }
+                return needs ? "\\"" + value.replace("\\"", "\\"\\"") + "\\"" : value;
             }
-            if (out != null) out.append(ok ? c : '\\uFFFD');
-        }
-        return out == null ? value : out.toString();
+
+            // -----------------------------------------------------------------------
+            // XML
+            // -----------------------------------------------------------------------
+
+            /** {@code <root><row><field>value</field>...</row>...</root>}: UTF-8, no declaration, no indentation. */
+            public static byte[] xml(String root, List<String> names, List<List<Cell>> rows) {
+                ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+                try {
+                    XMLStreamWriter w = XMLOutputFactory.newFactory().createXMLStreamWriter(bytes, "UTF-8");
+                    w.writeStartElement(root);
+                    if (EXPORT_XML_NIL) w.writeNamespace("xsi", XSI_NS);
+                    for (List<Cell> row : rows) {
+                        w.writeStartElement("row");
+                        for (int i = 0; i < names.size(); i++) {
+                            String value = row.get(i).text();
+                            if (value == null) {
+                                w.writeEmptyElement(names.get(i));
+                                if (EXPORT_XML_NIL) w.writeAttribute("xsi", XSI_NS, "nil", "true");
+                            } else {
+                                w.writeStartElement(names.get(i));
+                                w.writeCharacters(xmlText(value));
+                                w.writeEndElement();
+                            }
+                        }
+                        w.writeEndElement();
+                    }
+                    w.writeEndElement();
+                    w.close();
+                } catch (XMLStreamException e) {
+                    throw new IllegalStateException("cannot write the report as XML: " + e.getMessage(), e);
+                }
+                return bytes.toByteArray();
+            }
+
+            /** A character XML 1.0 cannot hold becomes U+FFFD; the writer escapes {@code & < >}. */
+            private static String xmlText(String value) {
+                StringBuilder out = null;
+                for (int i = 0; i < value.length(); i++) {
+                    char c = value.charAt(i);
+                    boolean ok = c == '\\t' || c == '\\n' || c == '\\r' || (c >= 0x20 && c <= 0xD7FF)
+                        || (c >= 0xE000 && c <= 0xFFFD) || Character.isSurrogate(c);
+                    if (!ok && out == null) {
+                        out = new StringBuilder(value.length()).append(value, 0, i);
+                    }
+                    if (out != null) out.append(ok ? c : '\\uFFFD');
+                }
+                return out == null ? value : out.toString();
+            }
+            """);
     }
-}
-""";
 }

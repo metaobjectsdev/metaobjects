@@ -6,6 +6,7 @@ package com.metaobjects.generator.spring;
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
 import com.metaobjects.generator.spring.AutoSetSupport;
 import com.metaobjects.generator.spring.SpringGeneratorSupport;
+import com.metaobjects.generator.spring.SpringJavaWriter;
 import com.metaobjects.generator.spring.SpringM2mSupport;
 import com.metaobjects.generator.spring.SpringNaming;
 import com.metaobjects.generator.spring.SpringTypeMapper;
@@ -21,6 +22,7 @@ import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.RunAware;
 import com.metaobjects.generator.GeneratorIOWriter;
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
+import com.metaobjects.generator.writer.CodeWriter;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.generator.util.RestSurfaceGate;
 import com.metaobjects.object.MetaObject;
@@ -32,7 +34,6 @@ import static com.metaobjects.generator.spring.SpringNaming.firstRdbSource;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintWriter;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -86,15 +87,11 @@ import com.metaobjects.generator.util.GeneratedFileWriter;
  * consumer implements with their persistence layer of choice (Spring Data
  * JPA / jOOQ / plain JDBC).</p>
  *
- * <p>Substrate justification (hand-rolled string builder rather than
- * JavaPoet): same trade-off as
- * {@code KotlinSpringControllerGenerator}. Spring annotations
- * ({@code @GetMapping}, {@code @PathVariable}, {@code @RequestParam}) plus
- * generic types ({@code ResponseEntity<?>}, {@code Optional<EntityDto>})
- * don't translate cleanly to JavaPoet's {@code MethodSpec}/{@code AnnotationSpec}
- * APIs without a verbose dance of {@code $T} placeholders; the syntactic
- * surface is small (~110 lines per file) and matches the idiomatic Spring
- * style without the indirection of a typed-emit DSL.</p>
+ * <p>Layout (ADR-0063): the controller is written through a {@link SpringJavaWriter}. The
+ * imports are collected and sorted by the writer, fixed code is written as it reads with
+ * {@code text()}, and every member of the generated class comes from its own protected
+ * {@code write*} method, so an owned copy (or a subclass) changes one handler by overriding
+ * one method.</p>
  *
  * <p>Args:</p>
  * <ul>
@@ -129,7 +126,21 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      *  it, answers {@code 400 {"error": "report_too_large", "maxRows": N}}. Reports only. */
     public static final String ARG_REPORT_MAX_ROWS = "reportMaxRows";
 
-    private int reportMaxRows = DEFAULT_REPORT_MAX_ROWS;
+    /** The list handler parameters, one per continuation line of its signature. */
+    protected static final String PARAM_LIMIT = "@RequestParam(required = false) Integer limit";
+    protected static final String PARAM_OFFSET = "@RequestParam(required = false) Integer offset";
+    protected static final String PARAM_SORT = "@RequestParam(required = false) String sort";
+    protected static final String PARAM_WITH_COUNT = "@RequestParam(required = false, name = \"withCount\") Integer withCount";
+    protected static final String PARAM_REQUEST = "HttpServletRequest request";
+
+    /** The line that closes a write handler's {@code try} and opens its constraint catch ({@link #writeConstraintCatch}). */
+    protected static final String CATCH_RUNTIME = "} catch (RuntimeException e) {";
+
+    /** The 404 body every by-id miss answers. */
+    protected static final String NOT_FOUND_RESPONSE =
+        "ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(\"error\", \"not_found\"))";
+
+    protected int reportMaxRows = DEFAULT_REPORT_MAX_ROWS;
 
     /**
      * Whether a {@code report-export} generator ({@link EmitsReportExport}) is in this run, as
@@ -142,7 +153,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * the export cap governs and {@code report_too_large} never answers; without it
      * {@link #ARG_REPORT_MAX_ROWS} is untouched.
      */
-    private boolean reportExport = false;
+    protected boolean reportExport = false;
 
     @Override
     public void setRun(Collection<? extends Generator> run) {
@@ -150,7 +161,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
     }
 
     /** The runtime package this run's output imports ({@link #ARG_RUNTIME_PACKAGE}). */
-    private String runtimePackage = RUNTIME_PACKAGE;
+    protected String runtimePackage = RUNTIME_PACKAGE;
 
     private static final Logger LOG = LoggerFactory.getLogger(SpringControllerGenerator.class);
 
@@ -159,7 +170,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         return MetaObject.class;
     }
 
-    private MetaDataLoader loader;
+    protected MetaDataLoader loader;
 
     @Override
     public void execute(MetaDataLoader loader) {
@@ -233,6 +244,125 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         }
     }
 
+    // -----------------------------------------------------------------------
+    // The file: writer, imports, class head, write.
+    // -----------------------------------------------------------------------
+
+    /** The writer one controller file is written with, set to its package. */
+    protected SpringJavaWriter newWriter(String pkg) {
+        SpringJavaWriter w = new SpringJavaWriter();
+        if (!pkg.isEmpty()) w.packageName(pkg);
+        return w;
+    }
+
+    /** A class of the helper runtime, by its qualified name in {@link #runtimePackage}. */
+    protected String runtimeType(String simpleName) {
+        return runtimePackage + "." + simpleName;
+    }
+
+    /** The imports of a WRITABLE controller (vanilla and single-table hierarchy alike). */
+    protected void useWritableImports(SpringJavaWriter w) {
+        w.use("com.fasterxml.jackson.databind.JsonNode");
+        w.use("com.fasterxml.jackson.databind.ObjectMapper");
+        w.use(runtimeType("ConstraintErrors"));
+        w.use(runtimeType("PatchValidationException"));
+        w.use(runtimeType("UnreadableBody"));
+        w.use(runtimeType("UnknownBodyKeys"));
+        w.use(runtimeType("ValidationIssues"));
+        // The escape the PATCH loop applies to each assigned key before naming a Bean
+        // Validation property — see RecordComponentNames for why it is needed at run time.
+        w.use(runtimeType("RecordComponentNames"));
+        w.use("org.springframework.http.HttpStatus");
+        w.use("org.springframework.http.ResponseEntity");
+        w.use("org.springframework.web.bind.annotation.DeleteMapping");
+        w.use("org.springframework.web.bind.annotation.GetMapping");
+        w.use("org.springframework.web.bind.annotation.PathVariable");
+        w.use("org.springframework.web.bind.annotation.PostMapping");
+        w.use("org.springframework.web.bind.annotation.RequestBody");
+        w.use("org.springframework.web.bind.annotation.RequestMapping");
+        w.use("org.springframework.web.bind.annotation.RequestMethod");
+        w.use("org.springframework.web.bind.annotation.RequestParam");
+        w.use("org.springframework.web.bind.annotation.RestController");
+        useFilterImports(w);
+        w.use("jakarta.servlet.http.HttpServletRequest");
+        w.use("jakarta.validation.Validator");
+        useCollectionImports(w);
+    }
+
+    /** The imports of a READ-ONLY controller (projection or served report). */
+    protected void useReadOnlyImports(SpringJavaWriter w, MetaObject entity, boolean hasItem) {
+        w.use("org.springframework.http.HttpStatus");
+        w.use("org.springframework.http.ResponseEntity");
+        w.use("org.springframework.web.bind.annotation.GetMapping");
+        if (hasItem) w.use("org.springframework.web.bind.annotation.PathVariable");
+        w.use("org.springframework.web.bind.annotation.PostMapping");
+        w.use("org.springframework.web.bind.annotation.RequestMapping");
+        if (hasItem) w.use("org.springframework.web.bind.annotation.RequestMethod");
+        w.use("org.springframework.web.bind.annotation.RequestParam");
+        w.use("org.springframework.web.bind.annotation.RestController");
+        useFilterImports(w);
+        if (reportExport && com.metaobjects.generator.util.GeneratorUtil.isReport(entity)) {
+            w.use(runtimeType("ReportExport"));
+            w.use("org.springframework.http.MediaType");
+        }
+        w.use("jakarta.servlet.http.HttpServletRequest");
+        useCollectionImports(w);
+    }
+
+    protected void useFilterImports(SpringJavaWriter w) {
+        w.use(runtimeType("FilterParseResult"));
+        w.use(runtimeType("FilterParser"));
+        w.use(runtimeType("FilterPredicate"));
+    }
+
+    protected void useCollectionImports(SpringJavaWriter w) {
+        w.use("java.util.List");
+        w.use("java.util.Map");
+        w.use("java.util.Set");
+    }
+
+    /** The Javadoc paragraph telling an adopter where the routes' authentication belongs. */
+    protected List<String> authDoc(String routeBase, boolean readOnly) {
+        List<String> out = new ArrayList<>();
+        if (readOnly) {
+            out.add("<p>Auth: these read endpoints are unauthenticated. Require authentication for this path");
+            out.add("in your Spring Security config, e.g. {@code http.authorizeHttpRequests(a ->");
+        } else {
+            out.add("<p>Auth: these endpoints are unauthenticated. Require authentication for this path in");
+            out.add("your Spring Security config, e.g. {@code http.authorizeHttpRequests(a ->");
+        }
+        out.add("a.requestMatchers(\"" + routeBase + "/**\").authenticated())}.");
+        out.add("A row-ownership rule (\"only the owner may read this row\") can't be expressed in path");
+        out.add("config — eject this generator with {@code mvn metaobjects:eject} and hand-write those");
+        out.add("endpoints.");
+        return out;
+    }
+
+    /** The class Javadoc, its two annotations and its opening line; the caller closes the block. */
+    protected CodeWriter.Block openControllerClass(SpringJavaWriter w, List<String> doc, String routeBase,
+                                                   String controllerName) {
+        w.doc(doc.toArray(new String[0]));
+        w.line("@RestController");
+        w.line("@RequestMapping(\"" + routeBase + "\")");
+        return w.block("public class " + controllerName + " {");
+    }
+
+    /** Write the finished controller through the shared write path. */
+    protected void writeControllerFile(Path outRoot, String pkg, String controllerName, SpringJavaWriter w,
+                                       String failureContext) {
+        try {
+            Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(controllerName + ".java");
+            GeneratedFileWriter.write(outFile, w.toString());
+        } catch (IOException e) {
+            throw new GeneratorException(
+                "failed writing " + failureContext.replace("{file}", controllerName + ".java") + ": " + e, e);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // The WRITABLE controller.
+    // -----------------------------------------------------------------------
+
     protected void emit(MetaObject entity, Path outRoot) {
         String[] split = SpringNaming.splitFqn(entity.getName());
         String pkg = split[0];
@@ -255,99 +385,77 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // ordering, and a 400 on the ports that reject it.)
         List<String> sortFields = sortableFields(entity);
 
-        StringBuilder src = new StringBuilder();
-        if (!pkg.isEmpty()) {
-            src.append("package ").append(pkg).append(";\n\n");
+        SpringJavaWriter w = newWriter(pkg);
+        useWritableImports(w);
+        List<String> doc = new ArrayList<>();
+        doc.add("GENERATED — REST controller for " + shortName + " entity. Implements the cross-port API contract.");
+        doc.add("");
+        doc.addAll(authDoc(routeBase, false));
+        try (CodeWriter.Block cls = openControllerClass(w, doc, routeBase, controllerName)) {
+            // Sort allowlist — static per-entity Set. Field-prefixed inner constant keeps it
+            // private to this controller (no cross-file collision risk).
+            writeSortAllowlist(w, entity, sortFields);
+            writeServerOwnedOnCreate(w, entity);
+            ApiSettings api = ApiSettings.of(entity);
+            writeKnownFields(w, api, new ArrayList<>(entity.getMetaFields()));
+            // #484: the credential fields this entity's rows carry, hidden from every response body.
+            List<String> hidden = SpringGeneratorSupport.credentialNames(entity);
+            List<SpringM2mSupport.M2mNav> navs = SpringM2mSupport.resolve(entity, loader);
+            boolean redacts = !hidden.isEmpty() || navs.stream().anyMatch(n -> !targetCredentials(entity, n).isEmpty());
+
+            // Repository wiring — constructor injection (Spring's recommended idiom; avoids
+            // field-injection magic, plays well with final fields + final test seams). The
+            // ObjectMapper (Spring's configured bean) binds the FR-035 patch body's per-field
+            // values via <Entity>Patch.fromJson, so the same wire codecs apply as on create.
+            // FR-036: the injected jakarta Validator runs the DTO's field constraints over HTTP
+            // (POST validates the whole DTO; PATCH validates each present value) so a constraint
+            // violation returns the cross-port {"error":"validation"} envelope, not Spring's default.
+            writeWritableConstructor(w, controllerName, repoName);
+            writeUnreadableBodyHandler(w);
+            if (redacts) writeRedactHelpers(w);
+
+            // GET (list) — pagination + sort + withCount + FR-009 filter operators.
+            writeListHandler(w, shortName, dtoName, repoName, hidden, api.pagination());
+            // GET /{id} — single by primary key.
+            writeGetByIdHandler(w, pkType, hidden);
+            writeCreateHandler(w, entity, dtoName, repoName, api, hidden);
+            writeUpdateHandler(w, entity, shortName, dtoName, pkType, api, hidden);
+            writeDeleteHandler(w, pkType);
+            for (SpringM2mSupport.M2mNav nav : navs) writeM2mHandler(w, entity, nav, pkType);
+            writeParseSortHelper(w, repoName);
         }
-        src.append("import com.fasterxml.jackson.databind.JsonNode;\n");
-        src.append("import com.fasterxml.jackson.databind.ObjectMapper;\n");
-        src.append("import ").append(runtimePackage).append(".ConstraintErrors;\n");
-        src.append("import ").append(runtimePackage).append(".PatchValidationException;\n");
-        src.append("import ").append(runtimePackage).append(".UnreadableBody;\n");
-        src.append("import ").append(runtimePackage).append(".UnknownBodyKeys;\n");
-        src.append("import ").append(runtimePackage).append(".ValidationIssues;\n");
-        // The escape the PATCH loop applies to each assigned key before naming a Bean
-        // Validation property — see RecordComponentNames for why it is needed at run time.
-        src.append("import ").append(runtimePackage).append(".RecordComponentNames;\n");
-        src.append("import org.springframework.http.HttpStatus;\n");
-        src.append("import org.springframework.http.ResponseEntity;\n");
-        src.append("import org.springframework.web.bind.annotation.DeleteMapping;\n");
-        src.append("import org.springframework.web.bind.annotation.GetMapping;\n");
-        src.append("import org.springframework.web.bind.annotation.PathVariable;\n");
-        src.append("import org.springframework.web.bind.annotation.PostMapping;\n");
-        src.append("import org.springframework.web.bind.annotation.RequestBody;\n");
-        src.append("import org.springframework.web.bind.annotation.RequestMapping;\n");
-        src.append("import org.springframework.web.bind.annotation.RequestMethod;\n");
-        src.append("import org.springframework.web.bind.annotation.RequestParam;\n");
-        src.append("import org.springframework.web.bind.annotation.RestController;\n");
-        src.append("import ").append(runtimePackage).append(".FilterParseResult;\n");
-        src.append("import ").append(runtimePackage).append(".FilterParser;\n");
-        src.append("import ").append(runtimePackage).append(".FilterPredicate;\n");
-        src.append("import jakarta.servlet.http.HttpServletRequest;\n");
-        src.append("import jakarta.validation.Validator;\n");
-        src.append("import java.util.List;\n");
-        src.append("import java.util.Map;\n");
-        src.append("import java.util.Set;\n\n");
+        writeControllerFile(outRoot, pkg, controllerName, w, "{file} for entity " + entity.getName());
+    }
 
-        src.append("/**\n");
-        src.append(" * GENERATED — REST controller for ").append(shortName)
-           .append(" entity. Implements the cross-port API contract.\n");
-        src.append(" *\n");
-        src.append(" * <p>Auth: these endpoints are unauthenticated. Require authentication for this path in\n");
-        src.append(" * your Spring Security config, e.g. {@code http.authorizeHttpRequests(a ->\n");
-        src.append(" * a.requestMatchers(\"").append(routeBase).append("/**\").authenticated())}.\n");
-        src.append(" * A row-ownership rule (\"only the owner may read this row\") can't be expressed in path\n");
-        src.append(" * config — eject this generator with {@code mvn metaobjects:eject} and hand-write those\n");
-        src.append(" * endpoints.\n");
-        src.append(" */\n");
-        src.append("@RestController\n");
-        src.append("@RequestMapping(\"").append(routeBase).append("\")\n");
-        src.append("public class ").append(controllerName).append(" {\n\n");
+    /**
+     * The three injected fields and the constructor of a writable controller: the repository,
+     * the ObjectMapper (binds each present PATCH value) and the jakarta Validator.
+     */
+    protected void writeWritableConstructor(SpringJavaWriter w, String controllerName, String repoName) {
+        w.line("private final " + repoName + " repository;");
+        w.line("private final ObjectMapper objectMapper;");
+        w.line("private final Validator validator;");
+        w.blank();
+        try (CodeWriter.Block b = w.block(
+                "public " + controllerName + "(" + repoName + " repository, ObjectMapper objectMapper, Validator validator) {")) {
+            w.text("""
+                this.repository = repository;
+                this.objectMapper = objectMapper;
+                this.validator = validator;
+                """);
+        }
+        w.blank();
+    }
 
-        // Sort allowlist — static per-entity Set. Field-prefixed inner constant keeps it
-        // private to this controller (no cross-file collision risk).
-        appendSortAllowlist(src, entity, sortFields);
-        appendServerOwnedOnCreate(src, entity);
-        ApiSettings api = ApiSettings.of(entity);
-        appendKnownFields(src, api, new ArrayList<>(entity.getMetaFields()));
-        // #484: the credential fields this entity's rows carry, hidden from every response body.
-        List<String> hidden = SpringGeneratorSupport.credentialNames(entity);
-        List<SpringM2mSupport.M2mNav> navs = SpringM2mSupport.resolve(entity, loader);
-        boolean redacts = !hidden.isEmpty() || navs.stream().anyMatch(n -> !targetCredentials(entity, n).isEmpty());
-
-        // Repository wiring — constructor injection (Spring's recommended idiom; avoids
-        // field-injection magic, plays well with final fields + final test seams). The
-        // ObjectMapper (Spring's configured bean) binds the FR-035 patch body's per-field
-        // values via <Entity>Patch.fromJson, so the same wire codecs apply as on create.
-        // FR-036: the injected jakarta Validator runs the DTO's field constraints over HTTP
-        // (POST validates the whole DTO; PATCH validates each present value) so a constraint
-        // violation returns the cross-port {"error":"validation"} envelope, not Spring's default.
-        src.append("    private final ").append(repoName).append(" repository;\n");
-        src.append("    private final ObjectMapper objectMapper;\n");
-        src.append("    private final Validator validator;\n\n");
-        src.append("    public ").append(controllerName).append("(").append(repoName)
-           .append(" repository, ObjectMapper objectMapper, Validator validator) {\n");
-        src.append("        this.repository = repository;\n");
-        src.append("        this.objectMapper = objectMapper;\n");
-        src.append("        this.validator = validator;\n");
-        src.append("    }\n\n");
-        appendUnreadableBodyHandler(src);
-        if (redacts) appendRedactHelpers(src);
-
-        // GET (list) — pagination + sort + withCount + FR-009 filter operators.
-        // HttpServletRequest carries the raw query string so the bracketed
-        // filter[<field>][<op>]=<value> grammar reaches FilterParser intact
-        // (Spring's @RequestParam would collapse same-key occurrences).
-        appendListHandler(src, shortName, dtoName, repoName, hidden, api.pagination());
-
-        // GET /{id} — single by primary key.
-        appendGetByIdHandler(src, pkType, hidden);
-
-        // POST — create. FR-036: bind the raw DTO (no @Valid, whose default 400 body is NOT the
-        // cross-port envelope and does not even fire under the standaloneSetup test harness) and
-        // validate it EXPLICITLY with the injected Validator, emitting {"error":"validation"} on
-        // any field-constraint violation BEFORE persisting.
-        src.append("    @PostMapping\n");
+    /**
+     * POST — create. FR-036: bind the raw DTO (no @Valid, whose default 400 body is NOT the
+     * cross-port envelope and does not even fire under the standaloneSetup test harness) and
+     * validate it EXPLICITLY with the injected Validator, emitting {"error":"validation"} on
+     * any field-constraint violation BEFORE persisting.
+     */
+    protected void writeCreateHandler(SpringJavaWriter w, MetaObject entity, String dtoName, String repoName,
+                                      ApiSettings api, List<String> hidden) {
+        w.line("@PostMapping");
         // A create body that omits a field with a literal @default binds @default, as every
         // other port's create shape does. The DTO is a record, which cannot default a component,
         // so the handler binds the raw body, fills the absent defaulted fields, and then binds the
@@ -358,143 +466,140 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // api.unknownFields = reject (the default) binds the raw body too: the undeclared keys are
         // read off the JSON itself, so the answer does not depend on how the host's ObjectMapper
         // treats an unknown property.
-        if (defaultPuts.isEmpty() && !api.rejectsUnknownFields()) {
-            src.append("    public ResponseEntity<?> create(@RequestBody ").append(dtoName).append(" dto) {\n");
-        } else {
-            src.append("    public ResponseEntity<?> create(@RequestBody JsonNode body) {\n");
-            appendFillDefaults(src, dtoName, defaultPuts, api.rejectsUnknownFields());
-        }
-        // #484: a @formExclude / credential value is IGNORED (never rejected): the DTO is rebuilt
-        // without it, so the column is left to the repository's default.
-        // Also dropped (never rejected): a server-generated primary key, a readOnly field and a derived
-        // field, none of which a client may set on create.
-        appendStripWriteDenied(src, dtoName, components, createDeniedNames(entity, components));
-        // A caller does not supply server-owned columns, so a @NotNull on one must not reject
-        // the request. The DTO is BOTH the request and the response body, so `id` carries
-        // @NotNull because it is @required in the RESPONSE — while being identity.primary
-        // @generation:uuid, i.e. a column the database defaults and the caller must not invent.
-        // Validating the whole DTO therefore made every POST a 400 for any entity whose PK is
-        // @required, and the only "workaround" was a client-invented primary key.
-        //
-        // The TPH create path has always applied this rule, through
-        // SpringGeneratorSupport.settableFields ("the PK is auto-generated and the discriminator is
-        // injected from the URL, so neither is validated from the body") — which is why a TPH
-        // entity POSTed fine while a vanilla one did not. This is the vanilla path adopting the
-        // same rule, so the two write surfaces finally agree.
-        //
-        // validator.validate(dto) is KEPT rather than narrowed to per-property validateValue:
-        // it is what cascades @Valid into nested value objects. The violations are FILTERED,
-        // and only by TOP-LEVEL property name — a nested path like "labels[0].code" can never
-        // match, so cascaded constraints still reject.
-        // Every violation is listed (never just the first): the issues are collected, then answered once.
-        if (serverOwnedOnCreate(entity).isEmpty()) {
-            src.append("        ValidationIssues __issues = new ValidationIssues().addViolations(validator.validate(dto));\n");
-        } else {
-            src.append("        ValidationIssues __issues = new ValidationIssues()\n");
-            src.append("                .addViolationsExcept(validator.validate(dto), SERVER_OWNED_ON_CREATE);\n");
-        }
-        src.append("        if (!__issues.isEmpty()) {\n");
-        src.append("            return ResponseEntity.badRequest().body(__issues.body());\n");
-        src.append("        }\n");
-        // Issue #203: honor @autoSet — stamp EVERY onCreate AND onUpdate column with now() before
-        // persisting (the caller's value is ignored; a fresh row's updated_at equals its created_at).
-        // The stamp is a static helper on the DTO record; entities with no @autoSet field call
-        // repository.create(dto) verbatim (byte-identical to the pre-#203 handler).
-        String createArg = SpringGeneratorSupport.hasAutoSetFields(entity)
-            ? dtoName + ".stampForInsert(dto)" : "dto";
-        src.append("        try {\n");
-        src.append("            ").append(dtoName).append(" saved = repository.create(").append(createArg).append(");\n");
-        src.append("            return ResponseEntity.status(HttpStatus.CREATED).body(")
-           .append(redactOne("saved", hidden)).append(");\n");
-        appendConstraintCatch(src);
-        src.append("    }\n\n");
-
-        // PATCH + PUT — single handler (per API contract; same body shape both verbs).
-        // Both verbs MUST be expressed on one @RequestMapping with method={PATCH, PUT}.
-        // Stacking @PatchMapping + @PutMapping on the same method does NOT register both
-        // in Spring MVC — only one composed @RequestMapping per method is honored, so the
-        // other verb 405s. (Surfaced by the SP-F generated-controller HTTP lane.)
-        // FR-035 present-key PATCH: bind the RAW JsonNode (not the @Valid full DTO, which
-        // conflates absent with null and 400s an omitted @required field), build the
-        // presence-tracked <Entity>Patch, and delegate to repository.patch. An explicit
-        // null clears a nullable column; an explicit null on a @required field throws
-        // PatchValidationException → 400 {"error":"validation"}. update(id, dto) stays on
-        // the interface for programmatic full-DTO use.
-        String patchName = SpringNaming.patchName(shortName);
-        src.append("    @RequestMapping(value = \"/{id}\", method = { RequestMethod.PATCH, RequestMethod.PUT })\n");
-        src.append("    public ResponseEntity<?> update(@PathVariable ").append(pkType)
-           .append(" id, @RequestBody JsonNode body) {\n");
-        appendUnknownFieldsGuard(src, api);
-        appendPatchBinding(src, patchName, dtoName);
-        // Program D (spec section 0): validateValue does NOT cascade @Valid into a nested value
-        // object's own constraints, so validate each PRESENT VO element EXPLICITLY. The property's
-        // OWN constraints (@NotNull on a @required column, present-null tristate) are already
-        // covered above / in <Entity>Patch.fromJson; this closes the nested-constraint gap (e.g. a
-        // Marker.label over @maxLength, or null on a @required nested member) with a 400.
-        appendValueObjectValidation(src, entity);
-        appendPatchVerdict(src);
-        // Issue #203: honor @autoSet onUpdate — bump every onUpdate column to now() on EVERY partial
-        // update (the model value is ignored; the server owns the timestamp), injected AFTER the
-        // caller's present values are validated and BEFORE delegating so a PATCH that omits the
-        // timestamp still bumps it. onCreate columns are never touched here (created_at is immutable).
-        if (SpringGeneratorSupport.hasOnUpdateFields(entity)) {
-            src.append("        patch.stampAutoSetOnUpdate();\n");
-        }
-        src.append("        try {\n");
-        src.append("            return repository.patch(id, patch)\n");
-        src.append("                    .<ResponseEntity<?>>map(").append(okMapper(hidden)).append(")\n");
-        src.append("                    .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(\"error\", \"not_found\")));\n");
-        appendConstraintCatch(src);
-        src.append("    }\n\n");
-
-        // DELETE — 204 on success, 404 envelope on miss.
-        src.append("    @DeleteMapping(\"/{id}\")\n");
-        src.append("    public ResponseEntity<?> delete(@PathVariable ").append(pkType).append(" id) {\n");
-        src.append("        try {\n");
-        src.append("            if (repository.delete(id)) {\n");
-        src.append("                return ResponseEntity.noContent().build();\n");
-        src.append("            }\n");
-        src.append("            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(\"error\", \"not_found\"));\n");
-        appendConstraintCatch(src);
-        src.append("    }\n\n");
-
-        // FR-018 M:N traversal — GET /{id}/<relationName> exposes each
-        // @cardinality:"many" + @through relationship as a sub-resource of the source,
-        // returning the related target rows. The source URL segment is the entity name
-        // pluralized (handled by @RequestMapping above); the relation segment is the
-        // relationship name. Related-row order is not contractual. The repository finder
-        // traverses the junction (hetero / directed self-join / symmetric union-on-read).
-        for (SpringM2mSupport.M2mNav nav : navs) {
-            String finder = SpringGeneratorSupport.m2mFinderName(nav.relationName());
-            String navCall = "repository." + finder + "(id" + SpringGeneratorSupport.targetSubtypeCallArg(nav) + ")";
-            src.append("    @GetMapping(\"/{id}/").append(nav.relationName()).append("\")\n");
-            if (targetCredentials(entity, nav).isEmpty()) {
-                src.append("    public ResponseEntity<List<").append(nav.targetDtoType()).append(">> ")
-                   .append(finder).append("(@PathVariable ").append(pkType).append(" id) {\n");
-                src.append("        return ResponseEntity.ok(").append(navCall).append(");\n");
+        boolean bindsRaw = !defaultPuts.isEmpty() || api.rejectsUnknownFields();
+        String head = bindsRaw
+            ? "public ResponseEntity<?> create(@RequestBody JsonNode body) {"
+            : "public ResponseEntity<?> create(@RequestBody " + dtoName + " dto) {";
+        try (CodeWriter.Block m = w.block(head)) {
+            if (bindsRaw) writeFillDefaults(w, dtoName, defaultPuts, api.rejectsUnknownFields());
+            // #484: a @formExclude / credential value is IGNORED (never rejected): the DTO is rebuilt
+            // without it, so the column is left to the repository's default.
+            // Also dropped (never rejected): a server-generated primary key, a readOnly field and a derived
+            // field, none of which a client may set on create.
+            writeStripWriteDenied(w, dtoName, components, createDeniedNames(entity, components));
+            // A caller does not supply server-owned columns, so a @NotNull on one must not reject
+            // the request. The DTO is BOTH the request and the response body, so `id` carries
+            // @NotNull because it is @required in the RESPONSE — while being identity.primary
+            // @generation:uuid, i.e. a column the database defaults and the caller must not invent.
+            // Validating the whole DTO therefore made every POST a 400 for any entity whose PK is
+            // @required, and the only "workaround" was a client-invented primary key.
+            //
+            // The TPH create path has always applied this rule, through
+            // SpringGeneratorSupport.settableFields ("the PK is auto-generated and the discriminator is
+            // injected from the URL, so neither is validated from the body") — which is why a TPH
+            // entity POSTed fine while a vanilla one did not. This is the vanilla path adopting the
+            // same rule, so the two write surfaces finally agree.
+            //
+            // validator.validate(dto) is KEPT rather than narrowed to per-property validateValue:
+            // it is what cascades @Valid into nested value objects. The violations are FILTERED,
+            // and only by TOP-LEVEL property name — a nested path like "labels[0].code" can never
+            // match, so cascaded constraints still reject.
+            // Every violation is listed (never just the first): the issues are collected, then answered once.
+            if (serverOwnedOnCreate(entity).isEmpty()) {
+                w.line("ValidationIssues __issues = new ValidationIssues().addViolations(validator.validate(dto));");
             } else {
-                src.append("    public ResponseEntity<List<Object>> ")
-                   .append(finder).append("(@PathVariable ").append(pkType).append(" id) {\n");
-                src.append("        return ResponseEntity.ok(")
-                   .append(redactAll(navCall, targetCredentials(entity, nav))).append(");\n");
+                w.text("""
+                    ValidationIssues __issues = new ValidationIssues()
+                            .addViolationsExcept(validator.validate(dto), SERVER_OWNED_ON_CREATE);
+                    """);
             }
-            src.append("    }\n\n");
+            writeIssuesVerdict(w);
+            // Issue #203: honor @autoSet — stamp EVERY onCreate AND onUpdate column with now() before
+            // persisting (the caller's value is ignored; a fresh row's updated_at equals its created_at).
+            // The stamp is a static helper on the DTO record; entities with no @autoSet field call
+            // repository.create(dto) verbatim (byte-identical to the pre-#203 handler).
+            String createArg = SpringGeneratorSupport.hasAutoSetFields(entity)
+                ? dtoName + ".stampForInsert(dto)" : "dto";
+            try (CodeWriter.Block t = w.block("try {", CATCH_RUNTIME)) {
+                w.line(dtoName + " saved = repository.create(" + createArg + ");");
+                w.line("return ResponseEntity.status(HttpStatus.CREATED).body(" + redactOne("saved", hidden) + ");");
+            }
+            writeConstraintCatch(w);
         }
+        w.blank();
+    }
 
-        // parseSort — returns null on malformed/disallowed input. Returning null lets the
-        // list handler emit the 400 envelope itself rather than throwing — cleaner
-        // separation. The DEFAULT_PK_FIELD constant below is referenced from the per-entity
-        // controller so this helper is package-internal to each generated file.
-        appendParseSortHelper(src, repoName);
-        src.append("}\n");
-
-        try {
-            Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(controllerName + ".java");
-            GeneratedFileWriter.write(outFile, src.toString());
-        } catch (IOException e) {
-            throw new GeneratorException(
-                "failed writing " + controllerName + ".java for entity " + entity.getName() + ": " + e, e);
+    /**
+     * PATCH + PUT — single handler (per API contract; same body shape both verbs).
+     * Both verbs MUST be expressed on one @RequestMapping with method={PATCH, PUT}.
+     * Stacking @PatchMapping + @PutMapping on the same method does NOT register both
+     * in Spring MVC — only one composed @RequestMapping per method is honored, so the
+     * other verb 405s. (Surfaced by the SP-F generated-controller HTTP lane.)
+     * FR-035 present-key PATCH: bind the RAW JsonNode (not the @Valid full DTO, which
+     * conflates absent with null and 400s an omitted @required field), build the
+     * presence-tracked <Entity>Patch, and delegate to repository.patch. An explicit
+     * null clears a nullable column; an explicit null on a @required field throws
+     * PatchValidationException → 400 {"error":"validation"}. update(id, dto) stays on
+     * the interface for programmatic full-DTO use.
+     */
+    protected void writeUpdateHandler(SpringJavaWriter w, MetaObject entity, String shortName, String dtoName,
+                                      String pkType, ApiSettings api, List<String> hidden) {
+        String patchName = SpringNaming.patchName(shortName);
+        w.line("@RequestMapping(value = \"/{id}\", method = { RequestMethod.PATCH, RequestMethod.PUT })");
+        try (CodeWriter.Block m = w.block(
+                "public ResponseEntity<?> update(@PathVariable " + pkType + " id, @RequestBody JsonNode body) {")) {
+            writeUnknownFieldsGuard(w, api);
+            writePatchBinding(w, patchName, dtoName);
+            // Program D (spec section 0): validateValue does NOT cascade @Valid into a nested value
+            // object's own constraints, so validate each PRESENT VO element EXPLICITLY. The property's
+            // OWN constraints (@NotNull on a @required column, present-null tristate) are already
+            // covered above / in <Entity>Patch.fromJson; this closes the nested-constraint gap (e.g. a
+            // Marker.label over @maxLength, or null on a @required nested member) with a 400.
+            writeValueObjectValidation(w, entity);
+            writePatchVerdict(w);
+            // Issue #203: honor @autoSet onUpdate — bump every onUpdate column to now() on EVERY partial
+            // update (the model value is ignored; the server owns the timestamp), injected AFTER the
+            // caller's present values are validated and BEFORE delegating so a PATCH that omits the
+            // timestamp still bumps it. onCreate columns are never touched here (created_at is immutable).
+            if (SpringGeneratorSupport.hasOnUpdateFields(entity)) {
+                w.line("patch.stampAutoSetOnUpdate();");
+            }
+            try (CodeWriter.Block t = w.block("try {", CATCH_RUNTIME)) {
+                w.line("return repository.patch(id, patch)");
+                w.continuation(".<ResponseEntity<?>>map(" + okMapper(hidden) + ")");
+                w.continuation(".orElseGet(() -> " + NOT_FOUND_RESPONSE + ");");
+            }
+            writeConstraintCatch(w);
         }
+        w.blank();
+    }
+
+    /** DELETE — 204 on success, 404 envelope on miss. */
+    protected void writeDeleteHandler(SpringJavaWriter w, String pkType) {
+        w.line("@DeleteMapping(\"/{id}\")");
+        try (CodeWriter.Block m = w.block("public ResponseEntity<?> delete(@PathVariable " + pkType + " id) {")) {
+            try (CodeWriter.Block t = w.block("try {", CATCH_RUNTIME)) {
+                w.text("""
+                    if (repository.delete(id)) {
+                        return ResponseEntity.noContent().build();
+                    }
+                    """);
+                w.line("return " + NOT_FOUND_RESPONSE + ";");
+            }
+            writeConstraintCatch(w);
+        }
+        w.blank();
+    }
+
+    /**
+     * FR-018 M:N traversal — GET /{id}/<relationName> exposes each
+     * @cardinality:"many" + @through relationship as a sub-resource of the source,
+     * returning the related target rows. The source URL segment is the entity name
+     * pluralized (handled by @RequestMapping above); the relation segment is the
+     * relationship name. Related-row order is not contractual. The repository finder
+     * traverses the junction (hetero / directed self-join / symmetric union-on-read).
+     */
+    protected void writeM2mHandler(SpringJavaWriter w, MetaObject source, SpringM2mSupport.M2mNav nav, String pkType) {
+        String finder = SpringGeneratorSupport.m2mFinderName(nav.relationName());
+        String navCall = "repository." + finder + "(id" + SpringGeneratorSupport.targetSubtypeCallArg(nav) + ")";
+        List<String> targetHidden = targetCredentials(source, nav);
+        w.line("@GetMapping(\"/{id}/" + nav.relationName() + "\")");
+        String rowType = targetHidden.isEmpty() ? nav.targetDtoType() : "Object";
+        try (CodeWriter.Block m = w.block("public ResponseEntity<List<" + rowType + ">> "
+                + finder + "(@PathVariable " + pkType + " id) {")) {
+            w.line("return ResponseEntity.ok(" + redactAll(navCall, targetHidden) + ");");
+        }
+        w.blank();
     }
 
     /**
@@ -505,52 +610,61 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * on ABSENT fields; {@code validateValue} skips null for {@code @Size}/{@code @Pattern} and a
      * non-required field carries no {@code @NotNull}, so a present-null-clears composes cleanly.
      * Leaves {@code __assigned} (the bound values) and {@code __patch} (null after a bind failure)
-     * for {@link #appendPatchVerdict}.
+     * for {@link #writePatchVerdict}.
      */
-    private static void appendPatchBinding(StringBuilder src, String patchName, String dtoName) {
-        src.append("        ValidationIssues __issues = new ValidationIssues();\n");
-        src.append("        ").append(patchName).append(" __patch = null;\n");
-        src.append("        Map<String, Object> __assigned;\n");
-        src.append("        try {\n");
-        src.append("            __patch = ").append(patchName).append(".fromJson(body, objectMapper);\n");
-        src.append("            __assigned = __patch.assignedValues();\n");
-        src.append("        } catch (PatchValidationException e) {\n");
-        src.append("            __issues.addPatchFailure(e);\n");
-        src.append("            __assigned = e.assignedValues();\n");
-        src.append("        }\n");
-        src.append("        for (Map.Entry<String, Object> __e : __assigned.entrySet()) {\n");
-        src.append("            __issues.addAt(validator.validateValue(").append(dtoName)
-           .append(".class, RecordComponentNames.escape(__e.getKey()), __e.getValue()), __e.getKey());\n");
-        src.append("        }\n");
+    protected void writePatchBinding(SpringJavaWriter w, String patchName, String dtoName) {
+        w.line("ValidationIssues __issues = new ValidationIssues();");
+        w.line(patchName + " __patch = null;");
+        w.line("Map<String, Object> __assigned;");
+        try (CodeWriter.Block t = w.block("try {", "} catch (PatchValidationException e) {")) {
+            w.line("__patch = " + patchName + ".fromJson(body, objectMapper);");
+            w.line("__assigned = __patch.assignedValues();");
+        }
+        try (CodeWriter.Block c = w.bodyBlock()) {
+            w.text("""
+                __issues.addPatchFailure(e);
+                __assigned = e.assignedValues();
+                """);
+        }
+        try (CodeWriter.Block f = w.block("for (Map.Entry<String, Object> __e : __assigned.entrySet()) {")) {
+            w.line("__issues.addAt(validator.validateValue(" + dtoName
+                + ".class, RecordComponentNames.escape(__e.getKey()), __e.getValue()), __e.getKey());");
+        }
     }
 
     /** The end of the PATCH validation: answer every collected issue at once, else expose {@code patch}. */
-    private static void appendPatchVerdict(StringBuilder src) {
-        src.append("        if (!__issues.isEmpty()) {\n");
-        src.append("            return ResponseEntity.badRequest().body(__issues.body());\n");
-        src.append("        }\n");
-        src.append("        final var patch = __patch;\n");
+    protected void writePatchVerdict(SpringJavaWriter w) {
+        writeIssuesVerdict(w);
+        w.line("final var patch = __patch;");
+    }
+
+    /** Answer the collected {@code __issues} with a 400 when there are any. */
+    protected void writeIssuesVerdict(SpringJavaWriter w) {
+        w.text("""
+            if (!__issues.isEmpty()) {
+                return ResponseEntity.badRequest().body(__issues.body());
+            }
+            """);
     }
 
     /**
-     * Program D — append per-value-object nested-validation guards into a PATCH handler, one per
+     * Program D — per-value-object nested-validation guards in a PATCH handler, one per
      * {@code field.object @storage:jsonb} column (spec section 0), reading the BOUND values from
      * {@code __assigned}. A present single VO value is validated whole; a present array is validated
      * element-by-element. Skips null (present-null clears / is caught upstream) so the tristate
      * composes. Every violation is collected into {@code __issues}, its path the field's wire name
-     * then the element index or key then the member. Emits nothing for an entity with no
+     * then the element index or key then the member. Writes nothing for an entity with no
      * value-object columns, keeping non-VO controllers byte-identical.
      */
-    private static void appendValueObjectValidation(StringBuilder src, MetaObject entity) {
+    protected void writeValueObjectValidation(SpringJavaWriter w, MetaObject entity) {
         for (ObjectField vf : SpringGeneratorSupport.valueObjectJsonbFields(entity)) {
             String name = SpringGeneratorSupport.escapeJavaString(vf.getName());
             if (vf.isArrayType()) {
-                appendAssignedElementLoop(src, name);
+                writeAssignedElementLoop(w, name);
             } else {
-                src.append("        if (__assigned.get(\"").append(name).append("\") != null) {\n");
-                src.append("            __issues.addViolations(validator.validate(__assigned.get(\"").append(name)
-                   .append("\")), \"").append(name).append("\");\n");
-                src.append("        }\n");
+                try (CodeWriter.Block b = w.block("if (__assigned.get(\"" + name + "\") != null) {")) {
+                    w.line("__issues.addViolations(validator.validate(__assigned.get(\"" + name + "\")), \"" + name + "\");");
+                }
             }
         }
         // A field.map @objectRef carries the same nested value objects, and the POST path
@@ -558,36 +672,35 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // with validateValue, which does NOT cascade — so without this the two write paths
         // disagree for maps where they agree for field.object, and a PATCH could write a
         // nested value object POST rejects. The map's VALUES are the beans (keys are strings).
-        appendValueObjectMapValidation(src, entity);
+        writeValueObjectMapValidation(w, entity);
     }
 
-    /** The map-of-value-object part of {@link #appendValueObjectValidation}, for a TPH subtype's PATCH. */
-    private static void appendValueObjectMapValidation(StringBuilder src, MetaObject entity) {
+    /** The map-of-value-object part of {@link #writeValueObjectValidation}, for a TPH subtype's PATCH. */
+    protected void writeValueObjectMapValidation(SpringJavaWriter w, MetaObject entity) {
         for (MetaField vf : SpringGeneratorSupport.valueObjectMapFields(entity)) {
-            appendAssignedMapLoop(src, SpringGeneratorSupport.escapeJavaString(vf.getName()));
+            writeAssignedMapLoop(w, SpringGeneratorSupport.escapeJavaString(vf.getName()));
         }
     }
 
     /** The element-wise validation of a present array-of-value-object {@code __assigned} entry. */
-    private static void appendAssignedElementLoop(StringBuilder src, String name) {
-        src.append("        if (__assigned.get(\"").append(name).append("\") instanceof java.util.Collection<?> __c) {\n");
-        src.append("            int __i = 0;\n");
-        src.append("            for (Object __el : __c) {\n");
-        src.append("                if (__el != null) __issues.addViolations(validator.validate(__el), \"")
-           .append(name).append("\", __i);\n");
-        src.append("                __i++;\n");
-        src.append("            }\n");
-        src.append("        }\n");
+    protected void writeAssignedElementLoop(SpringJavaWriter w, String name) {
+        try (CodeWriter.Block b = w.block("if (__assigned.get(\"" + name + "\") instanceof java.util.Collection<?> __c) {")) {
+            w.line("int __i = 0;");
+            try (CodeWriter.Block f = w.block("for (Object __el : __c) {")) {
+                w.line("if (__el != null) __issues.addViolations(validator.validate(__el), \"" + name + "\", __i);");
+                w.line("__i++;");
+            }
+        }
     }
 
     /** The value-wise validation of a present map-of-value-object {@code __assigned} entry. */
-    private static void appendAssignedMapLoop(StringBuilder src, String name) {
-        src.append("        if (__assigned.get(\"").append(name).append("\") instanceof Map<?, ?> __m) {\n");
-        src.append("            for (Map.Entry<?, ?> __en : __m.entrySet()) {\n");
-        src.append("                if (__en.getValue() != null) __issues.addViolations(validator.validate(__en.getValue()), \"")
-           .append(name).append("\", String.valueOf(__en.getKey()));\n");
-        src.append("            }\n");
-        src.append("        }\n");
+    protected void writeAssignedMapLoop(SpringJavaWriter w, String name) {
+        try (CodeWriter.Block b = w.block("if (__assigned.get(\"" + name + "\") instanceof Map<?, ?> __m) {")) {
+            try (CodeWriter.Block f = w.block("for (Map.Entry<?, ?> __en : __m.entrySet()) {")) {
+                w.line("if (__en.getValue() != null) __issues.addViolations(validator.validate(__en.getValue()), \""
+                    + name + "\", String.valueOf(__en.getKey()));");
+            }
+        }
     }
 
     /**
@@ -601,15 +714,18 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * {@code @Valid} into the map's values — so a posted
      * {@code {"labels": {"k": {...invalid...}}}} was accepted and written.
      */
-    private static void appendMapValueValidationLoop(StringBuilder src, String accessorExpr, String wireName) {
-        src.append("        if (").append(accessorExpr).append(" != null) {\n");
-        src.append("            for (var __en : ").append(accessorExpr).append(".entrySet()) {\n");
-        src.append("                if (__en.getValue() != null) __issues.addViolations(validator.validate(__en.getValue()), \"")
-           .append(SpringGeneratorSupport.escapeJavaString(wireName)).append("\", String.valueOf(__en.getKey()));\n");
-        src.append("            }\n");
-        src.append("        }\n");
+    protected void writeMapValueValidationLoop(SpringJavaWriter w, String accessorExpr, String wireName) {
+        try (CodeWriter.Block b = w.block("if (" + accessorExpr + " != null) {")) {
+            try (CodeWriter.Block f = w.block("for (var __en : " + accessorExpr + ".entrySet()) {")) {
+                w.line("if (__en.getValue() != null) __issues.addViolations(validator.validate(__en.getValue()), \""
+                    + SpringGeneratorSupport.escapeJavaString(wireName) + "\", String.valueOf(__en.getKey()));");
+            }
+        }
     }
 
+    // -----------------------------------------------------------------------
+    // The READ-ONLY controller.
+    // -----------------------------------------------------------------------
 
     /**
      * F22 — emit the READ-ONLY {@code @RestController} for a view-only
@@ -632,7 +748,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * and constraint-error classification — every one of which is meaningless here, and
      * threading a flag through all of them is how a read-only surface drifts into carrying
      * write machinery it can never run. What the two genuinely share (the list + get
-     * handlers, the sort allowlist, parseSort) they share by calling the same emitters.</p>
+     * handlers, the sort allowlist, parseSort) they share by calling the same writers.</p>
      *
      * <p>The item verbs follow the item GET. A projection's identity is OPTIONAL
      * (ADR-0028), and a keyless one mounts no {@code /{id}} read — so it refuses only the
@@ -656,139 +772,118 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         String routeBase = SpringNaming.controllerPath(entity);
         boolean hasItem = RestSurfaceGate.hasItemRoute(entity);
         String pkType = SpringTypeMapper.primaryKeyJavaType(entity);
+        boolean report = com.metaobjects.generator.util.GeneratorUtil.isReport(entity);
 
         List<String> sortFields = sortableFields(entity);
 
-        StringBuilder src = new StringBuilder();
-        if (!pkg.isEmpty()) {
-            src.append("package ").append(pkg).append(";\n\n");
-        }
-        src.append("import org.springframework.http.HttpStatus;\n");
-        src.append("import org.springframework.http.ResponseEntity;\n");
-        src.append("import org.springframework.web.bind.annotation.GetMapping;\n");
-        if (hasItem) {
-            src.append("import org.springframework.web.bind.annotation.PathVariable;\n");
-        }
-        src.append("import org.springframework.web.bind.annotation.PostMapping;\n");
-        src.append("import org.springframework.web.bind.annotation.RequestMapping;\n");
-        if (hasItem) {
-            src.append("import org.springframework.web.bind.annotation.RequestMethod;\n");
-        }
-        src.append("import org.springframework.web.bind.annotation.RequestParam;\n");
-        src.append("import org.springframework.web.bind.annotation.RestController;\n");
-        src.append("import ").append(runtimePackage).append(".FilterParseResult;\n");
-        src.append("import ").append(runtimePackage).append(".FilterParser;\n");
-        src.append("import ").append(runtimePackage).append(".FilterPredicate;\n");
-        if (reportExport && com.metaobjects.generator.util.GeneratorUtil.isReport(entity)) {
-            src.append("import ").append(runtimePackage).append(".ReportExport;\n");
-            src.append("import org.springframework.http.MediaType;\n");
-        }
-        src.append("import jakarta.servlet.http.HttpServletRequest;\n");
-        src.append("import java.util.List;\n");
-        src.append("import java.util.Map;\n");
-        src.append("import java.util.Set;\n\n");
-
-        src.append("/**\n");
-        src.append(" * GENERATED — READ-ONLY REST controller for the ").append(shortName)
-           .append(" ").append(noun).append(".\n");
-        if (!com.metaobjects.generator.util.GeneratorUtil.isReport(entity)) {
-            src.append(" * Implements the cross-port API contract: GET list + GET by id; every write\n");
-            src.append(" * verb answers 405 {\"error\": \"method_not_allowed\"}.\n");
+        SpringJavaWriter w = newWriter(pkg);
+        useReadOnlyImports(w, entity, hasItem);
+        List<String> doc = new ArrayList<>();
+        doc.add("GENERATED — READ-ONLY REST controller for the " + shortName + " " + noun + ".");
+        if (!report) {
+            doc.add("Implements the cross-port API contract: GET list + GET by id; every write");
+            doc.add("verb answers 405 {\"error\": \"method_not_allowed\"}.");
         } else {
-            src.append(" * Implements the cross-port API contract: GET list; POST answers\n");
-            src.append(" * 405 {\"error\": \"method_not_allowed\"}. A report has no identity, so no item\n");
-            src.append(" * route is mounted.\n");
+            doc.add("Implements the cross-port API contract: GET list; POST answers");
+            doc.add("405 {\"error\": \"method_not_allowed\"}. A report has no identity, so no item");
+            doc.add("route is mounted.");
         }
-        src.append(" *\n");
-        src.append(" * <p>Auth: these read endpoints are unauthenticated. Require authentication for this path\n");
-        src.append(" * in your Spring Security config, e.g. {@code http.authorizeHttpRequests(a ->\n");
-        src.append(" * a.requestMatchers(\"").append(routeBase).append("/**\").authenticated())}.\n");
-        src.append(" * A row-ownership rule (\"only the owner may read this row\") can't be expressed in path\n");
-        src.append(" * config — eject this generator with {@code mvn metaobjects:eject} and hand-write those\n");
-        src.append(" * endpoints.\n");
-        src.append(" */\n");
-        src.append("@RestController\n");
-        src.append("@RequestMapping(\"").append(routeBase).append("\")\n");
-        src.append("public class ").append(controllerName).append(" {\n\n");
+        doc.add("");
+        doc.addAll(authDoc(routeBase, true));
+        try (CodeWriter.Block cls = openControllerClass(w, doc, routeBase, controllerName)) {
+            writeSortAllowlist(w, entity, sortFields);
 
-        appendSortAllowlist(src, entity, sortFields);
+            // #484: a projection field that inherits a credential (view.password) is hidden from its
+            // rows. A served report is covered too: a derived column over a credential is a credential.
+            List<String> hidden = SpringGeneratorSupport.credentialNames(entity);
+            writeReadOnlyConstructor(w, controllerName, repoName, !hidden.isEmpty());
+            if (!hidden.isEmpty()) writeRedactHelpers(w);
 
-        // Repository wiring — constructor injection, the read-only seam only. No
-        // ObjectMapper and no Validator: nothing here binds a request body, so injecting
-        // either would make a consumer wire beans this controller can never use.
-        // #484: a projection field that inherits a credential (view.password) is hidden from its
-        // rows. Redaction needs the ObjectMapper, so it is injected ONLY then; otherwise the
-        // constructor and the whole controller stay as they were.
-        // A served report is covered too: a derived column over a credential is a credential.
-        List<String> hidden = SpringGeneratorSupport.credentialNames(entity);
-        src.append("    private final ").append(repoName).append(" repository;\n");
-        if (hidden.isEmpty()) {
-            src.append("\n");
-            src.append("    public ").append(controllerName).append("(").append(repoName)
-               .append(" repository) {\n");
+            if (report) {
+                writeReportListHandler(w, shortName, dtoName, repoName, reportMaxRows, reportExport, routeBase, hidden);
+            } else {
+                writeListHandler(w, shortName, dtoName, repoName, hidden, ApiSettings.of(entity).pagination());
+            }
+            if (hasItem) {
+                writeGetByIdHandler(w, pkType, hidden);
+            }
+            writeRejectWrites(w, hasItem, pkType);
+            writeMethodNotAllowed(w, noun);
+            writeParseSortHelper(w, repoName);
+        }
+        writeControllerFile(outRoot, pkg, controllerName, w, "{file} for " + noun + " " + entity.getName());
+    }
+
+    /**
+     * Repository wiring of a read-only controller — constructor injection, the read-only seam
+     * only. No ObjectMapper and no Validator: nothing here binds a request body, so injecting
+     * either would make a consumer wire beans this controller can never use. Redaction needs
+     * the ObjectMapper, so it is injected ONLY when a row hides a credential (#484).
+     */
+    protected void writeReadOnlyConstructor(SpringJavaWriter w, String controllerName, String repoName,
+                                            boolean redacts) {
+        w.line("private final " + repoName + " repository;");
+        if (!redacts) {
+            w.blank();
+            try (CodeWriter.Block b = w.block("public " + controllerName + "(" + repoName + " repository) {")) {
+                w.line("this.repository = repository;");
+            }
         } else {
-            src.append("    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;\n\n");
-            src.append("    public ").append(controllerName).append("(").append(repoName)
-               .append(" repository, com.fasterxml.jackson.databind.ObjectMapper objectMapper) {\n");
-            src.append("        this.objectMapper = objectMapper;\n");
+            w.line("private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;");
+            w.blank();
+            try (CodeWriter.Block b = w.block("public " + controllerName + "(" + repoName
+                    + " repository, com.fasterxml.jackson.databind.ObjectMapper objectMapper) {")) {
+                w.line("this.objectMapper = objectMapper;");
+                w.line("this.repository = repository;");
+            }
         }
-        src.append("        this.repository = repository;\n");
-        src.append("    }\n\n");
-        if (!hidden.isEmpty()) appendRedactHelpers(src);
+        w.blank();
+    }
 
-        if (com.metaobjects.generator.util.GeneratorUtil.isReport(entity)) {
-            appendReportListHandler(src, shortName, dtoName, repoName, reportMaxRows, reportExport, routeBase, hidden);
-        } else {
-            appendListHandler(src, shortName, dtoName, repoName, hidden, ApiSettings.of(entity).pagination());
-        }
+    /**
+     * The 405 mappings of a read-only controller: POST on the collection and, when an item route
+     * is mounted, PATCH / PUT / DELETE on the item. One mapping serves all three item verbs: the
+     * bodies are identical and only the verb NAME differs, which the request carries. Stacking
+     * {@code @PatchMapping} + {@code @PutMapping} on one method does NOT register both in Spring
+     * MVC (see {@link #writeUpdateHandler}), so the method= list is the form that works.
+     */
+    protected void writeRejectWrites(SpringJavaWriter w, boolean hasItem, String pkType) {
+        w.text("""
+            @PostMapping
+            public ResponseEntity<?> create() {
+                return methodNotAllowed("POST");
+            }
+            """);
+        w.blank();
         if (hasItem) {
-            appendGetByIdHandler(src, pkType, hidden);
-        }
-
-        src.append("    @PostMapping\n");
-        src.append("    public ResponseEntity<?> create() {\n");
-        src.append("        return methodNotAllowed(\"POST\");\n");
-        src.append("    }\n\n");
-        if (hasItem) {
-            // One mapping for all three item verbs: the bodies are identical and only the
-            // verb NAME differs, which the request carries. Stacking @PatchMapping +
-            // @PutMapping on one method does NOT register both in Spring MVC (see emit()),
-            // so the method= list is the form that works.
-            src.append("    @RequestMapping(value = \"/{id}\", method = { RequestMethod.PATCH, RequestMethod.PUT, RequestMethod.DELETE })\n");
-            src.append("    public ResponseEntity<?> rejectItemWrite(@PathVariable ").append(pkType)
-               .append(" id, HttpServletRequest request) {\n");
-            src.append("        return methodNotAllowed(request.getMethod());\n");
-            src.append("    }\n\n");
-        }
-        src.append("    private static ResponseEntity<?> methodNotAllowed(String verb) {\n");
-        src.append("        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)\n");
-        src.append("                .body(Map.of(\"error\", \"method_not_allowed\",\n");
-        src.append("                        \"message\", verb + \" is not supported on a ").append(noun)
-           .append(" (read-only).\"));\n");
-        src.append("    }\n\n");
-
-        appendParseSortHelper(src, repoName);
-        src.append("}\n");
-
-        try {
-            Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(controllerName + ".java");
-            GeneratedFileWriter.write(outFile, src.toString());
-        } catch (IOException e) {
-            throw new GeneratorException(
-                "failed writing " + controllerName + ".java for " + noun + " " + entity.getName() + ": " + e, e);
+            w.line("@RequestMapping(value = \"/{id}\", method = { RequestMethod.PATCH, RequestMethod.PUT, RequestMethod.DELETE })");
+            try (CodeWriter.Block m = w.block(
+                    "public ResponseEntity<?> rejectItemWrite(@PathVariable " + pkType + " id, HttpServletRequest request) {")) {
+                w.line("return methodNotAllowed(request.getMethod());");
+            }
+            w.blank();
         }
     }
 
+    /** The {@code methodNotAllowed} helper the 405 mappings answer through. */
+    protected void writeMethodNotAllowed(SpringJavaWriter w, String noun) {
+        try (CodeWriter.Block m = w.block("private static ResponseEntity<?> methodNotAllowed(String verb) {")) {
+            w.line("return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)");
+            w.continuation(".body(Map.of(\"error\", \"method_not_allowed\",");
+            w.deeper(4, () -> w.line("\"message\", verb + \" is not supported on a " + noun + " (read-only).\"));"));
+        }
+        w.blank();
+    }
+
     // -----------------------------------------------------------------------
-    // Emitters shared by the WRITABLE controller (emit) and the READ-ONLY one
-    // (emitReadOnly). Extracted verbatim from emit(), split at exactly the points
-    // that keep its output byte-identical: a read-only projection serves the same
-    // list + get + sort surface a table entity does, and the F22 change must not be
-    // able to reword one of them and not the other.
+    // Writers shared by the WRITABLE controller (emit) and the READ-ONLY one
+    // (emitReadOnly): a read-only projection serves the same list + get + sort
+    // surface a table entity does, and the F22 change must not be able to reword
+    // one of them and not the other.
     //
-    // emitTph() keeps its own copies. A TPH base's list and get are DISCRIMINATOR-
+    // emitTph() keeps its own handlers. A TPH base's list and get are DISCRIMINATOR-
     // scoped and its parseSort names a different repository type, so they are not the
-    // same emitter wearing a flag.
+    // same writer wearing a flag.
     // -----------------------------------------------------------------------
 
     /**
@@ -801,7 +896,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * jsonb column holding a JSON object, so ORDER BY over it sorts by jsonb collation —
      * meaningless as an ordering, and a 400 on the ports that reject it.)
      */
-    private static List<String> sortableFields(MetaObject entity) {
+    protected static List<String> sortableFields(MetaObject entity) {
         List<String> sortFields = new ArrayList<>();
         // #484: a served report's credential column is not sortable: ordering by it is an oracle.
         List<String> credentials = com.metaobjects.generator.util.GeneratorUtil.isReport(entity)
@@ -818,19 +913,25 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         return sortFields;
     }
 
+    /** {@code names} as a comma-separated list of Java string literals. */
+    protected static String quotedList(Collection<String> names) {
+        List<String> out = new ArrayList<>(names.size());
+        for (String n : names) out.add(javaLiteral(n));
+        return String.join(", ", out);
+    }
+
     /**
      * The static per-controller SORT_ALLOWLIST set plus its SORT_DEFAULT_ORDER map.
      * Field-prefixed inner constants keep them private to this controller (no
      * cross-file collision risk).
      */
-    private static void appendSortAllowlist(StringBuilder src, MetaObject entity, List<String> sortFields) {
-        src.append("    private static final Set<String> SORT_ALLOWLIST = Set.of(");
-        for (int i = 0; i < sortFields.size(); i++) {
-            if (i > 0) src.append(", ");
-            src.append('"').append(sortFields.get(i)).append('"');
-        }
-        src.append(");\n\n");
-        appendSortDefaultOrders(src, entity, sortFields);
+    protected void writeSortAllowlist(SpringJavaWriter w, MetaObject owner, List<String> sortFields) {
+        List<String> quoted = new ArrayList<>(sortFields.size());
+        // The sortable names are the model's own and are written unescaped, as they always were.
+        for (String f : sortFields) quoted.add('"' + f + '"');
+        w.line("private static final Set<String> SORT_ALLOWLIST = Set.of(" + String.join(", ", quoted) + ");");
+        w.blank();
+        writeSortDefaultOrders(w, owner, sortFields);
     }
 
     /**
@@ -838,13 +939,52 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * decimal, a wrong JSON type) answers {@code 400 {"error":"validation","field":...}}, the
      * cross-port validation envelope, rather than Spring's default body.
      */
-    private static void appendUnreadableBodyHandler(StringBuilder src) {
-        src.append("    @org.springframework.web.bind.annotation.ExceptionHandler(")
-           .append("org.springframework.http.converter.HttpMessageNotReadableException.class)\n");
-        src.append("    public ResponseEntity<?> onUnreadableBody(")
-           .append("org.springframework.http.converter.HttpMessageNotReadableException e) {\n");
-        src.append("        return ResponseEntity.badRequest().body(UnreadableBody.envelope(e));\n");
-        src.append("    }\n\n");
+    protected void writeUnreadableBodyHandler(SpringJavaWriter w) {
+        w.text("""
+            @org.springframework.web.bind.annotation.ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+            public ResponseEntity<?> onUnreadableBody(org.springframework.http.converter.HttpMessageNotReadableException e) {
+                return ResponseEntity.badRequest().body(UnreadableBody.envelope(e));
+            }
+            """);
+        w.blank();
+    }
+
+    /** The head of a GET handler whose parameters are one per continuation line; returns its body scope. */
+    protected CodeWriter.Block openHandler(SpringJavaWriter w, String name, List<String> params) {
+        w.line("public ResponseEntity<?> " + name + "(");
+        for (int i = 0; i < params.size(); i++) {
+            w.continuation(params.get(i) + (i < params.size() - 1 ? "," : ") {"));
+        }
+        return w.bodyBlock();
+    }
+
+    /** The arguments after the query string of a {@code FilterParser.parse} call against {@code allowlist}. */
+    protected static String filterAllowlistArgs(String allowlist) {
+        return allowlist + ".FIELDS, " + allowlist + ".OPS_BY_FIELD, " + allowlist + ".DECIMAL_FIELDS, "
+            + allowlist + ".DURATION_FIELDS";
+    }
+
+    /** {@code ?sort} parsing of a list handler, answering {@code invalid_sort} through {@code badRequest}. */
+    protected void writeSortParse(SpringJavaWriter w, String repoName, String badRequest) {
+        w.line(repoName + ".SortClause sortClause = null;");
+        try (CodeWriter.Block b = w.block("if (sort != null) {")) {
+            w.line("sortClause = parseSort(sort);");
+            // `field` names the rejected sort field — required on every cross-port
+            // invalid_sort envelope. `sort` is non-null in this branch and split()
+            // always yields at least one element, so the index is safe.
+            try (CodeWriter.Block c = w.block("if (sortClause == null) {")) {
+                w.line("return " + badRequest + "Map.of(\"error\", \"invalid_sort\", \"field\", sort.split(\":\", 2)[0]));");
+            }
+        }
+    }
+
+    /** The {@code filter[...]} parse of a list handler, answering its error through {@code badRequest}. */
+    protected void writeFilterParse(SpringJavaWriter w, String allowlist, String badRequest) {
+        w.line("FilterParseResult filter = FilterParser.parse(");
+        w.continuation("request.getQueryString(), " + filterAllowlistArgs(allowlist) + ");");
+        try (CodeWriter.Block b = w.block("if (filter.error() != null) {")) {
+            w.line("return " + badRequest + "Map.of(\"error\", filter.error(), \"field\", filter.field()));");
+        }
     }
 
     /**
@@ -853,44 +993,25 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * filter[&lt;field&gt;][&lt;op&gt;]=&lt;value&gt; grammar reaches FilterParser intact
      * (Spring's {@code @RequestParam} would collapse same-key occurrences).
      */
-    private static void appendListHandler(StringBuilder src, String shortName, String dtoName, String repoName,
-            List<String> hidden, ApiSettings.Pagination page) {
-        String allowlistName = SpringNaming.filterAllowlistName(shortName);
-        src.append("    @GetMapping\n");
-        src.append("    public ResponseEntity<?> list(\n");
-        src.append("            @RequestParam(required = false) Integer limit,\n");
-        src.append("            @RequestParam(required = false) Integer offset,\n");
-        src.append("            @RequestParam(required = false) String sort,\n");
-        src.append("            @RequestParam(required = false, name = \"withCount\") Integer withCount,\n");
-        src.append("            HttpServletRequest request) {\n");
-        appendLimit(src, page);
-        src.append("        int actualOffset = offset != null ? offset : 0;\n");
-        src.append("        ").append(repoName).append(".SortClause sortClause = null;\n");
-        src.append("        if (sort != null) {\n");
-        src.append("            sortClause = parseSort(sort);\n");
-        src.append("            if (sortClause == null) {\n");
-        // `field` names the rejected sort field — required on every cross-port
-        // invalid_sort envelope. `sort` is non-null in this branch and split()
-        // always yields at least one element, so the index is safe.
-        src.append("                return ResponseEntity.badRequest().body(Map.of(\"error\", \"invalid_sort\", \"field\", sort.split(\":\", 2)[0]));\n");
-        src.append("            }\n");
-        src.append("        }\n");
-        src.append("        FilterParseResult filter = FilterParser.parse(\n");
-        src.append("                request.getQueryString(), ").append(allowlistName).append(".FIELDS, ")
-           .append(allowlistName).append(".OPS_BY_FIELD, ").append(allowlistName).append(".DECIMAL_FIELDS, ").append(allowlistName).append(".DURATION_FIELDS);\n");
-        src.append("        if (filter.error() != null) {\n");
-        src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error(), \"field\", filter.field()));\n");
-        src.append("        }\n");
-        src.append("        List<FilterPredicate> filters = filter.predicates();\n");
-        src.append("        List<").append(dtoName)
-           .append("> rows = repository.list(actualLimit, actualOffset, sortClause, filters);\n");
-        src.append("        if (withCount != null && withCount == 1) {\n");
-        src.append("            long total = repository.count(filters);\n");
-        src.append("            return ResponseEntity.ok(Map.of(\"rows\", ").append(redactAll("rows", hidden))
-           .append(", \"total\", total));\n");
-        src.append("        }\n");
-        src.append("        return ResponseEntity.ok(").append(redactAll("rows", hidden)).append(");\n");
-        src.append("    }\n\n");
+    protected void writeListHandler(SpringJavaWriter w, String shortName, String dtoName, String repoName,
+                                    List<String> hidden, ApiSettings.Pagination page) {
+        String bad = "ResponseEntity.badRequest().body(";
+        w.line("@GetMapping");
+        try (CodeWriter.Block m = openHandler(w, "list",
+                List.of(PARAM_LIMIT, PARAM_OFFSET, PARAM_SORT, PARAM_WITH_COUNT, PARAM_REQUEST))) {
+            writeLimit(w, page);
+            w.line("int actualOffset = offset != null ? offset : 0;");
+            writeSortParse(w, repoName, bad);
+            writeFilterParse(w, SpringNaming.filterAllowlistName(shortName), bad);
+            w.line("List<FilterPredicate> filters = filter.predicates();");
+            w.line("List<" + dtoName + "> rows = repository.list(actualLimit, actualOffset, sortClause, filters);");
+            try (CodeWriter.Block b = w.block("if (withCount != null && withCount == 1) {")) {
+                w.line("long total = repository.count(filters);");
+                w.line("return ResponseEntity.ok(Map.of(\"rows\", " + redactAll("rows", hidden) + ", \"total\", total));");
+            }
+            w.line("return ResponseEntity.ok(" + redactAll("rows", hidden) + ");");
+        }
+        w.blank();
     }
 
     /**
@@ -902,116 +1023,113 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * {@code pagination.invalid_value}, the envelope the TypeScript mounts use, instead of being
      * ignored or answered by the framework's own conversion error. The bounds arrive as text so
      * this handler, not Spring, decides what a bad one answers.
+     *
+     * <p>With the export branch wired, no answer of the list route consults Accept (the
+     * selector is ?format): every body goes through the {@code badRequest} / {@code ok} helpers,
+     * which carry an explicit application/json that Spring then honours instead of negotiating
+     * against the request's Accept header.</p>
      */
-    private static void appendReportListHandler(StringBuilder out, String shortName, String dtoName,
-                                                String repoName, int maxRows, boolean export,
-                                                String routeBase, List<String> hidden) {
-        StringBuilder src = new StringBuilder();
-        appendReportListHandlerBody(src, shortName, dtoName, repoName, maxRows, export, routeBase, hidden);
-        String handler = src.toString();
-        if (export) {
-            // With the export branch wired, no answer of the list route consults Accept (the
-            // selector is ?format): every body carries an explicit application/json, which
-            // Spring then honours instead of negotiating against the request's Accept header.
-            handler = handler.replace("ResponseEntity.badRequest().body(", "badRequest(")
-                .replaceAll("ResponseEntity\\.ok\\((?!\\))", "ok(");
-        }
-        out.append(handler);
-        if (export) {
-            out.append("    private static ResponseEntity<Object> badRequest(Object body) {\n");
-            out.append("        return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON).body(body);\n");
-            out.append("    }\n\n");
-            out.append("    private static ResponseEntity<Object> ok(Object body) {\n");
-            out.append("        return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(body);\n");
-            out.append("    }\n\n");
-        }
-    }
-
-    private static void appendReportListHandlerBody(StringBuilder src, String shortName, String dtoName,
-                                                String repoName, int maxRows, boolean export,
-                                                String routeBase, List<String> hidden) {
-        String allowlistName = SpringNaming.filterAllowlistName(shortName);
-        src.append("    @GetMapping\n");
-        src.append("    public ResponseEntity<?> list(\n");
-        src.append("            @RequestParam(required = false) String limit,\n");
-        src.append("            @RequestParam(required = false) String offset,\n");
-        src.append("            @RequestParam(required = false) String sort,\n");
+    protected void writeReportListHandler(SpringJavaWriter w, String shortName, String dtoName, String repoName,
+                                          int maxRows, boolean export, String routeBase, List<String> hidden) {
+        String bad = export ? "badRequest(" : "ResponseEntity.badRequest().body(";
+        String ok = export ? "ok(" : "ResponseEntity.ok(";
+        List<String> params = new ArrayList<>(List.of(
+            "@RequestParam(required = false) String limit",
+            "@RequestParam(required = false) String offset",
+            PARAM_SORT));
         if (export) {
             // Text, not Integer: an export request spells the flag "true" as well as "1", and
             // this handler, not Spring's conversion, decides what each answers.
-            src.append("            @RequestParam(required = false, name = \"withCount\") String withCount,\n");
-            src.append("            @RequestParam(required = false, name = \"format\") String format,\n");
+            params.add("@RequestParam(required = false, name = \"withCount\") String withCount");
+            params.add("@RequestParam(required = false, name = \"format\") String format");
         } else {
-            src.append("            @RequestParam(required = false, name = \"withCount\") Integer withCount,\n");
+            params.add(PARAM_WITH_COUNT);
         }
-        src.append("            HttpServletRequest request) {\n");
+        params.add(PARAM_REQUEST);
+        w.line("@GetMapping");
+        try (CodeWriter.Block m = openHandler(w, "list", params)) {
+            if (export) {
+                try (CodeWriter.Block b = w.block("if (format != null) {")) {
+                    w.line("return export(format, limit, offset, sort, withCount, request);");
+                }
+            }
+            w.line("final int maxRows = " + maxRows + ";");
+            writeReportBounds(w, bad, "Map.of(\"error\", \"report_too_large\", \"maxRows\", maxRows)");
+            writeSortParse(w, repoName, bad);
+            writeFilterParse(w, SpringNaming.filterAllowlistName(shortName), bad);
+            w.line("List<FilterPredicate> filters = filter.predicates();");
+            w.line("List<" + dtoName
+                + "> rows = repository.list(requestedLimit != null ? requestedLimit : maxRows + 1, actualOffset, sortClause, filters);");
+            try (CodeWriter.Block b = w.block("if (requestedLimit == null && rows.size() > maxRows) {")) {
+                w.line("return " + bad + "Map.of(\"error\", \"report_too_large\", \"maxRows\", maxRows));");
+            }
+            try (CodeWriter.Block b = w.block(export
+                    ? "if (\"1\".equals(withCount)) {" : "if (withCount != null && withCount == 1) {")) {
+                w.line("long total = repository.count(filters);");
+                w.line("return " + ok + "Map.of(\"rows\", " + redactAll("rows", hidden) + ", \"total\", total));");
+            }
+            w.line("return " + ok + redactAll("rows", hidden) + ");");
+        }
+        w.blank();
         if (export) {
-            src.append("        if (format != null) {\n");
-            src.append("            return export(format, limit, offset, sort, withCount, request);\n");
-            src.append("        }\n");
+            writeReportExportHandler(w, shortName, dtoName, repoName, routeBase, hidden);
         }
-        src.append("        final int maxRows = ").append(maxRows).append(";\n");
-        src.append("        Integer requestedLimit = null;\n");
-        src.append("        if (limit != null) {\n");
-        src.append("            Long parsed = parseBound(limit, 1);\n");
-        src.append("            if (parsed == null) {\n");
-        src.append("                return ResponseEntity.badRequest().body(Map.of(\"error\", \"pagination.invalid_value\", \"param\", \"limit\", \"value\", limit, \"expected\", \"an integer from 1 to \" + maxRows));\n");
-        src.append("            }\n");
-        src.append("            if (parsed > maxRows) {\n");
-        src.append("                return ResponseEntity.badRequest().body(Map.of(\"error\", \"report_too_large\", \"maxRows\", maxRows));\n");
-        src.append("            }\n");
-        src.append("            requestedLimit = parsed.intValue();\n");
-        src.append("        }\n");
-        src.append("        int actualOffset = 0;\n");
-        src.append("        if (offset != null) {\n");
-        src.append("            Long parsed = parseBound(offset, 0);\n");
-        src.append("            if (parsed == null) {\n");
-        src.append("                return ResponseEntity.badRequest().body(Map.of(\"error\", \"pagination.invalid_value\", \"param\", \"offset\", \"value\", offset, \"expected\", \"a non-negative integer (0 or more)\"));\n");
-        src.append("            }\n");
-        src.append("            actualOffset = (int) Math.min(parsed, Integer.MAX_VALUE);\n");
-        src.append("        }\n");
-        src.append("        ").append(repoName).append(".SortClause sortClause = null;\n");
-        src.append("        if (sort != null) {\n");
-        src.append("            sortClause = parseSort(sort);\n");
-        src.append("            if (sortClause == null) {\n");
-        src.append("                return ResponseEntity.badRequest().body(Map.of(\"error\", \"invalid_sort\", \"field\", sort.split(\":\", 2)[0]));\n");
-        src.append("            }\n");
-        src.append("        }\n");
-        src.append("        FilterParseResult filter = FilterParser.parse(\n");
-        src.append("                request.getQueryString(), ").append(allowlistName).append(".FIELDS, ")
-           .append(allowlistName).append(".OPS_BY_FIELD, ").append(allowlistName).append(".DECIMAL_FIELDS, ").append(allowlistName).append(".DURATION_FIELDS);\n");
-        src.append("        if (filter.error() != null) {\n");
-        src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error(), \"field\", filter.field()));\n");
-        src.append("        }\n");
-        src.append("        List<FilterPredicate> filters = filter.predicates();\n");
-        src.append("        List<").append(dtoName)
-           .append("> rows = repository.list(requestedLimit != null ? requestedLimit : maxRows + 1, actualOffset, sortClause, filters);\n");
-        src.append("        if (requestedLimit == null && rows.size() > maxRows) {\n");
-        src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"report_too_large\", \"maxRows\", maxRows));\n");
-        src.append("        }\n");
+        writeParseBound(w);
         if (export) {
-            src.append("        if (\"1\".equals(withCount)) {\n");
-        } else {
-            src.append("        if (withCount != null && withCount == 1) {\n");
+            w.text("""
+                private static ResponseEntity<Object> badRequest(Object body) {
+                    return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON).body(body);
+                }
+
+                private static ResponseEntity<Object> ok(Object body) {
+                    return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(body);
+                }
+                """);
+            w.blank();
         }
-        src.append("            long total = repository.count(filters);\n");
-        src.append("            return ResponseEntity.ok(Map.of(\"rows\", ").append(redactAll("rows", hidden))
-           .append(", \"total\", total));\n");
-        src.append("        }\n");
-        src.append("        return ResponseEntity.ok(").append(redactAll("rows", hidden)).append(");\n");
-        src.append("    }\n\n");
-        if (export) {
-            appendReportExportHandler(src, shortName, dtoName, repoName, routeBase, hidden);
+    }
+
+    /**
+     * The {@code limit} and {@code offset} of a report request, read as text: {@code requestedLimit}
+     * (null when absent) and {@code actualOffset}. A limit above {@code maxRows} answers
+     * {@code tooLarge}.
+     */
+    protected void writeReportBounds(SpringJavaWriter w, String badRequest, String tooLarge) {
+        w.line("Integer requestedLimit = null;");
+        try (CodeWriter.Block b = w.block("if (limit != null) {")) {
+            w.line("Long parsed = parseBound(limit, 1);");
+            try (CodeWriter.Block c = w.block("if (parsed == null) {")) {
+                w.line("return " + badRequest + "Map.of(\"error\", \"pagination.invalid_value\", \"param\", \"limit\", \"value\", limit, \"expected\", \"an integer from 1 to \" + maxRows));");
+            }
+            try (CodeWriter.Block c = w.block("if (parsed > maxRows) {")) {
+                w.line("return " + badRequest + tooLarge + ");");
+            }
+            w.line("requestedLimit = parsed.intValue();");
         }
-        src.append("    /** A page bound as an integer of at least {@code min}, or null when it is not one. */\n");
-        src.append("    private static Long parseBound(String raw, long min) {\n");
-        src.append("        try {\n");
-        src.append("            long n = Long.parseLong(raw);\n");
-        src.append("            return n >= min ? n : null;\n");
-        src.append("        } catch (NumberFormatException e) {\n");
-        src.append("            return null;\n");
-        src.append("        }\n");
-        src.append("    }\n\n");
+        w.line("int actualOffset = 0;");
+        try (CodeWriter.Block b = w.block("if (offset != null) {")) {
+            w.line("Long parsed = parseBound(offset, 0);");
+            try (CodeWriter.Block c = w.block("if (parsed == null) {")) {
+                w.line("return " + badRequest + "Map.of(\"error\", \"pagination.invalid_value\", \"param\", \"offset\", \"value\", offset, \"expected\", \"a non-negative integer (0 or more)\"));");
+            }
+            w.line("actualOffset = (int) Math.min(parsed, Integer.MAX_VALUE);");
+        }
+    }
+
+    /** The {@code parseBound} helper a report handler reads its page bounds with. */
+    protected void writeParseBound(SpringJavaWriter w) {
+        w.text("""
+            /** A page bound as an integer of at least {@code min}, or null when it is not one. */
+            private static Long parseBound(String raw, long min) {
+                try {
+                    long n = Long.parseLong(raw);
+                    return n >= min ? n : null;
+                } catch (NumberFormatException e) {
+                    return null;
+                }
+            }
+            """);
+        w.blank();
     }
 
     /**
@@ -1025,103 +1143,91 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * with CSV and XML; a JSON export with {@code withCount=1} is the list route's
      * {@code { rows, total }} envelope. {@code Accept} is never read.
      */
-    private static void appendReportExportHandler(StringBuilder src, String shortName, String dtoName,
-                                                  String repoName, String routeBase, List<String> hidden) {
-        String allowlistName = SpringNaming.filterAllowlistName(shortName);
+    protected void writeReportExportHandler(SpringJavaWriter w, String shortName, String dtoName,
+                                            String repoName, String routeBase, List<String> hidden) {
         String exportName = shortName + "Export";
-        src.append("    private ResponseEntity<?> export(String format, String limit, String offset, String sort,\n");
-        src.append("            String withCount, HttpServletRequest request) {\n");
-        src.append("        final int maxRows = ").append(exportName).append(".MAX_ROWS;\n");
-        src.append("        if (!ReportExport.isFormat(format)) {\n");
-        src.append("            return ResponseEntity.badRequest().body(ReportExport.invalidFormat());\n");
-        src.append("        }\n");
-        src.append("        if (!ReportExport.JSON.equals(format) && ReportExport.isTruthy(withCount)) {\n");
-        src.append("            return ResponseEntity.badRequest().body(ReportExport.withCount());\n");
-        src.append("        }\n");
-        src.append("        Integer requestedLimit = null;\n");
-        src.append("        if (limit != null) {\n");
-        src.append("            Long parsed = parseBound(limit, 1);\n");
-        src.append("            if (parsed == null) {\n");
-        src.append("                return ResponseEntity.badRequest().body(Map.of(\"error\", \"pagination.invalid_value\", \"param\", \"limit\", \"value\", limit, \"expected\", \"an integer from 1 to \" + maxRows));\n");
-        src.append("            }\n");
-        src.append("            if (parsed > maxRows) {\n");
-        src.append("                return ResponseEntity.badRequest().body(ReportExport.tooLarge(maxRows));\n");
-        src.append("            }\n");
-        src.append("            requestedLimit = parsed.intValue();\n");
-        src.append("        }\n");
-        src.append("        int actualOffset = 0;\n");
-        src.append("        if (offset != null) {\n");
-        src.append("            Long parsed = parseBound(offset, 0);\n");
-        src.append("            if (parsed == null) {\n");
-        src.append("                return ResponseEntity.badRequest().body(Map.of(\"error\", \"pagination.invalid_value\", \"param\", \"offset\", \"value\", offset, \"expected\", \"a non-negative integer (0 or more)\"));\n");
-        src.append("            }\n");
-        src.append("            actualOffset = (int) Math.min(parsed, Integer.MAX_VALUE);\n");
-        src.append("        }\n");
-        src.append("        ").append(repoName).append(".SortClause sortClause = null;\n");
-        src.append("        if (sort != null) {\n");
-        src.append("            sortClause = parseSort(sort);\n");
-        src.append("            if (sortClause == null) {\n");
-        src.append("                return ResponseEntity.badRequest().body(Map.of(\"error\", \"invalid_sort\", \"field\", sort.split(\":\", 2)[0]));\n");
-        src.append("            }\n");
-        src.append("        }\n");
-        src.append("        FilterParseResult filter = FilterParser.parse(\n");
-        src.append("                request.getQueryString(), ").append(allowlistName).append(".FIELDS, ")
-           .append(allowlistName).append(".OPS_BY_FIELD, ").append(allowlistName).append(".DECIMAL_FIELDS, ").append(allowlistName).append(".DURATION_FIELDS);\n");
-        src.append("        if (filter.error() != null) {\n");
-        src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error(), \"field\", filter.field()));\n");
-        src.append("        }\n");
-        src.append("        List<").append(dtoName)
-           .append("> rows = repository.list(requestedLimit != null ? requestedLimit : maxRows + 1, actualOffset, sortClause, filter.predicates());\n");
-        src.append("        if (requestedLimit == null && rows.size() > maxRows) {\n");
-        src.append("            return ResponseEntity.badRequest().body(ReportExport.tooLarge(maxRows));\n");
-        src.append("        }\n");
-        src.append("        ResponseEntity.BodyBuilder ok = ResponseEntity.ok()\n");
-        src.append("                .header(\"Content-Disposition\", ReportExport.contentDisposition(\"")
-           .append(routeBase.substring(routeBase.lastIndexOf('/') + 1)).append("\", format))\n");
-        src.append("                .header(\"Content-Type\", ReportExport.contentType(format));\n");
-        src.append("        switch (format) {\n");
-        src.append("            case ReportExport.CSV:\n");
-        src.append("                return ok.body(").append(exportName).append(".csv(rows));\n");
-        src.append("            case ReportExport.XML:\n");
-        src.append("                return ok.body(").append(exportName).append(".xml(rows));\n");
-        src.append("            default:\n");
-        src.append("                if (\"1\".equals(withCount)) {\n");
-        src.append("                    return ok.body(Map.of(\"rows\", ").append(redactAll("rows", hidden))
-           .append(", \"total\", repository.count(filter.predicates())));\n");
-        src.append("                }\n");
-        src.append("                return ok.body(").append(redactAll("rows", hidden)).append(");\n");
-        src.append("        }\n");
-        src.append("    }\n\n");
+        String bad = "badRequest(";
+        w.line("private ResponseEntity<?> export(String format, String limit, String offset, String sort,");
+        w.continuation("String withCount, HttpServletRequest request) {");
+        try (CodeWriter.Block m = w.bodyBlock()) {
+            w.line("final int maxRows = " + exportName + ".MAX_ROWS;");
+            w.text("""
+                if (!ReportExport.isFormat(format)) {
+                    return badRequest(ReportExport.invalidFormat());
+                }
+                if (!ReportExport.JSON.equals(format) && ReportExport.isTruthy(withCount)) {
+                    return badRequest(ReportExport.withCount());
+                }
+                """);
+            writeReportBounds(w, bad, "ReportExport.tooLarge(maxRows)");
+            writeSortParse(w, repoName, bad);
+            writeFilterParse(w, SpringNaming.filterAllowlistName(shortName), bad);
+            w.line("List<" + dtoName
+                + "> rows = repository.list(requestedLimit != null ? requestedLimit : maxRows + 1, actualOffset, sortClause, filter.predicates());");
+            w.text("""
+                if (requestedLimit == null && rows.size() > maxRows) {
+                    return badRequest(ReportExport.tooLarge(maxRows));
+                }
+                ResponseEntity.BodyBuilder ok = ResponseEntity.ok()
+                """);
+            w.continuation(".header(\"Content-Disposition\", ReportExport.contentDisposition(\""
+                + routeBase.substring(routeBase.lastIndexOf('/') + 1) + "\", format))");
+            w.continuation(".header(\"Content-Type\", ReportExport.contentType(format));");
+            try (CodeWriter.Block s = w.block("switch (format) {")) {
+                w.line("case ReportExport.CSV:");
+                w.deeper(1, () -> w.line("return ok.body(" + exportName + ".csv(rows));"));
+                w.line("case ReportExport.XML:");
+                w.deeper(1, () -> w.line("return ok.body(" + exportName + ".xml(rows));"));
+                w.line("default:");
+                w.deeper(1, () -> {
+                    try (CodeWriter.Block b = w.block("if (\"1\".equals(withCount)) {")) {
+                        w.line("return ok.body(Map.of(\"rows\", " + redactAll("rows", hidden)
+                            + ", \"total\", repository.count(filter.predicates())));");
+                    }
+                    w.line("return ok.body(" + redactAll("rows", hidden) + ");");
+                });
+            }
+        }
+        w.blank();
     }
 
     /** GET /{id} — single by primary key, 404 envelope on a miss. */
-    private static void appendGetByIdHandler(StringBuilder src, String pkType, List<String> hidden) {
-        src.append("    @GetMapping(\"/{id}\")\n");
-        src.append("    public ResponseEntity<?> get(@PathVariable ").append(pkType).append(" id) {\n");
-        src.append("        return repository.findById(id)\n");
-        src.append("                .<ResponseEntity<?>>map(").append(okMapper(hidden)).append(")\n");
-        src.append("                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(\"error\", \"not_found\")));\n");
-        src.append("    }\n\n");
+    protected void writeGetByIdHandler(SpringJavaWriter w, String pkType, List<String> hidden) {
+        w.line("@GetMapping(\"/{id}\")");
+        try (CodeWriter.Block m = w.block("public ResponseEntity<?> get(@PathVariable " + pkType + " id) {")) {
+            w.line("return repository.findById(id)");
+            w.continuation(".<ResponseEntity<?>>map(" + okMapper(hidden) + ")");
+            w.continuation(".orElseGet(() -> " + NOT_FOUND_RESPONSE + ");");
+        }
+        w.blank();
     }
 
     /**
      * parseSort — returns null on malformed/disallowed input. Returning null lets the
      * list handler emit the 400 envelope itself rather than throwing — cleaner
      * separation. Package-internal to each generated file.
+     *
+     * <p>{@code ?sort=field} with no {@code :order} takes the field's DECLARED
+     * {@code @sortableDefaultOrder}. The "asc" fallback stays HERE, at the read, so it is
+     * spelled once per port and SORT_DEFAULT_ORDER carries declarations only.</p>
      */
-    private static void appendParseSortHelper(StringBuilder src, String repoName) {
-        src.append("    private static ").append(repoName).append(".SortClause parseSort(String raw) {\n");
-        src.append("        String[] parts = raw.split(\":\", 2);\n");
-        src.append("        if (parts.length == 0 || parts[0].isEmpty() || !SORT_ALLOWLIST.contains(parts[0])) return null;\n");
-        // `?sort=field` with no `:order` takes the field's DECLARED @sortableDefaultOrder.
-        // The "asc" fallback stays HERE, at the read, so it is spelled once per port and
-        // SORT_DEFAULT_ORDER carries declarations only.
-        src.append("        String dir = parts.length == 2 ? parts[1].toLowerCase()\n");
-        src.append("            : SORT_DEFAULT_ORDER.getOrDefault(parts[0], \"asc\");\n");
-        src.append("        if (!dir.equals(\"asc\") && !dir.equals(\"desc\")) return null;\n");
-        src.append("        return new ").append(repoName).append(".SortClause(parts[0], dir);\n");
-        src.append("    }\n");
+    protected void writeParseSortHelper(SpringJavaWriter w, String repoName) {
+        try (CodeWriter.Block m = w.block("private static " + repoName + ".SortClause parseSort(String raw) {")) {
+            w.text("""
+                String[] parts = raw.split(":", 2);
+                if (parts.length == 0 || parts[0].isEmpty() || !SORT_ALLOWLIST.contains(parts[0])) return null;
+                String dir = parts.length == 2 ? parts[1].toLowerCase()
+                    : SORT_DEFAULT_ORDER.getOrDefault(parts[0], "asc");
+                if (!dir.equals("asc") && !dir.equals("desc")) return null;
+                """);
+            w.line("return new " + repoName + ".SortClause(parts[0], dir);");
+        }
+        w.blank();
     }
+
+    // -----------------------------------------------------------------------
+    // The single-table hierarchy (TPH) controller.
+    // -----------------------------------------------------------------------
 
     /**
      * FR-017 TPH: emit the discriminator-base controller. ONE {@code @RestController} at
@@ -1167,257 +1273,220 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             sortFields.add(field.getName());
         }
 
-        StringBuilder src = new StringBuilder();
-        if (!pkg.isEmpty()) src.append("package ").append(pkg).append(";\n\n");
+        SpringJavaWriter w = newWriter(pkg);
         // FR-036 Program B: the per-subtype update handler binds the RAW JsonNode + builds the
         // presence-tracked <Sub>Patch (present-key PATCH tristate), so it needs Jackson + the
         // PatchValidationException + the jakarta Validator (present-value constraint checks) —
         // exactly the vanilla update handler's dependency set.
-        src.append("import com.fasterxml.jackson.databind.JsonNode;\n");
-        src.append("import com.fasterxml.jackson.databind.ObjectMapper;\n");
-        src.append("import ").append(runtimePackage).append(".ConstraintErrors;\n");
-        src.append("import ").append(runtimePackage).append(".PatchValidationException;\n");
-        src.append("import ").append(runtimePackage).append(".UnreadableBody;\n");
-        src.append("import ").append(runtimePackage).append(".UnknownBodyKeys;\n");
-        src.append("import ").append(runtimePackage).append(".ValidationIssues;\n");
-        // The escape the PATCH loop applies to each assigned key before naming a Bean
-        // Validation property — see RecordComponentNames for why it is needed at run time.
-        src.append("import ").append(runtimePackage).append(".RecordComponentNames;\n");
-        src.append("import org.springframework.http.HttpStatus;\n");
-        src.append("import org.springframework.http.ResponseEntity;\n");
-        src.append("import org.springframework.web.bind.annotation.DeleteMapping;\n");
-        src.append("import org.springframework.web.bind.annotation.GetMapping;\n");
-        src.append("import org.springframework.web.bind.annotation.PathVariable;\n");
-        src.append("import org.springframework.web.bind.annotation.PostMapping;\n");
-        src.append("import org.springframework.web.bind.annotation.RequestBody;\n");
-        src.append("import org.springframework.web.bind.annotation.RequestMapping;\n");
-        src.append("import org.springframework.web.bind.annotation.RequestMethod;\n");
-        src.append("import org.springframework.web.bind.annotation.RequestParam;\n");
-        src.append("import org.springframework.web.bind.annotation.RestController;\n");
-        src.append("import ").append(runtimePackage).append(".FilterParseResult;\n");
-        src.append("import ").append(runtimePackage).append(".FilterParser;\n");
-        src.append("import ").append(runtimePackage).append(".FilterPredicate;\n");
-        src.append("import jakarta.servlet.http.HttpServletRequest;\n");
-        src.append("import jakarta.validation.Validator;\n");
-        src.append("import java.util.List;\n");
-        src.append("import java.util.Map;\n");
-        src.append("import java.util.Set;\n\n");
+        useWritableImports(w);
+        List<String> doc = new ArrayList<>();
+        doc.add("GENERATED — TPH discriminator-base controller for " + shortName
+            + " (polymorphic collection + per-subtype CRUD).");
+        doc.add("Implements the cross-port API contract.");
+        doc.add("");
+        doc.addAll(authDoc(routeBase, false));
+        try (CodeWriter.Block cls = openControllerClass(w, doc, routeBase, controllerName)) {
+            // The polymorphic sort surface is the BASE's own columns, so the declared orders
+            // are read off the base too — same owner the allowlist above was built from.
+            writeSortAllowlist(w, base, sortFields);
+            // A key declared by the base or by ANY subtype is known on every subtype route: a sibling
+            // subtype's column is dropped there (it is not this route's to write), never refused.
+            ApiSettings api = ApiSettings.of(base);
+            List<MetaField> declared = new ArrayList<>(base.getMetaFields());
+            declared.addAll(TphPlan.everySubtypeField(base, loader));
+            writeKnownFields(w, api, declared);
 
-        src.append("/**\n");
-        src.append(" * GENERATED — TPH discriminator-base controller for ").append(shortName)
-           .append(" (polymorphic collection + per-subtype CRUD).\n");
-        src.append(" * Implements the cross-port API contract.\n");
-        src.append(" *\n");
-        src.append(" * <p>Auth: these endpoints are unauthenticated. Require authentication for this path in\n");
-        src.append(" * your Spring Security config, e.g. {@code http.authorizeHttpRequests(a ->\n");
-        src.append(" * a.requestMatchers(\"").append(routeBase).append("/**\").authenticated())}.\n");
-        src.append(" * A row-ownership rule (\"only the owner may read this row\") can't be expressed in path\n");
-        src.append(" * config — eject this generator with {@code mvn metaobjects:eject} and hand-write those\n");
-        src.append(" * endpoints.\n");
-        src.append(" */\n");
-        src.append("@RestController\n");
-        src.append("@RequestMapping(\"").append(routeBase).append("\")\n");
-        src.append("public class ").append(controllerName).append(" {\n\n");
-
-        src.append("    private static final Set<String> SORT_ALLOWLIST = Set.of(");
-        for (int i = 0; i < sortFields.size(); i++) {
-            if (i > 0) src.append(", ");
-            src.append('"').append(sortFields.get(i)).append('"');
-        }
-        src.append(");\n\n");
-        // The polymorphic sort surface is the BASE's own columns, so the declared orders
-        // are read off the base too — same owner the allowlist above was built from.
-        appendSortDefaultOrders(src, base, sortFields);
-        // A key declared by the base or by ANY subtype is known on every subtype route: a sibling
-        // subtype's column is dropped there (it is not this route's to write), never refused.
-        ApiSettings api = ApiSettings.of(base);
-        List<MetaField> declared = new ArrayList<>(base.getMetaFields());
-        declared.addAll(TphPlan.everySubtypeField(base, loader));
-        appendKnownFields(src, api, declared);
-
-        // FR-036 Program B: constructor-inject the ObjectMapper (binds each present PATCH value via
-        // <Sub>Patch.fromJson, same wire codecs as create) + the jakarta Validator (per-field
-        // present-value constraint checks on the per-subtype update) — same 3-arg shape the vanilla
-        // controller uses. The polymorphic + read routes ignore them.
-        src.append("    private final ").append(repoName).append(" repository;\n");
-        src.append("    private final ObjectMapper objectMapper;\n");
-        src.append("    private final Validator validator;\n\n");
-        src.append("    public ").append(controllerName).append("(").append(repoName)
-           .append(" repository, ObjectMapper objectMapper, Validator validator) {\n");
-        src.append("        this.repository = repository;\n");
-        src.append("        this.objectMapper = objectMapper;\n");
-        src.append("        this.validator = validator;\n");
-        src.append("    }\n\n");
-        appendUnreadableBodyHandler(src);
-        // #484: the TPH rows are union-DTO rows, so hide a credential declared on the base or on
-        // ANY subtype from every response, and ignore a write-denied one on every subtype create.
-        List<MetaField> unionFields = new ArrayList<>(SpringGeneratorSupport.scalarFields(base));
-        for (MetaField f : TphPlan.collectSubtypeFields(base, loader)) {
-            if (!(f instanceof com.metaobjects.field.ObjectField)) unionFields.add(f);
-        }
-        List<MetaField> markFields = new ArrayList<>(unionFields);
-        markFields.addAll(TphPlan.everySubtypeField(base, loader));
-        List<String> hidden = SpringGeneratorSupport.credentialNames(markFields);
-        Set<String> writeDenied = SpringGeneratorSupport.hierarchyWriteDeniedNames(base);
-        List<SpringM2mSupport.M2mNav> baseNavs = SpringM2mSupport.resolve(base, loader);
-        boolean redacts = !hidden.isEmpty() || baseNavs.stream().anyMatch(n -> !targetCredentials(base, n).isEmpty())
-            || plan.subtypes().stream().anyMatch(st -> SpringM2mSupport.resolve(st.entity(), loader).stream()
-                .anyMatch(n -> !targetCredentials(st.entity(), n).isEmpty()));
-        if (redacts) appendRedactHelpers(src);
-
-        // --- polymorphic collection ---
-        src.append("    // Polymorphic list — the union across all subtypes, each row tagged by its discriminator.\n");
-        src.append("    @GetMapping\n");
-        src.append("    public ResponseEntity<?> list(\n");
-        src.append("            @RequestParam(required = false) Integer limit,\n");
-        src.append("            @RequestParam(required = false) Integer offset,\n");
-        src.append("            @RequestParam(required = false) String sort,\n");
-        src.append("            @RequestParam(required = false, name = \"withCount\") Integer withCount,\n");
-        src.append("            HttpServletRequest request) {\n");
-        appendLimit(src, api.pagination());
-        src.append("        int actualOffset = offset != null ? offset : 0;\n");
-        src.append("        ").append(repoName).append(".SortClause sortClause = null;\n");
-        src.append("        if (sort != null) {\n");
-        src.append("            sortClause = parseSort(sort);\n");
-        src.append("            if (sortClause == null) return ResponseEntity.badRequest().body(Map.of(\"error\", \"invalid_sort\", \"field\", sort.split(\":\", 2)[0]));\n");
-        src.append("        }\n");
-        src.append("        FilterParseResult filter = FilterParser.parse(request.getQueryString(), ")
-           .append(allowlistName).append(".FIELDS, ").append(allowlistName).append(".OPS_BY_FIELD, ").append(allowlistName).append(".DECIMAL_FIELDS, ").append(allowlistName).append(".DURATION_FIELDS);\n");
-        src.append("        if (filter.error() != null) return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error(), \"field\", filter.field()));\n");
-        src.append("        List<FilterPredicate> filters = filter.predicates();\n");
-        src.append("        List<").append(dtoName).append("> rows = repository.list(actualLimit, actualOffset, sortClause, filters);\n");
-        src.append("        if (withCount != null && withCount == 1) {\n");
-        src.append("            return ResponseEntity.ok(Map.of(\"rows\", ").append(redactAll("rows", hidden))
-           .append(", \"total\", repository.count(filters)));\n");
-        src.append("        }\n");
-        src.append("        return ResponseEntity.ok(").append(redactAll("rows", hidden)).append(");\n");
-        src.append("    }\n\n");
-
-        src.append("    // Polymorphic get — one row of whatever subtype it is.\n");
-        src.append("    @GetMapping(\"/{id}\")\n");
-        src.append("    public ResponseEntity<?> get(@PathVariable ").append(pkType).append(" id) {\n");
-        src.append("        return repository.findById(id)\n");
-        src.append("                .<ResponseEntity<?>>map(").append(okMapper(hidden)).append(")\n");
-        src.append("                .orElseGet(this::notFound);\n");
-        src.append("    }\n\n");
-
-        // FR-018 x FR-017 — M:N traversal declared on the BASE: every row of the shared
-        // table is a legitimate source, so this is the SAME mount + finder shape a vanilla
-        // entity gets (see emit() above) — no discriminator gating needed. Per-subtype
-        // traversal (including this same relationship, inherited) is emitted below, inside
-        // the per-subtype loop — the overlap is deliberate (FR-017 design): a subtype
-        // resource carries the same sub-resources as any other resource.
-        for (SpringM2mSupport.M2mNav nav : baseNavs) {
-            String finder = SpringGeneratorSupport.m2mFinderName(nav.relationName());
-            String navCall = "repository." + finder + "(id" + SpringGeneratorSupport.targetSubtypeCallArg(nav) + ")";
-            src.append("    @GetMapping(\"/{id}/").append(nav.relationName()).append("\")\n");
-            if (targetCredentials(base, nav).isEmpty()) {
-                src.append("    public ResponseEntity<List<").append(nav.targetDtoType()).append(">> ")
-                   .append(finder).append("(@PathVariable ").append(pkType).append(" id) {\n");
-                src.append("        return ResponseEntity.ok(").append(navCall).append(");\n");
-            } else {
-                src.append("    public ResponseEntity<List<Object>> ")
-                   .append(finder).append("(@PathVariable ").append(pkType).append(" id) {\n");
-                src.append("        return ResponseEntity.ok(")
-                   .append(redactAll(navCall, targetCredentials(base, nav))).append(");\n");
+            // FR-036 Program B: constructor-inject the ObjectMapper (binds each present PATCH value via
+            // <Sub>Patch.fromJson, same wire codecs as create) + the jakarta Validator (per-field
+            // present-value constraint checks on the per-subtype update) — same 3-arg shape the vanilla
+            // controller uses. The polymorphic + read routes ignore them.
+            writeWritableConstructor(w, controllerName, repoName);
+            writeUnreadableBodyHandler(w);
+            // #484: the TPH rows are union-DTO rows, so hide a credential declared on the base or on
+            // ANY subtype from every response, and ignore a write-denied one on every subtype create.
+            List<MetaField> unionFields = new ArrayList<>(SpringGeneratorSupport.scalarFields(base));
+            for (MetaField f : TphPlan.collectSubtypeFields(base, loader)) {
+                if (!(f instanceof com.metaobjects.field.ObjectField)) unionFields.add(f);
             }
-            src.append("    }\n\n");
+            List<MetaField> markFields = new ArrayList<>(unionFields);
+            markFields.addAll(TphPlan.everySubtypeField(base, loader));
+            List<String> hidden = SpringGeneratorSupport.credentialNames(markFields);
+            Set<String> writeDenied = SpringGeneratorSupport.hierarchyWriteDeniedNames(base);
+            List<SpringM2mSupport.M2mNav> baseNavs = SpringM2mSupport.resolve(base, loader);
+            boolean redacts = !hidden.isEmpty() || baseNavs.stream().anyMatch(n -> !targetCredentials(base, n).isEmpty())
+                || plan.subtypes().stream().anyMatch(st -> SpringM2mSupport.resolve(st.entity(), loader).stream()
+                    .anyMatch(n -> !targetCredentials(st.entity(), n).isEmpty()));
+            if (redacts) writeRedactHelpers(w);
+
+            writeTphListHandler(w, dtoName, repoName, allowlistName, api, hidden);
+            writeTphGetHandler(w, pkType, hidden);
+            // FR-018 x FR-017 — M:N traversal declared on the BASE: every row of the shared
+            // table is a legitimate source, so this is the SAME mount + finder shape a vanilla
+            // entity gets — no discriminator gating needed. Per-subtype traversal (including this
+            // same relationship, inherited) is written inside the per-subtype set — the overlap is
+            // deliberate (FR-017 design): a subtype resource carries the same sub-resources as any
+            // other resource.
+            for (SpringM2mSupport.M2mNav nav : baseNavs) writeM2mHandler(w, base, nav, pkType);
+
+            for (TphPlan.Subtype st : plan.subtypes()) {
+                writeTphSubtypeHandlers(w, base, st, dtoName, repoName, allowlistName, pkType, api, hidden,
+                    unionFields, writeDenied);
+            }
+
+            writeTphNotFound(w);
+            writeParseSortHelper(w, repoName);
         }
+        writeControllerFile(outRoot, pkg, controllerName, w, "TPH {file} for entity " + base.getName());
+    }
 
-        // --- per-subtype CRUD ---
-        for (TphPlan.Subtype st : plan.subtypes()) {
-            String seg = st.routeSegment();              // url segment (e.g. "bridge")
-            String disc = st.value();                    // discriminator value (e.g. "Bridge")
-            String suffix = SpringNaming.capitalize(disc); // method-name suffix (e.g. "Bridge")
-            // FR-036 Program B: the per-subtype route binds this subtype's presence-tracked
-            // <Sub>Patch (emitted by SpringDtoGenerator) and validates present values against its
-            // standalone annotated <Sub>Dto. Referenced by FQN so a subtype in another package
-            // still resolves without an import.
-            String[] stSplit = SpringNaming.splitFqn(st.entity().getName());
-            String stPrefix = stSplit[0].isEmpty() ? "" : stSplit[0] + ".";
-            String subPatch = stPrefix + SpringNaming.patchName(stSplit[1]);
-            String subDto = stPrefix + SpringNaming.dtoName(stSplit[1]);
+    /** Polymorphic list — the union across all subtypes, each row tagged by its discriminator. */
+    protected void writeTphListHandler(SpringJavaWriter w, String dtoName, String repoName, String allowlistName,
+                                       ApiSettings api, List<String> hidden) {
+        w.line("// Polymorphic list — the union across all subtypes, each row tagged by its discriminator.");
+        w.line("@GetMapping");
+        try (CodeWriter.Block m = openHandler(w, "list",
+                List.of(PARAM_LIMIT, PARAM_OFFSET, PARAM_SORT, PARAM_WITH_COUNT, PARAM_REQUEST))) {
+            writeTphListHead(w, repoName, allowlistName, api);
+            w.line("List<FilterPredicate> filters = filter.predicates();");
+            w.line("List<" + dtoName + "> rows = repository.list(actualLimit, actualOffset, sortClause, filters);");
+            try (CodeWriter.Block b = w.block("if (withCount != null && withCount == 1) {")) {
+                w.line("return ResponseEntity.ok(Map.of(\"rows\", " + redactAll("rows", hidden)
+                    + ", \"total\", repository.count(filters)));");
+            }
+            w.line("return ResponseEntity.ok(" + redactAll("rows", hidden) + ");");
+        }
+        w.blank();
+    }
 
-            src.append("    // --- subtype ").append(disc).append(" (segment /").append(seg).append(") ---\n");
+    /** The paging, sort and filter parsing a TPH list handler (polymorphic or per subtype) opens with. */
+    protected void writeTphListHead(SpringJavaWriter w, String repoName, String allowlistName, ApiSettings api) {
+        writeLimit(w, api.pagination());
+        w.line("int actualOffset = offset != null ? offset : 0;");
+        w.line(repoName + ".SortClause sortClause = null;");
+        try (CodeWriter.Block b = w.block("if (sort != null) {")) {
+            w.text("""
+                sortClause = parseSort(sort);
+                if (sortClause == null) return ResponseEntity.badRequest().body(Map.of("error", "invalid_sort", "field", sort.split(":", 2)[0]));
+                """);
+        }
+        w.line("FilterParseResult filter = FilterParser.parse(request.getQueryString(), "
+            + filterAllowlistArgs(allowlistName) + ");");
+        w.line("if (filter.error() != null) return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error(), \"field\", filter.field()));");
+    }
 
-            // per-subtype list
-            src.append("    @GetMapping(\"/").append(seg).append("\")\n");
-            src.append("    public ResponseEntity<?> list").append(suffix).append("(\n");
-            src.append("            @RequestParam(required = false) Integer limit,\n");
-            src.append("            @RequestParam(required = false) Integer offset,\n");
-            src.append("            @RequestParam(required = false) String sort,\n");
-            src.append("            HttpServletRequest request) {\n");
-            appendLimit(src, api.pagination());
-            src.append("        int actualOffset = offset != null ? offset : 0;\n");
-            src.append("        ").append(repoName).append(".SortClause sortClause = null;\n");
-            src.append("        if (sort != null) {\n");
-            src.append("            sortClause = parseSort(sort);\n");
-            src.append("            if (sortClause == null) return ResponseEntity.badRequest().body(Map.of(\"error\", \"invalid_sort\", \"field\", sort.split(\":\", 2)[0]));\n");
-            src.append("        }\n");
-            src.append("        FilterParseResult filter = FilterParser.parse(request.getQueryString(), ")
-               .append(allowlistName).append(".FIELDS, ").append(allowlistName).append(".OPS_BY_FIELD, ").append(allowlistName).append(".DECIMAL_FIELDS, ").append(allowlistName).append(".DURATION_FIELDS);\n");
-            src.append("        if (filter.error() != null) return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error(), \"field\", filter.field()));\n");
-            src.append("        return ResponseEntity.ok(").append(redactAll(
+    /** Polymorphic get — one row of whatever subtype it is. */
+    protected void writeTphGetHandler(SpringJavaWriter w, String pkType, List<String> hidden) {
+        w.line("// Polymorphic get — one row of whatever subtype it is.");
+        w.line("@GetMapping(\"/{id}\")");
+        try (CodeWriter.Block m = w.block("public ResponseEntity<?> get(@PathVariable " + pkType + " id) {")) {
+            w.line("return repository.findById(id)");
+            w.continuation(".<ResponseEntity<?>>map(" + okMapper(hidden) + ")");
+            w.continuation(".orElseGet(this::notFound);");
+        }
+        w.blank();
+    }
+
+    /** The per-subtype CRUD set and M:N traversal of one TPH subtype. */
+    protected void writeTphSubtypeHandlers(SpringJavaWriter w, MetaObject base, TphPlan.Subtype st, String dtoName,
+                                           String repoName, String allowlistName, String pkType, ApiSettings api,
+                                           List<String> hidden, List<MetaField> unionFields, Set<String> writeDenied) {
+        String seg = st.routeSegment();              // url segment (e.g. "bridge")
+        String disc = st.value();                    // discriminator value (e.g. "Bridge")
+        String suffix = SpringNaming.capitalize(disc); // method-name suffix (e.g. "Bridge")
+        w.line("// --- subtype " + disc + " (segment /" + seg + ") ---");
+        writeTphSubtypeList(w, seg, disc, suffix, repoName, allowlistName, api, hidden);
+        writeTphSubtypeGet(w, seg, disc, suffix, pkType, hidden);
+        writeTphSubtypeCreate(w, base, st, seg, disc, suffix, dtoName, api, hidden, unionFields, writeDenied);
+        writeTphSubtypeUpdate(w, base, st, seg, disc, suffix, pkType, api, hidden);
+        writeTphSubtypeDelete(w, seg, disc, suffix, pkType);
+        // FR-018 x FR-017 — M:N traversal scoped to THIS subtype: every relationship it
+        // resolves, inherited ones (e.g. a base-declared relationship) included.
+        for (SpringM2mSupport.M2mNav nav : SpringM2mSupport.resolve(st.entity(), loader)) {
+            writeTphSubtypeM2mHandler(w, st, seg, disc, nav, pkType);
+        }
+    }
+
+    /** Per-subtype list, scoped by the discriminator. */
+    protected void writeTphSubtypeList(SpringJavaWriter w, String seg, String disc, String suffix, String repoName,
+                                       String allowlistName, ApiSettings api, List<String> hidden) {
+        w.line("@GetMapping(\"/" + seg + "\")");
+        try (CodeWriter.Block m = openHandler(w, "list" + suffix,
+                List.of(PARAM_LIMIT, PARAM_OFFSET, PARAM_SORT, PARAM_REQUEST))) {
+            writeTphListHead(w, repoName, allowlistName, api);
+            w.line("return ResponseEntity.ok(" + redactAll(
                 "repository.listByType(\"" + disc + "\", actualLimit, actualOffset, sortClause, filter.predicates())",
-                hidden)).append(");\n");
-            src.append("    }\n\n");
+                hidden) + ");");
+        }
+        w.blank();
+    }
 
-            // per-subtype get (404 cross-subtype)
-            src.append("    @GetMapping(\"/").append(seg).append("/{id}\")\n");
-            src.append("    public ResponseEntity<?> get").append(suffix)
-               .append("(@PathVariable ").append(pkType).append(" id) {\n");
-            src.append("        return repository.findByIdAndType(id, \"").append(disc).append("\")\n");
-            src.append("                .<ResponseEntity<?>>map(").append(okMapper(hidden)).append(")\n");
-            src.append("                .orElseGet(this::notFound);\n");
-            src.append("    }\n\n");
+    /** Per-subtype get (404 cross-subtype). */
+    protected void writeTphSubtypeGet(SpringJavaWriter w, String seg, String disc, String suffix, String pkType,
+                                      List<String> hidden) {
+        w.line("@GetMapping(\"/" + seg + "/{id}\")");
+        try (CodeWriter.Block m = w.block("public ResponseEntity<?> get" + suffix + "(@PathVariable " + pkType + " id) {")) {
+            w.line("return repository.findByIdAndType(id, \"" + disc + "\")");
+            w.continuation(".<ResponseEntity<?>>map(" + okMapper(hidden) + ")");
+            w.continuation(".orElseGet(this::notFound);");
+        }
+        w.blank();
+    }
 
-            // per-subtype create (discriminator injected from URL) — FR-036: validate each body
-            // value against the subtype's ANNOTATED <Sub>Dto constraints BEFORE persisting, emitting
-            // the cross-port {"error":"validation"} envelope on any violation (so an over-@maxLength
-            // or missing-@required column is a 400, not a silent 201). The bound body stays the union
-            // <Base>Dto (the shape repository.createWithType consumes), but the union is annotation-
-            // free — so validation runs PER FIELD against the subtype DTO (the annotated shape), the
-            // exact type the per-subtype PATCH validates against. The validated set is the sibling
-            // <Sub>Patch's settable fields (effective scalars MINUS PK MINUS discriminator): the PK
-            // is auto-generated and the discriminator is injected from the URL, so neither is checked.
-            // validateValue applies @NotNull to a null value, so an absent @required column 400s too —
-            // matching the vanilla create's whole-bean validate, scoped to this subtype.
-            String discField = TphPlan.discriminatorFieldOf(st.entity());
-            List<MetaField> createValidated = SpringGeneratorSupport.settableFields(st.entity(), discField);
-            // The subtype's cross-field rules are class-level @AssertTrue methods on <Sub>Dto, which
-            // the per-property validateValue below never reaches. They are evaluated here against the
-            // bound union body instead, the discriminator read as this route's pinned value.
-            List<Map.Entry<MetaValidator, String>> crossFieldRules = SpringGeneratorSupport.crossFieldRules(
-                st.entity(), SpringGeneratorSupport.dtoComponentFields(st.entity()),
-                f -> f.getName().equals(discField)
-                    ? "\"" + SpringGeneratorSupport.escapeJavaString(disc) + "\""
-                    : "dto." + SpringNaming.recordComponentName(f.getName()) + "()");
-            if (!crossFieldRules.isEmpty()) src.append("    @SuppressWarnings(\"unchecked\")\n");
-            src.append("    @PostMapping(\"/").append(seg).append("\")\n");
-            // As the vanilla create — fill the subtype's omitted literal @default fields into
-            // the raw body, then bind the union DTO. No such field: the direct binding, byte-identical.
-            List<String> subDefaultPuts = createDefaultPuts(st.entity(), SpringGeneratorSupport.dtoComponentFields(st.entity()));
-            if (subDefaultPuts.isEmpty() && !api.rejectsUnknownFields()) {
-                src.append("    public ResponseEntity<?> create").append(suffix)
-                   .append("(@RequestBody ").append(dtoName).append(" dto) {\n");
-            } else {
-                src.append("    public ResponseEntity<?> create").append(suffix).append("(@RequestBody JsonNode body) {\n");
-                appendFillDefaults(src, dtoName, subDefaultPuts, api.rejectsUnknownFields());
-            }
-            src.append("        ValidationIssues __issues = new ValidationIssues();\n");
+    /**
+     * Per-subtype create (discriminator injected from URL) — FR-036: validate each body
+     * value against the subtype's ANNOTATED <Sub>Dto constraints BEFORE persisting, emitting
+     * the cross-port {"error":"validation"} envelope on any violation (so an over-@maxLength
+     * or missing-@required column is a 400, not a silent 201). The bound body stays the union
+     * <Base>Dto (the shape repository.createWithType consumes), but the union is annotation-
+     * free — so validation runs PER FIELD against the subtype DTO (the annotated shape), the
+     * exact type the per-subtype PATCH validates against. The validated set is the sibling
+     * <Sub>Patch's settable fields (effective scalars MINUS PK MINUS discriminator): the PK
+     * is auto-generated and the discriminator is injected from the URL, so neither is checked.
+     * validateValue applies @NotNull to a null value, so an absent @required column 400s too —
+     * matching the vanilla create's whole-bean validate, scoped to this subtype.
+     */
+    protected void writeTphSubtypeCreate(SpringJavaWriter w, MetaObject base, TphPlan.Subtype st, String seg,
+                                         String disc, String suffix, String dtoName, ApiSettings api,
+                                         List<String> hidden, List<MetaField> unionFields, Set<String> writeDenied) {
+        // FR-036 Program B: referenced by FQN so a subtype in another package still resolves
+        // without an import.
+        String[] stSplit = SpringNaming.splitFqn(st.entity().getName());
+        String stPrefix = stSplit[0].isEmpty() ? "" : stSplit[0] + ".";
+        String subDto = stPrefix + SpringNaming.dtoName(stSplit[1]);
+        String discField = TphPlan.discriminatorFieldOf(st.entity());
+        List<MetaField> createValidated = SpringGeneratorSupport.settableFields(st.entity(), discField);
+        // The subtype's cross-field rules are class-level @AssertTrue methods on <Sub>Dto, which
+        // the per-property validateValue below never reaches. They are evaluated here against the
+        // bound union body instead, the discriminator read as this route's pinned value.
+        List<Map.Entry<MetaValidator, String>> crossFieldRules = SpringGeneratorSupport.crossFieldRules(
+            st.entity(), SpringGeneratorSupport.dtoComponentFields(st.entity()),
+            f -> f.getName().equals(discField)
+                ? "\"" + SpringGeneratorSupport.escapeJavaString(disc) + "\""
+                : "dto." + SpringNaming.recordComponentName(f.getName()) + "()");
+        if (!crossFieldRules.isEmpty()) w.line("@SuppressWarnings(\"unchecked\")");
+        w.line("@PostMapping(\"/" + seg + "\")");
+        // As the vanilla create — fill the subtype's omitted literal @default fields into
+        // the raw body, then bind the union DTO. No such field: the direct binding, byte-identical.
+        List<String> subDefaultPuts = createDefaultPuts(st.entity(), SpringGeneratorSupport.dtoComponentFields(st.entity()));
+        boolean bindsRaw = !subDefaultPuts.isEmpty() || api.rejectsUnknownFields();
+        String head = bindsRaw
+            ? "public ResponseEntity<?> create" + suffix + "(@RequestBody JsonNode body) {"
+            : "public ResponseEntity<?> create" + suffix + "(@RequestBody " + dtoName + " dto) {";
+        try (CodeWriter.Block m = w.block(head)) {
+            if (bindsRaw) writeFillDefaults(w, dtoName, subDefaultPuts, api.rejectsUnknownFields());
+            w.line("ValidationIssues __issues = new ValidationIssues();");
             for (MetaField vf : createValidated) {
                 // Both the property STRING and the accessor take the escaped component name:
                 // Bean Validation resolves a record's property by its COMPONENT, and
                 // `dto.notify()` would bind to Object.notify().
                 String vc = SpringNaming.recordComponentName(vf.getName());
-                src.append("        __issues.addAt(validator.validateValue(").append(subDto).append(".class, \"")
-                   .append(vc).append("\", dto.").append(vc).append("()), \"")
-                   .append(SpringGeneratorSupport.escapeJavaString(vf.getName())).append("\");\n");
+                w.line("__issues.addAt(validator.validateValue(" + subDto + ".class, \"" + vc + "\", dto." + vc
+                    + "()), \"" + SpringGeneratorSupport.escapeJavaString(vf.getName()) + "\");");
             }
             for (Map.Entry<MetaValidator, String> rule : crossFieldRules) {
-                src.append("        if (!(").append(rule.getValue()).append(")) {\n");
-                src.append("            __issues.add(ValidationIssues.CUSTOM, java.util.List.of(), \"a cross-field rule failed\");\n");
-                src.append("        }\n");
+                try (CodeWriter.Block b = w.block("if (!(" + rule.getValue() + ")) {")) {
+                    w.line("__issues.add(ValidationIssues.CUSTOM, java.util.List.of(), \"a cross-field rule failed\");");
+                }
             }
             // #362: validateValue above checks each property against the subtype DTO's own
             // constraints and stops there — it does NOT cascade @Valid into a nested bean. A
@@ -1426,140 +1495,131 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             // The vanilla create cascades via @Valid on the DTO component; this is the TPH
             // path's equivalent, so the two write surfaces agree.
             for (MetaField vf : SpringGeneratorSupport.valueObjectMapFields(st.entity())) {
-                appendMapValueValidationLoop(
-                    src, "dto." + SpringNaming.recordComponentName(vf.getName()) + "()", vf.getName());
+                writeMapValueValidationLoop(
+                    w, "dto." + SpringNaming.recordComponentName(vf.getName()) + "()", vf.getName());
             }
-            src.append("        if (!__issues.isEmpty()) {\n");
-            src.append("            return ResponseEntity.badRequest().body(__issues.body());\n");
-            src.append("        }\n");
+            writeIssuesVerdict(w);
             // ADR-0045 (#203/#229): honor @autoSet on the TPH per-subtype create — stamp EVERY
             // onCreate AND onUpdate column with now() before persisting (the caller's value is
-            // ignored), mirroring the vanilla create handler's createArg above. The stamp helper
-            // is the BASE union <Base>Dto's static method (NOT a standalone <Sub>Dto's): dto above
-            // is declared as that same union type (createWithType binds/returns it), so a
-            // subtype-typed stampForInsert(SubDto) would not type-check against it.
+            // ignored), mirroring the vanilla create handler. The stamp helper is the BASE union
+            // <Base>Dto's static method (NOT a standalone <Sub>Dto's): dto above is declared as
+            // that same union type (createWithType binds/returns it), so a subtype-typed
+            // stampForInsert(SubDto) would not type-check against it.
             //
-            // Review fix (Task 3): gate on `base`, NOT `st.entity()`. The helper this emits
-            // (<Base>Dto.stampForInsert) is only ever generated by
-            // SpringDtoGenerator.emitTphUnion when SpringGeneratorSupport.hasAutoSetFields(base) is true
-            // (@autoSet columns live on the base, shared by every subtype row in the single
-            // table) — gating this call on the subtype's own resolving field set instead let a
-            // subtype-declared @autoSet column fire `true` here while the helper it calls was
-            // never emitted, producing a non-compiling controller. A TPH subtype declaring its
-            // OWN @autoSet column is a documented non-goal (uniform with the Kotlin and Python
-            // ports, both base-scoped): the column is simply never stamped, not a compile break.
+            // Gate on `base`, NOT `st.entity()`. The helper this emits (<Base>Dto.stampForInsert)
+            // is only ever generated by SpringDtoGenerator.emitTphUnion when
+            // SpringGeneratorSupport.hasAutoSetFields(base) is true (@autoSet columns live on the
+            // base, shared by every subtype row in the single table) — gating on the subtype's own
+            // resolving field set instead let a subtype-declared @autoSet column fire `true` here
+            // while the helper it calls was never emitted, producing a non-compiling controller. A
+            // TPH subtype declaring its OWN @autoSet column is a documented non-goal (uniform with
+            // the Kotlin and Python ports, both base-scoped): the column is simply never stamped.
             // #484: ignore (never reject) a @formExclude / credential value in the body.
             // Also dropped: the generated key, readOnly/derived columns, the discriminator (the
             // route's subtype is its only source) and every column only a SIBLING subtype declares.
-            appendStripWriteDenied(src, dtoName, unionFields,
+            writeStripWriteDenied(w, dtoName, unionFields,
                 tphCreateDeniedNames(st.entity(), unionFields, writeDenied, discField));
             String createArg = SpringGeneratorSupport.hasAutoSetFields(base)
                 ? dtoName + ".stampForInsert(dto)" : "dto";
-            src.append("        try {\n");
-            src.append("            ").append(dtoName).append(" saved = repository.createWithType(\"").append(disc)
-               .append("\", ").append(createArg).append(");\n");
-            src.append("            return ResponseEntity.status(HttpStatus.CREATED).body(")
-               .append(redactOne("saved", hidden)).append(");\n");
-            appendConstraintCatch(src);
-            src.append("    }\n\n");
+            try (CodeWriter.Block t = w.block("try {", CATCH_RUNTIME)) {
+                w.line(dtoName + " saved = repository.createWithType(\"" + disc + "\", " + createArg + ");");
+                w.line("return ResponseEntity.status(HttpStatus.CREATED).body(" + redactOne("saved", hidden) + ");");
+            }
+            writeConstraintCatch(w);
+        }
+        w.blank();
+    }
 
-            // per-subtype update — FR-036 Program B present-key PATCH tristate (mirrors the vanilla
-            // update handler; 404 cross-subtype; id + discriminator immutable). Bind the RAW
-            // JsonNode (NOT the union DTO, which conflates absent with null and would 400 an omitted
-            // @required column), build the presence-tracked <Sub>Patch (an explicit null clears a
-            // nullable column; an explicit null on a @required base column throws
-            // PatchValidationException → 400), validate each PRESENT value against the subtype DTO's
-            // constraints, then patch scoped to the discriminator.
-            src.append("    @RequestMapping(value = \"/").append(seg)
-               .append("/{id}\", method = { RequestMethod.PATCH, RequestMethod.PUT })\n");
-            src.append("    public ResponseEntity<?> update").append(suffix)
-               .append("(@PathVariable ").append(pkType).append(" id, @RequestBody JsonNode body) {\n");
-            appendUnknownFieldsGuard(src, api);
-            appendPatchBinding(src, subPatch, subDto);
-            appendValueObjectMapValidation(src, st.entity());
-            appendPatchVerdict(src);
+    /**
+     * Per-subtype update — FR-036 Program B present-key PATCH tristate (mirrors the vanilla
+     * update handler; 404 cross-subtype; id + discriminator immutable). Bind the RAW
+     * JsonNode (NOT the union DTO, which conflates absent with null and would 400 an omitted
+     * @required column), build the presence-tracked <Sub>Patch (an explicit null clears a
+     * nullable column; an explicit null on a @required base column throws
+     * PatchValidationException → 400), validate each PRESENT value against the subtype DTO's
+     * constraints, then patch scoped to the discriminator.
+     */
+    protected void writeTphSubtypeUpdate(SpringJavaWriter w, MetaObject base, TphPlan.Subtype st, String seg,
+                                         String disc, String suffix, String pkType, ApiSettings api,
+                                         List<String> hidden) {
+        String[] stSplit = SpringNaming.splitFqn(st.entity().getName());
+        String stPrefix = stSplit[0].isEmpty() ? "" : stSplit[0] + ".";
+        String subPatch = stPrefix + SpringNaming.patchName(stSplit[1]);
+        String subDto = stPrefix + SpringNaming.dtoName(stSplit[1]);
+        w.line("@RequestMapping(value = \"/" + seg + "/{id}\", method = { RequestMethod.PATCH, RequestMethod.PUT })");
+        try (CodeWriter.Block m = w.block("public ResponseEntity<?> update" + suffix + "(@PathVariable " + pkType
+                + " id, @RequestBody JsonNode body) {")) {
+            writeUnknownFieldsGuard(w, api);
+            writePatchBinding(w, subPatch, subDto);
+            writeValueObjectMapValidation(w, st.entity());
+            writePatchVerdict(w);
             // ADR-0045 (#203/#229): bump every onUpdate @autoSet column on the per-subtype PATCH,
-            // mirroring the vanilla update handler above — injected after present-value
-            // validation, before delegating, so the timestamp bumps even when the caller omits
-            // it. onCreate columns are never touched here (immutable on update).
-            //
-            // Review fix (Task 3): gate on `base`, matching the create-arg gate above, for the
-            // same reason — a subtype-own @autoSet column is a documented non-goal, never
-            // stamped, uniform across ports.
+            // mirroring the vanilla update handler — injected after present-value validation,
+            // before delegating, so the timestamp bumps even when the caller omits it. onCreate
+            // columns are never touched here (immutable on update). Gated on `base`, matching the
+            // create-arg gate, for the same reason.
             if (SpringGeneratorSupport.hasOnUpdateFields(base)) {
-                src.append("        patch.stampAutoSetOnUpdate();\n");
+                w.line("patch.stampAutoSetOnUpdate();");
             }
-            src.append("        try {\n");
-            src.append("            return repository.patchByIdAndType(id, \"").append(disc)
-               .append("\", patch.assignedValues())\n");
-            src.append("                    .<ResponseEntity<?>>map(").append(okMapper(hidden)).append(")\n");
-            src.append("                    .orElseGet(this::notFound);\n");
-            appendConstraintCatch(src);
-            src.append("    }\n\n");
-
-            // per-subtype delete (404 cross-subtype)
-            src.append("    @DeleteMapping(\"/").append(seg).append("/{id}\")\n");
-            src.append("    public ResponseEntity<?> delete").append(suffix)
-               .append("(@PathVariable ").append(pkType).append(" id) {\n");
-            src.append("        try {\n");
-            src.append("            if (repository.deleteByIdAndType(id, \"").append(disc).append("\")) return ResponseEntity.noContent().build();\n");
-            src.append("            return notFound();\n");
-            appendConstraintCatch(src);
-            src.append("    }\n\n");
-
-            // FR-018 x FR-017 — M:N traversal scoped to THIS subtype: every relationship it
-            // resolves, inherited ones (e.g. a base-declared relationship) included — a
-            // subtype resource carries the same sub-resources as any other. The GENERATED
-            // controller enforces the gate itself (never left to the repository
-            // implementation): it composes the SAME repository.findByIdAndType(id, disc) lookup
-            // the per-subtype GET above already relies on — a sibling subtype's id returns
-            // Optional.empty() there (the tph-cross-subtype-404 contract) — and short-circuits
-            // to an EMPTY list, HTTP 200, before ever calling the traversal finder. This costs
-            // one redundant primary-key lookup and adds no new persistence assumption: it reuses
-            // a seam the consumer must already implement correctly for the per-subtype GET to
-            // pass conformance. Without it, a copy-paste finder body (e.g. findTagsForBridge
-            // implemented identically to findTags) compiles, type-checks, and silently 200s a
-            // sibling's rows — nothing else in the pipeline catches that.
-            for (SpringM2mSupport.M2mNav nav : SpringM2mSupport.resolve(st.entity(), loader)) {
-                String subFinder = SpringGeneratorSupport.m2mFinderNameForSubtype(nav.relationName(), disc);
-                src.append("    @GetMapping(\"/").append(seg).append("/{id}/").append(nav.relationName()).append("\")\n");
-                boolean navHides = !targetCredentials(st.entity(), nav).isEmpty();
-                src.append("    public ResponseEntity<List<").append(navHides ? "Object" : nav.targetDtoType()).append(">> ")
-                   .append(subFinder).append("(@PathVariable ").append(pkType).append(" id) {\n");
-                src.append("        if (repository.findByIdAndType(id, \"").append(disc).append("\").isEmpty()) {\n");
-                src.append("            return ResponseEntity.ok(List.of());\n");
-                src.append("        }\n");
-                src.append("        return ResponseEntity.ok(").append(redactAll(
-                    "repository." + subFinder + "(id" + SpringGeneratorSupport.targetSubtypeCallArg(nav) + ")",
-                    targetCredentials(st.entity(), nav))).append(");\n");
-                src.append("    }\n\n");
+            try (CodeWriter.Block t = w.block("try {", CATCH_RUNTIME)) {
+                w.line("return repository.patchByIdAndType(id, \"" + disc + "\", patch.assignedValues())");
+                w.continuation(".<ResponseEntity<?>>map(" + okMapper(hidden) + ")");
+                w.continuation(".orElseGet(this::notFound);");
             }
+            writeConstraintCatch(w);
         }
+        w.blank();
+    }
 
-        // shared helpers
-        src.append("    private ResponseEntity<?> notFound() {\n");
-        src.append("        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(\"error\", \"not_found\"));\n");
-        src.append("    }\n\n");
-        src.append("    private static ").append(repoName).append(".SortClause parseSort(String raw) {\n");
-        src.append("        String[] parts = raw.split(\":\", 2);\n");
-        src.append("        if (parts.length == 0 || parts[0].isEmpty() || !SORT_ALLOWLIST.contains(parts[0])) return null;\n");
-        // `?sort=field` with no `:order` takes the field's DECLARED @sortableDefaultOrder.
-        // The "asc" fallback stays HERE, at the read, so it is spelled once per port and
-        // SORT_DEFAULT_ORDER carries declarations only.
-        src.append("        String dir = parts.length == 2 ? parts[1].toLowerCase()\n");
-        src.append("            : SORT_DEFAULT_ORDER.getOrDefault(parts[0], \"asc\");\n");
-        src.append("        if (!dir.equals(\"asc\") && !dir.equals(\"desc\")) return null;\n");
-        src.append("        return new ").append(repoName).append(".SortClause(parts[0], dir);\n");
-        src.append("    }\n");
-        src.append("}\n");
-
-        try {
-            Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(controllerName + ".java");
-            GeneratedFileWriter.write(outFile, src.toString());
-        } catch (IOException e) {
-            throw new GeneratorException(
-                "failed writing TPH " + controllerName + ".java for entity " + base.getName() + ": " + e, e);
+    /** Per-subtype delete (404 cross-subtype). */
+    protected void writeTphSubtypeDelete(SpringJavaWriter w, String seg, String disc, String suffix, String pkType) {
+        w.line("@DeleteMapping(\"/" + seg + "/{id}\")");
+        try (CodeWriter.Block m = w.block("public ResponseEntity<?> delete" + suffix + "(@PathVariable " + pkType + " id) {")) {
+            try (CodeWriter.Block t = w.block("try {", CATCH_RUNTIME)) {
+                w.line("if (repository.deleteByIdAndType(id, \"" + disc + "\")) return ResponseEntity.noContent().build();");
+                w.line("return notFound();");
+            }
+            writeConstraintCatch(w);
         }
+        w.blank();
+    }
+
+    /**
+     * FR-018 x FR-017 — M:N traversal scoped to ONE subtype. The GENERATED controller enforces
+     * the gate itself (never left to the repository implementation): it composes the SAME
+     * repository.findByIdAndType(id, disc) lookup the per-subtype GET already relies on — a
+     * sibling subtype's id returns Optional.empty() there (the tph-cross-subtype-404 contract) —
+     * and short-circuits to an EMPTY list, HTTP 200, before ever calling the traversal finder.
+     * This costs one redundant primary-key lookup and adds no new persistence assumption: it
+     * reuses a seam the consumer must already implement correctly for the per-subtype GET to
+     * pass conformance. Without it, a copy-paste finder body (e.g. findTagsForBridge
+     * implemented identically to findTags) compiles, type-checks, and silently 200s a
+     * sibling's rows — nothing else in the pipeline catches that.
+     */
+    protected void writeTphSubtypeM2mHandler(SpringJavaWriter w, TphPlan.Subtype st, String seg, String disc,
+                                             SpringM2mSupport.M2mNav nav, String pkType) {
+        String subFinder = SpringGeneratorSupport.m2mFinderNameForSubtype(nav.relationName(), disc);
+        List<String> targetHidden = targetCredentials(st.entity(), nav);
+        w.line("@GetMapping(\"/" + seg + "/{id}/" + nav.relationName() + "\")");
+        String rowType = targetHidden.isEmpty() ? nav.targetDtoType() : "Object";
+        try (CodeWriter.Block m = w.block("public ResponseEntity<List<" + rowType + ">> " + subFinder
+                + "(@PathVariable " + pkType + " id) {")) {
+            try (CodeWriter.Block b = w.block("if (repository.findByIdAndType(id, \"" + disc + "\").isEmpty()) {")) {
+                w.line("return ResponseEntity.ok(List.of());");
+            }
+            w.line("return ResponseEntity.ok(" + redactAll(
+                "repository." + subFinder + "(id" + SpringGeneratorSupport.targetSubtypeCallArg(nav) + ")",
+                targetHidden) + ");");
+        }
+        w.blank();
+    }
+
+    /** The {@code notFound()} helper the TPH handlers answer a miss through. */
+    protected void writeTphNotFound(SpringJavaWriter w) {
+        try (CodeWriter.Block m = w.block("private ResponseEntity<?> notFound() {")) {
+            w.line("return " + NOT_FOUND_RESPONSE + ";");
+        }
+        w.blank();
     }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================
@@ -1594,7 +1654,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
     }
 
     /**
-     * Emit the per-entity {@code SORT_DEFAULT_ORDER} constant the generated {@code parseSort}
+     * Write the per-entity {@code SORT_DEFAULT_ORDER} constant the generated {@code parseSort}
      * reads for a {@code ?sort=field} carrying no {@code :order}.
      *
      * <p>Carries DECLARED orders only — a field with no {@code @sortableDefaultOrder} is absent
@@ -1605,7 +1665,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * <p>ADR-0039: resolving accessor — {@code @sortableDefaultOrder} may be inherited via
      * {@code extends}.
      *
-     * <p>Emitted as {@code Map.ofEntries(Map.entry(..), ..)}, deliberately NOT {@code Map.of(..)}.
+     * <p>Written as {@code Map.ofEntries(Map.entry(..), ..)}, deliberately NOT {@code Map.of(..)}.
      * {@code Map.of} is a set of fixed-arity overloads topping out at TEN pairs with no varargs
      * form — alternating key/value types make one impossible — so an entity whose eleventh field
      * declares {@code @sortableDefaultOrder} emits a controller that does not compile
@@ -1616,7 +1676,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * assignment target at zero entries, so the empty case — the common one, since most models
      * declare no {@code @sortableDefaultOrder} at all — needs no special branch.
      */
-    private static void appendSortDefaultOrders(StringBuilder src, MetaObject owner, List<String> sortFields) {
+    protected void writeSortDefaultOrders(SpringJavaWriter w, MetaObject owner, List<String> sortFields) {
         // Walk the owner's OWN field list and keep the sortable ones, rather than looking each
         // allowlist name back up. `MetaObject.getMetaField(name)` does not return null for an
         // absent name — it THROWS MetaDataNotFoundException — so a name-keyed lookup turns any
@@ -1624,18 +1684,18 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // a skipped entry. Today both are sourced from this same owner, so nothing diverges;
         // this keeps that from being load-bearing. Mirrors the Kotlin sibling's `firstOrNull`.
         java.util.Set<String> sortable = new java.util.LinkedHashSet<>(sortFields);
-        StringBuilder entries = new StringBuilder();
+        List<String> entries = new ArrayList<>();
         for (MetaField f : owner.getMetaFields()) {
             String name = f.getName();
             if (!sortable.contains(name)) continue;
             if (!f.hasMetaAttr(MetaField.ATTR_SORTABLE_DEFAULT_ORDER)) continue;
             String v = f.getMetaAttr(MetaField.ATTR_SORTABLE_DEFAULT_ORDER).getValueAsString();
             if (!"asc".equals(v) && !"desc".equals(v)) continue;
-            if (entries.length() > 0) entries.append(", ");
-            entries.append("Map.entry(\"").append(name).append("\", \"").append(v).append("\")");
+            entries.add("Map.entry(\"" + name + "\", \"" + v + "\")");
         }
-        src.append("    private static final Map<String, String> SORT_DEFAULT_ORDER = Map.ofEntries(")
-           .append(entries).append(");\n\n");
+        w.line("private static final Map<String, String> SORT_DEFAULT_ORDER = Map.ofEntries("
+            + String.join(", ", entries) + ");");
+        w.blank();
     }
 
     /**
@@ -1650,7 +1710,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * <p>Returned as record-component names, which is what a {@code ConstraintViolation}'s
      * property path spells for a record.</p>
      */
-    private static List<String> serverOwnedOnCreate(MetaObject entity) {
+    protected static List<String> serverOwnedOnCreate(MetaObject entity) {
         List<String> pkFields = entity.getIdentities(true).stream()
             .filter(com.metaobjects.identity.MetaIdentity::isPrimary)
             .findFirst()
@@ -1686,18 +1746,23 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * <p>{@code RuntimeException} rather than {@code Exception}: every Spring data-access failure
      * is unchecked, and widening it here would force a checked-exception signature onto handlers
      * that cannot throw one.</p>
+     *
+     * <p>The caller opens its {@code try} with {@link #CATCH_RUNTIME} as the block's closing
+     * line, so this writes the body of that {@code catch}.</p>
      */
-    private static void appendConstraintCatch(StringBuilder src) {
-        src.append("        } catch (RuntimeException e) {\n");
-        src.append("            ConstraintErrors.Failure failure = ConstraintErrors.classify(e);\n");
-        src.append("            if (failure == null) throw e;\n");
-        src.append("            return ResponseEntity.status(failure.status())\n");
-        src.append("                    .body(Map.of(\"error\", failure.error(), \"constraint\", failure.constraint()));\n");
-        src.append("        }\n");
+    protected void writeConstraintCatch(SpringJavaWriter w) {
+        try (CodeWriter.Block c = w.bodyBlock()) {
+            w.text("""
+                ConstraintErrors.Failure failure = ConstraintErrors.classify(e);
+                if (failure == null) throw e;
+                return ResponseEntity.status(failure.status())
+                        .body(Map.of("error", failure.error(), "constraint", failure.constraint()));
+                """);
+        }
     }
 
     /** The credential wire names of the TARGET of {@code source}'s M:N relationship {@code nav} (#484). */
-    private static List<String> targetCredentials(MetaObject source, SpringM2mSupport.M2mNav nav) {
+    protected static List<String> targetCredentials(MetaObject source, SpringM2mSupport.M2mNav nav) {
         for (com.metaobjects.relationship.MetaRelationship rel : source.getRelationships()) {
             if (!nav.relationName().equals(rel.getShortName())) continue;
             MetaObject target = com.metaobjects.loader.References.refTarget(
@@ -1718,7 +1783,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * the body. A SQL-expression default is the database's, an array or a temporal default has no
      * literal here, and a server-owned or {@code @autoSet} column is never the caller's to send.
      */
-    private static List<String> createDefaultPuts(MetaObject entity, List<MetaField> components) {
+    protected static List<String> createDefaultPuts(MetaObject entity, List<MetaField> components) {
         List<String> out = new ArrayList<>();
         List<String> serverOwned = serverOwnedOnCreate(entity);
         for (MetaField f : components) {
@@ -1755,27 +1820,31 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         return out;
     }
 
-    private static String javaLiteral(String text) {
+    protected static String javaLiteral(String text) {
         return "\"" + SpringGeneratorSupport.escapeJavaString(text) + "\"";
     }
 
     /** The body of a create handler bound to the raw {@code JsonNode body}: refuse a
      *  non-object body, fill the absent defaulted fields ({@link #createDefaultPuts}), bind
      *  {@code dto}. */
-    private static void appendFillDefaults(StringBuilder src, String dtoName, List<String> puts, boolean rejectUnknown) {
-        src.append("        if (!(body instanceof com.fasterxml.jackson.databind.node.ObjectNode given)) {\n");
-        src.append("            return ResponseEntity.badRequest().body(new ValidationIssues()\n");
-        src.append("                    .add(ValidationIssues.INVALID_TYPE, java.util.List.of(), \"request body must be a JSON object\").body());\n");
-        src.append("        }\n");
-        if (rejectUnknown) appendUnknownFieldsGuard(src, true);
-        src.append("        com.fasterxml.jackson.databind.node.ObjectNode filled = given.deepCopy();\n");
-        for (String put : puts) src.append("        ").append(put).append("\n");
-        src.append("        ").append(dtoName).append(" dto;\n");
-        src.append("        try {\n");
-        src.append("            dto = objectMapper.treeToValue(filled, ").append(dtoName).append(".class);\n");
-        src.append("        } catch (com.fasterxml.jackson.core.JsonProcessingException | IllegalArgumentException e) {\n");
-        src.append("            return ResponseEntity.badRequest().body(UnreadableBody.envelope(e));\n");
-        src.append("        }\n");
+    protected void writeFillDefaults(SpringJavaWriter w, String dtoName, List<String> puts, boolean rejectUnknown) {
+        w.text("""
+            if (!(body instanceof com.fasterxml.jackson.databind.node.ObjectNode given)) {
+                return ResponseEntity.badRequest().body(new ValidationIssues()
+                        .add(ValidationIssues.INVALID_TYPE, java.util.List.of(), "request body must be a JSON object").body());
+            }
+            """);
+        if (rejectUnknown) writeUnknownFieldsGuard(w, true);
+        w.line("com.fasterxml.jackson.databind.node.ObjectNode filled = given.deepCopy();");
+        for (String put : puts) w.line(put);
+        w.line(dtoName + " dto;");
+        try (CodeWriter.Block t = w.block("try {",
+                "} catch (com.fasterxml.jackson.core.JsonProcessingException | IllegalArgumentException e) {")) {
+            w.line("dto = objectMapper.treeToValue(filled, " + dtoName + ".class);");
+        }
+        try (CodeWriter.Block c = w.bodyBlock()) {
+            w.line("return ResponseEntity.badRequest().body(UnreadableBody.envelope(e));");
+        }
     }
 
     /**
@@ -1783,35 +1852,32 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * ({@code api.unknownFields: reject}, the default): every declared field name of
      * {@code declared} (the entity, or for a single-table hierarchy the base and every subtype).
      * A declared key the client may not set (generated key, readOnly, derived, {@code @autoSet},
-     * a sibling subtype's column) is known: it is dropped, never refused. Emits nothing under
+     * a sibling subtype's column) is known: it is dropped, never refused. Writes nothing under
      * {@code drop}, which keeps the controller byte-identical to one without the setting.
      */
-    private static void appendKnownFields(StringBuilder src, ApiSettings api, List<MetaField> declared) {
+    protected void writeKnownFields(SpringJavaWriter w, ApiSettings api, List<MetaField> declared) {
         if (!api.rejectsUnknownFields()) return;
         Set<String> names = new java.util.LinkedHashSet<>();
         for (MetaField f : declared) names.add(f.getName());
-        src.append("    /** Every field the entity declares, as named on the wire: a body key outside it is refused. */\n");
-        src.append("    private static final Set<String> KNOWN_FIELDS = Set.of(");
-        int i = 0;
-        for (String n : names) {
-            if (i++ > 0) src.append(", ");
-            src.append(javaLiteral(n));
-        }
-        src.append(");\n\n");
+        w.doc("Every field the entity declares, as named on the wire: a body key outside it is refused.");
+        w.line("private static final Set<String> KNOWN_FIELDS = Set.of(" + quotedList(names) + ");");
+        w.blank();
     }
 
-    /** The unknown-key check at the head of a PUT/PATCH handler (see {@link #appendUnknownFieldsGuard(StringBuilder, boolean)}). */
-    private static void appendUnknownFieldsGuard(StringBuilder src, ApiSettings api) {
-        if (api.rejectsUnknownFields()) appendUnknownFieldsGuard(src, true);
+    /** The unknown-key check at the head of a PUT/PATCH handler (see {@link #writeUnknownFieldsGuard(SpringJavaWriter, boolean)}). */
+    protected void writeUnknownFieldsGuard(SpringJavaWriter w, ApiSettings api) {
+        if (api.rejectsUnknownFields()) writeUnknownFieldsGuard(w, true);
     }
 
     /** Answer {@code 400 unknown_fields} for an undeclared top-level key of {@code body}, checked on the raw JSON before any binding. */
-    private static void appendUnknownFieldsGuard(StringBuilder src, boolean enabled) {
+    protected void writeUnknownFieldsGuard(SpringJavaWriter w, boolean enabled) {
         if (!enabled) return;
-        src.append("        Map<String, Object> __unknown = UnknownBodyKeys.refusal(body, KNOWN_FIELDS);\n");
-        src.append("        if (__unknown != null) {\n");
-        src.append("            return ResponseEntity.badRequest().body(__unknown);\n");
-        src.append("        }\n");
+        w.text("""
+            Map<String, Object> __unknown = UnknownBodyKeys.refusal(body, KNOWN_FIELDS);
+            if (__unknown != null) {
+                return ResponseEntity.badRequest().body(__unknown);
+            }
+            """);
     }
 
     /**
@@ -1822,29 +1888,29 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * envelope, as the TypeScript routes refuse it, so it never reaches a store that reads
      * {@code LIMIT -1} as no limit (SQLite) and steps around the cap.
      */
-    private static void appendLimit(StringBuilder src, ApiSettings.Pagination page) {
+    protected void writeLimit(SpringJavaWriter w, ApiSettings.Pagination page) {
         if (page == null) {
-            src.append("        int actualLimit = limit != null ? limit : 50;\n");
+            w.line("int actualLimit = limit != null ? limit : 50;");
             return;
         }
-        src.append("        if (limit != null && limit < 0) {\n");
-        src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"pagination.invalid_value\", \"param\", \"limit\", ")
-           .append("\"value\", String.valueOf(limit), \"expected\", \"a non-negative integer (0 or more)\"));\n");
-        src.append("        }\n");
-        src.append("        if (limit != null && limit > ").append(page.maxLimit()).append(") {\n");
-        src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"limit_too_large\", \"maxLimit\", ")
-           .append(page.maxLimit()).append("));\n");
-        src.append("        }\n");
-        src.append("        int actualLimit = limit != null ? limit : ").append(page.defaultLimit()).append(";\n");
+        try (CodeWriter.Block b = w.block("if (limit != null && limit < 0) {")) {
+            w.line("return ResponseEntity.badRequest().body(Map.of(\"error\", \"pagination.invalid_value\", \"param\", \"limit\", "
+                + "\"value\", String.valueOf(limit), \"expected\", \"a non-negative integer (0 or more)\"));");
+        }
+        try (CodeWriter.Block b = w.block("if (limit != null && limit > " + page.maxLimit() + ") {")) {
+            w.line("return ResponseEntity.badRequest().body(Map.of(\"error\", \"limit_too_large\", \"maxLimit\", "
+                + page.maxLimit() + "));");
+        }
+        w.line("int actualLimit = limit != null ? limit : " + page.defaultLimit() + ";");
     }
 
     /** A field no client may set on create regardless of the entity's key: readOnly or derived. */
-    private static boolean isNonSettableOnCreate(MetaField f) {
+    protected static boolean isNonSettableOnCreate(MetaField f) {
         return MetaField.MUTABILITY_READ_ONLY.equals(f.getMutability()) || f.isDerived();
     }
 
     /** The names of {@code fields} that are a server-generated primary key of {@code entity}. */
-    private static Set<String> generatedPkNames(MetaObject entity) {
+    protected static Set<String> generatedPkNames(MetaObject entity) {
         com.metaobjects.identity.PrimaryIdentity pk = entity.getPrimaryIdentity();
         if (pk == null || !pk.isAutoGenerated()) return Set.of();
         return new java.util.LinkedHashSet<>(pk.getFields());
@@ -1855,7 +1921,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * repository: write-denied ({@code @formExclude} / credential), a generated primary key (an
      * assigned key is the caller's), {@code readOnly} and derived fields.
      */
-    private static Set<String> createDeniedNames(MetaObject entity, List<MetaField> components) {
+    protected static Set<String> createDeniedNames(MetaObject entity, List<MetaField> components) {
         Set<String> out = new java.util.LinkedHashSet<>(SpringGeneratorSupport.writeDeniedNames(components));
         Set<String> pk = generatedPkNames(entity);
         for (MetaField f : components) {
@@ -1869,8 +1935,8 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * {@link #createDeniedNames}, the discriminator, and every column the route's subtype does not
      * itself declare (a sibling subtype's, never this route's to write).
      */
-    private static Set<String> tphCreateDeniedNames(MetaObject subtype, List<MetaField> union,
-                                                    Set<String> writeDenied, String discField) {
+    protected static Set<String> tphCreateDeniedNames(MetaObject subtype, List<MetaField> union,
+                                                      Set<String> writeDenied, String discField) {
         Set<String> out = new java.util.LinkedHashSet<>(writeDenied);
         Set<String> pk = generatedPkNames(subtype);
         java.util.Map<String, MetaField> own = new java.util.HashMap<>();
@@ -1884,21 +1950,20 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         return out;
     }
 
-    private static void appendStripWriteDenied(StringBuilder src, String dtoName, List<MetaField> components,
-                                               Set<String> writeDenied) {
+    /** Rebuild {@code dto} with every write-denied component nulled; nothing when none is denied. */
+    protected void writeStripWriteDenied(SpringJavaWriter w, String dtoName, List<MetaField> components,
+                                         Set<String> writeDenied) {
         if (components.stream().noneMatch(f -> writeDenied.contains(f.getName()))) return;
-        src.append("        dto = new ").append(dtoName).append("(");
-        for (int i = 0; i < components.size(); i++) {
-            MetaField f = components.get(i);
-            if (i > 0) src.append(", ");
-            src.append(writeDenied.contains(f.getName())
+        List<String> args = new ArrayList<>(components.size());
+        for (MetaField f : components) {
+            args.add(writeDenied.contains(f.getName())
                 ? "null" : "dto." + SpringNaming.recordComponentName(f.getName()) + "()");
         }
-        src.append(");\n");
+        w.line("dto = new " + dtoName + "(" + String.join(", ", args) + ");");
     }
 
     /** Java source for a {@code String...} argument list naming {@code hidden}. */
-    private static String hiddenArgs(List<String> hidden) {
+    protected static String hiddenArgs(List<String> hidden) {
         StringBuilder b = new StringBuilder();
         // The record component's name, which is the member Jackson's contract knows it by.
         for (String h : hidden) b.append(", \"").append(SpringNaming.recordComponentName(h)).append('"');
@@ -1906,17 +1971,17 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
     }
 
     /** Expression for one response row with {@code hidden} removed (the row itself when none). */
-    private static String redactOne(String expr, List<String> hidden) {
+    protected static String redactOne(String expr, List<String> hidden) {
         return hidden.isEmpty() ? expr : "redact(" + expr + hiddenArgs(hidden) + ")";
     }
 
     /** Expression for a list of response rows with {@code hidden} removed from each. */
-    private static String redactAll(String expr, List<String> hidden) {
+    protected static String redactAll(String expr, List<String> hidden) {
         return hidden.isEmpty() ? expr : "redactAll(" + expr + hiddenArgs(hidden) + ")";
     }
 
     /** The {@code Optional.map} argument that answers 200 with a row, minus {@code hidden}. */
-    private static String okMapper(List<String> hidden) {
+    protected static String okMapper(List<String> hidden) {
         return hidden.isEmpty() ? "ResponseEntity::ok" : "r -> ResponseEntity.ok(" + redactOne("r", hidden) + ")";
     }
 
@@ -1934,82 +1999,91 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * sent unstripped. As a second line of defence any key that spells a credential ignoring case,
      * {@code _} and {@code -} is removed too.
      */
-    private static void appendRedactHelpers(StringBuilder src) {
-        src.append("    /** #484: the wire keys of each row class's credentials, read once from objectMapper's contract. */\n");
-        src.append("    private final java.util.Map<List<Object>, java.util.Set<String>> credentialWireKeys = new java.util.concurrent.ConcurrentHashMap<>();\n\n");
-        src.append("    private Object redact(Object row, String... hidden) {\n");
-        src.append("        com.fasterxml.jackson.databind.node.ObjectNode node = objectMapper.valueToTree(row);\n");
-        src.append("        node.remove(credentialWireKeys.computeIfAbsent(\n");
-        src.append("                List.of(row.getClass(), List.of(hidden)), k -> credentialKeysOf(row.getClass(), hidden)));\n");
-        src.append("        java.util.Set<String> spelled = new java.util.HashSet<>();\n");
-        src.append("        for (String h : hidden) spelled.add(normalizedKey(h));\n");
-        src.append("        List<String> stray = new java.util.ArrayList<>();\n");
-        src.append("        node.fieldNames().forEachRemaining(k -> { if (spelled.contains(normalizedKey(k))) stray.add(k); });\n");
-        src.append("        node.remove(stray);\n");
-        src.append("        return node;\n");
-        src.append("    }\n\n");
-        src.append("    private List<Object> redactAll(List<?> rows, String... hidden) {\n");
-        src.append("        List<Object> out = new java.util.ArrayList<>(rows.size());\n");
-        src.append("        for (Object row : rows) out.add(redact(row, hidden));\n");
-        src.append("        return out;\n");
-        src.append("    }\n\n");
-        src.append("    /**\n");
-        src.append("     * The JSON keys objectMapper writes the credential members {@code hidden} of {@code type} under,\n");
-        src.append("     * read from its serialization contract so a naming strategy, mixin or @JsonProperty is honoured.\n");
-        src.append("     * Throws (the response is refused, never sent unstripped) when the contract cannot be read.\n");
-        src.append("     */\n");
-        src.append("    private java.util.Set<String> credentialKeysOf(Class<?> type, String... hidden) {\n");
-        src.append("        com.fasterxml.jackson.databind.SerializationConfig config = objectMapper.getSerializationConfig();\n");
-        src.append("        com.fasterxml.jackson.databind.BeanDescription desc = config.introspect(objectMapper.constructType(type));\n");
-        src.append("        try {\n");
-        src.append("            if (!(objectMapper.getSerializerProviderInstance().findValueSerializer(type)\n");
-        src.append("                    instanceof com.fasterxml.jackson.databind.ser.std.BeanSerializerBase)) {\n");
-        src.append("                throw unstrippable(type, hidden, \"its serializer is not a bean serializer (a custom serializer?)\");\n");
-        src.append("            }\n");
-        src.append("        } catch (com.fasterxml.jackson.databind.JsonMappingException e) {\n");
-        src.append("            throw unstrippable(type, hidden, \"the mapper has no serializer for it\");\n");
-        src.append("        }\n");
-        src.append("        java.util.Set<String> keys = new java.util.HashSet<>();\n");
-        src.append("        for (String name : hidden) {\n");
-        src.append("            boolean matched = false;\n");
-        src.append("            for (com.fasterxml.jackson.databind.introspect.BeanPropertyDefinition p : desc.findProperties()) {\n");
-        src.append("                if (p.getInternalName().equals(name)) { keys.add(p.getName()); matched = true; }\n");
-        src.append("            }\n");
-        src.append("            if (!matched && declaresMember(type, name) && !desc.getIgnoredPropertyNames().contains(name)) {\n");
-        src.append("                throw unstrippable(type, new String[] {name}, \"the credential has no property in the mapper's contract\");\n");
-        src.append("            }\n");
-        src.append("        }\n");
-        src.append("        return keys;\n");
-        src.append("    }\n\n");
-        src.append("    private static boolean declaresMember(Class<?> type, String name) {\n");
-        src.append("        for (Class<?> c = type; c != null && c != Object.class; c = c.getSuperclass()) {\n");
-        src.append("            for (java.lang.reflect.Field f : c.getDeclaredFields()) if (f.getName().equals(name)) return true;\n");
-        src.append("        }\n");
-        src.append("        return false;\n");
-        src.append("    }\n\n");
-        src.append("    private static String normalizedKey(String key) {\n");
-        src.append("        return key.replace(\"_\", \"\").replace(\"-\", \"\").toLowerCase(java.util.Locale.ROOT);\n");
-        src.append("    }\n\n");
-        src.append("    private static IllegalStateException unstrippable(Class<?> type, String[] credentials, String why) {\n");
-        src.append("        return new IllegalStateException(\"cannot strip the credential \" + type.getSimpleName() + \".\"\n");
-        src.append("                + String.join(\", \" + type.getSimpleName() + \".\", credentials) + \" from a response: \" + why\n");
-        src.append("                + \". Credential stripping reads the ObjectMapper's serialization contract; the response is\"\n");
-        src.append("                + \" refused rather than sent unstripped.\");\n");
-        src.append("    }\n\n");
+    protected void writeRedactHelpers(SpringJavaWriter w) {
+        w.text("""
+            /** #484: the wire keys of each row class's credentials, read once from objectMapper's contract. */
+            private final java.util.Map<List<Object>, java.util.Set<String>> credentialWireKeys = new java.util.concurrent.ConcurrentHashMap<>();
+
+            private Object redact(Object row, String... hidden) {
+                com.fasterxml.jackson.databind.node.ObjectNode node = objectMapper.valueToTree(row);
+                node.remove(credentialWireKeys.computeIfAbsent(
+                        List.of(row.getClass(), List.of(hidden)), k -> credentialKeysOf(row.getClass(), hidden)));
+                java.util.Set<String> spelled = new java.util.HashSet<>();
+                for (String h : hidden) spelled.add(normalizedKey(h));
+                List<String> stray = new java.util.ArrayList<>();
+                node.fieldNames().forEachRemaining(k -> { if (spelled.contains(normalizedKey(k))) stray.add(k); });
+                node.remove(stray);
+                return node;
+            }
+
+            private List<Object> redactAll(List<?> rows, String... hidden) {
+                List<Object> out = new java.util.ArrayList<>(rows.size());
+                for (Object row : rows) out.add(redact(row, hidden));
+                return out;
+            }
+
+            /**
+             * The JSON keys objectMapper writes the credential members {@code hidden} of {@code type} under,
+             * read from its serialization contract so a naming strategy, mixin or @JsonProperty is honoured.
+             * Throws (the response is refused, never sent unstripped) when the contract cannot be read.
+             */
+            private java.util.Set<String> credentialKeysOf(Class<?> type, String... hidden) {
+                com.fasterxml.jackson.databind.SerializationConfig config = objectMapper.getSerializationConfig();
+                com.fasterxml.jackson.databind.BeanDescription desc = config.introspect(objectMapper.constructType(type));
+                try {
+                    if (!(objectMapper.getSerializerProviderInstance().findValueSerializer(type)
+                            instanceof com.fasterxml.jackson.databind.ser.std.BeanSerializerBase)) {
+                        throw unstrippable(type, hidden, "its serializer is not a bean serializer (a custom serializer?)");
+                    }
+                } catch (com.fasterxml.jackson.databind.JsonMappingException e) {
+                    throw unstrippable(type, hidden, "the mapper has no serializer for it");
+                }
+                java.util.Set<String> keys = new java.util.HashSet<>();
+                for (String name : hidden) {
+                    boolean matched = false;
+                    for (com.fasterxml.jackson.databind.introspect.BeanPropertyDefinition p : desc.findProperties()) {
+                        if (p.getInternalName().equals(name)) { keys.add(p.getName()); matched = true; }
+                    }
+                    if (!matched && declaresMember(type, name) && !desc.getIgnoredPropertyNames().contains(name)) {
+                        throw unstrippable(type, new String[] {name}, "the credential has no property in the mapper's contract");
+                    }
+                }
+                return keys;
+            }
+
+            private static boolean declaresMember(Class<?> type, String name) {
+                for (Class<?> c = type; c != null && c != Object.class; c = c.getSuperclass()) {
+                    for (java.lang.reflect.Field f : c.getDeclaredFields()) if (f.getName().equals(name)) return true;
+                }
+                return false;
+            }
+
+            private static String normalizedKey(String key) {
+                return key.replace("_", "").replace("-", "").toLowerCase(java.util.Locale.ROOT);
+            }
+
+            private static IllegalStateException unstrippable(Class<?> type, String[] credentials, String why) {
+                return new IllegalStateException("cannot strip the credential " + type.getSimpleName() + "."
+                        + String.join(", " + type.getSimpleName() + ".", credentials) + " from a response: " + why
+                        + ". Credential stripping reads the ObjectMapper's serialization contract; the response is"
+                        + " refused rather than sent unstripped.");
+            }
+            """);
+        w.blank();
     }
 
-    private static void appendServerOwnedOnCreate(StringBuilder src, MetaObject entity) {
+    /** The {@code SERVER_OWNED_ON_CREATE} constant; nothing, and the create handler keeps its old shape, when none. */
+    protected void writeServerOwnedOnCreate(SpringJavaWriter w, MetaObject entity) {
         List<String> serverOwned = serverOwnedOnCreate(entity);
-        if (serverOwned.isEmpty()) return;   // no constant, and the handler keeps its old shape
-        src.append("    /** Components the server owns on create (primary key, @autoSet): a\n");
-        src.append("     *  @NotNull on one of these describes the RESPONSE shape and must not\n");
-        src.append("     *  reject a create body that legitimately omits it. */\n");
-        src.append("    private static final Set<String> SERVER_OWNED_ON_CREATE = Set.of(");
-        for (int i = 0; i < serverOwned.size(); i++) {
-            if (i > 0) src.append(", ");
-            src.append('"').append(serverOwned.get(i)).append('"');
-        }
-        src.append(");\n\n");
+        if (serverOwned.isEmpty()) return;
+        w.text("""
+            /** Components the server owns on create (primary key, @autoSet): a
+             *  @NotNull on one of these describes the RESPONSE shape and must not
+             *  reject a create body that legitimately omits it. */
+            """);
+        List<String> quoted = new ArrayList<>(serverOwned.size());
+        for (String s : serverOwned) quoted.add('"' + s + '"');
+        w.line("private static final Set<String> SERVER_OWNED_ON_CREATE = Set.of(" + String.join(", ", quoted) + ");");
+        w.blank();
     }
-
 }

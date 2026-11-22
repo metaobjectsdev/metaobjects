@@ -9,7 +9,6 @@ import java.util.Optional;
  * (Spring Data JPA / jOOQ / plain JDBC). The matching OrderController delegates to this interface.
  */
 public interface OrderRepository {
-
     /** Sort directive parsed from the cross-port ?sort=<field>:asc|desc grammar. */
     record SortClause(String field, String direction) {}
 

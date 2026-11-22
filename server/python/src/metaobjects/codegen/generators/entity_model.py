@@ -10,6 +10,7 @@ layout), and two objects emitting one module into one directory fail with
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from pathlib import Path
 
 from metaobjects.meta.core.field.meta_field import MetaField
@@ -46,11 +47,11 @@ from metaobjects.meta.persistence.origin.origin_constants import (
 )
 from metaobjects.shared.base_types import TYPE_ORIGIN, TYPE_VALIDATOR
 from metaobjects.codegen.config import GenConfig
-from metaobjects.codegen.constants import GENERATED_MARKER, generated_header
+from metaobjects.codegen.constants import GENERATED_MARKER, generated_header_lines
 from metaobjects.codegen.type_map import field_is_array, py_type_for
-from metaobjects.codegen.format import ruff_format
+from metaobjects.codegen.writer import CodeWriter, Piece, PyWriter, call, flat, group, str_lit
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, per_entity
-from metaobjects.codegen.generators.tph_plan import tph_subtype_binding
+from metaobjects.codegen.generators.tph_plan import tph_plan_for, tph_subtype_binding
 from metaobjects.codegen.import_path import (
     ModuleScope,
     import_line,
@@ -98,10 +99,11 @@ _HOSTNAME_REGEX = (
 #: numbers, clock text and calendar spans, never sees a value; in JSON the canonical form is
 #: written (Pydantic writes ``PT5400S`` for 90 minutes). A Python-mode dump keeps the native
 #: ``timedelta``.
-DURATION_TYPE = (
-    "Annotated[datetime.timedelta, BeforeValidator(parse_duration_input), "
-    'PlainSerializer(format_duration, return_type=str, when_used="json")]'
-)
+DURATION_TYPE: Piece = group("Annotated[", [
+    "datetime.timedelta",
+    "BeforeValidator(parse_duration_input)",
+    'PlainSerializer(format_duration, return_type=str, when_used="json")',
+], "]")
 #: The generated package's copy of the duration codec, emitted beside the models when any of
 #: them has a ``field.duration`` (:func:`duration_wire_module`). A copy rather than an import of
 #: the installed ``metaobjects``, so the generated package runs on its own, as an owned router's
@@ -131,10 +133,13 @@ def duration_wire_module() -> EmittedFile:
     """The ``_duration_wire.py`` module a model with a ``field.duration`` imports its codec from:
     ``codegen/runtime/duration_wire.py``, verbatim, under a generated header."""
     src = _RUNTIME_SOURCE_DIR / "duration_wire.py"
+    banner = CodeWriter().line(
+        f"# {GENERATED_MARKER} — DO NOT EDIT. Copied from codegen/runtime/duration_wire.py: "
+        "edit that file and regenerate."
+    )
     return EmittedFile(
         path=f"{DURATION_WIRE_MODULE}.py",
-        content=f"# {GENERATED_MARKER} — DO NOT EDIT. Copied from codegen/runtime/duration_wire.py: "
-        "edit that file and regenerate.\n" + src.read_text(encoding="utf-8"),
+        content=banner.to_string() + src.read_text(encoding="utf-8"),
     )
 
 
@@ -304,19 +309,48 @@ _CONSTRAINT_ORDER = ("pattern", "ge", "le", "min_length", "max_length")
 
 
 def _constraint_parts(constraints: dict[str, object]) -> list[str]:
-    """The ``Field(...)`` constraint kwargs rendered in the stable, deterministic order."""
-    return [_constraint_source(k, constraints[k]) for k in _CONSTRAINT_ORDER if k in constraints]
+    """The ``Field(...)`` constraint kwargs, one per keyword, in the stable order."""
+    return [kw for k in _CONSTRAINT_ORDER if k in constraints for kw in _constraint_source(k, constraints[k])]
 
 
-def _constraint_source(key: str, value: object) -> str:
+def _constraint_source(key: str, value: object) -> list[str]:
+    """The keyword argument(s) one constraint becomes."""
     if isinstance(value, _AsciiPattern):
         # json_schema_extra overrides the schema ``pattern`` (the compiled one carries the
         # Python-only ``\\Z`` anchor) with an ECMA-262-valid form for OpenAPI consumers.
-        return (
-            f"{key}=re.compile({str(value)!r}, re.ASCII), "
-            f"json_schema_extra={{'pattern': {value.schema_pattern!r}}}"
-        )
-    return f"{key}={value!r}"
+        return [
+            f"{key}=re.compile({str_lit(str(value))}, re.ASCII)",
+            f"json_schema_extra={{{str_lit('pattern')}: {str_lit(value.schema_pattern)}}}",
+        ]
+    return [f"{key}={py_literal(value)}"]
+
+
+def py_literal(value: object) -> str:
+    """*value* as Python source: strings double-quoted (:func:`str_lit`), lists and dicts
+    spelled item by item, anything else by ``repr``."""
+    if isinstance(value, str):
+        return str_lit(str(value))
+    if isinstance(value, list):
+        return "[" + ", ".join(py_literal(v) for v in value) + "]"
+    if isinstance(value, dict):
+        return "{" + ", ".join(f"{py_literal(k)}: {py_literal(v)}" for k, v in value.items()) + "}"
+    return repr(value)
+
+
+def _member(name: str, annotation: Piece, value: Piece | None) -> Piece:
+    """A model member: ``name: annotation`` with its ``= value`` when it has one."""
+    declaration = (f"{name}: ", annotation)
+    return declaration if value is None else (*declaration, " = ", value)
+
+
+def _optional(type_expr: Piece) -> Piece:
+    return (type_expr, " | None")
+
+
+def _field_call(parts: list[str], default: str | None = None) -> Piece:
+    """``Field(default=..., <constraints>)``: one breakable list, so a member too long for the
+    line puts each keyword on its own line."""
+    return call("Field", parts if default is None else [f"default={default}", *parts])
 
 
 def _type_expr_for_field(
@@ -326,8 +360,8 @@ def _type_expr_for_field(
     *,
     wire: bool,
     scope: ModuleScope = ModuleScope(),
-) -> tuple[str, str | None]:
-    """The Python annotation text for *field* (arrays wrapped in ``list[...]``) plus the
+) -> tuple[Piece, str | None]:
+    """The Python annotation for *field* (arrays wrapped in ``list[...]``) plus the
     shared-enum class name when the field resolves to one (used to render an enum
     default). Collects any required imports into *imports*. Shared by the create-model
     and patch-model emitters so both carry byte-identical typing.
@@ -350,6 +384,7 @@ def _type_expr_for_field(
         else None
     )
     enum_type_name: str | None = None
+    type_expr: Piece
     if shared is not None:
         type_name, enum_import = fr019.enum_type_and_import(shared, config, scope)
         imports.add(enum_import)
@@ -371,13 +406,14 @@ def _type_expr_for_field(
     if field.sub_type == fc.FIELD_SUBTYPE_DURATION:
         # `wire.durations: native` leaves Pydantic's own timedelta handling in place, both ways;
         # `iso` holds the field to the ISO-8601 wire rule.
+        duration_type: Piece
         if wire_of(field).durations == WIRE_DURATIONS_ISO:
             imports.update(duration_imports(scope))
             duration_type = DURATION_TYPE
         else:
             imports.add("import datetime")
             duration_type = "datetime.timedelta"
-        type_expr = f"list[{duration_type}]" if field_is_array(field) else duration_type
+        type_expr = ("list[", duration_type, "]") if field_is_array(field) else duration_type
     if field.sub_type in (fc.FIELD_SUBTYPE_OBJECT, fc.FIELD_SUBTYPE_MAP):
         # A field.object (-> VO) and a field.map with @objectRef (-> dict[str, VO]) both
         # reference a value-object; import its model so the emitted annotation resolves.
@@ -419,36 +455,21 @@ def origin_guaranteed_non_null(field: MetaField) -> bool:
     return False
 
 
-def _with_type_checking(imports: list[str]) -> list[str]:
-    """Add ``TYPE_CHECKING`` to the emitted ``typing`` import.
-
-    Folded into the existing ``from typing import ...`` when there is one, rather than
-    emitted as a second line from the same module — two imports of one module is
-    something every linter in the ecosystem flags, and generated code an adopter has to
-    silence is generated code they stop trusting.
-    """
-    for i, imp in enumerate(imports):
-        if imp.startswith("from typing import "):
-            names = sorted({*imp[len("from typing import ") :].split(", "), "TYPE_CHECKING"})
-            return [*imports[:i], f"from typing import {', '.join(names)}", *imports[i + 1 :]]
-    return sorted([*imports, "from typing import TYPE_CHECKING"])
-
-
 def _literal_default_expr(field: MetaField, enum_type_name: str | None) -> str:
     """The Python source of a literal @default: the list an array default spells, an enum
     member (Type.MEMBER, UPPER_CASE), or the value's own literal."""
     default_raw = field.attrs().get(fc.FIELD_ATTR_DEFAULT)
     if field_is_array(field):
-        return repr(array_default(field))
+        return py_literal(array_default(field))
     if enum_type_name is not None:
         return f"{enum_type_name}.{str(default_raw).upper()}"
-    return repr(default_raw)
+    return py_literal(default_raw)
 
 
 def _field_line(
     field: MetaField, imports: set[str], config: GenConfig, scope: ModuleScope = ModuleScope()
-) -> tuple[str, bool]:
-    """Return (source line, uses_field). Collects required imports into *imports*."""
+) -> tuple[Piece, bool]:
+    """Return (member, uses_field). Collects required imports into *imports*."""
     type_expr, enum_type_name = _type_expr_for_field(field, imports, config, wire=False, scope=scope)
     required = field.attrs().get(fc.FIELD_ATTR_REQUIRED) is True
     # A server-side expression default (now(), gen_random_uuid(), CURRENT_TIMESTAMP)
@@ -467,19 +488,20 @@ def _field_line(
     # origin.computed stay the conservative nullable default.
     mandatory = required or origin_guaranteed_non_null(field)
     # A field is Optional only when it is neither mandatory nor carries a @default.
-    annotation = type_expr if (mandatory or has_default) else f"{type_expr} | None"
+    annotation = type_expr if (mandatory or has_default) else _optional(type_expr)
+    value: Piece | None
     if has_default and uses_field:
-        assignment = f" = Field(default={default_expr}, {', '.join(parts)})"
+        value = _field_call(parts, default_expr)
     elif has_default:
-        assignment = f" = {default_expr}"
+        value = default_expr
     elif mandatory and uses_field:
-        assignment = f" = Field({', '.join(parts)})"
+        value = _field_call(parts)
     elif mandatory:
-        assignment = ""
+        value = None
     elif uses_field:
-        assignment = f" = Field(default=None, {', '.join(parts)})"
+        value = _field_call(parts, "None")
     else:
-        assignment = " = None"
+        value = "None"
 
     # Pydantic field name = field.name, ALWAYS. `@column` is the physical column name,
     # a different axis: it is what the persistence layer binds to, never what the model
@@ -494,7 +516,7 @@ def _field_line(
     # lever for it: `columnNamingStrategy` applied to field.name is, because @column is
     # free-form — `callPurpose` + `@column: purpose_code` used to emit a field
     # `purpose_code`, which is neither the wire name nor derived from the field name.
-    return f"    {field.name}: {annotation}{assignment}", uses_field
+    return _member(field.name, annotation, value), uses_field
 
 
 def _primary_identity_field_names(entity: MetaObject) -> list[str]:
@@ -608,8 +630,8 @@ def _equals_literal(raw: object, when_field: MetaField, imports: set[str]) -> st
         return repr(float(text))
     if sub in _DECIMAL_SUBTYPES and _NUMERIC_LITERAL.match(text):
         imports.add("from decimal import Decimal")
-        return f"Decimal({text!r})"
-    return repr(text)
+        return f"Decimal({str_lit(text)})"
+    return str_lit(text)
 
 
 # --- @condition: a rule is checked only where its condition is TRUE -----------
@@ -617,25 +639,37 @@ def _equals_literal(raw: object, when_field: MetaField, imports: set[str]) -> st
 # three-valued logic) lets the record through. The condition is generated as a small Python
 # expression of type ``bool | None`` (``None`` is SQL NULL); the helpers below are declared
 # inside the generated method, so the generated model imports nothing from MetaObjects.
-_HELPER_CMP = (
-    "        def _cmp(a: object, b: object) -> int | None:\n"
-    "            if a is None or b is None:\n"
-    "                return None\n"
-    "            try:\n"
-    "                return (a > b) - (a < b)  # type: ignore[operator]\n"
-    "            except TypeError:\n"
-    "                return None\n"
-)
-_HELPER_TRI = (
-    "        def _all(*v: bool | None) -> bool | None:\n"
-    "            return False if False in v else None if None in v else True\n"
-    "\n"
-    "        def _any(*v: bool | None) -> bool | None:\n"
-    "            return True if True in v else None if None in v else False\n"
-    "\n"
-    "        def _not(v: bool | None) -> bool | None:\n"
-    "            return None if v is None else not v\n"
-)
+#: A piece of the generated model written straight onto the writer.
+WriteStep = Callable[[PyWriter], None]
+
+
+def _write_helper_cmp(w: PyWriter) -> None:
+    w.text("""
+        def _cmp(a: object, b: object) -> int | None:
+            if a is None or b is None:
+                return None
+            try:
+                return (a > b) - (a < b)  # type: ignore[operator]
+            except TypeError:
+                return None
+    """)
+
+
+def _write_helper_tri(w: PyWriter) -> None:
+    w.text("""
+        def _all(*v: bool | None) -> bool | None:
+            return False if False in v else None if None in v else True
+
+        def _any(*v: bool | None) -> bool | None:
+            return True if True in v else None if None in v else False
+
+        def _not(v: bool | None) -> bool | None:
+            return None if v is None else not v
+    """)
+
+
+_HELPER_CMP: WriteStep = _write_helper_cmp
+_HELPER_TRI: WriteStep = _write_helper_tri
 _CONDITION_HELPERS = (_HELPER_CMP, _HELPER_TRI)
 _NUMERIC_SUBTYPES = (*_INT_SUBTYPES, *_FLOAT_SUBTYPES, *_DECIMAL_SUBTYPES)
 EXPR_OP_IS_NULL, EXPR_OP_AND, EXPR_OP_OR = "isNull", "and", "or"
@@ -682,7 +716,7 @@ class _ConditionBuilder:
     def __init__(self, by_name: dict[str, MetaField], imports: set[str]) -> None:
         self.by_name = by_name
         self.imports = imports
-        self.helpers: set[str] = set()
+        self.helpers: set[WriteStep] = set()
 
     def _node_field(self, node: object) -> MetaField | None:
         if not isinstance(node, dict):
@@ -728,8 +762,8 @@ class _ConditionBuilder:
             parser = _TEMPORAL_PARSERS.get(field.sub_type)
             if parser is not None:
                 self.imports.add("import datetime")
-                return f"{parser}({value!r})"
-        return repr(value)
+                return f"{parser}({str_lit(value)})"
+        return py_literal(value)
 
     def value(self, node: object, kind: str, ref: MetaField | None) -> str | None:
         if not isinstance(node, dict):
@@ -788,17 +822,45 @@ class _ConditionBuilder:
         return None
 
 
+def _raise_if(condition: str, label: str) -> WriteStep:
+    """``if <condition>: raise ValueError(<label>)``."""
+
+    def write(w: PyWriter) -> None:
+        w.open(f"if {condition}:")
+        w.line(f"raise ValueError({label})")
+        w.dedent()
+
+    return write
+
+
+def _ordered_check(left: str, right: str, op: str, label: str) -> WriteStep:
+    """A comparison validator: both sides present, then ordered (a TypeError counts as not)."""
+
+    def write(w: PyWriter) -> None:
+        w.open(f"if self.{left} is not None and self.{right} is not None:")
+        w.open("try:")
+        w.line(f"_ordered = self.{left} {op} self.{right}")
+        w.dedent()
+        w.open("except TypeError:")
+        w.line("_ordered = False")
+        w.dedent()
+        _raise_if("not _ordered", label)(w)
+        w.dedent()
+
+    return write
+
+
 def _cross_field_rules_method(
     entity: MetaObject, model_name: str, model_fields: set[str], imports: set[str]
-) -> list[str]:
+) -> WriteStep | None:
     """A ``model_validator(mode="after")`` enforcing the entity's cross-field validators
-    over the fields the model actually carries; ``[]`` when none apply. A validator whose
+    over the fields the model actually carries; ``None`` when none apply. A validator whose
     referenced field is missing from the model is skipped silently (as the DB CHECK is)."""
     by_name = {f.name: f for f in entity.fields() if f.name in model_fields}
-    checks: list[str] = []
+    checks: list[WriteStep] = []
     builder = _ConditionBuilder(by_name, imports)
 
-    def guarded(v: MetaData, block: str) -> None:
+    def guarded(v: MetaData, block: WriteStep) -> None:
         """Add a rule's block, checked only where its ``@condition`` is TRUE (three-valued)."""
         condition = v.get_meta_attr(vc.VALIDATOR_ATTR_CONDITION)
         if condition is None:
@@ -811,8 +873,13 @@ def _cross_field_rules_method(
             imports.intersection_update(kept[0])
             builder.helpers.intersection_update(kept[1])
             return
-        inner = "\n".join(("    " + ln) if ln else ln for ln in block.split("\n"))
-        checks.append(f"        if {guard} is True:\n{inner}")
+
+        def write(w: PyWriter) -> None:
+            w.open(f"if {guard} is True:")
+            block(w)
+            w.dedent()
+
+        checks.append(write)
 
     for v in entity.children():
         if v.type != TYPE_VALIDATOR or v.sub_type not in _CROSS_FIELD_SUBTYPES:
@@ -823,7 +890,7 @@ def _cross_field_rules_method(
         def attr(name: str, node: MetaData = v) -> object:
             return node.get_meta_attr(name)
 
-        label = repr(f"{v.name}")
+        label = str_lit(v.name)
         if v.sub_type == vc.VALIDATOR_SUBTYPE_COMPARISON:
             left, right = attr(vc.VALIDATOR_ATTR_LEFT), attr(vc.VALIDATOR_ATTR_RIGHT)
             op = _COMPARISON_PY_OP.get(str(attr(vc.VALIDATOR_ATTR_OP)))
@@ -833,16 +900,7 @@ def _cross_field_rules_method(
                 continue
             if not _comparable(by_name[str(left)], by_name[str(right)], str(attr(vc.VALIDATOR_ATTR_OP))):
                 continue
-            guarded(
-                v,
-                f"        if self.{left} is not None and self.{right} is not None:\n"
-                f"            try:\n"
-                f"                _ordered = self.{left} {op} self.{right}\n"
-                f"            except TypeError:\n"
-                f"                _ordered = False\n"
-                f"            if not _ordered:\n"
-                f"                raise ValueError({label})",
-            )
+            guarded(v, _ordered_check(str(left), str(right), op, label))
         elif v.sub_type in (vc.VALIDATOR_SUBTYPE_REQUIRED_WHEN, vc.VALIDATOR_SUBTYPE_PRESENT_IFF):
             target, when = attr(vc.VALIDATOR_ATTR_FIELD), attr(vc.VALIDATOR_ATTR_WHEN)
             if target not in by_name or when not in by_name or field_is_array(by_name[str(when)]):
@@ -851,17 +909,9 @@ def _cross_field_rules_method(
             cmp_op = "is" if lit in ("True", "False") else "=="
             gate = f"(self.{when} is not None and self.{when} {cmp_op} {lit})"
             if v.sub_type == vc.VALIDATOR_SUBTYPE_REQUIRED_WHEN:
-                guarded(
-                    v,
-                    f"        if {gate} and self.{target} is None:\n"
-                    f"            raise ValueError({label})",
-                )
+                guarded(v, _raise_if(f"{gate} and self.{target} is None", label))
             else:
-                guarded(
-                    v,
-                    f"        if (self.{target} is not None) != {gate}:\n"
-                    f"            raise ValueError({label})",
-                )
+                guarded(v, _raise_if(f"(self.{target} is not None) != {gate}", label))
         else:
             raw = attr(vc.VALIDATOR_ATTR_FIELDS)
             names = list(raw) if isinstance(raw, (list, tuple)) else ([raw] if isinstance(raw, str) else [])
@@ -869,28 +919,27 @@ def _cross_field_rules_method(
                 continue
             if v.sub_type == vc.VALIDATOR_SUBTYPE_EXACTLY_ONE:
                 present = ", ".join(f"self.{n}" for n in names)
-                guarded(
-                    v,
-                    f"        if sum(x is not None for x in ({present},)) != 1:\n"
-                    f"            raise ValueError({label})",
-                )
+                guarded(v, _raise_if(f"sum(x is not None for x in ({present},)) != 1", label))
             else:
-                all_none = " and ".join(f"self.{n} is None" for n in names)
-                guarded(v, f"        if {all_none}:\n            raise ValueError({label})")
+                guarded(v, _raise_if(" and ".join(f"self.{n} is None" for n in names), label))
     if not checks:
-        return []
+        return None
     # Declared in a fixed order, so the output does not depend on which rule needed one first.
-    helper_src = "\n".join(h for h in _CONDITION_HELPERS if h in builder.helpers).rstrip("\n").split("\n")
-    return [
-        "",
-        '    @model_validator(mode="after")',
-        f"    def _cross_field_rules(self) -> {model_name}:",
-        *(helper_src if builder.helpers else []),
-        *([""] if builder.helpers else []),
-        *checks,
-        "        return self",
-    ]
+    helpers = [h for h in _CONDITION_HELPERS if h in builder.helpers]
 
+    def write(w: PyWriter) -> None:
+        w.blank()
+        w.line('@model_validator(mode="after")')
+        w.open(f"def _cross_field_rules(self) -> {model_name}:")
+        for helper in helpers:
+            helper(w)
+            w.blank()
+        for check in checks:
+            check(w)
+        w.line("return self")
+        w.dedent()
+
+    return write
 
 
 def _create_field_line(
@@ -900,8 +949,8 @@ def _create_field_line(
     *,
     force_required: bool = False,
     scope: ModuleScope = ModuleScope(),
-) -> tuple[str, bool]:
-    """A CREATE-model field line (FR-036): keyed by the WIRE name (``field.name``) and
+) -> tuple[Piece, bool]:
+    """A CREATE-model member (FR-036): keyed by the WIRE name (``field.name``) and
     carrying the WIRE-TIER per-field constraints (#224 — includes FR-036 Pin 1
     non-empty-string; the read model does NOT carry Pin 1). A ``@required`` field
     that is SERVER-FILLED — it has ANY ``@default`` (a literal OR a SQL expression such
@@ -911,7 +960,7 @@ def _create_field_line(
     is preserved as the Python default; a SQL-expression default / ``@autoSet`` carries
     no Python default (the server fills it). Also used, unchanged, to emit an
     ``object.value``'s own ``<Name>Create`` wire model (#224) — the PK/TPH/derived-field
-    guards in the caller no-op for a VO carrying none of those. Returns (source line,
+    guards in the caller no-op for a VO carrying none of those. Returns (member,
     uses_field)."""
     type_expr, enum_type_name = _type_expr_for_field(field, imports, config, wire=True, scope=scope)
     required = field.attrs().get(fc.FIELD_ATTR_REQUIRED) is True
@@ -937,37 +986,50 @@ def _create_field_line(
         # omit the field and the model fills the default.
         default_expr = _literal_default_expr(field, enum_type_name)
         annotation = type_expr
-        assignment = (
-            f" = Field(default={default_expr}, {', '.join(parts)})"
-            if uses_field
-            else f" = {default_expr}"
-        )
+        value: Piece | None = _field_call(parts, default_expr) if uses_field else default_expr
     elif create_required:
         annotation = type_expr
-        assignment = f" = Field({', '.join(parts)})" if uses_field else ""
+        value = _field_call(parts) if uses_field else None
     else:
-        annotation = f"{type_expr} | None"
-        assignment = (
-            f" = Field(default=None, {', '.join(parts)})" if uses_field else " = None"
-        )
+        annotation = _optional(type_expr)
+        value = _field_call(parts, "None") if uses_field else "None"
 
-    return f"    {py_name}: {annotation}{assignment}", uses_field
+    return _member(py_name, annotation, value), uses_field
 
 
 def _patch_field_line(
     field: MetaField, imports: set[str], config: GenConfig, scope: ModuleScope = ModuleScope()
-) -> tuple[str, bool]:
-    """A PATCH-model field line: the field is made Optional (default ``None``) yet
+) -> tuple[Piece, bool]:
+    """A PATCH-model member: the field is made Optional (default ``None``) yet
     carries the SAME wire-tier per-field constraints as the create model (#224), so a
     present, non-null value is validated with the create rules (FR-036) while an
     absent field is left untouched. A ``@default`` is never emitted (a patch does not
-    default a column). Returns (source line, uses_field)."""
+    default a column). Returns (member, uses_field)."""
     type_expr, _enum = _type_expr_for_field(field, imports, config, wire=True, scope=scope)
     parts = _constraint_parts(_validator_constraints(field, wire=True))
     py_name = field.name  # FR-036 #3 — validation models key by the WIRE name (field.name)
     if parts:
-        return f"    {py_name}: {type_expr} | None = Field(default=None, {', '.join(parts)})", True
-    return f"    {py_name}: {type_expr} | None = None", False
+        return _member(py_name, _optional(type_expr), _field_call(parts, "None")), True
+    return _member(py_name, _optional(type_expr), "None"), False
+
+
+def _discriminator_member(name: str, value: str) -> str:
+    """FR-017 TPH: a subtype's discriminator pinned to its own value."""
+    return f'{name}: Literal["{value}"] = "{value}"'
+
+
+def _use_import(w: PyWriter, statement: str) -> None:
+    """Hand one import statement to the writer, which prints it in its own section and order.
+    The model helpers this generator shares with the router produce whole statements
+    (``from .X import Y as Z``, ``import datetime``); this splits one into its parts."""
+    if statement.startswith("from "):
+        module, _, names = statement[len("from "):].partition(" import ")
+        for item in names.split(","):
+            name, _, alias = item.strip().partition(" as ")
+            w.use(name, module, alias or None)
+        return
+    module, _, alias = statement[len("import "):].partition(" as ")
+    w.use_module(module, alias or None)
 
 
 def _effective_fqn(entity: MetaObject) -> str:
@@ -985,6 +1047,47 @@ def module_scope(entity: MetaObject, config: GenConfig) -> ModuleScope:
     return ModuleScope(config.output_layout, pkg_of(entity))
 
 
+def model_imports(entity: MetaObject, object_index: dict[str, MetaObject]) -> list[MetaObject]:
+    """The objects whose model modules *entity*'s own model module imports: its ``extends``
+    base, the value object each ``field.object`` / ``field.map`` ``@objectRef`` binds, and its
+    M:N targets, plus the concrete subtypes of a discriminator base (its router imports their
+    ``Create`` / ``Patch`` models). The same sources :meth:`EntityModelGenerator.render_entity_model`
+    collects imports from."""
+    found: list[MetaObject] = []
+    plan = tph_plan_for(entity, object_index)
+    if plan is not None:
+        found.extend(sub.entity for sub in plan.subtypes)
+    if entity.super_data is not None:
+        found.append(entity.super_data)
+    # ADR-0039 SANCTIONED OWN — the model declares only its own fields; an inherited one is
+    # imported by the base's module, which the closure reaches through the base.
+    for f in entity.own_fields():
+        if f.sub_type in (fc.FIELD_SUBTYPE_OBJECT, fc.FIELD_SUBTYPE_MAP):
+            target = object_ref_target(f)
+            if target is not None:
+                found.append(target)
+    for d in resolve_m2m_descriptors(entity, object_index):
+        target = object_index.get(f"{d.target_package}::{d.target_entity}")
+        if target is not None:
+            found.append(target)
+    return found
+
+
+def model_import_closure(entity: MetaObject, objects: list[MetaObject]) -> list[MetaObject]:
+    """*entity* and every object whose model module its model module imports, directly or
+    through another model module it imports."""
+    index = build_object_index(objects)
+    seen: dict[int, MetaObject] = {}
+    pending = [entity]
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen[id(current)] = current
+        pending.extend(model_imports(current, index))
+    return list(seen.values())
+
+
 class EntityModelGenerator:
     """``object.*`` → a Pydantic v2 model module per object.
 
@@ -997,9 +1100,17 @@ class EntityModelGenerator:
     Override points (in emission order):
 
     * ``_emit_class_header(entity, base_class)`` — the ``class <Name>(<Base>):`` line.
-    * ``_emit_field_lines(entity, imports)`` — the body field lines (scalars + M:N
+    * ``_emit_field_lines(entity, imports)`` — the body members (scalars + M:N
       collections); collect any extra imports into the ``imports`` set.
+    * ``_emit_create_lines`` / ``_emit_cross_field_rules`` / ``_emit_patch_lines`` — the
+      ``<Name>Create`` and ``<Name>Patch`` wire models.
+    * ``_write_model(w, header, doc, members, extra)`` — one class onto the writer.
     * ``render_entity_model(entity, object_index)`` — the whole module (last resort).
+
+    A member is a writer piece (:mod:`metaobjects.codegen.writer`) WITHOUT indentation —
+    ``"name: int | None = None"``, or a tuple whose ``Field(...)`` call is a breakable list —
+    and the writer lays it out (ADR-0063). The module is written by
+    :class:`~metaobjects.codegen.writer.PyWriter`; no formatter runs over it.
     """
 
     name = "entity-model"
@@ -1008,7 +1119,8 @@ class EntityModelGenerator:
         """The ``class <Name>(<Base>):`` declaration line. ``<Name>`` is the object's
         emitted model name (``model_class_name`` — a value object's may be
         collision-qualified). Override to inject a decorator, a metaclass, or an
-        alternate base."""
+        alternate base. A header of several lines (a decorator above the class) is written
+        line by line; its last line opens the class body."""
         return f"class {entity.name}({base_class}):"
 
     def _emit_field_lines(
@@ -1017,8 +1129,8 @@ class EntityModelGenerator:
         imports: set[str],
         object_index: dict[str, MetaObject] | None,
         config: GenConfig | None = None,
-    ) -> tuple[list[str], bool]:
-        """The model body: one line per own field, then M:N nested collections when
+    ) -> tuple[list[Piece], bool]:
+        """The model body: one member per own field, then M:N nested collections when
         *object_index* is supplied. Returns ``(lines, uses_field)`` where
         ``uses_field`` is True iff any line used a pydantic ``Field(...)`` (so the
         caller knows to import ``Field``). Required imports are collected into
@@ -1029,7 +1141,7 @@ class EntityModelGenerator:
         cfg = config if config is not None else GenConfig(out_dir="")
         scope = module_scope(entity, cfg)
         uses_field = False
-        lines: list[str] = []
+        lines: list[Piece] = []
         # ADR-0039 SANCTIONED OWN — codegen subclass-emit: the generated model
         # `extends` its generated base, so only OWN fields are emitted here (the base
         # class already declares inherited ones). Pinned by test_entity_model.py.
@@ -1056,9 +1168,7 @@ class EntityModelGenerator:
                 # default_factory, not `= []`: a class-level list literal is one shared object
                 # as far as a linter or a reader can tell (pydantic copies it, a dataclass-style
                 # reader would not).
-                lines.append(
-                    f"    {d.relation_name}: list[{element}] = Field(default_factory=list)"
-                )
+                lines.append(f"{d.relation_name}: list[{element}] = Field(default_factory=list)")
                 uses_field = True
         return lines, uses_field
 
@@ -1067,7 +1177,7 @@ class EntityModelGenerator:
         entity: MetaObject,
         imports: set[str],
         config: GenConfig | None = None,
-    ) -> tuple[list[str], bool]:
+    ) -> tuple[list[Piece], bool]:
         """The ``<Name>Create`` body — the CREATE-validation shape the generated router
         validates a POST body against (FR-036). Restates every EFFECTIVE field (own +
         inherited via ``extends``) EXCEPT the ones the server owns: an auto-generated PK
@@ -1087,7 +1197,7 @@ class EntityModelGenerator:
         binding = tph_subtype_binding(entity)
         disc_field = binding[0] if binding is not None else None
         uses_field = False
-        lines: list[str] = []
+        lines: list[Piece] = []
         # RESOLVING (fields()): the flat Create model subclasses BaseModel (not the entity
         # base), so it restates inherited fields too — unlike the read model's own_fields
         # subclass-emit.
@@ -1110,18 +1220,19 @@ class EntityModelGenerator:
         # default so the URL-injected create body may omit it) — mirrors the read model.
         if binding is not None:
             disc_name, disc_value = binding
-            lines = [f'    {disc_name}: Literal["{disc_value}"] = "{disc_value}"', *lines]
+            lines = [_discriminator_member(disc_name, disc_value), *lines]
             imports.add("from typing import Literal")
         return lines, uses_field
 
     def _emit_cross_field_rules(
-        self, entity: MetaObject, create_lines: list[str], imports: set[str]
-    ) -> list[str]:
+        self, entity: MetaObject, create_lines: list[Piece], imports: set[str]
+    ) -> WriteStep | None:
         """The ``<Name>Create`` cross-field ``model_validator`` (comparison / requiredWhen /
         presentIff / atLeastOne / exactlyOne, each optionally under an ``@condition``), keyed by
         the field lines the create model carries.
-        Create only: a Patch body cannot see the merged row. Override to customize."""
-        carried = {m.group(1) for line in create_lines if (m := re.match(r"    (\w+):", line))}
+        Create only: a Patch body cannot see the merged row. ``None`` when no rule applies.
+        Override to customize."""
+        carried = {m.group(1) for line in create_lines if (m := re.match(r"(\w+):", flat(line)))}
         return _cross_field_rules_method(entity, f"{entity.name}Create", carried, imports)
 
     def _emit_patch_lines(
@@ -1129,7 +1240,7 @@ class EntityModelGenerator:
         entity: MetaObject,
         imports: set[str],
         config: GenConfig | None = None,
-    ) -> tuple[list[str], bool]:
+    ) -> tuple[list[Piece], bool]:
         """The ``<Name>Patch`` body: every EFFECTIVE field (own + inherited via
         ``extends``) made Optional while retaining its create-model constraints, so the
         generated PATCH handler can validate present, non-null values without
@@ -1141,7 +1252,7 @@ class EntityModelGenerator:
         scope = module_scope(entity, cfg)
         pk_fields = set(_primary_identity_field_names(entity))
         uses_field = False
-        lines: list[str] = []
+        lines: list[Piece] = []
         # RESOLVING (fields()): the flat Patch model is self-contained (subclasses
         # BaseModel, not the entity base), so it restates inherited fields too.
         for f in entity.fields():
@@ -1167,7 +1278,7 @@ class EntityModelGenerator:
         object_index: dict[str, MetaObject] | None = None,
         config: GenConfig | None = None,
     ) -> str:
-        """Render an entity as a Pydantic v2 model (pre-format; the generator runs ruff).
+        """Render an entity as a Pydantic v2 model module, laid out by the writer.
 
         When *object_index* is supplied, M:N navigations (``relationship.*``
         ``@cardinality:"many" + @through``) are emitted as nested Pydantic
@@ -1196,12 +1307,9 @@ class EntityModelGenerator:
         binding = tph_subtype_binding(entity)
         if binding is not None:
             disc_field, disc_value = binding
-            lines = [
-                f'    {disc_field}: Literal["{disc_value}"] = "{disc_value}"',
-                *lines,
-            ]
+            lines = [_discriminator_member(disc_field, disc_value), *lines]
             imports.add("from typing import Literal")
-        body = lines if lines else ["    pass"]
+        body: list[Piece] = lines if lines else ["pass"]
 
         # FR-036 — an object.entity emits two flat WIRE-validation models the generated
         # router binds: a ``<Name>Create`` (POST-body shape: auto-gen PK / @readOnly
@@ -1220,14 +1328,14 @@ class EntityModelGenerator:
         # object.projection is read-only and never routed — it emits neither.
         emit_create = entity.sub_type in (OBJECT_SUBTYPE_ENTITY, OBJECT_SUBTYPE_VALUE)
         emit_patch = entity.sub_type == OBJECT_SUBTYPE_ENTITY
-        create_lines: list[str] = []
-        cross_lines: list[str] = []
+        create_lines: list[Piece] = []
+        cross_rules: WriteStep | None = None
         create_uses_field = False
-        patch_lines: list[str] = []
+        patch_lines: list[Piece] = []
         patch_uses_field = False
         if emit_create:
             create_lines, create_uses_field = self._emit_create_lines(entity, imports, config)
-            cross_lines = self._emit_cross_field_rules(entity, create_lines, imports)
+            cross_rules = self._emit_cross_field_rules(entity, create_lines, imports)
         if emit_patch:
             patch_lines, patch_uses_field = self._emit_patch_lines(entity, imports, config)
 
@@ -1239,14 +1347,9 @@ class EntityModelGenerator:
             pyd_names.append("BaseModel")
         if uses_field or create_uses_field or patch_uses_field:
             pyd_names.append("Field")
-        if cross_lines:
+        if cross_rules is not None:
             pyd_names.append("model_validator")
 
-        parts: list[str] = [
-            generated_header(entity.name, _effective_fqn(entity)),
-            "from __future__ import annotations",
-            "",
-        ]
         # FR-018 M:N — the nav collections' target imports are DEFERRED into a
         # `if TYPE_CHECKING:` block, never emitted at module level.
         #
@@ -1268,46 +1371,75 @@ class EntityModelGenerator:
         # The base-class import is subtracted back out: when an entity BOTH extends a
         # target and navigates to it, the base class is needed at class-creation time and
         # deferring it would break the module for a different reason.
-        if any("re.compile(" in line for line in (*body, *create_lines, *patch_lines)):
+        if any("re.compile(" in flat(line) for line in (*body, *create_lines, *patch_lines)):
             imports.add("import re")
         deferred = self._deferred_nav_imports(
             entity, object_index, config if config is not None else GenConfig(out_dir="")
         ) - ({base_import} if base_import is not None else set())
         deferred &= imports
-        extra_imports = sorted(imports - deferred)
+        w = PyWriter()
+        w.header(*generated_header_lines(entity.name, _effective_fqn(entity)))
+        w.use_future()
+        for statement in sorted(imports - deferred):
+            _use_import(w, statement)
         if deferred:
-            extra_imports = _with_type_checking(extra_imports)
-        if extra_imports:
-            parts += [*extra_imports, ""]
-        if pyd_names:
-            parts += [f"from pydantic import {', '.join(pyd_names)}", ""]
-        # LAST, after every real import: a conditional block in the middle of the import
+            w.use("TYPE_CHECKING", "typing")
+        for name in pyd_names:
+            w.use(name, "pydantic")
+        # The deferred imports open the body: a conditional block in the middle of the import
         # section splits the group an import sorter expects to be contiguous.
         if deferred:
-            parts += ["if TYPE_CHECKING:", *(f"    {i}" for i in sorted(deferred)), ""]
-        parts += ["", self._emit_class_header(entity, base_class), *body]
+            w.open("if TYPE_CHECKING:")
+            for statement in sorted(deferred):
+                w.line(statement)
+            w.dedent()
+        w.gap()
+        self._write_model(w, self._emit_class_header(entity, base_class), None, body, None)
         if emit_create:
-            parts += [
-                "",
-                "",
+            self._write_model(
+                w,
                 f"class {entity.name}Create(BaseModel):",
-                '    """GENERATED — CREATE input: auto-gen PK / @mutability readOnly omitted '
-                '(writeOnce is settable here, once); @default/@autoSet optional; present '
-                'values validated (FR-036)."""',
-                *create_lines,
-                *cross_lines,
-            ]
+                "GENERATED — CREATE input: auto-gen PK / @mutability readOnly omitted "
+                "(writeOnce is settable here, once); @default/@autoSet optional; present "
+                "values validated (FR-036).",
+                create_lines,
+                cross_rules,
+            )
         if emit_patch:
-            parts += [
-                "",
-                "",
+            self._write_model(
+                w,
                 f"class {entity.name}Patch(BaseModel):",
-                '    """GENERATED — PATCH input: all fields optional (PK, @mutability '
-                'readOnly and writeOnce excluded); present values validated (FR-036)."""',
-                *patch_lines,
-            ]
-        parts += [""]
-        return "\n".join(parts)
+                "GENERATED — PATCH input: all fields optional (PK, @mutability readOnly and "
+                "writeOnce excluded); present values validated (FR-036).",
+                patch_lines,
+                None,
+            )
+        return w.to_string()
+
+    def _write_model(
+        self,
+        w: PyWriter,
+        header: str,
+        doc: str | None,
+        members: list[Piece],
+        extra: WriteStep | None,
+    ) -> None:
+        """One class: its header line(s), the docstring (kept on one line, however long, with
+        a blank line after it), one line per member, then *extra* (the cross-field method),
+        and the two-line gap before whatever follows."""
+        *above, opener = header.splitlines()
+        for line in above:
+            w.line(line)
+        w.open(opener)
+        if doc is not None:
+            w.line(f'"""{doc}"""')
+            w.blank()
+        for member in members:
+            w.line(member)
+        if extra is not None:
+            extra(w)
+        w.dedent()
+        w.gap()
 
     @staticmethod
     def _deferred_nav_imports(
@@ -1338,15 +1470,12 @@ class EntityModelGenerator:
         shared = fr019.materialized_shared_enums(entities)
         if not shared:
             return None
-        parts: list[str] = [
-            generated_header("enums", "enums"),
-            "from __future__ import annotations",
-            "",
-            "from enum import Enum",
-            "",
-        ]
+        w = PyWriter()
+        w.header(*generated_header_lines("enums", "enums"))
+        w.use_future()
+        w.use("Enum", "enum")
+        w.gap()
         for e in shared:
-            parts += ["", f"class {e.name}(str, Enum):"]
             # Member names follow the Python convention (UPPER_CASE constants); the
             # value preserves the wire form, so ``Enum("statistical")`` and
             # ``member == "statistical"`` still work (str-enum).
@@ -1360,9 +1489,12 @@ class EntityModelGenerator:
                         f"to the Python member {m.upper()}; rename one so the members are distinct"
                     )
                 names[m.upper()] = m
-            parts += [f'    {m.upper()} = "{m}"' for m in e.values]
-        parts.append("")
-        return EmittedFile(path="enums.py", content=ruff_format("\n".join(parts)))
+            w.open(f"class {e.name}(str, Enum):")
+            for m in e.values:
+                w.line(f'{m.upper()} = "{m}"')
+            w.dedent()
+            w.gap()
+        return EmittedFile(path="enums.py", content=w.to_string())
 
     def generate(self, ctx: GenContext) -> list[EmittedFile]:
         index = build_object_index(ctx.entities)
@@ -1372,7 +1504,7 @@ class EntityModelGenerator:
             claim_local_name(c.claims, e)
             return EmittedFile(
                 path=output_path(c.config.output_layout, pkg_of(e), f"{e.name}.py"),
-                content=ruff_format(self.render_entity_model(e, index, c.config)),
+                content=self.render_entity_model(e, index, c.config),
             )
 
         files = per_entity(emit)(ctx)

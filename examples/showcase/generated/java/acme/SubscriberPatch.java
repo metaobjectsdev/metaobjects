@@ -11,7 +11,6 @@ import java.util.Set;
 
 /** GENERATED — presence-tracked partial-update (PATCH) shape for Subscriber. Do not hand-edit; regenerated from metadata. */
 public final class SubscriberPatch {
-
     private final Map<String, Object> assigned;
 
     private SubscriberPatch(Map<String, Object> assigned) { this.assigned = assigned; }
