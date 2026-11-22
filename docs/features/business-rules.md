@@ -21,8 +21,12 @@ TypeScript it writes the shapes and errors an operation takes and returns (see
 [The contract types layer](#the-contract-types-layer-typescript)), and in C# so far each
 entity's create and update records ([C# port](../ports/csharp.md)). The TypeScript runtime makes the
 guarded update a transition writes, `ObjectManager.guardedUpdate`, held to the shared
-persistence scenario `guarded-update.yaml`. The service shells that
-enforce these rules at run time are later work. A lifecycle in a project
+persistence scenario `guarded-update.yaml`. The service layer starts in TypeScript: `service` writes
+each package's derived list, get, create, update and delete, every write in one transaction with the
+declared write rules, behind a thin Fastify transport (`service-routes`) that answers the shared API
+tests as the flat routes do (see [The service layer](#the-service-layer-typescript)). Transitions,
+declared operations, the policy, the bodies and events interfaces, and the checks that enforce these
+rules at run time are later work. A lifecycle in a project
 that wires none will be advised by `verify` once that check lands; today the flat routes enforce
 nothing and `verify` says nothing about it. Every flat generator writes byte-identical code for
 a model with this vocabulary and the same model without it. The design is [ADR-0066](../../spec/decisions/ADR-0066-business-rules-operations-and-lifecycles.md).
@@ -335,6 +339,55 @@ export type OpenRequestsError = ErrorBody<ShellErrorCode | ContractErrorCode | O
 `constraint` kind (see [API contract](api-contract.md)). It gives no status for a business error a
 command declares; that is the service shell's to answer. A key a derived command or a keyed query
 takes is not here either: the service generator decides its parameters.
+
+## The service layer (TypeScript)
+
+`serviceFile()` (stable name `service`, layer `service`, ejectable) writes the layer a route, a job
+or an agent tool calls (ADR-0067 layer 4): one module per metadata package, under the package's
+directory in either layout.
+
+- `<pkg path>/service/<operation>.ts`: one function per operation, `(deps, ...args, opts) =>
+  OpResult`. Each concrete entity with a writable table and a single-field key gets five:
+  `list<Plural>`, `get<Entity>`, `create<Entity>`, `update<Entity>` and `delete<Entity>`.
+- `<pkg path>/service/index.ts`: `ServiceDeps` (the database), the `<Pkg>Service` interface,
+  `create<Pkg>Service(deps)` that binds the operations to it, and each entity's wire mapper.
+
+Every write runs in one transaction, in ADR-0067's order: load the row under a row lock (`not_found`
+when there is none), validate the input and stamp what the model declares (ADR-0045: `@autoSet`,
+write-once fields, server-owned and unknown keys), then write it. A caller that runs several
+operations atomically passes its own transaction as `opts.tx`, and each operation runs in a
+savepoint inside it. A refusal rolls the transaction back. A query opens no write transaction.
+An operation answers an `OpResult`: the value, or a failure carrying the code and the HTTP status
+the [API contract](api-contract.md) gives it, so every transport maps it the same way.
+
+`serviceRoutesFile()` (stable name `service-routes`, layer `api`, Fastify) writes the thin
+transport (layer 5) beside it, `<pkg path>/transport/fastify.ts`: one plugin per package,
+registered with the service it calls. Each route parses the request, calls one operation and
+sends what it answered; it holds no rules and no database handle.
+
+```ts
+import { createShopService } from "./generated/acme/shop/service/index.js";
+import { shopServiceRoutes } from "./generated/acme/shop/transport/fastify.js";
+
+const service = createShopService({ db });
+await app.register(shopServiceRoutes, { service });
+
+// A job calls the same operations, here two in one transaction:
+await db.transaction(async (tx) => {
+  await service.createOrder({ title: "first" }, { tx });
+  await service.createOrder({ title: "second" }, { tx });
+});
+```
+
+Both import the entity module (`entity`, for the table and the allowlists) and the contract types
+(`contract-types`), written to the same target, and `@metaobjectsdev/runtime-ts`'s `service` and
+`service/fastify` entries; `meta eject service` and `meta eject service-routes` copy that source into
+`codegen/runtime/` as they do for the routes. The service lane of the shared API tests runs the
+corpus the flat routes pass against the service behind this transport, in both layouts.
+
+Not covered yet, and still served by the flat generators: write-through entities, single-table (TPH)
+hierarchies, many-to-many traversal, projections and reports. Transitions and declared operations
+come with the policy, bodies and events interfaces.
 
 ## Requirements can claim operations and transitions
 

@@ -400,7 +400,8 @@ async function emit(
 function adapterNeutral(source: string): string {
   const adapter = "@@ADAPTER@@";
   const moved = source
-    .replace(new RegExp(`${HTTP_RUNTIME_PACKAGE}/[\\w-]+`, "g"), adapter)
+    // Any subpath depth: the service transport's entry is `service/fastify`.
+    .replace(new RegExp(`${HTTP_RUNTIME_PACKAGE}(?:/[\\w-]+)+`, "g"), adapter)
     .replace(new RegExp(`(?:\\.\\./)+${OWNED_RUNTIME_DIR}/[\\w-]+/[\\w-]+`, "g"), adapter);
   const IMPORT = /^import [^;]*;\n/gm;
   return [...(moved.match(IMPORT) ?? [])].sort().join("") + moved.replace(IMPORT, "");

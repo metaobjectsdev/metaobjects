@@ -749,6 +749,17 @@ imports `zod` only. It is not scaffolded; add it to `generators` or `meta eject 
 and give it its own `target` to put the layer in a package the transport and clients share. See
 [Business rules](../features/business-rules.md#the-contract-types-layer-typescript).
 
+### `service/` and `transport/` — the service layer and its Fastify transport
+
+`serviceFile()` (stable name `service`, layer `service`) is layer 4 of ADR-0067. It writes one
+module per metadata package, under the package's directory in either layout: a file per operation
+in `<pkg path>/service/` (each entity's derived list, get, create, update and delete, every write in
+one transaction with the declared write rules) and `service/index.ts` with the `<Pkg>Service`
+interface and `create<Pkg>Service(deps)`. `serviceRoutesFile()` (stable name `service-routes`)
+writes `<pkg path>/transport/fastify.ts`, the routes that call it. Both need `entity` and
+`contract-types` in the same target. Neither is scaffolded; add them to `generators` or `meta eject`
+them. See [Business rules](../features/business-rules.md#the-service-layer-typescript).
+
 ### Prove it works
 
 Boot the server:

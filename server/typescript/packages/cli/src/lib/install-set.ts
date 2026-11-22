@@ -32,7 +32,7 @@ import type { PackageManifest } from "./package-manifest.js";
  * Resolves the package's ENTRY and walks up to the nearest manifest, rather than asking
  * for `"<pkg>/package.json"` directly. The direct form is the obvious one and it is
  * WRONG: a package's `exports` map gates every subpath, and `@metaobjectsdev/runtime-ts`
- * exports `.` / `./drivers` / `./fastify` / `./drizzle-fastify` / `./hono` and no
+ * exports `.` / `./drivers` / `./fastify` / `./drizzle-fastify` / `./service` / `./service/fastify` / `./hono` and no
  * `./package.json`, so under real Node it throws ERR_PACKAGE_PATH_NOT_EXPORTED. It
  * appeared to work in-repo only because bun resolves a symlinked source tree; against
  * the published package it failed silently on the first try. Resolving the entry is

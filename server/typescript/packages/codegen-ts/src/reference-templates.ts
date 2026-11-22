@@ -21,6 +21,9 @@ export const REFERENCE_GENERATOR_NAMES = [
   // The contract types (ADR-0067 layer 1): the modules' shape is the adopter's, while which objects,
   // values and operations are covered stays the engine walk.
   "contract-types",
+  // The service layer and its Fastify transport (ADR-0067 layers 4 and 5): the operations' and the
+  // routes' shape is the adopter's, while which entities get operations stays the engine walk.
+  "service", "service-routes",
   // The report export (`?format=csv|json|xml` on a served report): which reports get a module, the
   // column list and the CSV/XML writers, handed over as one file.
   "report-export",

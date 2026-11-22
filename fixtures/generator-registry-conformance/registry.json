@@ -118,6 +118,20 @@
       "eject": "full",
       "ports": ["typescript", "csharp"]
     },
+    "service": {
+      "concept": "The service layer (ADR-0067 layer 4): one module per metadata package, a function per operation, and a factory that binds them to the dependencies passed in. Each store-backed entity gets its derived list, get, create, update and delete; every write runs in one transaction (a savepoint inside a caller's) with the declared write rules (ADR-0045). TypeScript so far, behind its own transport (`service-routes`); the other ports add theirs with their rules-layer work.",
+      "tier": "native",
+      "layer": "service",
+      "eject": "full",
+      "ports": ["typescript"]
+    },
+    "service-routes": {
+      "concept": "A thin REST transport over the service layer (ADR-0067 layer 5), one per metadata package: each route parses the request, calls one service operation and sends what it answered, and holds no rules. It answers the shared REST contract as `routes` does. TypeScript (Fastify) so far.",
+      "tier": "native",
+      "layer": "api",
+      "eject": "full",
+      "ports": ["typescript"]
+    },
     "prompt-render": {
       "concept": "Per-template.prompt render handle over the render engine, aggregated into one module. TYPESCRIPT ONLY by design: the other four ports emit a prompt's render helper from `render-helper` (see its note) rather than a second generator.",
       "tier": "native",
@@ -430,6 +444,7 @@
           "codegen-ts/src/requirement-walk.ts",
           "codegen-ts/src/routes-expose.ts",
           "codegen-ts/src/rules-walk.ts",
+          "codegen-ts/src/service-walk.ts",
           "codegen-ts/src/source-detect.ts",
           "codegen-ts/src/templates/entity-ui-descriptor.ts",
           "codegen-ts/src/templates/find-inbound.ts",

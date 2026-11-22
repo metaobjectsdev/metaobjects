@@ -31,6 +31,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
 import { indexEmitted, type OutputLayout } from "./output-layout.ts";
 import { entityFile, routesFile } from "@metaobjectsdev/test-generators";
+import { contractTypes, serviceFile, serviceRoutesFile } from "@metaobjectsdev/codegen-ts/generators";
 import pg from "pg";
 import { executeSql } from "./postgres-sql.ts";
 import { DEFAULT_PHYSICAL_NAMING } from "@metaobjectsdev/metadata";
@@ -58,10 +59,18 @@ export interface GeneratedServerHandle {
  * loader and drives `runGen` so the full loader → generator pipeline produces
  * the artifact under test.
  */
+/**
+ * Which generated server the lane boots: the flat per-entity routes (`routes`), or the service
+ * layer behind its thin Fastify transport (`service`, ADR-0067 layers 4 and 5), which must answer
+ * the same corpus the same way.
+ */
+export type GeneratedLane = "routes" | "service";
+
 export async function startGeneratedServer(
   connectionUri: string,
   metaPath: string,
   outputLayout: OutputLayout = "flat",
+  lane: GeneratedLane = "routes",
 ): Promise<GeneratedServerHandle> {
   // Emit INSIDE the package tree (under .gen-tmp/, gitignored) rather than the
   // OS tmpdir. The emitted route imports the bare specifier
@@ -90,7 +99,9 @@ export async function startGeneratedServer(
       dbImport: "./db",
       dialect: "postgres",
       apiPrefix: "/api",
-      generators: [entityFile(), routesFile()],
+      generators: lane === "service"
+        ? [entityFile(), contractTypes(), serviceFile(), serviceRoutesFile()]
+        : [entityFile(), routesFile()],
     }),
     metadata: root,
   });
@@ -137,12 +148,23 @@ export const db = drizzle(pool);
   );
 
   // 4. Import the EMITTED route file unmodified and mount it.
-  const routeUrl = pathToFileURL(emitted.locate("Author.routes.ts")).href;
-  const mod = (await import(routeUrl)) as { authorRoutes: (f: FastifyInstance) => Promise<void> };
-  const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { pool: pg.Pool };
-
+  const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { pool: pg.Pool; db: unknown };
   const fastify = Fastify();
-  await fastify.register(mod.authorRoutes);
+  if (lane === "service") {
+    // The service is built at the composition root with its dependencies, and the transport is
+    // registered with the service: the routes hold no database handle of their own.
+    const service = (await import(pathToFileURL(join(tmp, "acme/blog/service/index.ts")).href)) as {
+      createBlogService: (deps: { db: unknown }) => unknown;
+    };
+    const transport = (await import(pathToFileURL(join(tmp, "acme/blog/transport/fastify.ts")).href)) as {
+      blogServiceRoutes: (f: FastifyInstance, opts: { service: unknown }) => Promise<void>;
+    };
+    await fastify.register(transport.blogServiceRoutes, { service: service.createBlogService({ db: dbMod.db }) });
+  } else {
+    const routeUrl = pathToFileURL(emitted.locate("Author.routes.ts")).href;
+    const mod = (await import(routeUrl)) as { authorRoutes: (f: FastifyInstance) => Promise<void> };
+    await fastify.register(mod.authorRoutes);
+  }
   await fastify.ready();
   const baseUrl = await fastify.listen({ host: "127.0.0.1", port: 0 });
 

@@ -10,6 +10,18 @@ here.**
 
 ## [Unreleased]
 
+- **codegen-ts: the service layer, part 1 (ADR-0067 layers 4 and 5).** Two new generators, neither
+  scaffolded. `service` (the new `service` layer label, shared by every port's catalog) writes one
+  module per metadata package: a function per derived list, get, create, update and delete of each
+  concrete, table-backed, single-key entity, every write in one transaction (a savepoint inside a
+  caller's `opts.tx`) that loads the row under a row lock and then validates and stamps the input
+  with the declared write rules (ADR-0045), and `create<Pkg>Service(deps)`. `service-routes` writes
+  the thin Fastify transport over it, one plugin per package. A new api-contract lane runs the
+  shared corpus against the service behind its transport, in both layouts, and passes as the flat
+  routes do; a compile gate builds the tier in every dialect. `@metaobjectsdev/runtime-ts` gains
+  the `./service` and `./service/fastify` entries they import, and `meta eject` copies them.
+  Write-through, TPH, many-to-many, projections, reports, transitions and declared operations stay
+  on the flat generators for now: [docs/features/business-rules.md](docs/features/business-rules.md#the-service-layer-typescript).
 - **runtime-ts: a list with no `limit` answers 50 rows (breaking).** A generated entity or
   projection list in a project that sets no `api.pagination` returned every matching row when the
   request carried no `limit`; it now answers the first 50, the default of every port. An explicit

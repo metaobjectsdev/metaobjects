@@ -16,8 +16,12 @@ Amendment 3, as ADR-0066 §8 restates it. The core is the contracts and the conf
 and every generator below is a helper.
 
 Layer 0 and layer 1 are generated: `rules-names` and `contract-types` write in TypeScript, and C#
-writes its own names and create and update records. The service shells and the per-package choice
-of generators are later work. ADR-0066's vocabulary is inert at run time until they land.
+writes its own names and create and update records. In TypeScript, layers 4 and 5 have started:
+`service` writes each package's derived list, get, create, update and delete in one transaction with
+the declared write rules, and `service-routes` the thin Fastify transport over it (the `service`
+layer label of §5.6). Transitions, declared operations, the policy, bodies and events interfaces,
+the other ports' shells and the per-package choice of generators are later work. ADR-0066's
+vocabulary is inert at run time until they land.
 
 **Experimental.** The vocabulary this design generates from is experimental (ADR-0066 Status,
 `docs/compatibility-policy.md`): it may change in a MINOR, including removals and renames, until

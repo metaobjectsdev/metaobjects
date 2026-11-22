@@ -58,18 +58,22 @@ import {
   jsonSchemaFile,
   openApiFile,
   prismaSchemaFile,
+  serviceFile,
+  serviceRoutesFile,
 } from "./generators/index.js";
 
 export type GeneratorTier = "native" | "neutral";
 
 /**
- * The six layers a generator can belong to — the axis an adopter SELECTS BY.
+ * The seven layers a generator can belong to — the axis an adopter SELECTS BY.
  *
  * Cross-port: `layer` is gated by every port's registry-conformance test against
  * `fixtures/generator-registry-conformance/registry.json`, exactly as `tier` is, so a
  * polyglot agent groups the catalog by the same words everywhere.
  *
- * Six, not ten. The first four are app-shape decisions a builder makes; `docs` holds the
+ * Seven, not ten. The first four are app-shape decisions a builder makes, and `service` (ADR-0067
+ * §5.6) the one between persistence and the transport: the operations a route, a job or an agent
+ * tool calls, each write in one transaction. `docs` holds the
  * pages written about the model and the code; `capability` holds the ones the MODEL has already made — nobody
  * picks `prompt-render` by browsing a taxonomy, they pick it because they declared a
  * `template.prompt`, which `meta gen --list --probe` reports with a real file count. A
@@ -78,6 +82,7 @@ export type GeneratorTier = "native" | "neutral";
 export const GENERATOR_LAYERS = [
   "model",
   "persistence",
+  "service",
   "api",
   "client",
   "docs",
@@ -287,6 +292,24 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     ejectable: ejectable("prisma-schema"),
   },
 
+  // ----- service ----------------------------------------------------------
+  service: {
+    name: "service",
+    kind: "generator",
+    layer: "service",
+    description:
+      "The service layer (ADR-0067): one module per package, a function per derived list, get, create, update and delete, each write in one transaction with the declared write rules.",
+    tier: "native",
+    factory: () => serviceFile(),
+    factoryExport: "serviceFile",
+    options: "filter?, runtimeImport?, target?",
+    requires: ["entity", "contract-types"],
+    runtimePackages: ["@metaobjectsdev/runtime-ts"],
+    runtimePeers: ["drizzle-orm", "zod"],
+    configKeys: ["dialect", "extStyle", "outputLayout", "pluralizeCollections", "collectionNameOverrides"],
+    ejectable: ejectable("service"),
+  },
+
   // ----- api --------------------------------------------------------------
   "contract-schema": {
     name: "contract-schema",
@@ -338,6 +361,22 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     runtimePeers: ["fastify"],
     configKeys: ["dbImport", "apiPrefix", "dialect", "extStyle", "outputLayout"],
     ejectable: ejectable("routes"),
+  },
+  "service-routes": {
+    name: "service-routes",
+    kind: "generator",
+    layer: "api",
+    description: "A thin Fastify transport per package over the service layer: each route parses, calls one operation and sends its result.",
+    tier: "native",
+    factory: () => serviceRoutesFile(),
+    factoryExport: "serviceRoutesFile",
+    options: "filter?, runtimeImport?, target?",
+    framework: "fastify",
+    requires: ["service", "contract-types"],
+    runtimePackages: ["@metaobjectsdev/runtime-ts"],
+    runtimePeers: ["fastify"],
+    configKeys: ["apiPrefix", "extStyle", "outputLayout"],
+    ejectable: ejectable("service-routes"),
   },
   "routes-hono": {
     name: "routes-hono",
