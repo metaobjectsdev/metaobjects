@@ -12,7 +12,7 @@ import { renderFastifyTransport } from "../templates/service-file.js";
 export interface ServiceRoutesFileOpts {
   /** Narrow which entities get routes. Keep it the same as the service generator's. */
   filter?: (entity: MetaObject) => boolean;
-  /** Where the emitted file imports `@metaobjectsdev/runtime-ts/drizzle-fastify` from. Absent: the package. */
+  /** Where the emitted file imports `@metaobjectsdev/runtime-ts/service/fastify` from. Absent: the package. */
   runtimeImport?: string;
   /** Named output target. It must be the entity module's target. */
   target?: string;
