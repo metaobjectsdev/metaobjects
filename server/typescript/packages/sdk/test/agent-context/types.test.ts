@@ -3,7 +3,7 @@ import { SERVER_LANGS, CLIENT_FRAMEWORKS, SKILL_NAMES, MIGRATION_TOKEN } from ".
 
 describe("agent-context types", () => {
   test("closed sets have the expected members", () => {
-    expect([...SERVER_LANGS]).toEqual(["typescript", "java", "kotlin", "csharp", "python"]);
+    expect([...SERVER_LANGS]).toEqual(["typescript", "java", "kotlin", "csharp", "python", "rust"]);
     expect([...CLIENT_FRAMEWORKS]).toEqual(["react", "tanstack", "angular"]);
     expect(MIGRATION_TOKEN).toBe("migration");
   });

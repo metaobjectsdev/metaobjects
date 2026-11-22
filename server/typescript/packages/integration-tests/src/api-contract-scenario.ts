@@ -71,6 +71,9 @@ export interface ApiRequest {
   method: HttpMethod;
   path: string;
   body?: unknown;
+  /** A body sent byte-for-byte as `application/json` instead of `body` serialized: how a
+   *  scenario sends a body that is not JSON (the `invalid_json` refusal). */
+  rawBody?: string;
   /** Headers sent with the request. */
   headers?: Record<string, string>;
   expect: ExpectBlock;
@@ -109,6 +112,7 @@ function parseScenario(file: string): ApiScenario {
       method: String(r["method"]).toUpperCase() as HttpMethod,
       path: String(r["path"]),
       body: r["body"],
+      ...(r["rawBody"] !== undefined && { rawBody: String(r["rawBody"]) }),
       ...(r["headers"] !== undefined && { headers: r["headers"] as Record<string, string> }),
       expect: r["expect"] as ExpectBlock,
     })),
@@ -129,8 +133,8 @@ export async function runScenario(
   for (const req of scenario.requests) {
     const init: RequestInit = { method: req.method };
     const headers: Record<string, string> = { ...req.headers };
-    if (req.body !== undefined) {
-      init.body = JSON.stringify(req.body);
+    if (req.body !== undefined || req.rawBody !== undefined) {
+      init.body = req.rawBody ?? JSON.stringify(req.body);
       headers["content-type"] = "application/json";
     }
     if (Object.keys(headers).length > 0) init.headers = headers;

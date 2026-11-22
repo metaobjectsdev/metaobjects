@@ -1,6 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runGen, defineConfig } from "../src/index.js";
 import { traceHelperFile } from "../src/generators/index.js";
@@ -11,6 +10,7 @@ import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema } from "@metaobjectsdev/migrate-ts";
 import { extract, Format, FieldKind, scalar } from "@metaobjectsdev/render";
 import ts from "typescript";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 const STI_MODEL = JSON.stringify({ "metadata.root": { package: "t::ai", children: [
   { "object.value": { name: "ClassifyReq", children: [{ "field.string": { name: "text" } }] } },
@@ -34,15 +34,15 @@ const STI_MODEL = JSON.stringify({ "metadata.root": { package: "t::ai", children
 ] } });
 
 async function genTrace(): Promise<{ classify: string; summarize: string }> {
-  const tmp = mkdtempSync(join(tmpdir(), "ai1c-out-"));
-  const dir = mkdtempSync(join(tmpdir(), "ai1c-model-"));
+  const tmp = makeScratchDir("ai1c-out-");
+  const dir = makeScratchDir("ai1c-model-");
   writeFileSync(join(dir, "m.json"), STI_MODEL);
   // The REAL shipped base, not a bespoke one named the same: `trace-helper` keys on
   // the `ai` manifest's anchor and compares by node identity (FR-043 §6), so a fixture
   // declaring its own `LlmCallBase` is exactly the bypass ADR-0024 warned about — it
   // proved nothing about the path an adopter follows, and now it does not even fire.
   const loaded = await MetaDataLoader.fromDirectory(dir, { libraries: ["ai"] });
-  rmSync(dir, { recursive: true, force: true });
+  removeTree(dir);
   expect(loaded.errors).toEqual([]);
   const out = await runGen({
     config: defineConfig({ outDir: tmp, extStyle: "none", dbImport: "~/db", dialect: "postgres",
@@ -90,11 +90,11 @@ describe("ai-trace — a malformed required response field fails the call", () =
     const js = ts.transpileModule(`${fnSrc}\nexport { unusableRequired };`, {
       compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
     }).outputText;
-    const dir = mkdtempSync(join(tmpdir(), "ai-trace-unusable-"));
+    const dir = makeScratchDir("ai-trace-unusable-");
     const modPath = join(dir, "unusable.mjs");
     writeFileSync(modPath, js);
     const mod = (await import(modPath)) as { unusableRequired: (r: unknown) => string | null };
-    rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
 
     const schema = {
       format: Format.JSON,
@@ -131,14 +131,14 @@ describe("ai-trace — redaction threaded through the generated typed path", () 
 
 describe("ai-trace #1c — STI table collapse", () => {
   test("N trace subtypes collapse to one prompt_llm_call table", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "ai1c-schema-"));
+    const dir = makeScratchDir("ai1c-schema-");
     writeFileSync(join(dir, "m.json"), STI_MODEL);
     // The REAL shipped base, not a bespoke one named the same: `trace-helper` keys on
   // the `ai` manifest's anchor and compares by node identity (FR-043 §6), so a fixture
   // declaring its own `LlmCallBase` is exactly the bypass ADR-0024 warned about — it
   // proved nothing about the path an adopter follows, and now it does not even fire.
   const loaded = await MetaDataLoader.fromDirectory(dir, { libraries: ["ai"] });
-    rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
     expect(loaded.errors).toEqual([]);
 
     loaded.root.physicalNaming = { columns: "literal", tables: "snake_case" };

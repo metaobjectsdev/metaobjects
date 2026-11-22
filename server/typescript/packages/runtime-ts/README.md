@@ -83,11 +83,13 @@ type Filter =
   | { field: value }                              // equality
   | { field: null }                               // IS NULL
   | { field: [v1, v2] }                           // IN (...)
-  | { field: { $eq | $ne | $gt | $gte | $lt | $lte | $like | $in | $isNull: ... } }
-  | { $and: [...] };                              // explicit AND
+  | { field: { $eq | $ne | $gt | $gte | $lt | $lte | $like | $ilike | $in | $isNull: ... } }
+  | { $and: [...] }                               // explicit AND
+  | { $or: [...] };                               // explicit OR
 ```
 
-`$or` and nested operators are not yet shipped.
+`$ilike` is a case-insensitive LIKE; it is not a wire operator (the REST `like` stays
+case-sensitive). Nested operators are not yet shipped.
 
 ## What is core here, and what `meta eject` hands you
 

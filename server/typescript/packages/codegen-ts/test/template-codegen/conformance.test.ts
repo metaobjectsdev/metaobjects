@@ -1,10 +1,10 @@
 import { describe, test, expect } from "bun:test";
-import { mkdtempSync, rmSync, readdirSync, readFileSync, statSync, cpSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readdirSync, readFileSync, statSync, cpSync } from "node:fs";
 import { join, resolve, relative } from "node:path";
 import { runGen, defineConfig, parseTemplateSpec, templateSpecToGenerators } from "../../src/index.js";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
+import { makeScratchDir, removeTree } from "../../src/scratch-dir.js";
 
 const CORPUS = resolve(import.meta.dir, "../../../../../../fixtures/template-codegen-conformance");
 
@@ -24,7 +24,7 @@ describe("template-codegen conformance (TS)", () => {
 
     // Hermetic: copy the corpus templates into a tmp projectRoot so runGen writes
     // its .gen-state merge base into the tmp tree, never into the committed corpus.
-    const projectRoot = mkdtempSync(join(tmpdir(), "tmpl-conf-"));
+    const projectRoot = makeScratchDir("tmpl-conf-");
     const out = join(projectRoot, "out");
     cpSync(join(CORPUS, "templates"), join(projectRoot, "templates"), { recursive: true });
     try {
@@ -45,7 +45,7 @@ describe("template-codegen conformance (TS)", () => {
           .toBe(`${rel}:\n${readFileSync(join(expectedDir, rel), "utf8")}`);
       }
     } finally {
-      rmSync(projectRoot, { recursive: true, force: true });
+      removeTree(projectRoot);
     }
   });
 });

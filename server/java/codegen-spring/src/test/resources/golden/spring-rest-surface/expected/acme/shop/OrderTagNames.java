@@ -6,7 +6,6 @@ import java.util.Map;
  * GENERATED — per-object physical database names for OrderTag.
  */
 public abstract class OrderTagNames {
-
     public static final String TYPE = "object";
     public static final String SUB_TYPE = "entity";
     public static final String NAME = "OrderTag";

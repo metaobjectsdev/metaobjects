@@ -1,5 +1,7 @@
 package com.metaobjects.generator.spring;
 
+import com.metaobjects.generator.writer.JavaWriter;
+
 // Eject note (ADR-0034 Amendment 8): `mvn metaobjects:eject` copies this file with the generators
 // that call it. The naming and type-mapping siblings stay in com.metaobjects.generator.spring, so
 // they are imported by name — a bare same-package reference would not resolve from the copy.
@@ -213,18 +215,15 @@ public final class Fr019SharedEnum {
      */
     public static void emitMaterialized(MetaDataLoader loader, Path outRoot) {
         for (SharedEnum shared : materializedSharedEnums(loader)) {
-            StringBuilder src = new StringBuilder();
-            if (!shared.javaPackage().isEmpty()) {
-                src.append("package ").append(shared.javaPackage()).append(";\n\n");
-            }
-            src.append("/** GENERATED — shared enum ").append(shared.name())
-               .append(". Do not hand-edit; regenerated from metadata. */\n");
-            src.append(SpringTypeMapper.enumDeclaration(shared.name(), shared.values(), shared.intValueMap(), shared.stringValueMap()))
-               .append("\n");
+            JavaWriter w = new JavaWriter();
+            if (!shared.javaPackage().isEmpty()) w.packageName(shared.javaPackage());
+            w.line("/** GENERATED — shared enum " + shared.name() + ". Do not hand-edit; regenerated from metadata. */");
+            SpringTypeMapper.writeEnumDeclaration(
+                w, shared.name(), shared.values(), shared.intValueMap(), shared.stringValueMap());
             try {
                 Path outFile = outRoot.resolve(shared.javaPackage().replace('.', '/'))
                                       .resolve(shared.name() + ".java");
-                GeneratedFileWriter.write(outFile, src.toString());
+                GeneratedFileWriter.write(outFile, w.toString());
             } catch (IOException e) {
                 throw new GeneratorException(
                     "failed writing shared enum " + shared.name() + ".java: " + e, e);

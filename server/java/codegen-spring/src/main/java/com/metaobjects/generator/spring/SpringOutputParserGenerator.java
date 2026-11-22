@@ -4,6 +4,7 @@ package com.metaobjects.generator.spring;
 // com.metaobjects.generator.spring when this generator is copied out via
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.generator.spring.SpringJavaWriter;
 import com.metaobjects.generator.spring.FindInbound;
 import com.metaobjects.generator.spring.SpringNaming;
 import com.metaobjects.generator.spring.SpringTypeMapper;
@@ -195,10 +196,9 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
         // would let an emitMapper called outside emit() read a stale template's names).
         Map<String, String> mapperNames = mapperNames(payloadVo);
 
-        StringBuilder src = new StringBuilder();
-        src.append("// GENERATED — DO NOT EDIT — response parser for template.prompt `")
-           .append(template.getName()).append("`\n");
-        src.append(SpringNaming.packageHeader(outPkg));
+        SpringJavaWriter w = new SpringJavaWriter();
+        w.header("// GENERATED — DO NOT EDIT — response parser for template.prompt `" + template.getName() + "`");
+        if (!outPkg.isEmpty()) w.packageName(outPkg);
         // ADR-0053: the reply's syntax is @responseFormat (json|xml, default json) — never
         // @format, which is the syntax of the rendered prompt BODY. The old @format gate is
         // what made a text-bodied prompt with a JSON reply emit a strict parser and no
@@ -207,84 +207,94 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
         // The strict Jackson tier is JSON-ONLY, by construction: strict all-or-nothing
         // semantics layered over the REPAIRING XML reader would throw or accept based on
         // how much repair happened, which is not a contract anyone can reason about. So an
-        // XML reply gets the tolerant extract and nothing strict.
+        // XML reply gets the tolerant extract and nothing strict. Every responding prompt
+        // gets the tolerant tier — declaring a response shape IS the request for one.
         boolean emitStrict = !FindInbound.isXml(format);
-        // Every responding prompt gets the tolerant tier — declaring a response shape IS
-        // the request for one.
-        boolean emitExtractLenient = true;
         if (emitStrict) {
-            src.append("import com.fasterxml.jackson.core.JsonProcessingException;\n");
-            src.append("import com.fasterxml.jackson.databind.ObjectMapper;\n");
+            w.use("com.fasterxml.jackson.core.JsonProcessingException");
+            w.use("com.fasterxml.jackson.databind.ObjectMapper");
         }
-        if (emitExtractLenient) {
-            src.append("import com.metaobjects.render.extract.Format;\n");
-            src.append("import com.metaobjects.render.extract.ExtractMap;\n");
-        }
-        src.append("\n");
-        src.append("/** Parser for LLM responses matching the `")
-           .append(templateShort).append("` template.prompt. */\n");
-        src.append("public final class ").append(parserClass).append(" {\n\n");
-        if (emitStrict) {
-            // Fails on an unknown property (Jackson's default). findAndRegisterModules picks up
-            // jackson-datatype-jsr310 when present, so a java.time component binds.
-            src.append("    private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();\n\n");
-        }
-        src.append("    private ").append(parserClass).append("() { /* no instances */ }\n\n");
-        if (emitStrict) {
-            src.append("    /**\n");
-            src.append("     * Parse an LLM response into a typed {@link ")
-               .append(payloadClass).append("}.\n");
-            src.append("     *\n");
-            src.append("     * @throws JsonProcessingException when the input is not valid JSON for the response schema.\n");
-            src.append("     */\n");
-            src.append("    public static ").append(payloadClass).append(" parse(String text) throws JsonProcessingException {\n");
-            src.append("        return MAPPER.readValue(text, ").append(payloadClass).append(".class);\n");
-            src.append("    }\n");
-        }
-        if (emitExtractLenient) {
-            String formatEnum = FindInbound.isXml(format) ? "Format.XML" : "Format.JSON";
-            String payloadFqn = payloadVo.getName();
-
-            // ---- Runtime-delegating extract (the single metadata-driven extract path) ----
-            src.append("\n");
-            src.append("    /** Payload FQN this parser extracts — resolved against the supplied loader at runtime. */\n");
-            src.append("    public static final String PAYLOAD_FQN = \"").append(escapeJava(payloadFqn)).append("\";\n");
-            src.append("\n");
-            src.append("    /**\n");
-            src.append("     * Tolerant best-effort extraction delegating to the runtime\n");
-            src.append("     * {@link com.metaobjects.object.extract.MetaObjectExtractor}; never throws.\n");
-            src.append("     * Fully populates nested-object and array-of-object components (unlike the\n");
-            src.append("     * self-contained {@code extractLenient(String)} overload). Resolves this payload's\n");
-            src.append("     * {@code MetaObject} by {@link #PAYLOAD_FQN} from {@code loader}.\n");
-            src.append("     */\n");
-            src.append("    public static com.metaobjects.render.extract.ExtractionResult<").append(payloadClass).append("> extractLenient(com.metaobjects.loader.MetaDataLoader loader, String text) {\n");
-            src.append("        return extractLenient(loader, text, com.metaobjects.render.extract.ExtractOptions.defaults());\n");
-            src.append("    }\n");
-            src.append("\n");
-            src.append("    public static com.metaobjects.render.extract.ExtractionResult<").append(payloadClass).append("> extractLenient(com.metaobjects.loader.MetaDataLoader loader, String text, com.metaobjects.render.extract.ExtractOptions opts) {\n");
-            src.append("        com.metaobjects.object.MetaObject mo = loader.getMetaObjectByName(PAYLOAD_FQN);\n");
-            src.append("        com.metaobjects.render.extract.ExtractionResult<Object> raw =\n");
-            src.append("            com.metaobjects.object.extract.MetaObjectExtractor.extract(mo, text, ").append(formatEnum).append(", opts);\n");
-            src.append("        // The assembled graph is a ValueObject (a Map<String,Object>) with nested\n");
-            src.append("        // ValueObjects / List<ValueObject> — map it into the value objects' records.\n");
-            src.append("        @SuppressWarnings(\"unchecked\")\n");
-            src.append("        java.util.Map<String, Object> d = (java.util.Map<String, Object>) raw.data();\n");
-            src.append("        return new com.metaobjects.render.extract.ExtractionResult<>(from").append(mapperNames.get(payloadVo.getName())).append("(d), raw.report());\n");
-            src.append("    }\n");
-
+        w.use("com.metaobjects.render.extract.Format");
+        w.use("com.metaobjects.render.extract.ExtractMap");
+        w.line("/** Parser for LLM responses matching the `" + templateShort + "` template.prompt. */");
+        try (var cls = w.block("public final class " + parserClass + " {")) {
+            if (emitStrict) {
+                // Fails on an unknown property (Jackson's default). findAndRegisterModules picks up
+                // jackson-datatype-jsr310 when present, so a java.time component binds.
+                w.line("private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();");
+                w.blank();
+            }
+            w.line("private " + parserClass + "() { /* no instances */ }");
+            if (emitStrict) {
+                w.blank();
+                writeStrictParse(w, payloadClass);
+            }
+            w.blank();
+            writeExtractLenient(w, payloadVo, payloadClass, FindInbound.isXml(format) ? "Format.XML" : "Format.JSON",
+                mapperNames);
             // ---- Generated ValueObject(Map) -> value-object record mappers (root + nested, deduped) ----
-            emitMapperMethods(src, payloadVo, mapperNames);
+            emitMapperMethods(w, payloadVo, mapperNames);
             // AFTER the mappers: emitting them is what populates usedCoercions.
-            appendMapperHelpers(src, usedCoercions);
+            writeMapperHelpers(w, usedCoercions);
         }
-        src.append("}\n");
 
         try {
             Path outFile = outRoot.resolve(outPkg.replace('.', '/')).resolve(parserClass + ".java");
-            GeneratedFileWriter.write(outFile, src.toString());
+            GeneratedFileWriter.write(outFile, w.toString());
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing " + parserClass + ".java for template " + template.getName() + ": " + e, e);
+        }
+    }
+
+    /** The strict tier: {@code parse(text)}, Jackson over the response record, failing on any mismatch. */
+    protected void writeStrictParse(SpringJavaWriter w, String payloadClass) {
+        w.line("/**");
+        w.line(" * Parse an LLM response into a typed {@link " + payloadClass + "}.");
+        w.line(" *");
+        w.line(" * @throws JsonProcessingException when the input is not valid JSON for the response schema.");
+        w.line(" */");
+        try (var m = w.block("public static " + payloadClass + " parse(String text) throws JsonProcessingException {")) {
+            w.line("return MAPPER.readValue(text, " + payloadClass + ".class);");
+        }
+    }
+
+    /** The tolerant tier: {@code PAYLOAD_FQN} and the two runtime-delegating {@code extractLenient} overloads. */
+    protected void writeExtractLenient(SpringJavaWriter w, MetaObject payloadVo, String payloadClass,
+                                       String formatEnum, Map<String, String> mapperNames) {
+        String result = "com.metaobjects.render.extract.ExtractionResult<" + payloadClass + ">";
+        w.line("/** Payload FQN this parser extracts — resolved against the supplied loader at runtime. */");
+        w.line("public static final String PAYLOAD_FQN = \"" + escapeJava(payloadVo.getName()) + "\";");
+        w.blank();
+        w.text("""
+            /**
+             * Tolerant best-effort extraction delegating to the runtime
+             * {@link com.metaobjects.object.extract.MetaObjectExtractor}; never throws.
+             * Fully populates nested-object and array-of-object components (unlike the
+             * self-contained {@code extractLenient(String)} overload). Resolves this payload's
+             * {@code MetaObject} by {@link #PAYLOAD_FQN} from {@code loader}.
+             */
+            """);
+        try (var m = w.block("public static " + result
+                + " extractLenient(com.metaobjects.loader.MetaDataLoader loader, String text) {")) {
+            w.line("return extractLenient(loader, text, com.metaobjects.render.extract.ExtractOptions.defaults());");
+        }
+        w.blank();
+        try (var m = w.block("public static " + result
+                + " extractLenient(com.metaobjects.loader.MetaDataLoader loader, String text,"
+                + " com.metaobjects.render.extract.ExtractOptions opts) {")) {
+            w.line("com.metaobjects.object.MetaObject mo = loader.getMetaObjectByName(PAYLOAD_FQN);");
+            w.line("com.metaobjects.render.extract.ExtractionResult<Object> raw =");
+            w.deeper(1, () -> w.line("com.metaobjects.object.extract.MetaObjectExtractor.extract(mo, text, "
+                + formatEnum + ", opts);"));
+            w.text("""
+                // The assembled graph is a ValueObject (a Map<String,Object>) with nested
+                // ValueObjects / List<ValueObject> — map it into the value objects' records.
+                @SuppressWarnings("unchecked")
+                java.util.Map<String, Object> d = (java.util.Map<String, Object>) raw.data();
+                """);
+            w.line("return new com.metaobjects.render.extract.ExtractionResult<>(from"
+                + mapperNames.get(payloadVo.getName()) + "(d), raw.report());");
         }
     }
 
@@ -303,12 +313,12 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
      * bounding is handled upstream by {@code MetaObjectExtractor}, so the per-FQN dedupe set
      * here also stops the emitter from recursing forever on a cyclic value-object graph.</p>
      */
-    protected void emitMapperMethods(StringBuilder src, MetaObject rootVo, Map<String, String> mapperNames) {
+    protected void emitMapperMethods(SpringJavaWriter w, MetaObject rootVo, Map<String, String> mapperNames) {
         Set<String> emitted = new LinkedHashSet<>();
-        emitMapper(src, rootVo, mapperNames, emitted);
+        emitMapper(w, rootVo, mapperNames, emitted);
     }
 
-    protected void emitMapper(StringBuilder src, MetaObject vo, Map<String, String> mapperNames, Set<String> emitted) {
+    protected void emitMapper(SpringJavaWriter w, MetaObject vo, Map<String, String> mapperNames, Set<String> emitted) {
         if (!emitted.add(vo.getName())) {
             return; // already emitted (dedupe + cycle guard) — vo.getName() is already the
                      // FQN (Java's MetaObject.getName() is package-qualified), so this key
@@ -322,31 +332,25 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
         List<MetaObject> nestedVos = new ArrayList<>();
 
         String payloadClass = SpringNaming.valueObjectRef(vo);
-        StringBuilder body = new StringBuilder();
-        body.append("\n");
-        body.append("    /** Map an assembled ValueObject (Map) into a typed {@link ")
-            .append(payloadClass).append("}. Generated; null-tolerant. */\n");
-        body.append("    private static ").append(payloadClass)
-            .append(" from").append(mapperNames.get(vo.getName()))
-            .append("(java.util.Map<String, Object> d) {\n");
-        body.append("        if (d == null) return null;\n");
-        body.append("        return new ").append(payloadClass).append("(\n");
-
-        List<MetaField> fields = new ArrayList<>(vo.getMetaFields());
-        for (int i = 0; i < fields.size(); i++) {
-            MetaField<?> field = fields.get(i);
-            String arg = mapperArgForField(field, vo, payloadClass, mapperNames, nestedVos);
-            body.append("                ").append(arg);
-            if (i < fields.size() - 1) body.append(',');
-            body.append('\n');
+        w.blank();
+        w.line("/** Map an assembled ValueObject (Map) into a typed {@link " + payloadClass
+            + "}. Generated; null-tolerant. */");
+        try (var m = w.block("private static " + payloadClass + " from" + mapperNames.get(vo.getName())
+                + "(java.util.Map<String, Object> d) {")) {
+            w.line("if (d == null) return null;");
+            w.line("return new " + payloadClass + "(");
+            List<MetaField> fields = new ArrayList<>(vo.getMetaFields());
+            for (int i = 0; i < fields.size(); i++) {
+                MetaField<?> field = fields.get(i);
+                String arg = mapperArgForField(field, vo, payloadClass, mapperNames, nestedVos);
+                w.continuation(arg + (i < fields.size() - 1 ? "," : ""));
+            }
+            w.line(");");
         }
-        body.append("        );\n");
-        body.append("    }\n");
-        src.append(body);
 
         // Recurse into nested value objects (post-order, deduped).
         for (MetaObject nested : nestedVos) {
-            emitMapper(src, nested, mapperNames, emitted);
+            emitMapper(w, nested, mapperNames, emitted);
         }
     }
 
@@ -561,158 +565,164 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
     }
 
     /**
-     * Append the two shared private-static helpers the runtime-delegating mappers rely on:
-     * {@code asMap} (null-tolerant {@code Object -> Map<String,Object>} cast) and
-     * {@code mapObjectList} (map each element of an assembled {@code List} via a per-element
-     * function, skipping non-Map elements). Emitted once per parser class.
+     * Write the two shared private-static helpers the runtime-delegating mappers rely on
+     * ({@code asMap}, {@code mapObjectList}), plus the scalar coercion helpers named in
+     * {@code usedCoercions} — and only those: an unreferenced private static method is dead
+     * weight in every generated parser and trips the unused-private lint some adopters build with.
      */
-    protected static void appendMapperHelpers(StringBuilder src) {
-        appendMapperHelpers(src, java.util.Set.of());
+    protected void writeMapperHelpers(SpringJavaWriter w, java.util.Set<String> usedCoercions) {
+        w.blank();
+        w.text("""
+            /** Null-tolerant cast of an assembled value to a Map (a ValueObject IS a Map). */
+            @SuppressWarnings("unchecked")
+            private static java.util.Map<String, Object> asMap(Object v) {
+                return (v instanceof java.util.Map) ? (java.util.Map<String, Object>) v : null;
+            }
+            """);
+        w.blank();
+        w.text("""
+            /** Map each element of an assembled List<Map> via {@code fn}; null/absent -> null; non-Map elements skipped. */
+            private static <T> java.util.List<T> mapObjectList(
+                    java.util.Map<String, Object> d, String key,
+                    java.util.function.Function<java.util.Map<String, Object>, T> fn) {
+                Object v = d == null ? null : d.get(key);
+                if (!(v instanceof java.util.List<?> list)) return null;
+                java.util.List<T> out = new java.util.ArrayList<>(list.size());
+                for (Object elem : list) {
+                    java.util.Map<String, Object> m = asMap(elem);
+                    if (m != null) out.add(fn.apply(m));
+                }
+                return out;
+            }
+            """);
+        writeCoercionHelpers(w, usedCoercions);
     }
 
     /**
-     * As {@link #appendMapperHelpers(StringBuilder)}, plus the scalar coercion helpers named in
-     * {@code usedCoercions}. Only the ones the mappers actually call are emitted: an unused
-     * private static method is dead weight in every generated parser and trips the
-     * unused-private lint some adopters build with.
-     */
-    protected static void appendMapperHelpers(StringBuilder src, java.util.Set<String> usedCoercions) {
-        src.append("\n");
-        src.append("    /** Null-tolerant cast of an assembled value to a Map (a ValueObject IS a Map). */\n");
-        src.append("    @SuppressWarnings(\"unchecked\")\n");
-        src.append("    private static java.util.Map<String, Object> asMap(Object v) {\n");
-        src.append("        return (v instanceof java.util.Map) ? (java.util.Map<String, Object>) v : null;\n");
-        src.append("    }\n");
-        src.append("\n");
-        src.append("    /** Map each element of an assembled List<Map> via {@code fn}; null/absent -> null; non-Map elements skipped. */\n");
-        src.append("    private static <T> java.util.List<T> mapObjectList(\n");
-        src.append("            java.util.Map<String, Object> d, String key,\n");
-        src.append("            java.util.function.Function<java.util.Map<String, Object>, T> fn) {\n");
-        src.append("        Object v = d == null ? null : d.get(key);\n");
-        src.append("        if (!(v instanceof java.util.List<?> list)) return null;\n");
-        src.append("        java.util.List<T> out = new java.util.ArrayList<>(list.size());\n");
-        src.append("        for (Object elem : list) {\n");
-        src.append("            java.util.Map<String, Object> m = asMap(elem);\n");
-        src.append("            if (m != null) out.add(fn.apply(m));\n");
-        src.append("        }\n");
-        src.append("        return out;\n");
-        src.append("    }\n");
-        appendCoercionHelpers(src, usedCoercions);
-    }
-
-    /**
-     * Emit the scalar coercion helpers named in {@code used}. Every one is NEVER-THROWS: the
+     * Write the scalar coercion helpers named in {@code used}. Every one is NEVER-THROWS: the
      * lenient tier's whole contract is that one malformed component becomes null rather than
      * losing the entire extract, so a bad date string must not take the other twenty fields
      * with it.
      */
-    private static void appendCoercionHelpers(StringBuilder src, java.util.Set<String> used) {
+    protected void writeCoercionHelpers(SpringJavaWriter w, java.util.Set<String> used) {
         if (used.isEmpty()) return;
-        src.append("\n");
-        src.append("    // ---- scalar coercions (generated; never throw — a malformed value becomes null) ----\n");
+        w.blank();
+        w.line("// ---- scalar coercions (generated; never throw — a malformed value becomes null) ----");
 
         if (used.contains(COERCE_LIST)) {
-            src.append("\n");
-            src.append("    /** Coerce each element of an assembled List via {@code fn}; null/absent -> null. */\n");
-            src.append("    private static <T> java.util.List<T> coerceList(\n");
-            src.append("            java.util.Map<String, Object> d, String key, java.util.function.Function<Object, T> fn) {\n");
-            src.append("        Object v = d == null ? null : d.get(key);\n");
-            src.append("        if (!(v instanceof java.util.List<?> list)) return null;\n");
-            src.append("        java.util.List<T> out = new java.util.ArrayList<>(list.size());\n");
-            src.append("        for (Object elem : list) out.add(fn.apply(elem));\n");
-            src.append("        return out;\n");
-            src.append("    }\n");
+            w.blank();
+            w.text("""
+                /** Coerce each element of an assembled List via {@code fn}; null/absent -> null. */
+                private static <T> java.util.List<T> coerceList(
+                        java.util.Map<String, Object> d, String key, java.util.function.Function<Object, T> fn) {
+                    Object v = d == null ? null : d.get(key);
+                    if (!(v instanceof java.util.List<?> list)) return null;
+                    java.util.List<T> out = new java.util.ArrayList<>(list.size());
+                    for (Object elem : list) out.add(fn.apply(elem));
+                    return out;
+                }
+                """);
         }
         // A number arrives either already-typed (a JSON number the engine boxed) or as the
         // String the engine produces for a STRING-kind field — both are accepted.
-        emitNumeric(src, used, "coerceInt",    "Integer", "intValue",    "Integer.parseInt");
-        emitNumeric(src, used, "coerceLong",   "Long",    "longValue",   "Long.parseLong");
-        emitNumeric(src, used, "coerceDouble", "Double",  "doubleValue", "Double.parseDouble");
-        emitNumeric(src, used, "coerceFloat",  "Float",   "floatValue",  "Float.parseFloat");
+        writeNumericCoercion(w, used, "coerceInt",    "Integer", "intValue",    "Integer.parseInt");
+        writeNumericCoercion(w, used, "coerceLong",   "Long",    "longValue",   "Long.parseLong");
+        writeNumericCoercion(w, used, "coerceDouble", "Double",  "doubleValue", "Double.parseDouble");
+        writeNumericCoercion(w, used, "coerceFloat",  "Float",   "floatValue",  "Float.parseFloat");
 
         if (used.contains("coerceDecimal")) {
-            src.append("\n");
-            src.append("    private static java.math.BigDecimal coerceDecimal(Object v) {\n");
-            src.append("        if (v instanceof java.math.BigDecimal b) return b;\n");
-            src.append("        if (v == null) return null;\n");
-            src.append("        try {\n");
             // Via toString(), never doubleValue(): new BigDecimal(0.1d) is
             // 0.1000000000000000055511151231257827, and precision is the entire reason the
             // model said `decimal` instead of `double`.
-            src.append("            return new java.math.BigDecimal(v.toString().trim());\n");
-            src.append("        } catch (NumberFormatException e) { return null; }\n");
-            src.append("    }\n");
+            w.blank();
+            w.text("""
+                private static java.math.BigDecimal coerceDecimal(Object v) {
+                    if (v instanceof java.math.BigDecimal b) return b;
+                    if (v == null) return null;
+                    try {
+                        return new java.math.BigDecimal(v.toString().trim());
+                    } catch (NumberFormatException e) { return null; }
+                }
+                """);
         }
         if (used.contains("coerceBool")) {
-            src.append("\n");
-            src.append("    private static Boolean coerceBool(Object v) {\n");
-            src.append("        if (v instanceof Boolean b) return b;\n");
-            src.append("        if (v == null) return null;\n");
-            src.append("        String s = v.toString().trim();\n");
-            src.append("        if (\"true\".equalsIgnoreCase(s)) return Boolean.TRUE;\n");
-            src.append("        if (\"false\".equalsIgnoreCase(s)) return Boolean.FALSE;\n");
-            src.append("        return null;\n");
-            src.append("    }\n");
+            w.blank();
+            w.text("""
+                private static Boolean coerceBool(Object v) {
+                    if (v instanceof Boolean b) return b;
+                    if (v == null) return null;
+                    String s = v.toString().trim();
+                    if ("true".equalsIgnoreCase(s)) return Boolean.TRUE;
+                    if ("false".equalsIgnoreCase(s)) return Boolean.FALSE;
+                    return null;
+                }
+                """);
         }
         // The temporal coercions take an extra `java.util.Date` arm: MetaField.setObject routes
         // through DataConverter, so by the time the assembled ValueObject reaches these the value
         // is ALREADY a java.util.Date — not the wire String. The String arm still matters for a
         // value that arrived through some other path, and costs one instanceof.
-        emitTemporal(src, used, "coerceDate",          "java.time.LocalDate",     "java.time.LocalDate.parse",     ".atZone(java.time.ZoneId.systemDefault()).toLocalDate()");
-        emitTemporal(src, used, "coerceTime",          "java.time.LocalTime",     "java.time.LocalTime.parse",     ".atZone(java.time.ZoneId.systemDefault()).toLocalTime()");
-        emitTemporal(src, used, "coerceInstant",       "java.time.Instant",       "java.time.Instant.parse",       "");
-        emitTemporal(src, used, "coerceLocalDateTime", "java.time.LocalDateTime", "java.time.LocalDateTime.parse", ".atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()");
-        emitParsed(src, used, "coerceUuid", "java.util.UUID", "java.util.UUID.fromString", "IllegalArgumentException");
+        writeTemporalCoercion(w, used, "coerceDate",          "java.time.LocalDate",     "java.time.LocalDate.parse",     ".atZone(java.time.ZoneId.systemDefault()).toLocalDate()");
+        writeTemporalCoercion(w, used, "coerceTime",          "java.time.LocalTime",     "java.time.LocalTime.parse",     ".atZone(java.time.ZoneId.systemDefault()).toLocalTime()");
+        writeTemporalCoercion(w, used, "coerceInstant",       "java.time.Instant",       "java.time.Instant.parse",       "");
+        writeTemporalCoercion(w, used, "coerceLocalDateTime", "java.time.LocalDateTime", "java.time.LocalDateTime.parse", ".atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()");
+        writeParsedCoercion(w, used, "coerceUuid", "java.util.UUID", "java.util.UUID.fromString", "IllegalArgumentException");
 
         if (used.contains("coerceUri")) {
-            src.append("\n");
-            src.append("    private static java.net.URI coerceUri(Object v) {\n");
-            src.append("        if (v instanceof java.net.URI u) return u;\n");
-            src.append("        if (v == null) return null;\n");
-            src.append("        try { return new java.net.URI(v.toString().trim()); }\n");
-            src.append("        catch (java.net.URISyntaxException e) { return null; }\n");
-            src.append("    }\n");
+            w.blank();
+            w.text("""
+                private static java.net.URI coerceUri(Object v) {
+                    if (v instanceof java.net.URI u) return u;
+                    if (v == null) return null;
+                    try { return new java.net.URI(v.toString().trim()); }
+                    catch (java.net.URISyntaxException e) { return null; }
+                }
+                """);
         }
         if (used.contains("coerceDuration")) {
-            src.append("\n");
-            src.append("    /** The accepted ISO-8601 form only (no years or months); anything else -> null. */\n");
-            src.append("    private static java.time.Duration coerceDuration(Object v) {\n");
-            src.append("        if (v instanceof java.time.Duration t) return t;\n");
-            src.append("        if (v == null) return null;\n");
-            src.append("        try { return com.metaobjects.field.DurationWire.parse(v.toString().trim()); }\n");
-            src.append("        catch (IllegalArgumentException e) { return null; }\n");
-            src.append("    }\n");
+            w.blank();
+            w.text("""
+                /** The accepted ISO-8601 form only (no years or months); anything else -> null. */
+                private static java.time.Duration coerceDuration(Object v) {
+                    if (v instanceof java.time.Duration t) return t;
+                    if (v == null) return null;
+                    try { return com.metaobjects.field.DurationWire.parse(v.toString().trim()); }
+                    catch (IllegalArgumentException e) { return null; }
+                }
+                """);
         }
         if (used.contains("coerceInet")) {
-            src.append("\n");
-            src.append("    /** IP LITERALS only — see the guard below. */\n");
-            src.append("    private static java.net.InetAddress coerceInet(Object v) {\n");
-            src.append("        if (v instanceof java.net.InetAddress a) return a;\n");
-            src.append("        if (v == null) return null;\n");
-            src.append("        String s = v.toString().trim();\n");
             // InetAddress.getByName() performs a DNS LOOKUP for anything that is not an IP
             // literal. A parser reading untrusted model output must never make a network call
             // (latency, and an attacker-chosen hostname becomes an outbound request), so a
             // non-literal is rejected outright rather than resolved. Java 21 has no
             // literal-only parser — InetAddress.ofLiteral is 22+ — hence the shape guard.
-            src.append("        if (!s.matches(\"[0-9.]+|[0-9A-Fa-f:.%\\\\[\\\\]]+\")) return null;\n");
-            src.append("        try { return java.net.InetAddress.getByName(s); }\n");
-            src.append("        catch (java.net.UnknownHostException e) { return null; }\n");
-            src.append("    }\n");
+            w.blank();
+            w.text("""
+                /** IP LITERALS only — see the guard below. */
+                private static java.net.InetAddress coerceInet(Object v) {
+                    if (v instanceof java.net.InetAddress a) return a;
+                    if (v == null) return null;
+                    String s = v.toString().trim();
+                    if (!s.matches("[0-9.]+|[0-9A-Fa-f:.%\\\\[\\\\]]+")) return null;
+                    try { return java.net.InetAddress.getByName(s); }
+                    catch (java.net.UnknownHostException e) { return null; }
+                }
+                """);
         }
     }
 
     /** A Number-or-String numeric coercion: {@code <boxed> <name>(Object)}. */
-    private static void emitNumeric(StringBuilder src, java.util.Set<String> used,
-                                    String name, String boxed, String numberAccessor, String parser) {
+    protected void writeNumericCoercion(SpringJavaWriter w, java.util.Set<String> used,
+                                        String name, String boxed, String numberAccessor, String parser) {
         if (!used.contains(name)) return;
-        src.append("\n");
-        src.append("    private static ").append(boxed).append(" ").append(name).append("(Object v) {\n");
-        src.append("        if (v instanceof Number n) return n.").append(numberAccessor).append("();\n");
-        src.append("        if (v == null) return null;\n");
-        src.append("        try { return ").append(parser).append("(v.toString().trim()); }\n");
-        src.append("        catch (NumberFormatException e) { return null; }\n");
-        src.append("    }\n");
+        w.blank();
+        try (var m = w.block("private static " + boxed + " " + name + "(Object v) {")) {
+            w.line("if (v instanceof Number n) return n." + numberAccessor + "();");
+            w.line("if (v == null) return null;");
+            w.line("try { return " + parser + "(v.toString().trim()); }");
+            w.line("catch (NumberFormatException e) { return null; }");
+        }
     }
 
     /**
@@ -721,30 +731,30 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
      * wire String. {@code fromInstant} is the suffix applied to {@code d.toInstant()} — empty
      * when the target IS an Instant.
      */
-    private static void emitTemporal(StringBuilder src, java.util.Set<String> used,
-                                      String name, String type, String parser, String fromInstant) {
+    protected void writeTemporalCoercion(SpringJavaWriter w, java.util.Set<String> used,
+                                         String name, String type, String parser, String fromInstant) {
         if (!used.contains(name)) return;
-        src.append("\n");
-        src.append("    private static ").append(type).append(" ").append(name).append("(Object v) {\n");
-        src.append("        if (v instanceof ").append(type).append(" t) return t;\n");
-        src.append("        if (v == null) return null;\n");
-        src.append("        if (v instanceof java.util.Date d) return d.toInstant()").append(fromInstant).append(";\n");
-        src.append("        try { return ").append(parser).append("(v.toString().trim()); }\n");
-        src.append("        catch (java.time.format.DateTimeParseException e) { return null; }\n");
-        src.append("    }\n");
+        w.blank();
+        try (var m = w.block("private static " + type + " " + name + "(Object v) {")) {
+            w.line("if (v instanceof " + type + " t) return t;");
+            w.line("if (v == null) return null;");
+            w.line("if (v instanceof java.util.Date d) return d.toInstant()" + fromInstant + ";");
+            w.line("try { return " + parser + "(v.toString().trim()); }");
+            w.line("catch (java.time.format.DateTimeParseException e) { return null; }");
+        }
     }
 
     /** A parse-from-String coercion that passes an already-typed value straight through. */
-    private static void emitParsed(StringBuilder src, java.util.Set<String> used,
-                                   String name, String type, String parser, String thrown) {
+    protected void writeParsedCoercion(SpringJavaWriter w, java.util.Set<String> used,
+                                       String name, String type, String parser, String thrown) {
         if (!used.contains(name)) return;
-        src.append("\n");
-        src.append("    private static ").append(type).append(" ").append(name).append("(Object v) {\n");
-        src.append("        if (").append(type).append(".class.isInstance(v)) return ").append(type).append(".class.cast(v);\n");
-        src.append("        if (v == null) return null;\n");
-        src.append("        try { return ").append(parser).append("(v.toString().trim()); }\n");
-        src.append("        catch (").append(thrown).append(" e) { return null; }\n");
-        src.append("    }\n");
+        w.blank();
+        try (var m = w.block("private static " + type + " " + name + "(Object v) {")) {
+            w.line("if (" + type + ".class.isInstance(v)) return " + type + ".class.cast(v);");
+            w.line("if (v == null) return null;");
+            w.line("try { return " + parser + "(v.toString().trim()); }");
+            w.line("catch (" + thrown + " e) { return null; }");
+        }
     }
 
 

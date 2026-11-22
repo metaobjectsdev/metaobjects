@@ -52,8 +52,14 @@ describe("openApiCheck", () => {
     expect(() => check(request("GET", "/api/authors?shiny=1"), 200, "[]")).toThrow("'shiny' is not in the document");
   });
 
-  test("leaves the TypeScript-only extensions alone", () => {
+  test("takes search and a nested combinator, which the document states", () => {
     expect(() => check(request("GET", "/api/authors?search=ada"), 200, "[]")).not.toThrow();
+    const nested = "filter%5Bor%5D%5B0%5D%5Bname%5D%5Beq%5D=Ada&filter%5Band%5D%5B0%5D%5Bor%5D%5B0%5D%5Bid%5D%5Bgt%5D=1";
+    expect(() => check(request("GET", `/api/authors?${nested}`), 200, "[]")).not.toThrow();
+  });
+
+  test("refuses a bracketed key under a parameter that is not a deepObject", () => {
+    expect(() => check(request("GET", "/api/authors?sort%5B0%5D=name"), 200, "[]")).toThrow("'sort[0]' is not in the document");
   });
 
   test("refuses a request body the document would not accept, when a 2xx took it", () => {

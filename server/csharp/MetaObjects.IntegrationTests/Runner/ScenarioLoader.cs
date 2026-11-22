@@ -160,6 +160,9 @@ public static class ScenarioLoader
         // the authoring forms (a quoted decimal/uuid stays a string; a nested object is
         // a mapping). Mirrors the Expect capture rationale above.
         public YamlNode? Insert { get; set; }
+        // For op: guardedUpdate — the guard (field, from, to, condition). Loaded so the
+        // scenario file parses; the op itself is deferred (CorpusPaths.Deferred).
+        public YamlNode? Guard { get; set; }
         public YamlNode? Expect { get; set; }
     }
 

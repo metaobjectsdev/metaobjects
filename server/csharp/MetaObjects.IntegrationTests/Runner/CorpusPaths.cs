@@ -26,8 +26,20 @@ internal static class CorpusPaths
     public static IEnumerable<object[]> ScenariosFor(ScenarioEngine engine) =>
         Directory.EnumerateFiles(QueriesDir, "*.yaml", SearchOption.TopDirectoryOnly)
             .OrderBy(p => p, StringComparer.Ordinal)
-            .Where(p => ScenarioLoader.LoadQuery(p).RunsOn(engine))
-            .Select(p => new object[] { p });
+            .Select(p => (Path: p, Scenario: ScenarioLoader.LoadQuery(p)))
+            .Where(s => s.Scenario.RunsOn(engine) && !Deferred.ContainsKey(s.Scenario.Name))
+            .Select(s => new object[] { s.Path });
+
+    /// <summary>
+    /// Scenarios this port defers on every engine, each with the port gap that blocks it. Every
+    /// other scenario under <c>queries/</c> runs, so a new fixture auto-runs or auto-fails and a
+    /// deferral is a deliberate entry here. xUnit 2 has no runtime skip, so a deferred scenario
+    /// is left out of the member data rather than skipped.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, string> Deferred = new Dictionary<string, string>
+    {
+        ["guarded-update"] = "op: guardedUpdate: the guarded update on the generated context is not built yet (1.3.0 row L-CS-2)",
+    };
 
     /// <summary>
     /// The committed canonical Postgres schema artifact. TypeScript is the single

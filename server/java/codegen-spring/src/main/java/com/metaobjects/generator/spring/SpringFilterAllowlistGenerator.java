@@ -4,6 +4,7 @@ package com.metaobjects.generator.spring;
 // com.metaobjects.generator.spring when this generator is copied out via
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.generator.spring.SpringJavaWriter;
 import com.metaobjects.generator.spring.SpringGeneratorSupport;
 import com.metaobjects.generator.spring.SpringNaming;
 import com.metaobjects.generator.spring.TphPlan;
@@ -250,92 +251,71 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
             }
         }
 
-        StringBuilder src = new StringBuilder();
-        if (!pkg.isEmpty()) {
-            src.append("package ").append(pkg).append(";\n\n");
+        SpringJavaWriter w = new SpringJavaWriter();
+        if (!pkg.isEmpty()) w.packageName(pkg);
+        w.use("java.util.Map");
+        w.use("java.util.Set");
+        w.line("/**");
+        w.line(" * GENERATED — per-entity FR-009 filter allowlist for " + shortName + ".");
+        w.line(" * FIELDS lists the filterable field names; OPS_BY_FIELD constrains the");
+        w.line(" * operator vocabulary for each field by its subtype.");
+        w.line(" */");
+        try (var cls = w.block("public final class " + className + " {")) {
+            // FIELDS — the field-name set. Use Set.of() for the empty + small cases.
+            w.line("public static final Set<String> FIELDS = Set.of(" + quotedList(opsByField.keySet()) + ");");
+            w.blank();
+            writeOpsByField(w, opsByField);
+            // DECIMAL_FIELDS — the filterable fields whose operand is a decimal. FilterParser parses
+            // each such operand with the W2 grammar and compares it exactly (ADR-0019 Amendment 1);
+            // a malformed one is 400 invalid_filter_value.
+            w.blank();
+            w.line("/** Filterable fields typed decimal: their operands parse exactly (W2), never through a double. */");
+            w.line("public static final Set<String> DECIMAL_FIELDS = Set.of(" + quotedList(decimalFields) + ");");
+            w.blank();
+            w.line("/** Filterable fields typed duration under wire.durations: iso: their operands parse as a span. */");
+            w.line("public static final Set<String> DURATION_FIELDS = Set.of(" + quotedList(durationFields) + ");");
+            // No instances — pure constants holder.
+            w.blank();
+            w.line("private " + className + "() {}");
         }
-        src.append("import java.util.Map;\n");
-        src.append("import java.util.Set;\n\n");
-        src.append("/**\n");
-        src.append(" * GENERATED — per-entity FR-009 filter allowlist for ").append(shortName).append(".\n");
-        src.append(" * FIELDS lists the filterable field names; OPS_BY_FIELD constrains the\n");
-        src.append(" * operator vocabulary for each field by its subtype.\n");
-        src.append(" */\n");
-        src.append("public final class ").append(className).append(" {\n");
-
-        // FIELDS — the field-name set. Use Set.of() for the empty + small cases.
-        src.append("    public static final Set<String> FIELDS = Set.of(");
-        boolean first = true;
-        for (String f : opsByField.keySet()) {
-            if (!first) src.append(", ");
-            first = false;
-            src.append('"').append(f).append('"');
-        }
-        src.append(");\n\n");
-
-        // OPS_BY_FIELD — Map<field, Set<op>>. Empty map literal when no filterable fields.
-        src.append("    public static final Map<String, Set<String>> OPS_BY_FIELD = ");
-        if (opsByField.isEmpty()) {
-            src.append("Map.of();\n");
-        } else {
-            // Map.of stops at ten pairs; past that the same map is spelled with
-            // Map.ofEntries. Ten or fewer keep the Map.of form, so every allowlist that
-            // compiled before is byte-identical. (A served report makes EVERY derived field
-            // filterable, FR-044 Table C, so a wide report crosses ten where a hand-marked
-            // entity rarely did.)
-            boolean entries = opsByField.size() > MAP_OF_MAX_PAIRS;
-            src.append(entries ? "Map.ofEntries(\n" : "Map.of(\n");
-            int i = 0;
-            for (Map.Entry<String, Set<String>> e : opsByField.entrySet()) {
-                src.append("        ").append(entries ? "Map.entry(" : "")
-                   .append('"').append(e.getKey()).append("\", Set.of(");
-                boolean firstOp = true;
-                for (String op : e.getValue()) {
-                    if (!firstOp) src.append(", ");
-                    firstOp = false;
-                    src.append('"').append(op).append('"');
-                }
-                src.append(entries ? "))" : ")");
-                if (i++ < opsByField.size() - 1) src.append(',');
-                src.append('\n');
-            }
-            src.append("    );\n");
-        }
-
-        // DECIMAL_FIELDS — the filterable fields whose operand is a decimal. FilterParser parses
-        // each such operand with the W2 grammar and compares it exactly (ADR-0019 Amendment 1);
-        // a malformed one is 400 invalid_filter_value.
-        src.append("\n    /** Filterable fields typed decimal: their operands parse exactly (W2), never through a double. */\n");
-        src.append("    public static final Set<String> DECIMAL_FIELDS = Set.of(");
-        boolean firstDecimal = true;
-        for (String f : decimalFields) {
-            if (!firstDecimal) src.append(", ");
-            firstDecimal = false;
-            src.append('"').append(f).append('"');
-        }
-        src.append(");\n");
-
-        src.append("\n    /** Filterable fields typed duration under wire.durations: iso: their operands parse as a span. */\n");
-        src.append("    public static final Set<String> DURATION_FIELDS = Set.of(");
-        boolean firstDuration = true;
-        for (String f : durationFields) {
-            if (!firstDuration) src.append(", ");
-            firstDuration = false;
-            src.append('"').append(f).append('"');
-        }
-        src.append(");\n");
-
-        // No instances — pure constants holder.
-        src.append("\n    private ").append(className).append("() {}\n");
-        src.append("}\n");
 
         try {
             Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(className + ".java");
-            GeneratedFileWriter.write(outFile, src.toString());
+            GeneratedFileWriter.write(outFile, w.toString());
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing " + className + ".java for entity " + entity.getName() + ": " + e, e);
         }
+    }
+
+    /** {@code OPS_BY_FIELD}: each filterable field to its operator set. */
+    protected void writeOpsByField(SpringJavaWriter w, Map<String, Set<String>> opsByField) {
+        if (opsByField.isEmpty()) {
+            w.line("public static final Map<String, Set<String>> OPS_BY_FIELD = Map.of();");
+            return;
+        }
+        // Map.of stops at ten pairs; past that the same map is spelled with
+        // Map.ofEntries. Ten or fewer keep the Map.of form, so every allowlist that
+        // compiled before is byte-identical. (A served report makes EVERY derived field
+        // filterable, FR-044 Table C, so a wide report crosses ten where a hand-marked
+        // entity rarely did.)
+        boolean entries = opsByField.size() > MAP_OF_MAX_PAIRS;
+        w.line("public static final Map<String, Set<String>> OPS_BY_FIELD = " + (entries ? "Map.ofEntries(" : "Map.of("));
+        w.deeper(1, () -> {
+            int i = 0;
+            for (Map.Entry<String, Set<String>> e : opsByField.entrySet()) {
+                String pair = "\"" + e.getKey() + "\", Set.of(" + quotedList(e.getValue()) + ")";
+                w.line((entries ? "Map.entry(" + pair + ")" : pair) + (i++ < opsByField.size() - 1 ? "," : ""));
+            }
+        });
+        w.line(");");
+    }
+
+    /** {@code "a", "b", "c"}: each name as a Java string literal, comma separated. */
+    protected static String quotedList(java.util.Collection<String> names) {
+        List<String> out = new java.util.ArrayList<>();
+        for (String n : names) out.add("\"" + n + "\"");
+        return String.join(", ", out);
     }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================

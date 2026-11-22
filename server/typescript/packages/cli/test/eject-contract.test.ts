@@ -341,6 +341,8 @@ const CORPORA: Corpus[] = [
   // The grid tier is TypeScript-only, so its model is this port's own fixture.
   { label: "data-grid", files: [join(PACKAGES, "codegen-ts-tanstack", "test", "fixtures", "single-entity.json")] },
   { label: "llm-call", files: inputs("conformance", "ai-trace-prompt-nested", "input") },
+  // Lifecycles, a claimed and an unclaimed transition, and an API with a command and queries.
+  { label: "rules", files: [join(FIXTURES, "codegen-noop", "rules", "with", "meta.purchasing.json")] },
 ];
 
 /**

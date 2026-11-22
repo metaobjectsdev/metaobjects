@@ -76,20 +76,22 @@ export function mine(opts: { cache?: boolean } = {}) {
 }
 `;
 
-const config = (mineArgs = "") => `import { defineConfig } from "@metaobjectsdev/codegen-ts";
-import { mine } from "./codegen/generators/mine";
+const config = (mineArgs = "", docs = false) => `import { defineConfig } from "@metaobjectsdev/codegen-ts";
+${docs ? 'import { docsFile, templateGenerator } from "@metaobjectsdev/codegen-ts/generators";\n' : ""}import { mine } from "./codegen/generators/mine";
 export default defineConfig({
   outDir: "generated",
   dialect: "sqlite",
   dbImport: "~/db",
   extStyle: "none",
-  generators: ["entity", mine(${mineArgs})],
+${docs ? '  targets: { docs: { outDir: "./docs/generated" } },\n' : ""}  generators: ["entity", mine(${mineArgs})${docs
+    ? ', templateGenerator({ name: "note", template: "note", scope: "perEntity", outputPattern: "notes/{name}.txt" }), docsFile()'
+    : ""}],
 });
 `;
 
 interface Project { root: string; }
 
-function makeProject(opts: { uncacheable?: boolean } = {}): Project {
+function makeProject(opts: { uncacheable?: boolean; docs?: boolean } = {}): Project {
   mkdirSync(WORKSPACE_TMP, { recursive: true });
   const root = mkdtempSync(join(WORKSPACE_TMP, "gen-skip-"));
   made.push(root);
@@ -106,7 +108,7 @@ function makeProject(opts: { uncacheable?: boolean } = {}): Project {
   writeFileSync(join(root, "codegen", "generators", "mine.ts"), OWNED);
   writeFileSync(join(root, "extra.txt"), "extra\n");
   writeFileSync(join(root, "README.md"), "a project\n");
-  writeFileSync(join(root, "metaobjects.config.ts"), config(opts.uncacheable === true ? "{ cache: false }" : ""));
+  writeFileSync(join(root, "metaobjects.config.ts"), config(opts.uncacheable === true ? "{ cache: false }" : "", opts.docs === true));
   return { root };
 }
 
@@ -150,6 +152,8 @@ async function verifyMayAnswer(p: Project, r: Runner): Promise<boolean> {
 /** One case: what to change, and how to ask afterwards. */
 interface Runner {
   uncacheable?: boolean;
+  /** Also configure a `template` generator and a docs page generator. */
+  docs?: boolean;
   change?: (p: Project) => void | Promise<void>;
   args?: string[];
   env?: NodeJS.ProcessEnv;
@@ -157,8 +161,18 @@ interface Runner {
   /** `verify --codegen --full`. */
   full?: boolean;
   /** Checked after both answers: what the read-only questions must have left alone. */
-  after?: (p: Project) => void;
+  after?: (p: Project) => void | Promise<void>;
 }
+
+/** Every file under `dir`, recursively, with its bytes and modification time. */
+const snapshotTree = (dir: string): [string, string, number][] =>
+  !existsSync(dir) ? [] : readdirSync(dir, { recursive: true, withFileTypes: true })
+    .filter((e) => e.isFile())
+    .map((e): [string, string, number] => {
+      const f = join(e.parentPath, e.name);
+      return [f, readFileSync(f, "utf-8"), statSync(f).mtimeMs];
+    })
+    .sort((a, b) => a[0].localeCompare(b[0]));
 
 const append = (path: string, text: string) => writeFileSync(path, readFileSync(path, "utf-8") + text);
 
@@ -239,6 +253,24 @@ const RUNNERS: Record<string, Runner> = {
     },
   },
   "force": { args: ["--force"], full: true },
+  "template-and-docs-rerun": {
+    docs: true,
+    after: async (p) => {
+      // The first run really wrote the template output and the docs page.
+      expect(existsSync(join(p.root, "generated", "notes", "Order.txt"))).toBe(true);
+      expect(snapshotTree(join(p.root, "docs", "generated")).length).toBeGreaterThan(0);
+      const watched = () => [
+        ...snapshotTree(join(p.root, "generated")),
+        ...snapshotTree(join(p.root, "docs", "generated")),
+        ...snapshotTree(join(p.root, ".metaobjects", ".gen-state", ".hashes")),
+      ];
+      const before = watched();
+      await new Promise((r) => setTimeout(r, 20));
+      // A forced run renders everything again and writes zero files.
+      expect(await gen(p, ["--force"])).toBe(0);
+      expect(watched()).toEqual(before);
+    },
+  },
   "ci": { env: { CI: "true" } },
   "failed-run": {
     change: async (p) => {
@@ -260,13 +292,13 @@ describe("codegen-skip-conformance (ADR-0064)", () => {
     test(`${c.id}: gen ${c.gen}, verify ${c.verify}`, async () => {
       const runner = RUNNERS[c.id];
       if (runner === undefined) throw new Error(`no runner for case "${c.id}"`);
-      const p = makeProject({ uncacheable: runner.uncacheable === true });
+      const p = makeProject({ uncacheable: runner.uncacheable === true, docs: runner.docs === true });
       expect(await gen(p)).toBe(0);
       expect(existsSync(stateFile(p))).toBe(runner.uncacheable !== true);
       await runner.change?.(p);
       expect(await genSkips(p, runner)).toBe(c.gen === "skip");
       expect(await verifyMayAnswer(p, runner)).toBe(c.verify === "may-answer-no-drift");
-      runner.after?.(p);
+      await runner.after?.(p);
     }, 30_000);
   }
 });

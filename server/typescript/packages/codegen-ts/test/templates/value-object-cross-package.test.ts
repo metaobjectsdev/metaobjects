@@ -8,13 +8,13 @@
 // so every reference must be `../common/Triple` under package layout.
 
 import { describe, it, expect } from "bun:test";
-import { mkdtempSync, rmSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { runGen, defineConfig } from "../../src/index.js";
 import { entityFile } from "../../src/generators/entity-file.js";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
+import { makeScratchDir, removeTree } from "../../src/scratch-dir.js";
 
 const FIXTURE = resolve(import.meta.dir, "../fixtures/cross-package-vo.json");
 
@@ -26,7 +26,7 @@ if (loadResult.errors.length > 0) {
 const metadataRoot = loadResult.root;
 
 async function genFile(dialect: "postgres" | "sqlite", outputLayout: "flat" | "package"): Promise<string> {
-  const tmp = mkdtempSync(join(tmpdir(), "codegen-vo-xpkg-"));
+  const tmp = makeScratchDir("codegen-vo-xpkg-");
   try {
     const result = await runGen({
       config: defineConfig({
@@ -43,7 +43,7 @@ async function genFile(dialect: "postgres" | "sqlite", outputLayout: "flat" | "p
     const rel = outputLayout === "package" ? "acme/ai/SemanticTrace.ts" : "SemanticTrace.ts";
     return readFileSync(join(tmp, rel), "utf-8");
   } finally {
-    rmSync(tmp, { recursive: true, force: true });
+    removeTree(tmp);
   }
 }
 

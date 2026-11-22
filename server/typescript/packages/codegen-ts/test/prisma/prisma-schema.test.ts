@@ -5,8 +5,7 @@
 // tests. Refresh the goldens with UPDATE_GOLDEN=1.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { InMemoryStringSource, MetaDataLoader, type MetaRoot } from "@metaobjectsdev/metadata";
 import { defineConfig, runGen, type Generator } from "../../src/index.js";
@@ -24,6 +23,7 @@ import {
   ERR_PRISMA_NO_PRIMARY_KEY,
   PrismaSchemaError,
 } from "../../src/prisma/prisma-errors.js";
+import { makeScratchDir, removeTree } from "../../src/scratch-dir.js";
 
 const UPDATE = process.env.UPDATE_GOLDEN === "1";
 const SHOP = join(import.meta.dir, "fixtures", "shop", "metaobjects", "meta.shop.json");
@@ -33,10 +33,10 @@ type Json = Record<string, unknown>;
 
 let tmp: string;
 beforeEach(() => {
-  tmp = mkdtempSync(join(tmpdir(), "prisma-schema-"));
+  tmp = makeScratchDir("prisma-schema-");
 });
 afterEach(() => {
-  rmSync(tmp, { recursive: true, force: true });
+  removeTree(tmp);
 });
 
 async function loadJson(text: string): Promise<MetaRoot> {

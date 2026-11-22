@@ -1,0 +1,40 @@
+{
+  "title": "Part",
+  "type": "object",
+  "properties": {
+    "name": {
+      "description": "Minimum length: 1. Maximum length: 100.",
+      "type": "string"
+    },
+    "sku": {
+      "description": "Minimum length: 1. Maximum length: 20.",
+      "type": "string"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "tool",
+        "part",
+        "kit"
+      ]
+    },
+    "stock": {
+      "type": "integer"
+    },
+    "notes": {
+      "description": "Maximum length: 200.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "name",
+    "sku",
+    "category",
+    "stock",
+    "notes"
+  ],
+  "additionalProperties": false
+}

@@ -142,7 +142,7 @@ jobs:
         env:
           LANE: ${{ matrix.lane }}
         run: |
-          METAOBJECTS_CI_M2_REPO="$HOME/.m2/repository" \
+          METAOBJECTS_CI_M2_RUN_REPO="$HOME/.m2/repository" \
             scripts/ci-local.sh --only "$LANE" --no-integration --strict-toolchains
 
   python:

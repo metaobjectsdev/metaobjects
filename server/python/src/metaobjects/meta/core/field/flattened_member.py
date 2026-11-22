@@ -41,3 +41,16 @@ def resolve_flattened_member(entity: MetaData, path: str) -> FlattenedMember | N
         return None
     member = next((c for c in vo.children() if c.type == TYPE_FIELD and c.name == tail), None)
     return None if member is None else FlattenedMember(embedding, member)
+
+
+def flat_key_of_path(entity: MetaData, path: str) -> str:
+    """The flat key a ``<embedding>.<member>`` *path* has on *entity*'s table
+    (``address.countryId`` -> ``addressCountryId``); any other path is returned as given.
+    Mirrors the TypeScript ``flatKeyOfPath``."""
+    if "." not in path:
+        return path
+    flattened = resolve_flattened_member(entity, path)
+    if flattened is None:
+        return path
+    member = flattened.member.name
+    return flattened.embedding.name + member[:1].upper() + member[1:]

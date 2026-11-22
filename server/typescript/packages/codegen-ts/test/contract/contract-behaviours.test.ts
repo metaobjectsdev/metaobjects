@@ -3,8 +3,6 @@
 // not vary. The corpus proves the bytes hold. This file proves the bytes mean what the docs say.
 
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { type ContractCase, contractCases, contractTree, loadCaseModel } from "../../scripts/gen-contract-conformance.js";
@@ -15,6 +13,9 @@ import { defineConfig, type Generator, runGen } from "../../src/index.js";
 import { jsonSchemaFile as refJsonSchemaFile } from "../../src/reference/contract-schema.js";
 import { openApiFile as refOpenApiFile } from "../../src/reference/openapi.js";
 import { ajvOver, danglingRefs, type JsonDoc } from "./contract-validators.js";
+import { makeScratchDir, removeTree } from "../../src/scratch-dir.js";
+import { filterAllowlistRules } from "../../src/templates/filter-allowlist.js";
+import { DEFAULT_MAX_NESTING, type FilterAllowlist, parseListQuery, parseListQueryString, searchFields } from "@metaobjectsdev/runtime-ts";
 
 const CASES = new Map(contractCases().map((c) => [c.name, c]));
 
@@ -32,7 +33,7 @@ interface RunOptions {
 
 async function emit(c: ContractCase, generators: Generator[], run: RunOptions = {}): Promise<Map<string, string>> {
   const root = await loadCaseModel(c);
-  const dir = mkdtempSync(join(tmpdir(), "contract-behaviour-"));
+  const dir = makeScratchDir("contract-behaviour-");
   try {
     const outDir = join(dir, "out");
     await runGen({
@@ -50,7 +51,7 @@ async function emit(c: ContractCase, generators: Generator[], run: RunOptions = 
     });
     return readTree(outDir);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
   }
 }
 
@@ -413,6 +414,14 @@ describe("the document states what the routes do beyond the happy path", () => {
     expect(drop.responses?.["400"]?.description).toContain("validation");
   });
 
+  test("every item verb states invalid_id, and the collection POST does not", async () => {
+    const doc = await document("blog");
+    for (const method of ["get", "patch", "put", "delete"]) {
+      expect(operation(doc, "/api/authors/{id}", method).responses?.["400"]?.description, method).toContain("invalid_id");
+    }
+    expect(operation(doc, "/api/authors", "post").responses?.["400"]?.description).not.toContain("invalid_id");
+  });
+
   test("the error envelope carries the validation issues and the undeclared keys", async () => {
     const error = ((await document("blog"))["components"] as { schemas: Record<string, { properties: Record<string, unknown> }> }).schemas["ApiError"];
     expect(Object.keys(error?.properties ?? {})).toEqual(["error", "message", "field", "fields", "issues", "maxLimit"]);
@@ -435,4 +444,61 @@ describe("the reference copies", () => {
       expect(owned).toEqual(packaged);
     });
   }
+});
+
+// The list-query parameters (ADR-0068). The oracle is runtime-ts's own parser, which is what the
+// generated route answers with: the fields the document says `?search` matches must be the fields
+// the parser searches over the allowlist the routes generator writes, and the combinator grammar
+// the document gives must be one the parser takes, to the depth it serves.
+describe("the list query in the document", () => {
+  interface Param { name: string; description?: string; style?: string }
+  async function listParams(caseName: string, path: string): Promise<Param[]> {
+    const tree = await contractTree(corpusCase(caseName));
+    const paths = jsonAt(tree, "openapi.json")["paths"] as Record<string, { get: { parameters: Param[] } }>;
+    return paths[path]!.get.parameters;
+  }
+  async function objectOf(caseName: string, name: string): Promise<MetaObject> {
+    const root = await loadCaseModel(corpusCase(caseName));
+    const obj = root.objects().find((o) => o.name === name);
+    if (obj === undefined) throw new Error(`no object ${name}`);
+    return obj;
+  }
+
+  // The rules the routes generator writes into `<Entity>FilterAllowlist`. Codegen keeps the rule
+  // structural (ops as strings); the generated file narrows each with `as const`, so this does too.
+  async function allowlistOf(caseName: string, name: string): Promise<FilterAllowlist> {
+    return Object.fromEntries(filterAllowlistRules(await objectOf(caseName, name))) as unknown as FilterAllowlist;
+  }
+
+  test("search names exactly the fields the runtime searches, and leaves the uuid key out", async () => {
+    const params = await listParams("all-fields", "/api/all_fields");
+    const search = params.find((p) => p.name === "search");
+    const named = /across (.*), ORed together/.exec(search?.description ?? "")?.[1]?.split(", ") ?? [];
+    const allowlist = await allowlistOf("all-fields", "AllFields");
+    expect(named).toEqual(searchFields(allowlist));
+    expect(named.length).toBeGreaterThan(0);
+    expect(Object.keys(allowlist)).toContain("id");
+    expect(named).not.toContain("id");
+  });
+
+  test("the combinators parse as the document spells them, to the depth it states", async () => {
+    const params = await listParams("all-fields", "/api/all_fields");
+    const or = params.find((p) => p.name === "filter[or]");
+    expect(or?.style).toBe("deepObject");
+    expect(params.some((p) => p.name === "filter[and]")).toBe(true);
+    expect(or?.description).toContain(`${DEFAULT_MAX_NESTING} levels are served`);
+    const allowlist = await allowlistOf("all-fields", "AllFields");
+    const parse = (raw: string) => parseListQuery({ query: parseListQueryString(raw), allowlist, sortAllowlist: {} });
+    expect(parse("filter[or][0][title][eq]=a&filter[or][1][views][gt]=1").filter).toBeDefined();
+    const nested = (levels: number) => "filter" + "[or][0]".repeat(levels) + "[title][eq]=a";
+    expect(() => parse(nested(DEFAULT_MAX_NESTING))).not.toThrow();
+    expect(() => parse(nested(DEFAULT_MAX_NESTING + 1))).toThrow();
+  });
+
+  test("a list with no filterable field offers neither search nor a combinator", async () => {
+    const tree = await contractTree(corpusCase("all-fields"));
+    const paths = jsonAt(tree, "openapi.json")["paths"] as Record<string, { get?: { operationId: string; parameters: Param[] } }>;
+    const bag = Object.values(paths).find((p) => p.get?.operationId === "listBag")!.get!;
+    expect(bag.parameters.filter((p) => p.name === "search" || p.name.startsWith("filter["))).toEqual([]);
+  });
 });

@@ -5,8 +5,7 @@
 // generator that is not wired claims nothing, so a docs-only run refuses nothing.
 
 import { describe, test, expect } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdtempSync, readFileSync, readdirSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import ts from "typescript";
 import { MetaDataLoader, InMemoryStringSource, type MetaObject } from "@metaobjectsdev/metadata";
@@ -23,6 +22,7 @@ import { routesFile } from "../../src/generators/routes-file.js";
 import { routesFileHono } from "../../src/generators/routes-file-hono.js";
 import { barrel } from "../../src/generators/barrel.js";
 import type { OutputLayout } from "../../src/import-path.js";
+import { makeScratchDir, removeTree } from "../../src/scratch-dir.js";
 
 type Json = Record<string, unknown>;
 
@@ -58,7 +58,7 @@ async function run(
   outputLayout: OutputLayout = "flat",
   extra: { emitAbstractShapes?: boolean } = {},
 ): Promise<Map<string, string>> {
-  const tmp = mkdtempSync(join(tmpdir(), "name-claims-"));
+  const tmp = makeScratchDir("name-claims-");
   try {
     await runGen({
       config: defineConfig({
@@ -74,7 +74,7 @@ async function run(
       if (e.isFile()) out.set(relative(src, join(e.parentPath, e.name)), readFileSync(join(e.parentPath, e.name), "utf8"));
     }
     return out;
-  } finally { rmSync(tmp, { recursive: true, force: true }); }
+  } finally { removeTree(tmp); }
 }
 
 describe("NameClaims", () => {
@@ -301,6 +301,6 @@ describe("a value object is never renamed", () => {
       const diagnostics = ts.getPreEmitDiagnostics(program)
         .map((d) => `${d.file ? relative(dir, d.file.fileName) : "?"}: TS${d.code} ${ts.flattenDiagnosticMessageText(d.messageText, "\n")}`);
       expect(diagnostics).toEqual([]);
-    } finally { rmSync(dir, { recursive: true, force: true }); }
+    } finally { removeTree(dir); }
   });
 });

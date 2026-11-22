@@ -126,6 +126,12 @@ export function planScaffold(opts: {
       writes.push({ path: f.path, contents: f.contents });
       continue;
     }
+    // The file already holds exactly these bytes: nothing to write, and the hash we record
+    // is the true one whatever wrote it. Rewriting identical bytes only churns timestamps.
+    if (current === f.contents) {
+      files[f.path] = hashContents(f.contents);
+      continue;
+    }
     const priorHash = prior?.files[f.path];
     if (priorHash !== undefined && hashContents(current) === priorHash) {
       files[f.path] = hashContents(f.contents);

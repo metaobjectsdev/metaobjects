@@ -1,0 +1,11 @@
+name: nesting-too-deep
+description: >
+  A sixth level of or/and nesting is refused with `filter.nesting_too_deep`.
+requests:
+  - id: r1
+    method: GET
+    path: "/api/parts?filter[or][0][or][0][or][0][or][0][or][0][or][0][id][eq]=4"
+    expect:
+      status: 400
+      body:
+        equals: {"error": "filter.nesting_too_deep", "limit": 5}

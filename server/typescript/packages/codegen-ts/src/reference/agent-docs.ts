@@ -15,11 +15,12 @@
 //                touching persistence; ui.md, read before touching a form or a grid;
 //                requirements.md, read before adding a capability. A tier with nothing to
 //                describe emits no file.
-// customize:     which of the three pages are written and where (`generate`), the schema
-//                page's inputs (`lineageOf`, `cardinalityPhrase`, `relationshipLines`,
-//                `enumLines` and the loop that builds `declaredBy`). The page renderers
+// customize:     which of the three pages are written and where (`generate`), and the
+//                `templates` option, which swaps the mustache templates the pages render
+//                through. The model walk (`modelFacts`, `lineageOf`, `relationshipLines`,
+//                `enumRows`) lives in `agent-schema-page`; the page renderers
 //                (`agent-schema-page`, `agent-ui-page`, `agent-requirements-page`) are
-//                copied beside it into codegen/templates/.
+//                copied beside this file into codegen/templates/ by `meta eject`.
 // composes-with: api-docs (the fourth file the always-on pointer names, `api/AGENT-API.md`,
 //                is the api reference's, not this one's).
 //
@@ -44,38 +45,10 @@
 // own. An empty page is no file.
 
 import { physicalNamingGuideUrl } from "@metaobjectsdev/metadata/release-docs";
+import { physicalNamingOf, physicalNamingRemovedMessage } from "@metaobjectsdev/metadata";
 import {
-  CARDINALITY_MANY,
-  CARDINALITY_ONE,
-  FIELD_SUBTYPE_ENUM,
-  ORIGIN_AGGREGATE_ATTR_AGG,
-  ORIGIN_AGGREGATE_ATTR_OF,
-  ORIGIN_AGGREGATE_ATTR_VIA,
-  ORIGIN_ATTR_ORDER_BY,
-  ORIGIN_PASSTHROUGH_ATTR_FROM,
-  ORIGIN_PASSTHROUGH_ATTR_VIA,
-  ORIGIN_SUBTYPE_AGGREGATE,
-  ORIGIN_SUBTYPE_COMPUTED,
-  ORIGIN_SUBTYPE_FIRST,
-  ORIGIN_SUBTYPE_PASSTHROUGH,
-  RELATIONSHIP_ATTR_CARDINALITY,
-  RELATIONSHIP_ATTR_OBJECT_REF,
-  RELATIONSHIP_ATTR_ON_DELETE,
-  RELATIONSHIP_ATTR_THROUGH,
-  PHYSICAL_NAME_ATTR_BY_KIND,
-  SOURCE_ROLE_PRIMARY,
-  TYPE_ORIGIN,
-  resolveColumnName,
-  physicalNamingOf,
-  physicalNamingRemovedMessage,
-} from "@metaobjectsdev/metadata";
-import type { MetaField, MetaObject } from "@metaobjectsdev/metadata";
-import {
-  enumValues,
-  intValueMapOf,
-  isAbstract,
-  isReport,
-  resolveObjectNames,
+  docsTemplateRoot,
+  projectProvider,
   type AgentSchemaInput,
   type EmittedFile,
   type Generator,
@@ -100,125 +73,10 @@ export interface AgentDocsFileOpts {
    * project with no physical schema gets no schema page rather than a page of unknowns.
    */
   schema?: AgentSchemaInput;
-}
-
-/** One `origin.*` child rendered as a lineage phrase. `origin.*` NEVER inherits, so the
- *  own-accessor read here is the correct one rather than an ADR-0039 slip. */
-function lineageOf(field: MetaField): string | undefined {
-  const origin = field.ownChildren().find((c) => c.type === TYPE_ORIGIN);
-  if (origin === undefined) return undefined;
-  // Human-facing text: references print as the author wrote them (ADR-0059).
-  const str = (name: string): string | undefined => {
-    const v = origin.authoredAttr(name);
-    return typeof v === "string" && v !== "" ? v : undefined;
-  };
-  switch (origin.subType) {
-    case ORIGIN_SUBTYPE_PASSTHROUGH: {
-      const from = str(ORIGIN_PASSTHROUGH_ATTR_FROM);
-      const via = str(ORIGIN_PASSTHROUGH_ATTR_VIA);
-      return `passthrough from \`${from ?? "?"}\`${via === undefined ? "" : ` via \`${via}\``}`;
-    }
-    case ORIGIN_SUBTYPE_AGGREGATE: {
-      const agg = str(ORIGIN_AGGREGATE_ATTR_AGG) ?? "?";
-      const of = str(ORIGIN_AGGREGATE_ATTR_OF);
-      const via = str(ORIGIN_AGGREGATE_ATTR_VIA);
-      return `\`${agg}\`${of === undefined ? "" : ` of \`${of}\``}${via === undefined ? "" : ` via \`${via}\``}`;
-    }
-    case ORIGIN_SUBTYPE_FIRST: {
-      const of = str(ORIGIN_AGGREGATE_ATTR_OF);
-      const via = str(ORIGIN_AGGREGATE_ATTR_VIA);
-      const order = str(ORIGIN_ATTR_ORDER_BY);
-      return `first${of === undefined ? "" : ` \`${of}\``}${via === undefined ? "" : ` via \`${via}\``}` +
-        `${order === undefined ? "" : ` ordered by \`${order}\``}`;
-    }
-    case ORIGIN_SUBTYPE_COMPUTED:
-      // The @expr tree is structured; naming it is enough to route a reader to the
-      // declaration, and rendering a tree into a cell would be a second SQL lowering.
-      return "computed from a declared `@expr`";
-    default:
-      return `\`origin.${origin.subType}\``;
-  }
-}
-
-/**
- * The cardinality phrase, from the DECLARING object's side.
- *
- * `@cardinality: one` does NOT mean one-to-one. It means this object holds the foreign
- * key — many rows of it point at one target row — which is what `relation-resolver.ts`
- * builds a belongs-to `one()` relation from. Rendering it as "one-to-one" told a reader
- * the target row is claimed by at most one row here, which is the direction that makes
- * someone write a lookup expecting a single result.
- *
- * `@cardinality` is OPTIONAL vocabulary (min 0), and ABSENT is its own answer: no
- * navigation is generated at all. Folding that into "one-to-one" invented a shape the
- * model never declared.
- */
-function cardinalityPhrase(cardinality: unknown, through: unknown): string {
-  if (cardinality === CARDINALITY_MANY) {
-    return typeof through === "string" && through !== "" ? "many-to-many" : "one-to-many";
-  }
-  if (cardinality === CARDINALITY_ONE) return "many-to-one";
-  return "cardinality not declared";
-}
-
-/** `- \`Order.lines\` — one-to-many → \`OrderLine\`` */
-function relationshipLines(objects: readonly MetaObject[]): string[] {
-  const out: string[] = [];
-  for (const obj of objects) {
-    for (const rel of obj.relationships()) {
-      const cardinality = rel.attr(RELATIONSHIP_ATTR_CARDINALITY);
-      // References print as the author wrote them (ADR-0059); the loaded value is canonical.
-      const target = rel.authoredAttr(RELATIONSHIP_ATTR_OBJECT_REF);
-      const through = rel.authoredAttr(RELATIONSHIP_ATTR_THROUGH);
-      const onDelete = rel.attr(RELATIONSHIP_ATTR_ON_DELETE);
-      // The FQN, not the short name: this line is an ADDRESS a reader searches for.
-      const parts = [`\`${obj.resolutionKey()}.${rel.name}\``, `\`${rel.subType}\``];
-      parts.push(
-        `${cardinalityPhrase(cardinality, through)} → \`${String(target ?? "?")}\``,
-      );
-      if (typeof through === "string" && through !== "") parts.push(`through \`${through}\``);
-      if (typeof onDelete === "string" && onDelete !== "") parts.push(`on delete \`${onDelete}\``);
-      out.push(`- ${parts.join(" · ")}`);
-    }
-  }
-  return out;
-}
-
-/**
- * `| \`Order.status\` | OPEN, CLOSED | string-backed |`
- *
- * `objects` IS ONLY THE TABLE-BACKED SUBSET OF THE MODEL — the caller scopes it to the
- * objects the snapshot actually holds as tables. This section sits on the SCHEMA page, so
- * every row it prints is read as a statement about a column. Walking every loaded object
- * printed rows for abstract bases, for `object.value`s that have no column anywhere, and
- * for projections whose "column" is a view expression — three kinds of thing the physical
- * schema does not contain.
- *
- * It also says nothing about a `CHECK`. Whether the database constrains the members is
- * `table.checks`, which is already on this page from the snapshot, and an `@isArray`
- * enum deliberately gets none (`migrate-ts` skips it) — so asserting one here was a
- * SECOND derivation of a fact the page already carries correctly, in the direction that
- * promises the database will refuse a value it will accept.
- */
-function enumLines(objects: readonly MetaObject[]): string[] {
-  const rows: string[] = [];
-  for (const obj of objects) {
-    for (const field of obj.fields()) {
-      if (field.subType !== FIELD_SUBTYPE_ENUM) continue;
-      const members = enumValues(field);
-      if (members === undefined || members.length === 0) continue;
-      const intMap = intValueMapOf(field);
-      const backing =
-        intMap === undefined
-          ? "string-backed"
-          : `int-backed (${members.map((m) => `${m}=${intMap[m]}`).join(", ")})`;
-      rows.push(
-        `| \`${obj.resolutionKey()}.${field.name}\` | ${members.map((m) => `\`${m}\``).join(", ")} | ${backing} |`,
-      );
-    }
-  }
-  if (rows.length === 0) return [];
-  return ["| Field | Members | Storage |", "|---|---|---|", ...rows];
+  /** Directory whose `templates/agent/{schema,requirements}.md.mustache` (and
+   *  `templates/requirements/requirements.md.mustache`, the embedded ledger) override the
+   *  shipped pages, relative to the project. Default: the project's own `templates/`. */
+  templates?: string;
 }
 
 export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): Generator {
@@ -234,8 +92,10 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
     name: "agent-docs",
     target: opts?.target ?? DOCS_TARGET_NAME,
     generate(ctx) {
-      const objects = ctx.loadedRoot.objects();
       const files: EmittedFile[] = [];
+      // The schema and requirements pages render shared templates; a same-named template
+      // under the project's `templates/` (or under `opts.templates`) replaces one.
+      const provider = projectProvider(docsTemplateRoot(ctx, opts?.templates));
       // What the run computes for this generator: the schema, built on first ask by the
       // caller that owns the schema builder, and the project's column naming. Options win:
       // they are what a direct caller of the factory states.
@@ -243,71 +103,10 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
       const columnNamingStrategy = ctx.renderContext?.columnNamingStrategy ?? physicalNamingOf(ctx.loadedRoot).columns;
 
       // ---- schema.md
+      // The model walk (column → declaring field, view lineage, relationships, enums) is
+      // the page builder's; this passes it the model, the schema and the naming.
       if (schemaInput !== undefined) {
-        const schema = schemaInput;
-        // The qualified names the snapshot actually holds. An object whose physical name
-        // is not one of these contributes nothing to the physical schema (an abstract
-        // base, a sourceless value, an `@unmanaged` object) and must not appear on a page
-        // describing it — `buildExpectedSchema`'s Pass 1 owns those skip rules and this
-        // reads its answer rather than re-deriving them.
-        const tableNames = new Set(schema.tables.map((t) => schema.qualify(t)));
-        const viewNames = new Set(schema.views.map((v) => schema.qualify(v)));
-        // The objects backed by a TABLE in the snapshot — the enum section's scope, since
-        // a row there is read as a statement about a column.
-        const tableBacked: MetaObject[] = [];
-        // column → declaring field, per qualified table name. `resolveObjectNames` is the
-        // ONE field→column resolver — the same one the names artifact and the DDL use —
-        // so this mapping cannot disagree with the column it labels.
-        const declaredBy = new Map<string, Map<string, { field: string; type: string }>>();
-        const viewLineage = new Map<string, string[]>();
-        // Qualified names of the views a view-backed object.report owns (FR-044). Empty for a
-        // model with no report, so the page is byte-identical to what it was before reports.
-        const reportViews = new Set<string>();
-        for (const obj of objects) {
-          const names = resolveObjectNames(obj, columnNamingStrategy);
-          // The PRIMARY source's physical name and schema — `names.name` is the object's
-          // metamodel name since 0.25.0, which would match nothing in the snapshot.
-          const primary = names?.sources[SOURCE_ROLE_PRIMARY];
-          const physical = primary === undefined
-            ? undefined
-            : primary[(PHYSICAL_NAME_ATTR_BY_KIND.get(primary.kind) ?? "") as keyof typeof primary];
-          if (typeof physical !== "string") continue;
-          const key = schema.qualify({ name: physical, schema: primary?.schema });
-          const isTable = tableNames.has(key);
-          if (!isTable && !viewNames.has(key)) continue;
-          // ABSTRACT BASES ARE EXCLUDED, and being in the snapshot does not exempt them:
-          // an abstract base that declares the `source.rdb` its concrete child inherits
-          // resolves to that child's table, so the qualified-name test admits it and the
-          // page printed the base's enum a second time under a different owner.
-          // `buildExpectedSchema`'s Pass 1 skips abstracts; this reads the same rule.
-          if (isTable && !isAbstract(obj)) tableBacked.push(obj);
-          if (!isTable && isReport(obj)) reportViews.add(key);
-          let map = declaredBy.get(key);
-          if (map === undefined) {
-            map = new Map();
-            declaredBy.set(key, map);
-          }
-          const lineage: string[] = [];
-          for (const field of obj.fields()) {
-            const column = resolveColumnName(field, columnNamingStrategy);
-            // A TPH base and its subtypes share one table: first writer wins, so the
-            // base's own column keeps its label rather than being relabelled by whichever
-            // subtype was walked last.
-            if (!map.has(column)) {
-              map.set(column, { field: field.name, type: `${field.type}.${field.subType}` });
-            }
-            const line = lineageOf(field);
-            if (line !== undefined) lineage.push(`| \`${column}\` | ${line} |`);
-          }
-          if (lineage.length > 0) viewLineage.set(key, lineage);
-        }
-        const content = renderAgentSchemaPage(schema, {
-          declaredBy,
-          viewLineage,
-          reportViews,
-          relationships: relationshipLines(objects),
-          enums: enumLines(tableBacked),
-        });
+        const content = renderAgentSchemaPage(ctx.loadedRoot, schemaInput, columnNamingStrategy, { provider });
         if (content !== "") files.push({ path: `${dir}/schema.md`, content });
       }
 
@@ -344,7 +143,7 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
       }
 
       // ---- requirements.md
-      const requirements = renderAgentRequirementsPage(ctx.loadedRoot, ctx.inLedger);
+      const requirements = renderAgentRequirementsPage(ctx.loadedRoot, ctx.inLedger, provider);
       if (requirements !== "") files.push({ path: `${dir}/requirements.md`, content: requirements });
 
       return files;

@@ -795,9 +795,9 @@ tests read the `@spine` and `@default` views and their column types on Postgres,
 MySQL, and on Postgres and SQLite also a fact whose reference is null, an `isNull` condition
 and a two-hop spine.
 
-The twenty-four report scenarios run on every engine a port's runtime has, and so do the
-scenarios whose `engines:` key lists more than Postgres (the decimal ones: `decimal-exact` on
-Postgres and MySQL, which hold the declared precision, and its `-15` twin everywhere):
+The twenty-four report scenarios run on every engine a port's runtime has, and so does the `-15`
+decimal twin. `decimal-exact` runs on Postgres and MySQL only, which hold the declared precision
+(an `engines:` key is exact):
 
 | | Postgres | SQLite | MySQL 8.4 | D1 (local runtime) |
 |---|---|---|---|---|

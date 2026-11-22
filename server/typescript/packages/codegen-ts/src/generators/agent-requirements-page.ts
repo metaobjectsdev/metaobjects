@@ -31,13 +31,25 @@
 // against 19 of 40 — and the page an agent is told to read *before adding a capability* is
 // the last place to drop it. The cost is bytes on a large estate; the alternative is a page
 // that silently loses the only part with evidence behind it.
+//
+// BUILDER, THEN TEMPLATE. `agentRequirementsPageData` makes every cell and line; the shared
+// template `templates/agent/requirements.md.mustache` lays them out, and every port renders
+// it from the same data (`fixtures/docs-page-conformance/`). The embedded ledger is the
+// `requirements` page's own template rendered in its embedded form, so the two cannot
+// disagree.
 
 import { REQUIREMENT_ATTR_STATEMENT } from "@metaobjectsdev/metadata";
 import type { MetaData } from "@metaobjectsdev/metadata";
+import type { Provider } from "@metaobjectsdev/render";
 import { GENERATED_HEADER } from "../constants.js";
 import { concernOf, walkRequirements } from "../requirement-walk.js";
+import { frameworkTemplatesProvider } from "../render-engine/framework-provider.js";
+import { renderDocPage } from "../render-engine/doc-page.js";
 import { requirementRows } from "./requirements-view.js";
 import { renderRequirementsMarkdown } from "./requirements-markdown.js";
+
+/** The shared template of `agent/requirements.md`. */
+export const AGENT_REQUIREMENTS_PAGE_REF = "agent/requirements.md";
 
 const GENERATED_MARKER = `<!-- ${GENERATED_HEADER} — DO NOT EDIT. -->`;
 
@@ -108,6 +120,66 @@ function oneLine(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
+/** What `agent/requirements.md.mustache` renders. */
+export interface AgentRequirementsPageData {
+  readonly generatedMarker: string;
+  /** False when no requirement resolves to a model node: the page says why instead. */
+  readonly hasNodeIndex: boolean;
+  /** One row per claimed node; `claims` is the finished cell (`<br>`-joined). */
+  readonly nodeIndex: readonly { readonly address: string; readonly concern: string; readonly claims: string }[];
+  readonly hasStatements: boolean;
+  /** One line per stated requirement in the index, sorted by path; `statement` is one line, `|` escaped. */
+  readonly statements: readonly { readonly path: string; readonly subType: string; readonly statement: string }[];
+  /** The ledger, rendered by the `requirements` template in its embedded form, with no
+   *  trailing line break (the template supplies the page's last one). */
+  readonly ledger: string;
+}
+
+/** The data the agent requirements template renders. Undefined for a model declaring no
+ *  requirements, which gets no page. */
+export function agentRequirementsPageData(
+  root: MetaData,
+  inLedger?: (fqn: string) => boolean,
+  provider?: Provider,
+): AgentRequirementsPageData | undefined {
+  const rows = requirementRows(root, inLedger);
+  if (rows.length === 0) return undefined;
+
+  const index = buildNodeIndex(root, inLedger);
+  // The statements ride below the table: they are prose, they repeat across nodes a
+  // shared architectural entry claims, and putting one in a cell forces the table wide.
+  const stated = new Map<string, { subType: string; statement: string }>();
+  for (const entry of index) {
+    for (const c of entry.claims) {
+      if (c.statement !== undefined) stated.set(c.path, { subType: c.subType, statement: c.statement });
+    }
+  }
+  const statements = [...stated.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([path, { subType, statement }]) => ({ path, subType, statement: mdCell(oneLine(statement)) }));
+  return {
+    generatedMarker: GENERATED_MARKER,
+    hasNodeIndex: index.length > 0,
+    nodeIndex: index.map((entry) => ({
+      address: entry.address,
+      concern: entry.concern,
+      claims: entry.claims
+        .map((c) => {
+          const level = c.level === undefined ? "" : ` L${c.level}`;
+          const status = c.status === undefined ? "" : ` (${c.status})`;
+          return `\`${c.path}\`${level}${status}`;
+        })
+        .join("<br>"),
+    })),
+    hasStatements: statements.length > 0,
+    statements,
+    // The SAME template the `requirements` surface uses. A second rendering of the ledger
+    // would be a second thing to keep true. `embedded` drops its own H1 and demotes every
+    // heading one level, so the entries nest under this section instead of escaping it.
+    ledger: renderRequirementsMarkdown(rows, { embedded: true, ...(provider !== undefined && { provider }) }).replace(/\n+$/, ""),
+  };
+}
+
 /**
  * Render the page. Returns "" for a model declaring no requirements — the same contract
  * `requirementsFile()` keeps, and the only reason a surface that is on by default is a
@@ -116,90 +188,14 @@ function oneLine(text: string): string {
 export function renderAgentRequirementsPage(
   root: MetaData,
   inLedger?: (fqn: string) => boolean,
+  provider?: Provider,
 ): string {
-  const rows = requirementRows(root, inLedger);
-  if (rows.length === 0) return "";
-
-  const index = buildNodeIndex(root, inLedger);
-  const out: string[] = [];
-  out.push(GENERATED_MARKER);
-  out.push("");
-  out.push("# Requirements");
-  out.push("");
-  out.push(
-    "Read this before adding a capability, and before extending anything that looks like " +
-      "it already does what you were asked for.",
+  const data = agentRequirementsPageData(root, inLedger, provider);
+  if (data === undefined) return "";
+  return renderDocPage(
+    AGENT_REQUIREMENTS_PAGE_REF,
+    data,
+    provider ?? frameworkTemplatesProvider,
+    "agent/requirements.md",
   );
-  out.push("");
-  out.push(
-    "- A requirement is **prescriptive**: it states what should be true, never what " +
-      "happened. `status: retired` means the capability was BUILT and deliberately " +
-      "REMOVED — that entry is a prohibition, not history, and the right response to it " +
-      "is to stop, not to rebuild.",
-  );
-  out.push(
-    "- The **node index** below answers *\"does anything claim the thing I am about to " +
-      "change?\"*. Match the literal FQN.",
-  );
-  out.push(
-    "- **The ledger under it is not the same list.** A retired capability carries no " +
-      "`@implementedBy` — there is nothing left to point at — so it appears there and " +
-      "in no index. Read it before you conclude a capability does not exist yet.",
-  );
-  out.push("");
-
-  if (index.length > 0) {
-    out.push("## Node index");
-    out.push("");
-    out.push("| Node | Kind | Claimed by |");
-    out.push("|---|---|---|");
-    for (const entry of index) {
-      const claims = entry.claims
-        .map((c) => {
-          const level = c.level === undefined ? "" : ` L${c.level}`;
-          const status = c.status === undefined ? "" : ` (${c.status})`;
-          return `\`${c.path}\`${level}${status}`;
-        })
-        .join("<br>");
-      out.push(`| \`${entry.address}\` | \`${entry.concern}\` | ${claims} |`);
-    }
-    out.push("");
-    // The statements ride below the table: they are prose, they repeat across nodes a
-    // shared architectural entry claims, and putting one in a cell forces the table wide.
-    const stated = new Map<string, { subType: string; statement: string }>();
-    for (const entry of index) {
-      for (const c of entry.claims) {
-        if (c.statement !== undefined) stated.set(c.path, { subType: c.subType, statement: c.statement });
-      }
-    }
-    if (stated.size > 0) {
-      out.push("### What those requirements say");
-      out.push("");
-      for (const [path, { subType, statement }] of [...stated.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
-        out.push(`- \`${path}\` (\`${subType}\`) — ${mdCell(oneLine(statement))}`);
-      }
-      out.push("");
-    }
-  } else {
-    out.push("## Node index");
-    out.push("");
-    out.push(
-      "No requirement resolves to a model node. The common reason is the ordinary one: an " +
-        "entry at L4 or L5 that simply declares no `@implementedBy` yet, which is legal " +
-        "and is what a `planned` entry looks like. The others are an entry sitting ABOVE " +
-        "the L4 link floor (where a claim is not permitted), a `retired` entry (where it " +
-        "is forbidden outright), and a claim that names a node nothing resolves — " +
-        "`meta verify` is what says which.",
-    );
-    out.push("");
-  }
-
-  out.push("## The ledger");
-  out.push("");
-  // The SAME renderer the `requirements` surface uses. A second rendering of the ledger
-  // would be a second thing to keep true. `embedded` drops its own H1 and demotes every
-  // heading one level, so the entries nest under this section instead of escaping it.
-  out.push(renderRequirementsMarkdown(rows, { embedded: true }).replace(/\n+$/, ""));
-
-  return `${out.join("\n").replace(/\n+$/, "")}\n`;
 }

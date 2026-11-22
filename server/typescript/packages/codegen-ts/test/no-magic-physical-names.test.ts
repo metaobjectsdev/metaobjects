@@ -42,8 +42,7 @@
 // because it belongs to no field of any object.
 
 import { describe, it, expect } from "bun:test";
-import { mkdtempSync, rmSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { runGen, defineConfig } from "../src/index.js";
@@ -52,6 +51,7 @@ import { barrel } from "../src/generators/barrel.js";
 import { entityFile } from "../src/generators/entity-file.js";
 import { queriesFile } from "../src/generators/queries-file.js";
 import { routesFile } from "../src/generators/routes-file.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 // ---------------------------------------------------------------------------
 // The de-blinded fixture.
@@ -434,7 +434,7 @@ async function generate(dialect: (typeof DIALECTS)[number]): Promise<Record<stri
   // A gate whose fixture the loader would reject proves nothing.
   expect(errors.map((e) => e.message)).toEqual([]);
 
-  const dir = mkdtempSync(join(tmpdir(), "no-magic-"));
+  const dir = makeScratchDir("no-magic-");
   try {
     await runGen({
       config: defineConfig({
@@ -452,7 +452,7 @@ async function generate(dialect: (typeof DIALECTS)[number]): Promise<Record<stri
     });
     return readTree(dir);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
   }
 }
 

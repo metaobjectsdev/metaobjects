@@ -1,12 +1,12 @@
 // The report-export shared writer module: emitted text is imported and exercised, so what is
 // tested is what an adopter's project would run.
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { renderExportWriters } from "../src/templates/report-export-file.js";
 import { reportExport } from "../src/generators/report-export-file.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 interface Writers {
   EXPORT_CSV_BOM: boolean;
@@ -19,13 +19,13 @@ interface Writers {
 }
 
 async function load(opts: { maxRows: number; xmlNulls: "empty" | "nil"; csvBom: boolean }): Promise<Writers> {
-  const dir = mkdtempSync(join(tmpdir(), "report-export-writers-"));
+  const dir = makeScratchDir("report-export-writers-");
   try {
     const file = join(dir, `w-${Math.random().toString(36).slice(2)}.ts`);
     writeFileSync(file, renderExportWriters(opts));
     return (await import(pathToFileURL(file).href)) as Writers;
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
   }
 }
 

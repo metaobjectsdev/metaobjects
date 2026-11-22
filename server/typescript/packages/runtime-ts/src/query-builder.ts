@@ -1,4 +1,4 @@
-import type { ColumnNamingStrategy, MetaData } from "@metaobjectsdev/metadata";
+import type { ColumnNamingStrategy, ExprNode, MetaData } from "@metaobjectsdev/metadata";
 import {
   TYPE_FIELD, TYPE_IDENTITY,
   IDENTITY_SUBTYPE_PRIMARY,
@@ -12,6 +12,7 @@ import {
 } from "@metaobjectsdev/metadata";
 import { MetadataError } from "./errors.js";
 import { intValueMapOf } from "./type-coercer.js";
+import { compileCondition } from "./condition.js";
 import type {
   Dialect, WhereClause, OrderBy, PrimitiveValue, Row,
   SelectSpec, InsertSpec, UpdateSpec, DeleteSpec, CountSpec, TableTarget,
@@ -25,7 +26,7 @@ export function tableTarget(entity: MetaData): TableTarget {
   return schema === undefined ? { table: resolveTableName(entity) } : { table: resolveTableName(entity), schema };
 }
 
-export type Filter = Record<string, FilterValue> | { $and: Filter[] };
+export type Filter = Record<string, FilterValue> | { $and: Filter[] } | { $or: Filter[] };
 
 export type FilterValue =
   | string | number | boolean | null
@@ -38,6 +39,8 @@ export type FilterValue =
       $lt?: string | number;
       $lte?: string | number;
       $like?: string;
+      /** Case-INSENSITIVE LIKE (`%`/`_` wildcards), as a REST list's `?search` matches. */
+      $ilike?: string;
       $in?: (string | number)[];
       $isNull?: boolean;
     };
@@ -113,6 +116,15 @@ export function compileFilter(
     if (clauses.length === 0) return null;
     return clauses.length === 1 ? clauses[0]! : { kind: "and", clauses };
   }
+  if ("$or" in filter && Array.isArray(filter.$or)) {
+    // An OR with no branch matches nothing, but `{ $or: [] }` reads as "no condition" the way
+    // `{ $and: [] }` does, so it is treated as one (null — match all) rather than as `false`.
+    const clauses = (filter.$or as Filter[])
+      .map((f) => compileFilter(entity, f, strategy, dialect))
+      .filter((c): c is WhereClause => c !== null);
+    if (clauses.length === 0) return null;
+    return clauses.length === 1 ? clauses[0]! : { kind: "or", clauses };
+  }
   const entries = Object.entries(filter);
   if (entries.length === 0) return null;
   if (entries.length === 1) {
@@ -162,6 +174,7 @@ function compileEntry(
   if ("$lt" in op && op.$lt !== undefined) return { kind: "lt", column, value: enc(op.$lt) };
   if ("$lte" in op && op.$lte !== undefined) return { kind: "lte", column, value: enc(op.$lte) };
   if ("$like" in op && op.$like !== undefined) return { kind: "like", column, pattern: op.$like };
+  if ("$ilike" in op && op.$ilike !== undefined) return { kind: "ilike", column, pattern: op.$ilike };
   if ("$in" in op && op.$in !== undefined) return { kind: "in", column, values: op.$in.map(enc) };
   if ("$isNull" in op && op.$isNull !== undefined) {
     return { kind: "isNull", column, not: !op.$isNull };
@@ -339,6 +352,44 @@ export function buildUpdateSpec(
     where: byIdWhere(entity, id, scope, strategy),
     returning: listFieldNames(entity).map((f) => resolveColumnName(getField(entity, f), strategy)),
   };
+}
+
+/**
+ * A lifecycle transition's write (ADR-0066 §6 step 5): set `field` to `to` where the key matches,
+ * `field` is one of `from`, and `condition` (the transition's `@condition`) holds. `from`, `to` and
+ * every condition literal are the member SYMBOLS; each is stored in its column's form.
+ */
+export interface TransitionGuard {
+  field: string;
+  from: readonly string[];
+  to: string;
+  condition?: ExprNode;
+}
+
+/**
+ * The one statement a guarded update makes: `UPDATE … SET <field> = :to WHERE <key> = :id AND
+ * <field> IN (:from) [AND <condition>]`, TPH-scoped like any by-id write. `values` is the coerced
+ * write of `{ [field]: to }`. No row back means the guard matched nothing.
+ */
+export function buildGuardedUpdateSpec(
+  entity: MetaData, values: Row, id: unknown, guard: TransitionGuard,
+  strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
+  scope?: DiscriminatorScope,
+  dialect?: Dialect,
+): UpdateSpec {
+  const base = buildUpdateSpec(entity, values, id, strategy, scope);
+  const state = getField(entity, guard.field);
+  const clauses: WhereClause[] = [
+    base.where,
+    { kind: "in", column: resolveColumnName(state, strategy), values: guard.from.map((s) => encodeFilterValue(state, s, dialect)) },
+  ];
+  if (guard.condition !== undefined) {
+    clauses.push(compileCondition(guard.condition, {
+      column: (f) => resolveColumnName(getField(entity, f), strategy),
+      encode: (f, v) => encodeFilterValue(getField(entity, f), v, dialect),
+    }));
+  }
+  return { ...base, where: { kind: "and", clauses }, key: base.where };
 }
 
 export function buildDeleteSpec(

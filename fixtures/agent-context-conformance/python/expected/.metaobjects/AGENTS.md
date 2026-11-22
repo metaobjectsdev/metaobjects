@@ -29,7 +29,7 @@ truth. Code, schema and migrations are generated from it and are disposable.
 2. **Generate.** `metaobjects gen`. `metaobjects eject <name>` copies a generator into the repo
    to change what it emits.
 
-### Schema (every stack: the Node `meta` CLI owns it, so Java, Kotlin, C# and Python projects need Node too)
+### Schema (every stack: the Node `meta` CLI owns it, so Java, Kotlin, C#, Python and Rust projects need Node too)
 
 Never hand-write DDL, and never `ALTER` a live database by hand.
 

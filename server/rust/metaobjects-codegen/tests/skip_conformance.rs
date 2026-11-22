@@ -37,6 +37,9 @@ fn fit(id: &str) -> Fit {
         "template-edited" | "template-added" => Fit::NotApplicable(
             "the Rust port has no templates (the prompt pillar is a later phase)",
         ),
+        "template-and-docs-rerun" => Fit::NotApplicable(
+            "the Rust port has no `template` generator and no docs page generator yet",
+        ),
         "hand-edit-kept" => Fit::NotApplicable(
             "a hand edit is never kept: with no merge engine, the run refuses the file instead",
         ),

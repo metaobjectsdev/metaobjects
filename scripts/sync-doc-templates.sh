@@ -26,7 +26,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # (`<group>/<file>`) resolve identically from the bundled copy. Adding a new
 # group here is the ONLY edit needed — the byte-identity gate + embed generator
 # discover groups by globbing templates/*/, so they stay in lockstep.
-TEMPLATE_GROUPS=(docs api)
+TEMPLATE_GROUPS=(docs api requirements agent)
 
 # Per-consumer bundled-copy ROOT (the consumer's own templates/ dir). Each group
 # is copied under <root>/<group>.

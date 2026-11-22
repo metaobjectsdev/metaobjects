@@ -7,14 +7,14 @@
 //     shared `enums.ts` module and referenced by the entity (no inline redeclaration).
 
 import { describe, test, expect } from "bun:test";
-import { mkdtempSync, rmSync, readFileSync, readdirSync, existsSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { runGen, defineConfig } from "../../src/index.js";
 import { barrel } from "../../src/generators/barrel.js";
 import { entityFile } from "../../src/generators/entity-file.js";
 import { queriesFile } from "../../src/generators/queries-file.js";
 import { MetaDataLoader, InMemoryStringSource, type MetaRoot } from "@metaobjectsdev/metadata";
+import { makeScratchDir, removeTree } from "../../src/scratch-dir.js";
 
 function findRepoRoot(start: string): string {
   let dir = start;
@@ -37,7 +37,7 @@ async function loadSharedFixture(): Promise<MetaRoot> {
 }
 
 async function gen(root: MetaRoot): Promise<Record<string, string>> {
-  const tmp = mkdtempSync(join(tmpdir(), "enum-conf-"));
+  const tmp = makeScratchDir("enum-conf-");
   try {
     await runGen({
       config: defineConfig({
@@ -55,7 +55,7 @@ async function gen(root: MetaRoot): Promise<Record<string, string>> {
     }
     return files;
   } finally {
-    rmSync(tmp, { recursive: true, force: true });
+    removeTree(tmp);
   }
 }
 

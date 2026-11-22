@@ -6,6 +6,7 @@ package com.metaobjects.generator.spring;
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
 import com.metaobjects.generator.spring.SpringGeneratorSupport;
 import com.metaobjects.generator.spring.SpringNaming;
+import com.metaobjects.generator.spring.SpringJavaWriter;
 import com.metaobjects.generator.spring.SpringRecordBuilder;
 import com.metaobjects.generator.spring.SpringTypeMapper;
 
@@ -13,6 +14,7 @@ import com.metaobjects.config.WireFormat;
 import com.metaobjects.field.EnumField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.generator.GeneratorException;
+import com.metaobjects.generator.writer.CodeWriter;
 import com.metaobjects.generator.GeneratorIOWriter;
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
 import com.metaobjects.generator.util.GeneratorUtil;
@@ -155,83 +157,68 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
             annotations.add(a);
         }
 
-        StringBuilder src = new StringBuilder();
-        if (!pkg.isEmpty()) {
-            src.append("package ").append(pkg).append(";\n\n");
-        }
+        SpringJavaWriter w = new SpringJavaWriter();
+        if (!pkg.isEmpty()) w.packageName(pkg);
         // ADR-0019 Amendment 1: a decimal component binds the canonical serializer / strict
         // deserializer, so a value object nested in a DTO's jsonb column writes the W1 string too.
         boolean usesDecimal = fields.stream()
             .anyMatch(f -> SpringGeneratorSupport.isDecimalComponent(componentTypeFr019(f, vo)));
         if (usesDecimal) {
-            src.append(SpringGeneratorSupport.decimalAnnotationImports(runtimePackage, wire));
+            for (String fqn : SpringGeneratorSupport.decimalAnnotationImports(runtimePackage, wire)) w.use(fqn);
         }
         // field.duration: a Duration component binds the canonical serializer / strict deserializer.
         boolean usesDuration = wire.durationsIso() && fields.stream()
             .anyMatch(f -> SpringGeneratorSupport.isDurationComponent(componentTypeFr019(f, vo)));
         if (usesDuration) {
-            if (!usesDecimal) src.append("import com.fasterxml.jackson.databind.annotation.JsonDeserialize;\n");
-            src.append(SpringGeneratorSupport.durationAnnotationImports(
-                runtimePackage, usesDecimal && wire.decimalsAsString()));
+            w.use("com.fasterxml.jackson.databind.annotation.JsonDeserialize");
+            for (String fqn : SpringGeneratorSupport.durationAnnotationImports(
+                    runtimePackage, usesDecimal && wire.decimalsAsString())) {
+                w.use(fqn);
+            }
         }
-        if (usesValid) {
-            src.append("import jakarta.validation.Valid;\n");
-        }
-        if (usesValidation) {
-            src.append("import jakarta.validation.constraints.*;\n");
-        }
+        if (usesValid) w.use("jakarta.validation.Valid");
+        if (usesValidation) w.use("jakarta.validation.constraints.*");
         // ADR-0019 Amendment 2: the NON_NULL annotation is emitted only when the project asks
         // for omitted null members; native and emit leave Jackson's own null-with-key behaviour.
         boolean omitNulls = wire.omitNullMembers();
-        if (omitNulls) src.append("import com.fasterxml.jackson.annotation.JsonInclude;\n");
-        if (!src.toString().endsWith("\n\n")) src.append('\n');
-        src.append("/** GENERATED — value object ").append(recordName)
-           .append(". Do not hand-edit; regenerated from metadata. */\n");
-        if (omitNulls) src.append("@JsonInclude(JsonInclude.Include.NON_NULL)\n");
+        if (omitNulls) w.use("com.fasterxml.jackson.annotation.JsonInclude");
+        w.line("/** GENERATED — value object " + recordName + ". Do not hand-edit; regenerated from metadata. */");
+        if (omitNulls) w.line("@JsonInclude(JsonInclude.Include.NON_NULL)");
         // A member the value object does not declare is DROPPED, never rejected, whatever
         // FAIL_ON_UNKNOWN_PROPERTIES the host's ObjectMapper carries: api.unknownFields judges a
         // request body's top level only, so a nested undeclared key binds like the DTO's own. Only a
         // value object nested in a write route's body is one; a payload or parser target is not.
         if (requestBodies.contains(vo.getName())) {
-            src.append("@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)\n");
+            w.line("@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)");
         }
-        src.append("public record ").append(recordName).append("(\n");
+        w.line("public record " + recordName + "(");
         List<String[]> components = new ArrayList<>(fields.size());
-        for (int i = 0; i < fields.size(); i++) {
-            MetaField field = fields.get(i);
-            String a = annotations.get(i);
-            String type = componentTypeFr019(field, vo);
-            // A field named notify/wait/toString/… cannot BE a record component (JLS 8.10.3),
-            // so it is escaped here and pinned back to its declared name on the wire.
-            String component = SpringNaming.recordComponentName(field.getName());
-            String jsonName = SpringNaming.jsonPropertyAnnotation(field.getName());
-            src.append("    ");
-            if (!a.isEmpty()) src.append(a).append(' ');
-            String decimalJson = SpringGeneratorSupport.decimalJsonAnnotations(type, runtimePackage, field, wire);
-            if (!decimalJson.isEmpty()) src.append(decimalJson).append(' ');
-            String durationJson = SpringGeneratorSupport.durationJsonAnnotations(type, wire);
-            if (!durationJson.isEmpty()) src.append(durationJson).append(' ');
-            if (!jsonName.isEmpty()) src.append(jsonName).append(' ');
-            src.append(type).append(' ').append(component);
-            if (i < fields.size() - 1) src.append(',');
-            src.append('\n');
-            components.add(new String[] { type, component });
-        }
-        List<String> enumDecls = collectEnumDecls(vo, fields);
+        w.deeper(1, () -> {
+            for (int i = 0; i < fields.size(); i++) {
+                MetaField field = fields.get(i);
+                String type = componentTypeFr019(field, vo);
+                // A field named notify/wait/toString/… cannot BE a record component (JLS 8.10.3),
+                // so it is escaped here and pinned back to its declared name on the wire.
+                String component = SpringNaming.recordComponentName(field.getName());
+                w.line(SpringGeneratorSupport.recordComponentDeclaration(
+                    annotations.get(i), type, component, field, runtimePackage, wire)
+                    + (i < fields.size() - 1 ? "," : ""));
+                components.add(new String[] { type, component });
+            }
+        });
         // A value object is constructed by its caller, so it carries the Java builder (#365).
-        String builder = SpringRecordBuilder.members(recordName, components);
-        if (enumDecls.isEmpty() && builder.isEmpty()) {
-            src.append(") {}\n");
+        if (!hasEnumDecls(vo, fields) && !SpringRecordBuilder.applies(recordName, components)) {
+            w.line(") {}");
         } else {
-            src.append(") {\n");
-            for (String decl : enumDecls) src.append("    ").append(decl.replace("\n", "\n    ")).append('\n');
-            src.append(builder);
-            src.append("}\n");
+            try (CodeWriter.Block body = w.block(") {")) {
+                writeEnumDecls(w, vo, fields);
+                SpringRecordBuilder.writeMembers(w, recordName, components);
+            }
         }
 
         try {
             Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(recordName + ".java");
-            GeneratedFileWriter.write(outFile, src.toString());
+            GeneratedFileWriter.write(outFile, w.toString());
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing value object " + recordName + ".java for " + vo.getName() + ": " + e, e);
@@ -260,16 +247,15 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
     }
 
     /**
-     * Nested {@code public enum <Name> { <members> }} declarations for the value object's INLINE
+     * Write the nested {@code public enum <Name> { <members> }} declarations for the value object's INLINE
      * enum members, deduped by enum-type name — mirrors {@link SpringDtoGenerator}'s record body.
      * A field resolving to a package-level shared enum (materialized standalone or
      * {@code @provided} externally) is referenced, never nested — skipped here, the same guard
-     * {@code SpringDtoGenerator.collectEnumDecls} applies. A VO with no own enum members yields
-     * an empty list (the common case).
+     * {@code SpringDtoGenerator.writeEnumDecls} applies. A VO with no own enum members writes
+     * nothing (the common case).
      */
-    private static List<String> collectEnumDecls(MetaObject owner, List<MetaField> fields) {
+    protected static void writeEnumDecls(CodeWriter w, MetaObject owner, List<MetaField> fields) {
         Set<String> seen = new LinkedHashSet<>();
-        List<String> decls = new ArrayList<>();
         for (MetaField<?> field : fields) {
             if (!(field instanceof EnumField ef)) continue;
             if (Fr019SharedEnum.sharedEnumForField(field) != null) continue;
@@ -277,9 +263,20 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
             if (values.isEmpty()) continue;
             String typeName = SpringTypeMapper.enumTypeName(owner, ef);
             if (!seen.add(typeName)) continue;
-            decls.add(SpringTypeMapper.enumDeclaration(typeName, values, SpringTypeMapper.intValueMap(ef), SpringTypeMapper.stringValueMap(ef)));
+            SpringTypeMapper.writeEnumDeclaration(
+                w, typeName, values, SpringTypeMapper.intValueMap(ef), SpringTypeMapper.stringValueMap(ef));
         }
-        return decls;
+    }
+
+    /** Whether {@link #writeEnumDecls} writes anything for {@code fields}. */
+    protected static boolean hasEnumDecls(MetaObject owner, List<MetaField> fields) {
+        for (MetaField<?> field : fields) {
+            if (field instanceof EnumField ef && Fr019SharedEnum.sharedEnumForField(field) == null
+                    && !SpringTypeMapper.effectiveEnumValues(ef).isEmpty()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================

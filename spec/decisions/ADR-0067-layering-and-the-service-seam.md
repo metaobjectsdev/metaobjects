@@ -15,8 +15,9 @@ It amends ADR-0045 (§6). It depends on the line between core and helpers: ADR-0
 Amendment 3, as ADR-0066 §8 restates it. The core is the contracts and the conformance kits,
 and every generator below is a helper.
 
-Nothing in this ADR is generated yet. The layer generators, the service shells and the
-per-package choice of generators are later work. ADR-0066's vocabulary is inert until they land.
+Layer 0 and layer 1 are generated: `rules-names` and `contract-types` write in TypeScript, and C#
+writes its own names and create and update records. The service shells and the per-package choice
+of generators are later work. ADR-0066's vocabulary is inert at run time until they land.
 
 **Experimental.** The vocabulary this design generates from is experimental (ADR-0066 Status,
 `docs/compatibility-policy.md`): it may change in a MINOR, including removals and renames, until

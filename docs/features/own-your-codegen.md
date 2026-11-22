@@ -290,15 +290,20 @@ it yourself.
 |---|---|---|
 | `docs` | which objects and templates get a page, where a page lands, which page template renders, the whole overview page (`renderIndexPage`) | the page payloads (`buildEntityDocData`, `buildTemplateDocData`) and the ER diagram (`renderMermaidErBlock`) |
 | `api-docs` | which units get a page, where a page lands, whether the index and the agent form (`AGENT-API.md`) are written | the model of the generated API (`buildApiModelForRun`, which also reads the run: layout, `apiPrefix`, whether Hono routes are wired) and its renderers (`renderEntityApiPage`, `renderApiIndex`, `renderAgentApi`) |
-| `requirements` | which files the ledger becomes and where they land (`requirements.md`, `requirements.toon`); a project with no `requirement.*` node gets none | the two writers (`requirements-markdown`, `requirements-toon`) and the projection they read (`requirements-view`) |
-| `agent-docs` | which of the three pages are written and where; the schema page's inputs (lineage, cardinality, enums) | the three page renderers (`agent-schema-page`, `agent-ui-page`, `agent-requirements-page`) |
+| `requirements` | which files the ledger becomes and where they land (`requirements.md`, `requirements.toon`); a project with no `requirement.*` node gets none | the two page builders (`requirements-markdown`, `requirements-toon`) and the projection they read (`requirements-view`) |
+| `agent-docs` | which of the three pages are written and where | the three page builders (`agent-schema-page`, which also walks the model for the column-to-field map, lineage, relationships and enums; `agent-ui-page`; `agent-requirements-page`) |
 | `metamodel-docs` | where the pages land | nothing: the pages are rendered by `@metaobjectsdev/metadata`, which is core |
 
 The page templates themselves (the Mustache files the docs generators render) stay in the
 package. To change the wording of a model page you need no eject: put a file of the same
 name in your project (`templates/docs/entity-page.md.mustache` or
 `template-page.md.mustache`), or point `docsFile({ templates })` at another directory; it
-wins over the packaged one.
+wins over the packaged one. The requirements and agent pages work the same way:
+`templates/requirements/requirements.md.mustache` and `requirements.toon.mustache`
+(`requirementsFile({ templates })`), and `templates/agent/schema.md.mustache` and
+`requirements.md.mustache` (`agentDocsFile({ templates })`; its embedded ledger is the
+`requirements/requirements.md` template). The templates and the data they are fed are pinned in
+`fixtures/docs-page-conformance/`; which ports run that corpus is in [CONFORMANCE.md](../CONFORMANCE.md).
 
 ### The docs site: `meta eject docs-site` copies the theme
 
@@ -1259,8 +1264,9 @@ flavor, so the writers come with it:
 | `JavaCodeWriter` | The Java type of each field; accessor, parameter, class and package names; the body of the interface flavor. |
 | `PojoAwareCodeWriter`, `ValueObjectCodeWriter` | The fields, the constructor and the accessor bodies of the two concrete flavors. |
 
-All seven land in one package and use one another, never the packaged classes: eject
-rewrites the package line of each and, where one imports another, that import. To change a
+All seven land in one package and use one another, never the packaged copies: eject
+rewrites the package line of each and, where one imports another, that import. They do call
+the code writer (`JavaWriter`, `WriterOptions`), which is engine and stays in the package. To change a
 field, a constructor or an accessor, edit the writer. You subclass nothing. `-Dlist` gives
 `entity` one verdict over all seven files.
 
@@ -1322,7 +1328,9 @@ the packaged sibling classes they still call, so they compile from any package.
 **What stays in the package is the engine**, public and unchanged: the generator base and
 runner types, the naming and type-mapping tables (`SpringNaming`, `SpringTypeMapper`,
 `KotlinNaming`, `KotlinTypeMapper`), the questions a generator asks of the model
-(`FindInbound`, `TphPlan`, the M:N support, `RestSurfaceGate`), and the Kotlin
+(`FindInbound`, `TphPlan`, the M:N support, `RestSurfaceGate`), the code writer the Java
+generators lay their output out with (`CodeWriter`, `JavaWriter`, `WriterOptions`, and
+`SpringJavaWriter` for Spring source), and the Kotlin
 `Fr019SharedEnum`. Anything that returns emitted text is handed over; a table or a model
 question is not. The Kotlin `Fr019SharedEnum` writes no output. It answers where a shared or
 `@provided` enum lives, and the type mapper and the generator utilities take its

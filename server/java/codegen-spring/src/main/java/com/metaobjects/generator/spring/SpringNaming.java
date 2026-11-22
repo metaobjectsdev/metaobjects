@@ -225,16 +225,6 @@ public final class SpringNaming {
     }
 
     /**
-     * The {@code package} file header for a template-tier emission into {@code pkg}. A
-     * no-package template emits into the ROOT package (see {@link #promptsPackage}), where no
-     * {@code package} declaration may appear — the one spelling of that rule for every
-     * template-tier generator.
-     */
-    public static String packageHeader(String pkg) {
-        return pkg.isEmpty() ? "" : "package " + pkg + ";\n\n";
-    }
-
-    /**
      * The fully-qualified reference to the record {@link SpringValueObjectGenerator} emits for
      * {@code vo} — what every template-tier generator names a payload or response by (ADR-0056).
      * Bare when {@code vo} has no package.

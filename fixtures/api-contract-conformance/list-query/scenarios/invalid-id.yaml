@@ -1,0 +1,27 @@
+name: invalid-id
+description: >
+  A path id that cannot be the key's type is refused with `400 {"error": "invalid_id"}` on every
+  verb that takes one, not a 404 and not a 500.
+requests:
+  - id: r1
+    method: GET
+    path: "/api/parts/abc"
+    expect:
+      status: 400
+      body:
+        equals: {"error": "invalid_id"}
+  - id: r2
+    method: PATCH
+    path: "/api/parts/abc"
+    body: {"stock": 1}
+    expect:
+      status: 400
+      body:
+        equals: {"error": "invalid_id"}
+  - id: r3
+    method: DELETE
+    path: "/api/parts/abc"
+    expect:
+      status: 400
+      body:
+        equals: {"error": "invalid_id"}

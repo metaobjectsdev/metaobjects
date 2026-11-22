@@ -20,8 +20,7 @@
 //             diagrams. It loads the model with its own loader, from whole source DIRECTORIES
 //             (one page group each), so it reads the collection's source roots off the context.
 
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { canonicalSerializeEffective } from "@metaobjectsdev/metadata";
@@ -35,6 +34,7 @@ import {
 import type { EmittedFile, GenContext, Generator, GeneratorFactory } from "../generator.js";
 import { DOCS_TARGET_NAME } from "../docs-run.js";
 import { buildApiModelForRun } from "./api-model.js";
+import { makeScratchDir, removeTree } from "../scratch-dir.js";
 
 /** The site lands here, under the target. */
 const DEFAULT_SITE_DIR = "site";
@@ -152,12 +152,12 @@ function ownedSiteDirs(project: string): { templatesDir?: string; assetsDir?: st
  *  in a scratch directory and returned as files for the runner to write. `build` returns the
  *  page paths it wrote, relative to that directory. */
 async function buildInScratch(prefix: string, build: (outDir: string) => string[] | Promise<string[]>): Promise<EmittedFile[]> {
-  const scratch = mkdtempSync(join(tmpdir(), "meta-docs-site-"));
+  const scratch = makeScratchDir("meta-docs-site-");
   try {
     const paths = await build(scratch);
     return paths.map((path) => ({ path: `${prefix}${path}`, content: readFileSync(join(scratch, path), "utf8") }));
   } finally {
-    rmSync(scratch, { recursive: true, force: true });
+    removeTree(scratch);
   }
 }
 

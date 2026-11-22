@@ -16,7 +16,7 @@
 
 import { describe, test, expect, setDefaultTimeout } from "bun:test";
 import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
-import { mkdtempSync, rmSync, readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
 import { runGen, defineConfig } from "../src/index.js";
@@ -26,6 +26,7 @@ import { entityFile } from "../src/generators/entity-file.js";
 import { queriesFile } from "../src/generators/queries-file.js";
 import { routesFile } from "../src/generators/routes-file.js";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
+import { removeTree } from "../src/scratch-dir.js";
 
 setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
@@ -104,7 +105,7 @@ describe("generated relative imports are nodenext-safe", () => {
       await genTo(dir, "js");
       expect(extensionErrorsUnderNodeNext(dir)).toEqual([]);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTree(dir);
     }
   });
 
@@ -114,7 +115,7 @@ describe("generated relative imports are nodenext-safe", () => {
       await genTo(dir, "none");
       expect(extensionErrorsUnderNodeNext(dir).length).toBeGreaterThan(0);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTree(dir);
     }
   });
 
@@ -125,7 +126,7 @@ describe("generated relative imports are nodenext-safe", () => {
       const routes = readFileSync(join(dir, "Author.routes.ts"), "utf8");
       expect(routes).toContain('from "../db.js"');
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTree(dir);
     }
   });
 });

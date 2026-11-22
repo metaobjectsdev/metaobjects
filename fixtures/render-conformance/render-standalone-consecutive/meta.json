@@ -1,0 +1,1 @@
+{ "format": "text", "note": "two or more standalone tags on consecutive lines each strip their own line: no blank line survives between them" }

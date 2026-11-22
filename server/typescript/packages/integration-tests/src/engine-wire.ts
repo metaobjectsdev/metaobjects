@@ -70,28 +70,35 @@ function reportShapes(): Map<string, Map<string, WireField>> {
 }
 
 /**
- * `Entity.field` -> subType of every plain entity field of the canonical model, for the rows of
- * a non-report entity (the W4 decimal scenarios read `Entry`). Only `long` and `currency` are
- * mapped from it: the corpus' wire form for a BIGINT is a string, which node-postgres delivers
- * and SQLite (one INTEGER storage class) hands over as a number.
+ * Per plain entity of the canonical model, the fields whose driver spelling differs from the
+ * corpus' wire form, for the rows of a non-report entity (the W4 decimal scenarios read `Entry`,
+ * the guarded-update scenario reads `Program` back). `long` and `currency`: the wire form for a
+ * BIGINT is a string, which node-postgres delivers and SQLite (one INTEGER storage class) hands
+ * over as a number. `timestamp`: a MySQL DATETIME arrives as naive `YYYY-MM-DD HH:MM:SS.fff` text.
  */
-let entityLongFields: Map<string, Set<string>> | undefined;
-function entityIntegralFields(entity: string): Set<string> | undefined {
-  if (!entityLongFields) {
-    entityLongFields = new Map();
+interface EntityWireFields { readonly integral: ReadonlySet<string>; readonly timestamps: ReadonlyMap<string, boolean> }
+let entityWire: Map<string, EntityWireFields> | undefined;
+function entityWireFields(entity: string): EntityWireFields | undefined {
+  if (!entityWire) {
+    entityWire = new Map();
     const root = JSON.parse(readFileSync(join(CANONICAL_DIR, "meta.fitness.json"), "utf8")) as { "metadata.root": { children?: unknown[] } };
     for (const node of root["metadata.root"].children ?? []) {
       const [type, body] = Object.entries(node as Record<string, { name?: string; children?: unknown[] }>)[0] ?? [];
       if (type !== "object.entity" || body?.name === undefined) continue;
-      const names = new Set<string>();
+      const integral = new Set<string>();
+      const timestamps = new Map<string, boolean>();
       for (const child of body.children ?? []) {
         const [ctype, attrs] = Object.entries(child as Record<string, Record<string, unknown>>)[0] ?? [];
-        if ((ctype === "field.long" || ctype === "field.currency") && typeof attrs?.["name"] === "string") names.add(attrs["name"]);
+        const name = attrs?.["name"];
+        if (typeof name !== "string") continue;
+        if (ctype === "field.long" || ctype === "field.currency") integral.add(name);
+        // the value: whether the timestamp is naive (`@localTime`), which keeps its wire form zone-free
+        if (ctype === "field.timestamp") timestamps.set(name, attrs?.["@localTime"] === true);
       }
-      entityLongFields.set(body.name, names);
+      entityWire.set(body.name, { integral, timestamps });
     }
   }
-  return entityLongFields.get(entity);
+  return entityWire.get(entity);
 }
 
 const pad = (n: number): string => n.toString().padStart(2, "0");
@@ -126,10 +133,17 @@ export function reportDecimalFields(entity: string): readonly string[] {
 export function toWireRow(engine: WireEngine, entity: string, row: Record<string, unknown>): Record<string, unknown> {
   const fields = reportShapes().get(entity);
   if (!fields) {
-    const integral = entityIntegralFields(entity);
-    if (integral === undefined) return row;
+    const wire = entityWireFields(entity);
+    if (wire === undefined) return row;
     return Object.fromEntries(
-      Object.entries(row).map(([k, v]) => [k, integral.has(k) && (typeof v === "number" || typeof v === "bigint") ? String(v) : v]),
+      Object.entries(row).map(([k, v]) => {
+        if (wire.integral.has(k) && (typeof v === "number" || typeof v === "bigint")) return [k, String(v)];
+        // SQLite hands back the TEXT the writer stored, which is already the wire form; only a
+        // MySQL DATETIME needs its spelling mapped.
+        const localTime = wire.timestamps.get(k);
+        if (engine === "mysql" && localTime !== undefined) return [k, instantText(engine, v, localTime)];
+        return [k, v];
+      }),
     );
   }
   const out: Record<string, unknown> = {};

@@ -1,0 +1,2 @@
+requirements[1]{path,subType,level,status,disposition,claims,statement}:
+  ExportsAreResumable,functional,4,planned,deferred,"","true"

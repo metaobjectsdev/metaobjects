@@ -6,19 +6,19 @@
 // is migrate's answer (written by migrate-ts's runner), and the C# EF context and the Kotlin
 // Exposed table pass the same file.
 import { describe, test, expect } from "bun:test";
-import { mkdtempSync, rmSync, readdirSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 import { runGen } from "../src/runner.js";
 import { entityFile } from "../src/generators/entity-file.js";
 import { defineConfig } from "../src/metaobjects-config.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 const CORPUS = resolve(import.meta.dir, "../../../../../fixtures/foreign-key-index-conformance");
 
 async function generated(dialect: "postgres" | "sqlite"): Promise<string> {
-  const repo = mkdtempSync(join(tmpdir(), "declared-index-cut-"));
+  const repo = makeScratchDir("declared-index-cut-");
   try {
     const { root, errors } = await new MetaDataLoader().load([new FileSource(join(CORPUS, "input", "meta.fk.json"))]);
     expect(errors).toEqual([]);
@@ -33,7 +33,7 @@ async function generated(dialect: "postgres" | "sqlite"): Promise<string> {
       .map((f) => readFileSync(join(outDir, f), "utf8"))
       .join("\n");
   } finally {
-    rmSync(repo, { recursive: true, force: true });
+    removeTree(repo);
   }
 }
 

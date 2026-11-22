@@ -2,7 +2,7 @@
 // files in DIFFERENT packages produce manifests that merge with nothing to resolve. With the
 // single `.hashes.json` the same two branches conflict on that one file.
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
@@ -10,10 +10,11 @@ import { FileSource } from "@metaobjectsdev/metadata/core";
 import { runGen } from "../src/runner.js";
 import { defineConfig } from "../src/metaobjects-config.js";
 import { perEntity, perModel, type Generator } from "../src/generator.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 let tmp: string;
-beforeEach(() => { tmp = mkdtempSync(join(process.env.DEV_SCRATCH ?? "/tmp", "manifest-merge-")); });
-afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+beforeEach(() => { tmp = makeScratchDir("manifest-merge-"); });
+afterEach(() => { removeTree(tmp); });
 
 const entity = (pkg: string, name: string): string => JSON.stringify({
   "metadata.root": { package: pkg, children: [{ "object.entity": { name, children: [

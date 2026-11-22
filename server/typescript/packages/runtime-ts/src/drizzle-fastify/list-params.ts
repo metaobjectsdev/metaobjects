@@ -27,9 +27,9 @@ export const PAGINATION_EXPECTED = "a non-negative integer (0 or more)";
  * Read `?limit=` / `?offset=` as a non-negative integer, or refuse it. Before, a value
  * that was not a finite number (`?limit=abc`) was dropped — every row came back — and a
  * negative or fractional one reached SQL. `max` is the ceiling a mount clamps to, when it
- * has one: a bound above it is refused rather than silently lowered. TS-only (no corpus
- * scenario sends a malformed page bound): see docs/features/api-contract.md, "TS-only
- * error responses".
+ * has one: a bound above it is refused rather than silently lowered. Part of the REST
+ * contract (docs/features/api-contract.md, "Error responses for a bad request or a failed
+ * write"), pinned by `list-query/pagination-invalid-value` and `report/bad-page-bound`.
  */
 export function parsePageBound(
   query: Record<string, unknown>,

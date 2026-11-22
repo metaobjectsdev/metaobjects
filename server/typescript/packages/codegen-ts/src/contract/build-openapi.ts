@@ -3,10 +3,11 @@
 // mounts. `components.schemas` is the canonical JSON Schema (an OpenAPI 3.1 schema IS JSON Schema
 // 2020-12), so the two artifacts cannot disagree.
 //
-// It states the cross-port contract only. The TS-only filter extensions (`?search`, `filter[or]`)
-// are left out, and so are the `405` refusals on a read-only surface, which are not operations a
-// caller can use (the api docs omit them for the same reason): a read-only resource says so in the
-// description of its operations instead.
+// It states the list parameters of the REST contract: one per filterable field and operator,
+// `?search` when the row has text fields it matches, and the `filter[or]` / `filter[and]`
+// combinators (ADR-0068). It does not state the `405` refusals on a read-only surface, which are
+// not operations a caller can use (the api docs omit them for the same reason): a read-only
+// resource says so in the description of its operations instead.
 //
 // It also states what the 1.3 routes do beyond the happy path: the project's page size
 // (`api.pagination`), the refusal of an undeclared body key (`api.unknownFields`) and the list of
@@ -30,6 +31,7 @@ import type { RelationMap } from "../relation-resolver.js";
 import { CRUD_VERBS, type CrudVerb, type ExposeOption, intersectExpose, resolveExpose, TPH_POLYMORPHIC_VERBS } from "../routes-expose.js";
 import { isReport } from "../source-detect.js";
 import { credentialFieldNames, isFilterableField, sortableFields } from "../templates/filter-shared.js";
+import { isSearchField } from "../templates/filter-allowlist.js";
 import { tphPlan } from "../templates/tph-discriminator.js";
 import { isTphSubtype } from "../tph.js";
 import { ContractEmitError, ERR_CONTRACT_NAME_COLLISION } from "./contract-errors.js";
@@ -127,6 +129,7 @@ const UNKNOWN_FIELDS_REFUSED = errorResponse(
   'The request was refused. A body key the model does not declare answers error "unknown_fields" with the keys in fields, and nothing is written. Any other problem answers error "validation" with an issue for every problem.',
 );
 const NOT_FOUND = errorResponse("No such row.");
+const INVALID_ID = errorResponse('The id is not one the key column can hold: error "invalid_id".');
 const CONFLICT = errorResponse("A constraint refused the write.");
 
 /** The value of one filter operator, in the query string. */
@@ -139,12 +142,51 @@ function filterValueSchema(field: MetaField, op: string): JsonSchema {
   return scalarSchema(field.subType);
 }
 
-/** One parameter per filterable field and operator, so removing either is a visible change. */
-function filterParameters(obj: MetaObject, excludeField: string | undefined, root: MetaRoot): JsonSchema[] {
-  const params: JsonSchema[] = [];
+/** The fields on the server's filter allowlist, in declaration order. */
+function filterableFields(obj: MetaObject, excludeField: string | undefined, root: MetaRoot): MetaField[] {
   // A column a sibling subtype of one table marks as a credential is refused by the server allowlist too.
   const credentials = credentialFieldNames(obj, root);
-  const filterable = flatSurfaceFields(obj).filter((f) => isFilterableField(f) && !credentials.has(f.name) && f.name !== excludeField);
+  return flatSurfaceFields(obj).filter((f) => isFilterableField(f) && !credentials.has(f.name) && f.name !== excludeField);
+}
+
+/**
+ * The cap on `or` / `and` nesting every port serves (the list-query contract, ADR-0068): the
+ * sixth level answers 400 `filter.nesting_too_deep`.
+ */
+const FILTER_MAX_NESTING = 5;
+
+/**
+ * `?search`, when the allowlist has a field it matches (with none, the server ignores the
+ * parameter, so the document does not offer it), and the boolean combinators, when there is a
+ * filter at all. A combinator nests, which a query parameter's schema cannot spell, so each is one
+ * `deepObject` parameter whose description gives the grammar.
+ */
+function listQueryParameters(filterable: readonly MetaField[]): JsonSchema[] {
+  if (!filterable.some((f) => opsForField(f).length > 0)) return [];
+  const searched = filterable.filter(isSearchField).map((f) => f.name);
+  const search: JsonSchema[] = searched.length === 0 ? [] : [{
+    name: "search",
+    in: "query",
+    description: `A case-insensitive substring match across ${searched.join(", ")}, ORed together. Empty, it is no search.`,
+    schema: { type: "string" },
+  }];
+  const combinator = (op: "or" | "and", joined: string): JsonSchema => ({
+    name: `filter[${op}]`,
+    in: "query",
+    style: "deepObject",
+    explode: true,
+    description:
+      `Branches ${joined} together: filter[${op}][N][<field>][<op>]=<value>, each branch a filter of its own that may nest ` +
+      `filter[or] and filter[and]. Branches are taken in index order. ${FILTER_MAX_NESTING} levels are served; ` +
+      `the next answers 400 filter.nesting_too_deep.`,
+    schema: { type: "object", additionalProperties: { type: "object" } },
+  });
+  return [...search, combinator("or", "ORed"), combinator("and", "ANDed")];
+}
+
+/** One parameter per filterable field and operator, so removing either is a visible change. */
+function filterParameters(filterable: readonly MetaField[]): JsonSchema[] {
+  const params: JsonSchema[] = [];
   for (const field of filterable) {
     const ops = opsForField(field);
     if (ops.length === 0) continue;
@@ -244,8 +286,10 @@ interface ResourceOps {
 
 function listOperation(r: ResourceOps): JsonSchema {
   const { row } = r;
+  const filterable = filterableFields(row, r.excludeField, r.root);
   const parameters = [
-    ...filterParameters(row, r.excludeField, r.root),
+    ...filterParameters(filterable),
+    ...listQueryParameters(filterable),
     ...sortParameter(row, r.excludeField, r.root),
     ...pageParameters(r.report ? 1 : 0, r.report ? undefined : apiPaginationOf(r.root)),
     ...(r.reportExport ? [{ name: "format", in: "query", schema: { type: "string", enum: ["csv", "json", "xml"] } }] : []),
@@ -271,8 +315,11 @@ function writeBody(r: ResourceOps, shape: ContractShape): JsonSchema {
   return { required: true, description, content: jsonContent(pathRef(r.refs, r.row, shape)) };
 }
 
-function writeRefused(r: ResourceOps): JsonSchema {
-  return apiUnknownFieldsOf(r.root) === UNKNOWN_FIELDS_REJECT ? UNKNOWN_FIELDS_REFUSED : VALIDATION_REFUSED;
+const INVALID_ID_NOTE = ' An id the key column cannot hold answers error "invalid_id".';
+
+function writeRefused(r: ResourceOps, byId = false): JsonSchema {
+  const refused = apiUnknownFieldsOf(r.root) === UNKNOWN_FIELDS_REJECT ? UNKNOWN_FIELDS_REFUSED : VALIDATION_REFUSED;
+  return byId ? { ...refused, description: `${String(refused["description"])}${INVALID_ID_NOTE}` } : refused;
 }
 
 function updateOperation(r: ResourceOps, operationId: string): JsonSchema {
@@ -282,7 +329,7 @@ function updateOperation(r: ResourceOps, operationId: string): JsonSchema {
     requestBody: writeBody(r, "update"),
     responses: {
       "200": { description: "The row.", content: jsonContent(pathRef(r.refs, r.row, "read")) },
-      "400": writeRefused(r),
+      "400": writeRefused(r, true),
       "404": NOT_FOUND,
       "409": CONFLICT,
     },
@@ -298,7 +345,7 @@ function itemOperations(r: ResourceOps): JsonSchema {
         operationId: `get${row.name}`,
         tags,
         ...(r.readOnly === true && { description: READ_ONLY_NOTE }),
-        responses: { "200": { description: "The row.", content: jsonContent(pathRef(r.refs, row, "read")) }, "404": NOT_FOUND },
+        responses: { "200": { description: "The row.", content: jsonContent(pathRef(r.refs, row, "read")) }, "400": INVALID_ID, "404": NOT_FOUND },
       },
     }),
     ...(verbs.has("update") && {
@@ -310,7 +357,7 @@ function itemOperations(r: ResourceOps): JsonSchema {
       delete: {
         operationId: `delete${row.name}`,
         tags,
-        responses: { "204": { description: "Deleted." }, "404": NOT_FOUND, "409": CONFLICT },
+        responses: { "204": { description: "Deleted." }, "400": INVALID_ID, "404": NOT_FOUND, "409": CONFLICT },
       },
     }),
   };

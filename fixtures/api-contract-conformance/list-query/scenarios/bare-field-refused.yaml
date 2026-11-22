@@ -1,0 +1,13 @@
+name: bare-field-refused
+description: >
+  `?name=x` names a filterable field outside `filter[...]`. Ignoring it would answer every row, so
+  it is refused with `filter.bare_field`.
+requests:
+  - id: r1
+    method: GET
+    path: "/api/parts?name=Anvil%2001"
+    expect:
+      status: 400
+      body:
+        error: "filter.bare_field"
+        field: "name"

@@ -32,23 +32,18 @@ from .scenarios import QueryScenario, find_corpus_root, load_queries
 # inject/scope/strip. FR-017 Tier-4: the Python runtime now ships TPH support
 # (ObjectManagerDb discriminator inject/scope/strip + runtime/tph.py), so the
 # ``tph-*`` scenarios run green and are no longer skipped.
-EXPECTED_FAILURES: dict[str, str] = {}
-
-# The same, for one engine only: (engine, scenario name) -> reason. The Python runtime's
-# SQLite and MySQL dialects bind no list parameter (``runtime/dialect.py`` encode_param has
-# no list case), so no primitive array -- string- or int-backed -- persists on those engines.
-_NO_ARRAYS = (
-    "the Python runtime stores no primitive array on this engine "
-    "(SqliteDialect/MySqlDialect.encode_param have no list case)"
-)
-ENGINE_EXPECTED_FAILURES: dict[tuple[str, str], str] = {
-    ("sqlite", "roundtrip-int-enum-array"): _NO_ARRAYS,
-    ("mysql", "roundtrip-int-enum-array"): _NO_ARRAYS,
+EXPECTED_FAILURES: dict[str, str] = {
+    "guarded-update": "op: guardedUpdate: the Python guarded update is not built yet (1.3.0 row L-PY-2)",
 }
+
+# The same, for one engine only: (engine, scenario name) -> reason. Empty: a primitive
+# array (``roundtrip-int-enum-array``) persists on SQLite and MySQL as a JSON array.
+ENGINE_EXPECTED_FAILURES: dict[tuple[str, str], str] = {}
 
 
 def _skip_if_expected(engine: str, scenario: QueryScenario) -> None:
-    reason = ENGINE_EXPECTED_FAILURES.get((engine, scenario.name))
+    # A port-wide deferral (EXPECTED_FAILURES) holds on every engine a scenario runs on.
+    reason = ENGINE_EXPECTED_FAILURES.get((engine, scenario.name)) or EXPECTED_FAILURES.get(scenario.name)
     if reason:
         pytest.skip(reason)
 

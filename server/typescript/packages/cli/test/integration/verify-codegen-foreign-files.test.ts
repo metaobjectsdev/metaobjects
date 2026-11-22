@@ -256,7 +256,9 @@ export default defineConfig({
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+    // Six end-to-end gen/verify runs, each loading the config and rendering (a verify is
+    // ~1.8s alone), so bun's 5s per-test default is shorter than the work itself.
+  }, 60_000);
 
   test("with no manifest at all, the old conservative verdict stands", async () => {
     const root = setupRepo();

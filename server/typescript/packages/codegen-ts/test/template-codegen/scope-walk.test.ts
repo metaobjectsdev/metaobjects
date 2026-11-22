@@ -1,15 +1,15 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { runGen, defineConfig } from "../../src/index.js";
 import { templateGenerator } from "../../src/generators/template-generator.js";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
+import { makeScratchDir, removeTree } from "../../src/scratch-dir.js";
 
 let tmp: string;
-beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "tmpl-scope-")); });
-afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+beforeEach(() => { tmp = makeScratchDir("tmpl-scope-"); });
+afterEach(() => { removeTree(tmp); });
 
 async function genPerEntity(outDir: string, projectRoot: string) {
   const loader = new MetaDataLoader();

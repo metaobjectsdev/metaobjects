@@ -22,6 +22,12 @@ describe("stack value validation", () => {
       .toThrow(/--client vue.*react, tanstack, angular/s);
   });
 
+  test("`rust` is a server language, and `rs` its alias", async () => {
+    expect(() => assertKnownStackValues({ servers: ["rust", "rs"], clients: [] })).not.toThrow();
+    const stack = await resolveStack("/nonexistent-project-dir", { servers: ["rs"], clients: [] });
+    expect(stack.servers).toEqual(["rust"]);
+  });
+
   test("`node` is ACCEPTED as an alias for typescript — the help text's own example", () => {
     expect(() => assertKnownStackValues({ servers: ["node"], clients: [] })).not.toThrow();
   });

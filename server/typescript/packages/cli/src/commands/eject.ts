@@ -321,7 +321,8 @@ export async function ejectGenerator(opts: EjectOptions): Promise<EjectResult> {
     ? await ejectTemplates(opts.cwd, [closure], opts.force === true)
     : undefined;
 
-  if (!opts.force && existing !== undefined) {
+  // Kept unless --force; and --force over identical bytes writes nothing either.
+  if (existing !== undefined && (!opts.force || existing === templateSource)) {
     return { ...common, status: "preserved", comparison, runtime, templates };
   }
 
@@ -865,9 +866,12 @@ interface EjectPayload {
 /** The text report for `meta eject docs-site`. */
 function reportDocsSite(files: readonly DocsSiteFileResult[]): void {
   const written = files.filter((f) => f.status !== "preserved").length;
+  const identical = files.filter((f) => f.identical === true).length;
+  const kept = files.length - written - identical;
   log.info(
-    `Ejected the docs-site theme -> codegen/docs-site/: ${written} file(s) written, ` +
-      `${files.length - written} already there and kept (--force replaces them).`,
+    `Ejected the docs-site theme -> codegen/docs-site/: ${written} file(s) written` +
+      (identical > 0 ? `, ${identical} already identical to the shipped copy` : "") +
+      (kept > 0 ? `, ${kept} already there and kept (--force replaces them)` : "") + ".",
   );
   log.info(
     "  docsSiteFile() reads these in place of the bundled templates and assets; edit them to own " +
@@ -890,7 +894,9 @@ function reportLibrary(result: LibraryEjectResult): void {
     // Never clobber without consent — the same contract the generator path keeps, and
     // the stakes are higher here: these files are the adopter's MODEL.
     for (const f of kept) {
-      log.info(`  ${f.path} already exists — left untouched (--force replaces it).`);
+      log.info(f.identical === true
+        ? `  ${f.path} already matches the shipped copy — nothing to do.`
+        : `  ${f.path} already exists — left untouched (--force replaces it).`);
     }
   }
   log.info(

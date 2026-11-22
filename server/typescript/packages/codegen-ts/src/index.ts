@@ -289,7 +289,10 @@ export {
 export { renderBarrel } from "./templates/barrel.js";
 export type { BarrelEntry } from "./templates/barrel.js";
 export { renderFilterType } from "./templates/filter-type.js";
-export { renderFilterAllowlist, renderSortAllowlist } from "./templates/filter-allowlist.js";
+export {
+  filterAllowlistRules, renderFilterAllowlist, renderSortAllowlist, sortAllowlistRules,
+  type FilterAllowlistRule, type SortAllowlistRule,
+} from "./templates/filter-allowlist.js";
 export { renderEntityConstants, renderValueObjectConstants, resourcePath } from "./templates/entity-constants.js";
 export { renderQueriesFile } from "./templates/queries-file.js";
 // #348 — which CRUD verbs a generated routes file mounts. Public because an OWNED
@@ -417,6 +420,36 @@ export type { RequirementRow } from "./generators/requirements-view.js";
 // author that `summary` is invisible while `title` is the entry's label. Both halves of
 // that claim need to be checkable against the projection rather than asserted in prose.
 export { requirementRows } from "./generators/requirements-view.js";
+// The four pages' builders and renderers. Each page is a shared Mustache template fed the
+// data its builder returns (`fixtures/docs-page-conformance/` pins both, for every port), so
+// an owned generator can change the data, the template, or both.
+export {
+  REQUIREMENTS_PAGE_REF,
+  requirementsLedgerData,
+  renderRequirementsMarkdown,
+  type RequirementsLedgerData,
+  type RequirementsLedgerEntry,
+  type RequirementsMarkdownOpts,
+} from "./generators/requirements-markdown.js";
+export {
+  REQUIREMENTS_TOON_REF,
+  requirementsToonData,
+  renderRequirementsToon,
+  type RequirementsToonData,
+} from "./generators/requirements-toon.js";
+export {
+  AGENT_REQUIREMENTS_PAGE_REF,
+  agentRequirementsPageData,
+  renderAgentRequirementsPage,
+  type AgentRequirementsPageData,
+} from "./generators/agent-requirements-page.js";
+export {
+  AGENT_SCHEMA_PAGE_REF,
+  agentSchemaPageData,
+  renderAgentSchemaPage,
+  type AgentSchemaPageData,
+  type AgentSchemaPageOptions,
+} from "./generators/agent-schema-page.js";
 export type {
   RequirementTestsOpts,
   RequirementTestRenderer,

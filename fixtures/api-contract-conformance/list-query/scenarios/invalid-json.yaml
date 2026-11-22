@@ -1,0 +1,20 @@
+name: invalid-json
+description: >
+  A create whose body is not JSON is refused with `400 {"error": "invalid_json"}`, not a 500.
+requests:
+  - id: r1
+    method: POST
+    path: "/api/parts"
+    rawBody: "{\"name\": \"Vise\","
+    expect:
+      status: 400
+      body:
+        equals: {"error": "invalid_json"}
+  - id: r2
+    method: PATCH
+    path: "/api/parts/1"
+    rawBody: "not json"
+    expect:
+      status: 400
+      body:
+        equals: {"error": "invalid_json"}

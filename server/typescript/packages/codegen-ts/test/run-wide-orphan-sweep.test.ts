@@ -8,13 +8,13 @@
 
 import { manifestFiles } from "./support/manifest.js";
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { MetaDataLoader, InMemoryStringSource, type MetaRoot } from "@metaobjectsdev/metadata";
 import { runGen } from "../src/runner.js";
 import { entityFile } from "../src/generators/entity-file.js";
 import type { Generator } from "../src/generator.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 const OUT = "gen";
 const GEN_STATE = join(".metaobjects", ".gen-state");
@@ -35,10 +35,10 @@ async function model(...names: string[]): Promise<MetaRoot> {
 
 let projectRoot: string;
 beforeEach(() => {
-  projectRoot = mkdtempSync(join(tmpdir(), "run-wide-orphans-"));
+  projectRoot = makeScratchDir("run-wide-orphans-");
 });
 afterEach(() => {
-  rmSync(projectRoot, { recursive: true, force: true });
+  removeTree(projectRoot);
 });
 
 const abs = (rel: string): string => join(projectRoot, rel);

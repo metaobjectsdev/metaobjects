@@ -9,16 +9,17 @@
 //   int / long / currency -> type="number", step left at its default of 1.
 
 import { describe, test, expect, afterAll } from "bun:test";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { renderEntityConstants } from "../src/templates/entity-constants.js";
 import { numericInputControl } from "../src/templates/field-meta.js";
+import { removeTree } from "../src/scratch-dir.js";
 
 const TEMP_DIRS: string[] = [];
 afterAll(() => {
-  for (const d of TEMP_DIRS) rmSync(d, { recursive: true, force: true });
+  for (const d of TEMP_DIRS) removeTree(d);
 });
 
 const MODEL = {

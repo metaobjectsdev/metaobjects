@@ -8,8 +8,7 @@
 import { describe, test, expect } from "bun:test";
 import { MetaDataLoader, InMemoryStringSource, type MetaRoot, type MetaObject } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { runGen } from "../src/runner.js";
 import { defineConfig } from "../src/metaobjects-config.js";
@@ -19,6 +18,7 @@ import { routesFileHono } from "../src/generators/routes-file-hono.js";
 import { routesFile as referenceRoutes } from "../src/reference/routes.js";
 import { routesFileHono as referenceRoutesHono } from "../src/reference/routes-hono.js";
 import { knownFieldNames, tphHierarchy } from "../src/api-surface.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 const MODEL = {
   "metadata.root": {
@@ -58,14 +58,14 @@ function allFiles(dir: string): string[] {
 async function routesSource(generator: Generator, mode: "reject" | "drop" | undefined): Promise<string> {
   const root = await loadRoot();
   if (mode !== undefined) root.apiUnknownFields = mode;
-  const tmp = mkdtempSync(join(tmpdir(), "routes-known-fields-"));
+  const tmp = makeScratchDir("routes-known-fields-");
   try {
     await runGen({
       config: defineConfig({ outDir: join(tmp, "src"), extStyle: "none", dbImport: "../db", dialect: "sqlite", generators: [generator] }),
       metadata: root, projectRoot: tmp,
     });
     return allFiles(join(tmp, "src")).filter((f) => /Product.*routes/i.test(f)).map((f) => readFileSync(f, "utf8")).join("\n");
-  } finally { rmSync(tmp, { recursive: true, force: true }); }
+  } finally { removeTree(tmp); }
 }
 
 const GENERATORS: Array<[string, () => Generator]> = [

@@ -31,8 +31,7 @@
 //                repo precedent: #226/#258 detect-and-refuse at gen time).
 
 import { describe, test, expect, afterEach } from "bun:test";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -49,6 +48,7 @@ import { normalizeConfig, defineConfig } from "../src/metaobjects-config.js";
 import { runGen } from "../src/runner.js";
 import { buildPkMap } from "../src/pk-resolver.js";
 import { buildRelationMap } from "../src/relation-resolver.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: dynamically imported generated module — no static shape
 type GeneratedModule = Record<string, any>;
@@ -56,7 +56,7 @@ type GeneratedModule = Record<string, any>;
 const tmpDirs: string[] = [];
 afterEach(() => {
   while (tmpDirs.length > 0) {
-    rmSync(tmpDirs.pop()!, { recursive: true, force: true });
+    removeTree(tmpDirs.pop()!);
   }
 });
 
@@ -257,7 +257,7 @@ describe('IMPORTANT 4: runGen warns (once) when timestampMode: "date" meets a @f
   async function runWithMetadata(json: string, dialect: "postgres" | "sqlite", timestampMode?: "date" | "string") {
     const result = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
     expect(result.errors).toEqual([]);
-    const dir = mkdtempSync(join(tmpdir(), "codegen-runner-important4-"));
+    const dir = makeScratchDir("codegen-runner-important4-");
     try {
       return await runGen({
         config: defineConfig({
@@ -268,7 +268,7 @@ describe('IMPORTANT 4: runGen warns (once) when timestampMode: "date" meets a @f
         metadata: result.root,
       });
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTree(dir);
     }
   }
 

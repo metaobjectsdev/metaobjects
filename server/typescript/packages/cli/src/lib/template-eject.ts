@@ -385,7 +385,8 @@ export async function ejectTemplates(
     const abs = join(cwd, file.path);
     const existing = existsSync(abs) ? await readFile(abs, "utf8") : undefined;
     const comparison = existing === undefined ? undefined : await compareOwnedCopy(existing, file.content);
-    if (existing !== undefined && !force) {
+    // Kept unless --force; and --force over identical bytes writes nothing either.
+    if (existing !== undefined && (!force || existing === file.content)) {
       files.push({ path: file.path, status: "preserved", comparison });
       continue;
     }

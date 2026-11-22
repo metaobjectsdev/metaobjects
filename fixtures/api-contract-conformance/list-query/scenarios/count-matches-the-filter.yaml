@@ -1,0 +1,13 @@
+name: count-matches-the-filter
+description: >
+  `withCount=1` counts the rows the filter and search match, not the table.
+requests:
+  - id: r1
+    method: GET
+    path: "/api/parts?search=pump&filter[category][eq]=part&withCount=1&limit=1"
+    expect:
+      status: 200
+      body:
+        envelope: true
+        rowsLength: 1
+        total: 2

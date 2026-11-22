@@ -2,8 +2,7 @@
 // End-to-end gate that proves Tasks 1-16 produce production-quality output.
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, readFileSync, readdirSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { runGen, defineConfig } from "../src/index.js";
 import { barrel } from "../src/generators/barrel.js";
@@ -12,10 +11,11 @@ import { queriesFile } from "../src/generators/queries-file.js";
 import { routesFile } from "../src/generators/routes-file.js";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 let tmp: string;
-beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "codegen-integration-")); });
-afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+beforeEach(() => { tmp = makeScratchDir("codegen-integration-"); });
+afterEach(() => { removeTree(tmp); });
 
 const FIXTURE = resolve(import.meta.dir, "fixtures/trainer-website-shape.json");
 

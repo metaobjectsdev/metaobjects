@@ -1,0 +1,78 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Order",
+          "@description": "A customer's order, from cart to fulfilment.",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "orders"
+              }
+            },
+            {
+              "field.uuid": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "reference",
+                "@required": true,
+                "@description": "The code a customer reads down a phone line."
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "placedAt",
+                "@required": true
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Invoice",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "invoices"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.currency": {
+                "name": "totalCents",
+                "@required": true
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ],
+                "@generation": "increment"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

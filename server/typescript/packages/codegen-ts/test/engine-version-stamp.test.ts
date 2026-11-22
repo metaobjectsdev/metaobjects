@@ -3,14 +3,14 @@
 // stamp is a separate file from the `.hashes/` manifest and never affects the three-way merge.
 import { manifestExists } from "./support/manifest.js";
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadEngineVersion, saveEngineVersion } from "../src/overwrite-policy.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 let state: string;
-beforeEach(() => { state = mkdtempSync(join(tmpdir(), "codegen-engine-")); });
-afterEach(() => { rmSync(state, { recursive: true, force: true }); });
+beforeEach(() => { state = makeScratchDir("codegen-engine-"); });
+afterEach(() => { removeTree(state); });
 
 describe("#232 — gen-state engine-version stamp", () => {
   test("unstamped gen-state → loadEngineVersion is undefined (pre-#232 / fresh project)", () => {

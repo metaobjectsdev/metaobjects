@@ -3,8 +3,7 @@
 // (the explorer builder) can say which files a node produced without matching names.
 import { LEGACY_HASHES_FILE, manifestEntries, manifestExists, manifestFiles, seedLegacyManifest } from "./support/manifest.js";
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
@@ -12,12 +11,13 @@ import { runGen } from "../src/runner.js";
 import { defineConfig } from "../src/metaobjects-config.js";
 import { perEntity, perModel, type Generator } from "../src/generator.js";
 import { recordGeneratedProvenance } from "../src/overwrite-policy.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 const FIXTURE = resolve(import.meta.dir, "fixtures", "single-entity.json");
 
 let tmp: string;
-beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "codegen-provenance-")); });
-afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+beforeEach(() => { tmp = makeScratchDir("codegen-provenance-"); });
+afterEach(() => { removeTree(tmp); });
 
 const manifest = (dir: string): Record<string, unknown> =>
   manifestEntries(join(dir, ".metaobjects", ".gen-state"));

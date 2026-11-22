@@ -4,6 +4,7 @@ package com.metaobjects.generator.spring;
 // com.metaobjects.generator.spring when this generator is copied out via
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.generator.spring.SpringJavaWriter;
 import com.metaobjects.generator.spring.SpringGeneratorSupport;
 import com.metaobjects.generator.spring.SpringM2mSupport;
 import com.metaobjects.generator.spring.SpringNaming;
@@ -117,82 +118,52 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
         // a hard-coded Long made this interface un-implementable against a uuid-keyed table.
         String pkType = SpringTypeMapper.primaryKeyJavaType(entity);
 
-        StringBuilder src = new StringBuilder();
-        if (!pkg.isEmpty()) {
-            src.append("package ").append(pkg).append(";\n\n");
-        }
-        src.append("import ").append(runtimePackage).append(".FilterPredicate;\n");
-        src.append("import java.util.List;\n");
-        src.append("import java.util.Optional;\n\n");
-        src.append("/**\n");
-        src.append(" * GENERATED interface — consumer implements with their preferred persistence layer\n");
-        src.append(" * (Spring Data JPA / jOOQ / plain JDBC). The matching ")
-           .append(shortName).append("Controller delegates to this interface.\n");
-        src.append(" */\n");
-        src.append("public interface ").append(repoName).append(" {\n\n");
-        src.append("    /** Sort directive parsed from the cross-port ?sort=<field>:asc|desc grammar. */\n");
-        src.append("    record SortClause(String field, String direction) {}\n\n");
-        src.append("    List<").append(dtoName)
-           .append("> list(int limit, int offset, SortClause sort, List<FilterPredicate> filters);\n");
-        src.append("    long count(List<FilterPredicate> filters);\n");
-        src.append("    Optional<").append(dtoName).append("> findById(").append(pkType).append(" id);\n");
-        src.append("    ").append(dtoName).append(" create(").append(dtoName).append(" dto);\n");
-        src.append("    Optional<").append(dtoName).append("> update(").append(pkType).append(" id, ")
-           .append(dtoName).append(" dto);\n");
-        // FR-035: presence-tracked partial update. The <Entity>Patch carries the
-        // absent/null/value tristate the full DTO cannot, so an explicit null clears a
-        // nullable column (an explicit null on a @required field is rejected at the
-        // controller). Same package as the interface — no import needed.
-        src.append("    Optional<").append(dtoName).append("> patch(").append(pkType).append(" id, ")
-           .append(SpringNaming.patchName(shortName)).append(" patch);\n");
-        src.append("    boolean delete(").append(pkType).append(" id);\n");
+        SpringJavaWriter w = newWriter(pkg, true);
+        w.line("/**");
+        w.line(" * GENERATED interface — consumer implements with their preferred persistence layer");
+        w.line(" * (Spring Data JPA / jOOQ / plain JDBC). The matching " + shortName + "Controller delegates to this interface.");
+        w.line(" */");
+        try (var cls = w.block("public interface " + repoName + " {")) {
+            writeSortClause(w);
+            w.blank();
+            writeListAndCount(w, dtoName);
+            w.line("Optional<" + dtoName + "> findById(" + pkType + " id);");
+            w.line(dtoName + " create(" + dtoName + " dto);");
+            w.line("Optional<" + dtoName + "> update(" + pkType + " id, " + dtoName + " dto);");
+            // FR-035: presence-tracked partial update. The <Entity>Patch carries the
+            // absent/null/value tristate the full DTO cannot, so an explicit null clears a
+            // nullable column (an explicit null on a @required field is rejected at the
+            // controller). Same package as the interface — no import needed.
+            w.line("Optional<" + dtoName + "> patch(" + pkType + " id, " + SpringNaming.patchName(shortName) + " patch);");
+            w.line("boolean delete(" + pkType + " id);");
 
-        // FR-018 M:N finders — one per @cardinality:"many" + @through relationship.
-        // The matching controller's GET /{id}/<relationName> sub-resource delegates here.
-        // The consumer implements the junction traversal (the runtime M2mJoinResolver helper
-        // collapses the three resolution modes once the junction rows are fetched).
-        for (SpringM2mSupport.M2mNav nav : SpringM2mSupport.resolve(entity, loader)) {
-            src.append("\n    /** M:N traversal: the ").append(nav.targetShortName())
-               .append(" rows related to this ").append(shortName)
-               .append(" through ").append(nav.junctionShortName());
-            if (nav.symmetric()) src.append(" (symmetric — union on read)");
-            src.append(targetSubtypeJavadocClause(nav));
-            src.append(". */\n");
-            src.append("    List<").append(nav.targetDtoType()).append("> ")
-               .append(SpringGeneratorSupport.m2mFinderName(nav.relationName())).append("(").append(pkType).append(" sourceId")
-               .append(SpringGeneratorSupport.targetSubtypeParam(nav)).append(");\n");
-        }
+            // FR-018 M:N finders — one per @cardinality:"many" + @through relationship.
+            // The matching controller's GET /{id}/<relationName> sub-resource delegates here.
+            // The consumer implements the junction traversal (the runtime M2mJoinResolver helper
+            // collapses the three resolution modes once the junction rows are fetched).
+            for (SpringM2mSupport.M2mNav nav : SpringM2mSupport.resolve(entity, loader)) {
+                w.blank();
+                writeM2mFinder(w, shortName, pkType, nav);
+            }
 
-        // ADR-0038 reverse navigation — one finder PAIR per FK this entity holds
-        // (each identity.reference). The referenced entity T navigates to its
-        // referencing E rows by calling these with a T id. The method name derives
-        // from the FK FIELD (PascalCased, trailing `Id` dropped) so same-pair FKs
-        // (e.g. GameSession → Scene ×3) yield DISTINCT finders, never colliding —
-        // and no @reverseName vocabulary is needed. NOT a lazy @OneToMany collection
-        // (N+1 anti-pattern + needs an open session): a single indexed query
-        // (WHERE fk = ?) plus a batched variant (WHERE fk IN (…)) for anti-N+1
-        // loading of many parents.
-        for (ReverseFk fk : reverseFksFor(entity)) {
-            src.append("\n    /** Reverse nav: the ").append(shortName)
-               .append(" rows whose ").append(fk.fkField())
-               .append(" FK points at the given ").append(fk.targetShortName())
-               .append(" id (single indexed query). */\n");
-            src.append("    List<").append(dtoName).append("> ")
-               .append(SpringNaming.reverseFinderName(fk.fkField()))
-               .append("(").append(fk.valueType()).append(" ").append(fk.fkField()).append(");\n");
-            src.append("    /** Reverse nav (batched, anti-N+1): the ").append(shortName)
-               .append(" rows whose ").append(fk.fkField())
-               .append(" FK is IN the given ").append(fk.targetShortName())
-               .append(" ids. */\n");
-            src.append("    List<").append(dtoName).append("> ")
-               .append(SpringNaming.reverseFinderInName(fk.fkField()))
-               .append("(List<").append(fk.valueType()).append("> ").append(fk.fkField()).append("s);\n");
+            // ADR-0038 reverse navigation — one finder PAIR per FK this entity holds
+            // (each identity.reference). The referenced entity T navigates to its
+            // referencing E rows by calling these with a T id. The method name derives
+            // from the FK FIELD (PascalCased, trailing `Id` dropped) so same-pair FKs
+            // (e.g. GameSession → Scene ×3) yield DISTINCT finders, never colliding —
+            // and no @reverseName vocabulary is needed. NOT a lazy @OneToMany collection
+            // (N+1 anti-pattern + needs an open session): a single indexed query
+            // (WHERE fk = ?) plus a batched variant (WHERE fk IN (…)) for anti-N+1
+            // loading of many parents.
+            for (ReverseFk fk : reverseFksFor(entity)) {
+                w.blank();
+                writeReverseFinders(w, shortName, dtoName, fk);
+            }
         }
-        src.append("}\n");
 
         try {
             Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(repoName + ".java");
-            GeneratedFileWriter.write(outFile, src.toString());
+            GeneratedFileWriter.write(outFile, w.toString());
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing " + repoName + ".java for entity " + entity.getName() + ": " + e, e);
@@ -228,39 +199,24 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
         boolean hasItem = RestSurfaceGate.hasItemRoute(entity);
         String pkType = SpringTypeMapper.primaryKeyJavaType(entity);
 
-        StringBuilder src = new StringBuilder();
-        if (!pkg.isEmpty()) {
-            src.append("package ").append(pkg).append(";\n\n");
+        SpringJavaWriter w = newWriter(pkg, hasItem);
+        w.line("/**");
+        w.line(" * GENERATED interface — consumer implements with their preferred persistence layer");
+        w.line(" * (Spring Data JPA / jOOQ / plain JDBC). The matching " + shortName + "Controller delegates to this interface.");
+        w.line(" *");
+        w.line(" * <p>READ-ONLY: " + shortName + " is a " + noun + " over a database view, so there is no write method to");
+        w.line(" * implement. Its controller answers every write verb with 405.</p>");
+        w.line(" */");
+        try (var cls = w.block("public interface " + repoName + " {")) {
+            writeSortClause(w);
+            w.blank();
+            writeListAndCount(w, dtoName);
+            if (hasItem) w.line("Optional<" + dtoName + "> findById(" + pkType + " id);");
         }
-        src.append("import ").append(runtimePackage).append(".FilterPredicate;\n");
-        src.append("import java.util.List;\n");
-        if (hasItem) {
-            src.append("import java.util.Optional;\n");
-        }
-        src.append("\n");
-        src.append("/**\n");
-        src.append(" * GENERATED interface — consumer implements with their preferred persistence layer\n");
-        src.append(" * (Spring Data JPA / jOOQ / plain JDBC). The matching ")
-           .append(shortName).append("Controller delegates to this interface.\n");
-        src.append(" *\n");
-        src.append(" * <p>READ-ONLY: ").append(shortName)
-           .append(" is a ").append(noun).append(" over a database view, so there is no write method to\n");
-        src.append(" * implement. Its controller answers every write verb with 405.</p>\n");
-        src.append(" */\n");
-        src.append("public interface ").append(repoName).append(" {\n\n");
-        src.append("    /** Sort directive parsed from the cross-port ?sort=<field>:asc|desc grammar. */\n");
-        src.append("    record SortClause(String field, String direction) {}\n\n");
-        src.append("    List<").append(dtoName)
-           .append("> list(int limit, int offset, SortClause sort, List<FilterPredicate> filters);\n");
-        src.append("    long count(List<FilterPredicate> filters);\n");
-        if (hasItem) {
-            src.append("    Optional<").append(dtoName).append("> findById(").append(pkType).append(" id);\n");
-        }
-        src.append("}\n");
 
         try {
             Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(repoName + ".java");
-            GeneratedFileWriter.write(outFile, src.toString());
+            GeneratedFileWriter.write(outFile, w.toString());
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing " + repoName + ".java for " + noun + " " + entity.getName() + ": " + e, e);
@@ -287,105 +243,65 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
         // already proved planFor(entity, loader) resolves.
         TphPlan.Plan plan = TphPlan.planFor(base, loader);
 
-        StringBuilder src = new StringBuilder();
-        if (!pkg.isEmpty()) src.append("package ").append(pkg).append(";\n\n");
-        src.append("import ").append(runtimePackage).append(".FilterPredicate;\n");
-        src.append("import java.util.List;\n");
-        src.append("import java.util.Optional;\n\n");
-        src.append("/**\n");
-        src.append(" * GENERATED TPH interface — consumer implements with their preferred persistence layer.\n");
-        src.append(" * Polymorphic operations span the single ").append(shortName)
-           .append(" table; the per-subtype operations are scoped to a discriminator value\n");
-        src.append(" * (injected by the matching ").append(shortName).append("Controller from the URL segment).\n");
-        src.append(" */\n");
-        src.append("public interface ").append(repoName).append(" {\n\n");
-        src.append("    /** Sort directive parsed from the cross-port ?sort=<field>:asc|desc grammar. */\n");
-        src.append("    record SortClause(String field, String direction) {}\n\n");
-        src.append("    // --- polymorphic (whole table) ---\n");
-        src.append("    List<").append(dtoName)
-           .append("> list(int limit, int offset, SortClause sort, List<FilterPredicate> filters);\n");
-        src.append("    long count(List<FilterPredicate> filters);\n");
-        src.append("    Optional<").append(dtoName).append("> findById(").append(pkType).append(" id);\n\n");
-        src.append("    // --- per-subtype (scoped to the discriminator value) ---\n");
-        src.append("    List<").append(dtoName)
-           .append("> listByType(String discriminator, int limit, int offset, SortClause sort, List<FilterPredicate> filters);\n");
-        src.append("    Optional<").append(dtoName).append("> findByIdAndType(")
-           .append(pkType).append(" id, String discriminator);\n");
-        src.append("    ").append(dtoName).append(" createWithType(String discriminator, ").append(dtoName).append(" dto);\n");
-        src.append("    Optional<").append(dtoName)
-           .append("> updateByIdAndType(").append(pkType).append(" id, String discriminator, ")
-           .append(dtoName).append(" dto);\n");
-        // FR-036 Program B: presence-tracked partial update for a per-subtype route. `assigned` is a
-        // <Sub>Patch.assignedValues() map — the PRESENT columns (name→value, incl. an explicit
-        // null), scoped to the discriminator. The impl applies ONLY the present keys (an absent
-        // column is untouched; an explicit null clears it); id + discriminator are immutable. This
-        // is the TPH analogue of the vanilla patch(id, <Entity>Patch) seam.
-        src.append("    Optional<").append(dtoName)
-           .append("> patchByIdAndType(").append(pkType)
-           .append(" id, String discriminator, java.util.Map<String, Object> assigned);\n");
-        src.append("    boolean deleteByIdAndType(").append(pkType).append(" id, String discriminator);\n");
+        SpringJavaWriter w = newWriter(pkg, true);
+        w.line("/**");
+        w.line(" * GENERATED TPH interface — consumer implements with their preferred persistence layer.");
+        w.line(" * Polymorphic operations span the single " + shortName
+            + " table; the per-subtype operations are scoped to a discriminator value");
+        w.line(" * (injected by the matching " + shortName + "Controller from the URL segment).");
+        w.line(" */");
+        try (var cls = w.block("public interface " + repoName + " {")) {
+            writeSortClause(w);
+            w.blank();
+            w.line("// --- polymorphic (whole table) ---");
+            writeListAndCount(w, dtoName);
+            w.line("Optional<" + dtoName + "> findById(" + pkType + " id);");
+            w.blank();
+            w.line("// --- per-subtype (scoped to the discriminator value) ---");
+            w.line("List<" + dtoName
+                + "> listByType(String discriminator, int limit, int offset, SortClause sort, List<FilterPredicate> filters);");
+            w.line("Optional<" + dtoName + "> findByIdAndType(" + pkType + " id, String discriminator);");
+            w.line(dtoName + " createWithType(String discriminator, " + dtoName + " dto);");
+            w.line("Optional<" + dtoName + "> updateByIdAndType(" + pkType + " id, String discriminator, "
+                + dtoName + " dto);");
+            // FR-036 Program B: presence-tracked partial update for a per-subtype route. `assigned` is a
+            // <Sub>Patch.assignedValues() map — the PRESENT columns (name→value, incl. an explicit
+            // null), scoped to the discriminator. The impl applies ONLY the present keys (an absent
+            // column is untouched; an explicit null clears it); id + discriminator are immutable. This
+            // is the TPH analogue of the vanilla patch(id, <Entity>Patch) seam.
+            w.line("Optional<" + dtoName + "> patchByIdAndType(" + pkType
+                + " id, String discriminator, java.util.Map<String, Object> assigned);");
+            w.line("boolean deleteByIdAndType(" + pkType + " id, String discriminator);");
 
-        // FR-018 x FR-017 — M:N traversal inside a TPH hierarchy. A relationship declared on
-        // the BASE is legitimate for every row of the shared table, so it gets one whole-table
-        // finder (same shape + name as the vanilla repository's M:N finder). A relationship
-        // resolved by a CONCRETE SUBTYPE — its own, or inherited from the base — additionally
-        // gets a finder SCOPED to that subtype. The subtype-membership check is NOT this
-        // finder's obligation: the GENERATED controller (see SpringControllerGenerator#emitTph)
-        // composes repository.findByIdAndType(id, discriminator) — the same seam the per-subtype
-        // GET already gates on — BEFORE ever calling this finder, and short-circuits to an empty
-        // list, HTTP 200, when sourceId does not name a row of this subtype. That enforces the
-        // gate on every conforming implementation by construction, rather than leaving a
-        // documented obligation a copy-paste finder body could silently violate. Distinct method
-        // names per subtype are still required here (unlike the vanilla finder) because the
-        // interface cannot declare two methods with the same erasure that behave differently by
-        // discriminator.
-        src.append("\n    // --- M:N traversal (whole-table, then per-subtype-scoped) ---\n");
-        for (SpringM2mSupport.M2mNav nav : SpringM2mSupport.resolve(base, loader)) {
-            src.append("    /** M:N traversal: the ").append(nav.targetShortName())
-               .append(" rows related to this ").append(shortName)
-               .append(" through ").append(nav.junctionShortName());
-            if (nav.symmetric()) src.append(" (symmetric — union on read)");
-            src.append(targetSubtypeJavadocClause(nav));
-            src.append(". */\n");
-            src.append("    List<").append(nav.targetDtoType()).append("> ")
-               .append(SpringGeneratorSupport.m2mFinderName(nav.relationName())).append("(").append(pkType).append(" sourceId")
-               .append(SpringGeneratorSupport.targetSubtypeParam(nav)).append(");\n");
-        }
-        for (TphPlan.Subtype st : plan.subtypes()) {
-            for (SpringM2mSupport.M2mNav nav : SpringM2mSupport.resolve(st.entity(), loader)) {
-                src.append("    /** M:N traversal scoped to ").append(st.value())
-                   .append(": the ").append(nav.targetShortName()).append(" rows related to this ")
-                   .append(st.value()).append(" through ").append(nav.junctionShortName())
-                   .append(". The generated controller calls this ONLY after confirming sourceId ")
-                   .append("names a ").append(st.value())
-                   .append(" row (via findByIdAndType) — implementations may assume sourceId is ")
-                   .append("valid for this subtype.");
-                if (nav.targetDiscriminatorValue() != null) {
-                    // The TARGET side of the same gate: unlike sourceId (verified above, by the
-                    // GENERATED controller, before this finder is ever called), the target's own
-                    // subtype is NOT verified by anything MetaObjects generates — the junction
-                    // join is entirely consumer-owned, and Java's interface cannot AND a
-                    // discriminator into a join it does not write. Implementations MUST use the
-                    // targetSubtype argument — always the resolved discriminator literal — to
-                    // filter the join to rows of that subtype.
-                    src.append(" Implementations MUST use the targetSubtype argument (always the")
-                       .append(" resolved \"").append(nav.targetDiscriminatorValue())
-                       .append("\" literal) to filter the join to rows of that subtype; a")
-                       .append(" copy-paste of the unscoped join would silently return a")
-                       .append(" same-table sibling's rows.");
+            // FR-018 x FR-017 — M:N traversal inside a TPH hierarchy. A relationship declared on
+            // the BASE is legitimate for every row of the shared table, so it gets one whole-table
+            // finder (same shape + name as the vanilla repository's M:N finder). A relationship
+            // resolved by a CONCRETE SUBTYPE — its own, or inherited from the base — additionally
+            // gets a finder SCOPED to that subtype. The subtype-membership check is NOT this
+            // finder's obligation: the GENERATED controller (see SpringControllerGenerator#emitTph)
+            // composes repository.findByIdAndType(id, discriminator) — the same seam the per-subtype
+            // GET already gates on — BEFORE ever calling this finder, and short-circuits to an empty
+            // list, HTTP 200, when sourceId does not name a row of this subtype. That enforces the
+            // gate on every conforming implementation by construction, rather than leaving a
+            // documented obligation a copy-paste finder body could silently violate. Distinct method
+            // names per subtype are still required here (unlike the vanilla finder) because the
+            // interface cannot declare two methods with the same erasure that behave differently by
+            // discriminator.
+            w.blank();
+            w.line("// --- M:N traversal (whole-table, then per-subtype-scoped) ---");
+            for (SpringM2mSupport.M2mNav nav : SpringM2mSupport.resolve(base, loader)) {
+                writeM2mFinder(w, shortName, pkType, nav);
+            }
+            for (TphPlan.Subtype st : plan.subtypes()) {
+                for (SpringM2mSupport.M2mNav nav : SpringM2mSupport.resolve(st.entity(), loader)) {
+                    writeTphSubtypeM2mFinder(w, pkType, st, nav);
                 }
-                src.append(" */\n");
-                src.append("    List<").append(nav.targetDtoType()).append("> ")
-                   .append(SpringGeneratorSupport.m2mFinderNameForSubtype(nav.relationName(), st.value()))
-                   .append("(").append(pkType).append(" sourceId")
-                   .append(SpringGeneratorSupport.targetSubtypeParam(nav)).append(");\n");
             }
         }
-        src.append("}\n");
 
         try {
             Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(repoName + ".java");
-            GeneratedFileWriter.write(outFile, src.toString());
+            GeneratedFileWriter.write(outFile, w.toString());
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing TPH " + repoName + ".java for entity " + base.getName() + ": " + e, e);
@@ -395,6 +311,85 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
 
 
 
+
+    /**
+     * The writer one repository interface is written with, set to its package, importing
+     * {@code FilterPredicate} and {@code List}, and {@code Optional} when a method returns one.
+     */
+    protected SpringJavaWriter newWriter(String pkg, boolean usesOptional) {
+        SpringJavaWriter w = new SpringJavaWriter();
+        if (!pkg.isEmpty()) w.packageName(pkg);
+        w.use(runtimePackage + ".FilterPredicate");
+        w.use("java.util.List");
+        if (usesOptional) w.use("java.util.Optional");
+        return w;
+    }
+
+    /** The nested {@code SortClause} record the controller parses {@code ?sort=} into. */
+    protected void writeSortClause(SpringJavaWriter w) {
+        w.line("/** Sort directive parsed from the cross-port ?sort=<field>:asc|desc grammar. */");
+        w.line("record SortClause(String field, String direction) {}");
+    }
+
+    /** {@code list} and {@code count}, which every repository interface declares. */
+    protected void writeListAndCount(SpringJavaWriter w, String dtoName) {
+        w.line("List<" + dtoName + "> list(int limit, int offset, SortClause sort, List<FilterPredicate> filters);");
+        w.line("long count(List<FilterPredicate> filters);");
+    }
+
+    /** FR-018: the M:N finder for one {@code @through} relationship. */
+    protected void writeM2mFinder(SpringJavaWriter w, String shortName, String pkType, SpringM2mSupport.M2mNav nav) {
+        w.line("/** M:N traversal: the " + nav.targetShortName() + " rows related to this " + shortName
+            + " through " + nav.junctionShortName()
+            + (nav.symmetric() ? " (symmetric — union on read)" : "")
+            + targetSubtypeJavadocClause(nav) + ". */");
+        w.line("List<" + nav.targetDtoType() + "> " + SpringGeneratorSupport.m2mFinderName(nav.relationName())
+            + "(" + pkType + " sourceId" + SpringGeneratorSupport.targetSubtypeParam(nav) + ");");
+    }
+
+    /** FR-018 x FR-017: an M:N finder scoped to one TPH subtype. */
+    protected void writeTphSubtypeM2mFinder(SpringJavaWriter w, String pkType, TphPlan.Subtype st,
+                                            SpringM2mSupport.M2mNav nav) {
+        StringBuilder doc = new StringBuilder();
+        doc.append("/** M:N traversal scoped to ").append(st.value())
+           .append(": the ").append(nav.targetShortName()).append(" rows related to this ")
+           .append(st.value()).append(" through ").append(nav.junctionShortName())
+           .append(". The generated controller calls this ONLY after confirming sourceId ")
+           .append("names a ").append(st.value())
+           .append(" row (via findByIdAndType) — implementations may assume sourceId is ")
+           .append("valid for this subtype.");
+        if (nav.targetDiscriminatorValue() != null) {
+            // The TARGET side of the same gate: unlike sourceId (verified above, by the
+            // GENERATED controller, before this finder is ever called), the target's own
+            // subtype is NOT verified by anything MetaObjects generates — the junction
+            // join is entirely consumer-owned, and Java's interface cannot AND a
+            // discriminator into a join it does not write. Implementations MUST use the
+            // targetSubtype argument — always the resolved discriminator literal — to
+            // filter the join to rows of that subtype.
+            doc.append(" Implementations MUST use the targetSubtype argument (always the")
+               .append(" resolved \"").append(nav.targetDiscriminatorValue())
+               .append("\" literal) to filter the join to rows of that subtype; a")
+               .append(" copy-paste of the unscoped join would silently return a")
+               .append(" same-table sibling's rows.");
+        }
+        doc.append(" */");
+        w.line(doc.toString());
+        w.line("List<" + nav.targetDtoType() + "> "
+            + SpringGeneratorSupport.m2mFinderNameForSubtype(nav.relationName(), st.value())
+            + "(" + pkType + " sourceId" + SpringGeneratorSupport.targetSubtypeParam(nav) + ");");
+    }
+
+    /** ADR-0038: the single and batched reverse-navigation finders for one FK. */
+    protected void writeReverseFinders(SpringJavaWriter w, String shortName, String dtoName, ReverseFk fk) {
+        w.line("/** Reverse nav: the " + shortName + " rows whose " + fk.fkField()
+            + " FK points at the given " + fk.targetShortName() + " id (single indexed query). */");
+        w.line("List<" + dtoName + "> " + SpringNaming.reverseFinderName(fk.fkField())
+            + "(" + fk.valueType() + " " + fk.fkField() + ");");
+        w.line("/** Reverse nav (batched, anti-N+1): the " + shortName + " rows whose " + fk.fkField()
+            + " FK is IN the given " + fk.targetShortName() + " ids. */");
+        w.line("List<" + dtoName + "> " + SpringNaming.reverseFinderInName(fk.fkField())
+            + "(List<" + fk.valueType() + "> " + fk.fkField() + "s);");
+    }
 
     /**
      * The javadoc clause naming a widened finder's target-subtype literal, appended right

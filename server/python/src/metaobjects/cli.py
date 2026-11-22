@@ -968,11 +968,17 @@ def _unmet_requires_by_selection(
         if entry is None:
             continue
         inner_filter = getattr(gen, "filter", None)
-        covered = [o for o in objects if not callable(inner_filter) or inner_filter(o)]
+        written = [o for o in objects if not callable(inner_filter) or inner_filter(o)]
         for dep, dep_token in zip(gens, tokens):
             if dep_token not in entry.requires or not isinstance(dep, SelectedGenerator):
                 continue
-            gap = sorted(o.name for o in covered if not dep.selects(o))
+            # Only what the written objects import from the required generator: `routes` writes
+            # nothing for an abstract or sourceless object, so limiting `filter-allowlist` away
+            # from one leaves nothing dangling, while a routed object's model still imports its
+            # abstract base.
+            needs = entry.covers.get(dep_token, lambda o, _objects: (o,))
+            needed = {id(n): n for o in written for n in needs(o, objects)}
+            gap = sorted(n.name for n in needed.values() if not dep.selects(n))
             if gap:
                 errors.append(
                     f"generator {token!r} requires {dep_token!r}, which is limited away from "

@@ -16,8 +16,22 @@
 //
 // PROSE LIVES HERE, STRUCTURE LIVES IN THE TOON SIBLING. TOON quotes every comma-bearing
 // string, so statements and violations dilute it badly. The split is not stylistic.
+//
+// BUILDER, THEN TEMPLATE. The page is the shared Mustache template
+// `templates/requirements/requirements.md.mustache` fed the data `requirementsLedgerData`
+// builds; every other port renders the same template from the same data, pinned in
+// `fixtures/docs-page-conformance/`. Every decision (heading depth, which title survives,
+// the fact bar, the embedded demotion) is made HERE: the template only lays the lines out.
+// An adopter changes the page by dropping a same-named template under the project's
+// `templates/`.
 
+import type { Provider } from "@metaobjectsdev/render";
+import { frameworkTemplatesProvider } from "../render-engine/framework-provider.js";
+import { renderDocPage } from "../render-engine/doc-page.js";
 import type { RequirementRow } from "./requirements-view.js";
+
+/** The shared template both the `requirements` page and the agent page's ledger render. */
+export const REQUIREMENTS_PAGE_REF = "requirements/requirements.md";
 
 /** `##` for a root-level requirement, deepening with nesting. `#` is the page title. */
 function heading(depth: number): string {
@@ -90,29 +104,53 @@ function facts(r: RequirementRow): string {
   return parts.join(" · ");
 }
 
-function renderOne(r: RequirementRow): string {
-  const out: string[] = [headingLine(r), "", facts(r), ""];
+/** One ledger entry, every line finished. An absent optional line is an absent key. */
+export interface RequirementsLedgerEntry {
+  readonly heading: string;
+  readonly facts: string;
+  readonly statement?: string;
+  /** The whole line, `**Counterexample:** …`. */
+  readonly counterexample?: string;
+  readonly description?: string;
+  /** The whole line, `**Implemented by:** …`. */
+  readonly implementedBy?: string;
+}
 
-  if (r.statement !== undefined) out.push(r.statement, "");
-  // The prescriptive pair. A requirement MUST be violable, so the counterexample is not
-  // decoration — it is what makes the statement checkable, and it reads beside it.
-  if (r.counterexample !== undefined) out.push(`**Counterexample:** ${r.counterexample}`, "");
-  if (r.description !== undefined) out.push(r.description, "");
-
-  if (r.implementedBy.length > 0) {
-    out.push(`**Implemented by:** ${r.implementedBy.map((c) => `\`${c}\``).join(", ")}`, "");
-  }
-
-  return out.join("\n");
+/** What `requirements/requirements.md.mustache` renders. */
+export interface RequirementsLedgerData {
+  /** True when the ledger is a section of the agent page: no `# Requirements` title. */
+  readonly embedded: boolean;
+  readonly count: number;
+  /** `"s"`, or `""` for exactly one entry. */
+  readonly plural: string;
+  readonly entries: readonly RequirementsLedgerEntry[];
 }
 
 /**
- * Render the ledger as one markdown index.
- *
- * Returns the EMPTY STRING for an empty ledger rather than a headed-but-empty page.
- * The generator keys on that to emit no file at all, which is in turn what lets the
- * surface default to on without changing output for any project lacking a ledger.
+ * One extra `#` on every line that starts a heading, capped at h6 exactly as `heading()`
+ * caps. Applied to each finished LINE of an embedded entry (a statement can hold a line
+ * that starts with `#`, and it moves down with the rest).
  */
+function demote(text: string): string {
+  return text.replace(/^(#{1,6}) /gm, (_m, hashes: string) => `${"#".repeat(Math.min(hashes.length + 1, 6))} `);
+}
+
+function entryOf(r: RequirementRow, embedded: boolean): RequirementsLedgerEntry {
+  const line = embedded ? demote : (text: string): string => text;
+  return {
+    heading: line(headingLine(r)),
+    facts: line(facts(r)),
+    ...(r.statement !== undefined && { statement: line(r.statement) }),
+    // The prescriptive pair. A requirement MUST be violable, so the counterexample is not
+    // decoration — it is what makes the statement checkable, and it reads beside it.
+    ...(r.counterexample !== undefined && { counterexample: line(`**Counterexample:** ${r.counterexample}`) }),
+    ...(r.description !== undefined && { description: line(r.description) }),
+    ...(r.implementedBy.length > 0 && {
+      implementedBy: line(`**Implemented by:** ${r.implementedBy.map((c) => `\`${c}\``).join(", ")}`),
+    }),
+  };
+}
+
 export interface RequirementsMarkdownOpts {
   /**
    * Render the ledger as a SECTION of a larger page rather than as the page.
@@ -123,38 +161,45 @@ export interface RequirementsMarkdownOpts {
    * document silently loses its outline. So the title is dropped and every heading moves
    * down one level.
    *
-   * A POST-HOC REGEX OVER THIS FUNCTION'S OUTPUT would do the same thing and would be the
-   * wrong shape: heading depth is this renderer's decision (it already caps at h6), and a
-   * caller rewriting it from outside would have to re-derive that cap and would drift from
-   * it the next time this file changes.
+   * The demotion is the BUILDER's, not a regex over the rendered page: heading depth is
+   * this file's decision (it already caps at h6), and a caller rewriting it from outside
+   * would have to re-derive that cap and would drift from it the next time this file changes.
    */
   readonly embedded?: boolean;
+  /** Where the template is resolved. Default: the package's own templates. */
+  readonly provider?: Provider;
 }
 
+/** The data the ledger template renders, for a non-empty ledger. */
+export function requirementsLedgerData(
+  rows: readonly RequirementRow[],
+  opts?: { readonly embedded?: boolean },
+): RequirementsLedgerData {
+  const embedded = opts?.embedded === true;
+  return {
+    embedded,
+    count: rows.length,
+    plural: rows.length === 1 ? "" : "s",
+    entries: rows.map((r) => entryOf(r, embedded)),
+  };
+}
+
+/**
+ * Render the ledger as one markdown index.
+ *
+ * Returns the EMPTY STRING for an empty ledger rather than a headed-but-empty page.
+ * The generator keys on that to emit no file at all, which is in turn what lets the
+ * surface default to on without changing output for any project lacking a ledger.
+ */
 export function renderRequirementsMarkdown(
   rows: readonly RequirementRow[],
   opts?: RequirementsMarkdownOpts,
 ): string {
   if (rows.length === 0) return "";
-
-  const body = rows.map(renderOne);
-  if (opts?.embedded === true) {
-    return [
-      `${rows.length} declared requirement${rows.length === 1 ? "" : "s"}, in declaration order.`,
-      "",
-      // One extra `#` on every heading line, capped at h6 exactly as `heading()` caps.
-      ...body.map((entry) =>
-        entry.replace(/^(#{1,6}) /gm, (_m, hashes: string) =>
-          `${"#".repeat(Math.min(hashes.length + 1, 6))} `,
-        ),
-      ),
-    ].join("\n");
-  }
-  return [
-    "# Requirements",
-    "",
-    `${rows.length} declared requirement${rows.length === 1 ? "" : "s"}, in declaration order.`,
-    "",
-    ...body,
-  ].join("\n");
+  return renderDocPage(
+    REQUIREMENTS_PAGE_REF,
+    requirementsLedgerData(rows, opts),
+    opts?.provider ?? frameworkTemplatesProvider,
+    "requirements.md",
+  );
 }

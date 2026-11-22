@@ -10,13 +10,13 @@
 // plausible; the disk was the thing that disagreed with it.
 
 import { describe, test, expect, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, existsSync, readdirSync, writeFileSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { rmSync, existsSync, readdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { runGen } from "../src/runner.js";
 import { defineConfig } from "../src/metaobjects-config.js";
 import { entityFile } from "../src/reference/entity.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 const META = JSON.stringify({
   "metadata.root": {
@@ -39,11 +39,11 @@ const META = JSON.stringify({
 
 const dirs: string[] = [];
 afterEach(() => {
-  while (dirs.length > 0) rmSync(dirs.pop()!, { recursive: true, force: true });
+  while (dirs.length > 0) removeTree(dirs.pop()!);
 });
 
 function scratch(): string {
-  const d = mkdtempSync(join(tmpdir(), "meta-dryrun-"));
+  const d = makeScratchDir("meta-dryrun-");
   dirs.push(d);
   return d;
 }

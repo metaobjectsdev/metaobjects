@@ -12,8 +12,9 @@ every entity that extends it. ADR-0067 decides where the rules are enforced, and
 ADR-0045 to match.
 
 1.3.0 ships the vocabulary, the loader rules and the `verify` checks. The generated service
-shells that enforce the rules at run time (§6) are later work. Until they land, the vocabulary
-generates nothing. `fixtures/codegen-noop/rules/` holds every port to that.
+shells that enforce the rules at run time (§6) are later work. Until they land, the flat generators
+emit nothing from the vocabulary; the layer generators of ADR-0067 emit its names and contract
+types. `fixtures/codegen-noop/rules/` holds the flat generators to that.
 
 **Experimental.** Decision 2 of the 1.3.0 design pass gives new vocabulary an experimental label
 until it is proven in use. Everything this ADR registers — `api.*`, `operation.*`, `binding.*`,
@@ -294,8 +295,13 @@ routes enforce nothing. This is what the shells are held to:
 
 **The guarded update is part of the store-neutral storage contract** (§8). Every store
 driver, including one an adopter writes, will be held to it by a persistence-conformance scenario.
-That scenario does not exist yet: no file under `fixtures/persistence-conformance/` pins the
-guarded update, so until it lands the contract is stated here, not yet implemented or gated.
+That scenario is `fixtures/persistence-conformance/queries/guarded-update.yaml` (`op:
+guardedUpdate`): the state guard, a failing condition, a missing row, the second of two moves, and
+a condition with a field compared with a field, `not`, `coalesce` and an int-backed state. The
+TypeScript runtime implements it as `ObjectManager.guardedUpdate` on every bundled
+`PersistenceDriver`. The scenario runs on Postgres and MySQL (`engines: [postgres, mysql]`); the C#,
+Java and Kotlin runners defer it by name until each port builds its own guarded update in 1.3.0, and
+the Python runner defers it by name.
 
 ### 7. Events and invariants in 1.3.0
 

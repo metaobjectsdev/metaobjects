@@ -40,6 +40,7 @@ document for that corpus.
 | `error-strict-map` | Refused: the strict subset has no map. |
 | `error-strict-recursive` | Refused: the strict subset has no recursion. |
 | `jsonb` | The api-contract `jsonb/` model: value objects, arrays of them and maps. |
+| `list-query` | The api-contract `list-query/` model: `?search` over its text fields, the `filter[or]` / `filter[and]` combinators and the paging the list-query lane drives. |
 | `m2m` | The api-contract `m2m/` model: traversal routes, also over TPH. |
 | `nullable-members` | Read-only shapes whose optional members are already nullable: a value object's, an enum's and a nested object's. |
 | `projection` | The api-contract `projection/` model: read-only surfaces, keyed and keyless. |

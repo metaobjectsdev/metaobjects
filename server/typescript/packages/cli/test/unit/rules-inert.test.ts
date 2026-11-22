@@ -14,6 +14,10 @@
 // node of the model in its data payload, so it lists the new nodes too. Its other output is
 // byte-identical, and the payload differs by exactly the `api`, `operation`, `binding` and
 // `transition` nodes.
+//
+// The generators of the rules layers themselves (ADR-0067) are the other exception: reading the
+// vocabulary is what they are for. Each emits nothing for the model without it, and only files of
+// its own for the model with it, so it adds files and moves none.
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { copyFileSync, mkdirSync, mkdtempSync, rmSync, readFileSync, readdirSync, statSync } from "node:fs";
@@ -86,6 +90,16 @@ async function emit(metadata: MetaRoot, generators: Generator[]): Promise<Record
 }
 
 const DOCS_SITE = "docs-site";
+/** The ADR-0067 rules-layer generators, and the files the vocabulary ADDS to each one's output. */
+const RULES_LAYER: Record<string, string[]> = {
+  "rules-names": ["src/generated/acme/purchasing/rules.names.ts"],
+  // Its entity contracts and error bodies do not depend on the vocabulary; the operations do, and
+  // so does the value object only an operation reaches.
+  "contract-types": [
+    "src/generated/DecisionInput.ts",
+    "src/generated/acme/purchasing/operations.contract.ts",
+  ],
+};
 
 let withRules: MetaRoot;
 let withoutRules: MetaRoot;
@@ -105,10 +119,21 @@ describe("ADR-0066 the business-rules vocabulary is inert in every generator and
 
   const catalog = composeCatalog();
   for (const [name, entry] of Object.entries(catalog)) {
-    if (name === DOCS_SITE) continue;
+    if (name === DOCS_SITE || name in RULES_LAYER) continue;
     test(`generator "${name}" emits the same files, byte for byte`, async () => {
       const expected = await emit(withoutRules, [entry.factory()]);
       const actual = await emit(withRules, [entry.factory()]);
+      expect(actual).toEqual(expected);
+    });
+  }
+
+  for (const [name, files] of Object.entries(RULES_LAYER)) {
+    test(`rules-layer generator "${name}" adds only its own files for the vocabulary, and moves none`, async () => {
+      const expected = await emit(withoutRules, [catalog[name]!.factory()]);
+      const actual = await emit(withRules, [catalog[name]!.factory()]);
+      expect(expected["<threw>"]).toBeUndefined();
+      expect(Object.keys(actual).filter((p) => !(p in expected)).sort()).toEqual(files);
+      for (const p of files) delete actual[p];
       expect(actual).toEqual(expected);
     });
   }
@@ -145,6 +170,11 @@ describe("ADR-0066 the business-rules vocabulary is inert in every generator and
     const actual = await emit(withRules, runnable.map((f) => f()));
     expect(expected["<threw>"]).toBeUndefined();
     expect(Object.keys(expected).length).toBeGreaterThan(10);
+    // The rules layers add their own files beside the rest, and move none of them. A value module
+    // the contract layer writes for an operation is the entity generator's, already in both runs.
+    const added = Object.values(RULES_LAYER).flat().filter((p) => !(p in expected));
+    expect(Object.keys(actual).filter((p) => !(p in expected)).sort()).toEqual([...added].sort());
+    for (const p of added) delete actual[p];
     expect(actual).toEqual(expected);
   });
 

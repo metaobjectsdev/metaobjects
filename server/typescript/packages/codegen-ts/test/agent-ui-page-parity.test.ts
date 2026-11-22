@@ -68,8 +68,7 @@
 //     names collide (this fixture is one package and mount→object is keyed by bare name;
 //     the test refuses a fixture where that key is ambiguous rather than guessing).
 import { describe, test, expect } from "bun:test";
-import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import type { MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
@@ -84,6 +83,7 @@ import { routesFile } from "../src/generators/routes-file.js";
 // while the two still spell different addresses for the fixture's TPH subtype.
 import { buildPkMap, buildRelationMap, makeRenderContext, resourcePath, restPath, runEmitsUiTier } from "../src/index.js";
 import { defineConfig, type Dialect } from "../src/metaobjects-config.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 // The dialect decides column builders, never an address or a form, so one arm suffices.
 // There is no registered constant for it — `Dialect` is codegen config, not metamodel
@@ -328,7 +328,7 @@ function parsePage(page: string): Map<string, Documented> {
 }
 
 async function generate(apiPrefix: string): Promise<Emitted> {
-  const repo = mkdtempSync(join(tmpdir(), "agent-ui-parity-"));
+  const repo = makeScratchDir("agent-ui-parity-");
   try {
     mkdirSync(join(repo, "metaobjects"), { recursive: true });
     const fixture = join(repo, "metaobjects", "meta.fleet.json");
@@ -401,7 +401,7 @@ async function generate(apiPrefix: string): Promise<Emitted> {
     if (page === undefined) throw new Error(`no ${UI_PAGE} emitted; pages: ${agentPages.map((f) => f.path).join(", ")}`);
     return { root, ownPaths, routes, forms, page: parsePage(page.content) };
   } finally {
-    rmSync(repo, { recursive: true, force: true });
+    removeTree(repo);
   }
 }
 

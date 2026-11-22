@@ -21,12 +21,12 @@
 // emitted. Without a `scope` predicate (undefined), nothing is excluded and
 // `enums.ts` must carry `Status` — proving the ternary's OTHER branch too.
 import { describe, test, expect, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, readdirSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { runGen, defineConfig } from "../src/index.js";
 import { entityFile as refEntity } from "../src/reference/entity.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 const LIB = {
   "metadata.root": {
@@ -78,13 +78,13 @@ async function loadRoot() {
 
 let dirs: string[] = [];
 afterEach(() => {
-  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  for (const d of dirs.splice(0)) removeTree(d);
 });
 
 describe("src/reference/entity.ts — ctx.select call site, end to end via runGen", () => {
   test("a scope excluding the enum's only consumer suppresses enums.ts entirely", async () => {
     const root = await loadRoot();
-    const dir = mkdtempSync(join(tmpdir(), "ref-entity-scope-"));
+    const dir = makeScratchDir("ref-entity-scope-");
     dirs.push(dir);
 
     await runGen({
@@ -107,7 +107,7 @@ describe("src/reference/entity.ts — ctx.select call site, end to end via runGe
 
   test("with no scope declared, the same shared enum still materializes", async () => {
     const root = await loadRoot();
-    const dir = mkdtempSync(join(tmpdir(), "ref-entity-noscope-"));
+    const dir = makeScratchDir("ref-entity-noscope-");
     dirs.push(dir);
 
     await runGen({

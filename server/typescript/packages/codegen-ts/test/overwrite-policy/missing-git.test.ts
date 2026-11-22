@@ -7,22 +7,22 @@
 // which Bun does not always honor for spawnSync resolution.
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { decideAndWrite, GitMissingError } from "../../src/overwrite-policy.js";
+import { makeScratchDir, removeTree } from "../../src/scratch-dir.js";
 
 let tmp: string;
 let state: string;
 let prevGit: string | undefined;
 beforeEach(() => {
-  tmp = mkdtempSync(join(tmpdir(), "codegen-nogit-"));
-  state = mkdtempSync(join(tmpdir(), "codegen-state-"));
+  tmp = makeScratchDir("codegen-nogit-");
+  state = makeScratchDir("codegen-state-");
   prevGit = process.env.META_GEN_GIT;
 });
 afterEach(() => {
-  rmSync(tmp, { recursive: true, force: true });
-  rmSync(state, { recursive: true, force: true });
+  removeTree(tmp);
+  removeTree(state);
   if (prevGit !== undefined) {
     process.env.META_GEN_GIT = prevGit;
   } else {

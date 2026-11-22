@@ -140,7 +140,9 @@ NORMALIZE_MODES = (NORMALIZE_NONE, NORMALIZE_COLLAPSE, NORMALIZE_STRIP)
 FIELD_ATTR_STORAGE = "storage"
 #: @storage "flattened": the nested object's columns expand into the parent table.
 STORAGE_FLATTENED = "flattened"
-STORAGE_VALUES = (STORAGE_FLATTENED, "jsonb", "subdocument")
+#: @storage "jsonb": the nested object (or array of them) is one JSON column.
+STORAGE_JSONB = "jsonb"
+STORAGE_VALUES = (STORAGE_FLATTENED, STORAGE_JSONB, "subdocument")
 # Physical column name override (cross-port; renamed from @dbColumn).
 FIELD_ATTR_COLUMN = "column"
 # @flattenedColumnPrefix on a field.object @storage "flattened": the text before each member's column,

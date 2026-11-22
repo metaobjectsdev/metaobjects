@@ -1,0 +1,11 @@
+name: search-with-filter
+description: >
+  A search and a filter are both applied: the search narrows the rows the filter leaves.
+requests:
+  - id: r1
+    method: GET
+    path: "/api/parts?search=PUMP&filter[category][eq]=part&sort=id:asc"
+    expect:
+      status: 200
+      body:
+        ids: [7, 10]

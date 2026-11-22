@@ -157,8 +157,9 @@ versioning — **do not flag it** (only intra-port skew matters).
   `eq/ne/gt/gte/lt/lte/in/like/isNull`): it parses via the runtime `FilterParser`, validates
   against the generated `<Entity>FilterAllowlist`, and 400s on unknown field / disallowed op /
   over-cap `in`-list (api-contract corpus, both lanes). **Flag a hand-rolled filter parser as a
-  finding.** Only the *richer* surface is TS-only — `?search=`, `filter[or][N]` / `filter[and][N]`
-  combinators, leading-wildcard gating — do NOT flag the absence of those in Java.
+  finding.** The *richer* list surface — `?search=`, `filter[or][N]` / `filter[and][N]`
+  combinators, leading-wildcard gating (ADR-0068) — passes in TypeScript and is pending in Java
+  until the Java port's 1.3.0 REST-standard work lands — do NOT flag its absence in Java until then.
 - **Repository interface is a hand-implemented stub.** `SpringRepositoryGenerator`
   emits `<Entity>Repository.java` as a stub `interface`; the consumer hand-writes the
   implementation against OMDB (or any persistence layer). Hand-written repository
