@@ -288,6 +288,54 @@ describe("service generators — lifecycles and declared operations (ADR-0066)",
   });
 });
 
+describe("service generators — commands and keyed operations address the object's own storage", () => {
+  const ticket = {
+    "object.entity": {
+      name: "Ticket",
+      "@discriminator": "type",
+      children: [
+        { "source.rdb": { "@table": "tickets" } },
+        { "field.long": { name: "id" } },
+        { "field.enum": { name: "type", "@values": ["Bug", "Task"] } },
+        { "identity.primary": { name: "pk", "@fields": ["id"] } },
+      ],
+    },
+  };
+  const bug = {
+    "object.entity": {
+      name: "BugTicket",
+      extends: "Ticket",
+      "@discriminatorValue": "Bug",
+      children: [
+        {
+          "field.enum": {
+            name: "status",
+            "@values": ["open", "closed"],
+            "@default": "open",
+            children: [{ "transition.action": { name: "close", "@from": ["open"], "@to": "closed", "@public": true } }],
+          },
+        },
+      ],
+    },
+  };
+  test("a single-table subtype's transition command writes the base's table, scoped to its discriminator value", async () => {
+    const files = await gen(await load("acme::desk", [ticket, bug]), tier());
+    const close = files["acme/desk/service/closeBugTicket.ts"]!;
+    expect(close).toBeDefined();
+    // The subtype's module exports no table: the rows live in the base's.
+    expect(close).toMatch(/import \{ tickets \} from "\.\.\/Ticket(\.js)?";/);
+    expect(close).toContain('const cond = scoped(keyCondition(tickets, "id", id), scopeCondition(tickets, "type", "Bug"));');
+  });
+
+  test("a keyed declared operation on a single-table subtype reads only rows of its discriminator value", async () => {
+    const peek = { "operation.query": { name: "peek", "@objectRef": "BugTicket", "@outputRef": "BugTicket", "@public": true } };
+    const files = await gen(await load("acme::desk", [ticket, bug, api(peek)]), tier());
+    const op = files["acme/desk/service/peek.ts"]!;
+    expect(op).toMatch(/import \{ tickets \} from "\.\.\/Ticket(\.js)?";/);
+    expect(op).toContain('const cond = scoped(keyCondition(tickets, "id", id), scopeCondition(tickets, "type", "Bug"));');
+  });
+});
+
 describe("service generator — a store without interactive transactions (ADR-0067 §4)", () => {
   const noTx = (): Generator[] => [entityFile(), contractTypes(), serviceFile({ interactiveTransactions: false }), serviceRoutesFile()];
   const peek = { "operation.query": { name: "peek", "@objectRef": "Order", "@outputRef": "Order", "@public": true } };

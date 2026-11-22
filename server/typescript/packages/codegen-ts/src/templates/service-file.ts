@@ -170,6 +170,21 @@ function sourcesOf(w: TsWriter, e: ServiceEntity, path: string, ctx: RenderConte
   return { table, read: view, view };
 }
 
+/**
+ * The table a transition command or a keyed declared operation addresses, and its key condition:
+ * the storage table, which for a single-table subtype is its base's, scoped to its discriminator
+ * value. The loader admits only an `object.entity` as an operation's target (ADR-0066).
+ */
+function addressedOf(w: TsWriter, e: ServiceEntity, path: string, ctx: RenderContext, runtime: string): { table: string; cond: () => string } {
+  const table = w.use(ctx.collectionName(e.storage.name), modulesOf(path, e.storage, ctx).entity);
+  const cond = (): string => {
+    const key = `${w.use("keyCondition", runtime)}(${table}, ${str(e.keyField)}, id)`;
+    const scope = scopeExpr(w, e, table, runtime);
+    return scope === undefined ? key : `${w.use("scoped", runtime)}(${key}, ${scope})`;
+  };
+  return { table, cond };
+}
+
 /** The row type of an entity's operations: its contract type, or a report's row type from its entity module. */
 function rowTypeOf(w: TsWriter, e: ServiceEntity, path: string, ctx: RenderContext): string {
   const mods = modulesOf(path, e.obj, ctx);
@@ -616,9 +631,8 @@ function renderTransitionCommand(c: ServiceTransitionCommand, e: ServiceEntity, 
   const w = new TsWriter();
   header(w, `${name} (${obj.fqn()}) — transition ${t.field}.${t.name}, service operation ${c.fn} (ADR-0066 §2)`);
   const runtime = runtimeSpecifierFrom(path, "service", ctx);
-  const mods = modulesOf(path, obj, ctx);
-  const table = w.use(ctx.collectionName(name), mods.entity);
-  const row = w.useType(name, mods.contract);
+  const { table, cond } = addressedOf(w, e, path, ctx, runtime);
+  const row = w.useType(name, modulesOf(path, obj, ctx).contract);
   const deps = `${w.useType("ServiceDeps", indexSpecifier(ctx))}<A>`;
   const opOptions = `${w.useType("OpOptions", runtime)}<A>`;
   const opResult = w.useType("OpResult", runtime);
@@ -645,7 +659,7 @@ function renderTransitionCommand(c: ServiceTransitionCommand, e: ServiceEntity, 
   );
   w.block(`export async function ${c.fn}<A>(deps: ${deps}, id: number | string, opts: ${opOptions} = {}): Promise<${opResult}<${row}>> {`, () => {
     w.block(`return ${w.use(inTx ? "inWriteTransaction" : "withoutTransaction", runtime)}(deps.db, opts.tx, async (tx) => {`, () => {
-      w.line(`const cond = ${w.use("keyCondition", runtime)}(${table}, ${str(e.keyField)}, id);`);
+      w.line(`const cond = ${cond()};`);
       w.line(`const current = (await ${w.use("loadForWrite", runtime)}(tx, ${table}, cond, ${dialect})) as ${row} | undefined;`);
       w.line(`if (current === undefined) ${w.use("notFound", runtime)}();`);
       if (c.permission === undefined) w.line("// @public: the policy is not asked.");
@@ -678,12 +692,12 @@ function renderDeclaredOperation(op: ServiceOperation, path: string, ctx: Render
   const target = op.target;
   // The target's table and row type, imported only by an operation that reads or answers its row.
   const usesRow = op.keyed || outputIsTargetRow(op);
-  const mods = target === undefined || !usesRow ? undefined : modulesOf(path, target.obj, ctx);
-  const table = mods === undefined ? undefined : w.use(ctx.collectionName(target!.obj.name), mods.entity);
-  const row = mods === undefined ? undefined : w.useType(target!.obj.name, mods.contract);
+  const command = op.kind === "command";
+  const addressed = target === undefined || !usesRow ? undefined : addressedOf(w, target, path, ctx, runtime);
+  const table = addressed?.table;
+  const row = addressed === undefined ? undefined : w.useType(target!.obj.name, modulesOf(path, target!.obj, ctx).contract);
   const output = outputType(w, op, path, pkg, ctx);
   const params = [...operationParams(w, op, path, pkg, ctx), `opts: ${opOptions} = {}`];
-  const command = op.kind === "command";
 
   if (op.input !== undefined) {
     w.doc("What the input may name: every other key is refused.");
@@ -717,7 +731,7 @@ function renderDeclaredOperation(op: ServiceOperation, path: string, ctx: Render
     const scope = command ? w.use("inWriteTransaction", runtime) : w.use("inReadScope", runtime);
     w.block(`return ${scope}(deps.db, opts.tx, async (tx) => {`, () => {
       if (op.keyed) {
-        w.line(`const cond = ${w.use("keyCondition", runtime)}(${table}, ${str(target!.keyField)}, id);`);
+        w.line(`const cond = ${addressed!.cond()};`);
         const load = command
           ? `await ${w.use("loadForWrite", runtime)}(tx, ${table}, cond, ${dialect})`
           : `await ${w.use("readOne", runtime)}(tx, ${table}, cond)`;

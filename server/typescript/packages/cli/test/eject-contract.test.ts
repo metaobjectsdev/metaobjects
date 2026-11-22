@@ -406,7 +406,7 @@ function adapterNeutral(source: string): string {
     .replace(new RegExp(`(?:\\.\\./)+${OWNED_RUNTIME_DIR}/[\\w-]+/[\\w-]+`, "g"), adapter);
   const IMPORT = /^import [^;]*;\n/gm;
   const oneLine = (stmt: string): string =>
-    `${stmt.replace(/\s+/g, " ").replace(/\{ /g, "{ ").replace(/,? \}/g, " }").trim()}\n`;
+    `${stmt.replace(/\s+/g, " ").replace(/\{ ?/g, "{ ").replace(/,? ?\}/g, " }").trim()}\n`;
   return [...(moved.match(IMPORT) ?? [])].map(oneLine).sort().join("") + moved.replace(IMPORT, "");
 }
 

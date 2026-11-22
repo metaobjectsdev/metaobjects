@@ -228,7 +228,7 @@ export function hasServiceOperations(obj: MetaObject): boolean {
 }
 
 /** The verbs, storage, path and scope of a covered object. */
-function shapeOf(obj: MetaObject, root: MetaData): Pick<ServiceEntity, "kind" | "verbs" | "storage" | "readView" | "path" | "discriminator" | "hierarchy"> {
+function shapeOf(obj: MetaObject, root: MetaRoot): Pick<ServiceEntity, "kind" | "verbs" | "storage" | "readView" | "path" | "discriminator" | "hierarchy"> {
   const path = restPath(obj);
   if (isProjection(obj)) {
     const keyed = itemRouteField(obj) !== undefined;
@@ -237,11 +237,11 @@ function shapeOf(obj: MetaObject, root: MetaData): Pick<ServiceEntity, "kind" | 
   const pin = tphDiscriminatorPin(obj);
   const base = tphDiscriminatorBase(obj);
   if (pin !== undefined && base !== undefined) {
-    const plan = tphPlan(base, root as never);
+    const plan = tphPlan(base, root);
     const hierarchy = plan === null ? [base, obj] : [base, ...plan.subtypes.map((st) => st.entity)];
     return { kind: "entity", verbs: DERIVED_OPERATIONS, storage: base, readView: false, path, discriminator: { field: pin.fieldName, value: pin.value }, hierarchy };
   }
-  const plan = declaresTphDiscriminator(obj) ? tphPlan(obj, root as never) : null;
+  const plan = declaresTphDiscriminator(obj) ? tphPlan(obj, root) : null;
   if (plan !== null) {
     // The polymorphic base is read-only by construction: the union has no single writable shape.
     return { kind: "entity", verbs: ["list", "get"], storage: obj, readView: false, path, discriminator: undefined, hierarchy: [obj, ...plan.subtypes.map((st) => st.entity)] };
@@ -250,12 +250,12 @@ function shapeOf(obj: MetaObject, root: MetaData): Pick<ServiceEntity, "kind" | 
 }
 
 /** The many-to-many traversals `obj` resolves (the relation map's rule, the flat routes' too). */
-function relationsOf(obj: MetaObject, relationMap: RelationMap, root: MetaData): ServiceRelation[] {
+function relationsOf(obj: MetaObject, relationMap: RelationMap, root: MetaRoot): ServiceRelation[] {
   const out: ServiceRelation[] = [];
   for (const e of relationMap.get(obj.name) ?? []) {
     if (e.junction === undefined || e.sourceJoinField === undefined || e.targetJoinField === undefined) continue;
     const target = tphStorageObject(e.target);
-    const plan = declaresTphDiscriminator(e.target) ? tphPlan(e.target, root as never) : null;
+    const plan = declaresTphDiscriminator(e.target) ? tphPlan(e.target, root) : null;
     const pin = tphDiscriminatorPin(e.target);
     out.push({
       fn: `${toCamelCase(e.name)}Of${obj.name}`,
@@ -377,7 +377,7 @@ function operationOf(op: MetaData, target: ServiceEntity | undefined, settings: 
  * The service modules of `root`, one per package that has a covered entity or a declared
  * operation the service covers, sorted by package.
  */
-export function serviceModelOf(root: MetaData, opts: ServiceWalkOpts = {}): ServicePackage[] {
+export function serviceModelOf(root: MetaRoot, opts: ServiceWalkOpts = {}): ServicePackage[] {
   const matches = opts.matches ?? (() => true);
   const settings = rulesSettingsOfModel(root);
   const claimed = claimedTransitions(root);
@@ -388,10 +388,10 @@ export function serviceModelOf(root: MetaData, opts: ServiceWalkOpts = {}): Serv
     return b;
   };
   const covered = new Map<MetaData, ServiceEntity>();
-  const relationMap = buildRelationMap(root as never);
+  const relationMap = buildRelationMap(root);
   // A served report is read through its read model (its derived fields as real fields), the
   // object every other generator is handed; a report that is not served has no API.
-  for (const obj of generatableObjects(root.children().filter(isMetaObject), root as MetaRoot)) {
+  for (const obj of generatableObjects(root.children().filter(isMetaObject), root)) {
     if (!hasServiceOperations(obj) || !matches(obj)) continue;
     const shape = shapeOf(obj, root);
     const rules = shape.kind === "entity" ? entityRules(obj, claimed, settings) : { lifecycles: [], commands: [] };

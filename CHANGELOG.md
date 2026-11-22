@@ -33,7 +33,7 @@ here.**
   functions, which the flat Fastify mounts and the service both call.
 - **codegen-ts: a `runGen` with no project no longer leaves its gen-state in the scratch root.**
   The state of such a run is kept for that process's later runs only, and is removed when the
-  process exits. Before this fix, each such process left `meta-gen-state-<pid>` behind
+  process exits normally (a process killed by a signal still leaves it). Before this fix, each such process left `meta-gen-state-<pid>` behind
   permanently. The test harnesses that generate with no project had left hundreds of those
   directories, about 3 GB, in a RAM-backed `$DEV_SCRATCH`.
 

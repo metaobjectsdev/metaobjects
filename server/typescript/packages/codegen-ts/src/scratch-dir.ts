@@ -51,7 +51,8 @@ export function removeTree(path: string): void {
 const removedAtExit = new Set<string>();
 
 /**
- * Remove `path` when this process exits. For state a process shares across its own runs and no
+ * Remove `path` when this process exits normally (the `exit` event; a process killed by a signal
+ * leaves it behind). For state a process shares across its own runs and no
  * later process reads (runGen's gen-state for a run with no project): without it, every process
  * that ever ran one left a directory in the scratch root.
  */
