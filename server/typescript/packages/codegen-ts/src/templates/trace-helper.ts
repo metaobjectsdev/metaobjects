@@ -37,6 +37,7 @@ import { valueObjectImport, valueObjectImportLines } from "./value-object-import
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "../constants.js";
 import { toPascalCase } from "../naming.js";
 import { tphDiscriminatorPin } from "../tph.js";
+import { withExt } from "../render-context.js";
 
 /** The generator's stable name — the key a library manifest declares its anchor under. */
 export const TRACE_HELPER_STABLE_NAME = "trace-helper";
@@ -90,6 +91,181 @@ export function extendsTraceAnchor(obj: MetaObject, anchors: readonly MetaData[]
     if (anchors.includes(cur)) return true;
   }
   return false;
+}
+
+/** The call-loop module the trace helpers import, without its extension. */
+export const LLM_CALL_SUPPORT_MODULE = "llm-call";
+/** Its file name, written in the same directory as the `<Entity>.trace.ts` modules. */
+export const LLM_CALL_SUPPORT_FILE = `${LLM_CALL_SUPPORT_MODULE}.ts`;
+
+/**
+ * Whether `renderTraceHelper` writes a `call<Entity>` for this entity, and so imports the
+ * call loop: its nested prompt carries @textRef. The generator writes
+ * {@link LLM_CALL_SUPPORT_FILE} beside the helper exactly when this holds.
+ */
+export function traceHelperCallsLlm(entity: MetaObject): boolean {
+  // ADR-0039: resolving — the prompt and its @textRef may be inherited through extends.
+  const prompt = entity.children().find(
+    (c) => c.type === TYPE_TEMPLATE && c.subType === TEMPLATE_SUBTYPE_PROMPT,
+  );
+  return prompt !== undefined && typeof prompt.attr(TEMPLATE_ATTR_TEXT_REF) === "string";
+}
+
+/**
+ * The project's call loop: the provider-neutral `LlmClient` seam, the injectable clock,
+ * ids and cost function, and `runLlmCall`, which times the call, never throws, and
+ * returns the base trace input the helper persists.
+ *
+ * Until 1.3.0 this was `@metaobjectsdev/ai-runtime`, a package the generated helper
+ * depended on. It is the same code, written into the project instead (ADR-0024
+ * Amendment 2): the provider call stays bring-your-own behind `LlmClient`, and the
+ * module is the project's to edit. Its one import is the trace row type from
+ * `@metaobjectsdev/runtime-ts`, which the helper imports anyway.
+ */
+export function renderLlmCallSupport(): string {
+  return [
+    `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}`,
+    `//`,
+    `// The LLM call loop behind the generated call<Entity> trace helpers. The provider call is`,
+    `// yours: implement LlmClient over your LLM library and pass it in. Nothing here talks to a`,
+    `// provider, keeps a rate table or retries.`,
+    ``,
+    `import type { LlmCallInput } from "@metaobjectsdev/runtime-ts";`,
+    ``,
+    `export interface LlmRequest {`,
+    `  /** The rendered prompt text. */`,
+    `  prompt: string;`,
+    `  /** gen_ai.request.model */`,
+    `  model: string;`,
+    `  /** Optional system prompt text. */`,
+    `  system?: string;`,
+    `  /** Provider params: temperature, max_tokens, top_p, ... */`,
+    `  params?: Record<string, unknown>;`,
+    `}`,
+    ``,
+    `export interface LlmUsage {`,
+    `  /** gen_ai.usage.input_tokens */`,
+    `  inputTokens?: number;`,
+    `  /** gen_ai.usage.output_tokens */`,
+    `  outputTokens?: number;`,
+    `}`,
+    ``,
+    `export interface LlmCompletion {`,
+    `  /** Raw completion text, which the helper extracts the response from. */`,
+    `  body: string;`,
+    `  usage?: LlmUsage;`,
+    `  /** gen_ai.response.model (may differ from the request's model). */`,
+    `  model?: string;`,
+    `  /** The full wire request, stored as llmRequest (falls back to the LlmRequest). */`,
+    `  request?: unknown;`,
+    `  /** gen_ai.response.finish_reasons */`,
+    `  finishReason?: string;`,
+    `}`,
+    ``,
+    `/** The single-method, provider-neutral call seam. */`,
+    `export interface LlmClient {`,
+    `  complete(req: LlmRequest): Promise<LlmCompletion>;`,
+    `}`,
+    ``,
+    `/** Wall clock in ms since the epoch, injectable so tests are deterministic. */`,
+    `export interface Clock {`,
+    `  now(): number;`,
+    `}`,
+    ``,
+    `/** Span and trace id source, injectable so tests are deterministic. */`,
+    `export interface IdGen {`,
+    `  next(): string;`,
+    `}`,
+    ``,
+    `export const systemClock: Clock = { now: () => Date.now() };`,
+    ``,
+    `export const uuidIds: IdGen = { next: () => crypto.randomUUID() };`,
+    ``,
+    `/**`,
+    ` * Maps (model, usage) to a cost in integer USD minor units (cents), or null when unknown.`,
+    ` * No rate table ships: supply your own from your LLM library's usage and your rates.`,
+    ` */`,
+    `export type CostFn = (model: string, usage: LlmUsage | undefined) => number | null;`,
+    ``,
+    `export interface RunLlmCallInput {`,
+    `  /** Discriminator / call identity. */`,
+    `  callType: string;`,
+    `  /** The already-rendered request sent to the client. */`,
+    `  request: LlmRequest;`,
+    `  /** An existing trace to attach to; a new trace id is generated when absent. */`,
+    `  traceId?: string;`,
+    `  parentSpanId?: string;`,
+    `  sessionId?: string;`,
+    `}`,
+    ``,
+    `export interface RunLlmCallDeps {`,
+    `  client: LlmClient;`,
+    `  cost?: CostFn;`,
+    `  clock?: Clock;`,
+    `  ids?: IdGen;`,
+    `}`,
+    ``,
+    `export interface RunLlmCallResult {`,
+    `  /** The base trace input, ready to persist: envelope, raw I/O and status. */`,
+    `  input: LlmCallInput;`,
+    `  /** The provider completion, or undefined when the client threw. */`,
+    `  completion?: LlmCompletion;`,
+    `}`,
+    ``,
+    `/**`,
+    ` * Make the call: generate ids, time it, call the client (a throw becomes an error status,`,
+    ` * never a rethrow) and compute the cost. Persists nothing and extracts nothing; the`,
+    ` * generated call<Entity> does both.`,
+    ` */`,
+    `export async function runLlmCall(input: RunLlmCallInput, deps: RunLlmCallDeps): Promise<RunLlmCallResult> {`,
+    `  const clock = deps.clock ?? systemClock;`,
+    `  const ids = deps.ids ?? uuidIds;`,
+    ``,
+    `  const spanId = ids.next();`,
+    `  const traceId = input.traceId ?? ids.next();`,
+    `  const t0 = clock.now();`,
+    `  const startedAt = new Date(t0).toISOString();`,
+    ``,
+    `  let completion: LlmCompletion | undefined;`,
+    `  let status: "ok" | "error" = "ok";`,
+    `  let errorDetail: string | null = null;`,
+    `  try {`,
+    `    completion = await deps.client.complete(input.request);`,
+    `  } catch (err) {`,
+    `    status = "error";`,
+    `    errorDetail = err instanceof Error ? err.message : String(err);`,
+    `  }`,
+    `  const latencyMs = clock.now() - t0;`,
+    ``,
+    `  // exactOptionalPropertyTypes: assign an optional only when it is defined.`,
+    `  const recInput: LlmCallInput = {`,
+    `    spanId,`,
+    `    traceId,`,
+    `    callType: input.callType,`,
+    `    startedAt,`,
+    `    latencyMs,`,
+    `    requestModel: input.request.model,`,
+    `    llmRequest: completion?.request ?? input.request,`,
+    `    llmResponseText: completion?.body ?? "",`,
+    `    status,`,
+    `    errorDetail,`,
+    `  };`,
+    `  if (input.request.system !== undefined) recInput.system = input.request.system;`,
+    `  if (input.parentSpanId !== undefined) recInput.parentSpanId = input.parentSpanId;`,
+    `  if (input.sessionId !== undefined) recInput.sessionId = input.sessionId;`,
+    `  if (completion?.model !== undefined) recInput.responseModel = completion.model;`,
+    `  if (completion?.usage?.inputTokens !== undefined) recInput.inputTokens = completion.usage.inputTokens;`,
+    `  if (completion?.usage?.outputTokens !== undefined) recInput.outputTokens = completion.usage.outputTokens;`,
+    `  if (completion?.finishReason !== undefined) recInput.finishReason = completion.finishReason;`,
+    `  if (completion !== undefined && deps.cost !== undefined) {`,
+    `    const c = deps.cost(completion.model ?? input.request.model, completion.usage);`,
+    `    if (c !== null) recInput.costMinor = c;`,
+    `  }`,
+    ``,
+    `  return completion !== undefined ? { input: recInput, completion } : { input: recInput };`,
+    `}`,
+    ``,
+  ].join("\n");
 }
 
 /**
@@ -204,6 +380,9 @@ export function renderTraceHelper(entity: MetaObject, ctx: GenContext, outPath: 
     ...valueObjectImportLines([requestImport, responseImport]),
   ];
   if (renderable) {
+    // The call loop is the project's own module, written beside this one by the same
+    // generator (LLM_CALL_SUPPORT_FILE), so the helper imports nothing that is not an
+    // ordinary published package (ADR-0024 Amendment 2).
     importLines.push(
       `import {`,
       `  runLlmCall,`,
@@ -214,7 +393,7 @@ export function renderTraceHelper(entity: MetaObject, ctx: GenContext, outPath: 
       `  type CostFn,`,
       `  type Clock,`,
       `  type IdGen,`,
-      `} from "@metaobjectsdev/ai-runtime";`,
+      `} from "${withExt(`./${LLM_CALL_SUPPORT_MODULE}`, extStyle)}";`,
     );
   }
 
@@ -275,7 +454,7 @@ export function renderTraceHelper(entity: MetaObject, ctx: GenContext, outPath: 
     `  const base = buildLlmCallRow(${recordBuildArg});`,
     `  const row = { ...base, voRequest: input.llmRequest, voResponse: failed ? null : outcome.data };`,
     `  await persistLlmCallRow(new LlmCallDbRecorder(om, "${entityName}"), row, opts?.redact ? { redact: opts.redact } : undefined);`,
-    `  return { status, errorDetail, voResponse: failed ? null : (outcome.data as ${responseType}) };`,
+    `  return { status, errorDetail, voResponse: failed ? null : (outcome.data as unknown as ${responseType}) };`,
     `}`,
     ``,
   ];
@@ -339,7 +518,7 @@ export function renderTraceHelper(entity: MetaObject, ctx: GenContext, outPath: 
       `      status = "error";`,
       `      errorDetail = unusable;`,
       `    } else {`,
-      `      voResponse = outcome.data as ${responseType};`,
+      `      voResponse = outcome.data as unknown as ${responseType};`,
       `    }`,
       `  }`,
       `  const row = { ...buildLlmCallRow({ ...recInput, status, errorDetail }), voRequest: payload, voResponse };`,

@@ -82,7 +82,7 @@ the adopter's only signal. Bump with `node scripts/check-metamodel-version.mjs -
 ## Phase 1 — Decide scope + version
 
 The lockstep set = every package currently at the previous version (it is NOT a
-fixed list; `ai-runtime` and the `client/web/packages/*` are in it). Enumerate it:
+fixed list; the `client/web/packages/*` are in it, and the private `ai-runtime` and `conformance` are not). Enumerate it:
 
 ```bash
 for f in server/typescript/packages/*/package.json client/web/packages/*/package.json; do

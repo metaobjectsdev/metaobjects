@@ -10,6 +10,17 @@ here.**
 
 ## [Unreleased]
 
+- **codegen-ts: the trace helper's call loop is written into the project, and
+  `@metaobjectsdev/ai-runtime` is no longer published.** The `trace-helper` generator now writes
+  `llm-call.ts` (the `LlmClient` seam and `runLlmCall`) beside the `<Entity>.trace.ts` modules,
+  and a `call<Entity>` imports it from there, so generated trace code depends only on
+  `runtime-ts`, `render` and `metadata`. `ai-runtime` is `private` and leaves the publish set,
+  which is 13 packages; 1.2.3 stays on npm. Regenerate and drop the dependency:
+  [docs/features/migrations/ai-runtime-unpublished.md](docs/features/migrations/ai-runtime-unpublished.md)
+  (ADR-0024 Amendment 2).
+- **codegen-ts: a trace helper whose response value object has a required field compiles.** It
+  cast the extracted record straight to the value object's interface, which `strict` TypeScript
+  refuses; it now casts through `unknown`, after checking that no required field was lost.
 - **react: `<ImageUpload>` moves to `@metaobjectsdev/react/image-upload`, and `react-easy-crop`
   becomes an optional peer (breaking).** `ImageUpload` and `cropToBlob` leave the package root
   for the new subpath, and the generated form imports them from there, so a project with no

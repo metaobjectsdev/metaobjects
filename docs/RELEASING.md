@@ -23,7 +23,7 @@
 > permanent (`scripts/maven-coordinate.mjs` is the single derivation; every script imports it).
 > Concretely: npm `0.25.0` is Maven `7.25.0`, and npm `1.0.0` is Maven **`8.0.0`**. Do not type
 > a literal `7.` anywhere — at the 1.0 cut it asks Central for a version BELOW the last release.
-> Two carve-outs: the **14 npm packages still move atomically with each other** (they
+> Two carve-outs: the **13 npm packages still move atomically with each other** (they
 > cross-depend — that is intra-npm lockstep and it is unchanged), and a change to
 > `expected-registry.json` / `metamodelVersion` **forces all four**, because that is the
 > cross-port contract — whatever the release's level, so a vocabulary-adding PATCH publishes
@@ -143,10 +143,14 @@ node scripts/publish-set.mjs --check    # the set + its tier order, and the inva
 | 1 | `codegen-ts`, `runtime-ts`, `migrate-ts`, `sdk`, `docs-site`, `runtime-web` |
 | 2 | `codegen-ts-react`, `codegen-ts-tanstack`, `react` |
 | 3 | `tanstack` |
-| 4 | `cli`, `ai-runtime` (leaves — nothing depends on them; publish last) |
+| 4 | `cli` (the leaf — nothing depends on it; publish last) |
 
-Publish in tier order so a dependent never lands before its dependency. **`forge` and
-`conformance` are `private: true` and must never be published** (bun refuses them).
+Publish in tier order so a dependent never lands before its dependency. **`conformance`
+and `ai-runtime` are `private: true` and must never be published** (bun refuses them).
+`ai-runtime` left the set in 1.3.0: the generated trace helper used to import it, and the
+`trace-helper` generator now writes that call loop into the project instead
+([ADR-0024](../spec/decisions/ADR-0024-ai-trace-scope-and-llm-caller-boundary.md)
+Amendment 2). Its last published version is 1.2.3, and it stays on the registry.
 
 ## Golden rules (the non-obvious ones)
 

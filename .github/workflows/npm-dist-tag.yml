@@ -68,8 +68,8 @@ jobs:
           echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
           trap 'rm -f ~/.npmrc' EXIT
 
-          # Fail on the credential, once, before touching 14 packages. Without this an
-          # auth problem arrives as fourteen identical per-package errors and looks like a
+          # Fail on the credential, once, before touching any package. Without this an
+          # auth problem arrives as one identical error per package and looks like a
           # registry-side refusal of the operation.
           npm whoami >/dev/null 2>&1 || { echo "::error::NPM_TOKEN does not authenticate"; exit 1; }
 

@@ -523,17 +523,17 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     kind: "generator",
     layer: "capability",
     description:
-      "Per-entity typed record<Entity>/call<Entity> trace helpers (extract + buildLlmCallRow + persist; LlmCallBase-derived entities only).",
+      "Per-entity typed record<Entity>/call<Entity> trace helpers (extract + buildLlmCallRow + persist; LlmCallBase-derived entities only), plus the llm-call.ts call loop they use.",
     tier: "native",
     factory: () => traceHelperFile(),
     factoryExport: "traceHelperFile",
     options: "outDir?, target?",
     // ADR-0056: typed by the request/response value objects' OWN interfaces (entityFile()).
     requires: ["entity"],
-    // What the emitted `<Entity>.trace.ts` imports. `ai-runtime` is reached only by the
-    // `call<Entity>` half, which every loadable prompt gets (a prompt requires @textRef).
+    // What the emitted `<Entity>.trace.ts` imports. The `call<Entity>` half's call loop is
+    // `llm-call.ts`, written into the project by this generator, not a package (ADR-0024
+    // Amendment 2).
     runtimePackages: [
-      "@metaobjectsdev/ai-runtime",
       "@metaobjectsdev/metadata",
       "@metaobjectsdev/render",
       "@metaobjectsdev/runtime-ts",

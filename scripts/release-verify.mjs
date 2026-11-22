@@ -23,6 +23,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { mavenVersion } from "./maven-coordinate.mjs";
+import { publishSet } from "./publish-set.mjs";
 
 const args = process.argv.slice(2);
 const VERSION = args.find((a) => /^\d+\.\d+\.\d+(-rc\.\d+)?$/.test(a));
@@ -78,11 +79,9 @@ if (unknownRegistries.length) {
   process.exit(2);
 }
 
-const NPM_PKGS = [
-  "metadata", "render", "codegen-ts", "runtime-ts", "migrate-ts", "sdk", "docs-site",
-  "runtime-web", "codegen-ts-react", "codegen-ts-tanstack", "react", "tanstack",
-  "cli", "ai-runtime",
-];
+// The npm set is the one the release published, read from scripts/publish-set.mjs, never a
+// third list kept here: this one had to be edited by hand when ai-runtime left the set.
+const NPM_PKGS = publishSet().set.map((p) => p.short);
 const NUGET_PKGS = ["metaobjects", "metaobjects.render", "metaobjects.codegen", "metaobjects.cli"];
 const MVN_MODULES = ["metadata", "om", "omdb", "render", "codegen-spring", "codegen-kotlin",
   "metadata-ktx", "maven-plugin", "spring-boot-starter"];

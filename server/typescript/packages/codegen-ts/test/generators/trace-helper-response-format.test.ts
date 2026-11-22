@@ -74,8 +74,9 @@ function ctxFor(root: Awaited<ReturnType<typeof loadRoot>>): GenContext {
 async function emit(promptAttrs: Record<string, unknown>): Promise<string> {
   const root = await loadRoot(promptAttrs);
   const files = await traceHelperFile().generate(ctxFor(root));
-  expect(files.length).toBe(1);
-  return files[0]!.content;
+  // One helper, plus the call loop its call<Entity> imports (every prompt here has @textRef).
+  expect(files.map((f) => f.path).sort()).toEqual(["ApiCall.trace.ts", "llm-call.ts"].sort());
+  return files.find((f) => f.path.endsWith(".trace.ts"))!.content;
 }
 
 describe("trace helper — the reply's syntax comes from @responseFormat (ADR-0053)", () => {

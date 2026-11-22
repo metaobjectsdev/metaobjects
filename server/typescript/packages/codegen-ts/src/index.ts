@@ -354,7 +354,14 @@ export { renderRenderHelper } from "./templates/render-helper.js";
 // (src/reference/trace-helper.ts) chooses which files to emit and where; the module body
 // stays in these composers.
 export { renderCallableFile, isCallableEntity } from "./templates/callable-file.js";
-export { renderTraceHelper, traceAnchorNodes, extendsTraceAnchor } from "./templates/trace-helper.js";
+export {
+  renderTraceHelper,
+  traceAnchorNodes,
+  extendsTraceAnchor,
+  traceHelperCallsLlm,
+  renderLlmCallSupport,
+  LLM_CALL_SUPPORT_FILE,
+} from "./templates/trace-helper.js";
 
 // Template-driven codegen (rc.12). Factory + framework Provider for adopters
 // who want to wire their own templateGenerator instances. The default

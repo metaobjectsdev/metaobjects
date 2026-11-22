@@ -51,7 +51,7 @@ moved it (1.0.4 relaxed `@sourceRefField` onto `@cardinality: one` with a prose-
 manifest footprint, and was ruled a hold). `metamodelVersion` read **`1.1`** from 1.1.0 through 1.1.3 for the FR-044 reporting vocabulary and the requirements slice 1 (the first slice of two, covering existence gates and per-entity coverage). **It reads `1.2` from 1.1.4** through every published release since, for calendar-aligned relative report windows (`startOf` on a relative date). The merged tree claims **`1.3`** (`METAMODEL_VERSION` in every port) — main's 1.3.0 and the line's 1.2.4 both carry it, and neither is published. Per-release detail lives in **`CHANGELOG.md`** — it is the log, and this file does
 not duplicate it.
 
-The npm surface is **14 `@metaobjectsdev/*` packages in full lockstep**; the two `angular`
+The npm surface is **13 `@metaobjectsdev/*` packages in full lockstep** (`ai-runtime` left it in 1.3.0: its call loop is now written into the project by the `trace-helper` generator, ADR-0024 Amendment 2); the two `angular`
 packages are on their own `0.6.x` line and are **not published — source-only by decision**
 (ADR-0048). They build in-repo and stay off the registry until they meet that ADR's promotion
 bar.
@@ -59,7 +59,7 @@ bar.
 **A lagging version number is INFORMATION, not drift.** Since `0.24.5` a registry publishes
 only when it has a changed product file, and when it does it adopts the shared `minor.patch`
 then current, skipping the numbers it sat out (operative table in `docs/RELEASING.md`;
-the level vocabulary takes is ADR-0035 Amendment 5's feature test). Two carve-outs: the 14
+the level vocabulary takes is ADR-0035 Amendment 5's feature test). Two carve-outs: the 13
 npm packages move atomically with each other, and a change to `expected-registry.json` /
 `metamodelVersion` still forces all four, at any release level, because that is the contract
 every port byte-matches. So PyPI at `0.25.0` while npm is at `0.25.2` says
