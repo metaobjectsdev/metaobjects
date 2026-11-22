@@ -1,0 +1,19 @@
+{
+  "metadata.root": {
+    "package": "acme::garage",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Garage",
+          "children": [
+            {
+              "field.string": {
+                "name": "label"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

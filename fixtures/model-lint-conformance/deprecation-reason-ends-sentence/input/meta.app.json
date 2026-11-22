@@ -1,0 +1,85 @@
+{
+  "metadata.root": {
+    "package": "acme::app",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Legacy",
+          "abstract": true,
+          "@deprecated": "Merged into Modern.",
+          "@replacedBy": "acme::app::Modern",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Modern",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Widget",
+          "extends": "Legacy"
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Gizmo",
+          "abstract": true,
+          "@deprecated": "",
+          "@replacedBy": "acme::app::Modern",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Doohickey",
+          "extends": "Gizmo"
+        }
+      }
+    ]
+  }
+}

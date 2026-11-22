@@ -133,10 +133,11 @@ function considerTarget(referrer: MetaData, referrerPath: string, verb: string, 
   const replacedBy = typeof replacedByRaw === "string" && replacedByRaw !== "" ? replacedByRaw : undefined;
   const targetKind = `${target.type}.${target.subType}`;
   const reasonClause = reason !== "" ? `: ${reason}` : "";
+  const sentenceEnd = replacedBy !== undefined && !/[.!?]$/.test(reason) ? "." : "";
   out.push(
     warn(
       referrerPath,
-      `${verb} deprecated ${targetKind} ${addressOf(target)}${reasonClause}` +
+      `${verb} deprecated ${targetKind} ${addressOf(target)}${reasonClause}${sentenceEnd}` +
         (replacedBy !== undefined ? ` Replaced by ${replacedBy}.` : ""),
     ),
   );
