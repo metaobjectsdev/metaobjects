@@ -41,6 +41,7 @@ import {
   type ServiceTransitionCommand,
 } from "../service-walk.js";
 import { TsWriter, str } from "../writer/ts-writer.js";
+import { CodegenError } from "../errors.js";
 
 /** One emitted file of the service or transport layer. */
 export interface ServiceFile {
@@ -89,8 +90,30 @@ export function wireMapperName(entityName: string): string {
   return `${lowerFirst(entityName)}ToWire`;
 }
 
+/** Does the store hold a transaction across application code? (`interactiveTransactions`, default true) */
+function interactive(pkg: ServicePackage): boolean {
+  return pkg.interactiveTransactions !== false;
+}
+
+/** The option a store without interactive transactions is declared with, as the refusal names it. */
+export const NO_INTERACTIVE_TX_OPTION = "serviceFile({ interactiveTransactions: false })";
+
+/** The code generation answers a declared command with under that option (ADR-0067 §4). */
+export const ERR_STORE_NO_INTERACTIVE_TX = "ERR_STORE_NO_INTERACTIVE_TX";
+
 /** Every file of package `pkg`'s service module. */
 export function renderServiceFiles(pkg: ServicePackage, ctx: RenderContext): ServiceFile[] {
+  if (!interactive(pkg)) {
+    const command = pkg.operations.find((op) => op.kind === "command");
+    if (command !== undefined) {
+      throw new CodegenError(
+        `${ERR_STORE_NO_INTERACTIVE_TX}: ${pkg.package === "" ? "the model's root package" : `package ${pkg.package}`} declares command ` +
+          `${command.name}, and ${NO_INTERACTIVE_TX_OPTION} says the store cannot hold a transaction: a command's ` +
+          "body runs in its write's transaction, so a refusal after the body wrote could not undo the write. " +
+          "Run this package's service on a store with interactive transactions, or declare the operation a query.",
+      );
+    }
+  }
   const files: ServiceFile[] = [];
   for (const e of pkg.entities) {
     for (const op of ["list", "get", "create", "update", "delete"] as const) {
@@ -179,7 +202,11 @@ function renderOperation(
     return w.toString();
   }
 
-  const inWriteTransaction = w.use("inWriteTransaction", runtime);
+  // Under `interactiveTransactions: false` a write opens no transaction and has no hooks or event
+  // hook to run inside one (ADR-0067 §4): it is its one statement, after the load and the checks.
+  const tx = interactive(pkg);
+  const inWriteTransaction = tx ? w.use("inWriteTransaction", runtime) : w.use("withoutTransaction", runtime);
+  const inOne = tx ? "In one transaction:" : "With no transaction (`interactiveTransactions: false`):";
   if (op === "create" || op === "update") {
     const writeRules = w.useType("WriteBodyRules", runtime);
     const validateBody = w.use("validateBody", runtime);
@@ -191,14 +218,20 @@ function renderOperation(
       const schema = w.use(`${name}InsertSchema`, mods.contract);
       const input = w.useType(`${name}Create`, mods.contract);
       w.doc(
-        `Create a ${name}. In one transaction: the before hook (it may replace the input or refuse),`,
-        "validate the input and stamp what the model declares (ADR-0045), insert it, the after hook",
-        "and the event hook; answer the written row.",
+        ...(tx
+          ? [
+              `Create a ${name}. ${inOne} the before hook (it may replace the input or refuse),`,
+              "validate the input and stamp what the model declares (ADR-0045), insert it, the after hook",
+              "and the event hook; answer the written row.",
+            ]
+          : [`Create a ${name}. ${inOne} validate the input and stamp what the model declares`, "(ADR-0045), insert it; answer the written row."]),
       );
       w.block(`export async function ${fn}<A>(deps: ${deps}, input: ${input}, opts: ${opOptions} = {}): Promise<${opResult}<${row}>> {`, () => {
         w.block(`return ${inWriteTransaction}(deps.db, opts.tx, async (tx) => {`, () => {
-          w.line(`const ctx = ${w.use("handlerContext", runtime)}(tx, opts.actor);`);
-          w.line(`const given = (await deps.hooks?.before${toPascalCase(fn)}?.(input, ctx)) ?? input;`);
+          if (tx) {
+            w.line(`const ctx = ${w.use("handlerContext", runtime)}(tx, opts.actor);`);
+            w.line(`const given = (await deps.hooks?.before${toPascalCase(fn)}?.(input, ctx)) ?? input;`);
+          } else w.line("const given = input;");
           w.line(`const values: Record<string, unknown> = ${validateBody}(${schema}, given, writeRules);`);
           if (e.lifecycles.length > 0) {
             if (pkg.settings.lifecycleCreate === "initial") {
@@ -210,10 +243,12 @@ function renderOperation(
             }
           }
           w.line(`const row = (await ${insertRow}(tx, ${table}, values, ${dialect}, ${keyField})) as ${row};`);
-          w.line(`await deps.hooks?.after${toPascalCase(fn)}?.(row, ctx);`);
-          w.line(
-            `await ${w.use("emitWrite", runtime)}(deps.events, { kind: "create", entity: ${str(name)}, key: row.${e.keyField}, row, actor: opts.actor, at: new Date() }, tx);`,
-          );
+          if (tx) {
+            w.line(`await deps.hooks?.after${toPascalCase(fn)}?.(row, ctx);`);
+            w.line(
+              `await ${w.use("emitWrite", runtime)}(deps.events, { kind: "create", entity: ${str(name)}, key: row.${e.keyField}, row, actor: opts.actor, at: new Date() }, tx);`,
+            );
+          }
           w.line("return row;");
         }, "});");
       });
@@ -226,10 +261,18 @@ function renderOperation(
     const schema = w.use(`${name}UpdateSchema`, mods.contract);
     const patch = w.useType(`${name}Patch`, mods.contract);
     w.doc(
-      `Update the ${name} row \`id\` names with \`patch\`. In one transaction: load the row under a row`,
-      "lock (`not_found` when there is none), the before hook, validate the patch and stamp what the",
-      "model declares (ADR-0045), write it, the after hook and the event hook; answer the written row.",
-      "A patch with nothing to write answers the row and calls no after or event hook.",
+      ...(tx
+        ? [
+            `Update the ${name} row \`id\` names with \`patch\`. ${inOne} load the row under a row`,
+            "lock (`not_found` when there is none), the before hook, validate the patch and stamp what the",
+            "model declares (ADR-0045), write it, the after hook and the event hook; answer the written row.",
+            "A patch with nothing to write answers the row and calls no after or event hook.",
+          ]
+        : [
+            `Update the ${name} row \`id\` names with \`patch\`. ${inOne} load the row`,
+            "(`not_found` when there is none), validate the patch and stamp what the model declares",
+            "(ADR-0045), write it; answer the written row. A patch with nothing to write answers the row.",
+          ]),
     );
     w.block(
       `export async function ${fn}<A>(deps: ${deps}, ${id}, patch: ${patch}, opts: ${opOptions} = {}): Promise<${opResult}<${row}>> {`,
@@ -238,8 +281,10 @@ function renderOperation(
           w.line(`const cond = ${keyCondition}(${table}, ${keyField}, id);`);
           w.line(`const current = (await ${loadForWrite}(tx, ${table}, cond, ${dialect})) as ${row} | undefined;`);
           w.line(`if (current === undefined) ${notFound}();`);
-          w.line(`const ctx = ${w.use("handlerContext", runtime)}(tx, opts.actor);`);
-          w.line(`const given = (await deps.hooks?.before${toPascalCase(fn)}?.(patch, current, ctx)) ?? patch;`);
+          if (tx) {
+            w.line(`const ctx = ${w.use("handlerContext", runtime)}(tx, opts.actor);`);
+            w.line(`const given = (await deps.hooks?.before${toPascalCase(fn)}?.(patch, current, ctx)) ?? patch;`);
+          } else w.line("const given = patch;");
           w.line(`const data: Record<string, unknown> = ${validateBody}(${schema}, given, writeRules);`);
           if (lifecycleFields.length > 0) {
             w.line("// A lifecycle moves only through its transitions (ADR-0066 §6 step 7).");
@@ -248,10 +293,12 @@ function renderOperation(
           w.line("if (Object.keys(data).length === 0) return current;");
           w.line(`const row = (await ${updateRow}(tx, ${table}, data, cond, ${dialect})) as ${row} | undefined;`);
           w.line(`if (row === undefined) ${notFound}();`);
-          w.line(`await deps.hooks?.after${toPascalCase(fn)}?.(row, current, ctx);`);
-          w.line(
-            `await ${w.use("emitWrite", runtime)}(deps.events, { kind: "update", entity: ${str(name)}, key: row.${e.keyField}, row, previous: current, actor: opts.actor, at: new Date() }, tx);`,
-          );
+          if (tx) {
+            w.line(`await deps.hooks?.after${toPascalCase(fn)}?.(row, current, ctx);`);
+            w.line(
+              `await ${w.use("emitWrite", runtime)}(deps.events, { kind: "update", entity: ${str(name)}, key: row.${e.keyField}, row, previous: current, actor: opts.actor, at: new Date() }, tx);`,
+            );
+          }
           w.line("return row;");
         }, "});");
       },
@@ -264,14 +311,22 @@ function renderOperation(
   const deleteRows = w.use("deleteRows", runtime);
   const notFound = w.use("notFound", runtime);
   w.doc(
-    `Delete the ${name} row \`id\` names. In one transaction: load it under a row lock (\`not_found\``,
-    "when there is none), the before hook, the delete, the after hook and the event hook.",
+    ...(tx
+      ? [
+          `Delete the ${name} row \`id\` names. ${inOne} load it under a row lock (\`not_found\``,
+          "when there is none), the before hook, the delete, the after hook and the event hook.",
+        ]
+      : [`Delete the ${name} row \`id\` names. ${inOne} load it (\`not_found\` when there is`, "none), then the delete."]),
   );
   w.block(`export async function ${fn}<A>(deps: ${deps}, ${id}, opts: ${opOptions} = {}): Promise<${opResult}<void>> {`, () => {
     w.block(`return ${inWriteTransaction}(deps.db, opts.tx, async (tx) => {`, () => {
       w.line(`const cond = ${keyCondition}(${table}, ${keyField}, id);`);
       w.line(`const current = (await ${loadForWrite}(tx, ${table}, cond, ${dialect})) as ${row} | undefined;`);
       w.line(`if (current === undefined) ${notFound}();`);
+      if (!tx) {
+        w.line(`await ${deleteRows}(tx, ${table}, cond);`);
+        return;
+      }
       w.line(`const ctx = ${w.use("handlerContext", runtime)}(tx, opts.actor);`);
       w.line(`await deps.hooks?.before${toPascalCase(fn)}?.(current, ctx);`);
       w.line(`await ${deleteRows}(tx, ${table}, cond);`);
@@ -361,14 +416,24 @@ function renderTransitionCommand(c: ServiceTransitionCommand, e: ServiceEntity, 
   w.doc(`\`${t.field}\`: ${t.from.join(", ")} → ${t.to}.`);
   w.line(`const move: ${spec} = ${transitionLiteral(t)};`);
   w.blank();
+  const inTx = interactive(pkg);
   w.doc(
-    `Make the ${name} row \`id\` names move \`${t.name}\`. In one transaction, in ADR-0066 §6's order: load it`,
-    "under a row lock (`not_found`), the permission point (`forbidden`), the state check",
-    "(`invalid_transition`), the guarded update (`invalid_transition` or",
-    "`transition_condition_failed` when it matches no row), the event hook. Answers the written row.",
+    ...(inTx
+      ? [
+          `Make the ${name} row \`id\` names move \`${t.name}\`. In one transaction, in ADR-0066 §6's order: load it`,
+          "under a row lock (`not_found`), the permission point (`forbidden`), the state check",
+          "(`invalid_transition`), the guarded update (`invalid_transition` or",
+          "`transition_condition_failed` when it matches no row), the event hook. Answers the written row.",
+        ]
+      : [
+          `Make the ${name} row \`id\` names move \`${t.name}\`. With no transaction (\`interactiveTransactions: false\`),`,
+          "in ADR-0066 §6's order: load it (`not_found`), the permission point (`forbidden`), the state check",
+          "(`invalid_transition`), the guarded update, which holds on its own (`invalid_transition` or",
+          "`transition_condition_failed` when it matches no row). Answers the written row.",
+        ]),
   );
   w.block(`export async function ${c.fn}<A>(deps: ${deps}, id: number | string, opts: ${opOptions} = {}): Promise<${opResult}<${row}>> {`, () => {
-    w.block(`return ${w.use("inWriteTransaction", runtime)}(deps.db, opts.tx, async (tx) => {`, () => {
+    w.block(`return ${w.use(inTx ? "inWriteTransaction" : "withoutTransaction", runtime)}(deps.db, opts.tx, async (tx) => {`, () => {
       w.line(`const cond = ${w.use("keyCondition", runtime)}(${table}, ${str(e.keyField)}, id);`);
       w.line(`const current = (await ${w.use("loadForWrite", runtime)}(tx, ${table}, cond, ${dialect})) as ${row} | undefined;`);
       w.line(`if (current === undefined) ${w.use("notFound", runtime)}();`);
@@ -376,9 +441,11 @@ function renderTransitionCommand(c: ServiceTransitionCommand, e: ServiceEntity, 
       else w.line(`await ${w.use("checkPermission", runtime)}(deps.policy, ${str(c.permission)}, opts.actor, current, undefined, tx);`);
       w.line(`${w.use("checkState", runtime)}(current, [move]);`);
       w.line(`const row = (await ${w.use("makeTransition", runtime)}(tx, ${table}, cond, move, ${dialect})) as ${row};`);
-      w.line(
-        `await ${w.use("emitWrite", runtime)}(deps.events, { kind: "transition", entity: ${str(name)}, key: current.${e.keyField}, lifecycle: move.field, transition: move.name, from: String(current.${t.field}), to: move.to, operation: ${str(c.fn)}, actor: opts.actor, at: new Date() }, tx);`,
-      );
+      if (inTx) {
+        w.line(
+          `await ${w.use("emitWrite", runtime)}(deps.events, { kind: "transition", entity: ${str(name)}, key: current.${e.keyField}, lifecycle: move.field, transition: move.name, from: String(current.${t.field}), to: move.to, operation: ${str(c.fn)}, actor: opts.actor, at: new Date() }, tx);`,
+        );
+      }
       w.line("return row;");
     }, "});");
   });
@@ -504,13 +571,12 @@ function renderServiceIndex(pkg: ServicePackage, path: string, ctx: RenderContex
   const opResult = w.useType("OpResult", runtime);
   const listPage = w.useType("ListPage", runtime);
   const query = w.useType("ListQueryInput", runtime);
-  const hookContext = `${w.useType("HookContext", runtime)}<A, Db>`;
   const type = serviceTypeName(pkg.package);
   const stem = type.replace(/Service$/, "");
-  const { import: dbImport, alias: dbAlias } = dbTypeBlock(ctx.dialect, { asyncOnly: true });
+  const { import: dbImport, alias: dbAlias } = dbTypeBlock(ctx.dialect);
 
-  // The dialect's Drizzle base type, the queries generator's, except that SQLite is async-only:
-  // a write awaits inside its transaction callback, which a sync driver (better-sqlite3, bun:sqlite) rejects.
+  // The dialect's Drizzle base type, the queries generator's. A sync SQLite driver (bun:sqlite,
+  // better-sqlite3) is accepted: the runtime drives its transaction with statements.
   const dbModule = /from "([^"]+)"/.exec(dbImport)![1]!;
   for (const t of /import type \{ ([^}]+) \}/.exec(dbImport)![1]!.split(",").map((s) => s.trim())) w.useType(t, dbModule);
   w.line(dbAlias);
@@ -530,35 +596,40 @@ function renderServiceIndex(pkg: ServicePackage, path: string, ctx: RenderContex
     w.line(`export type ${stem}Policy<A> = ${w.useType("Policy", runtime)}<${stem}Permission, A, Db>;`);
   }
 
-  w.blank();
-  w.doc(
-    "Hooks on the derived writes, all optional: an absent hook does nothing. Each runs in the write's",
-    "transaction (`ctx.tx`); a before hook may return a replacement input, and any hook may refuse",
-    "(`ctx.refuse(code)`, 409), which rolls the whole write back.",
-  );
-  w.block(`export interface ${stem}Hooks<A> {`, () => {
-    for (const e of pkg.entities) {
-      const mods = modulesOf(path, e.obj, ctx);
-      const row = w.useType(e.obj.name, mods.contract);
-      const create = w.useType(`${e.obj.name}Create`, mods.contract);
-      const patch = w.useType(`${e.obj.name}Patch`, mods.contract);
-      const o = e.operations;
-      const P = (f: string) => toPascalCase(f);
-      w.line(`before${P(o.create)}?(input: ${create}, ctx: ${hookContext}): ${create} | void | Promise<${create} | void>;`);
-      w.line(`after${P(o.create)}?(row: ${row}, ctx: ${hookContext}): void | Promise<void>;`);
-      w.line(`before${P(o.update)}?(patch: ${patch}, current: ${row}, ctx: ${hookContext}): ${patch} | void | Promise<${patch} | void>;`);
-      w.line(`after${P(o.update)}?(row: ${row}, previous: ${row}, ctx: ${hookContext}): void | Promise<void>;`);
-      w.line(`before${P(o.delete)}?(current: ${row}, ctx: ${hookContext}): void | Promise<void>;`);
-      w.line(`after${P(o.delete)}?(row: ${row}, ctx: ${hookContext}): void | Promise<void>;`);
-    }
-  });
+  // Under `interactiveTransactions: false` there are no hooks and no event hook: each would run in
+  // the write's transaction, and the store holds none (ADR-0067 §4).
+  if (interactive(pkg)) {
+    const hookContext = `${w.useType("HookContext", runtime)}<A, Db>`;
+    w.blank();
+    w.doc(
+      "Hooks on the derived writes, all optional: an absent hook does nothing. Each runs in the write's",
+      "transaction (`ctx.tx`); a before hook may return a replacement input, and any hook may refuse",
+      "(`ctx.refuse(code)`, 409), which rolls the whole write back.",
+    );
+    w.block(`export interface ${stem}Hooks<A> {`, () => {
+      for (const e of pkg.entities) {
+        const mods = modulesOf(path, e.obj, ctx);
+        const row = w.useType(e.obj.name, mods.contract);
+        const create = w.useType(`${e.obj.name}Create`, mods.contract);
+        const patch = w.useType(`${e.obj.name}Patch`, mods.contract);
+        const o = e.operations;
+        const P = (f: string) => toPascalCase(f);
+        w.line(`before${P(o.create)}?(input: ${create}, ctx: ${hookContext}): ${create} | void | Promise<${create} | void>;`);
+        w.line(`after${P(o.create)}?(row: ${row}, ctx: ${hookContext}): void | Promise<void>;`);
+        w.line(`before${P(o.update)}?(patch: ${patch}, current: ${row}, ctx: ${hookContext}): ${patch} | void | Promise<${patch} | void>;`);
+        w.line(`after${P(o.update)}?(row: ${row}, previous: ${row}, ctx: ${hookContext}): void | Promise<void>;`);
+        w.line(`before${P(o.delete)}?(current: ${row}, ctx: ${hookContext}): void | Promise<void>;`);
+        w.line(`after${P(o.delete)}?(row: ${row}, ctx: ${hookContext}): void | Promise<void>;`);
+      }
+    });
 
-  w.blank();
-  w.doc(
-    "The write-event hook: told about every write, in its transaction, with the actor (ADR-0066 §7).",
-    "An outbox, a history table or an audit log is written here. Absent, nothing is told.",
-  );
-  w.line(`export type ${stem}Events<A> = ${w.useType("WriteEvents", runtime)}<A, Db>;`);
+    w.blank();
+    w.doc(
+      "The write-event hook: told about every write, in its transaction, with the actor (ADR-0066 §7).",
+      "An outbox, a history table or an audit log is written here. Absent, nothing is told.",
+    );
+    w.line(`export type ${stem}Events<A> = ${w.useType("WriteEvents", runtime)}<A, Db>;`);
+  }
 
   if (hasBodies) {
     w.blank();
@@ -593,8 +664,10 @@ function renderServiceIndex(pkg: ServicePackage, path: string, ctx: RenderContex
     w.line("readonly db: Db;");
     if (hasPolicy) w.line(`readonly policy: ${stem}Policy<A>;`);
     if (hasBodies) w.line(`readonly bodies: ${stem}Bodies<A>;`);
-    w.line(`readonly hooks?: ${stem}Hooks<A>;`);
-    w.line(`readonly events?: ${stem}Events<A>;`);
+    if (interactive(pkg)) {
+      w.line(`readonly hooks?: ${stem}Hooks<A>;`);
+      w.line(`readonly events?: ${stem}Events<A>;`);
+    }
   });
 
   const calls: string[] = [];

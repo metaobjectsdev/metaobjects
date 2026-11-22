@@ -10,7 +10,7 @@
 // The semantics are the ones `mountCrudRoutes` (../drizzle-fastify) has always answered with, so a
 // service behind the thin transport passes the same shared API tests the flat routes pass.
 
-import { and, asc, count, eq, type SQL } from "drizzle-orm";
+import { and, asc, count, eq, sql, type SQL } from "drizzle-orm";
 import type { ZodTypeAny, z } from "zod";
 import { classifyConstraintError, logAndRedact, RedactedDatabaseError } from "../constraint-errors.js";
 import { validationErrorBody } from "../route-errors.js";
@@ -100,7 +100,10 @@ export async function inWriteTransaction<T>(
 ): Promise<OpResult<T>> {
   const scope: Drizzle = tx ?? db;
   try {
-    return { ok: true, value: await scope.transaction(fn) };
+    const value = isSyncSqlite(scope)
+      ? await syncSqliteTransaction(scope, tx !== undefined, fn)
+      : await scope.transaction(fn);
+    return { ok: true, value };
   } catch (e) {
     return failure(e);
   }
@@ -109,10 +112,105 @@ export async function inWriteTransaction<T>(
 /** Run a read operation on `tx` when the caller passed one, else on `db`. A query opens no write transaction. */
 export async function inReadScope<T>(db: unknown, tx: unknown, fn: (db: Drizzle) => Promise<T>): Promise<OpResult<T>> {
   try {
+    // On a sync SQLite handle a read with no transaction of its own waits for the one in flight:
+    // the connection is shared, so reading mid-transaction would see writes that may roll back.
+    const value = tx === undefined && isSyncSqlite(db) ? await serialized(db, () => fn(db)) : await fn(tx ?? db);
+    return { ok: true, value };
+  } catch (e) {
+    return failure(e);
+  }
+}
+
+/**
+ * Run a write with no transaction, for a store that cannot hold one across application code
+ * (Cloudflare D1; the service generator's `interactiveTransactions: false`). Each statement commits
+ * on its own; a refusal or a constraint failure is answered as `inWriteTransaction` answers it.
+ */
+export async function withoutTransaction<T>(db: unknown, tx: unknown, fn: (db: Drizzle) => Promise<T>): Promise<OpResult<T>> {
+  try {
     return { ok: true, value: await fn(tx ?? db) };
   } catch (e) {
     return failure(e);
   }
+}
+
+/**
+ * Run `fn` in one write transaction on `db` and return what it returned, for a job that runs
+ * several operations atomically: pass the handle `fn` receives as each operation's `opts.tx`, and
+ * each runs in a savepoint inside it. On a driver with interactive transactions this is
+ * `db.transaction(fn)`. On a sync SQLite driver, whose own `transaction()` cannot await, it is the
+ * same transaction the service opens for one operation. A throw rolls it all back and is rethrown.
+ */
+export async function withWriteTransaction<T>(db: unknown, fn: (tx: Drizzle) => Promise<T>): Promise<T> {
+  const handle: Drizzle = db;
+  return isSyncSqlite(handle) ? syncSqliteTransaction(handle, false, fn) : handle.transaction(fn);
+}
+
+/**
+ * A sync SQLite handle (`bun:sqlite`, `better-sqlite3`): Drizzle's `resultKind` is "sync". Its
+ * `transaction()` runs its callback synchronously and commits when the callback returns, so an
+ * async callback would commit at its first `await` and a later refusal would roll nothing back.
+ */
+function isSyncSqlite(handle: Drizzle): boolean {
+  return handle !== null && typeof handle === "object" && handle.resultKind === "sync" && typeof handle.run === "function";
+}
+
+/** The transaction in flight on each sync SQLite handle, which the next one waits for. */
+const inFlight = new WeakMap<object, Promise<unknown>>();
+
+/**
+ * Run `fn` once every earlier `serialized` call on `handle` has settled. SQLite has one writer,
+ * and a sync driver one connection, so a transaction that awaits must not interleave with another
+ * operation on the same connection.
+ */
+async function serialized<T>(handle: Drizzle, fn: () => Promise<T>): Promise<T> {
+  const before = inFlight.get(handle) ?? Promise.resolve();
+  const run = before.then(fn, fn);
+  const settled = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  inFlight.set(handle, settled);
+  try {
+    return await run;
+  } finally {
+    if (inFlight.get(handle) === settled) inFlight.delete(handle);
+  }
+}
+
+let savepoints = 0;
+
+/**
+ * One transaction on a sync SQLite handle, driven with statements: `BEGIN IMMEDIATE` (it takes
+ * the write lock at once, so two writers cannot both read and then collide on commit), `COMMIT`,
+ * `ROLLBACK` on a throw. Inside a caller's transaction (`nested`) it is a savepoint instead, and
+ * takes no turn of its own: the caller holds it.
+ */
+async function syncSqliteTransaction<T>(handle: Drizzle, nested: boolean, fn: (tx: Drizzle) => Promise<T>): Promise<T> {
+  if (nested) {
+    const name = `mo_sp_${++savepoints}`;
+    handle.run(sql.raw(`SAVEPOINT ${name}`));
+    try {
+      const value = await fn(handle);
+      handle.run(sql.raw(`RELEASE SAVEPOINT ${name}`));
+      return value;
+    } catch (e) {
+      handle.run(sql.raw(`ROLLBACK TO SAVEPOINT ${name}`));
+      handle.run(sql.raw(`RELEASE SAVEPOINT ${name}`));
+      throw e;
+    }
+  }
+  return serialized(handle, async () => {
+    handle.run(sql.raw("BEGIN IMMEDIATE"));
+    try {
+      const value = await fn(handle);
+      handle.run(sql.raw("COMMIT"));
+      return value;
+    } catch (e) {
+      handle.run(sql.raw("ROLLBACK"));
+      throw e;
+    }
+  });
 }
 
 function failure(e: unknown): OpResult<never> {

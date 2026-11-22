@@ -363,9 +363,23 @@ savepoint inside it. A refusal rolls the transaction back. A query opens no writ
 An operation answers an `OpResult`: the value, or a failure carrying the code and the HTTP status
 the [API contract](api-contract.md) gives it, so every transport maps it the same way.
 
-On SQLite the service needs an async Drizzle driver such as libsql: `ServiceDeps.db` is typed
-`BaseSQLiteDatabase<"async", …>`, so a sync driver (better-sqlite3, bun:sqlite) fails to type-check,
-because a write awaits inside its transaction callback. The flat generators still accept both.
+On SQLite the service takes a sync or an async Drizzle driver, as the flat generators do. An async
+one (libsql) runs Drizzle's own transaction. A sync one (bun:sqlite, better-sqlite3) cannot: its
+`transaction()` commits when its callback returns, at the first `await`. So the runtime drives the
+transaction with statements (`BEGIN IMMEDIATE`, `COMMIT`, `ROLLBACK`) and runs one at a time on each
+database handle, since SQLite has one writer; a read waits for the transaction in flight. A job that
+runs several operations atomically on any driver opens the transaction with
+`withWriteTransaction(db, async (tx) => ...)` from `@metaobjectsdev/runtime-ts/service` and passes
+`tx` as each operation's `opts.tx`. On a sync driver every operation inside must be passed that
+`tx`: one that is not waits for the transaction it is inside, and never runs.
+
+Cloudflare D1 holds no transaction across application code: it refuses the `BEGIN` the service
+opens. Generate its service with `serviceFile({ interactiveTransactions: false })` (ADR-0067 §4).
+That service opens no transaction. Each derived write is its one statement after the load and the
+checks, and a transition is its guarded update, which needs no transaction to hold. There are no
+`<Pkg>Hooks` and no `<Pkg>Events`, since a hook's refusal could not undo the write it followed. A
+package that declares a command fails generation with `ERR_STORE_NO_INTERACTIVE_TX`, naming the
+package, the command and the option; queries are generated as usual.
 
 `serviceRoutesFile()` (stable name `service-routes`, layer `api`, Fastify) writes the thin
 transport (layer 5) beside it, `<pkg path>/transport/fastify.ts`: one plugin per package,

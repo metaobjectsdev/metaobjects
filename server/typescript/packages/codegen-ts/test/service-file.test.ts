@@ -90,10 +90,10 @@ describe("service generators — what they write", () => {
     expect(files["acme/shop/service/createOrder.ts"]).toContain('from "../../../Order.js";');
   });
 
-  test("on sqlite the service takes an async Drizzle driver only; the flat queries module still takes both", async () => {
+  test("on sqlite the service takes a sync or an async Drizzle driver, as the flat queries module does", async () => {
     const root = await load("acme::shop", [entity("Order")]);
     const files = await gen(root, [entityFile(), contractTypes(), serviceFile(), queriesFile()], "package", { dialect: "sqlite" });
-    expect(files["acme/shop/service/index.ts"]).toContain('type Db = BaseSQLiteDatabase<"async", unknown, Record<string, unknown>>;');
+    expect(files["acme/shop/service/index.ts"]).toContain('type Db = BaseSQLiteDatabase<"sync" | "async", unknown, Record<string, unknown>>;');
     expect(files["acme/shop/Order.queries.ts"]).toContain('type Db = BaseSQLiteDatabase<"sync" | "async", unknown, Record<string, unknown>>;');
   });
 
@@ -247,5 +247,37 @@ describe("service generators — lifecycles and declared operations (ADR-0066)",
     const unkeyed = { "operation.command": { name: "settle", "@objectRef": "Order", "@transitions": ["pay"], "@permission": "shop.settle" } };
     const root = await load("acme::shop", [order([pay]), api(unkeyed)]);
     await expect(gen(root, tier())).rejects.toThrow(/command settle lists @transitions but addresses no row by key/);
+  });
+});
+
+describe("service generator — a store without interactive transactions (ADR-0067 §4)", () => {
+  const noTx = (): Generator[] => [entityFile(), contractTypes(), serviceFile({ interactiveTransactions: false }), serviceRoutesFile()];
+  const peek = { "operation.query": { name: "peek", "@objectRef": "Order", "@outputRef": "Order", "@public": true } };
+
+  test("a package that declares a command is refused, naming the package, the command and the option", async () => {
+    const root = await load("acme::shop", [order([pay]), settlement, api(settle)]);
+    await expect(gen(root, noTx())).rejects.toThrow(
+      /ERR_STORE_NO_INTERACTIVE_TX: package acme::shop declares command settle, and serviceFile\(\{ interactiveTransactions: false \}\)/,
+    );
+    // The same package generates with interactive transactions, the default.
+    expect(servicePaths(await gen(root, tier()))).toContain("acme/shop/service/settle.ts");
+  });
+
+  test("a declared query is generated; the service offers no hooks and no event hook, and opens no transaction", async () => {
+    const files = await gen(await load("acme::shop", [order([pay]), api(peek)]), noTx());
+    expect(servicePaths(files)).toContain("acme/shop/service/peek.ts");
+    const index = files["acme/shop/service/index.ts"]!;
+    expect(index).not.toContain("ShopHooks");
+    expect(index).not.toContain("ShopEvents");
+    expect(index).not.toContain("readonly hooks?");
+    for (const op of ["createOrder", "updateOrder", "deleteOrder", "payOrder"]) {
+      const file = files[`acme/shop/service/${op}.ts`]!;
+      expect(file).toContain("withoutTransaction(deps.db, opts.tx,");
+      expect(file).not.toContain("inWriteTransaction");
+      expect(file).not.toContain("deps.hooks");
+      expect(file).not.toContain("emitWrite");
+    }
+    // The transition keeps its guarded update, which holds without a transaction.
+    expect(files["acme/shop/service/payOrder.ts"]).toContain("makeTransition(");
   });
 });

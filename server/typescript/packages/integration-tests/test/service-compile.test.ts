@@ -1,5 +1,6 @@
 // The service tier's compile gate (ADR-0067 layers 4 and 5): the shared fitness corpus and the
-// api-contract rules corpus, each generated
+// api-contract rules corpus, each generated (and the fitness corpus again without interactive
+// transactions, on SQLite)
 // with the entity module, the contract types, the service and its Fastify transport, compiled with
 // the real compiler in both profiles, every dialect and both output layouts.
 //
@@ -81,11 +82,23 @@ const CORPORA = [
     pkg: "acme/purchasing",
     present: ["acme/purchasing/service/submitPurchaseRequest.ts", "acme/purchasing/service/decide.ts", "acme/purchasing/service/requestTotals.ts"],
   },
+  // A store without interactive transactions (Cloudflare D1, which generates as `sqlite`): the
+  // service with no transaction, no hooks and no event hook (ADR-0067 §4).
+  {
+    label: "the shared fitness corpus, without interactive transactions",
+    path: CORPUS,
+    pkg: "fitness",
+    present: ["fitness/service/createProgram.ts"],
+    interactiveTransactions: false,
+    dialects: ["sqlite"],
+  },
 ] as const;
+
+const ALL_DIALECTS = ["postgres", "sqlite", "mysql"] as const;
 
 for (const corpus of CORPORA) describe(`service compile gate — ${corpus.label}`, () => {
   for (const layout of ["flat", "package"] as const satisfies readonly OutputLayout[]) {
-    for (const dialect of ["postgres", "sqlite", "mysql"] as const) {
+    for (const dialect of "dialects" in corpus ? corpus.dialects : ALL_DIALECTS) {
       for (const [profile, options] of PROFILES) {
         test(`${layout} / ${dialect} [${profile}]: the service and its transport compile with zero diagnostics`, async () => {
           const root = await loadCorpus(corpus.path);
@@ -98,7 +111,12 @@ for (const corpus of CORPORA) describe(`service compile gate — ${corpus.label}
                 dbImport: "~/db",
                 dialect,
                 outputLayout: layout,
-                generators: [entityFile(), contractTypes(), serviceFile(), serviceRoutesFile()],
+                generators: [
+                  entityFile(),
+                  contractTypes(),
+                  serviceFile("interactiveTransactions" in corpus ? { interactiveTransactions: corpus.interactiveTransactions } : undefined),
+                  serviceRoutesFile(),
+                ],
               }),
               metadata: root,
               projectRoot: dir,
