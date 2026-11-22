@@ -11,6 +11,7 @@
 // scenario (full isolation).
 
 import { describe, test } from "bun:test";
+import { API_LANES, laneLabel } from "../src/api-lane.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -33,14 +34,14 @@ const META_PATH = join(API_CONTRACT_PROJECTION_DIR, "meta.json");
 
 const contractCheck: ContractCheck = openApiCheck("projection");
 
-for (const layout of OUTPUT_LAYOUTS) describe(`api contract projection (F22) — GENERATED routes lane [${layout}]`, () => {
+for (const lane of API_LANES) for (const layout of OUTPUT_LAYOUTS) describe(`api contract projection (F22) — ${laneLabel(lane)} [${layout}]`, () => {
   const startDb = postgresFor(layout);
   for (const scenario of loadScenarios(API_CONTRACT_PROJECTION_SCENARIOS_DIR)) {
     test(scenario.name, async () => {
       const pg = await startDb();
       let server: GeneratedProjectionServerHandle | null = null;
       try {
-        server = await startGeneratedProjectionServer(pg.connectionUri, META_PATH, layout);
+        server = await startGeneratedProjectionServer(pg.connectionUri, META_PATH, layout, lane);
         await server.applySeed(SEED);
         await runScenario(scenario, server);
       } finally {

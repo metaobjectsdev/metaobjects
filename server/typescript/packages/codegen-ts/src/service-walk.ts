@@ -48,6 +48,7 @@ import {
   transitionFrom,
   transitionTo,
   type MetaData,
+  type MetaRoot,
   type MetaObject,
   type RulesSettings,
 } from "@metaobjectsdev/metadata";
@@ -59,7 +60,7 @@ import { HTTP_RUNTIME_MODULES, HTTP_RUNTIME_PACKAGE, type HttpRuntimeModule } fr
 import type { ExtStyle, RenderContext } from "./render-context.js";
 import type { GenContext } from "./generator.js";
 import { effectivePackage } from "./docs-paths.js";
-import { hasWritableRdbSource } from "./source-detect.js";
+import { generatableObjects, hasWritableRdbSource } from "./source-detect.js";
 import { isAbstract } from "./instance-artifacts.js";
 import { isProjection, isWriteThrough } from "./projection/projection-detector.js";
 import { declaresTphDiscriminator, isTphSubtype, tphDiscriminatorBase, tphDiscriminatorPin, tphStorageObject } from "./tph.js";
@@ -388,7 +389,9 @@ export function serviceModelOf(root: MetaData, opts: ServiceWalkOpts = {}): Serv
   };
   const covered = new Map<MetaData, ServiceEntity>();
   const relationMap = buildRelationMap(root as never);
-  for (const obj of root.children().filter(isMetaObject)) {
+  // A served report is read through its read model (its derived fields as real fields), the
+  // object every other generator is handed; a report that is not served has no API.
+  for (const obj of generatableObjects(root.children().filter(isMetaObject), root as MetaRoot)) {
     if (!hasServiceOperations(obj) || !matches(obj)) continue;
     const shape = shapeOf(obj, root);
     const rules = shape.kind === "entity" ? entityRules(obj, claimed, settings) : { lifecycles: [], commands: [] };
@@ -398,8 +401,7 @@ export function serviceModelOf(root: MetaData, opts: ServiceWalkOpts = {}): Serv
     bucket(effectivePackage(obj) ?? "").entities.push(e);
   }
   // One operation declared identically by two APIs (a versioned API) is one operation (O6). An
-  // operation whose target the service does not cover (a single-table hierarchy, say) is left to
-  // later service work, as its entity is.
+  // operation whose target has no derived operations (a composite key) has none either.
   const seen = new Set<string>();
   for (const op of modelOperations(root)) {
     const targetNode = operationTarget(op);

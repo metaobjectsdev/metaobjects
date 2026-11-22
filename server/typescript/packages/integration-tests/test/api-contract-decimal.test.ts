@@ -15,11 +15,12 @@ import { loadScenarios, runScenario } from "../src/api-contract-scenario.ts";
 import { startDecimalServer, type DecimalEngine } from "../src/api-contract-decimal-server.ts";
 import type { ReportSeed } from "../src/api-contract-report-generated-server.ts";
 import { startMysql, type MysqlContainerHandle } from "../src/mysql-container.ts";
+import { API_LANES, laneLabel, type ApiLane } from "../src/api-lane.ts";
 import { OUTPUT_LAYOUTS, postgresFor, type OutputLayout } from "../src/output-layout.ts";
 import type { RunningPg } from "../src/postgres-container.ts";
 
 /** Which output layout a lane generates in, and where its Postgres databases come from. */
-interface Lane { layout: OutputLayout; startPg: (() => Promise<RunningPg>) | undefined }
+interface Lane { api: ApiLane; layout: OutputLayout; startPg: (() => Promise<RunningPg>) | undefined }
 
 const SEED = JSON.parse(readFileSync(join(API_CONTRACT_DECIMAL_DIR, "seed.json"), "utf8")) as ReportSeed;
 const META_PATH = join(API_CONTRACT_DECIMAL_DIR, "meta.json");
@@ -38,14 +39,14 @@ async function withServer(
   if (engine === "postgres") {
     const pg = await lane.startPg!();
     try {
-      const server = await startDecimalServer(engine, META_PATH, pg.connectionUri, lane.layout);
+      const server = await startDecimalServer(engine, META_PATH, pg.connectionUri, lane.layout, lane.api);
       try { await server.applySeed(seed); await fn(server.baseUrl); } finally { await server.close(); }
     } finally {
       await pg.stop();
     }
     return;
   }
-  const server = await startDecimalServer(engine, META_PATH, engine === "mysql" ? mysqlContainer!.url : undefined, lane.layout);
+  const server = await startDecimalServer(engine, META_PATH, engine === "mysql" ? mysqlContainer!.url : undefined, lane.layout, lane.api);
   try { await server.applySeed(seed); await fn(server.baseUrl); } finally { await server.close(); }
 }
 
@@ -53,8 +54,8 @@ const scenarios = loadScenarios(API_CONTRACT_DECIMAL_SCENARIOS_DIR);
 
 // The package layout skips D1 (a Miniflare process per test, the same routes as SQLite) and, on
 // MySQL, the scenario loop (Postgres and SQLite run every scenario in both layouts).
-for (const layout of OUTPUT_LAYOUTS) for (const engine of layout === "flat" ? ENGINES : ENGINES.filter((e) => e !== "d1")) describe(`api contract decimal (ADR-0019 Amendment 1) — GENERATED routes on ${engine} [${layout}]`, () => {
-  const lane: Lane = { layout, startPg: engine === "postgres" ? postgresFor(layout) : undefined };
+for (const api of API_LANES) for (const layout of OUTPUT_LAYOUTS) for (const engine of layout === "flat" ? ENGINES : ENGINES.filter((e) => e !== "d1")) describe(`api contract decimal (ADR-0019 Amendment 1) — ${laneLabel(api)} on ${engine} [${layout}]`, () => {
+  const lane: Lane = { api, layout, startPg: engine === "postgres" ? postgresFor(layout) : undefined };
   for (const scenario of layout === "package" && engine === "mysql" ? [] : scenarios) {
     if (scenario.engines !== undefined && !scenario.engines.includes(engine)) continue;
     test(scenario.name, async () => {

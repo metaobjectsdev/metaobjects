@@ -11,6 +11,7 @@
 // assertion runner, so a contract drift in either surfaces here.
 
 import { describe, test } from "bun:test";
+import { API_LANES, laneLabel } from "../src/api-lane.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { API_CONTRACT_M2M_DIR, API_CONTRACT_M2M_SCENARIOS_DIR } from "../src/paths.ts";
@@ -47,14 +48,14 @@ describe("api contract M:N — hand-rolled reference lane", () => {
   }
 });
 
-for (const layout of OUTPUT_LAYOUTS) describe(`api contract M:N — GENERATED routes lane [${layout}]`, () => {
+for (const lane of API_LANES) for (const layout of OUTPUT_LAYOUTS) describe(`api contract M:N — ${laneLabel(lane)} [${layout}]`, () => {
   const startDb = postgresFor(layout);
   for (const scenario of loadScenarios(API_CONTRACT_M2M_SCENARIOS_DIR)) {
     test(scenario.name, async () => {
       const pg = await startDb();
       let server: GeneratedM2mServerHandle | null = null;
       try {
-        server = await startGeneratedM2mServer(pg.connectionUri, META_PATH, layout);
+        server = await startGeneratedM2mServer(pg.connectionUri, META_PATH, layout, lane);
         await server.applySeed(SEED);
         await runScenario(scenario, server, openApiCheck("m2m"));
       } finally {

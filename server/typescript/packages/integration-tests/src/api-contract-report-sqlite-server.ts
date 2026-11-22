@@ -11,7 +11,7 @@
 // spelling, create each view from buildReportViews (the real lowering), import the
 // EMITTED <Report>.routes.ts files unmodified and mount them.
 
-import Fastify, { type FastifyInstance } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -20,6 +20,7 @@ import { runGen, defineConfig, buildReportViews } from "@metaobjectsdev/codegen-
 import { indexEmitted, type OutputLayout } from "./output-layout.ts";
 import { DEFAULT_PHYSICAL_NAMING } from "@metaobjectsdev/metadata";
 import { entityFile, reportExport, routesFile } from "@metaobjectsdev/test-generators";
+import { apiGenerators, serveApi, type ApiLane } from "./api-lane.ts";
 import { loadMetadataFile } from "./load-metadata.ts";
 import { REPORT_CORPUS_MAX_ROWS, seedInserts, SERVED_REPORTS, type ReportSeed } from "./api-contract-report-generated-server.ts";
 import { startLocalD1 } from "./query-scenario-d1.ts";
@@ -113,6 +114,7 @@ export async function startSqliteReportServer(
   metaPath: string,
   engine: SqliteReportEngine = "sqlite",
   outputLayout: OutputLayout = "flat",
+  lane: ApiLane = "routes",
 ): Promise<SqliteReportServerHandle> {
   const here = dirname(fileURLToPath(import.meta.url));
   const genTmpRoot = join(here, "..", ".gen-tmp");
@@ -125,18 +127,23 @@ export async function startSqliteReportServer(
   // read, so it sets the root to the default rules (ADR-0058: every resolver reads the root).
   root.physicalNaming = DEFAULT_PHYSICAL_NAMING;
   const lr = await runGen({
-    config: defineConfig({ outputLayout: "flat", 
+    config: defineConfig({
       outDir: tmp,
       extStyle: "none",
       outputLayout,
       dbImport: "./db",
       dialect: "sqlite", // codegen has no d1 dialect: D1 is SQLite to Drizzle (only the db module differs)
       apiPrefix: "/api",
-      generators: [
-        entityFile(),
-        routesFile({ reportMaxRows: REPORT_CORPUS_MAX_ROWS }),
-        reportExport({ maxRows: REPORT_CORPUS_MAX_ROWS, xmlNulls: "nil" }),
-      ],
+      generators: apiGenerators(
+        lane,
+        [
+          entityFile(),
+          reportExport({ maxRows: REPORT_CORPUS_MAX_ROWS, xmlNulls: "nil" }),
+        ],
+        () => [routesFile({ reportMaxRows: REPORT_CORPUS_MAX_ROWS })],
+        // D1 holds no transaction across application code (ADR-0067 §4).
+        { reportMaxRows: REPORT_CORPUS_MAX_ROWS, ...(engine === "d1" ? { interactiveTransactions: false } : {}) },
+      ),
     }),
     metadata: root,
   });
@@ -159,18 +166,19 @@ export async function startSqliteReportServer(
     await client.run(`CREATE VIEW "${v.name}" AS ${v.sql}`);
   }
 
-  const fastify = Fastify();
-  for (const r of SERVED_REPORTS) {
-    const mod = (await import(pathToFileURL(emitted.locate(`${r.name}.routes.ts`)).href)) as Record<
-      string,
-      (f: FastifyInstance) => Promise<void>
-    >;
-    const registrar = mod[r.registrar];
-    if (registrar === undefined) throw new Error(`${r.name}.routes.ts does not export ${r.registrar}`);
-    await fastify.register(registrar);
-  }
-  await fastify.ready();
-  const baseUrl = await fastify.listen({ host: "127.0.0.1", port: 0 });
+  const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { db: unknown };
+  const served = await serveApi(lane, tmp, dbMod.db, async (fastify) => {
+    for (const r of SERVED_REPORTS) {
+      const mod = (await import(pathToFileURL(emitted.locate(`${r.name}.routes.ts`)).href)) as Record<
+        string,
+        (f: FastifyInstance) => Promise<void>
+      >;
+      const registrar = mod[r.registrar];
+      if (registrar === undefined) throw new Error(`${r.name}.routes.ts does not export ${r.registrar}`);
+      await fastify.register(registrar);
+    }
+  });
+  const baseUrl = served.baseUrl;
 
   return {
     baseUrl,
@@ -186,7 +194,7 @@ export async function startSqliteReportServer(
       }
     },
     close: async () => {
-      await fastify.close();
+      await served.close();
       await client.close();
       rmSync(tmp, { recursive: true, force: true });
     },

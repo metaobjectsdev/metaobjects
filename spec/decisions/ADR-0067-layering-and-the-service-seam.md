@@ -18,7 +18,10 @@ and every generator below is a helper.
 Layer 0 and layer 1 are generated: `rules-names` and `contract-types` write in TypeScript, and C#
 writes its own names and create and update records. In TypeScript, layers 4 and 5 have started:
 `service` writes each package's derived list, get, create, update and delete in one transaction with
-the declared write rules, and `service-routes` the thin Fastify transport over it, with
+the declared write rules, for every object the flat routes serve: a projection's and a served
+report's reads (their writes answer 405), a write-through entity's writes read back through its
+view, a single-table hierarchy's polymorphic base reads and per-subtype operations, and each
+many-to-many traversal, and `service-routes` the thin Fastify transport over it, with
 `service-routes-hono` its Hono twin (the `service` layer label of §5.6). The same generators now
 write ADR-0066's transitions and declared operations, with the policy, bodies, hooks and events
 interfaces, and enforce the rules at run time. The other

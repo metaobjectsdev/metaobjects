@@ -82,8 +82,9 @@ export function startDecimalServer(
   /** The Postgres or MySQL connection URL; unused by SQLite and D1. */
   connectionUrl?: string,
   outputLayout: OutputLayout = "flat",
+  lane: ApiLane = "routes",
 ): Promise<DecimalServerHandle> {
-  return startGeneratedCorpusServer(DECIMAL, engine, metaPath, connectionUrl, outputLayout);
+  return startGeneratedCorpusServer(DECIMAL, engine, metaPath, connectionUrl, outputLayout, lane);
 }
 
 /** Generate, provision and mount one generated-lane sub-corpus on `engine`. */
