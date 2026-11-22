@@ -154,7 +154,12 @@ export async function schemaCommand(args: string[], cwd: string): Promise<number
 
   if (flags.out !== undefined) {
     const outPath = resolvePath(cwd, flags.out);
-    await writeFile(outPath, text, "utf8");
+    try {
+      await writeFile(outPath, text, "utf8");
+    } catch (err) {
+      log.error(`${PREFIX}: cannot write ${outPath} — ${describeError(err)}`);
+      return 1;
+    }
     log.info(`meta schema — wrote ${outPath}`);
   } else {
     process.stdout.write(text);
