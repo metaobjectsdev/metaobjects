@@ -7,7 +7,8 @@ import { renderFastifyTransport } from "../templates/service-file.js";
  * The thin Fastify transport of the service layer (ADR-0067 §1, layer 5): one file per metadata
  * package, `<pkg>/transport/fastify.ts`, whose routes parse a request, call the package's
  * service and send what it answered. It holds no rules, and it imports the service module and
- * the contract types only. The built-in twin of `src/reference/service-routes.ts`.
+ * the contract types only. Its `getActor(request)` option resolves who a request is for; two
+ * routes on one method and path are refused when it is generated. The built-in twin of `src/reference/service-routes.ts`.
  */
 export interface ServiceRoutesFileOpts {
   /** Narrow which entities get routes. Keep it the same as the service generator's. */

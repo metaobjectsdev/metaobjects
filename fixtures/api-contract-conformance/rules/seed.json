@@ -1,0 +1,9 @@
+{
+  "purchaseRequests": [
+    { "id": 1, "title": "Laptop", "amountCents": 120000, "limitCents": 200000, "status": "draft" },
+    { "id": 2, "title": "Desk", "amountCents": 30000, "limitCents": 50000, "status": "submitted" },
+    { "id": 3, "title": "Server", "amountCents": 900000, "limitCents": 100000, "status": "submitted" },
+    { "id": 4, "title": "Chair", "amountCents": 15000, "limitCents": null, "status": "rejected" },
+    { "id": 5, "title": "Monitor", "amountCents": 40000, "limitCents": 50000, "status": "approved" }
+  ]
+}

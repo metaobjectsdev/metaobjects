@@ -1,0 +1,12 @@
+name: public-query
+description: >
+  A declared `@public` query answers its body's output with no actor, in the read scope. The
+  README's `requestTotals` body counts the requests and sums their amounts.
+requests:
+  - id: r1
+    method: GET
+    path: /api/purchase_requests/requestTotals
+    expect:
+      status: 200
+      body:
+        equals: { count: 5, totalCents: 1105000 }

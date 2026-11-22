@@ -19,9 +19,10 @@ Layer 0 and layer 1 are generated: `rules-names` and `contract-types` write in T
 writes its own names and create and update records. In TypeScript, layers 4 and 5 have started:
 `service` writes each package's derived list, get, create, update and delete in one transaction with
 the declared write rules, and `service-routes` the thin Fastify transport over it (the `service`
-layer label of §5.6). Transitions, declared operations, the policy, bodies and events interfaces,
-the other ports' shells and the per-package choice of generators are later work. ADR-0066's
-vocabulary is inert at run time until they land.
+layer label of §5.6). The same generators now write ADR-0066's transitions and declared operations,
+with the policy, bodies, hooks and events interfaces, and enforce the rules at run time. The other
+ports' shells and the per-package choice of generators are later work. ADR-0066's vocabulary is
+inert at run time in any port whose service generator has not landed.
 
 **Experimental.** The vocabulary this design generates from is experimental (ADR-0066 Status,
 `docs/compatibility-policy.md`): it may change in a MINOR, including removals and renames, until
@@ -148,11 +149,13 @@ These calls are recorded here:
   It is still not meant to be extended, and its generated header says so.
 - **ADR-0066's four settings stay** (`rules.permissions.names`, `rules.lifecycle.commands`,
   `rules.lifecycle.create` and `verify.lifecycle.unreachable`). They decide what the model derives,
-  which every port must agree on, so they are not generator options. The service generators read
-  `rules.lifecycle.commands` and `rules.lifecycle.create`; until they land, `rules.lifecycle.create`
-  is read and validated and has no effect (ADR-0066 §5). What reads each key: `rules.permissions.names`
-  and `verify.lifecycle.unreachable` are read by the `verify` rules gate today, and the service
-  generators will read `rules.lifecycle.commands` (the derived commands) and `rules.lifecycle.create`.
+  which every port must agree on, so they are not generator options. What reads each key:
+  `rules.permissions.names` and `verify.lifecycle.unreachable` are read by the `verify` rules gate,
+  and the service generators read `rules.lifecycle.commands` (the derived commands),
+  `rules.lifecycle.create` (whether a create may start outside the initial state) and
+  `rules.permissions.names` (`require` refuses to generate a point with no `@permission`). The
+  TypeScript service is the first to read them; a port's service that has not landed has nothing
+  to act on.
 
 ### 5. Choosing layers
 

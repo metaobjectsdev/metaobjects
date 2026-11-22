@@ -27,6 +27,8 @@ export type { FilterAllowlist, SortAllowlist } from "../drizzle-fastify/filter-a
 // The wire mappers a generated service index builds its `<entity>ToWire` from: no framework in them.
 export { timestampWire } from "../timestamp-wire.js";
 export { withWire } from "../wire-format.js";
+// The business-rules mechanics: permission point, state check, guarded update, hook contexts.
+export * from "./rules.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: the adopter's Drizzle database, table or transaction
 type Drizzle = any;
@@ -70,8 +72,13 @@ export function notFound(): never {
   refuse({ error: "not_found" }, 404);
 }
 
-/** The options every operation takes. */
-export interface OpOptions {
+/** The options every operation takes. `A` is the app's actor type (ADR-0067 §7). */
+export interface OpOptions<A = unknown> {
+  /**
+   * Who the operation runs for. The shell never looks inside it: it passes it to the policy and to
+   * the hooks, bodies and event hook. A `@public` operation and the derived CRUD verbs run without one.
+   */
+  readonly actor?: A | undefined;
   /**
    * A transaction the caller opened, for a job that runs several operations atomically. A write
    * runs in a savepoint inside it, so a refusal undoes this operation's writes and leaves the

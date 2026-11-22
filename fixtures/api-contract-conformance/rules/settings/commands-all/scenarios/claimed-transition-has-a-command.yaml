@@ -1,0 +1,21 @@
+name: claimed-transition-has-a-command
+description: >
+  Under `rules.lifecycle.commands: all`, every transition derives a command, the ones a declared
+  command claims included: `approve` is reachable at `POST /purchase_requests/{id}/approve`, with
+  its derived permission and its `@condition`, as well as through `decide`.
+requests:
+  - id: r1
+    method: POST
+    path: /api/purchase_requests/2/approve
+    headers: { x-actor: "rita", x-grants: "acme::purchasing.PurchaseRequest.approve" }
+    expect:
+      status: 200
+      body:
+        row: { id: 2, status: "approved" }
+  - id: r2
+    method: POST
+    path: /api/purchase_requests/3/approve
+    headers: { x-actor: "rita", x-grants: "acme::purchasing.PurchaseRequest.approve" }
+    expect:
+      status: 409
+      body: { error: "transition_condition_failed" }

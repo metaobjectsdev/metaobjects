@@ -1,0 +1,19 @@
+name: invalid-transition
+description: >
+  A move whose `@from` does not hold the row's state is answered 409 `invalid_transition`, after
+  the permission point: request 2 is already `submitted`, so `submit` is refused and nothing is
+  written (no audit entry).
+requests:
+  - id: r1
+    method: POST
+    path: /api/purchase_requests/2/submit
+    headers: { x-actor: "ann", x-grants: "acme::purchasing.PurchaseRequest.submit" }
+    expect:
+      status: 409
+      body: { error: "invalid_transition" }
+  - id: r2
+    method: GET
+    path: /api/audit_entries
+    expect:
+      status: 200
+      body: { length: 0 }

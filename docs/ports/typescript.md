@@ -755,8 +755,11 @@ and give it its own `target` to put the layer in a package the transport and cli
 module per metadata package, under the package's directory in either layout: a file per operation
 in `<pkg path>/service/` (each entity's derived list, get, create, update and delete, every write in
 one transaction with the declared write rules) and `service/index.ts` with the `<Pkg>Service`
-interface and `create<Pkg>Service(deps)`. `serviceRoutesFile()` (stable name `service-routes`)
-writes `<pkg path>/transport/fastify.ts`, the routes that call it. Both need `entity` and
+interface and `create<Pkg>Service(deps)`. A model with ADR-0066 rules also gets a file per
+derived transition command and per declared command and query, each running the rules' checks
+around a hand-written body; the policy, bodies, hooks and event hook are passed in `deps`.
+`serviceRoutesFile()` (stable name `service-routes`) writes `<pkg path>/transport/fastify.ts`, the
+routes that call it, with a `getActor(request)` option for the app's actor. Both need `entity` and
 `contract-types` in the same target. Neither is scaffolded; add them to `generators` or `meta eject`
 them. On SQLite the service needs an async Drizzle driver such as libsql (`Db` is
 `BaseSQLiteDatabase<"async", …>`). See [Business rules](../features/business-rules.md#the-service-layer-typescript).

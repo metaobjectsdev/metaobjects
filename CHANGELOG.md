@@ -10,6 +10,38 @@ here.**
 
 ## [Unreleased]
 
+- **codegen-ts: the service layer, part 2 — the rules run (ADR-0066 §6, ADR-0067 §4 and §7).** The
+  `service` generator now writes a command per transition that derives one (`POST
+  <collection>/{id}/<transition>`) and a shell per declared command and query, at its binding or
+  derived path, and enforces ADR-0066's checks in order, in one transaction: the row (404), the
+  permission point (403 `forbidden`), the state (409 `invalid_transition`), the hand-written body,
+  the guarded update (409 `invalid_transition` or `transition_condition_failed`) and the event hook.
+  The generic update answers a changed lifecycle field 409 `state_managed`. What an app writes is
+  passed to `create<Pkg>Service(deps)` through generated interfaces: `<Pkg>Policy`, `<Pkg>Bodies`
+  (a command returns the move to make or `"none"`, and `ctx.refuse` answers a declared error),
+  optional `<Pkg>Hooks` on the derived writes and `<Pkg>Events` told about every write. Any of
+  them may refuse, which rolls the write back. The actor is an app-defined type parameter, passed
+  as `opts.actor` and resolved by the Fastify transport's `getActor(request)`. Three settings now
+  act on the generated side: `rules.lifecycle.create` (`initial` fills an omitted state and refuses
+  another; `any` accepts any), `rules.lifecycle.commands` (which transitions get a command) and
+  `rules.permissions.names: require` (generation refuses a point with no `@permission`, naming the
+  derived one). A transport refuses two routes on one method and path. New shared API tests,
+  `fixtures/api-contract-conformance/rules/`, cover 403, the three 409 codes, a declared error, a
+  derived command, a declared command and query, a public operation and a hook's and the event
+  hook's refusal rolling back, with three settings variants; the TypeScript lane runs them in both
+  layouts, and the service compile gate builds the model in every dialect. `ServiceDeps`, the
+  service interface and the factory take the actor type `A` (default `unknown`), so existing calls
+  compile unchanged. `@metaobjectsdev/runtime-ts/service` gains the helpers they call
+  (`checkPermission`, `checkState`, `makeTransition`, `checkStateManaged`, `checkCreateState`,
+  `emitWrite`, `handlerContext`) and their types.
+- **The install-size budget rises to 51.7 MB, by ruling.** Installing `@metaobjectsdev/cli` now
+  measures 51.5 MB against a 51.0 MB budget. The growth since #622 (the service generator and the
+  1.3.0 codegen and runtime work) was measured late because hosted CI does not run `ts-slow`.
+  Declaration maps stay, so go-to-definition still reaches the shipped source.
+  `scripts/check-install-size.mjs` now accepts a raise only when the newest `history` entry in
+  `scripts/install-size-budget.json` records it with its reason and ruling. It also reads
+  `origin/main` when a checkout has no local `main`; before this, such a checkout skipped the
+  never-rises rule entirely.
 - **codegen-ts: the service layer, part 1 (ADR-0067 layers 4 and 5).** Two new generators, neither
   scaffolded. `service` (the new `service` layer label, shared by every port's catalog) writes one
   module per metadata package: a function per derived list, get, create, update and delete of each
@@ -20,8 +52,8 @@ here.**
   shared corpus against the service behind its transport, in both layouts, and passes as the flat
   routes do; a compile gate builds the tier in every dialect. `@metaobjectsdev/runtime-ts` gains
   the `./service` and `./service/fastify` entries they import, and `meta eject` copies them.
-  Write-through, TPH, many-to-many, projections, reports, transitions and declared operations stay
-  on the flat generators for now: [docs/features/business-rules.md](docs/features/business-rules.md#the-service-layer-typescript).
+  Write-through, TPH, many-to-many, projections and reports stay on the flat generators for now:
+  [docs/features/business-rules.md](docs/features/business-rules.md#the-service-layer-typescript).
 - **runtime-ts: a list with no `limit` answers 50 rows (breaking).** A generated entity or
   projection list in a project that sets no `api.pagination` returned every matching row when the
   request carried no `limit`; it now answers the first 50, the default of every port. An explicit
@@ -730,8 +762,8 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
     `fixtures/rules-check-conformance/` corpus.
   - New settings in `.metaobjects/config.json`: `rules.permissions.names`,
     `rules.lifecycle.commands`, `rules.lifecycle.create` and `verify.lifecycle.unreachable`.
-    Absent, each behaves as before. `rules.lifecycle.create` is read and validated and has no
-    effect yet: the service shells that act on it are later work.
+    Absent, each behaves as before. The service generators act on `rules.lifecycle.create` and
+    `rules.lifecycle.commands` (TypeScript's first, see [Unreleased]).
   - A requirement's `@implementedBy` may name an operation (`Purchasing.decide`) or a
     transition (`PurchaseRequest.status.submit`).
   - The Rust port (ADR-0065) registers the same vocabulary and runs the same loader
@@ -739,9 +771,10 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
     the whole metamodel corpus (574 of 574, ledger empty). It reads and validates the new
     settings. It has no `verify`, so the rules gate does not run there.
 
-  Nothing is generated from the vocabulary yet: the enforcing service shells are later work
-  (ADR-0067: service generators an app chooses like any other, not a named set), and
-  `fixtures/codegen-noop/rules/` holds every generator to byte-identical output.
+  The flat generators generate nothing from the vocabulary: the enforcing shells are the service
+  generators (ADR-0067: generators an app chooses like any other, not a named set; TypeScript's
+  first, see [Unreleased]), and `fixtures/codegen-noop/rules/` holds every flat generator to
+  byte-identical output.
   A model that declares none of it sees no change. See `docs/features/business-rules.md`.
   ADR-0067 records the layering and service-seam design (a layer is a generator an app chooses; the
   actor is a type the app defines), and amends ADR-0045.
