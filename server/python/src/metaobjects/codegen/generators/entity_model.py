@@ -51,7 +51,7 @@ from metaobjects.codegen.constants import GENERATED_MARKER, generated_header_lin
 from metaobjects.codegen.type_map import field_is_array, py_type_for
 from metaobjects.codegen.writer import CodeWriter, Piece, PyWriter, call, flat, group, str_lit
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, per_entity
-from metaobjects.codegen.generators.tph_plan import tph_subtype_binding
+from metaobjects.codegen.generators.tph_plan import tph_plan_for, tph_subtype_binding
 from metaobjects.codegen.import_path import (
     ModuleScope,
     import_line,
@@ -1050,9 +1050,13 @@ def module_scope(entity: MetaObject, config: GenConfig) -> ModuleScope:
 def model_imports(entity: MetaObject, object_index: dict[str, MetaObject]) -> list[MetaObject]:
     """The objects whose model modules *entity*'s own model module imports: its ``extends``
     base, the value object each ``field.object`` / ``field.map`` ``@objectRef`` binds, and its
-    M:N targets. The same three sources :meth:`EntityModelGenerator.render_entity_model`
+    M:N targets, plus the concrete subtypes of a discriminator base (its router imports their
+    ``Create`` / ``Patch`` models). The same sources :meth:`EntityModelGenerator.render_entity_model`
     collects imports from."""
     found: list[MetaObject] = []
+    plan = tph_plan_for(entity, object_index)
+    if plan is not None:
+        found.extend(sub.entity for sub in plan.subtypes)
     if entity.super_data is not None:
         found.append(entity.super_data)
     # ADR-0039 SANCTIONED OWN — the model declares only its own fields; an inherited one is

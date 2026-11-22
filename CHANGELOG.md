@@ -214,7 +214,15 @@ here.**
   saying `routes` covered it. `routes` writes nothing for those objects, so only the objects it
   routes count now. A routed object's model still imports the abstract base it `extends`, the value
   objects its fields reference and its M:N targets, so limiting `entity` away from one of those is
-  still refused.
+  still refused. So is the concrete subtype of a routed discriminator base, whose `Create` and
+  `Patch` models the base's router imports.
+- **Python: `metaobjects eject --force` no longer rewrites an identical copy.** It compares each file
+  with the reference before writing, and one that already matches is left alone and reported
+  `unchanged`.
+- **Python: a reverse finder over a flattened value-object member is named by its flat key.** A
+  reference whose `@fields` names a member such as `address.countryId` emitted a method name with a
+  dot in it, which is not Python. It is now `find_plans_by_address_country`, as TypeScript names it,
+  so the generated finder name changes for such a model on upgrade.
 - **C#: a `@sequenceStart` whose migrations project lacks the design-time services line is a generation
   error.** When `dotnet meta gen` can see the context's `ModelSnapshot.cs` in another project and that
   project does not carry `[assembly: DesignTimeServicesReference]`, the next `dotnet ef migrations add`

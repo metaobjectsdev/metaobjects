@@ -283,6 +283,37 @@ def test_the_many_to_many_target_a_routed_object_imports_is_needed_from_entity(
     assert not out.exists() or not _stems(out)
 
 
+def test_the_subtype_a_routed_discriminator_base_imports_is_needed_from_entity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    out = _project(tmp_path, "- {name: entity, packages: ['acme::sales']}\n- routes\n")
+    meta = tmp_path / "metaobjects"
+    (meta / "meta.hr.json").unlink()
+    auth = {"object.entity": {"name": "Auth", "@discriminator": "type", "children": [
+        {"source.rdb": {"@table": "auths"}},
+        {"field.long": {"name": "id"}},
+        {"field.enum": {"name": "type", "@values": ["Bridge"]}},
+        {"identity.primary": {"name": "pk", "@fields": ["id"]}},
+    ]}}
+    (meta / "meta.sales.json").write_text(
+        json.dumps({"metadata.root": {"package": "acme::sales", "children": [auth]}}),
+        encoding="utf-8",
+    )
+    bridge = {"object.entity": {
+        "name": "BridgeAuth", "extends": "acme::sales::Auth", "@discriminatorValue": "Bridge",
+        "children": [{"field.int": {"name": "quantity"}}],
+    }}
+    (meta / "meta.catalog.json").write_text(
+        json.dumps({"metadata.root": {"package": "acme::catalog", "children": [bridge]}}),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    assert main(["gen"]) != 0
+    err = capsys.readouterr().err
+    assert "'routes' requires 'entity', which is limited away from ['BridgeAuth']" in err
+    assert not out.exists() or not _stems(out)
+
+
 def test_limiting_a_generator_and_the_one_it_requires_to_the_same_entity_is_accepted(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
